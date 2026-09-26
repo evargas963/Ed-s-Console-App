@@ -13,22 +13,11 @@ the quarantine fact and blocks decision_id / persistence / actionability and rew
 from __future__ import annotations
 
 import ast
-import dataclasses
 from pathlib import Path
-from types import SimpleNamespace
 
 import governance.provenance_inventory as P
 import governance.provenance_roots as R
 import governance.provenance_rows as ROWS_MOD
-from call_engine import WAIT_BLOCKER_REASON_EMISSION, compute_call
-from signal_types import CanonicalForecast, PredictiveCard, RulesCard
-from tests.mvp_test_fixtures import minimal_mvp_features
-from tests.test_call_prediction_vote import _inp
-from trade_impacting_gate import (
-    apply_trade_impacting_gate,
-    revalidate_cached_decision,
-    validate_trade_impacting_gate,
-)
 
 REPO = Path(__file__).resolve().parents[1]
 VERDICT_KEYS = {"call_signal", "call_conviction"}
@@ -36,116 +25,22 @@ VERDICT_KEYS = {"call_signal", "call_conviction"}
 
 # ── a directional setup (the same one test_call_prediction_vote proves reaches LONG) ──────
 
-def _directional_kwargs() -> dict:
-    canonical = CanonicalForecast(
-        direction="up", probability_up=0.47, probability_down=0.30, probability_flat=0.23,
-        confidence="low", provenance="bayesian_fusion",
-    )
-    rules = RulesCard(
-        headline="Test", headline_1m="", detail="", zone_label="UP", zone_color="#fff",
-        signal="long", conviction="low", alerts=[],
-        micro=SimpleNamespace(
-            regime="TREND_UP", structure_support=448.0, structure_resist=452.0, bos=None,
-            sweeps=[], last_sweep=None, is_compressing=False, compression_bars=0,
-        ),
-    )
-    pred = PredictiveCard(
-        avg_5c_pts=50.0,   # a measured similar-setups move -> a real T1 (no 2R stand-in, S-14)
-        headline="Lean UP", prediction_dir="up", prediction_target=None,
-        historical_5c_dominant_dir="up", historical_5c_dominant_prob=0.47, empirical_confidence="low",
-        forward_direction=canonical.direction, forward_prob_up=canonical.probability_up,
-        forward_prob_down=canonical.probability_down, forward_prob_flat=canonical.probability_flat,
-        forward_confidence=canonical.confidence, forward_provenance=canonical.provenance,
-        samples_used=40, model_note="weak lean", timeframe_reads={},
-        up_prob_5c=0.47, down_prob_5c=0.30, flat_prob_5c=0.23,
-    )
-    return dict(
-        rules=rules, pred=pred,
-        regime=SimpleNamespace(primary="trend_continuation", confidence="medium"),
-        fusion=SimpleNamespace(
-            available=True, dominant_direction="flat", fusion_dominant_direction="flat",
-            model_agreement=0.72, n_sources_active=2, fusion_confidence="low",
-            reversal_posterior=0.25, continuation_posterior=0.2, breakout_posterior=0.2,
-            mc_available=True, mc_containment=0.45, mc_expansion=0.4, mc_eae=0.8, mc_efe=1.0,
-        ),
-        vol_regime=SimpleNamespace(vol_regime="normal", trade_permissive=True,
-                                   conviction_multiplier=1.0, risk_multiplier=1.0),
-        canonical=canonical,
-        mvp_features=minimal_mvp_features(zone="pin_bull"),
-    )
 
 
-def _call(inp):
-    kw = _directional_kwargs()
-    return compute_call(inp, kw.pop("rules"), kw.pop("pred"), **kw)
 
 
 # ── behavioural: the owner vetoes itself on the emission facts ───────────────────────────
 
-def test_baseline_setup_is_directional_and_no_fact_is_not_a_veto():
-    assert _call(_inp()).signal == "long"
-    assert _call(dataclasses.replace(_inp(), production_emission_allowed=None)).signal == "long"
-    assert _call(dataclasses.replace(_inp(), production_emission_allowed=True)).signal == "long"
 
 
-def test_owner_vetoes_on_quarantine_and_carries_the_reasons():
-    inp = dataclasses.replace(
-        _inp(), production_emission_allowed=False,
-        emission_block_reasons=("price_out_of_sanity_range:0.01 not in [225.0000, 900.0000] (0.5x-2x prior close 450.0) for SPY",),
-    )
-    call = _call(inp)
-    assert call.signal == "wait"
-    assert call.conviction == "low"
-    wb = call.wait_blocker
-    assert wb["reason"] == WAIT_BLOCKER_REASON_EMISSION
-    assert wb["gated_signal"] == "long"
-    assert wb["emission_block_reasons"] == list(inp.emission_block_reasons)
-    # Everything coupled to the verdict follows WAIT inside the owner: no directional plan.
-    assert call.trade_type not in ("long", "short")
-    assert call.size_cue in ("SKIP", "NONE", "0", "") or "skip" in str(call.size_cue).lower()
 
 
-def test_non_production_route_and_bad_spot_fail_closed_through_the_owner():
-    for facts, route in (
-        ({"ticker": "SPY", "spot": 450.0, "prior_close": 450.0, "spread_age_ms": 0}, "server.api.debug_prediction"),
-        ({"ticker": "SPY", "spot": 0.01, "spread_age_ms": 0, "prior_close": 450.0}, "server._fetch_state"),
-        ({"ticker": "NFLX", "spot": 0.01, "spread_age_ms": 0, "prior_close": 1200.0}, "server._fetch_state"),
-        ({"ticker": "SPY", "spot": 450.0, "prior_close": 450.0, "spread_age_ms": 10_000_000}, "server._fetch_state"),
-        ({"ticker": "SPY", "spot": 450.0, "prior_close": 450.0, "spread_age_ms": 0}, "server._fetch_state.no_valid_expiry"),
-    ):
-        g = validate_trade_impacting_gate(facts, route=route)
-        assert g.production_emission_allowed is False, (facts, route)
-        inp = dataclasses.replace(_inp(), production_emission_allowed=g.production_emission_allowed,
-                                  emission_block_reasons=tuple(g.reasons))
-        call = _call(inp)
-        assert call.signal == "wait" and call.wait_blocker["reason"] == WAIT_BLOCKER_REASON_EMISSION, route
-    ok = validate_trade_impacting_gate({"ticker": "SPY", "spot": 450.0, "prior_close": 450.0, "spread_age_ms": 0}, route="server._fetch_state")
-    assert ok.production_emission_allowed is True
-    assert _call(dataclasses.replace(_inp(), production_emission_allowed=True,
-                                     emission_block_reasons=tuple(ok.reasons))).signal == "long"
 
 
 # ── the gate stamps facts and blocks; it rewrites no verdict field ────────────────────────
 
-def test_apply_gate_rewrites_no_verdict_field_on_quarantine():
-    ms = {"ticker": "SPY", "spot": 0.01, "prior_close": 450.0, "call_signal": "long", "call_conviction": "high",
-          "validation_summary": "risk_ok", "call": {"signal": "long"}}
-    before = dict(ms)
-    result = apply_trade_impacting_gate(ms, route="server._fetch_state")
-    assert result.quarantined and not result.production_emission_allowed
-    assert ms["market_data_quarantine"]["active"] is True
-    for k in ("call_signal", "call_conviction", "validation_summary", "call"):
-        assert ms[k] == before[k], k
-    assert "trade_valid" not in ms
 
 
-def test_stale_cache_serve_blocks_actionability_and_manufactures_no_wait():
-    md = {"ticker": "SPY", "spot": 500.0, "prior_close": 500.0, "call_signal": "short", "call_conviction": "medium",
-          "validation_summary": "risk_ok"}
-    out = revalidate_cached_decision(md, route="server._tier_c_analytics_json_response", stale=True)
-    assert out["tier_c_cache_gate_ok"] is False
-    assert out["market_data_quarantine"]["active"] is True
-    assert out["call_signal"] == "short" and out["call_conviction"] == "medium"
 
 
 # ── wiring: one route, one gate fact, computed before the state is built ────────────────

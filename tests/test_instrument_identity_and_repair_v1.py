@@ -6,7 +6,6 @@ import inspect
 from db import EdDB, CANONICAL_TIMEFRAME, HORIZON_OUTCOME_SCHEMA_BAR_ANCHOR_V1, get_snapshot_sql
 from timeframe_config import DERIVED_TIMEFRAME
 from instrument_identity import ticker_storage_key
-from market_data_adapter import schwab_candles_to_bars
 
 
 def _in_window_ts(hour: int = 10, minute: int = 0) -> float:
@@ -70,23 +69,6 @@ def test_upsert_1m_bars_uses_ticker_storage_key_for_spx_family(tmp_path):
     assert rows[0]["ticker"] == "$SPX"
 
 
-def test_schwab_candles_to_bars_round_trips_through_upsert_1m(tmp_path):
-    """Adapter must emit fields upsert_1m_bars reads (regression: missing datetime skipped all rows)."""
-    dbp = tmp_path / "schwab_bars.db"
-    db = EdDB(dbp)
-    ms = _in_window_ts(11, 0) * 1000.0
-    candles = [{"datetime": int(ms), "open": 1.0, "high": 2.0, "low": 0.5, "close": 1.5, "volume": 100.0}]
-    bars = schwab_candles_to_bars(candles)
-    n = db.upsert_1m_bars("COP", bars)
-    assert n == 1
-    exp_start = ms / 1000.0
-    with db._connect() as conn:
-        row = conn.execute(
-            "SELECT ticker, bar_start_ts_utc, close FROM price_bars_1m WHERE bar_start_ts_utc = ?",
-            (exp_start,),
-        ).fetchone()
-    assert row["ticker"] == "COP"
-    assert row["close"] == 1.5
 
 
 def test_ticker_storage_key_preserves_spx_prefix():

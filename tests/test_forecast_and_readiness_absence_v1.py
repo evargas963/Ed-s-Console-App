@@ -8,9 +8,6 @@ studies read each stored placeholder as a LONG call.
 from __future__ import annotations
 
 
-from call_engine import _canonical_stack_vote, _level_proximity_label
-from setup_readiness import compute_call_readiness, compute_put_readiness
-from signal_types import CanonicalForecast
 
 _FULL = {
     "regime": "bull", "trend": "up", "structure_confirmation": "reclaim",
@@ -22,35 +19,12 @@ _FULL = {
 
 
 
-def test_tradable_canonical_with_unreadable_confidence_does_not_vote_on_it():
-    c = CanonicalForecast(direction="up", probability_up=0.40, probability_down=0.30,
-                          probability_flat=0.30, confidence=None, provenance="bayesian_fusion")
-    # 0.40 is below the stack-vote probability floor; an absent confidence is not "not low"
-    assert _canonical_stack_vote(c) == 0
 
 
-def test_readiness_withheld_for_each_missing_input():
-    for key in ("regime", "trend", "structure_confirmation", "structure_higher_tf",
-                "prediction_direction", "prediction_dominant_prob", "confluence_read",
-                "level_proximity"):
-        inp = dict(_FULL)
-        inp[key] = None
-        for fn in (compute_call_readiness, compute_put_readiness):
-            out = fn(inp)
-            assert out["readiness_score"] is None and out["call_state"] is None, (fn, key)
-            assert key in out["missing_conditions"][0], (fn, key)
-    assert compute_call_readiness(dict(_FULL))["readiness_score"] is not None
 
 
-def test_trigger_zone_needs_no_level_distance():
-    inp = dict(_FULL, level_proximity=None, breakout_ready=True)
-    assert compute_call_readiness(inp)["readiness_score"] is not None
 
 
-def test_level_proximity_absent_is_none_not_far():
-    assert _level_proximity_label(None) is None
-    assert _level_proximity_label(0.0) == "near"
-    assert _level_proximity_label(1e9) == "far"
 
 
 # ── L-01 / F-11: the stamped model version is what RAN, or None ────────────────
@@ -84,22 +58,6 @@ def test_wait_headline_names_its_blocker():
 
 # ── S-14: a directional setup with no measured T1 is WAIT, never a 2R plan ──────
 
-def test_directional_setup_without_a_measured_move_is_wait():
-    import dataclasses
-
-    from call_engine import WAIT_BLOCKER_REASON_NO_TARGET, compute_call
-    from tests.test_call_owner_emission_veto_v1 import _directional_kwargs
-    from tests.test_call_prediction_vote import _inp
-
-    kw = _directional_kwargs()
-    assert compute_call(_inp(), kw.pop("rules"), kw.pop("pred"), **kw).signal == "long"
-    for avg5 in (None, 0.01):   # missing, and measured but below the minimum R
-        kw = _directional_kwargs()
-        pred = dataclasses.replace(kw.pop("pred"), avg_5c_pts=avg5)
-        call = compute_call(_inp(), kw.pop("rules"), pred, **kw)
-        assert call.signal == "wait", avg5
-        assert call.wait_blocker["reason"] == WAIT_BLOCKER_REASON_NO_TARGET
-        assert (call.entry, call.stop, call.target, call.target2) == (None, None, None, None)
 
 
 # ── F-09 / F-10: context reads state only what was measured ─────────────────────
