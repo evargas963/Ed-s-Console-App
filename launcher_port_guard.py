@@ -39,10 +39,7 @@ import time
 import urllib.error
 import urllib.request
 
-try:
-    import psutil
-except ImportError:  # pragma: no cover -- exercised via PortInspectionError below
-    psutil = None
+import psutil
 
 
 class PortInspectionError(Exception):
@@ -65,8 +62,6 @@ def listening_pid(port: int) -> int | None:
     unreadable owner is the same "I cannot tell you whose this is" as a failed
     scan, and must fail the same way -- never silently promoted to 'nothing is
     here'."""
-    if psutil is None:
-        raise PortInspectionError("psutil is not available -- cannot inspect listening sockets")
     try:
         conns = psutil.net_connections(kind="inet")
     except Exception as e:
@@ -85,8 +80,6 @@ def command_line_for_pid(pid: int) -> str:
     """The full command line of `pid`, or '' if it cannot be read (already exited,
     or access denied -- both real, common races, not inspection failures: an
     empty command line correctly fails is_ed_console_command_line below)."""
-    if psutil is None:
-        return ""
     try:
         return " ".join(psutil.Process(pid).cmdline())
     except Exception:

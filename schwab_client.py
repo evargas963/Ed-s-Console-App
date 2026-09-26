@@ -1,7 +1,7 @@
 # schwab_client.py
 """
 Centralized Schwab client construction and safe API wrappers.
-Token path is always absolute. InvalidTokenError triggers one retry with client rebuild.
+Token path is always absolute.
 """
 import json
 import os
@@ -12,47 +12,14 @@ from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import urlparse
 
+from authlib.common.errors import AuthlibBaseError
 from schwab import auth
+
+from api_pressure import record_schwab_http_response
 import logging
 
 log = logging.getLogger(__name__)
 
-
-# schwab-py raises this when token expired/invalid
-try:
-    from schwab.auth import InvalidTokenError
-except ImportError:
-    InvalidTokenError = type("InvalidTokenError", (Exception,), {})
-
-# ── OAuth scope for authorize URL (schwab-py's get_auth_context omits scope by default).
-#    Schwab token responses may omit refresh_token without offline_access-style scope.
-#    Override via env SCHWAB_OAUTH_SCOPE (space-separated, e.g. "openid profile offline_access").
-_DEFAULT_SCHWAB_OAUTH_SCOPE = "openid profile offline_access"
-
-
-def _schwab_oauth_scope() -> str:
-    s = os.getenv("SCHWAB_OAUTH_SCOPE", _DEFAULT_SCHWAB_OAUTH_SCOPE).strip()
-    return s if s else _DEFAULT_SCHWAB_OAUTH_SCOPE
-
-
-#: Schwab's API host; the OAuth authorize endpoint is {host}/v1/oauth/authorize
-SCHWAB_API_BASE_URL = "https://api.schwabapi.com"
-
-
-def _get_auth_context_with_scope(api_key, callback_url, state=None, base_url=SCHWAB_API_BASE_URL):
-    """schwab.auth.get_auth_context with an explicit ``scope=`` on the OAuth2Client -- the only
-    difference from the library's own. Same signature, so schwab-py calls it unchanged."""
-    from authlib.integrations.httpx_client import OAuth2Client
-
-    endpoint = f"{base_url}/v1/oauth/authorize"
-    scope = _schwab_oauth_scope()
-    oauth = OAuth2Client(api_key, redirect_uri=callback_url, scope=scope)
-    authorization_url, new_state = oauth.create_authorization_url(endpoint, state=state)
-    print(f"[schwab_client DEBUG] OAuth authorization_url (scope={scope!r}):\n{authorization_url}")
-    return auth.AuthContext(callback_url, authorization_url, new_state)
-
-
-auth.get_auth_context = _get_auth_context_with_scope
 
 
 @dataclass
@@ -77,12 +44,6 @@ class TokenInspectionResult:
     is_expired: bool = False
     is_expiring_soon: bool = False
     message: str = ""
-
-
-
-
-
-
 
 
 def _resolve_token_path(token_path: str) -> str:
@@ -415,7 +376,7 @@ def complete_oauth_from_redirect_url(
         return False, "Redirect URL missing OAuth code query parameter."
 
     resolved = _resolve_token_path(token_path)
-    auth_context = _get_auth_context_with_scope(api_key, callback_url, state=state)
+    auth_context = auth.get_auth_context(api_key, callback_url, state=state)
     token_write_func = _token_update_func(resolved)       # atomic, never in place
     try:
         auth.client_from_received_url(
@@ -446,20 +407,9 @@ _SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LA
 
 
 def _is_token_error(exc: BaseException) -> bool:
-    """True if exception indicates token expired/invalid."""
-    name = type(exc).__name__
-    msg = str(exc).lower()
-    if "InvalidTokenError" in name or name == "InvalidTokenError":
-        return True
-    if "invalid_grant" in msg or "unsupported_token_type" in msg:
-        return True
-    if "refresh token" in msg and ("invalid" in msg or "revoked" in msg or "expired" in msg):
-        return True
-    if "token" in msg and ("invalid" in msg or "expired" in msg or "401" in msg or "revoked" in msg):
-        return True
-    if "401" in msg or "unauthorized" in msg:
-        return True
-    return False
+    """True for an OAuth failure: every error authlib raises (expired / missing / revoked token,
+    refresh rejected with invalid_grant) derives from AuthlibBaseError."""
+    return isinstance(exc, AuthlibBaseError)
 
 
 def _raise_schwab_auth_error(exc: BaseException) -> None:
@@ -480,15 +430,6 @@ def _block_live_schwab_in_ci_offline() -> None:
             "Schwab capability UNAVAILABLE — live API call blocked (missing credentials, "
             "ci-placeholder credentials, or ED_CI_OFFLINE). No fabricated or stale substitute."
         )
-
-
-
-
-
-
-
-
-
 
 
 def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
@@ -522,10 +463,5 @@ def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
         if _is_token_error(e):
             _raise_schwab_auth_error(e)
         raise
-    try:
-        from api_pressure import record_schwab_http_response
-
-        record_schwab_http_response(resp, f"option_chain:{ticker}")
-    except ImportError:
-        pass
+    record_schwab_http_response(resp, f"option_chain:{ticker}")
     return resp

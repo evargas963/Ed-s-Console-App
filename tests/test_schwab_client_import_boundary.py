@@ -72,7 +72,6 @@ def test_build_client_from_token_fails_closed_without_token_file(
 def test_build_config_fail_closed_without_secrets(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("SCHWAB_API_KEY", raising=False)
     monkeypatch.delenv("SCHWAB_APP_SECRET", raising=False)
-    monkeypatch.setattr("config._load_dotenv_if_present", lambda: None)
     from config import build_config
 
     # RC-514: this used to require build_config to RAISE without secrets. server.py calls

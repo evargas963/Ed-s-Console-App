@@ -289,7 +289,6 @@ CAPS_PREFIX_ALLOWLIST: tuple[tuple[str, str], ...] = (
     ("audit_", "audit script counters and diagnostics"),
     ("backfill_", "backfill script counters"),
     ("debug_", "debug utilities"),
-    ("crash_trace.py", "crash trace env flag"),
     ("db_authority.py", "DB authority env flags"),
     ("db_safety.py", "sqlite3 constant getattr defaults"),
     ("market_context.py", "Schwab quote envelope nesting (quote/extended/regular dict shells)"),

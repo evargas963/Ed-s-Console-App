@@ -23,7 +23,7 @@ from pathlib import Path
 APP_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(APP_DIR))
 
-from config import build_config
+from config import build_config, load_dotenv_file
 from schwab_client import (
     auth_is_refreshable,
     complete_oauth_from_redirect_url,
@@ -62,6 +62,7 @@ def _print_post_reauth_validation(token_path: str) -> None:
 def reauth():
     redirect_url = _redirect_url_arg()
     manual = "--manual" in sys.argv or "-m" in sys.argv
+    load_dotenv_file()
     cfg = build_config(str(APP_DIR))
     token_path = os.path.abspath(cfg.token_path)
 

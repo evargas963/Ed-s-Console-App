@@ -25,7 +25,7 @@ if not exist "%VENV_PY%" (
 REM RC-513: is this checkout actually PROVISIONED, not just "does uvicorn import".
 REM MEASURED 2026-09-03: the desk refused to launch with "SCHWAB_API_KEY /
 REM SCHWAB_APP_SECRET missing after sanitize" while .env held both keys. dotenv was
-REM missing, config._load_dotenv_if_present() swallows ImportError by design, and the
+REM missing, config's .env loader then swallowed ImportError (since deleted), and the
 REM canonical load silently became a no-op -- a broken virtualenv wearing the face of
 REM absent credentials. It stayed invisible because python_dotenv-1.2.2.dist-info was
 REM still present with no dotenv/ package: importlib.metadata, pip and a full

@@ -117,13 +117,8 @@ def live_schwab_launch_violations() -> list[str]:
     `schwab_capability_status` formats it; nothing recomputes it.
     """
     # Local import: keeps --bat-unsets usable even if config import is heavy.
-    from config import (
-        _ensure_dotenv_loaded,
-        schwab_credentials_are_ci_placeholders,
-        schwab_live_blocked_for,
-    )
+    from config import schwab_credentials_are_ci_placeholders, schwab_live_blocked_for
 
-    _ensure_dotenv_loaded()
     violations: list[str] = []
 
     still = vars_to_unset()
@@ -163,7 +158,8 @@ def live_schwab_launch_violations() -> list[str]:
     return violations
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, env_file: Path | None = None) -> int:
+    """`env_file`: the secrets file to load after sanitizing (the script passes config.ENV_FILE)."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--bat-unsets",
@@ -187,6 +183,9 @@ def main(argv: list[str] | None = None) -> int:
         cleared = apply_sanitize()
         if cleared:
             print(f"live_schwab_env: cleared inherited contamination: {', '.join(cleared)}")
+    if env_file is not None:
+        from config import load_dotenv_file
+        load_dotenv_file(env_file)
 
     status, reasons = schwab_capability_status()
     if reasons:
@@ -214,4 +213,5 @@ if __name__ == "__main__":
     root = Path(__file__).resolve().parent
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
-    raise SystemExit(main())
+    from config import ENV_FILE
+    raise SystemExit(main(env_file=ENV_FILE))

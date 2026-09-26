@@ -27,16 +27,6 @@ from pathlib import Path
 SOURCE_ROOT = Path(__file__).resolve().parent
 
 
-def _load_env_file() -> None:
-    try:
-        from dotenv import load_dotenv
-    except ImportError:
-        return
-    env_path = SOURCE_ROOT / ".env"
-    if env_path.is_file():
-        load_dotenv(env_path, override=False)
-
-
 def _dir_from_env(name: str, default: Path) -> Path:
     raw = os.environ.get(name, "").strip()
     if not raw:
@@ -86,7 +76,6 @@ def _default_runtime_root() -> Path:
         ) from exc
 
 
-_load_env_file()
 #: Live database, logs and tokens live here. Linked worktrees share the primary root.
 RUNTIME_ROOT: Path = _dir_from_env("ED_RUNTIME_ROOT", _default_runtime_root())
 #: Generated reports and scorecards live under here. Default: the runtime root.

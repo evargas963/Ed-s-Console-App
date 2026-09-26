@@ -3,9 +3,9 @@
 WHY THIS EXISTS, measured on the production desk 2026-09-03. The launcher refused to start
 with `SCHWAB_API_KEY / SCHWAB_APP_SECRET missing after sanitize`. The credentials were not
 missing: `.env` was present with both keys non-empty. What was missing was `dotenv` — and
-`config._load_dotenv_if_present()` does `except ImportError: return`, correctly treating
-python-dotenv as optional, so the canonical load silently became a no-op and a broken
-virtualenv wore the face of absent credentials.
+config's .env loader then did `except ImportError: return` (a fallback since deleted: the
+import now fails loudly), so the load silently became a no-op and a broken virtualenv wore the
+face of absent credentials.
 
 The reason nothing caught it is the interesting part. `python_dotenv-1.2.2.dist-info` was still
 in site-packages while the `dotenv/` package directory was gone, so:

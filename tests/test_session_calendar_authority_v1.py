@@ -74,9 +74,19 @@ def test_dst_transition_boundaries_exact_on_both_sides():
 
 
 def test_uncovered_year_fails_closed():
-    assert session_close_mins_for_et_date("2027-06-15") is None
-    assert is_tradable_session_ts_utc(_ts(2027, 6, 15, 10, 0)) is False
+    assert session_close_mins_for_et_date("2029-06-15") is None
+    assert is_tradable_session_ts_utc(_ts(2029, 6, 15, 10, 0)) is False
     assert session_close_mins_for_et_date("garbage") is None
+
+
+def test_2027_and_2028_match_the_nyse_published_schedule():
+    """nyse.com/trade/hours-calendars, read 2026-09-26."""
+    for closed in ("2027-01-01", "2027-03-26", "2027-06-18", "2027-07-05", "2027-12-24",
+                   "2028-04-14", "2028-06-19", "2028-07-04", "2028-12-25"):
+        assert session_close_mins_for_et_date(closed) is None, closed
+    assert session_close_mins_for_et_date("2028-01-03") == RTH_END_MINS   # no Jan 1 observance in 2028
+    for early in ("2027-11-26", "2028-07-03", "2028-11-24"):
+        assert session_close_mins_for_et_date(early) == EARLY_CLOSE_MINS, early
 
 
 def test_normal_day_close_is_the_rth_constant():
@@ -117,7 +127,7 @@ def test_capturable_is_false_on_full_holidays():
 
 
 def test_capturable_uncovered_year_fails_closed():
-    assert is_capturable_session(_dt(2027, 6, 15, 10, 0)) is False
+    assert is_capturable_session(_dt(2029, 6, 15, 10, 0)) is False
 
 
 # ── RC-54/RC-57: is_trading_day_et — the date-level authority that scopes every measurement ──
@@ -143,7 +153,7 @@ def test_trading_day_et_rejects_full_holidays():
 
 
 def test_trading_day_et_fails_closed_on_uncovered_year_and_junk():
-    assert is_trading_day_et("2027-06-15") is False   # uncovered calendar year
+    assert is_trading_day_et("2029-06-15") is False   # uncovered calendar year
     assert is_trading_day_et("garbage") is False
     assert is_trading_day_et("") is False
 

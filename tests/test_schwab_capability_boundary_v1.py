@@ -59,7 +59,7 @@ def use_config(monkeypatch, server, *, token_path: str) -> None:
 
 
 def run_preflight(env_extra: dict) -> subprocess.CompletedProcess:
-    """Run the preflight without loading the operator's repo-root ``.env``.
+    """Run the preflight without the operator's repo-root ``.env`` (main loads none unless given one).
 
     These cases specify their complete credential state in ``env_extra``. Letting
     config reload the host's live .env after --sanitize made all four unavailable
@@ -70,7 +70,6 @@ def run_preflight(env_extra: dict) -> subprocess.CompletedProcess:
     env["PYTHONIOENCODING"] = "utf-8"
     probe = (
         "import config,live_schwab_env;"
-        "config._load_dotenv_if_present=lambda:None;"
         "raise SystemExit(live_schwab_env.main(['--sanitize']))"
     )
     return subprocess.run(

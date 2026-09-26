@@ -51,12 +51,7 @@ OF_BOOK_DEPTH_TOP: int = 1
 OF_BOOK_DEPTH_SHALLOW: int = 3
 OF_BOOK_DEPTH_DEEP: int = 5
 
-try:
-    import numpy as np
-    import pandas as pd
-except ImportError:
-    np = None  # type: ignore
-    pd = None  # type: ignore
+import numpy as np
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -679,16 +674,9 @@ def _compute_cum_delta_slope(data: dict, window_sec: float = 60.0) -> Optional[f
     points = iter_signed_cum_points(canonical_tape_prints(_iter_content(data)), window_sec)
     if len(points) < 2:
         return None
-    if np is not None:
-        xs = np.array([p[0] for p in points])
-        ys = np.array([p[1] for p in points])
-        return float(np.polyfit(xs, ys, 1)[0])
-    t0, y0 = points[0]
-    t1, y1 = points[-1]
-    dt = t1 - t0
-    if dt <= 0:
-        return None
-    return (y1 - y0) / dt
+    xs = np.array([p[0] for p in points])
+    ys = np.array([p[1] for p in points])
+    return float(np.polyfit(xs, ys, 1)[0])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
