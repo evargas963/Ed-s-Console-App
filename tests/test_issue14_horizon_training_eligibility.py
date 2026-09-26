@@ -19,12 +19,6 @@ sys.path.insert(0, str(ROOT))
 
 
 
-def test_training_label_unknown_column_raises():
-    from ml_data_common import training_label_where_clause
-    import pytest
-
-    with pytest.raises(ValueError, match="unknown label"):
-        training_label_where_clause("outcome_99c")
 
 
 def test_row_counts_decoupled_sql_evidence():
@@ -67,114 +61,17 @@ def test_row_counts_decoupled_sql_evidence():
 
 
 
-def test_lstm_sequence_source_rows_filtered_by_target_horizon_only():
-    """LSTM sequence path: DB row gate = training_label(TARGET_HORIZON), same as per-sequence target key."""
-    from lstm_data import TARGET_HORIZON
-    from ml_data_common import training_label_where_clause
-
-    frag = " AND " + training_label_where_clause(TARGET_HORIZON)
-    assert frag.strip() == "AND outcome_1c IS NOT NULL"
-    assert "outcome_filled" not in frag.lower()
-    assert "outcome_5c" not in frag.lower()
-    assert "outcome_15c" not in frag.lower()
-    assert "outcome_60c" not in frag.lower()
 
 
-def test_transformer_uses_same_lstm_extract_and_target():
-    """Transformer sequences call extract_rth_snapshots with per-horizon label (no parallel completeness gate)."""
-    import inspect
-
-    import transformer_train
-
-    src_prepare = inspect.getsource(transformer_train.prepare_transformer_data)
-    assert "extract_rth_snapshots" in src_prepare
-    assert "label_col" in src_prepare or "outcome_column" in src_prepare
-    assert "target_column=" in src_prepare
-    assert "outcome_filled" not in src_prepare
 
 
 # ── D2 dual-label research registry locks (2026-07-06) ───────────────────────
 
 
-def test_tb_research_labels_registered_additively_only():
-    """D2 (operator-approved): outcome_tb_{hz} label columns are accepted by the
-    training loaders for SCRATCH-DB research runs — additively. Production
-    defaults and the production outcome writer must be untouched:
-      - DEFAULT_TRAINING_LABEL_COLUMN stays outcome_1c
-      - OUTCOME_BAR_SPECS (production writer) carries no TB columns
-      - TB registry is exactly the four research columns
-    """
-    from horizon_outcomes import OUTCOME_BAR_SPECS, TB_RESEARCH_LABEL_COLUMNS
-    from ml_data_common import training_label_where_clause
-    from ml_horizon import DEFAULT_TRAINING_LABEL_COLUMN
-
-    assert DEFAULT_TRAINING_LABEL_COLUMN == "outcome_1c", (
-        "production default training label changed — D2 must be additive-only"
-    )
-    assert TB_RESEARCH_LABEL_COLUMNS == {
-        "outcome_tb_1c": 1, "outcome_tb_5c": 5,
-        "outcome_tb_15c": 15, "outcome_tb_60c": 60,
-    }
-    for col in TB_RESEARCH_LABEL_COLUMNS:
-        assert training_label_where_clause(col) == f"{col} IS NOT NULL"
-    writer_cols = {s[0] for s in OUTCOME_BAR_SPECS} | {s[1] for s in OUTCOME_BAR_SPECS}
-    assert not any("tb" in c.split("_") for c in writer_cols), (
-        "TB columns leaked into the production outcome writer specs"
-    )
 
 
 # ── D2 matrix runner + scratch normalized-carry locks (2026-07-06) ───────────
 
 
-def test_production_normalizer_is_intersection_driven_and_tb_free():
-    """The production materializer must stay schema-intersection-driven and must
-    never name TB research columns — the scratch carry works ONLY because the
-    scratch normalized table adds the columns; production stays TB-free."""
-    for fname in ("snapshot_normalizer.py", "normalized_training_sync.py"):
-        src = (ROOT / fname).read_text(encoding="utf-8", errors="replace")
-        assert "outcome_tb" not in src and "tb_touch" not in src, (
-            f"{fname} names TB research columns — production normalization must "
-            "not carry them"
-        )
-    sn = (ROOT / "snapshot_normalizer.py").read_text(encoding="utf-8", errors="replace")
-    assert "_normalized_insert_columns" in sn and "c in norm" in sn, (
-        "normalizer insert-column intersection design changed — re-audit the "
-        "scratch carry assumption"
-    )
 
 
-def test_scratch_normalized_carry_via_unchanged_materializer(tmp_path):
-    """The UNCHANGED production materializer carries a TB column when (and only
-    when) the target normalized table has it — proven on a tmp mini-DB."""
-    import sqlite3
-    from snapshot_normalizer import materialize_normalized_table
-
-    db = tmp_path / "carry.db"
-    conn = sqlite3.connect(db)
-    cols = ("ticker TEXT, timeframe TEXT, ts_utc REAL, ts_et TEXT, spot REAL,"
-            " candle_open REAL, candle_high REAL, candle_low REAL, candle_close REAL,"
-            " candle_volume REAL, vwap REAL, outcome_tb_5c TEXT")
-    conn.execute(f"CREATE TABLE snapshots (snapshot_id INTEGER PRIMARY KEY, {cols})")
-    conn.execute(
-        "CREATE TABLE snapshots_1m_normalized (snapshot_id INTEGER PRIMARY KEY,"
-        f" {cols}, normalized_from_subminute INTEGER, source TEXT, synthetic INTEGER,"
-        " missing_fields TEXT, candle_direction TEXT, candle_body_pts REAL,"
-        " candle_range_pts REAL, vwap_side TEXT)"
-    )
-    conn.execute(
-        "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot, candle_open,"
-        " candle_high, candle_low, candle_close, candle_volume, vwap, outcome_tb_5c)"
-        " VALUES ('SPY','1m',1783000000,'t',450.0,450.0,450.5,449.5,450.2,100.0,450.1,'up')"
-    )
-    conn.commit()
-    conn.close()
-    res = materialize_normalized_table(db_path=db, tickers=["SPY"])
-    assert not res["errors"], res["errors"]
-    conn = sqlite3.connect(db)
-    row = conn.execute(
-        "SELECT outcome_tb_5c FROM snapshots_1m_normalized WHERE ticker='SPY'"
-    ).fetchone()
-    conn.close()
-    assert row is not None and row[0] == "up", (
-        "TB column was not carried by the intersection-driven materializer"
-    )

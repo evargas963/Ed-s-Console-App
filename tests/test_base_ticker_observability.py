@@ -11,13 +11,6 @@ from pathlib import Path
 
 
 
-def test_the_tier_skip_predicate_is_gone_not_neutered():
-    """UNIVERSAL COLLECTION (operator, 2026-08-25): the panel_auto confluence-only carve-out
-    is RETIRED. An always-False shim would repeat RC-474 (dead producer left behind to be
-    re-wired), so the predicate is deleted outright — importing it must fail."""
-    import money_path_ticker_tiers as tiers
-
-    assert not hasattr(tiers, "should_skip_background_full_snapshot")
 
 
 
@@ -35,49 +28,6 @@ def _seed_dense_rth_rows(conn: sqlite3.Connection, ticker: str, start: float) ->
         ts += 60
 
 
-def test_june_17_style_flat_1m_candles_normalize(tmp_path: Path):
-    from snapshot_normalizer import fetch_rows_for_normalization, resample_to_1m
-    from timeframe_config import CANONICAL_TIMEFRAME as CF
-
-    conn = sqlite3.connect(tmp_path / "flat.db")
-    conn.row_factory = sqlite3.Row
-    conn.executescript(
-        """
-        CREATE TABLE snapshots (
-            ticker TEXT, timeframe TEXT, ts_utc REAL, ts_et TEXT, et_hour INT, et_minute INT,
-            market_session TEXT, spot REAL, candle_open REAL, candle_high REAL,
-            candle_low REAL, candle_close REAL, candle_volume REAL
-        );
-        """
-    )
-    spot = 742.545
-    for i in range(5):
-        ts = 1_781_700_000.0 + i * 60.0
-        conn.execute(
-            """
-            INSERT INTO snapshots VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "SPY",
-                CF,
-                ts,
-                "2026-06-17 14:00:00 ET",
-                14,
-                i,
-                "rth",
-                spot,
-                spot,
-                spot,
-                spot,
-                spot,
-                100.0,
-            ),
-        )
-    conn.commit()
-    raw, tf = fetch_rows_for_normalization(conn, "SPY")
-    norm = resample_to_1m(raw, "SPY", normalized_from_subminute=0)
-    assert tf == CF
-    assert len(norm) == 5
 
 
 

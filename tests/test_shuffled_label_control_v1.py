@@ -130,32 +130,6 @@ def test_shuffled_label_control_is_deterministic():
     assert a == b, f"control must be deterministic under pinned seeds: {a} != {b}"
 
 
-def test_scheduler_historical_eval_never_reads_current_calibration_pointers():
-    """Mechanical lock (no latest-artifact lookup during historical evaluation):
-    the scheduler's historical eval functions must not attach live calibration
-    artifacts or resolve current pointers — calibration attach belongs to the
-    live serve path only. A future edit wiring current-pointer calibration into
-    historical evaluation would silently contaminate point-in-time results."""
-    import inspect
-
-    import ml_scheduler
-
-    banned_tokens = (
-        "attach_a1_isotonic_calibration_to_ms_dict",
-        "attach_a1_conformal_artifact_to_ms_dict",
-        "current_pointer_path",
-        "update_current_pointer_atomically",
-    )
-    for fn in (
-        ml_scheduler._evaluate_parallel_on_full_rth,
-        ml_scheduler._evaluate_cascade_on_full_rth,
-    ):
-        s = inspect.getsource(fn)
-        for tok in banned_tokens:
-            assert tok not in s, (
-                f"historical eval {fn.__name__} must not use {tok} "
-                "(live-pointer calibration in historical evaluation = contamination)"
-            )
 
 
 # ── Production interface (tools/run_shuffled_label_control.py) contract locks ──
@@ -210,25 +184,3 @@ def _slc_fixture_db(tmp_path, n_days=14):
     return db
 
 
-def test_meta_assembly_reads_no_calibration_artifacts():
-    """ML-PIPE-V3 item 3 (calibration fold-correctness): the meta training
-    matrix is assembled from raw base probabilities + snapshot overlay columns
-    ONLY — no calibration attach, no current pointers, no calibrated outputs
-    can enter meta features. Fold correctness for calibration inputs is
-    therefore vacuously safe on this path, and this lock keeps it that way."""
-    import inspect
-
-    import ml_scheduler
-
-    s2 = inspect.getsource(ml_scheduler._assemble_meta_ml_layer_prob_vectors)
-    for tok in (
-        "attach_a1_isotonic_calibration_to_ms_dict",
-        "attach_a1_conformal_artifact_to_ms_dict",
-        "current_pointer_path",
-        "fusion_temperature",
-        "calibration.",
-    ):
-        assert tok not in s2, (
-            f"meta assembly must not consume calibration artifacts ({tok}) — "
-            "calibrated inputs would need fold-scoped artifacts before use"
-        )

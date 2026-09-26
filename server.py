@@ -913,30 +913,12 @@ def fetch_full_chain(client, ticker: str, *, priority: bool = False,
     return _answer(200, merged, parts=done)
 
 
-#: (ticker, ET date) -> (fetched monotonic, listed expiries). The listed expiries change once a
-#: day (a new weekly appears, today's expires), so one read serves many state cycles.
-_expiry_list_cache: "dict[tuple[str, str], tuple[float, list[date]]]" = {}
-_EXPIRY_LIST_TTL_SEC = 600.0
 
 
-def _listed_expiries(client, ticker: str) -> "list[date] | None":
-    """Listed expiries from today on (ET), cached per ticker per ET day for 10 minutes."""
-    tk = ticker_storage_key(ticker)
-    today = now_et().date()
-    key = (tk, today.isoformat())
-    hit = _expiry_list_cache.get(key)
-    if hit is not None and time.monotonic() - hit[0] < _EXPIRY_LIST_TTL_SEC:
-        return hit[1]
-    listed = _option_expiries(client, tk)
-    if listed is None:
-        return None
-    _expiry_list_cache[key] = (time.monotonic(), listed)
-    return listed
 
 
 
 # ── Server-side state cache (avoids re-fetching everything on each poll) ─────
-_state_cache: dict = {}           # (ticker, expiry) -> {ts, ms_dict}
 # UI-MAXIMIZE — panel warm list + binding SLA budgets (mirrored on /api/build + static ED_UI_MAXIMIZE_SLA_MS).
 def panel_warm_tickers() -> tuple[str, ...]:
     """The tickers to pre-warm: whatever the operator is viewing (active ticker + watchlist,
@@ -1788,16 +1770,6 @@ def _touch_tracked_ticker_view(ticker: str) -> None:
 
 
 
-def _fetch_expiries_light(ticker: str) -> list[str]:
-    """
-    Option expiries only — quote + option chain, no snapshot insert or MarketState.
-    Used by /api/expiries when cache is cold (avoids logging a DB row per dropdown poll).
-    """
-    ticker = ticker_storage_key(ticker)   # Cursor-audit F1: bare index root ("SPX") -> "$SPX"
-    listed = _listed_expiries(get_client(), ticker)   # Schwab's expiration list, not a chain
-    if listed is None:
-        raise HTTPException(status_code=502, detail="Option expiration list fetch failed")
-    return [e.isoformat() for e in listed]
 
 
 
@@ -5589,19 +5561,9 @@ def get_expiries(ticker: str = Query(...)):
     ticker = ticker.upper().strip()
     # TICKER-PREVIEW-NO-ENROLL: listing expiries is a VIEW — touch last-seen only.
     _touch_tracked_ticker_view(ticker)
-    # Use any cached (ticker, expiry) entry — expiries list is same for all
-    cached = next(
-        (v for (t, e), v in _state_cache.items() if t == ticker and v.get("ms_dict")),
-        None
-    )
-    if cached:
-        return JSONResponse({"expiries": cached["ms_dict"].get("expiries", [])})
-    try:
-        return JSONResponse({"expiries": _fetch_expiries_light(ticker)})
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    t = terrain_cache_get(ticker) or {}
+    return JSONResponse({"expiries": t.get("expiries") or [],
+                         "reason": None if t.get("expiries") else "levels not computed yet"})
 
 
 #: OPTIONS_ORDER_FLOW_V1 completeness repair (2026-08-30, operator-directed, round 2): a
@@ -5654,8 +5616,7 @@ def get_chain(ticker: str = Query(...),
     is served AS-IS — nothing here rounds, filters, or reconstructs a strike from assumed
     spacing; fractional strikes (.50/.25/...) survive exactly as the vendor sent them.
 
-    `expiry` optional: defaults to the ticker's nearest listed expiry (the SAME
-    _fetch_expiries_light faucet /api/expiries uses).
+    `expiry` optional: defaults to the ticker's nearest listed expiry (/api/expiries).
 
     ONE answer, no fallbacks (operator rule 2026-09-23, governance/fallback_register.md
     R-01): `scope.kind` is
@@ -5676,11 +5637,7 @@ def get_chain(ticker: str = Query(...),
 
     resolved_expiry = (expiry or "").strip()[:10] or None
     if resolved_expiry is None:
-        try:
-            exps = _fetch_expiries_light(t)
-            resolved_expiry = exps[0] if exps else None
-        except Exception as e:
-            log.debug("chain: expiry resolution failed for %s: %s", t, e)
+        resolved_expiry = ((terrain_cache_get(t) or {}).get("expiries") or [None])[0]
 
     def _unavailable(reason: str) -> JSONResponse:
         return JSONResponse({"ticker": t, "spot": None, "expiry": resolved_expiry,
@@ -6172,58 +6129,19 @@ def _liquidity_live_1m_overlay_bars(ticker: str) -> list[dict]:
              "low": b["l"], "close": b["c"], "volume": b.get("v")} for b in bars]
 
 
-def _liquidity_fusion_from_cache(
-    ticker: str, expiry: Optional[str],
-) -> tuple[list[tuple[float, str]], str]:
-    """Pull options/EW key strikes from last /api/state cache hit for (ticker, expiry).
+#: the terrain levels the liquidity zones are fused with, and the tag each carries
+TERRAIN_FUSION_LEVELS = (("call_wall", "GAMMA_CALL_WALL"), ("put_wall", "GAMMA_PUT_WALL"),
+                         ("call_delta_wall", "DELTA_CALL_WALL"), ("put_delta_wall", "DELTA_PUT_WALL"),
+                         ("absolute_gamma_strike", "ABS_GAMMA"), ("net_gex_peak", "NET_GEX_PEAK"),
+                         ("max_pain", "MAX_PAIN"), ("gamma_flip", "GAMMA_FLIP"))
 
-    Deliberately returns no spot: _state_cache is an ungated, last-write-wins side cache
-    (RC spot-360-audit, 2026-09-14 -- see the call site), not resolve_spot()'s tiered
-    authority. A spot value read from it once round-tripped through a discarded local
-    (_cache_spot) at the call site; the dead capability is removed here, not just unused,
-    so it can't be silently wired back up by a future caller.
-    """
-    t = ticker.upper().strip()
-    e = (expiry or "").strip()
-    if not e:
-        return [], "no_expiry"
-    ent = _state_cache.get((t, e))
-    if not ent or not ent.get("ms_dict"):
-        return [], "cache_miss"
-    d = ent["ms_dict"]
-    pairs = [
-        (d.get("kl_call_gamma_wall"), "GAMMA_CALL_WALL"),
-        (d.get("kl_put_gamma_wall"), "GAMMA_PUT_WALL"),
-        (d.get("kl_call_delta_wall"), "DELTA_CALL_WALL"),
-        (d.get("kl_put_delta_wall"), "DELTA_PUT_WALL"),
-        (d.get("kl_call_oi_wall"), "OI_CALL_WALL"),
-        (d.get("kl_put_oi_wall"), "OI_PUT_WALL"),
-        (d.get("kl_gamma_inflection"), "GAMMA_INFLECTION"),
-        (d.get("kl_delta_inflection"), "DELTA_INFLECTION"),
-        # RC-292: the tag says what the metric is — a total-gamma concentration, not a
-        # pin claim (the qualified claim is kl_pin_candidate, not tagged here as a level
-        # because it is the SAME strike when present).
-        (d.get("kl_absolute_gamma_strike"), "ABS_GAMMA"),
-        # RC-134: kl_hvl is the NET book (RC-124); the tag must not say HVL, since that
-        # name means total gamma (the absolute-gamma concentration).
-        (d.get("kl_hvl"), "NET_GEX_PEAK"),
-        (d.get("kl_max_pain"), "MAX_PAIN"),
-        (d.get("kl_gamma_flip"), "GAMMA_FLIP"),
-        (d.get("kl_oi_center"), "OI_CENTER"),
-        (d.get("kl_em_upper"), "EM_UPPER"),
-        (d.get("kl_em_lower"), "EM_LOWER"),
-        (d.get("kl_synth_fwd"), "SYNTH_FWD"),
-    ]
-    levels: list[tuple[float, str]] = []
-    for val, tag in pairs:
-        if val is None:
-            continue
-        try:
-            p = float(val)
-            if p > 0:
-                levels.append((p, tag))
-        except (TypeError, ValueError):
-            continue
+
+def _liquidity_option_levels(tk: str) -> tuple[list[tuple[float, str]], str]:
+    """The ticker's option levels from its published terrain, tagged for the liquidity zones."""
+    t = terrain_cache_get(tk)
+    if not t:
+        return [], "levels_not_ready"
+    levels = [(float(t[k]), tag) for k, tag in TERRAIN_FUSION_LEVELS if t.get(k) is not None]
     return levels, "fused" if levels else "fused_empty"
 
 
@@ -6275,8 +6193,7 @@ def get_liquidity_snapshot(
         default="premarket",
         description="live | premarket | opening | midday | afternoon. live = rolling cutoff (now ET) + optional options fusion",
     ),
-    expiry: Optional[str] = Query(default=None, description="Expiry YYYY-MM-DD for fusion with cached /api/state walls"),
-    fusion: bool = Query(default=True, description="When snapshot=live, merge options walls from state cache (needs expiry)"),
+    fusion: bool = Query(default=True, description="When snapshot=live, fuse the terrain option levels"),
 ):
     """Return liquidity & value playbook snapshot (zones, summary, raw_levels) for ticker/session.
     Uses PlaybookConfig(clustering_mode='percent'). ``live`` uses min(now,RTH close) cutoff; checkpoints unchanged."""
@@ -6305,13 +6222,7 @@ def get_liquidity_snapshot(
         bar_merge_note = "price_bars_1m"
 
         if snap_raw == "live":
-            extra = []
-            if fusion and expiry:
-                extra, fusion_status = _liquidity_fusion_from_cache(ticker_upper, expiry)
-            elif fusion and not expiry:
-                fusion_status = "no_expiry"
-            else:
-                fusion_status = "disabled"
+            extra, fusion_status = _liquidity_option_levels(ticker_upper) if fusion else ([], "disabled")
             # RC spot-360-audit (2026-09-14, live RTH reproduction): spot_for_zones used to come
             # from _state_cache (the /api/state cache -- last-write-wins, NO freshness gate) via
             # _liquidity_fusion_from_cache / _liquidity_spot_from_cache_any_expiry: a THIRD spot
@@ -6342,23 +6253,6 @@ def get_liquidity_snapshot(
                 spot=spot_for_zones,
                 canonical=_canon,
             )
-            # MEASURED 2026-09-11: this used to reassign spot_for_zones itself to the VWAP
-            # value and report it as spot_used_for_scoring below -- but build_live_snapshot
-            # was ALREADY called with spot=None on this path (the reassignment happens after
-            # the call), so that field claimed a spot was used for scoring when neither a real
-            # spot NOR this VWAP number actually was. A VWAP price is a different financial
-            # quantity than spot; reporting it under a field named "spot" is exactly the
-            # fabricated-default this codebase's own law forbids ("no fabricated defaults, no
-            # silent fallbacks"). Absence now stays absent under that name; the VWAP estimate,
-            # when available, is reported under its own honestly-named field instead.
-            spot_estimate_vwap_fallback = None
-            if spot_for_zones is None:
-                _rv = (out.raw_levels or {}).get("vwap")
-                if _rv is not None:
-                    try:
-                        spot_estimate_vwap_fallback = float(_rv)
-                    except (TypeError, ValueError):
-                        spot_estimate_vwap_fallback = None
         else:
             out = generate_liquidity_value_snapshot(
                 ticker=ticker_upper,
@@ -6413,12 +6307,7 @@ def get_liquidity_snapshot(
             result["fusion"] = fusion_status
             result["bar_merge"] = bar_merge_note
             result["as_of_cutoff_et"] = (out.raw_levels or {}).get("cutoff_et")
-            result["expiry_used_for_fusion"] = expiry.strip() if expiry else None
             result["spot_used_for_scoring"] = spot_for_zones
-            # Honest, separately-named -- see the comment above the assignment: this is VWAP,
-            # a different financial quantity than spot, not a value spot_used_for_scoring may
-            # silently stand in for.
-            result["spot_estimate_vwap_fallback"] = spot_estimate_vwap_fallback
             # Phase 2A carriage stamp: which snapshot generation these level values ARE.
             # Two carriers that agree on the number but not on the generation are still
             # two answers — the generation travels so the skew is visible, never silent.

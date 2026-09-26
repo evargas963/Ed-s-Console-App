@@ -170,7 +170,7 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
         return out
 
     out.has_creation_timestamp = "creation_timestamp" in data
-    tok = data.get("token")
+    tok = data.get("token")   # external-key-ok: schwab-py token file
     if isinstance(tok, dict):
         out.has_token_object = True
         at = tok.get("access_token")   # external-key-ok: Schwab OAuth token payload

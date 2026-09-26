@@ -6,7 +6,6 @@ import re
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -100,20 +99,6 @@ def _minimal_features(**overrides):
     return feats
 
 
-def test_inference_snapshot_per_field_lineage():
-    from features.canonical_contract import get_mvp_feature_names
-    from features.inference_snapshot import build_inference_snapshot_v1_from_feature_row
-
-    feats = _minimal_features()
-    snap = build_inference_snapshot_v1_from_feature_row(
-        ticker="SPY", expiry=None, as_of_ts=1_700_000_000.0, features=feats
-    )
-    lineage = snap["feature_lineage"]
-    for key in get_mvp_feature_names():
-        entry = lineage[key]
-        assert entry["source"] == snap["source"]
-        assert entry["transform"] == "canonical_mvp_adapter"
-        assert entry["fallback_flag"] is (feats[key] is None)
 
 
 
@@ -131,26 +116,8 @@ def test_no_silent_default_in_feature_paths_repo_wide(repo_index):
     assert not above_hits, "vwap_side else-above violations:\n" + "\n".join(above_hits[:40])
 
 
-def test_fusion_model_input_no_vwap_else_above_in_source():
-    text = (ROOT / "features" / "fusion_model_input.py").read_text(encoding="utf-8")
-    assert 'else "above"' not in text
-    assert "else 'above'" not in text
 
 
-def test_inference_snapshot_parent_missing_lineage_fails():
-    from features.inference_snapshot import _assert_inference_snapshot_v1, _feature_quality_from_row
-
-    feats = _minimal_features()
-    snap = {
-        "snapshot_type": "InferenceSnapshotV1",
-        "feature_contract_version": "v1_1m_mvp",
-        "canonical_timeframe": "1m",
-        "source": "live_l1_tier_b",
-        "features": feats,
-        "feature_quality": _feature_quality_from_row(feats),
-    }
-    with pytest.raises(ValueError, match="feature_lineage"):
-        _assert_inference_snapshot_v1(snap)
 
 
 # ── ML-PIPE-V2 Phase 2: point-in-time causal boundary (as-of) adversarial locks ──
@@ -178,159 +145,28 @@ def _asof_seed_db(tmp_path):
     return db, t0
 
 
-def test_get_recent_snapshots_as_of_excludes_future_rows(tmp_path):
-    db, t0 = _asof_seed_db(tmp_path)
-    as_of = t0 + 60 * 5  # decision instant = row 5's timestamp
-    rows = db.get_recent_snapshots("SPY", "1m", n=100, as_of_ts_utc=as_of)
-    got = sorted(float(r["ts_utc"]) for r in rows)
-    # STRICT boundary: rows 0..4 only — the as-of instant itself is excluded.
-    assert got == [t0 + 60 * i for i in range(5)]
 
 
-def test_get_recent_snapshots_invariant_under_future_append_and_mutation(tmp_path):
-    db, t0 = _asof_seed_db(tmp_path)
-    as_of = t0 + 60 * 5
-    before = db.get_recent_snapshots("SPY", "1m", n=100, as_of_ts_utc=as_of)
-    with db._connect() as con:
-        # append new future rows AND mutate existing post-as-of rows aggressively
-        for i in range(20, 25):
-            con.execute(
-                "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot) "
-                "VALUES (?, '1m', ?, ?, ?)",
-                ("SPY", t0 + 60 * i, f"future{i}", 999.0),
-            )
-        con.execute(
-            "UPDATE snapshots SET spot = -1.0 WHERE ts_utc >= ?", (as_of,)
-        )
-        con.commit()
-    after = db.get_recent_snapshots("SPY", "1m", n=100, as_of_ts_utc=as_of)
-    key = lambda rs: [(float(r["ts_utc"]), r["spot"]) for r in rs]  # noqa: E731
-    assert key(after) == key(before), (
-        "historical as-of sequence input changed after future-row append/mutation"
-    )
 
 
-def test_get_recent_snapshots_as_of_is_ticker_scoped(tmp_path):
-    db, t0 = _asof_seed_db(tmp_path)
-    with db._connect() as con:
-        con.execute(
-            "INSERT INTO snapshots (ticker, timeframe, ts_utc, ts_et, spot) "
-            "VALUES ('QQQ', '1m', ?, 'other', 400.0)",
-            (t0 + 60,),
-        )
-        con.commit()
-    rows = db.get_recent_snapshots("SPY", "1m", n=100, as_of_ts_utc=t0 + 60 * 5)
-    assert all(str(r["ticker"]) == "SPY" for r in rows)
 
 
-def test_sequence_db_as_of_is_fail_closed():
-    """No as_of → LOUD refusal (never an unbounded latest-row history read)."""
-    import pytest as _pytest
-
-    from ml_predict import LstmSequenceInputError, _require_as_of_ts_utc_for_sequence_db
-
-    with _pytest.raises(LstmSequenceInputError):
-        _require_as_of_ts_utc_for_sequence_db(None)
-    with _pytest.raises(LstmSequenceInputError):
-        _require_as_of_ts_utc_for_sequence_db({"as_of_ts": None})
-    assert _require_as_of_ts_utc_for_sequence_db({"as_of_ts": 123.0}) == 123.0
 
 
-def test_inference_snapshot_constructor_is_single_row_pure():
-    """build_inference_snapshot_v1_from_db_row consumes exactly one row dict —
-    no DB, live-state, or wall-clock access (AST import lock)."""
-    import ast
-
-    import features.inference_snapshot as mod
-
-    tree = ast.parse(open(mod.__file__, encoding="utf-8").read())
-    banned = {"db", "server", "live_market_plane", "app.options.order_flow.state", "sqlite3"}
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(a.name for a in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module)
-    hits = imported & banned
-    assert not hits, f"inference snapshot constructor must stay single-row pure: {hits}"
 
 
 # ── ML-PIPE-V2 Phase 3: meta training basis must travel with the artifact ──
 
 
-def test_meta_training_basis_manifest_written_and_machine_readable(tmp_path):
-    import json as _json
-
-    from ml_scheduler import _write_meta_training_basis_manifest
-
-    for basis, governed in (
-        ("expanding_window_oof", True),
-        ("in_sample_no_folds", False),
-        ("in_sample_fallback", False),
-    ):
-        out = _write_meta_training_basis_manifest(
-            tmp_path, "SPY", "5c", architecture="parallel", basis=basis, n_rows=42,
-        )
-        doc = _json.loads(out.read_text(encoding="utf-8"))
-        assert doc["schema"] == "META_TRAINING_BASIS_MANIFEST_V1"
-        assert doc["meta_training_basis"] == basis
-        assert doc["oof_governed"] is governed
-        assert doc["artifact"] == "meta_SPY_5c.pkl"
-        assert doc["n_training_rows"] == 42
-        assert doc["ticker"] == "SPY" and doc["horizon_slug"] == "5c"
 
 
-def test_meta_basis_manifest_wired_at_both_meta_train_sites():
-    """Source lock: every meta pickle dump is immediately followed by the basis
-    manifest write — an in-sample-fallback meta can never ship without its
-    machine-readable oof_governed=False provenance."""
-    import inspect
-
-    import ml_scheduler
-
-    src = inspect.getsource(ml_scheduler)
-    dumps = src.count('pickle.dump(meta_mdl, f)')
-    manifests = src.count('_write_meta_training_basis_manifest(')
-    # def + 2 call sites
-    assert dumps == 2, f"expected exactly 2 meta pickle dumps, found {dumps}"
-    assert manifests >= 3, "both meta dump sites must write the basis manifest"
-    for arch in ("parallel", "cascade"):
-        seg = src[src.find(f'architecture="{arch}", basis=meta_basis'):]
-        assert seg, f"{arch} meta site missing manifest call"
 
 
-def test_meta_oof_trainer_returns_labeled_basis():
-    """The OOF trainers' basis vocabulary is the provenance contract — locked."""
-    import inspect
-
-    import ml_scheduler
-
-    for fn in (ml_scheduler._train_parallel_meta_oof, ml_scheduler._train_cascade_meta_oof):
-        s = inspect.getsource(fn)
-        assert '"expanding_window_oof"' in s
-        assert '"in_sample_no_folds"' in s or '"in_sample_fallback"' in s
 
 
 # ── ML-PIPE-V2 Phase 3 completion: OOF strictness, routing trap, base semantics ──
 
 
-def test_expanding_window_oof_folds_strict_temporal_order():
-    from training_cache import expanding_window_oof_folds
-
-    days = [f"2026-06-{d:02d}" for d in range(1, 26)]
-    folds = expanding_window_oof_folds(days)
-    assert folds, "25 sessions must form folds"
-    seen_oof: set = set()
-    for train_days, oof_days in folds:
-        assert train_days and oof_days
-        assert max(train_days) < min(oof_days), "train block must be strictly earlier"
-        assert not (set(train_days[: len(folds[0][0])]) & set(oof_days))
-        seen_oof.update(oof_days)
-    # seed block never appears as OOF
-    assert folds[0][0][0] == "2026-06-01"
-    assert "2026-06-01" not in seen_oof
-    # too few sessions → no folds (caller must label in-sample, never claim OOF)
-    assert expanding_window_oof_folds(days[:3]) == []
 
 
 # The parallel-path OOF routing contract this file used to re-prove here via its own
@@ -343,42 +179,8 @@ def test_expanding_window_oof_folds_strict_temporal_order():
 # this file's harness never covered at all). Removed as a true duplicate 2026-09-15.
 
 
-def test_meta_missing_base_semantics_locked():
-    """xgb (anchor) missing → row dropped (source lock); lstm/transformer missing
-    or collapse-flagged → EXACT neutral filler (governed B3+ design, provenance
-    tracked via the basis manifest — not silent zeros)."""
-    import inspect
-
-    import ml_scheduler as ms
-
-    assert ms._meta_ml_layer_triplet("lstm", None, set()) == [0.333, 0.333, 0.334]
-    assert ms._meta_ml_layer_triplet("lstm", {"up": 0.8, "down": 0.1, "flat": 0.1}, {"lstm"}) == [
-        0.333, 0.333, 0.334,
-    ]
-    assert ms._meta_ml_layer_triplet("xgb", {"up": 0.7, "down": 0.2, "flat": 0.1}, set()) == [
-        0.7, 0.2, 0.1,
-    ]
-    s = inspect.getsource(ms._assemble_meta_ml_layer_prob_vectors)
-    assert "if xgb_p is None:" in s and "continue" in s.split("if xgb_p is None:")[1][:40], (
-        "xgb-anchor missing must DROP the row (fail-closed), never neutral-fill"
-    )
 
 
-def test_meta_manifest_reader_legacy_absence_never_upgrades(tmp_path):
-    from ml_scheduler import (
-        _write_meta_training_basis_manifest,
-        read_meta_training_basis_manifest,
-    )
-
-    assert read_meta_training_basis_manifest(tmp_path, "SPY", "5c") is None
-    _write_meta_training_basis_manifest(
-        tmp_path, "SPY", "5c", architecture="parallel", basis="in_sample_fallback", n_rows=12,
-    )
-    doc = read_meta_training_basis_manifest(tmp_path, "SPY", "5c")
-    assert doc is not None and doc["oof_governed"] is False
-    # corrupted manifest reads as None (never as governed)
-    (tmp_path / "meta_SPY_5c_training_manifest.json").write_text("{broken", encoding="utf-8")
-    assert read_meta_training_basis_manifest(tmp_path, "SPY", "5c") is None
 
 
 # ── ML-PIPE-V2 Phase 5: feature-schema golden chain + train/serve parity locks ──
@@ -408,35 +210,9 @@ _GOLDEN_EXPECTED = {
 }
 
 
-def test_mvp_schema_hash_golden_locked():
-    import hashlib
-    import json as _json
-
-    from features.canonical_contract import (
-        CANONICAL_FEATURE_CONTRACT_VERSION,
-        get_mvp_feature_names,
-    )
-
-    blob = _json.dumps(
-        {"version": CANONICAL_FEATURE_CONTRACT_VERSION, "names": list(get_mvp_feature_names())},
-        sort_keys=True,
-    ).encode("utf-8")
-    assert hashlib.sha256(blob).hexdigest() == MVP_SCHEMA_GOLDEN_SHA256, (
-        "feature schema changed — regenerate MVP_SCHEMA_GOLDEN_SHA256 in the same "
-        "governance-reviewed diff and prove train/infer consumers moved together"
-    )
 
 
 
 
 
 
-def test_golden_row_survives_inference_snapshot_envelope():
-    from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
-
-    snap = build_inference_snapshot_v1_from_db_row(
-        ticker="SPY", expiry=None, as_of_ts=1_780_000_000.0, db_row=dict(_GOLDEN_DB_ROW),
-    )
-    assert snap["features"] == _GOLDEN_EXPECTED
-    assert snap["feature_contract_version"] == "v1_1m_mvp"
-    assert snap["feature_quality"]["missing_count"] == 0

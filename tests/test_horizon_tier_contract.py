@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -38,12 +37,6 @@ def test_partition_and_constants():
 
 
 
-@pytest.mark.parametrize("slug", ("3c", "8c", "13c"))
-def test_normalize_ml_horizon_slug_rejects_retired_secondary(slug: str):
-    from ml_horizon import normalize_ml_horizon_slug
-
-    with pytest.raises(ValueError, match="invalid slug"):
-        normalize_ml_horizon_slug(slug)
 
 
 

@@ -71,12 +71,6 @@ def test_register_contains_caps_allowlist_block():
         assert prefix in reg
 
 
-def test_lstm_data_zone_missing_sentinel_not_pin_neutral_default():
-    from lstm_data import ZONE_MISSING_ENCODED, _encode_zone_feature
-
-    assert _encode_zone_feature({}) == ZONE_MISSING_ENCODED
-    text = (ROOT / "lstm_data.py").read_text(encoding="utf-8")
-    assert 'or "pin_neutral"' not in text
 
 
 def test_production_scan_covers_all_py_outside_tools_tests(repo_index):

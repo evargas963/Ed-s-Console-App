@@ -180,30 +180,6 @@ def test_volume_profile_wide_bar_stays_bounded_and_still_distributed():
     assert MAX_BINS_PER_BAR > 0
 
 
-def test_both_call_sites_use_the_one_construction():
-    """LP-01 Step 1 requires ONE faucet. liquidity_value_engine and market_context each held an
-    independent copy of the same dump; two copies of a wrong construction are two wrong answers
-    that can also disagree with each other."""
-    import re
-    from pathlib import Path
-    root = Path(__file__).resolve().parent.parent
-    for name in ("liquidity_value_engine.py", "market_context.py"):
-        src = (root / name).read_text(encoding="utf-8")
-        body = re.sub(r"#.*$", "", src, flags=re.M)
-        assert "volume_profile_poc_vah_val(bars, value_area_pct, tick_size" in body, (
-            f"{name} does not delegate to the one construction"
-        )
-        i = body.find("def _volume_profile_poc_vah_val")
-        assert i > 0, f"{name} lost its entry point"
-        # Scope to the PROFILE function only. Typical price is CORRECT for VWAP — VWAP is
-        # defined as sum(typical * vol) / sum(vol) — so `_vwap_bands` legitimately computes
-        # (h+l+cl)/3 and must not be swept up by this check. The defect was using typical
-        # price to build the volume PROFILE, nowhere else.
-        fn = body[i:i + 1200]
-        assert "/ 3.0" not in fn, f"{name} still builds the profile from a typical price"
-        assert "defaultdict" not in fn, (
-            f"{name} still accumulates its own bins instead of delegating to the one faucet"
-        )
 
 
 def test_engine_and_context_agree_on_one_profile():

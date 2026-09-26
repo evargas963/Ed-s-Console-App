@@ -114,13 +114,6 @@ def test_every_served_route_is_classified_and_no_ghost_route_is_listed():
     assert bad == {}, bad
 
 
-def test_every_market_state_field_is_categorised_and_no_ghost_field_is_listed():
-    fields = set(P.market_state_fields())
-    listed = set(R.MARKET_STATE)
-    assert fields - listed == set(), f"MarketState fields without a category: {sorted(fields - listed)}"
-    assert listed - fields == set(), f"categorised fields MarketState no longer has: {sorted(listed - fields)}"
-    bad = {f: c for f, (c, _p) in R.MARKET_STATE.items() if c not in P.FIELD_CATEGORIES}
-    assert bad == {}, bad
 
 
 

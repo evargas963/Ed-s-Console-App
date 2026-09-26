@@ -197,9 +197,6 @@ def test_no_schwab_leaf_zero_injection_repo_wide():
 
 
 
-def test_snapshot_normalizer_no_open_zero_fallback():
-    text = (ROOT / "snapshot_normalizer.py").read_text(encoding="utf-8")
-    assert "o = 0.0" not in text
 
 
 def test_math_levels_no_get_or_zero_on_exposure_buckets():

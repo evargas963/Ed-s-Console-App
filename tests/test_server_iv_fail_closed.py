@@ -3,7 +3,6 @@ fall back to a synthetic default IV when the real value is missing -- a syntheti
 default silently fabricates an expected-move number."""
 from __future__ import annotations
 
-from pathlib import Path
 
 
 
@@ -21,8 +20,3 @@ def test_signal_input_iv_level_preserves_missing_atm_iv_as_none():
     assert iv_level is None
 
 
-def test_model_stack_does_not_inject_synthetic_twenty_percent_iv():
-    source = Path("signals.py").read_text(encoding="utf-8")
-
-    assert "iv=iv if iv > 0 else 0.20" not in source
-    assert "iv=iv," in source

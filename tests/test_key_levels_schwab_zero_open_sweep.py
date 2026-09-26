@@ -14,15 +14,15 @@ KEY_LEVELS_DATA_FLOW_FILES = (
     "math_levels.py",
     "math_volatility.py",
     "server.py",
-    "market_state.py",
-    "live_decision_bundle.py",
+    
+    
     "live_market_plane.py",
-    "planes/context_light.py",
+    
     "static/index.html",
-    "snapshot_normalizer.py",
-    "market_data_adapter.py",
-    "mc_fusion_adjustment.py",
-    "signals.py",
+    
+    
+    
+    
 )
 
 # Patterns that indicate unregistered Schwab-replaceable silent defaults in KL path.

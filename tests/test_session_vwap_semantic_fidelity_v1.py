@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from types import SimpleNamespace
 
 from liquidity_value_engine import (
     compute_session_vwap,
@@ -52,20 +51,6 @@ def test_friday_is_trading_day_saturday_is_not() -> None:
 
 
 
-def test_pa_vwap_zscore_source_is_session_only() -> None:
-    from features.signal_layer_v1 import SNAPSHOT_PRICE_ACTION_COLUMNS, compute_price_action_snapshot_columns
-
-    assert ("pa_vwap_zscore", "vl.vwap_zscore") in SNAPSHOT_PRICE_ACTION_COLUMNS
-    bars = [_rth_bar(FRIDAY, i, 100.0 + 0.01 * i) for i in range(80)]
-    absent = compute_price_action_snapshot_columns(
-        bars, decision_ts_utc=float(bars[-1]["bar_end_ts_utc"]), inp=None,
-    )
-    assert absent["pa_vwap_zscore"] is None
-    present = compute_price_action_snapshot_columns(
-        bars, decision_ts_utc=float(bars[-1]["bar_end_ts_utc"]),
-        inp=SimpleNamespace(vwap=100.40),
-    )
-    assert present["pa_vwap_zscore"] is not None
 
 
 

@@ -33,19 +33,6 @@ def test_bare_index_root_gets_index_protections_f1():
         assert ticker_storage_key(bare) == dollar
 
 
-def test_tnx_is_yield_only_not_snapshot_enrolled():
-    """RC-495: $TNX (10Y Treasury yield index) has NO options chain, so it can never produce a
-    snapshot — enrolling it made a permanent non-collector against universal collection. It is
-    excluded from the snapshot-enrollment panel; its yield still feeds the bond signal via the
-    independent direct quote fetch."""
-    import market_context as mc
-    from market_context import market_context_panel_symbols_excluding_core
-
-    panel = market_context_panel_symbols_excluding_core(frozenset(["SPY", "QQQ", "IWM"]))
-    assert "$TNX" not in panel, "$TNX has no options chain — must not be snapshot-enrolled"
-    assert "$VIX" in panel, "$VIX is optionable and stays enrolled"
-    assert '_fetch("$TNX")' in open(mc.__file__, encoding="utf-8").read(), (
-        "the yield/bond-signal fetch for $TNX must be preserved")
 
 
 

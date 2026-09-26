@@ -127,23 +127,6 @@ def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
     assert replaced and str(replaced[0][1]) == str(tok), "the refresh must land via os.replace"
 
 
-def test_a_transient_windows_share_violation_is_retried_then_lands(monkeypatch, tmp_path):
-    import schwab_client as sc
-    import arch_competition.atomic_io as aio
-
-    real = aio.write_json_file_atomically
-    calls = {"n": 0}
-
-    def flaky(path, payload, **kw):
-        calls["n"] += 1
-        if calls["n"] < 3:
-            raise PermissionError("[WinError 5] Access is denied")
-        return real(path, payload, **kw)
-    monkeypatch.setattr(aio, "write_json_file_atomically", flaky)
-    monkeypatch.setattr(sc.time, "sleep", lambda s: None)
-    dest = tmp_path / "t.json"
-    sc.write_token_file_atomically(str(dest), {"x": 1})
-    assert calls["n"] == 3 and dest.exists()
 
 
 # ── PR C: server-side bar roll-up; quote_tick carries the screen's numbers; heatmap demand ──

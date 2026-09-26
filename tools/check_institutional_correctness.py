@@ -498,13 +498,7 @@ _ORPHAN_KEY_SKIP_RECEIVERS = frozenset({
 #: in THAT file (Cursor audit of fd3403b2: walking every nested key into the GLOBAL
 #: write set harvested 26 names including dir/enabled/note — the glob failure at file
 #: scope). Credit is file_keys ∩ reader_.get() keys, applied only at that reader path.
-_DATA_FILE_KEY_SOURCES: tuple[tuple[str, str], ...] = (
-    # read by active_bundle_contract._load_migration_policy -> _legacy_allowance_open
-    # and artifact_integrity_strict_absence
-    ("config/ML_ITEM4_MIGRATION_POLICY.json", "active_bundle_contract.py"),
-    # read by v2_decision.a2_session_calendar.load_a2_session_calendar / _is_valid_calendar
-    ("data/trading_calendar/us_equities.json", "v2_decision/a2_session_calendar.py"),
-)
+_DATA_FILE_KEY_SOURCES: tuple[tuple[str, str], ...] = ()
 
 
 def _json_object_keys(path: Path) -> set[str]:

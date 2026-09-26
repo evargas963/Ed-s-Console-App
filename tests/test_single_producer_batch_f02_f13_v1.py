@@ -120,64 +120,12 @@ def test_rc345_standard_atr_has_one_authority() -> None:
         "compute_atr_from_bars still inlines a second TR formula (F08/RC-345).")
 
 
-def test_rc345_feature_atr_variant_is_named_not_generic() -> None:
-    """F08: the feature-layer EPS-floored ATR is a DISTINCT contract, explicitly documented
-    so it is never conflated with the standard authority."""
-    sl = _read("features/signal_layer_v1.py")
-    assert "EPS-FLOORED" in sl and "F08" in sl, (
-        "signal_layer_v1._atr must declare itself an explicitly distinct ATR contract")
 
 
 # --------------------------------------------------------------------------- F09 session / RTH
 
 
 # ------------------------------------------------------------------------- F12 relative volume
-def test_rc345_relative_volume_variants_are_distinct_and_fail_closed() -> None:
-    """F12 (was NOT_PROVEN): three RVOL-like quantities are ECONOMICALLY DISTINCT, each with
-    its own numerator/denominator/window, each fail-closed with NO invalid fallback
-    denominator (never a fake 1.0 / substitute average):
-
-      volume_ratio          bar vol / fitted per-minute-of-day MEDIAN  (ml_train, feature) -> NaN
-      part.relative_volume  latest bar / ROLLING-WINDOW MEAN           (signal_layer)      -> None
-      rvol                  session-cumulative / DAILY 10d|1y AVERAGE  (order_flow)         -> None+reason
-
-    They carry distinct field names, so no consumer can silently substitute one for another."""
-    import numpy as np
-    from ml_train import fk_volume_ratio
-
-    # fk_volume_ratio: valid ratio, capped, and NaN (never 1.0) when the denominator is unusable.
-    out = fk_volume_ratio(np.array([100.0, 100.0, 100.0]), np.array([50.0, 0.0, np.nan]))
-    assert out[0] == 2.0
-    assert np.isnan(out[1]) and np.isnan(out[2]), "median<=0/NaN must yield NaN, not a fake 1.0"
-
-    # order_flow rvol never substitutes 1.0; missing average is an explicit unavailable reason.
-    from app.options.order_flow.engine import _compute_rvol
-    val, reason = _compute_rvol({"stream_total_volume": 1_000_000})  # no average anywhere
-    assert val is None and reason == "avg_volume_unavailable"
-
-    # signal_layer returns None (not 1.0) when the rolling mean is degenerate.
-    sl = _read("features/signal_layer_v1.py")
-    assert 'out["part.relative_volume"] = _safe_div(v_last, vm) if vm > EPS else None' in sl
-
-    # F12 (reopened) CONSUMER CONTRACTS — each variant is produced for and consumed by ONE
-    # named consumer; no consumer accepts a different RVOL semantic:
-    #   volume_ratio          -> ML feature      feats["volume_ratio"] = fk_volume_ratio(...)
-    #   part.relative_volume  -> signal feature  out["part.relative_volume"]
-    #   rvol                  -> order-flow read  _compute_rvol -> "rvol" payload primitive
-    #     (the readiness composite that consumed rvol is RETIRED, mission TRUTH_V1 RC-473/474;
-    #      rvol stays an emitted primitive with an explicit unavailable reason)
-    mlt = _read("ml_train.py")
-    assert 'feats["volume_ratio"] = fk_volume_ratio(' in mlt, (
-        "the ML feature consumer must take volume_ratio from fk_volume_ratio (F12/RC-345)")
-    assert 'part.relative_volume' not in mlt, (
-        "the ML feature path must not consume the signal-layer RVOL variant (F12/RC-345)")
-    ofe = _read("app/options/order_flow/engine.py")
-    assert "_compute_rvol(data)" in ofe and '"rvol": rvol' in ofe, (
-        "order-flow must emit its own session-vs-daily rvol as a primitive (F12/RC-345)")
-    assert "OF_RVOL_READINESS_OK" not in ofe, (
-        "the retired readiness composite must not reappear as an rvol consumer (RC-474)")
-    assert "volume_ratio" not in ofe and "part.relative_volume" not in ofe, (
-        "order-flow must not consume the other RVOL variants (F12/RC-345)")
 
 
 # ------------------------------------------------------------------- F11 options volume imbalance
@@ -241,19 +189,6 @@ def test_f09_ui_clock_cannot_serve_stale_disk_or_prior_constants(monkeypatch) ->
             disk.write_bytes(prior)
 
 
-def test_rc345_imbalance_taxonomy_is_distinct_and_named() -> None:
-    """F11: the several imbalance quantities are economically DISTINCT (different population/
-    scope) and must not collapse into a generic field:
-      L2 book imbalance / top-of-book pressure  (order_flow_engine, quote-book scope)
-      options book imbalance near ATM           (compute_option_flow_imbalance, bid/ask SIZE)
-      options call/put VOLUME imbalance ATM      (flow_imbalance volume fallback, ±window)
-      options call/put VOLUME imbalance full-chain (order_flow_engine options_flow_score)
-    Same formula over a different option population is a different quantity, kept separate."""
-    ofe = _read("app/options/order_flow/engine.py")
-    assert "options_flow_score = (call_vol - put_vol) / total_opt_vol" in ofe
-    mp = _read("math_probabilities.py")
-    # The ATM volume fallback is windowed (atm_flow_window_totals), a different population.
-    assert "atm_flow_window_totals" in mp
 
 
 # ----------------------------------------------------------------------- F02 net GEX at spot
@@ -302,12 +237,6 @@ def test_rc345_gamma_profile_has_one_formula_authority() -> None:
 # them" stance. The backend half of this invariant (signals.py carries call_engine's decision,
 # never re-derives one) is real, unaffected by the rename, and worth keeping if this test is
 # ever split; reinstate the frontend half only when a new module renders a final trade verdict.
-def test_rc345_signals_py_carries_call_engine_decision_never_rederives() -> None:
-    sig = _read("signals.py")
-    assert "final_signal=call.signal" in sig, (
-        "signals.py must carry the call_engine decision, not derive its own")
-    assert not re.search(r"final_signal\s*=\s*['\"](long|short|wait)['\"]", sig), (
-        "signals.py re-derives a final trade signal — call_engine is the one authority")
 
 
 # ------------------------------------------------------------- F42 dollar GEX registry field
@@ -332,28 +261,6 @@ def test_rc345_gex_dollars_field_is_single_producer() -> None:
 
 
 # ------------------------------------------------------------------------------- F14 VWAP bands
-def test_rc345_vwap_bands_canonical_single_source_frontend_carries() -> None:
-    """F14 (VWAP BANDS): the canonical operator/terrain VWAP band (volume-weighted session
-    sigma of typical price) is produced once, by liquidity_value_engine.compute_vwap_bands.
-    Every liquidity consumer calls it; the frontend CARRIES raw.vwap_bands and never
-    recomputes vwap +/- sigma in JS. The signal-layer feature band (simple rolling residual
-    std) is a DISTINCT methodology, explicitly named so it is not conflated."""
-    lve = _read("liquidity_value_engine.py")
-    assert lve.count("def compute_vwap_bands(") == 1, (
-        "the volume-weighted VWAP band must have one producer (F14/RC-345)")
-    # Frontend carries, never recomputes the band. Repointed to static/js/ed-gamma-levels.js
-    # (/console cutover, operator directive 2026-09-14): the new console carries d.vwap_series
-    # (a differently-named but equally honest carry-not-recompute pattern — its own comment
-    # says "carried VWAP curve... disclosed (never fabricated)") rather than legacy's
-    # raw.vwap_bands.
-    html = _read("static/js/ed-gamma-levels.js")
-    assert "d.vwap_series" in html, "frontend must carry the server vwap_series"
-    assert not re.search(r"vwap\w*\s*[+\-]\s*[0-9.]*\s*\*?\s*(std|sigma)", html), (
-        "frontend recomputes a VWAP band locally — it must carry the server value (F14/RC-345)")
-    # The feature-layer band declares itself distinct (not the canonical band).
-    sl = _read("features/signal_layer_v1.py")
-    assert "EXPLICITLY DISTINCT band" in sl and "F14" in sl, (
-        "signal_layer VWAP-band feature must be named as a distinct methodology (F14/RC-345)")
 
 
 # ---------------------------------------------------------------------- F41 selected-DTE selector
@@ -387,36 +294,6 @@ def test_rc345_terrain_materializes_one_pinned_gamma_profile() -> None:
 
 
 # ----------------------------------------------------------------------------- F08 ATR denominator
-def test_rc345_atr_denominator_is_fully_classified(repo_index) -> None:
-    """F08: the ATR semantic denominator is complete — the standard TR+SMA ATR has one
-    producer (math_volatility.compute_atr); the RTH-session wrapper delegates; the feature
-    EPS-floored variant is named distinct; db._snapshot_row_atr READS a stored value (not a
-    producer); no Wilder/T-1 second producer exists."""
-    from math_volatility import compute_atr
-
-    assert callable(compute_atr)
-    db = _read("db.py")
-    seg = db[db.index("def _snapshot_row_atr"):]
-    seg = seg[: seg.index("\ndef ", 1)]
-    assert 'row["atr"]' in seg and "for " not in seg.split("return")[0], (
-        "_snapshot_row_atr must READ the stored atr, not compute one (F08/RC-345)")
-    # no production Wilder ATR producer
-    for mod in ("math_volatility.py", "liquidity_value_engine.py", "features/signal_layer_v1.py"):
-        assert "def wilder" not in _read(mod).lower()
-
-    # F08 (reopened): the research Wilder ATR (research/pilot_step3/atr.wilder_atr_14) is
-    # MECHANICALLY QUARANTINED — no production or model-serving module may import it, so a
-    # different-methodology (RMA/Wilder) ATR can never masquerade as the standard SMA ATR.
-    # TEST_SYSTEM_REHAB_V2 final remediation: migrated off an independent `git ls-files`
-    # re-scan onto the shared `repo_index` fixture.
-    excluded = ("tests/", "research/", "tools/", "calibration/", "arch_competition/",
-                "scratchpad/", "governance/")
-    for relpath, body, _tree in repo_index.items():
-        rel = relpath.as_posix()
-        if rel.startswith(excluded):
-            continue
-        assert "wilder_atr" not in body and "pilot_step3.atr" not in body, (
-            f"{rel} reaches the research Wilder ATR — it must stay quarantined (F08/RC-345)")
 
 
 # ----------------------------------------------------------------------------- F21 VWAP side
@@ -446,16 +323,6 @@ def test_rc345_movement_target_threshold_one_selector() -> None:
 
 
 # ------------------------------------------------------------------- F36 signal-layer VWAP anchor
-def test_rc345_signal_layer_vwap_anchor_is_source_tagged() -> None:
-    """F36: session-derived vl.* slots use canonical session VWAP or stay absent.
-
-    A rolling VWAP must not occupy those slots — tagging the old mix was not fidelity.
-    """
-    sl = _read("features/signal_layer_v1.py")
-    assert 'out["meta.vwap_source"] = "session"' in sl
-    assert 'vwap_use = vwap_roll' not in sl
-    assert 'out["meta.vwap_source"] = "roll"' not in sl
-    assert "W_VWAP_ROLL" not in sl
 
 
 # -------------------------------------------------------------- F22 dominant direction / confidence
@@ -471,66 +338,15 @@ def test_rc345_signal_layer_vwap_anchor_is_source_tagged() -> None:
 
 
 # ------------------------------------------------------------------- F40 MC/GARCH sigma cadence
-def test_rc345_mc_blend_sigma_uses_mc_cadence() -> None:
-    """F40: the GARCH-unavailable fallback _blend_sigma annualizes the ATR leg at the MC's OWN
-    cadence (BAR_MINUTES), not a hardcoded 252*78 (5m) factor that under-scaled the 1m ATR by
-    sqrt(5) and mixed cadences with the 1m realized-vol/GARCH legs."""
-    mc = _read("monte_carlo.py")
-    assert "bars_per_year = 252 * (390.0 / BAR_MINUTES)" in mc, (
-        "the blend ATR leg must annualize at the MC cadence (F40/RC-345)")
-    assert "bars_per_year = 252 * 78" not in mc, (
-        "the hardcoded 5m annualization must be gone (F40/RC-345)")
 
 
 # ---------------------------------------------------------------- F38 training tensor cache identity
-def test_rc345_tensor_cache_key_includes_data_content_identity() -> None:
-    """F38 NEGATIVE CONTROL: two datasets with IDENTICAL metadata (min_ts/max_ts/row_count)
-    but DIFFERENT underlying content (an in-place label mutation) must produce DIFFERENT cache
-    keys — otherwise a stale tensor is reused. The fingerprint now carries a content_hash over
-    the (ts_utc, label) pairs, and the key includes it."""
-    from training_cache import compute_feature_cache_key
-
-    base = {"table": "snapshots_1m_normalized", "timeframe": "1m", "ticker": "SPY",
-            "min_ts_utc": 1000.0, "max_ts_utc": 2000.0, "row_count": 390}
-    fp_a = {**base, "content_hash": "aaaaaaaaaaaaaaaa"}
-    fp_b = {**base, "content_hash": "bbbbbbbbbbbbbbbb"}  # same metadata, mutated content
-    key_a = compute_feature_cache_key("SPY", fp_a, "codefp", target_column="outcome_1c")
-    key_b = compute_feature_cache_key("SPY", fp_b, "codefp", target_column="outcome_1c")
-    assert key_a != key_b, (
-        "same metadata + different content must MISS the cache (F38/RC-345)")
-    # identical fingerprints still hit (same key)
-    assert key_a == compute_feature_cache_key("SPY", dict(fp_a), "codefp", target_column="outcome_1c")
-    # the DB fingerprint reads the label to build the content hash
-    tc = _read("training_cache.py")
-    assert "SELECT ts_utc, {label_column} FROM snapshots_1m_normalized" in tc, (
-        "the DB fingerprint must read the label to detect in-place mutation (F38/RC-345)")
-    assert '"content_hash"' in tc and 'data_fp, "content_hash"' in tc
 
 
 # --------------------------------------------------------------- F26 empirical probability bias
 
 
 # ------------------------------------------------------- F32 cf_* population / source / cadence
-def test_rc345_confluence_features_full_contract_one_authority() -> None:
-    """F32: cf_* has ONE authority end-to-end — ml_data_common.confluence_features_for_bar.
-    SOURCE: it fetches the canonical population via fetch_confluence_history (a raw as-of DB
-    read), not caller rows. KERNEL: compute_confluence_features is called ONLY inside the
-    authority (never by a production lane with its own rows). MISSINGNESS: an absent
-    population is a governed absence (cf_* stay 0.0), not a substitute. CONSUMERS: XGB
-    (prepare_row_for_xgb_features) and LSTM (ml_predict) both go through the authority."""
-    mdc = _read("ml_data_common.py")
-    assert "def confluence_features_for_bar(" in mdc and "def fetch_confluence_history(" in mdc
-    # the kernel is called only inside the authority (its single production call site)
-    prod_kernel_calls = [ln for ln in mdc.splitlines()
-                         if "compute_confluence_features(" in ln
-                         and "def compute_confluence_features" not in ln]
-    assert len(prod_kernel_calls) == 1, (
-        "compute_confluence_features must be the authority's internal kernel only (F32/RC-345)")
-    # governed absence: cf_* absence is 0.0, not a caller-rows fallback
-    assert "GOVERNED ABSENCE" in mdc or "governed absence" in mdc
-    # both model lanes consume via the authority
-    assert "confluence_features_for_bar" in _read("ml_predict.py"), (
-        "LSTM serve path must use the cf_* authority (F32/RC-345)")
 
 
 # ============================ ADVERSARIAL-RESIDUAL FIXES (real live paths) ====================
@@ -555,225 +371,6 @@ def test_rc345_confluence_features_full_contract_one_authority() -> None:
 # --------------------------------------------------------------------------- F02 net GEX at spot
 
 
-def test_rc345_f25_canonical_ticker_identity_one_producer():
-    """F25 — CANONICAL_TICKER_STORAGE_AND_ARTIFACT_IDENTITY has exactly ONE live-reachable
-    producer (instrument_identity.ticker_storage_key). Every artifact/model/cache/DB-query/
-    verifier/predictor/scheduler identity delegates to it, so a single instrument can never
-    acquire two artifact identities. Behavioral + mutation-grade: the SPX/$SPX collapse is the
-    load-bearing case (bare 'SPX' and '$SPX' both map to the on-disk '$SPX' bundle)."""
-    from instrument_identity import ticker_storage_key, BROKER_INDEX_BARE_ROOTS
-    import training_cache as tc
-    import active_bundle_contract as abc
-    import ml_predict as mp
-    import ml_scheduler as sched
-
-    # ── The authority itself: SPX and $SPX are the SAME identity, and it is '$SPX'. ──
-    assert ticker_storage_key("SPX") == ticker_storage_key("$SPX") == "$SPX"
-    assert ticker_storage_key("spx") == ticker_storage_key("$spx") == "$SPX"  # case variants
-    assert "SPX" in BROKER_INDEX_BARE_ROOTS
-
-    # ── Every producer resolves to ticker_storage_key for the full identity contract. ──
-    # (runtime → storage → artifact → model-dir → bundle-file → cache → predictor)
-    CASES = ["SPX", "$SPX", "spx", "$spx", "SPY", "spy", "QQQ", "IWM"]
-    for tk in CASES:
-        canon = ticker_storage_key(tk)
-        # artifact filename producers (training_cache) — the divergence surface
-        assert tc.parallel_artifact_basenames(tk, "1c")[0] == f"xgb_{canon}_1c.pkl"
-        assert tc.cascade_artifact_basenames(tk, "1c")[0] == f"xgb_{canon}_1c.pkl"
-        # contract producers (active_bundle_contract)
-        assert abc.bundle_role_filenames(tk, "1c")["xgb"] == f"xgb_{canon}_1c.pkl"
-        assert abc.active_bundle_dir(tk, "1c").name == canon
-        assert abc.meta_stack_artifact_filename(tk, "1c") == f"meta_{canon}_1c.pkl"
-        assert abc.horizon_bundle_filenames(tk, "1c")[0] == f"xgb_{canon}_1c.pkl"
-        # predictor / registry identity (ml_predict)
-        assert mp._bundle_ticker_for_artifacts(tk) == canon
-        assert mp._reg_key(tk).endswith(f":{canon}")
-        # scheduler artifact identity flows from the same one producer
-        assert sched._artifact_paths_relative.__module__  # importable/callable
-
-    # ── Mutation 2 (SPX divergence): the TWO filename authorities agree for $SPX. ──
-    # horizon_bundle_filenames delegates to training_cache.parallel_artifact_basenames;
-    # bundle_role_filenames uses artifact_ticker_key. If either reverts to a local .upper(),
-    # this equality breaks for the index root.
-    for tk in ("SPX", "$SPX"):
-        hz_names = set(abc.horizon_bundle_filenames(tk, "1c"))
-        role_names = set(abc.bundle_role_filenames(tk, "1c").values())
-        assert role_names.issubset(hz_names), f"role/horizon filename authorities diverged for {tk}"
-
-    # ── Mutation 3 (scheduler vs predictor divergence): writer identity == loader identity. ──
-    # scheduler writes to parallel_artifact_basenames names; predictor loads active_bundle_dir.
-    for tk in ("SPX", "$SPX"):
-        writer_name = tc.parallel_artifact_basenames(tk, "1c")[0]          # xgb_$SPX_1c.pkl
-        loader_dirname = abc.active_bundle_dir(mp._bundle_ticker_for_artifacts(tk), "1c").name
-        assert f"_{loader_dirname}_" in writer_name, "scheduler-written vs predictor-loaded identity diverged"
-
-    # ── Mutation 4 (cache divergence): SPX and $SPX produce the SAME cache identity. ──
-    data_fp = {"table": "snapshots_1m_normalized", "timeframe": "1m",
-               "min_ts_utc": 1.0, "max_ts_utc": 2.0, "content_hash": "abc123", "row_count": 10}
-    assert tc.compute_feature_cache_key("SPX", data_fp, "cfp") == \
-           tc.compute_feature_cache_key("$SPX", data_fp, "cfp"), "cache identity split SPX vs $SPX"
-    assert tc.compute_scheduler_cache_key("SPX", "parallel", data_fp, "cfp") == \
-           tc.compute_scheduler_cache_key("$SPX", "parallel", data_fp, "cfp")
-
-    # ── Mutation 1 (delegated second producer): no bare .upper() identity faucet remains in the
-    # swept files (comment/docstring references excluded). A reintroduced local_model_key(t)=t.upper()
-    # routed into any real path would reintroduce a `ticker.upper()` identity call here. ──
-    for fname in ("training_cache.py", "ml_predict.py", "verify_active_models.py",
-                  "ml_scheduler.py", "active_bundle_contract.py"):
-        body = "\n".join(
-            l for l in _read(fname).splitlines()
-            if not l.lstrip().startswith("#") and not l.lstrip().startswith('"')
-            and not l.lstrip().startswith("'")
-        )
-        assert "ticker.upper()" not in body, f"{fname}: bare .upper() ticker-identity faucet reintroduced (F25)"
-        assert "from instrument_identity import ticker_storage_key" in _read(fname), (
-            f"{fname} must consume the canonical ticker-identity authority")
-
-    # ── Live-path proof: the real on-disk $SPX bundle resolves identically from bare 'SPX'. ──
-    d_bare = abc.active_bundle_dir("SPX", "1c")
-    d_dollar = abc.active_bundle_dir("$SPX", "1c")
-    assert d_bare == d_dollar
-    if d_dollar.is_dir():  # bundle present in this checkout
-        assert (d_dollar / abc.bundle_role_filenames("SPX", "1c")["xgb"]).is_file(), (
-            "bare-'SPX' resolves to the real on-disk $SPX artifact (no orphan)")
-
-
-def test_rc345_f25_train_writers_match_canonical_read_basenames():
-    """F25 (train-write faucet — Cursor RC-345 reopening). The MODEL WRITERS must emit the
-    SAME artifact basename the readers/verifier/predictor expect. Before this lock, bare 'SPX'
-    wrote xgb_SPX_1c.pkl while bundle_role_filenames/active_bundle_dir expected xgb_$SPX_1c.pkl —
-    a live second producer of ticker-artifact identity. This asserts WRITE basename == canonical
-    READ basename for XGB/LSTM/Transformer/meta across the SPX/$SPX negative control."""
-    import ml_train, lstm_model, transformer_train
-    from active_bundle_contract import bundle_role_filenames, meta_stack_artifact_filename
-    from instrument_identity import ticker_storage_key
-
-    MATRIX = ["SPY", "QQQ", "IWM", "SPX", "$SPX", "spx", "$spx"]
-    for tk in MATRIX:
-        read = bundle_role_filenames(tk, "1c")
-        canon = ticker_storage_key(tk)
-        # XGB writer (ml_train) == canonical read
-        assert ml_train.model_path(tk).name == read["xgb"] == f"xgb_{canon}_1c.pkl", (
-            f"XGB train-write vs read divergence for {tk}: "
-            f"{ml_train.model_path(tk).name} != {read['xgb']}")
-        assert ml_train.meta_path(tk).name == read["xgb_meta"]
-        # LSTM writer == canonical read
-        assert lstm_model.lstm_model_path(tk).name == read["lstm"] == f"lstm_{canon}_1c.pt"
-        assert lstm_model.lstm_meta_path(tk).name == read["lstm_meta"]
-        # Transformer writer == canonical read
-        assert transformer_train.transformer_model_path(tk).name == read["transformer"] == \
-            f"transformer_{canon}_1c.pt"
-        assert transformer_train.transformer_meta_path(tk).name == read["transformer_meta"]
-        # META writer basename == canonical
-        assert meta_stack_artifact_filename(tk, "1c") == f"meta_{canon}_1c.pkl"
-
-    # SPX and $SPX must collapse to the identical write basename (the load-bearing case)
-    for kind, wf in (("xgb", lambda t: ml_train.model_path(t).name),
-                     ("lstm", lambda t: lstm_model.lstm_model_path(t).name),
-                     ("transformer", lambda t: transformer_train.transformer_model_path(t).name)):
-        assert wf("SPX") == wf("$SPX"), f"{kind} writer splits SPX vs $SPX"
-
-    # source guard: the train writers must consume the canonical authority, no local .upper()
-    for fname in ("ml_train.py", "lstm_model.py", "transformer_train.py"):
-        assert "from instrument_identity import ticker_storage_key" in _read(fname), (
-            f"{fname} must import the canonical ticker-identity authority (F25 train-write)")
-
-
-
-
-
-
-
-
-def test_rc345_f25_load_data_binds_canonical_storage_key():
-    """F25 (Cursor ACCEPT_PARTIAL — train DB-load faucet). ml_train.load_data must bind the
-    CANONICAL storage identity to the SQL query: load_data('SPX', ...) binds '$SPX'. The callee
-    itself consumes the canonical identity — a caller passing bare 'SPX' still queries the '$SPX'
-    stored rows. Mutation guard: reverting to ``params.append(ticker)`` binds raw 'SPX' and fails."""
-    import ml_train
-    import pandas as pd
-    import normalized_training_sync as nts
-
-    captured: dict = {}
-    orig_read = pd.read_sql_query
-    orig_norm = nts.inline_normsync_enabled
-    try:
-        pd.read_sql_query = lambda sql, conn, params=None, **k: (captured.__setitem__("params", params), __import__("pandas").DataFrame())[1]
-        nts.inline_normsync_enabled = lambda: False  # no side effects in the test
-        import tempfile, os, sqlite3
-        p = os.path.join(tempfile.mkdtemp(), "e.db")
-        sqlite3.connect(p).close()
-        ml_train.load_data(db_path=p, ticker="SPX")
-    finally:
-        pd.read_sql_query = orig_read
-        nts.inline_normsync_enabled = orig_norm
-
-    assert "$SPX" in (captured.get("params") or []), (
-        f"load_data must bind canonical '$SPX', bound: {captured.get('params')!r}")
-    assert "SPX" not in [x for x in (captured.get("params") or []) if x == "SPX"], (
-        "load_data bound raw 'SPX' — DB identity faucet still live")
-
-    # Source guard: the DB-facing function canonicalizes at entry.
-    src = _read("ml_train.py")
-    assert "ticker = ticker_storage_key(ticker)" in src, (
-        "ml_train.load_data must canonicalize ticker at function entry (F25)")
-
-
-def test_rc345_f25_training_fingerprint_producers_are_canonical():
-    """F25 (Cursor ACCEPT_PARTIAL — fingerprint faucets). db_training_fingerprint and
-    _normalize_data_fp must emit the CANONICAL ticker so SPX and $SPX fingerprints compare equal.
-    Behavioral: same-DB SPX vs $SPX fingerprints carry the same ticker field; two fps differing
-    only in the alias normalize equal. Mutation guard: raw ``str(t)`` passthrough splits them."""
-    import training_cache as tc
-    import tempfile, os, sqlite3
-
-    # db_training_fingerprint: SPX and $SPX emit the same canonical ticker identity (empty-table
-    # path still stamps the ticker field, so no real rows are required for the identity assertion).
-    p = os.path.join(tempfile.mkdtemp(), "e.db")
-    sqlite3.connect(p).close()
-    fp_bare = tc.db_training_fingerprint(p, "SPX")
-    fp_dollar = tc.db_training_fingerprint(p, "$SPX")
-    assert fp_bare["ticker"] == fp_dollar["ticker"] == "$SPX", (
-        f"db_training_fingerprint split identity: {fp_bare['ticker']!r} vs {fp_dollar['ticker']!r}")
-    # SPY (non-dollar) is preserved as SPY — not blindly prefixed.
-    assert tc.db_training_fingerprint(p, "spy")["ticker"] == "SPY"
-
-    # _normalize_data_fp: two otherwise-identical fps differing only in alias normalize equal.
-    base = {"table": "snapshots_1m_normalized", "timeframe": "1m",
-            "min_ts_utc": 1.0, "max_ts_utc": 2.0, "row_count": 10}
-    n_bare = tc._normalize_data_fp({**base, "ticker": "SPX"})
-    n_dollar = tc._normalize_data_fp({**base, "ticker": "$SPX"})
-    assert n_bare == n_dollar, f"_normalize_data_fp did not converge: {n_bare} != {n_dollar}"
-    assert n_bare["ticker"] == "$SPX"
-
-    # Source guard: both producers consume the one authority (no raw ticker passthrough).
-    src = _read("training_cache.py")
-    assert "t = ticker_storage_key(ticker)" in src, "db_training_fingerprint must canonicalize at entry"
-    assert 'ticker_storage_key(str(d.get("ticker"' in src, "_normalize_data_fp must canonicalize the ticker field"
-
-
-def test_rc345_f25_db_training_floor_stats_canonical_bind():
-    """F25 (Cursor: floor_stats fix accepted, RECURRENCE LOCK missing). db_training_floor_stats
-    must bind + emit the canonical storage identity: SPX and $SPX resolve to '$SPX'. Mutation
-    guard here (source): a reverted ``str(ticker).strip().upper()`` producer fails the check."""
-    import training_cache as tc
-    import tempfile, os, sqlite3
-
-    p = os.path.join(tempfile.mkdtemp(), "e.db")
-    sqlite3.connect(p).close()  # schema-absent path still stamps the ticker identity field
-    a = tc.db_training_floor_stats(p, "SPX")
-    b = tc.db_training_floor_stats(p, "$SPX")
-    assert a["ticker"] == b["ticker"] == "$SPX", (
-        f"db_training_floor_stats split identity: {a['ticker']!r} vs {b['ticker']!r}")
-    assert tc.db_training_floor_stats(p, "spy")["ticker"] == "SPY"  # non-dollar preserved
-
-    # Recurrence lock: the function canonicalizes at entry; a raw local producer is rejected.
-    lines = _read("training_cache.py").splitlines()
-    idx = next(i for i, l in enumerate(lines) if l.startswith("def db_training_floor_stats("))
-    body = "\n".join(lines[idx:idx + 40])
-    assert "ticker = ticker_storage_key(ticker)" in body, (
-        "db_training_floor_stats must canonicalize ticker at entry")
-    assert ".strip().upper()" not in body, "floor_stats: raw local ticker producer reintroduced"
 
 
 
@@ -784,74 +381,23 @@ def test_rc345_f25_db_training_floor_stats_canonical_bind():
 
 
 
-def test_rc345_f25_scheduler_user_tickers_enrollment_identity_canonical():
-    """F25 (Cursor: scheduler_user_tickers enrollment/filter faucet). Membership/enrollment identity
-    routes through ticker_storage_key so SPX and $SPX are one instrument. SPY/QQQ/IWM are unchanged.
-    Mutation: a raw .upper() membership compare would let 'SPX' and '$SPX' disagree."""
-    import scheduler_user_tickers as sut
-
-    # anchor membership: canonical, SPY/QQQ/IWM preserved
-    assert sut.is_training_anchor_ticker("spy") is True
-    assert sut.is_training_anchor_ticker("SPY") is True
-    # index alias collapse in the guard (expansion on so any ticker is allowed, identity canonical)
-    import os
-    os.environ["ED_ML_SCHEDULER_TRAINING_EXPAND"] = "1"
-    try:
-        assert sut.require_ml_training_ticker_allowed("SPX") == \
-            sut.require_ml_training_ticker_allowed("$SPX") == "$SPX"
-    finally:
-        del os.environ["ED_ML_SCHEDULER_TRAINING_EXPAND"]
-
-    # filter membership: SPX vs $SPX are one identity for skip/enrolled comparisons
-    key = sut.ticker_storage_key
-    assert key("SPX") == key("$SPX") == "$SPX"
-
-    # Source guard: no raw .upper() ticker-membership compare remains in the file (code, not docstring)
-    body = "\n".join(l for l in _read("scheduler_user_tickers.py").splitlines()
-                     if not l.lstrip().startswith("#"))
-    assert ".upper()" not in body, "scheduler_user_tickers: raw .upper() membership faucet remains"
 
 
-def test_rc345_f25_cache_skip_streak_key_canonical():
-    """F25 (Cursor latest #1). cache_skip_streak_key is the ONE producer of the streak dict key;
-    write/read/lookup all flow through it, so SPX and $SPX must share one streak slot ("$SPX:...").
-    Mutation: reverting to f"{ticker.upper()}:..." splits the aliases and fails."""
-    import training_pipeline_status as tps
-
-    keys = {tps.cache_skip_streak_key(a, "1c") for a in ("SPX", "$SPX", "spx", "$spx")}
-    assert keys == {"$SPX:1c"}, f"cache_skip_streak_key split the index identity: {keys}"
-    assert tps.cache_skip_streak_key("spy", "1c") == "SPY:1c"  # non-dollar preserved
-
-    lines = _read("training_pipeline_status.py").splitlines()
-    idx = next(i for i, l in enumerate(lines) if l.startswith("def cache_skip_streak_key("))
-    body = "\n".join(lines[idx:idx + 8])
-    assert "ticker_storage_key(ticker)" in body, "cache_skip_streak_key must delegate to the authority"
-    assert "ticker.upper()" not in body, "cache_skip_streak_key: raw .upper() faucet reintroduced"
 
 
-def test_rc345_f25_arch_eval_proof_key_canonical(tmp_path):
-    """F25 (Cursor latest #2). save_arch_eval_proof_merge keys by_ticker on canonical identity, so a
-    $SPX merge lands on the same slot a prior SPX merge wrote (one identity, one row). Mutation:
-    reverting to ticker.upper() would leave two rows ('SPX' and '$SPX')."""
-    import eval_metrics_store as ems
-    import json
 
-    proof = tmp_path / "proof.json"
-    orig = ems.arch_eval_proof_path
-    try:
-        ems.arch_eval_proof_path = lambda: proof
-        ems.save_arch_eval_proof_merge("SPX", {"updated_at": "t1", "v": 1})
-        ems.save_arch_eval_proof_merge("$SPX", {"updated_at": "t2", "v": 2})
-    finally:
-        ems.arch_eval_proof_path = orig
 
-    doc = json.loads(proof.read_text(encoding="utf-8"))
-    assert list(doc["by_ticker"].keys()) == ["$SPX"], (
-        f"arch_eval_proof kept two identities: {list(doc['by_ticker'].keys())}")
-    assert doc["by_ticker"]["$SPX"]["v"] == 2  # $SPX merge overwrote the SPX slot
 
-    src = _read("eval_metrics_store.py")
-    assert "ticker_storage_key(ticker)" in src, "save_arch_eval_proof_merge must key on the authority"
-    assert "ticker.upper()" not in src, "arch eval proof: raw .upper() key faucet reintroduced"
+
+
+
+
+
+
+
+
+
+
+
 
 

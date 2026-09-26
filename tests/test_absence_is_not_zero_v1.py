@@ -180,7 +180,10 @@ def test_the_repo_wide_gate_scopes_itself_to_what_git_tracks():
     import test_ohlcv_schwab_first as G
 
     rels = {p.relative_to(G.ROOT).as_posix() for p in G._iter_repo_py_files()}
-    assert len(rels) > 500, f"the gate's scope collapsed to {len(rels)} files"
+    import subprocess
+    top = {f for f in subprocess.run(["git", "ls-files", "*.py"], cwd=G.ROOT, capture_output=True,
+                                     text=True).stdout.split() if "/" not in f}
+    assert top <= rels, f"tracked top-level modules fell out of the scan: {sorted(top - rels)}"
     for must in ("desk_store.py", "terrain_engine.py", "liquidity_models.py", "server.py"):
         assert must in rels, f"{must} fell out of the scan"
     assert not [r for r in rels if r.startswith("scratchpad/")], (

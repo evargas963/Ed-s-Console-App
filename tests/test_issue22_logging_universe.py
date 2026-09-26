@@ -51,63 +51,12 @@ def _tickers_by_cat(db: EdDB) -> dict[str, set[str]]:
 
 
 
-def test_issue22_panel_auto_sync_and_prune_category(tmp_path):
-    from market_context import market_context_panel_symbols_excluding_core
-
-    dbp = tmp_path / "panel_auto.db"
-    t0 = 1_700_000_000.0
-    edb = EdDB(dbp)
-    minimal_core = ["SPY"]
-    edb.logging_universe_sync_core(minimal_core, t0)
-    panel = market_context_panel_symbols_excluding_core(frozenset(x.upper() for x in minimal_core))
-    assert "$VIX" in panel
-    assert "WMT" not in panel
-    assert "NVDA" not in panel
-    r1 = edb.logging_universe_sync_panel_auto(panel, t0 + 1.0)
-    assert r1["desired"] == len(panel)
-    by_t = {row["ticker"].upper(): row["category"] for row in edb.logging_universe_list_rows()}
-    assert by_t["SPY"] == "core"
-    assert by_t.get("$VIX") == "panel_auto"
-    auth = edb.logging_universe_authoritative_tickers()
-    assert "$VIX" in auth and "SPY" in auth
-
-    r2 = edb.logging_universe_sync_panel_auto(["WMT", "FN"], t0 + 2.0)
-    assert r2["desired"] == 2
-    panel_rows = {row["ticker"].upper() for row in edb.logging_universe_list_rows() if row["category"] == "panel_auto"}
-    assert panel_rows == {"WMT", "FN"}
-
-    removed = edb.logging_universe_prune_invalid_enrollments()
-    assert isinstance(removed, list)
 
 
 
 
-def test_issue22_ml_scheduler_training_union_is_logging_universe_only(monkeypatch):
-    def fake_load():
-        return ["ZZA", "ZZB"]
-
-    monkeypatch.setattr("scheduler_user_tickers.load_user_scheduler_tickers", fake_load)
-
-    def _must_not_call_db_rth(*_a, **_k):
-        raise AssertionError("DB RTH DISTINCT must not define scheduler ticker membership")
-
-    monkeypatch.setattr("ml_scheduler._get_tickers_with_rth_data", _must_not_call_db_rth)
-    from ml_scheduler import _training_ticker_union
-
-    assert _training_ticker_union("/nonexistent.db") == ["ZZA", "ZZB"]
 
 
-def test_issue22_diagnostic_db_only_tickers_subtracts_enrolled(monkeypatch):
-    from ml_scheduler import _diagnostic_db_tickers_not_enrolled
-
-    monkeypatch.setattr(
-        "ml_scheduler._get_tickers_with_rth_data",
-        lambda *_a, **_k: ["AAA", "BBB", "CORE1"],
-    )
-    out = _diagnostic_db_tickers_not_enrolled(
-        "/x.db", ["AAA", "CORE1"], label_column="outcome_1c"
-    )
-    assert out == ["BBB"]
 
 
 def test_issue22_legacy_migration_idempotent_no_duplicate_rows(tmp_path):
@@ -133,20 +82,6 @@ def test_issue22_legacy_migration_idempotent_no_duplicate_rows(tmp_path):
     assert r2["status"] == "already_completed"
 
 
-def test_issue22_scheduler_json_migration_idempotent(tmp_path):
-    p = tmp_path / "user_sched.json"
-    arch = tmp_path / "user_sched.json.migrated_issue22"
-    p.write_text(json.dumps({"tickers": ["s1", "s1", "s2"]}), encoding="utf-8")
-    edb = EdDB(tmp_path / "schm.db")
-    a = edb.logging_universe_migrate_scheduler_companion_json(
-        primary_path=p,
-        archive_path=arch,
-    )
-    assert a["status"] == "imported"
-    syms = {r["ticker"].upper() for r in edb.logging_universe_list_rows() if r["category"] == "user_persisted"}
-    assert syms >= {"S1", "S2"}
-    b = edb.logging_universe_migrate_scheduler_companion_json(primary_path=p, archive_path=arch)
-    assert b["status"] == "already_completed"
 
 
 

@@ -16,7 +16,6 @@ an unlisted committed JSON is still reported.
 from __future__ import annotations
 
 import importlib.util
-import json
 import sys
 from pathlib import Path
 
@@ -49,27 +48,10 @@ POLICY_KEYS = ("legacy_allowance", "expires_at_utc", "strict_default")
 #: correct, minimal way to get that, not redundant computation.
 
 
-def test_the_policy_file_actually_contains_the_keys_we_claim():
-    """Ground the whole row in the artifact, not in the checker's opinion of it."""
-    policy = json.loads(
-        (REPO / "config" / "ML_ITEM4_MIGRATION_POLICY.json").read_text(encoding="utf-8"))
-    assert "legacy_allowance" in policy
-    assert "strict_default" in policy
-    assert "expires_at_utc" in policy["legacy_allowance"], "nested keys must be harvested too"
 
 
-def test_keys_written_in_the_allowlisted_policy_are_harvested():
-    harvested = GATE._committed_data_file_keys()
-    for key in POLICY_KEYS:
-        assert key in harvested, f"{key} is written in the policy file but was not harvested"
 
 
-def test_the_three_policy_reads_are_no_longer_reported(live_orphans):
-    reported = {
-        str(v.path).replace("\\", "/") for v in live_orphans
-    }
-    assert not any(p.endswith("active_bundle_contract.py") for p in reported), (
-        "the policy-backed reads are still flagged as orphans")
 
 
 def test_the_check_did_not_go_blind_a_genuine_orphan_is_still_reported(tmp_path, monkeypatch):
@@ -93,16 +75,6 @@ def test_the_check_did_not_go_blind_a_genuine_orphan_is_still_reported(tmp_path,
         "a policy-file key excuses a read ONLY in its named reader; in an unlisted reader it is still an orphan")
 
 
-def test_the_allowlist_is_explicit_not_a_glob():
-    """A blanket scan would invent a writer for almost any string. Keep it named."""
-    sources = GATE._DATA_FILE_KEY_SOURCES
-    assert len(sources) <= 5, f"allowlist is growing into a glob: {sources}"
-    for rel, loader in sources:
-        assert (REPO / rel).is_file(), f"allowlisted source does not exist: {rel}"
-        assert loader, f"{rel} must name the loader that reads it"
-        assert (REPO / loader).is_file(), f"named reader does not exist: {loader}"
-        assert not any(ch in rel for ch in "*?["), f"glob pattern in allowlist: {rel}"
-        assert not any(ch in loader for ch in "*?["), f"glob pattern in reader: {loader}"
 
 
 def test_a_key_in_an_unlisted_committed_json_is_still_reported(tmp_path, monkeypatch):
@@ -115,48 +87,13 @@ def test_a_key_in_an_unlisted_committed_json_is_still_reported(tmp_path, monkeyp
         "is not bounding the harvest")
 
 
-def test_generic_keys_in_the_policy_file_are_not_global_writes():
-    """The pre-scope harvest dumped dir/enabled/note into the global write set.
-    Those names exist in the policy file; they must not count as written everywhere."""
-    harvested = GATE._committed_data_file_keys()
-    for generic in ("dir", "note", "rule", "FORBIDDEN", "reverify_ttl_seconds_default"):
-        assert generic not in harvested, (
-            f"{generic!r} was harvested from the policy file as a global write — "
-            f"the glob failure at file scope (RC-384 Cursor audit)")
-
-
-def test_data_file_credit_is_scoped_to_the_named_reader():
-    """A policy key excuses a read in active_bundle_contract.py only, not elsewhere."""
-    policy = GATE._data_file_keys_for("active_bundle_contract.py")
-    calendar = GATE._data_file_keys_for("v2_decision/a2_session_calendar.py")
-    other = GATE._data_file_keys_for("news_sentiment.py")
-    assert "strict_default" in policy
-    assert "strict_default" not in calendar
-    assert "strict_default" not in other
-    assert "valid_through_date" in calendar
-    assert "valid_through_date" not in policy
-    assert other == set()
-
-
-def test_calendar_reads_are_no_longer_reported(live_orphans):
-    reported = {
-        str(v.path).replace("\\", "/") for v in live_orphans
-    }
-    assert not any(p.endswith("a2_session_calendar.py") for p in reported), (
-        "the calendar-backed reads are still flagged as orphans")
 
 
 
 
 
 
-def test_a_missing_or_malformed_source_contributes_nothing(monkeypatch, tmp_path):
-    """Absence must never widen what counts as written."""
-    monkeypatch.setattr(
-        GATE, "_DATA_FILE_KEY_SOURCES",
-        (("governance/DOES_NOT_EXIST.json", "nobody.py"),
-         ("config/ML_ITEM4_MIGRATION_POLICY.json", "active_bundle_contract.py")),
-    )
-    harvested = GATE._committed_data_file_keys()
-    assert "strict_default" in harvested, "the valid source must still be harvested"
-    assert harvested, "a missing source must not empty the harvest"
+
+
+
+

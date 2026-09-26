@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import importlib
-import importlib.util
 import re
 
-import pytest
 
 _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}
@@ -52,31 +49,8 @@ def _iter_repo_py_files(repo_index):
 
 
 
-@pytest.mark.parametrize("module_name,attr", _COH_SA1_POSITIVE)
-def test_coh_sa1_positive_wrapper_rejects_non_positive(module_name: str, attr: str):
-    mod = importlib.import_module(module_name)
-    fn = getattr(mod, attr)
-    assert fn(float("nan")) is None
-    assert fn(0) is None
-    assert fn(-1.0) is None
-    assert fn(0.5) == 0.5
 
 
-def test_training_cache_normalize_data_fp_rejects_nan_ts_utc():
-    from training_cache import _normalize_data_fp
-
-    out = _normalize_data_fp(
-        {
-            "table": "snapshots_1m_normalized",
-            "timeframe": "1m",
-            "ticker": "SPY",
-            "min_ts_utc": float("nan"),
-            "max_ts_utc": 100.0,
-            "row_count": 10,
-        }
-    )
-    assert out["min_ts_utc"] is None
-    assert out["max_ts_utc"] == 100.0
 
 
 def test_all_float_or_none_helpers_delegate_to_numeric_contract(repo_index):

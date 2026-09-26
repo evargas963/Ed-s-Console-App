@@ -1659,12 +1659,8 @@ def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list
     for b in bars_norm:
         dt = _bar_dt_et(b)
         h.update(b"\x1e")
-        # Both the PARSED instant and the RAW time fields. `_bar_dt_et` returns None for
-        # shapes it cannot read, and hashing only the parse would then cover no time at
-        # all — a bar could be moved in the series without moving the key.
         h.update(repr((
-            None if dt is None else dt.timestamp(),
-            b.get("datetime"), b.get("ts_utc"), b.get("bar_start_ts_utc"),
+            None if dt is None else dt.timestamp(), b.get("timestamp"),
             b.get("open"), b.get("high"), b.get("low"), b.get("close"), b.get("volume"),
         )).encode())
     return (ticker, session_date.isoformat(), bar_source, len(bars_norm), h.hexdigest())

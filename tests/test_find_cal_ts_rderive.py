@@ -35,13 +35,6 @@ def test_et_clock_from_ts_utc_dst_summer_vs_winter():
 
 
 
-def test_ml_train_load_data_where_has_no_rth_where_clause():
-    import inspect
-
-    from ml_train import load_data
-
-    src = inspect.getsource(load_data)
-    assert "rth_where_clause()" not in src
 
 
 _SKIP_PY_TREE_DIRS = frozenset(

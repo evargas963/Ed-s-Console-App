@@ -19,20 +19,3 @@ def test_60c_in_product_horizon_tuple():
 
 
 
-def test_build_manifest_accepts_60c_suffix():
-    from training_cache import build_manifest
-
-    m = build_manifest(
-        ticker="spy",
-        architecture="parallel",
-        scheduler_cache_key="k",
-        feature_cache_key="fk",
-        data_fp={"min_ts_utc": 1, "max_ts_utc": 2, "row_count": 3},
-        trained_at="t",
-        artifact_rel_paths={},
-        artifact_sha256={},
-        training_code_fingerprint="c",
-        evaluation={},
-        ml_horizon_suffix="60c",
-    )
-    assert m.get("ml_horizon_suffix") == "60c"

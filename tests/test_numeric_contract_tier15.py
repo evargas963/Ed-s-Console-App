@@ -63,10 +63,3 @@ def test_float_positive_or_none(value, expected):
 
 
 
-def test_realized_eval_style_nan_now_rejected():
-    """realized_contract_eval._f now uses finite parser — NaN must not pass."""
-    from realized_contract_eval import _f
-
-    assert _f(float("nan")) is None
-    assert _f(float("inf")) is None
-    assert _f(-2.5) == -2.5

@@ -46,7 +46,10 @@ def test_the_gate_passes_on_merit():
 def test_the_pass_did_not_come_from_a_collapsed_scope():
     """A gate that passes because it stopped looking is worse than one that fails."""
     rels = {p.relative_to(REPO).as_posix() for p in iter_py_files(production_only=True)}
-    assert len(rels) > 100, f"production scope collapsed to {len(rels)} (139 on 2026-09-26)"
+    import subprocess
+    top = {f for f in subprocess.run(["git", "ls-files", "*.py"], cwd=REPO, capture_output=True,
+                                     text=True).stdout.split() if "/" not in f}
+    assert top <= rels, f"tracked top-level modules fell out of the scan: {sorted(top - rels)}"
     for must in ("server.py", "terrain_engine.py", "math_levels.py", "desk_store.py"):
         assert must in rels, f"{must} fell out of the scan"
 

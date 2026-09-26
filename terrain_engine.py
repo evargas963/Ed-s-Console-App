@@ -215,6 +215,8 @@ class TerrainSnapshot:
     charm_by_strike: dict = field(default_factory=dict, repr=False)
     #: {expiry: put OI / call OI} for each listed expiry
     pcr_by_expiry: dict = field(default_factory=dict)
+    #: every expiry the chain lists, ascending
+    expiries: list = field(default_factory=list)
     #: Wall-clock the chain behind per_strike was fetched — every consumer must be able to render
     #: an age on its face rather than implying "now".
     computed_ts_utc: float | None = None
@@ -737,5 +739,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         books=books,
         charm_by_strike=charm_by_strike,
         pcr_by_expiry={e: put_call_oi_ratio(book) for (e, _d), (book, _diag) in books.items()},
+        expiries=sorted({e for (e, _d) in books}),
         computed_ts_utc=_time.time(),
     )

@@ -610,13 +610,15 @@
   // response, no context check" defect class fixed everywhere else in the gamma views.
   // Fixed: check ticker identity before applying anything, and judge validity against the
   // CURRENT state.expiryFilter at resolution time, never a value captured before the fetch.
+  var _expiriesPending = false;
   function loadExpiries(tk) {
     var sel = document.getElementById('expSel'); if (!sel) return;
     fetch('/api/expiries?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (state.ticker !== tk) return;   // a newer ticker switch superseded this request
-        var exps = (d && (d.expiries || d.expirations)) || [];
+        var exps = (d && d.expiries) || [];
+        _expiriesPending = !exps.length;   // levels not computed yet: the slow tick asks again
         var opts = '<option value="">All Expirations</option>';
         exps.forEach(function (e) { opts += '<option value="' + e + '">' + _fmtExpOpt(e) + '</option>'; });
         sel.innerHTML = opts;
@@ -904,6 +906,7 @@
     _tick++;
     if (!state.ticker) { paintNoTicker(); if (_tick % 4 === 0) declareWatchlistStream(loadWL()); return; }
     if (!pricePushHealthy() || _tick % 4 === 0) refreshSession();
+    if (_expiriesPending && _tick % 4 === 0) loadExpiries(state.ticker);
     // the daemon is told the watchlist on the slow tick (it streams only what is asked for)
     if (_tick % 4 === 0) declareWatchlistStream(loadWL());
     emit('ed:refresh', { tick: _tick, slow: _tick % 4 === 0 });

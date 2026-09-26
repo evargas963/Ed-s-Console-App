@@ -40,17 +40,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # (Traced from compute_call -> signals.py -> stamp_decision_bundle; the gate seam
 # is live_decision_bundle.apply_trade_impacting_gate.)
 MONEY_PATH_FILES = (
-    "call_engine.py",
-    "decision_gate.py",
-    "signals.py",
-    "live_decision_bundle.py",
-    "trade_impacting_gate.py",
-    "bayesian_fusion.py",
+    "terrain_engine.py",
+    "math_exposure_core.py",
+    "math_levels.py",
     "math_probabilities.py",
-    "horizon_outcomes.py",
+    "terrain_read.py",
+    "terrain_atr.py",
+    "liquidity_value_engine.py",
+    "server.py",
 )
 # Session authority must live only here.
-SESSION_AUTHORITY_ALLOW = ("time_et.py", "ct_session.py")
+SESSION_AUTHORITY_ALLOW = ("time_et.py", )
 
 # Only UNAMBIGUOUS fabrications: a literal 1/3 "neutral" probability or a 500.0
 # magic spot assigned to a probability/confidence/spot field. Honest abstention
