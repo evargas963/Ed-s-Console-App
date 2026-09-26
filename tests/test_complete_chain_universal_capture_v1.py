@@ -22,7 +22,6 @@ from types import SimpleNamespace
 from calibration.complete_chain_capture import (
     eligible_near_term_expiries,
     has_complete_chain_capture_today,
-    latest_complete_chain_capture,
     persist_complete_chain_capture,
 )
 from tests.conftest import most_recent_trading_day_et
@@ -118,35 +117,8 @@ def _chain_in_hand():
     return list(_TSLA_CONTRACTS) + list(_SPY_CONTRACTS)
 
 
-def test_each_eligible_expiry_is_saved_from_the_chain_in_hand_with_no_vendor_call(monkeypatch, tmp_path):
-    import server as srv
-    db_path = _fake_db(monkeypatch, srv, tmp_path)
-    _no_vendor_calls(monkeypatch, srv)
-    monkeypatch.setattr(srv, "resolve_spot", lambda tk, **k: (123.0, "test", 0.0))
-    # the two real expiries are 45 days apart: widen the horizon so both are eligible here
-    monkeypatch.setattr(srv, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 30000.0)
-
-    srv._persist_universal_complete_chain("ZZTEST", _chain_in_hand(), ts_utc=_TS_IN_WINDOW)
-
-    tsla = latest_complete_chain_capture(db_path, "ZZTEST", _TSLA_EXPIRY)
-    spy = latest_complete_chain_capture(db_path, "ZZTEST", _SPY_EXPIRY)
-    assert {c["symbol"] for c in tsla["contracts"]} == {c["symbol"] for c in _TSLA_CONTRACTS}
-    assert {c["symbol"] for c in spy["contracts"]} == {c["symbol"] for c in _SPY_CONTRACTS}
-    assert tsla["completeness_basis"] == spy["completeness_basis"] == srv.COMPLETENESS_BASIS_STRIKE_RANGE_ALL
 
 
-def test_nothing_is_saved_outside_the_capture_window_or_on_a_non_trading_day(monkeypatch, tmp_path):
-    import server as srv
-    from time_et import is_trading_day_et
-    db_path = _fake_db(monkeypatch, srv, tmp_path)
-    _no_vendor_calls(monkeypatch, srv)
-    monkeypatch.setattr(srv, "COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS", 30000.0)
-    srv._persist_universal_complete_chain("ZZTEST", _chain_in_hand(), ts_utc=_ts_at(_DAY, 9, 0))
-    probe = date.fromordinal(_DAY.toordinal() + 5)
-    while is_trading_day_et(probe.isoformat()):
-        probe = date.fromordinal(probe.toordinal() + 1)
-    srv._persist_universal_complete_chain("ZZTEST", _chain_in_hand(), ts_utc=_ts_at(probe, 10, 15))
-    assert latest_complete_chain_capture(db_path, "ZZTEST", _TSLA_EXPIRY) is None
 
 
 def test_an_expiry_already_saved_today_is_not_saved_again(monkeypatch, tmp_path):

@@ -145,7 +145,6 @@ def test_operator_decisions_still_resolve():
     ids = set(re.findall(r"^\| \*\*(O-\d\d)\*\* \|", text, re.M))
     assert {f"O-{i:02d}" for i in range(1, 14)} <= ids
     assert "R-08" in text and "R-09" in text
-    assert (ROOT / "config" / "decision_path_admissions.json").is_file()
 
 
 def test_unproven_claims_still_fail_closed():
@@ -155,12 +154,6 @@ def test_unproven_claims_still_fail_closed():
     assert isinstance(gate.check_measured_claims_cite_evidence(), list)
 
 
-def test_served_pipeline_quality_is_the_document_not_a_stub():
-    text = (ROOT / "PIPELINE_QUALITY.md").read_text(encoding="utf-8")
-    assert "Archived Phase 3b" not in text
-    assert text.count("\n") > 20 and "## " in text
-    server = (ROOT / "server.py").read_text(encoding="utf-8")
-    assert 'Path(APP_DIR) / "PIPELINE_QUALITY.md"' in server
 
 
 # test_moved_source_consumers_are_rewired was deleted 2026-09-11 (RC-550): a one-time migration

@@ -27,7 +27,6 @@ CI_TOOLING_DEPENDENCIES = (
 # Runtime deps from requirements.txt (server / Schwab client path).
 CI_RUNTIME_DEPENDENCIES = (("schwab-py", "schwab"),)
 # Governance modules imported by CI jobs.
-CI_GOVERNANCE_IMPORT_MODULES = ("tools.build_feature_assignment_matrix_v2",)
 # App modules CI jobs import without live Schwab credentials.
 CI_APP_IMPORT_MODULES = ("schwab_client", "server")
 
@@ -46,9 +45,6 @@ def test_ci_runtime_dependency_importable(pkg_name: str, import_name: str) -> No
     importlib.import_module(import_name)
 
 
-@pytest.mark.parametrize("module", CI_GOVERNANCE_IMPORT_MODULES)
-def test_ci_governance_module_importable(module: str) -> None:
-    assert importlib.import_module(module).__name__ == module
 
 
 @pytest.mark.parametrize("module", CI_APP_IMPORT_MODULES)

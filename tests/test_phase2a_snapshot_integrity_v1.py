@@ -48,7 +48,7 @@ def _bars(session, high_of_interior: float = 105.0) -> list:
             hi = px + 0.05
             if off == 1 and i == 30:            # interior bar of the PRIOR session -> PDH
                 hi = high_of_interior
-            out.append({"datetime": ts.timestamp(), "open": px, "high": hi,
+            out.append({"timestamp": int(ts.timestamp() * 1000), "open": px, "high": hi,
                         "low": px - 0.05, "close": px, "volume": 1000.0 + i})
     return out
 
@@ -135,7 +135,7 @@ def test_the_fingerprint_covers_every_bar_field(monkeypatch):
 
     # A timestamp change must also register.
     shifted = [dict(b) for b in base]
-    shifted[30]["datetime"] = shifted[30]["datetime"] + 60.0
+    shifted[30]["timestamp"] = shifted[30]["timestamp"] + 60_000
     assert LVE._snapshot_input_fingerprint("ZZRC324", session, shifted, "test_fixture") != fp
 
 

@@ -11,7 +11,6 @@ tests/test_live_push_channel_v1.py.
 from __future__ import annotations
 
 import ast
-import asyncio
 import inspect
 import time
 
@@ -20,7 +19,7 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-from stream_spine import CaptureWriter, book_msg, quote_msg
+from stream_spine import book_msg, quote_msg
 
 
 @pytest.fixture(autouse=True)
@@ -35,16 +34,6 @@ def _reset(tmp_path):
     ofs._last_subscribe_completed_ts = None
     ofls.clear_all_live_state()
     return tmp_path / "stream_capture.db"
-
-
-def _write_l1_row(db, symbol, native, ts_recv):
-    """A capture DB with one row -- for the producer-identity checks below, which read the
-    daemon's heartbeat from stream_capture.db (health, not a live value)."""
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.insert(f"quote.{symbol}", quote_msg(symbol=symbol, bid=native.get("BID_PRICE"),
-                                          src="schwab_l1", ts_recv=ts_recv, native=native))
-    w.commit()
-    w.close()
 
 
 def _push_l1(symbol, native, ts_recv):
@@ -131,30 +120,9 @@ def test_set_active_ticker_puts_its_book_and_quote_in_the_wanted_list(tmp_path, 
     assert ofs._wanted_version > before, "the feed loop sends the change"
 
 
-def test_feed_loop_starts_and_stops_cleanly(tmp_path, monkeypatch):
-    """start_order_flow_stream/stop_order_flow_stream must work with NO Schwab client
-    (None) — the whole point of the repair is that this feed needs no account/session."""
-    _reset(tmp_path)
-
-    async def go():
-        ok = ofs.start_order_flow_stream(None, None, "SPY")
-        assert ok is True
-        assert ofs.is_order_flow_stream_running() is True
-        await asyncio.sleep(0.05)
-        ofs.stop_order_flow_stream(join_timeout=1.0)
-        assert ofs.is_order_flow_stream_running() is False
-    asyncio.run(go())
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # 2026-09-16, audit finding #6 (bounded-vendor-call reconciliation): the producer's
 # rejected-contract map rides the SAME heartbeat row as claimed_coverage_json. These
 # prove the REAL CaptureWriter.write_heartbeat / read_producer_rejected_option_contracts
 # round trip: sticky-unless-explicit (a frequent claimed_coverage-only publish must not
 # wipe a standing rejection) and the same staleness fail-closed rule as coverage.
-# ─────────────────────────────────────────────────────────────────────────────
-
-

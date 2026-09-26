@@ -43,15 +43,11 @@ ENFORCEMENT_PATHS: tuple[str, ...] = (
     "tools/stop_guard.py",
     "tools/operating_process_lock.py",
     "tools/process_lock_guard.py",
-    "calibration/repair_canonical_1m_shared.py",
-    "calibration/repair_canonical_1m_bars_for_outcomes.py",
 )
 
 #: Wipe-protected paths (LOCK-2 reach): enforcement surfaces plus the calibration
 #: producers below — role-free since the 2026-08-24 teardown.
 PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS + (
-    "calibration/build_trusted_anchor_proof_dataset.py",
-    "calibration/run_production_accumulation_validation.py",
 )
 
 #: LOCK-2 (RC-231): the tree-destructive git CLASS, not just `reset --hard`. Three wipes on
@@ -110,8 +106,6 @@ PRODUCT_WIPE_PROTECTED: tuple[str, ...] = (
     "math_levels.py",
     "liquidity_value_engine.py",
     "liquidity_models.py",
-    "ml_predict.py",
-    "ml_data_common.py",
     "static/",
     "calibration/",
     "features/",

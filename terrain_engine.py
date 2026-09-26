@@ -33,6 +33,7 @@ from math_exposure_core import (
     exposure_books,
     exposures_have_dollar_gex,
     merge_exposure_books,
+    put_call_oi_ratio,
     pick_delta_wall_strikes,
     pick_net_gex_peak_strike,
     pick_pin_and_strength,
@@ -41,16 +42,8 @@ from math_exposure_core import (
     pick_volatility_point_strikes,
     total_gex_dollars_at_strike,
 )
-from math_levels import (
-    compute_charm_by_strike,
-    contract_inputs,
-    compute_gamma_flip_v2,
-    compute_gamma_profile,
-    compute_gamma_support_levels,
-    compute_max_pain,
-    key_level_strikes_with_gamma,
-    pick_charm_wall_strikes,
-)
+from math_levels import compute_charm_by_strike, contract_inputs, compute_gamma_flip_v2, compute_gamma_profile, compute_gamma_support_levels, compute_max_pain, pick_charm_wall_strikes
+from math_exposure_core import key_level_strikes_with_gamma
 from terrain_read import build_terrain_read
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
@@ -220,6 +213,10 @@ class TerrainSnapshot:
     #: {strike: charm bucket} from compute_charm_by_strike -- the charm walls above and the
     #: charm-by-strike panel read the same map.
     charm_by_strike: dict = field(default_factory=dict, repr=False)
+    #: {expiry: put OI / call OI} for each listed expiry
+    pcr_by_expiry: dict = field(default_factory=dict)
+    #: every expiry the chain lists, ascending
+    expiries: list = field(default_factory=list)
     #: Wall-clock the chain behind per_strike was fetched — every consumer must be able to render
     #: an age on its face rather than implying "now".
     computed_ts_utc: float | None = None
@@ -451,115 +448,8 @@ def per_strike_view(books: dict, exposures: dict, contracts: list[dict]) -> dict
             "far": rows(lambda d: d is not None and d > 7)}
 
 
-def _per_strike_map(exposures: dict, contracts: list[dict]) -> dict[float, dict[str, Any]]:
-    """Per-strike net GEX$ and SESSION VOLUME from the chain that just built `exposures` (RC-68).
-
-    Volume is summed through the canonical non-negative reader — never a raw float(), which admits
-    NaN silently (RC-38) — and strikes are read through the finite reader so a NaN strike can never
-    become a dict key. One chain in, one map out: this is the single source for the per-strike
-    histogram, replacing the frozen morning archive it used to read.
-    """
-    from numeric_contract import float_finite_or_none, float_nonnegative_or_none
-
-    out: dict[float, dict[str, Any]] = {}
-    for k, ex in (exposures or {}).items():
-        sk = float_finite_or_none(k)
-        if sk is None:
-            continue
-        # RC-290: None, not 0.0. I annotated this `caps-ok: a strike with no contract volume
-        # genuinely traded zero` and Cursor executed the claim — a MISSING totalVolume and a
-        # REAL zero both produced 0.0, so the rendered per-strike volume could not tell "no
-        # contract reported" from "nobody traded". That is RC-274's defect, reintroduced by
-        # me inside a comment excusing it. A strike only gets a number once a contract
-        # actually supplies one.
-        out[sk] = {"strike": sk, "net_gex": getattr(ex, "net_gex", None), "volume": None}  # caps-ok: the getattr default is None, which PRESERVES absence rather than substituting a value — the exact opposite of the pattern family; verified by test_absent_net_gex_stays_none_not_zero
-    for ct in contracts or []:
-        if not isinstance(ct, dict):
-            continue
-        sk = float_finite_or_none(ct.get("strikePrice"))
-        if sk is None or sk not in out:
-            continue
-        v = float_nonnegative_or_none(ct.get("totalVolume"))
-        if v is not None:
-            prev = out[sk]["volume"]
-            out[sk]["volume"] = v if prev is None else prev + v
-    return out
 
 
-def strongest_strike_storm1(rows: list | None) -> dict | None:
-    """RC-159 — the SPOT-INDEPENDENT strongest strike, from `[[strike, net_gex, volume], ...]`.
-
-    OPERATOR DEFINITION (binding):
-        inv_rank(x) = n + 1 - rank(x)          # rank 1 = highest value
-        storm1(k)   = inv_rank(volume_k) * inv_rank(|net_gex_k|)
-        strongest   = argmax_k storm1(k)
-
-    SPOT DOES NOT SELECT THE CANDIDATE SET, and that is the whole point. The old
-    strongest-strike notion ranked inside a +/-5 percent band around spot, which cannot express
-    the situation the operator is actually asking about: a strike that is far away NOW and that
-    price may migrate toward. A band centred on spot answers "what is strong near where we are";
-    this answers "what is strong", and the two differ exactly when the answer matters.
-
-    Ranking is over every strike PRESENT IN THE ROWS — the same liquid set the Chart paints, so
-    the score describes the ladder an operator is looking at rather than a private universe.
-    Ties take the average rank, so two equal volumes cannot be ordered by list position.
-
-    Returns None when no row carries a finite strike, gex and volume — absence stays absence.
-    NOT A SIGNAL: this is a Collect/analytics descriptor. It has no forward test, no admission,
-    and no place in Decide.
-    """
-    clean: list[tuple[float, float, float]] = []
-    for r in rows or []:
-        if not isinstance(r, (list, tuple)) or len(r) < 3:
-            continue
-        try:
-            k, g, v = float(r[0]), float(r[1]), float(r[2])
-        except (TypeError, ValueError):
-            continue
-        if not (k == k and g == g and v == v):          # NaN never becomes a winner
-            continue
-        if k in (float("inf"), float("-inf")):
-            continue
-        clean.append((k, abs(g), v))
-    if not clean:
-        return None
-
-    def _inv_ranks(vals: list[float]) -> list[float]:
-        """n+1-rank with AVERAGE ranks for ties (rank 1 = highest)."""
-        n = len(vals)
-        order = sorted(range(n), key=lambda i: -vals[i])
-        ranks = [0.0] * n
-        i = 0
-        while i < n:
-            j = i
-            while j + 1 < n and vals[order[j + 1]] == vals[order[i]]:
-                j += 1
-            avg = (i + 1 + j + 1) / 2.0                  # 1-based average rank for the tie group
-            for t in range(i, j + 1):
-                ranks[order[t]] = avg
-            i = j + 1
-        return [n + 1 - r for r in ranks]
-
-    vol_inv = _inv_ranks([c[2] for c in clean])
-    gex_inv = _inv_ranks([c[1] for c in clean])
-    best_i, best_score = 0, -1.0
-    for i in range(len(clean)):
-        s = vol_inv[i] * gex_inv[i]
-        # deterministic tie-break: higher volume, then lower strike — never list order
-        if s > best_score or (s == best_score and (
-                clean[i][2], -clean[i][0]) > (clean[best_i][2], -clean[best_i][0])):
-            best_i, best_score = i, s
-    n = len(clean)
-    return {
-        "strike": clean[best_i][0],
-        "storm1": best_score,
-        "vol": clean[best_i][2],
-        "abs_gex": clean[best_i][1],
-        "vol_rank": n + 1 - vol_inv[best_i],
-        "gex_rank": n + 1 - gex_inv[best_i],
-        "n_strikes": n,
-        "universe": "all strikes present in the row set — spot did not select it",
-    }
 
 
 def wall_geometry_state(spot: float | None, wall: float | None,
@@ -848,5 +738,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         per_strike=per_strike_view(books, exposures, contracts),
         books=books,
         charm_by_strike=charm_by_strike,
+        pcr_by_expiry={e: put_call_oi_ratio(book) for (e, _d), (book, _diag) in books.items()},
+        expiries=sorted({e for (e, _d) in books}),
         computed_ts_utc=_time.time(),
     )

@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from math_levels import compute_level_density
-from math_probabilities import compute_volume_oi_ratio
-from math_volatility import compute_em_progress, compute_iv_model_spread, compute_iv_skew
 
 ROOT = Path(__file__).resolve().parent.parent
 SERVER = (ROOT / "server.py").read_text(encoding="utf-8")
@@ -51,36 +48,13 @@ def test_server_ms_dict_assembly_has_no_fail_open_get_defaults():
         assert pattern not in SERVER, f"fail-open pattern still present: {pattern}"
 
 
-def test_server_ms_dict_assembly_uses_bare_get_for_dpi():
-    assert 'ms_dict["dpi_direction"]         = _dpi.get("direction")' in SERVER
-    assert 'ms_dict["hedging_flow_direction"]  = _hedging_flow.get("direction")' in SERVER
-    assert 'ms_dict["em_breached"]       = _em_progress.get("breached")' in SERVER
-    assert 'ms_dict["level_density_count"]   = _level_density.get("count")' in SERVER
 
 
-def test_em_progress_unavailable_when_inputs_missing():
-    out = compute_em_progress(None, 100.0, 110.0, 90.0)
-    assert out["breached"] is None
-    assert out["severity"] is None
 
 
-def test_iv_skew_unavailable_without_contracts():
-    out = compute_iv_skew([], 500.0)
-    assert out["interpretation"] is None
 
 
-def test_level_density_unavailable_without_levels():
-    out = compute_level_density({}, 500.0)
-    assert out["count"] is None
-    assert out["density_label"] is None
-    assert out["level_names"] is None
 
 
-def test_iv_model_spread_label_none_without_contracts():
-    out = compute_iv_model_spread([], 500.0)
-    assert out["label"] is None
 
 
-def test_volume_oi_ratio_label_none_without_exposures():
-    out = compute_volume_oi_ratio({}, 500.0)
-    assert out["label"] is None

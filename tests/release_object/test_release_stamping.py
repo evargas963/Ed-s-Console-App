@@ -33,15 +33,3 @@ def test_release_object_fields(monkeypatch):
     assert rel["release_id"].startswith("rel-")
 
 
-def test_decisions_carry_release_id(tmp_path, monkeypatch):
-    monkeypatch.setenv("ED_BUILD_GENERATION", "feedface" * 5)
-    from release_object import initialize_release_at_startup
-    from live_decision_bundle import stamp_decision_bundle
-
-    initialize_release_at_startup(force=True)
-    ms = stamp_decision_bundle(
-        {"ticker": "SPY", "spot": 500.0, "prior_close": 500.0, "call_signal": "wait", "validation_summary": "ok"},
-        route="server._fetch_state",
-    )
-    assert ms["release_id"]
-    assert ms["release_object"]["release_id"] == ms["release_id"]

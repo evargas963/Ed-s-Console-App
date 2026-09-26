@@ -18,8 +18,6 @@ const STRIKES = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 
 const CHAIN = { spot: 100, expiry: '2026-09-11', status: 'ok', scope: { kind: 'complete_single_expiry' },
   contracts: [{ putCall: 'CALL', strikePrice: 100, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.5, volatility: 12, expirationDate: '2026-09-11' },
     { putCall: 'PUT', strikePrice: 100, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12, expirationDate: '2026-09-11' }] };
-const LIVE = { ticker: 'SPY', spot: 100, spot_disp: '100.00', bid: 99.99, ask: 100.01, session_label: 'RTH',
-  analytics_lightweight: {}, streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 300 } };
 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
@@ -31,7 +29,7 @@ async function intercept(page) {
     else if (url.includes('/api/bars1m')) body = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1 }] };
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };
     else if (url.includes('/api/chain')) body = CHAIN;
-    else if (url.includes('/api/live/state')) body = LIVE;
+    else if (url.includes('/api/session')) body = { session_label: 'RTH' };
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });

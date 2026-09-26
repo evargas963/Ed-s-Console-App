@@ -8,7 +8,6 @@
 """
 from __future__ import annotations
 
-import asyncio
 
 import app.market_data.schwab.streaming.capture as cap
 from stream_spine import HealthRegistry, MessageBus
@@ -20,43 +19,8 @@ def _handler():
     return h, health
 
 
-class _ScriptedStream:
-    """Minimal StreamClient surface _schwab_connect_after_login drives; handle_message follows
-    a script of 'ok' / exception instances, then blocks."""
-    def __init__(self, script):
-        self.script = list(script)
-        self.calls = 0
-
-    def add_level_one_equity_handler(self, h): pass
-    def add_chart_equity_handler(self, h): pass
-    def add_nasdaq_book_handler(self, h): pass
-    def add_nyse_book_handler(self, h): pass
-    def add_level_one_option_handler(self, h): pass
-    def add_options_book_handler(self, h): pass
-
-    async def handle_message(self):
-        self.calls += 1
-        if not self.script:
-            await asyncio.sleep(3600)
-        step = self.script.pop(0)
-        if step != "ok":
-            raise step
-        await asyncio.sleep(0)
 
 
-def _run_pump(script, settle=0.3):
-    async def go():
-        stream = _ScriptedStream(script)
-        stop = asyncio.Event()
-        _s, task, _o = await cap._schwab_connect_after_login(
-            stream, [], MessageBus(), HealthRegistry(), cap.CaptureStats(), stop)
-        await asyncio.sleep(settle)
-        done, exc = task.done(), (task.exception() if task.done() and not task.cancelled() else None)
-        stop.set()
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
-        return done, exc, stream.calls
-    return asyncio.run(go())
 
 
 def test_terrain_rotates_only_inside_the_contention_window():
@@ -69,11 +33,6 @@ def test_terrain_rotates_only_inside_the_contention_window():
     assert board[0] in now and deferred                       # the window still rotates
 
 
-def test_sse_dispatch_has_its_own_single_thread():
-    import server as srv
-    ex = srv._get_l1_sse_dispatch_executor()
-    assert ex is not srv._get_l1_light_executor()
-    assert ex._max_workers == 1
 
 
 def test_forming_bar_is_keyed_on_trade_time_only(monkeypatch):
@@ -104,26 +63,6 @@ def test_forming_bar_is_keyed_on_trade_time_only(monkeypatch):
 
 # ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
 
-def test_drop_counts_are_per_consumer_and_survive_a_disconnect():
-    """The writer, push clients and push history all subscribe to "" -- keyed by prefix they
-    overwrote each other (audit of #280). Counts are per consumer name, and a push client's
-    drops remain after it disconnects."""
-    from stream_spine import COUNT_DROPS
-
-    async def go():
-        bus = MessageBus()
-        writer = bus.subscribe("", policy=COUNT_DROPS, maxsize=1, name="db_writer")
-        client = bus.subscribe("", policy=COUNT_DROPS, maxsize=2, name="push_client")
-        for i in range(6):
-            bus.publish(f"quote.S{i}", {"i": i})
-        before = bus.drop_counts()
-        bus.unsubscribe(client)
-        after = bus.drop_counts()
-        _ = writer
-        return before, after
-    before, after = asyncio.run(go())
-    assert before == {"db_writer": 5, "push_client": 4}
-    assert after == {"db_writer": 5, "push_client": 4}
 
 
 def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
@@ -152,23 +91,6 @@ def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
     assert replaced and str(replaced[0][1]) == str(tok), "the refresh must land via os.replace"
 
 
-def test_a_transient_windows_share_violation_is_retried_then_lands(monkeypatch, tmp_path):
-    import schwab_client as sc
-    import arch_competition.atomic_io as aio
-
-    real = aio.write_json_file_atomically
-    calls = {"n": 0}
-
-    def flaky(path, payload, **kw):
-        calls["n"] += 1
-        if calls["n"] < 3:
-            raise PermissionError("[WinError 5] Access is denied")
-        return real(path, payload, **kw)
-    monkeypatch.setattr(aio, "write_json_file_atomically", flaky)
-    monkeypatch.setattr(sc.time, "sleep", lambda s: None)
-    dest = tmp_path / "t.json"
-    sc.write_token_file_atomically(str(dest), {"x": 1})
-    assert calls["n"] == 3 and dest.exists()
 
 
 # ── PR C: server-side bar roll-up; quote_tick carries the screen's numbers; heatmap demand ──

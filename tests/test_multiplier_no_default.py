@@ -3,9 +3,7 @@ data, never a hardcoded/default multiplier -- a wrong default silently mis-scale
 every exposure computed from that contract."""
 from __future__ import annotations
 
-import json
 
-from backfill_flow_imbalance import _contracts_from_chain_json
 from math_exposure_core import compute_exposures_by_strike
 
 
@@ -82,10 +80,3 @@ def test_exposures_skip_missing_bidsize_instead_of_coercing_schwab_none_to_zero(
     assert exposures[500.0]["call_bid_size"] == 0.0
 
 
-def test_flow_backfill_normalizer_does_not_default_missing_multiplier_to_100():
-    raw = json.dumps([_contract(multiplier=5), {k: v for k, v in _contract().items() if k != "multiplier"}])
-
-    rows = _contracts_from_chain_json(raw)
-
-    assert rows[0]["multiplier"] == 5.0
-    assert rows[1]["multiplier"] is None

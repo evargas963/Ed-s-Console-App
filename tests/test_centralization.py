@@ -27,9 +27,7 @@ if sys.stdout.encoding and "cp1252" in sys.stdout.encoding.lower():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 import ast
 import functools
-import importlib
 import json
-import time
 from pathlib import Path
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
@@ -85,42 +83,6 @@ def _warn(msg):
 # TEST 1: ARCHITECTURE — correct files exist
 # ══════════════════════════════════════════════════════════════════════════════
 
-@fails_closed
-def test_architecture():
-    print("\n1. ARCHITECTURE — file existence")
-
-    REQUIRED = [
-        # Core pipeline
-        "server.py", "signals.py", "signal_types.py",
-        "rules_engine.py", "prediction_engine.py", "call_engine.py",
-        "market_state.py",
-        # Math layer
-        "math_exposure.py", "math_exposure_core.py",
-        "math_levels.py", "math_volatility.py", "math_probabilities.py",
-        # Model layer
-        "regime_engine.py", "bayesian_fusion.py",
-        "lstm_model.py",
-        "monte_carlo.py",
-        # Data layer
-        "db.py", "micro_structure.py", "market_context.py",
-        # Training
-        "ml_train.py", "ml_predict.py", "lstm_data.py", "transformer_train.py",
-        "training_provenance.py", "verify_active_models.py",
-        # Support
-        "config.py", "schwab_client.py",
-        # Frontend
-        "index.html",
-    ]
-
-    for f in REQUIRED:
-        # index.html might be in templates/ or static/
-        candidates = [ROOT / f]
-        if f == "index.html":
-            candidates += [ROOT / "templates" / f, ROOT / "static" / f]
-        if any(c.exists() for c in candidates):
-            _pass(f)
-        else:
-            _fail(f"{f} MISSING")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -194,92 +156,12 @@ def test_formula_ownership(repo_index):
 # TEST 3: IMPORT CHAIN — all modules import cleanly
 # ══════════════════════════════════════════════════════════════════════════════
 
-@fails_closed
-def test_imports():
-    print("\n3. IMPORT CHAIN — module imports")
-
-    MODULES = [
-        "config",
-        "math_exposure_core",
-        "math_levels",
-        "math_volatility",
-        "math_probabilities",
-        "math_exposure",
-        "signal_types",
-        "micro_structure",
-        "regime_engine",
-        "monte_carlo",
-        "bayesian_fusion",
-    ]
-
-    for mod in MODULES:
-        try:
-            importlib.import_module(mod)
-            _pass(f"import {mod}")
-        except Exception as e:
-            _fail(f"import {mod}: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TEST 4: DATACLASS INTEGRITY
 # ══════════════════════════════════════════════════════════════════════════════
 
-@fails_closed
-def test_dataclasses():
-    print("\n4. DATACLASS INTEGRITY")
-
-    # SnapshotRow
-    try:
-        from db import SnapshotRow
-        _sr = SnapshotRow(
-            ticker="SPY", timeframe="5m", ts_utc=1.0, ts_et="test",
-            et_hour=10, et_minute=30, market_session="rth", spot=570.0,
-        )
-        n = len(SnapshotRow.__dataclass_fields__)
-        _pass(f"SnapshotRow: {n} fields, constructs OK")
-
-        # Check critical fields exist
-        critical = [
-            "regime_primary", "fusion_dominant", "mc_efe", "mc_eae",
-            "validation_passed", "r_units", "execution_mode",
-            "iv_skew", "atr", "breakout_score", "sweep_score",
-            "session_high", "session_low", "last_sweep_type",
-            "tnx_yield", "bond_signal", "iwm_risk_score",
-            "sector_leader", "level_density_count",
-        ]
-        for f in critical:
-            if f in SnapshotRow.__dataclass_fields__:
-                _pass(f"  SnapshotRow.{f}")
-            else:
-                _fail(f"  SnapshotRow.{f} MISSING")
-    except Exception as e:
-        _fail(f"SnapshotRow: {e}")
-
-    # SignalInput
-    try:
-        from signal_types import SignalInput
-        n = len(SignalInput.__dataclass_fields__)
-        _pass(f"SignalInput: {n} fields")
-
-        for f in ["em_upper", "em_lower", "oi_center"]:
-            if f in SignalInput.__dataclass_fields__:
-                _pass(f"  SignalInput.{f}")
-            else:
-                _fail(f"  SignalInput.{f} MISSING")
-    except Exception as e:
-        _fail(f"SignalInput: {e}")
-
-    # TheCall
-    try:
-        from signal_types import TheCall
-        for f in ["validation_passed", "structure_valid", "probability_valid",
-                   "risk_valid", "r_units", "execution_mode"]:
-            if f in TheCall.__dataclass_fields__:
-                _pass(f"  TheCall.{f}")
-            else:
-                _fail(f"  TheCall.{f} MISSING")
-    except Exception as e:
-        _fail(f"TheCall: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -432,226 +314,14 @@ def test_syntax(repo_index):
 # TEST 9: WRAPPER HEALTH — math_exposure.py re-exports correctly
 # ══════════════════════════════════════════════════════════════════════════════
 
-@fails_closed
-def test_wrapper():
-    print("\n9. WRAPPER — math_exposure.py re-exports")
-
-    # TEST_SYSTEM_REHAB_V2 final remediation: `hasattr(me, name)` only proves SOME
-    # attribute with that name exists on math_exposure -- it is satisfied identically
-    # by a genuine `from math_levels import *` re-export, a locally-redefined stale
-    # duplicate under the same name, or a mis-aliased import wiring the WRONG split
-    # module's function in under this name (e.g. `from math_levels import
-    # compute_gamma_flip_v1 as compute_gamma_flip_v2`). Object IDENTITY against the
-    # actual owning split module is what "wrapper" means; presence alone is not.
-    try:
-        import math_exposure as me
-        import math_exposure_core
-        import math_levels
-        import math_probabilities
-        import math_volatility
-        owners = {
-            "math_exposure_core": math_exposure_core, "math_levels": math_levels,
-            "math_volatility": math_volatility, "math_probabilities": math_probabilities,
-        }
-        critical_exports = [
-            "compute_exposures_by_strike",
-            "compute_gamma_flip_v2",
-            "compute_gamma_void_zones",
-            "compute_expected_move_straddle",
-            "compute_atr",
-            "compute_iv_skew",
-            "compute_dealer_pressure_index",
-            "compute_level_density",
-            "compute_volatility_envelope",
-        ]
-        for name in critical_exports:
-            wrapped = getattr(me, name, None)
-            if wrapped is None:
-                _fail(f"math_exposure.{name} NOT exported")
-                continue
-            owning = [mn for mn, m in owners.items() if getattr(m, name, None) is wrapped]
-            if owning:
-                _pass(f"math_exposure.{name} (identical to {owning[0]}.{name})")
-            else:
-                _fail(f"math_exposure.{name} is not object-identical to any split "
-                     f"module's own {name} -- a locally-redefined stub or a "
-                     f"mis-aliased import, not a genuine re-export")
-    except Exception as e:
-        _fail(f"Wrapper import: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TEST 10: MONTE CARLO v2 REGIME BEHAVIOR
 # ══════════════════════════════════════════════════════════════════════════════
 
-@fails_closed
-def test_monte_carlo_v2():
-    print("\n10. MONTE CARLO v2 — regime-aware behavior")
-
-    try:
-        import monte_carlo
-
-        base_args = dict(
-            spot=570.0, iv=0.18, horizon_bars=13, n_paths=3000,
-            call_gamma_wall=575.0, put_gamma_wall=565.0,
-            em_upper=573.0, em_lower=567.0,
-            realized_vol=0.15, atr=0.8, seed=42,
-        )
-
-        # Test 1: pinning vs breakout dispersion
-        r_pin = monte_carlo.simulate(**base_args, regime="pinning", regime_confidence="high")
-        r_brk = monte_carlo.simulate(**base_args, regime="breakout", regime_confidence="high")
-
-        if r_pin.simulation_ok and r_brk.simulation_ok:
-            _pass("MC v2: both regimes simulate OK")
-        else:
-            _fail("MC v2: simulation failed")
-            return
-
-        if r_pin.path_dispersion < r_brk.path_dispersion:
-            _pass(f"Pinning dispersion ({r_pin.path_dispersion:.2f}) < Breakout ({r_brk.path_dispersion:.2f})")
-        else:
-            _fail("Pinning dispersion should be < Breakout")
-
-        if r_pin.containment_prob > r_brk.containment_prob:
-            _pass(f"Pinning containment ({r_pin.containment_prob:.0%}) > Breakout ({r_brk.containment_prob:.0%})")
-        else:
-            _fail("Pinning containment should be > Breakout")
-
-        # Test 2: shock enabled only in breakout/expansion
-        if r_brk.assumptions.get("shock_enabled") and not r_pin.assumptions.get("shock_enabled"):
-            _pass("Shocks enabled in breakout, disabled in pinning")
-        else:
-            _fail("Shock gating incorrect")
-
-        # Test 3: model version is exactly mc_v3_garch.
-        # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE: was `"v3" in mv or "garch" in mv` --
-        # the failure message already claimed "Expected mc_v3_garch" while the oracle
-        # accepted ANY string containing either substring, so a silent drift to
-        # "mc_v4_garch" (or any other *garch* build) passed while reporting the wrong
-        # thing. This is the only test in the repo that pins MC's base version string
-        # (tests/test_mc_base_neutral_mode_v1.py only checks the ":base_neutral" suffix
-        # and the "blocked" refusal marker, never the base), so it is pinned exactly.
-        if r_pin.model_version == "mc_v3_garch":
-            _pass(f"Model version: {r_pin.model_version}")
-        else:
-            _fail(f"Expected mc_v3_garch, got {r_pin.model_version}")
-
-        # Test 4: no NaN/inf in outputs
-        import math as _m
-        fields_to_check = [
-            r_pin.median_path, r_pin.upper_50, r_pin.lower_50,
-            r_pin.expected_favorable_excursion, r_pin.expected_adverse_excursion,
-            r_pin.path_dispersion, r_pin.expected_move, r_pin.volatility,
-        ]
-        has_bad = any(v is not None and (_m.isnan(v) or _m.isinf(v)) for v in fields_to_check)
-        if not has_bad:
-            _pass("No NaN/inf in MC outputs")
-        else:
-            _fail("NaN or inf detected in MC outputs")
-
-        # Test 5: drift responds to model input
-        r_up = monte_carlo.simulate(**base_args, regime="trend_continuation",
-            model_prob_up=0.70, model_prob_down=0.10, model_confidence="high")
-        r_dn = monte_carlo.simulate(**base_args, regime="trend_continuation",
-            model_prob_up=0.10, model_prob_down=0.70, model_confidence="high")
-        drift_up = r_up.assumptions.get("per_bar_drift", 0)
-        drift_dn = r_dn.assumptions.get("per_bar_drift", 0)
-        if drift_up > 0 and drift_dn < 0:
-            _pass(f"Drift follows model: up={drift_up:.6f}, down={drift_dn:.6f}")
-        else:
-            _fail(f"Drift not following model: up={drift_up:.6f}, down={drift_dn:.6f}")
-
-        # Test 6: vol-of-vol produces fatter tails than constant vol
-        r_baseline = monte_carlo.simulate(**base_args, regime="unknown")
-        # Stochastic vol should produce wider tails (larger upper_75 - lower_75 gap)
-        if r_baseline.upper_75 is not None and r_baseline.lower_75 is not None:
-            tail_width = r_baseline.upper_75 - r_baseline.lower_75
-            if tail_width > 0:
-                _pass(f"Stochastic vol tail width: {tail_width:.2f}pts")
-            else:
-                _fail("Tail width should be positive")
-
-        # Test 7: GARCH integration — MC accepts per-bar sigma
-        try:
-            from math_volatility import compute_garch_forecast, blend_garch_sigma
-            # Build fake closes with known vol
-            _fake_closes = [570.0]
-            _rng = __import__('random')
-            _rng.seed(99)
-            for _ in range(40):
-                _fake_closes.append(_fake_closes[-1] + _rng.gauss(0, 0.4))
-
-            _g_raw = compute_garch_forecast(_fake_closes, horizon=13)
-            if _g_raw and len(_g_raw) == 13:
-                _pass(f"GARCH forecast: 13 bars, bar1={_g_raw[0]:.6f} bar13={_g_raw[-1]:.6f}")
-                # RC-334: the bar interval is stated, not assumed. monte_carlo consumes the
-                # result as per-bar sigma at its own BAR_MINUTES, so this check uses that.
-                _g_blend = blend_garch_sigma(
-                    _g_raw, iv=0.18, realized_vol=0.15, spot=570.0,
-                    bar_minutes=float(monte_carlo.BAR_MINUTES),
-                )
-                if _g_blend and len(_g_blend) == 13 and all(s > 0 for s in _g_blend):
-                    _pass("GARCH blend: 13 bars, floor enforced")
-                else:
-                    _fail("GARCH blend failed")
-
-                # MC with GARCH
-                r_garch = monte_carlo.simulate(**base_args, regime="unknown",
-                                               garch_sigma_bars=_g_blend)
-                if r_garch.assumptions.get("garch_active"):
-                    _pass(f"MC GARCH active: disp={r_garch.path_dispersion:.2f}")
-                else:
-                    _fail("MC did not use GARCH sigma bars")
-            else:
-                _warn("GARCH forecast returned None or wrong length")
-        except Exception as e:
-            _fail(f"GARCH test error: {e}")
-
-    except Exception as e:
-        _fail(f"MC v2 test error: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════════════
-
-if __name__ == "__main__":
-    full = "--full" in sys.argv
-
-    print("=" * 70)
-    print("  EdWebConsole — Production Hardening Tests")
-    print("=" * 70)
-    start = time.time()
-
-    test_architecture()
-    test_formula_ownership()
-    test_syntax()
-    test_gex_formula()
-    test_dataclasses()
-    test_model_health()
-    test_wrapper()
-
-    if full:
-        test_imports()
-        test_db_schema(full=True)
-        test_monte_carlo_v2()
-    else:
-        print("\n3. IMPORT CHAIN — skipped (use --full)")
-        print("\n7. DB SCHEMA — skipped (use --full)")
-        print("\n10. MC v2 BEHAVIOR — skipped (use --full)")
-
-    elapsed = time.time() - start
-
-    print("\n" + "=" * 70)
-    print(f"  RESULTS: {PASS} passed, {FAIL} failed, {WARN} warnings")
-    print(f"  Time: {elapsed:.1f}s")
-    print("=" * 70)
-
-    if FAIL > 0:
-        print(f"\n  [FAIL] {FAIL} FAILURES -- fix before deploying")
-        sys.exit(1)
-    elif WARN > 0:
-        print(f"\n  [WARN] {WARN} warnings -- review recommended")
-    else:
-        print("\n  [OK] ALL CLEAR -- ready for deployment")

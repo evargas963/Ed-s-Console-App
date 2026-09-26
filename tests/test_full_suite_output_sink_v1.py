@@ -162,7 +162,7 @@ def test_failure_exit_code_is_exact_and_the_log_is_retained(tmp_path):
 
 def test_success_is_visible_and_exit_code_zero(tmp_path):
     r = subprocess.run(
-        _runner_cmd("tests/test_atomic_io.py"), cwd=str(ROOT), env=_child_env(tmp_path / "logs"),
+        _runner_cmd("tests/test_money_path_roster.py"), cwd=str(ROOT), env=_child_env(tmp_path / "logs"),
         capture_output=True, text=True, timeout=180,
     )
     assert r.returncode == 0, r.stdout

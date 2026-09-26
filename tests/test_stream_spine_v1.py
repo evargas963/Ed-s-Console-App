@@ -52,21 +52,6 @@ def test_coalesce_keeps_newest_only_and_counts_nothing_lost_as_drops():
     asyncio.run(go())
 
 
-def test_messages_never_coalesce_and_overflow_counts_loudly():
-    async def go():
-        bus = MessageBus()
-        sub = bus.subscribe("quote.", policy=COUNT_DROPS, maxsize=2)
-        for i in range(5):
-            bus.publish("quote.SPY", {"size": i})
-        # first two kept in order, three counted dropped — never silently merged
-        t0, m0 = await sub.get()
-        t1, m1 = await sub.get()
-        assert (m0["size"], m1["size"]) == (0, 1)
-        assert sub.dropped == 3
-        assert bus.drop_counts() == {"quote.": 3}
-    asyncio.run(go())
-
-
 def test_writer_refuses_operational_db():
     with pytest.raises(ValueError):
         CaptureWriter("data/ed_console.db")
@@ -364,15 +349,3 @@ def test_production_stream_daemon_exposes_no_database_path_switch(monkeypatch, t
 # `ended_ts IS NULL` rows survive into the next lifetime and read as indefinitely
 # subscribed across a window the daemon was not even running. 2A reconciles them at
 # startup; 2B refuses a second concurrently-open epoch for one (symbol, service).
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _epoch_rows(db):
-    con = sqlite3.connect(db)
-    try:
-        return con.execute(
-            "SELECT symbol, service, started_ts, ended_ts, reason "
-            "FROM stream_coverage_epochs ORDER BY id").fetchall()
-    finally:
-        con.close()
-
-

@@ -14,15 +14,15 @@ KEY_LEVELS_DATA_FLOW_FILES = (
     "math_levels.py",
     "math_volatility.py",
     "server.py",
-    "market_state.py",
-    "live_decision_bundle.py",
+    
+    
     "live_market_plane.py",
-    "planes/context_light.py",
+    
     "static/index.html",
-    "snapshot_normalizer.py",
-    "market_data_adapter.py",
-    "mc_fusion_adjustment.py",
-    "signals.py",
+    
+    
+    
+    
 )
 
 # Patterns that indicate unregistered Schwab-replaceable silent defaults in KL path.
@@ -35,21 +35,6 @@ FORBIDDEN_PATTERNS = (
 )
 
 # Closed register IDs — derivations allowed with provenance in these modules.
-REGISTERED_KL_DERIVATIONS = frozenset(
-    {
-        "compute_max_pain",
-        "pick_gamma_wall",
-        "pick_hvl",
-        "aggregate_net_gex",
-        "compute_expected_move_straddle",
-        "compute_expected_move_iv",
-        "resolve_kl_em_anchor",
-        "resolve_mc_iv_for_kl_em_anchor",
-        "compute_exposures_by_strike",
-        "_oe_bid_ask_mid",
-        "resolve_a2_contract_spread",
-    }
-)
 
 
 def _load_dictionary_leaves() -> set[str]:

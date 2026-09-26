@@ -188,8 +188,6 @@ class _RawHandler:
     def __init__(self, fn) -> None:
         self.fn = fn
 
-    def label_message(self, msg: dict) -> dict:
-        return msg
 
     def __call__(self, msg: dict):
         return self.fn(msg)

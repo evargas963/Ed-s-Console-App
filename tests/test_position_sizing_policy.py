@@ -2,14 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 import re
 
-from position_sizing_policy import (
-    REGIME_SIZE_MULTIPLIER_DEFAULT,
-    REGIME_SIZE_MULTIPLIERS,
-    regime_size_multiplier,
-)
 
 _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}
@@ -30,27 +24,10 @@ def _iter_production_py(repo_index):
         yield rel, text
 
 
-def test_regime_size_multiplier_known_labels():
-    assert regime_size_multiplier("trend_continuation") == 1.00
-    assert regime_size_multiplier("trend_continuation", "low") == 0.90
-    assert regime_size_multiplier("reversal_prone", "low") == 0.40
-    assert regime_size_multiplier("pinning", "high") == 0.70
-    assert regime_size_multiplier("breakout", "high") == 1.00
 
 
-def test_regime_size_multiplier_unknown_and_typo_use_default(caplog):
-    caplog.set_level(logging.DEBUG)
-    assert regime_size_multiplier("unknown") == REGIME_SIZE_MULTIPLIER_DEFAULT
-    assert regime_size_multiplier("not_a_regime") == REGIME_SIZE_MULTIPLIER_DEFAULT
-    assert regime_size_multiplier(None) == REGIME_SIZE_MULTIPLIER_DEFAULT
-    assert any("unmapped regime_label" in r.message for r in caplog.records)
 
 
-def test_regime_size_multiplier_confidence_nudge():
-    base = REGIME_SIZE_MULTIPLIERS["vol_compression"]
-    assert regime_size_multiplier("vol_compression", "medium") == base
-    assert regime_size_multiplier("vol_compression", "high") == min(1.0, base + 0.10)
-    assert regime_size_multiplier("vol_compression", "low") == max(0.40, base - 0.10)
 
 
 def test_no_inline_regime_mult_dict_outside_authority(repo_index):

@@ -247,6 +247,12 @@ CLOSE_COMMAND_CUTOVER = "2026-09-06"
 #: the required hardening check (RC-391: deleting the failing check is not paying the debt).
 #: Entries are removed once the retirement has landed on main; git keeps them.
 RETIRED_CHECKS: dict[str, str] = {
+    "decision_path_wired": "retired 2026-09-26 (operator): checked that call_engine.py wired the "
+                   "decision-path admission gate; the decision stack (call_engine, decision_gate, "
+                   "the ML models) was deleted with the analytics pipeline -- nothing left to wire.",
+    "admission_evidence_resolves": "retired 2026-09-26 (operator): resolved the evidence paths in "
+                   "config/decision_path_admissions.json; that registry and the decision gate that "
+                   "read it were deleted with the decision stack.",
     # 2026-09-11 (PR #239, RC-550): three registrations that measured something other than
     # the tree they were asked to judge.
     "venv_parity": "retired 2026-09-11: a property of the interpreter running the gate, not of "
@@ -498,13 +504,7 @@ _ORPHAN_KEY_SKIP_RECEIVERS = frozenset({
 #: in THAT file (Cursor audit of fd3403b2: walking every nested key into the GLOBAL
 #: write set harvested 26 names including dir/enabled/note — the glob failure at file
 #: scope). Credit is file_keys ∩ reader_.get() keys, applied only at that reader path.
-_DATA_FILE_KEY_SOURCES: tuple[tuple[str, str], ...] = (
-    # read by active_bundle_contract._load_migration_policy -> _legacy_allowance_open
-    # and artifact_integrity_strict_absence
-    ("config/ML_ITEM4_MIGRATION_POLICY.json", "active_bundle_contract.py"),
-    # read by v2_decision.a2_session_calendar.load_a2_session_calendar / _is_valid_calendar
-    ("data/trading_calendar/us_equities.json", "v2_decision/a2_session_calendar.py"),
-)
+_DATA_FILE_KEY_SOURCES: tuple[tuple[str, str], ...] = ()
 
 
 def _json_object_keys(path: Path) -> set[str]:
@@ -1658,11 +1658,6 @@ def _rc_numeric_claims_cite_a_command_violations() -> list[Violation]:
 #: is a function of whether it sits on the request path, which is why server.py is NOT
 #: grandfathered -- a regression there blocks the commit.
 _SNAPSHOT_TF_GRANDFATHERED = frozenset({
-    "snapshot_normalizer.py",                      # deliberate full-history rebuild
-    "research/gex_r1_screen_v1/signal.py",
-    "tools/check_card_direction_integrity.py",
-    "verification/base_ticker_observability.py",
-    "tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py",   # frozen legacy backfill
 })
 _SNAPSHOTS_ORDER_RE = re.compile(
     r"FROM\s+snapshots\b(?:(?!;|\"\"\"|').){0,400}?ORDER\s+BY\s+ts_utc",
@@ -2123,33 +2118,7 @@ def _closed_rows_ship_their_code_violations() -> list[Violation]:
 #: Addition prohibited — that is the lock. Top of the burn-down by blast radius:
 #: research/pilot_step3/data_loader.py (feeds the F2 pipeline) and challenger_eval_v1/runner.py.
 _PRICE_BARS_GRANDFATHERED = frozenset({
-    "tools/bar_history_recovery_audit_v1.py", "tools/canonical_1m_grid_validator_v1.py",
-    "tools/data_faucet_audit.py", "tools/historical_backfill_enrolled_1m_v1.py",
-    "tools/ingest_1m_to_staging.py", "tools/inspect_price_bars_1m_rth_gaps.py",
-    "tools/issue19_rehydration_range_v1.py", "tools/pin_neutral_anchor_feasibility_sample_v1.py",
-    "tools/study_pin_charm_v1.py", "tools/study_pin_direction_v1.py",
-    "tools/study_pin_regime_cut_v1.py", "tools/study_pin_residence_v1.py",
-    "tools/_multi_timeframe_audit_v1.py", "tools/_phase4a_fast_count.py",
-    "tools/_phase4a_proof_not_exists.py", "tools/_phase4a_quantify_anchor_miss.py",
-    "tools/_phase4b_audits.py", "tools/_phase4_bar_check.py", "tools/_phase4_snapshot_detail.py",
-    "tools/research/d2_build_dual_label_scratch_db.py",
-    "tools/legacy/horizon_7/audit_fused_policy_history_sufficiency_v1.py",
-    "tools/legacy/horizon_7/backfill_fusion_policy_columns_v1.py",
-    "tools/legacy/horizon_7/backfill_pred_1c_snapshots_v1.py",
-    "tools/legacy/horizon_7/batch_backfill_movement_predictions_v1.py",
-    "tools/legacy/horizon_7/build_checkpoint_provenance_bundle_v1.py",
-    "tools/legacy/horizon_7/enforce_universal_ticker_readiness_v1.py",
-    "tools/legacy/horizon_7/phase4c_rt_vs_backfill_equivalence_v1.py",
-    "tools/legacy/horizon_7/report_pred_1c_governed_remediation_v1.py",
-    "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
-    "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py",
-    "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py",
-    "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py",
-    "tools/legacy/horizon_7/_phase4e_dataset_adequacy_v1.py",
-    "tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py",
-    "tools/legacy/horizon_7/_quick_gov_pred1c.py",
-    "tools/legacy/horizon_7/_verify_outcomes_vs_bars.py",
-    "research/challenger_eval_v1/runner.py", "research/pilot_step3/data_loader.py",
+    "tools/data_faucet_audit.py",
 })
 
 _PRICE_BARS_CAL_RE = re.compile(
@@ -2693,26 +2662,6 @@ _RTH_AUTHORITIES = re.compile(
 #: these 17). Visible debt, not hidden: several (study_pin_*) back conclusions in
 #: governance/unproven_register.md that must be re-run under RTH scoping before they are re-cited.
 _RTH_GRANDFATHERED = frozenset({
-    "calibration/analyze_phase3.py",
-    "research/cost_aware_eval_v1/faint_lead_kill_v1.py",
-    "tools/_multi_timeframe_audit_v1.py",
-    "tools/_phase8_remediate_tmp.py",
-    "tools/feature_curation_gate.py",
-    "tools/legacy/horizon_7/_phase5_discrimination_audit_v1.py",
-    "tools/legacy/horizon_7/run_phase11_monitoring_drift_live_readiness_v1.py",
-    "tools/legacy/horizon_7/run_phase9_decision_policy_v1.py",
-    "tools/legacy/horizon_7/run_phase9_policy_remediation_v1.py",
-    "tools/legacy/horizon_7/validate_movement_prediction_coverage_v1.py",
-    "tools/run_final_fused_vs_xgb_comparison_v1.py",
-    "tools/run_phase8_calibration_global_v1.py",
-    "tools/study_pin_charm_v1.py",
-    "tools/study_pin_direction_v1.py",
-    "tools/study_pin_regime_cut_v1.py",
-    "tools/study_pin_residence_v1.py",
-    "tools/study_terrain_readiness_v1.py",
-    "scratchpad/_spy_hourly_gamma_vol_storm.py",
-    "tools/liquidity_synthesis_experiments_v1.py",
-    "tools/lp01_touch_study_v1.py",
 })
 
 
@@ -2903,25 +2852,6 @@ def check_collect_window_single_law() -> list[Violation]:
 # retirement rows cited was superseded when the authority model was torn down).
 
 
-def check_admission_evidence_resolves() -> list[Violation]:
-    """ADMITTED decision-path rows: evidence paths must resolve (SR 11-7 / RSK-02).
-
-    WHAT WAS OBSERVED: empty registry already forces WAIT at runtime, but a future ADMITTED row
-    with vibe-string evidence refs would pass schema while citing nothing real — SR 11-7 validation
-    substance gap.
-
-    Rule: when config/decision_path_admissions.json lists ADMITTED entries, every evidence
-    field that is a repo path must resolve to an existing file (http URLs exempt). Empty list -> [].
-
-    HOW VALIDATED: tests/test_find_prove_locks_v1.py drives admission_evidence_resolves_violations.
-    """
-    try:
-        from tools.find_prove_locks import admission_evidence_resolves_violations
-    except ImportError:
-        from find_prove_locks import admission_evidence_resolves_violations  # type: ignore
-    p = REPO / "config" / "decision_path_admissions.json"
-    reasons = admission_evidence_resolves_violations()
-    return [Violation(p, 0, r) for r in reasons]
 
 
 def check_purged_cv_research() -> list[Violation]:
@@ -2990,24 +2920,6 @@ def check_prereg_before_confirmatory() -> list[Violation]:
     return out
 
 
-def check_decision_path_wired() -> list[Violation]:
-    """call_engine.compute_call must invoke evaluate_decision_path_admission (SR 11-7).
-
-    WHAT WAS OBSERVED: runtime gate exists but no commit-time AST proof that TRADE authority
-    cannot bypass admission — regression could re-wire around the gate silently.
-
-    Rule: call_engine.compute_call() source must call evaluate_decision_path_admission and surface
-    WAIT_BLOCKER_REASON_ADMISSION.
-
-    HOW VALIDATED: tests/test_find_prove_locks_v1.py strips the call -> BLOCK.
-    """
-    try:
-        from tools.find_prove_locks import decision_path_wired_violations
-    except ImportError:
-        from find_prove_locks import decision_path_wired_violations  # type: ignore
-    p = REPO / "call_engine.py"
-    reasons = decision_path_wired_violations()
-    return [Violation(p, 0, r) for r in reasons]
 
 
 # claude_cursor_guard_parity RETIRED (declared governance/retired_checks.md 2026-08-24;
@@ -3330,10 +3242,8 @@ CHECKS = [
     # operator-reviewed at merge (RC-475); honesty_guard.py itself stays on Stop.
     # find_prove_significance_substance REMOVED 2026-09-06 (bedrock PR B; declared): matched
     # significance vocabulary in staged prose. The structural Find&Prove checks stay below.
-    ("admission_evidence_resolves", check_admission_evidence_resolves, True),  # RC-210: SR 11-7 evidence paths
     ("purged_cv_research", check_purged_cv_research, True),  # RC-210: AFML no plain KFold
     ("prereg_before_confirmatory", check_prereg_before_confirmatory, True),  # RC-210: Arnott/COS prereg
-    ("decision_path_wired", check_decision_path_wired, True),  # RC-210: SR 11-7 AST TRADE gate
     ("collect_datasheet_staged", check_collect_datasheet_staged, True),  # RC-210: Gebru datasheets
     ("chain_width_single_faucet", check_chain_width_single_faucet, True),  # 2026-09-25: full chain for level math
     ("single_faucet_provenance", check_single_faucet_provenance, True),  # RC-73: measured, not asserted

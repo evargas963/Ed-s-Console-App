@@ -7,10 +7,8 @@
 """
 from __future__ import annotations
 
-import inspect
 import time
 
-import pytest
 
 import live_market_plane as lmp
 
@@ -26,13 +24,6 @@ def test_plane_change_percent_is_schwab_net_change_percent():
     assert lmp.get_quote("NCPX")["chg_pct"] == 1.0          # unchanged field stands
 
 
-def test_fetch_state_reads_no_rest_quote():
-    import server
-    src = inspect.getsource(server._fetch_state)
-    assert "_memoized_quote_response" not in src, "the per-cycle REST quote is back"
-    assert "q_json" not in src and "_quote_fut" not in src
-    assert "safe_get_price_history(client, ticker, frequency_minutes=1" not in src, (
-        "the REST price-history candle-volume stand-in is back")
 
 
 def test_rest_cum_delta_is_gone():
@@ -41,15 +32,6 @@ def test_rest_cum_delta_is_gone():
     assert not hasattr(server, "_rest_cum_delta")
 
 
-def test_order_flow_state_requires_the_daemon_receive_time():
-    from app.options.order_flow.state import OrderFlowState
-    st = OrderFlowState()
-    with pytest.raises(TypeError):
-        st.push_level_one("SPY", {"LAST_PRICE": 1.0})
-    t = time.time() - 30.0
-    st.push_level_one("SPY", {"LAST_PRICE": 1.0, "LAST_SIZE": 5, "TRADE_TIME_MILLIS": 1}, ts_recv=t)
-    assert st.get_receive_log("SPY")[-1]["server_received_ts"] == t   # not the console clock
-    assert not hasattr(st, "get_stream_chg_pct")
 
 
 def test_institutional_proxy_needs_all_four_components():

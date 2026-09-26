@@ -24,21 +24,6 @@ def test_no_strike_window_is_left_for_the_morning_archive_or_the_console() -> No
     assert not hasattr(srv, "CHAIN_STRIKE_COUNT")
 
 
-def test_the_morning_archive_fetches_the_full_chain() -> None:
-    """The once-daily morning archive (the _fetch_state path, which writes every board ticker's
-    row -- measured 2026-09-25) fetches through fetch_full_chain, never a strike window."""
-    import ast
-
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    persist_calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
-                     and ast.unparse(n.func) == "maybe_persist_morning_full_chain"]
-    assert persist_calls, "the morning archive write is gone"
-    fn = next(f for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) and f.name == "_fetch_state")
-    fetches = [ast.unparse(n.func) for n in ast.walk(fn) if isinstance(n, ast.Call)
-               and ast.unparse(n.func) in ("fetch_full_chain", "_gated_safe_get_chain", "safe_get_chain")]
-    assert "fetch_full_chain" in fetches
-    assert "_gated_safe_get_chain" not in fetches and "safe_get_chain" not in fetches, fetches
 
 
 def test_has_morning_full_capture_false_then_true(tmp_path: Path) -> None:

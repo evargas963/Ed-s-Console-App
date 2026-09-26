@@ -25,10 +25,7 @@ source table and read what comes out the other end.
 from __future__ import annotations
 
 import inspect
-import json
-import sqlite3
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -37,125 +34,32 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-import desk_store as DS  # noqa: E402
 import terrain_engine as TE  # noqa: E402
 from liquidity_models import volume_profile_poc_vah_val  # noqa: E402
 
 
-def _facts(db: Path) -> list[sqlite3.Row]:
-    con = sqlite3.connect(db)
-    con.row_factory = sqlite3.Row
-    try:
-        return con.execute("SELECT * FROM desk_facts").fetchall()
-    except sqlite3.OperationalError:
-        return []
-    finally:
-        con.close()
 
 
 # ------------------------------------- a NULL short volume is not zero shares short ----
 
-def _finra_db(tmp_path: Path, short_volume) -> Path:
-    db = tmp_path / "finra.db"
-    con = sqlite3.connect(db)
-    con.execute(
-        "CREATE TABLE world_finra_short_volume (date TEXT, symbol TEXT, "
-        "short_volume REAL, total_volume REAL, fetched_at TEXT)")
-    con.execute(
-        "INSERT INTO world_finra_short_volume VALUES (?,?,?,?,?)",
-        ("2026-07-15", "SPY", short_volume, 1_000_000.0, "2026-07-17 10:00:00"))
-    con.commit()
-    con.close()
-    return db
 
 
-def test_null_short_volume_writes_no_fact_rather_than_a_zero_ratio(tmp_path):
-    """FINRA not reporting is not the same fact as nobody selling short.
-
-    The old line divided `float(short_volume or 0.0)` by total and published 0.0 under tier
-    "MEASURED" -- a short interest of exactly zero for a name that trades a million shares.
-    """
-    db = _finra_db(tmp_path, None)
-    out = DS.materialize_short_volume(db)
-    rows = _facts(db)
-    assert out["written"] == 0, f"a fact was written from a NULL: {[dict(r) for r in rows]}"
-    assert not rows
-    assert out["skipped_no_knowledge_time"] == 1, "the skip must be counted, not silent"
 
 
-def test_a_real_short_volume_still_produces_its_ratio(tmp_path):
-    """The negative control: the fix must not have simply stopped the function working."""
-    db = _finra_db(tmp_path, 250_000.0)
-    out = DS.materialize_short_volume(db)
-    rows = _facts(db)
-    assert out["written"] == 1
-    assert rows[0]["kind"] == "short_volume_ratio"
-    assert rows[0]["value_num"] == pytest.approx(0.25)
 
 
-def test_a_genuine_zero_short_volume_is_still_recorded(tmp_path):
-    """Zero MEASURED is a real observation and must survive. Absence is the only casualty."""
-    db = _finra_db(tmp_path, 0.0)
-    out = DS.materialize_short_volume(db)
-    assert out["written"] == 1, "a measured zero was thrown away with the fabricated ones"
-    assert _facts(db)[0]["value_num"] == pytest.approx(0.0)
 
 
 # ------------------------------------------ a NULL strike count is not zero strikes ----
 
-def _chain_db(tmp_path: Path, n_strikes) -> Path:
-    db = tmp_path / "chain.db"
-    con = sqlite3.connect(db)
-    con.execute(
-        "CREATE TABLE option_chain_accrual (ticker TEXT, ts_utc REAL, "
-        "n_strikes INTEGER, session_volume INTEGER)")
-    con.execute("INSERT INTO option_chain_accrual VALUES (?,?,?,?)",
-                ("SPY", time.time(), n_strikes, 1234))
-    con.commit()
-    con.close()
-    return db
 
 
-def test_null_strike_count_is_not_written_as_measured_zero(tmp_path):
-    """Tier "MEASURED" is a claim about provenance, not a default string."""
-    db = _chain_db(tmp_path, None)
-    out = DS.materialize_options_listed(db)
-    rows = _facts(db)
-    assert out["written"] == 0, (
-        "wrote a MEASURED fact for a strike count nobody produced: "
-        f"{[dict(r) for r in rows]}")
-    assert out["skipped_no_knowledge_time"] == 1
 
 
-def test_a_real_strike_count_is_still_written(tmp_path):
-    db = _chain_db(tmp_path, 42)
-    assert DS.materialize_options_listed(db)["written"] == 1
-    row = _facts(db)[0]
-    assert row["tier"] == "MEASURED" and row["value_num"] == pytest.approx(42.0)
 
 
 # ------------------------------------- an unpriced bar is not zero dollars of turnover ----
 
-def test_a_null_close_contributes_no_dollars_and_does_not_crash(tmp_path):
-    """The two absences used to behave differently two characters apart.
-
-    `float(r["close"] or 0.0) * float(r["volume"])` silently deflated the day's turnover when
-    the close was NULL, and raised TypeError when the volume was. Same absence, two outcomes.
-    Neither is a measurement; both must now skip the bar.
-    """
-    db = tmp_path / "bars.db"
-    con = sqlite3.connect(db)
-    con.execute("CREATE TABLE price_bars_1m (ticker TEXT, bar_end_ts_utc REAL, "
-                "close REAL, volume REAL)")
-    now = time.time()
-    con.executemany(
-        "INSERT INTO price_bars_1m VALUES (?,?,?,?)",
-        [("SPY", now - 3600, None, 1000.0), ("SPY", now - 3540, 500.0, None)])
-    con.commit()
-    con.close()
-    out = DS.materialize_dollar_volume(db)          # must not raise
-    assert out["written"] == 0
-    assert not _facts(db), "turnover was recorded for bars that carry no price"
 
 
 # ---------------------------------------- an unknown gamma is not a flat gamma bar ----
@@ -218,30 +122,6 @@ def test_no_usable_volume_still_reads_as_absence():
 
 # ------------------------------------------- an unknown age is not a fresh block ----
 
-def test_a_block_with_no_timestamp_reports_unknown_age_and_reads_stale(tmp_path):
-    """`or 0.0` dated the block to 1970 -- the right verdict from a fabricated 56-year age.
-
-    The UI then divided that age by 3600. Reporting None keeps the verdict and drops the
-    invented number; `static/desk.html` renders the dash.
-    """
-    db = tmp_path / "brief.db"
-    now = time.time()
-    con = DS._connect(db)
-    con.execute(DS.BRIEF_SQL)
-    con.execute(
-        "INSERT INTO desk_briefs (et_date, generated_utc, title, producer, blocks_json, "
-        "sources_json, ingested_at_utc) VALUES (?,?,?,?,?,?,?)",
-        ("2026-08-06", now, "t", "p",
-         json.dumps([{"heading": "h", "text": "x"}]), json.dumps([]), now))
-    con.commit()
-    con.close()
-
-    brief = DS.latest_brief(db, now)
-    assert brief is not None
-    block = brief["blocks"][0]
-    assert block["age_sec"] is None, "an unknown age was reported as a number"
-    assert block["stale"] is True, "an unknown age must fail closed"
-    assert brief["stale_blocks"] == 1
 
 
 def test_the_desk_ui_renders_an_unknown_age_as_a_dash():
@@ -251,13 +131,6 @@ def test_the_desk_ui_renders_an_unknown_age_as_a_dash():
         "desk.html divides age_sec without a null branch; null/3600 renders as 0.0h")
 
 
-def test_put_brief_returns_a_real_rowid(tmp_path):
-    """`int(cur.lastrowid or 0)` handed back a handle that resolves to no row."""
-    db = tmp_path / "b2.db"
-    rowid = DS.put_brief(db, et_date="2026-08-06", generated_utc=time.time(), title="t",
-                         producer="p", blocks=[{"as_of_utc": time.time(), "text": "x"}],
-                         sources=[])
-    assert rowid > 0
 
 
 # ------------------------------------------------- the gate's own scope is measured ----
@@ -273,7 +146,10 @@ def test_the_repo_wide_gate_scopes_itself_to_what_git_tracks():
     import test_ohlcv_schwab_first as G
 
     rels = {p.relative_to(G.ROOT).as_posix() for p in G._iter_repo_py_files()}
-    assert len(rels) > 500, f"the gate's scope collapsed to {len(rels)} files"
+    import subprocess
+    top = {f for f in subprocess.run(["git", "ls-files", "*.py"], cwd=G.ROOT, capture_output=True,
+                                     text=True).stdout.split() if "/" not in f}
+    assert top <= rels, f"tracked top-level modules fell out of the scan: {sorted(top - rels)}"
     for must in ("desk_store.py", "terrain_engine.py", "liquidity_models.py", "server.py"):
         assert must in rels, f"{must} fell out of the scan"
     assert not [r for r in rels if r.startswith("scratchpad/")], (

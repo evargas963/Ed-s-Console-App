@@ -82,7 +82,7 @@ def test_engine_loads_before_the_modules_that_use_it():
 def test_every_endpoint_the_desk_calls_is_a_served_route():
     called = set(re.findall(r"'(/api/[a-z0-9_/-]+)\?", DESK_JS.read_text(encoding="utf-8")))
     assert {"/api/bars1m", "/api/levels", "/api/terrain", "/api/level_crosses",
-            "/api/order-flow/microstructure", "/api/analytics/state", "/api/liquidity-snapshot"} <= called
+            "/api/order-flow/microstructure", "/api/alerts", "/api/liquidity-snapshot"} <= called
     served = {getattr(r, "path", None) for r in srv.app.routes}
     missing = sorted(called - served)
     assert not missing, missing

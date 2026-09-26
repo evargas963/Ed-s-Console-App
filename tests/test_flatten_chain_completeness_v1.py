@@ -11,17 +11,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from calibration.complete_chain_capture import (
-    latest_complete_chain_capture,
-    persist_complete_chain_capture,
-)
 from server import flatten_chain_contracts
 from tests.test_chain_api_v1 import _chain_json_for
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 _CDE = json.loads((_FIXTURES / "real_cde_complete_chain_half_dollar.json").read_text(encoding="utf-8"))
 _CDE_CONTRACTS = _CDE["chain"]
-_CDE_EXPIRY = _CDE["expiry"]
 
 
 def _symbols(contracts):
@@ -43,21 +38,6 @@ def test_flatten_preserves_real_cde_half_dollar_set():
     assert 21.0 in strikes and 21.5 in strikes
 
 
-def test_persist_keeps_exact_cde_contract_set(tmp_path):
-    result = persist_complete_chain_capture(
-        tmp_path / "cap.db",
-        ticker="CDE",
-        expiry=_CDE_EXPIRY,
-        contracts=_CDE_CONTRACTS,
-        spot=21.43,
-        completeness_basis="strike_range=ALL",
-        ts_utc=1000.0,
-    )
-    assert result["status"] == "written"
-    assert result["n_contracts"] == len(_CDE_CONTRACTS)
-    cap = latest_complete_chain_capture(tmp_path / "cap.db", "CDE", _CDE_EXPIRY)
-    assert _symbols(cap["contracts"]) == _symbols(_CDE_CONTRACTS)
-    assert len(_frac(cap["contracts"])) == len(_frac(_CDE_CONTRACTS))
 
 _CRWD = json.loads((_FIXTURES / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
 _CRWD_CONTRACTS = _CRWD["chain"]

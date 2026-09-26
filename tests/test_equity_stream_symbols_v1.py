@@ -34,24 +34,6 @@ def test_everything_past_the_budget_is_named_never_silently_cut():
 
 # ── daemon: add/drop to match ─────────────────────────────────────────────────────────
 
-class _FakeStream:
-    def __init__(self, fail_add=False):
-        self.calls = []
-        self.fail_add = fail_add
-
-    async def level_one_equity_add(self, syms):
-        if self.fail_add:
-            raise RuntimeError("vendor said no")
-        self.calls.append(("add", list(syms)))
-
-    async def level_one_equity_unsubs(self, syms):
-        self.calls.append(("unsubs", list(syms)))
-
-    async def chart_equity_add(self, syms):
-        self.calls.append(("chart_add", list(syms)))
-
-    async def chart_equity_unsubs(self, syms):
-        self.calls.append(("chart_unsubs", list(syms)))
 
 
 def _apply(monkeypatch, requested, held, stream, roster=("BOOT1", "BOOT2")):

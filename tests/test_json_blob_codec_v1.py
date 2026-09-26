@@ -14,7 +14,6 @@ from json_blob_codec import (
     decode_text_blob,
     encode_json_blob,
     encode_text_blob,
-    is_compressed_blob,
 )
 
 
@@ -66,11 +65,6 @@ def test_default_str_matches_existing_call_sites_non_json_native_types():
     assert decoded == {"ts": "2026-01-01"}
 
 
-def test_is_compressed_blob_true_only_for_gzip_bytes():
-    assert is_compressed_blob(encode_json_blob({"a": 1})) is True
-    assert is_compressed_blob(json.dumps({"a": 1})) is False
-    assert is_compressed_blob(json.dumps({"a": 1}).encode("utf-8")) is False
-    assert is_compressed_blob(None) is False
 
 
 def test_encode_json_blob_is_deterministic_across_calls():

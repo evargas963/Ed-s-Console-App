@@ -89,10 +89,3 @@ def decode_json_blob(value: "bytes | bytearray | str | None") -> Any:
     return json.loads(text)
 
 
-def is_compressed_blob(value: "bytes | bytearray | str | None") -> bool:
-    """True only for a value this codec would actually gzip-decompress -- used by
-    backfill tools to report real progress (how many rows are still plain-text) without
-    re-implementing the magic-header check."""
-    if not isinstance(value, (bytes, bytearray)):
-        return False
-    return bytes(value[:2]) == _GZIP_MAGIC

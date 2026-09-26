@@ -38,7 +38,7 @@ GOVERNANCE_DIRS = ("tools", "governance")
 
 #: The real runtime entry points: the served app, the ops runner the panel drives, the
 #: capture daemon spine, and the two leaves everything imports.
-RUNTIME_ENTRY_POINTS = ("server.py", "ops_runner.py", "stream_spine.py", "config.py", "db.py",
+RUNTIME_ENTRY_POINTS = ("server.py", "stream_spine.py", "config.py", "db.py",
                         "runtime_layout.py")   # RC-523: the runtime-root owner is a leaf too
 
 LAUNCHER = REPO / "start_ed_console.bat"
@@ -357,30 +357,6 @@ def test_the_governance_path_detector_fires_and_does_not_cry_wolf():
     assert noise == [], f"the detector fired on something that is not a governance file read: {noise}"
 
 
-def test_the_runtime_registries_are_app_owned():
-    """The two registries the runtime actually reads live under `config/`, not governance/.
-
-    They are PRODUCT controls — which components may influence TRADE, and the ML migration
-    policy — and both fail closed when absent. Fail-closed is correct for a product control
-    and is unchanged here; what changed is that agent-governance housekeeping can no longer
-    reach them. A `governance/` prune used to be able to silence trading.
-    """
-    import active_bundle_contract
-    import decision_gate
-
-    for rel in ("config/decision_path_admissions.json", "config/ML_ITEM4_MIGRATION_POLICY.json"):
-        assert (REPO / rel).is_file(), f"{rel} is missing"
-    for rel in ("governance/decision_path_admissions.json",
-                "governance/ML_ITEM4_MIGRATION_POLICY.json"):
-        assert not (REPO / rel).exists(), f"{rel} still exists — ownership was copied, not moved"
-
-    admissions = Path(decision_gate._DEFAULT_REGISTRY_PATH).resolve()
-    policy = Path(active_bundle_contract.MIGRATION_POLICY_PATH).resolve()
-    assert admissions.parent.name == "config", admissions
-    assert policy.parent.name == "config", policy
-    # the registry still parses and still gates: an empty registry admits nothing
-    data = json.loads(admissions.read_text(encoding="utf-8"))
-    assert isinstance(data.get("admissions"), list)
 
 
 def test_the_agent_seam_still_refuses_to_move_the_production_checkout():

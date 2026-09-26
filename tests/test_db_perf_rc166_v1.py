@@ -1,7 +1,6 @@
 """RC-166: tier-1 lock hold + L1 light pool isolation (DB freeze / analytics wall)."""
 from __future__ import annotations
 
-import ast
 import threading
 import time
 from pathlib import Path
@@ -141,39 +140,6 @@ def test_governed_refresh_runs_after_tier1_lock_release(tmp_path):
     assert saw_lock_free.is_set(), "tier-1 lock must be free during governed refresh"
 
 
-def test_analytics_light_uses_dedicated_l1_pool_not_route_offload():
-    """RC-166: /api/analytics/light must not share ed_route_offload with Tier C/stream."""
-    import server as srv
-
-    src = Path(srv.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    light_fn = None
-    for node in tree.body:
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "get_analytics_light":
-            light_fn = node
-            break
-    assert light_fn is not None
-    calls = [
-        n
-        for n in ast.walk(light_fn)
-        if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Name)
-        and n.func.id in ("_get_l1_light_executor", "_get_fast_quote_executor", "_get_route_offload_executor")
-    ]
-    names = [c.func.id for c in calls]  # type: ignore[union-attr]
-    assert "_get_l1_light_executor" in names
-    # Light build must not await the shared route pool (touch may submit fire-and-forget).
-    await_calls = []
-    for n in ast.walk(light_fn):
-        if isinstance(n, ast.Await) and isinstance(n.value, ast.Call):
-            await_calls.append(n.value)
-    # run_in_executor(_get_l1_light_executor(), ...) must be the awaited path
-    text_chunk = ast.get_source_segment(src, light_fn) or ""
-    assert "_get_l1_light_executor()" in text_chunk
-    assert "run_in_executor(_get_fast_quote_executor()" not in text_chunk
-    assert "run_in_executor(_get_route_offload_executor()" not in text_chunk
-    assert srv.L1_LIGHT_EXECUTOR_MAX_WORKERS == 4
-    assert 'thread_name_prefix="ed_l1_light"' in src
 
 
 def test_rc243_one_bar_writer_contends_for_the_write_seam():

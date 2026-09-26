@@ -4,11 +4,6 @@ from __future__ import annotations
 
 import re
 
-from multi_horizon_ml_bundle import (
-    HorizonMLFusionSnapshot,
-    MultiHorizonMLFusionBundle,
-    fusion_payload_to_horizon_snapshot,
-)
 
 _SKIP_DIRS = frozenset(
     {
@@ -43,29 +38,8 @@ def _iter_production_py(repo_index):
         yield rel.as_posix(), text
 
 
-def test_horizon_fusion_available_attribute_exists():
-    snap = HorizonMLFusionSnapshot(
-        horizon_slug="1m",
-        horizon_fusion_available=True,
-        prob_up=0.5,
-        prob_down=0.3,
-        prob_flat=0.2,
-        dominant_direction="up",
-        top_probability=0.5,
-        fusion_confidence_label="medium",
-        fusion_confidence_score=0.5,
-        mc_available=False,
-    )
-    assert hasattr(snap, "horizon_fusion_available")
-    assert not hasattr(snap, "fusion_available")
 
 
-def test_bundle_method_renamed_to_horizon_fusion_available():
-    snap = fusion_payload_to_horizon_snapshot("1m", None)
-    bundle = MultiHorizonMLFusionBundle(by_horizon={"1m": snap}, live_canonical_horizon_slug="1m")
-    assert callable(bundle.horizon_fusion_available)
-    assert bundle.horizon_fusion_available("1m") is False
-    assert not hasattr(bundle, "fusion_available")
 
 
 def test_no_inline_horizon_snapshot_fusion_available_leak(repo_index):

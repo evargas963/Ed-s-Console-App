@@ -26,7 +26,7 @@ _BAR = {"timestamp": 1_577_975_400_000, "open": 1, "high": 1, "low": 1, "close":
 
 def _wire_common(monkeypatch, *, raw_levels, zones=None, resolved_spot=None):
     monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
-    monkeypatch.setattr(srv, "_liquidity_fusion_from_cache", lambda *a, **k: ([], "disabled"))
+    monkeypatch.setattr(srv, "_liquidity_option_levels", lambda *a, **k: ([], "disabled"))
     monkeypatch.setattr(srv, "resolve_spot", lambda *a, **k: (resolved_spot, None, None))
     # the route's one bar input: the session window of price_bars_1m (+ forming minute)
     monkeypatch.setattr(srv, "_session_bars", lambda *a, **k: [_BAR])
@@ -44,10 +44,10 @@ def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(monk
     under its own honestly-named field instead."""
     _wire_common(monkeypatch, raw_levels={"vwap": 123.45, "cutoff_et": "2020-01-02T10:00:00"})
     # a date far from "today" so the canonical-carry branch (which needs a live DB row) is skipped
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
+    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", fusion=False)
     body = json.loads(resp.body) if hasattr(resp, "body") else resp
     assert body["spot_used_for_scoring"] is None
-    assert body["spot_estimate_vwap_fallback"] == 123.45
+    assert "spot_estimate_vwap_fallback" not in body, "VWAP is never a stand-in for spot"
 
 
 def test_missing_spot_produces_honest_null_distance_and_neutral_score_through_the_real_zone_path(monkeypatch):
@@ -64,7 +64,7 @@ def test_missing_spot_produces_honest_null_distance_and_neutral_score_through_th
         source_tags=["GAMMA_WALL"],
     )
     _wire_common(monkeypatch, raw_levels={"vwap": 123.45}, zones=[zone])
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
+    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", fusion=False)
     body = json.loads(resp.body) if hasattr(resp, "body") else resp
     assert len(body["zones"]) == 1
     z = body["zones"][0]
@@ -83,15 +83,15 @@ def test_spot_used_for_scoring_reports_the_real_cached_spot_when_available(monke
     # all (the dead capability was removed, not just unused -- see its docstring); wall levels
     # still come from the /api/state cache, but spot_for_zones comes from resolve_spot(), the
     # ONE spot authority every other consumer in this file uses.
-    monkeypatch.setattr(srv, "_liquidity_fusion_from_cache", lambda *a, **k: ([], "n/a"))
+    monkeypatch.setattr(srv, "_liquidity_option_levels", lambda *a, **k: ([], "n/a"))
     monkeypatch.setattr(srv, "resolve_spot", lambda *a, **k: (456.78, "schwab_streaming_level_one", 0.0))
     monkeypatch.setattr(srv, "_session_bars", lambda *a, **k: [_BAR])
     fake_out = _FakeSnapshotOutput("SPY", "2020-01-02", {"vwap": 123.45})
     monkeypatch.setattr(lve, "build_live_snapshot", lambda *a, **k: fake_out)
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry="2020-01-03", fusion=True)
+    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", fusion=True)
     body = json.loads(resp.body) if hasattr(resp, "body") else resp
     assert body["spot_used_for_scoring"] == 456.78
-    assert body["spot_estimate_vwap_fallback"] is None
+    assert "spot_estimate_vwap_fallback" not in body
 
 
 def test_an_http_exception_on_the_route_path_keeps_its_status_not_a_generic_500(monkeypatch):
@@ -107,7 +107,7 @@ def test_an_http_exception_on_the_route_path_keeps_its_status_not_a_generic_500(
     def _raise_auth_unavailable(*a, **k):
         raise HTTPException(status_code=503, detail="Schwab auth failed: token_invalid")
     monkeypatch.setattr(srv, "_session_bars", _raise_auth_unavailable)
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
+    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", fusion=False)
     assert resp.status_code == 503
     body = json.loads(resp.body)
     assert "token_invalid" in body["error"] or "Schwab auth failed" in body["error"]
@@ -120,6 +120,6 @@ def test_an_unrelated_crash_still_reports_500(monkeypatch):
         raise RuntimeError("something actually broke")
     monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
     monkeypatch.setattr(srv, "_session_bars", _boom)
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
+    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", fusion=False)
     assert resp.status_code == 500
     assert "something actually broke" in json.loads(resp.body)["error"]

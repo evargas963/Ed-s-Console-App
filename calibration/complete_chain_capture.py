@@ -163,52 +163,6 @@ def eligible_near_term_expiries(
     return sorted(set(out))
 
 
-def latest_complete_chain_capture(
-    db_path: Path | str, ticker: str, expiry: str
-) -> dict[str, Any] | None:
-    """Newest banked COMPLETE capture for (ticker, expiry), or None.
-
-    Fail-closed: a missing file, a missing table, an unparseable payload, or an empty
-    contract list all return None — absence must reach the caller as absence, never
-    substitute a different expiry or a narrower book silently.
-    """
-    path = Path(db_path)
-    if not path.is_file():
-        return None
-    tk = ticker_storage_key(ticker)
-    exp = str(expiry or "").strip()[:10]
-    if not tk or not exp:
-        return None
-    try:
-        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
-    except sqlite3.Error:
-        return None
-    try:
-        if not conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='complete_chain_captures'"
-        ).fetchone():
-            return None
-        row = conn.execute(
-            "SELECT ts_utc, spot, n_contracts, completeness_basis, chain_json, source "
-            "FROM complete_chain_captures WHERE ticker=? AND expiry=? "
-            "ORDER BY ts_utc DESC LIMIT 1",
-            (tk, exp),
-        ).fetchone()
-    except sqlite3.Error:
-        return None
-    finally:
-        conn.close()
-    if not row:
-        return None
-    try:
-        contracts = decode_json_blob(row[4])
-    except (TypeError, ValueError, OSError):   # OSError: gzip.BadGzipFile on a corrupt blob
-        return None
-    if not isinstance(contracts, list) or not contracts:
-        return None
-    return {"ticker": tk, "expiry": exp, "ts_utc": float(row[0]), "spot": row[1],
-            "n_contracts": int(row[2]), "completeness_basis": row[3],
-            "contracts": contracts, "source": str(row[5])}
 
 
 #: RC spot/gamma-360-audit (2026-09-14, live RTH reproduction): this function opens a fresh

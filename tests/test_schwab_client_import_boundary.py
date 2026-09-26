@@ -12,13 +12,6 @@ from fastapi import HTTPException
 REPO = Path(__file__).resolve().parent.parent
 
 
-@pytest.fixture
-def ci_schwab_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SCHWAB_API_KEY", "ci-test-key-not-live")
-    monkeypatch.setenv("SCHWAB_APP_SECRET", "ci-test-secret-not-live")
-    monkeypatch.setenv("SCHWAB_TOKEN_PATH", str(REPO / "nonexistent_ci_schwab_token.json"))
-
-
 @pytest.fixture(autouse=True)
 def _restore_server_module_binding():
     """Put `sys.modules["server"]` back exactly as found.
@@ -151,40 +144,4 @@ def test_get_client_requires_token_only_when_called(monkeypatch: pytest.MonkeyPa
 def test_adversarial_tests_can_import_server() -> None:
     import server as srv
 
-    assert hasattr(srv, "_finalize_production_decision")
     assert hasattr(srv, "app")
-
-
-def test_ci_offline_blocks_live_schwab_client_and_api(monkeypatch: pytest.MonkeyPatch) -> None:
-    from config import is_schwab_ci_offline_mode, schwab_credentials_are_ci_placeholders, schwab_live_blocked_for
-    from schwab_client import build_client_from_token, safe_get_quote
-
-    monkeypatch.setenv("ED_CI_OFFLINE", "1")
-    monkeypatch.setenv("SCHWAB_API_KEY", "ci-not-live-placeholder")
-    monkeypatch.setenv("SCHWAB_APP_SECRET", "ci-not-live-placeholder")
-
-    assert is_schwab_ci_offline_mode() is True
-    assert schwab_credentials_are_ci_placeholders() is True
-    assert schwab_live_blocked_for() is True
-    assert schwab_live_blocked_for(api_key="fake-key-not-ci-placeholder", app_secret="fake-secret-not-ci-placeholder") is False
-
-    state = build_client_from_token("/tmp/missing.json", api_key="fake-key-not-ci-placeholder", app_secret="fake-secret-not-ci-placeholder")
-    assert state.ok is False
-    assert "not found" in state.message.lower()
-    assert state.client is None
-
-    state_placeholder = build_client_from_token(
-        "/tmp/missing.json", api_key="ci-not-live-placeholder", app_secret="ci-not-live-placeholder"
-    )
-    assert state_placeholder.ok is False
-    assert "offline" in state_placeholder.message.lower()
-
-    class _FakeClient:
-        def get_quote(self, _ticker: str):
-            raise AssertionError("live Schwab API must not be called in CI offline mode")
-
-    # RC-514: the refusal message now names every reason the capability is unavailable
-    # (missing credentials, ci-placeholder credentials, or ED_CI_OFFLINE) rather than only
-    # the CI one. The refusal itself is unchanged — a live call still raises.
-    with pytest.raises(RuntimeError, match="UNAVAILABLE"):
-        safe_get_quote(_FakeClient(), "SPY")

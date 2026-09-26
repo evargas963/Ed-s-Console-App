@@ -6,9 +6,7 @@ import ast
 import builtins
 import inspect
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 SERVER_PY = ROOT / "server.py"
@@ -161,24 +159,9 @@ def _unresolved_free_names_in_module(source: str) -> list[tuple[str, int]]:
 
 # FIND-SERVERPY-1
 # FIND-SERVERPY-2
-def test_filter_horizon_prob_bars_derived_from_primary_decision_horizons():
-    import server
-    from ml_horizon import PRIMARY_DECISION_HORIZONS
-
-    ms = {"horizon_prob_bars": {"1m": {}, "5m": {}, "15m": {}, "60m": {}, "3c": {}}}
-    server._filter_horizon_prob_bars_primary_only(ms)
-    assert set(ms["horizon_prob_bars"].keys()) == server._PRIMARY_UI_HORIZON_MINUTES
-    expected = frozenset(f"{int(s[:-1])}m" for s in PRIMARY_DECISION_HORIZONS)
-    assert server._PRIMARY_UI_HORIZON_MINUTES == expected
 
 
 # FIND-SERVERPY-3
-def test_market_close_uses_session_close_authority_not_hardcoded_1600():
-    src = _fn_src("_snapshot_expiry_hours_from_schwab_dte")
-    assert "hour=16" not in src
-    assert "hours_until_session_close_et" in src
-    assert "schwab_dte * 24" not in src
-    assert "24.0" not in src
 
 
 # FIND-SERVERPY-4
@@ -192,121 +175,20 @@ def test_rth_open_mins_constant_exists_and_used():
 
 
 # FIND-SERVERPY-5
-def test_spread_semantic_stamped_on_fast_quote_and_tier_a():
-    from tests.feed_live_helper import mark_feed_live
-    mark_feed_live('SPY')   # the daemon holds it on a live feed
-    import server
-
-    # Both quote paths now fetch via get_client() + _safe_get_quote_with_retry()
-    # (production refactor). Patch both, in one shared context covering both asserts, so
-    # no real Schwab/OAuth call occurs offline. The fraction-vs-dollar distinction comes
-    # from the two functions (_build_rest_fast_quote_payload stamps "fraction";
-    # _tier_a_live_state_dict hardcodes "dollar"), not from two quote shapes.
-    _quote = MagicMock(
-        status_code=200,
-        json=lambda: {
-            "SPY": {
-                "quote": {
-                    "lastPrice": 100.0,
-                    "bidPrice": 99.9,
-                    "askPrice": 100.1,
-                    "mark": 100.0,
-                    "totalVolume": 1000,
-                }
-            }
-        },
-    )
-    # (the REST fast-quote builder is deleted -- the plane has one writer, the stream)
-    if True:
-        # /api/live/state is stream-only: give it the fresh streamed row it serves from
-        import time as _t
-        with patch.object(server._lmp, "get_quote", return_value={
-                "ticker": "SPY", "spot": 100.0, "bid": 99.9, "ask": 100.1, "server_received_ts": _t.time(), "spot_received_ts": _t.time(),
-                "quote_source_detail": {"spot": "LAST_PRICE"},
-                "quote_ingestion": "schwab_streaming_level_one"}):
-            tier = server._tier_a_live_state_dict("SPY", None)
-        assert tier.get("spread_semantic") == "dollar"
 
 
 # FIND-SERVERPY-6
-def test_price_levels_carry_is_generation_keyed_not_a_wall_clock_ttl():
-    import server
-
-    # PRICE_LEVELS_CACHE_SEC (15s) was already retired as a TTL (RC-416) and nothing read it;
-    # it was deleted with the uncalled routes. The carry must never re-grow a wall-clock TTL.
-    assert not hasattr(server, "PRICE_LEVELS_CACHE_SEC")
-    src = _fn_src("_fetch_state")
-    assert "_PL_CACHE_SEC" not in src
-    assert "carried_price_levels_match_snapshot" in src
-    assert ">= PRICE_LEVELS_CACHE_SEC" not in src
-    assert "except _LevelCarrierConflict" in src
-    block = src[src.index("# ── Price levels"):src.index("# ── Expected Move")]
-    fail_arm = block[block.index("except Exception"):].split("else:", 1)[0]
-    assert '["price_levels"]' not in fail_arm
-    assert "PriceLevels()" in fail_arm
 
 
 # FIND-SERVERPY-7
-def test_l1_next_generation_regression_raises_runtime_error_not_assert():
-    import server
-
-    key = ("test-scope", "SPY")
-    with server._l1_generation_lock:
-        server._l1_generation[key] = 5
-        server._l1_last_generation_seen[key] = 10
-    with pytest.raises(RuntimeError, match="regression"):
-        server._l1_next_generation(key)
-    src = _fn_src("_l1_next_generation")
-    assert "assert " not in src
 
 
 # FIND-SERVERPY-8
-def test_ed_db_bound_before_iv_rank_references():
-    src = _fn_src("_fetch_state")
-    ed_assign = src.index("_ed_db = get_db()")
-    iv_use = src.index("if _atm_iv and _ed_db")
-    assert ed_assign < iv_use
 
 
-def test_iv_rank_non_none_when_atm_iv_and_db_history(monkeypatch):
-    """Flow: hoisted _ed_db must be bound before IV rank block (FIND-8)."""
-    import server
-    from server import CANONICAL_TIMEFRAME, IV_HISTORY_LOOKBACK, compute_iv_rank
-
-    mock_db = MagicMock()
-    mock_db.get_recent_snapshots.return_value = [
-        {"iv_level": 0.15 + 0.01 * i} for i in range(25)
-    ]
-    monkeypatch.setattr(server, "_HAS_SIGNALS", True)
-    monkeypatch.setattr(server, "get_db", lambda: mock_db)
-
-    _atm_iv = 0.25
-    _ed_db = server.get_db() if server._HAS_SIGNALS else None
-    _tick_ts = 1_700_000_000.0
-    _iv_rank = None
-    assert _ed_db is not None
-    _iv_hist_rows = _ed_db.get_recent_snapshots(
-        "SPY",
-        CANONICAL_TIMEFRAME,
-        n=IV_HISTORY_LOOKBACK,
-        filled_only=False,
-        as_of_ts_utc=_tick_ts,
-    )
-    _iv_history = [
-        float(r.get("iv_level"))
-        for r in _iv_hist_rows
-        if r.get("iv_level") is not None and float(r.get("iv_level", 0)) > 0
-    ]
-    if _atm_iv and _ed_db and _tick_ts is not None and _iv_history:
-        _iv_rank = compute_iv_rank(_atm_iv, _iv_history)
-    assert _iv_rank is not None
 
 
 # FIND-SERVERPY-9
-def test_pressure_label_unavailable_when_no_dpi_or_hedging_flow():
-    src = _fn_src("_fetch_state")
-    assert '_pressure_label_live = "neutral"' not in src
-    assert "unavailable_no_dpi_or_hedging_flow_direction" in src
 
 
 # FIND-SERVERPY-11
@@ -322,11 +204,6 @@ def test_no_mc_em_pre_bms_warning_log():
 
 
 # FIND-SERVERPY-13
-def test_recent_crosses_uses_named_constant():
-    import server
-
-    assert server.RECENT_CROSSES_DISPLAY_LIMIT == 5
-    assert "RECENT_CROSSES_DISPLAY_LIMIT" in _fn_src("_fetch_state")
 
 
 # FIND-SERVERPY-14
@@ -337,12 +214,6 @@ def test_no_underscore_json_references():
 
 
 # FIND-SERVERPY-15
-def test_stack_mode_value_is_authority_only():
-    src = _server_src()
-    assert 'sr["stack_mode"] = "signals_engine_error"' not in src
-    assert 'sr["signals_engine_failed"] = True' in src
-    attach = _fn_src("_attach_stack_runtime_and_governance")
-    assert "classify_stack_health" in attach
 
 
 # FIND-SERVERPY-17

@@ -4,29 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from micro_structure import Candle, detect_candle_patterns, detect_flag, collapse_sweep_alerts
 from liquidity_value_engine import _cluster_reference_price
-from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_detect_candle_patterns_requires_spot():
-    c = Candle(ts=0, open=100, high=101, low=99, close=100.5, volume=1000)
-    assert detect_candle_patterns([c, c], spot=None) == []
 
 
-def test_detect_flag_requires_spot():
-    candles = [
-        Candle(ts=i, open=100 + i * 0.1, high=101 + i * 0.1, low=99 + i * 0.1, close=100.5 + i * 0.1, volume=1000)
-        for i in range(20)
-    ]
-    assert detect_flag(candles, spot=None) is None
 
 
-def test_collapse_sweep_alerts_skips_events_without_level():
-    sw = SimpleNamespace(type="sweep_low", held=False, level=None)
-    assert collapse_sweep_alerts([sw]) == []
 
 
 def test_cluster_reference_price_no_fabricated_500():

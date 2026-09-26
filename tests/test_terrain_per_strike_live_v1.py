@@ -13,40 +13,17 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from terrain_engine import TerrainSnapshot, _per_strike_map
+from terrain_engine import (
+    TerrainSnapshot,
+)
 
 
 def _exp(**kw):
     return SimpleNamespace(**kw)
 
 
-def test_per_strike_map_carries_gex_and_session_volume():
-    exposures = {740.0: _exp(net_gex=1.5e9), 741.0: _exp(net_gex=-2.0e9)}
-    contracts = [
-        {"strikePrice": 740.0, "totalVolume": 300000},
-        {"strikePrice": 740.0, "totalVolume": 200000},   # calls + puts accumulate
-        {"strikePrice": 741.0, "totalVolume": 375000},
-    ]
-    m = _per_strike_map(exposures, contracts)
-    assert sorted(m) == [740.0, 741.0]
-    assert m[740.0]["volume"] == 500000.0
-    assert m[741.0]["volume"] == 375000.0
-    assert m[740.0]["net_gex"] == 1.5e9
 
 
-def test_per_strike_map_rejects_nan_volume_and_nan_strike():
-    """A NaN vendor leaf must read as ABSENCE, never as a value (RC-38 class). A NaN strike must
-    never become a dict key — that corrupted sorted strike sets in the original defect."""
-    exposures = {740.0: _exp(net_gex=1.0)}
-    contracts = [
-        {"strikePrice": 740.0, "totalVolume": 100},
-        {"strikePrice": 740.0, "totalVolume": float("nan")},
-        {"strikePrice": 740.0, "totalVolume": float("inf")},
-        {"strikePrice": float("nan"), "totalVolume": 999999},
-    ]
-    m = _per_strike_map(exposures, contracts)
-    assert m[740.0]["volume"] == 100.0, "NaN/inf volume must not accumulate"
-    assert all(k == k for k in m), "a NaN strike must never become a key"
 
 
 def test_unknown_dte_belongs_to_neither_near_nor_far_f8():
@@ -77,15 +54,6 @@ def test_unknown_dte_belongs_to_neither_near_nor_far_f8():
     assert (near | far).isdisjoint({103.0, 104.0, 105.0})
 
 
-def test_per_strike_map_ignores_strikes_outside_the_exposure_universe():
-    """One chain in, one map out: a contract whose strike produced no exposure is not invented."""
-    m = _per_strike_map({740.0: _exp(net_gex=1.0)},
-                        [{"strikePrice": 999.0, "totalVolume": 5000}])
-    assert 999.0 not in m
-    # RC-290: no contract reported volume for 740.0, so its volume is UNKNOWN, not zero.
-    # This asserted 0.0, which is the fabricated-zero contract Cursor's audit executed:
-    # a missing totalVolume and a real zero both rendered 0.0 on the strike-volume panel.
-    assert m[740.0]["volume"] is None, "absent volume is being reported as a measured zero"
 
 
 def test_per_strike_is_excluded_from_to_dict_but_timestamp_is_not():

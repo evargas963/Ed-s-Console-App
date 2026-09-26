@@ -65,16 +65,3 @@ def test_no_inline_datetime_now_ny_zoneinfo(repo_index):
     assert not offenders, offenders
 
 
-def test_coh_sa2_migrated_modules_use_canonical_et():
-    """Spot-check COH-SA-2 production redirects."""
-    from time_et import ET as canonical, now_et
-
-    import live_decision_bundle
-    import v2_decision.a2_session_calendar as asc
-
-    assert live_decision_bundle._ET is canonical
-    assert asc.ET is canonical
-
-    from event_risk import session_date_et
-
-    assert session_date_et(now_et()) == now_et().date()

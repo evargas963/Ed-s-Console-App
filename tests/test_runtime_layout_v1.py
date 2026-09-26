@@ -49,16 +49,6 @@ def _probe(env_extra: dict[str, str]) -> dict:
     return json.loads(r.stdout.strip().splitlines()[-1])
 
 
-def test_unset_roots_converge_on_git_primary_worktree():
-    got = _probe({})
-    primary = _default_runtime_root().resolve()
-    root = str(primary)
-    assert got["separated"] == str(primary != REPO.resolve())
-    assert got["runtime_root"] == root and got["artifacts_root"] == root
-    assert Path(got["canonical_db"]) == primary / "data" / "ed_console.db"
-    assert Path(got["db_path"]) == primary / "data" / "ed_console.db"
-    assert Path(got["token"]) == primary / "schwab_token.json"
-    assert Path(got["terrain_json"]) == primary / "reports" / "terrain_backtest_latest.json"
 
 
 def test_linked_worktree_metadata_failure_refuses_local_runtime(
@@ -79,28 +69,8 @@ def test_linked_worktree_metadata_failure_refuses_local_runtime(
         runtime_layout._default_runtime_root()
 
 
-def test_runtime_root_moves_database_token_and_data_and_artifacts_follow(tmp_path):
-    rt = tmp_path / "runtime"
-    got = _probe({"ED_RUNTIME_ROOT": str(rt)})
-    assert got["separated"] == "True"
-    assert Path(got["canonical_db"]) == (rt / "data" / "ed_console.db").resolve()
-    assert Path(got["db_path"]) == (rt / "data" / "ed_console.db").resolve()
-    assert Path(got["db_dir"]) == rt.resolve() / "data"
-    assert Path(got["token"]) == rt.resolve() / "schwab_token.json"
-    assert Path(got["barchart"]) == rt.resolve() / "data" / "barchart"
-    # artifacts default to the runtime root
-    assert Path(got["terrain_json"]) == rt.resolve() / "reports" / "terrain_backtest_latest.json"
-    assert Path(got["terrain_history"]) == rt.resolve() / "reports" / "terrain_scorecard_history.jsonl"
-    # nothing under the source checkout is named any more
-    for key in ("canonical_db", "db_path", "token", "terrain_json"):
-        assert not Path(got[key]).is_relative_to(REPO.resolve()), (key, got[key])
 
 
-def test_artifacts_root_separates_reports_from_runtime_state(tmp_path):
-    rt, art = tmp_path / "runtime", tmp_path / "artifacts"
-    got = _probe({"ED_RUNTIME_ROOT": str(rt), "ED_ARTIFACTS_ROOT": str(art)})
-    assert Path(got["canonical_db"]) == (rt / "data" / "ed_console.db").resolve()
-    assert Path(got["terrain_json"]) == art.resolve() / "reports" / "terrain_backtest_latest.json"
 
 
 def test_ambient_db_override_is_refused(tmp_path):

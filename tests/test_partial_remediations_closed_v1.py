@@ -22,65 +22,12 @@ because none is legible and a wrong number is not.
 
 from __future__ import annotations
 
-import inspect
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
-
-
-# ────────────────────────────── L1: the mean divides by what it measured ────
-
-def _assessment(build_total: int, ms_sum: float) -> dict:
-    from planes.l1_operational import build_l1_operational_assessment as B
-
-    kw = {p: 0 for p in inspect.signature(B).parameters}
-    kw["reasons"] = {}
-    kw["uptime_sec"] = 600.0
-    kw["l1_build_total"] = build_total
-    kw["l1_build_ms_sum"] = ms_sum
-    # RC-293 added timing_sample_count, which this helper's blanket `0` would supply as a
-    # zero sample count rather than "not given". None means "use l1_build_total", which is
-    # the shape this RC-291 test is asserting about.
-    kw["timing_sample_count"] = None
-    return B(**kw)
-
-
-def _avg(payload: dict) -> float:
-    import json
-    import re
-
-    m = re.search(r'"avg_build_ms":\s*([0-9.]+)', json.dumps(payload))
-    assert m, "avg_build_ms is no longer published; re-derive this test"
-    return float(m.group(1))
-
-
-def test_an_unmeasured_build_does_not_dilute_the_latency_average():
-    """Cursor's probe, asserted to the opposite result."""
-    measured = _avg(_assessment(build_total=19, ms_sum=19 * 26.0))
-    diluted = _avg(_assessment(build_total=20, ms_sum=19 * 26.0))
-    assert measured == 26.0, f"the measured average moved: {measured}"
-    assert diluted < measured, "premise changed — the old denominator no longer dilutes"
-    assert measured > 25.0 >= diluted, (
-        "the whole point: 26.0 must cross the 25 ms warn line that 24.7 sits under")
-
-
-def test_the_counter_only_advances_when_a_timing_is_credited():
-    """Numerator and denominator must move together or the mean is wrong either way."""
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    i = src.find('_l1_instrumentation["l1_build_ms_sum"] = float(')
-    assert i > 0
-    window = src[i:i + 260]
-    assert '_l1_instrumentation["l1_build_ms_measured"] += 1' in window, (
-        "the measured counter no longer increments beside the sum")
-
-
-def test_total_builds_is_still_counted_separately():
-    """Builds-per-minute is a different and correct question; it must not lose its count."""
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    assert '_l1_instrumentation["l1_build_total"] += 1' in src
 
 
 # ─────────────────────────── model edge: no substituted metric ────

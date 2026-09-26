@@ -156,7 +156,6 @@ def test_terrain_staleness_carries_the_token_countdown():
 # token expiry (Schwab capability goes fully UNAVAILABLE with no advance warning).
 
 
-# ── RC-146: a deliberate pause must not be reported as a malfunction, and a pre-open ─────────
 # ── snapshot must not be reported as a market fact. ──────────────────────────────────────────
 
 def test_morning_window_skip_is_recorded_by_the_producer():
@@ -352,16 +351,6 @@ def test_quarantine_state_is_distinguishable_from_pause_and_failure():
         assert "QUARANTINED" in n["levels_stale_reason"]
     finally:
         _drop_quarantine(tk)
-
-
-def _fake_chain(n_expiries: int, spot: float = 7400.0) -> list:
-    """Minimal contracts with a regular strike grid across N expiry dates."""
-    out = []
-    for e in range(n_expiries):
-        for k in range(int(spot) - 50, int(spot) + 60, 10):
-            out.append({"expirationDate": f"2026-{8 + e // 28:02d}-{1 + e % 28:02d}T00:00:00.000Z",  # institutional-synthetic-ok: fail-closed stale scorecard edge uses minimal malformed contract
-                        "strikePrice": float(k), "putCall": "CALL", "openInterest": 10})
-    return out
 
 
 def test_terrain_not_ready_branch_carries_structured_state_too():

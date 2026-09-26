@@ -1,9 +1,8 @@
 """RC-532 — ONE provenance authority; the root population is complete and every claim is real.
 
 What is ENFORCED here (a red test is a defect, never a number to tune):
-  * population: every served route is classified; every MarketState field is categorised; every
-    decision-engine entry's arguments are listed and match the code — so "every material truth"
-    is a demonstrated set, not an assumed one;
+  * population: every served route is classified -- so "every material truth" is a
+    demonstrated set, not an assumed one;
   * rows: schema-valid; every producer_ref names a real function and a real row; no NONE row;
   * closure: every DERIVED row's chain closes at a leaf; every root that declares a producer
     closes; a root with no producer is OPEN by name (the exact list is pinned as data, so an
@@ -15,7 +14,6 @@ semantic truth, and the suite never says otherwise.
 from __future__ import annotations
 
 import ast
-import json
 import re
 import sys
 from pathlib import Path
@@ -44,7 +42,8 @@ def test_every_row_is_schema_valid_and_none_is_bookkeeping():
     # _parse_quote_node_session_fields, _radar_atr, _radar_atr_compute_into_cache,
     # _radar_daily_atr_vendor_fallback) and added 2 for their live replacements
     # (_atr_pair, _read_bars_1m) (556 -> 541)
-    assert len(ROWS) >= 541, "the consolidated rows lost provenance claims"
+    # 2026-09-26: the ML stack and the analytics pipeline were deleted with their rows (541 -> 170)
+    assert len(ROWS) >= 170, "the consolidated rows lost provenance claims"
 
 
 def _qualified_defs(tree: ast.AST) -> set[str]:
@@ -114,21 +113,8 @@ def test_every_served_route_is_classified_and_no_ghost_route_is_listed():
     assert bad == {}, bad
 
 
-def test_every_market_state_field_is_categorised_and_no_ghost_field_is_listed():
-    fields = set(P.market_state_fields())
-    listed = set(R.MARKET_STATE)
-    assert fields - listed == set(), f"MarketState fields without a category: {sorted(fields - listed)}"
-    assert listed - fields == set(), f"categorised fields MarketState no longer has: {sorted(listed - fields)}"
-    bad = {f: c for f, (c, _p) in R.MARKET_STATE.items() if c not in P.FIELD_CATEGORIES}
-    assert bad == {}, bad
 
 
-def test_every_engine_entry_argument_is_listed_and_matches_the_code():
-    for file, fn in P.ENGINE_ENTRIES:
-        code = P.function_args(file, fn)
-        listed = list(R.ENGINE_INPUTS[(file, fn)])
-        assert listed == code, f"{file}:{fn} arguments drifted: code={code} listed={listed}"
-    assert set(R.ENGINE_INPUTS) == set(P.ENGINE_ENTRIES)
 
 
 # ── closure of the roots ───────────────────────────────────────────────────────────────────
@@ -143,18 +129,6 @@ def test_every_root_with_a_producer_closes_and_the_open_list_is_exact():
     print(f"\nPROVENANCE: {rep['roots']} roots, {rep['closed']} closed, {len(rep['open'])} OPEN (NOT_PROVEN)")
 
 
-def test_the_card_contract_fields_are_roots_or_declared_exclusions():
-    """The card contract is a CONSUMER contract. Each emitted field points at a MarketState
-    root (its api_key); it never becomes a provenance authority of its own."""
-    card = json.loads((ROOT / "reports/artifacts/CARD_CONSUMER_CONTRACT_V1.json").read_text(encoding="utf-8"))
-    bad = []
-    for f in card["fields"]:
-        key = f.get("provenance_root")
-        if key == "not_emitted" or key == "client_state":
-            continue
-        if key not in R.MARKET_STATE and key not in R.PAYLOAD_EXTRAS:
-            bad.append((f["field_name"], key))
-    assert bad == [], f"card fields whose provenance_root is not a root: {bad}"
 
 
 # ── transport invariant (ported from the retired mega1 suite) ─────────────────────────────

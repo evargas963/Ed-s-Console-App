@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import re
 from pathlib import Path
 
@@ -40,11 +39,3 @@ def test_stack_wiring_integrity_map_ingests_all_17_findings():
         assert text.count(f"FIND-SERVERPY-{n}") >= 1
 
 
-def test_server_py_diag_markers_renamed_post_ed_db_hoist():
-    import server
-
-    src = inspect.getsource(server._fetch_state)
-    assert '_diag_step("pre_db_counts", ticker)' in src
-    assert '_diag_done("db_counts", ticker)' in src
-    assert '_diag_step("pre_get_db", ticker)' not in src
-    assert '_diag_done("get_db", ticker)' not in src

@@ -9,7 +9,6 @@ import socket
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -36,24 +35,16 @@ def _schwab_oauth_scope() -> str:
     return s if s else _DEFAULT_SCHWAB_OAUTH_SCOPE
 
 
-def _get_auth_context_with_scope(api_key, callback_url, state=None, base_url=None):
-    """Same as schwab.auth.get_auth_context but OAuth2Client includes explicit scope (scope= in authorize URL).
+#: Schwab's API host; the OAuth authorize endpoint is {host}/v1/oauth/authorize
+SCHWAB_API_BASE_URL = "https://api.schwabapi.com"
 
-    Mirrors schwab.auth.get_auth_context across schwab-py versions: 1.5.x added the
-    ``base_url`` kwarg (the authorize endpoint is derived from it). We accept and honor
-    it (defaulting to the library's DEFAULT_BASE_URL when not supplied by an older
-    caller) so this override stays signature-compatible — the only behavioral delta vs
-    the upstream function is the explicit ``scope=`` on the OAuth2Client.
-    """
+
+def _get_auth_context_with_scope(api_key, callback_url, state=None, base_url=SCHWAB_API_BASE_URL):
+    """schwab.auth.get_auth_context with an explicit ``scope=`` on the OAuth2Client -- the only
+    difference from the library's own. Same signature, so schwab-py calls it unchanged."""
     from authlib.integrations.httpx_client import OAuth2Client
 
-    if base_url is None:
-        base_url = getattr(auth, "DEFAULT_BASE_URL", "https://api.schwabapi.com")
-    endpoint = (
-        auth._auth_endpoint(base_url)
-        if hasattr(auth, "_auth_endpoint")
-        else base_url.rstrip("/") + "/v1/oauth/authorize"
-    )
+    endpoint = f"{base_url}/v1/oauth/authorize"
     scope = _schwab_oauth_scope()
     oauth = OAuth2Client(api_key, redirect_uri=callback_url, scope=scope)
     authorization_url, new_state = oauth.create_authorization_url(endpoint, state=state)
@@ -88,21 +79,10 @@ class TokenInspectionResult:
     message: str = ""
 
 
-def _utc_ts() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def ensure_dir(path: str) -> None:
-    os.makedirs(path, exist_ok=True)
 
 
-def save_diag(diagnostics_dir: str, prefix: str, ticker: str, payload: dict) -> str:
-    ensure_dir(diagnostics_dir)
-    fn = f"{prefix}_{ticker}_{_utc_ts()}.json"
-    fp = os.path.join(diagnostics_dir, fn)
-    with open(fp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
-    return fp
 
 
 def _resolve_token_path(token_path: str) -> str:
@@ -122,16 +102,22 @@ def write_token_file_atomically(token_path: str, payload: dict) -> None:
     (client_from_token_file_atomic / the OAuth exchange). schwab-py's own writer is
     open(path, 'w') + json.dump -- a reader in the other process (console / daemon both
     refresh the same file) could load a torn token and fail the session (audit of #280)."""
+    import tempfile
     from pathlib import Path
 
-    from arch_competition.atomic_io import write_json_file_atomically
-
     path = Path(_resolve_token_path(token_path))
+    path.parent.mkdir(parents=True, exist_ok=True)
     for attempt in range(1, TOKEN_REPLACE_ATTEMPTS + 1):
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
         try:
-            write_json_file_atomically(path, payload)
+            with os.fdopen(fd, "w", encoding="utf-8", newline=chr(10)) as fh:
+                json.dump(payload, fh, indent=2, default=str)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
             return
         except PermissionError as e:
+            Path(tmp).unlink(missing_ok=True)
             if attempt == TOKEN_REPLACE_ATTEMPTS:
                 raise
             log.warning("token replace blocked by another reader (attempt %s/%s): %s",
@@ -188,7 +174,7 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
         return out
 
     out.has_creation_timestamp = "creation_timestamp" in data
-    tok = data.get("token")
+    tok = data.get("token")   # external-key-ok: schwab-py token file
     if isinstance(tok, dict):
         out.has_token_object = True
         at = tok.get("access_token")   # external-key-ok: Schwab OAuth token payload
@@ -496,71 +482,10 @@ def _block_live_schwab_in_ci_offline() -> None:
         )
 
 
-def _quote_call_with_retry(client, vendor_method: str, args: tuple, *,
-                            refresh_client_fn=None, attempt_hook=None, response_tag: str):
-    """
-    ONE token-refresh-and-retry-once implementation for a Schwab quote call, single or
-    batch. safe_get_quote and safe_get_quotes below differ only in which vendor method
-    they call and how they label it — this function used to be duplicated verbatim
-    between them (caught in review); now it exists once.
-
-    attempt_hook: optional callable invoked immediately before each attempt (primary and
-    token-refresh retry) for timing / observability. On InvalidTokenError: if
-    refresh_client_fn is provided, rebuild the client and retry once.
-    """
-    _block_live_schwab_in_ci_offline()
-
-    def _attempt():
-        if attempt_hook is not None:
-            try:
-                attempt_hook()
-            except Exception as e:
-                log.debug("%s attempt_hook: %s", response_tag, e, exc_info=True)
-
-    def _record(resp):
-        try:
-            from api_pressure import record_schwab_http_response
-
-            record_schwab_http_response(resp, response_tag)
-        except ImportError:
-            pass
-        return resp
-
-    _attempt()
-    try:
-        return _record(getattr(client, vendor_method)(*args))
-    except Exception as e:
-        if refresh_client_fn is not None and _is_token_error(e):
-            try:
-                new_client = refresh_client_fn()
-                if new_client:
-                    _attempt()
-                    return _record(getattr(new_client, vendor_method)(*args))
-            except Exception as retry_e:
-                raise retry_e
-        raise
 
 
-def safe_get_quote(client, ticker: str, *, refresh_client_fn=None, attempt_hook=None):
-    """
-    Fetch quote. On InvalidTokenError: if refresh_client_fn provided, rebuild client
-    and retry once. Returns response or raises. refresh_client_fn() returns new client.
-    """
-    return _quote_call_with_retry(
-        client, "get_quote", (ticker,),
-        refresh_client_fn=refresh_client_fn, attempt_hook=attempt_hook,
-        response_tag=f"quote:{ticker}")
 
 
-def safe_get_quotes(client, tickers: list, *, refresh_client_fn=None, attempt_hook=None):
-    """Batch quote fetch — ONE vendor call for many symbols (client.get_quotes), not N
-    single-symbol calls. Same token-refresh-and-retry-once implementation as
-    safe_get_quote (_quote_call_with_retry), not a second copy of it.
-    """
-    return _quote_call_with_retry(
-        client, "get_quotes", (tickers,),
-        refresh_client_fn=refresh_client_fn, attempt_hook=attempt_hook,
-        response_tag=f"quotes:{len(tickers)}")
 
 
 

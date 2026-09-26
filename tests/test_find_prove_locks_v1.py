@@ -1,39 +1,13 @@
 """RC-210: Find&Prove substance + admission + continuum parity — BLOCK negative controls."""
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
 
-def test_admission_evidence_resolves_blocks_missing_paths():
-    from tools.find_prove_locks import admission_evidence_resolves_violations
-
-    assert admission_evidence_resolves_violations({"admissions": []}) == []
-    bad = {
-        "admissions": [{
-            "component": "the_call",
-            "status": "ADMITTED",
-            "evidence": {
-                "preregistration": "reports/does_not_exist_zz99.json",
-                "oos_results": "ref:oos",
-                "costs": "ref:costs",
-                "baselines": "ref:base",
-                "scope": "ref:scope",
-                "leakage_review": "ref:leak",
-            },
-            "operator_decision": {"date": "2026-08-02", "decided_by": "operator"},
-        }],
-    }
-    v = admission_evidence_resolves_violations(bad)
-    assert v and "does not resolve" in v[0]
 
 
-def test_admission_evidence_resolves_live_registry_clean():
-    from tools.check_institutional_correctness import check_admission_evidence_resolves
-
-    assert check_admission_evidence_resolves() == []
 
 
 def test_purged_cv_blocks_plain_kfold():
@@ -67,23 +41,8 @@ def test_prereg_before_confirmatory_live_clean():
     assert check_prereg_before_confirmatory() == []
 
 
-def test_decision_path_wired_blocks_bypass():
-    from tools.find_prove_locks import decision_path_wired_violations
-
-    src = Path(REPO / "call_engine.py").read_text(encoding="utf-8")
-    assert decision_path_wired_violations(src) == []
-    broken = re.sub(
-        r"\bevaluate_decision_path_admission\s*\(",
-        "evaluate_decision_path_admission_REMOVED(",
-        src,
-    )
-    assert decision_path_wired_violations(broken)
 
 
-def test_decision_path_wired_live():
-    from tools.check_institutional_correctness import check_decision_path_wired
-
-    assert check_decision_path_wired() == []
 
 
 def test_claude_cursor_guard_parity_is_retired():

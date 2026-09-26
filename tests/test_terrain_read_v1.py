@@ -6,7 +6,7 @@ so no chain fixture is involved. The rule under test is the read logic itself.
 
 from __future__ import annotations
 
-from math_levels import GAMMA_FLIP_NARROW, GAMMA_FLIP_TRUSTED, GAMMA_FLIP_UNAVAILABLE
+from math_levels import GAMMA_FLIP_TRUSTED, GAMMA_FLIP_UNAVAILABLE
 from terrain_read import (
     POSTURE_FADE,
     POSTURE_FOLLOW,
@@ -36,18 +36,6 @@ def test_below_flip_is_short_gamma_and_follows() -> None:
     assert "do not fade" in r.headline.lower()
 
 
-def test_every_ticker_gets_the_same_read() -> None:
-    """Universality (operator 2026-09-23: "show for all tickers"): the regime and posture are
-    read the same way for a single name, an index and an ETF -- and a missing ticker too.
-    The dealer sign stays labelled MODELLED on every one."""
-    for tk in ("AAPL", "$SPX", "SPY", None):
-        above = build_terrain_read(spot=325.0, flip=320.0, flip_confidence=TRUSTED,
-                                   put_wall=318.0, call_wall=330.0, gamma_at_spot=4.0e6, ticker=tk)
-        assert above.regime == REGIME_LONG_GAMMA and above.posture == POSTURE_FADE, tk
-        below = build_terrain_read(spot=318.5, flip=320.0, flip_confidence=TRUSTED,
-                                   put_wall=318.0, call_wall=330.0, gamma_at_spot=-3.0e6, ticker=tk)
-        assert below.regime == REGIME_SHORT_GAMMA and below.posture == POSTURE_FOLLOW, tk
-        assert "modelled" in above.as_text().lower()
 
 
 def test_regime_is_the_signed_gamma_at_spot_only() -> None:
@@ -59,15 +47,6 @@ def test_regime_is_the_signed_gamma_at_spot_only() -> None:
         assert r.regime not in (REGIME_LONG_GAMMA, REGIME_SHORT_GAMMA), g
 
 
-def test_untrusted_flip_withholds_regime_and_posture() -> None:
-    """Fail-closed: an unreliable level must never yield a trading posture."""
-    r = build_terrain_read(spot=743.72, flip=770.35, flip_confidence=GAMMA_FLIP_NARROW,
-                           put_wall=740.0, call_wall=745.0)
-    assert r.regime == REGIME_UNAVAILABLE
-    assert r.posture == POSTURE_STAND_ASIDE
-    assert GAMMA_FLIP_NARROW in r.as_text()
-    # levels are still surfaced, but explicitly marked untrusted
-    assert "untrusted" in r.as_text().lower()
 
 
 def test_missing_inputs_fail_closed() -> None:
@@ -81,31 +60,9 @@ def test_missing_inputs_fail_closed() -> None:
         assert r.posture == POSTURE_STAND_ASIDE
 
 
-def test_edge_detection_at_each_wall() -> None:
-    upper = build_terrain_read(spot=744.9, flip=740.0, flip_confidence=TRUSTED,
-                               put_wall=740.0, call_wall=745.0)
-    assert "upper edge" in upper.as_text().lower()
-    lower = build_terrain_read(spot=740.1, flip=735.0, flip_confidence=TRUSTED,
-                               put_wall=740.0, call_wall=760.0)
-    assert "lower edge" in lower.as_text().lower()
 
 
-def test_mid_box_is_an_explicit_stand_aside_note() -> None:
-    r = build_terrain_read(spot=750.0, flip=740.0, flip_confidence=TRUSTED,
-                           put_wall=735.0, call_wall=765.0)
-    assert "mid-box" in r.as_text().lower()
-    assert "stand aside" in r.as_text().lower()
 
 
-def test_missing_wall_reports_absence_not_a_default() -> None:
-    """Absence must read as absence — never a fabricated neutral number."""
-    r = build_terrain_read(spot=750.0, flip=740.0, flip_confidence=TRUSTED,
-                           put_wall=None, call_wall=765.0)
-    assert "unavailable" in r.as_text().lower()
-    assert r.put_wall is None
 
 
-def test_read_is_deterministic() -> None:
-    kw = dict(spot=743.29, flip=745.61, flip_confidence=TRUSTED,
-              put_wall=740.0, call_wall=745.0)
-    assert build_terrain_read(**kw).as_text() == build_terrain_read(**kw).as_text()

@@ -15,12 +15,10 @@ non-test code read any of it. The machinery proved chain closure for internal Sc
 derivation helpers and nothing about what the operator sees or decides on.
 
 THE ROOT RULE (dual-signed text, verbatim in substance):
-  ROOTS.  A value is a material provenance root iff it crosses B1 or B2.
-          B1: it is an argument of a decision-engine entry (ENGINE_ENTRIES).
-          B2: it is a field of MarketState, or a payload of a route classified PRODUCER in the
-              one route-classification table covering every served route; an unclassified
-              route FAILS.
-  EXCLUSIONS. A B1/B2 value is excluded only when it cannot change material semantics:
+  ROOTS.  A value is a material provenance root iff it is the payload of a route classified
+          PRODUCER in the one route-classification table covering every served route; an
+          unclassified route FAILS.
+  EXCLUSIONS. A root is excluded only when it cannot change material semantics:
           presentation-only session/transport labels, debug output, formatting, presentation.
           Session/time state, source identity, freshness, admission, policy, vetoes, or any
           state that can alter TRADE/WAIT/AVOID, exposure, a material computed truth, or the
@@ -42,8 +40,7 @@ THE ROOT RULE (dual-signed text, verbatim in substance):
           provable. Neither limitation is hidden by pretending enforcement exists.
 
 WHAT IS ENFORCED vs REPORTED (tests/test_provenance_v1.py):
-  enforced — the population is complete (every served route classified, every MarketState
-             field categorised, every engine entry's arguments listed), every row is
+  enforced — the population is complete (every served route classified), every row is
              schema-valid and every producer_ref names a real function and a real row, every
              DERIVED chain closes, every root that declares a producer closes to a leaf, no
              NONE row exists, the transport invariant holds (no direct Schwab call outside a
@@ -53,7 +50,7 @@ WHAT IS ENFORCED vs REPORTED (tests/test_provenance_v1.py):
              represented as semantic truth.
 
 Data lives in governance/provenance_rows.py (rows) and governance/provenance_roots.py
-(route classes, MarketState field categories and producers, engine-entry arguments).
+(route classes and producers).
 This module is test-time governance: nothing on the application runtime path imports it.
 """
 from __future__ import annotations
@@ -122,8 +119,6 @@ class AllowlistEntry:
 ALLOWLIST: tuple[AllowlistEntry, ...] = (
     AllowlistEntry("mega1_schwab_py_client", "INTERNAL", "transport",
                    "constructs the schwab-py HTTP client from the token; wire calls happen in the transport chain"),
-    AllowlistEntry("mega1_env_config", "INTERNAL", "config",
-                   "reads environment / config values (base URL, timeouts, flags); no market field produced"),
     AllowlistEntry("mega1_session_calendar", "INTERNAL", "clock",
                    "ET clock and session calendar (RTH windows, trading days); the only source of time"),
     AllowlistEntry("mega1_sqlite_internal", "INTERNAL", "internal_state",
@@ -132,23 +127,10 @@ ALLOWLIST: tuple[AllowlistEntry, ...] = (
                    "pure helper over already-typed inputs; produces no market field of its own"),
     AllowlistEntry("mega1_live_plane_state", "INTERNAL", "internal_state",
                    "in-process live-plane cache state (last quote, freshness, sequence)"),
-    AllowlistEntry("mega1_l1_sse_counters", "INTERNAL", "counter",
-                   "SSE / L1 delivery counters and latency observability"),
     AllowlistEntry("mega1_diagnostic_log", "INTERNAL", "internal_state",
                    "diagnostic logging and error capture; not a market field"),
-    AllowlistEntry("mega1_filesystem", "INTERNAL", "filesystem",
-                   "reads or writes local files (token, diagnostics, reports)"),
-    AllowlistEntry("mega2_internal_helper", "INTERNAL", "internal_state",
-                   "pure helper over already-typed inputs; produces no market field of its own"),
     AllowlistEntry("mega2_schwab_stream_l1", "INTERNAL", "transport",
                    "Schwab streaming L1 frame decoder; the streamed fields close at the stream leaf rows"),
-    AllowlistEntry("mega3_internal_helper", "INTERNAL", "internal_state",
-                   "pure helper over already-typed inputs; produces no market field of its own"),
-    AllowlistEntry("mega4_governed_stack_contract", "INTERNAL", "config",
-                   "reads the governed model-stack contract (feature contract, release identity)"),
-    AllowlistEntry("analytics_cache_state", "INTERNAL", "internal_state",
-                   "in-process analytics cache freshness (stale / pending-shell / refresh-in-progress): "
-                   "a CONTROL truth whose source is the server's own cache clock, not a market field"),
 )
 ALLOWLIST_IDS = frozenset(e.id for e in ALLOWLIST)
 
@@ -251,56 +233,22 @@ def served_routes(rel: str = "server.py") -> list[tuple[str, str, str]]:
     return out
 
 
-def market_state_fields(rel: str = "market_state.py") -> list[str]:
-    src = (REPO / rel).read_text(encoding="utf-8", errors="replace")
-    cls = next(n for n in ast.parse(src).body if isinstance(n, ast.ClassDef) and n.name == "MarketState")
-    return [b.target.id for b in cls.body if isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name)]
-
-
-def function_args(rel: str, name: str) -> list[str]:
-    src = (REPO / rel).read_text(encoding="utf-8", errors="replace")
-    for n in ast.walk(ast.parse(src)):
-        if isinstance(n, ast.FunctionDef) and n.name == name:
-            return [a.arg for a in n.args.posonlyargs + n.args.args + n.args.kwonlyargs]
-    raise LookupError(f"{rel}:{name} not found")
-
-
 # ── the root rule ──────────────────────────────────────────────────────────────────────────
-#: B1 — decision-engine entries. An argument of any of these is a material root.
-ENGINE_ENTRIES: tuple[tuple[str, str], ...] = (
-    ("call_engine.py", "compute_call"),
-    ("call_engine.py", "compute_position_size"),
-    ("multi_horizon_decision.py", "compute_multi_horizon_synthesis"),
-    ("prediction_engine.py", "compute_prediction"),
-    ("decision_gate.py", "evaluate_decision_path_admission"),
-)
-
-#: Route classes. PRODUCER routes carry roots of their own (a payload not drawn from
-#: MarketState); CARRIER routes serialize MarketState or another producer's payload.
+#: Route classes. PRODUCER routes carry roots of their own; CARRIER routes serialize another
+#: producer's payload.
 ROUTE_CLASSES = frozenset({"PRODUCER", "CARRIER", "OPERATOR_INPUT", "OPS", "DIAGNOSTIC",
                            "GOVERNANCE", "LOGGER", "PAGE", "STREAM"})
 #: Route classes whose payload fields are roots.
 ROOT_ROUTE_CLASSES = frozenset({"PRODUCER"})
 
-#: MarketState field categories (closed vocabulary; reviewed human judgment).
-FIELD_CATEGORIES = frozenset({
-    "MARKET",         # a market-data truth (price, greeks, levels, exposure, vol)
-    "DECISION",       # a decision-path truth (bias, call, plan, probabilities, sizing)
-    "CONTROL",        # freshness / admission / policy / veto / session state that can change
-                      # a decision or the operator's interpretation
-    "IDENTITY",       # what is selected (ticker, expiry) — material when it keys a computation
-    "PRESENTATION",   # colours, css classes, display strings, labels of an underlying truth
-    "DEBUG",          # diagnostics never read by a decision or shown as a truth
-})
-ROOT_CATEGORIES = frozenset({"MARKET", "DECISION", "CONTROL", "IDENTITY"})
 
 
 @dataclass(frozen=True)
 class Root:
     """A material provenance root and the producer (row ref) that owns it, or OPEN."""
 
-    kind: str          # "field" | "engine_arg" | "route"
-    name: str          # MarketState field, engine "file:fn/arg", or route
+    kind: str          # "route"
+    name: str          # the route
     category: str
     producer: str | None   # row ref that computes it; None = OPEN (NOT_PROVEN)
 
@@ -308,18 +256,6 @@ class Root:
 def roots(roots_data, idx) -> list[Root]:
     """Assemble every root from governance/provenance_roots.py under the rule."""
     out: list[Root] = []
-    for field, (category, producer) in roots_data.MARKET_STATE.items():
-        if category in ROOT_CATEGORIES:
-            out.append(Root("field", field, category, producer))
-    # B2 also covers keys the serializer ADDS to a carried payload outside MarketState (the
-    # card's expected-move bands and analytics freshness flags live in server.py, not on the
-    # dataclass); they are roots exactly like fields.
-    for key, (category, producer) in getattr(roots_data, "PAYLOAD_EXTRAS", {}).items():
-        if category in ROOT_CATEGORIES:
-            out.append(Root("payload", key, category, producer))
-    for (file, fn), args in roots_data.ENGINE_INPUTS.items():
-        for arg, producer in args.items():
-            out.append(Root("engine_arg", f"{file}:{fn}/{arg}", "DECISION", producer))
     for route, (cls, producer) in roots_data.ROUTES.items():
         if cls in ROOT_ROUTE_CLASSES:
             out.append(Root("route", route, "MARKET", producer))

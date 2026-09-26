@@ -18,20 +18,10 @@ class _FakeResp:
         return self._payload
 
 
-def _no_last_price_quote(tk: str) -> _FakeResp:
-    return _FakeResp({
-        tk: {
-            "quote": {"mark": 111.11, "closePrice": 110.0, "bidPrice": 110.9, "askPrice": 111.2},
-            "regular": {"regularMarketLastPrice": 110.0},
-            "extended": {"mark": 111.05},
-        }
-    })
 
 
 def test_resolve_spot_rejects_mark_close_chain_and_snapshot(monkeypatch) -> None:
     monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "safe_get_quote", lambda _c, tk, **_k: _no_last_price_quote(tk))
-    monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (742.48, 1.0))
     L._by_ticker.pop("SPY", None)
     spot, source, _ts = server.resolve_spot(
         "SPY",
@@ -76,51 +66,12 @@ def test_plane_mark_cannot_replace_prior_last_price() -> None:
     L._by_ticker.pop("KEEPLAST", None)
 
 
-def test_a_stale_streamed_last_price_is_withheld_not_served(monkeypatch) -> None:
-    """Operator rule 2026-09-23: a stale streamed LAST_PRICE is not current spot and is not
-    served labelled "stale" either -- spot is UNAVAILABLE until the stream delivers."""
-    tk = "STALELAST"
-    L._by_ticker[tk] = {
-        "spot": 700.42,
-        "server_received_ts": time.time() - (L.PLANE_QUOTE_STALE_SEC + 5.0),
-        "exchange_quote_ts": 1_800_000_000.0,
-        "quote_source_detail": {"spot": "LAST_PRICE"},
-        "quote_ingestion": "schwab_streaming_level_one",
-    }
-    try:
-        monkeypatch.setattr(server, "get_client", lambda: object())
-        monkeypatch.setattr(server, "safe_get_quote", lambda _c, _tk, **_k: _no_last_price_quote(_tk))
-        spot, source, _ts = server.resolve_spot(tk)
-        assert spot is None and source == "none"
-        assert server.current_spot_state(source, tk) == "unavailable"
-    finally:
-        L._by_ticker.pop(tk, None)
 
 
-def test_merge_and_l1_overlay_ignore_mark_plane_spot() -> None:
-    tk = "MARKPLANE"
-    L._by_ticker[tk] = {
-        "spot": 999.0,
-        "spot_disp": "999.00",
-        "server_received_ts": time.time(),
-        "quote_source_detail": {"spot": "MARK"},
-    }
-    try:
-        ms = {"spot": 700.42, "ticker": tk}
-        L.merge_into_state(ms, tk)
-        assert ms["spot"] == 700.42
-        l1 = {"spot": 700.42}
-        L.apply_l1_live_quote_overlay(l1, tk)
-        assert l1["spot"] == 700.42
-        assert "l1_live_overlay_applied" not in l1
-    finally:
-        L._by_ticker.pop(tk, None)
 
 
 def test_reprice_and_api_spot_do_not_use_bar_close_or_snapshot(monkeypatch) -> None:
     monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "safe_get_quote", lambda _c, tk, **_k: _no_last_price_quote(tk))
-    monkeypatch.setattr(server, "_spot_from_stored", lambda _tk: (745.10, 1.0))
     cached = {
         "ticker": "SPY",
         "spot": 745.10,

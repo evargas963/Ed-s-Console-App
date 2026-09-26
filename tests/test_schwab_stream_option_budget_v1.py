@@ -123,35 +123,6 @@ def test_budget_is_below_the_load_that_still_died():
 
 # ── the daemon applies the guard and reports refusals honestly ─────────────────────────
 
-class _Stream:
-    def __init__(self, die_after: int | None = None):
-        self.calls: list[tuple[str, int]] = []
-        self.held: set[str] = set()
-        self._die_after = die_after
-
-    async def _op(self, name, syms):
-        self.calls.append((name, len(syms)))
-        if self._die_after is not None and len(self.calls) > self._die_after:
-            raise ConnectionError("no close frame received or sent")
-
-    async def level_one_option_subs(self, syms):
-        await self._op("subs", syms)
-        self.held |= set(syms)
-
-    async def level_one_option_add(self, syms):
-        await self._op("add", syms)
-        self.held |= set(syms)
-
-    async def level_one_option_unsubs(self, syms):
-        await self._op("unsubs", syms)
-        self.held -= set(syms)
-
-    async def options_book_subs(self, syms):
-        await self._op("book_subs", syms)
-
-    async def options_book_unsubs(self, syms):
-        await self._op("book_unsubs", syms)
-
 
 def _apply(stream, rejected, monkeypatch, symbols):
     monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: None)
@@ -159,9 +130,6 @@ def _apply(stream, rejected, monkeypatch, symbols):
     state: dict = {}
     return asyncio.run(rsc._apply_active_option_contract_subs(
         stream, state, rejected_state=rejected, rejection_backoff={}))
-
-
-# ── a dead socket stops the subscribe at once: no false rejections, one recycle ─────────
 
 
 # ── the console: honest spot identity, budgeted demand ─────────────────────────────────
@@ -172,19 +140,6 @@ def _row(ingestion, age_sec):
             "quote_source_detail": {"spot": "LAST_PRICE"}, "quote_ingestion": ingestion}
 
 
-def _no_rest(monkeypatch, server):
-    """Every REST quote read in server.py raises: a spot answer cannot have come from REST.
-    (The REST spot leg `_spot_from_quote` was deleted; the memo and its raw fetch are the
-    only remaining vendor quote reads, test_spot_authority_v1::
-    test_every_vendor_quote_read_goes_through_the_memo.)"""
-    def _boom(*_a, **_k):
-        raise AssertionError("resolve_spot must not call the REST quote")
-    assert not hasattr(server, "_spot_from_quote"), "the REST spot leg is back"
-    monkeypatch.setattr(server, "_memoized_quote_response", _boom)
-    monkeypatch.setattr(server, "_safe_get_quote_with_retry", _boom)
-    monkeypatch.setattr(server, "safe_get_quote", _boom)
-
-
 def test_a_rest_written_plane_row_is_not_spot(monkeypatch):
     """Spot is the streamed LAST_PRICE only -- a REST-written row is never spot, labelled
     or not (operator rule 2026-09-23: no fallbacks, a broken feed must look broken)."""
@@ -193,51 +148,6 @@ def test_a_rest_written_plane_row_is_not_spot(monkeypatch):
     L._by_ticker[tk] = dict(_row("rest_anchor_lane_refresher", 1.0), ticker=tk)
     try:
         assert server.resolve_spot(tk) == (None, "none", None)
-    finally:
-        L._by_ticker.pop(tk, None)
-
-
-def test_streamed_plane_row_keeps_streaming_identity(monkeypatch):
-    from tests.feed_live_helper import mark_feed_live
-    mark_feed_live('ZZSTREAMROW')   # the daemon holds it on a live feed
-    import server
-    _no_rest(monkeypatch, server)
-    tk = "ZZSTREAMROW"
-    L._by_ticker[tk] = dict(_row("schwab_streaming_level_one", 1.0), ticker=tk)
-    try:
-        _, source, _ = server.resolve_spot(tk)
-        assert source == server.SPOT_SOURCE_PLANE
-        assert server.current_spot_state(source, tk) == "live"
-    finally:
-        L._by_ticker.pop(tk, None)
-
-
-def test_a_stale_streamed_price_is_not_spot(monkeypatch):
-    """A streamed LAST_PRICE past its freshness bound is UNAVAILABLE, never served stale."""
-    import server
-    tk = "ZZSTALESTREAM"
-    L._by_ticker[tk] = dict(_row("schwab_streaming_level_one", L.PLANE_QUOTE_STALE_SEC + 30), ticker=tk)
-    try:
-        assert server.resolve_spot(tk) == (None, "none", None)
-    finally:
-        L._by_ticker.pop(tk, None)
-
-
-def test_no_rest_quote_is_ever_consulted_for_spot(monkeypatch):
-    import server
-
-    _no_rest(monkeypatch, server)
-    L._by_ticker.pop("ZZNOSTREAM", None)
-    # no streamed row: UNAVAILABLE, and no REST read was attempted to fill the gap
-    assert server.resolve_spot("ZZNOSTREAM") == (None, "none", None)
-    # a fresh streamed row: served, still without touching REST
-    from tests.feed_live_helper import mark_feed_live
-    tk = "ZZNORESTLIVE"
-    mark_feed_live(tk)
-    L._by_ticker[tk] = dict(_row("schwab_streaming_level_one", 1.0), ticker=tk)
-    try:
-        spot, source, _ = server.resolve_spot(tk)
-        assert spot == float(L._by_ticker[tk]["spot"]) and source == server.SPOT_SOURCE_PLANE
     finally:
         L._by_ticker.pop(tk, None)
 

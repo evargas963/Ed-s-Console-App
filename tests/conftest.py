@@ -96,115 +96,20 @@ def _live_feed_starts_down():
     _lmp_feed.record_feed_down()
 
 
-@pytest.fixture(autouse=True)
-def _stream_spine_fallback_stays_isolated(monkeypatch):
-    """Tests that remove the env override still cannot fall back to checkout state."""
-    import stream_spine
-
-    monkeypatch.setattr(
-        stream_spine,
-        "STREAM_DB_DEFAULT",
-        _PYTEST_RUNTIME_ROOT / "stream_capture.db",
-    )
 
 
-@pytest.fixture(autouse=True)
-def _no_fusion_temperature_calibration(monkeypatch):
-    """Hermetic tests: never read the operator's live fusion calibration artifact.
-
-    models/calibration/fusion_temperature.json is machine-fit operator state; with
-    it present, every bundle-path test would change behavior by environment. Tests
-    that exercise the serve hook monkeypatch _applied_fusion_temperatures themselves
-    (their setattr runs after this fixture and wins).
-    """
-    import multi_horizon_ml_bundle as mhb
-
-    monkeypatch.setattr(mhb, "_applied_fusion_temperatures", lambda: {})
 
 
-@pytest.fixture(autouse=True)
-def _equal_mh_pool_weights(monkeypatch):
-    """Hermetic tests: never read the operator's live calibration DB for ALL-card
-    pool weights. Equal weights = unweighted log opinion pool (the fail-closed
-    default). Tests exercising skill weighting monkeypatch after this fixture
-    (their setattr wins); _horizon_skill_weights_cached is the ONLY weight source
-    (RC-533 removed the pool_weights injection parameter)."""
-    import multi_horizon_decision as mhd
-
-    monkeypatch.setattr(
-        mhd,
-        "_horizon_skill_weights_cached",
-        lambda: ({h: 1.0 / len(mhd.PRODUCT_HORIZONS) for h in mhd.PRODUCT_HORIZONS}, True),
-    )
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _ensure_console_db_snapshots_1m_normalized_schema():
-    """Hermetic pytest/CI: governance live-drift reads ``db_training_fingerprint`` on ``DB_PATH``."""
-    from db import ensure_console_db_training_schema
-
-    ensure_console_db_training_schema()
 
 
-#: TEST_SYSTEM_REHAB_V2: this fixture called the SAME no-arg
-#: ensure_console_db_training_schema() as the session-scoped sibling above -- but
-#: FUNCTION-scoped, so it opened a real sqlite connection and ran a sqlite_master
-#: query before every one of ~6469 tests, not once. The stated concern (Playwright /
-#: an early test touching the db file before the session fixture's guarantee takes
-#: effect) is a first-call concern, not a per-test one -- a process-level cache
-#: preserves that exact protection (the real check still runs on the very first
-#: call, from whichever test happens to run first) while removing ~6468 redundant
-#: connection opens.
-_console_db_schema_verified = False
 
 
-@pytest.fixture(autouse=True)
-def _ensure_console_db_schema_before_each_test():
-    """Playwright / early tests may touch ``data/ed_console.db`` without normalized schema."""
-    global _console_db_schema_verified
-    if _console_db_schema_verified:
-        return
-    from db import ensure_console_db_training_schema
-
-    ensure_console_db_training_schema()
-    _console_db_schema_verified = True
 
 
-@pytest.fixture(scope="session")
-def _admitted_decision_registry_path(tmp_path_factory):
-    """Session-scoped registry file that admits the decision path (test default)."""
-    import json
-
-    from decision_gate import (
-        DECISION_PATH_COMPONENT,
-        REQUIRED_EVIDENCE_FIELDS,
-        SCHEMA_VERSION,
-    )
-
-    doc = {
-        "schema_version": SCHEMA_VERSION,
-        "admissions": [
-            {
-                "component": DECISION_PATH_COMPONENT,
-                "status": "ADMITTED",
-                "evidence": {f: f"pytest-fixture:{f}" for f in REQUIRED_EVIDENCE_FIELDS},
-                "operator_decision": {"date": "2026-01-01", "decided_by": "pytest-fixture"},
-            }
-        ],
-    }
-    p = tmp_path_factory.mktemp("decision_gate") / "decision_path_admissions.json"
-    p.write_text(json.dumps(doc), encoding="utf-8")
-    return p
 
 
-@pytest.fixture(autouse=True)
-def _decision_path_admitted_by_default(monkeypatch, _admitted_decision_registry_path):
-    """Hermetic tests: stack/policy tests exercise compute_call behavior, not the
-    charter admission gate — run them with an admitted registry so a directional
-    call is reachable. Production default (committed registry is EMPTY → forced
-    WAIT) is locked explicitly by tests/test_decision_gate.py, which overrides
-    ED_DECISION_ADMISSIONS_PATH / passes explicit paths (its setenv wins)."""
-    monkeypatch.setenv("ED_DECISION_ADMISSIONS_PATH", str(_admitted_decision_registry_path))
 
 
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:

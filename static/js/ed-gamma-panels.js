@@ -76,7 +76,8 @@
     : { trigger: function () { loadLevelsImpl(ticker()); }, reset: function () {} };
   function loadLevels() { _levelsLoader.trigger(ticker()); }
   function renderLevels(d) {
-    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime'];   // klPcr: analytics plane, own reader below
+    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime'];
+    paintPcr(d && !d.error ? d : null);
     if (!d || d.error) {
       ids.forEach(function (id) { txt(id, '—'); });
       txt('klSrc', d && d.error ? 'terrain not ready' : 'offline');
@@ -129,86 +130,15 @@
     }
   }
 
-  // ---------- Put/Call OI ratio (Key Levels · Exposure) <- GET /api/analytics/state ----------
-  // Canonical producer: server._fetch_state -> build_totals_rows(...)[0].pcr_oi, the CONSENSUS window
-  // = put OI / call OI over EVERY strike of the SELECTED-EXPIRY chain (contracts_use), served as
-  // `pcr_val` beside `selected_exp`. That pair is read here so the expiry the ratio is scoped to is
-  // always disclosed; the lightweight plane's bare pcr_val carries no expiry and is not used.
-  // CACHE IDENTITY = ticker + expiry-filter + the bundle's CANONICAL generation, never wall-clock:
-  //   * `analytics_version` — the Tier C bundle's own generation, which the shell already receives
-  //     on its slow /api/live/state read (analytics_lightweight.analytics_version; EdShell.getPlane).
-  //     Tier C state is keyed by (ticker, expiry) and the generation is PER ENTRY, so the plane read
-  //     carries the same expiry context as the PCR read (/api/live/state?ticker=X&expiry=E resolves
-  //     entry (X,E); no expiry -> the newest entry for X, the same rule /api/analytics/state uses
-  //     without expiry) and a generation is compared ONLY when the plane record names this exact
-  //     context. Same generation -> no re-read. New generation -> one re-read. This is what actually
-  //     moves the value (a recompute over a re-fetched chain carrying the day's OI publication).
-  //   * `session_label` — the canonical market-session state on the same read. A session
-  //     transition (e.g. Closed -> Pre-Market on the next trading day) re-reads once, which also
-  //     schedules the Tier C recompute when no other viewer has kept it warm; the generation
-  //     advance that follows lands the fresh value through the rule above.
-  //   * ticker / expiry change -> re-read (new context).
-  // While the analytics plane is warming (pending shell) the bounded re-read rides the slow tick.
-  // /api/analytics/state is cache-first (stale-while-refresh); this never polls it per tick.
-  var _pcrKey = null, _pcrPending = false, _pcrTries = 0, PCR_MAX_TRIES = 10;
-  var _pcrVer = null, _pcrSession = null;        // identity of the value currently displayed
+  // ---------- Put/Call OI ratio <- /api/terrain pcr_by_expiry (selected expiry, else the front one) ----------
   function expiryFilter() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || ''; }
-  function plane() { return (window.EdShell && window.EdShell.getPlane && window.EdShell.getPlane()) || {}; }
-  function paintPcr(v, scope) {
-    txt('klPcr', v == null ? '—' : Number(v).toFixed(2));   // formatting only
-    txt('klPcrScope', scope || '');
+  function paintPcr(d) {
+    var byExp = (d && d.pcr_by_expiry) || {};
+    var ex = expiryFilter() || Object.keys(byExp).sort()[0] || '';
+    var v = ex ? byExp[ex] : null;
+    txt('klPcr', v == null ? '—' : Number(v).toFixed(2));
+    txt('klPcrScope', ex ? 'OI · exp ' + ex : '');
   }
-  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
-  // fires on every streamed gamma_surface_seq push, not just the 12s poll tick, so this can
-  // be invoked far more often than its own round trip; without coalescing, two overlapping
-  // fetches could both see the pre-update identity (newGen) and race, each orphaning the
-  // other's generation counter. The identity dedup below (newContext/newGen/newSession/retry)
-  // is unchanged -- it decides WHETHER a read is needed at all; coalescing only ensures at
-  // most one is ever in flight, and re-evaluates that decision fresh (against
-  // possibly-just-updated _pcrVer/_pcrSession) for any trigger that arrived mid-flight.
-  function stillPcrCtx(tk, ex) { return isGamma() && !!document.getElementById('klPcr') && ticker() === tk && expiryFilter() === ex; }
-  // ROUND 8 (2026-09-13): keyed on ticker+expiry (see loadPcr()) so a held/slow fetch for
-  // an ABANDONED context is aborted immediately once a different one is selected.
-  function loadPcrImpl(signal) {
-    if (!isGamma() || !document.getElementById('klPcr')) return;
-    var tk = ticker(), ex = expiryFilter(), key = tk + '|' + ex, pl = plane();
-    var newContext = key !== _pcrKey;
-    // the plane's generation counts only when its record was read for THIS (ticker, expiry) context
-    var sameCtx = pl.ticker === tk && (pl.expiry || '') === ex;
-    var newGen = sameCtx && pl.analyticsVersion != null && _pcrVer != null && pl.analyticsVersion !== _pcrVer;
-    var newSession = pl.session != null && _pcrSession != null && pl.session !== _pcrSession;
-    var retry = _pcrPending && _pcrTries < PCR_MAX_TRIES;
-    if (!newContext && !newGen && !newSession && !retry) return;   // same identity: no redundant re-read
-    if (newContext) { _pcrKey = key; _pcrTries = 0; _pcrPending = false; _pcrVer = null; _pcrSession = null; paintPcr(null, 'warming'); }
-    if (newGen || newSession) { _pcrTries = 0; }
-    _pcrTries++;
-    // `_via=pcr`: see ed-alerts.js's identical tag on its own independent read of this same
-    // endpoint -- harmless and server-ignored, lets tooling/tests attribute each consumer's
-    // traffic separately instead of conflating two different read-cadence contracts.
-    return fetch('/api/analytics/state?ticker=' + encodeURIComponent(tk) + (ex ? '&expiry=' + encodeURIComponent(ex) : '') + '&_via=pcr', { cache: 'no-store', signal: signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) {
-        if (!stillPcrCtx(tk, ex)) return;
-        // the identity this response answers for: its own generation (falls back to the plane's
-        // when the response carries none) and the session it was read under
-        var pn = plane(), pnSame = pn.ticker === tk && (pn.expiry || '') === ex;
-        _pcrVer = (d.analytics_version != null) ? d.analytics_version : (pnSame && pn.analyticsVersion != null ? pn.analyticsVersion : null);
-        _pcrSession = pn.session != null ? pn.session : null;
-        if (d.state_error) { _pcrPending = false; paintPcr(null, 'analytics error'); return; }
-        if (d.analytics_pending_shell) { _pcrPending = true; paintPcr(null, 'warming'); return; }
-        _pcrPending = false;
-        if (d.pcr_val == null) { paintPcr(null, 'unavailable'); return; }
-        paintPcr(d.pcr_val, 'OI · exp ' + (d.selected_exp || '—'));
-      })
-      .catch(function (e) {
-        if (e && e.name === 'AbortError') return;
-        if (stillPcrCtx(tk, ex)) { _pcrPending = true; paintPcr(null, 'offline'); }
-      });
-  }
-  var _pcrLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadPcrImpl(signal); })
-    : { trigger: function () { loadPcrImpl(); }, reset: function () {} };
-  function loadPcr() { _pcrLoader.trigger(ticker() + '|' + expiryFilter()); }
 
   // ---------- GEX by Strike ----------
   // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
@@ -914,10 +844,9 @@
   function loadOf() { if (isGamma()) _ofLoader.trigger(ticker()); }
 
   // ---------- events ----------
-  function loadAll() { loadLevels(); loadGbs(); loadPcr(); loadVanna(); loadCharm(); loadStructures(); loadOf(); }   // loadPcr is a no-op unless its context changed or it is still warming
+  function loadAll() { loadLevels(); loadGbs(); loadVanna(); loadCharm(); loadStructures(); loadOf(); }
   document.addEventListener('ed:ticker', function () { resetStrikeDetailForTickerChange(); loadAll(); });
-  document.addEventListener('ed:expiry', loadPcr);   // the ratio is scoped to the selected expiry -> re-read for the new context
-  document.addEventListener('ed:plane', loadPcr);    // the bundle generation or the market session changed -> identity check
+  document.addEventListener('ed:expiry', loadLevels);   // the ratio is scoped to the selected expiry
   document.addEventListener('ed:view', loadAll);
   document.addEventListener('ed:scope', loadGbs);   // #3: re-window the GEX-by-strike panel only
   document.addEventListener('ed:refresh', function (e) {

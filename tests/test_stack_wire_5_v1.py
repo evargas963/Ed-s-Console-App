@@ -60,31 +60,8 @@ def test_order_flow_composite_constants_and_producers_are_retired():
     assert "def _readiness" not in body
 
 
-def test_order_flow_direction_is_withheld_from_the_decision_vote():
-    """TRUTH_V1: order_flow_direction is the sign of an UNVALIDATED composite (weights/thresholds
-    never fit or OOS-validated; two magnitude-as-direction legs removed). Per the repo's own rule,
-    a signal with no out-of-sample evidence may not influence the decision, so call_engine casts a
-    neutral order-flow vote. This locks that the direction->±1 vote is not silently reinstated, and
-    that call_engine still derives no second OF score."""
-    import call_engine
-
-    src = inspect.getsource(call_engine.compute_call)
-    # the vote is hard-neutralized (withheld), not mapped from direction
-    assert "of_vote = 0" in src
-    assert 'of_vote = 1 if' not in src
-    assert "WITHHELD" in src
-    # and call_engine still never re-derives an order-flow score of its own
-    assert "_compute_order_flow_score" not in src
-    assert "OrderFlowEngine" not in src
 
 
-def test_server_of_freshness_independent_from_decision_generation():
-    import server
-
-    src = inspect.getsource(server._l1_attach_freshness_semantics)
-    assert "order_flow_as_of_ts" in src
-    assert "order_flow_stale" in src
-    assert "decision_generation_id" not in src
 
 
 def test_order_flow_engine_has_no_tradability_gate():

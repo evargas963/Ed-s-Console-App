@@ -115,11 +115,6 @@ def test_no_client_side_level_derivation():
     assert "compute_gamma" not in src
 
 
-def test_decide_untouched_admissions_empty():
-    import json
-    reg = json.loads((REPO / "config" / "decision_path_admissions.json").read_text(encoding="utf-8"))
-    admitted = reg.get("admissions") or reg.get("admitted") or []
-    assert admitted == [], f"decision path is no longer empty: {admitted}"
 
 
 def test_rc355_lane_resolver_never_overlaps_and_is_wired():
