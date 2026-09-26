@@ -276,7 +276,7 @@ _feed: dict[str, Any] = {"rx": None, "socket_open": False, "held": frozenset()}
 
 def record_feed_heartbeat(msg: dict[str, Any], received_at: float) -> None:
     """Apply one daemon heartbeat (topic ``daemon.heartbeat``)."""
-    held = msg.get("equities_held") if isinstance(msg, dict) else None
+    held = (msg.get("held") or {}).get("LEVELONE_EQUITIES") if isinstance(msg, dict) else None
     with _lock:
         _feed["rx"] = float(received_at)
         _feed["socket_open"] = bool(isinstance(msg, dict) and msg.get("schwab_socket_open") is True)

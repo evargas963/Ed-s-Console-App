@@ -211,7 +211,7 @@ async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
     try:
         async with serve(handler, host, port, max_size=None, ping_interval=20, ping_timeout=20):
             stats["listening"] = f"ws://{host}:{port}"
-            print(f"live push: serving Schwab stream messages on ws://{host}:{port}")
+            log.info("live push: serving Schwab stream messages on ws://%s:%s", host, port)
             await stop.wait()
     finally:
         tracker.cancel()

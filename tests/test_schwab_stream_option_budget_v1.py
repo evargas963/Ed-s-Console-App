@@ -11,7 +11,6 @@ spot_source=streaming_plane / live. These tests lock each repair at its real sea
 from __future__ import annotations
 
 import asyncio
-import sys
 import time
 
 
@@ -223,26 +222,6 @@ def test_no_rest_quote_is_ever_consulted_for_spot(monkeypatch):
     monkeypatch.setattr(server, "_spot_from_quote", _boom)
     monkeypatch.setattr(server, "_memoized_quote_response", _boom)
     assert server.resolve_spot("ZZNOSTREAM") == (None, "none", None)
-
-
-# ── the daemon's own output is recorded when it runs windowless ─────────────────────────
-
-def test_windowless_daemon_output_goes_to_a_timestamped_log(monkeypatch, tmp_path):
-    import runtime_layout
-    monkeypatch.setattr(runtime_layout, "logs_dir", lambda: tmp_path)
-    monkeypatch.setattr(sys, "stdout", None)
-    monkeypatch.setattr(sys, "stderr", None)
-    path = rsc._ensure_daemon_output_is_recorded()
-    print("stream: socket closed (no close frame)")
-    sys.stdout.flush()
-    text = path.read_text(encoding="utf-8")
-    assert path == tmp_path / "stream_capture.log"
-    assert "socket closed" in text and text[:4].isdigit(), "each line carries its wall time"
-
-
-def test_a_console_run_keeps_its_console(monkeypatch):
-    assert sys.stdout is not None
-    assert rsc._ensure_daemon_output_is_recorded() is None
 
 
 def test_admission_summary_reports_over_budget_contracts_as_not_admitted(monkeypatch):

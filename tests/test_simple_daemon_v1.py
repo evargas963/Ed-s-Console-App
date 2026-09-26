@@ -273,18 +273,18 @@ def test_every_service_is_published_verbatim_and_only_delivered_data_counts_as_a
     bus, health = ss.MessageBus(), ss.HealthRegistry()
     sub = bus.subscribe("", maxsize=100)
     item = {"key": "SPY", "BID_PRICE": 1.0, "LAST_PRICE": 2.0, "LAST_MIC_ID": "XADF", "TOTAL_VOLUME": 9}
-    cap._publish_equity("LEVELONE_EQUITIES", bus, health)({"content": [item]})
+    cap._publisher("LEVELONE_EQUITIES", bus, health)({"content": [item]})
     topic, q = sub.queue.get_nowait()
     assert topic == "quote.SPY" and q["bid"] == 1.0 and q["last"] == 2.0 and q["native"] == item
     book = {"key": "SPY", "BOOK_TIME": 1, "BIDS": [], "ASKS": []}
-    cap._publish_book("NYSE_BOOK", bus, health)({"content": [book, {"BIDS": []}]})
+    cap._publisher("NYSE_BOOK", bus, health)({"content": [book, {"BIDS": []}]})
     topic, b = sub.queue.get_nowait()
     assert topic == "book.SPY" and b["content"] == book and b["service"] == "NYSE_BOOK"
     assert sub.queue.empty(), "an item with no symbol is skipped"
     news = {"key": "SPY", "4": "headline"}
-    cap._publish_news(bus, health)({"content": [news]})
+    cap._publisher("NEWS_HEADLINE", bus, health)({"content": [news]})
     assert sub.queue.get_nowait()[1]["content"] == news
-    cap._publish_option_quote(bus, health)({"content": [{"BIDS": []}]})
+    cap._publisher("LEVELONE_OPTIONS", bus, health)({"content": [{"BIDS": []}]})
     assert health.state("LEVELONE_OPTIONS") == "DOWN", "a frame that delivered nothing is not life"
     assert health.state("NYSE_BOOK") == "RUNNING"
 
@@ -433,3 +433,27 @@ def test_a_checkout_that_may_not_run_live_refuses_before_opening_anything(monkey
     monkeypatch.setattr(sys, "argv", ["capture"])
     assert cap.main() == 2
     assert ran == [], "no lock, no Schwab socket, no stream database"
+
+
+def test_the_daemons_log_is_kept_on_disk_with_times(monkeypatch, tmp_path):
+    """Under pythonw there is no console: every line must reach logs/stream_capture.log with
+    its wall time (2026-09-23: 42 socket deaths, not one reason on disk)."""
+    import logging
+
+    import runtime_layout
+    monkeypatch.setattr(runtime_layout, "logs_dir", lambda: tmp_path)
+    monkeypatch.setattr(sys, "stderr", None)
+    root = logging.getLogger()
+    saved = root.handlers[:]
+    root.handlers = []
+    try:
+        cap._start_log()
+        cap.log.warning("schwab: connection ended (socket closed)")
+        for h in root.handlers:
+            h.flush()
+        text = (tmp_path / "stream_capture.log").read_text(encoding="utf-8")
+        assert "connection ended" in text and text[:4].isdigit()
+    finally:
+        for h in root.handlers:
+            h.close()
+        root.handlers = saved

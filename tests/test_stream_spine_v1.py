@@ -351,9 +351,10 @@ def test_production_stream_daemon_exposes_no_database_path_switch(monkeypatch, t
         "argv",
         ["capture.py", "--db", str(tmp_path / "fork.db")],
     )
-    with pytest.raises(SystemExit) as exc:
-        capture.main()
-    assert exc.value.code == 2
+    ran = []
+    monkeypatch.setattr(capture, "run", lambda *a, **k: ran.append(a))
+    assert capture.main() == 2, "any argument, a database path included, is refused"
+    assert ran == []
 
 
 # ─────────────────────────────────────────────────────────────────────────────

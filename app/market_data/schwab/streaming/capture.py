@@ -30,9 +30,9 @@ code 11 (not available) -- there is no trade-by-trade tape and no trade side.
 """
 from __future__ import annotations
 
-import argparse
 import asyncio
 import json
+import logging
 import os
 import sys
 import time
@@ -54,6 +54,8 @@ from stream_spine import (  # noqa: E402
     resolve_stream_db_path,
     subscription_msg,
 )
+
+log = logging.getLogger("capture")
 
 #: Seconds between wanted-vs-held comparisons. It is also the debounce: a burst of console
 #: updates inside one interval becomes one set of Schwab requests.
@@ -149,63 +151,34 @@ def split_request(symbols: "list[str]", max_bytes: int = MAX_REQUEST_BYTES) -> "
 
 # ---------------------------------------------------------------------------- Schwab messages
 
-def _publish_equity(service: str, bus: MessageBus, health: HealthRegistry):
-    def handler(msg: dict) -> None:
-        published = False
-        for item in msg.get("content") or []:
-            sym = str(item.get("key") or "").upper() if isinstance(item, dict) else ""
-            if not sym:
-                continue
-            if service == "LEVELONE_EQUITIES":
-                f = {name: item.get(k) for k, name in LEVELONE_FIELDS.items()}
-                bus.publish(f"quote.{sym}", quote_msg(symbol=sym, src="schwab_l1", native=item, **f))
-            else:
-                f = {name: item.get(k) for k, name in CHART_FIELDS.items()}
-                bus.publish(f"bar1m.{sym}", bar_msg(symbol=sym, src="schwab_chart", **f))
-            published = True
-        if published:           # alive = data delivered, not merely a frame (audit of #280)
-            health.beat(service)
-    return handler
+def _message(service: str, sym: str, item: dict) -> "tuple[str, dict]":
+    """(topic kind, bus message) for one Schwab item."""
+    if service == "LEVELONE_EQUITIES":
+        flat = {name: item.get(k) for k, name in LEVELONE_FIELDS.items()}
+        return "quote", quote_msg(symbol=sym, src="schwab_l1", native=item, **flat)
+    if service == "CHART_EQUITY":
+        flat = {name: item.get(k) for k, name in CHART_FIELDS.items()}
+        return "bar1m", bar_msg(symbol=sym, src="schwab_chart", **flat)
+    if service == "LEVELONE_OPTIONS":
+        return "optquote", options_quote_msg(symbol=sym, content=item, src="schwab_options_l1")
+    if service == "NEWS_HEADLINE":
+        return "news", news_msg(symbol=sym, content=item, src="schwab_news")
+    return "book", book_msg(symbol=sym, service=service, content=item, src="schwab_book")
 
 
-def _publish_book(service: str, bus: MessageBus, health: HealthRegistry):
+def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
+    """schwab-py handler for one service: every item -> the bus. The service counts as alive
+    only when a frame delivered data, not merely arrived (audit of #280)."""
     def handler(msg: dict) -> None:
         published = False
         for item in msg.get("content") or []:
             sym = str(item.get("key") or "").upper() if isinstance(item, dict) else ""
             if sym:
-                bus.publish(f"book.{sym}", book_msg(symbol=sym, service=service, content=item,
-                                                    src="schwab_book"))
+                kind, out = _message(service, sym, item)
+                bus.publish(f"{kind}.{sym}", out)
                 published = True
         if published:
             health.beat(service)
-    return handler
-
-
-def _publish_option_quote(bus: MessageBus, health: HealthRegistry):
-    def handler(msg: dict) -> None:
-        published = False
-        for item in msg.get("content") or []:
-            sym = str(item.get("key") or "").upper() if isinstance(item, dict) else ""
-            if sym:
-                bus.publish(f"optquote.{sym}", options_quote_msg(symbol=sym, content=item,
-                                                                 src="schwab_options_l1"))
-                published = True
-        if published:
-            health.beat("LEVELONE_OPTIONS")
-    return handler
-
-
-def _publish_news(bus: MessageBus, health: HealthRegistry):
-    def handler(msg: dict) -> None:
-        published = False
-        for item in msg.get("content") or []:
-            sym = str(item.get("key") or "").upper() if isinstance(item, dict) else ""
-            if sym:
-                bus.publish(f"news.{sym}", news_msg(symbol=sym, content=item, src="schwab_news"))
-                published = True
-        if published:
-            health.beat("NEWS_HEADLINE")
     return handler
 
 
@@ -282,7 +255,6 @@ class Daemon:
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
-        self.connected_ts: "float | None" = None
 
     def set_wanted(self, raw) -> None:
         """The console's list (live_push calls this for every {"op": "wanted"} frame)."""
@@ -296,7 +268,7 @@ class Daemon:
         try:
             save_wanted(self.path, new)
         except OSError as e:
-            print(f"could not save {self.path.name}: {e}")
+            log.warning("could not save %s: %s", self.path.name, e)
 
     def status(self) -> dict:
         """What the console and browsers are told every second (live_push / live_ui)."""
@@ -304,13 +276,9 @@ class Daemon:
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
         return {"ts": now,
                 "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
-                "last_frame_age_sec": round(now - last, 2) if last else None,
-                "connected_ts": self.connected_ts,
-                "equities_held": sorted(self.held["LEVELONE_EQUITIES"]),
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "refused": {k: dict(v) for k, v in self.refused.items() if v},
-                "health": self.health.report(),
-                "drops": self.bus.drop_counts()}
+                "health": self.health.report()}
 
     async def sync(self) -> None:
         for svc, cmd, symbols in plan(self.wanted, self.held, self.refused):
@@ -329,24 +297,24 @@ class Daemon:
                     held = held - set(chunk) if cmd == "UNSUBS" else held | set(chunk)
                     self.held[svc] = frozenset(held)
                 else:
-                    print(f"{svc} {cmd} refused ({len(chunk)} symbols): {reason}")
+                    log.warning("%s %s refused (%d symbols): %s", svc, cmd, len(chunk), reason)
                     if cmd != "UNSUBS":
                         self.refused[svc].update({sym: reason for sym in chunk})
 
     async def connect(self, client) -> None:
         stream = _open_stream(client)
         await stream.login()
-        stream.add_level_one_equity_handler(_publish_equity("LEVELONE_EQUITIES", self.bus, self.health))
-        stream.add_chart_equity_handler(_publish_equity("CHART_EQUITY", self.bus, self.health))
-        stream.add_nyse_book_handler(_publish_book("NYSE_BOOK", self.bus, self.health))
-        stream.add_nasdaq_book_handler(_publish_book("NASDAQ_BOOK", self.bus, self.health))
-        stream.add_options_book_handler(_publish_book("OPTIONS_BOOK", self.bus, self.health))
-        stream.add_level_one_option_handler(_publish_option_quote(self.bus, self.health))
-        stream._handlers["NEWS_HEADLINE"].append(_RawHandler(_publish_news(self.bus, self.health)))
+        for svc, add in (("LEVELONE_EQUITIES", stream.add_level_one_equity_handler),
+                         ("CHART_EQUITY", stream.add_chart_equity_handler),
+                         ("NYSE_BOOK", stream.add_nyse_book_handler),
+                         ("NASDAQ_BOOK", stream.add_nasdaq_book_handler),
+                         ("OPTIONS_BOOK", stream.add_options_book_handler),
+                         ("LEVELONE_OPTIONS", stream.add_level_one_option_handler)):
+            add(_publisher(svc, self.bus, self.health))
+        stream._handlers["NEWS_HEADLINE"].append(_RawHandler(_publisher("NEWS_HEADLINE", self.bus, self.health)))
         self.stream = stream
         self.held = {s: frozenset() for s in SERVICES}    # a new connection holds nothing
-        self.connected_ts = time.time()
-        print("schwab: connected")
+        log.info("schwab: connected")
 
     async def disconnect(self) -> None:
         s, self.stream = self.stream, None
@@ -370,7 +338,7 @@ class Daemon:
             except Exception as e:  # noqa: BLE001
                 if _connection_lost(e):
                     raise
-                print(f"schwab: skipped a frame ({type(e).__name__}: {e})"[:300])
+                log.warning("schwab: skipped a frame (%s: %s)", type(e).__name__, str(e)[:250])
 
     async def run_connection(self, client, stop: asyncio.Event) -> None:
         """One connection's life: sync, read, repeat -- until it dies or stop is set."""
@@ -395,13 +363,13 @@ class Daemon:
                     raise ConnectionError(f"Schwab client: {state.message}")
                 await self.run_connection(state.client, stop)
             except Exception as e:  # noqa: BLE001 -- every failure is a reconnect
-                print(f"schwab: connection ended ({type(e).__name__}: {e})"[:400])
+                log.warning("schwab: connection ended (%s: %s)", type(e).__name__, str(e)[:350])
             if stop.is_set():
                 break
             # a connection that lasted 5 minutes starts the backoff over
             failures = 1 if time.time() - started > 300 else failures + 1
             wait = RECONNECT_BACKOFF_SEC[min(failures, len(RECONNECT_BACKOFF_SEC)) - 1]
-            print(f"schwab: reconnecting in {wait:.0f} s")
+            log.info("schwab: reconnecting in %.0f s", wait)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=wait)
             except asyncio.TimeoutError:
@@ -436,8 +404,7 @@ def acquire_owner_lock(db_path: "str | Path | None" = None) -> "tuple[int, Path]
             except (OSError, ValueError):
                 pid = 0
             if pid and psutil.pid_exists(pid):
-                print(f"FATAL: another capture daemon holds {lock} (pid {pid}).",
-                      file=sys.stderr, flush=True)
+                print(f"FATAL: another capture daemon holds {lock} (pid {pid}).", file=sys.stderr)
                 raise SystemExit(EXIT_OWNER_LOCK_HELD) from None
             if attempt == 1:
                 lock.unlink(missing_ok=True)
@@ -451,72 +418,37 @@ def release_owner_lock(fd: int, lock: Path) -> None:
         lock.unlink(missing_ok=True)
 
 
-class _TimestampedLog:
-    """Line-buffered append log that stamps each line with local wall time."""
-
-    def __init__(self, fh) -> None:
-        self._fh = fh
-        self._at_line_start = True
-
-    def write(self, text: str) -> int:
-        out = []
-        for part in text.splitlines(keepends=True):
-            if self._at_line_start and part.strip():
-                out.append(time.strftime("%Y-%m-%d %H:%M:%S "))
-            out.append(part)
-            self._at_line_start = part.endswith("\n")
-        self._fh.write("".join(out))
-        self._fh.flush()
-        return len(text)
-
-    def flush(self) -> None:
-        self._fh.flush()
-
-
-STREAM_CAPTURE_LOG_MAX_BYTES = 50 * 1024 * 1024
-
-
-def _ensure_daemon_output_is_recorded() -> "Path | None":
-    """Under pythonw.exe there is no stdout/stderr and every print() would vanish (measured
-    2026-09-23: 42 socket deaths, not one reason on disk). Then output goes to
-    <runtime>/logs/stream_capture.log (one rotation at 50 MB)."""
-    if sys.stdout is not None and sys.stderr is not None:
-        return None
+def _start_log() -> None:
+    """Every line to <runtime>/logs/stream_capture.log (kept: under pythonw there is no console,
+    and 2026-09-23's 42 socket deaths left no reason on disk), and to the console if any."""
+    from logging.handlers import RotatingFileHandler
     from runtime_layout import logs_dir
     path = logs_dir() / "stream_capture.log"
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        if path.exists() and path.stat().st_size > STREAM_CAPTURE_LOG_MAX_BYTES:
-            path.replace(path.with_suffix(".log.1"))
-    except OSError:
-        pass
-    sink = _TimestampedLog(open(path, "a", encoding="utf-8", buffering=1))
-    if sys.stdout is None:
-        sys.stdout = sink
-    if sys.stderr is None:
-        sys.stderr = sink
-    return path
+    handlers: "list[logging.Handler]" = [RotatingFileHandler(path, maxBytes=50 * 1024 * 1024,
+                                                             backupCount=1, encoding="utf-8")]
+    if sys.stderr is not None:
+        handlers.append(logging.StreamHandler())
+    logging.basicConfig(level=logging.INFO, handlers=handlers,
+                        format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 
-async def run(db_path: "Path | str | None" = None, *, make_client=None,
-              stop: "asyncio.Event | None" = None) -> int:
-    """The whole daemon. `make_client` / `stop` are injectable for tests."""
+async def run() -> int:
+    """The whole daemon: writer, the two local sockets, and the Schwab connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
     from app.market_data.schwab.streaming.live_ui import serve_live_ui
+    from config import build_config
+    from schwab_client import build_client_from_token
+    cfg = build_config(str(ROOT))
 
-    if make_client is None:
-        from config import build_config
-        from schwab_client import build_client_from_token
-        cfg = build_config(str(ROOT))
+    def make_client():
+        return build_client_from_token(api_key=cfg.api_key, app_secret=cfg.app_secret,
+                                       token_path=cfg.token_path)
 
-        def make_client():
-            return build_client_from_token(api_key=cfg.api_key, app_secret=cfg.app_secret,
-                                           token_path=cfg.token_path)
-
-    stop = stop or asyncio.Event()
+    stop = asyncio.Event()
     bus, health = MessageBus(), HealthRegistry()
-    writer = CaptureWriter(db_path)
-    daemon = Daemon(bus, health, wanted_path(db_path))
+    writer = CaptureWriter()
+    daemon = Daemon(bus, health, wanted_path())
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
@@ -532,7 +464,9 @@ async def run(db_path: "Path | str | None" = None, *, make_client=None,
 
 
 def main() -> int:
-    argparse.ArgumentParser(description=__doc__).parse_args()
+    if sys.argv[1:]:        # everything it needs comes from the console; no switch can move it
+        print(f"the capture daemon takes no arguments (got {sys.argv[1:]})", file=sys.stderr)
+        return 2
     # A worktree must not run a live daemon against production's runtime
     # (runtime_layout.live_binding_error, 2026-09-25).
     from runtime_layout import live_binding_error
@@ -540,7 +474,7 @@ def main() -> int:
     if binding is not None:
         print(f"CAPTURE DAEMON REFUSED: {binding}", file=sys.stderr, flush=True)
         return 2
-    _ensure_daemon_output_is_recorded()
+    _start_log()
     fd, lock = acquire_owner_lock()
     try:
         return asyncio.run(run())
