@@ -50,8 +50,6 @@ const CHAIN = { ticker: '$SPX', spot: SPOT, expiry: '2026-09-11', status: 'ok',
   contracts: [
     { putCall: 'CALL', strikePrice: 5000, openInterest: 12400, totalVolume: 5400, gamma: 0.0021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },
     { putCall: 'PUT', strikePrice: 5000, openInterest: 9800, totalVolume: 4100, gamma: 0.0019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' } ] };
-const LIVE = { spot: SPOT, spot_disp: '5000.00', bid: 4999.75, ask: 5000.25, session_label: 'RTH',
-  analytics_lightweight: { spy_chg_pct: 0.42 }, streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 320 } };
 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
@@ -63,7 +61,7 @@ async function intercept(page) {
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
     else if (url.includes('/api/expiries')) body = { expiries: EXPS.map(function (e) { return e.expiry; }) };
-    else if (url.includes('/api/live/state')) body = LIVE;
+    else if (url.includes('/api/session')) body = { session_label: 'RTH' };
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });

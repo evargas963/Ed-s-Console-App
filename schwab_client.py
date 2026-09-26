@@ -35,12 +35,16 @@ def _schwab_oauth_scope() -> str:
     return s if s else _DEFAULT_SCHWAB_OAUTH_SCOPE
 
 
-def _get_auth_context_with_scope(api_key, callback_url, state=None, base_url=None):
-    """schwab.auth.get_auth_context (schwab-py >= 1.5) with an explicit ``scope=`` on the
-    OAuth2Client -- the only difference from the library's own."""
+#: Schwab's API host; the OAuth authorize endpoint is {host}/v1/oauth/authorize
+SCHWAB_API_BASE_URL = "https://api.schwabapi.com"
+
+
+def _get_auth_context_with_scope(api_key, callback_url, state=None, base_url=SCHWAB_API_BASE_URL):
+    """schwab.auth.get_auth_context with an explicit ``scope=`` on the OAuth2Client -- the only
+    difference from the library's own. Same signature, so schwab-py calls it unchanged."""
     from authlib.integrations.httpx_client import OAuth2Client
 
-    endpoint = auth._auth_endpoint(base_url or auth.DEFAULT_BASE_URL)
+    endpoint = f"{base_url}/v1/oauth/authorize"
     scope = _schwab_oauth_scope()
     oauth = OAuth2Client(api_key, redirect_uri=callback_url, scope=scope)
     authorization_url, new_state = oauth.create_authorization_url(endpoint, state=state)

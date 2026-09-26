@@ -25,9 +25,6 @@ const CHAIN = { ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
   contracts: [
     { putCall: 'CALL', strikePrice: 100, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },
     { putCall: 'PUT', strikePrice: 100, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' } ] };
-const LIVE = { spot: 100, spot_disp: '100.00', bid: 99.99, ask: 100.01, session_label: 'RTH',
-  analytics_lightweight: { spy_chg_pct: 0.1 }, streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 300 } };
-
 function routes(over) {
   over = over || {};
   return async (page) => {
@@ -39,7 +36,7 @@ function routes(over) {
       else if (url.includes('/api/terrain')) body = over.terrain || TERRAIN;
       else if (url.includes('/api/bars1m')) body = BARS;
       else if (url.includes('/api/chain')) body = over.chain || CHAIN;
-      else if (url.includes('/api/live/state')) body = LIVE;
+      else if (url.includes('/api/session')) body = { session_label: 'RTH' };
       else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });

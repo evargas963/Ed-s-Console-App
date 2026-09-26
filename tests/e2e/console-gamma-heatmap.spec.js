@@ -109,27 +109,12 @@ const TERRAIN = {
   ticker: '$SPX', spot: 583.41, gamma_flip: 582.90, call_wall: 586, put_wall: 580,
   absolute_gamma_strike: 583, net_gex_peak: 583, net_gex_at_spot: 2140000000,
   regime: 'LONG_GAMMA_CHOP', levels_stale: false,
+  expiries: ['2026-09-11', '2026-09-18'], pcr_by_expiry: { '2026-09-11': 0.87, '2026-09-18': 1.13 },
 };
 const STRIKES = {
   ticker: '$SPX', spot: 583.41,
   today: { all: [[586, -264500, 1200], [583, 958600, 5400], [580, -90000, 900]] },
 };
-// The plane identity a Tier C consumer caches against: the market session and the Tier C bundle
-// generation (analytics_lightweight.analytics_version) — both carried by /api/live/state. Mutable so
-// a test can advance the generation / flip the session with ticker + expiry held constant.
-// Tier C state is keyed by (ticker, expiry) and its generation is PER ENTRY: '' is the no-expiry
-// (newest-entry) context, the dated keys are explicit expiry entries. Both carriers answer from the
-// entry the request's expiry= names, exactly as the server does.
-const BASE_VERSION = { '': 7, '2026-09-11': 7, '2026-09-18': 20 };
-const PLANE = { session: 'RTH', versions: Object.assign({}, BASE_VERSION) };
-function expiryOf(url) { return decodeURIComponent((url.match(/[?&]expiry=([^&]+)/) || [])[1] || ''); }
-function liveNow(url) {
-  const exp = expiryOf(url);
-  return { spot: 583.41, spot_disp: '583.41', bid: 583.40, ask: 583.42, session_label: PLANE.session,
-    selected_exp: exp || null,
-    analytics_lightweight: { spy_chg_pct: 0.38, analytics_version: PLANE.versions[exp] },
-    streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 380 } };
-}
 const BARS = {
   ticker: '$SPX', n: 8,
   bars: [582.6, 582.9, 583.1, 582.8, 583.3, 583.5, 583.2, 583.41].map(function (c, i) {
@@ -143,17 +128,6 @@ const CHAIN = {
     { putCall: 'PUT', strikePrice: 583, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' },
   ],
 };
-
-// Tier C analytics bundle (only the fields the rail reads): pcr_val is served BESIDE the expiry it is
-// scoped to (server._fetch_state -> totals[0].pcr_oi over the selected-expiry chain).
-function analyticsFor(url) {
-  const exp = expiryOf(url);                       // '' = no expiry requested -> the newest entry
-  // the bundle answers with ITS OWN generation; a newer generation carries a newer OI ratio
-  const base = exp === '2026-09-18' ? 1.13 : 0.87;
-  const version = PLANE.versions[exp];
-  return { _tier: 'C_analytics', ticker: '$SPX', selected_exp: exp || '2026-09-11', analytics_pending_shell: false,
-    analytics_version: version, pcr_val: +(base + 0.01 * (version - BASE_VERSION[exp])).toFixed(2) };
-}
 
 // The capture daemon's price socket (live_ui.py). The console tells the page port 1 under
 // e2e (playwright.config ED_LIVE_UI_PORT), so the page never reaches a real daemon; this
@@ -179,13 +153,12 @@ async function intercept(page) {
     const url = route.request().url();
     let body = { available: false };
     if (url.includes('/api/options/gamma-surface')) body = SURFACE;
-    else if (url.includes('/api/analytics/state')) body = analyticsFor(url);
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };
-    else if (url.includes('/api/live/state')) body = liveNow(url);
+    else if (url.includes('/api/session')) body = { session_label: 'RTH' };
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -930,137 +903,28 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klRegime')).toContainText('Long γ');
     // NOT_PROVEN items are honestly labelled, never fabricated
     await expect(page.locator('#klBody')).toContainText('NOT PROVEN');
-    // D-PCR: the put/call OPEN-INTEREST ratio comes from /api/analytics/state, formatted only, and the
-    // expiry it is scoped to is disclosed on the row (it is a selected-expiry ratio, not all-exp).
+    // PCR: the put/call OPEN-INTEREST ratio from /api/terrain pcr_by_expiry, formatted only, and the
+    // expiry it is scoped to is disclosed on the row (the front expiry until one is selected).
     await expect(page.locator('#klPcr')).toHaveText('0.87');
     await expect(page.locator('#klPcrScope')).toContainText('OI');
     await expect(page.locator('#klPcrScope')).toContainText('2026-09-11');
   });
 
-  test('D-PCR: read once per (ticker, expiry) context — not per tick; warming shell retries; expiry re-scopes', async ({ page }) => {
-    const hits = [];
-    let pending = true;   // first answer: Tier C still warming (pending shell, no pcr_val)
-    await page.route('**/api/analytics/state**', (route) => {
-      const url = route.request().url();
-      // ed-alerts.js independently polls this same endpoint (its own `_via=alerts` tag) on
-      // its own ~12s cadence, unrelated to the PCR read-once-per-context contract under test
-      // here -- excluded so its traffic never inflates this test's own hit count.
-      if (!url.includes('_via=alerts')) hits.push(url);
-      const body = pending ? { _tier: 'C_analytics', ticker: '$SPX', selected_exp: null, analytics_pending_shell: true, expiries: [], totals_rows: [] }
-        : analyticsFor(url);
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klFlip')).toHaveText('582.90');          // rail is up (terrain)
-    await expect(page.locator('#klPcr')).toHaveText('—');                 // warming: no value fabricated
-    await expect(page.locator('#klPcrScope')).toHaveText('warming');
-    expect(hits.length).toBeLessThanOrEqual(2);                           // init (ed:view/ed:ticker) — never a per-3s-tick stream
-    pending = false;                                                       // Tier C completes
-    await expect(page.locator('#klPcr')).toHaveText('0.87', { timeout: 20000 });   // bounded re-read on the slow tick (12s)
-    const settled = hits.length;                                           // 2 (the warming retry), never one per 3s tick
-    expect(settled).toBeLessThanOrEqual(3);
-    await page.waitForTimeout(13000);                                      // > one slow tick with a value already held
-    expect(hits.length).toBe(settled);                                     // no re-read once the context has its value
-    // the expiry filter is part of the context: a selected expiry re-reads WITH expiry= and the row re-scopes
-    await page.locator('#expSel').selectOption('2026-09-18');
-    await expect(page.locator('#klPcr')).toHaveText('1.13');
-    await expect(page.locator('#klPcrScope')).toContainText('2026-09-18');
-    expect(hits[hits.length - 1]).toContain('expiry=2026-09-18');
-    expect(hits.length).toBe(settled + 1);
-  });
-
-  test('D-PCR NEGATIVE CONTROL: a new bundle generation / market session with ticker+expiry constant refreshes EXACTLY once (never stale forever, never per tick)', async ({ page }) => {
-    PLANE.session = 'RTH'; PLANE.versions = Object.assign({}, BASE_VERSION);
-    const hits = [];
-    await page.route('**/api/analytics/state**', (route) => {
-      const url = route.request().url();
-      // see the D-PCR read-once test's identical note: ed-alerts.js's independent, unrelated
-      // ~12s poll of this same endpoint is excluded from this test's own hit count.
-      if (!url.includes('_via=alerts')) hits.push(url);
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(analyticsFor(url)) });
-    });
+  test('PCR: the selected expiry re-scopes the ratio; an expiry the chain has no ratio for shows none', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klPcr')).toHaveText('0.87');
-    await page.waitForTimeout(13000);                                      // > one slow tick, same generation, same session
-    const settled = hits.length;
-    expect(settled).toBeLessThanOrEqual(2);                                // no per-tick stream while identity is unchanged
-    // 1) the Tier C bundle generation advances on the plane (ticker + expiry unchanged; default context)
-    PLANE.versions[''] = 8;                                                // the plane the shell already polls reports it
-    await expect(page.locator('#klPcr')).toHaveText('0.88', { timeout: 20000 });   // the old ratio is NOT retained
-    await page.waitForTimeout(13000);
-    expect(hits.length).toBe(settled + 1);                                 // exactly one refresh for the new generation
-    // 2) the market session transitions (the next trading day's canonical trigger), generation unchanged
-    PLANE.session = 'After-Hours';
-    await expect(page.locator('#hSession')).toHaveText('AH', { timeout: 20000 });
-    await page.waitForTimeout(13000);
-    expect(hits.length).toBe(settled + 2);                                 // exactly one refresh for the session transition
-    expect(hits.every((u) => u.includes('ticker=SPY') && !u.includes('expiry='))).toBe(true);   // context never changed
-    PLANE.session = 'RTH'; PLANE.versions = Object.assign({}, BASE_VERSION);
-  });
-
-  test('D-PCR IDENTITY IS THE SAME (ticker, expiry) BUNDLE: an explicit expiry follows ITS entry generation only', async ({ page }) => {
-    test.setTimeout(300000);
-    PLANE.session = 'RTH'; PLANE.versions = Object.assign({}, BASE_VERSION);
-    const hits = [];
-    await page.route('**/api/analytics/state**', (route) => {
-      const url = route.request().url();
-      // see the D-PCR read-once test's identical note: ed-alerts.js's independent, unrelated
-      // ~12s poll of this same endpoint is excluded from this test's own hit count.
-      if (!url.includes('_via=alerts')) hits.push(url);
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(analyticsFor(url)) });
-    });
-    const planeReads = [];
-    await page.route('**/api/live/state**', (route) => {
-      planeReads.push(route.request().url());
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(liveNow(route.request().url())) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klPcr')).toHaveText('0.87');
-    // (1) ticker SPY, expiry A = 2026-09-18 (its entry is at generation 20) -> PCR A displayed
-    await page.locator('#expSel').selectOption('2026-09-18');
-    await expect(page.locator('#klPcr')).toHaveText('1.13');
-    await expect(page.locator('#klPcrScope')).toContainText('2026-09-18');
-    expect(hits[hits.length - 1]).toContain('expiry=2026-09-18');
-    await page.waitForTimeout(13000);
-    const s1 = hits.length;
-    // the shell's OWN plane read now carries the same context, so both carriers name entry (SPY, A)
-    expect(planeReads[planeReads.length - 1]).toContain('expiry=2026-09-18');
-    // (2) entry A advances 20 -> 21 while the default / other entries stay -> PCR A refreshes exactly once
-    PLANE.versions['2026-09-18'] = 21;
-    await expect(page.locator('#klPcr')).toHaveText('1.14', { timeout: 20000 });
-    await page.waitForTimeout(13000);
-    expect(hits.length).toBe(s1 + 1);
-    expect(hits[hits.length - 1]).toContain('expiry=2026-09-18');
-    // (3) OTHER entries advance (default + 2026-09-11) while A stays at 21 -> PCR A does NOT refresh
-    PLANE.versions[''] = 9; PLANE.versions['2026-09-11'] = 9;
-    await page.waitForTimeout(15000);
-    expect(hits.length).toBe(s1 + 1);
-    await expect(page.locator('#klPcr')).toHaveText('1.14');
-    // (4) same ticker / expiry / generation / session -> no redundant read
-    await page.waitForTimeout(13000);
-    expect(hits.length).toBe(s1 + 1);
-    // (5) ticker change -> exactly one read, for the new ticker in the same expiry context
-    await page.locator('#symInput').fill('QQQ'); await page.locator('#symInput').press('Enter');
-    await expect.poll(() => hits.length, { timeout: 20000 }).toBe(s1 + 2);
-    expect(hits[hits.length - 1]).toContain('ticker=QQQ');
-    await page.waitForTimeout(13000);
-    expect(hits.length).toBe(s1 + 2);
-    // (6) expiry change -> exactly one read, PCR re-scoped to that entry (2026-09-11 is at generation 9)
-    await page.locator('#expSel').selectOption('2026-09-11');
-    await expect(page.locator('#klPcr')).toHaveText('0.89');
     await expect(page.locator('#klPcrScope')).toContainText('2026-09-11');
-    expect(hits[hits.length - 1]).toContain('expiry=2026-09-11');
-    expect(hits.length).toBe(s1 + 3);
-    await page.waitForTimeout(13000);
-    expect(hits.length).toBe(s1 + 3);
-    // (7) a session transition is one deliberate re-read, and afterwards the identity is STILL the
-    //     entry's generation: the default entry advancing again does not touch this expiry's PCR
-    PLANE.session = 'After-Hours';
-    await expect.poll(() => hits.length, { timeout: 20000 }).toBe(s1 + 4);
-    PLANE.versions[''] = 10;
-    await page.waitForTimeout(15000);
-    expect(hits.length).toBe(s1 + 4);
-    PLANE.session = 'RTH'; PLANE.versions = Object.assign({}, BASE_VERSION);
+    await page.locator('#expSel').selectOption('2026-09-18');
+    await expect(page.locator('#klPcr')).toHaveText('1.13');
+    await expect(page.locator('#klPcrScope')).toContainText('2026-09-18');
+  });
+
+  test('PCR: a ticker whose terrain carries no ratio paints none, never a number', async ({ page }) => {
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, { pcr_by_expiry: {} })) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klFlip')).toHaveText('582.90');
+    await expect(page.locator('#klPcr')).toHaveText('—');
   });
 
   // REAL-DATA VIEWPORT PROOF (2026-09-10 visual FAIL on the running candidate): the fixture is the
@@ -1173,18 +1037,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('header never paints a quote from a poll: no push -> UNAVAILABLE, not a fallback', async ({ page }) => {
-    // Operator rule 2026-09-23 (no fallbacks): /api/live/state still answers (session label),
-    // but its quote is never painted -- with no price push the header withdraws the quote.
+    // Operator rule 2026-09-23 (no fallbacks): the price comes only from the daemon's push; with
+    // no push the header withdraws the quote. The session label is its own read (/api/session).
     await page.routeWebSocket(/:1\/$/, (ws) => ws.close());          // the daemon is down
-    await page.route('**/api/live/state**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify({ spot: 111.11, spot_disp: '111.11', bid: 111, ask: 111.2, session_label: 'RTH',
-        streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 100 } }) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
     await expect(page.locator('#hFeed')).toHaveText(/WAITING|OFFLINE/);
     await page.waitForTimeout(3500);                                    // a full scheduler tick
-    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');      // the polled 111.11 never lands
+    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
     await expect(page.locator('#hSession')).toHaveText('RTH');          // session still read
   });
 
@@ -2291,7 +2151,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('audit #3: one gamma_surface_seq push refetches only gamma-surface-derived endpoints, not unrelated ones', async ({ page }) => {
     let gammaCalls = 0, strikesCalls = 0, terrainCalls = 0;
-    const unrelated = { tape: 0, chain: 0, analytics: 0 };
+    const unrelated = { tape: 0, chain: 0 };
     // fallback() (not continue()) -- see the identical note in the cold-start test above.
     await page.route('**/api/options/gamma-surface**', (route) => { gammaCalls += 1; return route.fallback(); });
     await page.route('**/api/terrain/strikes**', (route) => { strikesCalls += 1; return route.fallback(); });
@@ -2303,7 +2163,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/terrain?**', (route) => { terrainCalls += 1; return route.fallback(); });
     await page.route('**/api/options/tape**', (route) => { unrelated.tape += 1; return route.fallback(); });
     await page.route('**/api/chain**', (route) => { unrelated.chain += 1; return route.fallback(); });
-    await page.route('**/api/analytics/state**', (route) => { unrelated.analytics += 1; return route.fallback(); });
     await page.route('**/api/analytics/light/stream**', async (route) => {
       // Long enough to land AFTER the strike-clear settle wait below (else the push
       // fires before this test ever captures its baseline counts, and the SSE-reaction

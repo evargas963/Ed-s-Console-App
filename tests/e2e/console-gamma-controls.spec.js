@@ -21,8 +21,6 @@ const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, abs
 const STRIKES = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 10, levels_stale: false,
   today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] } };
 const BARS = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1000 }] };
-function liveFor(tk, spot) { return { ticker: tk, spot: spot, spot_disp: spot.toFixed(2), bid: spot - 0.01, ask: spot + 0.01,
-  session_label: 'RTH', analytics_lightweight: {}, streaming_plane: { streaming_healthy: true, streaming_staleness_ms: 300 } }; }
 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
@@ -38,7 +36,7 @@ async function intercept(page) {
     else if (url.includes('/api/expiries')) body = { expiries: EXPS };
     else if (url.includes('/api/chain')) body = { ticker: dec, spot: spot, expiry: EXPS[0], status: 'ok',
       scope: { kind: 'complete_single_expiry' }, contracts: [] };
-    else if (url.includes('/api/live/state')) body = liveFor(dec, spot);
+    else if (url.includes('/api/session')) body = { session_label: 'RTH' };
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
