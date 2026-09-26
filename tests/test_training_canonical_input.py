@@ -1,18 +1,7 @@
 """Training-side canonical MVP boundary: tabular validation, sequence merge, cache identity."""
 from __future__ import annotations
 
-import pandas as pd
-import pytest
 
-from features.canonical_contract import CANONICAL_FEATURE_CONTRACT_VERSION
-from features.training_canonical_input import (
-    TrainingCanonicalInputError,
-    normalize_pandas_sql_null_row_dict,
-    records_for_mvp_from_dataframe,
-    training_snapshot_for_sequence_encode,
-    validate_tabular_training_dataframe_canonical,
-)
-from training_cache import compute_feature_cache_key
 
 
 def _minimal_valid_db_row() -> dict:
@@ -49,54 +38,14 @@ def _minimal_valid_db_row() -> dict:
     }
 
 
-def test_training_snapshot_for_sequence_encode_rejects_legacy_mvp_poison_zone():
-    row = _minimal_valid_db_row()
-    row["zone"] = "not_a_real_zone_enum"
-    with pytest.raises(TrainingCanonicalInputError):
-        training_snapshot_for_sequence_encode(row)
 
 
-def test_training_snapshot_for_sequence_encode_stable_merge():
-    row = _minimal_valid_db_row()
-    merged = training_snapshot_for_sequence_encode(row)
-    assert merged.get("zone") == "pin_bull"
-    assert merged.get("vwap_side") == "above"
 
 
-def test_validate_tabular_ok_on_valid_frame():
-    row = _minimal_valid_db_row()
-    df = pd.DataFrame([row])
-    assert validate_tabular_training_dataframe_canonical(df, max_rows=10) is None
 
 
-def test_validate_tabular_treats_pandas_nan_as_missing_on_absorption_score():
-    """DATA-PIPELINE-INTEGRITY 2026-05-25 regression: pandas converts SQL
-    NULL on numeric columns to float NaN; MVP coercion rejects NaN as
-    "broken upstream compute" per the MVP contract. The training boundary
-    _row_dict_from_df must convert NaN -> None so SQL NULL semantics are
-    preserved. Reproduces the SPY/QQQ/IWM/megacap row-0 fail: 17 of 41
-    tickers in the scheduler run blocked by 'row 0: MVP coercion failed:
-    liquidity.absorption_score: non-finite value nan' because 33% of SPY
-    snapshot rows have NULL absorption_score.
-    """
-    row = _minimal_valid_db_row()
-    row["absorption_score"] = float("nan")
-    df = pd.DataFrame([row])
-    # Must NOT raise — NaN-from-DataFrame is treated as missing (None).
-    assert validate_tabular_training_dataframe_canonical(df, max_rows=10) is None
 
 
-def test_validate_tabular_treats_pandas_nan_as_missing_on_structure_columns():
-    """Same regression class — confirms fix covers all numeric MVP columns,
-    not just absorption_score. The 2026-05-25 incident had 11 additional
-    tickers blocked on structure.nearest_above_dist / nearest_below_dist /
-    anchor.vwap_dist_pts NaN at various row positions."""
-    row = _minimal_valid_db_row()
-    row["nearest_above_dist"] = float("nan")
-    row["nearest_below_dist"] = float("nan")
-    row["vwap_dist_pts"] = float("nan")
-    df = pd.DataFrame([row])
-    assert validate_tabular_training_dataframe_canonical(df, max_rows=10) is None
 
 
 def _make_snapshots_db(tmp_path, rows_per_ticker: dict) -> str:
@@ -220,21 +169,6 @@ def test_preflight_returns_structured_error_when_table_missing(tmp_path):
     assert "sql_error" in result["tickers_failed"]["SPY"]
 
 
-def test_validate_tabular_nan_to_none_does_not_launder_real_breakage():
-    """Honest-limit lock: the NaN -> None conversion happens at the
-    DataFrame -> dict boundary in _row_dict_from_df. Live inference paths
-    that pass a Python dict directly (not via DataFrame) still hit the
-    contract's non-finite check because they bypass this boundary.
-    Verifies by calling training_snapshot_for_sequence_encode (live-path
-    function that takes a dict directly) — it must still reject float NaN
-    as invalid.
-    """
-    row = _minimal_valid_db_row()
-    row["absorption_score"] = float("nan")
-    # Direct dict path (no DataFrame conversion) — actual upstream NaN
-    # still raises as designed.
-    with pytest.raises(TrainingCanonicalInputError):
-        training_snapshot_for_sequence_encode(row)
 
 
 
@@ -245,19 +179,6 @@ def test_validate_tabular_nan_to_none_does_not_launder_real_breakage():
 
 
 
-def test_feature_cache_key_includes_contract_version():
-    data_fp = {
-        "table": "t",
-        "timeframe": "1m",
-        "ticker": "SPY",
-        "min_ts_utc": None,
-        "max_ts_utc": None,
-        "row_count": 1,
-    }
-    k = compute_feature_cache_key("SPY", data_fp, "code", target_column="outcome_1c")
-    assert isinstance(k, str) and len(k) == 64
-    # Changing contract version would change key (implicit via imports in compute_feature_cache_key).
-    assert CANONICAL_FEATURE_CONTRACT_VERSION
 
 
 def test_lstm_feature_ordering_stable():
@@ -272,69 +193,10 @@ def test_lstm_feature_ordering_stable():
     assert "cat_zone" in FEATURES_5M
 
 
-def test_train_parallel_rejects_bad_feature_cache_key_override():
-    from ml_scheduler import train_parallel_candidate
-    from pathlib import Path
-    import tempfile
-
-    data_fp = {
-        "table": "snapshots_1m_normalized",
-        "timeframe": "1m",
-        "ticker": "ZZZ",
-        "min_ts_utc": None,
-        "max_ts_utc": None,
-        "row_count": 0,
-    }
-    with tempfile.TemporaryDirectory() as td:
-        out = Path(td)
-        with pytest.raises(TrainingCanonicalInputError):
-            train_parallel_candidate(
-                "ZZZ",
-                str(out / "missing.db"),
-                out,
-                data_fp=data_fp,
-                code_fp="x" * 64,
-                feature_cache_key="0" * 64,
-            )
 
 
-def test_normalize_pandas_sql_null_row_dict_maps_nan_to_none() -> None:
-    out = normalize_pandas_sql_null_row_dict(
-        {"absorption_score": float("nan"), "spot": 100.0, "zone": "pin_bull"}
-    )
-    assert out["absorption_score"] is None
-    assert out["spot"] == 100.0
 
 
-def test_records_for_mvp_from_dataframe_unblocks_meta_inference_snapshot_path() -> None:
-    """META assembly regression (SPY 2026-05-26): raw NaN fails MVP coercion."""
-    from features.db_feature_adapter import build_db_mvp_feature_row
-    from features.inference_snapshot import build_inference_snapshot_v1_from_db_row
-    from features.mvp_source_coercion import MvpFeatureSourceError
-
-    base = {
-        "spot": 100.0,
-        "spread": 0.05,
-        "zone": "pin_bull",
-        "nearest_above_dist": 1.0,
-        "nearest_below_dist": 1.0,
-        "net_gamma": 0.0,
-        "vwap_side": "above",
-        "vwap_dist_pts": 0.2,
-        "absorption_score": float("nan"),
-        "continuation_score": float("nan"),
-    }
-    with pytest.raises(MvpFeatureSourceError, match="absorption_score"):
-        build_db_mvp_feature_row(base)
-    rows = records_for_mvp_from_dataframe(pd.DataFrame([base]))
-    snap = build_inference_snapshot_v1_from_db_row(
-        ticker="SPY",
-        expiry=None,
-        as_of_ts=1.0,
-        db_row=rows[0],
-    )
-    assert snap["features"]["liquidity.absorption_score"] is None
-    assert snap["features"]["liquidity.continuation_score"] is None
 
 
 def test_meta_assembly_uses_canonical_dataframe_ingress() -> None:

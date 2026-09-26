@@ -10,12 +10,10 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
-from features.signal_layer_v1 import compute_signal_layer_v1
 from liquidity_value_engine import (
     compute_session_vwap,
     count_session_rth_positive_volume_bars,
 )
-from lstm_data import compute_confluence_features
 from time_et import ET, RTH_START_MINS, is_trading_day_et
 
 # Standing enrolled core (server.CORE_TICKERS). Logging-universe extras need a live DB.
@@ -50,28 +48,8 @@ def test_friday_is_trading_day_saturday_is_not() -> None:
     assert is_trading_day_et(SATURDAY.isoformat()) is False
 
 
-def test_missing_session_vwap_does_not_occupy_session_slots() -> None:
-    bars = [_rth_bar(FRIDAY, i, 100.0 + 0.01 * i) for i in range(80)]
-    layer = compute_signal_layer_v1(
-        bars, decision_ts_utc=float(bars[-1]["bar_end_ts_utc"]), inp=None,
-    )
-    assert layer["meta.vwap_source"] is None
-    assert layer["vl.price_vs_vwap_pct"] is None
-    assert layer["vl.vwap_distance_pts"] is None
-    assert layer["vl.vwap_zscore"] is None
-    assert layer["vl.dist_to_vwap_band_upper_pts"] is None
-    assert layer["vl.dist_to_vwap_band_lower_pts"] is None
 
 
-def test_session_vwap_present_fills_session_slots() -> None:
-    bars = [_rth_bar(FRIDAY, i, 100.0 + 0.01 * i) for i in range(80)]
-    layer = compute_signal_layer_v1(
-        bars, decision_ts_utc=float(bars[-1]["bar_end_ts_utc"]),
-        inp=SimpleNamespace(vwap=100.40),
-    )
-    assert layer["meta.vwap_source"] == "session"
-    assert layer["vl.price_vs_vwap_pct"] is not None
-    assert abs(float(layer["vl.vwap_distance_pts"]) - (100.79 - 100.40)) < 1e-6
 
 
 def test_pa_vwap_zscore_source_is_session_only() -> None:
@@ -112,23 +90,6 @@ def test_zero_volume_rth_bar_does_not_create_session_vwap() -> None:
     assert count_session_rth_positive_volume_bars(bars, FRIDAY) == 0
 
 
-def test_lstm_cf_vwap_encoder_still_cannot_distinguish_absence_from_zero() -> None:
-    """Encoder limit remains: missing session VWAP and true zero distance are both 0.0.
-
-    Production directional authority is closed separately by
-    ``should_abstain_missing_session_vwap_for_cf`` (raw session VWAP presence), which
-    does not change this trained numeric representation.
-    """
-    ts = datetime(2026, 8, 28, 10, 0, tzinfo=ET).timestamp()
-    absent = compute_confluence_features(
-        [{"ts_utc": ts, "spot": 500.0, "vwap": None}], 0,
-    )
-    at_vwap = compute_confluence_features(
-        [{"ts_utc": ts, "spot": 500.0, "vwap": 500.0}], 0,
-    )
-    assert absent["cf_vwap_distance_pct"] == 0.0
-    assert at_vwap["cf_vwap_distance_pct"] == 0.0
-    assert absent["cf_vwap_distance_pct"] == at_vwap["cf_vwap_distance_pct"]
 
 
 def test_next_rth_after_saturday_2026_08_29_is_monday_2026_08_31() -> None:

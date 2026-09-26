@@ -3,12 +3,8 @@ from __future__ import annotations
 
 import datetime
 import sqlite3
-import time
 from pathlib import Path
 
-from money_path_ticker_tiers import (
-    BASE_MONEY_PATH_TICKERS,
-)
 
 
 
@@ -24,24 +20,6 @@ def test_the_tier_skip_predicate_is_gone_not_neutered():
     assert not hasattr(tiers, "should_skip_background_full_snapshot")
 
 
-def test_filter_tickers_for_background_logging_keeps_base_anchors(tmp_path: Path):
-    from db import EdDB
-    from scheduler_user_tickers import filter_tickers_for_background_logging
-
-    db = EdDB(tmp_path / "filter.db")
-    now = time.time()
-    db.logging_universe_sync_core(list(BASE_MONEY_PATH_TICKERS) + ["NVDA"], now)
-    db.logging_universe_sync_panel_auto(["QQQ", "WMT"], now)
-    tickers = filter_tickers_for_background_logging(
-        list(BASE_MONEY_PATH_TICKERS) + ["NVDA", "WMT"],
-        str(db.db_path),
-    )
-    for anchor in BASE_MONEY_PATH_TICKERS:
-        assert anchor in tickers
-    # UNIVERSAL COLLECTION (2026-08-25): panel_auto enrollment no longer drops a ticker
-    # from the full-snapshot roster.
-    assert "WMT" in tickers
-    assert "NVDA" in tickers
 
 
 

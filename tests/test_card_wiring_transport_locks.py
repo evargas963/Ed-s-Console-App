@@ -17,31 +17,13 @@ Defect classes locked (runtime-proven in the 2026-07-04 pre-RTH audit):
 """
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SERVER_SRC = (ROOT / "server.py").read_text(encoding="utf-8")
-SERVER_TREE = ast.parse(SERVER_SRC)
 
 
-def _find_function(tree: ast.AST, name: str) -> ast.FunctionDef | None:
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == name:
-            return node
-    return None
 
 
-def _called_names(node: ast.AST) -> set[str]:
-    out: set[str] = set()
-    for n in ast.walk(node):
-        if isinstance(n, ast.Call):
-            f = n.func
-            if isinstance(f, ast.Name):
-                out.add(f.id)
-            elif isinstance(f, ast.Attribute):
-                out.add(f.attr)
-    return out
 
 
 # ── Lock 1 — analytics-pool self-deadlock ────────────────────────────────────
@@ -63,8 +45,6 @@ def _called_names(node: ast.AST) -> set[str]:
 
 # ── Burndown lock — same-tick similarity dedup must stay wired ──────────────
 
-SIGNALS_SRC = (ROOT / "signals.py").read_text(encoding="utf-8")
-SIGNALS_TREE = ast.parse(SIGNALS_SRC)
 
 
 

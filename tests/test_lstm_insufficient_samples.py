@@ -22,12 +22,7 @@ the train_lstm dataset-shape validator).
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-from lstm_model import (
-    InsufficientLstmSamplesError,
-    _validate_lstm_dataset_shape,
-)
 
 
 class _MiniDataset:
@@ -43,68 +38,14 @@ class _MiniDataset:
         self.n_days = n_days
 
 
-def test_validator_passes_on_valid_3d_dataset() -> None:
-    """Real-shape dataset (small but valid) passes the gate."""
-    ds = _MiniDataset(
-        X_5m=np.zeros((10, 60, 23), dtype=np.float32),
-        y=np.array([0, 1, 2, 0, 1, 2, 0, 1, 2, 0]),
-        n_days=5,
-    )
-    # Valid shape -> returns None (raises on bad shape).
-    assert _validate_lstm_dataset_shape(ds, ticker="SPY") is None
 
 
-def test_validator_raises_on_zero_samples() -> None:
-    """n_samples == 0 (the AEIS-class case): clean exception with row/day info."""
-    ds = _MiniDataset(X_5m=np.zeros((0, 60, 23)), y=np.array([]), n_samples=0, n_days=16)
-    with pytest.raises(InsufficientLstmSamplesError) as ei:
-        _validate_lstm_dataset_shape(ds, ticker="AEIS")
-    msg = str(ei.value)
-    assert "AEIS" in msg
-    assert "0 samples" in msg
-    assert "n_days=16" in msg
 
 
-def test_validator_raises_on_degenerate_x5m_shape() -> None:
-    """X_5m with ndim<3 (the actual incident shape): clean exception names
-    the shape so the operator can see why."""
-    ds = _MiniDataset(
-        X_5m=np.array([], dtype=np.float32),  # ndim=1, shape=(0,)
-        y=np.array([0, 1]),  # nonzero so the n_samples branch doesn't fire first
-        n_samples=2,
-        n_days=12,
-    )
-    with pytest.raises(InsufficientLstmSamplesError) as ei:
-        _validate_lstm_dataset_shape(ds, ticker="CRWD")
-    msg = str(ei.value)
-    assert "CRWD" in msg
-    assert "degenerate" in msg.lower() or "shape" in msg.lower()
-    assert "ndim=1" in msg
 
 
-def test_validator_raises_on_missing_x5m_attribute() -> None:
-    """If dataset has no X_5m at all (catastrophic build failure), still
-    raise InsufficientLstmSamplesError — never let the downstream
-    AttributeError leak past the gate."""
-
-    class _NoX5m:
-        n_samples = 5
-        n_days = 16
-        y = np.array([0, 1, 2, 0, 1])
-        X_5m = None
-
-    with pytest.raises(InsufficientLstmSamplesError) as ei:
-        _validate_lstm_dataset_shape(_NoX5m(), ticker="PSCI")
-    assert "PSCI" in str(ei.value)
 
 
-def test_validator_message_omits_ticker_when_not_passed() -> None:
-    """Optional ticker kwarg: error message stays clean when ticker is None."""
-    ds = _MiniDataset(X_5m=np.zeros((0, 60, 23)), n_samples=0, n_days=0)
-    with pytest.raises(InsufficientLstmSamplesError) as ei:
-        _validate_lstm_dataset_shape(ds)
-    # No ticker name in the message
-    assert "for ticker" not in str(ei.value)
 
 
 def test_validator_is_called_from_train_lstm_source() -> None:

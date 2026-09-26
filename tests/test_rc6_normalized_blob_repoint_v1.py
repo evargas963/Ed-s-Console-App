@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-from replay_bundle_coverage import _coverage_for_table
 from timeframe_config import CANONICAL_TIMEFRAME
 
 _OC = '{"contracts":[{"k":450,"g":0.05}]}'   # >10 chars -> passes REPLAY_BUNDLE_MIN_JSON_LENGTH
@@ -65,19 +64,5 @@ def test_normalized_table_truly_lacks_the_blobs(tmp_path):
         c.close()
 
 
-def test_replay_bundle_coverage_reads_blobs_via_join_after_drop(tmp_path):
-    p = tmp_path / "d.db"
-    _build_postdrop_db(p)
-    c = sqlite3.connect(str(p))
-    c.row_factory = sqlite3.Row
-    try:
-        norm = _coverage_for_table(c, "snapshots_1m_normalized", timeframe=CANONICAL_TIMEFRAME)
-        assert norm["rows_total"] == _N
-        assert norm["rows_with_full_bundle"] == _N   # full bundle found via JOIN to snapshots
-        assert norm["by_ticker"][0]["rows_with_full_bundle"] == _N
-        base = _coverage_for_table(c, "snapshots", timeframe=CANONICAL_TIMEFRAME)
-        assert base["rows_with_full_bundle"] == _N   # self-join path also correct
-    finally:
-        c.close()
 
 

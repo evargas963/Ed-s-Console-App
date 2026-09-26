@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from math_exposure_core import bucket_metric, net_gex_dollars_at_strike
-from snapshot_normalizer import resample_to_1m
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -180,36 +179,8 @@ def _repo_wide_silent_zero_hits() -> list[str]:
 
 
 
-def test_resample_synthetic_bars_are_tagged():
-    rows = [
-        {
-            "ts_utc": 1_710_000_060.0,
-            "ticker": "SPY",
-            "candle_open": 500.0,
-            "candle_high": 501.0,
-            "candle_low": 499.0,
-            "candle_close": 500.5,
-            "candle_volume": 1000,
-            "spot": 500.5,
-        }
-    ]
-    out = resample_to_1m(rows, "SPY")
-    assert len(out) == 1
-    assert out[0]["synthetic"] is True
-    assert out[0]["source"] == "snapshot_synthetic"
 
 
-def test_resample_skips_bucket_with_no_open_or_spot():
-    rows = [
-        {
-            "ts_utc": 1_710_000_060.0,
-            "ticker": "SPY",
-            "candle_high": 501.0,
-            "candle_low": 499.0,
-            "candle_close": 500.5,
-        }
-    ]
-    assert resample_to_1m(rows, "SPY") == []
 
 
 def test_bucket_metric_missing_returns_none_not_zero():

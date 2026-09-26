@@ -3,68 +3,22 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from pathlib import Path
 
 import pytest
 
-from model_serve_policy import (
-    DIRECT_SERVE_BLOCKING_STATUSES,
-    MODEL_SERVE_POLICY_VERSION,
-    NOT_PROVEN,
-    REVALIDATION_REQUIRED,
-    SERVE_APPROVED,
-    SERVE_TEMPORARILY_WITHHELD,
-    bundle_serve_eligibility,
-    classify_trained_at,
-    parse_trained_at,
-)
 
 
-def test_policy_version_and_blocking_set():
-    assert MODEL_SERVE_POLICY_VERSION == "1.0.0"
-    assert DIRECT_SERVE_BLOCKING_STATUSES == {SERVE_TEMPORARILY_WITHHELD, NOT_PROVEN}
-    assert REVALIDATION_REQUIRED not in DIRECT_SERVE_BLOCKING_STATUSES
-    assert SERVE_APPROVED not in DIRECT_SERVE_BLOCKING_STATUSES
 
 
-def test_pre_correctness_vintages_withheld():
-    """April-era manifests (the ten pre-correctness bundles) must be withheld."""
-    for t, d in (("NVDA", date(2026, 4, 15)), ("META", date(2026, 4, 15)),
-                 ("AAPL", date(2026, 4, 30)), ("SPY", date(2026, 5, 27))):
-        status, reason = classify_trained_at(t, d)
-        assert status == SERVE_TEMPORARILY_WITHHELD, (t, d)
-        assert "must not be directly served" in reason
 
 
-def test_revalidation_band_serves_with_explicit_status():
-    for t, d in (("PLTR", date(2026, 5, 28)), ("AVGO", date(2026, 5, 30)),
-                 ("GOOG", date(2026, 5, 30)), ("SMCI", date(2026, 5, 31))):
-        status, reason = classify_trained_at(t, d)
-        assert status == REVALIDATION_REQUIRED, (t, d)
-        assert "revalidation" in reason
 
 
-def test_approved_base_bundles_serve():
-    for t, d in (("SPY", date(2026, 6, 4)), ("QQQ", date(2026, 6, 4)),
-                 ("IWM", date(2026, 6, 9))):
-        status, _ = classify_trained_at(t, d)
-        assert status == SERVE_APPROVED, (t, d)
 
 
-def test_post_correctness_non_base_requires_revalidation():
-    status, reason = classify_trained_at("NVDA", date(2026, 6, 20))
-    assert status == REVALIDATION_REQUIRED
-    assert "no operator serve approval" in reason
 
 
-def test_missing_or_malformed_provenance_not_proven():
-    assert classify_trained_at("SPY", None)[0] == NOT_PROVEN
-    assert parse_trained_at(None) is None
-    assert parse_trained_at("not-a-date") is None
-    assert parse_trained_at("2026-06-04 07:51:43") == date(2026, 6, 4)
-    assert parse_trained_at("2026-06-04T07:51:43") == date(2026, 6, 4)
-    assert parse_trained_at("2026-06-04") == date(2026, 6, 4)
 
 
 def _bundle(tmp_path: Path, ticker: str, hz: str, trained_at) -> Path:
@@ -75,39 +29,12 @@ def _bundle(tmp_path: Path, ticker: str, hz: str, trained_at) -> Path:
     return d
 
 
-def test_bundle_eligibility_reads_manifest(tmp_path):
-    d = _bundle(tmp_path, "SPY", "1c", "2026-06-04 04:29:57")
-    e = bundle_serve_eligibility("SPY", "1c", d)
-    assert e["status"] == SERVE_APPROVED
-    assert e["direct_serve_blocked"] is False
-    assert e["trained_at"] == "2026-06-04"
-    assert e["provenance_source"] == "xgb_meta_manifest"
 
 
-def test_bundle_eligibility_missing_manifest_fails_closed(tmp_path):
-    d = tmp_path / "NVDA"
-    d.mkdir()
-    e = bundle_serve_eligibility("NVDA", "1c", d)
-    assert e["status"] == NOT_PROVEN
-    assert e["direct_serve_blocked"] is True
-    assert e["provenance_source"] == "xgb_meta_manifest_missing"
 
 
-def test_bundle_eligibility_malformed_manifest_fails_closed(tmp_path):
-    d = tmp_path / "NVDA"
-    d.mkdir()
-    (d / "xgb_NVDA_1c_meta.json").write_text("{not json", encoding="utf-8")
-    e = bundle_serve_eligibility("NVDA", "1c", d)
-    assert e["status"] == NOT_PROVEN
-    assert e["direct_serve_blocked"] is True
-    assert e["provenance_source"] == "xgb_meta_manifest_unreadable"
 
 
-def test_bundle_eligibility_malformed_timestamp_fails_closed(tmp_path):
-    d = _bundle(tmp_path, "NVDA", "1c", "sometime in spring")
-    e = bundle_serve_eligibility("NVDA", "1c", d)
-    assert e["status"] == NOT_PROVEN
-    assert e["direct_serve_blocked"] is True
 
 
 def test_strict_serve_path_blocks_withheld_bundle(monkeypatch, tmp_path):

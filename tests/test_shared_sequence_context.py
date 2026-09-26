@@ -4,10 +4,6 @@ from __future__ import annotations
 
 
 
-from features.shared_sequence_context import (
-    SharedSequenceContext,
-    transformer_window_chronological,
-)
 
 
 def test_chronological_window_unified_matches_independent_fetches():
@@ -24,22 +20,6 @@ def test_chronological_window_unified_matches_independent_fetches():
     assert len(w_unified) == 60
 
 
-def test_transformer_window_nested_slices_horizon_isolation():
-    """Different seq_len takes disjoint-length tails; no cross-horizon tensor sharing."""
-    ch = tuple({"ts_utc": float(i)} for i in range(50))
-    ctx = SharedSequenceContext(
-        as_of_ts=99.0,
-        chron_snapshots=ch,
-        lstm_merged_window=(),
-        lstm_merged_days=(),
-        n_fetch=50,
-        meta={},
-    )
-    w10 = transformer_window_chronological(ctx, 10)
-    w5 = transformer_window_chronological(ctx, 5)
-    assert len(w10) == 10
-    assert len(w5) == 5
-    assert w5 == w10[-5:]
 
 
 

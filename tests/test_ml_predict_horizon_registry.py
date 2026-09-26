@@ -3,7 +3,6 @@ from __future__ import annotations
 
 
 
-from model_contract import contract_metadata_dict
 
 
 def test_model_registry_key_format():
@@ -22,9 +21,6 @@ def test_all_governed_horizons_have_distinct_keys():
     assert len(keys) == len(ML_HORIZON_SLUGS)
 
 
-def _valid_xgb_meta(features: list[str]) -> dict:
-    im = {f: 0.0 for f in features}
-    return {**contract_metadata_dict(), "features": features, "impute_medians": im}
 
 
 

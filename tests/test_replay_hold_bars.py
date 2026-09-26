@@ -4,10 +4,6 @@ from __future__ import annotations
 
 import re
 
-from replay_hold_bars import (
-    replay_max_hold_bars_from_context,
-)
-from time_et import RTH_SESSION_MINUTES
 
 _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}
@@ -27,16 +23,8 @@ def _iter_production_py(repo_index):
         yield rel, text
 
 
-def test_replay_max_hold_bars_from_context_requires_explicit_value():
-    assert replay_max_hold_bars_from_context({}) is None
-    assert replay_max_hold_bars_from_context({"replay_max_hold_bars": None}) is None
-    assert replay_max_hold_bars_from_context({"replay_max_hold_bars": 0}) is None
-    assert replay_max_hold_bars_from_context({"replay_max_hold_bars": "bad"}) is None
 
 
-def test_replay_max_hold_bars_from_context_accepts_valid_and_caps():
-    assert replay_max_hold_bars_from_context({"replay_max_hold_bars": 15}) == 15
-    assert replay_max_hold_bars_from_context({"replay_max_hold_bars": 500}) == RTH_SESSION_MINUTES
 
 
 

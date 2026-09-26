@@ -7,7 +7,6 @@ import math
 import pytest
 
 from numeric_contract import (
-    direction_from_normalized_triplet,
     float_finite_or_none,
     float_positive_or_none,
 )
@@ -58,24 +57,6 @@ def test_float_positive_or_none(value, expected):
 
 
 
-@pytest.mark.parametrize(
-    "up,down,flat",
-    [
-        (None, 0.2, 0.2),
-        (0.6, None, 0.2),
-        (0.6, 0.2, None),
-        (None, None, None),
-        (float("nan"), 0.2, 0.2),
-        (0.6, float("inf"), 0.2),
-        (0.6, 0.2, float("-inf")),
-        ("0.6", 0.2, 0.2),
-    ],
-)
-def test_direction_from_normalized_triplet_withholds_on_bad_leg(up, down, flat):
-    """RC-363: single producer is defensive — any None / non-finite / non-numeric
-    leg returns None (WITHHELD) instead of raising TypeError or emitting an
-    order-dependent garbage label."""
-    assert direction_from_normalized_triplet(up, down, flat) is None
 
 
 

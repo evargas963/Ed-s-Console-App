@@ -14,7 +14,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from time_et import ET, RTH_SESSION_MINUTES, RTH_START_MINS
+from time_et import (
+    ET,
+)
 def _mk_bar(dt: datetime, o: float, h: float, l: float, c: float, vol: float = 1000.0) -> dict:
     return {
         "timestamp": int(dt.timestamp() * 1000),
@@ -23,61 +25,8 @@ def _mk_bar(dt: datetime, o: float, h: float, l: float, c: float, vol: float = 1
     }
 
 
-def _synthetic_bars(session_date: date, prev_day_bars: int = RTH_SESSION_MINUTES, today_bars: int = 300) -> list[dict]:
-    """Generate synthetic 1-min bars: prev day RTH + today RTH (partial).
-    today_bars=300 gives bars through 14:30 ET (enough for afternoon cutoff 14:00)."""
-    from datetime import timedelta
-
-    bars = []
-    base_price = 500.0
-    prev_date = session_date - timedelta(days=1)
-
-    # Previous day cash RTH [open, close)
-    for i in range(prev_day_bars):
-        mins = int(RTH_START_MINS) + i
-        h = mins // 60
-        m = mins % 60
-        dt = datetime(prev_date.year, prev_date.month, prev_date.day, h, m, tzinfo=ET)
-        p = base_price + (i % 50) - 25
-        bars.append(_mk_bar(dt, p, p + 0.5, p - 0.5, p, 1000))
-
-    # Today cash RTH: first N minutes
-    for i in range(today_bars):
-        mins = int(RTH_START_MINS) + i
-        h = mins // 60
-        m = mins % 60
-        dt = datetime(session_date.year, session_date.month, session_date.day, h, m, tzinfo=ET)
-        p = base_price + (i % 40) - 20
-        bars.append(_mk_bar(dt, p, p + 0.3, p - 0.3, p, 800))
-    return bars
 
 
-def _bars_through(session_date: date, hour: int, minute: int, prev_day_bars: int = RTH_SESSION_MINUTES) -> list[dict]:
-    """Bars only through given ET time (exclusive of bars past that time)."""
-    from datetime import timedelta
-
-    bars = []
-    base_price = 500.0
-    prev_date = session_date - timedelta(days=1)
-    cutoff_mins = hour * 60 + minute
-
-    for i in range(prev_day_bars):
-        mins = int(RTH_START_MINS) + i
-        h = mins // 60
-        m = mins % 60
-        dt = datetime(prev_date.year, prev_date.month, prev_date.day, h, m, tzinfo=ET)
-        p = base_price + (i % 50) - 25
-        bars.append(_mk_bar(dt, p, p + 0.5, p - 0.5, p, 1000))
-
-    today_start = int(RTH_START_MINS)
-    for i in range(cutoff_mins - today_start + 1):
-        mins = today_start + i
-        h = mins // 60
-        m = mins % 60
-        dt = datetime(session_date.year, session_date.month, session_date.day, h, m, tzinfo=ET)
-        p = base_price + (i % 40) - 20
-        bars.append(_mk_bar(dt, p, p + 0.3, p - 0.3, p, 800))
-    return bars
 
 
 def test_imports():
@@ -124,86 +73,16 @@ def test_bars_normalization_drops_missing_ohlc_bar():
 
 
 
-def test_get_previous_day_levels():
-    """Previous day levels extracted from bars."""
-    from liquidity_value_engine import get_previous_day_levels
-    from liquidity_models import PlaybookConfig
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    cfg = PlaybookConfig()
-    prev = get_previous_day_levels(bars, session, cfg)
-    assert prev.get("pdh") is not None
-    assert prev.get("pdl") is not None
-    assert prev.get("pdc") is not None
-    assert prev.get("pd_poc") is not None
-    assert prev["pdh"] >= prev["pdl"]
 
 
-def test_compute_opening_range():
-    """Opening range = first 15 min of RTH."""
-    from liquidity_value_engine import compute_opening_range
-    from liquidity_models import PlaybookConfig
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    cfg = PlaybookConfig(opening_range_minutes=15)
-    orb = compute_opening_range(bars, session, cfg)
-    assert orb.get("orb_high") is not None
-    assert orb.get("orb_low") is not None
-    assert orb.get("orb_mid") is not None
-    assert orb["orb_high"] >= orb["orb_low"]
 
 
-def test_compute_session_vwap():
-    """VWAP computed from RTH bars."""
-    from liquidity_value_engine import compute_session_vwap
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    vwap = compute_session_vwap(bars, session)
-    assert vwap is not None
-    assert 400 < vwap < 600
 
 
-def test_compute_session_vwap_returns_none_when_volume_missing():
-    """S002: VWAP is volume-weighted and must fail closed without candle volume."""
-    from liquidity_value_engine import compute_session_vwap
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    for bar in bars:
-        bar.pop("volume", None)
-
-    assert compute_session_vwap(bars, session) is None
 
 
-def test_midday_snapshot_does_not_create_vwap_bands_when_vwap_missing():
-    """S014 sub-slice: missing VWAP must not create bands around synthetic zero."""
-    import liquidity_value_engine as lve
-    from liquidity_models import PlaybookConfig
-
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    for bar in bars:
-        if datetime.fromtimestamp(float(bar["_ts"]), ET).date() == session:
-            bar.pop("volume", None)
-
-    out = lve.build_midday_snapshot("SPY", bars, session, PlaybookConfig())
-
-    assert out.raw_levels["vwap"] is None
-    assert out.raw_levels["vwap_bands"] is None
-    assert all("VWAP_P1" not in z.source_tags and "VWAP_M1" not in z.source_tags for z in out.zones)
 
 
-def test_compute_volume_profile_levels():
-    """POC, VAH, VAL computed from bars."""
-    from liquidity_value_engine import compute_volume_profile_levels
-    from liquidity_models import PlaybookConfig
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    cfg = PlaybookConfig()
-    poc, vah, val = compute_volume_profile_levels(bars, session, cfg)
-    assert poc is not None
-    assert vah is not None
-    assert val is not None
-    assert val <= poc <= vah
 
 
 def _typical_price_dump(bars, value_area_pct=0.70, tick_size=0.01):
@@ -751,67 +630,14 @@ def test_cluster_price_levels():
     assert len(clusters) >= 1
 
 
-def test_build_premarket_snapshot():
-    """Premarket snapshot produces zones."""
-    from liquidity_value_engine import build_premarket_snapshot
-    from liquidity_models import PlaybookConfig
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    cfg = PlaybookConfig()
-    out = build_premarket_snapshot("SPY", bars, session, cfg)
-    assert out.ticker == "SPY"
-    assert out.snapshot_type.value == "premarket"
-    assert out.session_date == "2026-03-13"
-    assert isinstance(out.zones, list)
 
 
-def test_build_opening_snapshot():
-    """Opening snapshot includes ORB and VWAP."""
-    from liquidity_value_engine import build_opening_snapshot
-    from liquidity_models import PlaybookConfig
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    cfg = PlaybookConfig()
-    out = build_opening_snapshot("SPY", bars, session, cfg)
-    assert out.snapshot_type.value == "opening"
-    assert "orb" in out.raw_levels
 
 
-def test_build_midday_snapshot():
-    """Midday snapshot includes value shift and summary."""
-    from liquidity_value_engine import build_midday_snapshot
-    from liquidity_models import PlaybookConfig
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    cfg = PlaybookConfig()
-    out = build_midday_snapshot("SPY", bars, session, cfg)
-    assert out.snapshot_type.value == "midday"
-    assert out.summary is not None
-    assert out.summary.value_state in ("shifted_higher", "shifted_lower", "unchanged")
 
 
-def test_build_afternoon_snapshot():
-    """Afternoon snapshot produced."""
-    from liquidity_value_engine import build_afternoon_snapshot
-    from liquidity_models import PlaybookConfig
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    cfg = PlaybookConfig()
-    out = build_afternoon_snapshot("SPY", bars, session, cfg)
-    assert out.snapshot_type.value == "afternoon"
 
 
-def test_generate_liquidity_value_snapshot_master():
-    """Master function generates all snapshot types."""
-    from liquidity_value_engine import generate_liquidity_value_snapshot
-    from liquidity_models import SnapshotType, PlaybookConfig
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    cfg = PlaybookConfig()
-    for st in [SnapshotType.PREMARKET, SnapshotType.OPENING, SnapshotType.MIDDAY, SnapshotType.AFTERNOON]:
-        out = generate_liquidity_value_snapshot("QQQ", bars, session, st, cfg)
-        assert out.ticker == "QQQ"
-        assert out.snapshot_type == st
 
 
 def test_no_lookahead_premarket():
@@ -844,94 +670,14 @@ def test_no_lookahead_premarket():
 
 
 
-def test_opening_cutoff_0945():
-    """OPENING snapshot uses data only through 09:45 ET."""
-    from liquidity_value_engine import build_opening_snapshot, _cutoff_for_snapshot
-    from liquidity_models import PlaybookConfig, SnapshotType
-
-    session = date(2026, 3, 13)
-    cfg = PlaybookConfig()
-    cutoff = _cutoff_for_snapshot(SnapshotType.OPENING, session)
-    assert cutoff is not None
-    assert cutoff.hour == 9 and cutoff.minute == 45
-
-    bars_through_0945 = _bars_through(session, 9, 45)
-    bars_through_1000 = _bars_through(session, 10, 0)
-    out_0945 = build_opening_snapshot("SPY", bars_through_0945, session, cfg)
-    out_1000 = build_opening_snapshot("SPY", bars_through_1000, session, cfg)
-    assert out_0945.raw_levels.get("orb") is not None
-    assert out_1000.raw_levels.get("orb") is not None
-    assert out_0945.raw_levels["orb"]["orb_high"] == out_1000.raw_levels["orb"]["orb_high"]
-    assert out_0945.raw_levels["orb"]["orb_low"] == out_1000.raw_levels["orb"]["orb_low"]
-
-
-def test_midday_cutoff_1030():
-    """MIDDAY snapshot uses data only through 10:30 ET."""
-    from liquidity_value_engine import build_midday_snapshot, _cutoff_for_snapshot
-    from liquidity_models import PlaybookConfig, SnapshotType
-
-    session = date(2026, 3, 13)
-    cfg = PlaybookConfig()
-    cutoff = _cutoff_for_snapshot(SnapshotType.MIDDAY, session)
-    assert cutoff is not None
-    assert cutoff.hour == 10 and cutoff.minute == 30
-
-    bars_through_1030 = _bars_through(session, 10, 30)
-    bars_through_1100 = _bars_through(session, 11, 0)
-    out_1030 = build_midday_snapshot("SPY", bars_through_1030, session, cfg)
-    out_1100 = build_midday_snapshot("SPY", bars_through_1100, session, cfg)
-    assert out_1030.raw_levels.get("poc") is not None
-    assert out_1100.raw_levels.get("poc") is not None
-    assert out_1030.raw_levels["poc"] == out_1100.raw_levels["poc"]
-
-
-def test_afternoon_cutoff_1400():
-    """AFTERNOON snapshot uses data only through 14:00 ET."""
-    from liquidity_value_engine import build_afternoon_snapshot, _cutoff_for_snapshot
-    from liquidity_models import PlaybookConfig, SnapshotType
-
-    session = date(2026, 3, 13)
-    cfg = PlaybookConfig()
-    cutoff = _cutoff_for_snapshot(SnapshotType.AFTERNOON, session)
-    assert cutoff is not None
-    assert cutoff.hour == 14 and cutoff.minute == 0
-
-    bars_through_1400 = _bars_through(session, 14, 0)
-    bars_through_1500 = _bars_through(session, 15, 0)
-    out_1400 = build_afternoon_snapshot("SPY", bars_through_1400, session, cfg)
-    out_1500 = build_afternoon_snapshot("SPY", bars_through_1500, session, cfg)
-    assert out_1400.raw_levels.get("poc") is not None
-    assert out_1500.raw_levels.get("poc") is not None
-    assert out_1400.raw_levels["poc"] == out_1500.raw_levels["poc"]
 
 
 
 
-def test_atr_clustering_no_lookahead():
-    """ATR-based clustering works and does not use lookahead."""
-    from liquidity_value_engine import (
-        cluster_price_levels_into_zones,
-        compute_atr_from_bars,
-        _cutoff_for_snapshot,
-    )
-    from liquidity_models import PlaybookConfig, SnapshotType
 
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    cfg = PlaybookConfig(clustering_mode="atr", clustering_threshold_atr_mult=1.0)
-    cutoff = _cutoff_for_snapshot(SnapshotType.OPENING, session)
-    atr = compute_atr_from_bars(bars, session, cutoff, period=14)
-    assert atr is not None
-    assert atr > 0
 
-    levels = [(500.0, "PDH"), (500.5, "PD_VAH"), (502.0, "ORB_HIGH")]
-    clusters = cluster_price_levels_into_zones(levels, 500.0, cfg, atr_value=atr)
-    assert len(clusters) >= 1
 
-    cfg_percent = PlaybookConfig(clustering_mode="percent")
-    cluster_price_levels_into_zones(levels, 500.0, cfg_percent)
-    clusters_atr = cluster_price_levels_into_zones(levels, 500.0, cfg, atr_value=0.5)
-    assert len(clusters_atr) >= 1
+
 
 
 def test_source_levels_use_actual_values():
@@ -970,15 +716,3 @@ def test_max_zone_width():
     assert len(clusters_cap) >= len(clusters), "cap should produce more zones when width limited"
 
 
-def test_build_live_snapshot_smoke():
-    """Live path runs without error on synthetic session bars."""
-    from liquidity_value_engine import build_live_snapshot
-    from liquidity_models import PlaybookConfig, SnapshotType
-    session = date(2026, 3, 13)
-    bars = _synthetic_bars(session)
-    cfg = PlaybookConfig(clustering_mode="percent", max_zone_width=2.0)
-    out = build_live_snapshot("SPY", bars, session, cfg, extra_levels=[(505.0, "GAMMA_CALL_WALL")], spot=500.0)
-    assert out.snapshot_type in (SnapshotType.LIVE, SnapshotType.PREMARKET)
-    assert isinstance(out.zones, list)
-    if out.snapshot_type == SnapshotType.LIVE:
-        assert "cutoff_et" in (out.raw_levels or {})

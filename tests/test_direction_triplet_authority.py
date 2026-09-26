@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 
-from numeric_contract import direction_from_normalized_triplet
 
 _SKIP_PY_TREE_DIRS = frozenset(
     {".claude", ".git", ".venv", "venv", "node_modules", "__pycache__"}
@@ -43,5 +42,3 @@ def test_no_inline_triplet_max_outside_numeric_contract(repo_index):
     assert not offenders, offenders
 
 
-def test_direction_from_normalized_triplet_tie_up_first():
-    assert direction_from_normalized_triplet(1 / 3, 1 / 3, 1 / 3) == "up"

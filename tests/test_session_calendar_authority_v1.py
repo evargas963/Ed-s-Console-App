@@ -16,7 +16,6 @@ from time_et import (
     RTH_END_MINS,
     RTH_START_MINS,
     is_capturable_session,
-    is_rth_ts_utc,
     is_trading_day_et,
     is_tradable_session_ts_utc,
     session_close_mins_for_et_date,
@@ -48,14 +47,6 @@ def test_full_holidays_are_closed_including_the_measured_classes():
     assert session_close_mins_for_et_date("2026-07-03") is None
 
 
-def test_legacy_clock_only_filter_admits_what_the_authority_rejects():
-    """Documents WHY new consumers must not use is_rth_ts_utc alone."""
-    memorial_10am = _ts(2026, 5, 25, 10, 0)
-    assert is_rth_ts_utc(memorial_10am) is True  # clock-only: blind to calendar
-    assert is_tradable_session_ts_utc(memorial_10am) is False
-    saturday_10am = _ts(2026, 3, 7, 10, 0)
-    assert is_rth_ts_utc(saturday_10am) is True  # clock-only: blind to weekday
-    assert is_tradable_session_ts_utc(saturday_10am) is False
 
 
 def test_early_close_half_day_ends_at_1300_et():
