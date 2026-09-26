@@ -568,7 +568,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     every contract whose expiry has since passed (time_to_expiry_years returns None past
     settlement) and understates T for the rest, so the replay does not reproduce what the live
     reprice saw. _contract_inputs already documented this contract; compute_terrain had no hook
-    to honor it, which is why tools/terrain_backtest_report_v1.py was scoring on the wrong clock.
+    to honor it.
 
     SINGLE SOURCE OF TRUTH (RC-33, 2026-07-24): this is the ONE terrain engine;
     /api/analytics/state no longer computes a competing terrain read. It must be

@@ -25,13 +25,11 @@ REPO = Path(__file__).resolve().parent.parent
 
 PROBE = r"""
 import json, runtime_layout as rl, db_authority as da, db, config
-from tools import terrain_backtest_report_v1 as tb
 cfg = config.build_config(str(rl.SOURCE_ROOT))
 print(json.dumps({
     "runtime_root": str(rl.RUNTIME_ROOT), "artifacts_root": str(rl.ARTIFACTS_ROOT),
     "canonical_db": str(da.canonical_console_db_path()), "db_path": str(db.DB_PATH),
     "db_dir": str(db.DB_DIR), "token": cfg.token_path, "barchart": cfg.barchart_dir,
-    "terrain_json": str(tb.OUT_JSON), "terrain_history": str(tb.HISTORY),
     "separated": rl.describe()["separated"],
 }))
 """
@@ -179,8 +177,7 @@ def test_no_runtime_path_is_rooted_in_the_source_checkout_any_more():
     or `APP_DIR / "reports"` in the runtime modules and the report-writing tools."""
     offenders: list[str] = []
     for rel in ("server.py", "db.py", "db_authority.py", "config.py", "desk_store.py",
-                "stream_spine.py", "app/options/order_flow/streaming.py",
-                "tools/terrain_backtest_report_v1.py"):
+                "stream_spine.py", "app/options/order_flow/streaming.py"):
         for i, line in enumerate((REPO / rel).read_text(encoding="utf-8").splitlines(), 1):
             if line.lstrip().startswith("#"):
                 continue

@@ -215,32 +215,13 @@ def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, fl
     return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
 
 
-#: TU-04 sign models. NAIVE (+call/−put) is validated at INDEX level (Baltussen JFE 2021
-#: reproduced the SqueezeMetrics convention on OptionMetrics data). EMPIRICAL_PRIOR
-#: encodes Garleanu-Pedersen-Poteshman Table 1 for SINGLE NAMES: end users net-WRITE
-#: both calls and puts on equities, so dealers are net LONG both sides (+call/+put).
-#: A/B ONLY — production stays naive until the scorecard promotes (never a silent swap).
-SIGN_MODEL_NAIVE = "naive"
-SIGN_MODEL_EMPIRICAL_PRIOR = "empirical_prior"
-
-
-def _dealer_sign(side_sign: int, sign_model: str) -> int:
-    """side_sign is +1 CALL / −1 PUT from _contract_inputs (the naive convention)."""
-    if sign_model == SIGN_MODEL_EMPIRICAL_PRIOR:
-        return 1                     # dealers long BOTH legs on single names (GPO Table 1)
-    if sign_model == SIGN_MODEL_NAIVE:
-        return side_sign
-    raise ValueError(f"unknown sign_model: {sign_model!r}")
-
-
 def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float = 0.15,
-                          steps: int = 240,
-                          sign_model: str = SIGN_MODEL_NAIVE, now=None,
+                          steps: int = 240, now=None,
                           parsed: "list | None" = None) -> List[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 
-    Dealer convention per `sign_model` (default naive +call/−put — the only model in
-    production; empirical_prior exists for the TU-04 A/B scorecard). Returns
+    Dealer convention +call/−put (validated at index level: Baltussen JFE 2021 reproduced it on
+    OptionMetrics data). Returns
     [(price, total_gex)] ascending. The zero crossing of this curve is the gamma flip.
     """
     if not contracts or spot is None or spot <= 0:
@@ -252,7 +233,7 @@ def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float
     lo, hi = spot * (1.0 - span_pct), spot * (1.0 + span_pct)
     steps = max(int(steps), 2)
     grid = [lo + (hi - lo) * i / steps for i in range(steps + 1)]
-    totals = _gamma_profile_totals(parsed, grid, sign_model)
+    totals = _gamma_profile_totals(parsed, grid)
     return [(round(s, 4), total) for s, total in zip(grid, totals)]
 
 
@@ -261,7 +242,7 @@ def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float
 _GAMMA_PROFILE_BLOCK = 32
 
 
-def _gamma_profile_totals(parsed: list, grid: List[float], sign_model: str) -> List[float]:
+def _gamma_profile_totals(parsed: list, grid: List[float]) -> List[float]:
     """sum over contracts of dealer_sign * bs_gamma(s) * oi * mult * s^2 * 0.01, per s in grid.
 
     The same Black-Scholes gamma bs_gamma computes (r = q = 0, as every production caller
@@ -273,10 +254,9 @@ def _gamma_profile_totals(parsed: list, grid: List[float], sign_model: str) -> L
 
     arr = np.asarray(parsed, dtype=float)
     strike, oi, mult, t_years, sigma, side = (arr[:, i] for i in range(6))
-    sign = np.array([_dealer_sign(int(x), sign_model) for x in side], dtype=float)
     vt = sigma * np.sqrt(t_years)
     drift = 0.5 * sigma * sigma * t_years
-    weight = sign * oi * mult
+    weight = side * oi * mult          # side: +1 call / -1 put, the dealer sign
     s_all = np.asarray(grid, dtype=float)
     out: List[float] = []
     with np.errstate(all="ignore"):
@@ -501,7 +481,7 @@ GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
 #: full-chain flip|, a LEVEL distance, and is silent about the SIGN of gamma at spot.
 #: MEASURED 2026-08-26 (the study that was missing; 260 seed-fixed chains from the same
 #: option_chain_morning_full cohort, at-spot gamma recomputed on truncated windows via
-#: _contract_inputs/_dealer_sign/bs_gamma, counting ONLY genuinely truncated chains):
+#: _contract_inputs/bs_gamma, counting ONLY genuinely truncated chains):
 #:   sign agreement with the full delivered chain — +/-1% 79.8% (n=233), +/-5% 86.2% (n=253,
 #:   95% CI [0.814, 0.899]), +/-10% 90.2% (n=254), +/-15% 92.7% (n=248).
 #: WHAT IS BEING COMPARED — read this before quoting any number above. Both sides of the comparison

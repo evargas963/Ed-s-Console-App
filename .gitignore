@@ -79,9 +79,6 @@ benchmark_logs/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 
-# Host manifest snapshots (regenerate via scripts/export_host_manifest.ps1)
-host_manifest.json
-host_manifest.*.json
 
 # Cursor IDE — track project rules AND the hook continuum (RC-374: hooks.json was
 # ignored, so the enforcement wiring existed only on this machine while the parity

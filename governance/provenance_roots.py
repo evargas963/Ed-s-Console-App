@@ -39,7 +39,6 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/streaming/active-ticker': ('OPERATOR_INPUT', None),
     '/api/streaming/watchlist-symbols': ('OPERATOR_INPUT', None),
     '/api/terrain': ('PRODUCER', 'server.py:get_terrain'),
-    '/api/terrain/scorecard': ('PRODUCER', None),
     '/api/terrain/strikes': ('PRODUCER', 'server.py:get_terrain_strikes'),
     '/api/watchlist-quotes': ('PRODUCER', 'server.py:api_watchlist_quotes'),
     '/chart': ('PAGE', None),
@@ -53,5 +52,4 @@ ROUTES: dict[str, tuple[str, str | None]] = {
 #: a root cannot go OPEN silently, and a root that closes must leave this list.
 OPEN_ROOTS: tuple[str, ...] = (
     '/api/expiries',
-    '/api/terrain/scorecard',
 )

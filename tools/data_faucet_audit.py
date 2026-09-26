@@ -62,7 +62,6 @@ SOURCE_SIGNATURES: tuple[tuple[str, str, str, str], ...] = (
     (r"FROM\s+price_bars_1m",        "price_bars_1m",       "DB_TABLE",    "bar collection service writes this"),
     (r"FROM\s+snapshots\b",          "snapshots",           "DB_TABLE",    "per-minute snapshot capture"),
     (r"FROM\s+level_crosses",        "level_crosses",       "DB_TABLE",    "event log"),
-    (r"terrain_backtest_latest\.json", "scorecard_file",    "REPORT_FILE", "batch study artifact"),
 )
 
 #: `resolve_spot` is the ONE spot authority (RC-14). Every endpoint calling it is COMPLIANCE, not
@@ -77,7 +76,6 @@ CONCEPTS: dict[str, tuple[str, ...]] = {
     "price_bars":    ("/api/bars1m",),
     "levels":        ("/api/terrain",),
     "per_strike":    ("/api/terrain/strikes",),
-    "coach_stats":   ("/api/terrain/scorecard",),
     "level_events":  ("/api/level_crosses",),
 }
 
@@ -92,11 +90,10 @@ DECLARED_FAUCETS: dict[str, frozenset[str]] = {
     "levels":       frozenset({"terrain_cache"}),
     # today -> terrain_cache (live). prior-day ghost -> morning_archive (yesterday cannot change).
     "per_strike":   frozenset({"terrain_cache", "morning_archive"}),
-    "coach_stats":  frozenset({"scorecard_file"}),
     "level_events": frozenset({"level_crosses"}),
 }
 
-FRESH_LIMITS = {"LIVE": 60, "LOOP": 180, "DB_TABLE": 300, "ARCHIVE": 86400, "REPORT_FILE": 86400}
+FRESH_LIMITS = {"LIVE": 60, "LOOP": 180, "DB_TABLE": 300, "ARCHIVE": 86400}
 
 #: CLIENT concepts (RC-75/RC-76). `reader` matches ANY read of the concept in the browser;
 #: `authorities` are the only functions allowed to decide between sources. A read anywhere else is
@@ -296,9 +293,6 @@ def measure_ages(db_path: str) -> dict[str, float | None]:
                 pass
     finally:
         con.close()
-    p = _ROOT / "reports" / "terrain_backtest_latest.json"
-    if p.exists():
-        ages["scorecard_file"] = now - p.stat().st_mtime
     return ages
 
 

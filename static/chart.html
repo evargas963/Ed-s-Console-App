@@ -326,9 +326,6 @@ let yLock = null;         // {lo, hi} manual price domain when user pans/zooms Y
 let cross = null;         // {mx, my} crosshair position
 let scale = null;
 let daily = null;         // {vwap:[[t,w]…]} — CARRIED from /api/levels vwap_path, never computed here
-let scorecard = null;     // latest daily scorecard — coach numbers update with it
-let scorecardStale = null;// present but PAST its freshness budget (RC-78): the reason,
-                          // never the numbers, so staleness is stated not implied
 let lastDragEnd = 0;      // suppress dblclick-fit right after a real drag
 let liveSpot = null;      // THE displayed price: the capture daemon's price row (live_ui.py, port 8800)
 let liveSpotChg = null;   // streamed_chg_pct from the same row — browser does not compute %
@@ -499,7 +496,7 @@ const RL_FAM = { PDH: 'pd', PDL: 'pd', PDC: 'pd', PD_POC: 'va', PD_VAH: 'va', PD
 //: [family, label, color, default state, evidence line] — evidence rides each row; unproven
 //: levels RENDER and get PROVEN via register due-dates, never hidden (RC-188).
 const LVL_META = [
-  ['wall', 'Call / put wall', '#ffc400', 'on', 'holds measured daily: scorecard'],
+  ['wall', 'Call / put wall', '#ffc400', 'on', 'standing option inventory'],
   ['pin', 'Absolute Gamma', '#c792ff', 'on', 'SpotGamma std · formerly "Gamma pin" · re-test due 08-14'],  // # ui-mockup-ok: RC-352/353 nomenclature label fix only
   ['flip', 'Gamma flip', '#f4f6f8', 'on', 'method proven · MOVES intraday (register)'],
   ['vwap', 'VWAP', '#ff8c00', 'on', 'price fact'],
@@ -754,12 +751,11 @@ async function load() {
   if (!tk) { document.getElementById('narrator').textContent = 'choose a symbol'; return; }
   openSpotStream(tk);
   try {
-    const [b, t, s, c, sc] = await Promise.all([
+    const [b, t, s, c] = await Promise.all([
       j(`/api/bars1m?ticker=${tk}&limit=3000&tf=${tf}`),
       j(`/api/terrain?ticker=${tk}`),
       j(`/api/terrain/strikes?ticker=${tk}`).catch(() => null),
       j(`/api/level_crosses?ticker=${tk}&n=8`).catch(() => ({ crosses: [] })),
-      j(`/api/terrain/scorecard`).catch(() => null),
     ]);
     // RC-156: the raw structure levels ride their OWN request and their OWN failure. This is a
     // slow endpoint (it fetches a session of Schwab bars), so it must never hold up the price
@@ -788,13 +784,6 @@ async function load() {
     j(`/api/forces?ticker=${tk}`)
       .then(fz => { if (currentChartTicker() === tk) { forcesBank = fz; renderForces(); } })
       .catch(() => { if (currentChartTicker() === tk) { forcesBank = null; renderForces(); } });
-    // coach numbers: accept only a real scorecard payload (an error body or a
-    // pre-restart 404 must read as ABSENT -> tooltips say "measuring")
-    // RC-78: a STALE scorecard is not a scorecard. The server withholds the figures past its
-    // trading-day budget and sends the reason instead, so the coach says "measuring" rather than
-    // quoting a four-day-old hold rate under "measured on our own history".
-    scorecard = (sc && sc.generated_utc && !sc.stale) ? sc : null;
-    scorecardStale = (sc && sc.stale) ? sc : null;
     if (currentChartTicker() !== tk) return;   // superseded by a newer ticker selection
     // follow the right edge ONLY when actually sitting on it; a view dragged
     // past the newest bar stays where the operator placed it (snap-back class)
@@ -915,9 +904,6 @@ async function load() {
   } catch (e) {
     document.getElementById('narrator').textContent = 'load failed: ' + e.message;
     feedFresh = false;
-    // fail-closed coach: a failed cycle cannot vouch for the numbers it would
-    // quote — tooltips say "measuring" until a cycle succeeds (Bugbot HIGH)
-    scorecard = null; scorecardStale = null;
     document.getElementById('livedot').className = 'stale';
     document.getElementById('lastdot').style.display = 'none';
     // rebuild zones NOW — hover tooltips read zones built at the last draw,
@@ -1147,30 +1133,15 @@ function draw() {
       : (sell ? 'CWALL' : 'PWALL') + _pinTag;
     axisTags.push({ v: level, text: `${fmt(level)} ${tagTxt}`, col });
     wallLabelYs.push(yTop - 5);
-    // Coach numbers are LIVE from the daily scorecard — never a frozen study
-    // figure (operator 2026-07-23). Absent scorecard = "measuring", not a
-    // stale rate.
-    const wh = scorecard && scorecard.wall_hold_trusted;
-    const measured = (wh && wh.call_held_pct != null && wh.put_held_pct != null)
-      ? `<i>Measured on our own history (updates with each daily scorecard` +
-        (scorecard.generated_utc ? `, last ${esc(String(scorecard.generated_utc).slice(0, 10))}` : '') +
-        `): call walls held ${wh.call_held_pct}%, put walls ${wh.put_held_pct}% on trusted days.</i>`
-      : scorecardStale
-        ? `<i>Hold-rate: measuring — the daily scorecard is out of date (` +
-          `${esc(String(scorecardStale.stale_reason || 'stale'))}, last ` +
-          `${esc(String(scorecardStale.generated_utc || '').slice(0, 10))}), so its numbers are ` +
-          `withheld rather than quoted as current.</i>`
-        : `<i>Hold-rate: measuring — this number fills from the daily scorecard.</i>`;
     const leanTip = kind === 'both'
       ? `Both walls sit on this ONE strike: heavy standing inventory on the call AND put side.<br>` +
         `Dealer hedging pulls toward it rather than pushing off it — a magnet, not a barrier. ` +
-        `A one-sided BUY/SELL read would assert a direction the data does not support.<br>` + measured
+        `A one-sided BUY/SELL read would assert a direction the data does not support.`
       : withholdLean
         ? `Heavy standing option inventory at this strike (structure fact only).<br>` +
-          measured + `<br>` +
           `<i>Dealer BUY/SELL lean withheld — regime ${esc(T.regime)} / ${esc(T.confidence)}.</i>`
         : `Heavy standing option inventory — dealer hedging ${sell ? 'sells strength' : 'buys weakness'} ` +
-          `at this strike; acts as ${sell ? 'resistance' : 'support'}.<br>` + measured;
+          `at this strike; acts as ${sell ? 'resistance' : 'support'}.`;
     // RC-86: the tooltip states what the drawn band IS — a strike bucket from the chain's own
     // grid — instead of implying a zone the wall operates over. With no grid there is no bucket
     // and the width is simply not claimed.

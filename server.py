@@ -2699,7 +2699,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
 
     Stopping the loop after the post-market buffer may well be correct. Serving its last output
     under a live label is not: staleness that is budget-justified gets LABELLED, staleness that is
-    not gets removed (the RC-78 rule, applied to the scorecard that day and never to terrain).
+    not gets removed (the RC-78 rule).
     """
     refreshing = _is_loggable_session()
     token = schwab_token_countdown(_schwab_token_creation_ts())   # RC-108: warn BEFORE death
@@ -4835,100 +4835,6 @@ def get_spot(ticker: str = Query(...)):
             with _spot_poll_lock:
                 _spot_poll_inflight.pop(tk, None)
             done.set()
-
-
-#: Trading days a daily scorecard may be old and still be quoted as a measurement. 1 = yesterday's
-#: run is current, the day before that is not. DERIVED from the artifact's own cadence: the job is
-#: daily, so anything older than one trading day means a run was MISSED, and a missed run is
-#: exactly the condition under which the numbers must stop speaking.
-SCORECARD_MAX_TRADING_DAY_AGE: int = 1
-
-
-def scorecard_trading_day_age(generated_utc: object) -> int | None:
-    """TRADING days between `generated_utc` (YYYY-MM-DD...) and today ET. None = unusable.
-
-    Counts sessions, not hours, so a Friday scorecard reads as 1 day old on Monday rather than 3
-    — the distinction between "the job did not run" and "the market was shut"."""
-    # RC-98: CONVERT to ET, never slice the UTC string. `generated_utc[:10]` is a UTC calendar
-    # date being compared against an ET calendar date, and after 20:00 ET the UTC date is already
-    # TOMORROW — so a scorecard that had just run successfully scored `gen > today`, returned
-    # None, and the API reported the FRESH artifact as unusable. MEASURED 2026-07-27 21:21 ET:
-    # generated_utc 2026-07-28T00:30:00+00:00 (= 20:30 ET today) returned None instead of 0.
-    # The session calendar is ET, so the timestamp must be moved onto that clock before any date
-    # arithmetic — comparing two different clocks' dates is the defect, not the comparison.
-    raw = str(generated_utc or "").strip()
-    try:
-        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        if len(raw) == 10:
-            # A DATE-ONLY string carries no time and no zone — it is already a calendar date, so
-            # converting it is the bug, not the fix. Treating "2026-07-24" as UTC midnight and
-            # shifting to ET lands on 07-23 and ages the scorecard by an extra day. Caught by
-            # tests/test_scorecard_stale_fails_closed_v1.py the moment the ET conversion landed.
-            gen = ts.date()
-        else:
-            if ts.tzinfo is None:            # naive TIMESTAMPS are UTC by this repo's storage law
-                ts = ts.replace(tzinfo=timezone.utc)
-            gen = ts.astimezone(now_et().tzinfo).date()
-    except (TypeError, ValueError):
-        return None                          # unparseable age is NOT a fresh age
-    today = now_et().date()
-    if gen > today:
-        return None                          # a future stamp is a broken clock, never "fresh"
-    age, day = 0, gen
-    while day < today:
-        day += timedelta(days=1)
-        if is_trading_day_et(day.isoformat()):
-            age += 1
-    return age
-
-
-@app.get("/api/terrain/scorecard")
-def get_terrain_scorecard():
-    """Coach copy's measured numbers, LIVE from the latest daily scorecard.
-
-    Operator 2026-07-23: "will the coach be updated as we self-test?" — the
-    tooltip hold-rates were frozen into the page the night they were measured.
-    Now the UI reads them from reports/terrain_backtest_latest.json, so every
-    daily scorecard run updates what the coach is allowed to claim.
-
-    FAIL-CLOSED ON STALE AS WELL AS ABSENT (RC-78). This previously refused a
-    missing or malformed report and served an out-of-date one, while claiming in
-    this very docstring that it "never" served a stale rate — and it was found
-    serving hold-rates 111.6 hours (4.6 days) old under the coach's "Measured on
-    our own history". Age is a precondition to serve, not a footnote to display:
-    a date printed beside a number does not stop the number being read. Past the
-    budget the figures are WITHHELD and the reason is published, so the coach
-    says "measuring" instead of quoting a four-day-old measurement.
-
-    The budget counts TRADING days, so Friday's scorecard is still current on
-    Monday and stale on Tuesday. A wall-clock budget would condemn every
-    scorecard each weekend and teach the operator to ignore the warning."""
-    p = _artifact_reports_dir() / "terrain_backtest_latest.json"    # RC-523: artifacts root
-    try:
-        rep = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return JSONResponse({})
-    gen = rep.get("generated_utc")
-    age = scorecard_trading_day_age(gen)
-    if age is None or age > SCORECARD_MAX_TRADING_DAY_AGE:
-        return JSONResponse({
-            "generated_utc": gen,
-            "stale": True,
-            "age_trading_days": age,
-            "max_trading_days": SCORECARD_MAX_TRADING_DAY_AGE,
-            "stale_reason": (
-                "scorecard has not been regenerated" if age is None
-                else f"scorecard is {age} trading day(s) old"
-            ),
-        })
-    return JSONResponse({
-        "generated_utc": gen,
-        "stale": False,
-        "age_trading_days": age,
-        "wall_hold_trusted": rep.get("wall_hold_trusted"),
-        "weighting_scorecard": rep.get("weighting_scorecard"),
-        "pdca": rep.get("pdca"),
-    })
 
 
 @app.get("/chart", response_class=HTMLResponse)

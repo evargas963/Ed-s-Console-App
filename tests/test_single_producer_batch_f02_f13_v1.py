@@ -42,7 +42,6 @@ TURN_AUDIT_OWNS = [
     "tools/lp01_touch_study_v1.py",
     "tools/liquidity_synthesis_experiments_v1.py",
     "tools/liquidity_oi_volume_stickiness_v1.py",
-    "tools/terrain_backtest_report_v1.py",
     "tools/liquidity_intraday_volume_ic_v1.py",
     # F07: this suite's regime lock reads and asserts on the backtests' regime derivation.
     "tools/liquidity_gamma_hold_horizon_experiments_v1.py",
