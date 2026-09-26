@@ -57,13 +57,6 @@ os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
 os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"
 
-# TEARDOWN 2026-08-24: the tracked terrain quarantine ledger can never be a test's write
-# target, REGARDLESS of when server is imported (CI caught a lazy mid-test import writing
-# the real file; the autouse firewall fixture below remains the byte-level backstop).
-os.environ["ED_TERRAIN_QUARANTINE_LEDGER"] = str(
-    _PYTEST_RUNTIME_ROOT / "terrain_quarantine_ledger.jsonl"
-)
-
 # GOV-GATE-PERF-V1: tests always exercise REAL compute; a stored gate-cache success must
 # never satisfy an injected-failure test (tools/governance_gate_cache.py force-no-cache mode).
 os.environ["ED_GATE_CACHE_DISABLE"] = "1"
@@ -383,90 +376,3 @@ def live_orphans(tmp_path_factory, worker_id: str):
         return result
 
 
-# ------------------------------------------------- tracked-ledger firewall --
-# REHAB 2026-08-24: reports/terrain_quarantine_ledger.jsonl is a TRACKED operator audit
-# file, and tests exercising the quarantine machinery (scorecard file, silent-zero file,
-# and any future caller of server._note_terrain_failure / _terrain_quarantine_blocks)
-# were appending ZZTEST*/ZZQ fixture rows to it on every suite run. This GLOBAL autouse
-# fixture redirects the module's ledger path to tmp for EVERY test whenever `server` is
-# imported — per-file fixtures kept missing writers (measured: ZZQ rows landed from a
-# file with no redirect). Costs nothing for tests that never import server.
-#
-# LATE-IMPORT HARDENING (operator-named hole, 2026-08-24): the redirect above only fires
-# when `server` is ALREADY imported at fixture setup. A test that imports server inside
-# its own body gets an unpatched TERRAIN_QUARANTINE_LEDGER and writes the real tracked
-# file. The fixture therefore also snapshots the tracked file's byte length before every
-# test; if the file GREW during the test, it is truncated back to the snapshot FIRST
-# (the tracked file must never stay polluted) and the test then FAILS naming the hole.
-# Proven end-to-end by tests/test_terrain_ledger_isolation_v1.py.
-_TRACKED_TERRAIN_LEDGER = Path(
-    # The firewall's WATCHED path is injectable so the isolation prover can point an inner
-    # pytest at a private copy: under xdist every worker polices the same tracked file, and a
-    # deliberate probe on the shared path was being healed by a neighbour's fixture before
-    # the prover's own run observed it (RC-547).
-    os.environ.get("ED_TEST_TRACKED_TERRAIN_LEDGER")
-    or Path(__file__).resolve().parent.parent / "reports" / "terrain_quarantine_ledger.jsonl"
-)
-
-
-@pytest.fixture(autouse=True)
-def _terrain_ledger_to_tmp(tmp_path, monkeypatch):
-    try:
-        size_before = _TRACKED_TERRAIN_LEDGER.stat().st_size
-    except OSError:
-        size_before = None                       # tracked file absent — creation is growth too
-    srv = sys.modules.get("server")
-    if srv is not None and hasattr(srv, "TERRAIN_QUARANTINE_LEDGER"):
-        monkeypatch.setattr(srv, "TERRAIN_QUARANTINE_LEDGER",
-                            tmp_path / "terrain_quarantine_ledger.jsonl")
-    yield
-    try:
-        size_after = _TRACKED_TERRAIN_LEDGER.stat().st_size
-    except OSError:
-        size_after = None
-    if size_after is None:
-        return
-    grew = size_after - (size_before or 0)
-    if size_before is None:
-        _TRACKED_TERRAIN_LEDGER.unlink()         # restore first: it did not exist before
-        pytest.fail(
-            "TERRAIN LEDGER LATE-IMPORT HOLE: this test CREATED the tracked "
-            f"{_TRACKED_TERRAIN_LEDGER.name} ({grew} bytes) — server was imported after "
-            "fixture setup, so TERRAIN_QUARANTINE_LEDGER was never redirected to tmp. "
-            "The file has been removed to restore the tracked state; import server before "
-            "the write (or patch server.TERRAIN_QUARANTINE_LEDGER inside the test)."
-        )
-    if size_after > size_before:
-        # xdist: every worker watches the SAME tracked file, so a concurrent worker's
-        # SELF-RESTORING probe (tests/test_terrain_ledger_isolation_v1.py deliberately
-        # appends to the tracked file and truncates it back inside its own run) can be
-        # observed mid-window by an innocent neighbor — CI 2026-08-24 blamed
-        # test_rc359_oi_banking (a tmp-DB test that touches no server path) for a +479B
-        # window. Re-check briefly: growth that HEALS ITSELF was another worker's probe
-        # completing its restore; growth that PERSISTS is a real writer and fails loud.
-        import time as _time
-        for _ in range(6):
-            _time.sleep(0.25)
-            try:
-                size_after = _TRACKED_TERRAIN_LEDGER.stat().st_size
-            except OSError:
-                size_after = None
-                break
-            if size_after <= size_before:
-                break
-        if size_after is not None and size_after <= size_before:
-            return                                 # transient — the writer restored it
-        grew = (size_after or 0) - size_before
-        with open(_TRACKED_TERRAIN_LEDGER, "r+b") as fh:   # restore first, then fail loud
-            fh.truncate(size_before)
-        pytest.fail(
-            "TERRAIN LEDGER LATE-IMPORT HOLE: the tracked "
-            f"{_TRACKED_TERRAIN_LEDGER.name} GREW by {grew} bytes during this test and "
-            "STAYED grown across a 1.5s recheck. The usual cause: server was imported "
-            "after fixture setup (a mid-test `import server`), so "
-            "TERRAIN_QUARANTINE_LEDGER was never redirected to tmp and the quarantine "
-            "write landed in the real operator audit file (an external writer touching "
-            "the tracked file mid-test trips this too). It has been truncated back to "
-            f"its pre-test length ({size_before} bytes); import server before the write "
-            "(or patch server.TERRAIN_QUARANTINE_LEDGER inside the test)."
-        )

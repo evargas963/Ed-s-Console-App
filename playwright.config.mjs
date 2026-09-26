@@ -31,9 +31,6 @@ export const e2eServerEnv = (() => {
   env.SCHWAB_API_KEY = 'ci-placeholder-api-key';
   env.SCHWAB_APP_SECRET = 'ci-placeholder-app-secret';
   env.SCHWAB_CALLBACK_URL = 'https://127.0.0.1:8182';
-  env.ED_TERRAIN_QUARANTINE_LEDGER = path.join(
-    e2eRuntimeRoot, 'terrain_quarantine_ledger.jsonl',
-  );
   return env;
 })();
 

@@ -42,15 +42,15 @@ _CONTROL_STALL_SECONDS = 20
 #: Per-process runtime selectors exported by tests/conftest.py at import; a nested pytest
 #: owns its own runtime root and never reads this session's (see _child_env).
 _OUTER_SESSION_RUNTIME_SELECTORS = frozenset(
-    {"ED_RUNTIME_ROOT", "ED_ARTIFACTS_ROOT", "ED_TERRAIN_QUARANTINE_LEDGER"})
+    {"ED_RUNTIME_ROOT", "ED_ARTIFACTS_ROOT"})
 
 
 def _child_env(log_dir: Path) -> dict[str, str]:
     """Env for the nested run: this suite's own pytest/xdist variables must not leak in,
     and the runner's log goes to a private directory, never the checkout's logs/.
 
-    The runtime selectors tests/conftest.py exports (ED_RUNTIME_ROOT, ED_ARTIFACTS_ROOT,
-    ED_TERRAIN_QUARANTINE_LEDGER) are dropped too, for the same reason the conftest states:
+    The runtime selectors tests/conftest.py exports (ED_RUNTIME_ROOT, ED_ARTIFACTS_ROOT)
+    are dropped too, for the same reason the conftest states:
     every pytest process owns a fresh runtime root; the nested run must never read or
     write this session's.
     """
