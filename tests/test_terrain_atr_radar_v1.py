@@ -190,7 +190,7 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
             return {"gamma_flip": 99.5, "spot": 100.0, "confidence": "TRUSTED"}
 
     monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: _Snap())
-    monkeypatch.setattr(srv, "_radar_atr", lambda _tk: SimpleNamespace(daily=1.0, m15=0.2))
+    monkeypatch.setattr(srv, "_atr_pair", lambda _tk: SimpleNamespace(daily=1.0, m15=0.2))
 
     out = srv._terrain_refresh_one("SPY")
     assert out == "ok:TRUSTED"

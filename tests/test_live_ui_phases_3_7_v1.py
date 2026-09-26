@@ -83,11 +83,14 @@ def test_token_write_is_atomic_temp_replace(tmp_path):
 
 
 def test_forming_bar_overlay_uses_plane_last(monkeypatch):
+    """The overlay's forming minute is live_price_rows.forming_bar -- the streamed LAST_PRICE
+    folded in by the plane's row listener -- merged onto that minute's bar."""
+    import live_price_rows as lpr
     import server as srv
-    from tests.feed_live_helper import mark_feed_live
 
     tk = "ZZFORM"
-    mark_feed_live(tk)
+    monkeypatch.setattr(lpr, "_forming", {})
+    monkeypatch.setattr(lpr, "_forming_seen", {})
     ts = 1_700_000_070.0  # 1_700_000_070 - (70 % 60) = 1_700_000_040
     row = {
         "ticker": tk,
@@ -99,7 +102,8 @@ def test_forming_bar_overlay_uses_plane_last(monkeypatch):
         "exchange_quote_ts": ts,
         "trade_ts": ts,                 # TRADE_TIME in epoch SECONDS (the plane converts the ms)
     }
-    monkeypatch.setattr(srv._lmp, "get_quote", lambda t: row if t == tk else None)
+    monkeypatch.setattr(lpr.lmp, "get_quote", lambda t: row if t == tk else None)
+    lpr._note_trade(tk)             # the plane's row listener, as a streamed LAST_PRICE fires it
     bars = [{"t": 1_700_000_040.0, "o": 100.0, "h": 100.5, "l": 99.5, "c": 100.2, "v": 10}]
     out = srv.overlay_forming_bar_from_plane(bars, tk)
     assert len(out) == 1

@@ -327,7 +327,6 @@ CAPS_PREFIX_ALLOWLIST: tuple[tuple[str, str], ...] = (
     ("app/options/order_flow/state.py", "order-flow live state derived metrics"),
     ("app/options/order_flow/streaming.py", "order-flow streaming diagnostics"),
     ("institutional_behavior.py", "institutional behavior derived metrics"),
-    ("polling_adapter.py", "polling adapter timestamps"),
     ("governed_stack_contract.py", "stack contract validation defaults"),
     ("math_volatility.py", "volatility derived metrics"),
     ("multi_horizon_ml_bundle.py", "ML bundle orchestration defaults"),

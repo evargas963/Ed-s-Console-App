@@ -176,31 +176,31 @@ def test_analytics_light_uses_dedicated_l1_pool_not_route_offload():
     assert 'thread_name_prefix="ed_l1_light"' in src
 
 
-def test_rc243_bars_pool_is_sized_against_the_write_seam_not_the_api():
-    """RC-243: bar workers all serialize on ONE process-wide tier-1 write lock, so workers past
+def test_rc243_one_bar_writer_contends_for_the_write_seam():
+    """RC-243: bar writers all serialize on ONE process-wide tier-1 write lock, so writers past
     the first queue rather than parallelise — and each extra contender lengthens the queue
     against a 27 GB file. MEASURED live: ed_bars_0/1/2 took 426/407/405 lock waits (1,238 on
     upsert_1m_bars), lifetime max 180,340 ms, busy_retry_count 0 (the Python mutex, not
-    SQLite's busy handler). The constant had NO test at all; this pins the ceiling and the
-    reason, so a future edit must argue with the measurement rather than the old comment.
-    """
+    SQLite's busy handler). The REST-poll bar pool (BARS_WORKERS / ed_bars) is gone: streamed
+    bars are written by exactly ONE thread, so there is one contender for the seam, attributable
+    by its own thread name."""
+    import ast as _ast
+
     import server as srv
 
-    assert srv.BARS_WORKERS <= 2, (
-        f"BARS_WORKERS={srv.BARS_WORKERS} — every worker contends for the single "
-        f"db._TIER1_SNAPSHOT_WRITE_LOCK; raising it adds queueing, not throughput (RC-243)"
-    )
-    assert srv.BARS_WORKERS >= 1, "the bar loop must keep at least one collector"
-
-    # The pool must still be the ONE place the sweep fans out, under its own thread name, so
-    # contention telemetry stays attributable per RC-166's diagnosis.
     src = Path(srv.__file__).read_text(encoding="utf-8")
-    assert 'thread_name_prefix="ed_bars"' in src
-    assert src.count("max_workers=BARS_WORKERS") == 1, (
-        "a second bar pool would re-create the unbounded fan-in this row measured"
-    )
-    # The rationale must travel with the constant — the original comment reasoned about the
-    # API the loop READS FROM, which is exactly how the write seam went unmodelled.
-    assert "_TIER1_SNAPSHOT_WRITE_LOCK" in src[:src.index("BARS_WORKERS: int")] or \
-        "RC-243" in src[max(0, src.index("BARS_WORKERS: int") - 1400):src.index("BARS_WORKERS: int")], \
-        "the write-seam reason for this ceiling is not recorded beside the constant"
+    assert 'thread_name_prefix="ed_bars"' not in src and "BARS_WORKERS" not in src, (
+        "a bar worker pool reappeared — it re-creates the fan-in this row measured")
+    tree = _ast.parse(src)
+    starter = next(n for n in _ast.walk(tree)
+                   if isinstance(n, _ast.FunctionDef) and n.name == "start_bar_writer")
+    threads = [c for c in _ast.walk(starter) if isinstance(c, _ast.Call)
+               and isinstance(c.func, _ast.Attribute) and c.func.attr == "Thread"]
+    assert len(threads) == 1, "the bar writer must be ONE thread"
+    kw = {k.arg: k.value for k in threads[0].keywords}
+    assert isinstance(kw["target"], _ast.Name) and kw["target"].id == "_bar_writer"
+    assert _ast.literal_eval(kw["name"]) == "bar-writer"
+    # and it is started from exactly one call site
+    starts = [c for c in _ast.walk(tree) if isinstance(c, _ast.Call)
+              and isinstance(c.func, _ast.Name) and c.func.id == "start_bar_writer"]
+    assert len(starts) == 1, f"start_bar_writer is called {len(starts)} times"

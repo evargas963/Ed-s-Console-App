@@ -1902,26 +1902,6 @@ ROWS: tuple[Row, ...] = (
         justification='Fast-quote gate: plane row fresh within FAST_QUOTE_STREAM_CACHE_MAX_AGE_MS (streaming_l1_cache_usable).',
     ),
     Row(
-        file='polling_adapter.py', derivation='_prev_trading_day', disposition='ALLOWLISTED',
-        allowlist_id='mega1_session_calendar',
-        justification='Calendar helper for session window; no Schwab leaf.',
-    ),
-    Row(
-        file='polling_adapter.py', derivation='fetch_bars_via_schwab', disposition='SCHWAB_LEAF',
-        schwab_leaf='pricehistory.candles.*.datetime',
-        justification='Day-period pricehistory → schwab_candles_to_bars.',
-    ),
-    Row(
-        file='polling_adapter.py', derivation='fetch_bars_via_schwab_for_session', disposition='SCHWAB_LEAF',
-        schwab_leaf='pricehistory.candles.*.datetime',
-        justification='Session-bounded pricehistory → schwab_candles_to_bars.',
-    ),
-    Row(
-        file='polling_adapter.py', derivation='poll_and_callback', disposition='SCHWAB_LEAF',
-        schwab_leaf='pricehistory.candles.*.datetime',
-        justification='Poll loop delegates to fetch_bars_via_schwab.',
-    ),
-    Row(
         file='regime_engine.py', derivation='_micro_regimes', disposition='DERIVED',
         producer_refs=('market_state.py:build_market_state',),
         justification='Composes Mega1 producers for _micro_regimes output fields.',
@@ -1987,44 +1967,9 @@ ROWS: tuple[Row, ...] = (
         justification='Schwab option chain wrapper.',
     ),
     Row(
-        file='schwab_client.py', derivation='safe_get_daily_price_history', disposition='SCHWAB_LEAF',
-        schwab_leaf='pricehistory.candles.*.datetime',
-        justification='Schwab DAILY price history wrapper (RC-484 radar fallback); candles passed downstream.',
-    ),
-    Row(
-        file='schwab_client.py', derivation='safe_get_price_history', disposition='SCHWAB_LEAF',
-        schwab_leaf='pricehistory.candles.*.datetime',
-        justification='Schwab price history wrapper; candles passed downstream.',
-    ),
-    Row(
         file='schwab_client.py', derivation='safe_get_quote', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.lastPrice',
         justification='Schwab get_quote wrapper; returns raw quote JSON.',
-    ),
-    Row(
-        file='server.py', derivation='_CandleAccumulator.__init__', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_CandleAccumulator.__init__).',
-    ),
-    Row(
-        file='server.py', derivation='_CandleAccumulator.get_bars', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_CandleAccumulator.get_bars).',
-    ),
-    Row(
-        file='server.py', derivation='_CandleAccumulator.get_bars_source', disposition='DERIVED',
-        producer_refs=('server.py:_fetch_state',),
-        justification='Bar provenance label for VWAP path.',
-    ),
-    Row(
-        file='server.py', derivation='_CandleAccumulator.seed', disposition='SCHWAB_LEAF',
-        schwab_leaf='pricehistory.candles.*.datetime',
-        justification='Seeds from Schwab pricehistory candles; datetime required.',
-    ),
-    Row(
-        file='server.py', derivation='_CandleAccumulator.tick', disposition='DERIVED',
-        producer_refs=('server.py:_CandleAccumulator.seed', 'schwab_client.py:safe_get_quote'),
-        justification='Poll-synthesized OHLCV from spot ticks + totalVolume delta.',
     ),
     Row(
         file='server.py', derivation='_VIXTracker.vs_prev', disposition='ALLOWLISTED',
@@ -2047,11 +1992,6 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_attach_stack_runtime_and_governance).',
     ),
     Row(
-        file='server.py', derivation='_bars_collect_one', disposition='DERIVED',
-        producer_refs=('server.py:_memoized_quote_response', 'server.py:_parse_quote_node_session_fields'),
-        justification='Quote to accumulator to price_bars_1m for ONE ticker, never raising. The price comes from the parsed session fields through numeric_contract.float_positive_or_none, so an absent, zero, negative, NaN or infinite price returns skip:no_price and the accumulator is never ticked — absence reads as absence, never a fabricated bar (RC-38/RC-308).',
-    ),
-    Row(
         file='server.py', derivation='_build_raw_levels_used', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_build_raw_levels_used).',
@@ -2059,17 +1999,12 @@ ROWS: tuple[Row, ...] = (
     Row(
         file='server.py', derivation='_canonical_price_level_bars', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
-        justification='Phase 2A: resolves the ONE bar input for the canonical snapshot (live accumulator, else banked price_bars_1m); no direct Schwab read.',
+        justification='Phase 2A: the ONE bar input for the canonical snapshot -- price_bars_1m (written only from streamed CHART_EQUITY bars) plus the forming minute; a thin prior session is stamped degraded, never filled; no direct Schwab read.',
     ),
     Row(
         file='server.py', derivation='_charm_book_scope', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.*.expirationDate',
         justification="RC-288: counts the DISTINCT expirations in the contracts actually summed and reports single_expiry_banked:<date>, full_chain_banked, or unknown. It replaced a hardcoded literal that matched the client's own fallback, so the label could never disagree with itself. An empty or unreadable chain yields unknown, never a confident book for a chain nobody looked at.",
-    ),
-    Row(
-        file='server.py', derivation='_enrollment_history_seed', disposition='DERIVED',
-        producer_refs=('schwab_client.py:safe_get_price_history',),
-        justification='RC-484 day-1 history seed: delegates to Schwab price-history transport (period_days=2) and persists via _persist_1m_bars; no leaf extracted here.',
     ),
     Row(
         file='server.py', derivation='_fetch_and_store_mkt_ctx', disposition='DERIVED',
@@ -2093,8 +2028,8 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='server.py', derivation='_fetch_state', disposition='DERIVED',
-        producer_refs=('schwab_client.py:safe_get_quote', 'schwab_client.py:safe_get_chain', 'schwab_client.py:safe_get_price_history'),
-        justification='Day 1.5: spread_frac mark-denom only; composes quote+chain+pricehistory via schwab_client.',
+        producer_refs=('schwab_client.py:safe_get_quote', 'schwab_client.py:safe_get_chain'),
+        justification='Day 1.5: spread_frac mark-denom only; composes quote+chain via schwab_client; bars are read from price_bars_1m (_bars_1m), never fetched here.',
     ),
     Row(
         file='server.py', derivation='_fetch_state._post_publish_persistence_tail', disposition='ALLOWLISTED',
@@ -2237,29 +2172,9 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_ms_to_dict).',
     ),
     Row(
-        file='server.py', derivation='_parse_quote_node_session_fields', disposition='DERIVED',
-        producer_refs=('schwab_client.py:safe_get_quote',),
-        justification='Canonical Schwab quote-node reader (quote → extended → regular fallbacks). Reads Schwab quote leaves (lastPrice / mark / bid / ask / quoteTime / tradeTime + extended + regular variants) and derives ``spot`` + ``spot_source`` via lastPrice/mark precedence.',
-    ),
-    Row(
         file='server.py', derivation='_project_l1', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_project_l1).',
-    ),
-    Row(
-        file='server.py', derivation='_radar_atr', disposition='DERIVED',
-        producer_refs=('server.py:_radar_atr_compute_into_cache',),
-        justification='Cache front for ATR: stale-while-revalidate; no direct Schwab read.',
-    ),
-    Row(
-        file='server.py', derivation='_radar_atr_compute_into_cache', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='ATR from persisted price_bars_1m (traced collector output); single-flight cache fill.',
-    ),
-    Row(
-        file='server.py', derivation='_radar_daily_atr_vendor_fallback', disposition='DERIVED',
-        producer_refs=('schwab_client.py:safe_get_daily_price_history',),
-        justification='RC-484 radar fallback: daily ATR from Schwab DAILY candles when local 1m history spans <15 sessions; delegates to the daily transport wrapper.',
     ),
     Row(
         file='server.py', derivation='_reprice_cached_terrain', disposition='DERIVED',
@@ -2347,13 +2262,22 @@ ROWS: tuple[Row, ...] = (
         justification='Underlying last/mark/close from the chain payload; returns None rather than inventing a spot.',
     ),
     Row(
-        # api_watchlist_quotes (/api/watchlist-quotes): the ONE batched Schwab quote read
-        # for a whole client-held watchlist (client.get_quotes), reusing the same
-        # _parse_quote_node_session_fields parser every other quote route shares -- not a
-        # second quote computation.
-        file='server.py', derivation='api_watchlist_quotes', disposition='SCHWAB_LEAF',
-        schwab_leaf='quotes.quote.lastPrice',
-        justification='Batched multi-symbol quote fetch (client.get_quotes) via safe_get_quotes.',
+        # api_watchlist_quotes (/api/watchlist-quotes): every watchlist row from the ONE
+        # streamed source (live_price_rows.price_row over the live_market_plane row); the REST
+        # batch quote read and its parser are gone -- no vendor call on this route.
+        file='server.py', derivation='api_watchlist_quotes', disposition='DERIVED',
+        producer_refs=('live_market_plane.py:get_quote',),
+        justification='Streamed LEVELONE_EQUITIES LAST_PRICE + REGULAR_MARKET_CHANGE_PERCENT per symbol while fresh (live_price_rows.price_row); a symbol with no fresh LAST_PRICE is absent, never filled from REST.',
+    ),
+    Row(
+        file='server.py', derivation='_atr_pair', disposition='ALLOWLISTED',
+        allowlist_id='mega1_sqlite_internal',
+        justification='The (daily, 15-minute) ATR from persisted price_bars_1m via terrain_atr.compute_atr_pair, recomputed at most every ATR_TTL_SEC; too few bars reads None, never a vendor stand-in.',
+    ),
+    Row(
+        file='server.py', derivation='_read_bars_1m', disposition='ALLOWLISTED',
+        allowlist_id='mega1_sqlite_internal',
+        justification='The newest N price_bars_1m rows for one ticker (written only from streamed CHART_EQUITY bars); every bar reader (_bars_1m/_bars_5m/_session_bars) goes through it.',
     ),
     Row(
         file='server.py', derivation='flatten_chain_contracts', disposition='SCHWAB_LEAF',

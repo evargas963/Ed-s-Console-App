@@ -110,7 +110,7 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
 
 
 def test_authority_is_streaming_after_a_pushed_tick_for_the_active_ticker(tmp_path, monkeypatch):
-    db = _reset(tmp_path)
+    _reset(tmp_path)
     ofs._feed_running = True
     ofs.set_streaming_active_ticker("SPY")
     _push_l1("SPY", {"key": "SPY", "LAST_PRICE": 450.0}, ts_recv=time.time())
@@ -134,7 +134,7 @@ def test_set_active_ticker_puts_its_book_and_quote_in_the_wanted_list(tmp_path, 
 def test_feed_loop_starts_and_stops_cleanly(tmp_path, monkeypatch):
     """start_order_flow_stream/stop_order_flow_stream must work with NO Schwab client
     (None) — the whole point of the repair is that this feed needs no account/session."""
-    db = _reset(tmp_path)
+    _reset(tmp_path)
 
     async def go():
         ok = ofs.start_order_flow_stream(None, None, "SPY")

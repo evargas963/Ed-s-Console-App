@@ -28,17 +28,6 @@ def _no_last_price_quote(tk: str) -> _FakeResp:
     })
 
 
-def test_parser_rejects_mark_close_and_midpoint() -> None:
-    parsed = server._parse_quote_node_session_fields({
-        "quote": {"mark": 111.11, "closePrice": 110.0, "bidPrice": 110.9, "askPrice": 111.2},
-        "regular": {"regularMarketLastPrice": 110.0},
-    })
-    assert parsed["spot"] is None
-    assert parsed["spot_source"] is None
-    assert parsed["mark"] == 111.11
-    assert parsed["regular_close"] == 110.0
-
-
 def test_resolve_spot_rejects_mark_close_chain_and_snapshot(monkeypatch) -> None:
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "safe_get_quote", lambda _c, tk, **_k: _no_last_price_quote(tk))

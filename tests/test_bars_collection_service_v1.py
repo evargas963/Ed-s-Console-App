@@ -7,7 +7,10 @@ quotes were current; the bars were not. 39.8% of snapshots (122,795/308,796) car
 outcomes because fill_outcomes reads price_bars_1m for the forward price and it was never written.
 
 These lock the architecture, not the symptom: collection independent of the viewport, and a
-single faucet for the bars table.
+single faucet for the bars table. Since the bars-from-the-stream change the ONLY producer is
+Schwab's streamed CHART_EQUITY 1-minute bar (capture daemon -> `bar1m.SYM` push ->
+`streamed_bars` -> `_bar_writer` -> `_write_streamed_bar` -> `_persist_1m_bars`); the REST quote
+poll and the price-history seeds that used to write here are deleted.
 """
 from __future__ import annotations
 
@@ -36,59 +39,82 @@ def test_price_bars_has_exactly_one_writer():
     )
 
 
-def test_the_one_writer_is_the_single_faucet_and_both_producers_route_through_it():
-    """RC-69 single faucet, extended for RC-484: the ONE ``upsert_1m_bars(`` call lives in
-    the dedicated writer ``_persist_1m_bars``, and BOTH bar producers persist through it —
-    the live collection service (``_bars_collect_one``) and the day-1 enrollment history
-    seed (``_enrollment_history_seed``). Before the seed existed there was one producer and
-    the write lived inline in the collector; now there are two legitimate producers, so the
-    faucet is extracted rather than duplicated. The render path stays barred
-    (test_render_path_does_not_persist_bars)."""
-    assert "upsert_1m_bars(" in _fn_src("_persist_1m_bars"), \
-        "the single bar writer must be _persist_1m_bars"
-    assert "_persist_1m_bars(" in _fn_src("_bars_collect_one"), \
-        "the collection service must persist through the single faucet"
-    assert "_persist_1m_bars(" in _fn_src("_enrollment_history_seed"), \
-        "the enrollment seed must persist through the single faucet, not a second writer"
+def _call_sites(name: str) -> set[str]:
+    """Names of the server.py functions that call `name(...)` directly."""
+    out: set[str] = set()
+    for node in ast.walk(SERVER_TREE):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for sub in ast.walk(node):
+                if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
+                        and sub.func.id == name):
+                    out.add(node.name)
+    return out
+
+
+def test_the_one_writer_is_the_single_faucet_and_the_stream_is_its_only_producer():
+    """RC-69 single faucet: the ONE ``upsert_1m_bars(`` call lives in ``_persist_1m_bars``, whose
+    only caller is the streamed-bar writer. That write seam also carries the RC-183 collect-window
+    law (tests/test_collect_window_law_v1.py), so a closed-market bar is never persisted."""
+    assert "upsert_1m_bars(" in _fn_src("_persist_1m_bars"),         "the single bar writer must be _persist_1m_bars"
+    assert _call_sites("_persist_1m_bars") == {"_write_streamed_bar"}, (
+        "price_bars_1m has a producer other than Schwab's streamed bars: "
+        f"{sorted(_call_sites('_persist_1m_bars'))}")
+    assert _call_sites("_write_streamed_bar") == {"_bar_writer"}
+    assert "streamed_bars.get()" in _fn_src("_bar_writer")
 
 
 def test_render_path_does_not_persist_bars():
-    """_fetch_state may tick the accumulator for its own forming candle, but must not WRITE."""
+    """_fetch_state reads bars; it must never WRITE them."""
     seg = _fn_src("_fetch_state")
+    assert "_persist_1m_bars(" not in seg
     assert "upsert_1m_bars(" not in seg, (
         "RC-69 regression: the render path persists bars again, so collection is once more a "
         "side-effect of what the operator happens to be looking at"
     )
 
 
-def test_collection_covers_the_whole_enrolled_universe_not_a_fixed_list():
-    """The loop must read the live enrolled set. A hardcoded tuple is how bars ended up covering
-    3 of 57 tickers."""
-    seg = _fn_src("_bars_loop")
-    assert "_logger_tickers" in seg, "bar collection must iterate the enrolled universe"
-    assert "BASE_MONEY_PATH_TICKERS" not in seg, "bar collection must not be sentinel-scoped"
+def test_collection_covers_every_streamed_symbol_not_a_fixed_list(monkeypatch):
+    """The writer persists whatever symbol the stream delivers -- no roster, sentinel or viewport
+    filter. A hardcoded tuple is how bars once covered 3 of 57 tickers."""
+    import server as srv
+
+    written: list[tuple] = []
+    monkeypatch.setattr(srv, "_persist_1m_bars", lambda tk, bars: written.append((tk, bars)) or 1)
+    for sym in ("ZZA", "ZZB", "QQQ"):
+        assert srv._write_streamed_bar({"symbol": sym, "open": 10.0, "high": 11.0, "low": 9.5,
+                                        "close": 10.5, "volume": 1200.0,
+                                        "bar_start_ms": 1_785_168_000_000}) is True
+    assert [tk for tk, _ in written] == ["ZZA", "ZZB", "QQQ"]
+    bar = written[0][1][0]
+    assert (bar.ts, bar.open, bar.high, bar.low, bar.close, bar.volume) == (
+        1_785_168_000.0, 10.0, 11.0, 9.5, 10.5, 1200.0), "ms bar start must land as epoch seconds"
 
 
-def test_collection_is_session_gated_and_never_ticks_a_closed_market():
-    """RC-48: a market-closed tick would persist a frozen bar and bias every study built on it."""
-    seg = _fn_src("_bars_loop")
-    assert "_is_loggable_session()" in seg
+def test_a_streamed_bar_missing_a_field_is_absence_not_a_bar(monkeypatch):
+    """Absence must read as absence -- a bar with no open/high/low/close/start is not written,
+    never completed from anything else."""
+    import server as srv
+
+    written: list = []
+    monkeypatch.setattr(srv, "_persist_1m_bars", lambda tk, bars: written.append(tk) or 1)
+    full = {"symbol": "ZZG", "open": 10.0, "high": 11.0, "low": 9.5, "close": 10.5,
+            "volume": 5.0, "bar_start_ms": 1_785_168_000_000}
+    for k in ("open", "high", "low", "close", "bar_start_ms"):
+        msg = dict(full)
+        msg[k] = None
+        assert srv._write_streamed_bar(msg) is False, f"a bar without {k} was written"
+    assert written == []
+    # positive control: the complete bar IS written, so the guard is not refusing everything
+    assert srv._write_streamed_bar(full) is True and written == ["ZZG"]
 
 
-def test_collect_one_treats_a_missing_price_as_absence():
-    """Absence must read as absence — never a fabricated tick into the bar series."""
-    seg = _fn_src("_bars_collect_one")
-    assert "skip:no_price" in seg
-    assert "never raises" in seg.lower() or "except Exception" in seg
-
-
-def test_loop_refuses_to_start_under_pytest():
-    """A production collection thread inside the test process mutates shared state no test
+def test_writer_refuses_to_start_under_pytest():
+    """A production writer thread inside the test process mutates shared state no test
     controls — the RC-5 failure class."""
-    seg = _fn_src("start_bars_loop")
+    seg = _fn_src("start_bar_writer")
     assert "PYTEST_CURRENT_TEST" in seg
 
 
-def test_loop_is_wired_into_the_app_lifespan():
-    assert "start_bars_loop()" in SERVER_SRC, "collection service is never started"
-    assert "stop_bars_loop()" in SERVER_SRC, "collection service is never stopped on shutdown"
+def test_writer_is_wired_into_the_app_lifespan():
+    assert _call_sites("start_bar_writer") == {"_app_lifespan"}, (
+        f"the bar writer is not started by the app lifespan: {sorted(_call_sites('start_bar_writer'))}")

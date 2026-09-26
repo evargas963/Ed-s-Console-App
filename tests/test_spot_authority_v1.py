@@ -20,43 +20,6 @@ import pytest
 import server
 
 
-def test_quote_parser_key_contract() -> None:
-    """The parser's spot key is "spot". Reading any other name is a silent None.
-
-    This is the exact defect of RC-15: a wrong key name is not a type error, not a crash,
-    and not a test failure anywhere else -- it just degrades the authority to its stale
-    fallback. Lock the contract.
-    """
-    node = {
-        "quote": {"lastPrice": 742.49, "mark": 742.45, "bidPrice": 742.41,
-                  "askPrice": 742.50, "tradeTime": 1_784_491_628_000},
-    }
-    parsed = server._parse_quote_node_session_fields(node)
-
-    assert "spot" in parsed, "the parser's spot key is 'spot'"
-    assert "spot_f" not in parsed, "'spot_f' is an internal local, never a returned key"
-    assert parsed["spot"] == 742.49
-    assert parsed["spot_source"] == "lastPrice"
-
-
-def test_quote_parser_never_promotes_mark_or_close_to_spot() -> None:
-    """Current spot is lastPrice only. MARK and regular close stay distinct fields."""
-    only_mark = server._parse_quote_node_session_fields({"quote": {"mark": 100.25}})
-    assert only_mark["spot"] is None
-    assert only_mark["spot_source"] is None
-    assert only_mark["mark"] == 100.25
-
-    only_close = server._parse_quote_node_session_fields(
-        {"regular": {"regularMarketLastPrice": 99.0}}
-    )
-    assert only_close["spot"] is None
-    assert only_close["regular_close"] == 99.0
-
-    neither = server._parse_quote_node_session_fields({"quote": {}})
-    assert neither["spot"] is None
-    assert neither["spot_source"] is None
-
-
 def test_resolve_spot_reports_its_source() -> None:
     """Every spot carries provenance, so a divergence can never hide again."""
     spot, source, _ts = server.resolve_spot("SPY")

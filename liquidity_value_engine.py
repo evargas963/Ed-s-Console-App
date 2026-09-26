@@ -230,34 +230,6 @@ def _bar_dt_et(bar: dict) -> Optional[datetime]:
     return datetime.fromtimestamp(ts, tz=ET)
 
 
-def merge_schwab_bars_with_live_overlay(schwab_bars: list, live_overlay: list) -> list:
-    """
-    Minute-level merge: keep full Schwab session history, but overwrite any minute
-    present in ``live_overlay`` (e.g. server 1m accumulator fed by the same ticks as the UI).
-
-    Without this, ``snapshot=live`` still readonly stale/delayed REST candles, so POC/VWAP
-    matched checkpoint snapshots and looked \"unchanged.\"
-    """
-    if not live_overlay:
-        return schwab_bars
-    schw_norm = _bars_to_list(schwab_bars)
-    live_norm = _bars_to_list(live_overlay)
-    if not live_norm:
-        return schwab_bars
-
-    by_min: dict[int, dict] = {}
-    for b in schw_norm:
-        dt = _bar_dt_et(b)
-        if dt is None:
-            continue
-        by_min[int(dt.timestamp()) // 60] = b
-    for b in live_norm:
-        dt = _bar_dt_et(b)
-        if dt is None:
-            continue
-        by_min[int(dt.timestamp()) // 60] = b
-
-    return sorted(by_min.values(), key=lambda x: x.get("_ts") or 0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1916,7 +1888,7 @@ def build_price_level_snapshot(
         if as_of is None or ts > as_of:
             as_of = ts
 
-    basis = f"1m bars ({bar_source}); schwab pricehistory/stream basis"
+    basis = f"1m bars ({bar_source}); Schwab streamed bars"
 
     def _put(level_id: str, price, *, producer: str, window: str) -> None:
         if price is None:

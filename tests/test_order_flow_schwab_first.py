@@ -11,7 +11,6 @@ from app.options.order_flow.engine import (
     _compute_spread,
     _compute_top_book_pressure,
 )
-from server import _CandleAccumulator
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -155,13 +154,6 @@ def test_server_has_no_second_vwap_implementation():
     )
     text = (ROOT / "server.py").read_text(encoding="utf-8")
     assert "cum_tp_vol" not in text, "an inline VWAP accumulation reappeared in server.py"
-
-
-def test_candle_accumulator_session_reset_volume_source():
-    acc = _CandleAccumulator(bar_seconds=60, max_bars=5)
-    acc.tick("SPY", 500.0, 1000.0, total_volume=1000.0)
-    acc.tick("SPY", 501.0, 1060.0, total_volume=500.0)
-    assert acc.get_bars_source("SPY") == "schwab_quote_totalVolume_session_reset"
 
 
 def test_order_flow_engine_no_rvol_one_point_zero_in_source():

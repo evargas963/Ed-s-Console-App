@@ -1,6 +1,6 @@
 """spot_used_for_scoring must never silently carry a VWAP value (RC-close-2026-09-11), and a
-genuine Schwab-auth-unavailable failure must propagate as its own HTTPException status code
-(503), not a blanket 500 -- both found by independent review of /api/liquidity-snapshot,
+HTTPException raised on the route's path must propagate as its own status code (e.g. 503), not
+a blanket 500 -- both found by independent review of /api/liquidity-snapshot,
 verified against the real server route function (not a route-shape simulation)."""
 from __future__ import annotations
 
@@ -21,17 +21,15 @@ class _FakeSnapshotOutput:
         self.raw_levels = raw_levels
 
 
+_BAR = {"timestamp": 1_577_975_400_000, "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}
+
+
 def _wire_common(monkeypatch, *, raw_levels, zones=None, resolved_spot=None):
-    monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
     monkeypatch.setattr(srv, "_liquidity_fusion_from_cache", lambda *a, **k: ([], "disabled"))
     monkeypatch.setattr(srv, "resolve_spot", lambda *a, **k: (resolved_spot, None, None))
-    monkeypatch.setattr(srv, "_liquidity_live_1m_overlay_bars", lambda *a, **k: None)
-
-    import polling_adapter
-    monkeypatch.setattr(
-        polling_adapter, "fetch_bars_via_schwab_for_session",
-        lambda *a, **k: [{"open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}])
+    # the route's one bar input: the session window of price_bars_1m (+ forming minute)
+    monkeypatch.setattr(srv, "_session_bars", lambda *a, **k: [_BAR])
 
     fake_out = _FakeSnapshotOutput("SPY", "2020-01-02", raw_levels, zones=zones)
     monkeypatch.setattr(lve, "build_live_snapshot", lambda *a, **k: fake_out)
@@ -80,7 +78,6 @@ def test_spot_used_for_scoring_reports_the_real_cached_spot_when_available(monke
     """The companion positive control: when a real live spot IS available, it is reported as
     spot_used_for_scoring exactly as before, and the VWAP-fallback field stays null -- this fix
     narrows a false claim, it does not remove the real value when one genuinely exists."""
-    monkeypatch.setattr(srv, "get_client", lambda: object())
     monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
     # RC spot-360-audit (2026-09-14): _liquidity_fusion_from_cache no longer returns a spot at
     # all (the dead capability was removed, not just unused -- see its docstring); wall levels
@@ -88,11 +85,7 @@ def test_spot_used_for_scoring_reports_the_real_cached_spot_when_available(monke
     # ONE spot authority every other consumer in this file uses.
     monkeypatch.setattr(srv, "_liquidity_fusion_from_cache", lambda *a, **k: ([], "n/a"))
     monkeypatch.setattr(srv, "resolve_spot", lambda *a, **k: (456.78, "schwab_streaming_level_one", 0.0))
-    monkeypatch.setattr(srv, "_liquidity_live_1m_overlay_bars", lambda *a, **k: None)
-    import polling_adapter
-    monkeypatch.setattr(
-        polling_adapter, "fetch_bars_via_schwab_for_session",
-        lambda *a, **k: [{"open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}])
+    monkeypatch.setattr(srv, "_session_bars", lambda *a, **k: [_BAR])
     fake_out = _FakeSnapshotOutput("SPY", "2020-01-02", {"vwap": 123.45})
     monkeypatch.setattr(lve, "build_live_snapshot", lambda *a, **k: fake_out)
     resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry="2020-01-03", fusion=True)
@@ -101,15 +94,19 @@ def test_spot_used_for_scoring_reports_the_real_cached_spot_when_available(monke
     assert body["spot_estimate_vwap_fallback"] is None
 
 
-def test_schwab_auth_unavailable_propagates_503_not_a_generic_500(monkeypatch):
-    """MEASURED 2026-09-11: get_client() raises HTTPException(503, ...) when Schwab auth is
-    genuinely unavailable -- the blanket `except Exception` caught it too and re-issued it as a
-    bare 500, discarding the real classification. Must now propagate as 503."""
+def test_an_http_exception_on_the_route_path_keeps_its_status_not_a_generic_500(monkeypatch):
+    """MEASURED 2026-09-11: an HTTPException(503, ...) on this route's path (then: get_client()
+    with Schwab auth unavailable) was caught by the blanket `except Exception` and re-issued as a
+    bare 500, discarding the real classification. It must propagate as its own status. (The route
+    no longer calls Schwab -- its bars come from price_bars_1m -- so the exception is raised from
+    that bar read here.)"""
     from fastapi import HTTPException
 
-    def _raise_auth_unavailable():
+    monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
+
+    def _raise_auth_unavailable(*a, **k):
         raise HTTPException(status_code=503, detail="Schwab auth failed: token_invalid")
-    monkeypatch.setattr(srv, "get_client", _raise_auth_unavailable)
+    monkeypatch.setattr(srv, "_session_bars", _raise_auth_unavailable)
     resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
     assert resp.status_code == 503
     body = json.loads(resp.body)
@@ -119,8 +116,10 @@ def test_schwab_auth_unavailable_propagates_503_not_a_generic_500(monkeypatch):
 def test_an_unrelated_crash_still_reports_500(monkeypatch):
     """Negative control: the new HTTPException branch must not swallow OTHER exceptions into a
     misleading 503 -- a genuine unexpected error still reports 500, unchanged."""
-    def _boom():
+    def _boom(*a, **k):
         raise RuntimeError("something actually broke")
-    monkeypatch.setattr(srv, "get_client", _boom)
+    monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
+    monkeypatch.setattr(srv, "_session_bars", _boom)
     resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", expiry=None, fusion=False)
     assert resp.status_code == 500
+    assert "something actually broke" in json.loads(resp.body)["error"]

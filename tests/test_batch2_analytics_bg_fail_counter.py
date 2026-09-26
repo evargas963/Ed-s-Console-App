@@ -351,19 +351,6 @@ def test_api_build_exposes_ui_maximize_sla(monkeypatch):
     assert body.get("ui_maximize_panel_warm_tickers") == ["NFLX", "SPY"]
 
 
-def test_candle_seed_does_not_nest_analytics_executor():
-    """Regression: parallel candle seed on _analytics_executor deadlocked Tier C
-    (UI-MAXIMIZE). OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2 moved the seed
-    futures to the dedicated recompute-leaf pool — the invariant is unchanged:
-    seeds never nest into the analytics pool."""
-    text = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
-    idx = text.find("UI-MAXIMIZE: parallel seed")
-    assert idx != -1
-    block = text[idx : idx + 800]  # UI_05 residual: window covers the priority-lane selection comment
-    assert "_get_recompute_leaf_executor()" in block
-    assert "_analytics_executor.submit(_seed_candles" not in text
-
-
 def test_start_ed_console_bat_opens_edge_not_chrome():
     bat = (Path(__file__).resolve().parent.parent / "start_ed_console.bat").read_text(encoding="utf-8")
     assert "msedge.exe" in bat.lower()

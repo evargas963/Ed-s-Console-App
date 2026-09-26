@@ -150,7 +150,7 @@ def extract_pct_change(quote: dict) -> Optional[float]:
     """
     ONE parser: ``quotes.quote.netPercentChange`` only (T-09). Missing stays missing.
 
-    Shared by ``_extract_quote`` and ``server._parse_quote_node_session_fields``.
+    Called by ``_extract_quote``; no other module parses netPercentChange.
     """
     from numeric_contract import float_finite_or_none as _fin
     return _fin((quote or {}).get("netPercentChange"))

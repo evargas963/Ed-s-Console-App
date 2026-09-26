@@ -233,7 +233,6 @@ from schwab_client import (
     inspect_token_file,
     safe_get_chain,
     safe_get_quote,
-    safe_get_price_history,
     SchwabAuthError,
 )
 from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
@@ -3250,9 +3249,8 @@ def _session_open_anchor_warm_loop() -> None:
             log.warning("session-open anchor warm loop error: %s", e)
 
 
-#: t12 (RC-227 residual): a prior-day fact requires plausibly FULL session coverage from
-#: the live accumulator (~390 RTH minutes; floor 300) — below it, /api/levels falls
-#: through to banked canonical bars rather than serving a truncated min/max.
+#: a prior session with fewer 1-minute bars than this (of ~390 RTH minutes) is disclosed as
+#: partial on the price levels built from it
 LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
 
 def _sse_viewer_cache_ttl(ticker: str, expiry: Optional[str]) -> float:
@@ -3372,7 +3370,7 @@ PRE_MARKET_MINS:     int   = 525    # 8:45 AM ET  (logger session buffer start; 
 #   finishes the first full-snapshot sweep by ~09:29 ET when the process is up)
 LOGGER_BUFFER_MINS:  int   = 990    # 4:30 PM ET  (logger session buffer end)
 
-# Candle accumulator — max bars centralized in math_exposure (CANDLE_5M/1M_MAX_BARS)
+# bar counts — centralized in math_exposure (CANDLE_5M/1M_MAX_BARS)
 # Canonical timeframe: 1m. See timeframe_config.py for CANONICAL_TIMEFRAME.
 CANDLE_5M_SECONDS:   int   = 300    # 5-minute bar period (derived context)
 CANDLE_1M_SECONDS:   int   = 60     # 1-minute bar period (canonical)
@@ -3381,7 +3379,6 @@ CANDLE_1M_SECONDS:   int   = 60     # 1-minute bar period (canonical)
 # Root cause (2026-06-11): seeding ran once per server lifetime, so background-logged
 # tickers (visited ~1×/15min) built ~6%-density tick grids — fill_outcomes could not
 # find forward bars at +1/+5/+15/+60m and the daily scoreboard never scored them.
-CANDLE_RESEED_GAP_SECONDS: float = 180.0  # 3 missed canonical bars → grid is stale
 
 # IV tracker
 IV_TRACKER_MAX_READINGS: int   = 6      # readings before direction is meaningful
@@ -3473,201 +3470,76 @@ from calibration.complete_chain_capture import (
 #: resolve it at call time, long after module load.
 _STORED_CHAIN_TIMEFRAMES: tuple[str, ...] = (CANONICAL_TIMEFRAME, "5m")
 
-#: RC-168: the oldest a prior totalVolume reading may be and still have its delta charged to
-#: the currently open bar. Quote polls run ~1.5s apart, so a gap beyond one bar length means
-#: the cumulative delta necessarily spans bars and cannot be attributed to any single minute.
-ACCUM_VOL_MAX_ATTRIBUTION_GAP_SEC: float = float(
-    os.environ.get("ED_ACCUM_VOL_MAX_GAP_SEC", "60")
-)
 
 
-class _CandleAccumulator:
-    """Accumulate spot ticks into OHLCV candle bars."""
-
-    def __init__(self, bar_seconds: int, max_bars: int):
-        self.bar_seconds = bar_seconds
-        self.max_bars = max_bars
-        self._bars: dict[str, list[Candle]] = {}       # ticker -> completed bars
-        self._current: dict[str, dict] = {}             # ticker -> {ts, o, h, l, c, v}
-        self._prev_total_vol: dict[str, float] = {}    # ticker -> prior totalVolume for delta
-        # RC-168: WHEN that prior reading was taken. Without it a cumulative delta spanning
-        # minutes was attributed to one bar (see tick()).
-        self._prev_total_vol_ts: dict[str, float] = {}
-        self._bars_source: dict[str, str] = {}         # ticker -> provenance for VWAP path
-
-    def _bar_start(self, epoch: float) -> float:
-        """Round epoch down to bar boundary."""
-        return epoch - (epoch % self.bar_seconds)
-
-    def tick(self, ticker: str, price: float, ts: float, total_volume: float | None = None):
-        """Feed a new price tick. Automatically closes/opens bars at boundaries.
-        total_volume: totalVolume from Schwab quote. Delta vs prior reading is
-        accumulated per bar; captures all trades between polls.
-        """
-        bar_ts = self._bar_start(ts)
-        total_now = float(total_volume) if total_volume is not None else None
-        prev = self._prev_total_vol.get(ticker)
-        prev_ts = self._prev_total_vol_ts.get(ticker)
-        vol_source = "schwab_quote_totalVolume_delta"
-
-        # Compute volume delta; reset if value drops (new session)
-        if total_now is not None and prev is not None:
-            # RC-168 ROOT: totalVolume is CUMULATIVE, so `total_now - prev` covers the whole
-            # span between the two readings — not the current minute. The prior reading had no
-            # staleness bound, so whenever a ticker went unpolled for minutes (42-symbol
-            # rotation, a stalled poll, a mid-session restart) the entire multi-minute delta
-            # was attributed to whichever ONE bar happened to be open, producing the spikes
-            # this row was opened for. MEASURED on MSFT: the accumulator produced 601
-            # non-auction 10x-neighbourhood spikes in 24,284 bars (2.5%) while the vendor's own
-            # 1m bars over the same name and period produced 8 in 13,017 (0.06%) — a 40x rate
-            # from the same market, which isolates the attribution, not the feed. Past the
-            # bound the span is unknowable, so the bar records NO volume rather than a
-            # fabricated minute (absence over invention).
-            gap = None if prev_ts is None else (ts - float(prev_ts))
-            delta = total_now - prev
-            if gap is not None and gap > ACCUM_VOL_MAX_ATTRIBUTION_GAP_SEC:
-                vol_delta = None
-                vol_source = "schwab_quote_totalVolume_gap_unattributable"
-            elif delta >= 0:
-                vol_delta = delta
-            else:
-                vol_delta = 0.0
-                prev = None
-                vol_source = "schwab_quote_totalVolume_session_reset"
-        else:
-            vol_delta = None
-        if total_now is not None:
-            self._prev_total_vol[ticker] = total_now
-            self._prev_total_vol_ts[ticker] = ts
-        if ticker not in self._bars_source or self._bars_source[ticker] != "schwab_pricehistory":
-            self._bars_source[ticker] = vol_source
-
-        if ticker not in self._bars:
-            self._bars[ticker] = []
-
-        cur = self._current.get(ticker)
-
-        if cur is None or cur["ts"] != bar_ts:
-            # Close previous bar (if any)
-            if cur is not None:
-                completed = Candle(
-                    ts=cur["ts"], open=cur["o"], high=cur["h"],
-                    low=cur["l"], close=cur["c"],
-                    volume=cur.get("v")
-                )
-                self._bars[ticker].append(completed)
-                if len(self._bars[ticker]) > self.max_bars:
-                    self._bars[ticker] = self._bars[ticker][-self.max_bars:]
-
-            # Start new bar (reset volume tracker for fresh delta on next tick)
-            self._current[ticker] = {
-                "ts": bar_ts,
-                "o": price,
-                "h": price,
-                "l": price,
-                "c": price,
-                "v": vol_delta,
-                "volume_source": vol_source,
-            }
-        else:
-            # Update current bar
-            cur["h"] = max(cur["h"], price)
-            cur["l"] = min(cur["l"], price)
-            cur["c"] = price
-            if vol_delta is not None:
-                cur["v"] = (cur.get("v") or 0.0) + vol_delta  # silent-zero-ok: RC-168/RC-277 — totalVolume is CUMULATIVE, so a bar's FIRST reading has no predecessor and vol_delta is None BY CONSTRUCTION; None means "no delta counted yet", not a missing measurement, and 0.0 is the correct identity to open the sum
-            cur["volume_source"] = vol_source
-
-    def get_bars(self, ticker: str) -> list[Candle]:
-        """Return completed bars (not including the in-progress bar)."""
-        return list(self._bars.get(ticker, []))
-
-    def forming_bar(self, ticker: str) -> dict | None:
-        """The in-progress 1m bar, or None. Server-side LAST_PRICE accumulation."""
-        cur = self._current.get(ticker)
-        if not cur:
-            return None
-        return {
-            "t": float(cur["ts"]), "o": float(cur["o"]), "h": float(cur["h"]),
-            "l": float(cur["l"]), "c": float(cur["c"]),
-            "v": cur.get("v"), "forming": True,
-        }
-
-    def get_bars_source(self, ticker: str) -> str:
-        """Provenance label for bars produced by this accumulator (VWAP / analytics)."""
-        return self._bars_source.get(ticker, "schwab_quote_totalVolume_delta")
-
-    def seed(self, ticker: str, bars: list):
-        """Seed completed bars from price history. Overwrites existing bars for this ticker."""
-        if not bars:
-            return
-        candles = []
-        for b in bars:
-            if isinstance(b, Candle):
-                candles.append(b)
-            elif isinstance(b, dict):
-                try:
-                    dt_raw = b.get("datetime")
-                    if dt_raw is None:
-                        continue
-                    dt_f = float(dt_raw)
-                    if dt_f <= 0:
-                        continue
-                    ts = dt_f / 1000.0 if dt_f > 1e10 else dt_f
-                    candles.append(Candle(
-                        ts=ts,
-                        open=float(b["open"]),
-                        high=float(b["high"]),
-                        low=float(b["low"]),
-                        close=float(b["close"]),
-                        volume=float(b["volume"]),
-                    ))
-                except (KeyError, ValueError, TypeError):
-                    continue
-        if candles:
-            # BAR_PERSISTENCE_GAP_TRACE_AND_FIX_V1 (2026-07-06): stale-seed guard —
-            # never replace a strictly NEWER completed-bar grid with an older
-            # pricehistory payload. A two-session-stale Schwab response erased
-            # tick-built same-day bars on every reseed, so price_bars_1m gained
-            # zero rows for the day. Equal-or-newer payloads still refresh
-            # (pricehistory OHLCV beats sparse tick-built bars for the same span).
-            existing = self._bars.get(ticker)
-            if existing and float(existing[-1].ts) > float(candles[-1].ts):
-                log.info(
-                    "seed_stale_ignored ticker=%s seed_last_ts=%.0f existing_last_ts=%.0f",
-                    ticker,
-                    float(candles[-1].ts),
-                    float(existing[-1].ts),
-                )
-                return
-            self._bars[ticker] = candles[-self.max_bars:]
-            self._bars_source[ticker] = "schwab_pricehistory"
-            # Set current bar from last candle so ticks extend properly
-            last = candles[-1]
-            self._current[ticker] = {
-                "ts": self._bar_start(last.ts),
-                "o": last.open, "h": last.high, "l": last.low, "c": last.close,
-            }
-
-    def grid_stale(self, ticker: str, ts: float, gap_seconds: float) -> bool:
-        """True when the completed-bar grid is missing or has a gap vs ``ts``.
-
-        A stale grid means tick-built bars cannot represent the session (sparse
-        polling) and the canonical Schwab pricehistory leaf must re-seed it.
-        """
-        bars = self._bars.get(ticker)
-        if not bars:
-            return True
-        last_bar_end = float(bars[-1].ts) + float(self.bar_seconds)
-        return (float(ts) - last_bar_end) > float(gap_seconds)
-
-    def has_bars(self, ticker: str) -> bool:
-        """Return True if ticker has any completed bars."""
-        return len(self._bars.get(ticker, [])) >= 1
+def _read_bars_1m(tk: str, limit: int) -> list:
+    """The newest `limit` rows of price_bars_1m for `tk`, oldest first:
+    (bar_start_ts_utc, open, high, low, close, volume)."""
+    import sqlite3 as _sq
+    con = _sq.connect(f"file:{get_db().db_path}?mode=ro", uri=True, timeout=10.0)
+    try:
+        rows = con.execute(
+            "SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
+            "WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?",
+            (ticker_storage_key(tk), int(limit))).fetchall()
+    finally:
+        con.close()
+    return list(reversed(rows))
 
 
-_candles_5m = _CandleAccumulator(bar_seconds=CANDLE_5M_SECONDS, max_bars=CANDLE_5M_MAX_BARS)
-_candles_1m = _CandleAccumulator(bar_seconds=CANDLE_1M_SECONDS, max_bars=CANDLE_1M_MAX_BARS)
+def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> "list[Candle]":
+    """`tk`'s completed 1-minute bars, oldest first, from price_bars_1m -- which only Schwab's
+    streamed CHART_EQUITY bars write (_bar_writer). A minute the stream did not deliver is
+    absent, never filled in."""
+    return [Candle(ts=float(r[0]), open=r[1], high=r[2], low=r[3], close=r[4], volume=r[5])
+            for r in _read_bars_1m(tk, limit)]
+
+
+def _bars_5m(tk: str) -> "list[Candle]":
+    """`tk`'s completed 5-minute bars, rolled up from _bars_1m: first open, max high, min low,
+    last close; volume only when every minute reported one."""
+    out = [Candle(ts=b["t"], open=b["o"], high=b["h"], low=b["l"], close=b["c"], volume=b["v"])
+           for b in aggregate_bars([_bar_dict(c) for c in _bars_1m(tk, CANDLE_5M_MAX_BARS * 5)], "5")]
+    # the newest bucket is complete only once its fifth minute has closed
+    if out and out[-1].ts + CANDLE_5M_SECONDS > time.time() - CANDLE_1M_SECONDS:
+        out.pop()
+    return out
+
+
+def _bar_dict(c: "Candle") -> dict:
+    return {"t": float(c.ts), "o": c.open, "h": c.high, "l": c.low, "c": c.close, "v": c.volume}
+
+
+def _write_streamed_bar(msg: dict) -> bool:
+    """Write one streamed 1-minute bar (Schwab CHART_EQUITY) to price_bars_1m; False when it
+    lacks a field (then nothing is written)."""
+    from numeric_contract import float_positive_or_none
+    o, h, lo, c = (float_positive_or_none(msg.get(k)) for k in ("open", "high", "low", "close"))
+    start_ms = msg.get("bar_start_ms")
+    if None in (o, h, lo, c, start_ms):
+        # a missing, zero, negative or non-finite price is not a price
+        log.warning("streamed bar for %s lacks a valid field, not written: %s", msg.get("symbol"), msg)
+        return False
+    _persist_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=float(o), high=float(h),
+                                            low=float(lo), close=float(c), volume=msg.get("volume"))])
+    return True
+
+
+def _bar_writer() -> None:
+    """The price_bars_1m writer: every streamed bar the capture daemon pushes, as it arrives."""
+    from app.options.order_flow.streaming import streamed_bars
+    while True:
+        msg = streamed_bars.get()
+        try:
+            _write_streamed_bar(msg)
+        except Exception as e:  # noqa: BLE001 -- logged; the next bar is still written
+            log.warning("streamed bar for %s not written: %s", msg.get("symbol"), e)
+
+
+def start_bar_writer() -> None:
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    threading.Thread(target=_bar_writer, name="bar-writer", daemon=True).start()
 
 
 # ── IV Direction Tracker ─────────────────────────────────────────────────────
@@ -4152,47 +4024,8 @@ def _add_logger_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bo
                 ticker,
                 len(_logger_tickers),
             )
-            # RC-484 (operator requirement, 2026-08-25): a fresh enrollment immediately
-            # acquires its available history — one bounded vendor call, off-thread so
-            # the add itself stays instant. Boot rehydration bypasses this function, so
-            # the seed fires only for genuinely NEW enrollments.
-            threading.Thread(
-                target=_enrollment_history_seed, args=(ticker,), daemon=True,
-                name=f"enroll-seed-{ticker}",
-            ).start()
             return True
     return False
-
-
-def _enrollment_history_seed(ticker: str) -> None:
-    """RC-484 (operator requirement 2026-08-25): a newly enrolled ticker immediately
-    acquires its available 1m history — today's tape so the chart is not blank from the
-    enrollment minute, and the prior trading session so PDH/PDL/PDC/POC/VAH/VAL and the
-    overnight window are computable on day 1. One bounded vendor call (period_days=2)
-    upserted into the ONE banked bar table (price_bars_1m) — this feeds the existing
-    single bar input resolved by _canonical_price_level_bars, so the Phase 2A
-    single-faucet invariant is preserved: history acquisition, never a second level
-    producer. The source stays the standard price-history token (the bytes ARE Schwab
-    price history; a new source value would silently widen the classification
-    namespace — the RC-31 classification-by-complement class)."""
-    try:
-        from schwab_client import safe_get_price_history
-
-        client = get_client()
-        resp = safe_get_price_history(client, ticker, frequency_minutes=1, period_days=2)
-        status = getattr(resp, "status_code", None)
-        if resp is None or status != 200:
-            log.warning("enrollment seed: price history unavailable for %s (status=%s)",
-                        ticker, status)
-            return
-        candles = (resp.json() or {}).get("candles") or []
-        if not candles:
-            log.warning("enrollment seed: empty candle payload for %s", ticker)
-            return
-        n = _persist_1m_bars(ticker, candles)
-        log.info("enrollment seed: %s banked %d 1m bars (period_days=2)", ticker, n)
-    except Exception as e:
-        log.warning("enrollment seed failed for %s: %s", ticker, e)
 
 
 def _register_tracked_ticker(ticker: str, *, enrollment_source: str = "ui_auto") -> bool:
@@ -4641,7 +4474,7 @@ def _base_money_path_capture_one(ticker: str):
         _snapshot_row_insert_committed(t, snap_ts)
 
         # RC-69: bars are NOT written here. This is a snapshot capture; bar collection is its own
-        # service (_bars_loop), so there is exactly ONE writer of price_bars_1m. An earlier fix
+        # service (_bar_writer), so there is exactly ONE writer of price_bars_1m. An earlier fix
         # bolted bar persistence onto this function — that only moved the defect (collection
         # riding a capture path) instead of removing it.
         touch_ts = time.time()
@@ -5254,101 +5087,6 @@ def _safe_float_quote(v) -> Optional[float]:
     return float_finite_or_none(v)
 
 
-def _parse_quote_node_session_fields(node: dict) -> dict[str, Any]:
-    """
-    Canonical Schwab REST per-ticker quote node: quote → extended → regular fallbacks.
-    ``node`` is the ticker object from GET /quotes JSON (keys quote, extended, regular).
-    """
-    _q = node.get("quote") or {}
-    _ext = node.get("extended") or {}  # external-key-ok: Schwab GET /quotes per-ticker node (vendor wire field)
-    _reg = node.get("regular") or {}  # external-key-ok: Schwab GET /quotes per-ticker node (vendor wire field)
-    last = _safe_float_quote(_q.get("lastPrice"))
-    if last is None or last <= 0:
-        last = _safe_float_quote(_ext.get("lastPrice"))
-    regular_close = _safe_float_quote(_reg.get("regularMarketLastPrice"))  # external-key-ok: Schwab GET /quotes per-ticker node (vendor wire field)
-    mark = _safe_float_quote(_q.get("mark"))
-    if mark is None or mark <= 0:
-        mark = _safe_float_quote(_ext.get("mark"))
-    bid = _safe_float_quote(_q.get("bidPrice"))
-    if bid is None:
-        bid = _safe_float_quote(_ext.get("bidPrice"))
-    ask = _safe_float_quote(_q.get("askPrice"))
-    if ask is None:
-        ask = _safe_float_quote(_ext.get("askPrice"))
-    def _epoch_seconds(v: float | None) -> float | None:
-        # Schwab wire quoteTime/tradeTime are epoch MILLISECONDS; every downstream consumer
-        # (candle accumulators, fill_outcomes bar grid, as_of_ts_utc filters) expects seconds.
-        # 2026-06-09 regression: raw ms ticks built ms-grid bars in price_bars_1m, so the
-        # seconds-unit outcome filler matched zero bars and no snapshot got labeled all day.
-        return v / 1000.0 if v is not None and v > 1e10 else v
-
-    quote_time = _safe_float_quote(_q.get("quoteTime"))  # external-key-ok: Schwab GET /quotes per-ticker node (vendor wire field)
-    if quote_time is None:
-        quote_time = _safe_float_quote(_ext.get("quoteTime"))
-    quote_time = _epoch_seconds(quote_time)
-    trade_time = _safe_float_quote(_q.get("tradeTime"))  # external-key-ok: Schwab GET /quotes per-ticker node (vendor wire field)
-    if trade_time is None:
-        trade_time = _safe_float_quote(_ext.get("tradeTime"))
-    if trade_time is None:
-        trade_time = _safe_float_quote(_reg.get("regularMarketTradeTime"))  # external-key-ok: Schwab GET /quotes per-ticker node (vendor wire field)
-    trade_time = _epoch_seconds(trade_time)
-    # Current live spot is quote/extended lastPrice only. regularMarketLastPrice is
-    # a session close; mark is the vendor mid. Neither may become spot.
-    spot_source = "lastPrice" if last and last > 0 else None
-    spot = last if spot_source == "lastPrice" else None
-    try:
-        spot_f = float(spot) if spot and float(spot) > 0 else None
-    except (TypeError, ValueError):
-        spot_f = None
-    quote_mid: float | None = None
-    mid_source: str | None = None
-    if mark is not None and mark > 0:
-        quote_mid = float(mark)
-        mid_source = "schwab_quote_mark"
-    # Raw Schwab order-flow primitives (CSV-first: quotes.{SYM}.bidSize/askSize/lastSize/
-    # totalVolume). Persisted on the snapshot row so ablation can judge the primitives,
-    # not only derivations like spread / vol_oi_ratio. No engineered substitutes here.
-    bid_size = _safe_float_quote(_q.get("bidSize"))
-    if bid_size is None:
-        bid_size = _safe_float_quote(_ext.get("bidSize"))
-    ask_size = _safe_float_quote(_q.get("askSize"))
-    if ask_size is None:
-        ask_size = _safe_float_quote(_ext.get("askSize"))
-    last_size = _safe_float_quote(_q.get("lastSize"))
-    if last_size is None:
-        last_size = _safe_float_quote(_ext.get("lastSize"))
-    total_volume = _safe_float_quote(_q.get("totalVolume"))
-    if total_volume is None:
-        total_volume = _safe_float_quote(_ext.get("totalVolume"))
-    # Percent change — the ONE parser (market_context.extract_pct_change), not a second
-    # copy of the formula. Generic per the vendor node, not per symbol name.
-    from market_context import extract_pct_change
-    pct_chg = extract_pct_change(_q)
-    return {
-        "last": last,
-        "regular_close": regular_close,
-        "mark": mark,
-        "chg_pct": pct_chg,
-        "bid": bid,
-        "ask": ask,
-        "bid_size": bid_size,
-        "ask_size": ask_size,
-        "last_size": last_size,
-        "total_volume": total_volume,
-        "quote_time": quote_time,
-        "trade_time": trade_time,
-        "quote_ts": quote_time or trade_time,
-        # M6: which exchange clock quote_ts carries — a TRADE_TIME_MILLIS value used as the
-        # quote clock (quoteTime absent) is a LABELED proxy, never a silent conflation.
-        "quote_ts_clock": (
-            "QUOTE_TIME_MILLIS" if quote_time is not None
-            else ("TRADE_TIME_MILLIS_proxy" if trade_time is not None else "unavailable")
-        ),
-        "spot_source": spot_source,
-        "spot": spot_f,
-        "quote_mid": quote_mid,
-        "mid_source": mid_source,
-    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -5406,24 +5144,13 @@ _l1_instrumentation: dict[str, Any] = {
 }
 
 
-# Monotonic clock anchor for L1 diagnostics rates (operational assessment per /api/diagnostics/l1).
-_l1_diag_start_mono = time.monotonic()
 
-#: RC-236: minimum 1m bars the ATR needs, and the warmup horizon during which a deficit is the
-#: designed state rather than a defect. One bar per minute means the accumulator cannot beat the
-#: clock; the horizon carries a small margin for the first partial minute and re-seed latency.
+#: minimum 1-minute bars the ATR needs
 ATR_MIN_BARS: int = 16
-ATR_WARMUP_HORIZON_SEC: float = float(ATR_MIN_BARS + 4) * 60.0
 
 
-def _seconds_since_boot() -> float:
-    """Wall seconds this server process has been up (monotonic, restart-anchored)."""
-    return max(0.0, time.monotonic() - _l1_diag_start_mono)
 
 
-def _atr_warmup_active() -> bool:
-    """True while the in-memory bar accumulator cannot yet physically hold ATR_MIN_BARS."""
-    return _seconds_since_boot() < ATR_WARMUP_HORIZON_SEC
 
 
 def _l1_generation_pop(key: tuple) -> None:
@@ -6451,66 +6178,8 @@ def _fetch_state(
         })
     spot_f    = float(spot)
 
-    # Feed tick into candle accumulators
-    # the last price's own trade clock (TRADE_TIME_MILLIS) -- it used to be quote time `or`
-    # trade time, two different clocks standing in for each other (N-10)
+    # the last price's own trade clock (TRADE_TIME_MILLIS)
     _tick_ts = _pq.get("trade_ts")
-
-    # Seed candles from Schwab price history when the canonical 1m grid is stale —
-    # first visit OR a gap since the last completed bar (background-logged tickers
-    # are polled ~1×/15min; tick-built bars alone leave the outcome grid ~94% empty).
-    # Canonical (1m) drives snapshot/state; 5m remains derived context.
-    _seed_ref_ts = float(_tick_ts) if _tick_ts is not None else time.time()
-    if _candles_1m.grid_stale(ticker, _seed_ref_ts, CANDLE_RESEED_GAP_SECONDS):
-        def _seed_candles(freq_min: int) -> None:
-            resp = safe_get_price_history(client, ticker, frequency_minutes=freq_min, period_days=1)
-            if resp and resp.status_code == 200:
-                payload = resp.json()
-                if "candles" not in payload:
-                    raise ValueError(
-                        f"Schwab pricehistory response missing 'candles' key (status={resp.status_code})"
-                    )
-                raw_bars = payload["candles"]
-                if freq_min == 5:
-                    _candles_5m.seed(ticker, raw_bars)
-                    log.info("Seeded %s 5m candles: %d bars from price history", ticker, len(raw_bars))
-                else:
-                    _candles_1m.seed(ticker, raw_bars)
-                    log.info("Seeded %s 1m candles: %d bars from price history", ticker, len(raw_bars))
-
-        try:
-            client = get_client()
-            if _log_only_inline_leaf_fetches(log_only):
-                # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_1: background
-                # log_only seeds run sequentially inline — identical calls,
-                # identical consumption, no shared-pool occupancy.
-                _seed_candles(5)
-                _seed_candles(1)
-            else:
-                # UI-MAXIMIZE: parallel seed — must NOT use _analytics_executor (same pool as
-                # _fetch_state worker); nested submit+.result() deadlocks all Tier C jobs.
-                # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: dedicated leaf pool.
-                # UI_05 residual: priority recomputes seed on the priority
-                # leaf lane (same selection as the chain/quote leg).
-                _seed_pool = (
-                    _get_priority_leaf_executor()
-                    if _chain_priority
-                    else _get_recompute_leaf_executor()
-                )
-                _f5 = _seed_pool.submit(_seed_candles, 5)
-                _f1 = _seed_pool.submit(_seed_candles, 1)
-                _f5.result(timeout=45)
-                _f1.result(timeout=45)
-        except Exception as e:
-            log.debug("Candle seeding failed for %s: %s", ticker, e)
-
-    if _tick_ts is not None:
-        _candles_5m.tick(ticker, spot_f, _tick_ts, total_volume=_total_vol)
-        _candles_1m.tick(ticker, spot_f, _tick_ts, total_volume=_total_vol)
-
-    _bars_5m_count = len(_candles_5m.get_bars(ticker))
-    _bars_1m_count = len(_candles_1m.get_bars(ticker))
-    log.info(f"Candles: {ticker} 5m={_bars_5m_count} bars, 1m={_bars_1m_count} bars")
 
     exposures, diag = compute_exposures_by_strike(contracts_use, spot=spot_f, require_oi=True)
     from math_exposure_core import key_level_strikes_with_gamma
@@ -6683,7 +6352,7 @@ def _fetch_state(
     _candle_body = None
     _c_open = _c_high = _c_low = _c_close = None
     _c_range = None
-    _completed_bars_now = _candles_1m.get_bars(ticker)
+    _completed_bars_now = _bars_1m(ticker)
     if _completed_bars_now:
         _lb = _completed_bars_now[-1]
         _lb_open  = _lb.open
@@ -6875,7 +6544,7 @@ def _fetch_state(
     try:
         _iv_skew = compute_iv_skew(contracts_use, spot_f)
         # Realized vol + ATR from canonical (1m) candle bars
-        _bars = _candles_1m.get_bars(ticker)
+        _bars = _bars_1m(ticker)
         if _bars:
             _closes = [float(b.close) for b in _bars if b.close is not None]
             if _closes:
@@ -6917,20 +6586,8 @@ def _fetch_state(
                 )
     except Exception as e:
         log.debug(f"Volatility signals calc: {e}")
-    # RC-236 (same calibration law as the tier-1 lock waits): a bar deficit during ACCUMULATOR
-    # WARMUP is the designed state — the in-memory series re-seeds from zero on every restart
-    # and cannot hold 16 one-minute bars until 16 minutes of wall clock have passed. Logging
-    # that at WARNING makes the quiet gate fail for doing exactly what it must do, and trains
-    # the operator to ignore the channel. Past the warmup horizon the SAME deficit is genuine
-    # starvation and keeps its WARNING; the deficit is always logged, only the severity moves.
     if _atr is None:
-        _warm = _atr_warmup_active()
-        _msg = (f"ATR NULL for {ticker}: only {len(_bars)} bars, need {ATR_MIN_BARS}"
-                if _bars else f"ATR NULL for {ticker}: no bars, need {ATR_MIN_BARS}")
-        if _warm:
-            log.info("%s (accumulator warmup, %.0fs since boot)", _msg, _seconds_since_boot())
-        else:
-            log.warning(_msg)
+        log.warning("ATR NULL for %s: %d bars, need %d", ticker, len(_bars or []), ATR_MIN_BARS)
 
     # ── GARCH Volatility Forecast ─────────────────────────────────────────────
     _garch_sigma_bars = None
@@ -6942,7 +6599,7 @@ def _fetch_state(
 
                 _iv_dec = vol_percent_to_decimal(_atm_iv)
                 _rv_dec = vol_percent_to_decimal(_realized_vol)
-                # RC-334: _closes are ONE-MINUTE closes — `_candles_1m.get_bars` above, and
+                # RC-334: _closes are ONE-MINUTE closes — `_bars_1m` above, and
                 # the realized-vol call on this same list passes bar_minutes=1.0 — so the
                 # GARCH sigmas are per-minute and the IV/RV terms must be de-annualized to
                 # the same minute. Monte Carlo then consumes this list DIRECTLY as per-bar
@@ -6952,7 +6609,7 @@ def _fetch_state(
                 # than keep feeding it minute sigmas under a five-minute name.
                 from monte_carlo import BAR_MINUTES as _MC_BAR_MINUTES
 
-                _GARCH_BAR_MINUTES = 1.0          # _candles_1m is one-minute by construction
+                _GARCH_BAR_MINUTES = 1.0          # _bars_1m is one-minute by construction
                 if float(_MC_BAR_MINUTES) != _GARCH_BAR_MINUTES:
                     raise RuntimeError(
                         f"GARCH/Monte-Carlo bar mismatch: sigmas built on "
@@ -7239,8 +6896,8 @@ def _fetch_state(
     nd_raw   = (consensus_summary.net_delta   if consensus_summary else None)
     cur_zone = derive_zone(bias_sig, nd_raw)
 
-    _zone_bars_1m = _candles_1m.get_bars(ticker)
-    _zone_bars_5m = _candles_5m.get_bars(ticker)
+    _zone_bars_1m = _bars_1m(ticker)
+    _zone_bars_5m = _bars_5m(ticker)
     _latest_bar_ts_1m = _zone_bars_1m[-1].ts if _zone_bars_1m else 0.0
     _latest_bar_ts_5m = _zone_bars_5m[-1].ts if _zone_bars_5m else 0.0
 
@@ -7308,7 +6965,7 @@ def _fetch_state(
 
     # Candle volume from last completed 1m bar (canonical) for build_market_state + snapshot
     _c_vol = None
-    _completed_for_vol = _candles_1m.get_bars(ticker)
+    _completed_for_vol = _bars_1m(ticker)
 
     # Order Flow Engine input — full Claude proxy field set from current fetches
     if _diag_on():
@@ -7328,7 +6985,7 @@ def _fetch_state(
         _order_flow_data["putExpDateMap"] = c_json.get("putExpDateMap") or {}
         _order_flow_data["underlying"] = c_json.get("underlying") or {}
         # Order flow candles: 1m only (execution-aligned). No 5m fallback, no 5m aggregation.
-        _bars_1m = _candles_1m.get_bars(ticker)
+        _bars_1m = _bars_1m(ticker)
         _order_flow_data["candles"] = [
             {
                 "open": b.open, "high": b.high, "low": b.low, "close": b.close,
@@ -7411,8 +7068,8 @@ def _fetch_state(
         mins_to_close=mins_to_close,
         candle_direction=_candle_dir,
         candle_body_pts=_candle_body,
-        candles_5m=_candles_5m.get_bars(ticker),
-        candles_1m=_candles_1m.get_bars(ticker),
+        candles_5m=_bars_5m(ticker),
+        candles_1m=_bars_1m(ticker),
         charm_net=_charm_net,
         charm_direction=_charm_dir,
         charm_drift_toward=_charm_toward,
@@ -7738,8 +7395,8 @@ def _fetch_state(
     
                     # ── Compute fields from available data ─────────────────────────────
     
-                    # Candle OHLC from canonical (1m) accumulator's current bar
-                    _cur_bar = _candles_1m._current.get(ticker)
+                    # the forming minute's OHLC, from the live price plane
+                    _cur_bar = _lpr.forming_bar(ticker)
                     _c_open  = _cur_bar["o"] if _cur_bar else None
                     _c_high  = _cur_bar["h"] if _cur_bar else None
                     _c_low   = _cur_bar["l"] if _cur_bar else None
@@ -7840,7 +7497,7 @@ def _fetch_state(
                     _vix_dir = vol_ctx.market_iv_direction
     
                     # Price-action cone (operator 2026-06-11): persist bar-derived
-                    # momentum/structure primitives from the in-memory 1m accumulator
+                    # momentum/structure primitives from the 1m bars
                     # (completed bars only; bar_end <= ts_utc — leak-free). Honest
                     # nulls when history is short; never fabricated fills.
                     _pa_cols: dict[str, Any] = {}
@@ -7854,7 +7511,7 @@ def _fetch_state(
                                 "open": _cb.open, "high": _cb.high, "low": _cb.low,
                                 "close": _cb.close, "volume": _cb.volume,
                             }
-                            for _cb in (_candles_1m.get_bars(ticker) or [])
+                            for _cb in (_bars_1m(ticker) or [])
                         ]
                         _pa_cols = compute_price_action_snapshot_columns(
                             _pa_bars, decision_ts_utc=float(_snap_ts), inp=_PA_NS(vwap=_vwap_f),
@@ -8262,7 +7919,7 @@ def _fetch_state(
                 # RC-69 (2026-07-27) went further and removed the bar write from this render
                 # path ENTIRELY. Persisting bars here made COLLECTION a side-effect of DISPLAY:
                 # a ticker only got bars while it was on screen. The bar collection service
-                # (_bars_loop) is now the single writer, running the whole enrolled universe on
+                # (_bar_writer) is now the single writer, writing every streamed bar on
                 # its own cadence, so bars are durable independently of any render and the
                 # old upsert-before-fill ordering race disappears with the upsert.
                 # What remains on this task is outcome labelling for the snapshot just written.
@@ -8280,9 +7937,8 @@ def _fetch_state(
                     # MEASURED 2026-07-27 11:59 ET: SPY (on screen) bar lag 3.1 min vs QQQ 19.1
                     # and IWM 19.1 (off screen), while all three had ~1.0 min snapshot lag, and
                     # 39.8% of all snapshots carry unfilled outcomes because the forward bars they
-                    # needed were never written. `_bars_loop` is now the ONE writer of
-                    # price_bars_1m, running for every enrolled ticker regardless of the viewport.
-                    # The accumulator is still ticked above for this card's own forming candle.
+                    # needed were never written. `_bar_writer` is now the ONE writer of
+                    # price_bars_1m, writing every streamed bar regardless of the viewport.
                     # fill_outcomes stays here: it labels the snapshot just inserted.
                     def _bg_persist_bars_then_fill_outcomes() -> None:
                         try:
@@ -9288,7 +8944,7 @@ async def _app_lifespan(app):
     # every ticker's levels fresh regardless of what the model stack is doing.
     start_terrain_loop()
     # RC-69: bar collection is its own always-on service — never a side-effect of rendering.
-    start_bars_loop()
+    start_bar_writer()
     log.info("Terrain loop started — %.0fs cadence, %d workers, full chain per ticker",
              TERRAIN_REFRESH_SEC, TERRAIN_WORKERS)
 
@@ -9374,7 +9030,6 @@ async def _app_lifespan(app):
         log.warning("Order flow streaming shutdown: %s", e)
 
     stop_terrain_loop()
-    stop_bars_loop()
     stop_logger()
     # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: leaf pool shuts down AFTER
     # the analytics executor above — no new leaf submits can arrive first (the
@@ -11698,7 +11353,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         if contracts:
             _persist_universal_complete_chain(tk, contracts)
         snap = _publish_levels(tk, contracts, fetched_ts)
-        _atr = _radar_atr(tk)
+        _atr = _atr_pair(tk)
         with _terrain_cache_lock:
             payload = _terrain_cache[tk]
             payload.update(atr_daily=round(_atr.daily, 3) if _atr.daily else None,
@@ -11883,106 +11538,12 @@ def _terrain_loop() -> None:
 #: unfilled outcomes because fill_outcomes reads price_bars_1m for the forward price and the bars
 #: were never written. This loop mirrors _terrain_loop (RC-1), which solved the identical problem
 #: for levels: a cheap, always-on, viewport-independent path over the WHOLE enrolled universe.
-BARS_REFRESH_SEC: float = 30.0
-#: Quotes are far cheaper than chains; this pool is deliberately small so bar collection can never
-#: contend with the operator card the way an unbounded sweep did at the open (TERRAIN_WORKERS=2).
-#:
-#: RC-243 (2026-08-04, PM GO executed post-RTH): sized DOWN 3 -> 2. The comment above reasons about
-#: the API this loop READS FROM; the binding constraint is the seam it WRITES THROUGH. Every bar
-#: upsert serializes on the single process-wide db._TIER1_SNAPSHOT_WRITE_LOCK, so workers past the
-#: first cannot parallelise — they queue, and each extra contender lengthens the queue against a
-#: file that reached 27.3 GB. MEASURED on the live console: threads ed_bars_0/1/2 took 426/407/405
-#: lock waits (1,238 of them on upsert_1m_bars vs 449 on insert_snapshot), lifetime max wait
-#: 180,340 ms, recent-window max 64,229 ms, with busy_retry_count 0 — the wait is on the Python
-#: mutex, not SQLite's busy handler. Two workers keep the loop concurrent with the quote fetch
-#: (which is the latency this pool exists to hide) while cutting write-seam contenders by a third.
-BARS_WORKERS: int = 2
-_bars_loop_running: bool = False
-_bars_loop_thread: threading.Thread | None = None
-
-
 def _persist_1m_bars(tk: str, bars) -> int:
     """THE single price_bars_1m writer in server.py (RC-69 single-faucet contract).
 
-    Both producers of banked 1m bars — the live quote->accumulator collection service and
-    the RC-484 enrollment history seed — persist through here, so the console has exactly
-    ONE place that writes the canonical bar table. A second write call site is how
-    collection once drifted into the render path; the audit counts the literal db-write
-    call, so the invariant is that this function is its only occurrence. ``bars`` may be
-    Candle objects (accumulator) or vendor candle dicts (history seed) — the db writer
-    accepts both shapes."""
+    Called only by _bar_writer with Schwab's streamed bars; the audit counts the literal
+    db-write call, so the invariant is that this function is its only occurrence."""
     return get_db().upsert_1m_bars(tk, bars)
-
-
-def _bars_collect_one(tk: str) -> str:
-    """Quote -> accumulator -> price_bars_1m for ONE ticker. Never raises."""
-    try:
-        client = get_client()
-        q = _memoized_quote_response(tk, client=client)   # RC-112/W3-C8: one vendor faucet
-        if q is None or getattr(q, "status_code", None) != 200:
-            return "error:quote_http"
-        node = q.json().get(tk) or {}
-        fields = _parse_quote_node_session_fields(node)
-        # RC-38 single source: a raw float() on a Schwab leaf silently admits NaN/inf, and a NaN
-        # price would enter the bar series as a real value. One canonical reader; absence stays
-        # absence.
-        from numeric_contract import float_positive_or_none
-
-        px = float_positive_or_none(fields.get("last"))
-        if px is None:
-            px = float_positive_or_none(fields.get("mark"))
-        if px is None:
-            return "skip:no_price"      # absence reads as absence — never a fabricated tick
-        _candles_1m.tick(tk, px, time.time(), total_volume=fields.get("total_volume"))
-        bars = _candles_1m.get_bars(tk)
-        if not bars:
-            return "ok:no_completed_bar"
-        _persist_1m_bars(tk, bars)
-        return "ok:persisted"
-    except Exception as e:
-        log.debug("bars collect %s: %s", tk, e)
-        return f"error:{type(e).__name__}"
-
-
-def _bars_loop() -> None:
-    log.info("Bar collection loop started (quotes only, whole enrolled universe, viewport-independent)")
-    while _bars_loop_running:
-        cycle_start = time.monotonic()
-        try:
-            with _logger_lock:
-                tickers = list(_logger_tickers)
-        except Exception:
-            tickers = list(CORE_TICKERS)
-        # RC-48: only capturable sessions. A market-closed tick would persist a frozen bar.
-        if tickers and _is_loggable_session():
-            try:
-                with ThreadPoolExecutor(max_workers=BARS_WORKERS,
-                                        thread_name_prefix="ed_bars") as pool:
-                    list(pool.map(_bars_collect_one, tickers))
-            except Exception as e:
-                log.warning("bars loop cycle failed: %s", e)
-        sleep_end = time.monotonic() + max(1.0, BARS_REFRESH_SEC - (time.monotonic() - cycle_start))
-        while _bars_loop_running and time.monotonic() < sleep_end:
-            time.sleep(0.5)
-
-
-def start_bars_loop() -> None:
-    """Start bar collection. Refuses under pytest for the same reason as the terrain loop:
-    a production thread inside the test process mutates shared state no test controls (RC-5)."""
-    global _bars_loop_running, _bars_loop_thread
-    if os.environ.get("PYTEST_CURRENT_TEST"):
-        log.debug("bars loop not started: running under pytest")
-        return
-    if _bars_loop_running:
-        return
-    _bars_loop_running = True
-    _bars_loop_thread = threading.Thread(target=_bars_loop, name="bars-loop", daemon=True)
-    _bars_loop_thread.start()
-
-
-def stop_bars_loop() -> None:
-    global _bars_loop_running
-    _bars_loop_running = False
 
 
 def start_terrain_loop() -> None:
@@ -12013,115 +11574,31 @@ def stop_terrain_loop() -> None:
 
 #: ATR is derived from ~100 sessions of 1-minute bars, so it moves slowly. Recomputing it
 #: per radar poll would re-read the bar table for every ticker every 20 seconds.
-_radar_atr_cache: dict[str, tuple[float, "AtrPair"]] = {}
-RADAR_ATR_TTL_SEC: float = 900.0
-#: Tickers whose ATR is being computed right now, so N concurrent requests trigger ONE
-#: computation instead of N. Guards the cache fill, not the cache read.
-_radar_atr_inflight: set[str] = set()
-_radar_atr_lock = threading.Lock()
-_radar_atr_refresh_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ed_atr_refresh")
+_atr_cache: dict[str, tuple[float, "AtrPair"]] = {}
+_atr_lock = threading.Lock()
+ATR_TTL_SEC: float = 900.0
 
 
-#: RC-484 (2026-08-25): vendor daily-ATR fallback cache — one Schwab daily-candle fetch
-#: per (ticker, ET date). Keyed by date so a fresh ticker's radar scale appears today
-#: and refreshes tomorrow, without a per-cycle vendor call.
-_radar_daily_atr_vendor_cache: dict[str, tuple[str, float | None]] = {}
-
-
-def _radar_daily_atr_vendor_fallback(tk: str) -> float | None:
-    """Daily ATR from Schwab DAILY candles when local 1m history spans <15 sessions
-    (RC-484: chain walls exist from minute one but the radar ring stayed blind ~3 weeks
-    for a fresh enrollee). Cached per ticker per ET date; fail-closed to None."""
-    from time_et import now_et as _now_et
-
-    day_key = _now_et().date().isoformat()
-    hit = _radar_daily_atr_vendor_cache.get(tk)
-    if hit and hit[0] == day_key:
+def _atr_pair(ticker: str) -> "AtrPair":
+    """The ticker's (daily, 15-minute) ATR from price_bars_1m, recomputed at most every
+    ATR_TTL_SEC. Too few bars reads as None, never a vendor stand-in."""
+    tk = ticker_storage_key(ticker)
+    with _atr_lock:
+        hit = _atr_cache.get(tk)
+    if hit is not None and time.time() - hit[0] < ATR_TTL_SEC:
         return hit[1]
-    daily = None
-    try:
-        from schwab_client import safe_get_daily_price_history
-        from terrain_atr import compute_atr_from_daily_candles
-
-        resp = safe_get_daily_price_history(get_client(), tk, period_months=2)
-        if resp is not None and getattr(resp, "status_code", None) == 200:
-            daily = compute_atr_from_daily_candles((resp.json() or {}).get("candles") or [])
-    except Exception as e:
-        log.debug("radar daily-ATR vendor fallback failed for %s: %s", tk, e, exc_info=True)
-    _radar_daily_atr_vendor_cache[tk] = (day_key, daily)
-    return daily
-
-
-def _radar_atr_compute_into_cache(tk: str) -> "AtrPair":
-    """Compute one ticker's ATR and publish it. Always clears the in-flight marker."""
-    try:
-        pair = compute_atr_pair(str(get_db().db_path), tk)
-    except Exception as e:
-        log.debug("radar ATR failed for %s: %s", tk, e, exc_info=True)
-        pair = AtrPair(None, None)
-    if pair.daily is None:
-        # RC-484: local bars cannot scale a fresh ticker for ~15 sessions; the vendor
-        # daily series can, immediately. m15 stays local-only (it needs today's tape,
-        # which the accumulator provides within minutes anyway).
-        fallback_daily = _radar_daily_atr_vendor_fallback(tk)
-        if fallback_daily is not None:
-            pair = AtrPair(daily=fallback_daily, m15=pair.m15)
-    with _radar_atr_lock:
-        _radar_atr_cache[tk] = (time.time(), pair)
-        _radar_atr_inflight.discard(tk)
+    pair = compute_atr_pair(str(get_db().db_path), tk)
+    with _atr_lock:
+        _atr_cache[tk] = (time.time(), pair)
     return pair
 
 
-def _radar_atr(ticker: str | None) -> "AtrPair":
-    """Cached ATR pair for a radar row. NEVER blocks on a recomputation. Never raises.
 
-    OBSERVED 2026-07-20 (py-spy dump of the live console, PID 33156): eleven AnyIO worker
-    threads were simultaneously inside compute_atr_pair via _radar_atr <- get_terrain_radar.
 
-    `get_terrain_radar` is a SYNC endpoint, so FastAPI runs it in the AnyIO threadpool.
-    The old body checked the cache and, on a miss, computed inline with NO single-flight
-    guard -- so every concurrent request that missed recomputed ATR for all 51 tickers,
-    each a 24,000-row read of price_bars_1m. That is a cache stampede, and because those
-    are the SHARED threadpool workers, exhausting them blocks every other sync endpoint in
-    the app. The operator saw the whole console hang, not just the terrain tab.
 
-    Two changes make a request incapable of causing it:
-      * SINGLE FLIGHT -- one computation per ticker at a time; concurrent callers do not
-        queue behind it.
-      * STALE WHILE REVALIDATE -- an expired entry is returned IMMEDIATELY and refreshed
-        on a small dedicated pool. ATR over ~100 sessions does not change meaningfully in
-        the seconds a refresh takes, so serving a slightly old value is correct, and it is
-        strictly better than blocking a request thread to avoid it.
 
-    Only a ticker with NO cached value at all can still compute inline; the boot prewarm
-    fills those, and the dedicated pool bounds it at 2 threads regardless.
-    """
-    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical — cache key AND compute_atr_pair DB query hit $-index bars
-    if not tk:
-        return AtrPair(None, None)
-    now = time.time()
-    with _radar_atr_lock:
-        hit = _radar_atr_cache.get(tk)
-        if hit is not None and (now - hit[0]) < RADAR_ATR_TTL_SEC:
-            return hit[1]
-        already_running = tk in _radar_atr_inflight
-        if not already_running:
-            _radar_atr_inflight.add(tk)
-    if hit is not None:
-        # STALE-WHILE-REVALIDATE: hand back the old value now, refresh off the request path.
-        if not already_running:
-            try:
-                _radar_atr_refresh_pool.submit(_radar_atr_compute_into_cache, tk)
-            except RuntimeError:  # pool shut down during teardown
-                with _radar_atr_lock:
-                    _radar_atr_inflight.discard(tk)
-        return hit[1]
-    if already_running:
-        # First-ever value for this ticker and someone else is computing it. Report
-        # absence rather than block a shared worker; ring_for() treats None as "no ring"
-        # and the contact simply does not appear until the value lands.
-        return AtrPair(None, None)
-    return _radar_atr_compute_into_cache(tk)
+
+
 
 
 #: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
@@ -12395,40 +11872,7 @@ def get_bars1m(ticker: str = Query(...),
     """Canonical 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts. `tf` rolls
     them up server-side (aggregate_bars) -- the chart page used to aggregate in the browser."""
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
-    import sqlite3 as _sq
-    try:
-        db = get_db()
-    except Exception:
-        return JSONResponse({"ticker": tk, "bars": [], "error": "db unavailable"})
-    con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-    try:
-        rows = con.execute(
-            "SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
-            "WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?", (tk, int(limit)),
-        ).fetchall()
-    finally:
-        con.close()
-    bars = [{"t": r[0], "o": r[1], "h": r[2], "l": r[3], "c": r[4], "v": r[5]}
-            for r in reversed(rows)]
-    if not bars:
-        # RC-484 (2026-08-25): a PREVIEWED (typed-in, not enrolled) ticker banks no
-        # price_bars_1m — RC-69 made _bars_loop the only banked writer and it serves
-        # enrolled tickers only — so its chart stayed empty all session (measured:
-        # CRWV 2026-08-13, 127 snapshots, 0 bars). Fall through to the live
-        # accumulator's COMPLETED bars, read-only and clearly tagged: display feed,
-        # not a second banked producer (nothing is written).
-        try:
-            acc = _candles_1m.get_bars(tk)
-        except Exception:
-            acc = []
-        bars = [{"t": float(b.ts), "o": float(b.open), "h": float(b.high),
-                 "l": float(b.low), "c": float(b.close),
-                 "v": (float(b.volume) if getattr(b, "volume", None) is not None else None)}
-                for b in list(acc)[-int(limit):]]
-        if bars:
-            out = aggregate_bars(overlay_forming_bar_from_plane(bars, tk), tf)
-            return JSONResponse({"ticker": tk, "bars": out, "tf": tf,
-                                 "n": len(out), "source": "live_accumulator_unbanked"})
+    bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
     out = aggregate_bars(overlay_forming_bar_from_plane(bars, tk), tf)
     return JSONResponse({"ticker": tk, "bars": out, "tf": tf, "n": len(out)})
 
@@ -12471,31 +11915,10 @@ def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
 
 
 def overlay_forming_bar_from_plane(bars: list[dict], ticker: str) -> list[dict]:
-    """Append or refresh the forming 1m candle from streamed LAST_PRICE / TRADE_TIME.
-
-    Browser chart pages must not invent OHLC from a poll. This is the one forming-bar
-    producer: the plane's live last, placed on the minute that trade belongs to.
-    """
-    row = _lmp.get_quote(ticker)
-    if not (row and _lmp.plane_row_is_streamed(row) and _lmp.plane_spot_is_last_price(row)
-            and _lmp.spot_is_fresh(row) and row.get("spot") is not None):
-        return list(bars)
-    px = float(row["spot"])
-    trade_ts = row.get("trade_ts")          # Schwab TRADE_TIME of that LAST_PRICE, epoch SECONDS
-    if trade_ts is None:                    # (the plane converts TRADE_TIME_MILLIS on ingest)
-        acc = _candles_1m.forming_bar(ticker)   # no trade time: the minute's own bar, no live tick
-        return list(bars) if acc is None else _merge_forming_bar(list(bars), acc)
-    ts = float(trade_ts)
-    bar_t = ts - (ts % CANDLE_1M_SECONDS)
-    forming = {"t": bar_t, "o": px, "h": px, "l": px, "c": px, "v": None, "forming": True}
-    acc = _candles_1m.forming_bar(ticker)
-    if acc is not None and float(acc["t"]) == bar_t:
-        forming = dict(acc)
-        forming["c"] = px
-        forming["h"] = max(float(forming["h"]), px)
-        forming["l"] = min(float(forming["l"]), px)
-        forming["forming"] = True
-    return _merge_forming_bar(list(bars), forming)
+    """`bars` with the forming minute from the live price plane (live_price_rows.forming_bar:
+    streamed LAST_PRICE placed on its own trade minute) appended or merged."""
+    forming = _lpr.forming_bar(ticker)
+    return list(bars) if forming is None else _merge_forming_bar(list(bars), forming)
 
 
 def _merge_forming_bar(bars: list[dict], forming: dict) -> list[dict]:
@@ -14468,82 +13891,22 @@ def api_vol_observability(ticker: Optional[str] = Query(default=None)):
 
 
 def _canonical_price_level_bars(tk: str, session_date) -> tuple[list, str, list]:
-    """Resolve the ONE bar input for the canonical snapshot: accumulator, else banked.
+    """THE bar input for the canonical price-level snapshot: price_bars_1m plus the forming
+    minute. A thin prior session is disclosed, never filled."""
+    from liquidity_value_engine import _bar_dt_et, _bars_to_list, prior_trading_session_date
 
-    Phase 2A: this is the only bar-input resolution for the Phase 2A level ids. The
-    second materialization that produced overnight 773.3975 on /api/levels and 773.40
-    on /api/liquidity-snapshot at the same instant was a second BAR INPUT (a
-    synchronous Schwab fetch), not a second formula — so the input is resolved once,
-    here, and every surface reads what came out of it.
-    """
-    import sqlite3 as _sq
-
-    from liquidity_value_engine import _bars_to_list, prior_trading_session_date
-
-    degraded: list[dict] = []
     bars_norm = _bars_to_list(_liquidity_live_1m_overlay_bars(tk))
-    bar_source = "live_accumulator"
-    # t12 (RC-227 residual, MEASURED): the accumulator's rolling buffer can hold a
-    # TRUNCATED prior session — the prior date resolves but min()/max() run over a
-    # partial tape (PDL served 756.84 vs the true 749.59 while PDH/PDC matched).
-    # A prior-day fact needs the FULL session: require plausible full coverage
-    # (>= 300 of ~390 RTH minutes) or fall through to banked canonical bars.
-    _prior_probe = prior_trading_session_date(bars_norm, session_date)
-    _prior_full = False
-    if _prior_probe is not None:
-        from liquidity_value_engine import _bar_dt_et as _bde
-        _n_prior = sum(
-            1 for b in bars_norm
-            if (lambda d: d is not None and d.date() == _prior_probe)(_bde(b))
-        )
-        _prior_full = _n_prior >= LEVELS_PRIOR_SESSION_MIN_BARS
-    if not _prior_full:
-        # Accumulator holds no prior RTH session or only a truncated slice —
-        # fall back to banked canonical bars. Read-only, indexed, no vendor call.
-        try:
-            db = get_db()
-            con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-            try:
-                rows = con.execute(
-                    "SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
-                    "WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT 2500", (tk,),
-                ).fetchall()
-            finally:
-                con.close()
-            bars_norm = _bars_to_list([
-                {"timestamp": r[0], "open": r[1], "high": r[2], "low": r[3],
-                 "close": r[4], "volume": r[5]} for r in reversed(rows)
-            ])
-            bar_source = "banked_price_bars_1m"
-            # AUDIT ROUND 2 (2026-08-25): the >=LEVELS_PRIOR_SESSION_MIN_BARS coverage
-            # check existed only on the accumulator path, and this fallback fires
-            # precisely WHEN coverage is low — so truncated banked tapes (measured: MTA
-            # sessions banked at 188/236/316 of 390 RTH bars) served PDH/PDL as
-            # prior-day fact with up to half the session missing. A low banked count is
-            # ambiguous (thin trading vs collection gap), so the levels still serve but
-            # the prior_day family is stamped degraded with the measured count — never
-            # silently.
-            _b_prior = prior_trading_session_date(bars_norm, session_date)
-            if _b_prior is not None:
-                from liquidity_value_engine import _bar_dt_et as _bde2
-                _n_banked = sum(
-                    1 for b in bars_norm
-                    if (lambda d: d is not None and d.date() == _b_prior)(_bde2(b))
-                )
-                if _n_banked < LEVELS_PRIOR_SESSION_MIN_BARS:
-                    degraded.append({
-                        "family": "prior_day",
-                        "reason": (f"banked prior session {_b_prior} holds only "
-                                   f"{_n_banked} of >= {LEVELS_PRIOR_SESSION_MIN_BARS} "
-                                   f"RTH bars — thin trading or a collection gap; "
-                                   f"prior-day levels derive from a partial tape"),
-                        "last_good_ts_utc": None})
-        except Exception as e:
+    degraded: list[dict] = []
+    prior = prior_trading_session_date(bars_norm, session_date)
+    if prior is not None:
+        n_prior = sum(1 for b in bars_norm if (lambda d: d is not None and d.date() == prior)(_bar_dt_et(b)))
+        if n_prior < LEVELS_PRIOR_SESSION_MIN_BARS:
             degraded.append({"family": "prior_day",
-                             "reason": f"banked bar read failed: {str(e)[:80]}",
+                             "reason": (f"prior session {prior} holds only {n_prior} of >= "
+                                        f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; prior-day "
+                                        f"levels derive from a partial tape"),
                              "last_good_ts_utc": None})
-            bars_norm = []
-    return bars_norm, bar_source, degraded
+    return bars_norm, "price_bars_1m", degraded
 
 
 def canonical_price_level_snapshot(ticker: str):
@@ -14672,31 +14035,27 @@ def _build_raw_levels_used(raw_levels: dict, snapshot_type: str) -> list:
     return sorted(items, key=lambda x: x["value"])
 
 
+def _session_bars(tk: str, session_date) -> list[dict]:
+    """1-minute bars from the prior trading day's 00:00 ET through `session_date`'s close (the
+    liquidity engine's window), from price_bars_1m, with the forming minute when the session is
+    today -- in the engine's shape."""
+    from datetime import datetime as _dt, time as _time, timedelta as _td
+    from time_et import ET, RTH_END_MINS, is_trading_day_et
+    prior = session_date - _td(days=1)
+    while not is_trading_day_et(prior.isoformat()):
+        prior -= _td(days=1)
+    lo = _dt.combine(prior, _time(0, 0), tzinfo=ET).timestamp()
+    hi = _dt.combine(session_date, _time(RTH_END_MINS // 60, RTH_END_MINS % 60), tzinfo=ET).timestamp()
+    bars = [b for b in _liquidity_live_1m_overlay_bars(tk) if lo <= b["timestamp"] / 1000.0 < hi]
+    return bars
+
+
 def _liquidity_live_1m_overlay_bars(ticker: str) -> list[dict]:
-    """1m bars + forming bar from the console accumulator (same tape as /api/state when active)."""
-    t = ticker.upper().strip()
-    out: list[dict] = []
-    for c in _candles_1m.get_bars(t):
-        out.append({
-            "timestamp": int(c.ts * 1000),
-            "open": c.open,
-            "high": c.high,
-            "low": c.low,
-            "close": c.close,
-            "volume": float(c.volume) if c.volume is not None else None,
-        })
-    cur = _candles_1m._current.get(t)
-    if cur:
-        ts = float(cur["ts"])
-        out.append({
-            "timestamp": int(ts * 1000),
-            "open": float(cur["o"]),
-            "high": float(cur["h"]),
-            "low": float(cur["l"]),
-            "close": float(cur["c"]),
-            "volume": float(cur["v"]) if cur.get("v") is not None else None,
-        })
-    return out
+    """The ticker's 1-minute bars (price_bars_1m) with the forming minute, in the liquidity
+    engine's shape."""
+    bars = overlay_forming_bar_from_plane([_bar_dict(c) for c in _bars_1m(ticker, 2500)], ticker)
+    return [{"timestamp": int(float(b["t"]) * 1000), "open": b["o"], "high": b["h"],
+             "low": b["l"], "close": b["c"], "volume": b.get("v")} for b in bars]
 
 
 def _liquidity_fusion_from_cache(
@@ -14808,7 +14167,6 @@ def get_liquidity_snapshot(
     """Return liquidity & value playbook snapshot (zones, summary, raw_levels) for ticker/session.
     Uses PlaybookConfig(clustering_mode='percent'). ``live`` uses min(now,RTH close) cutoff; checkpoints unchanged."""
     try:
-        from polling_adapter import fetch_bars_via_schwab_for_session
         from liquidity_value_engine import build_live_snapshot, generate_liquidity_value_snapshot
         from liquidity_models import SnapshotType, PlaybookConfig
 
@@ -14816,13 +14174,10 @@ def get_liquidity_snapshot(
         ticker_upper = ticker.upper().strip()
         # TICKER-PREVIEW-NO-ENROLL: liquidity snapshot is a VIEW — touch last-seen only.
         _touch_tracked_ticker_view(ticker_upper)
-        client = get_client()
         from datetime import date as date_type
 
         session_date_obj = date_type.fromisoformat(session_date)
-        bars = fetch_bars_via_schwab_for_session(
-            client, ticker_upper, session_date_obj, include_extended_hours=True
-        )
+        bars = _session_bars(ticker_upper, session_date_obj)
         if not bars:
             return JSONResponse(
                 {"error": f"No bar data for {ticker_upper} on {session_date}"},
@@ -14833,17 +14188,7 @@ def get_liquidity_snapshot(
         fusion_status = "n/a"
         spot_for_zones: Optional[float] = None
         extra: list[tuple[float, str]] = []
-        bar_merge_note = "schwab"
-
-        if snap_raw == "live":
-            today_ld = now_et().date()
-            if session_date_obj == today_ld:
-                from liquidity_value_engine import merge_schwab_bars_with_live_overlay
-
-                _ov = _liquidity_live_1m_overlay_bars(ticker_upper)
-                if _ov:
-                    bars = merge_schwab_bars_with_live_overlay(bars, _ov)
-                    bar_merge_note = "schwab+live_1m_overlay"
+        bar_merge_note = "price_bars_1m"
 
         if snap_raw == "live":
             extra = []

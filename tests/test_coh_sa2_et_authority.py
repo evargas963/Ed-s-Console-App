@@ -69,11 +69,9 @@ def test_coh_sa2_migrated_modules_use_canonical_et():
     """Spot-check COH-SA-2 production redirects."""
     from time_et import ET as canonical, now_et
 
-    import polling_adapter
     import live_decision_bundle
     import v2_decision.a2_session_calendar as asc
 
-    assert polling_adapter.ET is canonical
     assert live_decision_bundle._ET is canonical
     assert asc.ET is canonical
 

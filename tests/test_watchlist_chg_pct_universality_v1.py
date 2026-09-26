@@ -33,16 +33,23 @@ def test_extract_pct_change_absent_when_nothing_usable():
     assert mc.extract_pct_change({"netPercentChange": float("nan")}) is None
 
 
-def test_extract_pct_change_is_the_one_parser_both_files_call():
-    """market_context._extract_quote and server._parse_quote_node_session_fields must
-    both go through extract_pct_change -- not two independently-maintained copies of the
-    same netPercentChange/netChange formula (an independent review found the formula
-    duplicated across both files before this test existed)."""
+def test_extract_pct_change_is_the_one_parser_in_the_tree(repo_index):
+    """market_context.extract_pct_change is the ONE netPercentChange parser -- not two
+    independently-maintained copies of the same formula (an independent review once found it
+    duplicated across market_context.py and server.py). market_context._extract_quote calls
+    it, and no other production module reads the field itself. (server.py's REST quote parser
+    that also called it was deleted with the REST quote poll.) Sourced from the shared
+    `repo_index` corpus (the one current-tree observation)."""
     import inspect
-    import server as srv
 
     assert "extract_pct_change" in inspect.getsource(mc._extract_quote)
-    assert "extract_pct_change" in inspect.getsource(srv._parse_quote_node_session_fields)
+    corpus = {rel.as_posix(): text for rel, text, _tree in repo_index.items()}
+    assert corpus, "the repo index is empty -- the scan would pass by not looking"
+    readers = sorted(
+        f for f, text in corpus.items()
+        if not f.startswith(("tests/", "governance/")) and f != "tools/check_vendor_field_coercion.py"
+        and "netPercentChange" in text)
+    assert readers == ["market_context.py"], f"a second netPercentChange parser: {readers}"
 
 
 def test_last_traded_price_is_a_finite_positive_last_price_or_none():

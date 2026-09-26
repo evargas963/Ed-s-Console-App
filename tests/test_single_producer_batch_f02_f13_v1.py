@@ -18,7 +18,6 @@ TURN_AUDIT_OWNS = [
     "static/chart.html",
     "time_et.py",
     "server.py",
-    "polling_adapter.py",
     "news_sentiment.py",
     "liquidity_value_engine.py",
     "compare_clustering_modes.py",
@@ -339,8 +338,6 @@ def test_rc345_rth_clock_boundary_has_one_authority() -> None:
     am = _read("audit_model_readiness.py")
     assert "from time_et import" in am and "RTH_START_MINS" in am
     assert ">= 570" not in am
-    poll = _read("polling_adapter.py")
-    assert "RTH_END_MINS" in poll and "time(16, 0)" not in poll
     a2e = _read("v2_decision/a2_eod_force_exit.py")
     assert "RTH_OPEN_MINUTE_TOTAL = RTH_START_MINS" in a2e
     assert "9 * 60 + 30" not in a2e and "16 * 60" not in a2e
@@ -947,18 +944,21 @@ def test_rc345_dominant_direction_one_argmax_authority() -> None:
 def test_rc345_higher_tf_ohlc_one_feature_synthesizer() -> None:
     """F27: the batch 1m->N-minute OHLC synthesis used for FEATURES has one authority,
     signal_layer_v1._aggregate_bars (both the 5m and the 15m multi-timeframe features flow
-    through it). The live _CandleAccumulator is a DISTINCT methodology (streaming tick
-    accumulation for display/context), a different population and consumer — not a second
-    synthesizer of the feature-path bars."""
+    through it). The server's display/context rollup (server.aggregate_bars over the streamed
+    price_bars_1m) is a DISTINCT consumer — a different population — and is itself ONE
+    synthesizer: _bars_5m and the chart's /api/bars1m timeframes both roll up through it."""
     sl = _read("features/signal_layer_v1.py")
     assert sl.count("def _aggregate_bars(") == 1, (
         "one batch higher-timeframe OHLC synthesizer for features (F27/RC-345)")
     assert "_aggregate_bars(tail5, 5)" in sl and "_aggregate_bars(tail15, 15)" in sl, (
         "both 5m and 15m features must flow through the one synthesizer (F27/RC-345)")
-    # the live accumulator is a separate, explicitly-different source (bar_seconds config)
+    # the server's display rollup has one synthesizer of its own, fed by price_bars_1m
     srv = _read("server.py")
-    assert "_CandleAccumulator(bar_seconds=CANDLE_5M_SECONDS" in srv, (
-        "the live 5m accumulator is a distinct streaming source, not a feature synthesizer")
+    assert srv.count("def aggregate_bars(") == 1, "one server-side 1m->N-minute rollup"
+    i = srv.index("def _bars_5m(")
+    assert 'aggregate_bars([_bar_dict(c) for c in _bars_1m(' in srv[i:i + 600], (
+        "the server's 5m bars must roll up from price_bars_1m through aggregate_bars")
+    assert "_CandleAccumulator" not in srv, "a second, tick-accumulated bar source reappeared"
 
 
 # ------------------------------------------------------------------- F23 negative-spread withhold

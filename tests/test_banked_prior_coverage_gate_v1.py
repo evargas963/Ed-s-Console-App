@@ -1,6 +1,7 @@
 # institutional-synthetic-ok: a crafted thin prior-session tape proves the banked coverage stamp fires.
-"""Audit round 2 (2026-08-25) — the banked prior-session tape carries the same coverage
-honesty as the accumulator path.
+"""Audit round 2 (2026-08-25) — the prior-session tape in price_bars_1m carries coverage
+honesty. (Since the bars-from-the-stream change, price_bars_1m -- written only from Schwab's
+streamed 1-minute bars -- is the ONE bar source, so this stamp now guards every level read.)
 
 WHAT WAS MEASURED: the >=LEVELS_PRIOR_SESSION_MIN_BARS floor existed only on the
 accumulator path (t12/RC-227), while the banked fallback fires precisely WHEN coverage
@@ -54,13 +55,14 @@ def test_thin_banked_prior_session_is_stamped_degraded(tmp_path, monkeypatch):
     class _StubDB:
         db_path = str(dbp)
 
-    monkeypatch.setattr(server, "_liquidity_live_1m_overlay_bars", lambda tk: [])
+    monkeypatch.setattr(server._lpr, "forming_bar", lambda tk: None)   # no forming minute
     monkeypatch.setattr(server, "get_db", lambda: _StubDB())
     bars, source, degraded = server._canonical_price_level_bars("THIN", session_date)
-    assert source == "banked_price_bars_1m"
+    assert source == "price_bars_1m"
     assert bars, "the thin tape still serves — the defect was silence, not existence"
     stamps = [d for d in degraded if d.get("family") == "prior_day"]
-    assert stamps and "banked prior session" in stamps[0]["reason"], degraded
+    assert stamps and "prior session 2026-08-21" in stamps[0]["reason"], degraded
+    assert "partial tape" in stamps[0]["reason"], stamps
     assert "180" in stamps[0]["reason"], stamps
 
 
@@ -74,8 +76,9 @@ def test_full_banked_prior_session_carries_no_stamp(tmp_path, monkeypatch):
     class _StubDB:
         db_path = str(dbp)
 
-    monkeypatch.setattr(server, "_liquidity_live_1m_overlay_bars", lambda tk: [])
+    monkeypatch.setattr(server._lpr, "forming_bar", lambda tk: None)   # no forming minute
     monkeypatch.setattr(server, "get_db", lambda: _StubDB())
     _bars, source, degraded = server._canonical_price_level_bars("FULL", session_date)
-    assert source == "banked_price_bars_1m"
+    assert source == "price_bars_1m"
+    assert len(_bars) == 390
     assert [d for d in degraded if d.get("family") == "prior_day"] == []

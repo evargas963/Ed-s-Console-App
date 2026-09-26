@@ -1218,19 +1218,18 @@ def test_fix_b_tail_never_touches_state_cache():
 
 
 def test_step1_log_only_inline_source_lock():
-    """log_only joins the shutdown inline path for chain/quote and gets a
-    sequential inline arm for candle seeds; operator-facing submits remain."""
+    """log_only joins the shutdown inline path for chain/quote; the operator-facing
+    submit remains. Bars are no longer seeded per request (price_bars_1m is written
+    only from the streamed bars), so the chain/quote leg is the only nested leaf."""
     src = _fetch_state_source()
-    assert "if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):" in src
-    i_inline_seed = src.index("if _log_only_inline_leaf_fetches(log_only):", src.index("def _seed_candles"))
+    i_inline_cq = src.index("if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):")
     # Step 2 rebinds the pooled arm to the dedicated leaf pool; the Step 1
     # invariant (inline arm precedes the pooled arm) is pool-independent.
-    i_pool_seed = src.index("_seed_pool = (")
-    assert i_inline_seed < i_pool_seed, "inline seed arm must precede the pooled arm"
-    # Operator-facing bounded parallelism intact (submits still present).
-    assert "_cq_pool.submit(" in src or "_chain_fut = _cq_pool.submit(" in src
-    assert "_f5 = _seed_pool.submit(_seed_candles, 5)" in src
-    assert "_f1 = _seed_pool.submit(_seed_candles, 1)" in src
+    i_pool_cq = src.index("_cq_pool = (")
+    assert i_inline_cq < i_pool_cq, "inline chain/quote arm must precede the pooled arm"
+    # Operator-facing bounded parallelism intact (submit still present).
+    assert "_chain_fut = _cq_pool.submit(" in src
+    assert "_seed_candles" not in src and "_seed_pool" not in src
 
 
 def test_step1_discriminator_universal_by_signature():
@@ -1298,11 +1297,12 @@ def test_step2_leaf_executor_referenced_only_in_fetch_state_leaf_blocks():
     # Call sites only (the bare substring also matches the def line).
     # UI_05 residual: both sites are now conditional expressions selecting the
     # priority lane vs the shared leaf pool.
-    assert src.count("else _get_recompute_leaf_executor()") == 2  # chain/quote + seeds
+    # the candle-seed leg was deleted with the per-request seeding: chain/quote only
+    assert src.count("else _get_recompute_leaf_executor()") == 1  # chain/quote
 
 
 def test_step2_leaf_functions_have_no_nested_submit():
-    """AST leaf lock: leaf functions, schwab_client, and accumulator methods
+    """AST leaf lock: leaf functions, schwab_client, and the price_bars_1m readers
     contain no .submit() anywhere — the nested-submit deadlock class cannot form."""
     import ast
     from pathlib import Path
@@ -1324,7 +1324,7 @@ def test_step2_leaf_functions_have_no_nested_submit():
 
     assert submit_sites(root / "server.py",
                         {"_gated_safe_get_chain", "_safe_get_quote_with_retry",
-                         "_seed_candles", "seed", "tick", "get_bars", "grid_stale"}) == []
+                         "_read_bars_1m", "_bars_1m", "_bars_5m"}) == []
     assert submit_sites(root / "schwab_client.py") == []
 
 
@@ -1357,29 +1357,28 @@ def test_step2_concurrent_recomputes_do_not_deadlock():
 
 
 def test_step2_nested_submit_sites_use_leaf_pool_not_route_pool():
-    """Source lock: both nested-submit sites bind the leaf pool; the route pool
-    is no longer referenced by either block."""
+    """Source lock: the nested-submit site binds the leaf pool; the route pool
+    is not referenced by it."""
     src = _fetch_state_source()
-    # UI_05 residual: both leaf sites select the bounded PRIORITY leaf lane
-    # for operator-priority recomputes and the shared leaf pool otherwise —
-    # the route pool stays banned at both sites.
-    assert src.count("if _chain_priority") >= 2
-    assert src.count("else _get_recompute_leaf_executor()") == 2
-    assert src.count("_get_priority_leaf_executor()") >= 2
+    # UI_05 residual: the leaf site selects the bounded PRIORITY leaf lane for
+    # operator-priority recomputes and the shared leaf pool otherwise — the route
+    # pool stays banned. The candle-seed site was deleted with per-request seeding,
+    # leaving the chain/quote site as the only one.
+    assert src.count("if _chain_priority") >= 1
+    assert src.count("else _get_recompute_leaf_executor()") == 1
+    assert src.count("_get_priority_leaf_executor()") >= 1
     assert "_cq_pool = _get_route_offload_executor()" not in src
-    assert "_seed_pool = _get_route_offload_executor()" not in src
+    assert "_seed_pool" not in src
 
 
 def test_step2_log_only_uses_neither_pool_for_nested_work():
-    """Step 1 preserved: the inline arms precede both submit blocks, so log_only
+    """Step 1 preserved: the inline arm precedes the submit block, so log_only
     reaches neither the route pool nor the leaf pool for nested work."""
     src = _fetch_state_source()
     i_inline_cq = src.index("if _analytics_bg_shutdown or _log_only_inline_leaf_fetches(log_only):")
     i_pool_cq = src.index("_cq_pool = (")
-    i_inline_seed = src.index("if _log_only_inline_leaf_fetches(log_only):", src.index("def _seed_candles"))
-    i_pool_seed = src.index("_seed_pool = (")
     assert i_inline_cq < i_pool_cq
-    assert i_inline_seed < i_pool_seed
+    assert "_seed_pool" not in src
 
 
 def test_step2_shutdown_order_and_inline_branch():
@@ -1857,15 +1856,14 @@ def test_ui05r_priority_leaf_pool_bounded_and_separate():
 
 
 def test_ui05r_leaf_pool_selection_source_lock():
-    """Chain/quote and seed legs select the priority lane exactly when the
-    recompute is operator-priority (the _chain_priority classifier)."""
+    """The chain/quote leg selects the priority lane exactly when the recompute is
+    operator-priority (the _chain_priority classifier). (The seed leg was deleted
+    with per-request bar seeding.)"""
     src = _fetch_state_source()
     i_cq = src.index("_cq_pool = (")
     assert "_get_priority_leaf_executor()" in src[i_cq:i_cq + 200]
+    assert "if _chain_priority" in src[i_cq:i_cq + 200]
     assert "else _get_recompute_leaf_executor()" in src[i_cq:i_cq + 260]
-    i_seed = src.index("_seed_pool = (")
-    assert "_get_priority_leaf_executor()" in src[i_seed:i_seed + 220]
-    assert "else _get_recompute_leaf_executor()" in src[i_seed:i_seed + 280]
 
 
 def test_ui05r_priority_leaf_teardown_present():

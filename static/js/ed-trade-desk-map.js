@@ -174,7 +174,7 @@
         $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + bare(tk) + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
           : 'No bars for ' + bare(tk) + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
         paintChartOverlays(); paintQueue();
-        var src = $('tdmBarsSrc'); if (src) src.textContent = (d && d.source) === 'live_accumulator_unbanked' ? 'live accumulator (not banked)' : 'banked 1m bars';
+        var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
       } else if (bars.length) {
         S.chart.updateTail(bars.slice(-2));
       }
