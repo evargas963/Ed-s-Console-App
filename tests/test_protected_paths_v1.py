@@ -11,11 +11,12 @@ Both were "just a test". Both destroyed 27,215 MB. Restored twice from
 backups/db/20260806_203509_ed_console.db (28,675,186,688 bytes, quick_check ok),
 losing ~28,150 bars captured after the 15:35 backup.
 
-WHY AN ACL IS NOT ENOUGH. The account OWNS the file and a Windows owner can
-always rewrite the DACL. Measured: a canary file inside data/ deleted cleanly
-with both file-level and directory-level Deny:Delete rules in place. A
-file-level ACL now exists as defence in depth, but the binding lock has to sit
-in the agent channel, because that is the layer that failed.
+THE OS LAYER (measured 2026-09-26). The live database files carry a deny-delete
+on the file plus a deny-delete-contents on the data/ folder. A canary in the
+real data/ folder with the same protection refused delete and rename; an
+unprotected file there stayed deletable (the database engine's own temporary
+files need that). This guard stops an attempt early, judged on what the
+command RUNS, not on text that mentions these folders.
 
 WHY THE EXISTING GUARD MISSED IT. `_DESTRUCTIVE_GIT` refused `git checkout --`
 in the same session, so the guard was awake. It encodes "destructive means
@@ -133,3 +134,35 @@ def test_protected_trees_are_the_gitignored_ones():
 def test_empty_and_none_commands_do_not_crash():
     assert not G._protected_path_violation("")
     assert not G._protected_path_violation(None)  # type: ignore[arg-type]
+
+
+
+@pytest.mark.parametrize("cmd", [
+    # text written into a file is content, not a command
+    f"cat > plan.md <<'EOF'\nMove {D}, logs/ and the token out of the checkout.\nEOF\nrm plan.md",
+    f"cat > notes.md <<'EOF'\nrm -f {D}ed_console.db destroyed it twice\nEOF",
+    # a Python string that only mentions a protected path
+    f"python - <<'EOF'\nprint('never delete {D}ed_console.db')\nEOF",
+    # adding protection is not removing it
+    f"icacls {D}ed_console.db /deny \"evarg:(DE)\"",
+    # deleting a temp file whose path shares no protected segment
+    "rm ../ap.md",
+])
+def test_text_that_only_mentions_a_protected_path_passes(cmd):
+    """The rule judges what runs: prose, file content and protection pass untouched."""
+    assert not G._protected_path_violation(cmd), f"wrongly blocked: {cmd}"
+
+
+@pytest.mark.parametrize("cmd", [
+    f"python - <<'EOF'\nimport shutil\nshutil.rmtree('{M}active')\nEOF",
+    f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').unlink()\nEOF",
+    f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').write_bytes(b'')\nEOF",
+    f"python - <<'EOF'\nopen('{D}ed_console.db', 'w').close()\nEOF",
+    f"bash <<'EOF'\nrm -f {D}stream_capture.db\nEOF",
+    f"icacls {D}ed_console.db /remove:d evarg",
+    f"icacls C:/repo/{D} /reset",
+    f"cd /c/repo && rm -rf {B}db",
+])
+def test_code_that_would_destroy_or_unprotect_is_refused(cmd):
+    """Python run from a heredoc, a shell heredoc, and removing the OS protection all block."""
+    assert G._protected_path_violation(cmd), f"NOT blocked: {cmd}"
