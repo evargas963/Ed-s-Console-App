@@ -125,6 +125,7 @@
       '<div class="tvc-plot"></div>' +
       '<div class="tvc-legend"></div>' +
       '<div class="tvc-pin" hidden></div>' +
+      '<div class="tvc-edge tvc-edge-top"></div><div class="tvc-edge tvc-edge-bot"></div>' +
       '<div class="tvc-ctl">' +
         '<button type="button" class="tvc-btn tvc-latest" title="Scroll to the latest bar" hidden>&#187;</button>' +
         '<button type="button" class="tvc-btn tvc-auto on" title="Auto-fit price (A)">A</button>' +
@@ -156,6 +157,9 @@
     });
     var candles = chart.addSeries(LWC.CandlestickSeries, { upColor: P.up, downColor: P.down,
       wickUpColor: P.up, wickDownColor: P.down, borderVisible: false, priceLineVisible: true });
+    // line mode: the closes as one line; the candles stay (transparent) so price lines keep their series
+    var closeLine = chart.addSeries(LWC.LineSeries, { color: P.accent, lineWidth: 2, visible: false,
+      lastValueVisible: false, priceLineVisible: false });
     var volume = chart.addSeries(LWC.HistogramSeries, { priceScaleId: 'vol', priceFormat: { type: 'volume' },
       lastValueVisible: false, priceLineVisible: false });
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
@@ -171,7 +175,7 @@
     var markers = LWC.createSeriesMarkers(candles, []);
 
     var S = { bars: [], tf: '5', symbol: '', levels: [], priceLines: [], nearestN: opts.nearestN || 6,
-      pinned: null, tool: 'cursor', hlines: [], drawKey: null, markerMeta: {}, onMarkerClick: null };
+      pinned: null, tool: 'cursor', style: 'candles', hlines: [], drawKey: null, markerMeta: {}, onMarkerClick: null };
 
     // ---- time <-> logical (bars are sorted, time = bar start in epoch seconds) ----
     function barIndexAt(t) {
@@ -352,6 +356,13 @@
       var lo = Math.min(top, bot), hi = Math.max(top, bot);
       // the levels arrive nearest-first (served); keep the first N inside the visible range
       var pick = S.levels.filter(function (l) { return l.price >= lo && l.price <= hi; }).slice(0, S.nearestN);
+      // levels beyond the visible range, pinned at the edge (served order: nearest first)
+      function edge(sel, list, arrow) {
+        host.querySelector(sel).innerHTML = list.slice(0, 3).map(function (l) {
+          return '<span style="color:' + (l.color || P.ink3) + '">' + arrow + ' ' + esc(l.label || '') + ' ' + l.price.toFixed(2) + '</span>'; }).join('');
+      }
+      edge('.tvc-edge-top', S.levels.filter(function (l) { return l.price > hi; }), '&#9650;');
+      edge('.tvc-edge-bot', S.levels.filter(function (l) { return l.price < lo; }), '&#9660;');
       pick.forEach(function (l) {
         S.priceLines.push(candles.createPriceLine({ price: l.price, color: l.color || P.ink3, lineWidth: l.width || 1,
           lineStyle: l.style == null ? 2 : l.style, axisLabelVisible: true, title: l.label || '' }));
@@ -379,7 +390,7 @@
       chart.applyOptions({ layout: { background: { type: 'solid', color: P.bg }, textColor: P.text },
         grid: { vertLines: { color: P.grid }, horzLines: { color: P.grid } },
         rightPriceScale: { borderColor: P.edge }, timeScale: { borderColor: P.edge } });
-      candles.applyOptions({ upColor: P.up, downColor: P.down, wickUpColor: P.up, wickDownColor: P.down });
+      paintStyle();
       vwapLine.applyOptions({ color: P.warn });
       bandLines.forEach(function (s) { s.applyOptions({ color: alpha(P.warn, 0.45) }); });
       draw.color = P.accent2; draw.redraw();
@@ -387,6 +398,12 @@
       paintLevels(true);
     }
     document.addEventListener('ed:theme', applyTheme);
+    function paintStyle() {
+      var line = S.style === 'line', none = 'rgba(0,0,0,0)';
+      candles.applyOptions({ upColor: line ? none : P.up, downColor: line ? none : P.down,
+        wickUpColor: line ? none : P.up, wickDownColor: line ? none : P.down });
+      closeLine.applyOptions({ visible: line, color: P.accent });
+    }
 
     var api = {
       chart: chart, candles: candles, palette: function () { return P; },
@@ -397,6 +414,7 @@
         S.bars = (bars || []).map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, forming: !!b.forming }; });
         S.tf = tf; S.symbol = symbol;
         candles.setData(S.bars.map(function (b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }; }));
+        closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
         api.setVolume(S.bars);
         if (changed) {
           S.pinned = null; paintPin();
@@ -422,6 +440,7 @@
           } else if (b.t === lastT) S.bars[S.bars.length - 1] = b;
           else { S.bars.push(b); lastT = b.t; }
           candles.update({ time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }, b.t < S.bars[S.bars.length - 1].t);
+          closeLine.update({ time: b.t, value: b.c }, b.t < S.bars[S.bars.length - 1].t);
           volume.update(api._volPoint(b), b.t < S.bars[S.bars.length - 1].t);
         });
         paintLegend(); if (S.pinned) paintPin(); syncButtons(); scheduleLevels();
@@ -439,6 +458,7 @@
         vwapLine.setData(out[0]);
         bandLines.forEach(function (s, k) { s.setData(out[k + 1]); });
       },
+      setStyle: function (style) { S.style = style === 'line' ? 'line' : 'candles'; paintStyle(); },
       setValueArea: function (val, vah) { band.set(val, vah, alpha(P.accent, 0.09)); },
       // the walls' served gamma value areas ({lo, hi} or null)
       setWallBands: function (call, put) {

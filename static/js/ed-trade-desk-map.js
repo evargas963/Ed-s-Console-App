@@ -14,15 +14,15 @@
 (function () {
   'use strict';
 
-  var TFS = [{ id: '1', lbl: '1m' }, { id: '5', lbl: '5m' }, { id: '15', lbl: '15m' },
+  var TFS = [{ id: '1', lbl: '1m' }, { id: '3', lbl: '3m' }, { id: '5', lbl: '5m' }, { id: '15', lbl: '15m' },
     { id: '30', lbl: '30m' }, { id: '60', lbl: '1h' }, { id: 'D', lbl: 'D' }];
   // 1m rows fetched per timeframe (the server rolls them up), and the tail re-read on each tick:
   // two whole buckets, so the bar before the forming one is always complete.
-  var FULL_LIMIT = { '1': 1200, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
-  var TAIL_LIMIT = { '1': 5, '5': 15, '15': 35, '30': 65, '60': 125, 'D': 2000 };
+  var FULL_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
+  var TAIL_LIMIT = { '1': 5, '3': 9, '5': 15, '15': 35, '30': 65, '60': 125, 'D': 2000 };
   // The ONE global timeframe also sets how far back the queue and the event markers reach.
   // the event window per timeframe is the server's (DESK_LOOKBACK_SEC); these are its words only
-  var LOOKBACK = { '1': { lbl: 'last 15 min' }, '5': { lbl: 'last 1 h' }, '15': { lbl: 'last 4 h' },
+  var LOOKBACK = { '1': { lbl: 'last 15 min' }, '3': { lbl: 'last 30 min' }, '5': { lbl: 'last 1 h' }, '15': { lbl: 'last 4 h' },
     '30': { lbl: 'this session' }, '60': { lbl: 'last 2 days' }, 'D': { lbl: 'last 20 days' } };
   var FAMILIES = [
     { id: 'value_area', lbl: 'Value area' }, { id: 'vwap', lbl: 'VWAP' }, { id: 'gamma', lbl: 'Gamma' },
@@ -80,6 +80,7 @@
     tf: sget('ed.desk.tf', '5'), nearest: Number(sget('ed.desk.nearest', '6')) || 6,
     fam: (function () { try { return JSON.parse(sget('ed.desk.fam', 'null')) || null; } catch (e) { return null; } })() ||
       { value_area: 1, vwap: 1, gamma: 1, expected_move: 1, prior_day: 1, opening_range: 1, overnight: 1 },
+    style: sget('ed.desk.style', 'candles'),
     ticker: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
     analytics: null, liq: null, quotes: {}, lastTail: 0, tailBusy: false, queue: [], sel: null
   };
@@ -91,6 +92,8 @@
     tb.innerHTML =
       '<div class="tdm-tfs">' + TFS.map(function (t) {
         return '<button type="button" class="tdm-tb" data-tf="' + t.id + '">' + t.lbl + '</button>'; }).join('') + '</div>' +
+      '<span class="tdm-sep"></span>' +
+      '<button type="button" class="tdm-tb" data-act="style" id="tdmStyle" title="Candles or line">Line</button>' +
       '<span class="tdm-sep"></span>' +
       '<button type="button" class="tdm-tb tdm-tool on" data-tool="cursor" title="Crosshair (Esc)">&#10010;</button>' +
       '<button type="button" class="tdm-tb tdm-tool" data-tool="hline" title="Horizontal line (Alt+H)">&#8212;</button>' +
@@ -116,6 +119,7 @@
       else if (a === 'reset') S.chart.resetAll();
       else if (a === 'shot') S.chart.screenshot();
       else if (a === 'full') S.chart.fullscreen();
+      else if (a === 'style') { S.style = S.style === 'line' ? 'candles' : 'line'; sset('ed.desk.style', S.style); paintStyle(); }
     });
     $('tdmNearest').addEventListener('change', function (e) {
       S.nearest = Number(e.target.value) || 6; sset('ed.desk.nearest', String(S.nearest));
@@ -129,7 +133,7 @@
       var id = b.getAttribute('data-fam'); S.fam[id] = S.fam[id] === 0 ? 1 : 0;   // a family not yet saved is on
       sset('ed.desk.fam', JSON.stringify(S.fam)); paintFamilies(); paintChartLevels();
     });
-    paintFamilies(); paintTfButtons();
+    paintFamilies(); paintTfButtons(); paintStyle();
   }
   function paintFamilies() {
     document.querySelectorAll('#tdmFamilies [data-fam]').forEach(function (b) {
@@ -146,6 +150,7 @@
     S.chart = window.EdTvChart.create($('tdmChart'), { nearestN: S.nearest, fullscreenEl: $('tdmMap'),
       onTool: function (t) { document.querySelectorAll('#tdmToolbar [data-tool]').forEach(function (b) {
         b.classList.toggle('on', b.getAttribute('data-tool') === t); }); } });
+    paintStyle();
     document.querySelectorAll('[data-drill]').forEach(function (el) {
       el.addEventListener('click', function () {
         var d = DRILL[el.getAttribute('data-drill')]; if (!d || !window.EdShell) return;
@@ -220,6 +225,10 @@
       out.push({ id: l.id, price: Number(l.price), label: SHORT[l.id] || l.label || l.id, color: s[0], style: s[1], width: s[2] });
     });
     return out;
+  }
+  function paintStyle() {
+    if (S.chart) S.chart.setStyle(S.style);
+    var b = $('tdmStyle'); if (b) { b.classList.toggle('on', S.style === 'line'); }
   }
   function paintChartLevels() {
     if (!S.chart) return;

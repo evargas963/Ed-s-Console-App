@@ -92,4 +92,31 @@ test.describe('Trade Desk renders served values', () => {
     await expect(body).toContainText('inside the wall range');
     expect(errs).toEqual([]);
   });
+
+  test('Market Map: 3m, line mode, and a level beyond the visible range pinned at the edge', async ({ page }) => {
+    const errs = watchErrors(page);
+    const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', near_spot: false };
+    const wall = { id: 'call_wall', price: 772, family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, side: 'ABOVE', near_spot: false };
+    await page.route('**/api/**', (route) => {
+      const url = route.request().url();
+      let body = { available: false };
+      if (url.includes('/api/desk/events')) body = EVENTS;
+      else if (url.includes('/api/terrain/strikes')) body = STRIKES;
+      else if (url.includes('/api/terrain')) body = Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL' });
+      else if (url.includes('/api/levels')) body = Object.assign({}, LEVELS, { levels: LEVELS.levels.concat([wall, far]),
+        by_distance: ['call_wall', 'max_pain', 'PDH', 'grc'] });
+      else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
+      else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
+      else if (url.includes('/api/bars1m')) body = BARS;
+      else if (url.includes('/api/session')) body = { session_label: 'RTH' };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText('3m');
+    await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('GRC 837.58');
+    await page.locator('#tdmStyle').click();
+    await expect(page.locator('#tdmStyle')).toHaveClass(/on/);
+    expect(errs).toEqual([]);
+  });
 });
