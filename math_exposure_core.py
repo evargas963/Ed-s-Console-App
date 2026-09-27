@@ -21,23 +21,23 @@ MISSING_GREEK_SENTINEL: float = -999.0
 
 
 def schwab_iv_to_sigma(iv: float | None) -> float | None:
-    """The ONE conversion from Schwab's `volatility` field to a decimal sigma.
+    """The ONE conversion from Schwab's `volatility` field (a PERCENT) to a decimal sigma.
 
-    Schwab reports implied volatility in PERCENT. Verified 2026-07-19 on 1,600 contract
-    greeks from the 40 most recent chain snapshots: min 23.7550, median 50.4315, max
-    174.2260 — 1,600 of 1,600 above 3.0, none at or below it.
-
-    The `> 3.0` test is a defensive guard against a silent vendor unit change (a 300%
-    IV is possible but vanishingly rare; a 3.0 decimal sigma is not). It is kept because
-    a units flip would otherwise corrupt every gamma silently rather than loudly.
-
-    This existed as two different inline expressions — `iv / 100.0` unconditionally in
-    compute_net_charm and the guarded form in math_levels._contract_inputs — i.e. two
-    modules encoding different assumptions about one vendor field. One definition now.
-    """
+    MEASURED 2026-09-27 on 49,244 contracts across the 43-ticker board: min 7.967, median 51.0,
+    max 4,256.8 -- every value a percent. One fixed conversion; the old "> 3.0 means percent"
+    guess would have read a real 2.5% IV as 250%. Zero or less is not a volatility."""
     if iv is None or iv <= 0:
         return None
-    return iv / 100.0 if iv > 3.0 else iv
+    return iv / 100.0
+
+
+def book_net_gex(exposures: dict) -> float | None:
+    """Net dealer GEX per 1% move at spot: the sum of every strike's net_gex_1pct -- Schwab's
+    gamma as sent, +call/-put. The one gamma at spot (regime, headline, pin gate). None when no
+    strike carried a valid gamma."""
+    vals = [b["net_gex_1pct"] for b in exposures.values()
+            if isinstance(b, dict) and b.get("has_valid_gamma") and b.get("net_gex_1pct") is not None]
+    return sum(vals) if vals else None
 
 
 def vendor_greeks_unavailable(iv: float | None) -> bool:
@@ -429,6 +429,7 @@ _STREAMED_GREEK_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("delta", "delta", "delta_ts_recv"),
     ("open_interest", "openInterest", "open_interest_ts_recv"),
     ("total_volume", "totalVolume", "total_volume_ts_recv"),
+    ("volatility", "volatility", "volatility_ts_recv"),
 )
 
 

@@ -127,13 +127,9 @@ def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path(pin_clock):
 
 
 def test_vanna_uses_the_single_iv_conversion_authority_f7():
-    """Cursor-audit F7: the per-strike vanna must convert Schwab IV through schwab_iv_to_sigma
-    (the ONE authority, which keeps a value already <=3.0 as-is), NOT an inline _iv/100.0 that
-    divides unconditionally. Proof: two contracts identical except IV expressed as PERCENT (20.0)
-    vs DECIMAL (0.20) must yield the SAME vanna — the authority maps both to sigma 0.20. Under the
-    retired inline /100 they'd differ (0.20 vs 0.002), the exact silent-corruption a vendor units
-    flip would cause (and which charm/levels already guard against by routing through the same
-    authority)."""
+    """The per-strike vanna converts Schwab IV through schwab_iv_to_sigma, the ONE authority:
+    Schwab's volatility is a PERCENT (measured 2026-09-27 on 49,244 contracts, min 7.967), so
+    20.0 is sigma 0.20 -- equal to bs_vanna at sigma 0.20 -- and 0.20 is 0.2%, not 20%."""
     from math_exposure_core import compute_exposures_by_strike
 
     def one(iv):
@@ -144,16 +140,18 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
                 "daysToExpiration": 30, "vega": 0.11, "bidSize": 1, "askSize": 1,
                 "totalVolume": 10, "putCall": "CALL"}
 
+    from math_exposure_core import schwab_iv_to_sigma
+    from math_levels import bs_vanna
+    from time_et import time_to_expiry_years
     per_pct, _ = compute_exposures_by_strike([one(20.0)], spot=98.0)
-    per_dec, _ = compute_exposures_by_strike([one(0.20)], spot=98.0)
     v_pct = per_pct[100.0]["call_vanna"]
-    v_dec = per_dec[100.0]["call_vanna"]
     assert v_pct not in (None, 0.0), "percent-form vanna did not compute"
+    assert schwab_iv_to_sigma(20.0) == 0.20 and schwab_iv_to_sigma(0.20) == 0.002
+    v_dec = bs_vanna(98.0, 100.0, time_to_expiry_years("2030-01-18"), 0.20) * 100 * 100
     # RELATIVE tolerance: these aggregates are ~1e3-1e4, where one float ULP is ~1e-12 relative but
     # ~1e-9 ABSOLUTE — an absolute 1e-9 bound is tighter than the arithmetic can hold and failed on
     # CI's platform while passing locally (got 4731.665262145597 vs 4731.665262144535). The claim
     # under test is "the same sigma", i.e. equality to floating-point precision, which is a relative
     # statement; an inline /100 would differ by a FACTOR OF 100, not by 1e-12.
     assert math.isclose(v_pct, v_dec, rel_tol=1e-9), (
-        f"IV conversion authority should map 20.0% and 0.20 to the same sigma; got {v_pct} vs "
-        f"{v_dec} — an inline /100 would have divided the decimal form again")
+        f"vanna at IV 20.0 must be bs_vanna at sigma 0.20; got {v_pct} vs {v_dec}")

@@ -27,6 +27,7 @@ from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from math_exposure_core import (
+    book_net_gex,
     compute_net_dex_dollars,
     compute_net_vanna,
     compute_zero_dte_gamma_share,
@@ -632,6 +633,15 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     profile = compute_gamma_profile(contracts, spot, now=_terrain_now, parsed=parsed)
     flip, confidence, flip_diag = compute_gamma_flip_v2(
         contracts, spot, now=_terrain_now, profile=profile)
+    # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma).
+    # The model curve places the flip only (Schwab sends gamma at its own price, never at
+    # other prices); where the curve's sign at spot disagrees with Schwab's, the flip says so.
+    _curve_at_spot = flip_diag.get("gamma_at_spot")
+    _gamma_at_spot = book_net_gex(exposures)
+    flip_diag = {**flip_diag, "gamma_at_spot": _gamma_at_spot, "curve_gamma_at_spot": _curve_at_spot,
+                 "curve_agrees_with_schwab_at_spot": (
+                     None if _gamma_at_spot is None or _curve_at_spot is None
+                     else (_gamma_at_spot > 0) == (_curve_at_spot > 0))}
     # RC-354: GSF/GRC from the SAME materialized profile — no second materialization.
     # Snap-to-shelf deliberately deferred until strike-GEX history is banked (theta wants a
     # trailing-60-session percentile; a session-local stand-in would be a fake calibration).
@@ -671,6 +681,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         put_wall=put_wall, call_wall=call_wall,
         gamma_at_spot=flip_diag.get("gamma_at_spot"),
         ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
+        flip_curve_agrees=flip_diag.get("curve_agrees_with_schwab_at_spot"),
     )
 
     return TerrainSnapshot(

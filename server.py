@@ -171,7 +171,6 @@ from schwab_client import (
     SchwabAuthError,
 )
 from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
-from math_levels import gamma_at_price
 from market_context import (
     market_context_panel_symbols_excluding_core,
 )
@@ -3705,11 +3704,11 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     out["call_wall_state"] = wall_geometry_state(spot, payload.get("call_wall"), "call")
     out["put_wall_state"] = wall_geometry_state(spot, payload.get("put_wall"), "put")
 
-    profile = _terrain_profile_cache.get(ticker_storage_key(ticker))  # RC-345/F25: read key matches canonical write (tk)
-    if not profile:
-        return out                      # levels stand; regime left as cached
-
-    fresh_gamma = gamma_at_price(profile, spot)
+    # gamma at the live spot: Schwab's gamma as published (the walls' own), carried to the live
+    # price by the dollar-GEX scale S^2 -- the one gamma source, never the model curve
+    pub, pub_spot = payload.get("net_gex_at_spot"), payload.get("spot")
+    fresh_gamma = (float(pub) * (float(spot) / float(pub_spot)) ** 2
+                   if pub is not None and pub_spot else None)
     read = build_terrain_read(
         spot=spot,
         flip=payload.get("gamma_flip"),
@@ -3718,6 +3717,7 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
         call_wall=payload.get("call_wall"),
         gamma_at_spot=fresh_gamma,
         ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
+        flip_curve_agrees=(payload.get("flip_diag") or {}).get("curve_agrees_with_schwab_at_spot"),
     )
     out["regime"] = read.regime
     out["posture"] = read.posture

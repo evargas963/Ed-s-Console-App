@@ -60,6 +60,12 @@ POSTURE_STAND_ASIDE = "STAND_ASIDE"
 EDGE_PROXIMITY_PCT = 0.004
 
 
+#: the one wording, shown whenever the flip's modelled curve and Schwab's gamma disagree on the
+#: sign at today's price (the flip is placed by the curve; the regime is Schwab's gamma)
+FLIP_CURVE_DISAGREES = ("The gamma flip is placed by a modelled curve that disagrees with Schwab's "
+                        "gamma at today's price.")
+
+
 @dataclass(frozen=True)
 class TerrainRead:
     """Structured, renderable terrain read. `lines` is ordered for display."""
@@ -158,6 +164,7 @@ def build_terrain_read(
     call_wall: float | None = None,
     gamma_at_spot: float | None = None,
     ticker: str | None = None,
+    flip_curve_agrees: bool | None = None,
 ) -> TerrainRead:
     """Deterministic terrain read. Fail-closed on missing spot, or on coverage below the
     conservative floor at which this repo declines to speak at all (NARROW / UNAVAILABLE).
@@ -253,6 +260,8 @@ def build_terrain_read(
         _position_line(spot, put_wall, call_wall),
         action,
     ]
+    if flip_curve_agrees is False:
+        lines.append(FLIP_CURVE_DISAGREES)
     return TerrainRead(
         regime=regime,
         posture=posture,
