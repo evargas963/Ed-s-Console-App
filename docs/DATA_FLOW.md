@@ -22,19 +22,9 @@ operator.
 - At startup the in-memory state is loaded once from the latest stored values, so a restart, a
   weekend or the close shows the last reading with its time.
 
-## 2. The rules (the operator's words)
+## 2. The rules
 
-1. **Take Schwab's fields as sent.** No bounds, no substitution. Only Schwab's -999 or an absent
-   field is not a number.
-2. **Canonical fields only.** A value on screen is a Schwab field as sent, or one derived field
-   computed once by its one producer ("one faucet").
-3. **The UI computes nothing.** The browser shows the server's values and picks the words.
-4. **No fallbacks.** "I would rather know that a field is not working than fall back in any way."
-   No second source, no second copy, no stored substitute, no branch that swaps sources.
-5. **One path, many consumers.** Each value has one route to the screen; every panel reads that
-   one answer.
-6. **Nothing without a job.** Every file, function, route, table, loop and timer is used and wanted.
-7. **Simple.** No fat, no prose in code, no hops.
+`AGENTS.md` § Rules. One copy; it loads with every agent session.
 
 ## 3. Today (measured 2026-09-26)
 
@@ -66,7 +56,6 @@ operator.
 | Console memory | console | a second copy of the live quotes and books (fed from 8799); the downloaded chains; the computed levels |
 | `stream_capture.db` (21.8 GB) | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers |
 | `ed_console.db` (77.0 GB) | console | 1-minute bars, level crosses, daily OI and IV, the ticker board, chain captures (22.2 GB) and a morning chain per ticker (2.7 GB) — plus about 49 GB of tables of the deleted ML pipeline |
-| files | console | #303's saved levels per ticker (the fallback to delete) |
 
 ### 3.4 The journey of each kind of data
 
@@ -78,13 +67,12 @@ operator.
 - **1-minute bar.** Schwab → daemon bus → writer (`stream_capture.db`), and → console → the
   console's own bar writer → `ed_console.db` → `/api/bars1m` → browser, **read on a timer**. The
   forming candle rides the price row.
-- **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per ticker.
-  Captures are stored whenever a ticker is viewed, on no clock and on weekends too (2026-09-13, a
-  Sunday: 10,928 rows for 3 tickers); plus one morning copy per ticker. Stored compressed since
-  2026-09-23 (167–541 MB a day), plain text before (1.4–3.5 GB a day).
+- **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per board or
+  viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule (#312).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
   chain in memory + spot → console memory → a push signal → the browser reads `/api/terrain` and
-  four other slice routes. **Never stored** — a restart or the close loses them.
+  four other slice routes. Not stored; at startup and after the close they are computed from the
+  newest chain capture (#312).
 - **Alerts and level crosses.** Computed by the console at each levels publish; crosses written to
   `ed_console.db` → `/api/alerts` → browser.
 - **Market session.** From the market calendar → `/api/session`, read at load and at each change.
@@ -94,10 +82,10 @@ operator.
 1. **Two copies of live state** (daemon memory and console memory).
 2. **Two writers and two databases** (the daemon's and the console's).
 3. **The console talks to Schwab** (REST chains) — the daemon should own every Schwab call.
-4. **The chain and the levels are never stored**, so nothing can be loaded at startup; #303 patched
-   that with a second copy in files.
-5. **The console computes the levels** in the same process that serves the page.
-6. **The browser polls** for bars, order flow, liquidity and the levels themselves.
+4. **The console computes the levels** in the same process that serves the page.
+5. **The browser polls** for bars, order flow, liquidity and the levels themselves.
+6. **The browser computes values** (measured 2026-09-27): days to expiry, the spot row (6 copies),
+   the nearest level, position against the walls, near-spot, the largest-GEX strike, volume totals.
 
 ## 4. The target
 
@@ -127,17 +115,20 @@ operator.
   bars are loaded, the levels are computed from them once, and the screens show them with their
   time.
 
-## 5. Checks that enforce this (a check that fails blocks the change)
+## 5. Checks (a failing check blocks the merge)
 
-| Rule | Check |
-|---|---|
-| One path, many consumers | every page GET goes through the page's one reader; each event reads a URL at most once |
-| No polling | no timer in the page reads `/api`; a closed market reads nothing after load |
-| UI computes nothing | the client-computation gates |
-| No fallbacks | no second store or source for a value; no branch that swaps sources |
-| One writer | every stored value is written by the one writer |
-| Nothing without a job | reachability: unused code, routes, tables and timers fail |
-| Gates stay true | every file a gate lists exists |
+One general test per rule; it scans every file and fails on today's code before its fix lands.
+None is built (measured 2026-09-27); ACTIVE_PROGRAM P1-3 builds them.
+
+| Rule | Check | Test |
+|---|---|---|
+| One producer | every served field maps to one producing function; none computed twice | not built |
+| UI computes nothing | no arithmetic, sum, min/max, sort by value or date math on served data in `static/js` | not built |
+| One path | every page GET goes through the page's one reader; each event reads a URL at most once | not built |
+| No polling | no page timer reads `/api`; a closed market reads nothing after load | not built |
+| No fallbacks | no second source, copy or default for a value; no branch that swaps sources | not built |
+| One writer | every stored value is written by the one writer | not built |
+| Nothing without a job | unused code, routes, tables and timers fail | not built |
 
 ## 6. Operator decisions (2026-09-26)
 
