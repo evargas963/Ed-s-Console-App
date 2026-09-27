@@ -1823,7 +1823,7 @@ def check_ui_data_integration() -> list[Violation]:
     "sample" activity feed, and terrain cells could sit at "—" while the data existed —
     the agent verified code + endpoints but never the RENDERED DOM. Tier 1 (static binding,
     here) fails the build if any data cell that ships as the "—" placeholder in
-    static/index.html or static/chart.html has no JavaScript writer. The live tiers
+    static/index.html has no JavaScript writer. The live tiers
     (endpoint assertions + Playwright headless render, which actually see the DOM) run via
     `python tools/check_ui_data_integration.py` with ED_UI_GATE_LIVE=1 in CI / manual — they
     need a running server + browser, so they are deliberately NOT per-commit gates (that
@@ -2717,21 +2717,16 @@ def check_universal_ticker_scope() -> list[Violation]:
     Rule (practical — does NOT retro-flag historical report prose):
       1. tools/liquidity_*.py, *_experiment*.py, lp01_*.py must not default --tickers / TICKERS
          to SPY alone (AST). Escape: `# universal-scope-ok:` / OUT-OF-SCOPE / operator waiver.
-      2. static/chart.html must keep parameterized ticker fetches and must not gate
-         storm/highlight/combo/accrual on `=== 'SPY'` (or hardcode `ticker=SPY` APIs).
-      3. STAGED prompt / agent-instruction .md files (reports/*prompt*, .cursor/rules/,
+      2. STAGED prompt / agent-instruction .md files (reports/*prompt*, .cursor/rules/,
          .claude/*.md, AGENTS.md, …) must not add SPY-only / sentinel-complete framing without
          UNIVERSAL / enrolled-universe / OUT-OF-SCOPE language.
 
     HOW THE RULE WAS VALIDATED: prototyped against the live tree before enforcing — existing
-    liquidity_* tools default to SPY,QQQ,IWM (pass); chart.html already uses ticker=${tk}
-    (pass); historical reports/ are out of whole-file scope so they do not false-block. Negative
-    controls in tests/test_universal_ticker_scope_v1.py inject SPY-only defaults, Chart gates,
-    and prompt prose and demand a scream; universal wording stays quiet.
+    liquidity_* tools default to SPY,QQQ,IWM (pass); historical reports/ are out of whole-file
+    scope so they do not false-block. Negative controls in tests/test_universal_ticker_scope_v1.py
+    inject SPY-only defaults and prompt prose and demand a scream; universal wording stays quiet.
     """
     from tools.universal_scope_lock import (
-        chart_spy_only_feature_violations,
-        chart_ticker_path_violations,
         experiment_tool_paths,
         spy_only_ticker_default_violations,
     )
@@ -2745,18 +2740,10 @@ def check_universal_ticker_scope() -> list[Violation]:
         for lineno, msg in spy_only_ticker_default_violations(path, src):
             out.append(Violation(path, lineno, msg))
 
-    chart = REPO / "static" / "chart.html"
-    if chart.exists():
-        csrc = _read_or_empty(chart)
-        for lineno, msg in chart_ticker_path_violations(csrc):
-            out.append(Violation(chart, lineno, msg))
-        for lineno, msg in chart_spy_only_feature_violations(csrc):
-            out.append(Violation(chart, lineno, msg))
-
-    # BEDROCK 2026-09-06: rule 3 (SPY-only PHRASES in staged prompt prose) is retired. It was
-    # a free-text matcher, and AGENTS.md rules that out as enforcement. Rules 1 and 2 are the
-    # structural half — SPY-only ticker DEFAULTS in experiment tools and SPY-gated Chart
-    # features — and they stay, because they read code, not wording. The law itself
+    # BEDROCK 2026-09-06: rule 2 (SPY-only PHRASES in staged prompt prose) is retired. It was
+    # a free-text matcher, and AGENTS.md rules that out as enforcement. Rule 1 is the
+    # structural half — SPY-only ticker DEFAULTS in experiment tools — and it stays, because
+    # it reads code, not wording. The law itself
     # (UNIVERSAL ticker scope) is unchanged in AGENTS.md.
     return out
 

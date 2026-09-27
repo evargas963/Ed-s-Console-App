@@ -1,8 +1,7 @@
 """Pass 4 — level_crosses wire from server tick path.
 
 Tests EdDB.detect_and_log_level_crosses (the producer side) and the
-existing get_recent_crosses / count_level_tests readers exposed via
-/api/level_crosses. New file per AGENTS § No-new-files-default
+existing get_recent_crosses reader. New file per AGENTS § No-new-files-default
 (existing tests/test_db*.py own SQLite retry / feature adapter / safety;
 none owns level_crosses behavior).
 """
@@ -12,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-from db import EdDB, LevelCrossEvent
+from db import EdDB
 
 
 def _seed_empty_db(tmp_path: Path) -> EdDB:
@@ -178,54 +177,15 @@ def test_multiple_levels_in_one_tick(tmp_path: Path) -> None:
     assert names == ["Call g-Wall", "PDH", "VWAP"]
 
 
-def test_count_level_tests_reads_what_detector_wrote(tmp_path: Path) -> None:
-    """End-to-end producer -> consumer: write a few crosses, then read them
-    back via count_level_tests (the Decision Command "third test" reader)."""
-    edb = _seed_empty_db(tmp_path)
-    # Avoid debounce blocking the test inserts by varying timestamps + direction.
-    edb.log_level_cross(LevelCrossEvent(
-        ticker="SPY", ts_utc=1_800_000_000.0, ts_et="ET",
-        level_name="VWAP", level_value=501.0, direction="up",
-        spot_at_cross=502.0, zone_before=None, zone_after=None, timeframe="1m",
-    ))
-    edb.log_level_cross(LevelCrossEvent(
-        ticker="SPY", ts_utc=1_800_000_500.0, ts_et="ET",
-        level_name="VWAP", level_value=501.0, direction="down",
-        spot_at_cross=500.0, zone_before=None, zone_after=None, timeframe="1m",
-    ))
-    edb.log_level_cross(LevelCrossEvent(
-        ticker="SPY", ts_utc=1_800_001_000.0, ts_et="ET",
-        level_name="VWAP", level_value=501.0, direction="up",
-        spot_at_cross=502.0, zone_before=None, zone_after=None, timeframe="1m",
-    ))
-
-    # count_level_tests uses utc_ts(); the seed rows are years old, so the
-    # 6.5h lookback returns 0. Use a long lookback to verify the read shape.
-    counts = edb.count_level_tests(
-        ticker="SPY", level_name="VWAP", level_value=501.0,
-        lookback_hours=24 * 365 * 100,  # absurdly long; just to span the seed
-    )
-    assert counts["up"] == 2
-    assert counts["down"] == 1
-    assert counts["total"] == 3
-
-
-# ── RC-88: coincident crossings collapse into ONE event ──────────────────────────────────
-# Price crossing one strike wrote one row per NAMED level sitting there, because the producer's
-# debounce is keyed on (ticker, level_name, direction) and cannot see that eight names share a
-# value. MEASURED 2026-07-27 on the live store: 4,747 of 8,108 rows (58.5%) shared a
-# (ticker, ts_utc, level_value); IWM 295.0 wrote 8 rows for one tick. The chart asks for n=8, so a
-# single coincident crossing filled every slot and hid every other event.
-
 def test_coincident_crossings_collapse_to_one_event(tmp_path):
     """Eight names on one strike is ONE crossing, and the endpoint must say so."""
     import ast
     from pathlib import Path
     src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    # the route and the one merge it calls (_merged_recent_crosses, shared with /api/desk/events)
+    # the one merge and its consumer (/api/desk/events)
     seg = "".join(ast.get_source_segment(src, node) or "" for node in ast.walk(ast.parse(src))
-                  if isinstance(node, ast.FunctionDef) and node.name in ("api_level_crosses", "_merged_recent_crosses"))
-    assert "_merged_recent_crosses(" in seg, "api_level_crosses not found or not using the one merge"
+                  if isinstance(node, ast.FunctionDef) and node.name in ("get_desk_events", "_merged_recent_crosses"))
+    assert "_merged_recent_crosses(get_db()" in seg, "get_desk_events not found or not using the one merge"
     assert "coincident_levels" in seg, (
         "RC-88 regression: the endpoint no longer reports how many levels shared the crossing, so "
         "a collapsed event is indistinguishable from a lone one"
@@ -234,7 +194,6 @@ def test_coincident_crossings_collapse_to_one_event(tmp_path):
         "collapsing without naming WHICH levels coincided destroys the information the extra rows "
         "carried — the fix must not be a plain de-duplication"
     )
-    assert "collapsed_from" in seg, "the endpoint must disclose how many raw rows it merged"
 
 
 def test_collapse_keys_on_price_event_not_level_name():

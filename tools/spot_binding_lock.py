@@ -1,7 +1,7 @@
 """Census #8 / RC-225 — per-screen spot binds ONE payload field with as_of visible.
 
 Compute authority remains resolve_spot (RC-14). This lock kills BINDING-level dual ages:
-chart/exposure must not borrow strikes.spot / terrain.spot when /api/spot is absent, and
+exposure must not borrow strikes.spot / terrain.spot when /api/spot is absent, and
 must surface spot_as_of age so a stale binding cannot paint as current.
 """
 from __future__ import annotations
@@ -12,7 +12,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 _SCAN = (
-    "static/chart.html",
     "static/exposure.html",
 )
 
@@ -32,60 +31,6 @@ _CONSOLE_DUAL_FIELD_RE = re.compile(
 def _strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     return re.sub(r"//.*$", "", text, flags=re.M)
-
-
-def chart_binding_violations(text: str) -> list[str]:
-    """Chart must bind spot from /api/spot only and expose as_of age."""
-    out: list[str] = []
-    code = _strip_comments(text)
-    if "function currentSpot()" not in text:
-        out.append("static/chart.html: missing currentSpot() authority")
-    # Authority must NOT fall through to cycle payloads.
-    m = re.search(r"function currentSpot\(\)\s*\{([^}]*)\}", code, re.S)
-    if not m:
-        out.append("static/chart.html: currentSpot() body not parseable")
-    else:
-        body = m.group(1)
-        if "_cycleSpot" in body or "strikes" in body or "terrain" in body:
-            out.append(
-                "static/chart.html: currentSpot() still falls through to cycle payloads "
-                "(RC-225 — /api/spot only)"
-            )
-        if "return liveSpot" not in body and "return liveSpot;" not in body.replace(" ", ""):
-            # Allow `return liveSpot;` with whitespace variants.
-            if not re.search(r"return\s+liveSpot\s*;", body):
-                out.append(
-                    "static/chart.html: currentSpot() must return liveSpot "
-                    "(declared /api/spot binding)"
-                )
-    if "function _cycleSpot" in text:
-        out.append(
-            "static/chart.html: _cycleSpot remains — dual-age fallback faucet (RC-225 kill)"
-        )
-    if _CYCLE_FALLBACK_RE.search(code):
-        out.append(
-            "static/chart.html: strikes.spot / terrain.spot fallback shape remains (RC-225)"
-        )
-    if "function spotBindingAgeLabel" not in text:
-        out.append("static/chart.html: missing spotBindingAgeLabel() as_of surface")
-    if 'id="spotage"' not in text and "getElementById('spotage')" not in text:
-        out.append("static/chart.html: missing #spotage as_of DOM binding")
-    if "spotBindingAgeLabel()" not in code:
-        out.append("static/chart.html: spotBindingAgeLabel() never called — as_of not visible")
-    if "SPOT_STALE_SEC" not in text:
-        out.append("static/chart.html: missing SPOT_STALE_SEC stale threshold")
-    # The binding is the capture daemon's price socket (live_ui.py; audit of #280 moved it off
-    # the /api/spot poll, Stage 1 of the live-UI architecture moved it off the console): every
-    # row it pushes goes through the one writer. Its as_of is the server's trade_age_sec --
-    # still required to be read and shown.
-    if ("new WebSocket(url)" not in code or "spotSocketUrl()" not in code
-            or "msg.rows.forEach((q) => ingestQuoteTick(q" not in code):
-        out.append("static/chart.html: spot must bind the daemon price socket (live_ui)")
-    if "addEventListener('quote_tick'" in code:
-        out.append("static/chart.html: the console serves no price -- no quote_tick listener")
-    if "trade_age_sec" not in text:
-        out.append("static/chart.html: binding must read the server's trade_age_sec as_of")
-    return out
 
 
 def exposure_binding_violations(text: str) -> list[str]:
@@ -397,7 +342,6 @@ def scan_tracked_static(repo: Path | None = None) -> list[str]:
     root = repo if repo is not None else REPO
     out: list[str] = []
     scanners = {
-        "static/chart.html": chart_binding_violations,
         "static/exposure.html": exposure_binding_violations,
         "static/index.html": console_binding_violations,
     }

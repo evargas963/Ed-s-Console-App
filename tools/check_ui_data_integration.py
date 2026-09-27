@@ -229,20 +229,6 @@ const { chromium } = require('playwright');
       }
       await page.waitForTimeout(4000);
     }
-
-    await page.goto(base + '/chart', { waitUntil: 'domcontentloaded', timeout: 20000 });
-    const chartPriced = async () =>
-      (await real('#biglegend .px')) && (await real('#metapx'));
-    await waitAll([chartPriced], 25000);
-    for (let i = 0; i < 3; i++) {
-      const big = await val('#biglegend .px'), meta = await val('#metapx');
-      if (big !== '(missing)' && meta !== '(missing)' && big !== meta) {
-        bad.push('chart big legend (' + big + ') and meta bar (' + meta +
-                 ') show different spot prices in one frame');
-        break;
-      }
-      await page.waitForTimeout(4000);
-    }
   } catch (e) { bad.push('render error: ' + e.message); }
   await browser.close();
   console.log(JSON.stringify(bad));

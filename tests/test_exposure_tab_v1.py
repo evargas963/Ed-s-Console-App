@@ -65,7 +65,7 @@ def test_charm_error_is_stated_on_the_charm_line():
     """RC-305: /api/forces serves `charm_error` — the qualifier that says WHY charm is
     absent — and this surface rendered a FAILED charm exactly like fields never served.
     The gates line now states the served error (same `charm failed:` phrasing as the
-    chart's forces_provenance idiom), and absence stays honest: no error served means the
+    former /chart page's provenance idiom), and absence stays honest: no error served means the
     plain not-served line, never a fabricated failure."""
     src = _src()
     assert "charm_error" in src, "the exposure surface never reads the served charm_error"
@@ -86,25 +86,6 @@ def test_theme_is_the_shared_cv2_system():
 def test_server_route_serves_the_page():
     ssrc = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
     assert '"/exposure"' in ssrc and "exposure.html" in ssrc, "no /exposure route"
-
-
-def test_chart_nav_links_the_new_tab():
-    csrc = (REPO / "static" / "chart.html").read_text(encoding="utf-8")
-    assert 'href="/exposure"' in csrc, "chart nav has no Exposure entry"
-
-
-def test_chart_charm_and_bias_live_contract():
-    """RC-199 VISIBLE_SURFACE binding: the FORCES charm row is emitted at runtime from the
-    `id="fr-${id}"` template and reads the REAL payload keys; Bias is the static #f-bias and
-    says WAIT (empty admissions), never LOCKED; no vote language anywhere in the source."""
-    csrc = (REPO / "static" / "chart.html").read_text(encoding="utf-8")
-    assert 'id="fr-' in csrc, "the FORCES row id template vanished — fr-charm unreachable"
-    assert "fz.charm_below" in csrc and "fz.charm_above" in csrc, (
-        "the chart charm row does not read the real /api/forces keys")
-    assert "charm_book_scope" in csrc, "the charm book label is not read from the payload"
-    assert 'id="f-bias"' in csrc and "WAIT" in csrc, "Bias is not the honest WAIT surface"
-    assert "operator charm vote" not in csrc and "on vote" not in csrc, (
-        "vote-gate language survives in chart.html (RC-199 revoked it)")
 
 
 def test_no_client_side_level_derivation():

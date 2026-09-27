@@ -339,20 +339,15 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
 
 
 
-def test_chart_and_exposure_draw_carried_values_only():
-    chart = (ROOT / "static" / "chart.html").read_text(encoding="utf-8", errors="replace")
+def test_exposure_draws_carried_values_only():
     exposure = (ROOT / "static" / "exposure.html").read_text(
         encoding="utf-8", errors="replace")
 
-    assert "/api/levels?ticker=" in chart, "the chart no longer reads the canonical contract"
-    assert "vwap.push(" not in chart, "the in-page VWAP accumulation is back in the chart"
-    assert "ls.vwap_series" in chart, "the chart no longer carries the server VWAP curve"
     assert "computeVwapSeries" not in exposure, (
         "the exposure tab's own VWAP/σ accumulation is back")
     assert "lv.vwap_series" in exposure, (
         "the exposure tab no longer carries the server VWAP curve")
-    for page, name in ((chart, "chart.html"), (exposure, "exposure.html")):
-        assert client_level_reconstruction_violations(name, page) == []
+    assert client_level_reconstruction_violations("exposure.html", exposure) == []
 
 
 def test_liquidity_snapshot_scopes_checkpoint_ids_away_from_canonical():

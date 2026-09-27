@@ -6,57 +6,13 @@ sentinel-only framing without explicit OUT-OF-SCOPE + operator waiver is a breac
 Consumed by tools/check_institutional_correctness.py (check_universal_ticker_scope). BEDROCK
 2026-09-06: the prose half (SPY-only PHRASES in prompt text, and the PreToolUse Edit gate that
 read them) is removed — free-text matching is not enforcement (AGENTS.md). What stays is the
-structural half: SPY-only ticker DEFAULTS in experiment tools (AST) and SPY-gated Chart
-features / hardcoded `?ticker=SPY` fetches in static/chart.html. The law is unchanged.
+structural half: SPY-only ticker DEFAULTS in experiment tools (AST). The law is unchanged.
 """
 from __future__ import annotations
 
 import ast
 import re
 from pathlib import Path
-
-# Phrases that frame work as SPY-complete (or sentinel-complete) without admitting the carve-out.
-_SPY_ONLY_PHRASE = re.compile(
-    r"\b(?:"
-    r"SPY[\s-]?only|only\s+SPY|at\s+least\s+SPY|just\s+SPY|SPY\s+alone|"
-    r"SPY[\s-]?first\s+only|run\s+(?:this\s+)?(?:on|for)\s+SPY\s+only|"
-    r"sentinel[\s-]?only\s+(?:is\s+)?(?:complete|enough|done|verified|clean)|"
-    r"complete\s+for\s+SPY(?:\s+only)?"
-    r")\b",
-    re.I,
-)
-# Escape / compliance language that makes a narrow scope honest.
-_UNIVERSAL_OK = re.compile(
-    r"\b(?:"
-    r"UNIVERSAL|enrolled\s+universe|all\s+enrolled|OUT-OF-SCOPE|"
-    r"operator\s+waiver|universal-scope-ok|spy-sample-ok"
-    r")\b",
-    re.I,
-)
-
-_CHART_SPY_CMP = re.compile(
-    r"(?:tk|ticker|symbol|chartTicker)\s*===?\s*['\"]SPY['\"]|"
-    r"['\"]SPY['\"]\s*===?\s*(?:tk|ticker|symbol|chartTicker)",
-    re.I,
-)
-# Substring match on purpose: Chart helpers are camelCase (drawStormHighlight), so \\bstorm\\b
-# would miss the exact shapes this lock must catch.
-_CHART_FEATURE = re.compile(r"storm|highlight|combo|accrual", re.I)
-_CHART_HARDCODED_API = re.compile(
-    r"/api/(?:terrain|terrain/strikes|bars1m|liquidity-snapshot|spot)"
-    r"\?ticker=SPY\b",
-    re.I,
-)
-_CHART_PARAM_FETCHES = (
-    re.compile(r"/api/bars1m\?ticker=\$\{"),
-    re.compile(r"/api/terrain\?ticker=\$\{"),
-    re.compile(r"/api/terrain/strikes\?ticker=\$\{"),
-)
-
-_PROMPT_PATH_HINT = re.compile(
-    r"(?:prompt|agent.?instruction|claude.?finish|cursor.?prompt)",
-    re.I,
-)
 
 
 def _const_str(node: ast.AST) -> str | None:
@@ -146,54 +102,6 @@ def spy_only_ticker_default_violations(path: Path, src: str) -> list[tuple[int, 
                     f"# universal-scope-ok: OUT-OF-SCOPE: <reason> (RC-160)",
                 ))
     return hits
-
-
-def chart_spy_only_feature_violations(src: str) -> list[tuple[int, str]]:
-    """Flag Chart storm/highlight/combo/accrual branches keyed only to SPY."""
-    if "universal-scope-ok" in src.lower():
-        # File-level escape for a deliberate, documented carve-out.
-        if re.search(r"universal-scope-ok\s*:", src, re.I):
-            return []
-    hits: list[tuple[int, str]] = []
-    lines = src.splitlines()
-    for i, line in enumerate(lines):
-        if _CHART_HARDCODED_API.search(line) and not re.search(
-            r"universal-scope-ok|OUT-OF-SCOPE", line, re.I
-        ):
-            hits.append((
-                i + 1,
-                "Chart API URL hardcodes ticker=SPY; Chart paths must stay "
-                "ticker-parameterized (RC-160)",
-            ))
-            continue
-        if not _CHART_SPY_CMP.search(line):
-            continue
-        lo = max(0, i - 8)
-        hi = min(len(lines), i + 9)
-        ctx = "\n".join(lines[lo:hi])
-        if not _CHART_FEATURE.search(ctx):
-            continue
-        if re.search(r"universal-scope-ok|OUT-OF-SCOPE|operator\s+waiver", ctx, re.I):
-            continue
-        hits.append((
-            i + 1,
-            "Chart storm/highlight/combo/accrual path branches on SPY only; features must "
-            "be ticker-parameterized or declare OUT-OF-SCOPE (RC-160)",
-        ))
-    return hits
-
-
-def chart_ticker_path_violations(src: str) -> list[tuple[int, str]]:
-    """Chart load path must keep parameterized ticker fetches (enrolled rotation surface)."""
-    missing = [p.pattern for p in _CHART_PARAM_FETCHES if not p.search(src)]
-    if not missing:
-        return []
-    return [(
-        1,
-        "Chart ticker path lost parameterized fetch(es): "
-        + ", ".join(missing)
-        + " — enrolled Chart rotation must stay ticker-parameterized (RC-160)",
-    )]
 
 
 def experiment_tool_paths(repo: Path) -> list[Path]:

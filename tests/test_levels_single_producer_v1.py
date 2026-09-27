@@ -319,43 +319,6 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
 
 # ── RC-227: one-faucet closeout locks (mission one-faucet-closeout-v1) ────────────────
 
-_CHART = (Path(__file__).resolve().parent.parent / "static" / "chart.html").read_text(
-    encoding="utf-8", errors="replace")
-
-
-def test_b3_chart_never_computes_prior_day():
-    """B3: the client prior-day fallback faucet is DEAD — chart.html must not derive
-    pdh/pdl/pdc from bars, and every consumer reads the engine-only accessor."""
-    assert "days[days.length - 2]" not in _CHART, "computeDaily prior-session grouping is back"
-    for pat in ("daily.pdh", "daily.pdl", "daily.pdc", "d.pdh"):
-        assert pat not in _CHART, f"client prior-day read '{pat}' — the B3 fallback faucet reopened"
-    assert "function enginePD()" in _CHART, "the engine-only prior_day accessor is gone"
-
-
-def test_strip_never_reaggregates_side_sums_client_side():
-    """STRIP: the browser must not re-sum per-side GEX/OV; it consumes today_side_sums."""
-    assert "today_side_sums" in _CHART, "strip no longer consumes the server aggregation"
-    import re as _re
-    assert not _re.search(r"if \(r\[0\] < spot\) \{ gB \+=", _CHART), (
-        "in-browser per-side re-aggregation is back — a second aggregator on a second spot"
-    )
-
-
-def test_strip_charm_row_not_vote_locked():
-    """RC-199: the operator revoked the charm vote-gate; the strip renders real charm."""
-    assert "renders after the operator charm vote" not in _CHART
-    assert "charm_below" in _CHART and "charm_above" in _CHART
-
-
-def test_strip_visible_consumer_f_src_bound():
-    """RC-225 close contract: the VISIBLE consumer #f-src (strip age/source text) is
-    asserted as a rendered element wired to the spot-binding age label — not a substring
-    coincidence (RC-102)."""
-    assert 'id="f-src"' in _CHART, "the strip's visible age/source element is gone"
-    assert "src.textContent = spotBindingAgeLabel()" in _CHART, (
-        "#f-src is no longer wired to the spot-binding age label"
-    )
-
 
 def test_strikes_payload_carries_server_side_sums(monkeypatch):
     """STRIP server half: /api/terrain/strikes serves today_side_sums computed against the
@@ -409,80 +372,6 @@ def test_terrain_strikes_registers_viewing_demand(monkeypatch):
             "anyone is watching a ticker that only this route serves")
     finally:
         srv._gamma_surface_demand.pop(tk, None)
-
-
-def test_chart_level_titles_carry_session_scope_and_vendor_basis():
-    """RC-305: /api/levels serves session_scope and vendor_basis on every row's provenance
-    and the chart rendered the prices with neither qualifier. EXECUTED against the REAL
-    `levelProvenanceTitle` extracted from chart.html (the RC-355 extract-and-run idiom):
-    a served scope/basis ride the level tooltip; an absent one reads "unknown", never a
-    fabricated default. The server half is already behavioural in this file
-    (test_api_levels_b1_contract_single_session_prior_day asserts
-    provenance.session_scope == "RTH" on a real get_levels payload, and
-    test_api_levels_truncated_accumulator_falls_through_to_banked asserts the PDL
-    vendor_basis)."""
-    import re
-    import subprocess
-
-    m = re.search(r"function levelProvenanceTitle\(title, prov\) \{.*?\n\}", _CHART, re.S)
-    assert m, "levelProvenanceTitle must exist in chart.html"
-    assert "levelProvenanceTitle(title, row.provenance)" in _CHART, (
-        "renderEngineLevels no longer routes the tooltip through the qualifier builder")
-    assert 'title="${esc(r.title)}"' in _CHART, (
-        "the manager span lost its title binding — the qualifier reaches no DOM surface")
-    driver = (
-        m.group(0) + "\n"
-        "const full = levelProvenanceTitle('prior-day low',"
-        " {session_scope: 'RTH', vendor_basis: '1m bars (bars1m); schwab pricehistory'});\n"
-        "if (!full.includes('RTH session')) throw new Error('scope missing: ' + full);\n"
-        "if (!full.includes('basis: 1m bars (bars1m); schwab pricehistory'))"
-        " throw new Error('basis missing: ' + full);\n"
-        "const bare = levelProvenanceTitle('prior-day low', null);\n"
-        "if (!bare.includes('session scope unknown') || !bare.includes('vendor basis unknown'))"
-        " throw new Error('absence not honest: ' + bare);\n"
-        "if (bare.includes('RTH')) throw new Error('fabricated default scope: ' + bare);\n"
-        "const half = levelProvenanceTitle('overnight high', {session_scope: 'extended'});\n"
-        "if (!half.includes('extended session') || !half.includes('vendor basis unknown'))"
-        " throw new Error('partial provenance mishandled: ' + half);\n"
-        "console.log('LEVEL QUALIFIERS OK');\n"
-    )
-    p = subprocess.run(["node", "-e", driver], capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", timeout=60)
-    assert p.returncode == 0, f"level qualifier builder failed: {p.stderr[:400]}"
-    assert "LEVEL QUALIFIERS OK" in p.stdout
-
-
-def test_strip_states_the_server_spot_basis():
-    """RC-305: today_side_sums carries spot_basis — the exact spot the SERVER bucketed the
-    GEX/OV side sums against — and the strip rendered the sums with no spot ref while a
-    differently-bound live pill sat between them. EXECUTED against the REAL
-    `sideSumsBasisText` extracted from chart.html: a served basis renders as the row's
-    spot ref; an absent one reads "unknown" with no number invented; absent sums render
-    no text. The server half is test_strikes_payload_carries_server_side_sums above."""
-    import re
-    import subprocess
-
-    m = re.search(r"function sideSumsBasisText\(ss\) \{.*?\n\}", _CHART, re.S)
-    assert m, "sideSumsBasisText must exist in chart.html"
-    assert "${basisTxt}" in _CHART and "'live session' + basisTxt" in _CHART, (
-        "the GEX/OV strip rows no longer carry the server spot ref")
-    driver = (
-        "const fmt = (x, d = 2) => x == null ? '-' : Number(x).toFixed(d);\n"
-        + m.group(0) + "\n"
-        "const ref = sideSumsBasisText({gex_below: 1, spot_basis: 645.2});\n"
-        "if (!ref.includes('spot ref') || !ref.includes('645.20'))"
-        " throw new Error('served basis not stated: ' + ref);\n"
-        "const missing = sideSumsBasisText({gex_below: 1});\n"
-        "if (!missing.includes('spot ref unknown'))"
-        " throw new Error('absent basis not honest: ' + missing);\n"
-        "if (/[0-9]/.test(missing)) throw new Error('a number was invented: ' + missing);\n"
-        "if (sideSumsBasisText(null) !== '') throw new Error('no sums must render no text');\n"
-        "console.log('SPOT BASIS OK');\n"
-    )
-    p = subprocess.run(["node", "-e", driver], capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", timeout=60)
-    assert p.returncode == 0, f"spot basis builder failed: {p.stderr[:400]}"
-    assert "SPOT BASIS OK" in p.stdout
 
 
 def test_domain_faucet_registry_negative_control():
@@ -592,21 +481,3 @@ def test_api_levels_registered_in_faucet_registry():
         "adding a producer requires the operator_quote in the registry (RC-212)"
     )
 
-
-def test_rc124_merged_pin_tag_keeps_its_decisiveness():
-    """RC-124 (2026-08-04): when the abs-gamma strike is coincident with a wall the axis tag
-    MERGES, and the merge used to drop the lead % — measured live as `750.00 PWALL·PIN`
-    while the payload carried a strength of 19.8%. A near-tie leader and a decisive one must
-    never render identically; absent strength still renders nothing rather than a fabricated
-    number. RC-292: field renamed absolute_gamma_strength_pct, tag renamed ABSΓ."""
-    assert "const _pinSp = Number(T.absolute_gamma_strength_pct);" in _CHART, (
-        "the merged wall/abs-gamma tag no longer reads the leader's strength from the payload"
-    )
-    assert "'·ABSΓ' + (Number.isFinite(_pinSp) ? ` ${_pinSp}%` : '')" in _CHART, (
-        "the merged tag must append the strength when present and NOTHING when absent"
-    )
-    # the bare merge (decisiveness deleted) must not come back in either wall shape
-    assert "`⬌WALL${pinHere ? '·ABSΓ' : ''}`" not in _CHART
-    assert "(sell ? 'CWALL' : 'PWALL') + (pinHere ? '·ABSΓ' : '')" not in _CHART
-    # and the pre-rename payload field must not be read anywhere on the chart
-    assert "T.gamma_pin" not in _CHART, "a chart read of the retired gamma_pin field returned"

@@ -18,7 +18,6 @@ _LOCALE_DATE_RE = re.compile(r"\.toLocaleDateString\s*\(")
 
 # Tracked UI surfaces that may group/label by calendar date.
 _SCAN_RELS = (
-    "static/chart.html",
     "static/index.html",
     "static/ops.html",
     "static/governance.html",
@@ -58,44 +57,11 @@ def bare_locale_date_violations(text: str, *, rel: str = "snippet") -> list[str]
     return out
 
 
-def chart_session_clock_violations(text: str) -> list[str]:
-    """Chart labels bind DISPLAY_TZ; session-date grouping is the SERVER's (aggregate_bars keys
-    "D" on time_et.ET) -- the page must not group candles by any clock itself (audit of #280
-    moved the roll-up off the browser, so the old "chart owns etDateKey" rule became a rule
-    that the chart owns nothing to key)."""
-    out: list[str] = []
-    if "function aggregate(" in text or "function etDateKey" in text:
-        out.append(
-            "static/chart.html: browser-side candle/date grouping is back -- the roll-up is "
-            "server-side (/api/bars1m?tf=, aggregate_bars on time_et.ET)"
-        )
-    if "/api/bars1m?" in text and "&tf=" not in text:
-        out.append("static/chart.html: bars must be requested with tf= (server roll-up)")
-    if f"DISPLAY_TZ = '{DISPLAY_TZ}'" not in text and f'DISPLAY_TZ = "{DISPLAY_TZ}"' not in text:
-        out.append(
-            f"static/chart.html: missing DISPLAY_TZ={DISPLAY_TZ!r} "
-            "(axis/date labels follow the CT display law)"
-        )
-    if re.search(r"\.toLocaleDateString\s*\(\s*\)", text):
-        out.append(
-            "static/chart.html: bare toLocaleDateString() remains — "
-            "labels must name DISPLAY_TZ; session keys are the server's (ET)"
-        )
-    return out
-
-
 def scan_tracked_static(repo: Path | None = None) -> list[str]:
-    """Scan tracked static HTML for bare locale-date clocks + chart session binding."""
+    """Scan tracked static HTML for bare locale-date clocks."""
     root = repo if repo is not None else REPO
     out: list[str] = []
-    chart = root / "static" / "chart.html"
-    if chart.is_file():
-        src = chart.read_text(encoding="utf-8", errors="ignore")
-        out.extend(chart_session_clock_violations(src))
-        out.extend(bare_locale_date_violations(src, rel="static/chart.html"))
     for rel in _SCAN_RELS:
-        if rel == "static/chart.html":
-            continue
         path = root / rel
         if not path.is_file():
             continue

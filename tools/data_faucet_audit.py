@@ -24,7 +24,7 @@ watching the running console, not by reading code — so that measurement is a m
 rather than a script someone has to remember to write again.
 
 CLIENT SIDE (RC-75). The server half alone left the browser as the one surface no lock reached,
-and that is where the damage appeared: SIX sites in chart.html each inlined their own spot
+and that is where the damage appeared: SIX sites in the former /chart page each inlined their own spot
 precedence, three skipping the 1.5s live poll, so the big legend rendered the live price while the
 meta bar directly above the chart rendered the 15s cycle price — two prices, one screen. The
 operator found the sixth by looking at it, after the first fix was reported complete. `audit_client`
@@ -62,7 +62,6 @@ SOURCE_SIGNATURES: tuple[tuple[str, str, str, str], ...] = (
     (r"FROM\s+price_bars_1m",        "price_bars_1m",       "DB_TABLE",    "bar collection service writes this"),
     (r"FROM\s+snapshots\b",          "snapshots",           "DB_TABLE",    "per-minute snapshot capture"),
     (r"FROM\s+level_crosses",        "level_crosses",       "DB_TABLE",    "event log"),
-    (r"terrain_backtest_latest\.json", "scorecard_file",    "REPORT_FILE", "batch study artifact"),
 )
 
 #: `resolve_spot` is the ONE spot authority (RC-14). Every endpoint calling it is COMPLIANCE, not
@@ -77,8 +76,6 @@ CONCEPTS: dict[str, tuple[str, ...]] = {
     "price_bars":    ("/api/bars1m",),
     "levels":        ("/api/terrain",),
     "per_strike":    ("/api/terrain/strikes",),
-    "coach_stats":   ("/api/terrain/scorecard",),
-    "level_events":  ("/api/level_crosses",),
 }
 
 #: DECLARED legitimate faucets per concept. A source outside this set is a violation; a source
@@ -92,40 +89,14 @@ DECLARED_FAUCETS: dict[str, frozenset[str]] = {
     "levels":       frozenset({"terrain_cache"}),
     # today -> terrain_cache (live). prior-day ghost -> morning_archive (yesterday cannot change).
     "per_strike":   frozenset({"terrain_cache", "morning_archive"}),
-    "coach_stats":  frozenset({"scorecard_file"}),
-    "level_events": frozenset({"level_crosses"}),
 }
 
-FRESH_LIMITS = {"LIVE": 60, "LOOP": 180, "DB_TABLE": 300, "ARCHIVE": 86400, "REPORT_FILE": 86400}
+FRESH_LIMITS = {"LIVE": 60, "LOOP": 180, "DB_TABLE": 300, "ARCHIVE": 86400}
 
 #: CLIENT concepts (RC-75/RC-76). `reader` matches ANY read of the concept in the browser;
 #: `authorities` are the only functions allowed to decide between sources. A read anywhere else is
 #: a private precedence — that line picks its own faucet, and two such lines is two prices.
 CLIENT_CONCEPTS: dict[str, dict] = {
-    "spot": {
-        "files": ("static/chart.html",),
-        # ALIAS-PROOF BY CONSTRUCTION. An earlier version listed the source variable names
-        # (`strikes.spot`, `terrain.spot`) and scored this file clean while the meta bar rendered
-        # `(s && s.spot) ?? t.spot` — the same two sources reached through the local aliases of a
-        # Promise.all destructure. The operator was looking at two different prices on one screen
-        # while the audit reported one faucet. The rule is therefore structural: ANY read of a
-        # spot-bearing name, whatever it happens to be called, is a violation outside the authority.
-        # RC-225: _cycleSpot DELETED — authorities are the /api/spot binding + as_of helpers only.
-        "reader": r"\bliveSpot\b|\b[A-Za-z_$][\w$]*\.spot\b",
-        "authorities": (
-            "currentSpot",
-            "spotBindingAgeSec",
-            "spotBindingStale",
-            "spotBindingAgeLabel",
-        ),
-        # The only functions allowed to ingest the spot payload and feed the authority. The
-        # binding moved from the 1.5 s /api/spot poll (pollSpot) to the daemon's price socket
-        # (audit of #280: the poll's success path stopped redrawing) -- the rule is unchanged,
-        # the named writers follow the binding.
-        "writers": ("ingestQuoteTick", "checkSpotSilence", "_dropLiveSpot"),
-        # A bare state reset (`liveSpot = null`) chooses no faucet and renders nothing.
-        "assign_only": r"\bliveSpot\s*=",
-    },
     # RC-225: exposure had the same silent strikes/terrain age fork; same structural rule.
     "exposure_spot": {
         "files": ("static/exposure.html",),
@@ -331,9 +302,6 @@ def measure_ages(db_path: str) -> dict[str, float | None]:
                 pass
     finally:
         con.close()
-    p = _ROOT / "reports" / "terrain_backtest_latest.json"
-    if p.exists():
-        ages["scorecard_file"] = now - p.stat().st_mtime
     return ages
 
 

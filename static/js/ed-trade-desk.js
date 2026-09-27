@@ -167,9 +167,9 @@
   // ---- Positioning Migration & Volume: today's per-strike net GEX$ (solid) vs yesterday's
   // (ghost outline), plus today's per-strike option volume -- the SAME real fields
   // /api/terrain/strikes already serves to the GEX-by-Strike panel (today.{all,near,far} and
-  // prior.{all,near,far}, both [strike, net_gex_1pct$, volume] rows), ported from the legacy
-  // chart.html gamma panel's exact math. No new backend computation: this is a second, in-context
-  // rendering of an already-canonical endpoint, same as static/chart.html's own reuse of it. ----
+  // prior.{all,near,far}, both [strike, net_gex_1pct$, volume] rows), ported from the former
+  // /chart page's gamma panel's exact math. No new backend computation: this is a second, in-context
+  // rendering of an already-canonical endpoint, same as the former /chart page's own reuse of it. ----
   var _migScope = 'all';   // 'all' | 'near' (<=7 DTE) | 'far' (monthly+) -- a DTE filter, distinct
                              // from EdShell's own auto/wider/all row-DENSITY scope used below.
   var _migGhost = true;
@@ -351,7 +351,7 @@
     }).join('') + '<span class="mig-chip' + (_migGhost ? ' on' : '') + '" data-mig-ghost="1">GHOST</span></div>';
     // A zero here has TWO different causes and they are not the same fact: the session has
     // genuinely traded nothing yet, or the chain behind these rows was read before it started
-    // trading and hasn't refreshed since (ported verbatim from static/chart.html's drawGamma,
+    // trading and hasn't refreshed since (ported verbatim from the former /chart page's drawGamma,
     // same /api/terrain/strikes staleness fields GEX-by-Strike's own badge already reads).
     var totVol = mig ? mig.volume_total : null;   // served: the scope's session volume
     var volNote = '';
