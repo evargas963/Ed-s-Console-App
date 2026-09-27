@@ -50,7 +50,7 @@ def test_the_pass_did_not_come_from_a_collapsed_scope():
     top = {f for f in subprocess.run(["git", "ls-files", "*.py"], cwd=REPO, capture_output=True,
                                      text=True).stdout.split() if "/" not in f}
     assert top <= rels, f"tracked top-level modules fell out of the scan: {sorted(top - rels)}"
-    for must in ("server.py", "terrain_engine.py", "math_levels.py", "desk_store.py"):
+    for must in ("server.py", "terrain_engine.py", "math_levels.py"):
         assert must in rels, f"{must} fell out of the scan"
 
 

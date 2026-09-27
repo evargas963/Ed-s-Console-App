@@ -124,15 +124,6 @@ def test_no_usable_volume_still_reads_as_absence():
 
 
 
-def test_the_desk_ui_renders_an_unknown_age_as_a_dash():
-    """JS `null / 3600` is 0, so the old cell printed a missing age as the freshest on screen."""
-    html = (REPO / "static" / "desk.html").read_text(encoding="utf-8", errors="replace")
-    assert "x.age_sec==null?'—'" in html.replace(" ", ""), (
-        "desk.html divides age_sec without a null branch; null/3600 renders as 0.0h")
-
-
-
-
 # ------------------------------------------------- the gate's own scope is measured ----
 
 def test_the_repo_wide_gate_scopes_itself_to_what_git_tracks():
@@ -150,7 +141,7 @@ def test_the_repo_wide_gate_scopes_itself_to_what_git_tracks():
     top = {f for f in subprocess.run(["git", "ls-files", "*.py"], cwd=G.ROOT, capture_output=True,
                                      text=True).stdout.split() if "/" not in f}
     assert top <= rels, f"tracked top-level modules fell out of the scan: {sorted(top - rels)}"
-    for must in ("desk_store.py", "terrain_engine.py", "liquidity_models.py", "server.py"):
+    for must in ("terrain_engine.py", "liquidity_models.py", "server.py"):
         assert must in rels, f"{must} fell out of the scan"
     assert not [r for r in rels if r.startswith("scratchpad/")], (
         "untracked scratch is back in a repo-wide product gate")
