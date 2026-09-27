@@ -31,6 +31,11 @@ COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
 #: the chain blob, so filtering on it never reads a chain (MEASURED 2026-09-26: filtering on
 #: `source`, stored after the blob, read every old chain -- 15 s for SPY, 80 s at startup).
 CAPTURE_BASIS = "every_expiry_strike_range_ALL"
+#: Friday 2026-09-25's morning chains (expiries to 37 days, 8:15-9:05 CT), copied in once by the
+#: operator's decision of 2026-09-26 so the screens had levels before the first daemon capture
+MORNING_BASIS = "expiries_to_37_days_morning"
+#: the chains the screens and the day-over-day views read, each labelled with its basis
+READ_BASES = (CAPTURE_BASIS, MORNING_BASIS)
 
 TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS complete_chain_captures (
@@ -244,9 +249,10 @@ def capture_round(client, db_path: Path | str) -> dict[str, Any]:
 
 def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
                          before_et_date: str | None = None) -> list[dict[str, Any]]:
-    """The last full capture of each of the newest `days` market days (newest first), each as
-    {et_date, ts_utc, spot, contracts} with every expiry of that capture. `before_et_date`
-    keeps only days before it (the previous market day's close for a day-over-day view)."""
+    """The last capture of each of the newest `days` market days (newest first) -- the close --
+    each as {et_date, ts_utc, spot, basis, contracts} with every expiry of that capture.
+    `before_et_date` keeps only days before it (the previous market day for a day-over-day
+    view)."""
     tk = ticker_storage_key(ticker)
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
     try:
@@ -256,7 +262,8 @@ def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
         picked: list[tuple[str, float]] = []
         for (ts,) in conn.execute(
                 "SELECT DISTINCT ts_utc FROM complete_chain_captures "
-                "WHERE ticker=? AND completeness_basis=? ORDER BY ts_utc DESC", (tk, CAPTURE_BASIS)):
+                "WHERE ticker=? AND completeness_basis IN (?, ?) ORDER BY ts_utc DESC",
+                (tk, *READ_BASES)):
             day = datetime.fromtimestamp(ts, ET).date().isoformat()
             if before_et_date is not None and day >= before_et_date:
                 continue
@@ -268,10 +275,11 @@ def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
         out = []
         for day, ts in picked:
             rows = conn.execute(
-                "SELECT spot, chain_json FROM complete_chain_captures "
-                "WHERE ticker=? AND completeness_basis=? AND ts_utc=?", (tk, CAPTURE_BASIS, ts)).fetchall()
-            out.append({"et_date": day, "ts_utc": ts, "spot": rows[0][0],
-                        "contracts": [c for r in rows for c in decode_json_blob(r[1])]})
+                "SELECT spot, completeness_basis, chain_json FROM complete_chain_captures "
+                "WHERE ticker=? AND completeness_basis IN (?, ?) AND ts_utc=?",
+                (tk, *READ_BASES, ts)).fetchall()
+            out.append({"et_date": day, "ts_utc": ts, "spot": rows[0][0], "basis": rows[0][1],
+                        "contracts": [c for r in rows for c in decode_json_blob(r[2])]})
         return out
     finally:
         conn.close()

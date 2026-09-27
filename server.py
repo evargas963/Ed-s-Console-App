@@ -3096,9 +3096,12 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         payload.update(snap.to_dict())
         viewed = _gamma_surface_wanted(tk)
         payload.update({
-            "computed_ts_utc": fetched_ts if capture is not None else time.time(),
+            # as of the chain they were computed from: a reprice on a kept chain does not make
+            # the levels newer, so a chain that stops arriving shows as stale
+            "computed_ts_utc": fetched_ts,
             "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
-            "chain_basis": "full", "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
+            "chain_basis": capture["basis"] if capture is not None else "full",
+            "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
             "_per_strike": snap.per_strike, "_gamma_surface": None,
             "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
             # only a viewed ticker is repriced between chain fetches, so only its chain is kept
@@ -3108,7 +3111,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             surface = project_gamma_surface(priced, snap.books)
             surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts,
                            stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
-                           stream_overlay_computed_ts_utc=payload["computed_ts_utc"])
+                           stream_overlay_computed_ts_utc=time.time())
             _stamp_gamma_surface_cell_stream_state(
                 surface, streamed, set(live_syms), read_producer_rejected_option_contracts(),
                 set(_desired_option_symbols_for_ticker(tk)),
@@ -3554,16 +3557,22 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     regime can never disagree with the price shown beside it.
     """
     spot, spot_source, spot_ts = resolve_spot(ticker)
+    out = dict(payload)
+    out.update(terrain_staleness(payload.get("computed_ts_utc"), ticker))
     if spot is None:
-        out = dict(payload)
-        out["spot"] = None
-        out["spot_source"] = "none"
-        out["spot_state"] = "unavailable"
-        out["spot_as_of_ts_utc"] = None
-        out["spot_disp"] = "UNAVAILABLE"
+        # no live price: the price is unavailable and so is everything read from it (regime,
+        # posture, headline, gamma at spot, wall-vs-price states); the levels stand with their
+        # chain's time. Never a regime from one moment beside a price from another.
+        read = build_terrain_read(spot=None, flip=payload.get("gamma_flip"),
+                                  flip_confidence=payload.get("confidence") or "UNAVAILABLE")
+        out.update(spot=None, spot_source="none", spot_state="unavailable",
+                   spot_as_of_ts_utc=None, spot_disp="UNAVAILABLE",
+                   regime=read.regime, posture=read.posture, headline=read.headline,
+                   lines=read.lines, net_gex_at_spot=None,
+                   call_wall_state=None, put_wall_state=None,
+                   flip_diag={**(payload.get("flip_diag") or {}), "gamma_at_spot": None})
         return out
 
-    out = dict(payload)
     out["spot"] = spot
     out["spot_source"] = spot_source
     out["spot_state"] = current_spot_state(spot_source, ticker)
@@ -3601,10 +3610,6 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     # net_gex_at_spot IS gamma_at_spot (schema v2) — reprice both or the NET GEX chip
     # would show loop-time gamma beside a live-spot regime (same defect class as above).
     out["net_gex_at_spot"] = fresh_gamma
-    # RC-91: the levels are cached and the spot is live, so the payload must say HOW OLD the
-    # levels are rather than let a live price imply live structure. Every consumer gets the age,
-    # a stale flag and the reason — absence of the flag is not permission to assume currency.
-    out.update(terrain_staleness(payload.get("computed_ts_utc"), ticker))
     return out
 
 
@@ -3937,7 +3942,6 @@ def get_order_flow_book_heatmap(ticker: str = Query(...),
 #: uncommitted originals — RC-210): ΔOI/DEX from the two newest banked wide chains; the
 #: strip's GEX/OV rows come from the live strikes payload client-side; ΔOI and DEX need the
 #: two newest wide captures, which only the server can read.
-_FORCES_CACHE: dict = {}
 
 
 @app.get("/api/forces")
@@ -3953,10 +3957,6 @@ def get_forces(ticker: str = Query(...)):
     from math_levels import compute_charm_by_strike as _ccs
 
     tk = ticker_storage_key(_required_ticker(ticker))
-    now = time.time()
-    hit = _FORCES_CACHE.get(tk)
-    if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
     payload: dict = {"ticker": tk, "available": False,
                      "reason": "fewer than 2 market days of chain captures for this ticker"}
     try:
@@ -4026,13 +4026,11 @@ def get_forces(ticker: str = Query(...)):
             }
     except Exception as e:
         payload = {"ticker": tk, "available": False, "reason": f"forces read failed: {e}"}
-    _FORCES_CACHE[tk] = (now, payload)
     return JSONResponse(payload)
 
 
 #: RC-208 (re-landed with RC-210): the banked intraday accrual frames — the only per-minute
 #: per-strike exposure time series the console has.
-_EXPOSURE_FLOW_CACHE: dict = {}
 
 
 @app.get("/api/exposure/flow")
@@ -4041,14 +4039,10 @@ def get_exposure_flow(ticker: str = Query(...)):
     Exposure tab paints per-minute Pika/Barney structure, the intraday King path, and
     volume-delta bubbles at the minute they happened. per_strike_json served verbatim
     ([[strike, gex_dollars, session_volume], ...]; MEASURED: SPY 07-31 = 133 frames, ET
-    minutes 556-975), spot-windowed ±5%. 5-min cache like /api/forces."""
+    minutes 556-975), spot-windowed ±5%."""
     import sqlite3 as _sq
 
     tk = ticker_storage_key(_required_ticker(ticker))
-    now = time.time()
-    hit = _EXPOSURE_FLOW_CACHE.get(tk)
-    if hit and now - hit[0] < 300.0:
-        return JSONResponse(hit[1])
     payload: dict = {"ticker": tk, "available": False,
                      "reason": "no banked accrual frames for this ticker"}
     try:
@@ -4084,7 +4078,6 @@ def get_exposure_flow(ticker: str = Query(...)):
                                   "spot-windowed ±5%, latest banked session")}
     except Exception as e:
         payload = {"ticker": tk, "available": False, "reason": f"flow read failed: {e}"}
-    _EXPOSURE_FLOW_CACHE[tk] = (now, payload)
     return JSONResponse(payload)
 
 

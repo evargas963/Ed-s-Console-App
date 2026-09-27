@@ -124,3 +124,14 @@ def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
         ("2026-09-25", 12.0, 2), ("2026-09-24", 11.0, 2)]
     prior = cch.last_capture_per_day(db, "ZZ", 1, before_et_date="2026-09-25")
     assert [(c["et_date"], c["spot"]) for c in prior] == [("2026-09-24", 11.0)]
+
+
+def test_the_friday_morning_copy_is_read_and_labelled(tmp_path):
+    db = tmp_path / "ed_console.db"
+    # institutional-synthetic-ok: the reader returns stored contracts verbatim; none is priced.
+    ct = {"symbol": "ZZ 2030-01-04", "expirationDate": "2030-01-04T20:00:00.000+00:00"}
+    cch.persist_complete_chain_capture(db, ticker="ZZ", expiry="2030-01-04", contracts=[ct],
+                                       spot=5.0, completeness_basis=cch.MORNING_BASIS,
+                                       ts_utc=_ts("2026-09-25 10:00"))
+    caps = cch.last_capture_per_day(db, "ZZ", 1)
+    assert [(c["et_date"], c["basis"]) for c in caps] == [("2026-09-25", cch.MORNING_BASIS)]
