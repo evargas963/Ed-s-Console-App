@@ -80,7 +80,8 @@ def test_a_strike_no_greek_reached_is_blank_not_zero():
     surface = project_gamma_surface([_ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)],
                                     exposure_books([_ct(100.0, "CALL", 500, iv=MISSING_GREEK_SENTINEL)], spot=SPOT))
     row = [r for r in surface["cells"] if r["strike"] == 100.0][0]
-    assert row["gex"] == [None] and row["oi"] == [{"call": 500, "put": None}]
+    # no put is listed at the strike: its OI is the call's 500 (strike_oi_legs, the one reader)
+    assert row["gex"] == [None] and row["oi"] == [{"call": 500, "put": 0, "total": 500}]
 
 
 def test_genuine_balanced_zero_is_a_zero():

@@ -646,7 +646,9 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
         # freshness boundary (OF_TOP_OF_BOOK_FIELD_STALE_SEC) this file already applies to
         # individual top-of-book fields, so there is one freshness number for this book, not
         # a second one invented on the client.
-        "book_stale": (book_age_sec is not None and book_age_sec > OF_TOP_OF_BOOK_FIELD_STALE_SEC),
+        # None when the book's age is unknown: unknown is not fresh (2026-09-27: it read False,
+        # and every badge showed LIVE over a book with no age)
+        "book_stale": (None if book_age_sec is None else book_age_sec > OF_TOP_OF_BOOK_FIELD_STALE_SEC),
     }
     return payload
 

@@ -82,7 +82,7 @@ def test_zero_oi_everywhere_surface_reports_gamma_unavailable_and_null_cells():
 def test_zero_oi_everywhere_terrain_per_strike_rows_draws_no_bars():
     chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0)]
     exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
-    rows = _per_strike_rows(exposures, chain)
+    rows = _per_strike_rows(exposures)
     assert rows == [], f"drew a fabricated $0 bar for a no-OI strike: {rows}"
 
 
@@ -129,7 +129,7 @@ def test_real_oi_that_nets_to_exactly_zero_terrain_row_is_zero_not_dropped():
     chain = [_ct(100.0, "CALL", 500, gamma=0.04, delta=0.5),
              _ct(100.0, "PUT", 500, gamma=0.04, delta=-0.5)]
     exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
-    rows = _per_strike_rows(exposures, chain)
+    rows = _per_strike_rows(exposures)
     assert len(rows) == 1 and rows[0][0] == 100.0 and rows[0][1] == 0.0
 
 

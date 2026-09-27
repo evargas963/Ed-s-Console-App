@@ -3763,7 +3763,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
             # carrying the same raw-gamma fallback (audit T-01) -- the live panel and this ghost
             # must be one computation or they draw a positioning shift that did not happen.
             from terrain_engine import _per_strike_rows
-            return _per_strike_rows(exposures, cts)
+            return _per_strike_rows(exposures)
 
         # Cursor-audit F8: unknown DTE must belong to NEITHER near nor far, not silently to far.
         # This endpoint carried its own near/far splitter with the old 999.0 sentinel — a duplicate
@@ -3842,11 +3842,13 @@ def get_terrain_strikes(ticker: str = Query(...)):
                 "vol_below": int(vb), "vol_above": int(va),
                 "spot_basis": float(s)}
 
+    live_spot, live_src, _live_ts = resolve_spot(tk)   # the one spot on every screen
     return JSONResponse({
-        "ticker": tk, "spot": spot_used,
-        "spot_source": _snap.get("spot_source"),
+        "ticker": tk, "spot": live_spot,
+        "spot_source": live_src,
+        "priced_at_spot": spot_used,
         "today": today or {"all": [], "near": [], "far": []},
-        "today_side_sums": _side_sums((today or {}).get("all"), spot_used),
+        "today_side_sums": _side_sums((today or {}).get("all"), live_spot),
         "today_source": today_src,
         # RC-68: every consumer must be able to render an AGE on the panel's face. A number with
         # no age is how a 2.1-hour-old volume histogram sat under the label "TODAY'S OPTION VOLUME".
@@ -3956,7 +3958,8 @@ def get_vanna_by_strike(ticker: str = Query(...)):
     if "_vanna_rows" not in payload:
         return JSONResponse({"ticker": tk, "available": False,
                              "reason": "no levels published for this ticker yet"})
-    return JSONResponse({"ticker": tk, "available": True, "spot": payload.get("spot"),
+    return JSONResponse({"ticker": tk, "available": True, "spot": resolve_spot(tk)[0],
+                         "priced_at_spot": payload.get("spot"),
                          "rows": payload["_vanna_rows"], "levels_as_of": payload.get("levels_as_of"),
                          "method": "the published levels' exposure book -> call_vanna - put_vanna"})
 
@@ -3972,7 +3975,8 @@ def get_charm_by_strike(ticker: str = Query(...)):
         return JSONResponse({"ticker": tk, "available": False,
                              "reason": "no levels published for this ticker yet"})
     rows = payload["_charm_rows"]
-    return JSONResponse({"ticker": tk, "available": bool(rows), "spot": payload.get("spot"),
+    return JSONResponse({"ticker": tk, "available": bool(rows), "spot": resolve_spot(tk)[0],
+                         "priced_at_spot": payload.get("spot"),
                          "rows": rows, "levels_as_of": payload.get("levels_as_of"),
                          "reason": None if rows else "charm_by_strike produced no usable strikes for this chain",
                          "method": "the published levels' charm map -> call_charm - put_charm"})
@@ -4236,10 +4240,16 @@ def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
     dex = _bf(bucket.get("net_dex_dollars")) if _has_gex_data else None
     _vn = bucket["call_vanna"] - bucket["put_vanna"] if _has_gex_data else None
     vanna = round(_vn, 2) if _vn is not None else None
-    call_oi, put_oi = (bucket or {}).get("call_oi"), (bucket or {}).get("put_oi")
-    oi = {"call": _bf(call_oi), "put": _bf(put_oi)} if bucket is not None else {"call": None, "put": None}
-    call_vol, put_vol = (bucket or {}).get("call_volume"), (bucket or {}).get("put_volume")
-    volume = {"call": _bf(call_vol), "put": _bf(put_vol)} if bucket is not None else {"call": None, "put": None}
+    def _legs(legs):
+        # the one readers (strike_oi_legs / strike_volume_legs): Schwab's values as sent, 0 a real
+        # zero; unknown only when a contract at the strike did not report the field
+        if legs is None:
+            return {"call": None, "put": None, "total": None}
+        return {"call": _bf(legs[0]), "put": _bf(legs[1]), "total": _bf(legs[0] + legs[1])}
+
+    from math_exposure_core import strike_oi_legs, strike_volume_legs
+    oi = _legs(strike_oi_legs(bucket) if bucket is not None else None)
+    volume = _legs(strike_volume_legs(bucket) if bucket is not None else None)
     contracts = {"call": syms.get("call"), "put": syms.get("put")}
     return gex, dex, vanna, oi, volume, contracts, _has_gex_data, _has_oi
 
@@ -4394,6 +4404,7 @@ def get_options_gamma_surface(ticker: str = Query(...)):
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
     live = terrain_cache_get(tk)
     surf = (live or {}).get("_gamma_surface")
+    _surface_live_spot = resolve_spot(tk)
     if live and surf:
         # ONE freshness authority: terrain_staleness (RC-424) already merged onto the cache by
         # terrain_cache_get — serialize it verbatim, never a second age policy for the same truth.
@@ -4442,14 +4453,7 @@ def get_options_gamma_surface(ticker: str = Query(...)):
             "stream_coverage": _coverage,
             "contract_admission": _contract_admission,
             "degraded": live.get("levels_stale_reason") if stale else None,
-            # ONE spot faucet (operator directive, 2026-09-15): the spot stamped ON THIS SURFACE
-            # (by whichever producer computed this exact surface_seq generation) -- its cells
-            # were computed from that stamp. No fall-through to the terrain payload's own spot
-            # (operator rule 2026-09-23: no fallbacks); an unstamped surface reads no spot.
-            "spot": surf.get("spot"),
-            "spot_source": surf.get("spot_source"),
             "chain_as_of_ts_utc": live.get("computed_ts_utc"),
-            "spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc"),
             "age_sec": live.get("levels_age_sec"),            # terrain's canonical age
             "refresh_active": live.get("levels_refresh_active"),
             "chain_basis": live.get("chain_basis"),
@@ -4467,6 +4471,15 @@ def get_options_gamma_surface(ticker: str = Query(...)):
                          "(complete_chain_captures), not exposed by this surface"),
             },
             **_stamp_surface_session(surf, reference_date=None),
+            # one spot on every screen (2026-09-27): the live price, the header's own rule, after
+            # the surface's own keys so its stamp cannot overwrite it. The
+            # price this surface's cells were computed at is named on its own (operator directive
+            # 2026-09-15: the cells and their stamp travel together) -- two names, no switching.
+            "spot": _surface_live_spot[0],
+            "spot_source": _surface_live_spot[1],
+            "spot_as_of_ts_utc": _surface_live_spot[2],
+            "priced_at_spot": surf.get("spot"),
+            "priced_at_spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc"),
             "provenance": {
                 "producer": "math_exposure_core.compute_exposures_by_strike",
                 "source": "live_terrain_wide_chain (_terrain_refresh_one, strike_count-width basis)",
@@ -4895,19 +4908,24 @@ RECENT_CROSS_SEC: float = 120.0
 
 @app.get("/api/alerts")
 def get_alerts(ticker: str = Query(...)):
-    """Proximity alerts: spot near a gamma wall, and levels crossed in the last RECENT_CROSS_SEC."""
+    """Proximity alerts: spot near a gamma wall, and levels crossed in the last RECENT_CROSS_SEC.
+    Each carries the time it was observed -- the price's own time, or the cross's -- so no page
+    stamps an alert with its own clock."""
     tk = ticker_storage_key(_required_ticker(ticker))
     t = terrain_cache_get(tk) or {}
-    spot = resolve_spot(tk)[0]
+    spot, _src, spot_ts = resolve_spot(tk)
     alerts = []
     if spot is not None:
         for key, word in (("call_wall", "ceiling"), ("put_wall", "floor")):
             lvl = t.get(key)
             if lvl is not None and abs(spot - lvl) <= APPROACH_PTS:
-                alerts.append(f"Within {abs(spot - lvl):.1f}pts of {lvl:.2f} {word} wall")
+                alerts.append({"text": f"Within {abs(spot - lvl):.1f}pts of {lvl:.2f} {word} wall",
+                               "ts_utc": spot_ts})
     for c in get_db().get_recent_crosses(tk, n=10):
         if time.time() - float(c["ts_utc"]) <= RECENT_CROSS_SEC:
-            alerts.append(f"Just crossed {'up' if c['direction'] == 'up' else 'down'} through {c['level_name']} level")
+            alerts.append({"text": f"Just crossed {'up' if c['direction'] == 'up' else 'down'} "
+                                   f"through {c['level_name']} level",
+                           "ts_utc": float(c["ts_utc"])})
     return JSONResponse({"ticker": tk, "alerts": alerts})
 
 
@@ -5230,33 +5248,6 @@ def get_expiries(ticker: str = Query(...)):
                          "reason": None if t.get("expiries") else "levels not computed yet"})
 
 
-#: OPTIONS_ORDER_FLOW_V1 completeness repair (2026-08-30, operator-directed, round 2): a
-#: fixed strike_count is NEVER proof of completeness — it is by definition a BOUND (N
-#: strikes above/below ATM), and MEASURED live 2026-08-30 it silently truncated a real
-#: chain: SPY's near expiry at strike_count=250 returned 388 contracts (194 strikes,
-#: 645.0-950.0); the SAME expiry via schwab-py's `strike_range=Options.StrikeRange.ALL` —
-#: a DIFFERENT vendor selection dimension, not a wider count — returned 526 contracts (263
-#: strikes, 420.0-950.0): 69 real strikes strike_count=250 never showed. `strike_range=
-#: "ALL"` was independently confirmed to be the vendor's actual complete set (not itself
-#: silently bounded) by a saturation check: an unrelated strike_count=500 request on the
-#: SAME expiry returned the IDENTICAL strike set, byte-for-byte — the two independent
-#: request shapes converged, which a still-truncated response could not do. TSLA's near
-#: expiry: strike_count=250 and strike_range=ALL happened to already agree (236 contracts,
-#: 118 strikes, 160.0-630.0, 27 fractional) — evidence that a bound merely CAN coincide with
-#: completeness on a given day, never proof that it reliably does, which is exactly why
-#: `strike_range=ALL` (never a strike_count bound) is now the completeness basis. Real
-#: capture evidence: tests/fixtures/real_tsla_complete_chain_strike_range_all.json,
-#: tests/fixtures/real_spy_strike_count_vs_strike_range_all_evidence.json.
-#:
-#: SAFE BY CONSTRUCTION regardless of strike width: this repo's own measured 502s (SPY/QQQ
-#: at strikeCount>=150, $SPX at 80-100, server.py:11090-11091) were ALL multi-expiry
-#: requests (strikeCount * 2 sides * ~35-55 expiries in ONE response) — bounding one
-#: request to exactly ONE expiry via from_date=to_date keeps `strike_range=ALL`'s contract
-#: count scoped to that single expiry's real strike population (measured 236-526 contracts
-#: above), an order of magnitude under SCHWAB_CHAIN_CONTRACT_BUDGET=6600, regardless of how
-#: many strikes that population actually has — the vendor 502 was never about strike width
-#: alone, it was strike width MULTIPLIED across every expiry in an unwindowed request.
-COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
 
 
 @app.get("/api/chain")
@@ -5292,8 +5283,18 @@ def get_chain(ticker: str = Query(...),
     fetched_ts = held.get("_chain_fetched_ts")
     response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
         t, contracts, newer_than_ts=fetched_ts)
+    live_spot, _src, _ts = resolve_spot(t)       # the one spot on every screen
+    # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
+    # Strike Detail shows it beside this expiry's contracts -- one value, one producer
+    surf = held.get("_gamma_surface") or {}
+    col = next((i for i, e in enumerate(surf.get("expirations") or [])
+                if e.get("expiry") == resolved_expiry), None)
+    net_gex_by_strike = [] if col is None else [
+        [c["strike"], c["gex"][col]] for c in surf.get("cells") or [] if c["gex"][col] is not None]
     return JSONResponse({
-        "ticker": t, "spot": held.get("spot"), "expiry": resolved_expiry,
+        "ticker": t, "spot": live_spot, "priced_at_spot": held.get("spot"),
+        "expiry": resolved_expiry,
+        "net_gex_by_strike": net_gex_by_strike,
         "chain_as_of_ts_utc": fetched_ts,
         "contracts": response_contracts, "status": "ok",
         "stream_overlay_contracts": overlay_n,

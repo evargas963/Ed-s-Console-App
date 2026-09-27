@@ -380,7 +380,7 @@
     var lvlSrc = strikesData && strikesData.today_source;
     var lvlBadge = lvlSrc ? _ab({ label: 'GEX ' + (lvlSrc === 'terrain_live_cache' ? 'terrain live' : lvlSrc),
       ageSec: strikesData.today_age_sec, stale: !!strikesData.levels_stale, reason: strikesData.levels_stale_reason,
-      live: (lvlSrc === 'terrain_live_cache' && !strikesData.levels_stale) }) : '';
+      live: (lvlSrc === 'terrain_live_cache' && strikesData.levels_stale === false) }) : '';
     var asofLine = (barsBadge || lvlBadge) ? ('<div class="chart-asof">' + barsBadge + lvlBadge + '</div>') : '';
     var legendHead = note + asofLine;
     var legend = buildLegend(legendHead, spot, spotSource);

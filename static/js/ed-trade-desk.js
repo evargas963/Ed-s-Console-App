@@ -96,9 +96,10 @@
     // server-computed (app.options.order_flow.engine.compute_book_microstructure), the SAME
     // freshness boundary the rest of that engine already applies to top-of-book fields; this
     // only reads the verdict, it does not invent its own threshold.
-    var stale = ages.book_stale === true;
+    // LIVE only on the server's explicit "not stale"; an unknown book age is not live
+    var bs = ages.book_stale;
     return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, imb > 0.05 ? 1 : imb < -0.05 ? -1 : 0,
-      rows, stale ? 'STALE' : 'LIVE', stale ? 'stale' : 'live');
+      rows, bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN', bs === false ? 'live' : 'stale');
   }
 
   function frameStage(levelsD, spot) {

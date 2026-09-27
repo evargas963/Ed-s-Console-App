@@ -674,67 +674,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(chainCalls).toBeGreaterThan(callsBeforeRefresh);
   });
 
-  test('Strike Detail\'s Net GEX$ cell re-syncs when GEX-by-Strike updates, not just on its own /api/chain fetch (state-authority review)', async ({ page }) => {
-    // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: "Strike
-    // Detail can retain $1.0K after GEX by Strike updates to $3.0K." Strike Detail's Net
-    // GEX$ cell reads gbsNetAt(strike), sourced from _lastGbs -- a module-level cache that
-    // ONLY renderGbs() (GEX-by-Strike's own render) ever updates. loadGbs() (->
-    // /api/terrain/strikes) and loadStrike() (-> /api/chain) are two independent,
-    // unsynchronized fetches with no cross-panel version check: if /api/chain resolves
-    // FIRST on a refresh tick, Strike Detail bakes in whatever _lastGbs still holds from
-    // the PREVIOUS cycle; when /api/terrain/strikes resolves LATER and updates _lastGbs
-    // (repainting GEX-by-Strike's own bars), nothing told Strike Detail its
-    // already-rendered Net cell was now stale -- it kept showing the old value.
-    let strikesNet = 1000;
-    let strikesCalls = 0;
-    let hangNextStrikes = false;
-    let releaseStrikes = null;
-    await page.route('**/api/terrain/strikes**', (route) => {
-      strikesCalls += 1;
-      const body = JSON.stringify({ ticker: '$SPX', spot: 583.41,
-        today: { all: [[583, strikesNet, 5400], [580, -90000, 900], [586, -264500, 1200]] } });
-      if (hangNextStrikes) {
-        hangNextStrikes = false;
-        return new Promise((resolve) => {
-          releaseStrikes = () => resolve(route.fulfill({ status: 200, contentType: 'application/json', body }));
-        });
-      }
-      return route.fulfill({ status: 200, contentType: 'application/json', body });
-    });
-    let chainCalls = 0;
-    await page.route('**/api/chain**', (route) => {
-      chainCalls += 1;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CHAIN) });
-    });
-
+  test('Strike Detail\'s Net GEX$ is this expiry\'s value from /api/chain, never GEX-by-Strike\'s all-expiry total', async ({ page }) => {
+    // One value, one producer (2026-09-27): the Net row sits beside ONE expiry's contracts, so it
+    // shows that expiry's net GEX at the strike -- the heatmap's own cell, served on the same
+    // /api/chain response. It used to read GEX-by-Strike's rows (every expiry summed).
+    await page.route('**/api/terrain/strikes**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ticker: '$SPX', spot: 583.41, today: { all: [[583, 777000, 5400]] } }) }));
+    await page.route('**/api/chain**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, CHAIN, { net_gex_by_strike: [[583, 3000]] })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
     await expect(page.locator('#sdCtx')).toContainText('583');
-    const netCell = page.locator('#sdBody .sd-net td').nth(4);   // Net, OI, Vol, Gamma, GEX$
-    await expect(netCell).toHaveText('$1.0K');
-
-    // The NEXT /api/terrain/strikes response hangs; /api/chain resolves normally and fast,
-    // so renderStrike() runs FIRST and bakes in the still-stale $1.0K from _lastGbs.
-    strikesNet = 3000;
-    hangNextStrikes = true;
-    const chainCallsBeforeRefresh = chainCalls;
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
-    await expect.poll(() => strikesCalls).toBeGreaterThanOrEqual(2);   // the new terrain/strikes request is in flight, hanging
-    await expect.poll(() => chainCalls).toBeGreaterThan(chainCallsBeforeRefresh);   // /api/chain already settled
-    await expect(netCell).toHaveText('$1.0K');   // still the OLD value
-
-    // NOW release the delayed /api/terrain/strikes response -- the Net cell must re-sync
-    // to $3.0K WITHOUT a new /api/chain fetch (a direct push, not a re-fetch). A plain
-    // `expect(locator).toHaveText(...)` auto-retries for its whole timeout, so it would
-    // still eventually pass if some LATER, unrelated periodic refresh happened to
-    // re-fetch /api/chain and pick up the by-then-updated value on its own -- that would
-    // prove an unrelated mechanism works, not this fix. A short, bounded, non-retrying
-    // check immediately after release is the only way to catch the direct resync itself.
-    const chainCallsBeforeRelease = chainCalls;
-    if (releaseStrikes) releaseStrikes();
-    await page.waitForTimeout(150);
-    expect(await netCell.textContent()).toBe('$3.0K');
-    expect(chainCalls).toBe(chainCallsBeforeRelease);
+    await expect(page.locator('#sdBody .sd-net td').nth(4)).toHaveText('$3.0K');   // Net, OI, Vol, Gamma, GEX$
   });
 
   test('heatmap renders canonical cells verbatim (value == formatted payload; sign -> colour)', async ({ page }) => {

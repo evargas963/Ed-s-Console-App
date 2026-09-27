@@ -50,13 +50,13 @@ def test_per_strike_bars_are_dollar_gex_on_valid_gamma_only():
            _c(510.0, "CALL", delta=0.5, gamma=float("nan"))]              # invalid gamma
     cts[0]["totalVolume"] = 0                                             # a REAL zero volume
     ex, _ = _book(cts)
-    rows = _per_strike_rows(ex, cts)
+    rows = _per_strike_rows(ex)
     assert [r[0] for r in rows] == [500.0]          # no bar for the invalid-gamma strike
     assert rows[0][2] == 0                          # reported zero stays zero
     ex2, _ = _book([_c(500.0, "CALL", delta=0.5, gamma=0.02)])
-    assert _per_strike_rows(ex2, [_c(500.0, "CALL", delta=0.5, gamma=0.02)])[0][2] is None
+    assert _per_strike_rows(ex2)[0][2] is None
     ex3, _ = _book(cts, spot=None)
-    assert _per_strike_rows(ex3, cts) == []         # no spot -> no dollar bars, no raw ones
+    assert _per_strike_rows(ex3) == []         # no spot -> no dollar bars, no raw ones
 
 
 # ── max pain is PER EXPIRY (standard definition) -- the front expiry, labelled ────

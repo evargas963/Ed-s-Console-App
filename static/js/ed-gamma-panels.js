@@ -119,10 +119,15 @@
         src.textContent = 'STALE' + (age ? ' · ' + age : '');
         src.title = d.levels_stale_reason || 'terrain levels are stale';
         src.style.color = 'var(--ed-stale)';
-      } else {
+      } else if (d.levels_stale === false) {
         src.textContent = 'terrain · live';
         src.title = '';
         src.style.color = '';
+      } else {
+        // no freshness verdict served: never read as live
+        src.textContent = 'freshness not reported';
+        src.title = '';
+        src.style.color = 'var(--ed-stale)';
       }
       // #5: terrain levels are AGGREGATE across expiries; if the workspace filters to one expiry,
       // disclose that these levels are still all-exp (never silently relabel them as selected-expiry).
@@ -187,46 +192,8 @@
     el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
       ? window.EdShell.asOfBadge({ label: srcLabel(d.today_source), ageSec: d.today_age_sec,
           stale: !!d.levels_stale, reason: d.levels_stale_reason,
-          live: (d.today_source === 'terrain_live_cache' && !d.levels_stale) })
+          live: (d.today_source === 'terrain_live_cache' && d.levels_stale === false) })
       : '';
-  }
-  var _lastGbs = { ticker: null, rows: [], spot: null };
-  // Independent-review finding (2026-09-13), REPRODUCED ("Strike Detail can combine a new
-  // ticker's chain with the previous ticker's cached Net GEX"): _lastGbs carried no ticker
-  // identity, so gbsNetAt matched purely on STRIKE NUMBER -- a $150 strike exists for many
-  // tickers, so a ticker switch whose /api/chain resolved before /api/terrain/strikes had
-  // re-run for the new ticker painted the OLD ticker's $150-strike net GEX under the NEW
-  // ticker's OI/Vol/Gamma/Delta. Fixed: refuse a lookup for any ticker but the one _lastGbs
-  // actually holds data for.
-  function gbsNetAt(tk, strike) {   // canonical per-strike net GEX$ (from /api/terrain/strikes), for reuse
-    if (_lastGbs.ticker !== tk) return null;
-    for (var i = 0; i < _lastGbs.rows.length; i++) {
-      if (Math.abs(Number(_lastGbs.rows[i][0]) - Number(strike)) < 0.01) return Number(_lastGbs.rows[i][1]);
-    }
-    return null;
-  }
-  // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: Strike
-  // Detail's Net GEX$ cell reads gbsNetAt(strike) -- a value SOURCED FROM _lastGbs, which
-  // only GEX-by-Strike's own renderGbs() ever updates -- but renderStrike() only reads it
-  // at the moment ITS OWN /api/chain fetch resolves. loadGbs() (-> /api/terrain/strikes)
-  // and loadStrike() (-> /api/chain) are two independent, unsynchronized fetches with no
-  // cross-panel version check: if /api/chain resolves first, Strike Detail bakes in
-  // whatever _lastGbs still holds from the PREVIOUS cycle (e.g. $1.0K); when
-  // /api/terrain/strikes later resolves and renderGbs() updates _lastGbs to the new value
-  // (e.g. $3.0K) and repaints the bar chart, nothing tells Strike Detail its own
-  // already-rendered Net cell is now stale -- it keeps showing $1.0K until the NEXT
-  // independent trigger of loadStrike. Fixed by re-syncing JUST that one derived cell
-  // the instant its actual source (_lastGbs) changes, without re-fetching /api/chain or
-  // touching Strike Detail's other (unrelated, already-correct) OI/Vol/Gamma/Delta/IV
-  // cells.
-  function _resyncStrikeDetailNetCell() {
-    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
-    if (sel == null) return;
-    var cell = document.querySelector('#sdBody .sd-net td:nth-child(5)');
-    if (!cell) return;   // Strike Detail is not currently rendering a strike -- nothing to sync
-    var net = gbsNetAt(ticker(), sel);
-    cell.className = net == null ? '' : (net >= 0 ? 'pos' : 'neg');
-    cell.textContent = net == null ? '—' : usd(net);
   }
   // ---- Repo-wide chart interaction standard, adapted for this surface's real shape ----
   // Same reasoning as ed-gamma.js's heatmap grid (see its own comment): a scrollable list of
@@ -313,8 +280,6 @@
     // whatever Number() happens to do with it (see ed-gamma-chart.js's identical fix).
     var _gbsSpotRaw = d ? d.spot : null;
     var gbsSpot = (_gbsSpotRaw == null) ? NaN : Number(_gbsSpotRaw);
-    _lastGbs = { ticker: tk != null ? tk : ticker(), rows: (d && d.today && d.today.all) || [], spot: gbsSpot };
-    _resyncStrikeDetailNetCell();
     var rows = d && d.today && d.today.all;
     if (!rows || !rows.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
@@ -491,9 +456,14 @@
     var call = pick('CALL'), put = pick('PUT');
     txt('sdCtx', px(strike, strike % 1 ? 2 : 0) + (expiry ? ' · ' + esc(expiry.slice(5)) : ''));
     function cell(c, k, d2) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? v.toFixed(d2 == null ? 2 : d2) : esc(v)); }
-    // GEX ($) column: per-side GEX$ is NOT canonical from /api/chain (computing it would be frontend
-    // math) -> "—"; the NET row's GEX is the canonical per-strike net_gex_1pct$ from /api/terrain/strikes.
-    var net = gbsNetAt(ticker(), strike);
+    // GEX ($) column: per-side GEX$ is not served (computing it would be frontend math) -> "—"; the
+    // NET row is this expiry's net GEX at this strike, served on the same /api/chain response --
+    // the heatmap's own cell (2026-09-27: it was GEX-by-Strike's all-expiry total, beside one
+    // expiry's contracts).
+    var net = null;
+    ((d && d.net_gex_by_strike) || []).forEach(function (r) {
+      if (Math.abs(Number(r[0]) - Number(strike)) < 0.01) net = Number(r[1]);
+    });
     var netCls = net == null ? '' : (net >= 0 ? 'pos' : 'neg');
     host.innerHTML =
       '<table class="sd"><thead><tr><th>Type</th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
@@ -503,7 +473,7 @@
       '</td><td>' + cell(put, 'gamma', 4) + '</td><td class="dim">—</td><td>' + cell(put, 'delta', 3) + '</td><td>' + cell(put, 'volatility', 1) + '</td></tr>' +
       '<tr class="sd-net"><td class="side">Net</td><td>—</td><td>—</td><td>—</td><td class="' + netCls + '">' +
       (net == null ? '—' : usd(net)) + '</td><td>—</td><td>—</td></tr>' +
-      '</tbody></table><div class="sd-src">vendor per-contract · /api/chain · net GEX$ · /api/terrain/strikes</div>';
+      '</tbody></table><div class="sd-src">vendor per-contract · net GEX$ this expiry · /api/chain</div>';
     // RC-UI-3 (2026-09-12): connect the displayed strike's own vendor contract identity
     // (both sides -- call AND put, "both sides where required") to LIVE streaming, so its
     // gamma/delta/OI/volume can freshen sub-second instead of waiting the ~60s REST cycle.

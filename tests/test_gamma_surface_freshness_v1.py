@@ -38,12 +38,15 @@ def _clear(tk):
 
 def test_live_terrain_surface_is_preferred_and_discloses_coverage(monkeypatch):
     monkeypatch.setattr("server._is_loggable_session", lambda: True)   # an open-market test
+    monkeypatch.setattr("server.resolve_spot", lambda tk, **_k: (584.0, "live_quote", time.time()))
     tk = ticker_storage_key("SPY")
     _clear(tk); _put_live(tk, computed_ts=time.time())
     try:
         d = _call(tk)
         assert d["source"] == "terrain_live_cache" and d["live"] is True
-        assert d["spot"] == 583.41 and d["cells"] == _SURF["cells"]     # served verbatim
+        assert d["cells"] == _SURF["cells"]     # served verbatim
+        # the live price, and the price the cells were computed at, each named
+        assert d["spot"] == 584.0 and d["priced_at_spot"] == 583.41
         assert d["provenance"]["spot_basis"] == "live_resolve_spot"
         # coverage is honest: a live near-money window, NOT a complete strike_range=ALL chain
         assert d["complete"] is False

@@ -263,7 +263,7 @@
     });
     var t = S.terrain;
     if (t && !t.error) {
-      var tts = t.computed_ts_utc || Date.now() / 1000;
+      var tts = t.computed_ts_utc;   // the server's time or none -- never this browser's clock
       if (t.call_wall_state === 'breached') items.push({ key: 'cw', ts: tts, dom: 'OPTIONS', dir: 'up',
         title: 'Spot through the call wall', detail: 'call wall ' + num(t.call_wall) + ' · spot ' + num(t.spot), src: '/api/terrain' });
       if (t.put_wall_state === 'breached') items.push({ key: 'pw', ts: tts, dom: 'OPTIONS', dir: 'down',
@@ -274,7 +274,7 @@
     var m = S.micro;
     if (m && m.wall_candidates && m.wall_candidates.length) {
       m.wall_candidates.slice(0, 3).forEach(function (w, i) {
-        items.push({ key: 'wall' + i, ts: (m.provenance && m.provenance.server_received_ts) || Date.now() / 1000, dom: 'LIQUIDITY',
+        items.push({ key: 'wall' + i, ts: m.provenance && m.provenance.server_received_ts, dom: 'LIQUIDITY',
           dir: w.side === 'bid' ? 'up' : 'down',
           title: 'Displayed size wall · ' + (w.side || '') + ' ' + num(w.price),
           detail: fmtVol(w.volume) + ' shown · ' + (w.median_mult != null ? num(w.median_mult, 1) + '× the median level' : 'size outlier'),
@@ -282,9 +282,13 @@
       });
     }
     ((S.analytics && S.analytics.alerts) || []).forEach(function (a, i) {
-      items.push({ key: 'ra' + i, ts: Date.now() / 1000, dom: 'ALERT', dir: null, title: String(a), detail: '', src: '/api/alerts' });
+      items.push({ key: 'ra' + i, ts: a.ts_utc, dom: 'ALERT', dir: null, title: String(a.text), detail: '', src: '/api/alerts' });
     });
-    return items.sort(function (a, b) { return b.ts - a.ts; });
+    // newest first; an item the server gave no time sorts last and shows no time
+    return items.sort(function (a, b) {
+      var ka = a.ts == null ? -Infinity : a.ts, kb = b.ts == null ? -Infinity : b.ts;
+      return kb === ka ? 0 : (kb > ka ? 1 : -1);
+    });
   }
   function paintQueue() {
     var host = $('tdmQueue'); if (!host) return;
@@ -299,7 +303,7 @@
         '<span class="tdm-q-n ' + (q.dir === 'up' ? 'up' : q.dir === 'down' ? 'dn' : '') + '">' + (q.n || '•') + '</span>' +
         '<span class="tdm-q-b"><span class="tdm-q-t">' + esc(q.title) + '</span>' +
         '<span class="tdm-q-d">' + esc(q.detail) + '</span>' +
-        '<span class="tdm-q-m"><span class="tdm-dom">' + esc(q.dom) + '</span>' + esc(whenCT(q.ts)) + ' CT · ' + esc(q.src) + '</span></span></button>';
+        '<span class="tdm-q-m"><span class="tdm-dom">' + esc(q.dom) + '</span>' + (q.ts == null ? 'time not reported' : esc(whenCT(q.ts)) + ' CT') + ' · ' + esc(q.src) + '</span></span></button>';
     }).join('');
   }
   function selectItem(key, scroll) {
@@ -327,7 +331,9 @@
           row('Reason', m && m.status === 'no_book' ? 'no NASDAQ/NYSE book rows for this symbol right now' : m === undefined ? 'loading…' : 'microstructure request failed');
       } else {
         var imb = Number(d5.imbalance);
-        state(c, m.ages && m.ages.book_stale ? 'STALE BOOK' : (imb > 0 ? 'BID HEAVY' : imb < 0 ? 'OFFER HEAVY' : 'BALANCED'), m.ages && m.ages.book_stale ? 'warn' : (imb > 0 ? 'up' : imb < 0 ? 'dn' : ''));
+        var bs = m.ages ? m.ages.book_stale : null;   // true, false, or unknown (null)
+        state(c, bs === true ? 'STALE BOOK' : bs !== false ? 'BOOK AGE UNKNOWN' : (imb > 0 ? 'BID HEAVY' : imb < 0 ? 'OFFER HEAVY' : 'BALANCED'),
+          bs !== false ? 'warn' : (imb > 0 ? 'up' : imb < 0 ? 'dn' : ''));
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (imb >= 0 ? 'up' : 'dn') + '">' + (imb >= 0 ? '+' : '') + num(imb * 100, 1) + '%</span><small>depth imbalance · 5 levels</small>';
         c.querySelector('.tdm-rows').innerHTML = row('Bid depth (5)', fmtVol(d5.bid_total)) + row('Ask depth (5)', fmtVol(d5.ask_total)) +
           row('Spread', num(m.spread_pts, 2) + ' pts') + row('Size walls shown', String((m.wall_candidates || []).length)) +
@@ -415,7 +421,8 @@
     h += q ? pill('PRICE', q.spot_state === 'live' ? 'LIVE' : String(q.spot_state || '—').toUpperCase(), q.spot_state === 'live' ? 'ok' : 'bad', 'daemon price socket')
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no NASDAQ/NYSE book rows')
-      : pill('BOOK', m.ages && m.ages.book_stale ? 'STALE' : age(m.ages && m.ages.book_age_sec), m.ages && m.ages.book_stale ? 'bad' : 'ok');
+      : pill('BOOK', m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
+          m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
     var la = L && L.snapshot_as_of_ts_utc ? Date.now() / 1000 - L.snapshot_as_of_ts_utc : null;
     h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', age(la), (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
     h += t === undefined ? pill('GAMMA', '…', '') : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) || 'terrain request failed') : pill('GAMMA', t.levels_stale ? 'STALE ' + age(t.levels_age_sec) : age(t.levels_age_sec), t.levels_stale ? 'warn' : 'ok', t.levels_stale_reason || '');

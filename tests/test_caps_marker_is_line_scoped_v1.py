@@ -133,7 +133,7 @@ def test_unknown_maturity_joins_neither_side_of_the_split():
     bucket = {"has_oi": True, "has_valid_gamma": True, "dollarized": True,
               "call_gex_1pct": 1.0e6, "put_gex_1pct": 0.0, "net_gex_1pct": 1.0e6}
     books = {("2026-10-16", None): ({740.0: bucket}, ExposureDiagnostics(1, 1, 0, "OK"))}
-    scopes = T.per_strike_view(books, {740.0: bucket}, [{"strikePrice": 740.0, "totalVolume": 10}])  # no DTE
+    scopes = T.per_strike_view(books, {740.0: bucket})  # the book's expiry has no DTE
     assert scopes["all"], "the contract belongs to ALL (that chip claims no maturity)"
     assert scopes["near"] == [], "unknown maturity rendered under the <=7DTE chip"
     assert scopes["far"] == [], "unknown maturity rendered under the MONTHLY+ chip"
