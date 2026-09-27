@@ -815,7 +815,6 @@ Regression gate: `tests/test_anti_pattern_family_repo_wide.py` (production `.py`
 | `v2_decision/` | * | * | v2 decision adapter derived defaults |
 | `audit_` | * | * | audit script counters and diagnostics |
 | `backfill_` | * | * | backfill script counters |
-| `compare_clustering_modes.py` | * | * | clustering comparison CLI |
 | `debug_` | * | * | debug utilities |
 | `crash_trace.py` | * | * | crash trace env flag |
 | `db_authority.py` | * | * | DB authority env flags |

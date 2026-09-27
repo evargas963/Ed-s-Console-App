@@ -15,7 +15,7 @@ import hashlib
 import logging
 import threading
 from collections import defaultdict
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from typing import TYPE_CHECKING, Any, Optional
 
 from instrument_identity import ticker_storage_key
@@ -62,14 +62,6 @@ LEVEL_NAMES = {
     "OVERNIGHT_HIGH": ("Overnight high", "ONH"), "OVERNIGHT_LOW": ("Overnight low", "ONL"),
 }
 
-
-def _cluster_reference_price(*candidates) -> Optional[float]:
-    """First positive price among candidates; None when no valid reference (no 500.0 fabrication)."""
-    for value in candidates:
-        p = float_positive_or_none(value)
-        if p is not None:
-            return p
-    return None
 
 
 
@@ -558,82 +550,25 @@ def compute_volume_profile_levels(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ATR (Average True Range)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def compute_atr_from_bars(
-    bars: list,
-    session_date: date,
-    cutoff_dt: Optional[datetime] = None,
-    period: int = 14,
-) -> Optional[float]:
-    """
-    Compute Average True Range from OHLCV bars. Deterministic, no lookahead.
-
-    Formula:
-        TR[i] = max(high[i] - low[i], |high[i] - close[i-1]|, |low[i] - close[i-1]|)
-        ATR = SMA(TR over last `period` bars)
-
-    Uses RTH bars only, filtered by session_date and cutoff_dt.
-    If session_date has no RTH bars through cutoff (e.g. premarket), uses previous day RTH.
-
-    Returns ATR in price points, or None if insufficient data.
-    """
-    bars_norm = _bars_to_list(bars)
-    rth_bars = _filter_rth_bars(bars_norm, session_date, cutoff_dt)
-    if not rth_bars:
-        prev_date = session_date - timedelta(days=1)
-        prev_cutoff = datetime.combine(prev_date, RTH_CLOSE, tzinfo=ET)
-        rth_bars = _filter_rth_bars(bars_norm, prev_date, prev_cutoff)
-    if not rth_bars or len(rth_bars) < period + 1:
-        return None
-
-    rth_bars = sorted(rth_bars, key=lambda x: (x.get("_ts") or 0))
-    # RC-345 / F08: the TR + SMA arithmetic is owned by the ONE ATR authority,
-    # math_volatility.compute_atr. This function owns only the RTH-session SCOPE
-    # (filtering, no-lookahead cutoff, prev-day fallback) — it is not a second ATR formula.
-    # compute_atr skips bars with missing h/l/c and averages sum(trs[-period:]) / period,
-    # exactly as the inlined loop did, so the RTH-scoped value is unchanged.
-    from math_volatility import compute_atr
-    return compute_atr(rth_bars, period=period)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # ZONE CLUSTERING
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def cluster_price_levels_into_zones(
     levels: list[tuple[float, str]],
-    reference_price: float,
     config: PlaybookConfig,
-    atr_value: Optional[float] = None,
 ) -> list[tuple[float, float, float, list[str], list[tuple[float, str]]]]:
     """
     Cluster nearby levels into zones. Returns list of (zone_low, zone_high, zone_mid, source_tags, source_pairs).
     source_pairs = [(price, tag), ...] for correct source_levels (actual level values, not zone mid).
 
-    Threshold by clustering_mode:
-      - "fixed": config.clustering_threshold (dollars/points)
-      - "percent": reference_price * config.clustering_threshold_pct
-      - "atr": atr_value * config.clustering_threshold_atr_mult (requires atr_value)
+    Adjacent levels merge while the gap is within config.clustering_threshold_pct of the lower one.
     """
     if not levels:
         return []
     prices = sorted(set(p for p, _ in levels if p and p > 0))
     if not prices:
         return []
-
-    mode = (config.clustering_mode or "percent").lower()
-    if mode == "fixed" and config.clustering_threshold > 0:
-        thresh = config.clustering_threshold
-    elif mode == "atr" and atr_value is not None and atr_value > 0:
-        thresh = max(atr_value * config.clustering_threshold_atr_mult, 0.01)
-    else:
-        if mode == "atr":
-            log.info("cluster: atr_value unavailable, falling back to percent threshold")
-        thresh = max(reference_price * config.clustering_threshold_pct, 0.01)
 
     tag_map: dict[float, list[str]] = defaultdict(list)
     for p, tag in levels:
@@ -660,7 +595,7 @@ def cluster_price_levels_into_zones(
     for i in range(1, len(prices)):
         cand = current + [prices[i]]
         cand_lo, cand_hi = min(cand), max(cand)
-        within_thresh = prices[i] - current[-1] <= thresh
+        within_thresh = prices[i] - current[-1] <= current[-1] * config.clustering_threshold_pct
         would_exceed = max_width is not None and (cand_hi - cand_lo) > max_width
 
         if within_thresh and not would_exceed:
@@ -720,7 +655,6 @@ def build_premarket_snapshot(
     by spot, zero or a neighbouring level (RC-68).
     """
     bars_norm = _bars_to_list(bars)
-    cutoff = _cutoff_for_snapshot(SnapshotType.PREMARKET, session_date)
     if canonical is not None:
         prev, over, _orb, _poc, _vah, _val, _vwap, _bands = (
             _phase2a_families_from_canonical(canonical)
@@ -747,12 +681,7 @@ def build_premarket_snapshot(
     if over.get("overnight_low"):
         levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
 
-    ref = _cluster_reference_price(prev.get("pdc"), prev.get("pd_poc"))
-    if ref is None:
-        clusters = []
-    else:
-        atr_val = compute_atr_from_bars(bars_norm, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
-        clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
+    clusters = cluster_price_levels_into_zones(levels, config)
 
     zones = []
     for lo, hi, mid, tags, source_pairs in clusters:
@@ -855,12 +784,7 @@ def build_opening_snapshot(
     if over.get("overnight_low"):
         levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
 
-    ref = _cluster_reference_price(orb.get("orb_mid"), prev.get("pdc"), prev.get("pd_poc"))
-    if ref is None:
-        clusters = []
-    else:
-        atr_val = compute_atr_from_bars(bars, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
-        clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
+    clusters = cluster_price_levels_into_zones(levels, config)
 
     zones = []
     _orb_h, orb_l = orb.get("orb_high"), orb.get("orb_low")
@@ -955,12 +879,7 @@ def build_midday_snapshot(
     if orb.get("orb_low"):
         levels.append((orb["orb_low"], "ORB_LOW"))
 
-    ref = _cluster_reference_price(poc, prev.get("pd_poc"))
-    if ref is None:
-        clusters = []
-    else:
-        atr_val = compute_atr_from_bars(bars, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
-        clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
+    clusters = cluster_price_levels_into_zones(levels, config)
 
     # Value shift: compare today POC vs prev POC
     value_state, vwap_relation, auction_interp = _classify_value_state_and_vwap_relation(
@@ -1052,12 +971,7 @@ def build_afternoon_snapshot(
     if prev.get("pdl"):
         levels.append((prev["pdl"], "PDL"))
 
-    ref = _cluster_reference_price(poc)
-    if ref is None:
-        clusters = []
-    else:
-        atr_val = compute_atr_from_bars(bars, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
-        clusters = cluster_price_levels_into_zones(levels, ref, config, atr_val)
+    clusters = cluster_price_levels_into_zones(levels, config)
 
     # Value shift: compare today POC vs prev POC (same logic as midday)
     value_state, vwap_relation, auction_interp = _classify_value_state_and_vwap_relation(
@@ -1157,20 +1071,6 @@ def _classify_value_state_and_vwap_relation(
     return value_state, vwap_relation, auction_interp
 
 
-def _last_rth_close_price(bars_norm: list, session_date: date, cutoff_dt: Optional[datetime]) -> Optional[float]:
-    rth = _filter_rth_bars(bars_norm, session_date, cutoff_dt)
-    if not rth:
-        return None
-    c = rth[-1].get("close")
-    if c is None:
-        return None
-    try:
-        cf = float(c)
-    except (TypeError, ValueError):
-        return None
-    return cf if cf > 0 else None
-
-
 def _classify_live_cluster(tags: list[str], orb: dict) -> tuple[ZoneType, str]:
     """Map clustered level tags to zone type + note (live / fused playbook)."""
     ts = " ".join(tags)
@@ -1233,7 +1133,6 @@ def build_live_snapshot(
     config: PlaybookConfig,
     *,
     extra_levels: Optional[list[tuple[float, str]]] = None,
-    spot: Optional[float] = None,
     canonical: Optional["PriceLevelSnapshot"] = None,
 ) -> SnapshotOutput:
     """
@@ -1327,25 +1226,7 @@ def build_live_snapshot(
         except (TypeError, ValueError):
             continue
 
-    ref: Optional[float] = None
-    if spot is not None:
-        try:
-            sf = float(spot)
-            if sf > 0:
-                ref = sf
-        except (TypeError, ValueError):
-            pass
-    if ref is None or ref <= 0:
-        lx = _last_rth_close_price(bars_norm, session_date, cutoff)
-        ref = _cluster_reference_price(
-            lx, vwap, poc, prev.get("pdc"), prev.get("pd_poc"),
-        )
-
-    if ref is None:
-        clusters = []
-    else:
-        atr_val = compute_atr_from_bars(bars_norm, session_date, cutoff, config.atr_period) if config.clustering_mode == "atr" else None
-        clusters = cluster_price_levels_into_zones(levels, float(ref), config, atr_val)
+    clusters = cluster_price_levels_into_zones(levels, config)
 
     value_state, vwap_relation, auction_interp = _classify_value_state_and_vwap_relation(
         poc, prev.get("pd_poc"), vwap
@@ -1466,7 +1347,7 @@ def generate_liquidity_value_snapshot(
         return build_afternoon_snapshot(ticker, bars_dataframe, session_date, config)
     if st == SnapshotType.LIVE:
         return build_live_snapshot(
-            ticker, bars_dataframe, session_date, config, extra_levels=None, spot=None
+            ticker, bars_dataframe, session_date, config, extra_levels=None
         )
     raise ValueError(f"Unknown snapshot_type: {snapshot_type}")
 

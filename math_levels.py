@@ -150,7 +150,7 @@ def compute_charm_by_strike(contracts: List[dict], spot: float, now=None,
     if not contracts or not spot or spot <= 0:
         return out
     for strike, oi, mult, t_years, sigma, sign in (parsed if parsed is not None
-                                                   else contract_inputs(contracts, now)):
+                                                   else contract_inputs(contracts, now)[0]):
         c = bs_charm(float(spot), strike, t_years, sigma)
         if c is None:
             continue
@@ -179,14 +179,22 @@ def pick_charm_wall_strikes(charm_by_strike: Dict[float, dict]
             round(pw, 2) if pw is not None else None)
 
 
-def contract_inputs(contracts: List[dict], now=None) -> list:
-    """_contract_inputs for every usable contract -- parse a chain once, share it between the
-    gamma profile and charm (compute_terrain)."""
-    return [p for p in (_contract_inputs(c, now=now) for c in contracts if isinstance(c, dict)) if p]
+def contract_inputs(contracts: List[dict], now=None) -> tuple[list, dict]:
+    """(priced, unpriced): _contract_inputs for every contract with open interest, parsed once
+    and shared by the gamma profile and charm (compute_terrain); `unpriced` counts the
+    contracts with open interest the profile could not price, by reason."""
+    priced, unpriced = [], {}
+    for ct in contracts:
+        r = _contract_inputs(ct, now=now) if isinstance(ct, dict) else "invalid"
+        if isinstance(r, tuple):
+            priced.append(r)
+        elif r != "zero_open_interest":
+            unpriced[r] = unpriced.get(r, 0) + 1
+    return priced, unpriced
 
 
-def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, float, int] | None:
-    """(strike, oi, mult, t_years, sigma, sign) or None when unusable.
+def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, float, int] | str:
+    """(strike, oi, mult, t_years, sigma, sign), or the reason it cannot be priced.
 
     `t_years` is the canonical INTRADAY time-to-expiry (time_et.time_to_expiry_years): to the
     option's session close (16:00 ET / 13:00 early-close), ACT/365, from `now` (defaults to
@@ -201,17 +209,19 @@ def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, fl
     oi = schwab_count(ct.get("openInterest"))
     mult = schwab_number(ct.get("multiplier"))
     side = str(ct.get("putCall") or "").upper()
-    if strike is None or strike <= 0 or oi is None or oi <= 0:
-        return None
-    if mult is None or mult <= 0 or side not in ("CALL", "PUT"):
-        return None
+    if oi == 0:
+        return "zero_open_interest"
+    if oi is None:
+        return "no_open_interest"
+    if strike is None or strike <= 0 or mult is None or mult <= 0 or side not in ("CALL", "PUT"):
+        return "invalid"
     # schwab_iv_to_sigma already rejects None/non-positive, so no separate iv guard.
     sigma = schwab_iv_to_sigma(schwab_number(ct.get("volatility")))  # single source: math_exposure_core
     if sigma is None or sigma <= 0:
-        return None
+        return "no_volatility"
     t_years = time_to_expiry_years(ct.get("expirationDate"), now=now)  # single source: intraday-to-close
     if t_years is None or t_years <= 0:
-        return None  # expired / holiday / missing-or-unparseable expiry -> fail closed
+        return "expired_or_no_expiry"
     return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
 
 
@@ -246,7 +256,7 @@ def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float
     if not contracts or spot is None or spot <= 0:
         return []
     if parsed is None:
-        parsed = contract_inputs(contracts, now)
+        parsed, _ = contract_inputs(contracts, now)
     if not parsed:
         return []
     lo, hi = spot * (1.0 - span_pct), spot * (1.0 + span_pct)

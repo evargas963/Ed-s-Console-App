@@ -19,7 +19,6 @@ TURN_AUDIT_OWNS = [
     "server.py",
     "news_sentiment.py",
     "liquidity_value_engine.py",
-    "compare_clustering_modes.py",
     "audit_model_readiness.py",
     "verification/daily_health.py",
     "v2_decision/a2_eod_force_exit.py",
@@ -95,27 +94,6 @@ def test_rc345_frontend_never_writes_the_regime_field() -> None:
 
 
 # ---------------------------------------------------------------------------- F13 time-to-expiry
-
-
-# ------------------------------------------------------------------------------------- F08 ATR
-def test_rc345_standard_atr_has_one_authority() -> None:
-    """F08: the standard true-range ATR (TR = max(h-l, |h-pc|, |l-pc|), SMA smoothing) is
-    computed once, by math_volatility.compute_atr. The RTH-session wrapper
-    (liquidity_value_engine.compute_atr_from_bars) owns only scope and must delegate the
-    formula; it may not re-inline the TR loop."""
-    from math_volatility import compute_atr
-
-    bars = [{"high": 10 + i, "low": 9 + i, "close": 9.5 + i} for i in range(20)]
-    assert compute_atr(bars, period=14) is not None
-
-    lve = _read("liquidity_value_engine.py")
-    assert "from math_volatility import compute_atr" in lve or "compute_atr(" in lve, (
-        "compute_atr_from_bars must call the one ATR authority, not re-derive TR")
-    # The re-inlined TR loop is gone (its signature line: `abs(h - prev_close)` inside the fn).
-    body = lve[lve.index("def compute_atr_from_bars"):]
-    body = body[: body.index("\ndef ", 1)] if "\ndef " in body[1:] else body
-    assert "abs(h - prev_close)" not in body, (
-        "compute_atr_from_bars still inlines a second TR formula (F08/RC-345).")
 
 
 

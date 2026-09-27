@@ -729,7 +729,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # by both the flip verdict and the regime/gamma-at-spot read. Previously the flip built a
     # profile inside compute_gamma_flip_v2 and this function built a SECOND one, each defaulting
     # `now` to its own wall-clock read — two materializations of the same curve at two instants.
-    parsed = contract_inputs(contracts, _terrain_now)       # one parse for profile + charm
+    parsed, unpriced = contract_inputs(contracts, _terrain_now)   # one parse for profile + charm
     profile = compute_gamma_profile(contracts, spot, now=_terrain_now, parsed=parsed)
     flip, confidence, flip_diag = compute_gamma_flip_v2(
         contracts, spot, now=_terrain_now, profile=profile)
@@ -738,7 +738,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # other prices); where the curve's sign at spot disagrees with Schwab's, the flip says so.
     _curve_at_spot = flip_diag.get("gamma_at_spot")
     _gamma_at_spot = book_net_gex(exposures)
-    flip_diag = {**flip_diag, "gamma_at_spot": _gamma_at_spot, "curve_gamma_at_spot": _curve_at_spot,
+    flip_diag = {**flip_diag, "unpriced": unpriced,
+                 "gamma_at_spot": _gamma_at_spot, "curve_gamma_at_spot": _curve_at_spot,
                  "curve_agrees_with_schwab_at_spot": (
                      None if _gamma_at_spot is None or _curve_at_spot is None
                      else (_gamma_at_spot > 0) == (_curve_at_spot > 0))}

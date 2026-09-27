@@ -447,13 +447,12 @@ def test_ui_shows_no_pool_badges():
 
 
 def test_cluster_price_levels():
-    """Levels within threshold clustered into zones."""
+    """Adjacent levels within 0.2% of the lower one merge; no reference price."""
     from liquidity_value_engine import cluster_price_levels_into_zones
     from liquidity_models import PlaybookConfig
     levels = [(500.0, "PDH"), (500.5, "PD_VAH"), (505.0, "ORB_HIGH")]
-    cfg = PlaybookConfig(clustering_threshold_pct=0.01)
-    clusters = cluster_price_levels_into_zones(levels, 500.0, cfg)
-    assert len(clusters) >= 1
+    clusters = cluster_price_levels_into_zones(levels, PlaybookConfig())
+    assert [(lo, hi) for lo, hi, *_ in clusters] == [(500.0, 500.5), (505.0, 505.0)]
 
 
 
@@ -511,8 +510,8 @@ def test_source_levels_use_actual_values():
     from liquidity_value_engine import cluster_price_levels_into_zones
     from liquidity_models import PlaybookConfig
     levels = [(100.0, "A"), (101.0, "B"), (105.0, "C")]
-    cfg = PlaybookConfig(clustering_mode="fixed", clustering_threshold=10.0)
-    clusters = cluster_price_levels_into_zones(levels, 100.0, cfg)
+    cfg = PlaybookConfig(clustering_threshold_pct=0.1)
+    clusters = cluster_price_levels_into_zones(levels, cfg)
     assert len(clusters) == 1
     lo, hi, mid, tags, source_pairs = clusters[0]
     assert mid == 102.5
@@ -531,12 +530,12 @@ def test_max_zone_width():
     from liquidity_models import PlaybookConfig
 
     levels = [(100.0, "A"), (100.5, "B"), (101.0, "C"), (102.0, "D"), (103.0, "E")]
-    cfg = PlaybookConfig(clustering_mode="fixed", clustering_threshold=2.0)
-    clusters = cluster_price_levels_into_zones(levels, 100.0, cfg)
+    cfg = PlaybookConfig(clustering_threshold_pct=0.02)
+    clusters = cluster_price_levels_into_zones(levels, cfg)
     assert len(clusters) >= 1
 
-    cfg_cap = PlaybookConfig(clustering_mode="fixed", clustering_threshold=2.0, max_zone_width=1.5)
-    clusters_cap = cluster_price_levels_into_zones(levels, 100.0, cfg_cap)
+    cfg_cap = PlaybookConfig(clustering_threshold_pct=0.02, max_zone_width=1.5)
+    clusters_cap = cluster_price_levels_into_zones(levels, cfg_cap)
     for lo, hi, _, _, _ in clusters_cap:
         assert hi - lo <= 1.5 + 0.001, f"zone {lo}-{hi} exceeds max_zone_width 1.5"
     assert len(clusters_cap) >= len(clusters), "cap should produce more zones when width limited"

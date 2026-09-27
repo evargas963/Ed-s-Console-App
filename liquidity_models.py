@@ -207,11 +207,7 @@ class PlaybookConfig:
     """Configurable engine settings."""
     opening_range_minutes: int = 15
     value_area_percent: float = 0.70
-    clustering_threshold: float = 0.0   # fixed $ when mode=fixed
-    clustering_threshold_pct: float = 0.002   # 0.2% of price when mode=percent
-    clustering_mode: str = "percent"   # "fixed" | "percent" | "atr"
-    clustering_threshold_atr_mult: float = 1.0   # ATR multiplier when mode=atr
-    atr_period: int = 14   # bars for ATR calculation
+    clustering_threshold_pct: float = 0.002   # adjacent levels within 0.2% merge
     max_zone_width: float = 0.0   # 0 = no cap; when > 0, zones cannot exceed this width
     max_distance_from_anchor: float = 0.0   # 0 = no cap; max distance from zone anchor
     timezone: str = "America/New_York"
