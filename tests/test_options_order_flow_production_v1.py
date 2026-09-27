@@ -14,11 +14,12 @@ from stream_spine import STREAM_SCHEMA_SQL
 
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _at_capture(pin_clock):
-    """Valued at the stored chain's capture (2026-09-02 10:05 ET), so its expiries passing never change
-    what this test measures."""
+    """The tests on the stored CDE chain are valued at its capture (2026-09-02 10:05 ET); the
+    live-payload tests keep the real clock, since their book data is stamped with it."""
     return pin_clock(2026, 9, 2, 10, 5)
+
 
 def _cde_fixture_chain():
     from pathlib import Path
@@ -27,7 +28,7 @@ def _cde_fixture_chain():
     return json.loads(fx_path.read_text(encoding="utf-8"))
 
 
-def test_pick_atm_call_uses_vendor_symbol_not_constructed():
+def test_pick_atm_call_uses_vendor_symbol_not_constructed(_at_capture):
     from app.options.contracts.default import pick_atm_call_symbol
 
     fx = _cde_fixture_chain()
@@ -43,7 +44,7 @@ def test_pick_atm_call_uses_vendor_symbol_not_constructed():
     assert pick_atm_call_symbol(contracts, None) is None
 
 
-def test_default_contract_from_banked_chain(tmp_path, monkeypatch):
+def test_default_contract_from_banked_chain(tmp_path, monkeypatch, _at_capture):
     from app.options.contracts.default import default_option_contract, pick_atm_call_symbol
     from calibration.complete_chain_capture import persist_complete_chain_capture
 
