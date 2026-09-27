@@ -212,7 +212,7 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks(feed, monkeypa
             content={"key": _CONTRACT, "BIDS": [], "ASKS": []}))
         assert await _until(lambda: seen == [_CONTRACT])
         assert ofs._option_contract_last_update_ts[_CONTRACT] == ts
-        assert ofls.get_content_for_symbol(_CONTRACT)
+        assert ofls.option_top(_CONTRACT) == {"bid": 1.2, "ask": 1.3}
     asyncio.run(_run(feed, body))
 
 

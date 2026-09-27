@@ -411,11 +411,6 @@ ROWS: tuple[Row, ...] = (
         justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_latest_book_snapshot).',
     ),
     Row(
-        file='app/options/order_flow/engine.py', derivation='_latest_content_field', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification='PR214 Gap 1: the ONE freshness-aware per-field resolver over Schwab LEVELONE_OPTIONS/EQUITIES partial/delta content items (_latest_content_field).',
-    ),
-    Row(
         file='app/options/order_flow/engine.py', derivation='_microprice', disposition='ALLOWLISTED',
         allowlist_id='mega2_schwab_stream_l1',
         justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_microprice).',

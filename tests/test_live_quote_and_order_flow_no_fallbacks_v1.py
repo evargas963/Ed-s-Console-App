@@ -40,9 +40,7 @@ def test_institutional_proxy_needs_all_four_components():
     assert _compute_institutional_flow_proxy({}, book_imbalance_5=0.4) is None
 
 
-def test_mark_is_resolved_per_field_from_the_stream():
+def test_mark_is_the_streamed_mark_only():
     from app.options.order_flow.engine import _resolve_quote_mark
-    now = time.time()
-    items = [{"MARK": 10.05, "MARK_TS_RECV": now - 1}, {"BID_SIZE": 5, "BID_SIZE_TS_RECV": now}]
-    assert _resolve_quote_mark({"content": items}, now_ts=now) == (10.05, "streaming.MARK")
-    assert _resolve_quote_mark({"quote": {"mark": 10.05}}, now_ts=now) == (None, None)
+    assert _resolve_quote_mark({"top": {"mark": 10.05, "bid_size": 5}}) == (10.05, "streaming.MARK")
+    assert _resolve_quote_mark({"quote": {"mark": 10.05}}) == (None, None)
