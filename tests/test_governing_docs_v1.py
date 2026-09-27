@@ -8,7 +8,6 @@ branch names, folders outside the repository and not-yet-built target folders ar
 paths and are not checked. Anthropic's CLAUDE.md guidance: under 200 lines, or rules are lost.
 """
 import re
-import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -33,18 +32,10 @@ def missing_paths(text: str, tracked: list[str]) -> list[str]:
     return missing
 
 
-def _doc_texts() -> dict[str, str]:
-    """The four documents. A separate function only because the redundant-scan rule flags any
-    read beside `git ls-files` (ACTIVE_PROGRAM P1-7); it goes when that rule is fixed."""
-    return {d: (ROOT / d).read_text(encoding="utf-8") for d in DOCS}
-
-
-def test_every_path_the_governing_documents_name_exists():
-    texts = _doc_texts()
-    tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True,
-                             check=True).stdout.split()
-    assert tracked, "git ls-files returned nothing"
-    bad = {d: missing_paths(text, tracked) for d, text in texts.items()}
+def test_every_path_the_governing_documents_name_exists(repo_index):
+    """File names come from the shared `repo_index` (tests/conftest.py): one `git ls-files`."""
+    assert repo_index.tracked, "the shared index lists no tracked files"
+    bad = {d: missing_paths((ROOT / d).read_text(encoding="utf-8"), repo_index.tracked) for d in DOCS}
     assert not any(bad.values()), f"paths that do not exist: {bad}"
 
 
