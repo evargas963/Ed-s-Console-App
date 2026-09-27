@@ -83,18 +83,17 @@
     // D: preserve EVERY exact vendor contract identity — group by strike into ARRAYS per side, so a
     // second contract that shares (strike, side) is never silently overwritten. One display row per
     // duplicate index; a "dup" marker discloses when the single-expiry surface is not strike-unique.
-    var byK = {}, dup = false;
+    var byK = {}, dup = d.has_duplicate_contracts === true;   // served
     cs.forEach(function (c) {
       var k = Number(c.strikePrice); if (!isFinite(k)) return;
       byK[k] = byK[k] || { c: [], p: [] };
       var side = (c.putCall || '').toUpperCase() === 'PUT' ? 'p' : 'c';
       byK[k][side].push(c);
-      if (byK[k][side].length > 1) dup = true;
     });
     var strikes = Object.keys(byK).map(Number).sort(function (a, b) { return b - a; });
     // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
     var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
-    var spotK = strikes.reduce(function (best, k) { return (best == null || Math.abs(k - spot) < Math.abs(best - spot)) ? k : best; }, null);
+    var spotK = d.spot_strike;   // served: the listed strike nearest the live price
     var desired = (window.EdStream && window.EdStream.getDesired && window.EdStream.getDesired()) || null;
     // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
     // flag when the workspace filter was null (the server chose the default expiry).

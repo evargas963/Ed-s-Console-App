@@ -8,19 +8,19 @@
  */
 const { test, expect } = require('@playwright/test');
 
-const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, source: 'terrain_live_cache',
+const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, spot_strike: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 6, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [98, 100, 102],
   cells: [{ strike: 98, gex: [-90000] }, { strike: 100, gex: [958600] }, { strike: 102, gex: [-264500] }] };
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98,
   absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP',
   levels_stale: false, levels_age_sec: 21 };
-const STRIKES = { ticker: 'SPY', spot: 100, spot_source: 'schwab_quote_last',
+const STRIKES = { ticker: 'SPY', spot: 100, spot_strike: 100, spot_source: 'schwab_quote_last',
   today_source: 'terrain_live_cache', today_age_sec: 21, levels_stale: false, levels_age_sec: 21,
   today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] } };
 const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 100.0].map(function (c, i) {
   return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }) };
-const CHAIN = { ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
+const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
   scope: { kind: 'complete_single_expiry', requested_expiry: '2026-09-11', completeness_basis: 'strike_range=ALL' },
   contracts: [
     { putCall: 'CALL', strikePrice: 100, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },

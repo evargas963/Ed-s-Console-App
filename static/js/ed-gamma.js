@@ -110,14 +110,6 @@
     return out;
   }
 
-  function nearestStrikeIndex(strikes, spot) {
-    var best = -1, bd = Infinity;
-    for (var i = 0; i < strikes.length; i++) {
-      var d = Math.abs(strikes[i] - spot);
-      if (d < bd) { bd = d; best = i; }
-    }
-    return best;
-  }
 
   // Operator field-inventory audit (2026-09-13): the ONE canonical strike x expiry
   // projection (server.py project_gamma_surface) carries dex/oi/volume per cell alongside
@@ -292,7 +284,6 @@
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
         window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker || (surface && surface.ticker)));
       }
-      ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};   // invalidate any in-flight confirm/reject from a prior available render
       // Independent-review finding (2026-09-13), REPRODUCED ("unavailable heatmap
       // lifecycle"): _lastSurface/_lastRevision used to survive an unavailable result
       // untouched (this branch returned before either was ever assigned), so a LATER
@@ -358,7 +349,7 @@
     //             structure), else every canonical column with expired ones labelled EXPIRED.
     // Selection only: every cell value is the API value; nothing is dropped from the payload, and the
     // counts (canonical vs shown) are disclosed in the header and the scope note.
-    var rowSel = (ES && ES.scopeSelect) ? ES.scopeSelect(strikes, _panAnchor != null ? _panAnchor : spot)
+    var rowSel = (ES && ES.scopeSelect) ? ES.scopeSelect(strikes, _panAnchor != null ? _panAnchor : surface.spot_strike)
       : { idx: strikes.map(function (_s, i) { return i; }), shown: strikes.length, total: strikes.length };
     var allCols = exps.map(function (_e, ix) { return ix; });
     var unexpired = allCols.filter(function (ix) { return exps[ix].expired !== true; });
@@ -391,10 +382,8 @@
     // below, so a real column set arriving next paints immediately).
     if (filterMissing) {
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
-        ++_demandGen;
         window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker || surface.ticker));
       }
-      _demandStateByCol = {}; _demandSymbolsByCol = {};
       _lastSurface = surface;
       _lastRevision = 'filter-missing:' + expFilter;   // never matches a real column set's rev
       host.innerHTML = '<div class="placeholder"><div class="big">Expiry ' + escapeHtml(expFilter) +
@@ -403,9 +392,8 @@
         'or All Expirations, from the dropdown above</div></div>';
       return;
     }
-    // C: emphasise the nearest UNEXPIRED expiry (front) column — presentation only, no predictive meaning
-    var frontCol = -1, minDte = Infinity;
-    exps.forEach(function (e, ix) { if (e.expired !== true && e.dte != null && e.dte < minDte) { minDte = e.dte; frontCol = ix; } });
+    // C: emphasise the front column -- the nearest unexpired expiry, served as front_expiry
+    var frontCol = exps.map(function (e) { return e.expiry; }).indexOf(surface.front_expiry);
     // Live-heatmap coverage (state-authority review, 2026-09-12): every OTHER cell on this
     // grid only ever refreshed on the ~60s wide-chain REST cycle -- nothing had ever asked
     // the streaming layer to keep the cells the operator is ACTUALLY LOOKING AT fresh
@@ -455,84 +443,21 @@
     // always covers every currently-VIEWED column, in every scope, the same rule Wider/All
     // and an explicit expiry filter already used.
     var demandCols = viewCols;
-    // Independent-review finding (2026-09-13), REPRODUCED: the column-header tooltip
-    // claimed "sub-second streaming updates active for this column" the instant a column
-    // was in `demandCols` -- but `demandCols` only names what THIS module ASKED for; the
-    // single-owner streaming-control endpoint can reject that ask (confirmed with a real
-    // HTTP 503 in the reproduction) and contracts stayed empty while the tooltip kept
-    // claiming active streaming. `setAdditionalContracts` already returns a promise
-    // resolving to the server's own accepted/rejected verdict (ed-stream.js) -- this was
-    // simply never read. Fixed: track REQUESTED vs CONFIRMED vs REJECTED per dispatch,
-    // synchronously default new demand to "pending" (never "active") until the response
-    // actually confirms it, and patch the live column title in place once it resolves
-    // (applyDemandTitles) rather than claiming a fresh column has already streamed anything.
-    //
-    // Always-live heatmap mandate (2026-09-15, operator directive), FINAL, RETIRES the prior
-    // MAX_DEMAND_CONTRACTS=240 client-side ceiling and the column-capping/partial-coverage
-    // machinery built around it: "the 240-contract ceiling is our current implementation
-    // limit unless you prove otherwise. Do not use it as an excuse to reduce the product...
-    // Stream every contract Schwab permits, manage subscriptions dynamically if necessary."
-    // That number was never a measured or vendor-documented limit (the comment it replaced
-    // said so plainly: "never been measured against live Schwab") -- it was this client
-    // guessing at a vendor constraint and pre-emptively shrinking the product to fit the
-    // guess. The real subscribe/unsubscribe reconciliation this demand feeds
-    // (app.options.order_flow.streaming.set_active_option_contracts, and the capture
-    // daemon's own per-symbol SUBS/ADD loop, _apply_extra_option_contract_subs) already
-    // manages an arbitrary, dynamically-changing symbol set with no batching wall of its
-    // own -- there was never an infrastructure reason for THIS module to pre-truncate before
-    // ever asking. Demand now names every visible contract, full stop; if Schwab itself
-    // refuses or throttles at some real scale, that will surface as those specific symbols
-    // never reaching 'live' (per-symbol evidence, see the render loop below) -- honest,
-    // proven, reportable fact, never a client-side guess standing in for one.
-    var frontDemand = [], _newSymbolsByCol = {};
+    // every visible contract is asked for (the stream takes what Schwab admits; per-symbol
+    // outcomes come back as the cells' served stream states)
+    var frontDemand = [];
     if (demandCols.length) {
       var byCol = _heatmapVisibleContractsByColumn(cells, rowSel, demandCols);
       var seen = {};
       for (var _bc = 0; _bc < byCol.length; _bc++) {
-        var entry = byCol[_bc];
-        entry.symbols.forEach(function (s) { if (!seen[s]) { seen[s] = true; frontDemand.push(s); } });
-        _newSymbolsByCol[entry.col] = entry.symbols;
+        byCol[_bc].symbols.forEach(function (s) { if (!seen[s]) { seen[s] = true; frontDemand.push(s); } });
       }
     }
-    var demandedCols = Object.keys(_newSymbolsByCol).map(Number);
-    _demandSymbolsByCol = _newSymbolsByCol;
+    // ask the stream for the visible contracts; each column's streaming status comes back on the
+    // surface itself (stream_by_expiry), never worked out here
     if (window.EdStream && window.EdStream.setAdditionalContracts) {
-      var myDemandGen = ++_demandGen;
-      demandedCols.forEach(function (c) { _demandStateByCol[c] = frontDemand.length ? 'pending' : 'none'; });
-      window.EdStream.setAdditionalContracts(frontDemand, _heatmapOwnerKey(_pendingTicker || surface.ticker)).then(function (res) {
-        if (myDemandGen !== _demandGen) return;   // superseded by a newer demand call
-        if (!frontDemand.length) {
-          demandedCols.forEach(function (c) { _demandStateByCol[c] = 'none'; });
-          return;
-        }
-        // 'accepted' names a server-ACKed subscribe REQUEST -- real observed data, checked
-        // per-column against the latest surface below (this render's, or any later one), is
-        // what actually promotes THAT column to 'observed'. A SIXTH independent review
-        // (2026-09-13): each column is judged against its OWN demanded symbols
-        // (_colHasObservedEvidence), never a surface-wide count that a peer column's
-        // evidence could satisfy on this column's behalf.
-        var verdict = (res && (res.accepted || res.unchanged))
-          ? 'accepted' : (res && res.pending) ? 'pending' : 'rejected';
-        demandedCols.forEach(function (c) {
-          _demandStateByCol[c] = (verdict === 'accepted' && _colHasObservedEvidence(c, _lastSurface))
-            ? 'observed' : verdict;
-        });
-        applyDemandTitles(document.getElementById('heatBody'));
-      });
-    } else {
-      demandedCols.forEach(function (c) { _demandStateByCol[c] = frontDemand.length ? 'pending' : 'none'; });
+      window.EdStream.setAdditionalContracts(frontDemand, _heatmapOwnerKey(_pendingTicker || surface.ticker));
     }
-    // Independent-review finding (2026-09-13), REPRODUCED: acceptance was treated as the
-    // final word -- a demand accepted on an EARLIER render never got upgraded once a LATER,
-    // routine refresh's surface finally carried real overlay evidence for it. Checked on
-    // every render (not only the render that issued the request) so a demand that was merely
-    // 'accepted' when first requested still becomes honestly 'observed' the moment evidence
-    // for it actually arrives -- per column, per the SAME identity-bound check above.
-    Object.keys(_demandStateByCol).forEach(function (c) {
-      if (_demandStateByCol[c] === 'accepted' && _colHasObservedEvidence(Number(c), surface)) {
-        _demandStateByCol[c] = 'observed';
-      }
-    });
     _lastSurface = surface;   // cached so a theme switch can re-render without a refetch
     // #1: skip the full table rebuild when the canonical surface REVISION (and the viewport choice)
     // is unchanged (only the age advances between terrain revisions). A theme switch clears
@@ -548,7 +473,7 @@
     var maxAbs = 0;
     rowSel.idx.forEach(function (i) { var r = cells[i] || {}; var mr = _measureRow(r, measure); viewCols.forEach(function (j) { var v = mr[j]; if (v != null && Math.abs(v) > maxAbs) maxAbs = Math.abs(v); }); });
 
-    var spotIdx = nearestStrikeIndex(strikes, spot);
+    var spotIdx = surface.spot_strike == null ? -1 : strikes.map(Number).indexOf(Number(surface.spot_strike));
     // freshness / source — fail stale visibly (RC-UI-1 live-source rewire)
     var live = surface.live !== false, stale = !!surface.stale;
     var banner = buildBanner(surface);   // status banners (warming/requested/stale/ref + narrowed)
@@ -572,7 +497,7 @@
       var dte = expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
       var title = expired
         ? 'this expiration has already expired — a prior-session column kept for reference, not current structure'
-        : demandTitle(streamed, j);
+        : demandTitle(streamed, (surface.stream_by_expiry || {})[e.expiry]);
       tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') + (streamed ? ' stream-demand' : '') + '"' +
         ' data-col="' + j + '" title="' + escapeHtml(title) + '"' +
         '><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
@@ -628,8 +553,7 @@
         // "Never mislabel snapshot data as live": a non-live cell's title discloses exactly
         // that, with its own last-confirmed age when one is known -- the SAME per-leg
         // ts_recv/age_sec the API already carries, never fabricated here.
-        var snapshotAge = cellState && (cellState.call || cellState.put)
-          ? Math.max((cellState.call || {}).age_sec || 0, (cellState.put || {}).age_sec || 0) : null;
+        var snapshotAge = cellState ? cellState.age_sec : null;   // served: the cell's oldest confirmed leg
         // Audit finding #6 (2026-09-16): a vendor-rejected contract must fail its cell
         // VISIBLY, not read as indistinguishable from "simply never requested yet" --
         // rejected_reason is the vendor's own error, carried on whichever leg was refused.
@@ -772,36 +696,15 @@
   // to 'observed' requires THIS column's own demanded symbols to intersect the surface's
   // `stream_overlay_symbols` (server.py's _overlaid_symbols) -- real, identity-bound
   // evidence for that specific column, never a peer column's.
-  var _demandGen = 0;
-  var _demandStateByCol = {};      // col index -> 'pending' | 'accepted' | 'observed' | 'rejected'
-  var _demandSymbolsByCol = {};    // col index -> the vendor symbols demanded for that column
-  function _colHasObservedEvidence(col, surface) {
-    var syms = _demandSymbolsByCol[col] || [];
-    if (!syms.length || !surface) return false;
-    var overlaid = surface.stream_overlay_symbols || [];
-    for (var i = 0; i < overlaid.length; i++) {
-      if (syms.indexOf(overlaid[i]) !== -1) return true;
-    }
-    return false;
-  }
-  function demandTitle(streamed, col) {
+  function demandTitle(streamed, state) {
     if (!streamed) return 'REST-cadence only (refreshes ~60s) — not sub-second streamed; Auto shows one streamed column at a time';
-    var st = _demandStateByCol[col];
-    if (st === 'observed') return 'sub-second streaming updates observed for this column';
-    if (st === 'accepted') return 'streaming subscription accepted for this column — awaiting the first observed update';
-    if (st === 'rejected') return 'streaming subscription for this column was NOT accepted by the server — falling back to REST-cadence only';
-    return 'streaming subscription requested for this column — awaiting confirmation';   // 'pending' or transiently unset
-  }
-  // Patches the demanded column(s)' tooltip in place once the confirm/reject response
-  // lands, WITHOUT a full table rebuild -- the demand promise can resolve well after
-  // renderSurface has already returned, possibly across several unrelated re-renders.
-  function applyDemandTitles(host) {
-    if (!host) return;
-    var ths = host.querySelectorAll('.heat thead th.hexp.stream-demand');
-    for (var i = 0; i < ths.length; i++) {
-      if (ths[i].classList.contains('expired')) continue;
-      ths[i].setAttribute('title', demandTitle(true, Number(ths[i].getAttribute('data-col'))));
-    }
+    if (state === 'live' || state === 'partial') return 'sub-second streaming updates observed for this column';
+    if (state === 'pending') return 'streaming subscription requested for this column — awaiting the first observed update';
+    if (state === 'stale') return 'streamed contracts in this column have gone quiet — most recent valid computed values shown';
+    if (state === 'rejected') return 'the vendor refused the streaming subscription for this column — REST-cadence values shown';
+    if (state === 'daemon_unavailable') return 'the capture daemon is unreachable — this column cannot stream until it is back';
+    if (state === 'not_admitted') return 'the contracts in this column are outside the stream budget — REST-cadence values shown';
+    return 'streaming not yet confirmed for this column — REST-cadence values shown';
   }
 
   // server-owned revision identity — the cells are identical while these are unchanged, so we can
@@ -1016,7 +919,6 @@
       if (window.EdStream && window.EdStream.setAdditionalContracts) {
         window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker));
       }
-      ++_demandGen; _demandStateByCol = {}; _demandSymbolsByCol = {};   // invalidate any in-flight confirm/reject from the view just left
       _pendingTicker = null;
       return;
     }
@@ -1068,5 +970,5 @@
   }
 
   var _root = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : this);
-  _root.EdGamma = { formatUsd: formatUsd, cellStyle: cellStyle, nearestStrikeIndex: nearestStrikeIndex, renderSurface: renderSurface };
+  _root.EdGamma = { formatUsd: formatUsd, cellStyle: cellStyle, renderSurface: renderSurface };
 })();

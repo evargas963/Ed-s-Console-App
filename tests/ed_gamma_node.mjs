@@ -60,9 +60,6 @@ const LIGHT = { pos: [26, 158, 92], neg: [214, 59, 59], zero: [230, 235, 241] };
 assert.ok(rgb(G.cellStyle(800000, 1000000, LIGHT).bg)[1] > rgb(G.cellStyle(800000, 1000000, LIGHT).bg)[0], 'light-theme positive not green-dominant');
 assert.ok(rgb(G.cellStyle(-800000, 1000000, LIGHT).bg)[0] > rgb(G.cellStyle(-800000, 1000000, LIGHT).bg)[1], 'light-theme negative not red-dominant');
 
-// nearestStrikeIndex is a pure locator (spot highlight), no math on values
-assert.strictEqual(G.nearestStrikeIndex([90, 100, 110], 101), 1);
-assert.strictEqual(G.nearestStrikeIndex([90, 100, 110], 104.9), 1);
 
 // ---- F: heatmap rows render highest strike at the top, lowest at the bottom (operator
 // finding, 2026-09-11) -- calls the REAL renderSurface against a minimal DOM/EdShell stub,

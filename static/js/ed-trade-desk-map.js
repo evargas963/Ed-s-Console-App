@@ -369,11 +369,12 @@
       } else {
         var reg = String(t.regime || '').replace(/_/g, ' ');
         state(c, t.levels_market_closed ? 'AS OF ' + t.levels_as_of : t.levels_stale ? 'STALE ' + age(t.levels_age_sec) : (reg || '—'), t.levels_stale ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
-        c.querySelector('.tdm-hero').innerHTML = '<span class="' + ((t.net_gex_at_spot || 0) >= 0 ? 'up' : 'dn') + '">' + usd(t.net_gex_at_spot) + '</span><small>net dealer gamma at spot (per 1% move)</small>';
+        var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
+        c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span><small>net dealer gamma at spot (per 1% move)</small>';
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall) + (t.call_wall_state ? ' · ' + esc(t.call_wall_state) : ''), 'up') +
           row('Put wall', num(t.put_wall) + (t.put_wall_state ? ' · ' + esc(t.put_wall_state) : ''), 'dn') +
           row('Gamma flip', num(t.gamma_flip)) + row('Max pain', num(t.max_pain)) +
-          row('Put/Call OI', num(t.pcr_by_expiry && t.pcr_by_expiry[Object.keys(t.pcr_by_expiry).sort()[0]], 2)) +
+          row('Put/Call OI (all exp)', num(t.pcr_all, 2)) +
           row('Chain', esc(t.chain_basis || '—') + ' · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + ' contracts');
       }
     }

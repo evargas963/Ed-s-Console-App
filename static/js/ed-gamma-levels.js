@@ -52,8 +52,8 @@
         '<div class="sm">' + esc((d && (d.degraded || []).join(', ')) || 'the levels snapshot is empty for this symbol') + '</div></div>';
       return;
     }
-    // sort by price desc (like a levels ladder); spot marked
-    var rows = levels.slice().sort(function (a, b) { return (b.price || 0) - (a.price || 0); });
+    // served in ladder order (price, highest first) with near_spot marked by the server
+    var rows = levels;
     // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
     var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
     var head = '<div class="lv-head"><span>Canonical levels · gen ' + esc(d.generation) + '</span>' +
@@ -65,7 +65,7 @@
       var prov = r.provenance || {}, st = r.staleness || {};
       var age = st.age_sec != null ? (Math.round(st.age_sec) + 's') : '—';
       var stale = st.stale ? ' stale' : '';
-      var nearSpot = (isFinite(spot) && r.price != null && Math.abs(r.price - spot) / spot < 0.0015) ? ' near-spot' : '';
+      var nearSpot = r.near_spot ? ' near-spot' : '';
       body += '<tr class="lv-row' + nearSpot + '"><td class="lv-fam">' + esc(r.family || '—') + '</td>' +
         '<td>' + esc(r.label || r.id || '—') + '</td>' +
         '<td class="lv-px">' + px(r.price) + '</td>' +

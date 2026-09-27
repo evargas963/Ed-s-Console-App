@@ -10,14 +10,16 @@ const { test, expect } = require('@playwright/test');
 const LEVELS = {
   ticker: 'SPY', schema_version: 1, served_ts_utc: 1757000100, spot: 100.0, spot_source: 'schwab_quote_last',
   generation: 7, snapshot_as_of_ts_utc: 1757000000, bar_source: 'price_bars_1m',
+  // served in ladder order (price, highest first) with distance and near_spot (server.py get_levels)
   levels: [
-    { id: 'VWAP', price: 100.02, family: 'vwap', label: 'VWAP', evidence_tier: 'MEASURED',
-      provenance: { producer: 'liquidity_value_engine' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12, stale: false } },
-    { id: 'PDH', price: 101.5, family: 'session', label: 'Prior Day High', evidence_tier: 'MEASURED',
+    { id: 'PDH', price: 101.5, family: 'session', label: 'Prior Day High', evidence_tier: 'MEASURED', distance: 1.5, near_spot: false,
       provenance: { producer: 'session_levels' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12, stale: false } },
-    { id: 'POC', price: 99.4, family: 'value', label: 'Point of Control', evidence_tier: 'DERIVED',
+    { id: 'VWAP', price: 100.02, family: 'vwap', label: 'VWAP', evidence_tier: 'MEASURED', distance: 0.02, near_spot: true,
+      provenance: { producer: 'liquidity_value_engine' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12, stale: false } },
+    { id: 'POC', price: 99.4, family: 'value', label: 'Point of Control', evidence_tier: 'DERIVED', distance: -0.6, near_spot: false,
       provenance: { producer: 'value_area' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12, stale: false } },
   ],
+  by_distance: ['VWAP', 'POC', 'PDH'],
   vwap_series: [[1757000000, 100.0, 100.5, 99.5, 101.0, 99.0]],
   families_absent: [{ family: 'gamma', reason: 'served by /api/terrain' }],
   degraded: [],
@@ -51,11 +53,11 @@ test.describe('D — Gamma Levels view', () => {
     const lv = page.locator('#levelsBody');
     await expect(lv.locator('table.lv')).toBeVisible();
     await expect(lv.locator('.lv-row')).toHaveCount(3);
-    // sorted by price desc: PDH (101.5) first
+    // the served ladder order: PDH (101.5) first
     await expect(lv.locator('.lv-row').first()).toContainText('Prior Day High');
     await expect(lv.locator('.lv-row').first().locator('.lv-px')).toHaveText('101.50');
     await expect(lv.locator('.lv-row', { hasText: 'VWAP' }).locator('.lv-src')).toContainText('liquidity_value_engine');
-    // VWAP near spot (100.02 vs 100) is marked; absence disclosed honestly
+    // the served near_spot flag (VWAP) is marked; absence disclosed honestly
     await expect(lv.locator('.lv-row.near-spot')).toHaveCount(1);
     await expect(lv.locator('.lv-foot')).toContainText('VWAP curve');
     await expect(lv.locator('.lv-foot .lv-absent')).toContainText('gamma');

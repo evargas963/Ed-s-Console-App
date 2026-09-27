@@ -330,7 +330,7 @@
     var asc = todayAll.slice().sort(function (a, b) { return a[0] - b[0]; });
     var ascStrikes = asc.map(function (r) { return r[0]; });
     var sel = (window.EdShell && window.EdShell.scopeSelect)
-      ? window.EdShell.scopeSelect(ascStrikes, _migPanAnchor != null ? _migPanAnchor : spot)
+      ? window.EdShell.scopeSelect(ascStrikes, _migPanAnchor != null ? _migPanAnchor : strikesD.spot_strike)
       : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
     var win = sel.idx.map(function (i) { return asc[i]; }).sort(function (a, b) { return b[0] - a[0]; });
     var note = (window.EdShell && window.EdShell.scopeNote)
@@ -342,8 +342,7 @@
       maxAbs = Math.max(maxAbs, Math.abs(r[1]), Math.abs(ghost[r[0]] || 0));
       maxVol = Math.max(maxVol, r[2] || 0);
     });
-    var spotStrike = win.reduce(function (best, r) {
-      return (best == null || Math.abs(r[0] - spot) < Math.abs(best - spot)) ? r[0] : best; }, null);
+    var spotStrike = strikesD.spot_strike;   // served: the listed strike nearest the live price
     var cw = terrain && terrain.call_wall, pw = terrain && terrain.put_wall;
     var withGhost = [], byVolRows = [];
     var rows = '';

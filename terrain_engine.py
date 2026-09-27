@@ -218,8 +218,13 @@ class TerrainSnapshot:
     #: {expiry: put OI / call OI} for each listed expiry
     pcr_by_expiry: dict = field(default_factory=dict)          # put/call OI (positions held)
     pcr_volume_by_expiry: dict = field(default_factory=dict)   # put/call volume (today's trading)
+    #: the same two ratios over the whole book (every expiry)
+    pcr_all: float | None = None
+    pcr_volume_all: float | None = None
     #: every expiry the chain lists, ascending
     expiries: list = field(default_factory=list)
+    #: {expiry: Schwab's daysToExpiration as sent with this chain}
+    expiry_dte: dict = field(default_factory=dict)
     #: Wall-clock the chain behind per_strike was fetched — every consumer must be able to render
     #: an age on its face rather than implying "now".
     computed_ts_utc: float | None = None
@@ -285,6 +290,65 @@ def _per_strike_rows(exposures: dict) -> list[list]:
         rows.append([round(sk, 2), round(gf, 1), None if vol is None else int(vol)])
     rows.sort(key=lambda r: r[0])
     return rows
+
+
+#: Weighted positive-gamma strike move below which drift reads as none. Carried unchanged from
+#: static/chart.html's gamma panel (2026-09-27); its origin is not recorded -- NOT_PROVEN.
+MIGRATION_DRIFT_STRIKES = 0.15
+
+
+def positioning_migration(today: list, prior: list, call_wall, put_wall) -> dict:
+    """Day-over-day positioning for one DTE scope, from GEX-by-strike rows
+    [strike, net_gex_1pct$, volume] of today and of the prior capture.
+
+    rows: [strike, gex today, gex prior, change] (None where either day has no value); drift:
+    the positive-gamma-weighted strike today against the prior day, UP / DOWN / FLAT (None
+    without positive gamma on both days); grew / shrank: the two strikes that gained / lost the
+    most GEX; busiest: the two strikes with the most volume and where they sit against the walls;
+    volume_total: the scope's session volume (None when no row reported volume)."""
+    prior_gex = {r[0]: r[1] for r in prior or []}
+    rows, pos_t, pos_p = [], [], []
+    for k, gx, _vol in today or []:
+        gy = prior_gex.get(k)
+        both = gx is not None and gy is not None
+        rows.append([k, gx, gy, (gx - gy) if both else None])
+        if both and gx > 0:
+            pos_t.append((k, gx))
+        if both and gy > 0:
+            pos_p.append((k, gy))
+
+    def _wmean(pairs):
+        w = sum(g for _k, g in pairs)
+        return sum(k * g for k, g in pairs) / w if w else None
+
+    wm_t, wm_p = _wmean(pos_t), _wmean(pos_p)
+    drift = None
+    if wm_t is not None and wm_p is not None:
+        d = wm_t - wm_p
+        drift = "UP" if d > MIGRATION_DRIFT_STRIKES else "DOWN" if -d > MIGRATION_DRIFT_STRIKES else "FLAT"
+    changes = sorted((r for r in rows if r[3] is not None), key=lambda r: r[3], reverse=True)
+    grew = [r[0] for r in changes if r[3] > 0][:2]
+    shrank = [r[0] for r in changes if r[3] < 0][-2:]
+    vols = [(r[0], r[2]) for r in today or [] if r[2]]
+    busiest = sorted(k for k, _v in sorted(vols, key=lambda kv: kv[1], reverse=True)[:2])
+    where = None
+    if busiest:
+        where = ("ABOVE_CALL_WALL" if call_wall is not None and min(busiest) > call_wall else
+                 "BELOW_PUT_WALL" if put_wall is not None and max(busiest) < put_wall else "INSIDE_WALLS")
+    reported = [r[2] for r in today or [] if r[2] is not None]
+    return {"rows": rows, "compared": bool(changes), "drift": drift,
+            "weighted_strike_today": wm_t, "weighted_strike_prior": wm_p,
+            "grew": grew, "shrank": shrank, "busiest": busiest, "busiest_vs_walls": where,
+            "volume_total": sum(reported) if reported else None}
+
+
+def nearest_strike(strikes, spot) -> float | None:
+    """The listed strike nearest `spot` (the lower one on a tie): the row every panel marks as
+    spot. None without a spot or a strike."""
+    ks = sorted(float(k) for k in strikes or [])
+    if spot is None or not ks:
+        return None
+    return min(ks, key=lambda k: abs(k - float(spot)))
 
 
 def _dte_of(ct: object) -> float | None:
@@ -745,6 +809,9 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         charm_by_strike=charm_by_strike,
         pcr_by_expiry={e: put_call_oi_ratio(book) for (e, _d), (book, _diag) in books.items()},
         pcr_volume_by_expiry={e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in books.items()},
+        pcr_all=put_call_oi_ratio(exposures),
+        pcr_volume_all=put_call_volume_ratio(exposures),
         expiries=sorted({e for (e, _d) in books}),
+        expiry_dte={e: d for (e, d) in books},
         computed_ts_utc=_time.time(),
     )

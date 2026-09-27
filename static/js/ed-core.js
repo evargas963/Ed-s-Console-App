@@ -389,15 +389,16 @@
   // This selects WHICH canonical rows are displayed; no value is computed or changed here.
   var SCOPE_ROWS = { auto: 11, wider: 23 };
   function scopeRows() { return state.scope === 'all' ? Infinity : (SCOPE_ROWS[state.scope] || SCOPE_ROWS.auto); }
-  // Indices into an ASCENDING strike array: the scopeRows() strikes nearest to spot, centred on the
-  // strike nearest spot and clamped to the array's ends (so a spot near the edge still shows a full
-  // window). ALL -> every index. Pure presentation selection.
-  function scopeSelect(strikes, spot) {
+  // Indices into an ASCENDING strike array: scopeRows() strikes centred on `center` -- the served
+  // spot_strike, or a strike the operator panned to -- clamped to the array's ends (so a centre
+  // near the edge still shows a full window). ALL -> every index. Pure presentation selection: the
+  // page never works out which strike is nearest spot (the server serves spot_strike).
+  function scopeSelect(strikes, center) {
     var total = strikes.length, n = scopeRows();
     if (!total) return { idx: [], shown: 0, total: 0 };
     if (!isFinite(n) || n >= total) return { idx: strikes.map(function (_s, i) { return i; }), shown: total, total: total };
-    var sp = (spot == null || spot === '') ? NaN : Number(spot), c = Math.floor(total / 2), best = Infinity;   // null is absent, not 0
-    if (isFinite(sp)) strikes.forEach(function (k, i) { var d = Math.abs(Number(k) - sp); if (d < best) { best = d; c = i; } });
+    var c = center == null ? -1 : strikes.map(Number).indexOf(Number(center));
+    if (c < 0) c = Math.floor(total / 2);   // no centre served: the middle, never a guess
     var lo = c - Math.floor((n - 1) / 2), hi = lo + n - 1;
     if (lo < 0) { hi -= lo; lo = 0; }
     if (hi > total - 1) { lo -= (hi - (total - 1)); hi = total - 1; if (lo < 0) lo = 0; }
@@ -587,15 +588,9 @@
   }
 
   // ---- expiry dropdown: populated ONLY from the canonical /api/expiries (never hard-coded) ----
-  function _dteOf(iso) {
-    try {
-      var d = new Date(iso + 'T00:00:00Z'), now = new Date();
-      var t0 = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-      return Math.max(0, Math.round((d.getTime() - t0) / 86400000));
-    } catch (e) { return null; }
-  }
-  function _fmtExpOpt(iso) {
-    var parts = String(iso).split('-'); var dte = _dteOf(iso);
+  // dte: Schwab's daysToExpiration, served by /api/expiries -- never the browser's clock
+  function _fmtExpOpt(iso, dte) {
+    var parts = String(iso).split('-');
     var md = parts.length === 3 ? (parts[1] + '/' + parts[2] + '/' + parts[0]) : iso;
     return md + (dte != null ? (' · ' + dte + 'DTE') : '');
   }
@@ -620,7 +615,8 @@
         var exps = (d && d.expiries) || [];
         _expiriesPending = !exps.length;   // levels not computed yet: the slow tick asks again
         var opts = '<option value="">All Expirations</option>';
-        exps.forEach(function (e) { opts += '<option value="' + e + '">' + _fmtExpOpt(e) + '</option>'; });
+        var dte = (d && d.dte) || {};
+        exps.forEach(function (e) { opts += '<option value="' + e + '">' + _fmtExpOpt(e, dte[e]) + '</option>'; });
         sel.innerHTML = opts;
         var cur = state.expiryFilter;   // CURRENT selection, not one captured before this fetch started
         if (cur && exps.indexOf(cur) !== -1) { sel.value = cur; }   // keep a still-valid selection

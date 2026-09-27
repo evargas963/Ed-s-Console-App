@@ -175,7 +175,8 @@ from market_context import (
     market_context_panel_symbols_excluding_core,
 )
 from terrain_read import build_terrain_read
-from terrain_engine import TerrainSnapshot, compute_terrain, wall_geometry_state
+from terrain_engine import (TerrainSnapshot, compute_terrain, nearest_strike, positioning_migration,
+                            wall_geometry_state)
 from terrain_atr import AtrPair, compute_atr_pair
 
 from db import get_db
@@ -2845,6 +2846,21 @@ def _leg_stream_ts_recv(greeks: dict | None) -> float | None:
     return max(candidates) if candidates else None
 
 
+_STREAM_STATE_ORDER = ("stale", "pending", "daemon_unavailable", "rejected", "not_admitted")
+
+
+def _stream_state_of(states: list) -> str:
+    """One stream state for a set of leg (or cell) states: live when all are live, partial when
+    some are, else the first of _STREAM_STATE_ORDER present, else unavailable."""
+    if not states:
+        return "unavailable"
+    if all(s == "live" for s in states):
+        return "live"
+    if any(s in ("live", "partial") for s in states):
+        return "partial"
+    return next((o for o in _STREAM_STATE_ORDER if o in states), "unavailable")
+
+
 def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overlay_symbols: set,
                                            rejected_symbols: "dict[str, str] | None" = None,
                                            desired_symbols: "set[str] | None" = None, *,
@@ -2948,27 +2964,17 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                 elif leg_state == "not_admitted":
                     leg_out["not_admitted_reason"] = not_admitted_symbols.get(sym)
                 legs[side] = leg_out
-            if not leg_states:
-                cell_state = "unavailable"
-            elif all(s == "live" for s in leg_states):
-                cell_state = "live"
-            elif any(s == "live" for s in leg_states):
-                cell_state = "partial"
-            elif any(s == "stale" for s in leg_states):
-                cell_state = "stale"
-            elif any(s == "pending" for s in leg_states):
-                cell_state = "pending"
-            elif any(s == "daemon_unavailable" for s in leg_states):
-                cell_state = "daemon_unavailable"
-            elif any(s == "rejected" for s in leg_states):
-                cell_state = "rejected"
-            elif any(s == "not_admitted" for s in leg_states):
-                cell_state = "not_admitted"
-            else:
-                cell_state = "unavailable"
-            legs["state"] = cell_state
+            legs["state"] = _stream_state_of(leg_states)
+            ages = [leg["age_sec"] for leg in legs.values() if isinstance(leg, dict) and leg["age_sec"] is not None]
+            legs["age_sec"] = max(ages) if ages else None   # the cell's oldest confirmed leg
             state_row.append(legs)
         cell["stream"] = state_row
+    # each expiry column's state, from its cells' states -- the column header's streaming status
+    exps = [e.get("expiry") for e in surface.get("expirations") or []]
+    surface["stream_by_expiry"] = {
+        e: _stream_state_of([row["stream"][j]["state"] for row in surface.get("cells") or []
+                             if j < len(row.get("stream") or []) and row["stream"][j]])
+        for j, e in enumerate(exps)}
 
 
 def _gamma_surface_cell_state_counts(surface: dict) -> dict:
@@ -3849,6 +3855,12 @@ def get_terrain_strikes(ticker: str = Query(...)):
         "priced_at_spot": spot_used,
         "today": today or {"all": [], "near": [], "far": []},
         "today_side_sums": _side_sums((today or {}).get("all"), live_spot),
+        "spot_strike": nearest_strike([r[0] for r in (today or {}).get("all") or []], live_spot),
+        # the strike with the largest net GEX magnitude (the chart labels it)
+        "max_abs_strike": max(((today or {}).get("all") or []), key=lambda r: abs(r[1]), default=[None])[0],
+        "migration": {sc: positioning_migration((today or {}).get(sc), (prior or {}).get(sc),
+                                                _snap.get("call_wall"), _snap.get("put_wall"))
+                      for sc in ("all", "near", "far")},
         "today_source": today_src,
         # RC-68: every consumer must be able to render an AGE on the panel's face. A number with
         # no age is how a 2.1-hour-old volume histogram sat under the label "TODAY'S OPTION VOLUME".
@@ -3961,6 +3973,8 @@ def get_vanna_by_strike(ticker: str = Query(...)):
     return JSONResponse({"ticker": tk, "available": True, "spot": resolve_spot(tk)[0],
                          "priced_at_spot": payload.get("spot"),
                          "rows": payload["_vanna_rows"], "levels_as_of": payload.get("levels_as_of"),
+                         "spot_strike": nearest_strike([r[0] for r in payload["_vanna_rows"]],
+                                                       resolve_spot(tk)[0]),
                          "method": "the published levels' exposure book -> call_vanna - put_vanna"})
 
 
@@ -3978,6 +3992,7 @@ def get_charm_by_strike(ticker: str = Query(...)):
     return JSONResponse({"ticker": tk, "available": bool(rows), "spot": resolve_spot(tk)[0],
                          "priced_at_spot": payload.get("spot"),
                          "rows": rows, "levels_as_of": payload.get("levels_as_of"),
+                         "spot_strike": nearest_strike([r[0] for r in rows], resolve_spot(tk)[0]),
                          "reason": None if rows else "charm_by_strike produced no usable strikes for this chain",
                          "method": "the published levels' charm map -> call_charm - put_charm"})
 
@@ -4383,6 +4398,9 @@ def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> d
     ]
     out["session_date_et"] = today
     out["prior_session"] = bool(reference_date and str(reference_date) < today)
+    live_cols = [e for e in out["expirations"] if not e["expired"] and e.get("dte") is not None]
+    # the front column: the nearest expiry that has not expired, by Schwab's daysToExpiration
+    out["front_expiry"] = min(live_cols, key=lambda e: e["dte"])["expiry"] if live_cols else None
     return out
 
 
@@ -4479,6 +4497,7 @@ def get_options_gamma_surface(ticker: str = Query(...)):
             "spot_source": _surface_live_spot[1],
             "spot_as_of_ts_utc": _surface_live_spot[2],
             "priced_at_spot": surf.get("spot"),
+            "spot_strike": nearest_strike(surf.get("strikes"), _surface_live_spot[0]),
             "priced_at_spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc"),
             "provenance": {
                 "producer": "math_exposure_core.compute_exposures_by_strike",
@@ -5240,14 +5259,29 @@ def _watchlist_row(t: str) -> "dict | None":
 @app.get("/api/expiries")
 # SWITCH-LATENCY FIX: sync def → threadpool (DB write + Schwab expiry fetch, no await).
 def get_expiries(ticker: str = Query(...)):
-    ticker = ticker.upper().strip()
+    ticker = ticker_storage_key(_required_ticker(ticker))   # SPX -> $SPX: the cache's own key
     # TICKER-PREVIEW-NO-ENROLL: listing expiries is a VIEW — touch last-seen only.
     _touch_tracked_ticker_view(ticker)
     t = terrain_cache_get(ticker) or {}
     return JSONResponse({"expiries": t.get("expiries") or [],
+                         "dte": t.get("expiry_dte") or {},   # Schwab's daysToExpiration, as sent
                          "reason": None if t.get("expiries") else "levels not computed yet"})
 
 
+
+
+def _adjusted_deliverable(ct: dict, ticker: str) -> bool:
+    """A contract whose deliverable is not the routine one: 100 shares of the underlying itself
+    (a merger or spin-off adjusted contract). Every ordinary equity option lists that one entry."""
+    from numeric_contract import float_finite_or_none
+    lst = ct.get("optionDeliverablesList") or []   # external-key-ok: Schwab option chain contract
+    if not lst:
+        return False
+    d0 = lst[0] or {}
+    kind = d0.get("assetType")                        # external-key-ok: Schwab optionDeliverablesList entry
+    units = float_finite_or_none(d0.get("deliverableUnits"))   # external-key-ok: Schwab optionDeliverablesList entry
+    return len(lst) > 1 or not (kind == "STOCK" and units == 100
+                                and str(d0.get("symbol") or "").upper() == ticker.lstrip("$").upper())
 
 
 @app.get("/api/chain")
@@ -5295,6 +5329,13 @@ def get_chain(ticker: str = Query(...),
         "ticker": t, "spot": live_spot, "priced_at_spot": held.get("spot"),
         "expiry": resolved_expiry,
         "net_gex_by_strike": net_gex_by_strike,
+        "spot_strike": nearest_strike({c.get("strikePrice") for c in response_contracts
+                                       if c.get("strikePrice") is not None}, live_spot),
+        "adjusted_deliverable_symbols": [c.get("symbol") for c in response_contracts
+                                         if _adjusted_deliverable(c, t)],
+        # two contracts listed at one (strike, side): the chain is not strike-unique
+        "has_duplicate_contracts": len({(c.get("strikePrice"), c.get("putCall")) for c in response_contracts})
+                                   < len(response_contracts),
         "chain_as_of_ts_utc": fetched_ts,
         "contracts": response_contracts, "status": "ok",
         "stream_overlay_contracts": overlay_n,
@@ -5589,6 +5630,11 @@ def canonical_price_level_snapshot(ticker: str):
     )
 
 
+#: A level within this fraction of spot is marked near spot. Carried unchanged from the page's
+#: levels panel (2026-09-27); its origin is not recorded -- NOT_PROVEN.
+LEVEL_NEAR_SPOT_FRACTION = 0.0015
+
+
 @app.get("/api/levels")
 # Phase 2A (operator 2026-08-08): /api/levels is the canonical SERVING CONTRACT for the
 # one materialized PriceLevelSnapshot — it serializes, it does not compute. Every other
@@ -5620,7 +5666,16 @@ def get_levels(ticker: str = Query(...)):
             "stale": False,
             "reason": f"carried from canonical snapshot generation {snap.generation}",
         }
+        price = row.get("price")
+        row["distance"] = (price - spot) if price is not None and spot else None
+        row["near_spot"] = (row["distance"] is not None
+                            and abs(row["distance"]) / spot < LEVEL_NEAR_SPOT_FRACTION)
         levels.append(row)
+    # the ladder in price order (highest first, unpriced last), and the order by distance to spot
+    levels = (sorted((r for r in levels if r.get("price") is not None), key=lambda r: r["price"], reverse=True)
+              + [r for r in levels if r.get("price") is None])
+    by_distance = [r["id"] for r in sorted((r for r in levels if r["distance"] is not None),
+                                           key=lambda r: abs(r["distance"]))]
 
     families_absent = list(snap.families_absent)
     for fam, why in (
@@ -5640,6 +5695,7 @@ def get_levels(ticker: str = Query(...)):
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc,
         "bar_source": snap.bar_source,
         "levels": levels,
+        "by_distance": by_distance,
         # The VWAP curve and its σ bands, CARRIED. chart.html and exposure.html each
         # used to accumulate their own from /api/bars1m — two more VWAPs for one
         # session, drawn beside a level neither of them agreed with.
