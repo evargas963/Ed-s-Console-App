@@ -94,7 +94,7 @@ def test_desk_timeframes_are_the_ones_the_server_rolls():
     pattern = next(r for r in srv.app.routes if getattr(r, "path", None) == "/api/bars1m")
     src = DESK_JS.read_text(encoding="utf-8")
     tfs = re.findall(r"\{ id: '(\w+)', lbl: '[^']+' \}", src.split("var TFS", 1)[1].split(";", 1)[0])
-    assert tfs == ["1", "5", "15", "30", "60", "D"]
+    assert tfs == ["1", "3", "5", "15", "30", "60", "D"]   # 3m moved in from /chart (P2-4, 2026-09-27)
     client = TestClient(srv.app)
     for tf in tfs:
         assert client.get(pattern.path, params={"ticker": "SPY", "tf": tf, "limit": 5}).status_code == 200, tf

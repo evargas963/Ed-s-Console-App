@@ -4814,7 +4814,7 @@ RECENT_CROSS_SEC: float = 120.0
 
 
 #: The Trade Desk's lookback per chart timeframe, seconds ("session": the latest regular session).
-DESK_LOOKBACK_SEC = {"1": 900, "5": 3600, "15": 14400, "30": "session", "60": 172800, "D": 1728000}
+DESK_LOOKBACK_SEC = {"1": 900, "3": 1800, "5": 3600, "15": 14400, "30": "session", "60": 172800, "D": 1728000}
 
 
 def _desk_window_start(tf: str) -> float:
@@ -4840,7 +4840,7 @@ def _f2(v) -> str:
 
 @app.get("/api/desk/events")
 def get_desk_events(ticker: str = Query(...),
-                    tf: Annotated[str, Query(pattern=r"^(1|5|15|30|60|D)$")] = "30"):
+                    tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "30"):
     """The Trade Desk's attention queue, served: level crosses in the timeframe's window (numbered
     oldest first; the newest 40 flagged for the chart), wall breaches and stale levels from the
     terrain, the book's size walls, and the rule alerts -- newest first, an item with no time last
