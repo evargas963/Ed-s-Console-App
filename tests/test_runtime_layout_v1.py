@@ -178,7 +178,7 @@ def test_no_runtime_path_is_rooted_in_the_source_checkout_any_more():
     """The shape RC-523 removed must not come back: `<file>.parent / "data"|"logs"|"reports"`
     or `APP_DIR / "reports"` in the runtime modules and the report-writing tools."""
     offenders: list[str] = []
-    for rel in ("server.py", "db.py", "db_authority.py", "config.py", "desk_store.py",
+    for rel in ("server.py", "db.py", "db_authority.py", "config.py",
                 "stream_spine.py", "app/options/order_flow/streaming.py",
                 "tools/terrain_backtest_report_v1.py", "tools/console_liveness_check.py"):
         for i, line in enumerate((REPO / rel).read_text(encoding="utf-8").splitlines(), 1):

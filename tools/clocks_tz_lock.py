@@ -20,7 +20,6 @@ _LOCALE_DATE_RE = re.compile(r"\.toLocaleDateString\s*\(")
 _SCAN_RELS = (
     "static/chart.html",
     "static/index.html",
-    "static/desk.html",
     "static/ops.html",
     "static/governance.html",
 )
