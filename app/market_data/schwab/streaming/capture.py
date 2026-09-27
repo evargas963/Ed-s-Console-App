@@ -435,6 +435,29 @@ def _start_log() -> None:
                         format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 
+FEED_STATUS_EVERY_SEC = 60.0
+
+
+async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
+    """Once a minute, per Schwab feed: checked at X (the same X for every feed), is the socket
+    open, when Schwab last sent anything, how many symbols are subscribed, and when this feed
+    last carried data -- so a quiet feed and a dead one read differently in the database."""
+    while True:
+        now = time.time()
+        last_frame = daemon.stream.last_frame_ts if daemon.stream is not None else None
+        st = daemon.status()
+        for svc in SERVICES:
+            daemon.bus.publish(f"feedstatus.{svc}", {
+                "ts": now, "service": svc, "socket_open": st["schwab_socket_open"],
+                "schwab_last_frame_ts": last_frame or None,
+                "held": len(daemon.held.get(svc) or ()), "last_data_ts": daemon.health.last(svc)})
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=FEED_STATUS_EVERY_SEC)
+            return
+        except asyncio.TimeoutError:
+            pass
+
+
 async def capture_chains(make_client, stop: asyncio.Event) -> None:
     """The chain history (DATA_FLOW decision 7): at each capture time the full chain of every
     board ticker is fetched and written, in a thread so the stream never waits."""
@@ -476,6 +499,7 @@ async def run() -> int:
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(capture_chains(make_client, stop)),
+             asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
                                                  on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]

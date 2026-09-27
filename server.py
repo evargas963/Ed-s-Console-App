@@ -83,6 +83,15 @@ from runtime_layout import logs_dir as _runtime_logs_dir, reports_dir as _artifa
 ED_SERVER_LOG_PATH = _runtime_logs_dir() / "ed_server.log"
 
 
+def _console_formatter(*, use_ansi: bool) -> "_LevelMarkerFormatter":
+    """The one line format for the console window and logs/ed_server.log: the time in Central
+    (the operator's clock), the level, the logger, the message."""
+    fmt = _LevelMarkerFormatter("%(asctime)s %(levelname)s:%(name)s:%(message)s",
+                                datefmt="%H:%M:%S CT", use_ansi=use_ansi)
+    fmt.converter = lambda t: datetime.fromtimestamp(t, ZoneInfo("America/Chicago")).timetuple()
+    return fmt
+
+
 def install_ed_server_file_sink(
     log_path: Path | None = None,
     *,
@@ -109,7 +118,7 @@ def install_ed_server_file_sink(
     handler = _FlushingFileHandler(path, encoding="utf-8")
     handler.setLevel(level)
     handler.setFormatter(
-        _LevelMarkerFormatter("%(levelname)s:%(name)s:%(message)s", use_ansi=False)
+        _console_formatter(use_ansi=False)
     )
     root.addHandler(handler)
     if root.level == logging.NOTSET or root.level > level:
@@ -121,10 +130,7 @@ def _install_visual_severity_markers(level: int = logging.INFO) -> None:
     """Replace any default root handlers with one that adds the level marker."""
     use_ansi = bool(getattr(sys.stderr, "isatty", lambda: False)())
     handler = logging.StreamHandler()
-    fmt = _LevelMarkerFormatter("%(asctime)s %(levelname)s:%(name)s:%(message)s",
-                                datefmt="%H:%M:%S CT", use_ansi=use_ansi)
-    fmt.converter = lambda t: datetime.fromtimestamp(t, ZoneInfo("America/Chicago")).timetuple()
-    handler.setFormatter(fmt)
+    handler.setFormatter(_console_formatter(use_ansi=use_ansi))
     root = logging.getLogger()
     for h in list(root.handlers):
         root.removeHandler(h)
