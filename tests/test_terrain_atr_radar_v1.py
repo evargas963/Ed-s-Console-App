@@ -28,7 +28,7 @@ from __future__ import annotations
 
 
 
-def test_bars1m_endpoint_serves_canonical_bars_shape():
+def test_bars1m_endpoint_serves_canonical_bars_shape(monkeypatch):
     """CR-03 pre-work: /api/bars1m returns newest-last {t,o,h,l,c,v} rows from
     price_bars_1m (read-only; index-served: ticker named in the WHERE).
 
@@ -38,16 +38,28 @@ def test_bars1m_endpoint_serves_canonical_bars_shape():
     reshaping. This file's own test_spot_endpoint_caches_upstream_within_ttl already
     calls its handler directly, so this is the established pattern here."""
     import json
+    from pathlib import Path
 
     import server as srv
 
+    # Real SPY price_bars_1m rows (tests/fixtures) as the table read returns them; no forming
+    # minute. The test read whatever bars the shared database and the live plane held, and
+    # skipped its assertions when there were none -- it failed once another test in the same
+    # worker left a forming SPY minute (found 2026-09-27 while landing P2-1).
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
+                    .read_text(encoding="utf-8"))["bars"]
+    rows = [(b["timestamp"] / 1000.0, b["open"], b["high"], b["low"], b["close"], b["volume"]) for b in fx]
+    monkeypatch.setattr(srv, "_read_bars_1m", lambda tk, limit: rows[-int(limit):] if tk == "SPY" else [])
+    monkeypatch.setattr(srv._lpr, "forming_bar", lambda tk: None)
     body = json.loads(srv.get_bars1m(ticker="SPY", limit=5, tf="1").body)
-    assert body["ticker"] == "SPY" and isinstance(body["bars"], list)
-    if body["bars"]:
-        row = body["bars"][-1]
-        assert set(row) == {"t", "o", "h", "l", "c", "v"}
-        ts = [b["t"] for b in body["bars"]]
-        assert ts == sorted(ts), "bars must be newest-last (ascending time)"
+    assert body["ticker"] == "SPY" and len(body["bars"]) == 5
+    row = body["bars"][-1]
+    # each bar carries its served change (live_price_rows.with_change: the bar change is served,
+    # the page computes nothing)
+    assert set(row) == {"t", "o", "h", "l", "c", "v", "chg", "chg_pct"}
+    assert (row["t"], row["c"]) == (rows[-1][0], rows[-1][4])
+    ts = [b["t"] for b in body["bars"]]
+    assert ts == sorted(ts), "bars must be newest-last (ascending time)"
 
 
 def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
@@ -82,7 +94,7 @@ def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
     assert row["ts_utc"] == RTH_TS
 
 
-def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
+def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path, pin_clock):
     """Seam: _terrain_refresh_one must call the logger AFTER a successful cache
     write; a TypeError inside the logger must not turn ok: into error:."""
     import server as srv
@@ -106,16 +118,19 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     monkeypatch.setattr(_te, "is_tradable_session_ts_utc", lambda _ts: True)
     monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", tmp_path / "flip.jsonl")
     monkeypatch.setattr(srv, "_log_flip_drift", _spy)
-    monkeypatch.setattr(srv, "get_client", lambda: object())
+    # P2-1: the daemon fetches the chain -- the refresh computes the pushed `chain.SPY` message,
+    # here a real SPY chain (tests/fixtures), valued at its capture (2026-09-22 12:46 ET)
+    import json
+    from pathlib import Path
 
-    class _Resp:
-        status_code = 200
-
-        def json(self):
-            return {}
-
-    monkeypatch.setattr(srv, "_gated_safe_get_chain", lambda *_a, **_k: (_Resp(), 0, 0))
-    monkeypatch.setattr(srv, "flatten_chain_contracts", lambda _j: [])
+    import app.options.order_flow.streaming as streaming
+    from stream_spine import chain_msg
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_0dte_chain.json")
+                    .read_text(encoding="utf-8"))
+    pin_clock(2026, 9, 22, 12, 46)
+    monkeypatch.setattr(srv, "_terrain_chain_computed_ts", {})
+    monkeypatch.setitem(streaming._pushed_chains, "SPY", chain_msg(
+        symbol="SPY", contracts=fx["chain"], spot=fx["spot"], status="ok", ts_recv=fx["ts_utc"]))
     monkeypatch.setattr(srv, "resolve_spot", lambda _tk, **_kw: (100.0, "test", 1.0))
 
     from terrain_engine import TerrainSnapshot
@@ -134,6 +149,9 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
 
     monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: TerrainSnapshot(
         ticker="SPY", spot=100.0, gamma_flip="not-a-number", confidence="TRUSTED"))
+    # P2-1: a chain is computed once; the same real chain pushed again as the next one
+    monkeypatch.setitem(streaming._pushed_chains, "SPY", chain_msg(
+        symbol="SPY", contracts=fx["chain"], spot=fx["spot"], status="ok", ts_recv=fx["ts_utc"] + 60.0))
     out2 = srv._terrain_refresh_one("SPY")
     assert out2 == "ok:TRUSTED", "flip-drift failure must stay fail-soft"
 

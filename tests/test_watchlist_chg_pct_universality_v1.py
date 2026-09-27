@@ -75,8 +75,7 @@ def test_watchlist_quotes_route_reports_a_dead_stream_distinctly(monkeypatch):
     tks = ["ZZWLDEAD1", "ZZWLDEAD2"]
     for tk in tks:
         L._by_ticker.pop(tk, None)
-    monkeypatch.setattr(srv, "get_client", lambda: (_ for _ in ()).throw(
-        AssertionError("the watchlist must not reach for a Schwab client")))
+    # the console holds no Schwab client at all (P2-1; test_only_the_daemon_calls_schwab)
     with TestClient(srv.app) as client:
         r = client.get("/api/watchlist-quotes", params={"tickers": ",".join(tks)})
     assert r.status_code == 200

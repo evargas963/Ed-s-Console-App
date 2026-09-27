@@ -81,10 +81,9 @@ operator.
 
 1. **Two copies of live state** (daemon memory and console memory).
 2. **Two writers and two databases** (the daemon's and the console's).
-3. **The console talks to Schwab** (REST chains) — the daemon should own every Schwab call.
-4. **The console computes the levels** in the same process that serves the page.
-5. **The browser polls** for bars, order flow, liquidity and the levels themselves.
-6. **The standalone page computes values** in its inline script (`static/exposure.html`):
+3. **The console computes the levels** in the same process that serves the page.
+4. **The browser polls** for bars, order flow, liquidity and the levels themselves.
+5. **The standalone page computes values** in its inline script (`static/exposure.html`):
    P2-4. The console's page scripts compute none (the 64 sites inventoried 2026-09-27 moved
    to the server, P1-3; the Chain view's grouping and sort, P2-4).
 
@@ -130,6 +129,7 @@ does not prove no second one exists under another name.
 | One producer: levels | `domain_faucet_registry`, `phase2a_single_level_computation`, `chain_width_single_faucet` | level routes registered; price levels computed once; the chain not narrowed | exposure values outside the levels list |
 | UI computes nothing | `single_faucet_provenance` (`tools/data_faucet_audit.py`, `PAGE_CALCULATIONS`) | sums, weighted sums, distance to spot, sort by distance, sort by strike, calendar arithmetic, first-key picks in every `static/js/` script | a threshold or comparison that picks a label; the standalone page's inline script |
 | No fallbacks | `no_fake_defaults`, `absence_has_a_type`, `no_silent_swallow` | default literals, absent-as-value return types, swallowed exceptions | a branch that picks a second source |
+| One path: Schwab | `test_only_the_daemon_calls_schwab` (`tests/test_schwab_client_import_boundary.py`) | a Schwab entry point or client method called outside the daemon, its chain fetch and `schwab_client.py` (AST, every tracked module outside tests/tools) | a new Schwab client method name not in its list |
 | One path, no polling | none | | page timers that read `/api` |
 | One writer | `single_stream_authority`, `collect_window_single_law` | one Schwab stream; the 1-minute bar write seam | other writes outside the one writer |
 | Nothing without a job | `level_producers_have_consumers` (reported, not blocking) | a level route has a page consumer | unused code, routes, tables, timers |

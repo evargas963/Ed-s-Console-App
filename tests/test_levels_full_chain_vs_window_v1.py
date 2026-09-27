@@ -19,9 +19,11 @@ from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.streaming as streaming
 import server
 import time_et
-from schwab_client import FullChainResponse
+from schwab_client import flatten_chain_contracts
+from stream_spine import chain_msg
 from terrain_engine import compute_terrain
 
 _FX = json.loads((Path(__file__).resolve().parent / "fixtures"
@@ -31,7 +33,7 @@ _SPOT = float(_FX["full"]["underlying"]["last"])
 
 
 def _contracts(payload: dict) -> list[dict]:
-    return server.flatten_chain_contracts(payload)
+    return flatten_chain_contracts(payload)   # P2-1: the daemon fetches the chain; not via server
 
 
 def _levels(snap) -> dict:
@@ -40,11 +42,10 @@ def _levels(snap) -> dict:
 
 
 @pytest.fixture
-def at_capture(monkeypatch):
+def at_capture(pin_clock):
     """Value everything at the capture instant, so expiries passing after 2026-09-25 cannot
     change what the chain says."""
-    monkeypatch.setattr(time_et, "now_et", lambda: _CAPTURED)
-    return _CAPTURED
+    return pin_clock(*_CAPTURED.timetuple()[:6], _CAPTURED.microsecond)
 
 
 def test_the_fixture_is_the_full_chain_and_its_window():
@@ -66,26 +67,20 @@ def test_the_window_gives_different_levels_than_the_full_chain(at_capture):
 
 def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture):
     """The one producer (_terrain_refresh_one), with its real compute_terrain, must publish the
-    full chain's levels -- not the window's."""
+    full chain's levels -- not the window's. (P2-1: the daemon fetches the chain; the producer
+    computes from the pushed `chain.MRVL` message, here the real full chain.)"""
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # an open-market test
-    requested = []
-
-    def fake_fetch(client, ticker, get, *, expiry=None):
-        requested.append((ticker, expiry))
-        return FullChainResponse(200, json.loads(json.dumps(_FX["full"])), parts=1)
-
-    monkeypatch.setattr(server, "fetch_full_chain", fake_fetch)
-    monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t: False)
-    monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (_SPOT, "fixture", 0.0))
     monkeypatch.setattr(server, "_accrue_chain_observation", lambda *a, **k: None)
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
-    monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
 
     tk = server.ticker_storage_key("MRVL")
+    monkeypatch.setattr(server, "_terrain_chain_computed_ts", {})
+    monkeypatch.setitem(streaming._pushed_chains, tk, chain_msg(
+        symbol=tk, contracts=_contracts(_FX["full"]), spot=_SPOT, status="ok",
+        ts_recv=_FX["captured_utc"]))
     status = server._terrain_refresh_one(tk)
     assert status.startswith("ok"), status
-    assert requested == [(tk, None)], "the producer asks for the whole chain, every expiry"
     published = server.terrain_cache_get(tk) or {}
     full = _levels(compute_terrain("MRVL", _contracts(_FX["full"]), _SPOT, now=at_capture))
     window = _levels(compute_terrain("MRVL", _contracts(_FX["window"]), _SPOT, now=at_capture))

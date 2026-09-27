@@ -2467,29 +2467,35 @@ def check_single_faucet_provenance() -> list[Violation]:
 
 
 def check_chain_width_single_faucet() -> list[Violation]:
-    """Level math is computed from the FULL chain -- no chain fetch in server.py may narrow it
-    to a strike window.
+    """Level math is computed from the FULL chain -- no chain fetch (the daemon's fetch_chain in
+    calibration/complete_chain_capture.py, and server.py) may narrow it to a strike window.
 
     WHAT WAS OBSERVED (2026-09-25): the 42 board tickers' levels were computed twice with the
     same code -- once from the strike window the console fetched (strike_count sized to +/-5%
     around spot, 20 strikes for most names) and once from the full chain. The window missed the
     gamma flip for 10 tickers, moved max pain for 16 and the put wall for 4, put $SPX walls 3-4%
     away, and held only 15-60% of each ticker's open interest. Operator decision the same day:
-    the full chain for all calculations (server.fetch_full_chain / _fetch_state_chain). The
-    earlier rule (RC-59: every width from one strike-count faucet) is superseded -- there is no
+    the full chain for all calculations (schwab_client.fetch_full_chain, called by the capture
+    daemon's fetch_chain since P2-1: the daemon fetches the chain). The earlier rule (RC-59: every width from one strike-count faucet) is superseded -- there is no
     width left to source.
 
-    Rule: in server.py a `strike_count=` argument is allowed only as the gate's own
-    pass-through (`strike_count=strike_count`) or on a line that declares
+    Rule: in these files a `strike_count=` argument is allowed only as a pass-through
+    (`strike_count=strike_count`) or on a line that declares
     `chain-width-faucet-ok: <reason>` for a fetch that provably computes no levels.
     """
     out: list[Violation] = []
-    path = REPO / "server.py"
+    for path in (REPO / "server.py", REPO / "calibration" / "complete_chain_capture.py"):
+        out.extend(_chain_width_violations(path))
+    return out
+
+
+def _chain_width_violations(path: Path) -> list[Violation]:
+    out: list[Violation] = []
     try:
         src = path.read_text(encoding="utf-8", errors="ignore")
         tree = ast.parse(src)
     except (OSError, SyntaxError) as e:
-        return [Violation(path, 1, f"server.py could not be parsed for the chain-width rule: {e}")]
+        return [Violation(path, 1, f"{path.name} could not be parsed for the chain-width rule: {e}")]
     lines = src.splitlines()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -2500,7 +2506,7 @@ def check_chain_width_single_faucet() -> list[Violation]:
             v = kw.value
             if (isinstance(v, ast.Name) and v.id == "strike_count") or (
                     isinstance(v, ast.Constant) and v.value is None):
-                continue                                   # the gate's own pass-through
+                continue                                   # a pass-through
             n = kw.value.lineno
             if "chain-width-faucet-ok" in lines[n - 1]:
                 continue
@@ -2508,7 +2514,7 @@ def check_chain_width_single_faucet() -> list[Violation]:
             out.append(Violation(
                 path, n,
                 f"chain fetch narrows the chain to a strike window (strike_count={arg!r}). Level math "
-                f"uses the FULL chain (fetch_full_chain / _fetch_state_chain; measured 2026-09-25: the "
+                f"uses the FULL chain (fetch_full_chain via fetch_chain; measured 2026-09-25: the "
                 f"window moved or lost levels on a third of the board). Declare "
                 f"'chain-width-faucet-ok: <reason>' only for a fetch that computes no levels."))
     return out

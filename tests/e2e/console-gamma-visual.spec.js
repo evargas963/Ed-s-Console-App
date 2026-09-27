@@ -29,9 +29,9 @@ function gexAt(k, ci) {
 }
 const SURFACE = {
   ticker: '$SPX', symbol: '$SPX', available: true, spot: SPOT, source: 'terrain_live_cache',
-  live: true, stale: false, age_sec: 4, chain_basis: 'full', complete: false,
-  coverage: { window: 'live_near_money', chain_basis: 'full', strike_count: STRIKE_LIST.length,
-    note: 'near-money LIVE window (strike_count-bounded terrain chain) — NOT the full strike_range=ALL book' },
+  live: true, stale: false, age_sec: 4, chain_basis: 'full', complete: true,
+  coverage: { window: 'full_chain', chain_basis: 'full', strike_count: STRIKE_LIST.length,
+    note: 'full chain: every listed expiry and strike (Schwab strike_range=ALL)' },
   chain_as_of_ts_utc: 1757000200, spot_as_of_ts_utc: 1757000200, spot_source: 'last',
   expirations: EXPS, strikes: STRIKE_LIST,
   cells: STRIKE_LIST.map(function (k) { return { strike: k, gex: EXPS.map(function (_e, ci) { return gexAt(k, ci); }) }; }),

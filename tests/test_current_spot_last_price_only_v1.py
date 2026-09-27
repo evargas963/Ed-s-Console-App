@@ -21,7 +21,6 @@ class _FakeResp:
 
 
 def test_resolve_spot_rejects_mark_close_chain_and_snapshot(monkeypatch) -> None:
-    monkeypatch.setattr(server, "get_client", lambda: object())
     L._by_ticker.pop("SPY", None)
     spot, source, _ts = server.resolve_spot(
         "SPY",
@@ -71,7 +70,6 @@ def test_plane_mark_cannot_replace_prior_last_price() -> None:
 
 
 def test_reprice_and_api_spot_do_not_use_bar_close_or_snapshot(monkeypatch) -> None:
-    monkeypatch.setattr(server, "get_client", lambda: object())
     cached = {
         "ticker": "SPY",
         "spot": 745.10,

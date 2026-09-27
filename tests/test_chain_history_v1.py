@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
 import calibration.complete_chain_capture as cch
 from json_blob_codec import decode_json_blob
+from schwab_client import flatten_chain_contracts
+from stream_spine import chain_contracts, chain_msg
 from time_et import ET
 
 
@@ -49,23 +53,12 @@ def test_fifteen_captures_on_a_full_day():
     assert len(day) == 15
 
 
-class _Resp:
-    def __init__(self, code, payload=None):
-        self.status_code = code
-        self._p = payload or {}
-
-    def json(self):
-        return self._p
-
-
-def _chain(price, expiries):
-    # institutional-synthetic-ok: transport test -- the capture groups contracts by
-    # expirationDate and stores them verbatim; no contract field is priced here.
-    ct = lambda e, side: {"symbol": f"ZZ {e}{side}", "putCall": side, "strikePrice": 100.0,
-                          "expirationDate": f"{e}T20:00:00.000+00:00", "openInterest": 7}
-    return {"underlyingPrice": price,
-            "callExpDateMap": {f"{e}:1": {"100.0": [ct(e, "CALL")]} for e in expiries},
-            "putExpDateMap": {f"{e}:1": {"100.0": [ct(e, "PUT")]} for e in expiries}}
+_FX = Path(__file__).resolve().parent / "fixtures"
+#: real MRVL full chain (every strike of every expiry, Schwab as sent, 2026-09-25); its payload
+#: carries no underlyingPrice, so its spot is absent as sent
+_MRVL = json.loads((_FX / "real_mrvl_full_chain_vs_strike_window.json").read_text(encoding="utf-8"))["full"]
+#: real CRWD single-expiry chain with its underlying price (2026-09-02)
+_CRWD = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
 
 
 @pytest.fixture
@@ -73,25 +66,55 @@ def board_db(tmp_path):
     db = tmp_path / "ed_console.db"
     with sqlite3.connect(db) as c:
         c.execute("CREATE TABLE logging_universe (ticker TEXT PRIMARY KEY, category TEXT)")
-        c.executemany("INSERT INTO logging_universe VALUES (?, 'core')", [("AAA",), ("BBB",), ("CCC",)])
+        c.executemany("INSERT INTO logging_universe VALUES (?, 'core')", [("MRVL",), ("CRWD",), ("XXT",)])
     return db
 
 
-def test_a_round_writes_every_expiry_with_schwabs_own_price(board_db, monkeypatch):
-    answers = {"AAA": _Resp(200, _chain(101.5, ["2030-01-04", "2030-01-11"])),
-               "BBB": _Resp(200, _chain(-999, ["2030-01-04"])),
-               "CCC": _Resp(400)}
-    monkeypatch.setattr(cch, "safe_get_chain", lambda client, tk, **k: answers[tk])
-    result = cch.capture_round(object(), board_db)
-    assert result == {"written": 2, "failed": ["CCC"]}
+def test_a_round_writes_every_expiry_with_schwabs_own_price(board_db, pin_clock):
+    # P2-1: the daemon fetches the chain; the round writes the newest pushed chain message
+    pin_clock(2026, 9, 25, 12, 0)                     # the MRVL chain's capture day
+    now = _ts("2026-09-25 12:00")
+    mrvl = flatten_chain_contracts(_MRVL)
+    latest = {"chain.MRVL": chain_msg(symbol="MRVL", contracts=mrvl, spot=None, status="ok", ts_recv=now - 5),
+              "chain.CRWD": chain_msg(symbol="CRWD", contracts=_CRWD["chain"], spot=_CRWD["spot"],
+                                      status="ok", ts_recv=now - 5),
+              "chain.XXT": chain_msg(symbol="XXT", contracts=None, spot=None, status="error",
+                                     reason="HTTP 400 Bad Request", ts_recv=now - 5)}
+    result = cch.capture_round(latest, board_db, now)
+    assert result == {"written": 2, "failed": ["XXT"]}
     with sqlite3.connect(board_db) as c:
         rows = c.execute("SELECT ticker, expiry, spot, n_contracts, chain_json "
                          "FROM complete_chain_captures ORDER BY ticker, expiry").fetchall()
-    assert [(r[0], r[1], r[2], r[3]) for r in rows] == [
-        ("AAA", "2030-01-04", 101.5, 2), ("AAA", "2030-01-11", 101.5, 2),
-        ("BBB", "2030-01-04", None, 2)]          # -999 is Schwab's "no number"
+    mrvl_expiries = sorted({str(ct["expirationDate"])[:10] for ct in mrvl})
+    assert len(mrvl_expiries) > 1
+    assert [(r[0], r[1], r[2]) for r in rows] == (
+        [("CRWD", "2026-09-18", _CRWD["spot"])] + [("MRVL", e, None) for e in mrvl_expiries])
+    assert sum(r[3] for r in rows if r[0] == "MRVL") == len(mrvl), "every contract of every expiry"
     assert isinstance(rows[0][4], bytes), "stored compressed"
     assert {c["putCall"] for c in decode_json_blob(rows[0][4])} == {"CALL", "PUT"}
+
+
+def test_the_chain_fetch_takes_schwabs_price_as_sent(monkeypatch, pin_clock):
+    """-999 is Schwab's "no number" (P2-1: the daemon fetches the chain; this check moved from
+    the capture round to the one fetch)."""
+    pin_clock(2026, 9, 25, 12, 0)                     # the MRVL chain's capture day
+
+    class _Resp:
+        status_code, reason = 200, ""
+
+        def __init__(self, payload):
+            self._p = payload
+
+        def json(self):
+            return self._p
+
+    for sent, expected in ((-999, None), (263.51, 263.51)):
+        # stand-in: the real MRVL payload with underlyingPrice set to `sent`
+        payload = dict(_MRVL, underlyingPrice=sent)
+        monkeypatch.setattr(cch, "safe_get_chain", lambda client, tk, _p=payload, **k: _Resp(_p))
+        topic, msg = cch.fetch_chain(object(), "MRVL")
+        assert topic == "chain.MRVL" and msg["status"] == "ok" and msg["spot"] == expected
+        assert len(chain_contracts(msg)) == len(flatten_chain_contracts(_MRVL))
 
 
 def test_the_daemon_task_stops_when_told(monkeypatch):

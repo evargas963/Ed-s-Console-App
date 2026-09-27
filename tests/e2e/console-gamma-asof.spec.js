@@ -9,7 +9,7 @@
 const { test, expect } = require('@playwright/test');
 
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, spot_strike: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
-  live: true, stale: false, age_sec: 6, chain_basis: 'full', complete: false,
+  live: true, stale: false, age_sec: 6, chain_basis: 'full', complete: true,
   expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [98, 100, 102],
   cells: [{ strike: 98, gex: [-90000] }, { strike: 100, gex: [958600] }, { strike: 102, gex: [-264500] }] };
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98,

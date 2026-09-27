@@ -616,9 +616,9 @@ ROWS: tuple[Row, ...] = (
         justification='Schwab expiration chain expirationList[].expirationDate, read as dates verbatim.',
     ),
     Row(
-        file='server.py', derivation='_gated_safe_get_chain', disposition='DERIVED',
-        producer_refs=('schwab_client.py:safe_get_chain',),
-        justification='Schwab get_chain wrapper serialized behind the chain-fetch gate; call shape unchanged, fail-open on gate timeout.',
+        file='calibration/complete_chain_capture.py', derivation='fetch_chain', disposition='DERIVED',
+        producer_refs=('schwab_client.py:safe_get_chain', 'schwab_client.py:flatten_chain_contracts'),
+        justification="THE chain fetch (P2-1: the capture daemon holds it): one ticker's full chain (strike_range=ALL, every expiry) flattened as sent into a chain.<ticker> bus message with Schwab's underlyingPrice (schwab_number); a refusal is a message with Schwab's reason, nothing filled in.",
     ),
     Row(
         file='server.py', derivation='_get_fast_quote_executor', disposition='ALLOWLISTED',
@@ -646,11 +646,6 @@ ROWS: tuple[Row, ...] = (
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_liquidity_zone_tradeable_fields).',
     ),
     Row(
-        file='server.py', derivation='_log_schwab_startup_diagnostics', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_log_schwab_startup_diagnostics).',
-    ),
-    Row(
         file='server.py', derivation='_market_context_panel_auto_candidates', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_market_context_panel_auto_candidates).',
@@ -667,8 +662,8 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='server.py', derivation='_terrain_refresh_one', disposition='DERIVED',
-        producer_refs=('schwab_client.py:flatten_chain_contracts',),
-        justification='Fetches one chain and computes terrain into the cache; no model stack, never raises.',
+        producer_refs=('calibration/complete_chain_capture.py:fetch_chain',),
+        justification="Computes terrain into the cache from the capture daemon's newest pushed chain (fetch_chain's message), once per new chain; no model stack, never raises.",
     ),
     Row(
         file='server.py', derivation='api_order_flow_microstructure', disposition='DERIVED',
@@ -706,7 +701,7 @@ ROWS: tuple[Row, ...] = (
     Row(
         file='schwab_client.py', derivation='flatten_chain_contracts', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.callExpDateMap.*.strikePrice',
-        justification='Flattens the Schwab chain response into a contract list; single source shared by _fetch_state and the terrain loop.',
+        justification='Flattens the Schwab chain response into a contract list; single source, called by the chain fetch (calibration/complete_chain_capture.fetch_chain).',
     ),
     Row(
         file='server.py', derivation='get_analytics_light_stream', disposition='ALLOWLISTED',
@@ -715,13 +710,8 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='server.py', derivation='get_chain', disposition='DERIVED',
-        producer_refs=('server.py:_gated_safe_get_chain',),
+        producer_refs=('server.py:_terrain_refresh_one',),
         justification='OPTIONS_ORDER_FLOW_V1 contract-selection surface: serves the live strike_range=ALL Schwab chain for exactly the requested expiry (flatten_chain_contracts verbatim, streamed-field overlay newer than the fetch), or status unavailable with the named reason -- never a stored or captured substitute (fallback register R-01).',
-    ),
-    Row(
-        file='server.py', derivation='get_client', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_client).',
     ),
     Row(
         file='server.py', derivation='get_options_gamma_surface', disposition='ALLOWLISTED',
@@ -822,11 +812,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='resolve_spot', disposition='DERIVED',
         producer_refs=('live_market_plane.py:get_quote',),
         justification='THE single spot authority (RC-14): the streamed LEVELONE_EQUITIES LAST_PRICE while fresh (live_price_rows.live_spot over live_market_plane.get_quote), else unavailable; no REST quote, chain, or snapshot leg.',
-    ),
-    Row(
-        file='server.py', derivation='schwab_capability_state', disposition='DERIVED',
-        producer_refs=('schwab_client.py:build_client_from_token',),
-        justification='RC-514: capability verdict for /api/health, taken from the canonical client and the same _client cache get_client() uses.',
     ),
     Row(
         file='snapshot_access.py', derivation='require_snapshot_timeframe', disposition='ALLOWLISTED',

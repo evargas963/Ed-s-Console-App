@@ -118,6 +118,15 @@ def current_wanted() -> "dict[str, list[str]]":
             "OPTIONS_BOOK": primary}
 
 
+#: each ticker's newest `chain.<ticker>` message from the daemon (stream_spine.chain_msg)
+_pushed_chains: "dict[str, dict]" = {}
+
+
+def pushed_chain(ticker: str) -> "dict | None":
+    """The daemon's newest chain message for `ticker`, or None when none has arrived."""
+    return _pushed_chains.get(ticker)
+
+
 async def _send_wanted(ws) -> None:
     """Send the wanted list now, then again whenever it changes, for this connection's life."""
     sent = None
@@ -300,6 +309,9 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     kind = topic.split(".", 1)[0]
     if kind == "bar1m":
         streamed_bars.put(msg)
+        return None
+    if kind == "chain":
+        _pushed_chains[sym] = msg
         return None
     if kind == "quote":
         item = msg.get("native")

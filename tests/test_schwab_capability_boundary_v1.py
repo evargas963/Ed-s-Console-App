@@ -194,95 +194,33 @@ def test_an_unavailable_capability_cannot_serve_live_data(clean_env):
 
 # ================================================================= app availability
 
+def _daemon(monkeypatch, status):
+    import app.options.order_flow.streaming as streaming
+    monkeypatch.setattr(streaming, "daemon_status", lambda: status)
+
+
 def test_health_reports_the_capability_and_the_app_stays_ok(clean_env, monkeypatch):
-    """PROOF 1c/2. The app is `ok` while Schwab is UNAVAILABLE, and health says which."""
+    """PROOF 1c/2. The app is `ok` while Schwab is UNAVAILABLE, and health says which. Schwab's
+    state is the capture daemon's (P2-1: it holds the one Schwab connection)."""
     import server
 
-    monkeypatch.setattr(server, "_client", None, raising=False)
+    _daemon(monkeypatch, None)
     payload = server.health()
     assert payload["status"] == "ok", "a vendor outage must not make the application unhealthy"
-    assert payload["capabilities"]["schwab"] == "UNAVAILABLE", payload
+    assert payload["capabilities"] == {"schwab": "UNAVAILABLE",
+                                       "schwab_reason": "the capture daemon is not connected"}
 
 
-def test_credentials_alone_do_not_make_the_capability_available(clean_env, monkeypatch):
-    """RC-514 second cut, and the overclaim it removes.
-
-    Health first published this from `config.schwab_live_blocked_for()` alone, which proves
-    only that credentials and CI state PERMIT an attempt. With live-looking credentials and NO
-    usable token the capability cannot serve a single quote, yet that gate reads clear — so
-    health advertised AVAILABLE for a Schwab that could not operate.
-    """
-    import config
+def test_health_reports_available_only_while_the_daemons_schwab_socket_is_open(clean_env, monkeypatch):
     import server
 
-    clean_env.setenv("SCHWAB_API_KEY", LIVE_KEY)
-    clean_env.setenv("SCHWAB_APP_SECRET", LIVE_SECRET)
-    use_config(monkeypatch, server, token_path=str(REPO / "no_such_token.json"))
-
-    assert config.schwab_live_blocked_for() is False, "the credential gate permits an attempt"
-
-    status, reason = server.schwab_capability_state()
-    assert status == "UNAVAILABLE", (status, reason)
-    assert "token" in reason.lower(), reason
-
+    _daemon(monkeypatch, {"schwab_socket_open": True})
+    assert server.health()["capabilities"] == {"schwab": "AVAILABLE"}
+    _daemon(monkeypatch, {"schwab_socket_open": False})
     payload = server.health()
     assert payload["status"] == "ok"
-    assert payload["capabilities"]["schwab"] == "UNAVAILABLE", payload
-    assert payload["capabilities"]["schwab_reason"], payload
-
-
-@pytest.mark.parametrize("label,body", [
-    ("malformed json", "not json at all"),
-    ("malformed layout", "{}"),
-    ("unrefreshable", '{"creation_timestamp": 1, "token": {"access_token": "a", "expires_at": 1}}'),
-])
-def test_a_token_that_cannot_operate_reports_unavailable(clean_env, monkeypatch, tmp_path,
-                                                         label, body):
-    """PROOF: invalid token state -> app up, capability UNAVAILABLE.
-
-    Every one of these is cheap and local, which is why the canonical builder can sit behind a
-    polled endpoint: MEASURED 0.3-15.3 ms per verdict, against ~400 ms for the AVAILABLE path
-    that populates the cache once.
-    """
-    import server
-
-    token = tmp_path / "token.json"
-    token.write_text(body, encoding="utf-8")
-    clean_env.setenv("SCHWAB_API_KEY", LIVE_KEY)
-    clean_env.setenv("SCHWAB_APP_SECRET", LIVE_SECRET)
-    use_config(monkeypatch, server, token_path=str(token))
-
-    status, reason = server.schwab_capability_state()
-    assert status == "UNAVAILABLE", f"{label}: {status} {reason}"
-    assert reason, label
-    assert server.health()["status"] == "ok", label
-
-
-def test_health_reads_the_same_client_cache_the_app_uses(clean_env, monkeypatch):
-    """Not a parallel computation: a built client is reported AVAILABLE from the SAME cache."""
-    import server
-
-    monkeypatch.setattr(server, "_client", object(), raising=False)
-    assert server.schwab_capability_state() == ("AVAILABLE", "")
-    assert server.health()["capabilities"]["schwab"] == "AVAILABLE"
-
-
-def test_health_answers_unavailable_when_the_capability_cannot_be_read(clean_env, monkeypatch):
-    """Unmeasurable is not ok (RC-57): a broken probe reports UNAVAILABLE, never AVAILABLE."""
-    import server
-
-    def boom(*_a, **_k):
-        raise RuntimeError("client state unreadable")
-
-    monkeypatch.setattr(server, "_client", None, raising=False)
-    monkeypatch.setattr(server, "build_client_from_token", boom, raising=False)
-    status, reason = server.schwab_capability_state()
-    assert status == "UNAVAILABLE" and "unreadable" in reason, (status, reason)
-
-    monkeypatch.setattr(server, "schwab_capability_state", boom, raising=False)
-    payload = server.health()
-    assert payload["status"] == "ok"
-    assert payload["capabilities"]["schwab"] == "UNAVAILABLE", payload
+    assert payload["capabilities"] == {"schwab": "UNAVAILABLE",
+                                       "schwab_reason": "the daemon's Schwab socket is not open"}
 
 
 def test_core_runtime_provisioning_still_blocks_startup():

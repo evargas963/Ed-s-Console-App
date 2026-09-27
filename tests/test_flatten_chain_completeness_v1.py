@@ -13,7 +13,7 @@ import pytest
 import json
 from pathlib import Path
 
-from server import flatten_chain_contracts
+from schwab_client import flatten_chain_contracts
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 _CDE = json.loads((_FIXTURES / "real_cde_complete_chain_half_dollar.json").read_text(encoding="utf-8"))

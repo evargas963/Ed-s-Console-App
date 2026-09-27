@@ -94,11 +94,20 @@ def test_absence_reads_as_absence_not_as_a_narrower_chains_answer():
 
 def test_the_single_producer_computes_from_the_full_chain():
     """The one producer reads the FULL chain (2026-09-25: the strike window moved or lost levels
-    on a third of the board)."""
+    on a third of the board). P2-1: the daemon fetches the chain -- the producer computes from
+    the pushed chain, and the one fetch asks Schwab for every strike of every expiry; the
+    console's priority path is deleted with its fetch."""
     seg = _fn("_terrain_refresh_one")
-    assert "fetch_full_chain(" in seg, "the producer no longer computes from the full chain"
+    assert "pushed_chain(" in seg and "chain_contracts(" in seg, (
+        "the producer no longer computes from the daemon's pushed chain")
     assert "strike_count" not in seg, "the producer narrowed its chain to a strike window again"
-    assert "priority" in seg, "the producer cannot serve an operator-facing miss with priority"
+    import inspect
+
+    from calibration.complete_chain_capture import fetch_chain
+    fetch = inspect.getsource(fetch_chain)
+    assert "fetch_full_chain(" in fetch and 'strike_range="ALL"' in fetch, (
+        "the one chain fetch no longer asks for the full chain")
+    assert "strike_count" not in fetch, "the chain fetch narrowed to a strike window again"
 
 
 def test_levels_producers_are_enumerated_and_declared():

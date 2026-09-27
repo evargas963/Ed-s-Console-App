@@ -48,10 +48,11 @@ def test_live_terrain_surface_is_preferred_and_discloses_coverage(monkeypatch):
         # the live price, and the price the cells were computed at, each named
         assert d["spot"] == 584.0 and d["priced_at_spot"] == 583.41
         assert d["provenance"]["spot_basis"] == "live_resolve_spot"
-        # coverage is honest: a live near-money window, NOT a complete strike_range=ALL chain
-        assert d["complete"] is False
+        # coverage is honest: the terrain chain is the full chain (strike_range=ALL) since
+        # 2026-09-25; the "near-money window" note it served was untrue (P2-1 review)
+        assert d["complete"] is True and d["coverage"]["window"] == "full_chain"
         assert d["coverage"]["strike_count"] == 3 and d["coverage"]["strike_min"] == 580.0
-        assert "not the full strike_range=all" in d["coverage"]["note"].lower()
+        assert "strike_range=all" in d["coverage"]["note"].lower()
     finally:
         _clear(tk)
 
@@ -88,14 +89,13 @@ def test_surface_demand_gate_only_projects_viewed_tickers():
 
 def test_warming_true_only_when_terrain_eligible(monkeypatch):
     # #1.3: WARMING is claimed only when the terrain producer can actually refresh THIS ticker,
-    # reusing terrain_staleness's canonical output (levels_refresh_active + not quarantined/paused).
+    # reusing terrain_staleness's canonical output (levels_refresh_active + not failing).
+    # P2-1: the daemon fetches the chain; the console's quarantine and skip pause are deleted.
     tk = ticker_storage_key("SPY")
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}   # on the board, no surface yet
     monkeypatch.setattr(server, "_logger_tickers", [tk])   # enrolled like any ticker -- no built-in list
-    monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
-    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
-    monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
+    monkeypatch.delitem(server._terrain_refresh_last_error, tk, raising=False)   # not failing
     try:
         monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # eligible
         d = _call(tk)
@@ -103,6 +103,14 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch):
         monkeypatch.setattr(server, "_is_loggable_session", lambda: False)  # out of session -> not warming
         d2 = _call(tk)
         assert d2["warming"] is False and d2["requested"] is True           # still on the board -> requested
+        # a ticker whose chain keeps failing is not warming (P2-1: this replaces the quarantine
+        # hold as the negative control)
+        monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+        with server._terrain_cache_lock:
+            server._terrain_cache[tk] = {"computed_ts_utc": time.time() - 3600, "spot": 100.0}
+        monkeypatch.setitem(server._terrain_refresh_last_error, tk, "chain fetch failed (HTTP 400)")
+        d3 = _call(tk)
+        assert d3["warming"] is False and d3["requested"] is True
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
@@ -121,10 +129,9 @@ def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch)
             server._logger_tickers.remove(tk)
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}  # snapshot, no surface
-    # session/quarantine are eligible — the ONLY thing withholding warming is board membership
-    monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
-    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
-    monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
+    # session open and not failing — the ONLY thing withholding warming is board membership
+    # (P2-1: the daemon fetches the chain; the console's quarantine and skip pause are deleted)
+    monkeypatch.delitem(server._terrain_refresh_last_error, tk, raising=False)
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
     try:
         assert server._ticker_on_terrain_board(tk) is False

@@ -257,6 +257,8 @@ class Daemon:
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
+        #: seconds the last full chain sweep of the board took (0.0 before the first)
+        self.chain_sweep_sec = 0.0
 
     def set_wanted(self, raw) -> None:
         """The console's list (live_push calls this for every {"op": "wanted"} frame)."""
@@ -280,6 +282,7 @@ class Daemon:
                 "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "refused": {k: dict(v) for k, v in self.refused.items() if v},
+                "chain_sweep_sec": round(self.chain_sweep_sec, 1),
                 "health": self.health.report()}
 
     async def sync(self) -> None:
@@ -463,9 +466,59 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
             pass
 
 
-async def capture_chains(make_client, stop: asyncio.Event) -> None:
-    """The chain history (DATA_FLOW decision 7): at each capture time the full chain of every
-    board ticker is fetched and written, in a thread so the stream never waits."""
+#: the live chain loop: a cycle over the board every CHAIN_REFRESH_SEC at most, CHAIN_WORKERS
+#: fetches at a time (the console's levels loop's own cadence and parallelism, moved here)
+CHAIN_REFRESH_SEC = 5.0
+CHAIN_WORKERS = 2
+
+
+async def refresh_chains(make_client, stop: asyncio.Event, daemon: "Daemon") -> None:
+    """THE chain fetch loop (DATA_FLOW 4.1: the daemon holds the one Schwab connection): inside
+    the refresh window, every board ticker's full chain -- the ones the console shows first --
+    fetched in threads and published as `chain.<ticker>` (the console's streamed equities -- what
+    it shows -- first); the console computes the levels from them and the capture writes them. A
+    ticker Schwab refuses with a 4xx is not asked again that day (the answer would not change)."""
+    from calibration.complete_chain_capture import board_tickers, fetch_chain
+    from db_authority import canonical_console_db_path
+    from time_et import chain_refresh_open, now_et
+    db_path = canonical_console_db_path()
+    refused: "dict[str, str]" = {}
+    refused_day = ""
+    while not stop.is_set():
+        started = time.monotonic()
+        if chain_refresh_open():
+            day = now_et().date().isoformat()
+            if day != refused_day:
+                refused, refused_day = {}, day
+            board = board_tickers(db_path)
+            first = [t for t in sorted(daemon.wanted["LEVELONE_EQUITIES"]) if t not in refused]
+            order = first + [t for t in board if t not in first and t not in refused]
+            client = make_client().client
+            gate = asyncio.Semaphore(CHAIN_WORKERS)
+
+            async def one(tk: str) -> None:
+                async with gate:
+                    try:
+                        topic, msg = await asyncio.to_thread(fetch_chain, client, tk)
+                    except Exception as e:  # noqa: BLE001 -- one ticker's failure is its own message
+                        from stream_spine import chain_msg
+                        topic, msg = f"chain.{tk}", chain_msg(symbol=tk, contracts=None, spot=None,
+                                                              status="error", reason=f"{type(e).__name__}: {e}"[:200])
+                    if msg["status"] != "ok" and str(msg["reason"]).startswith("HTTP 4"):
+                        refused[tk] = msg["reason"]
+                    daemon.bus.publish(topic, msg)
+            await asyncio.gather(*(one(t) for t in order))
+            daemon.chain_sweep_sec = time.monotonic() - started
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=max(0.0, CHAIN_REFRESH_SEC - (time.monotonic() - started)))
+            return
+        except asyncio.TimeoutError:
+            pass
+
+
+async def capture_chains(bus: MessageBus, stop: asyncio.Event) -> None:
+    """The chain history (DATA_FLOW decision 7): at each capture time, each board ticker's newest
+    fetched chain (the bus's `chain.<ticker>`) is written, in a thread so the stream never waits."""
     from calibration.complete_chain_capture import capture_round, next_capture_ts
     from db_authority import canonical_console_db_path
     db_path = canonical_console_db_path()
@@ -477,7 +530,7 @@ async def capture_chains(make_client, stop: asyncio.Event) -> None:
             pass
         started = time.monotonic()
         try:
-            result = await asyncio.to_thread(capture_round, make_client().client, db_path)
+            result = await asyncio.to_thread(capture_round, bus.snapshot("chain."), db_path, time.time())
             log.info("chain capture: %d tickers written in %.0fs, failed %s",
                      result["written"], time.monotonic() - started, result["failed"])
         except Exception:
@@ -503,7 +556,8 @@ async def run() -> int:
     daemon = Daemon(bus, health, wanted_path())
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
-             asyncio.create_task(capture_chains(make_client, stop)),
+             asyncio.create_task(refresh_chains(make_client, stop, daemon)),
+             asyncio.create_task(capture_chains(bus, stop)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
                                                  on_wanted=daemon.set_wanted)),

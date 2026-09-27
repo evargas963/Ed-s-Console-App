@@ -1,4 +1,4 @@
-"""The terrain loop's chain fetch publishes through _publish_levels: the gamma surface is shaped
+"""The terrain refresh of a pushed chain publishes through _publish_levels: the gamma surface is shaped
 only for a demanded (viewed) ticker, exactly once, from the books the levels were priced into,
 and a shaping failure is reported, never half-published. Heavy leaf deps are monkeypatched."""
 import json
@@ -8,11 +8,13 @@ from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.streaming as streaming
 import server
 from math_exposure_core import ExposureDiagnostics
+from stream_spine import chain_msg
 
-#: A REAL complete Schwab capture (native rows verbatim) stands in for the cycle's flattened
-#: chain — the producer hands project_gamma_surface whatever flatten_chain_contracts returns.
+#: A REAL complete Schwab capture (native rows verbatim) is the chain the capture daemon pushes
+#: (P2-1: the daemon fetches the chain) -- the producer prices exactly these contracts.
 _REAL_CHAIN = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_cde_complete_chain_half_dollar.json")
     .read_text(encoding="utf-8"))["chain"]
@@ -32,22 +34,23 @@ def _session_open(monkeypatch):
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
 
 
-def _stub_terrain(monkeypatch, proj):
-    class R:
-        status_code = 200
-        def json(self):  # noqa: D401 - stub
-            return {"x": 1}
+def _push_chain(monkeypatch, tk, ts_recv=None):
+    """The capture daemon's `chain.<tk>` message carrying the real chain (P2-1: the daemon
+    fetches the chain). Its spot is not read by the level producer (resolve_spot is)."""
+    msg = chain_msg(symbol=tk, contracts=_REAL_CHAIN, spot=None, status="ok",
+                    ts_recv=time.time() if ts_recv is None else ts_recv)
+    monkeypatch.setitem(streaming._pushed_chains, tk, msg)
+    return msg
 
-    monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t: False)
-    monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "_gated_safe_get_chain", lambda *a, **k: (R(), 0.0, 0.0))
-    monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [dict(ct) for ct in _REAL_CHAIN])
+
+def _stub_terrain(monkeypatch, proj):
+    # P2-1: the daemon fetches the chain; no chain computed by another test counts as seen
+    monkeypatch.setattr(server, "_terrain_chain_computed_ts", {})
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (100.0, "stub", 0.0))
     monkeypatch.setattr(server, "compute_terrain", lambda tk, contracts, spot, **k: Snap(contracts))
     monkeypatch.setattr(server, "_accrue_chain_observation", lambda *a, **k: None)
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
     monkeypatch.setattr(server, "_atr_pair", lambda t: types.SimpleNamespace(daily=None, m15=None))
-    monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
     monkeypatch.setattr(server, "project_gamma_surface", proj)
 
 
@@ -89,12 +92,14 @@ def test_producer_gates_projection_on_demand(monkeypatch):
 
     # UNWANTED ticker -> the producer path does NOT invoke project_gamma_surface
     server._gamma_surface_demand.pop(tk, None)
+    _push_chain(monkeypatch, tk, time.time() - 1.0)
     server._terrain_refresh_one(tk)
     assert calls["n"] == 0
     assert _cached_surface(tk) is None
 
     # WANTED ticker -> shaped EXACTLY ONCE, from that cycle's contracts and the snapshot's books
     server._note_gamma_surface_demand(tk)
+    _push_chain(monkeypatch, tk)         # the next chain (P2-1: computed once per new chain)
     server._terrain_refresh_one(tk)
     assert calls["n"] == 1
     assert calls["args"] == (len(_REAL_CHAIN), {("2026-09-04", 0.0): ({}, ExposureDiagnostics(0, 0, 0, ""))})
@@ -121,6 +126,7 @@ def test_a_projection_failure_is_reported_and_publishes_nothing(monkeypatch):
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
     server._note_gamma_surface_demand(tk)
+    _push_chain(monkeypatch, tk)
     res = server._terrain_refresh_one(tk)
     assert res == "error:RuntimeError"
     assert server.terrain_cache_get(tk) is None      # nothing half-published
@@ -160,6 +166,7 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
         lambda sym: streamed if sym == contract_symbol else None)
 
     server._note_gamma_surface_demand(tk)
+    _push_chain(monkeypatch, tk)
     server._terrain_refresh_one(tk)
 
     surf = _cached_surface(tk)
@@ -231,6 +238,7 @@ def test_surface_seq_publication_is_atomic_with_the_cache_write(monkeypatch):
 
     _stub_terrain(monkeypatch, proj)
     server._note_gamma_surface_demand(tk)
+    _push_chain(monkeypatch, tk)
     server._terrain_refresh_one(tk)
 
     assert seen["seq_call_enter_n"] is not None, "the surface-seq path was not exercised"
@@ -267,14 +275,13 @@ def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(mon
     _stub_terrain(monkeypatch, proj)
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
     monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
-    # midday ET: between 09:30 and 10:00 the loop defers tickers, and this test failed whenever
-    # it ran then (2026-09-27 audit); the minute is fixed, not read from the clock
-    monkeypatch.setattr(server, "gex_et_date_and_mins", lambda ts_utc=None: ("2026-09-28", 720))
+    # (P2-1: the daemon fetches the chain; the loop's contention rotation, and the fixed ET
+    # minute this test pinned to avoid it, are deleted)
     real_refresh = server._terrain_refresh_one
 
-    def spy_refresh(tk, priority=False):
+    def spy_refresh(tk):                       # P2-1: the priority parameter is gone
         calls.append(tk)
-        return real_refresh(tk, priority=priority)
+        return real_refresh(tk)
     monkeypatch.setattr(server, "_terrain_refresh_one", spy_refresh)
 
     enrolled_tk = server.ticker_storage_key("SPY")
@@ -320,12 +327,10 @@ def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch):
     monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
     monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
     real_refresh = server._terrain_refresh_one
-    fetched: list[str] = []
-    monkeypatch.setattr(server, "fetch_full_chain", lambda client, tk, get: fetched.append(tk))
 
-    def spy_refresh(tk, priority=False):
+    def spy_refresh(tk):                       # P2-1: the priority parameter is gone
         calls.append(tk)
-        return real_refresh(tk, priority=priority)
+        return real_refresh(tk)
     monkeypatch.setattr(server, "_terrain_refresh_one", spy_refresh)
 
     viewed_tk = server.ticker_storage_key("$SPX")
@@ -333,6 +338,7 @@ def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch):
         prev_logger_tickers = list(server._logger_tickers)
         server._logger_tickers[:] = [server.ticker_storage_key("SPY")]
     server._note_gamma_surface_demand(viewed_tk)
+    _push_chain(monkeypatch, viewed_tk)        # a chain has arrived; it is still not computed
     server._terrain_loop_running = True
     th = threading.Thread(target=server._terrain_loop, daemon=True)
     th.start()
@@ -345,15 +351,16 @@ def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch):
             server._logger_tickers[:] = prev_logger_tickers
         server._gamma_surface_demand.pop(viewed_tk, None)
     assert calls == [], "the loop refreshed a ticker while the market was closed"
-    # a direct request (the /api/terrain cold miss) is refused before any vendor call
-    assert real_refresh(viewed_tk, priority=True) == "skip:market_closed"
-    assert fetched == []
+    # a direct request (the /api/terrain cold miss) is refused before the chain is read
+    # (P2-1: the daemon fetches the chain; the console computes nothing while closed)
+    assert real_refresh(viewed_tk) == "skip:market_closed"
+    assert viewed_tk not in server._terrain_chain_computed_ts
 
 
 def test_a_stream_observation_after_the_chain_fetch_is_admitted(monkeypatch):
     """The overlay's freshness baseline is the instant the chain response arrived, not any later
-    point of the publication: a streamed value observed after the fetch (here, while the chain
-    is still being flattened) overrides the chain's own value."""
+    point of the publication: a streamed value observed after the fetch overrides the chain's
+    own value. (P2-1: the daemon fetches the chain; the arrival is the pushed chain's ts_recv.)"""
     tk = server.ticker_storage_key("CDE")
     contract_symbol = _REAL_CHAIN[0]["symbol"]
     captured = {}
@@ -362,13 +369,8 @@ def test_a_stream_observation_after_the_chain_fetch_is_admitted(monkeypatch):
         return {"expirations": [], "strikes": [], "cells": [],
                 "_overlaid_gamma": contracts[0].get("gamma")}
 
-    def slow_flatten(_json):
-        captured["after_fetch_ts"] = time.time()
-        time.sleep(0.05)
-        return [dict(ct) for ct in _REAL_CHAIN]
-
     _stub_terrain(monkeypatch, proj)
-    monkeypatch.setattr(server, "flatten_chain_contracts", slow_flatten)
+    captured["after_fetch_ts"] = _push_chain(monkeypatch, tk, time.time() - 1.0)["ts_recv"]
     monkeypatch.setattr(
         "app.options.order_flow.streaming.get_active_option_contract",
         lambda: contract_symbol)

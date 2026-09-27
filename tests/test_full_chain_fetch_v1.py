@@ -12,7 +12,7 @@ from datetime import date, timedelta
 import pytest
 
 import schwab_client as sc
-from server import flatten_chain_contracts
+from schwab_client import flatten_chain_contracts
 import time_et
 
 _EXPIRIES = [date(2030, 1, 4) + timedelta(days=7 * i) for i in range(8)]

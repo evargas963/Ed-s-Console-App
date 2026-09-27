@@ -191,6 +191,27 @@ def news_msg(*, symbol: str, content: dict, src: str, ts_recv: float | None = No
     return {"ts_recv": _now(ts_recv), "symbol": symbol, "content": content, "src": src}
 
 
+def chain_msg(*, symbol: str, contracts: "list[dict] | None", spot, status: str, reason: str = "",
+              ts_recv: float | None = None) -> dict:
+    """One ticker's full chain as the daemon fetched it: every contract as Schwab sent it,
+    gzip-compressed and base64-encoded (`z`) so the push socket sends a short string -- turning
+    a megabyte chain into JSON on the event loop is the stall that dropped the Schwab socket
+    (2026-09-24). `status` "ok" carries `z`; "error" carries Schwab's `reason`."""
+    import base64
+    from json_blob_codec import encode_json_blob
+    return {"src": "schwab_chain", "symbol": symbol, "ts_recv": _now(ts_recv), "spot": spot,
+            "status": status, "reason": reason,
+            "z": base64.b64encode(encode_json_blob(contracts)).decode("ascii") if contracts else None}
+
+
+def chain_contracts(msg: dict) -> "list[dict]":
+    """The contracts a chain message carries ([] when it carries none)."""
+    import base64
+    from json_blob_codec import decode_json_blob
+    z = (msg or {}).get("z")
+    return decode_json_blob(base64.b64decode(z)) if z else []
+
+
 def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: "int | None",
                      reason: str, ts: float | None = None) -> dict:
     """sub.* -- one request the daemon sent and Schwab's answer."""

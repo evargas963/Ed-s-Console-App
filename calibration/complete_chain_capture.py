@@ -1,7 +1,8 @@
 """The chain history (DATA_FLOW decision 7): every 30 minutes from 9:30 to the close (ET), and once
-more 15 minutes after the close (the day's close capture), on market days, the capture daemon fetches the full chain (every expiry, every strike) of each
-ticker on the board and writes it here, one row per expiry, compressed, with Schwab's own
-underlying price. Schwab has no past option chains, so a chain not saved is gone. Nothing is
+more 15 minutes after the close (the day's close capture), on market days, the capture daemon writes
+the full chain (every expiry, every strike) of each ticker on the board -- the newest chain its live
+refresh fetched (`fetch_chain`, the one chain fetch) -- here, one row per expiry, compressed, with
+Schwab's own underlying price. Schwab has no past option chains, so a chain not saved is gone. Nothing is
 captured while the market is closed (weekend chains blank open interest). Research reads this
 table; the console loads the newest capture per ticker at startup.
 """
@@ -226,29 +227,46 @@ def board_tickers(db_path: Path | str) -> list[str]:
         conn.close()
 
 
-def capture_round(client, db_path: Path | str) -> dict[str, Any]:
-    """Fetch and write the full chain of every board ticker. A ticker Schwab does not answer is
-    logged and skipped until the next capture; nothing is filled in."""
+#: a chain older than this at a capture time is not written as that time's capture
+CAPTURE_MAX_CHAIN_AGE_SEC = 300
+
+
+def fetch_chain(client, ticker: str) -> tuple[str, dict]:
+    """THE chain fetch: one ticker's full chain (every expiry, every strike) from Schwab, as a
+    `chain.<ticker>` bus message (stream_spine.chain_msg). A refusal is a message too, with
+    Schwab's reason; nothing is filled in."""
+    from stream_spine import chain_msg
+    from numeric_contract import schwab_number
+    tk = ticker_storage_key(ticker)
+    resp = fetch_full_chain(client, tk, lambda **d: safe_get_chain(client, tk, strike_range="ALL", **d))
+    if resp.status_code != 200:
+        return f"chain.{tk}", chain_msg(symbol=tk, contracts=None, spot=None, status="error",
+                                        reason=f"HTTP {resp.status_code}" + (f" {resp.reason}" if resp.reason else ""))
+    payload = resp.json()
+    return f"chain.{tk}", chain_msg(symbol=tk, contracts=flatten_chain_contracts(payload),
+                                    spot=schwab_number(payload.get("underlyingPrice")), status="ok")
+
+
+def capture_round(latest: "dict[str, dict]", db_path: Path | str, now_ts: float) -> dict[str, Any]:
+    """Write each board ticker's newest fetched chain (`latest`: the daemon's `chain.<ticker>`
+    messages) as this capture time's rows. A ticker with no chain fetched in the last
+    CAPTURE_MAX_CHAIN_AGE_SEC is logged and skipped; nothing is filled in."""
+    from stream_spine import chain_contracts
     written, failed = 0, []
     for tk in board_tickers(db_path):
-        resp = fetch_full_chain(client, tk, lambda **d: safe_get_chain(
-            client, tk, strike_range="ALL", **d))
-        if resp.status_code != 200:
+        msg = latest.get(f"chain.{ticker_storage_key(tk)}")
+        if not msg or msg.get("status") != "ok" or now_ts - float(msg.get("ts_recv") or 0) > CAPTURE_MAX_CHAIN_AGE_SEC:
             failed.append(tk)
-            log.warning("chain capture %s: %s", tk, resp.reason or f"HTTP {resp.status_code}")
+            log.warning("chain capture %s: %s", tk, (msg or {}).get("reason") or "no chain fetched in the last "
+                        f"{CAPTURE_MAX_CHAIN_AGE_SEC} s")
             continue
-        ts = time.time()
-        payload = resp.json()
-        spot = payload.get("underlyingPrice")          # Schwab's field, as sent
-        if spot == -999:
-            spot = None
         by_expiry: dict[str, list[dict]] = {}
-        for ct in flatten_chain_contracts(payload):
+        for ct in chain_contracts(msg):
             by_expiry.setdefault(str(ct.get("expirationDate") or "")[:10], []).append(ct)
         for expiry, contracts in by_expiry.items():
             persist_complete_chain_capture(
-                db_path, ticker=tk, expiry=expiry, contracts=contracts, spot=spot,
-                completeness_basis=CAPTURE_BASIS, ts_utc=ts)
+                db_path, ticker=tk, expiry=expiry, contracts=contracts, spot=msg.get("spot"),
+                completeness_basis=CAPTURE_BASIS, ts_utc=float(msg["ts_recv"]))
         written += 1
     return {"written": written, "failed": failed}
 

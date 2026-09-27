@@ -33,7 +33,6 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 |---|---|
 | `app/market_data/schwab/streaming/` (capture, live_push, live_ui), `stream_spine.py`, `live_market_plane.py`, `live_price_rows.py` | `daemon/` |
 | `schwab_client.py`, `api_pressure.py`, `market_context.py` (Schwab REST calls) | `daemon/` |
-| From `server.py`: the chain gate (`_gated_safe_get_chain`; the chain download itself is `schwab_client.fetch_full_chain`) | `daemon/` |
 | `calibration/complete_chain_capture.py` (the chain history, DATA_FLOW decision 7) | `daemon/` |
 | `calibration/option_chain_accrual.py` (per-minute per-strike totals for `/exposure`) | decided with the `/exposure` page (P2-4) |
 | `db.py` (the parts that stay: bars, level history, enrollment, connection), `db_authority.py`, `db_safety.py`, `json_blob_codec.py` | `daemon/` (writes) — the console opens the database read-only |

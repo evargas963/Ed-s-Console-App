@@ -164,16 +164,6 @@ def _unresolved_free_names_in_module(source: str) -> list[tuple[str, int]]:
 # FIND-SERVERPY-3
 
 
-# FIND-SERVERPY-4
-def test_rth_open_mins_constant_exists_and_used():
-    import server
-
-    assert server.RTH_OPEN_MINS == 570
-    # (_update_rest_cum_delta, the function this read, is deleted -- REST fallback.) The
-    # literal must not reappear anywhere in server.py.
-    assert "9 * 60 + 30" not in (ROOT / "server.py").read_text(encoding="utf-8")
-
-
 # FIND-SERVERPY-5
 
 

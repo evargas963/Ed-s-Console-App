@@ -36,9 +36,9 @@ function demandAck(body, requested) {
 const SURFACE = {
   ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41, spot_strike: 583, front_expiry: '2026-09-11',
   source: 'terrain_live_cache', live: true, stale: false, age_sec: 3, chain_basis: 'full',
-  complete: false,
-  coverage: { window: 'live_near_money', chain_basis: 'full', strike_count: 3,
-    note: 'near-money LIVE window (strike_count-bounded terrain chain) — NOT the full strike_range=ALL book' },
+  complete: true,
+  coverage: { window: 'full_chain', chain_basis: 'full', strike_count: 3,
+    note: 'full chain: every listed expiry and strike (Schwab strike_range=ALL)' },
   chain_as_of_ts_utc: 1757000200, spot_as_of_ts_utc: 1757000200, spot_source: 'last',
   expirations: [{ expiry: '2026-09-11', dte: 2 }, { expiry: '2026-09-18', dte: 9 }],
   strikes: [580, 583, 586],
@@ -1233,7 +1233,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         for (var j = 0; j < exps.length; j++) row.push((j % 2 ? 1 : -1) * 1000 * ((si % 50) + 1));
         cells.push({ strike: strikes[si], gex: row });
       }
-      var surface = { available: true, source: 'terrain_live_cache', live: true, spot: 600, complete: false,
+      var surface = { available: true, source: 'terrain_live_cache', live: true, spot: 600, complete: true,
         coverage: { chain_basis: 'full' }, expirations: exps, strikes: strikes, cells: cells };
       var t0 = performance.now();
       window.EdGamma.renderSurface(host, surface);   // 200 strikes x 20 expiries = 4000 cells
@@ -1255,7 +1255,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       var scope = function () { return document.getElementById('heatScope').textContent; };
       var live = function (age, stale) {
         return { available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, spot: 583.41,
-          complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
+          complete: true, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
           coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600] }] };
       };
       // A: same live DATA revision, age changes -> table preserved, scope age updates

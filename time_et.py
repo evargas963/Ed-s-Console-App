@@ -219,6 +219,26 @@ def is_capturable_session(now: "datetime | None" = None) -> bool:
     return 240 <= mins < 1200                              # 04:00 <= t < 20:00 ET (extended hours)
 
 
+#: The live chain refresh window: from 8:45 ET (the whole board is swept by the 9:30 open) to 30
+#: minutes after the day's close (15 minutes after SPY/QQQ/IWM and the index options stop trading).
+CHAIN_REFRESH_START_MINS = 525
+CHAIN_REFRESH_AFTER_CLOSE_MIN = 30
+
+
+def chain_refresh_window_et(et_date: str) -> "tuple[int, int] | None":
+    """(start, end) ET minute-of-day of the live chain refresh on `et_date`; None when the market
+    does not open that day."""
+    close = session_close_mins_for_et_date(et_date) if is_trading_day_et(et_date) else None
+    return None if close is None else (CHAIN_REFRESH_START_MINS, close + CHAIN_REFRESH_AFTER_CLOSE_MIN)
+
+
+def chain_refresh_open(now: "datetime | None" = None) -> bool:
+    """Is the live chain refresh running now (the window above, on a market day)."""
+    n = now if now is not None else now_et()
+    win = chain_refresh_window_et(n.strftime("%Y-%m-%d"))
+    return win is not None and win[0] <= n.hour * 60 + n.minute <= win[1]
+
+
 #: Seconds in a 365-day year (ACT/365, the standard option-pricing day-count).
 YEAR_SECONDS: float = 365.0 * 24.0 * 3600.0
 #: Sub-floor on time-to-expiry (10 minutes) — guards the exact-expiry 1/sqrt(T) singularity

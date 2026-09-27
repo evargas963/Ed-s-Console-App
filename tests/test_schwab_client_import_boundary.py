@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from fastapi import HTTPException
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -95,49 +94,54 @@ def test_build_config_fail_closed_without_secrets(monkeypatch: pytest.MonkeyPatc
 
 
 def test_server_imports_in_ci_without_live_credentials() -> None:
-    """Importing server in a CI env must not build a client.
-
-    Uses a fresh module load rather than whatever `server` the suite already imported:
-    `_client` is a module-level global, so asserting on the shared instance made this
-    test depend on suite order (observed 2026-07-19 inside the full run only). The
-    reload tests the actual intent - a clean import builds no client.
-    """
-    srv = _reload_server_module()
-
-    assert srv._client is None
-    assert srv.app is not None
-
-
-def test_server_import_does_not_build_client_or_run_login_flow() -> None:
+    """Importing server builds no Schwab client and runs no login flow (it holds none: P2-1)."""
     with patch("schwab_client.build_client_from_token") as mock_build, patch(
         "schwab_client.run_login_flow"
     ) as mock_login:
         srv = _reload_server_module()
         mock_build.assert_not_called()
         mock_login.assert_not_called()
-        assert srv._client is None
+    assert srv.app is not None and not hasattr(srv, "get_client")
 
 
-def test_get_client_requires_token_only_when_called(monkeypatch: pytest.MonkeyPatch) -> None:
-    from schwab_client import SchwabClientState
+# P2-1 (DATA_FLOW 4.1): the capture daemon holds the one Schwab connection. A Schwab call is one
+# of the repo's entry points or a Schwab client method; only these files may make one.
+SCHWAB_ENTRY_POINTS = {"build_client_from_token", "safe_get_chain", "fetch_full_chain"}
+SCHWAB_CLIENT_METHODS = {"get_option_chain", "get_option_expiration_chain", "get_price_history",
+                         "get_price_history_every_minute", "get_price_history_every_day", "get_quote",
+                         "get_quotes", "get_movers", "get_market_hours", "get_instruments"}
+SCHWAB_CALLERS = {"schwab_client.py", "app/market_data/schwab/streaming/capture.py",
+                  "calibration/complete_chain_capture.py"}
 
-    import server
 
-    monkeypatch.setattr(server, "_client", None)
-    monkeypatch.setattr(
-        server,
-        "build_client_from_token",
-        lambda **_: SchwabClientState(
-            ok=False,
-            message="Token file not found: ci-missing-token",
-            client=None,
-        ),
-    )
+def schwab_calls(src: str) -> list[str]:
+    import ast
+    out = []
+    for n in ast.walk(ast.parse(src)):
+        if isinstance(n, ast.Call):
+            fn = n.func
+            name = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else None
+            recv = ast.unparse(fn.value) if isinstance(fn, ast.Attribute) else ""
+            if name in SCHWAB_ENTRY_POINTS or (name in SCHWAB_CLIENT_METHODS and "client" in recv.lower()):
+                out.append(f"{n.lineno} {name}")
+    return out
 
-    with pytest.raises(HTTPException) as exc_info:
-        server.get_client(force_refresh=True)
-    assert exc_info.value.status_code == 503
-    assert "Schwab auth failed" in str(exc_info.value.detail)
+
+def test_only_the_daemon_calls_schwab(repo_index) -> None:
+    bad = {rel.as_posix(): hits for rel, text, _t in repo_index.items()
+           if rel.suffix == ".py" and not rel.as_posix().startswith(("tests/", "tools/", "research/"))
+           and rel.as_posix() not in SCHWAB_CALLERS and (hits := schwab_calls(text))}
+    assert not bad, f"Schwab called outside the capture daemon: {bad}"
+
+
+def test_the_check_catches_the_consoles_old_calls() -> None:
+    old = "; ".join([
+        "resp = fetch_full_chain(client, tk, lambda **d: _gated_safe_get_chain(client, tk, **d)[0])",
+        "state = build_client_from_token(api_key=k, app_secret=s, token_path=p)",
+        "r = client.get_quote('SPY')",
+        "row = _lmp.get_quote(tk)",                      # the live plane's own reader: not Schwab
+    ])
+    assert [h.split()[1] for h in schwab_calls(old)] == ["fetch_full_chain", "build_client_from_token", "get_quote"]
 
 
 def test_adversarial_tests_can_import_server() -> None:

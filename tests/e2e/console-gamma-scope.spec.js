@@ -31,7 +31,7 @@ const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 106, pu
 const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 99.8, 100.3, 100.5, 100.2, 100.0].map(function (c, i) {
   return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }) };
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, spot_strike: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
-  live: true, stale: false, age_sec: 3, chain_basis: 'full', complete: false,
+  live: true, stale: false, age_sec: 3, chain_basis: 'full', complete: true,
   expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [99, 100, 101],
   cells: [{ strike: 99, gex: [-90000] }, { strike: 100, gex: [958600] }, { strike: 101, gex: [-264500] }] };
 
