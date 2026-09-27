@@ -312,6 +312,9 @@
     if (expOn) note += '<div class="gbs-allexp">ALL-EXP terrain · per-expiry GEX-by-strike not canonical here</div>';
     var maxAbs = win.reduce(function (m, r) { return Math.max(m, Math.abs(Number(r[1]) || 0)); }, 0) || 1;
     var spotStrike = d.spot_strike;   // served: the listed strike nearest the live price
+    // yesterday's change per strike, served (migration.all.rows: [strike, today, prior, change])
+    var chg = {}, mig = d.migration && d.migration.all;
+    ((mig && mig.compared && mig.rows) || []).forEach(function (m) { chg[m[0]] = m[3]; });
     var bars = '';
     win.forEach(function (r) {
       // r = [strike, net_gex_1pct$, session_volume] -- terrain_engine._per_strike_rows' own
@@ -325,7 +328,9 @@
         '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
         '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
         '<span class="gbs-v ' + (v == null ? '' : pos ? 'pos' : 'neg') + '">' + (v == null ? '—' : usd(v)) + '</span>' +
-        '<span class="gbs-vol" title="session volume">' + fmtVol(vol) + '</span></div>';
+        '<span class="gbs-vol" title="session volume">' + fmtVol(vol) + '</span>' +
+        '<span class="gbs-chg" title="net GEX change vs the previous session">' +
+        (chg[k] == null ? '—' : usd(chg[k])) + '</span></div>';
     });
     // the bars scroll in their own area; the -/0/+ magnitude axis is PINNED at the foot so it is
     // always visible without scrolling (reference behaviour).

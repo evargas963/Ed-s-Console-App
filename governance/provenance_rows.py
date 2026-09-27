@@ -18,8 +18,8 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='server.py', derivation='get_alerts', disposition='DERIVED',
-        producer_refs=('server.py:_terrain_refresh_one', 'server.py:resolve_spot'),
-        justification='Proximity alerts: spot (resolve_spot) against the published gamma walls, and the level crosses the levels producer records.',
+        producer_refs=('server.py:get_levels',),
+        justification="Proximity alerts: every level /api/levels marks near_spot (get_levels, one rule for every family), and the level crosses the levels producer records.",
     ),
     Row(
         file='server.py', derivation='get_session', disposition='ALLOWLISTED',
