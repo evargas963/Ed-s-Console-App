@@ -3425,8 +3425,9 @@ def _status_line() -> str:
         f"SPY {spot:.2f}" if spot is not None else "SPY: no live price",
         f"levels: {len(as_of)} tickers, newest as of {newest}",
         _feed_record_state(),
-        ("chain refresh: last sweep of the board took "
-         f"{_terrain_last_cycle_sec:.0f} s" if _is_loggable_session()
+        (("chain refresh: last sweep of the board took "
+          f"{_terrain_last_cycle_sec:.0f} s" if _terrain_last_cycle_sec
+          else "chain refresh: first sweep running") if _is_loggable_session()
          else "chain refresh next " + _next_refresh_ct()),
     ])
 
