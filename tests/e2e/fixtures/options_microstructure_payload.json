@@ -1,6 +1,6 @@
 {
   "ages": {
-    "book_age_sec": 1527094.43,
+    "book_age_sec": 1532774.006,
     "book_stale": true,
     "quote_age_sec": null
   },
@@ -127,7 +127,7 @@
     "exchange_quote_ts": null,
     "n_ask_levels": 3,
     "n_bid_levels": 3,
-    "server_received_ts": 1790527094.4295244,
+    "server_received_ts": 1790532774.005764,
     "top_of_book_ask_leaf": "streaming.ASK_PRICE",
     "top_of_book_bid_leaf": "streaming.BID_PRICE"
   },
@@ -137,15 +137,16 @@
   "status": "ok",
   "streaming_plane": {
     "contract_match": false,
-    "daemon_upstream_health": {
-      "LEVELONE_OPTIONS": {
+    "feed_health": {
+      "book": {
         "age_sec": null,
         "state": "UNKNOWN"
       },
-      "OPTIONS_BOOK": {
+      "l1": {
         "age_sec": null,
         "state": "UNKNOWN"
-      }
+      },
+      "replay": "not connected"
     },
     "option_contract": null,
     "producer_book_contract": null,

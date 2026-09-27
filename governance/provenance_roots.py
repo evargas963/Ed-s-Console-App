@@ -47,7 +47,6 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/desk': ('PAGE', None),
     '/exposure': ('PAGE', None),
     '/favicon.ico': ('PAGE', None),
-    '/options': ('PAGE', None),
 }
 
 #: Roots with no producer yet — NOT_PROVEN, by name. The suite asserts this list is EXACT:

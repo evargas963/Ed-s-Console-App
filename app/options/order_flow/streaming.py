@@ -1058,6 +1058,7 @@ def get_option_contract_streaming_diagnostics(
     pbk = _pick_producer_contract(producer["OPTIONS_BOOK"], queried)
     # the queried contract's subscription, as the page shows it: SUBSCRIBED (the producer holds it),
     # MOVED (both services hold one other contract), else PENDING; None with no contract queried
+    upstream = _read_daemon_upstream_health(("LEVELONE_OPTIONS", "OPTIONS_BOOK"))
     subscription_state = (None if not queried else "SUBSCRIBED" if contract_match
                           else "MOVED" if pl1 and pl1 == pbk and pl1 != queried else "PENDING")
     return {
@@ -1073,13 +1074,9 @@ def get_option_contract_streaming_diagnostics(
         "streaming_last_update_ts": last,
         "streaming_staleness_ms": stale_ms,
         "streaming_healthy": healthy,
-        # Ground truth for the Schwab socket itself, per service — distinct from
-        # streaming_healthy above (this module's local replay proxy). A fresh LEVELONE_
-        # OPTIONS quote does not imply a fresh OPTIONS_BOOK if the book service has
-        # stopped: the two are reported SEPARATELY, never collapsed into one flag, so a
-        # consumer cannot mistake one service's freshness for the other's.
-        "daemon_upstream_health": _read_daemon_upstream_health(
-            ("LEVELONE_OPTIONS", "OPTIONS_BOOK")),
+        # Schwab's own per-service health (the daemon's) beside the local replay: never collapsed.
+        "feed_health": {"replay": "not connected" if not _feed_running else "healthy" if healthy else "stale",
+                        "l1": upstream["LEVELONE_OPTIONS"], "book": upstream["OPTIONS_BOOK"]},
     }
 
 

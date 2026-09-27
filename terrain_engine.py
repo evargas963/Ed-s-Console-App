@@ -351,6 +351,34 @@ def nearest_strike(strikes, spot) -> float | None:
     return min(ks, key=lambda k: abs(k - float(spot)))
 
 
+def chain_ladder(contracts, spot) -> list[dict]:
+    """One expiry's chain as the ladder draws it: strikes high to low; per strike one row per
+    listed contract index (a second contract at one strike and side gets its own row);
+    `call_itm` / `put_itm` against `spot` (None without one); `spot` marks the first row of the
+    strike nearest spot."""
+    from numeric_contract import schwab_number
+    by_k: dict[float, dict[str, list]] = {}
+    for c in contracts or []:
+        k = schwab_number(c.get("strikePrice"))
+        if k is None:
+            continue
+        side = "put" if str(c.get("putCall") or "").upper() == "PUT" else "call"
+        by_k.setdefault(k, {"call": [], "put": []})[side].append(c)
+    spot_k = nearest_strike(by_k, spot)
+    rows = []
+    for k in sorted(by_k, reverse=True):
+        g = by_k[k]
+        for i in range(max(len(g["call"]), len(g["put"]))):
+            rows.append({
+                "strike": k, "first": i == 0, "spot": i == 0 and k == spot_k,
+                "call": g["call"][i] if i < len(g["call"]) else None,
+                "put": g["put"][i] if i < len(g["put"]) else None,
+                "call_itm": None if spot is None else k < spot,
+                "put_itm": None if spot is None else k > spot,
+            })
+    return rows
+
+
 def _dte_of(ct: object) -> float | None:
     """Days to expiration, or None when the contract does not say.
 

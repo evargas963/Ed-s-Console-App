@@ -16,6 +16,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const FIXTURE = require('./fixtures/options_microstructure_payload.json');
+const { served } = require('./fixtures/served_chain');
 
 const DESIRED = FIXTURE.contract;                          // 'SPY   260911C00100000'
 const OTHER = 'SPY   260911P00100000';
@@ -84,7 +85,7 @@ async function setup(page, ctx) {
       return route.fulfill({ status: 200, contentType: 'application/json', body });
     }
     let body = { available: false };
-    if (url.includes('/api/chain')) body = chain();
+    if (url.includes('/api/chain')) body = served(chain());
     else if (url.includes('/api/options/gamma-surface')) body = { ticker: 'SPY', available: true, spot: 100, source: 'terrain_live_cache', live: true, stale: false, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [100], cells: [{ strike: 100, gex: [1] }] };
     else if (url.includes('/api/terrain/strikes')) body = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false, today: { all: [[100, 1, 1]] } };
     else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, levels_stale: false };

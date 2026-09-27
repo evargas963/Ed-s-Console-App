@@ -175,7 +175,7 @@ from market_context import (
     market_context_panel_symbols_excluding_core,
 )
 from terrain_read import build_terrain_read
-from terrain_engine import (TerrainSnapshot, compute_terrain, nearest_strike, positioning_migration,
+from terrain_engine import (TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike, positioning_migration,
                             wall_geometry_state)
 from terrain_atr import AtrPair, compute_atr_pair
 
@@ -4727,20 +4727,6 @@ def exposure_page():
                         headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
-@app.get("/options", response_class=HTMLResponse)
-def options_page():
-    """OPTIONS_ORDER_FLOW_V1 UI/consumer wiring: chain + contract-selection + live
-    order-flow microstructure for one option contract. Reads GET /api/chain (contract
-    listing), POST /api/streaming/active-option-contract (subscribe), GET /api/order-flow/
-    options-microstructure (live book + freshness/health) — no new endpoints, no client-
-    side second producer."""
-    p = static_dir / "options.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/options.html not found</p>", status_code=404)
-    return HTMLResponse(p.read_text(encoding="utf-8"),
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
-
-
 @app.get("/desk", response_class=HTMLResponse)
 def desk_page():
     """Desk — research, candidates and book, replayable at an earlier knowledge time."""
@@ -5430,6 +5416,7 @@ def get_chain(ticker: str = Query(...),
     response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
         t, contracts, newer_than_ts=fetched_ts)
     live_spot, _src, _ts = resolve_spot(t)       # the one spot on every screen
+    ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
     # Strike Detail shows it beside this expiry's contracts -- one value, one producer
     surf = held.get("_gamma_surface") or {}
@@ -5450,6 +5437,7 @@ def get_chain(ticker: str = Query(...),
                                    < len(response_contracts),
         "chain_as_of_ts_utc": fetched_ts,
         "contracts": response_contracts, "status": "ok",
+        "ladder": ladder, "n_strikes": len({r["strike"] for r in ladder}),
         "stream_overlay_contracts": overlay_n,
         "scope": {"kind": "complete_single_expiry", "requested_expiry": resolved_expiry,
                   "completeness_basis": COMPLETENESS_BASIS_STRIKE_RANGE_ALL},
