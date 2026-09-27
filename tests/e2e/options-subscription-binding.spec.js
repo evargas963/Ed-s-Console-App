@@ -53,6 +53,8 @@ function microstructure(contract, { l1, book, healthy = true, upstream = true } 
       producer_book_contract: book,
       queried_contract: contract,
       contract_match: match,
+      // the server's state (streaming.get_option_contract_streaming_diagnostics)
+      subscription_state: match ? 'SUBSCRIBED' : (l1 && l1 === book && l1 !== contract ? 'MOVED' : 'PENDING'),
       streaming_last_update_ts: Date.now() / 1000,
       streaming_staleness_ms: 120,
       streaming_healthy: healthy && match,

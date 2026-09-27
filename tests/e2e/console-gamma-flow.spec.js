@@ -40,7 +40,7 @@ function microFor(plane, mutate) {
 }
 
 function makeContext() {
-  return { post: { status: 200, ok: true, echo: DESIRED }, plane: { contract_match: true, streaming_healthy: true, streaming_staleness_ms: 300 }, mutate: null, posts: 0, microGets: 0, hangMicro: false, releaseMicro: null };
+  return { post: { status: 200, ok: true, echo: DESIRED }, plane: { contract_match: true, subscription_state: 'SUBSCRIBED', streaming_healthy: true, streaming_staleness_ms: 300 }, mutate: null, posts: 0, microGets: 0, hangMicro: false, releaseMicro: null };
 }
 
 async function setup(page, ctx) {
@@ -234,7 +234,7 @@ test.describe('D — Gamma Flow subview (EdStream contract binding)', () => {
 
   test('producer partial (L1 desired, book other) = NOT ACTIVE (PENDING, dimmed)', async ({ page }) => {
     const ctx = makeContext();
-    ctx.plane = { contract_match: false, producer_l1_contract: DESIRED, producer_book_contract: OTHER };
+    ctx.plane = { contract_match: false, subscription_state: 'PENDING', producer_l1_contract: DESIRED, producer_book_contract: OTHER };
     await setup(page, ctx);
     await selectCallAndOpenFlow(page);
     await expect(page.locator('#flowBody .fl-badge')).toHaveText('PENDING');
@@ -243,7 +243,7 @@ test.describe('D — Gamma Flow subview (EdStream contract binding)', () => {
 
   test('slot taken by another contract = MOVED; desired shown, no re-POST', async ({ page }) => {
     const ctx = makeContext();
-    ctx.plane = { contract_match: false, producer_l1_contract: OTHER, producer_book_contract: OTHER };
+    ctx.plane = { contract_match: false, subscription_state: 'MOVED', producer_l1_contract: OTHER, producer_book_contract: OTHER };
     await setup(page, ctx);
     await selectCallAndOpenFlow(page);
     await expect(page.locator('#flowBody .fl-badge')).toHaveText('MOVED');
