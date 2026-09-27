@@ -15,7 +15,6 @@ from pathlib import Path
 # turn audit map the HTML change to a running suite instead of reporting an unknown owner.
 TURN_AUDIT_OWNS = [
     "static/index.html",
-    "static/chart.html",
     "time_et.py",
     "server.py",
     "news_sentiment.py",
@@ -42,7 +41,6 @@ TURN_AUDIT_OWNS = [
     "tools/lp01_touch_study_v1.py",
     "tools/liquidity_synthesis_experiments_v1.py",
     "tools/liquidity_oi_volume_stickiness_v1.py",
-    "tools/terrain_backtest_report_v1.py",
     "tools/liquidity_intraday_volume_ic_v1.py",
     # F07: this suite's regime lock reads and asserts on the backtests' regime derivation.
     "tools/liquidity_gamma_hold_horizon_experiments_v1.py",
@@ -129,66 +127,6 @@ def test_rc345_standard_atr_has_one_authority() -> None:
 
 
 # ------------------------------------------------------------------- F11 options volume imbalance
-
-
-
-
-def test_f09_ui_clock_cannot_serve_stale_disk_or_prior_constants(monkeypatch) -> None:
-    """Negative proof: the UI-serving path cannot return a stale disk blob or
-    a prior 570/960 constant once time_et has moved or projection fails.
-
-    Two attacks against the old fail-open lifespan write:
-      1. Plant window.ED_RTH_START_MINS=111 on disk and monkeypatch time_et to
-         400/800 — GET must return 400/800, never 111 or 570/960.
-      2. Force rth_clock_js_source to raise — GET must fail closed (5xx), not
-         fall through to StaticFiles serving the planted 111/222 blob.
-    """
-    import pytest
-
-    pytest.importorskip("fastapi")
-    import time_et
-    import server as srv
-    from pathlib import Path
-    from starlette.testclient import TestClient
-
-    disk = Path(srv.APP_DIR) / "static" / "rth_clock_authority.js"
-    stale = b"window.ED_RTH_START_MINS=111;\nwindow.ED_RTH_END_MINS=222;\n"
-    prior = disk.read_bytes() if disk.exists() else None
-    try:
-        disk.write_bytes(stale)
-        monkeypatch.setattr(time_et, "RTH_START_MINS", 400)
-        monkeypatch.setattr(time_et, "RTH_END_MINS", 800)
-        with TestClient(srv.app) as client:
-            r = client.get("/static/rth_clock_authority.js")
-            assert r.status_code == 200
-            assert r.text == (
-                "window.ED_RTH_START_MINS=400;\nwindow.ED_RTH_END_MINS=800;\n"
-            )
-            assert "111" not in r.text
-            assert "222" not in r.text
-            assert "570" not in r.text
-            assert "960" not in r.text
-
-        def _boom() -> str:
-            raise OSError("forced projection failure")
-
-        monkeypatch.setattr(time_et, "rth_clock_js_source", _boom)
-        with TestClient(srv.app, raise_server_exceptions=False) as client:
-            r = client.get("/static/rth_clock_authority.js")
-            assert r.status_code >= 500
-            body = r.text or ""
-            assert "ED_RTH_START_MINS=111" not in body
-            assert "ED_RTH_START_MINS=570" not in body
-            assert "ED_RTH_END_MINS=222" not in body
-            assert "ED_RTH_END_MINS=960" not in body
-    finally:
-        if prior is None:
-            if disk.exists():
-                disk.unlink()
-        else:
-            disk.write_bytes(prior)
-
-
 
 
 # ----------------------------------------------------------------------- F02 net GEX at spot

@@ -51,46 +51,10 @@ def test_spy_only_ticker_default_blocks_and_universal_allows(tmp_path):
     ) == [], "documented OUT-OF-SCOPE waiver was wrongly blocked"
 
 
-def test_chart_spy_only_feature_gate_blocks_and_parameterized_allows():
-    bad = (
-        "function paint() {\n"
-        "  if (tk === 'SPY') {\n"
-        "    drawStormHighlight();\n"
-        "  }\n"
-        "}\n"
-    )
-    hits = U.chart_spy_only_feature_violations(bad)
-    assert hits, "SPY-only storm/highlight branch was not flagged"
-
-    good = (
-        "function load() {\n"
-        "  const tk = currentChartTicker();\n"
-        "  j(`/api/bars1m?ticker=${tk}&limit=3000`);\n"
-        "  j(`/api/terrain?ticker=${tk}`);\n"
-        "  j(`/api/terrain/strikes?ticker=${tk}`);\n"
-        "  drawStormHighlight(tk);\n"
-        "}\n"
-    )
-    assert U.chart_spy_only_feature_violations(good) == []
-    assert U.chart_ticker_path_violations(good) == []
-
-    missing = "function load() { j('/api/bars1m?limit=3000'); }\n"
-    assert U.chart_ticker_path_violations(missing), (
-        "Chart path missing parameterized ticker fetches was not flagged"
-    )
-
-
 def test_check_universal_ticker_scope_screams_on_injected_tool(tmp_path, monkeypatch):
     """Full check path: a SPY-only liquidity tool under a fake repo must produce >=1 violation."""
     tools = tmp_path / "tools"
     tools.mkdir()
-    (tmp_path / "static").mkdir()
-    (tmp_path / "static" / "chart.html").write_text(
-        "j(`/api/bars1m?ticker=${tk}`);\n"
-        "j(`/api/terrain?ticker=${tk}`);\n"
-        "j(`/api/terrain/strikes?ticker=${tk}`);\n",
-        encoding="utf-8",
-    )
     (tools / "liquidity_zz_block_me_v1.py").write_text(
         "import argparse\n"
         "ap = argparse.ArgumentParser()\n"

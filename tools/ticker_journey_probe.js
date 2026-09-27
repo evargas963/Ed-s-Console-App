@@ -1,5 +1,5 @@
 // RC-123 rendered-proof probe: the cross-page ticker carrier (localStorage ed_ticker)
-// must survive console -> chart -> console.
+// must survive a console reload.
 //
 // v21 graded the original proof THEATER because this script lived in a scratchpad — a
 // verification nobody can re-run is a story, not evidence. It is repo-tracked now:
@@ -17,7 +17,6 @@ const path = require('path');
   const root = path.resolve(__dirname, '..');
   const toUrl = f => 'file:///' + path.join(root, f).split(path.sep).join('/');
   const idx = toUrl('static/index.html');
-  const cht = toUrl('static/chart.html');
 
   await p.goto(idx, { waitUntil: 'domcontentloaded', timeout: 20000 });
   await p.waitForTimeout(2500);
@@ -35,10 +34,6 @@ const path = require('path');
   await p.waitForTimeout(1200);
   const stored = await p.evaluate(() => localStorage.getItem('ed_ticker'));
 
-  await p.goto(cht, { waitUntil: 'domcontentloaded', timeout: 20000 });
-  await p.waitForTimeout(2000);
-  const chartTk = await p.evaluate(() => (document.getElementById('tk') || {}).value);
-
   await p.goto(idx, { waitUntil: 'domcontentloaded', timeout: 20000 });
   await p.waitForTimeout(2500);
   const backTk = await p.evaluate(() => {
@@ -47,9 +42,9 @@ const path = require('path');
     return i ? i.value : null;
   });
 
-  const result = { typedInto: typed, stored, chartTk, backTk };
+  const result = { typedInto: typed, stored, backTk };
   console.log(JSON.stringify(result));
   await b.close();
-  const ok = stored === 'QQQ' && chartTk === 'QQQ' && backTk === 'QQQ';
+  const ok = stored === 'QQQ' && backTk === 'QQQ';
   process.exit(ok ? 0 : 1);
 })().catch(e => { console.error('PROBE FAIL:', e.message); process.exit(1); });

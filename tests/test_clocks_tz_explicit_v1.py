@@ -1,6 +1,6 @@
 # institutional-synthetic-ok: these tests INJECT bare toLocaleDateString / missing SESSION_TZ
 # to prove the RC-223 / census #7 clocks lock BLOCKS — that is their entire purpose.
-"""RC-223: chart session date keys are ET; display labels are CT; bare locale dates banned."""
+"""RC-223: session date keys are ET; display labels are CT; bare locale dates banned."""
 from __future__ import annotations
 
 import sys
@@ -12,30 +12,10 @@ if str(ROOT) not in sys.path:
 
 import tools.clocks_tz_lock as L  # noqa: E402
 
-CHART = ROOT / "static" / "chart.html"
-
 
 def test_shipped_static_has_no_bare_locale_dates():
     bad = L.scan_tracked_static(ROOT)
     assert bad == [], f"browser-ambient date clocks remain: {bad}"
-
-
-def test_chart_binds_session_et_and_display_ct():
-    src = CHART.read_text(encoding="utf-8")
-    # session (ET) keys are the server's since the audit of #280 -- the page keys nothing
-    assert "SESSION_TZ" not in src and "&tf=" in src
-    assert "DISPLAY_TZ = 'America/Chicago'" in src
-    # The daily roll-up (and its ET date key) is server-side since the audit of #280: the
-    # browser no longer aggregates candles. The ET keying is pinned on the producer.
-    assert "function aggregate(" not in src and "etDateKey(" not in src
-    import inspect
-    import server as srv
-    # one bucketing for bars and VWAP (_tf_bucket_key), keyed on the ET clock
-    assert "_tf_bucket_key(" in inspect.getsource(srv.aggregate_bars)
-    assert "datetime.fromtimestamp(t, ET)" in inspect.getsource(srv._tf_bucket_key)
-    assert "displayDateLabel(" in src and "displayTimeLabel(" in src
-    assert "toLocaleDateString()" not in src
-    assert "toLocaleDateString(undefined" not in src
 
 
 def test_index_catch_path_is_ct_explicit():
@@ -55,7 +35,7 @@ def test_bare_locale_date_detector_screams():
     """Negative control: the exact census defect must BLOCK."""
     bad = L.bare_locale_date_violations(
         "const dkey = t => new Date(t * 1000).toLocaleDateString();\n",
-        rel="static/chart.html",
+        rel="static/index.html",
     )
     assert bad, "bare toLocaleDateString() was not flagged"
     assert "timeZone" in bad[0]
@@ -64,21 +44,9 @@ def test_bare_locale_date_detector_screams():
 def test_explicit_timezone_is_quiet():
     good = L.bare_locale_date_violations(
         "d.toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short' });\n",
-        rel="static/chart.html",
+        rel="static/index.html",
     )
     assert good == []
-
-
-def test_browser_side_grouping_screams():
-    """Negative control: putting candle/date grouping back in the page is caught (the roll-up
-    and its ET key are server-side, aggregate_bars)."""
-    src = CHART.read_text(encoding="utf-8")
-    regrouped = src.replace("function currentChartTicker() {",
-                            "function etDateKey(t) { return ''; } function currentChartTicker() {", 1)
-    bad = L.chart_session_clock_violations(regrouped)
-    assert any("server-side" in m for m in bad), bad
-    no_tf = src.replace("&tf=", "&xf=")
-    assert any("tf=" in m for m in L.chart_session_clock_violations(no_tf))
 
 
 def test_et_date_key_matches_time_et_authority():

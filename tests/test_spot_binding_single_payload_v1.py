@@ -19,7 +19,6 @@ if str(ROOT) not in sys.path:
 import tools.spot_binding_lock as L  # noqa: E402
 from tools.data_faucet_audit import audit_client  # noqa: E402
 
-CHART = ROOT / "static" / "chart.html"
 EXPOSURE = ROOT / "static" / "exposure.html"
 
 
@@ -30,31 +29,6 @@ def test_shipped_static_spot_binding_is_clean():
 
 def test_shipped_client_faucet_audit_clean():
     assert audit_client() == [], "client spot read outside authority"
-
-
-def test_chart_binds_api_spot_only():
-    import re
-
-    src = CHART.read_text(encoding="utf-8")
-    assert "function currentSpot()" in src
-    assert "return liveSpot;" in src
-    assert "function _cycleSpot" not in src
-    # Executable code must not read strikes.spot / terrain.spot (comments may name the kill).
-    code = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", src, flags=re.M), flags=re.S)
-    assert "strikes.spot" not in code, "executable strikes.spot read remains"
-    assert "terrain.spot" not in code, "executable terrain.spot read remains"
-    m = re.search(r"function currentSpot\(\)\s*\{([^}]*)\}", src)
-    assert m and "return liveSpot" in m.group(1)
-    assert "_cycleSpot" not in m.group(1)
-
-
-def test_chart_exposes_as_of_age():
-    src = CHART.read_text(encoding="utf-8")
-    assert "spot_as_of_ts_utc" in src
-    assert "spotBindingAgeLabel" in src
-    assert "getElementById('spotage')" in src or 'id="spotage"' in src
-    assert "SPOT_STALE_SEC" in src
-    assert "STALE" in src
 
 
 def test_exposure_kills_cycle_fallback():
@@ -69,29 +43,6 @@ def test_exposure_kills_cycle_fallback():
     polled = src.replace("openSpotStream(); setInterval(checkSpotSilence, 1000);",
                          "setInterval(() => fetch('/api/spot?ticker=SPY'), 1500);")
     assert any("/api/spot" in m for m in L.exposure_binding_violations(polled))
-
-
-def test_cycle_fallback_injection_screams():
-    """Negative control: the exact census dual-age shape must BLOCK."""
-    bad = L.chart_binding_violations(
-        "function currentSpot() {\n"
-        "  if (liveSpot != null) return liveSpot;\n"
-        "  return _cycleSpot();\n"
-        "}\n"
-        "function _cycleSpot() {\n"
-        "  return (strikes && strikes.spot != null) ? strikes.spot\n"
-        "    : (terrain ? terrain.spot : null);\n"
-        "}\n"
-    )
-    assert any("_cycleSpot" in m or "fallback" in m or "strikes.spot" in m for m in bad), bad
-
-
-def test_missing_as_of_surface_screams():
-    bad = L.chart_binding_violations(
-        "function currentSpot() { return liveSpot; }\n"
-        "async function pollSpot() { const j = await r.json(); liveSpot = j.spot; }\n"
-    )
-    assert any("spotage" in m or "spotBindingAgeLabel" in m or "as_of" in m for m in bad), bad
 
 
 def test_console_dual_field_injection_screams():
@@ -217,10 +168,10 @@ def test_discover_frontend_execution_surfaces_is_dynamic_not_a_fixed_roster():
         root = Path(td)
         (root / "static" / "js").mkdir(parents=True)
         (root / "static" / "js" / "ed-brand-new-panel.js").write_text("var x = 1;\n")
-        (root / "static" / "chart.html").write_text("<html></html>")
+        (root / "static" / "brand-new-page.html").write_text("<html></html>")
         found = L.discover_frontend_execution_surfaces(root)
     assert "static/js/ed-brand-new-panel.js" in found, found
-    assert "static/chart.html" in found, found
+    assert "static/brand-new-page.html" in found, found
 
 
 def test_shipped_ed_js_spot_binding_is_clean():
@@ -249,14 +200,3 @@ def test_exposure_fallback_injection_screams():
     )
     assert any("strikes.spot" in m or "fallback" in m for m in bad), bad
 
-
-def test_chart_spot_rebound_to_the_console_screams():
-    """Negative control: pointing the chart's spot back at the console's stream (instead of
-    the capture daemon's price socket) must BLOCK, both ways it could be done."""
-    src = CHART.read_text(encoding="utf-8")
-    assert L.chart_binding_violations(src) == []
-    unbound = src.replace("new WebSocket(url)", "new EventSource('/api/analytics/light/stream')")
-    assert any("daemon price socket" in m for m in L.chart_binding_violations(unbound))
-    relay = src.replace("function openSpotStream(tk) {",
-                        "function openSpotStream(tk) {\n  es.addEventListener('quote_tick', (ev) => 0);", 1)
-    assert any("no quote_tick listener" in m for m in L.chart_binding_violations(relay))

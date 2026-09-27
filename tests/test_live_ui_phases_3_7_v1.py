@@ -48,10 +48,6 @@ def test_chart_surfaces_do_not_reuse_stale_raw_or_invent_change_pct():
     assert "ed:quote_tick" in chart_js
     core = (REPO / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
     assert "ed:quote_tick" in core
-    html = (REPO / "static" / "chart.html").read_text(encoding="utf-8")
-    assert "liveSpotChg" in html
-    assert "yday close" not in html
-    assert "forming.h = Math.max" not in html
 
 
 def test_three_labels_are_not_collapsed_into_streaming():

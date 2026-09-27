@@ -12,7 +12,7 @@ const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_c
 const EVENTS = {
   ticker: 'SPY', tf: '30', window_start_ts_utc: CROSSES[2].ts_utc - 60,
   items: CROSSES.map((c, i) => ({ key: 'x' + c.cross_id, n: 3 - i, ts: c.ts_utc, dom: 'LEVELS', dir: c.direction, marker: true,
-    title: 'Crossed ' + (c.direction === 'up' ? 'above ' : 'below ') + c.level_name, detail: c.level_value.toFixed(2), src: '/api/level_crosses' })),
+    title: 'Crossed ' + (c.direction === 'up' ? 'above ' : 'below ') + c.level_name, detail: c.level_value.toFixed(2), src: 'level_crosses' })),
   cross_counts: { up: CROSSES.filter((c) => c.direction === 'up').length, down: CROSSES.filter((c) => c.direction !== 'up').length },
 };
 const SPOT = 771.3;

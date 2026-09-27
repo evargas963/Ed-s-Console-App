@@ -78,7 +78,6 @@
   <div class="cv-nav" role="tablist" aria-label="View">
     <a class="cv-tab" href="/">Console</a>
     <a class="cv-tab" href="/#terrain">Terrain</a>
-    <a class="cv-tab" href="/chart">Chart</a>
     <span class="cv-tab" aria-selected="true">Exposure</span>
     <!-- # ui-mockup-ok: OPTIONS_ORDER_FLOW_V1 nav entry for the new Options tab -->
   </div>
@@ -485,11 +484,11 @@ function draw() {
   }
   if (!view) { const show = Math.min(all.length, 390);
     view = { i0: Math.max(0, all.length - show), i1: all.length }; }
-  /* # ui-mockup-ok: RC-202 — the reference clamp (chart.html clampView): FULL overscroll in
+  /* # ui-mockup-ok: RC-202 — the reference clamp (the former /chart page's clampView): FULL overscroll in
      both directions, only minVis bars must stay on screen. My invented snap-back clamp made
      it impossible to drag the candles off the right edge — operator: "i cannot completely
      drag the chart where i want". Follow-at-end kept: if the view sat at the tip, new bars
-     shift it along (chart.html atEnd semantics). */
+     shift it along (the former /chart page's atEnd semantics). */
   if (window.__expLastLen && all.length !== window.__expLastLen &&
       view.i1 >= window.__expLastLen - 1 && view.i1 <= window.__expLastLen + 0.5) {
     const dnew = all.length - window.__expLastLen; view.i0 += dnew; view.i1 += dnew;
@@ -795,7 +794,7 @@ function drawLadder() {
   // # ui-mockup-ok: RC-199 real keys; absence = fields not served, never a vote gate.
   // # ui-mockup-ok: RC-305 qualifier delivery, no redesign — a served charm_error is
   // STATED: a FAILED charm used to render exactly like fields never served, hiding the
-  // reason the server reported. Same phrasing as the chart's forces_provenance idiom;
+  // reason the server reported. Same phrasing as the former /chart page's provenance idiom;
   // no error served stays the honest absence line.
   const charmTxt = forces && forces.available && forces.charm_below != null
     ? `charm ${fmtBig(forces.charm_below)} / ${fmtBig(forces.charm_above)} sh/day · ${forces.charm_book_scope || 'full_chain_banked'}`

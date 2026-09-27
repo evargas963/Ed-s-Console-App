@@ -1,89 +1,27 @@
 """RC-75 / RC-76: the BROWSER obeys the single-spot law, and the detector can prove it fails.
 
-RC-75: six sites in static/chart.html each inlined their own spot precedence, three skipping the
+RC-75: six sites in the former /chart page each inlined their own spot precedence, three skipping the
 1.5s live poll. The operator was looking at the big legend (live) and the meta bar (15s cycle)
 showing two different prices on one screen.
 
 RC-76: the first detector matched an ENUMERATION of source spellings and scored that file clean,
 because the meta bar reached the same sources through Promise.all aliases (`s.spot` / `t.spot`).
 A detector whose coverage is capped by the author's memory cannot audit the author. It is now
-STRUCTURAL — any `liveSpot` or `<anything>.spot` read outside the authority — so the tests below
-include a source name that appears in no configuration anywhere.
+STRUCTURAL — any `liveSpot` or `<anything>.spot` read outside the authority.
 """
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-from tools.data_faucet_audit import CLIENT_CONCEPTS, _js_function_at, audit_client
+from tools.data_faucet_audit import audit_client
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-CHART = STATIC / "chart.html"
 CONSOLE = STATIC / "index.html"
-
-
-def _mutate(sub: str, rep: str, path: Path = CHART) -> list[dict]:
-    """Run the detector against a deliberately broken client file, then always restore it.
-
-    RC-398: the restore went through `write_text`, which opens with newline=None and
-    translates "\\n" to os.linesep. On Windows that round-trip is lossless, so the defect
-    was invisible to every local run; on the required Linux runner it rewrote these CRLF
-    files as LF and the "restore" did not restore. MEASURED there: static/chart.html and
-    static/index.html left pytest reflowed with diffs of exactly 2x their CRLF counts
-    (4220 = 2110*2, 28076 = 14038*2), tripping eol_style_invariant on files the change
-    never touched.
-
-    A mutation control that cannot put the tree back byte-for-byte is not a control — it
-    is a mutation. Bytes in, bytes out; the platform gets no say.
-    """
-    raw = path.read_bytes()
-    orig = raw.decode("utf-8")
-    assert sub in orig, f"fixture drifted; anchor not found: {sub[:60]!r}"
-    try:
-        path.write_bytes(orig.replace(sub, rep, 1).encode("utf-8"))
-        return audit_client()
-    finally:
-        path.write_bytes(raw)
 
 
 def test_shipped_client_has_one_spot_faucet():
     assert audit_client() == [], "a rendered spot is read outside the client authority"
-
-
-def test_detector_catches_an_aliased_precedence():
-    """The exact defect that shipped: same sources, different local names."""
-    bad = _mutate('<span id="metapx">${esc(fmt(currentSpot()))}</span>',
-                  '<span id="metapx">${esc(fmt((s && s.spot) ?? t.spot))}</span>')
-    assert len(bad) == 1, f"the aliased meta-bar bug went undetected: {bad}"
-    # Assert the CONTENT, not a line number: an unrelated edit above this point must not be able
-    # to fail the lock, or the lock gets weakened to shut it up.
-    assert "chart.html:" in bad[0]["undeclared"][0]
-    assert "s.spot" in bad[0]["undeclared"][0]
-
-
-def test_detector_catches_a_source_name_it_has_never_seen():
-    """RC-76's whole point: coverage must not depend on the author having listed the name."""
-    novel = "window.__quote.spot"
-    assert novel not in str(CLIENT_CONCEPTS), "fixture is no longer a novel name"
-    bad = _mutate("  const bl = document.getElementById('biglegend');",
-                  f"  const hdr = {novel};\n  const bl = document.getElementById('biglegend');")
-    assert len(bad) == 1, f"an unlisted source stayed invisible — the RC-76 defect: {bad}"
-
-
-def test_authority_is_the_only_place_precedence_lives():
-    """Read the shipped file directly, so this holds even if the detector itself regresses."""
-    lines = CHART.read_text(encoding="utf-8").splitlines()
-    owners = _js_function_at(lines)
-    reader = re.compile(CLIENT_CONCEPTS["spot"]["reader"])
-    spec = CLIENT_CONCEPTS["spot"]
-    offenders = [
-        (i, line.strip())
-        for i, (line, owner) in enumerate(zip(lines, owners), 1)
-        if reader.search(re.sub(r"//.*$", "", line))
-        and owner not in spec["authorities"] and owner not in spec["writers"]
-        and not re.search(spec["assign_only"], line)
-    ]
-    assert not offenders, f"spot read outside currentSpot()/as_of helpers: {offenders}"
 
 
 # test_console_detector_catches_the_defect_it_was_built_for,
@@ -98,20 +36,6 @@ def test_authority_is_the_only_place_precedence_lives():
 # scans — flagged for the operator as a discovered, not-fixed gap alongside
 # tools/spot_binding_lock.py's equivalent gap (see that file's console_binding_violations
 # docstring).
-
-
-def test_render_sites_call_the_authority():
-    """Absence of a violation is not presence of the fix — the render sites must actually call it."""
-    src = CHART.read_text(encoding="utf-8")
-    assert src.count("currentSpot()") >= 5, "render sites no longer route through the authority"
-    assert "function currentSpot()" in src
-    # RC-225: authority is /api/spot only (liveSpot); cycle fallback DELETED.
-    assert "return liveSpot;" in src, (
-        "the authority no longer returns the /api/spot binding — dual-age fallback may return"
-    )
-    assert "function _cycleSpot" not in src, (
-        "cycle fallback faucet returned — strikes/terrain ages can paint as current (RC-225)"
-    )
 
 
 # ── RC-102: the console renders staleness, and the lane has ONE reader ───────────────────────
@@ -190,21 +114,6 @@ def test_no_client_fallback_between_level_books():
     )
 
 
-def test_chart_page_never_calls_console_only_helpers():
-    """E-35: fnum() exists only in index.html; a chart.html edit called it and draw() died
-    before the candles — the operator found a dead chart. The two pages are separate
-    documents with separate helper sets; this bans every console-only helper from chart
-    (extend the list when a new console-only helper is born)."""
-    src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", CHART.read_text(encoding="utf-8"),
-                                            flags=re.M), flags=re.S)
-    for helper in ("fnum(", "fstr(", "consoleSpot(", "paintSpotDisplays(",
-                   "edPaintTokenWarn(", "edLiveSpot("):
-        assert helper not in src, (
-            f"chart.html calls console-only {helper} — a ReferenceError there kills draw() "
-            f"and the operator gets a blank chart (E-35)"
-        )
-
-
 # ── v23 / RC-128 Lock 3: ONE key family per paint surface ────────────────────────────────────
 # The same concept reaches the screen under two spellings — the analytics payload's kl_* keys
 # (stamped FROM terrain by the overlay) and the terrain payload's bare keys. Both come from the
@@ -233,7 +142,7 @@ def _mixed_family_lines(src: str) -> list[tuple[int, str]]:
 
 
 def test_no_paint_site_resolves_across_level_key_families():
-    for path in (CONSOLE, CHART):
+    for path in (CONSOLE,):
         offenders = _mixed_family_lines(path.read_text(encoding="utf-8"))
         assert offenders == [], (
             f"{path.name} mixes the kl_* and terrain key families in one expression — "
@@ -249,15 +158,6 @@ def test_mixed_family_injection_is_caught():
     assert not _mixed_family_lines("x = t.call_wall; // kl_call_gamma_wall is the table's key"), (
         "a comment mentioning the other family tripped Lock 3 — use-vs-mention regression"
     )
-
-
-def test_chart_page_binds_only_the_terrain_family():
-    """chart.html reads /api/terrain directly; a kl_* read there would be a second payload
-    fetch racing the first (and E-35 proved chart borrowing console spellings kills draw())."""
-    src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", CHART.read_text(encoding="utf-8"),
-                                          flags=re.M), flags=re.S)
-    hits = _KL_FAMILY.findall(src)
-    assert hits == [], f"chart.html binds analytics-family kl_* keys: {sorted(set(hits))}"
 
 
 # ── RC-130: behavioral wall claims must be CONDITIONAL on the geometry state ─────────────────
@@ -313,7 +213,7 @@ def _unconditional_wall_claims(src: str) -> list[tuple[int, str]]:
 
 
 def test_no_unconditional_wall_support_resistance_claims():
-    for path in (CONSOLE, CHART):
+    for path in (CONSOLE,):
         offenders = _unconditional_wall_claims(path.read_text(encoding="utf-8"))
         assert offenders == [], (
             f"{path.name} asserts support/resistance on a wall with no geometry condition — "
@@ -329,7 +229,7 @@ def test_containment_claims_require_a_positive_contains_gate():
     exist ONLY behind an explicit === 'contains' comparison: absent state, absent claim."""
     claim = re.compile(r"dealer supply|dealer support|DEALERS SELL|DEALERS BUY"
                        r"|Resistance while|Support while")
-    for path in (CONSOLE, CHART):
+    for path in (CONSOLE,):
         src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", path.read_text(encoding="utf-8"),
                                               flags=re.M), flags=re.S)
         lines = src.splitlines()
@@ -394,7 +294,7 @@ def _pin_tips_defining_net(src: str) -> list[tuple[int, str]]:
 
 
 def test_pin_tip_states_the_producers_metric_not_the_net_book():
-    for path in (CONSOLE, CHART):
+    for path in (CONSOLE,):
         offenders = _pin_tips_defining_net(path.read_text(encoding="utf-8"))
         assert offenders == [], (
             f"{path.name}: a GAMMA PIN tip defines the pin on the NET book — the producer is "
@@ -433,13 +333,13 @@ def test_gamma_pin_ladder_binds_kl_ssot_not_unstamped_gamma_pin() -> None:
 # value area high/low) have no consumer anywhere in the new console at all (grepped
 # static/js/*.js and static/console.html, zero matches) -- not a presentation change, a
 # dropped capability. Flagged for the operator alongside this cutover's other discovered
-# gaps; chart.html's own TODAY_POC consumer (a separate, untouched page) is unaffected.
+# gaps.
 
 
 def test_terrain_hvl_is_never_painted_as_its_own_level():
     """A3/RC-134: terrain `hvl` was the pin under a second name; field removed from payload.
     Client bindings of `.hvl` stay banned. kl_hvl (net peak, 'Net Γ peak') remains legal."""
-    for path in (CONSOLE, CHART):
+    for path in (CONSOLE,):
         src = re.sub(r"/\*.*?\*/", "", re.sub(r"//.*$", "", path.read_text(encoding="utf-8"),
                                               flags=re.M), flags=re.S)
         offenders = [(n, line.strip()[:120]) for n, line in enumerate(src.splitlines(), 1)

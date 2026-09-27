@@ -293,7 +293,7 @@ def _per_strike_rows(exposures: dict) -> list[list]:
 
 
 #: Weighted positive-gamma strike move below which drift reads as none. Carried unchanged from
-#: static/chart.html's gamma panel (2026-09-27); its origin is not recorded -- NOT_PROVEN.
+#: the former /chart page's gamma panel (2026-09-27); its origin is not recorded -- NOT_PROVEN.
 MIGRATION_DRIFT_STRIKES = 0.15
 
 
@@ -565,7 +565,7 @@ def wall_lean(call_wall, put_wall, call_state, put_state, regime, confidence) ->
     """(call, put) wall labels as the chart states them: one strike holding both walls is
     TWO-SIDED (a magnet, not a barrier); a breached wall says so; a containing wall earns the
     dealer lean (resistance: dealers sell, support: dealers buy) only on a TRUSTED flip with a
-    regime; otherwise None. Moved from static/chart.html (RC-83/RC-130/RC-131)."""
+    regime; otherwise None. Moved from the former /chart page (RC-83/RC-130/RC-131)."""
     if call_wall is not None and call_wall == put_wall:
         return ("TWO-SIDED — magnet, not a barrier",) * 2
     earn = regime != "UNAVAILABLE" and confidence == "TRUSTED"

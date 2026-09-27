@@ -3256,31 +3256,6 @@ class EdDB:
         return [dict(r) for r in rows]
 
 
-    def count_level_tests(self, ticker: str, level_name: str,
-                           level_value: float, lookback_hours: float = 6.5) -> dict:
-        """
-        Count how many times price has tested a level today.
-        Used for: "third test of 685 ceiling — rejection likely"
-        """
-        since_ts = utc_ts() - (lookback_hours * 3600)
-        tolerance = 0.50  # pts — within 0.50 of level counts as a test
-
-        with self._connect() as conn:
-            crosses = conn.execute("""
-                SELECT direction, COUNT(*) as cnt
-                FROM level_crosses
-                WHERE ticker = ?
-                  AND level_name = ?
-                  AND ts_utc >= ?
-                  AND ABS(level_value - ?) <= ?
-                GROUP BY direction
-            """, (ticker, level_name, since_ts, level_value, tolerance)).fetchall()
-
-        result = {"up": 0, "down": 0, "total": 0}
-        for row in crosses:
-            result[row["direction"]] = row["cnt"]
-            result["total"] += row["cnt"]
-        return result
 
     # ════════════════════════════════════════════════════════════════════════
     # MODEL ACCURACY
