@@ -189,14 +189,20 @@ def test_implied_move_fails_closed_without_usable_iv() -> None:
           "daysToExpiration": 1}], None) is None
 
 
-def test_real_chain_carries_the_sigma_band() -> None:
+def test_real_chain_carries_the_sigma_band(pin_clock) -> None:
+    """The 1-day band uses the first expiry at least a day out (2026-09-27): a same-day-only
+    chain has none; the CRWD chain (16 days out, valued at its capture) has one."""
     chain, spot = _real_chain()
-    snap = compute_terrain("SPY", chain, spot)
+    assert compute_terrain("SPY", chain, spot).implied_1d_move is None
+    pin_clock(2026, 9, 2, 10, 5)
+    fx = json.loads((Path(__file__).parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
+                    .read_text(encoding="utf-8"))
+    snap = compute_terrain("CRWD", fx["chain"], float(fx["spot"]))
     em = snap.implied_1d_move
-    assert em is not None, "the real chain must yield a band (its ATM IV is present)"
-    assert em["points"] > 0
-    # a one-day sigma on SPY is points, not pennies and not tens of percent of spot
-    assert 0.0005 * spot < em["points"] < 0.15 * spot, em
+    assert em is not None, "the CRWD chain must yield a band (its ATM IV is present)"
+    s = float(fx["spot"])
+    # a one-day sigma is points, not pennies and not tens of percent of spot
+    assert 0.0005 * s < em["points"] < 0.15 * s, em
     assert "implied_1d_move" in snap.to_dict(), "the payload must carry the band to the chart"
 
 

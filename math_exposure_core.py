@@ -586,12 +586,25 @@ def book_total_oi(exposures: Dict[float, dict]) -> float | None:
 
 
 def put_call_oi_ratio(exposures: Dict[float, dict]) -> float | None:
-    """Total put OI / total call OI of the book; None if any strike's OI is unknown or call OI is 0."""
+    """Total put OI / total call OI of the book -- the positions held; None if any strike's OI is
+    unknown or call OI is 0."""
     legs = [strike_oi_legs(b) for b in exposures.values()]
     if not legs or None in legs:
         return None
     calls = sum(c for c, _ in legs)
     return sum(p for _, p in legs) / calls if calls > 0 else None
+
+
+def put_call_volume_ratio(exposures: Dict[float, dict]) -> float | None:
+    """Total put volume / total call volume of the book -- today's trading, Cboe's convention
+    (https://cdn.cboe.com/resources/us/options/market_statistics/daily/cone/archive/html/2002-05-17.html).
+    None when any contract in the book did not report its volume, or no call traded. A strike with
+    no call (or put) contract listed has no volume on that side, not a zero."""
+    if not exposures or any(b.get("volume_unreported") for b in exposures.values()):
+        return None
+    calls = sum(v for v in (b.get("call_volume") for b in exposures.values()) if v is not None)
+    puts = sum(v for v in (b.get("put_volume") for b in exposures.values()) if v is not None)
+    return puts / calls if calls > 0 else None
 
 
 def exposures_have_dollar_gex(exposures: Dict[float, dict]) -> bool:

@@ -879,6 +879,7 @@
               <div class="kl-sec">Exposure</div>
               <div class="kl-row"><span class="k">Net GEX / 1%</span><span class="v" id="klNet">—</span></div>
               <div class="kl-row"><span class="k">Put/Call OI <span class="kl-scope" id="klPcrScope"></span></span><span class="v" id="klPcr">—</span></div>
+              <div class="kl-row"><span class="k">Put/Call volume <span class="kl-scope" id="klPcrVolScope"></span></span><span class="v" id="klPcrVol">—</span></div>
               <div class="kl-regime-box">
                 <span class="rlab">Dealer Regime</span>
                 <span class="rval" id="klRegime">—</span>
@@ -938,7 +939,7 @@
              already-canonical call_vanna/put_vanna (RC-211's exact BS-vanna faucet). -->
         <div class="sub-pane" data-sub-pane="vanna">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="vnTicker">SPX</span><span class="t">Vanna by Strike</span><span class="sub">dealer net vanna · agg all expiries</span>
+            <div class="panel-h"><span class="hticker" id="vnTicker">SPX</span><span class="t">Vanna by Strike</span><span class="sub">dealer net vanna · delta-shares per vol point · agg all expiries</span>
               <div class="r"><span id="vnSrc"></span><span class="prov derived">DERIVED</span></div></div>
             <div class="panel-b" id="vnBody"><div class="placeholder"><div class="sm">Net dealer vanna (call_vanna − put_vanna) per strike from /api/options/vanna-by-strike.</div></div></div>
           </div>

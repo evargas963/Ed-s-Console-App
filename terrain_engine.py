@@ -35,6 +35,7 @@ from math_exposure_core import (
     exposures_have_dollar_gex,
     merge_exposure_books,
     put_call_oi_ratio,
+    put_call_volume_ratio,
     pick_delta_wall_strikes,
     pick_net_gex_peak_strike,
     pick_pin_and_strength,
@@ -215,7 +216,8 @@ class TerrainSnapshot:
     #: charm-by-strike panel read the same map.
     charm_by_strike: dict = field(default_factory=dict, repr=False)
     #: {expiry: put OI / call OI} for each listed expiry
-    pcr_by_expiry: dict = field(default_factory=dict)
+    pcr_by_expiry: dict = field(default_factory=dict)          # put/call OI (positions held)
+    pcr_volume_by_expiry: dict = field(default_factory=dict)   # put/call volume (today's trading)
     #: every expiry the chain lists, ascending
     expiries: list = field(default_factory=list)
     #: Wall-clock the chain behind per_strike was fetched — every consumer must be able to render
@@ -391,8 +393,9 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     # the min rather than being carried through it and screened out afterwards by a
     # magic-number comparison — which also means an all-unreadable chain yields None here
     # (no front expiry) rather than a confident 999.
+    # the first expiry at least one day out: a same-day expiry's IV prices hours, not a day
     _dtes = [d for d in (_dte_of(c) for c in contracts if isinstance(c, dict))
-             if d is not None]
+             if d is not None and d >= 1]
     front = min(_dtes, default=None)
     if front is None:
         return None
@@ -425,7 +428,7 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
         "iv_pct_atm": round(sigma * 100.0, 4),
         "dte_used": front,
         "method": "S x sigma_ATM x sqrt(1/252), one standard deviation (68.3pct); "
-                  "sigma = mean of nearest-expiry ATM call/put implied vol",
+                  "sigma = mean ATM call/put implied vol of the first expiry at least a day out",
     }
 
 
@@ -750,6 +753,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         books=books,
         charm_by_strike=charm_by_strike,
         pcr_by_expiry={e: put_call_oi_ratio(book) for (e, _d), (book, _diag) in books.items()},
+        pcr_volume_by_expiry={e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in books.items()},
         expiries=sorted({e for (e, _d) in books}),
         computed_ts_utc=_time.time(),
     )

@@ -367,7 +367,7 @@
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall) + (t.call_wall_state ? ' · ' + esc(t.call_wall_state) : ''), 'up') +
           row('Put wall', num(t.put_wall) + (t.put_wall_state ? ' · ' + esc(t.put_wall_state) : ''), 'dn') +
           row('Gamma flip', num(t.gamma_flip)) + row('Max pain', num(t.max_pain)) +
-          row('Put/Call ratio', num(t.pcr_by_expiry && t.pcr_by_expiry[Object.keys(t.pcr_by_expiry).sort()[0]], 2)) +
+          row('Put/Call OI', num(t.pcr_by_expiry && t.pcr_by_expiry[Object.keys(t.pcr_by_expiry).sort()[0]], 2)) +
           row('Chain', esc(t.chain_basis || '—') + ' · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + ' contracts');
       }
     }

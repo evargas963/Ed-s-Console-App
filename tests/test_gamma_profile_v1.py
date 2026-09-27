@@ -324,32 +324,33 @@ def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
 
 
 
-def test_rc358_25d_risk_reversal_front_expiry_and_fail_closed():
-    """RC-358: RR = IV(25Δ call) − IV(25Δ put) on the FRONT expiry, tolerance-gated;
-    an unusable wing yields None — never a fabricated skew."""
+def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
+    """RC-358: RR = IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out (the published
+    fixed tenor; 2026-09-27), tolerance-gated; an unusable wing yields None."""
     from math_volatility import compute_25d_risk_reversal
 
     def ct(side, delta, iv, dte):
         return {"putCall": side, "delta": delta, "volatility": iv, "daysToExpiration": dte}
 
     chain = [
-        # front expiry (1d): usable 25Δ wings — RR = 17.0 − 21.5 = −4.5
-        ct("CALL", 0.27, 17.0, 1), ct("PUT", -0.24, 21.5, 1),
-        # noise wings far from 25Δ on the front
-        ct("CALL", 0.55, 15.0, 1), ct("PUT", -0.60, 25.0, 1),
-        # next expiry (7d) must be IGNORED even with perfect deltas
-        ct("CALL", 0.25, 30.0, 7), ct("PUT", -0.25, 10.0, 7),
+        # the ~30-day expiry (28d): usable 25Δ wings — RR = 17.0 − 21.5 = −4.5
+        ct("CALL", 0.27, 17.0, 28), ct("PUT", -0.24, 21.5, 28),
+        # noise wings far from 25Δ on the same expiry
+        ct("CALL", 0.55, 15.0, 28), ct("PUT", -0.60, 25.0, 28),
+        # the front (1d) and a far (60d) expiry are IGNORED even with perfect deltas
+        ct("CALL", 0.25, 30.0, 1), ct("PUT", -0.25, 10.0, 1),
+        ct("CALL", 0.25, 40.0, 60), ct("PUT", -0.25, 12.0, 60),
     ]
     out = compute_25d_risk_reversal(chain)
-    assert out is not None and out["dte"] == 1
+    assert out is not None and out["dte"] == 28
     assert out["rr_pts"] == -4.5
     assert out["call_iv_25d"] == 17.0 and out["put_iv_25d"] == 21.5
 
     # tolerance gate: nearest call delta 0.45 is > 0.10 from target -> fail closed
-    bad = [ct("CALL", 0.45, 17.0, 1), ct("PUT", -0.25, 21.5, 1)]
+    bad = [ct("CALL", 0.45, 17.0, 28), ct("PUT", -0.25, 21.5, 28)]
     assert compute_25d_risk_reversal(bad) is None
     # one-sided chain, empty chain, missing greeks -> fail closed
-    assert compute_25d_risk_reversal([ct("CALL", 0.25, 17.0, 1)]) is None
+    assert compute_25d_risk_reversal([ct("CALL", 0.25, 17.0, 28)]) is None
     assert compute_25d_risk_reversal([]) is None
     assert compute_25d_risk_reversal([{"putCall": "CALL", "daysToExpiration": 1}]) is None
 

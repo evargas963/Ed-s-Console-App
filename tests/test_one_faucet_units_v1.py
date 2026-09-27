@@ -76,3 +76,17 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path, monkeypatc
     body = json.loads(bytes(server.get_forces(ticker="SPY").body))
     assert body["available"] is True
     assert body["charm_below"] is not None and body.get("charm_error") is None, body
+
+
+def test_the_put_call_volume_ratio_is_todays_trading_and_says_so_when_volume_is_missing():
+    """Both ratios are served (operator 2026-09-27): OI (positions held) and volume (today's
+    trading, Cboe's convention). A strike with no call listed has no call volume, not a zero."""
+    from math_exposure_core import put_call_volume_ratio
+    book = {100.0: {"call_volume": 400.0, "put_volume": 300.0, "volume_unreported": 0},
+            105.0: {"call_volume": 100.0, "put_volume": 200.0, "volume_unreported": 0}}
+    assert put_call_volume_ratio(book) == pytest.approx(500.0 / 500.0)
+    book[105.0]["volume_unreported"] = 1
+    assert put_call_volume_ratio(book) is None, "a contract with no volume is not zero volume"
+    book[105.0]["volume_unreported"] = 0
+    book[110.0] = {"call_volume": None, "put_volume": 50.0, "volume_unreported": 0}
+    assert put_call_volume_ratio(book) == pytest.approx(550.0 / 500.0)
