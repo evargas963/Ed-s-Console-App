@@ -21,23 +21,23 @@ MISSING_GREEK_SENTINEL: float = -999.0
 
 
 def schwab_iv_to_sigma(iv: float | None) -> float | None:
-    """The ONE conversion from Schwab's `volatility` field to a decimal sigma.
+    """The ONE conversion from Schwab's `volatility` field (a PERCENT) to a decimal sigma.
 
-    Schwab reports implied volatility in PERCENT. Verified 2026-07-19 on 1,600 contract
-    greeks from the 40 most recent chain snapshots: min 23.7550, median 50.4315, max
-    174.2260 — 1,600 of 1,600 above 3.0, none at or below it.
-
-    The `> 3.0` test is a defensive guard against a silent vendor unit change (a 300%
-    IV is possible but vanishingly rare; a 3.0 decimal sigma is not). It is kept because
-    a units flip would otherwise corrupt every gamma silently rather than loudly.
-
-    This existed as two different inline expressions — `iv / 100.0` unconditionally in
-    compute_net_charm and the guarded form in math_levels._contract_inputs — i.e. two
-    modules encoding different assumptions about one vendor field. One definition now.
-    """
+    MEASURED 2026-09-27 on 49,244 contracts across the 43-ticker board: min 7.967, median 51.0,
+    max 4,256.8 -- every value a percent. One fixed conversion; the old "> 3.0 means percent"
+    guess would have read a real 2.5% IV as 250%. Zero or less is not a volatility."""
     if iv is None or iv <= 0:
         return None
-    return iv / 100.0 if iv > 3.0 else iv
+    return iv / 100.0
+
+
+def book_net_gex(exposures: dict) -> float | None:
+    """Net dealer GEX per 1% move at spot: the sum of every strike's net_gex_1pct -- Schwab's
+    gamma as sent, +call/-put. The one gamma at spot (regime, headline, pin gate). None when no
+    strike carried a valid gamma."""
+    vals = [b["net_gex_1pct"] for b in exposures.values()
+            if isinstance(b, dict) and b.get("has_valid_gamma") and b.get("net_gex_1pct") is not None]
+    return sum(vals) if vals else None
 
 
 def vendor_greeks_unavailable(iv: float | None) -> bool:
@@ -315,7 +315,7 @@ def compute_exposures_by_strike(
                     _sig = schwab_iv_to_sigma(iv)
                     _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                     if _vn is not None:
-                        b["call_vanna"] += _vn * oi * mult
+                        b["call_vanna"] += _vn * 0.01 * oi * mult   # per 1 vol point
         elif side == "PUT":
             if oi is not None:
                 prev = b.get("put_oi")
@@ -344,16 +344,19 @@ def compute_exposures_by_strike(
                     _sig = schwab_iv_to_sigma(iv)
                     _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                     if _vn is not None:
-                        b["put_vanna"] += _vn * oi * mult
+                        b["put_vanna"] += _vn * 0.01 * oi * mult    # per 1 vol point
         else:
             continue
 
     for strike, b in exposures.items():
         b["dollarized"] = spot is not None
         b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
-        b["net_delta"] = b["call_delta"] + b["put_delta"]
+        # dealer-signed (+call/-put), the same convention as net_gamma / net GEX and the
+        # terrain's dex_dollars -- one meaning of DEX on every screen (2026-09-27: the bucket
+        # summed call + put, the holder's side, while terrain subtracted)
+        b["net_delta"] = b["call_delta"] - b["put_delta"]
         # Dollarized net fields (remain 0.0 if spot is None)
-        b["net_dex_dollars"] = b.get("call_dex_dollars", 0.0) + b.get("put_dex_dollars", 0.0)
+        b["net_dex_dollars"] = b.get("call_dex_dollars", 0.0) - b.get("put_dex_dollars", 0.0)
         b["net_gex_1pct"] = b.get("call_gex_1pct", 0.0) - b.get("put_gex_1pct", 0.0)
         b["total_oi_dollars"] = b.get("call_oi_dollars", 0.0) + b.get("put_oi_dollars", 0.0)
 
@@ -429,6 +432,7 @@ _STREAMED_GREEK_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("delta", "delta", "delta_ts_recv"),
     ("open_interest", "openInterest", "open_interest_ts_recv"),
     ("total_volume", "totalVolume", "total_volume_ts_recv"),
+    ("volatility", "volatility", "volatility_ts_recv"),
 )
 
 
@@ -582,12 +586,25 @@ def book_total_oi(exposures: Dict[float, dict]) -> float | None:
 
 
 def put_call_oi_ratio(exposures: Dict[float, dict]) -> float | None:
-    """Total put OI / total call OI of the book; None if any strike's OI is unknown or call OI is 0."""
+    """Total put OI / total call OI of the book -- the positions held; None if any strike's OI is
+    unknown or call OI is 0."""
     legs = [strike_oi_legs(b) for b in exposures.values()]
     if not legs or None in legs:
         return None
     calls = sum(c for c, _ in legs)
     return sum(p for _, p in legs) / calls if calls > 0 else None
+
+
+def put_call_volume_ratio(exposures: Dict[float, dict]) -> float | None:
+    """Total put volume / total call volume of the book -- today's trading, Cboe's convention
+    (https://cdn.cboe.com/resources/us/options/market_statistics/daily/cone/archive/html/2002-05-17.html).
+    None when any contract in the book did not report its volume, or no call traded. A strike with
+    no call (or put) contract listed has no volume on that side, not a zero."""
+    if not exposures or any(b.get("volume_unreported") for b in exposures.values()):
+        return None
+    calls = sum(v for v in (b.get("call_volume") for b in exposures.values()) if v is not None)
+    puts = sum(v for v in (b.get("put_volume") for b in exposures.values()) if v is not None)
+    return puts / calls if calls > 0 else None
 
 
 def exposures_have_dollar_gex(exposures: Dict[float, dict]) -> bool:
@@ -671,7 +688,7 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
             put_v += float(p); seen = True
     if not seen:
         return None
-    net_shares_per_volpt = (call_v - put_v) / 100.0
+    net_shares_per_volpt = call_v - put_v          # the book is already per vol point
     return {"net_vanna_dollars_per_volpt": round(net_shares_per_volpt * float(spot), 2),
             "net_vanna_shares_per_volpt": round(net_shares_per_volpt, 2)}
 

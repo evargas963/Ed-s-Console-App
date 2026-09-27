@@ -130,14 +130,18 @@
     }
   }
 
-  // ---------- Put/Call OI ratio <- /api/terrain pcr_by_expiry (selected expiry, else the front one) ----------
+  // ---------- Put/Call OI and volume <- /api/terrain pcr_by_expiry, pcr_volume_by_expiry (selected expiry, else the front one) ----------
   function expiryFilter() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || ''; }
   function paintPcr(d) {
     var byExp = (d && d.pcr_by_expiry) || {};
+    var byExpVol = (d && d.pcr_volume_by_expiry) || {};
     var ex = expiryFilter() || Object.keys(byExp).sort()[0] || '';
     var v = ex ? byExp[ex] : null;
+    var vv = ex ? byExpVol[ex] : null;
     txt('klPcr', v == null ? '—' : Number(v).toFixed(2));
     txt('klPcrScope', ex ? 'OI · exp ' + ex : '');
+    txt('klPcrVol', vv == null ? '—' : Number(vv).toFixed(2));
+    txt('klPcrVolScope', ex ? 'volume · exp ' + ex : '');
   }
 
   // ---------- GEX by Strike ----------

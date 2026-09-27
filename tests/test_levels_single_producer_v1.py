@@ -210,17 +210,15 @@ def _terrain_native_writes(src: str) -> list[tuple[int, str]]:
     return out
 
 
-def test_reprice_recomputes_wall_states_before_the_profile_early_return():
-    """RC-130: wall states are a function of SPOT and must be refreshed by the reprice path
-    with the PRODUCER's definition — and before the no-profile early return, or tickers
-    without a cached profile would serve loop-time geometry beside a live spot."""
+def test_reprice_recomputes_wall_states_and_reads_one_gamma_source():
+    """RC-130: wall states are a function of SPOT and are refreshed by the reprice path with the
+    PRODUCER's definition. 2026-09-27: the regime at the live spot is Schwab's gamma (the walls'
+    own), never the model curve -- the curve read here was the second gamma source."""
     seg = _fn("_reprice_cached_terrain")
     calls = seg.count("wall_geometry_state(")
     assert calls == 2, f"expected exactly 2 wall_geometry_state calls in reprice, found {calls}"
-    assert seg.index("wall_geometry_state(") < seg.index("_terrain_profile_cache"), (
-        "the state recompute sits after the profile early-return — no-profile tickers would "
-        "keep stale geometry beside a fresh spot"
-    )
+    assert "_terrain_profile_cache" not in seg and "gamma_at_price" not in seg, (
+        "the reprice reads the model curve for the regime again: two gamma sources")
 
 
 def test_server_never_produces_terrain_native_levels():

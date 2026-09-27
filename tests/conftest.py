@@ -386,11 +386,14 @@ def pin_clock(monkeypatch):
     from datetime import datetime as _dt
 
     real = time_et.now_et
+    pinned: list = []                        # modules this test has pinned, so a second pin moves them
 
     def pin(*when):
         at = _dt(*when, tzinfo=time_et.ET)
-        for mod in [m for m in list(sys.modules.values()) if m is not None]:
-            if getattr(mod, "now_et", None) is real:
-                monkeypatch.setattr(mod, "now_et", lambda: at)
+        if not pinned:
+            pinned.extend(m for m in list(sys.modules.values())
+                          if m is not None and getattr(m, "now_et", None) is real)
+        for mod in pinned:
+            monkeypatch.setattr(mod, "now_et", lambda: at)
         return at
     return pin

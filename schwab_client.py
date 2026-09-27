@@ -588,6 +588,9 @@ def flatten_chain_contracts(c_json: dict) -> list[dict]:
     out: list[dict] = []
     if not isinstance(c_json, dict):
         return out
+    # the chain sends its interest rate and dividend yield once, at the top; each contract
+    # carries them as sent, so a stored contract can be priced on its own
+    chain_fields = {k: c_json[k] for k in ("interestRate", "dividendYield") if k in c_json}
     for side_key in ("callExpDateMap", "putExpDateMap"):
         side_map = c_json.get(side_key) or {}
         if not isinstance(side_map, dict):
@@ -600,5 +603,5 @@ def flatten_chain_contracts(c_json: dict) -> list[dict]:
                     continue
                 for ct in strike_list:
                     if isinstance(ct, dict):
-                        out.append(dict(ct))
+                        out.append({**chain_fields, **ct})
     return out

@@ -179,7 +179,11 @@ class OrderFlowState:
         delta = float_finite_or_none(content_item.get("DELTA")) if "DELTA" in content_item else None
         oi = (float_nonnegative_or_none(content_item.get("OPEN_INTEREST"))
               if "OPEN_INTEREST" in content_item else None)
-        if gamma is not None or delta is not None or oi is not None or vf is not None:
+        # VOLATILITY too: the model's input must be as fresh as the gamma beside it
+        iv = float_finite_or_none(content_item.get("VOLATILITY")) if "VOLATILITY" in content_item else None
+        if iv == -999:
+            iv = None
+        if gamma is not None or delta is not None or oi is not None or vf is not None or iv is not None:
             with self._lock:
                 g = self._stream_greeks.setdefault(sym, {})
                 if gamma is not None:
@@ -190,6 +194,8 @@ class OrderFlowState:
                     g["open_interest"], g["open_interest_ts_recv"] = oi, ts_recv
                 if vf is not None:
                     g["total_volume"], g["total_volume_ts_recv"] = vf, ts_recv
+                if iv is not None:
+                    g["volatility"], g["volatility_ts_recv"] = iv, ts_recv
 
         with self._lock:
             top_item = dict(

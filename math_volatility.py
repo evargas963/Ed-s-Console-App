@@ -29,7 +29,9 @@ RR25_DELTA_TOL = 0.10
 
 
 def compute_25d_risk_reversal(contracts: List[dict]) -> dict | None:
-    """RC-358: IV(25Δ call) − IV(25Δ put) on the front expiry, in vol points.
+    """RC-358: IV(25Δ call) − IV(25Δ put) on the expiry nearest 30 days out, in vol points
+    (the fixed ~30-day tenor the published risk reversal uses -- SpotGamma; the front expiry is
+    often a same-day one, whose skew is hours wide).
 
     The skew-steepness read: SPX-typical is −2..−4 (puts richer); deterioration toward
     −6 and beyond = the put bid building — the same-session confirm for a Gamma Support
@@ -58,7 +60,9 @@ def compute_25d_risk_reversal(contracts: List[dict]) -> dict | None:
         usable.append((int(dte), side, float(delta), float(iv)))
     if not usable:
         return None
-    front_dte = min(u[0] for u in usable)
+    front_dte = min({u[0] for u in usable if u[0] >= 1}, key=lambda d: (abs(d - 30), d), default=None)
+    if front_dte is None:
+        return None
     front = [u for u in usable if u[0] == front_dte]
     calls = [u for u in front if u[1] == "CALL"]
     puts = [u for u in front if u[1] == "PUT"]

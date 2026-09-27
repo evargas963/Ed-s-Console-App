@@ -27,6 +27,7 @@ from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from math_exposure_core import (
+    book_net_gex,
     compute_net_dex_dollars,
     compute_net_vanna,
     compute_zero_dte_gamma_share,
@@ -34,6 +35,7 @@ from math_exposure_core import (
     exposures_have_dollar_gex,
     merge_exposure_books,
     put_call_oi_ratio,
+    put_call_volume_ratio,
     pick_delta_wall_strikes,
     pick_net_gex_peak_strike,
     pick_pin_and_strength,
@@ -214,7 +216,8 @@ class TerrainSnapshot:
     #: charm-by-strike panel read the same map.
     charm_by_strike: dict = field(default_factory=dict, repr=False)
     #: {expiry: put OI / call OI} for each listed expiry
-    pcr_by_expiry: dict = field(default_factory=dict)
+    pcr_by_expiry: dict = field(default_factory=dict)          # put/call OI (positions held)
+    pcr_volume_by_expiry: dict = field(default_factory=dict)   # put/call volume (today's trading)
     #: every expiry the chain lists, ascending
     expiries: list = field(default_factory=list)
     #: Wall-clock the chain behind per_strike was fetched — every consumer must be able to render
@@ -390,8 +393,9 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     # the min rather than being carried through it and screened out afterwards by a
     # magic-number comparison — which also means an all-unreadable chain yields None here
     # (no front expiry) rather than a confident 999.
+    # the first expiry at least one day out: a same-day expiry's IV prices hours, not a day
     _dtes = [d for d in (_dte_of(c) for c in contracts if isinstance(c, dict))
-             if d is not None]
+             if d is not None and d >= 1]
     front = min(_dtes, default=None)
     if front is None:
         return None
@@ -424,7 +428,7 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
         "iv_pct_atm": round(sigma * 100.0, 4),
         "dte_used": front,
         "method": "S x sigma_ATM x sqrt(1/252), one standard deviation (68.3pct); "
-                  "sigma = mean of nearest-expiry ATM call/put implied vol",
+                  "sigma = mean ATM call/put implied vol of the first expiry at least a day out",
     }
 
 
@@ -632,20 +636,29 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     profile = compute_gamma_profile(contracts, spot, now=_terrain_now, parsed=parsed)
     flip, confidence, flip_diag = compute_gamma_flip_v2(
         contracts, spot, now=_terrain_now, profile=profile)
+    # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma).
+    # The model curve places the flip only (Schwab sends gamma at its own price, never at
+    # other prices); where the curve's sign at spot disagrees with Schwab's, the flip says so.
+    _curve_at_spot = flip_diag.get("gamma_at_spot")
+    _gamma_at_spot = book_net_gex(exposures)
+    flip_diag = {**flip_diag, "gamma_at_spot": _gamma_at_spot, "curve_gamma_at_spot": _curve_at_spot,
+                 "curve_agrees_with_schwab_at_spot": (
+                     None if _gamma_at_spot is None or _curve_at_spot is None
+                     else (_gamma_at_spot > 0) == (_curve_at_spot > 0))}
     # RC-354: GSF/GRC from the SAME materialized profile — no second materialization.
     # Snap-to-shelf deliberately deferred until strike-GEX history is banked (theta wants a
     # trailing-60-session percentile; a session-local stand-in would be a fake calibration).
     _gsl = compute_gamma_support_levels(profile, spot)
     # RC-357: the 0DTE book from the SAME producer with the dte filter — same parser,
     # same sign model; the share is pure attribution, zero new math.
-    # a contract with no readable DTE is kept, as use_only_dte_max always kept it
-    _exp_0dte, _ = merge_exposure_books(b for (_e, d), b in books.items() if d is None or d <= 0)
+    # a contract with no readable DTE belongs to no expiry's book (it was counted as 0DTE)
+    _exp_0dte, _ = merge_exposure_books(b for (_e, d), b in books.items() if d is not None and d <= 0)
     _zero_dte_share = compute_zero_dte_gamma_share(exposures, _exp_0dte)
     # Max pain on the FRONT expiry only.
     _front_max_pain = None
     if _front_dte is not None:
         _exp_front, _ = merge_exposure_books(
-            b for (_e, d), b in books.items() if d is None or d <= _front_dte)
+            b for (_e, d), b in books.items() if d is not None and d <= _front_dte)
         _front_max_pain = compute_max_pain(_exp_front)
     # RC-358: 25Δ risk reversal from the same wide chain (front expiry, tolerance-gated).
     from math_volatility import compute_25d_risk_reversal
@@ -671,6 +684,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         put_wall=put_wall, call_wall=call_wall,
         gamma_at_spot=flip_diag.get("gamma_at_spot"),
         ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
+        flip_curve_agrees=flip_diag.get("curve_agrees_with_schwab_at_spot"),
     )
 
     return TerrainSnapshot(
@@ -739,6 +753,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         books=books,
         charm_by_strike=charm_by_strike,
         pcr_by_expiry={e: put_call_oi_ratio(book) for (e, _d), (book, _diag) in books.items()},
+        pcr_volume_by_expiry={e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in books.items()},
         expiries=sorted({e for (e, _d) in books}),
         computed_ts_utc=_time.time(),
     )

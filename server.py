@@ -171,7 +171,6 @@ from schwab_client import (
     SchwabAuthError,
 )
 from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
-from math_levels import gamma_at_price
 from market_context import (
     market_context_panel_symbols_excluding_core,
 )
@@ -3705,11 +3704,11 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     out["call_wall_state"] = wall_geometry_state(spot, payload.get("call_wall"), "call")
     out["put_wall_state"] = wall_geometry_state(spot, payload.get("put_wall"), "put")
 
-    profile = _terrain_profile_cache.get(ticker_storage_key(ticker))  # RC-345/F25: read key matches canonical write (tk)
-    if not profile:
-        return out                      # levels stand; regime left as cached
-
-    fresh_gamma = gamma_at_price(profile, spot)
+    # gamma at the live spot: Schwab's gamma as published (the walls' own), carried to the live
+    # price by the dollar-GEX scale S^2 -- the one gamma source, never the model curve
+    pub, pub_spot = payload.get("net_gex_at_spot"), payload.get("spot")
+    fresh_gamma = (float(pub) * (float(spot) / float(pub_spot)) ** 2
+                   if pub is not None and pub_spot else None)
     read = build_terrain_read(
         spot=spot,
         flip=payload.get("gamma_flip"),
@@ -3718,6 +3717,7 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
         call_wall=payload.get("call_wall"),
         gamma_at_spot=fresh_gamma,
         ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
+        flip_curve_agrees=(payload.get("flip_diag") or {}).get("curve_agrees_with_schwab_at_spot"),
     )
     out["regime"] = read.regime
     out["posture"] = read.posture
@@ -4081,10 +4081,10 @@ def get_forces(ticker: str = Query(...)):
     payload: dict = {"ticker": tk, "available": False,
                      "reason": "fewer than 2 market days of chain captures for this ticker"}
     try:
-        rows = [(c["et_date"], c["spot"], c["contracts"])
+        rows = [(c["et_date"], c["spot"], c["contracts"], c["ts_utc"])
                 for c in last_capture_per_day(get_db().db_path, tk, 2) if c["spot"] is not None]
         if len(rows) >= 2:
-            (d1, s1, c1), (d0, s0, c0) = rows[0], rows[1]
+            (d1, s1, c1, t1), (d0, s0, c0, _t0) = rows[0], rows[1]
             per1 = _cebs(c1, spot=float(s1))[0]
             per0 = _cebs(c0, spot=float(s0))[0]
 
@@ -4101,7 +4101,8 @@ def get_forces(ticker: str = Query(...)):
             charm_below = charm_above = None
             charm_err = None
             try:
-                per_ch = _ccs(c1, spot1) if c1 else {}
+                # priced at the capture's own time, not today's clock
+                per_ch = _ccs(c1, spot1, now=datetime.fromtimestamp(t1, ET)) if c1 else {}
                 if not per_ch:
                     charm_err = "charm_by_strike empty on newer banked chain"
                 else:

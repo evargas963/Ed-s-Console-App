@@ -110,6 +110,7 @@ const TERRAIN = {
   absolute_gamma_strike: 583, net_gex_peak: 583, net_gex_at_spot: 2140000000,
   regime: 'LONG_GAMMA_CHOP', levels_stale: false,
   expiries: ['2026-09-11', '2026-09-18'], pcr_by_expiry: { '2026-09-11': 0.87, '2026-09-18': 1.13 },
+  pcr_volume_by_expiry: { '2026-09-11': 1.42, '2026-09-18': 0.64 },
 };
 const STRIKES = {
   ticker: '$SPX', spot: 583.41,
@@ -908,6 +909,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klPcr')).toHaveText('0.87');
     await expect(page.locator('#klPcrScope')).toContainText('OI');
     await expect(page.locator('#klPcrScope')).toContainText('2026-09-11');
+    // and the put/call VOLUME ratio (today's trading) on its own row, same expiry
+    await expect(page.locator('#klPcrVol')).toHaveText('1.42');
+    await expect(page.locator('#klPcrVolScope')).toContainText('volume');
   });
 
   test('PCR: the selected expiry re-scopes the ratio; an expiry the chain has no ratio for shows none', async ({ page }) => {
