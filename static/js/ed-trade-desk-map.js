@@ -214,7 +214,8 @@
     ((S.levels && S.levels.by_distance) || []).forEach(function (id) {
       var l = byId[id]; if (!l || l.price == null || S.fam[l.family] === 0) return;
       var g = l.family === 'gamma' && gamma[l.id];
-      if (g) { out.push({ id: l.id, price: Number(l.price), label: g[0], color: g[1], style: g[2], width: g[3] }); return; }
+      var lean = S.terrain && S.terrain[l.id + '_lean'];   // served: call_wall_lean / put_wall_lean
+      if (g) { out.push({ id: l.id, price: Number(l.price), label: g[0] + (lean ? ' · ' + lean : ''), color: g[1], style: g[2], width: g[3] }); return; }
       var s = style[l.family]; if (!s) return;
       out.push({ id: l.id, price: Number(l.price), label: SHORT[l.id] || l.label || l.id, color: s[0], style: s[1], width: s[2] });
     });
@@ -227,6 +228,8 @@
     L.forEach(function (l) { if (l.id === 'TODAY_VAH') vah = l.price; if (l.id === 'TODAY_VAL') val = l.price; });
     S.chart.setValueArea(S.fam.value_area ? val : null, S.fam.value_area ? vah : null);
     S.chart.setVwap(S.fam.vwap && S.levels ? S.levels.vwap_series : []);
+    var T = S.fam.gamma !== 0 && S.terrain;
+    S.chart.setWallBands(T ? T.call_wall_range : null, T ? T.put_wall_range : null);
   }
   function paintChartOverlays() {
     if (!S.chart || !S.bars.length) return;

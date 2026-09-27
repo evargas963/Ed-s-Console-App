@@ -166,6 +166,8 @@
         lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
     });
     var band = new BandPrimitive(); candles.attachPrimitive(band);
+    var callBand = new BandPrimitive(); candles.attachPrimitive(callBand);
+    var putBand = new BandPrimitive(); candles.attachPrimitive(putBand);
     var markers = LWC.createSeriesMarkers(candles, []);
 
     var S = { bars: [], tf: '5', symbol: '', levels: [], priceLines: [], nearestN: opts.nearestN || 6,
@@ -438,6 +440,11 @@
         bandLines.forEach(function (s, k) { s.setData(out[k + 1]); });
       },
       setValueArea: function (val, vah) { band.set(val, vah, alpha(P.accent, 0.09)); },
+      // the walls' served gamma value areas ({lo, hi} or null)
+      setWallBands: function (call, put) {
+        callBand.set(call ? call.lo : null, call ? call.hi : null, alpha(P.up, 0.08));
+        putBand.set(put ? put.lo : null, put ? put.hi : null, alpha(P.down, 0.08));
+      },
       // levels: [{id, price, label, color, style, width}]
       setLevels: function (levels) { S.levels = (levels || []).filter(function (l) { return l && isFinite(l.price); }); paintLevels(true); },
       setNearestN: function (n) { S.nearestN = n; paintLevels(true); },

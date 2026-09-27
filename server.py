@@ -176,7 +176,7 @@ from market_context import (
 )
 from terrain_read import build_terrain_read
 from terrain_engine import (TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike, positioning_migration,
-                            wall_geometry_state)
+                            wall_geometry_state, wall_lean)
 from terrain_atr import AtrPair, compute_atr_pair
 
 from db import get_db
@@ -3699,7 +3699,7 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
                    spot_as_of_ts_utc=None, spot_disp="UNAVAILABLE",
                    regime=read.regime, posture=read.posture, headline=read.headline,
                    lines=read.lines, net_gex_at_spot=None,
-                   call_wall_state=None, put_wall_state=None,
+                   call_wall_state=None, put_wall_state=None, call_wall_lean=None, put_wall_lean=None,
                    dist_to_call_wall=None, dist_to_put_wall=None, flip_relation=None,
                    flip_diag={**(payload.get("flip_diag") or {}), "gamma_at_spot": None})
         return out
@@ -3736,6 +3736,9 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
         flip_curve_agrees=(payload.get("flip_diag") or {}).get("curve_agrees_with_schwab_at_spot"),
     )
     out["regime"] = read.regime
+    out["call_wall_lean"], out["put_wall_lean"] = wall_lean(   # at the live spot and its regime
+        payload.get("call_wall"), payload.get("put_wall"), out["call_wall_state"], out["put_wall_state"],
+        read.regime, payload.get("confidence"))
     out["posture"] = read.posture
     out["headline"] = read.headline
     out["lines"] = read.lines
