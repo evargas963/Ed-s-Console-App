@@ -394,8 +394,9 @@ def test_rc361_net_dex_dollars_sign_model_and_fail_closed():
     flip to the dealer side correctly); None on an empty/valueless book."""
     from math_exposure_core import compute_net_dex_dollars
 
-    book = {700.0: {"call_dex_dollars": 5e8, "put_dex_dollars": -3e8},
-            705.0: {"call_dex_dollars": 2e8, "put_dex_dollars": -1e8}}
+    priced = {"dollarized": True, "has_valid_delta": True}   # as compute_exposures_by_strike marks a priced strike
+    book = {700.0: {**priced, "call_dex_dollars": 5e8, "put_dex_dollars": -3e8, "net_dex_dollars": 8e8},
+            705.0: {**priced, "call_dex_dollars": 2e8, "put_dex_dollars": -1e8, "net_dex_dollars": 3e8}}
     out = compute_net_dex_dollars(book)
     assert out == {"net_dex": 1.1e9, "call_dex": 7e8, "put_dex": -4e8}
     assert compute_net_dex_dollars({}) is None

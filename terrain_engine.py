@@ -736,10 +736,10 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma).
     # The model curve places the flip only (Schwab sends gamma at its own price, never at
     # other prices); where the curve's sign at spot disagrees with Schwab's, the flip says so.
-    _curve_at_spot = flip_diag.get("gamma_at_spot")
+    _curve_at_spot = flip_diag.get("curve_gamma_at_spot")
     _gamma_at_spot = book_net_gex(exposures)
     flip_diag = {**flip_diag, "unpriced": unpriced,
-                 "gamma_at_spot": _gamma_at_spot, "curve_gamma_at_spot": _curve_at_spot,
+                 "gamma_at_spot": _gamma_at_spot,
                  "curve_agrees_with_schwab_at_spot": (
                      None if _gamma_at_spot is None or _curve_at_spot is None
                      else (_gamma_at_spot > 0) == (_curve_at_spot > 0))}
