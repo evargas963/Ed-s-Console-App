@@ -566,7 +566,7 @@ def resolve_spot(ticker: str, *, chain_json: dict | None = None,
     `chain_json`, `allow_stored` and `quote_node` stay on the signature for existing
     callers and are ignored."""
     _ = chain_json, allow_stored, quote_node
-    tk = ticker_storage_key(ticker) or (ticker or "").upper().strip()
+    tk = ticker_storage_key(ticker)
     if not tk:
         return None, "none", None
     spot = _lpr.live_spot(tk)             # the one rule, shared with the capture daemon
@@ -1159,7 +1159,6 @@ def _hydrate_logger_tickers_from_db() -> None:
 # (server.py:_app_lifespan). The cheap JSON-file fallback (no DB) is retained for the degraded
 # no-signals path so its behavior is unchanged.
 _logger_tickers:  list[str] = list(CORE_TICKERS)
-_logger_running:  bool      = False
 _logger_lock:     threading.Lock   = threading.Lock()
 
 
@@ -1198,7 +1197,7 @@ def _touch_tracked_ticker_view(ticker: str) -> None:
     update the old ``_register_tracked_ticker`` early-return branch did); for an un-enrolled
     ticker it is a no-op and never writes. Safe to call from the offloaded SSE/async paths.
     """
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)
     if not t or len(t) > 10:
         return
     with _logger_lock:
@@ -1842,7 +1841,7 @@ def schwab_token_countdown(creation_ts: float | None) -> dict:
 def _schwab_token_creation_ts() -> float | None:
     """creation_timestamp from schwab_token.json; None (never a fake age) when unreadable."""
     try:
-        raw = json.loads((Path(APP_DIR) / "schwab_token.json").read_text(encoding="utf-8"))
+        raw = json.loads(Path(cfg.token_path).read_text(encoding="utf-8"))
         return float(raw["creation_timestamp"])
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -3411,11 +3410,11 @@ def get_vanna_by_strike(ticker: str = Query(...)):
     if "_vanna_rows" not in payload:
         return JSONResponse({"ticker": tk, "available": False,
                              "reason": "no levels published for this ticker yet"})
-    return JSONResponse({"ticker": tk, "available": True, "spot": resolve_spot(tk)[0],
+    spot = resolve_spot(tk)[0]
+    return JSONResponse({"ticker": tk, "available": True, "spot": spot,
                          "priced_at_spot": payload.get("spot"),
                          "rows": payload["_vanna_rows"], "levels_as_of": payload.get("levels_as_of"),
-                         "spot_strike": nearest_strike([r[0] for r in payload["_vanna_rows"]],
-                                                       resolve_spot(tk)[0]),
+                         "spot_strike": nearest_strike([r[0] for r in payload["_vanna_rows"]], spot),
                          "method": "the published levels' exposure book -> call_vanna - put_vanna"})
 
 
@@ -3430,10 +3429,11 @@ def get_charm_by_strike(ticker: str = Query(...)):
         return JSONResponse({"ticker": tk, "available": False,
                              "reason": "no levels published for this ticker yet"})
     rows = payload["_charm_rows"]
-    return JSONResponse({"ticker": tk, "available": bool(rows), "spot": resolve_spot(tk)[0],
+    spot = resolve_spot(tk)[0]
+    return JSONResponse({"ticker": tk, "available": bool(rows), "spot": spot,
                          "priced_at_spot": payload.get("spot"),
                          "rows": rows, "levels_as_of": payload.get("levels_as_of"),
-                         "spot_strike": nearest_strike([r[0] for r in rows], resolve_spot(tk)[0]),
+                         "spot_strike": nearest_strike([r[0] for r in rows], spot),
                          "reason": None if rows else "charm_by_strike produced no usable strikes for this chain",
                          "method": "the published levels' charm map -> call_charm - put_charm"})
 
@@ -3811,7 +3811,7 @@ def get_options_gamma_surface(ticker: str = Query(...)):
         # sense an operator cares about -- `available` now reflects project_gamma_surface's
         # own gamma_available signal (computed from the SAME per-cell _has_data gate the grid
         # itself renders from), not merely "did the live cache have a surface object at all".
-        _gamma_available = surf.get("gamma_available", True)
+        _gamma_available = surf["gamma_available"]   # project_gamma_surface always sets it
         # Always-live heatmap mandate (2026-09-15): `"live": True` above means "sourced from the
         # live terrain pathway", NOT "currently backed by a confirmed-fresh Schwab stream tick"
         # (a cold-stream surface still reaches here with cells stamped 'stale'/'unavailable' by
@@ -4098,7 +4098,7 @@ async def get_analytics_light_stream(
     the browser (app/market_data/schwab/streaming/live_ui.py), so no analytics load in this
     process can ever delay a price.
     """
-    t = ticker.upper().strip()
+    t = ticker_storage_key(ticker)
     # TICKER-PREVIEW-NO-ENROLL: an L1 SSE subscription is a VIEW (chart open), not a track —
     # touch last-seen only. Fire-and-forget (RC-166): do not block SSE setup on SQLite.
     try:
@@ -4141,7 +4141,7 @@ def api_order_flow_microstructure(ticker: str = Query(...)):
     engine's already-computed structural state for the current book (memoized per ticker +
     BOOK_TIME) rather than re-walking the raw book. No Schwab REST quote call; the client
     renders, never recomputes."""
-    t = _required_ticker(ticker).upper().strip()
+    t = ticker_storage_key(_required_ticker(ticker))
     # VIEW endpoint: touch last-seen only, never enroll (RC-160 ticker-scope discipline).
     _touch_tracked_ticker_view(t)
     data: dict = {}
@@ -4321,7 +4321,7 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
 @app.post("/api/streaming/active-ticker")
 async def post_streaming_active_ticker(payload: dict = Body(default={})):
     """Subscribe Schwab L1+book to the active UI ticker (dynamic; replaces prior subscription)."""
-    t = _required_ticker(payload.get("ticker")).upper().strip()
+    t = ticker_storage_key(_required_ticker(payload.get("ticker")))
     # SWITCH-LATENCY FIX (critical): set_streaming_active_ticker blocks on fut.result(timeout=30)
     # while it does 6 websocket re-subscribe round-trips, and this endpoint fires on EVERY ticker
     # switch. Running it on the async event loop froze the entire UI (all SSE/requests) for up to
@@ -4484,7 +4484,6 @@ def get_chain(ticker: str = Query(...),
 @app.get("/api/health")
 def health():
     with _logger_lock:
-        running = _logger_running
         n       = len(_logger_tickers)
     # RC-514 / docs/ARCHITECTURE.md "Failure domains": application availability and capability
     # availability are separate, so `status` answers "is the app alive" and never folds a
@@ -4502,7 +4501,6 @@ def health():
     return {
         "status": "ok",
         "time": datetime.now().isoformat(),
-        "logger_running": running,
         "logger_tickers": n,
         "capabilities": capability,
     }
@@ -4808,8 +4806,9 @@ def get_levels(ticker: str = Query(...),
             "as_of_ts_utc": as_of,
             "age_sec": None if as_of is None else round(served_ts - as_of, 1),
             "stale_after_sec": None,
-            "stale": False,
-            "reason": f"carried from canonical snapshot generation {snap.generation}",
+            "stale": None,
+            "reason": f"carried from canonical snapshot generation {snap.generation}; a session "
+                      "price level has no staleness rule, its age is shown",
         }
         levels.append(row)
     # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values)
@@ -5028,7 +5027,7 @@ def get_liquidity_snapshot(
         from liquidity_models import SnapshotType, PlaybookConfig
 
         session_date = date or now_et().strftime("%Y-%m-%d")
-        ticker_upper = ticker.upper().strip()
+        ticker_upper = ticker_storage_key(ticker)
         # TICKER-PREVIEW-NO-ENROLL: liquidity snapshot is a VIEW — touch last-seen only.
         _touch_tracked_ticker_view(ticker_upper)
         from datetime import date as date_type
