@@ -33,14 +33,6 @@ def test_dead_live_quote_loop_and_api_stream_are_gone():
     assert '@app.get("/api/stream")' not in src
 
 
-def test_spot_endpoint_has_no_ttl_cache_and_no_stale_on_timeout():
-    src = _server_src()
-    assert "SPOT_POLL_TTL_SEC" not in src
-    assert "_spot_poll_cache" not in src
-    assert "stale > stampede" not in src
-    assert "spot_resolve_timeout" in src
-
-
 def test_chart_surfaces_do_not_reuse_stale_raw_or_invent_change_pct():
     chart_js = (REPO / "static" / "js" / "ed-gamma-chart.js").read_text(encoding="utf-8")
     assert "var _lastRaw" not in chart_js

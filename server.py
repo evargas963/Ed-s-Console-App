@@ -731,7 +731,6 @@ _l1_sse_diag: dict[str, int] = {
     "l1_light_sse_rejected_total": 0,
 }
 # Process-local monotonic instant of last SSE backpressure drop (not Schwab/market time).
-_l1_sse_last_drop_mono: float = 0.0
 
 
 # Issue 31 — hard caps for /api/analytics/light/stream (defined behavior beyond browser limits).
@@ -834,7 +833,6 @@ def _l1_put_l1_client_queue(q: asyncio.Queue, env: dict) -> None:
     Per-client asyncio.Queue (maxsize=8): on QueueFull, drop oldest pending event for this
     connection, then enqueue the newest — preserves latest projection under saturation.
     """
-    global _l1_sse_last_drop_mono
     while True:
         try:
             q.put_nowait(env)
@@ -846,7 +844,6 @@ def _l1_put_l1_client_queue(q: asyncio.Queue, env: dict) -> None:
                 _l1_sse_diag["l1_light_sse_client_queue_evicted_oldest"] = int(
                     _l1_sse_diag.get("l1_light_sse_client_queue_evicted_oldest", 0)
                 ) + 1
-                _l1_sse_last_drop_mono = time.monotonic()
             except asyncio.QueueEmpty:
                 _l1_sse_diag["l1_light_sse_events_dropped_full"] = int(_l1_sse_diag.get("l1_light_sse_events_dropped_full", 0)) + 1
                 return
@@ -864,7 +861,6 @@ def _l1_put_thread_queue_notify(sk: tuple[str, str | None], env: dict) -> None:
       next build. No starvation of the newest event for the producer that is currently pushing.
     - Alternative per-scope thread queues would add complexity and memory; not justified here.
     """
-    global _l1_sse_last_drop_mono
     while True:
         try:
             _l1_sse_thread_queue.put_nowait((sk, env))
@@ -876,24 +872,12 @@ def _l1_put_thread_queue_notify(sk: tuple[str, str | None], env: dict) -> None:
                 _l1_sse_diag["l1_light_sse_thread_queue_evicted_oldest"] = int(
                     _l1_sse_diag.get("l1_light_sse_thread_queue_evicted_oldest", 0)
                 ) + 1
-                _l1_sse_last_drop_mono = time.monotonic()
             except queue.Empty:
                 _l1_sse_diag["l1_light_sse_events_dropped_full"] = int(_l1_sse_diag.get("l1_light_sse_events_dropped_full", 0)) + 1
                 return
 
 
-# /api/fast-quote and /api/live/state use a dedicated quote-hot pool so Tier C / L1
-# route offloads cannot starve the price strip during ticker switches.
-_quote_hot_executor: Optional[ThreadPoolExecutor] = None
 _route_offload_executor: Optional[ThreadPoolExecutor] = None
-
-# Legacy name retained for call sites that still import the route pool.
-_fast_quote_executor: Optional[ThreadPoolExecutor] = None
-
-# Single worker: outcome backfill scans snapshots + bars — must not run on the hot _fetch_state path.
-_db_fill_outcomes_executor: Optional[ThreadPoolExecutor] = None
-
-_recompute_leaf_executor: Optional[ThreadPoolExecutor] = None
 
 
 def _get_route_offload_executor() -> ThreadPoolExecutor:
@@ -906,11 +890,6 @@ def _get_route_offload_executor() -> ThreadPoolExecutor:
     return _route_offload_executor
 
 
-def _get_fast_quote_executor() -> ThreadPoolExecutor:
-    """Route-touch pool (Tier C JSON, streaming POST touch). Not L1 light (RC-166)."""
-    return _get_route_offload_executor()
-
-
 _l1_sse_dispatch_executor: Optional[ThreadPoolExecutor] = None
 
 
@@ -921,47 +900,6 @@ def _get_l1_sse_dispatch_executor() -> ThreadPoolExecutor:
     if _l1_sse_dispatch_executor is None:
         _l1_sse_dispatch_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ed_l1_sse_dispatch")
     return _l1_sse_dispatch_executor
-
-
-# Tier C — background _fetch_state only; HTTP handlers never await heavy work.
-_analytics_executor: Optional[ThreadPoolExecutor] = None
-_analytics_bg_shutdown: bool = False
-_analytics_inflight: set[tuple] = set()
-_analytics_bg_lock = threading.Lock()
-_main_event_loop: Optional[asyncio.AbstractEventLoop] = None
-_operator_priority_executor: Optional[ThreadPoolExecutor] = None
-_priority_leaf_executor: Optional[ThreadPoolExecutor] = None
-_mkt_ctx_refresh_executor: Optional[ThreadPoolExecutor] = None
-
-
-def _get_analytics_executor() -> ThreadPoolExecutor:
-    global _analytics_executor
-    if _analytics_executor is None:
-        _analytics_executor = ThreadPoolExecutor(
-            max_workers=4,
-            thread_name_prefix="ed_analytics_bg",
-        )
-    return _analytics_executor
-
-
-def _startup_analytics_executor() -> None:
-    global _analytics_bg_shutdown
-    _analytics_bg_shutdown = False
-    _get_analytics_executor()
-
-
-def _shutdown_analytics_executor(*, wait: bool = True) -> None:
-    global _analytics_executor, _analytics_bg_shutdown
-    _analytics_bg_shutdown = True
-    with _analytics_bg_lock:
-        _analytics_inflight.clear()
-    ex = _analytics_executor
-    _analytics_executor = None
-    if ex is not None:
-        try:
-            ex.shutdown(wait=wait, cancel_futures=True)
-        except Exception as exc:
-            log.debug("analytics executor shutdown: %s", exc)
 
 
 #: a prior session with fewer 1-minute bars than this (of ~390 RTH minutes) is disclosed as
@@ -1350,7 +1288,6 @@ async def _app_lifespan(app):
     # Installed FIRST: until these exist, Ctrl+C depends on uvicorn's graceful path
     # completing, and that path joins background workers which may be blocked.
     _install_signal_handlers()
-    _startup_analytics_executor()
     # Schwab auth diagnostics (helps debug link vs manual launch)
     _log_schwab_startup_diagnostics()
 
@@ -1475,8 +1412,6 @@ async def _app_lifespan(app):
     # which reprices a viewed ticker through the one levels producer
     start_order_flow_stream(None, None, None, on_tick_callback=_on_stream_tick)
 
-    global _main_event_loop
-    _main_event_loop = asyncio.get_running_loop()
     asyncio.create_task(_l1_light_sse_dispatch_loop())
 
 
@@ -1492,7 +1427,6 @@ async def _app_lifespan(app):
     # non-daemon workers, so even abandoning the lifespan would not free the interpreter.
     # The watchdog guarantees the process dies whether or not the joins below return.
     _arm_shutdown_watchdog()
-    _shutdown_analytics_executor(wait=True)
     # Live-plane feed task (reads the canonical capture daemon's DB — no Schwab socket
     # of its own to close here since single-stream-authority root fix 2026-08-30).
     try:
@@ -1503,39 +1437,10 @@ async def _app_lifespan(app):
         log.warning("Order flow streaming shutdown: %s", e)
 
     stop_terrain_loop()
-    # OPERATOR_CARD_PRIORITY_ISOLATION_V1_STEP_2: leaf pool shuts down AFTER
-    # the analytics executor above — no new leaf submits can arrive first (the
-    # _analytics_bg_shutdown branch also forces inline leaf fetches).
-    global _recompute_leaf_executor
-    if _recompute_leaf_executor is not None:
-        _recompute_leaf_executor.shutdown(wait=True, cancel_futures=True)
-        _recompute_leaf_executor = None
-    # UI_05_OPERATOR_PRIORITY_ADMISSION_V1: priority lane tears down with the
-    # same discipline (after the analytics executor; _analytics_bg_shutdown
-    # already rejects new submits at the wrapper).
-    global _operator_priority_executor
-    if _operator_priority_executor is not None:
-        _operator_priority_executor.shutdown(wait=True, cancel_futures=True)
-        _operator_priority_executor = None
-    global _priority_leaf_executor
-    if _priority_leaf_executor is not None:
-        _priority_leaf_executor.shutdown(wait=True, cancel_futures=True)
-        _priority_leaf_executor = None
-    global _mkt_ctx_refresh_executor
-    if _mkt_ctx_refresh_executor is not None:
-        _mkt_ctx_refresh_executor.shutdown(wait=True, cancel_futures=True)
-        _mkt_ctx_refresh_executor = None
-    global _quote_hot_executor, _route_offload_executor, _fast_quote_executor, _db_fill_outcomes_executor
-    if _quote_hot_executor is not None:
-        _quote_hot_executor.shutdown(wait=True)
-        _quote_hot_executor = None
+    global _route_offload_executor
     if _route_offload_executor is not None:
         _route_offload_executor.shutdown(wait=True)
         _route_offload_executor = None
-    _fast_quote_executor = None
-    if _db_fill_outcomes_executor is not None:
-        _db_fill_outcomes_executor.shutdown(wait=True)
-        _db_fill_outcomes_executor = None
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
@@ -4006,58 +3911,6 @@ def get_options_gamma_surface(ticker: str = Query(...)):
     return JSONResponse(payload)
 
 
-#: /api/spot single-flight only (Instant-UI Phase 5). No TTL cache and no
-#: expired-payload-on-timeout: a waiter that cannot join this resolve gets 504.
-_spot_poll_lock = threading.Lock()
-_spot_poll_inflight: dict[str, threading.Event] = {}
-_spot_poll_inflight_result: dict[str, dict] = {}
-
-
-@app.get("/api/spot")
-def get_spot(ticker: str = Query(...)):
-    """Featherweight live spot. The ONE price authority (resolve_spot) plus the
-    plane's streamed_chg_pct. Concurrent callers single-flight one resolve;
-    a timeout is absence, never a stale payload served as current.
-    """
-    tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
-    deadline = time.time() + 10.0
-    while True:
-        with _spot_poll_lock:
-            leader = tk not in _spot_poll_inflight
-            if leader:
-                _spot_poll_inflight[tk] = threading.Event()
-                _spot_poll_inflight_result.pop(tk, None)
-            done = _spot_poll_inflight[tk]
-        if not leader:
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                return JSONResponse(
-                    {"ticker": tk, "spot": None, "spot_source": None,
-                     "spot_state": "unavailable", "spot_as_of_ts_utc": None,
-                     "chg_pct": None, "error": "spot_resolve_timeout"},
-                    status_code=504,
-                )
-            done.wait(timeout=remaining)
-            with _spot_poll_lock:
-                hit = _spot_poll_inflight_result.get(tk)
-            if hit is not None:
-                return JSONResponse(hit)
-            continue
-        try:
-            spot, source, ts = resolve_spot(tk)
-            payload = {"ticker": tk, "spot": spot, "spot_source": source,
-                       "spot_state": current_spot_state(source, tk),
-                       "spot_as_of_ts_utc": ts,
-                       "chg_pct": _lmp.streamed_chg_pct(_lmp.get_quote(tk))}
-            with _spot_poll_lock:
-                _spot_poll_inflight_result[tk] = payload
-            return JSONResponse(payload)
-        finally:
-            with _spot_poll_lock:
-                _spot_poll_inflight.pop(tk, None)
-            done.set()
-
-
 # RC-UI-1's dev route (/console) converged into `/` here (operator directive 2026-09-14):
 # static/console.html was renamed to static/index.html in this same commit, so the existing
 # `/` route above (root(), reading static_dir/index.html) now serves it directly. No
@@ -4390,7 +4243,7 @@ async def post_streaming_active_option_contract(payload: dict = Body(default={})
         diag = get_option_contract_streaming_diagnostics(for_contract=c)
         return {"ok": ok, "contract": c, "command_generation": generation, **diag}
     try:
-        out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
+        out = await asyncio.get_event_loop().run_in_executor(_get_route_offload_executor(), _apply)
     except StaleOptionCommandError as e:
         # A superseded command is NOT the current authority. 409 Conflict, ok:false --
         # the client must not treat this as a successful subscription of `c`.
@@ -4454,7 +4307,7 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
                 "not_admitted": get_option_contracts_not_admitted(),
                 **get_option_contracts_budget_state()}
     try:
-        out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
+        out = await asyncio.get_event_loop().run_in_executor(_get_route_offload_executor(), _apply)
     except StaleOptionCommandError as e:
         return JSONResponse({"ok": False, "error": str(e), "client_id": client_id, "seq": seq,
                              "superseded": True}, status_code=409)
@@ -4479,7 +4332,7 @@ async def post_streaming_active_ticker(payload: dict = Body(default={})):
         diag = get_streaming_diagnostics()
         return {"ok": ok, "ticker": t, **diag, "plane_quote_authority": get_plane_authority_for_ticker(t)}
     try:
-        out = await asyncio.get_event_loop().run_in_executor(_get_fast_quote_executor(), _apply)
+        out = await asyncio.get_event_loop().run_in_executor(_get_route_offload_executor(), _apply)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e), "ticker": t}, status_code=500)
     return JSONResponse(out)

@@ -185,8 +185,8 @@ Columns: file:line | rule | value | what the code does | who sees it.
 
 | ID | where | what | status |
 |---|---|---|---|
-| X-01 | static/governance.html, static/ops.html | whole pages; every route they call is gone (404) | OPEN |
-| X-02 | server.py:887-937, 734, 1131, 4016 | executors never used, `_main_event_loop`, `_l1_sse_last_drop_mono`, empty CORE_TICKERS, /api/spot (no page caller) | OPEN |
+| X-01 | static/governance.html, static/ops.html | whole pages; every route they call is gone (404) | FIXED bea2630b |
+| X-02 | server.py:887-937, 734, 1131, 4016 | executors never used, `_main_event_loop`, `_l1_sse_last_drop_mono`, empty CORE_TICKERS, /api/spot (no page caller) | FIXED bea2630b, except CORE_TICKERS (goes with S-03) |
 | X-03 | db.py:274, 282, 2601, 2866, 2981, 3073, 3285, 3399, 3638, 3689, 3718, 118-129, 1399-1426, 1439, 1488, 1848, 2521, 3106, 3115, 3267-3275 | snapshot writer and outcome pipeline with no writer, dead tables' code, iv_daily (no reader), unread rings and constants | OPEN |
 | X-04 | execution_identity.py, decision_record.py, horizon_outcomes.py, ml_horizon.py, movement_target_threshold.py, api_pressure.py, schwab_field_dictionary_builder.py:117-395, config.py:92-96 | modules or parts with no product caller | OPEN (verify each) |
 | X-05 | app/options/order_flow/engine.py:680-835, 942-998; routes/options_order_flow.py; history.py:19; state.py `_stream_volume` | options-flow, rvol and institutional proxy paths that always return None; retired fields; dead route | OPEN |

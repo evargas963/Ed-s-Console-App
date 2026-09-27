@@ -3,7 +3,7 @@
 # Trade-Impacting Route Inventory
 
 **Status:** COMPLETE (pre-INF lock audit)  
-**Method:** Read-only scan of Python call graph + `static/index.html`, `static/governance.html`, `static/ops.html`  
+**Method:** Read-only scan of Python call graph + `static/index.html`  
 **Date:** 2026-05-01  
 
 ---
@@ -61,8 +61,6 @@
 | **R-026** | `POST /api/streaming/active-ticker` | Subscription | **NO** | Stream routing | — | Transport | N | N | P | N | — | — |
 | **R-027** | `GET|POST` governance + ops | Panel / promote / jobs | **NO** immediate TI | Mutates **models** / runs jobs | `manual_control` / ops runner | **Future** R-004 | P | P | P | P | Env + localhost gates | Gate tests |
 | **R-028** | `static/index.html` (client) | Renders API payloads | **CONDITIONAL** | No server compute; can mis-label | Browser | User | P | P | P | P | Stale merge bugs | E2E generation guard |
-| **R-029** | `static/governance.html` | Renders `/api/governance/panel` | **NO** TI | Governance JSON only | Server panel builder | Operator | P | P | P | P | — | — |
-| **R-030** | `static/ops.html` | Ops runner UI | **NO** TI | Jobs | Subprocess | Training | P | P | P | P | — | — |
 | **R-031** | `verify_model_outputs.py`, `verify_mc_directional.py` | State dict | **YES** | Imports `server._fetch_state` | `compute_call` | CLI output | Y | Y | Y | Y | Dev-only use | CI separate job |
 | **R-032** | `tools/phase2_forward_write_verify.py` | `build_market_state` direct | **YES** | DB verify tool | `compute_call` | DB insert | Y | Y | Y | Y | Bypasses HTTP | Tool allowlist |
 | **R-033** | `calibration/*.py`, `tools/profile_full_stack_runtime.py` | `SignalOutput` | **YES** stack / **NO** prod UI | Same engine | `compute_call` | Files / CI | Y | Y | Y | Y | Not HTTP | CI tag |
