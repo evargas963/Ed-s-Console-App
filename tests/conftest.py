@@ -376,3 +376,21 @@ def live_orphans(tmp_path_factory, worker_id: str):
         return result
 
 
+@pytest.fixture
+def pin_clock(monkeypatch):
+    """Value a test at a fixed instant: `pin_clock(2026, 9, 22, 12, 46)` (ET). A test built on a
+    stored Schwab chain is valued at the chain's capture instant, so the chain's expiries passing
+    can never empty the greeks the test compares (2026-09-27: six tests had been comparing None
+    with None since their fixtures expired)."""
+    import time_et
+    from datetime import datetime as _dt
+
+    real = time_et.now_et
+
+    def pin(*when):
+        at = _dt(*when, tzinfo=time_et.ET)
+        for mod in [m for m in list(sys.modules.values()) if m is not None]:
+            if getattr(mod, "now_et", None) is real:
+                monkeypatch.setattr(mod, "now_et", lambda: at)
+        return at
+    return pin

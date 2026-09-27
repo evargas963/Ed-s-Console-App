@@ -30,6 +30,12 @@ _B = _CONTRACTS[1]["symbol"]
 TK = server.ticker_storage_key("CRWD")
 
 
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """The CRWD and CDE complete chains were captured 2026-09-02 (10:05 ET for CDE)."""
+    return pin_clock(2026, 9, 2, 10, 5)
+
 def _put_chain(*, fetched_ts=None, viewed=True):
     with server._terrain_cache_lock:
         server._terrain_cache[TK] = {"_chain": _CONTRACTS,
@@ -89,6 +95,7 @@ def test_published_levels_equal_compute_terrain_on_the_same_inputs(monkeypatch):
     server._publish_levels(TK)
     expected = compute_terrain(TK, _CONTRACTS, _SPOT).to_dict()
     got = _cached()
+    assert expected["gamma_flip"] is not None, "the chain must price (valued at its capture)"
     for k in ("gamma_flip", "call_wall", "put_wall", "absolute_gamma_strike", "max_pain",
               "net_gex_peak", "contracts_used"):
         assert got[k] == expected[k], k
@@ -104,6 +111,7 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     r = TestClient(server.app).get(f"/api/terrain?ticker={TK}")
     assert r.status_code == 200, r.text[:300]
     body = r.json()
+    assert snap.gamma_flip is not None, "the chain must price (valued at its capture)"
     assert body["call_wall"] == snap.call_wall and body["gamma_flip"] == snap.gamma_flip
     assert not [k for k in body if k.startswith("_")]
 
@@ -347,14 +355,15 @@ def test_an_option_quote_lands_in_state_with_no_callback(monkeypatch):
 
 # ── the closed market: the last session's levels stand, saved and labeled ─────────────────────
 
-def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypatch, tmp_path):
+def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypatch, tmp_path,
+                                                                        _at_capture):
     """DATA_FLOW decision 7: after a restart, a weekend or the close, each board ticker's newest
     full chain capture is priced once with Schwab's underlying price from that capture and
     valued and dated at the capture's time. Rows the console wrote before the daemon captured
     (one or two expiries) are not full chains and are never loaded."""
     from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
     db = tmp_path / "ed_console.db"
-    taken = time.time() - 3600.0
+    taken = _at_capture.timestamp()
     by_expiry: dict = {}
     for ct in _CONTRACTS:
         by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
@@ -376,6 +385,7 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
     assert loaded["spot"] == _SPOT and loaded["spot_source"] == server.SPOT_SOURCE_CAPTURE
     expected = compute_terrain(TK, _CONTRACTS, _SPOT,
                                now=datetime.fromtimestamp(taken, ZoneInfo("America/New_York")))
+    assert expected.gamma_flip is not None, "the capture must price (valued at its own time)"
     for k in ("gamma_flip", "call_wall", "put_wall", "max_pain"):
         assert loaded[k] == getattr(expected, k), k
 

@@ -21,6 +21,8 @@ enforced check (teardown rule: no new governance mechanism).
 
 from __future__ import annotations
 
+import pytest
+
 import json
 import sys
 from pathlib import Path
@@ -89,6 +91,12 @@ _LEVEL_EXTRAS = {"hvp", "lvp", "gsf", "grc"}
 #: but coverage still records the scope).
 _SINGLE_SURFACE_FULL_BOOK = {"hvp", "lvp", "gsf", "grc"}
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """real_spy_0dte_chain.json was captured 2026-09-22 12:46 ET."""
+    return pin_clock(2026, 9, 22, 12, 46)
 
 def _fixture_book():
     fx = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -183,11 +191,15 @@ def test_pin_candidate_is_published_only_through_the_qualification_gates():
         strike, blockers = qualify_pin_candidate(**{**passing, **patch})
         assert strike is None and gate in blockers, (
             f"the {gate} gate did not withhold the pin claim: blockers={blockers}")
-    # The real book: regime and liquidity fail today — the claim is withheld WITH reasons.
+    # The real book, valued at its capture (2026-09-22 12:46 ET): gamma at spot is +$2.41B, so
+    # the regime gate passes and liquidity withholds the claim -- WITH its reason. (Until
+    # 2026-09-27 this expected ["regime", "liquidity"]: the fixture had expired, gamma at spot
+    # read None, and the test had locked in the expired answer.)
     chain, spot = _fixture_book()
     snap = compute_terrain("SPY", chain, spot)
+    assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot > 0
     assert snap.pin_candidate is None
-    assert snap.pin_candidate_blockers == ["regime", "liquidity"]
+    assert snap.pin_candidate_blockers == ["liquidity"]
     assert snap.absolute_gamma_strike is not None, (
         "withholding the CLAIM must never delete the measured concentration (deliver, "
         "never delete)")

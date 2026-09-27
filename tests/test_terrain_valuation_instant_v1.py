@@ -7,6 +7,8 @@ stored chain whose expiry had already passed read as ZERO vanna on replay.
 """
 from __future__ import annotations
 
+import pytest
+
 import json
 import time
 from datetime import datetime, timedelta
@@ -16,6 +18,13 @@ from terrain_engine import compute_terrain
 
 _FX = Path(__file__).resolve().parent / "fixtures" / "real_tsla_complete_chain_strike_range_all.json"
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """Valued at the stored chain's capture (2026-08-30), so its expiries passing never change
+    what this test measures."""
+    return pin_clock(2026, 8, 30, 12, 0)
 
 def _real_chain():
     chain = json.loads(_FX.read_text(encoding="utf-8"))["chain"]

@@ -17,6 +17,8 @@ only if nothing needs it at all.
 
 from __future__ import annotations
 
+import pytest
+
 import json
 import subprocess
 import sys
@@ -41,6 +43,13 @@ _FIXTURE = json.loads(
 
 
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """Valued at the stored chain's capture (2026-09-22 12:46 ET), so its expiries passing never change
+    what this test measures."""
+    return pin_clock(2026, 9, 22, 12, 46)
 
 def test_the_two_pin_metrics_are_different_quantities():
     """RC-315: demonstrate the distinction the register describes, instead of describing it.

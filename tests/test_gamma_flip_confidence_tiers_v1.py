@@ -25,6 +25,8 @@ permits), not the population — so they stay valid whichever chains production 
 """
 from __future__ import annotations
 
+import pytest
+
 import sys
 from pathlib import Path
 
@@ -42,6 +44,12 @@ from math_levels import (
 )
 from terrain_read import build_terrain_read
 
+
+
+@pytest.fixture(autouse=True)
+def _before_expiry(pin_clock):
+    """The chain here expires 2030-01-18; valued a month before, it never ages out."""
+    return pin_clock(2029, 12, 18, 12, 0)
 
 def _chain(span: float, spot: float = 100.0, n: int = 41):
     # institutional-synthetic-ok: a span-threshold discriminator needs chains built at EXACT

@@ -13,6 +13,8 @@ assertion proves only that the hand is consistent.
 """
 from __future__ import annotations
 
+import pytest
+
 import ast
 import json
 from pathlib import Path
@@ -27,6 +29,13 @@ FIXTURE = json.loads(
 CHAIN: list[dict] = FIXTURE["chain"]
 SPOT: float = float(FIXTURE["spot"])
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """Valued at the stored chain's capture (2026-09-22 12:46 ET), so its expiries passing never change
+    what this test measures."""
+    return pin_clock(2026, 9, 22, 12, 46)
 
 def _expected_volume_by_strike() -> dict[float, int]:
     """Ground truth read straight off the vendor payload, independent of the engine."""

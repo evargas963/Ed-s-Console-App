@@ -5,11 +5,20 @@
 """
 from __future__ import annotations
 
+import pytest
+
 import json
 import sqlite3
 import time
 from stream_spine import STREAM_SCHEMA_SQL
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """Valued at the stored chain's capture (2026-09-02 10:05 ET), so its expiries passing never change
+    what this test measures."""
+    return pin_clock(2026, 9, 2, 10, 5)
 
 def _cde_fixture_chain():
     from pathlib import Path

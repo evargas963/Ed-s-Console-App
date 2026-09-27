@@ -3,6 +3,8 @@ every Schwab field as sent, with streamed option updates newer than a contract's
 overlaid. Tests put a real captured chain into the levels cache -- the store the route reads."""
 from __future__ import annotations
 
+import pytest
+
 import json
 import time
 from contextlib import contextmanager
@@ -19,6 +21,13 @@ _TSLA_EXPIRY = _TSLA["expiry"]
 _SPY_VS_ALL = json.loads(
     (_FIXTURES / "real_spy_strike_count_vs_strike_range_all_evidence.json").read_text(encoding="utf-8"))
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """Valued at the stored chain's capture (2026-08-30), so its expiries passing never change
+    what this test measures."""
+    return pin_clock(2026, 8, 30, 12, 0)
 
 @contextmanager
 def _held_chain(tk, contracts, fetched_ts, spot=None):
