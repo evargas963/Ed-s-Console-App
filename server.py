@@ -55,8 +55,9 @@ class _LevelMarkerFormatter(logging.Formatter):
         logging.CRITICAL: "[CRIT] ",
     }
 
-    def __init__(self, fmt: str | None = None, *, use_ansi: bool = True) -> None:
-        super().__init__(fmt)
+    def __init__(self, fmt: str | None = None, *, datefmt: str | None = None,
+                 use_ansi: bool = True) -> None:
+        super().__init__(fmt, datefmt)
         self.use_ansi = use_ansi
 
     def format(self, record: logging.LogRecord) -> str:
@@ -120,9 +121,10 @@ def _install_visual_severity_markers(level: int = logging.INFO) -> None:
     """Replace any default root handlers with one that adds the level marker."""
     use_ansi = bool(getattr(sys.stderr, "isatty", lambda: False)())
     handler = logging.StreamHandler()
-    handler.setFormatter(
-        _LevelMarkerFormatter("%(levelname)s:%(name)s:%(message)s", use_ansi=use_ansi)
-    )
+    fmt = _LevelMarkerFormatter("%(asctime)s %(levelname)s:%(name)s:%(message)s",
+                                datefmt="%H:%M:%S CT", use_ansi=use_ansi)
+    fmt.converter = lambda t: datetime.fromtimestamp(t, ZoneInfo("America/Chicago")).timetuple()
+    handler.setFormatter(fmt)
     root = logging.getLogger()
     for h in list(root.handlers):
         root.removeHandler(h)
@@ -3338,11 +3340,42 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         return f"error:{type(e).__name__}"
 
 
+STATUS_EVERY_SEC = 60.0
+
+
+def _status_line() -> str:
+    """One line for the console window: is each part working right now, from its own check."""
+    from app.options.order_flow.streaming import daemon_status
+    st = daemon_status()
+    spot, _src, _ts = resolve_spot("SPY")
+    with _terrain_cache_lock:
+        as_of = [p.get("computed_ts_utc") for p in _terrain_cache.values() if p.get("computed_ts_utc")]
+    newest = (datetime.fromtimestamp(max(as_of), ZoneInfo("America/Chicago")).strftime("%a %m/%d %I:%M %p CT")
+              if as_of else "none")
+    return " | ".join([
+        "alive",
+        f"session {session_label(now_et())}",
+        "daemon link: " + ("connected" if st is not None else "NOT CONNECTED"),
+        "Schwab socket: " + ("open" if st and st.get("schwab_socket_open") is True else "NOT OPEN"),
+        f"SPY {spot:.2f}" if spot is not None else "SPY: no live price",
+        f"levels: {len(as_of)} tickers, newest as of {newest}",
+        "chain refresh " + ("running every 5 s" if _is_loggable_session()
+                            else "8:45 AM-4:30 PM ET on market days"),
+    ])
+
+
 def _terrain_loop() -> None:
     log.info("Terrain loop started (levels only, no model stack)")
     _terrain_cycle_n = 0        # RC-161: drives the morning rotation; monotonic per loop
+    next_status = time.monotonic()
     while _terrain_loop_running:
         cycle_start = time.monotonic()
+        if cycle_start >= next_status:
+            try:
+                log.info(_status_line())
+            except Exception as e:  # noqa: BLE001 -- the status line says it failed, never silence
+                log.warning("status: could not be read (%s: %s)", type(e).__name__, e)
+            next_status = cycle_start + STATUS_EVERY_SEC
         tickers: list[str] = []
         try:
             with _logger_lock:
