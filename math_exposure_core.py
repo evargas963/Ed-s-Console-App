@@ -697,27 +697,6 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
             "net_vanna_shares_per_volpt": round(net_shares_per_volpt, 2)}
 
 
-def compute_net_dex_dollars(exposures: dict) -> dict | None:
-    """RC-361: aggregate dealer DELTA notional (DEX $) — the directional complement to GEX.
-
-    Same naive dealer-sign model as GEX (dealer long calls, short puts): the dealer's net
-    delta book = Σ call_dex_dollars − Σ put_dex_dollars over the ONE exposures book (put
-    deltas are negative, so subtracting the put leg flips it to the dealer's side
-    correctly). FAIL-CLOSED: None on an empty/degenerate book — never a fabricated $0.
-    Returns {net_dex, call_dex, put_dex} in dollars.
-    """
-    if not exposures:
-        return None
-    priced = [b for b in exposures.values() if isinstance(b, dict) and b.get("dollarized")
-              and bucket_metric(b, "net_dex_dollars") is not None]
-    if not priced:
-        return None
-    call_dex = sum(b["call_dex_dollars"] for b in priced)
-    put_dex = sum(b["put_dex_dollars"] for b in priced)
-    return {"net_dex": round(call_dex - put_dex, 2),
-            "call_dex": round(call_dex, 2), "put_dex": round(put_dex, 2)}
-
-
 def compute_delta_oi_walls(
     today: dict[float, tuple[float | None, float | None]],
     prev: dict[float, tuple[float | None, float | None]],

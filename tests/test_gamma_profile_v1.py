@@ -389,22 +389,6 @@ def test_rc362_net_vanna_math_and_fail_closed():
 
 
 
-def test_rc361_net_dex_dollars_sign_model_and_fail_closed():
-    """RC-361: net DEX = Σ call_dex − Σ put_dex (dealer +call/−put; negative put deltas
-    flip to the dealer side correctly); None on an empty/valueless book."""
-    from math_exposure_core import compute_net_dex_dollars
-
-    priced = {"dollarized": True, "has_valid_delta": True}   # as compute_exposures_by_strike marks a priced strike
-    book = {700.0: {**priced, "call_dex_dollars": 5e8, "put_dex_dollars": -3e8, "net_dex_dollars": 8e8},
-            705.0: {**priced, "call_dex_dollars": 2e8, "put_dex_dollars": -1e8, "net_dex_dollars": 3e8}}
-    out = compute_net_dex_dollars(book)
-    assert out == {"net_dex": 1.1e9, "call_dex": 7e8, "put_dex": -4e8}
-    assert compute_net_dex_dollars({}) is None
-    assert compute_net_dex_dollars({700.0: {"other": 1}}) is None
-
-
-
-
 def test_rc359_delta_oi_walls_build_unwind_and_fail_closed():
     """RC-359: ΔOI walls — biggest call/put OI builds + biggest unwind; None until a
     prior session exists; only a strike present both days has a change (a strike missing from

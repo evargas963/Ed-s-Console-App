@@ -1,5 +1,4 @@
-"""One meaning per name (2026-09-27): DEX is dealer-signed (+call/-put) in every bucket and in the
-terrain total; vanna is per 1 volatility point in every bucket and in the aggregate; a contract with
+"""One meaning per name (2026-09-27): DEX is dealer-signed (+call/-put) in every bucket; vanna is per 1 volatility point in every bucket and in the aggregate; a contract with
 no readable expiry is in no expiry's book; yesterday's chain is priced at its own capture time."""
 from __future__ import annotations
 
@@ -10,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import time_et
-from math_exposure_core import compute_exposures_by_strike, compute_net_dex_dollars, compute_net_vanna
+from math_exposure_core import compute_exposures_by_strike, compute_net_vanna
 from terrain_engine import compute_terrain
 
 _FX = json.loads((Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
@@ -28,12 +27,10 @@ def _book():
     return per
 
 
-def test_dex_is_dealer_signed_in_every_bucket_and_in_the_total():
+def test_dex_is_dealer_signed_in_every_bucket():
     per = _book()
     for b in per.values():
         assert b["net_dex_dollars"] == pytest.approx(b["call_dex_dollars"] - b["put_dex_dollars"])
-    total = compute_net_dex_dollars(per)["net_dex"]
-    assert total == pytest.approx(sum(b["net_dex_dollars"] for b in per.values()), abs=1.0)
 
 
 def test_vanna_is_per_vol_point_in_every_bucket_and_in_the_aggregate():
@@ -92,11 +89,10 @@ def test_the_put_call_volume_ratio_is_todays_trading_and_says_so_when_volume_is_
     assert put_call_volume_ratio(book) == pytest.approx(550.0 / 500.0)
 
 
-def test_a_book_that_priced_no_vanna_or_no_dollars_serves_absent_not_zero():
-    """Audit M-17/M-20: vanna and DEX-dollar fields start at 0.0 in every bucket, and the totals
-    read those zeros as data. Real chain priced the day after its own expiry (Schwab still lists
-    an expired Friday on the weekend): no contract has a vanna, so there is no net vanna; built
-    without spot there are no dollars, so there is no DEX $."""
+def test_a_book_that_priced_no_vanna_serves_absent_not_zero():
+    """Audit M-17: vanna fields start at 0.0 in every bucket, and the total read those zeros as
+    data. Real chain priced the day after its own expiry (Schwab still lists an expired Friday on
+    the weekend): no contract has a vanna, so there is no net vanna."""
     from datetime import timedelta
     from math_exposure_core import bucket_metric
     chain, spot = _FX["chain"], float(_FX["spot"])
@@ -104,5 +100,3 @@ def test_a_book_that_priced_no_vanna_or_no_dollars_serves_absent_not_zero():
     per, _ = compute_exposures_by_strike(chain, spot=spot, require_oi=True, now=next_day)
     assert [bucket_metric(b, "net_vanna") for b in per.values()] == [None] * len(per)
     assert compute_net_vanna(per, spot) is None
-    no_spot, _ = compute_exposures_by_strike(chain, spot=None, require_oi=True)
-    assert compute_net_dex_dollars(no_spot) is None

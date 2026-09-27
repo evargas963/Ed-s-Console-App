@@ -151,11 +151,6 @@ ROWS: tuple[Row, ...] = (
         justification="RC-359: diffs today's {strike: (call_oi, put_oi)} map — taken from the terrain snapshot's oi_by_strike, i.e. the same exposures book — against the prior session banked by server.py, then picks the largest call build, largest put build and deepest combined unwind. It reads no vendor leaf; the OI values reach it already parsed. Fail-closed: None when no prior session is banked, so the diff is withheld rather than invented.",
     ),
     Row(
-        file='math_exposure_core.py', derivation='compute_net_dex_dollars', disposition='DERIVED',
-        producer_refs=('math_exposure_core.py:compute_exposures_by_strike',),
-        justification="RC-361: sums call_dex_dollars MINUS put_dex_dollars over the same exposures book, giving the dealer's net delta notional (put deltas already arrive negative, so subtracting the put leg lands on the dealer's side). Consumes only fields the book produced; fail-closed to None on an empty/degenerate book rather than a fabricated $0.",
-    ),
-    Row(
         file='math_exposure_core.py', derivation='compute_net_vanna', disposition='DERIVED',
         producer_refs=('math_exposure_core.py:compute_exposures_by_strike', 'terrain_engine.py:compute_terrain'),
         justification='RC-362: sums call_vanna MINUS put_vanna over the ONE exposures book compute_exposures_by_strike already built (per-strike vanna is the vega/(S*IV) proxy accumulated with OI and multiplier at parse time), divides by 100 for per-vol-point and multiplies by spot for dollars. Reads no vendor field itself; the dealer sign model is inherited from the book, not re-encoded. Fail-closed: None on an empty/valueless book or missing spot, never a fabricated zero.',

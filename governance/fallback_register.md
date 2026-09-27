@@ -100,7 +100,7 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | M-17 | math_exposure_core.py:345, 687 | 5 | net vanna | $0 served when nothing priced a vanna | vanna_agg | FIXED 238ae6fb |
 | M-18 | math_exposure_core.py:497, 500 | 2/5 | quoteTimeInLong, overlay baseline | raw float, 0 missing; fallback baseline | overlay | OPEN |
 | M-19 | math_exposure_core.py:557, 573, 763, 921 | 5 | leg OI/volume, unwind, key delta strike | missing leg read as 0 | max pain, PCR, key delta | OPEN |
-| M-20 | math_exposure_core.py:713 | 5/3 | DEX$ | reads 0.0-initialised fields, always "seen", $0 served; re-sums net_dex | dex_dollars | FIXED 238ae6fb |
+| M-20 | math_exposure_core.py:713 | 5/3 | DEX$ | reads 0.0-initialised fields, always "seen", $0 served; re-sums net_dex | dex_dollars | FIXED: the per-strike cell reads the delta flag (238ae6fb); the book total had no reader and is deleted |
 | M-21 | math_exposure_core.py:795, 867 | 5 | 0DTE share, gamma strength | missing book -> 0%; single strike -> 100% | terrain | OPEN |
 | M-22 | math_exposure_core.py:35 | 5 | book net GEX | partly valid strikes summed, invalid dropped silently | regime | OPEN |
 | M-23 | math_exposure_core.py:969, 991 | 5 | gamma/delta walls | raw-gamma/raw-delta fallback when not dollarized | walls | FIXED 238ae6fb |
