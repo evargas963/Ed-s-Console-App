@@ -110,26 +110,6 @@
     } catch (e) { return '—'; }
   }
 
-  // Robust Y-axis bounds: the raw price_min/price_max can be dragged wide by one thin resting
-  // order far from the touch (real book data, but not what a reader should have to scroll past)
-  // -- drop the outer 1% of cumulative displayed volume on each side instead of a hard clip.
-  function tightRange(cells) {
-    var totals = {};
-    cells.forEach(function (c) { var v = (c.bid || 0) + (c.ask || 0); totals[c.price] = (totals[c.price] || 0) + v; });
-    var prices = Object.keys(totals).map(Number).sort(function (a, b) { return a - b; });
-    if (!prices.length) return null;
-    var totalVol = prices.reduce(function (s, p) { return s + totals[p]; }, 0) || 1;
-    var cum = 0, lo = null, hi = null;
-    for (var i = 0; i < prices.length; i++) {
-      cum += totals[prices[i]];
-      if (lo == null && cum / totalVol >= 0.01) lo = prices[i];
-      if (cum / totalVol <= 0.99) hi = prices[i];
-    }
-    if (lo == null) lo = prices[0];
-    if (hi == null || hi <= lo) hi = prices[prices.length - 1];
-    return { lo: lo, hi: Math.max(hi, lo + 0.01) };
-  }
-
   function render(h, tk, d) {
     if (!d || !d.available) {
       h.innerHTML = '<div class="placeholder"><div class="sm">' + esc((d && d.reason) || 'no book history for ' + tk) + '</div></div>';
@@ -140,7 +120,8 @@
     renderInto(h, tk, d);
   }
   function renderInto(h, tk, d) {
-    var autoRange = tightRange(d.cells);
+    // the default window is served (display_lo/hi); the page only zooms and pans it
+    var autoRange = d.display_lo == null ? null : { lo: d.display_lo, hi: d.display_hi };
     if (!autoRange) {
       h.innerHTML = '<div class="placeholder"><div class="sm">rows were captured but carried no populated price levels</div></div>';
       return;
@@ -149,23 +130,13 @@
     var priceRows = 48;
     var priceStep = (range.hi - range.lo) / priceRows || 0.01;
     var nBuckets = d.n_buckets || 90;
-    var bidGrid = new Float64Array(priceRows * nBuckets);
-    var askGrid = new Float64Array(priceRows * nBuckets);
-    var inRange = false;
-    d.cells.forEach(function (c) {
-      if (c.price < range.lo || c.price > range.hi) return;
-      inRange = true;
-      var row = Math.min(priceRows - 1, Math.max(0, Math.floor((c.price - range.lo) / priceStep)));
-      // c.t is server-supplied; clamp it the same way `row` is clamped just above -- an
-      // out-of-range bucket index (an off-by-one boundary tick, or a stale response racing a
-      // `minutes` change) would otherwise land in the row directly above via integer overflow
-      // of `row*nBuckets+col`, painting a false hot cell in an unrelated price row.
-      var col = Math.min(nBuckets - 1, Math.max(0, c.t | 0));
-      var idx = row * nBuckets + col;
-      bidGrid[idx] += c.bid || 0; askGrid[idx] += c.ask || 0;
-    });
-    var maxV = 1;
-    for (var i = 0; i < bidGrid.length; i++) { if (bidGrid[i] > maxV) maxV = bidGrid[i]; if (askGrid[i] > maxV) maxV = askGrid[i]; }
+    // each served cell is drawn at its own price and bucket -- nothing is summed or re-binned;
+    // colour is its served side, brightness its size against the served max_size
+    var visible = d.cells.filter(function (c) { return c.price >= range.lo && c.price <= range.hi; });
+    var inRange = visible.length > 0;
+    var maxV = d.max_size || 1;
+    function rowOf(price) { return Math.min(priceRows - 1, Math.max(0, Math.floor((price - range.lo) / priceStep))); }
+    function colOf(t) { return Math.min(nBuckets - 1, Math.max(0, t | 0)); }
 
     var padLeft = 58, padBottom = 22, padTop = 4, padRight = 4;
     var plotW = Math.max(300, (h.clientWidth || 700) - padLeft - padRight);
@@ -187,16 +158,15 @@
       ctx.fillStyle = '#c7d2e0'; ctx.font = '12px Inter, sans-serif';
       ctx.fillText('no cells fell inside the computed price window', padLeft, padTop + 16);
     } else {
-      for (var row = 0; row < priceRows; row++) {
-        for (var col = 0; col < nBuckets; col++) {
-          var idx2 = row * nBuckets + col;
-          var bv = bidGrid[idx2], av = askGrid[idx2];
-          var x = padLeft + col * colW, y = padTop + (priceRows - 1 - row) * rowH;
-          if (bv === 0 && av === 0) continue;
-          var dom = bv >= av ? bv : av, other = bv >= av ? av : bv;
+      visible.forEach(function (c) {
+          var bv = c.bid, av = c.ask;
+          var x = padLeft + colOf(c.t) * colW, y = padTop + (priceRows - 1 - rowOf(c.price)) * rowH;
+          if (!bv && !av) return;
+          var bidSide = c.side !== 'ASK';
+          var dom = bidSide ? bv : av, other = bidSide ? av : bv;
           var t = Math.min(1, dom / maxV);
           var lo2 = Math.min(1, other / maxV);
-          var base = bv >= av ? [35, 192, 107] : [229, 72, 77];
+          var base = bidSide ? [35, 192, 107] : [229, 72, 77];
           var bright = 0.15 + 0.85 * t;
           var r = Math.round(base[0] * bright + 15 * (1 - bright));
           var g = Math.round(base[1] * bright + 22 * (1 - bright));
@@ -204,8 +174,7 @@
           ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + bl + ')';
           ctx.fillRect(x, y, Math.max(1, colW - 0.5), rowH - 0.5);
           if (lo2 > 0.05) { ctx.fillStyle = 'rgba(255,255,255,' + (0.12 * lo2).toFixed(2) + ')'; ctx.fillRect(x, y, Math.max(1, colW - 0.5), rowH - 0.5); }
-        }
-      }
+      });
       // Y axis price labels
       ctx.fillStyle = '#c7d2e0'; ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'right';
       var yTicks = 6;
@@ -231,14 +200,15 @@
         var pinPrice = range.lo + (range.hi - range.lo) * (1 - (_pin.py - padTop) / plotH);
         var pinCol = Math.min(nBuckets - 1, Math.max(0, Math.floor((_pin.px - padLeft) / colW)));
         var pinTs = d.since_ts + pinCol * d.bucket_sec;
-        var pinRow = Math.min(priceRows - 1, Math.max(0, Math.floor((pinPrice - range.lo) / priceStep)));
-        var pinIdx = pinRow * nBuckets + pinCol;
-        var pinBid = bidGrid[pinIdx] || 0, pinAsk = askGrid[pinIdx] || 0;
+        // the served cell drawn under the pin (hit-testing the drawing): its own bid and ask
+        var pinRow = rowOf(pinPrice), hit = null;
+        visible.forEach(function (c) { if (colOf(c.t) === pinCol && rowOf(c.price) === pinRow) hit = c; });
+        var pinBid = hit ? hit.bid : null, pinAsk = hit ? hit.ask : null;
         ctx.strokeStyle = 'rgba(97,165,255,0.85)'; ctx.setLineDash([3, 2]); ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(padLeft, _pin.py); ctx.lineTo(padLeft + plotW, _pin.py); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(_pin.px, padTop); ctx.lineTo(_pin.px, padTop + plotH); ctx.stroke();
         ctx.setLineDash([]);
-        var boxLines = [pinPrice.toFixed(2), fmtCT(pinTs) + ' CT', 'bid ' + Math.round(pinBid), 'ask ' + Math.round(pinAsk)];
+        var boxLines = [pinPrice.toFixed(2), fmtCT(pinTs) + ' CT', 'bid ' + (pinBid == null ? '—' : Math.round(pinBid)), 'ask ' + (pinAsk == null ? '—' : Math.round(pinAsk))];
         var boxX = Math.min(_pin.px + 8, cw - 100), boxY = Math.max(padTop, Math.min(_pin.py - 8, padTop + plotH - boxLines.length * 12 - 8));
         ctx.fillStyle = 'rgba(23,32,46,0.96)'; ctx.strokeStyle = 'rgba(97,165,255,0.9)';
         ctx.fillRect(boxX, boxY, 96, boxLines.length * 12 + 8); ctx.strokeRect(boxX, boxY, 96, boxLines.length * 12 + 8);

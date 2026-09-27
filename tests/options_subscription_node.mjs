@@ -130,7 +130,7 @@ assert.strictEqual(S.subscriptionState({}, null), 'none', 'nothing selected -> n
 assert.strictEqual(
   S.subscriptionState({
     server_requested_contract: B, producer_l1_contract: A, producer_book_contract: A,
-    contract_match: false, streaming_healthy: false,
+    contract_match: false, subscription_state: 'PENDING', streaming_healthy: false,
   }, B),
   'pending',
   'a request the producer has not yet honoured must never read as subscribed');
@@ -139,7 +139,7 @@ assert.strictEqual(
 assert.strictEqual(
   S.subscriptionState({
     server_requested_contract: B, producer_l1_contract: B, producer_book_contract: B,
-    contract_match: true, streaming_healthy: true,
+    contract_match: true, subscription_state: 'SUBSCRIBED', streaming_healthy: true,
   }, B),
   'subscribed');
 
@@ -150,10 +150,11 @@ assert.strictEqual(
 assert.strictEqual(
   S.subscriptionState({ producer_l1_contract: B, producer_book_contract: null }, B),
   'pending', 'a missing BOOK epoch is not confirmation');
-// Both confirmed, but no server verdict field present (older payload) -> subscribed.
+// 2026-09-27: the page no longer works the state out from producer ids -- without the
+// server's subscription_state nothing is subscribed.
 assert.strictEqual(
   S.subscriptionState({ producer_l1_contract: B, producer_book_contract: B }, B),
-  'subscribed');
+  'pending', 'producer ids without the served state are not a subscription');
 // An empty plane can never promote to subscribed.
 assert.strictEqual(S.subscriptionState({}, B), 'pending');
 
@@ -196,8 +197,8 @@ assert.strictEqual(
   'a missing BOOK producer identity must not bind');
 assert.strictEqual(
   S.planeIsBoundToContract({ producer_l1_contract: B, producer_book_contract: B }, B),
-  true,
-  'explicit producer confirmation on BOTH services is the only no-verdict bind');
+  false,
+  'no served verdict binds nothing (2026-09-27: the producer-id fallback is deleted)');
 // The server's explicit verdicts still dominate in both directions.
 assert.strictEqual(
   S.planeIsBoundToContract({

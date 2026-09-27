@@ -5170,6 +5170,10 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     )
     payload = get_option_contract_book_microstructure(c)
     payload["contract"] = c
+    from app.options.order_flow.history import put_call_side
+    from app.options.order_flow.state import get_content_for_symbol
+    payload["put_call"] = put_call_side(next((it.get("CONTRACT_TYPE") for it in get_content_for_symbol(c)  # external-key-ok: Schwab LEVELONE_OPTIONS
+                                              if it.get("CONTRACT_TYPE")), None))
     try:
         # PR214 merge blocker 1A: the diagnostics are bound to the CONTRACT BEING
         # QUERIED, not to whatever contract the plane happens to be streaming. Without

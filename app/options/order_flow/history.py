@@ -175,7 +175,7 @@ def tape_rows_for_symbol(
             continue
         last_trade_key = trade_key
         strike = context.get("STRIKE_TYPE")
-        side = {"C": "CALL", "P": "PUT"}.get(context.get("CONTRACT_TYPE"))
+        side = put_call_side(context.get("CONTRACT_TYPE"))
         y, m, d = context.get("EXPIRATION_YEAR"), context.get("EXPIRATION_MONTH"), context.get("EXPIRATION_DAY")
         expiry = f"{y:04d}-{m:02d}-{d:02d}" if (y and m and d) else None
         mult = context.get("MULTIPLIER")
@@ -205,6 +205,39 @@ def tape_rows_for_symbol(
             out.pop(0)   # keep only the most recent `bounded_limit` — cheaper than re-slicing every append
     out.reverse()   # newest-first for display
     return out
+
+
+def put_call_side(contract_type) -> "str | None":
+    """Schwab's LEVELONE_OPTIONS CONTRACT_TYPE ('C' / 'P'), as CALL / PUT; None when not sent."""
+    return {"C": "CALL", "P": "PUT"}.get(contract_type)
+
+
+#: The default price window drops this share of displayed size at each end: one thin resting order
+#: far from the touch would otherwise stretch the axis. Carried unchanged from the page
+#: (2026-09-27); its origin is not recorded -- NOT_PROVEN.
+DISPLAY_TAIL_SHARE = 0.01
+
+
+def _display_window(cells: list[dict]) -> tuple[float, float]:
+    """(lo, hi): the price window holding all but DISPLAY_TAIL_SHARE of displayed size at each end."""
+    totals: dict[float, float] = {}
+    for c in cells:
+        totals[c["price"]] = totals.get(c["price"], 0.0) + c["bid"] + c["ask"]
+    prices = sorted(totals)
+    whole = sum(totals.values())
+    if not whole:
+        return prices[0], max(prices[-1], prices[0] + 0.01)
+    lo = hi = None
+    cum = 0.0
+    for px in prices:
+        cum += totals[px]
+        if lo is None and cum / whole >= DISPLAY_TAIL_SHARE:
+            lo = px
+        if cum / whole <= 1 - DISPLAY_TAIL_SHARE:
+            hi = px
+    lo = prices[0] if lo is None else lo
+    hi = prices[-1] if hi is None or hi <= lo else hi
+    return lo, max(hi, lo + 0.01)
 
 
 def book_heatmap_for_ticker(
@@ -327,14 +360,21 @@ def book_heatmap_for_ticker(
         return {"ticker": sym, "available": False, "reason": "captured rows carried no populated price levels in this window"}
 
     cell_list = sorted(
-        ({"t": k[0], "price": k[1], "bid": round(v["bid"], 1), "ask": round(v["ask"], 1)} for k, v in cells.items()),
+        ({"t": k[0], "price": k[1], "bid": round(v["bid"], 1), "ask": round(v["ask"], 1),
+          # the dominant displayed side at this price and bucket (the cell's colour)
+          "side": "BID" if v["bid"] > v["ask"] else "ASK" if v["ask"] > v["bid"] else "EVEN"}
+         for k, v in cells.items()),
         key=lambda c: (c["t"], c["price"]),
     )
+    display_lo, display_hi = _display_window(cell_list)
     return {
         "ticker": sym, "available": True,
         "since_ts": t0, "until_ts": float(rows[-1][0]), "latest_captured_ts": float(latest_ts),
         "n_buckets": n_buckets, "bucket_sec": round(bucket_sec, 2),
         "price_min": min(prices_seen), "price_max": max(prices_seen),
+        # the default price window, and the largest displayed size (the colour scale's top)
+        "display_lo": display_lo, "display_hi": display_hi,
+        "max_size": max(max(c["bid"], c["ask"]) for c in cell_list),
         "rows_scanned": len(rows), "rows_capped": rows_capped,
         "cells": cell_list,
         "method": ("stream_book_raw NASDAQ_BOOK+NYSE_BOOK rows for this ticker, oldest-to-newest in "

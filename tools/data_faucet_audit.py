@@ -236,6 +236,41 @@ def audit_client() -> list[dict]:
     return bad
 
 
+#: Page code formats and draws; every number, total, choice and date is served (AGENTS.md rule 4).
+#: The patterns the 2026-09-27 inventory found the page using to compute values, each a
+#: computation drawing never needs. A scan cannot see every calculation (a threshold that picks
+#: a label, a value compared by name): DATA_FLOW section 5 states that limit.
+PAGE_CALCULATIONS = {
+    "sum": re.compile(r"\.reduce\(\s*function\s*\((\w+),\s*\w+\)\s*\{\s*return\s+\1\s*\+"),
+    "weighted sum": re.compile(r"\+=\s*[\w.\[\]]+\s*\*\s*[\w.\[\]]+"),
+    "distance to spot": re.compile(r"Math\.abs\((?:[^()]|\([^()]*\))*-\s*(?:spot|sp|ref)\b|Math\.abs\(\s*(?:spot|sp|ref)\s*-"),
+    "sort by distance": re.compile(r"\.sort\(\s*function\s*\(a,\s*b\)\s*\{\s*return\s+Math\.abs\("),
+    "calendar arithmetic": re.compile(r"Date\.UTC\(|86400000"),
+    "first-key pick": re.compile(r"Object\.keys\([^)]*\)\.sort\(\)\[0\]"),
+}
+
+
+def page_calculation_hits(text: str, rel: str) -> list[str]:
+    """`rel:line kind: code` for each page-calculation pattern in one script's code."""
+    hits = []
+    for i, code in enumerate(_strip_comments(text), 1):
+        for kind, pat in PAGE_CALCULATIONS.items():
+            if pat.search(code):
+                hits.append(f"{rel}:{i} {kind}: {code.strip()[:80]}")
+    return hits
+
+
+def page_calculations() -> list[dict]:
+    """Every page script (static/js, not vendor), scanned for PAGE_CALCULATIONS. Fails closed
+    when no script is found."""
+    files = sorted(p for p in (_ROOT / "static" / "js").glob("*.js"))
+    if not files:
+        return [{"concept": "page calculation (client)", "undeclared": ["no page scripts found"], "declared": []}]
+    hits = [h for p in files for h in page_calculation_hits(p.read_text(encoding="utf-8", errors="ignore"),
+                                                              p.relative_to(_ROOT).as_posix())]
+    return [{"concept": "page calculation (client)", "undeclared": hits, "declared": []}] if hits else []
+
+
 def endpoint_sources(server_src: str) -> dict[str, list[dict]]:
     """endpoint path -> [{faucet, liveness, note}] traced statically from its handler body."""
     tree = ast.parse(server_src)
@@ -334,7 +369,7 @@ def run(db_path: str) -> dict:
         for a in [ages.get(f)]
         if a is not None and a > FRESH_LIMITS.get(live, 300)
     ]
-    client_bad = audit_client()
+    client_bad = audit_client() + page_calculations()
     violations.extend(client_bad)
     return {"endpoints": eps, "ages_sec": {k: (round(v) if v is not None else None)
                                            for k, v in ages.items()},
