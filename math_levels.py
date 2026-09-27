@@ -714,7 +714,7 @@ def compute_gamma_flip_v2(
     # means there is no regime boundary to worry about, which is MORE certain than a flip
     # sitting next to spot -- not less. Only the flip level is unknown, never the regime.
     at_spot = gamma_at_price(profile, spot)
-    diag = {**diag, "gamma_at_spot": at_spot,
+    diag = {**diag, "curve_gamma_at_spot": at_spot,
             "no_crossing_in_window": flip is None and at_spot is not None}
 
     if at_spot is None:
