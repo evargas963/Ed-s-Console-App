@@ -159,14 +159,22 @@ class LiveUiServer:
                 log.warning("live ui heartbeat: %s: %s", type(e).__name__, e)
                 feed = None
             for c in list(self.clients):
-                rows = [live_price_rows.price_row(s) for s in sorted(c.symbols)]
+                # one browser can neither stop the beat nor hold it: an error is logged and the
+                # next browser still gets its beat; a browser that does not take its beat within
+                # a beat is not reading and is closed (2026-09-26: the beat stopped for every
+                # browser and the whole screen read "no live feed" on a healthy Schwab socket)
                 try:
-                    await self._send(c, {"type": "feed", "feed": feed, "rows": rows})
-                except Exception as e:  # noqa: BLE001 -- counted; that client's own handler ends it
-                    # a closed browser fails its send here and its handler removes it; the
-                    # other browsers' beats must still go out
+                    rows = [live_price_rows.price_row(s) for s in sorted(c.symbols)]
+                    await asyncio.wait_for(
+                        self._send(c, {"type": "feed", "feed": feed, "rows": rows}),
+                        timeout=HEARTBEAT_SEC)
+                except asyncio.TimeoutError:
                     self.stats["beat_send_failures"] += 1
-                    log.debug("live ui beat to a closing client: %s: %s", type(e).__name__, e)
+                    log.warning("live ui: a browser stopped reading; closing it")
+                    asyncio.create_task(c.ws.close())
+                except Exception as e:  # noqa: BLE001 -- logged; the other browsers' beats go out
+                    self.stats["beat_send_failures"] += 1
+                    log.warning("live ui beat to one browser: %s: %s", type(e).__name__, e)
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
