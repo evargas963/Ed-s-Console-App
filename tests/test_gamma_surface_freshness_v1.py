@@ -61,7 +61,9 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy():
         live = server.terrain_cache_get(tk)                    # the one authority
         d = _call(tk)
         assert d["stale"] == bool(live.get("levels_stale"))
-        assert d["age_sec"] == live.get("levels_age_sec")
+        # one authority, read at two instants: the same as-of, so the ages differ only by the
+        # time between the two reads
+        assert abs(d["age_sec"] - live.get("levels_age_sec")) < 2.0
         expected_reason = live.get("levels_stale_reason") if bool(live.get("levels_stale")) else None
         assert (d["degraded"] or None) == expected_reason
         # no separate 180s threshold survives on the module

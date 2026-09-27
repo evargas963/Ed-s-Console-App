@@ -116,7 +116,8 @@ operator.
   one writer.
 - **Chain:** Schwab REST, fetched by the daemon → daemon state → the producer. The browser is never
   pushed a whole chain.
-- **Chain history:** every 30 minutes from 9:30 to 16:00 ET on market days (14 a day), the daemon
+- **Chain history:** every 30 minutes from 9:30 to 16:00 ET, and at 16:15 ET (the close capture:
+  SPY, QQQ, IWM and the index options trade until 16:15) on market days (15 a day), the daemon
   writes the full chain (every expiry) of each ticker on the board, compressed, one row per expiry,
   through the one writer. Nothing is captured while the market is closed. This is what research
   reads and what startup loads (the newest capture per ticker).
