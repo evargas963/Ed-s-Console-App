@@ -47,7 +47,9 @@ Read the parts a change touches before writing it.
 
 A PR that changes code, a design, a plan or a sequence updates, in the same PR, every affected
 instruction, design, work item, check, test and caller; removes superseded statements and paths;
-and lists each affected path it did not verify as NOT_PROVEN. A finished work item leaves
+verifies that the documents agree with the implemented behavior and current work status; and
+lists each affected path it did not verify as NOT_PROVEN. Only affected items: no edits for their
+own sake. A finished work item leaves
 `ACTIVE_PROGRAM.md` in the PR that finishes it. A changed sequence updates its dependents there
 and every document that states the old one.
 
