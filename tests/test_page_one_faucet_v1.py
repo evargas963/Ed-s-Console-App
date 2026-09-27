@@ -105,7 +105,8 @@ def test_every_alert_carries_the_time_it_was_observed(held, monkeypatch):
     """The Trade Desk stamped alerts with the browser's clock; each now carries its own time."""
     wall = held["call_wall"]
     near = wall * (1 - server.LEVEL_NEAR_SPOT_FRACTION / 2)   # inside the one near-spot rule
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (near, server.SPOT_SOURCE_QUOTE, 1_788_000_000.0))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (near, server.SPOT_SOURCE_PLANE, 1_788_000_000.0))
+    monkeypatch.setattr(server._lpr, "live_spot", lambda tk: near)   # stand-in: the live price
     cross_ts = time.time() - 5
     monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda tk, n=10: [
         {"ts_utc": cross_ts, "direction": "up", "level_name": "gamma_flip"}])
@@ -213,3 +214,23 @@ def test_the_largest_gex_strike_is_served(held):
     rows = held["_per_strike"]["all"]
     body = json.loads(server.get_terrain_strikes(ticker=TK).body)
     assert body["max_abs_strike"] == max(rows, key=lambda r: abs(r[1]))[0]
+
+
+def test_on_a_closed_market_the_last_trade_is_a_labelled_past_observation(monkeypatch):
+    """Sunday 2026-09-27: the daemon streamed SPY's last trade (Friday 18:59:59 CT) on a live
+    feed, and the page called it LIVE and raised near-level alerts from it. Replayed here as the
+    daemon captured it (stream_quotes_raw): outside the session it is not live; the row serves
+    it as the closed market's last trade with its time, and alerts are withheld."""
+    import live_market_plane as lmp
+    import live_price_rows
+    from tests.feed_live_helper import mark_feed_live
+    monkeypatch.setattr(lmp, "is_capturable_session", lambda: False)
+    monkeypatch.setattr(live_price_rows, "is_capturable_session", lambda: False)
+    mark_feed_live("SPY")
+    lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
+                                     received_ts=time.time())
+    row = live_price_rows.price_row("SPY")
+    assert (row["spot"], row["spot_state"]) == (None, "closed")
+    assert row["closed_last"] == {"spot_disp": "772.04", "as_of": "Fri 09/25 06:59 PM CT"}
+    assert server.resolve_spot("SPY")[0] is None
+    assert server.current_spot_state(server.SPOT_SOURCE_PLANE, "SPY") == "stale"

@@ -26,6 +26,7 @@ from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
+from time_et import is_capturable_session
 
 log = logging.getLogger(__name__)
 
@@ -273,9 +274,12 @@ def feed_live_for(ticker: str | None) -> bool:
 
 
 def spot_is_fresh(q: dict[str, Any]) -> bool:
-    """Is this row's LAST_PRICE live right now: the stream delivered a LAST_PRICE for it this
-    session (`spot_received_ts`) and the feed is live for its symbol (feed_live_for). Its
+    """Is this row's LAST_PRICE live right now: the market is in session (trading day,
+    04:00-20:00 ET), the stream delivered a LAST_PRICE for it (`spot_received_ts`) and the feed
+    is live for its symbol (feed_live_for). Outside the session it is a past observation. Its
     age since the last trade is information (`trade_ts`), never a reason to blank it."""
+    if not is_capturable_session():
+        return False
     if float_finite_or_none((q or {}).get("spot_received_ts")) is None:  # caps-ok: fail-closed -- no LAST_PRICE this session is not live
         return False
     return feed_live_for((q or {}).get("ticker"))
@@ -295,7 +299,10 @@ def quote_is_fresh(q: dict[str, Any]) -> bool:
     """Is this plane row's quote (bid/ask/sizes) live right now: the stream wrote the row
     (`server_received_ts`) and the feed is live for its symbol (feed_live_for). Under
     Schwab's changed-fields-only delivery an unchanged bid IS the current bid while the feed
-    is live; a missing server_received_ts cannot be assumed live (fail closed)."""
+    is live; a missing server_received_ts cannot be assumed live (fail closed). Outside the
+    session (is_capturable_session) the quote is a past observation."""
+    if not is_capturable_session():
+        return False
     if float_finite_or_none(q.get("server_received_ts")) is None:
         return False
     return feed_live_for(q.get("ticker"))

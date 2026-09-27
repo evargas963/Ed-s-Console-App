@@ -696,11 +696,12 @@
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
   // quote_tick handler (and markWlDegraded). A null field CLEARS to "—" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
-  function setWlRow(sym, spot, chgPct, spotState) {
+  function setWlRow(sym, spot, chgPct, spotState, closedDisp) {
     var key = (sym || '').replace('$', '');
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]') || document.querySelector('.wl-px[data-wlpx="' + key + '"]');
     if (pe) {
-      if (spotState === 'unavailable' || spot == null) pe.textContent = 'UNAVAILABLE';
+      if (closedDisp) pe.textContent = closedDisp + ' CLOSED';
+      else if (spotState === 'unavailable' || spot == null) pe.textContent = 'UNAVAILABLE';
       else pe.textContent = fmt(spot) + (spotState === 'stale' ? ' STALE' : '');
     }
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]') || document.querySelector('.wl-chg[data-wlchg="' + key + '"]');
@@ -807,16 +808,18 @@
     var bare = sym.replace(/^\$/, '');
     if (bare === String(state.ticker || '').toUpperCase().replace(/^\$/, '')) {
       var live = q.spot_state === 'live' && q.spot != null;
+      var closed = q.spot_state === 'closed' && q.closed_last;   // the last trade, labelled
       // painted NOW, not on requestAnimationFrame: the browser slows or pauses rAF for a
       // window it considers covered (measured 2026-09-24: row in at 6 ms, rAF paint at 773 ms).
       // The daemon already conflates to the newest row per symbol, so there is no burst to
       // throttle -- a few text writes per second.
-      paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
+      paintQuote({ spot_disp: closed ? q.closed_last.spot_disp + ' CLOSED' : q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
         chgPct: q.chg_pct, quoteIngestion: q.quote_ingestion,
         spotState: q.spot_state,
         feedCls: live ? '' : 'stale',
-        feedLabel: live ? 'LIVE' : (q.feed_live ? 'NO TRADE YET' : 'UNAVAILABLE'),
-        ageLabel: q.trade_age_sec != null ? ('last trade ' + Math.round(q.trade_age_sec) + 's')
+        feedLabel: live ? 'LIVE' : (q.spot_state === 'closed' ? 'MARKET CLOSED' : (q.feed_live ? 'NO TRADE YET' : 'UNAVAILABLE')),
+        ageLabel: closed ? ('last trade ' + q.closed_last.as_of)
+          : q.trade_age_sec != null ? ('last trade ' + Math.round(q.trade_age_sec) + 's')
           : (live ? 'live' : (q.feed_live ? 'feed live · no trade this session' : 'no live feed')) });
     }
     var wl = loadWL();
@@ -824,7 +827,7 @@
     if (wlSym) {
       setWlRow(wlSym, q.spot_state === 'live' ? q.spot : null,
         q.spot_state === 'live' ? q.chg_pct : null,
-        q.spot_state || 'unavailable');
+        q.spot_state || 'unavailable', q.spot_state === 'closed' && q.closed_last ? q.closed_last.spot_disp : null);
       markWlHealthy();
     }
     try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
