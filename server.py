@@ -3425,8 +3425,9 @@ def _status_line() -> str:
         f"SPY {spot:.2f}" if spot is not None else "SPY: no live price",
         f"levels: {len(as_of)} tickers, newest as of {newest}",
         _feed_record_state(),
-        "chain refresh " + ("running every 5 s" if _is_loggable_session()
-                            else "next " + _next_refresh_ct()),
+        ("chain refresh: last sweep of the board took "
+         f"{_terrain_last_cycle_sec:.0f} s" if _is_loggable_session()
+         else "chain refresh next " + _next_refresh_ct()),
     ])
 
 
@@ -3613,7 +3614,8 @@ def start_terrain_loop() -> None:
     log.info("Ready: levels for %d of %d board tickers loaded (session: %s). %s", loaded, board,
              session_label(now_et()),
              "Levels refresh every 5 s." if _is_loggable_session() else
-             "Levels refresh every 5 s " + _next_refresh_ct() + ".")
+             "Levels refresh (a full-chain sweep of the board, 1-2 min each) "
+             + _next_refresh_ct() + ".")
     _terrain_loop_running = True
     _terrain_loop_thread = threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True)
     _terrain_loop_thread.start()
