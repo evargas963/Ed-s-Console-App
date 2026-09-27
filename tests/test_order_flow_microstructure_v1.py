@@ -8,8 +8,7 @@ every output, fail-closed on no book, and that temporal PROXY metrics are NOT pr
 """
 
 from __future__ import annotations
-import time
-
+import json
 import sys
 from pathlib import Path
 
@@ -18,6 +17,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import app.options.order_flow.engine as ofe
+from app.options.order_flow.state import OrderFlowState
+
+FIXTURE = ROOT / "tests" / "fixtures" / "real_options_stream_history_samples.json"
 
 
 def _book_snapshot() -> dict:
@@ -41,11 +43,11 @@ def _book_snapshot() -> dict:
 
 
 def _l1_top() -> dict:
-    return {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": 300, "ASK_SIZE": 500}
+    return {"bid": 712.47, "ask": 712.49, "bid_size": 300, "ask_size": 500}
 
 
 def _data() -> dict:
-    return {"content": [_book_snapshot(), _l1_top()], "exchange_quote_ts": 1787233769.0}
+    return {"content": [_book_snapshot()], "top": _l1_top(), "exchange_quote_ts": 1787233769.0}
 
 
 def test_top_of_book_is_native():
@@ -209,8 +211,8 @@ def _unsorted_data() -> dict:
          "ASKS": [{"ASK_PRICE": 712.53, "TOTAL_VOLUME": 320},
                   {"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960},
                   {"ASK_PRICE": 712.51, "TOTAL_VOLUME": 710}],
-         "BOOK_TIME": 1},
-        {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": 300, "ASK_SIZE": 500}]}
+         "BOOK_TIME": 1}],
+        "top": {"bid": 712.47, "ask": 712.49, "bid_size": 300, "ask_size": 500}}
 
 
 def test_unsorted_book_is_canonicalized_before_topn():
@@ -227,15 +229,18 @@ def test_unsorted_book_is_canonicalized_before_topn():
 
 def test_invalid_sizes_are_rejected():
     """Negative or non-finite displayed sizes are not real quantities — they must be dropped
-    from level totals, and an invalid L1 size must not be published as a real top-of-book size."""
+    from level totals, and an invalid L1 size must not be published as a real top-of-book size.
+    The L1 size is read where it is stored (OrderFlowState.push_option_top)."""
+    l1 = OrderFlowState()
+    l1.push_option_top("BADSIZE", {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": -5, "ASK_SIZE": 500})
     bad = {"content": [
         {"BIDS": [{"BID_PRICE": 712.47, "TOTAL_VOLUME": 1000},
                   {"BID_PRICE": 712.46, "TOTAL_VOLUME": -40},          # negative -> dropped
                   {"BID_PRICE": 712.45, "TOTAL_VOLUME": float("inf")},  # non-finite -> dropped
                   {"BID_PRICE": 712.44, "TOTAL_VOLUME": 80}],
          "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}],
-         "BOOK_TIME": 1},
-        {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": -5, "ASK_SIZE": 500}]}
+         "BOOK_TIME": 1}],
+        "top": l1.option_top("BADSIZE")}
     m = ofe.compute_book_microstructure(bad, now_ts=2.0)
     # only the two valid bid levels (1000 + 80) survive into the depth total
     assert m["depth"]["3"]["bid_total"] == 1080.0
@@ -250,8 +255,8 @@ def test_crossed_book_withholds_mid_and_microprice_in_full_payload():
     crossed = {"content": [
         {"BIDS": [{"BID_PRICE": 712.60, "TOTAL_VOLUME": 1000}],
          "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}],
-         "BOOK_TIME": 1},
-        {"BID_PRICE": 712.60, "ASK_PRICE": 712.49, "BID_SIZE": 300, "ASK_SIZE": 500}]}
+         "BOOK_TIME": 1}],
+        "top": {"bid": 712.60, "ask": 712.49, "bid_size": 300, "ask_size": 500}}
     m = ofe.compute_book_microstructure(crossed, now_ts=2.0)
     assert m["crossed"] is True
     assert m["mid"] is None
@@ -263,8 +268,8 @@ def test_one_sided_book_fails_closed():
     """With one side of the book empty, depth imbalance cannot be computed and must be None
     (fail closed) rather than fabricated from the single populated side."""
     one = {"content": [
-        {"BIDS": [], "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}], "BOOK_TIME": 1},
-        {"ASK_PRICE": 712.49, "ASK_SIZE": 500}]}
+        {"BIDS": [], "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}], "BOOK_TIME": 1}],
+        "top": {"ask": 712.49, "ask_size": 500}}
     m = ofe.compute_book_microstructure(one, now_ts=2.0)
     for n in ("1", "3", "5"):
         assert m["depth"][n]["imbalance"] is None
@@ -303,8 +308,8 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
         return {"content": [
             {"BIDS": [{"BID_PRICE": p, "TOTAL_VOLUME": v} for p, v in bids],
              "ASKS": [{"ASK_PRICE": p, "TOTAL_VOLUME": v} for p, v in asks],
-             "BOOK_TIME": BT},
-            {"BID_PRICE": bids[0][0], "ASK_PRICE": asks[0][0], "BID_SIZE": 100, "ASK_SIZE": 100}]}
+             "BOOK_TIME": BT}],
+            "top": {"bid": bids[0][0], "ask": asks[0][0], "bid_size": 100, "ask_size": 100}}
 
     # v1: heavy bid book with a bid-side size wall at the touch.
     v1 = _book(
@@ -355,415 +360,98 @@ def test_engine_and_route_read_the_same_canonical_state():
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
 
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# PR214_RTH_DEFECT_REMEDIATION_V1 (2026-08-31) — Schwab LEVELONE_OPTIONS/EQUITIES
-# sends partial/delta ticks (live RTH proof, TSLA 260831C00367500, ~14:00 CDT: a
-# size-only tick carrying only ASK_SIZE silently masked a valid, seconds-old
-# BID_PRICE/ASK_PRICE). Each top-of-book leaf (BID_PRICE, ASK_PRICE, BID_SIZE,
-# ASK_SIZE) must resolve INDEPENDENTLY from the newest tick that actually carries
-# it, through the ONE canonical `_latest_content_field` resolver both
-# `_resolve_bid_ask_prices` and `_compute_top_book_pressure` delegate to.
+# Top of book is carried, not resolved: the engine reads data["top"] (bid, ask, bid_size,
+# ask_size, mark), supplied by the caller already judged live -- the equity row of
+# live_market_plane under quote_is_fresh, or an option contract's OrderFlowState.option_top
+# under feed_live_for. Per-field merge of Schwab's changed-fields-only ticks is the store's
+# job (push_option_top below; live_market_plane for equities).
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_delta_a_full_tick_resolves_all_four_fields_exactly():
-    items = [{"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23}]
-    data = {"content": items}
+def test_top_prices_and_sizes_are_carried_exactly():
+    data = {"top": {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}}
     bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices(data)
     assert (bid, ask) == (0.58, 0.59)
     assert (bid_leaf, ask_leaf) == ("streaming.BID_PRICE", "streaming.ASK_PRICE")
     pressure, tier = ofe._compute_top_book_pressure(data)
     assert tier == "schwab_stream"
     assert pressure == (11 - 23) / (11 + 23)
+    cb = ofe._extract_canonical_book(data)
+    assert (cb["bid_size"], cb["ask_size"]) == (11, 23)
 
 
-def test_delta_b_size_only_tick_keeps_last_known_prices_and_updates_sizes():
-    items = [
-        {"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23},
-        {"BID_SIZE": 8, "ASK_SIZE": 35},  # real live shape: size-only delta, no price keys at all
-    ]
-    data = {"content": items}
-    bid, ask, _, _ = ofe._resolve_bid_ask_prices(data)
-    assert (bid, ask) == (0.58, 0.59), "prices must survive a size-only delta"
-    pressure, tier = ofe._compute_top_book_pressure(data)
-    assert tier == "schwab_stream"
-    assert pressure == (8 - 35) / (8 + 35), "sizes must update to the delta's own values"
-
-
-def test_delta_c_bid_size_only_delta_leaves_ask_size_at_its_last_value():
-    items = [
-        {"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23},
-        {"BID_SIZE": 6},  # bid-size-only delta
-    ]
-    data = {"content": items}
-    bid, ask, _, _ = ofe._resolve_bid_ask_prices(data)
-    assert (bid, ask) == (0.58, 0.59)
-    pressure, tier = ofe._compute_top_book_pressure(data)
-    assert tier == "schwab_stream"
-    assert pressure == (6 - 23) / (6 + 23), "ask size must retain its last known value (23)"
-
-
-def test_delta_d_price_only_delta_updates_changed_leg_keeps_the_other():
-    items = [
-        {"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23},
-        {"ASK_PRICE": 0.60},  # price-only delta on one leg
-    ]
-    data = {"content": items}
-    bid, ask, _, _ = ofe._resolve_bid_ask_prices(data)
-    assert bid == 0.58, "the unaffected leg must keep its last known value"
-    assert ask == 0.60, "the changed leg must update"
-
-
-def test_delta_e_zero_size_is_a_real_value_not_a_fallback_trigger():
-    items = [{"BID_PRICE": 0.10, "ASK_PRICE": 0.12, "BID_SIZE": 0, "ASK_SIZE": 5}]
-    data = {"content": items}
+def test_zero_size_is_a_real_value_not_a_fallback_trigger():
+    data = {"content": [_book_snapshot()], "top": {"bid": 0.10, "ask": 0.12, "bid_size": 0, "ask_size": 5}}
     pressure, tier = ofe._compute_top_book_pressure(data)
     assert tier == "schwab_stream", "a real BID_SIZE=0 must not be treated as missing"
     assert pressure == (0 - 5) / (0 + 5)
+    assert ofe._extract_canonical_book(data)["bid_size"] == 0
+    assert ofe.compute_book_microstructure(data, now_ts=1787233772.0)["top_of_book"]["bid_size"] == 0
 
 
-def test_delta_f_no_valid_field_anywhere_resolves_to_none():
-    items = [{"LAST_PRICE": 0.55, "LAST_SIZE": 3}]  # tape print only, no top-of-book fields
-    data = {"content": items}
+def test_no_top_resolves_to_none():
+    data = {"content": [{"LAST_PRICE": 0.55, "LAST_SIZE": 3}], "top": None}  # tape print only
     assert ofe._resolve_bid_ask_prices(data) == (None, None, None, None)
     assert ofe._compute_top_book_pressure(data) == (None, "unavailable")
 
 
-def test_delta_g_contract_isolation_no_bleed_across_symbols():
-    """Storage-layer isolation through the REAL production path (app.options.order_flow.state),
-    not a hand-built items list."""
+def test_push_option_top_merges_real_partial_ticks_per_field():
+    """Real LEVELONE_OPTIONS ticks (tests/fixtures, TSLA 260831C00367500): Schwab sends
+    changed fields only -- the 4th tick carries BID_SIZE/ASK_SIZE and no price. The prices from
+    earlier ticks stand, the sizes update. Stand-ins (named): the BID_SIZE 0 and ASK_PRICE -999
+    ticks are edits of the real tick, to pin a reported 0 kept and a not-a-number clearing."""
+    samples = json.loads(FIXTURE.read_text(encoding="utf-8"))["contracts"]
+    tsla = next(c for c in samples if c["symbol"] == "TSLA  260831C00367500")
+    qqq = next(c for c in samples if c["symbol"] == "QQQ   260904C00712500")
+    tsla_l1 = [e["content"] for e in tsla["events"] if e["kind"] == "l1"]
+    st = OrderFlowState()
+    for tick in tsla_l1[:4]:
+        st.push_option_top(tsla["symbol"], tick)
+    assert "BID_PRICE" not in tsla_l1[3] and "ASK_PRICE" not in tsla_l1[3]
+    assert st.option_top(tsla["symbol"]) == {
+        "bid": 0.56, "ask": 0.59, "bid_size": 83, "ask_size": 57, "mark": 0.575}
+
+    st.push_option_top(tsla["symbol"], dict(tsla_l1[3], BID_SIZE=0))
+    assert st.option_top(tsla["symbol"])["bid_size"] == 0
+
+    st.push_option_top(tsla["symbol"], {"key": tsla["symbol"], "ASK_PRICE": -999})
+    top = st.option_top(tsla["symbol"])
+    assert "ask" not in top and top["bid"] == 0.56
+
+    qqq_first = next(e["content"] for e in qqq["events"] if e["kind"] == "l1")
+    st.push_option_top(qqq["symbol"], qqq_first)
+    assert st.option_top(qqq["symbol"]) == {"bid_size": 272, "ask_size": 29}
+    assert st.option_top(tsla["symbol"])["bid"] == 0.56
+
+
+def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
+    """O-01: an equity's Level-1 quote lives in live_market_plane only. push_level_one no longer
+    writes a top-of-book item beside the book and tape. Stand-in (named): a hand-built
+    LEVELONE_EQUITIES tick."""
     import app.options.order_flow.state as ofls
-    ofls.clear_symbol("RTH_TEST_CONTRACT_A")
-    ofls.clear_symbol("RTH_TEST_CONTRACT_B")
+    ofls.clear_symbol("O01EQ")
     try:
-        ofls.push_level_one("RTH_TEST_CONTRACT_A",
-                            {"BID_PRICE": 9.99, "ASK_PRICE": 10.01, "BID_SIZE": 4, "ASK_SIZE": 4}, ts_recv=time.time())
-        ofls.push_level_one("RTH_TEST_CONTRACT_B", {"BID_SIZE": 2}, ts_recv=time.time())  # never had a price of its own
-        bid_a, ask_a, _, _ = ofe._resolve_bid_ask_prices(
-            {"content": ofls.get_content_for_symbol("RTH_TEST_CONTRACT_A")})
-        assert (bid_a, ask_a) == (9.99, 10.01)
-        bid_b, ask_b, _, _ = ofe._resolve_bid_ask_prices(
-            {"content": ofls.get_content_for_symbol("RTH_TEST_CONTRACT_B")})
-        assert (bid_b, ask_b) == (None, None), "contract B must never see contract A's price"
+        ofls.push_level_one("O01EQ", {"key": "O01EQ", "BID_PRICE": 100.0, "ASK_PRICE": 100.02,
+                                      "BID_SIZE": 3, "ASK_SIZE": 4, "MARK": 100.01}, ts_recv=1_000.0)
+        content = ofls.get_content_for_symbol("O01EQ")
+        assert not any("BID_PRICE" in row or "ASK_PRICE" in row for row in content)
+        assert ofls.option_top("O01EQ") is None
     finally:
-        ofls.clear_symbol("RTH_TEST_CONTRACT_A")
-        ofls.clear_symbol("RTH_TEST_CONTRACT_B")
+        ofls.clear_symbol("O01EQ")
 
 
-def test_storage_layer_merges_partial_ticks_not_overwrites():
-    """push_level_one itself — the actual RTH-observed defect location, one layer below
-    order_flow_engine's resolver: a size-only tick must not wipe a previously-stored
-    price out of app.options.order_flow.state._top[sym]."""
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("RTH_TEST_MUTTEST")
-    try:
-        ofls.push_level_one("RTH_TEST_MUTTEST",
-                            {"BID_PRICE": 1.23, "ASK_PRICE": 1.25, "BID_SIZE": 10, "ASK_SIZE": 10}, ts_recv=time.time())
-        ofls.push_level_one("RTH_TEST_MUTTEST", {"ASK_SIZE": 75}, ts_recv=time.time())  # exact live shape, 2026-08-31
-        data = {"content": ofls.get_content_for_symbol("RTH_TEST_MUTTEST")}
-        bid, ask, _, _ = ofe._resolve_bid_ask_prices(data)
-        assert (bid, ask) == (1.23, 1.25), "a size-only tick must not erase the stored price"
-        pressure, tier = ofe._compute_top_book_pressure(data)
-        assert tier == "schwab_stream"
-        assert pressure == (10 - 75) / (10 + 75)
-    finally:
-        ofls.clear_symbol("RTH_TEST_MUTTEST")
-
-
-def test_mutation_control_single_snapshot_selection_loses_the_price():
-    """MUTATION/FAULT CONTROL: the RETIRED single-snapshot-item approach
-    (`_latest_quote_snapshot`, deleted 2026-09-24 -- MARK is resolved per field too now) reads
-    BOTH price and size from ONE item. Proves it gets the wrong answer on the exact
-    delta sequence test B uses — the per-field fix is load-bearing, not coincidental.
-    If `_resolve_bid_ask_prices`/`_compute_top_book_pressure` ever regress back to
-    this shape, test B/C/D above fail; this test independently pins WHY."""
-    items = [
-        {"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23},
-        {"BID_SIZE": 8, "ASK_SIZE": 35},
-    ]
-    def _retired_single_snapshot(items):   # the deleted _latest_quote_snapshot, inlined
-        for item in reversed(items):
-            if isinstance(item, dict) and any(item.get(k) is not None for k in
-                                              ("BID_SIZE", "ASK_SIZE", "BID_PRICE", "ASK_PRICE")):
-                return item
-        return None
-    old_snapshot = _retired_single_snapshot(items)
-    assert old_snapshot is items[-1], "sanity: the retired selector picks the newest item"
-    assert old_snapshot.get("BID_PRICE") is None and old_snapshot.get("ASK_PRICE") is None, (
-        "the retired single-snapshot approach loses the price on this exact live-observed "
-        "delta shape — this is the regression the fix must not reintroduce")
-    bid, ask, _, _ = ofe._resolve_bid_ask_prices({"content": items})
-    assert (bid, ask) == (0.58, 0.59), "the FIXED resolver must not reproduce the loss above"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PR214_RTH_DEFECT_REMEDIATION_FINAL_GAPS — Gap 1: the per-field resolver above has NO
-# freshness bound -- it could combine a fresh BID_SIZE with an arbitrarily old BID_PRICE.
-# A carried-forward field is valid only within OF_TOP_OF_BOOK_FIELD_STALE_SEC (== the
-# EXISTING order_flow_streaming.STREAMING_STALE_MS canonical staleness policy, not an
-# invented number) of its own observation. These tests drive the REAL production path
-# (app.options.order_flow.state.push_level_one, which stamps a "{field}_TS_RECV" sibling per
-# field) with explicit `ts_recv`/`now_ts` so freshness is deterministic, not wall-clock.
-# ─────────────────────────────────────────────────────────────────────────────
-
-def test_groundedness_freshness_bound_matches_existing_streaming_stale_ms():
-    """The Gap-1 bound must be THE existing canonical stream-health threshold, not a
-    second, independently-invented number that could silently drift from it."""
+def test_book_staleness_bound_matches_existing_streaming_stale_ms():
+    """book_stale's bound is the existing stream-health threshold, not a second number."""
     import app.options.order_flow.streaming as ofs
-    assert ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC * 1000.0 == ofs.STREAMING_STALE_MS
-
-
-def test_freshness_a_full_tick_then_immediate_size_only_delta_preserves_price():
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("RTH_FRESH_A")
-    try:
-        t0 = 1_000_000.0
-        ofls.push_level_one("RTH_FRESH_A",
-                            {"BID_PRICE": 0.58, "ASK_PRICE": 0.59, "BID_SIZE": 11, "ASK_SIZE": 23},
-                            ts_recv=t0)
-        ofls.push_level_one("RTH_FRESH_A", {"BID_SIZE": 8, "ASK_SIZE": 35}, ts_recv=t0 + 0.2)
-        data = {"content": ofls.get_content_for_symbol("RTH_FRESH_A")}
-        bid, ask, _, _ = ofe._resolve_bid_ask_prices(data, now_ts=t0 + 0.2)
-        assert (bid, ask) == (0.58, 0.59), "price a fraction of a second old must survive"
-    finally:
-        ofls.clear_symbol("RTH_FRESH_A")
-
-
-def test_freshness_b_several_fresh_deltas_keep_prior_price_usable():
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("RTH_FRESH_B")
-    try:
-        t0 = 1_000_000.0
-        ofls.push_level_one("RTH_FRESH_B",
-                            {"BID_PRICE": 12.30, "ASK_PRICE": 12.35, "BID_SIZE": 5, "ASK_SIZE": 5},
-                            ts_recv=t0)
-        for i in range(1, 6):  # five more size-only deltas, each a few seconds apart
-            ofls.push_level_one("RTH_FRESH_B", {"BID_SIZE": 5 + i, "ASK_SIZE": 5 + i},
-                                ts_recv=t0 + i * 3.0)
-        now = t0 + 5 * 3.0 + 1.0  # 16s after the price tick -- inside the 25s bound
-        data = {"content": ofls.get_content_for_symbol("RTH_FRESH_B")}
-        bid, ask, _, _ = ofe._resolve_bid_ask_prices(data, now_ts=now)
-        assert (bid, ask) == (12.30, 12.35), "prior price must remain usable across several fresh deltas"
-    finally:
-        ofls.clear_symbol("RTH_FRESH_B")
-
-
-def test_freshness_c_price_older_than_boundary_becomes_unavailable():
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("RTH_FRESH_C")
-    try:
-        t0 = 1_000_000.0
-        ofls.push_level_one("RTH_FRESH_C",
-                            {"BID_PRICE": 7.77, "ASK_PRICE": 7.79, "BID_SIZE": 9, "ASK_SIZE": 9},
-                            ts_recv=t0)
-        now_just_inside = t0 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC - 0.01
-        now_just_outside = t0 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC + 0.01
-        data = {"content": ofls.get_content_for_symbol("RTH_FRESH_C")}
-        bid_in, ask_in, _, _ = ofe._resolve_bid_ask_prices(data, now_ts=now_just_inside)
-        assert (bid_in, ask_in) == (7.77, 7.79), "still within the freshness boundary"
-        bid_out, ask_out, _, _ = ofe._resolve_bid_ask_prices(data, now_ts=now_just_outside)
-        assert (bid_out, ask_out) == (None, None), (
-            "a price older than the freshness boundary must resolve to unavailable, "
-            "not be carried forward indefinitely")
-    finally:
-        ofls.clear_symbol("RTH_FRESH_C")
-
-
-def test_freshness_d_previous_epoch_price_never_carries_forward_even_if_technically_fresh():
-    """Item D, freshness-aware: a still-within-window price from a PRIOR contract must
-    never appear for a NEW contract on the same symbol slot after a switch -- epoch
-    isolation (clear_symbol) takes precedence over recency."""
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("RTH_FRESH_D")
-    try:
-        t0 = 1_000_000.0
-        ofls.push_level_one("RTH_FRESH_D",
-                            {"BID_PRICE": 3.10, "ASK_PRICE": 3.15, "BID_SIZE": 4, "ASK_SIZE": 4},
-                            ts_recv=t0)
-        # Contract switch: the prior contract's state is cleared before the new one is pushed.
-        ofls.clear_symbol("RTH_FRESH_D")
-        ofls.push_level_one("RTH_FRESH_D", {"BID_SIZE": 6}, ts_recv=t0 + 1.0)
-        data = {"content": ofls.get_content_for_symbol("RTH_FRESH_D")}
-        # now_ts is only 1s after the OLD price's ts_recv -- well within the freshness window --
-        # proving the absence is from epoch isolation, not from staleness rejection.
-        bid, ask, _, _ = ofe._resolve_bid_ask_prices(data, now_ts=t0 + 1.0)
-        assert (bid, ask) == (None, None), "a fresh-looking price from the PRIOR epoch must never carry forward"
-    finally:
-        ofls.clear_symbol("RTH_FRESH_D")
-
-
-def test_freshness_e_fresh_bid_but_stale_ask_does_not_publish_a_falsely_complete_pair():
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("RTH_FRESH_E")
-    try:
-        t0 = 1_000_000.0
-        ofls.push_level_one("RTH_FRESH_E",
-                            {"BID_PRICE": 20.00, "ASK_PRICE": 20.10, "BID_SIZE": 3, "ASK_SIZE": 3},
-                            ts_recv=t0)
-        # Only BID_PRICE refreshes; ASK_PRICE's TS_RECV stays pinned at t0.
-        t_bid_refresh = t0 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC - 1.0
-        ofls.push_level_one("RTH_FRESH_E", {"BID_PRICE": 20.05}, ts_recv=t_bid_refresh)
-        now = t_bid_refresh + 2.0  # ask is now (now - t0) > bound old; bid is fresh
-        assert (now - t0) > ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC
-        assert (now - t_bid_refresh) <= ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC
-        data = {"content": ofls.get_content_for_symbol("RTH_FRESH_E")}
-        bid, ask, _, _ = ofe._resolve_bid_ask_prices(data, now_ts=now)
-        assert bid == 20.05, "the freshly-updated leg must still resolve"
-        assert ask is None, "a stale leg must not be paired with a fresh one as a falsely-complete top of book"
-    finally:
-        ofls.clear_symbol("RTH_FRESH_E")
-
-
-def test_freshness_f_zero_remains_a_valid_value_under_the_freshness_bound():
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("RTH_FRESH_F")
-    try:
-        t0 = 1_000_000.0
-        ofls.push_level_one("RTH_FRESH_F",
-                            {"BID_PRICE": 5.00, "ASK_PRICE": 5.02, "BID_SIZE": 0, "ASK_SIZE": 7},
-                            ts_recv=t0)
-        data = {"content": ofls.get_content_for_symbol("RTH_FRESH_F")}
-        pressure, tier = ofe._compute_top_book_pressure(data, now_ts=t0 + 1.0)
-        assert tier == "schwab_stream", "a real BID_SIZE=0 must not be treated as missing under freshness bounding"
-        assert pressure == (0 - 7) / (0 + 7)
-    finally:
-        ofls.clear_symbol("RTH_FRESH_F")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PR214_TOP_OF_BOOK_SIZE_FRESHNESS_FINAL — the SAME defect class, one remaining path:
-# _extract_canonical_book's published bid_size/ask_size used to come from
-# _latest_quote_snapshot (a single "latest" content item), not the freshness-aware
-# per-field resolver Gap 1 already wired for BID_PRICE/ASK_PRICE/top_book_pressure.
-# Now bid_size/ask_size resolve through the SAME _latest_content_field authority, the
-# SAME now_ts, the SAME OF_TOP_OF_BOOK_FIELD_STALE_SEC boundary. These tests drive the
-# REAL production path (app.options.order_flow.state.push_level_one, explicit ts_recv) so
-# freshness is deterministic, matching the Gap 1 freshness tests above.
-# ─────────────────────────────────────────────────────────────────────────────
-
-def test_size_a_fresh_bid_and_ask_size_resolve_exactly():
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("SIZE_FRESH_A")
-    try:
-        t0 = 1_000_000.0
-        ofls.push_level_one("SIZE_FRESH_A",
-                            {"BID_PRICE": 4.10, "ASK_PRICE": 4.12, "BID_SIZE": 17, "ASK_SIZE": 29},
-                            ts_recv=t0)
-        data = {"content": ofls.get_content_for_symbol("SIZE_FRESH_A")}
-        cb = ofe._extract_canonical_book(data, now_ts=t0 + 1.0)
-        assert (cb["bid_size"], cb["ask_size"]) == (17, 29)
-        # end-to-end: the full microstructure payload's top_of_book carries the same values.
-        m = ofe.compute_book_microstructure(data, now_ts=t0 + 1.0)
-        assert m["top_of_book"]["bid_size"] == 17
-        assert m["top_of_book"]["ask_size"] == 29
-    finally:
-        ofls.clear_symbol("SIZE_FRESH_A")
-
-
-def test_size_b_fresh_price_but_stale_bid_size_is_unavailable():
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("SIZE_FRESH_B")
-    try:
-        t0 = 1_000_000.0
-        ofls.push_level_one("SIZE_FRESH_B",
-                            {"BID_PRICE": 4.10, "ASK_PRICE": 4.12, "BID_SIZE": 17, "ASK_SIZE": 29},
-                            ts_recv=t0)
-        # Refresh price on both legs and ASK_SIZE; BID_SIZE's ts_recv stays pinned at t0.
-        t_refresh = t0 + 1.0
-        ofls.push_level_one("SIZE_FRESH_B",
-                            {"BID_PRICE": 4.11, "ASK_PRICE": 4.13, "ASK_SIZE": 30},
-                            ts_recv=t_refresh)
-        now = t0 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC + 1.0  # BID_SIZE now stale; price/ASK_SIZE fresh
-        assert (now - t_refresh) <= ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC
-        data = {"content": ofls.get_content_for_symbol("SIZE_FRESH_B")}
-        cb = ofe._extract_canonical_book(data, now_ts=now)
-        assert (cb["bid"], cb["ask"]) == (4.11, 4.13), "the refreshed price must resolve"
-        assert cb["bid_size"] is None, "a stale BID_SIZE must not be published as a real size"
-        assert cb["ask_size"] == 30, "the refreshed ASK_SIZE must still resolve"
-    finally:
-        ofls.clear_symbol("SIZE_FRESH_B")
-
-
-def test_size_c_fresh_bid_size_but_stale_ask_size_is_unavailable():
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("SIZE_FRESH_C")
-    try:
-        t0 = 1_000_000.0
-        ofls.push_level_one("SIZE_FRESH_C",
-                            {"BID_PRICE": 4.10, "ASK_PRICE": 4.12, "BID_SIZE": 17, "ASK_SIZE": 29},
-                            ts_recv=t0)
-        # Refresh price on both legs and BID_SIZE; ASK_SIZE's ts_recv stays pinned at t0.
-        t_refresh = t0 + 1.0
-        ofls.push_level_one("SIZE_FRESH_C",
-                            {"BID_PRICE": 4.11, "ASK_PRICE": 4.13, "BID_SIZE": 18},
-                            ts_recv=t_refresh)
-        now = t0 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC + 1.0  # ASK_SIZE now stale; price/BID_SIZE fresh
-        assert (now - t_refresh) <= ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC
-        data = {"content": ofls.get_content_for_symbol("SIZE_FRESH_C")}
-        cb = ofe._extract_canonical_book(data, now_ts=now)
-        assert cb["bid_size"] == 18, "the refreshed BID_SIZE must still resolve"
-        assert cb["ask_size"] is None, (
-            "a stale ASK_SIZE must not be published alongside a fresh BID_SIZE as a falsely-complete pair")
-    finally:
-        ofls.clear_symbol("SIZE_FRESH_C")
-
-
-def test_size_d_size_only_partial_delta_inside_window_survives():
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("SIZE_FRESH_D")
-    try:
-        t0 = 1_000_000.0
-        ofls.push_level_one("SIZE_FRESH_D",
-                            {"BID_PRICE": 4.10, "ASK_PRICE": 4.12, "BID_SIZE": 17, "ASK_SIZE": 29},
-                            ts_recv=t0)
-        ofls.push_level_one("SIZE_FRESH_D", {"BID_SIZE": 40, "ASK_SIZE": 41}, ts_recv=t0 + 2.0)
-        now = t0 + 2.5  # well inside the freshness window of the size-only delta
-        data = {"content": ofls.get_content_for_symbol("SIZE_FRESH_D")}
-        cb = ofe._extract_canonical_book(data, now_ts=now)
-        assert (cb["bid_size"], cb["ask_size"]) == (40, 41), "the new delta sizes must survive, not the stale originals"
-        assert (cb["bid"], cb["ask"]) == (4.10, 4.12), "price must survive the size-only delta unchanged"
-    finally:
-        ofls.clear_symbol("SIZE_FRESH_D")
-
-
-def test_size_e_zero_bid_size_resolves_as_a_real_value():
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("SIZE_FRESH_E")
-    try:
-        t0 = 1_000_000.0
-        ofls.push_level_one("SIZE_FRESH_E",
-                            {"BID_PRICE": 4.10, "ASK_PRICE": 4.12, "BID_SIZE": 0, "ASK_SIZE": 5},
-                            ts_recv=t0)
-        data = {"content": ofls.get_content_for_symbol("SIZE_FRESH_E")}
-        cb = ofe._extract_canonical_book(data, now_ts=t0 + 1.0)
-        assert cb["bid_size"] == 0, "a real BID_SIZE=0 must resolve as 0, not None"
-        m = ofe.compute_book_microstructure(data, now_ts=t0 + 1.0)
-        assert m["top_of_book"]["bid_size"] == 0
-    finally:
-        ofls.clear_symbol("SIZE_FRESH_E")
-
-
-def test_size_f_stale_price_and_stale_sizes_yield_no_falsely_complete_top_of_book():
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("SIZE_FRESH_F")
-    try:
-        t0 = 1_000_000.0
-        ofls.push_level_one("SIZE_FRESH_F",
-                            {"BID_PRICE": 4.10, "ASK_PRICE": 4.12, "BID_SIZE": 17, "ASK_SIZE": 29},
-                            ts_recv=t0)
-        now = t0 + ofe.OF_TOP_OF_BOOK_FIELD_STALE_SEC + 1.0  # nothing refreshed -- everything stale
-        data = {"content": ofls.get_content_for_symbol("SIZE_FRESH_F")}
-        cb = ofe._extract_canonical_book(data, now_ts=now)
-        assert (cb["bid"], cb["ask"], cb["bid_size"], cb["ask_size"]) == (None, None, None, None), (
-            "stale price AND stale sizes must never be published as a falsely-complete top of book")
-    finally:
-        ofls.clear_symbol("SIZE_FRESH_F")
+    assert ofe.OF_BOOK_STALE_SEC * 1000.0 == ofs.STREAMING_STALE_MS
 
 
 def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_level_one(monkeypatch):
     """The production seam (order_flow_streaming._ingest_pushed, fed by the daemon's live
     push) must hand push_level_one the MESSAGE's own ts_recv for both equity
     (LEVELONE_EQUITIES) and option (LEVELONE_OPTIONS) messages -- never the time the console
-    processed it -- so the freshness boundary this file proves above judges real ages."""
+    processed it."""
     import app.options.order_flow.streaming as ofs
     from stream_spine import options_quote_msg, quote_msg
 
@@ -788,6 +476,47 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
         "BIDS": [{"BID_PRICE": 0.02, "TOTAL_VOLUME": 10}],
         "ASKS": [{"ASK_PRICE": 0.03, "TOTAL_VOLUME": 12}],
         "BOOK_TIME": 1,
-    }, {"ASK_SIZE": 12}]
-    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices({"content": items})
+    }]
+    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices({"content": items, "top": {"ask_size": 12}})
     assert (bid, ask, bid_leaf, ask_leaf) == (None, None, None, None)
+
+
+def test_an_option_contracts_top_is_read_only_while_the_daemon_holds_it():
+    """O-01: the option top of book is the engine's input only while the one live rule
+    (live_market_plane.feed_live_for) holds for the contract; the daemon heartbeat now carries
+    LEVELONE_OPTIONS holdings. Real TSLA 260831C00367500 ticks (tests/fixtures)."""
+    import time
+    import live_market_plane as lmp
+    from app.options.order_flow import state
+    from app.options.order_flow.live_payload import options_live_payload
+    c = json.loads(FIXTURE.read_text(encoding="utf-8"))["contracts"][0]
+    sym = c["symbol"]
+    for ev in c["events"][:4]:
+        if ev["kind"] == "l1":
+            state.push_option_top(sym, ev["content"])
+    try:
+        lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}}, time.time())
+        assert lmp.feed_live_for(sym)
+        assert options_live_payload(sym)["flow"]["top_book_pressure"] is not None
+        lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": []}}, time.time())
+        assert options_live_payload(sym)["flow"]["top_book_pressure"] is None
+    finally:
+        state.clear_all_live_state()
+
+
+def test_the_equity_book_reads_the_one_l1_store_under_its_live_rule():
+    """O-01: /api/order-flow/microstructure takes the equity top of book from live_market_plane
+    while quote_is_fresh holds, and has none when the feed is down. Stand-in quote (named): bid
+    10.00 x 3, ask 10.02 x 5."""
+    import time
+    import live_market_plane as lmp
+    import server
+    from tests.feed_live_helper import mark_feed_live
+    mark_feed_live("ZZTB")
+    lmp.record_from_level_one_equity("ZZTB", {"LAST_PRICE": 10.01, "BID_PRICE": 10.0, "ASK_PRICE": 10.02,
+                                              "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01}, received_ts=time.time())
+    body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB").body)
+    assert body["flow"]["top_book_pressure"] == (3 - 5) / 8
+    lmp.record_feed_down()
+    body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB").body)
+    assert body["flow"]["top_book_pressure"] is None

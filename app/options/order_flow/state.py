@@ -38,6 +38,11 @@ def is_rth_open() -> bool:
         return False
 
 
+_OPTION_TOP_FIELDS = (("BID_PRICE", "bid", schwab_number), ("ASK_PRICE", "ask", schwab_number),
+                      ("BID_SIZE", "bid_size", schwab_count), ("ASK_SIZE", "ask_size", schwab_count),
+                      ("MARK", "mark", schwab_number))
+
+
 class OrderFlowState:
     """The one state-transition owner for live and isolated historical replay."""
 
@@ -50,7 +55,6 @@ class OrderFlowState:
         self._prev_trade: dict[str, dict] = {}
         self._receive_seq: dict[str, int] = {}
         self._receive_log: dict[str, deque] = {}
-        self._stream_volume: dict[str, float] = {}
         self._stream_greeks: dict[str, dict] = {}
         # A newly constructed instance is already empty. If it is created during
         # RTH (as isolated history states are), mark that session current so its
@@ -139,9 +143,6 @@ class OrderFlowState:
 
         # TOTAL_VOLUME as sent; a reported 0 is 0 (AGENTS.md rule 2).
         vf = schwab_count(content_item.get("TOTAL_VOLUME"))
-        if vf is not None:
-            with self._lock:
-                self._stream_volume[sym] = vf
 
         # (change percent lives on the live plane only: NET_CHANGE_PERCENT, one store. This
         # held REGULAR_MARKET_CHANGE_PERCENT with a CHANGE_PERCENT fallback -- a field Schwab
@@ -183,30 +184,6 @@ class OrderFlowState:
                 if iv is not None:
                     g["volatility"], g["volatility_ts_recv"] = iv, ts_recv
 
-        with self._lock:
-            top_item = dict(
-                self._top.get(sym)
-                or {
-                    "BID_PRICE": None,
-                    "ASK_PRICE": None,
-                    "BID_SIZE": None,
-                    "ASK_SIZE": None,
-                    "BID_TIME_MILLIS": None,
-                    "ASK_TIME_MILLIS": None,
-                }
-            )
-            for field in (
-                "BID_PRICE",
-                "ASK_PRICE",
-                "BID_SIZE",
-                "ASK_SIZE",
-                "BID_TIME_MILLIS",
-                "ASK_TIME_MILLIS",
-            ):
-                if field in content_item:
-                    top_item[field] = content_item[field]
-                    top_item[f"{field}_TS_RECV"] = ts_recv
-            self._top[sym] = top_item
 
         trade_ms = content_item.get("TRADE_TIME_MILLIS")
         last_price = content_item.get("LAST_PRICE")
@@ -254,8 +231,6 @@ class OrderFlowState:
         out: list[dict] = []
         with self._lock:
             out.extend(dict(item) for item in self._get_book(sym))
-            if sym in self._top:
-                out.append(dict(self._top[sym]))
             out.extend(dict(item) for item in self._get_tape(sym))
         return out
 
@@ -277,7 +252,6 @@ class OrderFlowState:
         self._receive_seq.clear()
         for values in self._receive_log.values():
             values.clear()
-        self._stream_volume.clear()
         self._stream_greeks.clear()
 
     def forget_unsubscribed_symbols(self, old: list[str], new: list[str]) -> None:
@@ -302,9 +276,30 @@ class OrderFlowState:
             self._receive_seq.pop(sym, None)
             if sym in self._receive_log:
                 self._receive_log[sym].clear()
-            self._stream_volume.pop(sym, None)
             self._stream_greeks.pop(sym, None)
 
+
+    def push_option_top(self, symbol: str, content_item: dict) -> None:
+        """An option contract's top of book (LEVELONE_OPTIONS BID/ASK price and size, MARK),
+        merged per field as Schwab sends changes only; not a number clears the field."""
+        sym = ticker_storage_key(symbol)
+        if not sym:
+            return
+        with self._lock:
+            top = self._top.setdefault(sym, {})
+            for field, name, read in _OPTION_TOP_FIELDS:
+                if field in content_item:
+                    v = read(content_item[field])
+                    if v is None:
+                        top.pop(name, None)
+                    else:
+                        top[name] = v
+
+    def option_top(self, symbol: str) -> Optional[dict]:
+        sym = ticker_storage_key(symbol)
+        with self._lock:
+            t = self._top.get(sym)
+            return dict(t) if t else None
 
     def get_stream_greeks(self, symbol: str) -> Optional[dict]:
         """Return the latest streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME for one OPTION
@@ -324,6 +319,14 @@ class OrderFlowState:
 
 
 _LIVE_STATE = OrderFlowState()
+
+
+def push_option_top(symbol: str, content_item: dict) -> None:
+    _LIVE_STATE.push_option_top(symbol, content_item)
+
+
+def option_top(symbol: str) -> Optional[dict]:
+    return _LIVE_STATE.option_top(symbol)
 
 
 def push_book(symbol: str, content_item: dict) -> None:

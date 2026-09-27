@@ -39,7 +39,7 @@ def test_rvol_is_streamed_volume_over_avg10d_only():
 
 
 def test_spread_pts_and_frac_units_not_mixed():
-    data = {"content": [{"BID_PRICE": 500.0, "ASK_PRICE": 500.1, "MARK": 500.05}]}
+    data = {"top": {"bid": 500.0, "ask": 500.1, "mark": 500.05}}
     spread_d = _compute_spread(data)
     assert spread_d["spread_pts"] == 0.1
     assert spread_d["spread_frac"] is not None
@@ -50,7 +50,7 @@ def test_spread_pts_and_frac_units_not_mixed():
 
 
 def test_spread_frac_fail_closed_without_mark():
-    data = {"content": [{"BID_PRICE": 500.0, "ASK_PRICE": 500.1}]}
+    data = {"top": {"bid": 500.0, "ask": 500.1}}
     spread_d = _compute_spread(data)
     assert spread_d["spread_pts"] == 0.1
     assert spread_d["spread_frac"] is None
@@ -117,14 +117,14 @@ def test_options_flow_default_uses_total_volume_not_last_size():
 
 
 def test_top_book_pressure_emits_source_tier():
-    pressure, tier = _compute_top_book_pressure({"content": [{"BID_SIZE": 100, "ASK_SIZE": 50}]})
+    pressure, tier = _compute_top_book_pressure({"top": {"bid_size": 100, "ask_size": 50}})
     assert pressure is not None
     assert tier == "schwab_stream"
 
 
 def test_top_book_pressure_streaming_uses_bid_ask_size_leaves_only():
     pressure, tier = _compute_top_book_pressure(
-        {"content": [{"BID_SIZE": 120, "ASK_SIZE": 80}]}
+        {"top": {"bid_size": 120, "ask_size": 80}}
     )
     assert pressure == (120 - 80) / 200
     assert tier == "schwab_stream"
@@ -163,7 +163,7 @@ def test_order_flow_engine_no_rvol_one_point_zero_in_source():
 
 
 def test_order_flow_compute_exposes_split_spread_fields():
-    out = OrderFlowEngine().compute({"content": [{"BID_PRICE": 10.0, "ASK_PRICE": 10.2, "MARK": 10.1}]})
+    out = OrderFlowEngine().compute({"content": [], "top": {"bid": 10.0, "ask": 10.2, "mark": 10.1}})
     assert out["spread_pts"] == 0.2
     assert out["spread_frac"] is not None
     assert out["spread_pts"] != out["spread_frac"]

@@ -58,6 +58,7 @@ from app.options.order_flow.state import (
     forget_unsubscribed_symbols,
     push_book,
     push_level_one,
+    push_option_top,
 )
 
 import live_market_plane as _lmp
@@ -332,6 +333,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if not isinstance(content, dict):
             return None
         push_level_one(sym, content, ts_recv=ts)
+        push_option_top(sym, content)
         _push_messages_applied += 1
         _option_streaming_last_update_ts = ts
         _option_contract_last_update_ts[sym] = ts
