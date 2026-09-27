@@ -47,8 +47,6 @@ def _load_real_chain() -> tuple[list, float]:
     return data["chain"], float(data["spot"])
 
 
-
-
 def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
     chain, spot = _load_real_chain()
     prof = compute_gamma_profile(chain, spot, span_pct=0.15, steps=120)
@@ -158,17 +156,6 @@ def test_gamma_at_price_clamps_outside_the_profile() -> None:
 # hardcoded table for three tickers, leaving every other ticker on a fixed 40. MEASURED
 # across 52 stored chains 2026-07-20: that table was wrong in BOTH directions. $SPX needed
 # 150 and got 40; IWM needed 30 and got 80; ~48 equities needed under 20 and got 40.
-
-
-
-
-
-
-
-
-
-
-
 
 
 # ── FLIP DETECTION IS DIRECTION-BLIND (Bugbot 2026-07-20, HIGH — confirmed) ──
@@ -306,8 +293,6 @@ def test_unavailable_on_empty_or_bad_inputs():
     assert compute_gamma_support_levels(_linear_profile(90, 110, 1e9, 2e9), -5)["state"] == GSF_STATE_UNAVAILABLE
 
 
-
-
 def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
     """RC-357: share = sum|0DTE net_gex_1pct| / sum|all net_gex_1pct|; None when the
     full book is empty or has no measurable gamma — never a fabricated 0%."""
@@ -320,8 +305,6 @@ def test_rc357_zero_dte_gamma_share_ratio_and_fail_closed():
     assert compute_zero_dte_gamma_share(all_book, {}) == 0.0           # genuine zero 0DTE
     assert compute_zero_dte_gamma_share({}, zero_book) is None         # empty full book
     assert compute_zero_dte_gamma_share({700.0: {"net_gex_1pct": 0.0}}, {}) is None
-
-
 
 
 def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
@@ -355,8 +338,6 @@ def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
     assert compute_25d_risk_reversal([{"putCall": "CALL", "daysToExpiration": 1}]) is None
 
 
-
-
 def test_rc362_net_vanna_math_and_fail_closed():
     """RC-362: net vanna = Σcall_vanna − Σput_vanna shares per vol-pt (the book is per vol point
     since 2026-09-27, one unit everywhere), ×spot in $; None on empty/valueless book or missing
@@ -387,8 +368,6 @@ def test_rc362_net_vanna_math_and_fail_closed():
     assert compute_net_vanna({700.0: {"other": 1}}, 800.0) is None
 
 
-
-
 def test_rc361_net_dex_dollars_sign_model_and_fail_closed():
     """RC-361: net DEX = Σ call_dex − Σ put_dex (dealer +call/−put; negative put deltas
     flip to the dealer side correctly); None on an empty/valueless book."""
@@ -400,8 +379,6 @@ def test_rc361_net_dex_dollars_sign_model_and_fail_closed():
     assert out == {"net_dex": 1.1e9, "call_dex": 7e8, "put_dex": -4e8}
     assert compute_net_dex_dollars({}) is None
     assert compute_net_dex_dollars({700.0: {"other": 1}}) is None
-
-
 
 
 def test_rc359_delta_oi_walls_build_unwind_and_fail_closed():
@@ -453,32 +430,6 @@ def test_rc359_oi_banking_and_prev_session_reader(tmp_path):
     # wiring above (server.py stamps the field) is real and unaffected either way. Flagged
     # for the operator: six already-computed risk metrics currently have no UI consumer at
     # all post-cutover, not fixed here.
-
-
-def test_rc354_iv_banking_upsert_last_write_wins(tmp_path):
-    """RC-354b: iv_daily banks one row per (ticker, ET date); the LAST write of the
-    session wins so the banked value converges to the closing ATM IV (IVR convention)."""
-    import sqlite3
-
-    from db import EdDB
-
-    d = EdDB(tmp_path / "iv.db", allow_noncanonical=True)
-    d.bank_daily_atm_iv("SPY", "2026-08-15", 18.5, 1, "IV_SIGMA_1D", 1.0)
-    d.bank_daily_atm_iv("SPY", "2026-08-15", 21.0, 1, "IV_SIGMA_1D", 2.0)  # later wins
-    d.bank_daily_atm_iv("SPY", "2026-08-16", 19.0, 1, "IV_SIGMA_1D", 3.0)
-    d.bank_daily_atm_iv("QQQ", "2026-08-15", 22.5, 1, "IV_SIGMA_1D", 4.0)
-    with sqlite3.connect(tmp_path / "iv.db") as conn:
-        rows = conn.execute(
-            "SELECT ticker, date_et, atm_iv_pct FROM iv_daily ORDER BY ticker, date_et"
-        ).fetchall()
-    assert rows == [("QQQ", "2026-08-15", 22.5),
-                    ("SPY", "2026-08-15", 21.0),   # upsert: closing value, not first
-                    ("SPY", "2026-08-16", 19.0)]
-    # the terrain-refresh hook is wired (source assertion on the one write site)
-    srv = Path(__file__).resolve().parent.parent.joinpath("server.py").read_text(encoding="utf-8")
-    assert "bank_daily_atm_iv(" in srv and "iv_pct_atm" in srv
-
-
 
 
 def test_the_flip_counts_the_contracts_it_could_not_price():

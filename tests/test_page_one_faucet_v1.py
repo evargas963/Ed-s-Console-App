@@ -108,7 +108,7 @@ def test_every_alert_carries_the_time_it_was_observed(held, monkeypatch):
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (near, server.SPOT_SOURCE_PLANE, 1_788_000_000.0))
     monkeypatch.setattr(server._lpr, "live_spot", lambda tk: near)   # stand-in: the live price
     cross_ts = time.time() - 5
-    monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda tk, n=10: [
+    monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda ticker, n=10: [
         {"ts_utc": cross_ts, "direction": "up", "level_name": "gamma_flip"}])
     alerts = json.loads(server.get_alerts(ticker=TK).body)["alerts"]
     (at_wall,) = [a for a in alerts if a["text"].startswith(f"At Call wall {wall:.2f}")]
@@ -123,7 +123,7 @@ def test_no_near_level_alert_without_a_live_price(held, monkeypatch):
     wall = held["call_wall"]
     near = wall * (1 - server.LEVEL_NEAR_SPOT_FRACTION / 2)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (near, server.SPOT_SOURCE_CAPTURE, 1_788_000_000.0))
-    monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda tk, n=10: [])
+    monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda ticker, n=10: [])
     body = json.loads(server.get_alerts(ticker=TK).body)
     assert body["alerts"] == [] and body["withheld"].startswith("no live price")
 

@@ -163,6 +163,7 @@ from schwab_client import (
     SchwabAuthError,
 )
 from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
+from numeric_contract import schwab_number
 from market_context import (
     market_context_panel_symbols_excluding_core,
 )
@@ -1504,6 +1505,10 @@ def favicon():
     return Response(status_code=204)
 
 
+#: the stored cross direction in words; a direction not stored reads "through", never a side
+_CROSS_WORD = {"up": "above", "down": "below"}
+
+
 def _merged_recent_crosses(edb, ticker: str, n: int) -> "tuple[list[dict], int]":
     """The newest `n` level crosses with coincident rows merged into one event, and how many
     stored rows they came from. The one reader of level crosses for every route."""
@@ -1789,7 +1794,9 @@ def _log_flip_drift(tk: str, payload: dict) -> None:
         flip = payload.get("gamma_flip")
         if flip is None:
             return
-        _ts = round(float(payload.get("computed_ts_utc") or time.time()), 1)
+        if payload.get("computed_ts_utc") is None:
+            return                      # no compute time, no row: never stamped "now"
+        _ts = round(float(payload["computed_ts_utc"]), 1)
         # RC-58: INTRADAY drift is the question, so only real trading sessions may be logged.
         # The loop runs around the clock, and the first week of this log was 784 of 784 rows from
         # a single SUNDAY window — spot frozen, so it measured a median 0.023 percent movement and
@@ -2565,7 +2572,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             # only a viewed ticker is repriced between chain fetches, so only its chain is kept
             "_chain": chain if viewed else None, "_chain_fetched_ts": fetched_ts,
         })
-        if viewed and spot and snap.books:
+        if viewed and spot is not None and snap.books:
             surface = project_gamma_surface(priced, snap.books)
             surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts,
                            stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
@@ -2729,27 +2736,11 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         _atr = _atr_pair(tk)
         with _terrain_cache_lock:
             payload = _terrain_cache[tk]
-            payload.update(atr_daily=round(_atr.daily, 3) if _atr.daily else None,
-                           atr_15m=round(_atr.m15, 3) if _atr.m15 else None)
+            payload.update(atr_daily=round(_atr.daily, 3) if _atr.daily is not None else None,
+                           atr_15m=round(_atr.m15, 3) if _atr.m15 is not None else None)
         _log_flip_drift(tk, payload)
         _terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
         _note_terrain_success(tk)                   # RC-148: and the failure streak with it
-        # RC-354: bank the day's ATM IV from the sigma band this refresh already computed
-        # (one faucet, zero added vendor calls). UPSERT — last write of the session wins,
-        # converging to the CLOSING IV that IV Rank/Percentile are defined against.
-        try:
-            _em_band = payload.get("implied_1d_move") or {}
-            _iv = _em_band.get("iv_pct_atm")
-            if _iv is not None and float(_iv) > 0:
-                from time_et import now_et as _iv_now_et
-                get_db().bank_daily_atm_iv(
-                    tk, _iv_now_et().strftime("%Y-%m-%d"), float(_iv),
-                    _em_band.get("dte_used"), _em_band.get("method"), time.time())
-        except Exception as _iv_e:
-            # institutional-swallow-ok: IV banking is an accrual side-effect — a write
-            # failure is logged but must never take down the terrain refresh that feeds
-            # the live desk. The gap simply shows as a missing day in iv_daily.
-            log.warning("iv_daily banking failed for %s: %s", tk, _iv_e)
         # RC-359: bank today's per-strike OI (same exposures book) and compute the ΔOI
         # walls vs the prior banked session. Fail-closed: no prior session -> walls None
         # (the Console says 'banking'), never a fabricated diff.
@@ -2768,8 +2759,8 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                     if tk in _terrain_cache:
                         _terrain_cache[tk]["delta_oi_walls"] = _walls
         except Exception as _oi_e:
-            # institutional-swallow-ok: same accrual doctrine as iv_daily above — log,
-            # never break the refresh; a missing day is a visible gap.
+            # institutional-swallow-ok: an accrual side effect -- log, never break the
+            # refresh; a missing day is a visible gap.
             log.warning("oi_daily banking failed for %s: %s", tk, _oi_e)
         return f"ok:{snap.confidence}"
     except Exception as e:
@@ -4028,7 +4019,7 @@ def get_desk_events(ticker: str = Query(...),
         cid = c.get("cross_id")                      # external-key-ok: ed_console.db level_crosses column
         items.append({"key": f"x{cid}", "n": i + 1, "ts": c["ts_utc"], "dom": "LEVELS",
                       "dir": c.get("direction"), "marker": True,
-                      "title": f"Crossed {'above' if c.get('direction') == 'up' else 'below'} {names}",
+                      "title": f"Crossed {_CROSS_WORD.get(c.get('direction'), 'through')} {names}",
                       "detail": f"{_f2(c.get('level_value'))} · spot {_f2(c.get('spot_at_cross'))}"
                                 + (f" · zone {c['zone_after']}" if c.get("zone_after") else ""),
                       "src": "level_crosses"})
@@ -4058,9 +4049,9 @@ def get_desk_events(ticker: str = Query(...),
         items.append({"key": f"ra{i}", "ts": a["ts_utc"], "dom": "ALERT", "dir": None,
                       "title": a["text"], "detail": "", "src": "/api/alerts"})
     items.sort(key=lambda it: (it["ts"] is None, -(it["ts"] if it["ts"] is not None else 0.0)))
-    up = sum(1 for c in in_window if c.get("direction") == "up")
     return JSONResponse({"ticker": tk, "tf": tf, "window_start_ts_utc": start, "items": items,
-                         "cross_counts": {"up": up, "down": len(in_window) - up}})
+                         "cross_counts": {d: sum(1 for c in in_window if c.get("direction") == d)
+                                          for d in ("up", "down")}})
 
 
 @app.get("/api/alerts")
@@ -4077,10 +4068,10 @@ def get_alerts(ticker: str = Query(...)):
                        f"({abs(r['distance']):.2f} {'above' if r['side'] == 'ABOVE' else 'below' if r['side'] == 'BELOW' else 'at'} spot)",
                "ts_utc": lv["spot_as_of_ts_utc"]}
               for r in lv["levels"] if live and r.get("near_spot")]
-    for c in get_db().get_recent_crosses(tk, n=10):
-        if time.time() - float(c["ts_utc"]) <= RECENT_CROSS_SEC:
-            alerts.append({"text": f"Just crossed {'up' if c['direction'] == 'up' else 'down'} "
-                                   f"through {c['level_name']} level",
+    for c in _merged_recent_crosses(get_db(), tk, 10)[0]:
+        if c.get("ts_utc") is not None and time.time() - float(c["ts_utc"]) <= RECENT_CROSS_SEC:
+            alerts.append({"text": f"Just crossed {_CROSS_WORD.get(c.get('direction'), 'through')} "
+                                   f"{' + '.join(c['level_names'])}",
                            "ts_utc": float(c["ts_utc"])})
     return JSONResponse({"ticker": tk, "alerts": alerts,
                          "withheld": None if live else "no live price: near-level alerts need the current price"})
@@ -4466,12 +4457,12 @@ def get_chain(ticker: str = Query(...),
         "ticker": t, "spot": live_spot, "priced_at_spot": held.get("spot"),
         "expiry": resolved_expiry,
         "net_gex_by_strike": net_gex_by_strike,
-        "spot_strike": nearest_strike({c.get("strikePrice") for c in response_contracts
-                                       if c.get("strikePrice") is not None}, live_spot),
+        "spot_strike": nearest_strike({k for c in response_contracts
+                                       if (k := schwab_number(c.get("strikePrice"))) is not None}, live_spot),
         "adjusted_deliverable_symbols": [c.get("symbol") for c in response_contracts
                                          if _adjusted_deliverable(c, t)],
         # two contracts listed at one (strike, side): the chain is not strike-unique
-        "has_duplicate_contracts": len({(c.get("strikePrice"), c.get("putCall")) for c in response_contracts})
+        "has_duplicate_contracts": len({(schwab_number(c.get("strikePrice")), c.get("putCall")) for c in response_contracts})
                                    < len(response_contracts),
         "chain_as_of_ts_utc": fetched_ts,
         "contracts": response_contracts, "status": "ok",
