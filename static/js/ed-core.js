@@ -65,11 +65,6 @@
       { id: 'profile', label: 'Profile', state: 'na' },
       { id: 'vwap', label: 'VWAP / Value', state: 'na' }, { id: 'session', label: 'Session', state: 'na' },
       { id: 'history', label: 'History', state: 'na' } ], views: Object.create(null) },
-    'desk': { title: 'DESK / RESEARCH', subs: [
-      { id: 'radar', label: 'Radar' }, { id: 'brief', label: 'Brief' }, { id: 'dossier', label: 'Dossier' },
-      { id: 'structures', label: 'Structures' }, { id: 'scenarios', label: 'Scenarios' },
-      { id: 'evidence', label: 'Evidence' }, { id: 'replay', label: 'Replay' },
-      { id: 'ai-research', label: 'AI Research', state: 'na', note: 'NOT PROVEN' } ], views: Object.create(null) },
     'portfolio': { title: 'PORTFOLIO / RISK', subs: [
       { id: 'positions', label: 'Positions', state: 'na' }, { id: 'exposure', label: 'Exposure', state: 'na' },
       { id: 'risk', label: 'Risk', state: 'na' }, { id: 'scenarios', label: 'Scenarios', state: 'na' } ], views: Object.create(null) },

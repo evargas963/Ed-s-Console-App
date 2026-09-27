@@ -85,7 +85,7 @@ operator.
 4. **The console computes the levels** in the same process that serves the page.
 5. **The browser polls** for bars, order flow, liquidity and the levels themselves.
 6. **The standalone pages compute values** in their inline scripts (`static/chart.html`,
-   `static/exposure.html`, `static/desk.html`): P2-4. The console's page scripts compute none (the 64
+   `static/exposure.html`): P2-4. The console's page scripts compute none (the 64
    sites inventoried 2026-09-27 moved to the server, P1-3; the Chain view's grouping and sort, P2-4).
 
 ## 4. The target

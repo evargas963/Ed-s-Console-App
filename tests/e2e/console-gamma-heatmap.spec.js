@@ -172,10 +172,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
   });
 
-  test('shell structure: rail has all seven workspaces + 3-tier nav', async ({ page }) => {
+  test('shell structure: rail has all six workspaces + 3-tier nav', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.navitem[data-ws]')).toHaveCount(7);
-    for (const ws of ['trade-desk', 'order-flow', 'options', 'liquidity', 'desk', 'portfolio', 'system']) {
+    await expect(page.locator('.navitem[data-ws]')).toHaveCount(6);   // Desk / Research dropped (operator 2026-09-27)
+    for (const ws of ['trade-desk', 'order-flow', 'options', 'liquidity', 'portfolio', 'system']) {
       await expect(page.locator(`.navitem[data-ws="${ws}"]`)).toHaveCount(1);
     }
     await expect(page.locator('#subnav .wtitle')).toContainText('OPTIONS');

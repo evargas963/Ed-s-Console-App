@@ -41,12 +41,12 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 | `liquidity_value_engine.py`, `liquidity_models.py` | `producer/` |
 | `app/options/order_flow/`, `l1_trade_observation.py`, `micro_structure.py` | `producer/` |
 | From `server.py`: the levels loop, `_publish_levels`, the gamma-surface projection | `producer/` |
-| From `server.py`: the routes, startup; `app/api/routes/options_order_flow.py`, `release_object.py`, `desk_store.py` | `console/` |
+| From `server.py`: the routes, startup; `app/api/routes/options_order_flow.py`, `release_object.py` | `console/` |
 | `time_et.py`, `timeframe_config.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `production_universe.py`, `scheduler_user_tickers.py`, `numeric_contract.py` | `shared/` |
 | `static/index.html`, `static/js/`, `static/css/` | `static/` |
 | `start_*.bat`, `runtime_preflight.py`, `live_schwab_env.py`, `launcher_port_guard.py`, `wait_for_ready_then_open.py`, `reauth_schwab.py` | stay at the root |
 | `ml_horizon.py`, `horizon_outcomes.py`, `movement_target_threshold.py`, `decision_record.py`, `execution_identity.py`, `calibration/schema.py` | delete (the ML stack; P2-5) |
-| `static/chart.html`, `desk.html`, `exposure.html` | delete after P2-4 (what is unique moves into the shell) |
+| `static/chart.html`, `exposure.html` | delete after P2-4 (what is unique moves into the shell) |
 | `schwab_field_dictionary_builder.py` | checked at its step: delete if nothing needs it |
 
 ## 3. Taking apart the two big files (measured 2026-09-26)
