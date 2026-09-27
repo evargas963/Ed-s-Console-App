@@ -7,28 +7,29 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-TESTS = Path(__file__).resolve().parent
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 PINNED = re.compile(r"pin_clock|setattr\(\s*time_et\s*,\s*[\"']now_et")
 
 
 def _chain_fixtures() -> list[str]:
-    names = [p.name for p in (TESTS / "fixtures").glob("*.json")
+    names = [p.name for p in FIXTURES.glob("*.json")
              if "expirationDate" in p.read_text(encoding="utf-8")]
     assert names, "no stored chains found -- the check would pass on nothing"
     return names
 
 
-def test_every_test_that_loads_a_stored_chain_pins_the_clock():
+def test_every_test_that_loads_a_stored_chain_pins_the_clock(repo_index):
     chains = _chain_fixtures()
-    loaders = 0
-    offenders = []
-    for p in sorted(TESTS.glob("test_*.py")):
-        if p.name == Path(__file__).name:
+    loaders, offenders = 0, []
+    for rel, text, _tree in repo_index.items():
+        path = rel.as_posix()
+        if not (path.startswith("tests/test_") and path.endswith(".py")):
             continue
-        s = p.read_text(encoding="utf-8", errors="ignore")
-        if any(c in s for c in chains):
+        if path.endswith(Path(__file__).name):
+            continue
+        if any(c in text for c in chains):
             loaders += 1
-            if not PINNED.search(s):
-                offenders.append(p.name)
+            if not PINNED.search(text):
+                offenders.append(path)
     assert loaders > 10, "the scan found too few chain tests -- it is not looking"
     assert not offenders, f"load a stored chain without pinning the clock: {offenders}"
