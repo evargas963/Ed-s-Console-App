@@ -119,3 +119,84 @@ def test_a_book_with_no_age_is_not_reported_fresh():
     from app.options.order_flow.engine import compute_book_microstructure
     out = compute_book_microstructure({"content": {}}, now_ts=1_800_000_000.0)
     assert out["ages"]["book_age_sec"] is None and out["ages"]["book_stale"] is None
+
+
+def test_days_to_expiry_are_schwabs_as_sent(held):
+    """The expiry dropdown's DTE: Schwab's daysToExpiration from the chain, not the browser's
+    clock (it counted days in UTC, a day off after 7 PM Central)."""
+    body = json.loads(server.get_expiries(ticker=TK).body)
+    assert body["expiries"] == [EXPIRY]
+    assert body["dte"] == {EXPIRY: _CONTRACTS[0]["daysToExpiration"]}
+
+
+@pytest.mark.parametrize("route", [
+    lambda: server.get_chain(ticker=TK, expiry=EXPIRY),
+    lambda: server.get_options_gamma_surface(ticker=TK),
+    lambda: server.get_terrain_strikes(ticker=TK),
+], ids=["chain", "gamma-surface", "terrain-strikes"])
+def test_the_spot_row_is_served(held, route):
+    """The row every panel marks as spot: the listed strike nearest the live price, served (it
+    was worked out in six places in the page)."""
+    body = json.loads(route().body)
+    strikes = sorted({float(c["strikePrice"]) for c in _CONTRACTS})
+    assert body["spot_strike"] == min(strikes, key=lambda k: abs(k - LIVE))
+
+
+def test_put_call_ratios_over_every_expiry_are_served(held):
+    """With no expiry selected the Put/Call rows show the whole book, served (the page used to
+    pick the first expiry in its list, an expired one on 2026-09-27)."""
+    assert held["pcr_all"] is not None
+    assert held["pcr_all"] == held["pcr_by_expiry"][EXPIRY]      # one expiry: the same book
+
+
+def test_levels_are_served_in_ladder_order_with_distance_and_near_spot(monkeypatch):
+    """The levels panel and the Trade Desk used to sort levels, measure distance to spot and apply
+    the 0.15% near-spot rule in the page. Real SPY 1-minute bars (2026-09-24 and 25)."""
+    from datetime import datetime as _dt
+    import time_et as te
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
+                    .read_text(encoding="utf-8"))
+    spot = fx["bars"][-1]["close"]                               # the session's last real close
+    monkeypatch.setattr(server, "_liquidity_live_1m_overlay_bars", lambda t: fx["bars"])
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
+    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
+    body = json.loads(server.get_levels(ticker="SPY").body)
+    lv = body["levels"]
+    priced = [r for r in lv if r["price"] is not None]
+    assert len(priced) > 5
+    assert [r["price"] for r in priced] == sorted((r["price"] for r in priced), reverse=True)
+    for r in priced:
+        assert r["distance"] == pytest.approx(r["price"] - spot)
+        assert r["near_spot"] == (abs(r["price"] - spot) / spot < server.LEVEL_NEAR_SPOT_FRACTION)
+    assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - spot))]
+
+
+def test_heatmap_column_state_cell_age_and_front_expiry_are_served(held, monkeypatch):
+    """Column streaming status and a cell's age come from the server's own stream states; the
+    front column is the nearest unexpired expiry."""
+    surf = held["_gamma_surface"]
+    calls = [c for c in _CONTRACTS if c["putCall"] == "CALL"]
+    live_sym, stale_sym = calls[0]["symbol"], calls[1]["symbol"]
+    now = time.time()
+    streamed = {live_sym: {"quote_ts": now - 2}, stale_sym: {"quote_ts": now - 90}}
+    monkeypatch.setattr(server, "_leg_stream_ts_recv", lambda g: g.get("quote_ts") if g else None)
+    server._stamp_gamma_surface_cell_stream_state(surf, streamed, {live_sym}, {}, {live_sym, stale_sym})
+    assert surf["stream_by_expiry"][EXPIRY] == "partial"          # one live leg in the column
+    ages = [c["stream"][0]["age_sec"] for c in surf["cells"] if c["stream"][0] and c["stream"][0]["age_sec"] is not None]
+    assert ages and max(ages) == pytest.approx(90, abs=1)
+    body = json.loads(server.get_options_gamma_surface(ticker=TK).body)
+    assert body["front_expiry"] == EXPIRY
+
+
+def test_chain_flags_are_served(held):
+    """ADJUSTED DELIVERABLE and duplicate contracts: served flags, not page rules."""
+    body = json.loads(server.get_chain(ticker=TK, expiry=EXPIRY).body)
+    plain = [c["symbol"] for c in _CONTRACTS if len(c.get("optionDeliverablesList") or []) == 1]
+    assert plain and not set(plain) & set(body["adjusted_deliverable_symbols"])
+    assert body["has_duplicate_contracts"] is False
+
+
+def test_the_largest_gex_strike_is_served(held):
+    rows = held["_per_strike"]["all"]
+    body = json.loads(server.get_terrain_strikes(ticker=TK).body)
+    assert body["max_abs_strike"] == max(rows, key=lambda r: abs(r[1]))[0]

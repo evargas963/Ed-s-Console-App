@@ -161,7 +161,11 @@
       }
       var r;
       try { r = run(controller && controller.signal); } catch (e) { settle(); throw e; }
-      if (r && typeof r.then === 'function') r.then(settle, settle);
+      // a load that fails (other than an abort by a newer context) is reported, never swallowed
+      if (r && typeof r.then === 'function') r.then(settle, function (e) {
+        settle();
+        if (!(e && e.name === 'AbortError') && typeof console !== 'undefined') console.error(e);
+      });
       else settle();
     }
     function trigger(key) {

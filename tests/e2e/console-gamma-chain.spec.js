@@ -21,7 +21,7 @@ function occSymbol(root, isoExpiry, side, strike) {
   const strikeStr = String(Math.round(strike * 1000)).padStart(8, '0');
   return root.padEnd(6, ' ') + yymmdd + (side === 'PUT' ? 'P' : 'C') + strikeStr;
 }
-const CHAIN = { ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
+const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
   scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
   contracts: [
     ct('CALL', 102, 'SPY   260911C00102000', 1200, 300, 11.1, 0.35), ct('PUT', 102, 'SPY   260911P00102000', 900, 250, 12.1, -0.65),

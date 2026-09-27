@@ -59,6 +59,9 @@ class Snap:
     charm_by_strike = {}
     confidence = None
     spot = 100.0
+    # the levels the refresh reads after publishing (level crosses): none computed here. The
+    # stand-in lacked them, so every refresh it drove failed at that step, logged and unnoticed.
+    call_wall = put_wall = gamma_flip = net_gex_peak = max_pain = call_delta_wall = put_delta_wall = None
 
     def __init__(self, contracts):
         self.contracts = contracts
@@ -102,6 +105,7 @@ def test_producer_gates_projection_on_demand(monkeypatch):
         "expirations": [], "strikes": [], "cells": [], "stream_overlay_contracts": 0,
         "stream_overlay_symbols": [], "surface_seq": 1,
         "spot": 100.0, "spot_source": "stub", "spot_as_of_ts_utc": 0.0,
+        "stream_by_expiry": {},          # each column's served streaming state (none: no columns)
     }
 
     server._gamma_surface_demand.pop(tk, None)

@@ -84,8 +84,8 @@ operator.
 3. **The console talks to Schwab** (REST chains) — the daemon should own every Schwab call.
 4. **The console computes the levels** in the same process that serves the page.
 5. **The browser polls** for bars, order flow, liquidity and the levels themselves.
-6. **The browser computes values** (measured 2026-09-27): days to expiry, the spot row (6 copies),
-   the nearest level, position against the walls, near-spot, the largest-GEX strike, volume totals.
+6. **The browser computes values**: 64 sites inventoried 2026-09-27; the gamma screens' moved to the
+   server (PR A); the Trade Desk, order-flow and Flow ones remain (ACTIVE_PROGRAM P1-3).
 
 ## 4. The target
 

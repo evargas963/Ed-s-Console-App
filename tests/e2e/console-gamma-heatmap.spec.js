@@ -34,7 +34,7 @@ function demandAck(body, requested) {
 }
 
 const SURFACE = {
-  ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41,
+  ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41, spot_strike: 583, front_expiry: '2026-09-11',
   source: 'terrain_live_cache', live: true, stale: false, age_sec: 3, chain_basis: 'full',
   complete: false,
   coverage: { window: 'live_near_money', chain_basis: 'full', strike_count: 3,
@@ -111,9 +111,10 @@ const TERRAIN = {
   regime: 'LONG_GAMMA_CHOP', levels_stale: false,
   expiries: ['2026-09-11', '2026-09-18'], pcr_by_expiry: { '2026-09-11': 0.87, '2026-09-18': 1.13 },
   pcr_volume_by_expiry: { '2026-09-11': 1.42, '2026-09-18': 0.64 },
+  pcr_all: 1.02, pcr_volume_all: 0.93,
 };
 const STRIKES = {
-  ticker: '$SPX', spot: 583.41,
+  ticker: '$SPX', spot: 583.41, spot_strike: 583, max_abs_strike: 583,
   today: { all: [[586, -264500, 1200], [583, 958600, 5400], [580, -90000, 900]] },
 };
 const BARS = {
@@ -123,7 +124,7 @@ const BARS = {
   }),
 };
 const CHAIN = {
-  ticker: '$SPX', spot: 583.41, expiry: '2026-09-11', status: 'ok',
+  ticker: '$SPX', spot: 583.41, spot_strike: 583, expiry: '2026-09-11', status: 'ok',
   contracts: [
     { putCall: 'CALL', strikePrice: 583, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },
     { putCall: 'PUT', strikePrice: 583, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' },
@@ -475,36 +476,25 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(html).toContain('Gamma surface unavailable');
   });
 
-  test('heatmap column tooltip reflects the real subscription outcome, not just what was requested (2026-09-13, independent-review finding)', async ({ page }) => {
-    // Independent-review finding (2026-09-13), REPRODUCED: the column tooltip claimed
-    // "sub-second streaming updates active for this column" the instant a column was in
-    // demandCols -- but that only names what the CLIENT asked for. With the streaming-
-    // control endpoint returning a real HTTP 503 (confirmed contracts stay empty), the
-    // tooltip kept claiming active streaming anyway. It must now say REQUESTED (pending),
-    // then flip to the real REJECTED wording once the server's own answer comes back.
+  test('each column streaming status is the served stream_by_expiry, never a page-side verdict', async ({ page }) => {
+    // The page used to track its own accepted/observed/rejected verdict per column from the
+    // subscription POST and the overlay symbols. The server now serves each column's state from
+    // its cells' stream states (server.py _stream_state_of); the tooltip only picks the words.
+    const surf = surfaceWithContracts(3, 3);
+    const e = surf.expirations.map((x) => x.expiry);
+    surf.front_expiry = e[0];
+    surf.stream_by_expiry = { [e[0]]: 'partial', [e[1]]: 'pending', [e[2]]: 'rejected' };
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(3, 3)),
-    }));
-    // A deliberate delay makes the transient PENDING state actually observable (a mocked
-    // local route can otherwise resolve faster than the first assertion poll, making the
-    // real, correct intermediate state invisible to the test -- not a defect in the fix).
-    await page.route('**/api/streaming/active-option-contracts', async (route) => {
-      await new Promise((r) => setTimeout(r, 300));
-      route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
-    });
+      status: 200, contentType: 'application/json', body: JSON.stringify(surf) }));
+    // a failed subscription POST does not change what the served states say
+    await page.route('**/api/streaming/active-option-contracts', (route) => route.fulfill({
+      status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    // Always-live heatmap mandate (2026-09-15) supersedes this count: Auto scope now demands
-    // EVERY visible column (see the "declares live-streaming demand for every visible
-    // column's contracts" test), not just the front one -- surfaceWithContracts(3, 3) has 3
-    // unexpired columns, all within them the demand set, so all 3 carry '.stream-demand'.
-    // The single POST's real 503 rejects the whole set at once, so every column's own
-    // tooltip reflects the identical real outcome; `.first()` below checks one as
-    // representative of all three.
     const col = page.locator('.heat thead th.hexp.stream-demand');
     await expect(col).toHaveCount(3);
-    await expect(col.first()).toHaveAttribute('title', /awaiting confirmation/);
-    await expect(col.first()).toHaveAttribute('title', /NOT accepted by the server/, { timeout: 3000 });
-    await expect(col.first()).not.toHaveAttribute('title', /streaming updates active/);
+    await expect(col.nth(0)).toHaveAttribute('title', /streaming updates observed/);
+    await expect(col.nth(1)).toHaveAttribute('title', /requested .* awaiting the first observed update/);
+    await expect(col.nth(2)).toHaveAttribute('title', /vendor refused/);
   });
 
   test('Wider and All scope declare real streaming demand for what they display, not zero (2026-09-13, operator-directed)', async ({ page }) => {
@@ -558,6 +548,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // demand would be empty and this test could not tell "no push happened" apart from
     // "the surface never carried contracts to demand in the first place".
     const REAL = Object.assign({}, REAL_RAW, {
+      spot_strike: 764, front_expiry: '2026-09-10',
       cells: REAL_RAW.cells.map((c) => Object.assign({}, c, {
         contracts: REAL_RAW.expirations.map((e) => ({
           call: 'C' + c.strike + 'X' + e.expiry, put: 'P' + c.strike + 'X' + e.expiry,
@@ -855,28 +846,30 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klRegime')).toContainText('Long γ');
     // NOT_PROVEN items are honestly labelled, never fabricated
     await expect(page.locator('#klBody')).toContainText('NOT PROVEN');
-    // PCR: the put/call OPEN-INTEREST ratio from /api/terrain pcr_by_expiry, formatted only, and the
-    // expiry it is scoped to is disclosed on the row (the front expiry until one is selected).
-    await expect(page.locator('#klPcr')).toHaveText('0.87');
+    // PCR: with no expiry selected, the whole book's put/call OI ratio as served (pcr_all), its
+    // scope disclosed -- the page no longer picks an expiry itself
+    await expect(page.locator('#klPcr')).toHaveText('1.02');
     await expect(page.locator('#klPcrScope')).toContainText('OI');
-    await expect(page.locator('#klPcrScope')).toContainText('2026-09-11');
-    // and the put/call VOLUME ratio (today's trading) on its own row, same expiry
-    await expect(page.locator('#klPcrVol')).toHaveText('1.42');
+    await expect(page.locator('#klPcrScope')).toContainText('all exp');
+    // and the put/call VOLUME ratio (today's trading) on its own row, same scope
+    await expect(page.locator('#klPcrVol')).toHaveText('0.93');
     await expect(page.locator('#klPcrVolScope')).toContainText('volume');
   });
 
   test('PCR: the selected expiry re-scopes the ratio; an expiry the chain has no ratio for shows none', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klPcr')).toHaveText('0.87');
-    await expect(page.locator('#klPcrScope')).toContainText('2026-09-11');
+    await expect(page.locator('#klPcr')).toHaveText('1.02');
+    await expect(page.locator('#klPcrScope')).toContainText('all exp');
     await page.locator('#expSel').selectOption('2026-09-18');
     await expect(page.locator('#klPcr')).toHaveText('1.13');
     await expect(page.locator('#klPcrScope')).toContainText('2026-09-18');
+    await page.locator('#expSel').selectOption('2026-09-11');
+    await expect(page.locator('#klPcr')).toHaveText('0.87');
   });
 
   test('PCR: a ticker whose terrain carries no ratio paints none, never a number', async ({ page }) => {
     await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, { pcr_by_expiry: {} })) }));
+      body: JSON.stringify(Object.assign({}, TERRAIN, { pcr_by_expiry: {}, pcr_all: null })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klFlip')).toHaveText('582.90');
     await expect(page.locator('#klPcr')).toHaveText('—');
@@ -896,7 +889,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // real 116x16 population, not about the retired reference path.
     const stamped = Object.assign({}, REAL, {
       source: 'terrain_live_cache', live: true, stale: false, degraded: null,
-      session_date_et: '2026-09-10', prior_session: false,
+      session_date_et: '2026-09-10', prior_session: false, spot_strike: 764, front_expiry: '2026-09-10',
       expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10' })),
     });
     expect(stamped.strikes.length).toBe(116); expect(stamped.expirations.length).toBe(16);
@@ -1960,86 +1953,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // (see `_colHasObservedEvidence` in ed-gamma.js) -- this test's fixture carries both the
   // legacy count (kept for a client that hasn't wired the sixth-review fix at all) and the
   // real per-symbol identity `surfaceWithContracts(1, 3)`'s own column 0 actually demands.
-  test('an accepted subscription is honestly disclosed as accepted, not claimed active, until real observed data arrives', async ({ page }) => {
-    let overlaySymbols = [];
-    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, surfaceWithContracts(1, 3), {
-        stream_overlay_contracts: overlaySymbols.length, stream_overlay_symbols: overlaySymbols,
-      })),
-    }));
-    await page.route('**/api/streaming/active-option-contracts', (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      return route.fulfill({ status: 200, contentType: 'application/json',
-        body: demandAck(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const col = page.locator('.heat thead th.hexp.stream-demand');
-    await expect(col).toHaveCount(1);
-    // Accepted, but never overclaiming "active" while no symbol has actually overlaid.
-    await expect(col).toHaveAttribute('title', /subscription accepted.*awaiting the first observed update/, { timeout: 3000 });
-    await expect(col).not.toHaveAttribute('title', /streaming updates observed/);
-
-    // A later poll's surface now carries real overlay evidence FOR THIS COLUMN'S OWN
-    // demanded symbol -- ONLY NOW may the tooltip claim streaming is actually active.
-    overlaySymbols = ['C580X2026-09-11'];
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
-    await expect(col).toHaveAttribute('title', /streaming updates observed for this column/, { timeout: 3000 });
-  });
-
-  // A SIXTH independent review (2026-09-13), REPRODUCED: `stream_overlay_contracts` is a
-  // single surface-wide COUNT -- nonzero the instant ANY contract anywhere overlaid, even one
-  // belonging to a completely different, unrelated column. That count alone used to promote
-  // EVERY currently-accepted column to 'observed' together. This test proves TWO accepted
-  // columns are judged INDEPENDENTLY: only the column whose own demanded symbol actually
-  // appears in `stream_overlay_symbols` is promoted; its sibling, with real overlay evidence
-  // for a totally different contract, must stay 'accepted'.
-  test('one column\'s overlay evidence does not promote an unrelated accepted column to observed', async ({ page }) => {
-    // 2 columns x 1 strike -- demandCols under Wider/All-style scope names both, well under
-    // the 240-contract cap, so both accept.
-    let overlaySymbols = [];
-    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, surfaceWithContracts(2, 1), {
-        stream_overlay_contracts: overlaySymbols.length, stream_overlay_symbols: overlaySymbols,
-      })),
-    }));
-    await page.route('**/api/streaming/active-option-contracts', (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      return route.fulfill({ status: 200, contentType: 'application/json',
-        body: demandAck(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
-    const cols = page.locator('.heat thead th.hexp.stream-demand');
-    await expect(cols).toHaveCount(2, { timeout: 3000 });
-    await expect(cols.nth(0)).toHaveAttribute('title', /subscription accepted/, { timeout: 3000 });
-    await expect(cols.nth(1)).toHaveAttribute('title', /subscription accepted/, { timeout: 3000 });
-
-    // Only column 0's own demanded symbol (strike 580, expiry 2026-09-11) actually overlaid.
-    overlaySymbols = ['C580X2026-09-11'];
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:refresh', { detail: { slow: true } })));
-    await expect(cols.nth(0)).toHaveAttribute('title', /streaming updates observed for this column/, { timeout: 3000 });
-    // Column 1 (a different expiry's symbol, e.g. C580X2026-09-12) has NO overlay evidence
-    // of its own -- it must stay 'accepted', never borrow column 0's evidence.
-    await expect(cols.nth(1)).toHaveAttribute('title', /subscription accepted.*awaiting the first observed update/);
-    await expect(cols.nth(1)).not.toHaveAttribute('title', /streaming updates observed/);
-  });
-
-  // A FOURTH independent review (2026-09-13), REPRODUCED: at 244 visible contracts (2 columns
-  // x 61 strikes x call+put), a flat `.slice(0, 240)` over the column-interleaved symbol list
-  // cut mid-row -- excluding one strike's contracts in the SECOND column while every other
-  // cell in that same column stayed covered, with the column's own tooltip still claiming full
-  // coverage. Fixed: the cap drops whole trailing COLUMNS, and a capped column's own tooltip
-  // says so distinctly from an uncapped one's.
-  // Always-live heatmap mandate (2026-09-15, operator directive), FINAL, RETIRES the two
-  // tests this replaces ("the streaming-demand cap partially covers the column that crosses
-  // the ceiling..." and "a single explicitly-selected expiry with 242 contracts gets 240
-  // partial, never zero"): "The 240-contract ceiling is our current implementation limit
-  // unless you prove otherwise. Do not use it as an excuse to reduce the product... Stream
-  // every contract Schwab permits." The client-side cap and its capped/partial-column
-  // carve-out (MAX_DEMAND_CONTRACTS, _cappedCols, _partialCols) are removed outright, not
-  // just re-tuned -- a scope this large is no longer capped, split, or excluded at all.
   test('a visible scope larger than the former 240-contract self-imposed ceiling is demanded in FULL, uncapped, unsplit', async ({ page }) => {
     // 2 columns x 61 strikes x 2 sides = 244 contracts -- previously would have capped
     // column 1 to a 118-contract partial; now both columns' contracts are demanded whole.

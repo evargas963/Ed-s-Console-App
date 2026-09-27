@@ -355,7 +355,7 @@
     // shared with the heatmap and GEX-by-strike); srows is the current canonical input, disclosed below.
     var asc = srows.slice().sort(function (a, b) { return a[0] - b[0]; });
     var sel = (window.EdShell && window.EdShell.scopeSelect)
-      ? window.EdShell.scopeSelect(asc.map(function (r) { return r[0]; }), spot)
+      ? window.EdShell.scopeSelect(asc.map(function (r) { return r[0]; }), strikesData && strikesData.spot_strike)
       : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
     var win = sel.idx.map(function (i) { return asc[i]; });
     var lo = Infinity, hi = -Infinity;
@@ -391,7 +391,8 @@
       // an interactive drag/wheel that happens after it -- REPRODUCED live: dragging the time
       // axis visibly narrowed the window but the note never appeared. renderInto re-evaluates
       // it fresh on every call instead, the same way it already does for `lo`/`hi` under _view.
-    _lastCtx = { bars: bars, win: win, spot: spot, terrain: terrain, legend: legend, legendHead: legendHead };
+    _lastCtx = { bars: bars, win: win, spot: spot, terrain: terrain, legend: legend, legendHead: legendHead,
+                 maxAbsStrike: strikesData && strikesData.max_abs_strike };
     renderInto(host, bars, win, spot, terrain, legend);
   }
   function buildLegend(head, spot, spotSource) {
@@ -435,7 +436,7 @@
       var pad = (hi - lo) * 0.04; lo -= pad; hi += pad;
     }
     var svg = (_mode === 'profile')
-      ? profileSvg(bars, win, spot, terrain, lo, hi)
+      ? profileSvg(bars, win, spot, terrain, lo, hi, _lastCtx && _lastCtx.maxAbsStrike)
       : dotSvg(win, spot, terrain, lo, hi);
     svg = svg.slice(0, -6) + crosshairSvg(lo, hi, _mode, bars) + '</svg>';   // insert before the closing </svg>
     // A manual time pan/zoom is never silent (same discipline every other panel's own PANNED
@@ -540,7 +541,7 @@
     return '<g pointer-events="none">' + out + '</g>';
   }
 
-  function profileSvg(bars, win, spot, terrain, lo, hi) {
+  function profileSvg(bars, win, spot, terrain, lo, hi, maxAbsStrike) {
     var xSplit = Math.round(W * 0.60);
     var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart-svg" preserveAspectRatio="none" role="img" aria-label="Price and GEX profile">';
     s += priceAxis(lo, hi);
@@ -564,7 +565,8 @@
     var hitHalfH = _hitTargetHalfSize(win, lo, hi, 10);
     s += '<line x1="' + cx + '" x2="' + cx + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + COL.axis + '" stroke-width="1"/>';
     win.forEach(function (r) {
-      var k = r[0], v = Number(r[1]) || 0, w = Math.abs(v) / maxAbs * halfW;
+      if (r[1] == null) return;   // unknown: nothing drawn (never a $0 bar)
+      var k = r[0], v = Number(r[1]), w = Math.abs(v) / maxAbs * halfW;
       var y = yOf(k, lo, hi), pos = v >= 0;
       s += '<rect class="gmark" data-strike="' + k + '" x="' + (pos ? cx : cx - w).toFixed(1) + '" y="' + (y - 3).toFixed(1) + '" width="' + w.toFixed(1) +
         '" height="6" fill="' + (pos ? COL.pos : COL.neg) + '" opacity="0.85"/>';
@@ -583,7 +585,7 @@
         '" width="' + (2 * halfW).toFixed(1) + '" height="' + (2 * hitHalfH).toFixed(1) + '" fill="transparent"/>';
     });
     // biggest-magnitude label
-    var top = win.slice().sort(function (a, b) { return Math.abs(b[1]) - Math.abs(a[1]); })[0];
+    var top = win.filter(function (r) { return r[0] === maxAbsStrike; })[0];   // served: the largest |GEX| strike
     if (top) { var yt = yOf(top[0], lo, hi); s += '<text x="' + (cx + 4) + '" y="' + (yt - 5).toFixed(1) + '" font-size="10" fill="var(--ed-ink-2)">' + esc(usd(top[1])) + '</text>'; }
     // overlays
     s += levelLines(terrain, lo, hi, L, W - R);
@@ -608,7 +610,8 @@
     var hitR = _hitTargetHalfSize(win, lo, hi, 10);
     s += '<line x1="' + cx + '" x2="' + cx + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + COL.axis + '" stroke-width="0.5" opacity="0.4"/>';
     win.forEach(function (r) {
-      var k = r[0], v = Number(r[1]) || 0, y = yOf(k, lo, hi);
+      if (r[1] == null) return;   // unknown: nothing drawn
+      var k = r[0], v = Number(r[1]), y = yOf(k, lo, hi);
       var rad = 3 + Math.sqrt(Math.abs(v) / maxAbs) * 22;
       var pos = v >= 0, x = cx + (pos ? 1 : -1) * (rad + 10);
       s += '<circle class="gmark" data-strike="' + k + '" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + rad.toFixed(1) +

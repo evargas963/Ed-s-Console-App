@@ -23,13 +23,13 @@ const { test, expect } = require('@playwright/test');
 const STRIKES_WIDE = (function () {
   const all = [];
   for (let k = 120; k >= 80; k--) all.push([k, (k % 2 ? 1 : -1) * (100000 + k * 10), 1000]);
-  return { ticker: 'SPY', spot: 100, today: { all: all } };
+  return { ticker: 'SPY', spot: 100, spot_strike: 100, today: { all: all } };
 })();
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 106, put_wall: 94,
   absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_stale: false };
 const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 99.8, 100.3, 100.5, 100.2, 100.0].map(function (c, i) {
   return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }) };
-const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, source: 'terrain_live_cache',
+const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, spot_strike: 100, front_expiry: '2026-09-11', source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 3, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [99, 100, 101],
   cells: [{ strike: 99, gex: [-90000] }, { strike: 100, gex: [958600] }, { strike: 101, gex: [-264500] }] };

@@ -140,13 +140,15 @@
   function paintPcr(d) {
     var byExp = (d && d.pcr_by_expiry) || {};
     var byExpVol = (d && d.pcr_volume_by_expiry) || {};
-    var ex = expiryFilter() || Object.keys(byExp).sort()[0] || '';
-    var v = ex ? byExp[ex] : null;
-    var vv = ex ? byExpVol[ex] : null;
+    // the selected expiry, else the whole book -- both served; the page picks no expiry itself
+    var ex = expiryFilter() || '';
+    var v = ex ? byExp[ex] : (d && d.pcr_all);
+    var vv = ex ? byExpVol[ex] : (d && d.pcr_volume_all);
+    var scope = ex ? 'exp ' + ex : 'all exp';
     txt('klPcr', v == null ? '—' : Number(v).toFixed(2));
-    txt('klPcrScope', ex ? 'OI · exp ' + ex : '');
+    txt('klPcrScope', 'OI · ' + scope);
     txt('klPcrVol', vv == null ? '—' : Number(vv).toFixed(2));
-    txt('klPcrVolScope', ex ? 'volume · exp ' + ex : '');
+    txt('klPcrVolScope', 'volume · ' + scope);
   }
 
   // ---------- GEX by Strike ----------
@@ -296,7 +298,7 @@
     var asc = rows.slice().sort(function (a, b) { return a[0] - b[0]; });
     var ascStrikes = asc.map(function (r) { return r[0]; });
     var sel = (window.EdShell && window.EdShell.scopeSelect)
-      ? window.EdShell.scopeSelect(ascStrikes, _gbsPanAnchor != null ? _gbsPanAnchor : spot)
+      ? window.EdShell.scopeSelect(ascStrikes, _gbsPanAnchor != null ? _gbsPanAnchor : d.spot_strike)
       : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
     var win = sel.idx.map(function (i) { return asc[i]; }).sort(function (a, b) { return b[0] - a[0]; });
     var note = (window.EdShell && window.EdShell.scopeNote)
@@ -309,20 +311,20 @@
     var expOn = window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry();
     if (expOn) note += '<div class="gbs-allexp">ALL-EXP terrain · per-expiry GEX-by-strike not canonical here</div>';
     var maxAbs = win.reduce(function (m, r) { return Math.max(m, Math.abs(Number(r[1]) || 0)); }, 0) || 1;
-    var spotStrike = win.reduce(function (best, r) {
-      return (best == null || Math.abs(r[0] - spot) < Math.abs(best - spot)) ? r[0] : best; }, null);
+    var spotStrike = d.spot_strike;   // served: the listed strike nearest the live price
     var bars = '';
     win.forEach(function (r) {
       // r = [strike, net_gex_1pct$, session_volume] -- terrain_engine._per_strike_rows' own
       // shape (server.py's _publish_levels keeps it, streamed or not).
       // Independent-review finding (2026-09-12): r[2] (volume) reached this row and was never
       // rendered. It is a MAGNITUDE (native totalVolume), never signed/colored like GEX$.
-      var k = r[0], v = Number(r[1]) || 0, vol = r[2], w = Math.min(100, Math.abs(v) / maxAbs * 100);
-      var pos = v >= 0;
+      // a strike with no value is unknown: no bar, '—' (never a $0 bar)
+      var k = r[0], v = r[1] == null ? null : Number(r[1]), vol = r[2], w = v == null ? 0 : Math.min(100, Math.abs(v) / maxAbs * 100);
+      var pos = v != null && v >= 0;
       bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '" data-volume="' + (vol == null ? '' : vol) + '">' +
         '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
         '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
-        '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(v) + '</span>' +
+        '<span class="gbs-v ' + (v == null ? '' : pos ? 'pos' : 'neg') + '">' + (v == null ? '—' : usd(v)) + '</span>' +
         '<span class="gbs-vol" title="session volume">' + fmtVol(vol) + '</span></div>';
     });
     // the bars scroll in their own area; the -/0/+ magnitude axis is PINNED at the foot so it is
@@ -606,7 +608,7 @@
       var asc = d.rows.slice().sort(function (a, b) { return a[0] - b[0]; });
       var ascStrikes = asc.map(function (r) { return r[0]; });
       var sel = (window.EdShell && window.EdShell.scopeSelect)
-        ? window.EdShell.scopeSelect(ascStrikes, _panAnchor != null ? _panAnchor : spot)
+        ? window.EdShell.scopeSelect(ascStrikes, _panAnchor != null ? _panAnchor : d.spot_strike)
         : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
       var win = sel.idx.map(function (i) { return asc[i]; }).sort(function (a, b) { return b[0] - a[0]; });
       var note = (window.EdShell && window.EdShell.scopeNote)
@@ -614,15 +616,14 @@
       if (_panAnchor != null) note += '<div class="gbs-allexp">PANNED to ' + px(_panAnchor, _panAnchor % 1 ? 2 : 0) +
         ' — not following spot; double-click a strike label to resume</div>';
       var maxAbs = win.reduce(function (m, r) { return Math.max(m, Math.abs(Number(r[1]) || 0)); }, 0) || 1;
-      var spotStrike = win.reduce(function (best, r) {
-        return (best == null || Math.abs(r[0] - spot) < Math.abs(best - spot)) ? r[0] : best; }, null);
+      var spotStrike = d.spot_strike;   // served: the listed strike nearest the live price
       var bars = '';
       win.forEach(function (r) {
-        var k = r[0], v = Number(r[1]) || 0, w = Math.min(100, Math.abs(v) / maxAbs * 100), pos = v >= 0;
+        var k = r[0], v = r[1] == null ? null : Number(r[1]), w = v == null ? 0 : Math.min(100, Math.abs(v) / maxAbs * 100), pos = v != null && v >= 0;
         bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '">' +
           '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
           '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
-          '<span class="gbs-v ' + (pos ? 'pos' : 'neg') + '">' + usd(v) + '</span></div>';
+          '<span class="gbs-v ' + (v == null ? '' : pos ? 'pos' : 'neg') + '">' + (v == null ? '—' : usd(v)) + '</span></div>';
       });
       host.innerHTML = '<div class="gbs-top">' + note + '</div>' +
         '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
@@ -677,21 +678,7 @@
     if (isNaN(d.getTime())) return '—';
     return d.toISOString().slice(0, 10);
   }
-  // A contract's own optionDeliverablesList is populated for EVERY ordinary equity option
-  // (one entry: 100 shares of the underlying itself) -- reproduced live: a plain SPY monthly
-  // call had a non-empty list and this flag lit for every single row, "DELIVERABLES" on 100%
-  // of a perfectly ordinary chain. The flag now fires only when the deliverable structure
-  // ACTUALLY departs from that routine one-entry/100-units/same-underlying/STOCK shape --
-  // the case this whole Structures tab exists to catch (a merger/spinoff-adjusted contract).
-  function _hasUnusualDeliverables(rep, tk) {
-    var list = rep.optionDeliverablesList;
-    if (!list || !list.length) return false;
-    if (list.length > 1) return true;
-    var d0 = list[0] || {};
-    var plain = d0.assetType === 'STOCK' && Number(d0.deliverableUnits) === 100 &&
-      String(d0.symbol || '').toUpperCase() === String(tk || '').toUpperCase();
-    return !plain;
-  }
+  // ADJUSTED DELIVERABLE: served per contract (server.py _adjusted_deliverable)
   function renderStructures(host, d, tk) {
     var src = document.getElementById('stSrc'); if (src) src.textContent = '';
     var cs = (d && d.contracts) || [];
@@ -712,7 +699,7 @@
       var flags = [
         _flag('NON-STD', rep.nonStandard === true),
         _flag('PENNY', rep.pennyPilot === true),
-        _flag('ADJUSTED DELIVERABLE', _hasUnusualDeliverables(rep, tk)),
+        _flag('ADJUSTED DELIVERABLE', (d.adjusted_deliverable_symbols || []).indexOf(rep.symbol) !== -1),
       ].join('');
       return '<tr><td class="side">' + px(k, k % 1 ? 2 : 0) + '</td>' +
         '<td>' + (rep.multiplier == null ? '—' : rep.multiplier) + '</td>' +
