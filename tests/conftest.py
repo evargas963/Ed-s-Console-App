@@ -231,17 +231,20 @@ _REPO_INDEX_SKIP_DIRS = frozenset({
 
 
 class RepoIndex:
-    """rel_path -> (source_text, ast_tree_or_None) over every repo .py file."""
+    """rel_path -> (source_text, ast_tree_or_None) over every repo .py file, and `tracked`:
+    every tracked path (all file types) from the same one `git ls-files`."""
 
     def __init__(self, root: Path) -> None:
+        texts, tracked = self._read_all(root)
         self.root = root
+        self.tracked: list[str] = tracked
         self.files: dict[Path, tuple[str, object | None]] = {}
-        for rel, text in sorted(self._read_all_texts(root).items()):
+        for rel, text in sorted(texts.items()):
             self.files[rel] = (text, self._parse_or_none(text))
 
     @staticmethod
-    def _read_all_texts(root: Path) -> dict[Path, str]:
-        """The I/O-only half of a build: every TRACKED .py file's raw text, no
+    def _read_all(root: Path) -> tuple[dict[Path, str], list[str]]:
+        """The I/O-only half of a build: every tracked path, and every TRACKED .py file's raw text, no
         parsing. Split out so xdist workers can share just this (small, cheap to
         pickle) and each run their own native `ast.parse` -- see the `repo_index`
         fixture below.
@@ -255,10 +258,11 @@ class RepoIndex:
         on; `_REPO_INDEX_SKIP_DIRS` stays as defense-in-depth for any tracked-but-
         unwanted directory, though git-tracking already excludes the gitignored ones."""
         import subprocess
-        proc = subprocess.run(["git", "ls-files", "-z", "--", "*.py"],
+        proc = subprocess.run(["git", "ls-files", "-z"],
                               cwd=root, capture_output=True, text=True, check=True)
+        tracked = sorted(p for p in proc.stdout.split("\0") if p)
         out: dict[Path, str] = {}
-        for relstr in sorted(p for p in proc.stdout.split("\0") if p):
+        for relstr in (p for p in tracked if p.endswith(".py")):
             rel = Path(relstr)
             if any(part in _REPO_INDEX_SKIP_DIRS for part in rel.parts):
                 continue
@@ -267,7 +271,7 @@ class RepoIndex:
                 out[rel] = path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 continue
-        return out
+        return out, tracked
 
     @staticmethod
     def _parse_or_none(text: str):
@@ -278,11 +282,12 @@ class RepoIndex:
             return None
 
     @classmethod
-    def from_texts(cls, root: Path, texts: dict[Path, str]) -> "RepoIndex":
+    def from_texts(cls, root: Path, texts: dict[Path, str], tracked: list[str]) -> "RepoIndex":
         """Build from an already-read text corpus (e.g. shared across xdist workers)
         -- parses locally, natively, per worker; never pickles/unpickles AST trees."""
         self = cls.__new__(cls)
         self.root = root
+        self.tracked = tracked
         self.files = {rel: (text, cls._parse_or_none(text)) for rel, text in sorted(texts.items())}
         return self
 
@@ -330,12 +335,12 @@ def repo_index(tmp_path_factory, worker_id: str) -> RepoIndex:
     with FileLock(str(lock_file)):
         if cache_file.is_file():
             with cache_file.open("rb") as f:
-                texts = pickle.load(f)
+                texts, tracked = pickle.load(f)
         else:
-            texts = RepoIndex._read_all_texts(root)
+            texts, tracked = RepoIndex._read_all(root)
             with cache_file.open("wb") as f:
-                pickle.dump(texts, f)
-    return RepoIndex.from_texts(root, texts)
+                pickle.dump((texts, tracked), f)
+    return RepoIndex.from_texts(root, texts, tracked)
 
 
 #: TEST_SYSTEM_REHAB_V2: check_no_orphan_dict_keys() sweeps every production file

@@ -10,8 +10,8 @@ them (RC-520 authority collapse, 2026-09-05).
 `AGENTS.md`; target architecture → `docs/ARCHITECTURE.md`; current operator-directed work →
 `ACTIVE_PROGRAM.md`; defects being driven to root, with clocks → `governance/root_cause_log.md`;
 claims about the world → `governance/unproven_register.md`; operator decisions production
-consumes → `governance/OPERATOR_DECISION_REGISTER.md`; agent procedure →
-`governance/AGENT_OPERATING_PROCESS_V1.md`. (The parallel closure register
+consumes → `governance/OPERATOR_DECISION_REGISTER.md`; agent procedure and review verdicts →
+`AGENTS.md`. (The parallel closure register
 `governance/INSTITUTIONAL_CLOSURE_SCHEMA.json` and the ML NOT_PROVEN matrix were folded into the
 rows and PA boards here on 2026-09-06 — bedrock: one acceptance specification, not two.) An unmet item below that is a DEFECT under active
 repair also has a ledger row; the criterion here says what must hold, the row says how it is being

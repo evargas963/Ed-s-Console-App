@@ -1,4 +1,4 @@
-"""Live-checkout invariant (RC-350 + governance/AGENT_OPERATING_PROCESS_V1.md §6).
+"""Live-checkout invariant (RC-350 + AGENTS.md, Authority).
 
 The production/primary EdWebConsole checkout stays branch main == origin/main, and an assigned
 agent cannot MOVE it onto a feature branch or edit its app code in place. These negative controls
