@@ -147,7 +147,7 @@ def test_vanna_uses_the_single_iv_conversion_authority_f7():
     v_pct = per_pct[100.0]["call_vanna"]
     assert v_pct not in (None, 0.0), "percent-form vanna did not compute"
     assert schwab_iv_to_sigma(20.0) == 0.20 and schwab_iv_to_sigma(0.20) == 0.002
-    v_dec = bs_vanna(98.0, 100.0, time_to_expiry_years("2030-01-18"), 0.20) * 100 * 100
+    v_dec = bs_vanna(98.0, 100.0, time_to_expiry_years("2030-01-18"), 0.20) * 0.01 * 100 * 100
     # RELATIVE tolerance: these aggregates are ~1e3-1e4, where one float ULP is ~1e-12 relative but
     # ~1e-9 ABSOLUTE — an absolute 1e-9 bound is tighter than the arithmetic can hold and failed on
     # CI's platform while passing locally (got 4731.665262145597 vs 4731.665262144535). The claim

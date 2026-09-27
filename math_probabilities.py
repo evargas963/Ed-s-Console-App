@@ -130,7 +130,10 @@ def compute_pin_score(
     if gex <= 0 or oi_conc <= 0:
         return {"raw": 0.0, "normalized": 0.0, "label": "negligible"}
 
-    # Normalize GEX to 0-1 range (empirical: top pin GEX ~50000 for SPY)
+    # gex is DOLLAR GEX at the strike. Measured 2026-09-27: every board ticker's pin strike
+    # carries far more than $50,000, so this term is 1 and the score is the OI share alone,
+    # EXCEPT for tiny option books (MTA $5,088, NBIX $33,028, TSL $965), which it scales down.
+    # It acts as a small-book floor; whether $50,000 is the right floor is an open research item.
     gex_norm = min(1.0, gex / 50000.0)
     raw = gex_norm * oi_conc  # 0-1 range
 

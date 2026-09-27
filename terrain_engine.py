@@ -648,14 +648,14 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     _gsl = compute_gamma_support_levels(profile, spot)
     # RC-357: the 0DTE book from the SAME producer with the dte filter — same parser,
     # same sign model; the share is pure attribution, zero new math.
-    # a contract with no readable DTE is kept, as use_only_dte_max always kept it
-    _exp_0dte, _ = merge_exposure_books(b for (_e, d), b in books.items() if d is None or d <= 0)
+    # a contract with no readable DTE belongs to no expiry's book (it was counted as 0DTE)
+    _exp_0dte, _ = merge_exposure_books(b for (_e, d), b in books.items() if d is not None and d <= 0)
     _zero_dte_share = compute_zero_dte_gamma_share(exposures, _exp_0dte)
     # Max pain on the FRONT expiry only.
     _front_max_pain = None
     if _front_dte is not None:
         _exp_front, _ = merge_exposure_books(
-            b for (_e, d), b in books.items() if d is None or d <= _front_dte)
+            b for (_e, d), b in books.items() if d is not None and d <= _front_dte)
         _front_max_pain = compute_max_pain(_exp_front)
     # RC-358: 25Δ risk reversal from the same wide chain (front expiry, tolerance-gated).
     from math_volatility import compute_25d_risk_reversal

@@ -315,7 +315,7 @@ def compute_exposures_by_strike(
                     _sig = schwab_iv_to_sigma(iv)
                     _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                     if _vn is not None:
-                        b["call_vanna"] += _vn * oi * mult
+                        b["call_vanna"] += _vn * 0.01 * oi * mult   # per 1 vol point
         elif side == "PUT":
             if oi is not None:
                 prev = b.get("put_oi")
@@ -344,16 +344,19 @@ def compute_exposures_by_strike(
                     _sig = schwab_iv_to_sigma(iv)
                     _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                     if _vn is not None:
-                        b["put_vanna"] += _vn * oi * mult
+                        b["put_vanna"] += _vn * 0.01 * oi * mult    # per 1 vol point
         else:
             continue
 
     for strike, b in exposures.items():
         b["dollarized"] = spot is not None
         b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
-        b["net_delta"] = b["call_delta"] + b["put_delta"]
+        # dealer-signed (+call/-put), the same convention as net_gamma / net GEX and the
+        # terrain's dex_dollars -- one meaning of DEX on every screen (2026-09-27: the bucket
+        # summed call + put, the holder's side, while terrain subtracted)
+        b["net_delta"] = b["call_delta"] - b["put_delta"]
         # Dollarized net fields (remain 0.0 if spot is None)
-        b["net_dex_dollars"] = b.get("call_dex_dollars", 0.0) + b.get("put_dex_dollars", 0.0)
+        b["net_dex_dollars"] = b.get("call_dex_dollars", 0.0) - b.get("put_dex_dollars", 0.0)
         b["net_gex_1pct"] = b.get("call_gex_1pct", 0.0) - b.get("put_gex_1pct", 0.0)
         b["total_oi_dollars"] = b.get("call_oi_dollars", 0.0) + b.get("put_oi_dollars", 0.0)
 
@@ -672,7 +675,7 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
             put_v += float(p); seen = True
     if not seen:
         return None
-    net_shares_per_volpt = (call_v - put_v) / 100.0
+    net_shares_per_volpt = call_v - put_v          # the book is already per vol point
     return {"net_vanna_dollars_per_volpt": round(net_shares_per_volpt * float(spot), 2),
             "net_vanna_shares_per_volpt": round(net_shares_per_volpt, 2)}
 

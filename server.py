@@ -4081,10 +4081,10 @@ def get_forces(ticker: str = Query(...)):
     payload: dict = {"ticker": tk, "available": False,
                      "reason": "fewer than 2 market days of chain captures for this ticker"}
     try:
-        rows = [(c["et_date"], c["spot"], c["contracts"])
+        rows = [(c["et_date"], c["spot"], c["contracts"], c["ts_utc"])
                 for c in last_capture_per_day(get_db().db_path, tk, 2) if c["spot"] is not None]
         if len(rows) >= 2:
-            (d1, s1, c1), (d0, s0, c0) = rows[0], rows[1]
+            (d1, s1, c1, t1), (d0, s0, c0, _t0) = rows[0], rows[1]
             per1 = _cebs(c1, spot=float(s1))[0]
             per0 = _cebs(c0, spot=float(s0))[0]
 
@@ -4101,7 +4101,8 @@ def get_forces(ticker: str = Query(...)):
             charm_below = charm_above = None
             charm_err = None
             try:
-                per_ch = _ccs(c1, spot1) if c1 else {}
+                # priced at the capture's own time, not today's clock
+                per_ch = _ccs(c1, spot1, now=datetime.fromtimestamp(t1, ET)) if c1 else {}
                 if not per_ch:
                     charm_err = "charm_by_strike empty on newer banked chain"
                 else:

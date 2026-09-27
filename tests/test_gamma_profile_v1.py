@@ -357,16 +357,17 @@ def test_rc358_25d_risk_reversal_front_expiry_and_fail_closed():
 
 
 def test_rc362_net_vanna_math_and_fail_closed():
-    """RC-362: net vanna = (Σcall_vanna − Σput_vanna)/100 shares per vol-pt, ×spot in $;
-    None on empty/valueless book or missing spot."""
+    """RC-362: net vanna = Σcall_vanna − Σput_vanna shares per vol-pt (the book is per vol point
+    since 2026-09-27, one unit everywhere), ×spot in $; None on empty/valueless book or missing
+    spot."""
     from math_exposure_core import compute_net_vanna
 
     book = {700.0: {"call_vanna": 5000.0, "put_vanna": -3000.0},
             705.0: {"call_vanna": 1000.0, "put_vanna": -1000.0}}
     out = compute_net_vanna(book, 800.0)
-    # net shares/volpt = (6000 − (−4000))/100 = 100; dollars = 100×800 = 80,000
-    assert out == {"net_vanna_dollars_per_volpt": 80000.0,
-                   "net_vanna_shares_per_volpt": 100.0}
+    # net shares/volpt = 6000 − (−4000) = 10,000; dollars = 10,000×800 = 8,000,000
+    assert out == {"net_vanna_dollars_per_volpt": 8000000.0,
+                   "net_vanna_shares_per_volpt": 10000.0}
     assert compute_net_vanna({}, 800.0) is None
     assert compute_net_vanna(book, None) is None
     assert compute_net_vanna({700.0: {"other": 1}}, 800.0) is None
