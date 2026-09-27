@@ -5483,7 +5483,7 @@ def get_levels(ticker: str = Query(...),
     for gid, label, fam, price in carried:
         if price is not None:
             as_of = t.get("computed_ts_utc")
-            levels.append({"id": gid, "price": price, "family": fam, "label": label,
+            levels.append({"id": gid, "price": price, "family": fam, "label": label, "short": label,
                            "evidence_tier": "DERIVED",
                            "provenance": {"producer": "terrain_engine.compute_terrain", "carried": True}
                            if fam == "gamma" else {"producer": "server.get_levels: live spot ± the terrain's "

@@ -175,6 +175,19 @@ def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move(spy
     assert "expected_move" not in {f["family"] for f in body["families_absent"]}
 
 
+def test_every_level_is_served_with_its_name_and_short_tag(spy_levels):
+    """The proximity strip printed raw ids (OVERNIGHT_HIGH, PD_VAH) and the chart kept its own
+    short-name table; both names are served now, from one table (LEVEL_NAMES)."""
+    from liquidity_value_engine import LEVEL_NAMES
+    body = json.loads(server.get_levels(ticker="SPY").body)
+    snap = [r for r in body["levels"] if r["id"] in LEVEL_NAMES]
+    assert len(snap) >= 8                                    # the real SPY bars price most of them
+    for r in body["levels"]:
+        assert r["label"] and r["short"], r["id"]
+        if r["id"] in LEVEL_NAMES:
+            assert (r["label"], r["short"]) == LEVEL_NAMES[r["id"]]
+
+
 def test_vwap_is_served_per_chart_bar(spy_levels):
     one = json.loads(server.get_levels(ticker="SPY", tf="1").body)["vwap_series"]
     fifteen = json.loads(server.get_levels(ticker="SPY", tf="15").body)["vwap_series"]
