@@ -479,3 +479,18 @@ def test_rc354_iv_banking_upsert_last_write_wins(tmp_path):
     assert "bank_daily_atm_iv(" in srv and "iv_pct_atm" in srv
 
 
+
+
+def test_the_flip_counts_the_contracts_it_could_not_price():
+    """M-10: Schwab sent volatility 0 on 5 SNDK contracts with open interest (real 09-25
+    capture). The profile cannot price them; the served flip says how many and why."""
+    from datetime import timezone
+    from math_levels import contract_inputs
+    from terrain_engine import compute_terrain
+    cap = json.loads((Path(__file__).parent / "fixtures" / "real_sndk_chain_no_volatility.json")
+                     .read_text(encoding="utf-8"))
+    now = datetime.fromtimestamp(cap["ts_utc"], timezone.utc).astimezone(time_et.ET)
+    priced, unpriced = contract_inputs(cap["chain"], now)
+    assert (len(priced), unpriced) == (476, {"no_volatility": 5})
+    snap = compute_terrain("SNDK", cap["chain"], cap["spot"], now=now)
+    assert snap.to_dict()["flip_diag"]["unpriced"] == {"no_volatility": 5}

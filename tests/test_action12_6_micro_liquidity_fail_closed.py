@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from liquidity_value_engine import _cluster_reference_price
-
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -13,11 +11,6 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 
-
-
-def test_cluster_reference_price_no_fabricated_500():
-    assert _cluster_reference_price(None, None, None) is None
-    assert _cluster_reference_price(450.25) == 450.25
 
 
 def test_liquidity_engine_no_hardcoded_500_reference():

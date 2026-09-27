@@ -5178,7 +5178,7 @@ def get_liquidity_snapshot(
     fusion: bool = Query(default=True, description="When snapshot=live, fuse the terrain option levels"),
 ):
     """Return liquidity & value playbook snapshot (zones, summary, raw_levels) for ticker/session.
-    Uses PlaybookConfig(clustering_mode='percent'). ``live`` uses min(now,RTH close) cutoff; checkpoints unchanged."""
+    ``live`` uses min(now,RTH close) cutoff; checkpoints unchanged."""
     try:
         from liquidity_value_engine import build_live_snapshot, generate_liquidity_value_snapshot
         from liquidity_models import SnapshotType, PlaybookConfig
@@ -5196,7 +5196,7 @@ def get_liquidity_snapshot(
                 {"error": f"No bar data for {ticker_upper} on {session_date}"},
                 status_code=404,
             )
-        config = PlaybookConfig(clustering_mode="percent", max_zone_width=2.0)
+        config = PlaybookConfig(max_zone_width=2.0)
         snap_raw = snapshot.lower().strip()
         fusion_status = "n/a"
         spot_for_zones: Optional[float] = None
@@ -5232,7 +5232,6 @@ def get_liquidity_snapshot(
                 session_date_obj,
                 config,
                 extra_levels=_extra_for_build if fusion else None,
-                spot=spot_for_zones,
                 canonical=_canon,
             )
         else:

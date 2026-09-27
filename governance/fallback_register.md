@@ -60,7 +60,7 @@ P1/P2 rows are to be merged here as each file is repaired.
 | F-11 | prediction_engine.py:923; server.py:8549 | `or "rules_v1"` | persisted pred_model_version | FIXED 425aa436 |
 | S-01..03 | market_state.py:1707, 1719, 431, 446 | placeholder direction/confidence and fusion defaults persisted | snapshots | FIXED 739fb9fc |
 | S-04 | market_state.py:359-422 | "low"/"rules_v1"/0.0 defaults persisted when signals fail | snapshots | FIXED 739fb9fc |
-| L-02 | governed_stack_contract.py:229-254 | non-SPY/QQQ/IWM routed to an "SPY anchor" (+ The Call wait_reason) | The Call label | OPEN |
+| L-02 | governed_stack_contract.py:229-254 | non-SPY/QQQ/IWM routed to an "SPY anchor" (+ The Call wait_reason) | The Call label | FIXED a324e70d (deleted) |
 
 ### Exposure math (math_exposure_core.py, math_levels.py)
 | ID | file:line | Violation | Flows to | Status |
@@ -74,7 +74,7 @@ P1/P2 rows are to be merged here as each file is repaired.
 | M-07 | math_levels.py:115-127 | oi_center skips one-sided strikes | snapshots | FIXED 65b45a7f |
 | M-08 | math_levels.py:1439-1447 | max pain excludes one-sided strikes | Trade Desk screen | FIXED 65b45a7f |
 | M-09 | math_levels.py:527-539 | ATM IV = one leg when the other is missing | IV direction, EM, IV rank | FIXED 65b45a7f |
-| M-10 | math_levels.py:812-855 | gamma profile silently drops contracts; no counts | flip, regime | OPEN |
+| M-10 | math_levels.py:812-855 | gamma profile silently drops contracts; no counts | flip, regime | FIXED cd9e0cb9 (counted and served: flip_diag.unpriced) |
 | M-11 | math_levels.py:1562-1575 | void zones drop the OI test with no OI | breakout score | FIXED 65b45a7f |
 | S-05 | market_state.py:1319-1323 | iv_level: chain ATM IV stands in for straddle IV | vol regime -> The Call | FIXED 541ac2f9 |
 
@@ -105,17 +105,17 @@ P1/P2 rows are to be merged here as each file is repaired.
 | S-08..10 | math_probabilities.py:658-668, 769-779, 830-840 | breakout / vol-expansion / sweep: missing component = 0 | snapshots | FIXED b6c16570 |
 | S-11 | math_probabilities.py:545-557 | hedging flow re-weights present legs | snapshots | FIXED b6c16570 |
 | S-12 | math_probabilities.py:1085-1123 | IWM confluence: missing legs neutral | snapshots | FIXED: compute_iwm_confluence and sector strength deleted with the retired roster (branch fix/retire-index-confluence-audited) |
-| S-13 | math_probabilities.py:221-234 | option-expression score: missing inputs add 0 -> rec_strike | The Call contract | OPEN |
+| S-13 | math_probabilities.py:221-234 | option-expression score: missing inputs add 0 -> rec_strike | The Call contract | FIXED a324e70d (deleted) |
 
 ### Found while repairing (2026-09-24)
 | ID | file:line | Violation | Flows to | Status |
 |---|---|---|---|---|
 | N-01 | calibration/edge_validation.py `_effective_directional_signal` | stored 1/3-each placeholder triplets won the p_up >= p_dn >= p_fl tie-break and were scored as LONG calls -- every edge study over rows logged while fusion was off counted them | calibration edge / discovery / engineering reports | FIXED 739fb9fc (reader requires tradable provenance; any edge report produced from those rows before this is invalid) |
-| N-02 | prediction_engine.py `_empty_prediction` | no-database path seeds every horizon with a 1/3-each product triplet | PredictiveCard up/down/flat per horizon (no-DB only) | OPEN |
-| N-03 | calibration/analyze_phase3.py `_confidence_bucket`; calibration/signal_engineering.py `final_signal or "wait"` | unknown confidence label bucketed as "low"; missing final signal counted as "wait" | offline calibration reports | OPEN |
+| N-02 | prediction_engine.py `_empty_prediction` | no-database path seeds every horizon with a 1/3-each product triplet | PredictiveCard up/down/flat per horizon (no-DB only) | FIXED a324e70d (deleted) |
+| N-03 | calibration/analyze_phase3.py `_confidence_bucket`; calibration/signal_engineering.py `final_signal or "wait"` | unknown confidence label bucketed as "low"; missing final signal counted as "wait" | offline calibration reports | FIXED 2f23ff9a (deleted) |
 | N-04 | db.py compute_accuracy | RTH scope read a NULL et_minute as :00; "statistical_v1" default version matched zero rows | accuracy surfaces | FIXED 425aa436 |
 | N-05 | v2_decision/a2_lifecycle_sidecar.py | second stop/target producer: VIX/clock stop, VWAP-snapped targets, 2R/T1+1R fallbacks disagreeing with The Call | A2 lifecycle preview (advisory, training rows) | FIXED c36102ec (carries The Call's plan) |
-| N-06 | call_engine.py `_vol_risk_mult`; lifecycle_rule_core.apply_risk_multiplier | vol-regime risk multiplier `or 1.0`; NaN multiplier -> 1.0 | The Call stop distance | OPEN |
+| N-06 | call_engine.py `_vol_risk_mult`; lifecycle_rule_core.apply_risk_multiplier | vol-regime risk multiplier `or 1.0`; NaN multiplier -> 1.0 | The Call stop distance | FIXED a324e70d (deleted) |
 | N-07 | terrain_engine.py compute_terrain | max pain computed over ALL expiries pooled (standard definition is per expiry) | Trade Desk max pain | FIXED 65b45a7f (front expiry, max_pain_dte) |
 | N-08 | server.py /api/fast-quote REST writer; live_market_plane.record_quote; ingest LAST_PRICE carry | REST quotes written into the live plane (replacing stream rows), auth-failure stale carry-forward, REST row restamped as streamed | spot / header / tools | FIXED d944aabf |
 | N-09 | server.py _fetch_state spread + volume | cached-spread label; 4-source volume chain into bar volume | snapshots, candles | FIXED d944aabf |
@@ -124,21 +124,21 @@ P1/P2 rows are to be merged here as each file is repaired.
 | N-12 | app/options/order_flow/engine.py, state.py, history.py | order-flow fallbacks: REST quote/extended/regular/underlying + book-top stand-ins for L1 bid/ask/size/mark; rvol 4 current + 5 average sources incl. a candle-average baseline; institutional proxy averaging whichever of 4 legs existed; _weighted_mean_present weight renormalisation; options flow first-contract-only per strike, partial volume/delta sums, put_vol+1e-9; VOLUME for TOTAL_VOLUME; CHANGE_PERCENT (never sent) for change %; ts_recv "now" stamp; tape receipts on the console clock; raw-symbol key; invented 1s span | order-flow payload, snapshots | FIXED e7361e68 |
 | N-13 | server.py _fetch_state | REST Cum Delta "tape" from one polled quote per cycle; candle volume from REST price history (nearest-in-time candle, ms-vs-s magnitude guess, $-stripped retry); plane_quote_authority "rest_*" labels and exception -> "rest_only" | snapshots, cum delta, diagnostics | FIXED e7361e68 |
 | R-01 | server.py get_chain (/api/chain) | a failed live chain fetch (vendor non-200, error, or a different expiry returned) was answered from, in turn, the vendor's other expiry, an older persisted complete capture, or a bounded stored snapshot that could belong to a different expiry -- labeled, still a substitute; SPY's expired 0DTE drew HTTP 400 and was served from storage on every refresh (measured 2026-09-24; the vendor-400 case replays with `pytest tests/test_chain_api_v1.py -k non_200`) | Chain ladder, Strike Detail, contract specs, /options | FIXED 018f7268 |
-| N-14 | live_market_plane vs app/options/order_flow/state | two stores hold the same streamed L1 fields (plane per-field state; order-flow `_top` with its own 25s field freshness) -- not a fallback, a duplicate store that can disagree | order-flow engine vs header | OPEN |
-| N-15 | liquidity_value_engine.py `_cluster_reference_price` | the cluster reference price is the first positive of orb mid, prior close, prior POC (a chain of stand-ins) | liquidity clusters | OPEN |
+| N-14 | live_market_plane vs app/options/order_flow/state | two stores hold the same streamed L1 fields (plane per-field state; order-flow `_top` with its own 25s field freshness) -- not a fallback, a duplicate store that can disagree | order-flow engine vs header | OPEN (P2-3: one store) |
+| N-15 | liquidity_value_engine.py `_cluster_reference_price` | the cluster reference price is the first positive of orb mid, prior close, prior POC (a chain of stand-ins) | liquidity clusters | FIXED cd9e0cb9 (reference deleted: levels merge by their own price) |
 
 ### v2 decision (advisory; persisted training rows only)
 | ID | file:line | Violation | Status |
 |---|---|---|---|
-| V-01 | v2_decision/module_a_adapter.py:186-190 | direction `or prediction_dir or final_bias` | OPEN |
-| V-02 | v2_decision/module_a_adapter.py:196, 81 | unknown -> "neutral" -> WAIT stored as a value | OPEN |
+| V-01 | v2_decision/module_a_adapter.py:186-190 | direction `or prediction_dir or final_bias` | FIXED a324e70d (deleted) |
+| V-02 | v2_decision/module_a_adapter.py:196, 81 | unknown -> "neutral" -> WAIT stored as a value | FIXED a324e70d (deleted) |
 
 ## Dormant (ML stack / Monte Carlo off) — fix before enabling
 ml_predict feature imputation and nan_to_num (L-03..09), Monte Carlo sigma/drift/tail
 fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isotonic map
-(L-14), live-unreachable Call sizing/conviction defaults (C-10..19). Full rows: the
-2026-09-24 audit reports.
+(L-14), live-unreachable Call sizing/conviction defaults (C-10..19). Deleted with the ML
+stack, a324e70d.
 
 ## Counts
-Re-audit live P0 open: 9 rows above marked OPEN (several rows group more than one site) -- `grep -c "| OPEN |$" governance/fallback_register.md`.
-P1 (re-audit): ~70 more [UNVERIFIED]: audit reports not committed; to be merged as files are repaired.
+Re-audit live P0 open: N-14, owned by P2-3.
+P1 (re-audit): ~70 more, never committed: NOT_PROVEN which of them name code that still exists.
