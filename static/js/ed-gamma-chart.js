@@ -353,7 +353,7 @@
     // #3: price domain over bars + a strikes window around spot. The window is the ONE shared Gamma
     // scope policy (EdShell.scopeSelect: a strike COUNT around spot — Auto 11 / Wider / All available,
     // shared with the heatmap and GEX-by-strike); srows is the current canonical input, disclosed below.
-    var asc = srows.slice().sort(function (a, b) { return a[0] - b[0]; });
+    var asc = srows;   // served in strike order
     var sel = (window.EdShell && window.EdShell.scopeSelect)
       ? window.EdShell.scopeSelect(asc.map(function (r) { return r[0]; }), strikesData && strikesData.spot_strike)
       : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
