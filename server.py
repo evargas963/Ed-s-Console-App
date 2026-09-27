@@ -5000,7 +5000,8 @@ def get_desk_events(ticker: str = Query(...),
     items = []
     for i, c in enumerate(in_window):
         names = " + ".join(c.get("level_names") or [c.get("level_name")])
-        items.append({"key": f"x{c.get('cross_id')}", "n": i + 1, "ts": c["ts_utc"], "dom": "LEVELS",
+        cid = c.get("cross_id")                      # external-key-ok: ed_console.db level_crosses column
+        items.append({"key": f"x{cid}", "n": i + 1, "ts": c["ts_utc"], "dom": "LEVELS",
                       "dir": c.get("direction"), "marker": True,
                       "title": f"Crossed {'above' if c.get('direction') == 'up' else 'below'} {names}",
                       "detail": f"{_f2(c.get('level_value'))} · spot {_f2(c.get('spot_at_cross'))}"

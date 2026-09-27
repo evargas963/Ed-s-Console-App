@@ -1,6 +1,6 @@
 {
   "ages": {
-    "book_age_sec": 377851.424,
+    "book_age_sec": 1525694.251,
     "book_stale": true,
     "quote_age_sec": null
   },
@@ -44,17 +44,20 @@
     "1": {
       "ask_total": 55.0,
       "bid_total": 40.0,
-      "imbalance": -0.15789473684210525
+      "imbalance": -0.15789473684210525,
+      "side": "ASK"
     },
     "3": {
       "ask_total": 210.0,
       "bid_total": 200.0,
-      "imbalance": -0.024390243902439025
+      "imbalance": -0.024390243902439025,
+      "side": "ASK"
     },
     "5": {
       "ask_total": 210.0,
       "bid_total": 200.0,
-      "imbalance": -0.024390243902439025
+      "imbalance": -0.024390243902439025,
+      "side": "ASK"
     }
   },
   "depth_pressure": {
@@ -109,6 +112,7 @@
     "tape_pressure_2m": 0.5384615384615384,
     "tape_pressure_30s": 0.3333333333333333,
     "tape_pressure_5m": 0.4666666666666667,
+    "tape_side_5m": "BUY",
     "top_book_pressure": -0.15789473684210525
   },
   "liquidity_concentration": {
@@ -123,7 +127,7 @@
     "exchange_quote_ts": null,
     "n_ask_levels": 3,
     "n_bid_levels": 3,
-    "server_received_ts": 1789377851.4238908,
+    "server_received_ts": 1790525694.251246,
     "top_of_book_ask_leaf": "streaming.ASK_PRICE",
     "top_of_book_bid_leaf": "streaming.BID_PRICE"
   },

@@ -12,6 +12,11 @@ from governance.provenance_inventory import Row
 
 ROWS: tuple[Row, ...] = (
     Row(
+        file='server.py', derivation='get_desk_events', disposition='DERIVED',
+        producer_refs=('server.py:get_alerts', 'server.py:get_terrain', 'server.py:api_order_flow_microstructure'),
+        justification="The Trade Desk's attention queue: the level crosses the levels producer records (merged once, _merged_recent_crosses), the terrain's wall states, the book's size walls and the rule alerts, windowed and numbered for the chart timeframe.",
+    ),
+    Row(
         file='server.py', derivation='get_alerts', disposition='DERIVED',
         producer_refs=('server.py:_terrain_refresh_one', 'server.py:resolve_spot'),
         justification='Proximity alerts: spot (resolve_spot) against the published gamma walls, and the level crosses the levels producer records.',

@@ -8,6 +8,7 @@ from __future__ import annotations
 ROUTES: dict[str, tuple[str, str | None]] = {
     '/': ('PAGE', None),
     '/api/alerts': ('PRODUCER', 'server.py:get_alerts'),
+    '/api/desk/events': ('PRODUCER', 'server.py:get_desk_events'),
     '/api/analytics/light/stream': ('STREAM', None),
     '/api/bars1m': ('PRODUCER', 'server.py:get_bars1m'),
     '/api/build': ('OPS', None),

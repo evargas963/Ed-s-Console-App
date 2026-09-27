@@ -30,7 +30,9 @@ def test_chart_binds_session_et_and_display_ct():
     assert "function aggregate(" not in src and "etDateKey(" not in src
     import inspect
     import server as srv
-    assert "from time_et import ET" in inspect.getsource(srv.aggregate_bars)
+    # one bucketing for bars and VWAP (_tf_bucket_key), keyed on the ET clock
+    assert "_tf_bucket_key(" in inspect.getsource(srv.aggregate_bars)
+    assert "datetime.fromtimestamp(t, ET)" in inspect.getsource(srv._tf_bucket_key)
     assert "displayDateLabel(" in src and "displayTimeLabel(" in src
     assert "toLocaleDateString()" not in src
     assert "toLocaleDateString(undefined" not in src
