@@ -2954,10 +2954,10 @@ def check_collect_datasheet_staged() -> list[Violation]:
     ]
     if not targets:
         return []
-    tables: set[str] = set()
+    diff: list[str] = []
     for rel in targets:
-        diff = _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
-        tables |= new_table_names_in_diff(diff)
+        diff += _git_output_lines(["diff", "--cached", "-U0", "--", rel]) or []
+    tables = new_table_names_in_diff(diff)
     if not tables:
         return []
     out: list[Violation] = []

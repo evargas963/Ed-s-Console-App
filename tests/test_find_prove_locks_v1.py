@@ -68,6 +68,13 @@ def test_collect_datasheet_blocks_missing():
     assert collect_datasheet_violations("new_table_x", good) == []
 
 
+def test_a_moved_table_is_not_a_new_table():
+    from tools.find_prove_locks import new_table_names_in_diff
+    moved = ["-CREATE TABLE IF NOT EXISTS t (", "+CREATE TABLE IF NOT EXISTS t ("]
+    assert new_table_names_in_diff(moved) == set()
+    assert new_table_names_in_diff(["+CREATE TABLE IF NOT EXISTS n ("]) == {"n"}
+
+
 def test_collect_datasheet_staged_live_clean():
     from tools.check_institutional_correctness import check_collect_datasheet_staged
 

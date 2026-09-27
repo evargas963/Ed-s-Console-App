@@ -53,7 +53,7 @@ ROWS: tuple[Row, ...] = (
         file='math_exposure_core.py',
         derivation='compute_exposures_by_strike',
         disposition='DERIVED',
-        producer_refs=('server.py:flatten_chain_contracts',),
+        producer_refs=('schwab_client.py:flatten_chain_contracts',),
         justification='Core Schwab chain aggregation; skip -999 greeks.',
     ),
     Row(
@@ -67,14 +67,14 @@ ROWS: tuple[Row, ...] = (
         file='math_levels.py',
         derivation='compute_gamma_flip_v2',
         disposition='DERIVED',
-        producer_refs=('server.py:flatten_chain_contracts',),
+        producer_refs=('schwab_client.py:flatten_chain_contracts',),
         justification='Gamma flip plus chain-span confidence flag; narrow chains are never served as trustworthy.',
     ),
     Row(
         file='math_levels.py',
         derivation='compute_gamma_profile',
         disposition='DERIVED',
-        producer_refs=('server.py:flatten_chain_contracts',),
+        producer_refs=('schwab_client.py:flatten_chain_contracts',),
         justification='Dealer gamma recomputed at each hypothetical spot (+call/-put); canonical profile.',
     ),
     Row(
@@ -102,7 +102,7 @@ ROWS: tuple[Row, ...] = (
         file='terrain_engine.py',
         derivation='compute_terrain',
         disposition='DERIVED',
-        producer_refs=('server.py:flatten_chain_contracts',),
+        producer_refs=('schwab_client.py:flatten_chain_contracts',),
         justification='Assembles the terrain payload (regime, walls, pin, HVL, max pain, charm walls) from one chain; no model stack.',
     ),
     Row(
@@ -621,7 +621,7 @@ ROWS: tuple[Row, ...] = (
         justification="RC-288: counts the DISTINCT expirations in the contracts actually summed and reports single_expiry_banked:<date>, full_chain_banked, or unknown. It replaced a hardcoded literal that matched the client's own fallback, so the label could never disagree with itself. An empty or unreadable chain yields unknown, never a confident book for a chain nobody looked at.",
     ),
     Row(
-        file='server.py', derivation='_option_expiries', disposition='SCHWAB_LEAF',
+        file='schwab_client.py', derivation='_option_expiries', disposition='SCHWAB_LEAF',
         schwab_leaf='expirationchain.expirationList.expirationDate',
         justification='Schwab expiration chain expirationList[].expirationDate, read as dates verbatim.',
     ),
@@ -677,7 +677,7 @@ ROWS: tuple[Row, ...] = (
     ),
     Row(
         file='server.py', derivation='_terrain_refresh_one', disposition='DERIVED',
-        producer_refs=('server.py:flatten_chain_contracts',),
+        producer_refs=('schwab_client.py:flatten_chain_contracts',),
         justification='Fetches one chain and computes terrain into the cache; no model stack, never raises.',
     ),
     Row(
@@ -714,7 +714,7 @@ ROWS: tuple[Row, ...] = (
         justification='The newest N price_bars_1m rows for one ticker (written only from streamed CHART_EQUITY bars); every bar reader (_bars_1m/_bars_5m/_session_bars) goes through it.',
     ),
     Row(
-        file='server.py', derivation='flatten_chain_contracts', disposition='SCHWAB_LEAF',
+        file='schwab_client.py', derivation='flatten_chain_contracts', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.callExpDateMap.*.strikePrice',
         justification='Flattens the Schwab chain response into a contract list; single source shared by _fetch_state and the terrain loop.',
     ),

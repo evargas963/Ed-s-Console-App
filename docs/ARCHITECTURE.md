@@ -33,9 +33,9 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 |---|---|
 | `app/market_data/schwab/streaming/` (capture, live_push, live_ui), `stream_spine.py`, `live_market_plane.py`, `live_price_rows.py` | `daemon/` |
 | `schwab_client.py`, `api_pressure.py`, `market_context.py` (Schwab REST calls) | `daemon/` |
-| From `server.py`: the chain fetch (`fetch_full_chain`, the chain gate, chain captures) | `daemon/` |
+| From `server.py`: the chain gate (`_gated_safe_get_chain`; the chain download itself is `schwab_client.fetch_full_chain`) | `daemon/` |
 | `calibration/complete_chain_capture.py` (the chain history, DATA_FLOW decision 7) | `daemon/` |
-| `calibration/option_chain_morning_full.py` | delete (its table folds into the chain history; P2-DB3) |
+| `calibration/option_chain_accrual.py` (per-minute per-strike totals for `/exposure`) | decided with the `/exposure` page (P2-4) |
 | `db.py` (the parts that stay: bars, level history, enrollment, connection), `db_authority.py`, `db_safety.py`, `json_blob_codec.py` | `daemon/` (writes) — the console opens the database read-only |
 | `terrain_engine.py`, `terrain_read.py`, `terrain_atr.py`, `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `math_volatility.py` | `producer/` |
 | `liquidity_value_engine.py`, `liquidity_models.py` | `producer/` |
@@ -61,7 +61,7 @@ reads or writes 6 of the 12 tables the file creates.
   `get_db_stats`, and the one-time JSON migration once its flag shows it ran.
 - Keep, and move to `daemon/`: bars, level history (crosses, daily OI and IV), enrollment (the
   ticker board), the connection — about 900 lines.
-- The console stops writing (DATA_FLOW decision 5); its writes go to the daemon's writer.
+- The console stops writing (DATA_FLOW decision 5); its writes go to the daemon's writer, into `ed_console.db`.
 
 **server.py (6,130 lines: 40 routes, 112 functions).**
 - To `daemon/`: the chain fetch and chain captures.

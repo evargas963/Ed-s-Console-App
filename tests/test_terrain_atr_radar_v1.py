@@ -119,7 +119,6 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", tmp_path / "flip.jsonl")
     monkeypatch.setattr(srv, "_log_flip_drift", _spy)
     monkeypatch.setattr(srv, "get_client", lambda: object())
-    monkeypatch.setattr(srv, "_universal_capture_wanted", lambda _tk: (False, None))
 
     class _Resp:
         status_code = 200

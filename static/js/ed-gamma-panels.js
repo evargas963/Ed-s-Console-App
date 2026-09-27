@@ -173,7 +173,6 @@
   function srcLabel(s) {
     if (!s) return '';
     if (SRC_LABEL[s]) return SRC_LABEL[s];
-    if (s.indexOf('accrual_bank') === 0) return 'accrual bank';
     return s;
   }
   function setGbsAsOf(d) {
