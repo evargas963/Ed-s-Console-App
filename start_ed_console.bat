@@ -166,7 +166,7 @@ start "Ed Console - Browser Launch" "%VENV_PY%" "%~dp0wait_for_ready_then_open.p
 
 REM --timeout-graceful-shutdown: Ctrl+C must terminate even while browser tabs
 REM hold SSE streams open (uvicorn's default waits forever for them to close).
-"%VENV_PY%" -m uvicorn server:app --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 10 --no-access-log
+"%VENV_PY%" -m uvicorn server:app --host 0.0.0.0 --port 8000 --timeout-graceful-shutdown 10
 
 echo.
 echo  Server stopped.
