@@ -3347,6 +3347,30 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
 
 
 STATUS_EVERY_SEC = 60.0
+#: the daemon writes a feed-status row every 60 s; older than this, the record has stopped
+FEED_RECORD_STALE_SEC = 150.0
+
+
+def _feed_record_state() -> str:
+    """How old the newest stream_feed_status row in stream_capture.db is: it proves the whole
+    path (the daemon's loop, the bus, the writer, the database) wrote this minute."""
+    import sqlite3
+    from db_authority import canonical_stream_db_path
+    path = canonical_stream_db_path()
+    if not path.is_file():
+        return "feed record: NO DATABASE"
+    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=5)
+    try:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='stream_feed_status'").fetchone():
+            return "feed record: none yet"
+        newest = conn.execute("SELECT MAX(ts) FROM stream_feed_status").fetchone()[0]
+    finally:
+        conn.close()
+    if newest is None:
+        return "feed record: none yet"
+    age = time.time() - float(newest)
+    return (f"feed record: written {age:.0f}s ago" if age <= FEED_RECORD_STALE_SEC
+            else f"FEED RECORD STALE: last written {age / 60:.0f} min ago")
 
 
 def _status_line() -> str:
@@ -3365,6 +3389,7 @@ def _status_line() -> str:
         "Schwab socket: " + ("open" if st and st.get("schwab_socket_open") is True else "NOT OPEN"),
         f"SPY {spot:.2f}" if spot is not None else "SPY: no live price",
         f"levels: {len(as_of)} tickers, newest as of {newest}",
+        _feed_record_state(),
         "chain refresh " + ("running every 5 s" if _is_loggable_session()
                             else "8:45 AM-4:30 PM ET on market days"),
     ])

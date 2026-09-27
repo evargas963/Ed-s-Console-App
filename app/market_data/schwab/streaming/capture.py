@@ -444,13 +444,18 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
     last carried data -- so a quiet feed and a dead one read differently in the database."""
     while True:
         now = time.time()
-        last_frame = daemon.stream.last_frame_ts if daemon.stream is not None else None
-        st = daemon.status()
-        for svc in SERVICES:
-            daemon.bus.publish(f"feedstatus.{svc}", {
-                "ts": now, "service": svc, "socket_open": st["schwab_socket_open"],
-                "schwab_last_frame_ts": last_frame or None,
-                "held": len(daemon.held.get(svc) or ()), "last_data_ts": daemon.health.last(svc)})
+        try:
+            last_frame = daemon.stream.last_frame_ts if daemon.stream is not None else None
+            st = daemon.status()
+            for svc in SERVICES:
+                daemon.bus.publish(f"feedstatus.{svc}", {
+                    "ts": now, "service": svc, "socket_open": st["schwab_socket_open"],
+                    "schwab_last_frame_ts": last_frame or None,
+                    "held": len(daemon.held.get(svc) or ()),
+                    "last_data_ts": daemon.health.last(svc)})
+        except Exception as e:  # noqa: BLE001 -- this round's rows are missing and the log says
+            # why; the next round still runs (the console's status line reports the record's age)
+            log.warning("feed status round failed: %s: %s", type(e).__name__, e)
         try:
             await asyncio.wait_for(stop.wait(), timeout=FEED_STATUS_EVERY_SEC)
             return
