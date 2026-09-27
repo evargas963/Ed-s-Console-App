@@ -28,9 +28,6 @@
     { id: 'value_area', lbl: 'Value area' }, { id: 'vwap', lbl: 'VWAP' }, { id: 'gamma', lbl: 'Gamma' },
     { id: 'expected_move', lbl: '±1σ move' }, { id: 'prior_day', lbl: 'Prior day' }, { id: 'opening_range', lbl: 'Opening range' },
     { id: 'overnight', lbl: 'Overnight' }];
-  var SHORT = { TODAY_VAH: 'VAH', TODAY_VAL: 'VAL', TODAY_POC: 'POC', PDH: 'PDH', PDL: 'PDL', PDC: 'PDC',
-    PD_POC: 'pPOC', PD_VAH: 'pVAH', PD_VAL: 'pVAL', ORB_HIGH: 'ORH', ORB_LOW: 'ORL', ORB_MID: 'ORM',
-    OVERNIGHT_HIGH: 'ONH', OVERNIGHT_LOW: 'ONL' };
   var DRILL = { liquidity: ['order-flow', 'heatmap'], flow: ['order-flow', 'book'],
     options: ['options', 'gamma'], vol: ['options', 'chain'] };
   var CT_HM = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -224,7 +221,7 @@
       var lean = S.terrain && S.terrain[l.id + '_lean'];   // served: call_wall_lean / put_wall_lean
       if (g) { out.push({ id: l.id, price: Number(l.price), label: g[0] + (lean ? ' · ' + lean : ''), color: g[1], style: g[2], width: g[3] }); return; }
       var s = style[l.family]; if (!s) return;
-      out.push({ id: l.id, price: Number(l.price), label: SHORT[l.id] || l.label || l.id, color: s[0], style: s[1], width: s[2] });
+      out.push({ id: l.id, price: Number(l.price), label: l.short || l.label || l.id, color: s[0], style: s[1], width: s[2] });
     });
     return out;
   }

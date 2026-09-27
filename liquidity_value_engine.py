@@ -51,6 +51,18 @@ RTH_OPEN = time(RTH_OPEN_MINS // 60, RTH_OPEN_MINS % 60)
 RTH_CLOSE = time(RTH_END_MINS // 60, RTH_END_MINS % 60)
 
 
+#: each price level's name, spelled out and as the chart's short tag -- the one home for both
+LEVEL_NAMES = {
+    "TODAY_VAH": ("Value area high", "VAH"), "TODAY_VAL": ("Value area low", "VAL"),
+    "TODAY_POC": ("Point of control", "POC"),
+    "PDH": ("Prior day high", "PDH"), "PDL": ("Prior day low", "PDL"), "PDC": ("Prior day close", "PDC"),
+    "PD_POC": ("Prior day POC", "pPOC"), "PD_VAH": ("Prior day VAH", "pVAH"), "PD_VAL": ("Prior day VAL", "pVAL"),
+    "ORB_HIGH": ("Opening range high", "ORH"), "ORB_LOW": ("Opening range low", "ORL"),
+    "ORB_MID": ("Opening range mid", "ORM"),
+    "OVERNIGHT_HIGH": ("Overnight high", "ONH"), "OVERNIGHT_LOW": ("Overnight low", "ONL"),
+}
+
+
 def _cluster_reference_price(*candidates) -> Optional[float]:
     """First positive price among candidates; None when no valid reference (no 500.0 fabrication)."""
     for value in candidates:
@@ -1572,11 +1584,13 @@ class PriceLevelValue:
                 self.price, self.producer, self.as_of_ts_utc)
 
     def to_contract_dict(self) -> dict:
+        label, short = LEVEL_NAMES.get(self.level_id, (self.level_id, self.level_id))
         return {
             "id": self.level_id,
             "price": self.price,
             "family": self.family,
-            "label": self.level_id,
+            "label": label,
+            "short": short,
             "side": None,
             "strength": None,
             "evidence_tier": self.evidence_tier,
