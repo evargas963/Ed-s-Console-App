@@ -1,144 +1,202 @@
-# Fallback register (operator rule 2026-09-23: NO FALLBACKS)
+# Fallback register
 
-A value comes from its canonical Schwab field or its ONE canonical derived computation. When
-that is missing, stale or invalid the value is ABSENT (shown absent / decision withheld with a
-named reason). Substituting anything else — a default number or label, an older value, another
-source, a guessed weight, `x or <default>`, re-weighting the legs that happen to exist — is a
-violation, labelled or not.
+Operator rules 2, 3, 4 and 5 (AGENTS.md). One row per site found. Status: OPEN (found, not yet
+checked against the code) | FIXED `<sha>` | NOT A VIOLATION (checked; reason).
 
-Status: OPEN | FIXED `<sha>` | DORMANT (code path off today: fix before it is switched on).
-Scope of this register: the 2026-09-24 re-audit (six read-only audits, every line of the named
-files). The 2026-09-23 first-pass audit (653 sites, 16 P0 [UNVERIFIED]: audit report not committed) is tracked by its P0s below; its
-P1/P2 rows are to be merged here as each file is repaired.
+Audit 2026-09-27: every line of the product code (33,581 lines: every `.py`, `.js` and `.html`
+outside tests/, tools/, governance/, research/, scripts/, reports/, docs/ and static/vendor/), read
+in full in six parts. Earlier registers (2026-09-23 first pass, 2026-09-24 re-audit) are closed:
+their rows named code since deleted (a324e70d, 2f23ff9a) or were fixed (cd9e0cb9); git holds them.
+Their L1 duplicate (N-14) is O-01 below.
 
-## First-pass P0s (2026-09-23)
+Columns: file:line | rule | value | what the code does | who sees it.
 
-| ID | What | Status |
-|---|---|---|
-| P0-01 | resolve_spot served REST / stale stream spot | FIXED 65ced8bd |
-| P0-02 | replay stamped old rows "now" | FIXED 270a6213 |
-| P0-03 | gamma heatmap last-valid refill shown as current | FIXED 253607bf |
-| P0-04 | similar-setups tier labels (tier 5 "zone + VWAP") | FIXED 7d76e095 |
-| P0-05 | confluence %-change imputed with no age limit | FIXED 7d76e095 |
-| P0-06..09 | JS Number(null) -> "spot 0.00" on 4 screens | FIXED 96aa1bea |
-| P0-10..11 | exposure page client-computed money | FIXED 7d76e095 |
-| P0-12 | dex_magnitude always "negligible" | FIXED aa2b96cf |
-| P0-13 | call_engine stop VIX/clock fallback | FIXED 53db9c34 |
-| P0-14 | hand-typed event calendar | FIXED 1cb7dace |
-| P0-15..16 | (first-pass ML/decision reports not recoverable; superseded by the re-audit below) | see below |
+## S — server.py
 
-## Re-audit P0s — live paths (2026-09-24)
+| ID | file:line | rule | value | what it does | seen by | status |
+|---|---|---|---|---|---|---|
+| S-01 | server.py:570 | 3 | ticker key | second normalizer after ticker_storage_key: `or (ticker or "").upper().strip()` | every route via resolve_spot | OPEN |
+| S-02 | server.py:1073 | 2 | CHART_EQUITY bar_start_ms | read raw, not schwab_number | stored price_bars_1m | OPEN |
+| S-03 | server.py:1209-1211 | 5 | logger roster | filter failure keeps the unfiltered roster | terrain board | OPEN |
+| S-04 | server.py:1264, 4250, 4293, 4469, 4509, 4518, 5176 | 3 | ticker key | `.upper().strip()` instead of ticker_storage_key; "SPX" misses "$SPX" (SSE scope, watchlist, last_seen) | L1 SSE push, watchlist, order flow | OPEN |
+| S-05 | server.py:1634 | 3 | level_name | read-time relabel of the stored name | /api/desk/events | OPEN |
+| S-06 | server.py:1890 | 5 | flip-drift ts | `computed_ts_utc or time.time()` | stored flip_drift_log | OPEN |
+| S-07 | server.py:1942 | 3 | token age | hard-coded token path, not cfg.token_path | every terrain_staleness payload | OPEN |
+| S-08 | server.py:1991-1997 | 5 | levels_stale | market closed + any snapshot of any age -> not stale | /api/terrain, surface, strikes | OPEN |
+| S-09 | server.py:2016 | 5 | stale threshold | missing cycle time replaced by TERRAIN_REFRESH_SEC | levels_stale | OPEN |
+| S-10 | server.py:2578 | 5 | stream_coverage live_pct | no relevant cells -> 0.0 | gamma-surface | OPEN |
+| S-11 | server.py:2636-2659 | 3/5 | chain_basis, DTE clock, crosses | stored capture repriced with today's clock and relabelled; its past spot seeds level crosses | levels, heatmap, level_crosses | OPEN |
+| S-12 | server.py:2666, 4980 | 2 | spot | truthiness treats 0 as missing | heatmap, /api/levels | OPEN |
+| S-13 | server.py:2737 | 5 | option->ticker | first match wins | reprice routing | OPEN |
+| S-14 | server.py:2824 | 5 | chain as-of | local time after the fetch | computed_ts_utc | OPEN |
+| S-15 | server.py:2830-2831 | 2 | atr_daily/atr_15m | 0 read as missing | /api/terrain | OPEN |
+| S-16 | server.py:2841 | 2 | iv_pct_atm | IV 0 rejected | stored iv_daily | OPEN |
+| S-17 | server.py:2862-2867 vs 3651-3653 | 3 | day-over-day OI change | two producers (banked oi_daily; chain captures) | terrain delta_oi_walls vs /api/forces | OPEN |
+| S-18 | server.py:2931 | 8 | status spot | SPY only | console log | OPEN |
+| S-19 | server.py:2967-2968, 3019-3020 | 5 | board, viewed set | `except: tickers = []` / `_viewed_syms = []` hide failures | terrain loop | OPEN |
+| S-20 | server.py:3208, 585 | 3 | spot_state | live_spot evaluated again after resolve_spot | /api/terrain, alerts | OPEN |
+| S-21 | server.py:3225-3226 | 3/5 | net_gex_at_spot, gamma_at_spot | carried to a new spot by (S/S0)^2 outside compute_terrain | NET GEX chip, regime | OPEN |
+| S-22 | server.py:3292-3293 | 3 | near/far split | route hard-codes `d <= 7`; terrain_engine has its own split | /api/terrain/strikes | OPEN |
+| S-23 | server.py:3357-3359 | 5 | side sums | rows with missing strike/gamma/volume dropped uncounted | today_side_sums | OPEN |
+| S-24 | server.py:3409, 3584, 5083 | 6 | chart bars, tape, liquidity bars | live screens read the DB | chart, tape, liquidity | OPEN (P2-3) |
+| S-25 | server.py:3511/3515, 3530/3533 | 3 | spot | resolve_spot twice in one response | vanna/charm-by-strike | OPEN |
+| S-26 | server.py:3911 | 5 | gamma_available | missing flag defaults to available | gamma-surface | OPEN |
+| S-27 | server.py:3955-3979 | 3 | complete/coverage | labels a full chain "near-money, complete False" | heatmap coverage label | OPEN (fixed in #346, unmerged) |
+| S-28 | server.py:4154, 4180, 4212 | 5 | desk window, cross direction/counts | window defaults to one day; missing direction reads "below"/down | /api/desk/events | OPEN |
+| S-29 | server.py:4229-4233 | 3/6 | level crosses | raw DB read beside _merged_recent_crosses; missing direction -> down | /api/alerts | OPEN |
+| S-30 | server.py:4318, 4356-4357 | 5 | flow, streaming_plane | exception -> None / {} with no reason | order flow, options microstructure | OPEN |
+| S-31 | server.py:4345 | 5 | put_call | first-of | options microstructure | OPEN |
+| S-32 | server.py:4582 | 5 | expiry | first expiry when none asked | /api/chain | OPEN |
+| S-33 | server.py:4614, 4619 | 2 | strikePrice | read raw | /api/chain | OPEN |
+| S-34 | server.py:4952-4957 | 5 | canonical levels stale | hard-coded `"stale": False` | /api/levels, alerts | OPEN |
+| S-35 | server.py:4964-4965 | 3/5 | em_up/em_dn | live spot + chain-time move under the terrain's as-of | /api/levels | OPEN |
+| S-36 | server.py:5040 | 5 | prev-day levels | first-of across keys | liquidity raw_levels_used | OPEN |
+| S-37 | server.py:5111-5135 | 3/5 | zone anchor, tradeable_score | mid substituted; score with no spot; distance penalty computed in the route | liquidity zones | OPEN |
+| S-38 | server.py:4633, 4650 | 5 | logger_running | never set True; /api/health always False | /api/health | OPEN |
 
-### The Call and its inputs (call_engine.py, signals.py, prediction_engine.py, lifecycle_rule_core.py)
-| ID | file:line | Violation | Flows to | Status |
-|---|---|---|---|---|
-| C-01 | signals.py:146-197 | non-tradable canonical becomes a "flat / low / 1/3 each" forecast | persisted prediction_direction / pred_confidence every tick; readiness | FIXED 739fb9fc |
-| C-02 | call_engine.py:564 | unknown event risk took the default threshold | stack threshold | FIXED 51a6def0 |
-| C-03 | call_engine.py:178-181 | readiness uses "flat", 0.0 for a withheld forecast | The Call readiness | FIXED 739fb9fc |
-| C-04 | call_engine.py:1874-1876, 1921-1923 | missing level distance -> "far" | readiness | FIXED 739fb9fc |
-| C-05 | call_engine.py:1892-1901, 1939-1948 | readiness defaults 0 / "WAIT" / "dormant", except -> 0 | readiness | FIXED 739fb9fc |
-| C-06 | call_engine.py:1916-1920 | put resistance falls back to support below | put readiness | FIXED 739fb9fc |
-| C-07 | call_engine.py:1880, 1927 | readiness trend: rules.zone_label -> MVP zone | readiness | FIXED 739fb9fc |
-| C-08 | call_engine.py:408-410 | unhandled WAIT reasons print "insufficient confirmation" (incl. no_measured_stop) | The Call headline | FIXED 2066e680 |
-| C-09 | signals.py:330 | calibration timeframe `or "1m"` defeats the writer's refusal | calibration row (env-gated) | FIXED 2066e680 |
-| F-09 | prediction_engine.py:436-446 | 15m/60m "structure approximation" text | readiness | FIXED a7b8aefc |
-| F-10 | prediction_engine.py:420, 445-446 | missing charm -> "No clear trend — range" | readiness | FIXED a7b8aefc |
-| S-14 | lifecycle_rule_core.py:203-208 | T1 = 2R fallback (also overrides the similar-setups avg5 when it is <= 1.5R) | The Call target | FIXED c36102ec |
-| S-15 | lifecycle_rule_core.py:220-228 | T2 falls to avg60, then T1 + 1R | The Call target2 | FIXED c36102ec |
-| S-16 | lifecycle_rule_core.py:237-240 | T2 <= T1 replaced by T1 + 1R | The Call target2 | FIXED c36102ec |
+## D — database and infrastructure
 
-### Fusion / model labels persisted as data (bayesian_fusion.py, ml_predict.py, market_state.py)
-| ID | file:line | Violation | Flows to | Status |
-|---|---|---|---|---|
-| F-01 | bayesian_fusion.py:789-796 | fuse returns available=True with 0 active sources | persisted fusion_* columns every tick | FIXED 693ffaa8 |
-| F-02 | bayesian_fusion.py:182-189 | DEFAULT_PRIORS when regime missing | fusion_* | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs likelihoods estimated from labeled outcomes before re-enable |
-| F-03 | bayesian_fusion.py:331-355 | "placeholder likelihoods" rules tables are the only evidence | fusion_* | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs likelihoods estimated from labeled outcomes before re-enable |
-| F-04/05 | bayesian_fusion.py:333-336, 378, 508 | getattr(rules, "signal"/"conviction", default) | fusion_* | FIXED 693ffaa8 |
-| F-06 | bayesian_fusion.py:620-621 | CALIBRATION_PENALTY placeholder | fusion_confidence | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs likelihoods estimated from labeled outcomes before re-enable |
-| F-07/08 | bayesian_fusion.py:421, 427-429 | likelihood floor; "fallback to priors" | posteriors | DORMANT since 693ffaa8 (runs only when a model contributes evidence; model stack off, #262). F-03 needs likelihoods estimated from labeled outcomes before re-enable |
-| L-01 | ml_predict.py:2853-2862 | model_version built from files on disk, not what ran | persisted pred_model_version | FIXED 425aa436 |
-| F-11 | prediction_engine.py:923; server.py:8549 | `or "rules_v1"` | persisted pred_model_version | FIXED 425aa436 |
-| S-01..03 | market_state.py:1707, 1719, 431, 446 | placeholder direction/confidence and fusion defaults persisted | snapshots | FIXED 739fb9fc |
-| S-04 | market_state.py:359-422 | "low"/"rules_v1"/0.0 defaults persisted when signals fail | snapshots | FIXED 739fb9fc |
-| L-02 | governed_stack_contract.py:229-254 | non-SPY/QQQ/IWM routed to an "SPY anchor" (+ The Call wait_reason) | The Call label | FIXED a324e70d (deleted) |
+| ID | file:line | rule | value | what it does | seen by | status |
+|---|---|---|---|---|---|---|
+| D-01 | db.py:2703, 2714 | 2 | price_bars_1m OHLC | bare float(), no schwab_number (-999/NaN stored as a price) | charts, ATR, labels | OPEN |
+| D-02 | db.py:2708 | 5 | bar timestamp | first-of over 4 keys, default 0 | price_bars_1m | OPEN |
+| D-03 | db.py:2711, 2719, 2724, 2752, 2758 | 5 | bars | dropped silently, uncounted | price_bars_1m | OPEN |
+| D-04 | db.py:2721 | 5 | bar source | no source labelled authoritative | price_bars_1m.source | OPEN |
+| D-05 | db.py:2732-2734 | 2 | bar time | unit guessed by magnitude; rounded to the minute grid | price_bars_1m | OPEN |
+| D-06 | db.py:2654 | 3 | snapshots.timeframe | relabelled to 1m | (writer dead) | OPEN |
+| D-07 | db.py:2319 | 3 | horizon slugs | hard-coded second copy | schema | OPEN |
+| D-08 | db.py:3462, 3540, 3588; movement_target_threshold.py:165-245; calibration/movement_target_thresholds_by_horizon_v1.json | 5/8 | outcome labels | placeholder point thresholds, same for every ticker; fallback chain JSON -> legacy blend -> 1e-9 | stored snapshot labels, rewritten on every bar write | OPEN |
+| D-09 | db.py:3625 | 5 | outcome_filled | first-of new vs stored | stored | OPEN |
+| D-10 | db.py:3689 | 3 | session label | second session classifier beside time_et.session_label | tools | OPEN |
+| D-11 | db.py:3148 | 5/6 | prior-session OI | returned without its date; live path reads the DB | delta_oi_walls | OPEN |
+| D-12 | db.py:3205-3207 | 5 | level crosses | invalid levels skipped uncounted | level_crosses | OPEN |
+| D-13 | calibration/complete_chain_capture.py:242 | 2 | underlyingPrice | `== -999` only, not schwab_number; text aborts the round | stored captures | OPEN |
+| D-14 | calibration/complete_chain_capture.py:95, 247, 252 | 5 | contracts, counts | non-dict and no-expiry contracts dropped uncounted; skipped writes counted as written | captures | OPEN |
+| D-15 | calibration/complete_chain_capture.py:157 | 5 | nearest capture | 30 s memo serves a cached None after a newer capture | option root match | OPEN |
+| D-16 | live_schwab_env.py:257, 355 | 3 | placeholder credentials, capability | second authority beside config | launcher | OPEN |
+| D-17 | release_object.py:35, 102 | 5/3 | git_sha | build label in place of the SHA; same value under two names | /api/build | OPEN |
+| D-18 | runtime_preflight.py:293 | 5 | requirements | missing requirements.txt reports OK | launcher | OPEN |
 
-### Exposure math (math_exposure_core.py, math_levels.py)
-| ID | file:line | Violation | Flows to | Status |
-|---|---|---|---|---|
-| M-01 | math_exposure_core.py:1037-1044 | net_delta: raw-unit switch on a gamma test; no valid delta -> 0.0 | The Call regime vote (0.0 votes LONG), zone, snapshots | FIXED b6c16570 |
-| M-02 | math_exposure_core.py:1014-1022 | net GEX: raw fallback; no valid gamma -> 0.0 | kl_net_gex "$0", regime, snapshots | FIXED b6c16570 |
-| M-03 | math_levels.py:139-145, 232 | inflection picks empty 0.0 buckets; all-strikes fallback | snapshots, SignalInput | FIXED b6c16570 |
-| M-04 | math_levels.py:153-178 | pin_strength "Very Low" for absence | bias, zone | FIXED b6c16570 |
-| M-05 | math_levels.py:190-224 | bias "Neutral"/"Chaos Zone" from absence | persisted zone, matching | FIXED b6c16570 |
-| M-06 | math_levels.py:100-110, 497-506; server.py `_bucket_total_oi` | one-sided-OI strikes dropped from PCR / OI totals; DPI total OI counts a missing leg as 0 (bucket cannot yet tell "no contract listed" from "field missing" -- fix at the producer) | klPcr screen, Greeks vote | FIXED 65b45a7f |
-| M-07 | math_levels.py:115-127 | oi_center skips one-sided strikes | snapshots | FIXED 65b45a7f |
-| M-08 | math_levels.py:1439-1447 | max pain excludes one-sided strikes | Trade Desk screen | FIXED 65b45a7f |
-| M-09 | math_levels.py:527-539 | ATM IV = one leg when the other is missing | IV direction, EM, IV rank | FIXED 65b45a7f |
-| M-10 | math_levels.py:812-855 | gamma profile silently drops contracts; no counts | flip, regime | FIXED cd9e0cb9 (counted and served: flip_diag.unpriced) |
-| M-11 | math_levels.py:1562-1575 | void zones drop the OI test with no OI | breakout score | FIXED 65b45a7f |
-| S-05 | market_state.py:1319-1323 | iv_level: chain ATM IV stands in for straddle IV | vol regime -> The Call | FIXED 541ac2f9 |
+## M — math, levels and terrain
 
-### Terrain and market context (terrain_engine.py, terrain_read.py, market_context.py)
-| ID | file:line | Violation | Flows to | Status |
-|---|---|---|---|---|
-| T-01 | terrain_engine.py:283-284 | per-strike GEX bar falls back to unsigned raw gamma | GEX-by-strike screen | FIXED 65b45a7f |
-| T-02 | terrain_engine.py:259, 293 | missing strike volume shown as 0 | same panel | FIXED 65b45a7f |
-| T-03 | terrain_engine.py:703-705 | key-level universe falls back to all strikes | walls, posture | FIXED 65b45a7f |
-| T-04 | terrain_engine.py:723-743 | book OI: missing leg = 0; except -> silently skipped | pin gate, PIN SCORE | FIXED 65b45a7f |
-| T-05 | terrain_engine.py:332 | wall range from raw gamma, still labelled "GEX mass" | chart | FIXED 65b45a7f |
-| T-06 | terrain_engine.py:415-417 | implied move from one leg's IV | EM band, banked IV | FIXED 65b45a7f |
-| T-07 | terrain_read.py:108-109 | regime from spot-vs-flip when gamma_at_spot == 0 | posture (edge case) | FIXED fa56b1dd |
-| T-08 | market_context.py:753-755 | bond_signal guessed when VIX missing | snapshots | FIXED 3cc34f89 |
-| T-09 | market_context.py:311-321 | %-change ladder: netPercentChange -> regular -> derived | confluence, snapshots | FIXED 3cc34f89 |
-| T-10 | market_context.py:650-657 | resolve_chg_pct: REST when stream missing | fast-quote, context plane | FIXED 3cc34f89 |
-| T-11 | market_context.py:288 | lastPrice -> extended.lastPrice | VIX, constituents | FIXED 3cc34f89 |
-| T-12 | market_context.py:365, 412, 494 | weighted push rescaled when < half the weight reports | cf_weighted_push, snapshots | FIXED 3cc34f89 |
-| T-13 | market_context.py:557-599 | IWM blend: one side alone stands in | snapshots | FIXED 3cc34f89 |
-| T-14 | market_context.py:54-108 | hardcoded fund weights ("as of Feb 2026") | every weighted push | FIXED 3cc34f89 |
-| T-15 | market_context.py:524-542 | backfill: tick %-change with no age limit | training rows (ops job) | FIXED 3cc34f89 |
+| ID | file:line | rule | value | what it does | seen by | status |
+|---|---|---|---|---|---|---|
+| M-01 | liquidity_value_engine.py:95, 109, 160, 192, 215, 221, 226 | 5/2 | bar timestamp | fallback and first-of key chains; units guessed by magnitude; `_ts or timestamp` | every bar-derived level | OPEN |
+| M-02 | liquidity_value_engine.py:143-200; liquidity_models.py:63 | 5 | bars | dropped uncounted (no ts / OHLC / volume) | levels, POC/VAH/VAL | OPEN |
+| M-03 | liquidity_value_engine.py:79 | 5 | tradeable_score | no spot -> a different formula | liquidity map | OPEN |
+| M-04 | liquidity_value_engine.py:388 | 3 | RTH open | hard-coded 9:30 beside RTH_OPEN | ORB on /api/levels | OPEN |
+| M-05 | liquidity_value_engine.py:426, 490 | 5 | VWAP | bars with no volume skipped uncounted | VWAP | OPEN |
+| M-06 | liquidity_value_engine.py:439 | 5 | VWAP sigma | negative variance clamped to 0 | bands | OPEN |
+| M-07 | liquidity_value_engine.py:474, 1648, 1656 | 3 | VWAP bands | two computations; the series' last point overwritten by the other | /api/levels, chart | OPEN |
+| M-08 | liquidity_value_engine.py:569, 575, 667-682, 764-809, 865-880, 961-983, 1185-1216 | 2/5 | level prices | truthiness treats 0 as missing | zones | OPEN |
+| M-09 | liquidity_value_engine.py:984, 1050-1059 | 5 | value_state, vwap_relation, new_value_area | missing input -> "unchanged"/"at_value"; floor 0.01 | snapshot summary | OPEN |
+| M-10 | liquidity_value_engine.py:757, 853, 952, 1174, 1341 | 3 | PDH..VWAP | checkpoint and replay builders recompute the Phase 2A families under the same ids | /api/liquidity-snapshot | OPEN |
+| M-11 | liquidity_value_engine.py:1271, 1460, 1594, 1685 | 5/3 | cutoff label, session_scope, absent families | label says now for canonical values; relabel fallback; absence recorded only when all three missing | /api/levels | OPEN |
+| M-12 | liquidity_value_engine.py:1222 | 2/5 | fused option levels | raw float, dropped silently | zones | OPEN |
+| M-13 | math_exposure_core.py:30; math_levels.py:216 | 2 | IV, strike, multiplier | IV 0, strike 0, multiplier 0 rejected as bounds | exposures | OPEN (IV 0: see note) |
+| M-14 | math_exposure_core.py:209, 218, 222-223, 252 | 5/3 | contracts | dropped uncounted; bad multiplier skipped before OI counted so the leg reads a known 0; diag counts them as "greeks missing" | OI, PCR, max pain | OPEN |
+| M-15 | math_exposure_core.py:156-159, 239-249, 347-349 | 5 | sizes, dollars | accumulators start at 0.0; unreported reads 0 | per-strike | OPEN |
+| M-16 | math_exposure_core.py:292, 324 | 3 | IV validity | inline re-implementation of schwab_iv_to_sigma | vanna | OPEN |
+| M-17 | math_exposure_core.py:345, 687 | 5 | net vanna | $0 served when nothing priced a vanna | vanna_agg | OPEN |
+| M-18 | math_exposure_core.py:497, 500 | 2/5 | quoteTimeInLong, overlay baseline | raw float, 0 missing; fallback baseline | overlay | OPEN |
+| M-19 | math_exposure_core.py:557, 573, 763, 921 | 5 | leg OI/volume, unwind, key delta strike | missing leg read as 0 | max pain, PCR, key delta | OPEN |
+| M-20 | math_exposure_core.py:713 | 5/3 | DEX$ | reads 0.0-initialised fields, always "seen", $0 served; re-sums net_dex | dex_dollars | OPEN |
+| M-21 | math_exposure_core.py:795, 867 | 5 | 0DTE share, gamma strength | missing book -> 0%; single strike -> 100% | terrain | OPEN |
+| M-22 | math_exposure_core.py:35 | 5 | book net GEX | partly valid strikes summed, invalid dropped silently | regime | OPEN |
+| M-23 | math_exposure_core.py:969, 991 | 5 | gamma/delta walls | raw-gamma/raw-delta fallback when not dollarized | walls | OPEN |
+| M-24 | math_levels.py:150, 666 | 2 | spot | `not spot` | charm, flip | OPEN |
+| M-25 | math_levels.py:297 | 5 | contract gamma | non-finite -> 0.0 uncounted | flip | OPEN |
+| M-26 | math_levels.py:334 | 5 | flip | no spot -> first crossing | flip | OPEN |
+| M-27 | math_levels.py:353-357, 609-634 | 3/5 | profile at a price | two interpolators, both carry the endpoint off the profile | GSF, flip diag | OPEN |
+| M-28 | math_levels.py:429; terrain_engine.py:742 | 3 | gamma at spot | GSF uses the curve, regime uses Schwab's book; flip_diag's gamma_at_spot overwritten by the other producer under the same key | regime vs gsf_state | OPEN |
+| M-29 | terrain_engine.py:365 | 5 | contract side | anything not PUT becomes call | chain ladder | OPEN |
+| M-30 | terrain_engine.py:332 | 2 | strike volume | `if r[2]` | migration | OPEN |
+| M-31 | terrain_engine.py:859 | 5 | computed_ts_utc | compute time labelled as fetch time | ages | OPEN |
+| M-32 | terrain_engine.py:853, 858 | 3/5 | PCR by expiry | books sharing an expiry string overwrite | PCR | OPEN |
+| M-33 | terrain_engine.py:818 | 3 | rr_25d scope | labelled front expiry; producer picks nearest 30 d | rr_25d | OPEN |
+| M-34 | terrain_atr.py:52, 73 | 2/5/6 | ATR | raw DB OHLC; failure -> None with no reason; live radar reads the DB | radar | OPEN |
+| M-35 | math_volatility.py:139 | 2/5 | candle OHLC | first-of keys, raw float | ATR | OPEN |
+| M-36 | math_probabilities.py:53, 128, 137 | 5 | direction label, pin score | missing threshold -> "flat"; clamp; unverified divisor | outcome labels, pin gate | OPEN |
+| M-37 | time_et.py:269 | 5 | time to expiry | 10-minute floor | every BS greek | OPEN |
+| M-38 | time_et.py:151, 219, 255, 21 | 3 | session windows, close time | 240/1200 in two places; second close-time lookup; two names for 9:30 | session label, T | OPEN |
 
-### Other persisted scores (math_probabilities.py)
-| ID | file:line | Violation | Flows to | Status |
-|---|---|---|---|---|
-| S-06 | math_probabilities.py:1422-1433 | flow imbalance falls back to call/put volume ratio | snapshots, SignalInput | FIXED b5c5aeff |
-| S-07 | math_probabilities.py:1525-1550 | smart-money: missing legs = 0 | snapshots | FIXED b5c5aeff |
-| S-08..10 | math_probabilities.py:658-668, 769-779, 830-840 | breakout / vol-expansion / sweep: missing component = 0 | snapshots | FIXED b6c16570 |
-| S-11 | math_probabilities.py:545-557 | hedging flow re-weights present legs | snapshots | FIXED b6c16570 |
-| S-12 | math_probabilities.py:1085-1123 | IWM confluence: missing legs neutral | snapshots | FIXED: compute_iwm_confluence and sector strength deleted with the retired roster (branch fix/retire-index-confluence-audited) |
-| S-13 | math_probabilities.py:221-234 | option-expression score: missing inputs add 0 -> rec_strike | The Call contract | FIXED a324e70d (deleted) |
+## O — streaming, order flow and Schwab client
 
-### Found while repairing (2026-09-24)
-| ID | file:line | Violation | Flows to | Status |
-|---|---|---|---|---|
-| N-01 | calibration/edge_validation.py `_effective_directional_signal` | stored 1/3-each placeholder triplets won the p_up >= p_dn >= p_fl tie-break and were scored as LONG calls -- every edge study over rows logged while fusion was off counted them | calibration edge / discovery / engineering reports | FIXED 739fb9fc (reader requires tradable provenance; any edge report produced from those rows before this is invalid) |
-| N-02 | prediction_engine.py `_empty_prediction` | no-database path seeds every horizon with a 1/3-each product triplet | PredictiveCard up/down/flat per horizon (no-DB only) | FIXED a324e70d (deleted) |
-| N-03 | calibration/analyze_phase3.py `_confidence_bucket`; calibration/signal_engineering.py `final_signal or "wait"` | unknown confidence label bucketed as "low"; missing final signal counted as "wait" | offline calibration reports | FIXED 2f23ff9a (deleted) |
-| N-04 | db.py compute_accuracy | RTH scope read a NULL et_minute as :00; "statistical_v1" default version matched zero rows | accuracy surfaces | FIXED 425aa436 |
-| N-05 | v2_decision/a2_lifecycle_sidecar.py | second stop/target producer: VIX/clock stop, VWAP-snapped targets, 2R/T1+1R fallbacks disagreeing with The Call | A2 lifecycle preview (advisory, training rows) | FIXED c36102ec (carries The Call's plan) |
-| N-06 | call_engine.py `_vol_risk_mult`; lifecycle_rule_core.apply_risk_multiplier | vol-regime risk multiplier `or 1.0`; NaN multiplier -> 1.0 | The Call stop distance | FIXED a324e70d (deleted) |
-| N-07 | terrain_engine.py compute_terrain | max pain computed over ALL expiries pooled (standard definition is per expiry) | Trade Desk max pain | FIXED 65b45a7f (front expiry, max_pain_dte) |
-| N-08 | server.py /api/fast-quote REST writer; live_market_plane.record_quote; ingest LAST_PRICE carry | REST quotes written into the live plane (replacing stream rows), auth-failure stale carry-forward, REST row restamped as streamed | spot / header / tools | FIXED d944aabf |
-| N-09 | server.py _fetch_state spread + volume | cached-spread label; 4-source volume chain into bar volume | snapshots, candles | FIXED d944aabf |
-| N-10 | server.py _fetch_state | bid/ask/sizes/mark from a per-cycle REST quote while spot is streamed -- two sources and two instants in one persisted row | snapshots, The Call inputs | FIXED e7361e68 |
-| N-11 | server.py _fetch_state expiry select | a requested past expiry is replaced by the default expiry ("using default") instead of refused | state payload | FIXED b5c5aeff |
-| N-12 | app/options/order_flow/engine.py, state.py, history.py | order-flow fallbacks: REST quote/extended/regular/underlying + book-top stand-ins for L1 bid/ask/size/mark; rvol 4 current + 5 average sources incl. a candle-average baseline; institutional proxy averaging whichever of 4 legs existed; _weighted_mean_present weight renormalisation; options flow first-contract-only per strike, partial volume/delta sums, put_vol+1e-9; VOLUME for TOTAL_VOLUME; CHANGE_PERCENT (never sent) for change %; ts_recv "now" stamp; tape receipts on the console clock; raw-symbol key; invented 1s span | order-flow payload, snapshots | FIXED e7361e68 |
-| N-13 | server.py _fetch_state | REST Cum Delta "tape" from one polled quote per cycle; candle volume from REST price history (nearest-in-time candle, ms-vs-s magnitude guess, $-stripped retry); plane_quote_authority "rest_*" labels and exception -> "rest_only" | snapshots, cum delta, diagnostics | FIXED e7361e68 |
-| R-01 | server.py get_chain (/api/chain) | a failed live chain fetch (vendor non-200, error, or a different expiry returned) was answered from, in turn, the vendor's other expiry, an older persisted complete capture, or a bounded stored snapshot that could belong to a different expiry -- labeled, still a substitute; SPY's expired 0DTE drew HTTP 400 and was served from storage on every refresh (measured 2026-09-24; the vendor-400 case replays with `pytest tests/test_chain_api_v1.py -k non_200`) | Chain ladder, Strike Detail, contract specs, /options | FIXED 018f7268 |
-| N-14 | live_market_plane vs app/options/order_flow/state | two stores hold the same streamed L1 fields (plane per-field state; order-flow `_top` with its own 25s field freshness) -- not a fallback, a duplicate store that can disagree | order-flow engine vs header | OPEN (P2-3: one store) |
-| N-15 | liquidity_value_engine.py `_cluster_reference_price` | the cluster reference price is the first positive of orb mid, prior close, prior POC (a chain of stand-ins) | liquidity clusters | FIXED cd9e0cb9 (reference deleted: levels merge by their own price) |
+| ID | file:line | rule | value | what it does | seen by | status |
+|---|---|---|---|---|---|---|
+| O-01 | app/options/order_flow/state.py:207; engine.py:47, 214-218, 629; streaming.py:308/310 | 3/5 | BID/ASK price and size | second L1 store (`_top`) with its own 25 s arrival-age freshness; no timestamp counts as fresh | microstructure, Trade Desk book | OPEN (P2-3) |
+| O-02 | state.py:141-144, 181-182 | 3/7 | TOTAL_VOLUME | third and fourth stores (one never read) | none / overlay | OPEN |
+| O-03 | engine.py:274-312, 494-505; live_market_plane.py:123-133 | 3 | spread, spread_frac, mid | three spread producers, two mids; MARK never stored so spread_frac is always None | microstructure | OPEN |
+| O-04 | engine.py:276, 351, 419-420, 615, 618 | 2 | MARK, book price, bid/ask, times | 0 rejected or read as missing | microstructure | OPEN |
+| O-05 | engine.py:618 | 5 | quote_age_sec | computed from a quote that is not live | ages | OPEN |
+| O-06 | engine.py:830-833 | 2/5 | institutional_flow_proxy | clamp with invented divisors | (always None) | OPEN |
+| O-07 | state.py:28-38, 137-138 | 3/5 | session reset | own RTH test; clock failure -> "closed"; failure swallowed | tape/book reset | OPEN |
+| O-08 | l1_trade_observation.py:143-147, 192-197 | 5 | tape pressure 30s/2m/5m | window anchored to the last print, not now; `now_ms = 0` substitute | Trade Desk flow card | OPEN |
+| O-09 | live_market_plane.py:123-138 | 3/7 | spread, quote_mid, *_disp, generation | computed per row, no consumer | none | OPEN |
+| O-10 | live_market_plane.py:232; streaming.py:78-103, 181, 223, 905-916; stream_spine.py:274; capture.py:64 | 3 | feed liveness | four thresholds; heartbeat stored twice (5 s vs 3 s) | header vs diagnostics | OPEN |
+| O-11 | streaming.py:224-257, 907-916, 1006-1008 | 5 | streaming_healthy | healthy with no data for 8 s; synthetic stale_ms 0.0 | feed badges | OPEN |
+| O-12 | streaming.py:952-968, 513-516 | 5 | producer contract, active contract | `symbols[0]` / `held[0]` when the asked contract is not held | subscription panel | OPEN |
+| O-13 | streaming.py:297-312, 361-364, 426-457, 504-507 | 5 | ingest, contract match, DB path | failures swallowed as False/None, uncounted | contract selection | OPEN |
+| O-14 | live_price_rows.py:44-66 | 3/5 | forming 1m bar | built from L1 ticks while Schwab streams CHART_EQUITY; a same-price trade in a new minute never opens it | chart | OPEN |
+| O-15 | live_price_rows.py:92 | 2 | trade_age_sec | negative age clamped to 0 | header | OPEN |
+| O-16 | live_price_rows.py:121-123 | 5 | closed_last | carries time and label, not its source | header | OPEN |
+| O-17 | history.py:356-366 | 3/5 | heatmap cell | venues overwrite each other; unobserved side reads 0 | order-flow heatmap | OPEN |
+| O-18 | history.py:228-241, 159-162, 172-181, 47-73, 153-156 | 5/2/3 | axis, tape context, trade identity, hydrate | invented 0.01 width; context carried forward; second trade-dedup; raw fields; failures -> [] | heatmap, tape | OPEN |
+| O-19 | app/api/routes/options_order_flow.py:26-30 | 5 | minutes | invalid -> 15.0 | (route dead) | OPEN |
+| O-20 | app/options/contracts/default.py:57 | 5 | ATM spot | banked capture spot, no age check | contract selection | OPEN |
+| O-21 | stream_spine.py:153-154 | 5 | ts_recv | build time substituted | every message | OPEN |
+| O-22 | stream_spine.py:126; capture.py:101, 175 | 3 | symbol key | `.upper().strip()` beside ticker_storage_key | subscriptions | OPEN |
+| O-23 | capture.py:157 | 2/3 | flat L1 columns | raw copy beside native_json | stream_quotes_raw | OPEN |
+| O-24 | live_push.py:136-138 | 5 | bar1m replay | last bar re-delivered as new on reconnect | price_bars_1m writer | OPEN |
+| O-25 | schwab_client.py:483-484, 561-564 | 5 | chain payload | failure -> {}; merged chain top-level fields first-of | chain consumers | OPEN |
+| O-26 | schwab_field_dictionary_builder.py:34, 90-100 | 3/8 | ticker validity | heuristic + hard-coded ticker list used as production validity | production_universe | OPEN |
 
-### v2 decision (advisory; persisted training rows only)
-| ID | file:line | Violation | Status |
+## P — page code (static/)
+
+| ID | file:line | rule | value | what it does | seen by | status |
+|---|---|---|---|---|---|---|
+| P-01 | ed-core.js:386-409 | 4/5 | strike window | page index math; middle strike when spot_strike absent; hidden count computed | every windowed panel | OPEN |
+| P-02 | ed-core.js:432-436, 822, 835, 887 | 4 | ages, push freshness | thresholds and unit conversion on the page | badges, header | OPEN |
+| P-03 | ed-core.js:621, 878 | 5 | expiries, session | failure hidden, no reason | dropdown, header | OPEN |
+| P-04 | ed-core.js:674, 678-679, 705, 817, 828-831 | 3/5 | header/watchlist | first-of fields; dead 'stale' branch; chg painted in closed state on the header only; any row marks the list healthy | header, watchlist | OPEN |
+| P-05 | index.html:829-1062 (11 sites), 1083, 850, 886 | 5 | ticker label, AI expiry, notes | hard-coded "SPX"; never-updated text | panel headers | OPEN |
+| P-06 | ed-gamma.js:54-63, 139-150, 474, 788-805, 836-843 | 4 | heat colour scale, flash, coverage %, counts | max/threshold/percent on the page | heatmap | OPEN |
+| P-07 | ed-gamma.js:316-317 | 4/9 | as-of | browser local time, not CT | heatmap note | OPEN |
+| P-08 | ed-gamma.js:355-370 | 4/5 | columns | page picks and sorts expiries; falls back to expired columns | heatmap | OPEN |
+| P-09 | ed-gamma.js:478, 735, 561-576, 643-645, 730, 904 | 5 | liveness, reasons, defaults | absent -> live; first-of reasons ("undefined"); stale values drawn as normal; col-0 default; any error relabelled | heatmap | OPEN |
+| P-10 | ed-gamma-panels.js:10-27; ed-gamma-chart.js:11-16; ed-tv-chart.js:31-38 | 3 | USD/volume formatting | three formatters with different precision | panels, chart | OPEN |
+| P-11 | ed-gamma-panels.js:313-339, 623-635; ed-gamma-chart.js:563-615; ed-trade-desk.js:317-329; ed-order-flow.js:82-85; ed-order-flow-heatmap.js:137 | 4/5 | bar scales | max over served data, `|| 0`/`|| 1`, scale endpoints shown as numbers | GBS, vanna/charm, chart, migration, book, heatmap | OPEN |
+| P-12 | ed-gamma-panels.js:372, 458-473, 696-700, 684 | 4/5 | Strike Detail, Structures | tolerance pick of contract and net; put substituted for call; UTC date | Strike Detail, Structures | OPEN |
+| P-13 | ed-gamma-panels.js:70-71, 86, 197; ed-gamma-chart.js:19, 49-50, 208-227, 321, 361-436, 500-539, 659-664 | 3/4/5 | spot, badges, domain, readout, forming bar | page-formatted spot from a second source; min/max domain + synthetic ±2%; readout computed; forming bar merged on the page; stale drawing kept | chart, Key Levels | OPEN |
+| P-14 | ed-tv-chart.js:238, 358-365, 435-481 | 4/5 | bar colour, levels shown, revisions, markers | arithmetic on bars; page filters levels; drops uncounted | Trade Desk chart | OPEN |
+| P-15 | ed-trade-desk-map.js:25 | 3 | lookback words | second copy of DESK_LOOKBACK_SEC | Desk | OPEN |
+| P-16 | ed-trade-desk-map.js:56, 64, 182, 236, 311-347, 369, 403-404, 427 | 4 | ages, date format, tail bars, VAH/VAL pick, colours, LEVELS age | page math and picks | Desk | OPEN |
+| P-17 | ed-trade-desk-map.js:224, 351, 384, 385, 412, 415 | 5 | labels, not-priced, posture, flip relation, bars label, strikes | first-of; posture -> regime; any non-ABOVE -> "Below flip"; served 0 -> "—" | Desk | OPEN |
+| P-18 | ed-trade-desk.js:114-117, 150, 309-336 | 4/5 | labels, distance, zone type, migration window/tags | first-of; negation; unknown type -> resistance; strike matching | Right Now | OPEN |
+| P-19 | ed-stream.js:72-73, 328-330 | 3/5 | ACK verdict, book subscription | second ACK validator; marked warmed before ack, failure never shown | Flow, Book | OPEN |
+| P-20 | ed-order-flow-heatmap.js:131-205 | 4/5/3 | grid, buckets, cell side, axis, readout | defaults (`|| 90`, `|| 0.01`); re-binning with last-wins; EVEN painted bid; date math | order-flow heatmap | OPEN |
+| P-21 | ed-liquidity-map.js:27, 105-155 | 3/4/5 | zone type, PD/ON levels, range | unknown -> Resistance; levels from a second route; min/max range; invalid zones dropped uncounted | Liquidity Map | OPEN |
+| P-22 | ed-gamma-flow.js:102, 172-175; options_subscription.js:121 | 3/5 | subscription badge, header contract | unknown -> PENDING; contract from shell state, not served | Options Flow | OPEN |
+| P-23 | ed-gamma-chain.js:94 | 2 | chain cells | prints any number (server stripping of -999 to confirm) | Options Chain | OPEN |
+| P-24 | ed-order-flow.js:86, 98-102 | 4/5 | wall marking, no-book reason | page matching; one reason for every cause | Book | OPEN |
+| P-25 | ed-alerts.js:13, 20, 31 | 5 | alerts | HTTP failure shown as "no alerts"; strip hidden with no reason | alert strip | OPEN |
+
+## X — code with no job (rule 7)
+
+| ID | where | what | status |
 |---|---|---|---|
-| V-01 | v2_decision/module_a_adapter.py:186-190 | direction `or prediction_dir or final_bias` | FIXED a324e70d (deleted) |
-| V-02 | v2_decision/module_a_adapter.py:196, 81 | unknown -> "neutral" -> WAIT stored as a value | FIXED a324e70d (deleted) |
+| X-01 | static/governance.html, static/ops.html | whole pages; every route they call is gone (404) | OPEN |
+| X-02 | server.py:887-937, 734, 1131, 4016 | executors never used, `_main_event_loop`, `_l1_sse_last_drop_mono`, empty CORE_TICKERS, /api/spot (no page caller) | OPEN |
+| X-03 | db.py:274, 282, 2601, 2866, 2981, 3073, 3285, 3399, 3638, 3689, 3718, 118-129, 1399-1426, 1439, 1488, 1848, 2521, 3106, 3115, 3267-3275 | snapshot writer and outcome pipeline with no writer, dead tables' code, iv_daily (no reader), unread rings and constants | OPEN |
+| X-04 | execution_identity.py, decision_record.py, horizon_outcomes.py, ml_horizon.py, movement_target_threshold.py, api_pressure.py, schwab_field_dictionary_builder.py:117-395, config.py:92-96 | modules or parts with no product caller | OPEN (verify each) |
+| X-05 | app/options/order_flow/engine.py:680-835, 942-998; routes/options_order_flow.py; history.py:19; state.py `_stream_volume` | options-flow, rvol and institutional proxy paths that always return None; retired fields; dead route | OPEN |
+| X-06 | live_market_plane.py:38-51, 150, 317-321 | SSE cursor and fast generation with no reader | OPEN |
+| X-07 | liquidity_value_engine.py:750, 846, 945 (+ premarket via generate_*) | checkpoint snapshot builders; the page sends only snapshot=live | OPEN |
+| X-08 | math_levels.py:234-240, 703; math_exposure_core.py:167, 895; liquidity_models.py:212; terrain_read.py:95, 106; micro_structure.py:52 | unused branches, parameters and fields | OPEN |
+| X-09 | static/js: ed-stream.js status/acceptedForDesired/getDesiredAdditional/gate/setActiveTicker export; l1_sse_guards.js five test-only functions; options_subscription.js planeIsBoundToContract/subscriptionState/isCurrent/pendingContract; ed-core.js exports and `_wlLastGoodTs`; ed-gamma.js `_heatmapVisibleContracts`, exports; ed-tv-chart.js exports; fallback formatters and loader stubs; unused locals | test-only or never called | OPEN |
+| X-10 | tools/rth_completeness_check_v1.py:104; tests/test_runtime_layout_v1.py:31-33; db_safety.py:1-19 | call or name things that do not exist | OPEN |
 
-## Dormant (ML stack / Monte Carlo off) — fix before enabling
-ml_predict feature imputation and nan_to_num (L-03..09), Monte Carlo sigma/drift/tail
-fallbacks (F-12..20), mc_fusion_adjustment reverts (F-20), the 5c SPY-only isotonic map
-(L-14), live-unreachable Call sizing/conviction defaults (C-10..19). Deleted with the ML
-stack, a324e70d.
-
-## Counts
-Re-audit live P0 open: N-14, owned by P2-3.
-P1 (re-audit): ~70 more, never committed: NOT_PROVEN which of them name code that still exists.
+Note (M-13): IV 0 is rule 2 "a reported 0 is 0"; a contract with sigma 0 has no Black-Scholes
+gamma (the price is intrinsic), so it cannot be priced: counted as `no_volatility`, never dropped
+silently (cd9e0cb9). The strike and multiplier bounds are Schwab's own definitions (a strike and a
+contract size are positive) and are to be confirmed per field against the Schwab field reference.
