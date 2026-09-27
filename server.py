@@ -3480,6 +3480,18 @@ def _load_stored_levels() -> int:
     return n
 
 
+def _price_stored_chain_when_closed(tk: str) -> None:
+    """A viewed ticker keeps its chain and its heatmap. While the market is closed nothing
+    downloads a chain, so the first view prices the ticker's newest chain capture with the chain
+    kept -- the same capture the startup load priced (DATA_FLOW decision 7), not a second
+    source. The startup load keeps no chains: nobody is viewing anything then."""
+    if _is_loggable_session() or (terrain_cache_get(tk) or {}).get("_chain"):
+        return
+    caps = last_capture_per_day(get_db().db_path, tk, 1)
+    if caps:
+        _publish_levels(tk, capture=caps[0])
+
+
 def start_terrain_loop() -> None:
     """Start the terrain collection thread.
 
@@ -4274,6 +4286,7 @@ def get_options_gamma_surface(ticker: str = Query(...)):
 
     tk = ticker_storage_key(_required_ticker(ticker))
     _note_gamma_surface_demand(tk)   # mark viewed -> the terrain loop will project this ticker's surface
+    _price_stored_chain_when_closed(tk)
 
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
     live = terrain_cache_get(tk)
@@ -5155,6 +5168,7 @@ def get_chain(ticker: str = Query(...),
     _touch_tracked_ticker_view(t)
 
     _note_gamma_surface_demand(t)          # a viewed ticker's full chain is kept by the levels loop
+    _price_stored_chain_when_closed(t)
     held = terrain_cache_get(t) or {}
     resolved_expiry = (expiry or "").strip()[:10] or (held.get("expiries") or [None])[0]
 

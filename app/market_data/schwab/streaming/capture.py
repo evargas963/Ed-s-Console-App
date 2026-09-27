@@ -183,11 +183,15 @@ def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
 
 
 class _RawHandler:
-    """schwab-py handler shape for a service it has no helper for (NEWS_HEADLINE)."""
+    """schwab-py handler shape for a service it has no helper for (NEWS_HEADLINE). schwab-py
+    calls label_message on every handler of every frame; without it the call raised and the rest
+    of the frame -- prices included -- was dropped ("skipped a frame", 2026-09-26)."""
 
     def __init__(self, fn) -> None:
         self.fn = fn
 
+    def label_message(self, msg: dict) -> dict:
+        return msg                                   # as sent
 
     def __call__(self, msg: dict):
         return self.fn(msg)
