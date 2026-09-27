@@ -5735,6 +5735,14 @@ def canonical_price_level_snapshot(ticker: str):
 LEVEL_NEAR_SPOT_FRACTION = 0.0015
 
 
+#: the terrain's price levels the chart draws (terrain_engine.compute_terrain), in its words
+GAMMA_LEVELS = (("call_wall", "Call wall"), ("put_wall", "Put wall"), ("gamma_flip", "Gamma flip"),
+                ("max_pain", "Max pain"), ("net_gex_peak", "Net Γ peak"), ("absolute_gamma_strike", "Abs Γ"),
+                ("pin_candidate", "Pin candidate"), ("gsf", "GSF"), ("grc", "GRC"), ("hvp", "HVP"),
+                ("lvp", "LVP"), ("key_delta_strike", "Key Δ strike"), ("call_charm_wall", "Call charm wall"),
+                ("put_charm_wall", "Put charm wall"))
+
+
 @app.get("/api/levels")
 # Phase 2A (operator 2026-08-08): /api/levels is the canonical SERVING CONTRACT for the
 # one materialized PriceLevelSnapshot — it serializes, it does not compute. Every other
@@ -5770,13 +5778,18 @@ def get_levels(ticker: str = Query(...),
         levels.append(row)
     # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values)
     t = terrain_cache_get(tk) or {}
-    for gid, label in (("call_wall", "Call wall"), ("put_wall", "Put wall"),
-                       ("gamma_flip", "Gamma flip"), ("max_pain", "Max pain")):
-        if t.get(gid) is not None:
+    em = (t.get("implied_1d_move") or {}).get("points")
+    carried = [(gid, label, "gamma", t.get(gid)) for gid, label in GAMMA_LEVELS]
+    carried += [("em_up", "+1σ move", "expected_move", None if em is None or spot is None else spot + em),
+                ("em_dn", "−1σ move", "expected_move", None if em is None or spot is None else spot - em)]
+    for gid, label, fam, price in carried:
+        if price is not None:
             as_of = t.get("computed_ts_utc")
-            levels.append({"id": gid, "price": t[gid], "family": "gamma", "label": label,
+            levels.append({"id": gid, "price": price, "family": fam, "label": label,
                            "evidence_tier": "DERIVED",
-                           "provenance": {"producer": "terrain_engine.compute_terrain", "carried": True},
+                           "provenance": {"producer": "terrain_engine.compute_terrain", "carried": True}
+                           if fam == "gamma" else {"producer": "server.get_levels: live spot ± the terrain's "
+                                                   "implied_1d_move.points", "carried": False},
                            "staleness": {"as_of_ts_utc": as_of,
                                          "age_sec": None if as_of is None else round(served_ts - as_of, 1),
                                          "stale_after_sec": None, "stale": bool(t.get("levels_stale")),
@@ -5796,10 +5809,9 @@ def get_levels(ticker: str = Query(...),
                                            key=lambda r: abs(r["distance"]))]
 
     families_absent = list(snap.families_absent)
-    for fam, why in (
-        ("expected_move", "Phase 2A slice excludes EM — served by /api/state until migration"),
-    ):
-        families_absent.append({"family": fam, "reason": why})
+    if em is None or spot is None:
+        families_absent.append({"family": "expected_move", "reason": "no live price" if spot is None
+                                else "the terrain has no implied 1-day move"})
 
     return JSONResponse({
         "ticker": tk,

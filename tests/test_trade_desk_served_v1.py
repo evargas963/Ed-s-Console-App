@@ -99,7 +99,8 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
     spot, terrain = spy_levels
     body = json.loads(server.get_levels(ticker="SPY").body)
     by_id = {r["id"]: r for r in body["levels"]}
-    for gid in ("call_wall", "put_wall", "gamma_flip", "max_pain"):
+    assert sum(terrain.get(gid) is not None for gid, _ in server.GAMMA_LEVELS) >= 8   # the real chain prices most
+    for gid, _label in server.GAMMA_LEVELS:
         if terrain.get(gid) is not None:
             assert by_id[gid]["family"] == "gamma" and by_id[gid]["price"] == terrain[gid]
             assert gid in body["by_distance"]
@@ -107,6 +108,33 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
     assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - spot))]
     assert all(r["side"] == ("AT" if round(r["price"] - spot, 2) == 0 else "ABOVE" if r["price"] > spot else "BELOW")
                for r in priced)
+
+
+def test_a_same_day_chain_has_no_expected_move_and_says_why(spy_levels):
+    """The SPY capture lists only the 0DTE expiry; the terrain's one-day move needs one a day out."""
+    _spot, terrain = spy_levels
+    assert terrain.get("implied_1d_move") is None
+    body = json.loads(server.get_levels(ticker="SPY").body)
+    assert not {"em_up", "em_dn"} & {r["id"] for r in body["levels"]}
+    assert {"family": "expected_move", "reason": "the terrain has no implied 1-day move"} in body["families_absent"]
+
+
+def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move(spy_levels, monkeypatch, pin_clock):
+    """Real CRWD chain (expiries a day and more out). Stand-in: its capture spot as the live price;
+    the SPY bars behind the other levels are not asserted here."""
+    fx = _load("real_crwd_complete_chain_quarter.json")
+    pin_clock(2026, 9, 2, 12, 0)
+    terrain = {**compute_terrain("CRWD", [dict(c) for c in fx["chain"]], float(fx["spot"])).to_dict(),
+               "computed_ts_utc": time.time()}
+    spot = float(fx["spot"])
+    monkeypatch.setattr(server, "terrain_cache_get", lambda t: terrain)
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
+    body = json.loads(server.get_levels(ticker="SPY").body)
+    by_id = {r["id"]: r for r in body["levels"]}
+    em = terrain["implied_1d_move"]["points"]
+    assert by_id["em_up"]["price"] == spot + em and by_id["em_dn"]["price"] == spot - em
+    assert by_id["em_up"]["family"] == by_id["em_dn"]["family"] == "expected_move"
+    assert "expected_move" not in {f["family"] for f in body["families_absent"]}
 
 
 def test_vwap_is_served_per_chart_bar(spy_levels):
