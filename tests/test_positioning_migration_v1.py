@@ -52,3 +52,33 @@ def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
     assert m["busiest"] == sorted(sorted(vols, key=lambda k: -vols[k])[:2])
     assert m["volume_total"] == sum(r[2] for r in today["all"] if r[2] is not None)
     assert not m["compared"] and m["drift"] is None      # no prior day: nothing to compare
+
+
+def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_path, monkeypatch, pin_clock):
+    """On a weekend the terrain holds the newest capture (Friday). The prior day was picked by the
+    wall clock's date, so it was that same Friday capture: every change 0, served as `compared`
+    (2026-09-27). It is the capture before the day of the chain the rows came from. Real PCG
+    chains, stored as the daemon writes them; the clock is Sunday."""
+    import server
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+    db = tmp_path / "ed.db"
+    for day in _FX["days"]:
+        by_exp: dict = {}
+        for c in day["contracts"]:
+            by_exp.setdefault(str(c.get("expirationDate") or "")[:10], []).append(c)
+        for exp, cs in by_exp.items():
+            persist_complete_chain_capture(db, ticker="PCG", expiry=exp, contracts=cs, spot=day["spot"],
+                                           completeness_basis=CAPTURE_BASIS, ts_utc=day["ts_utc"])
+    fri = _FX["days"][1]
+    at = datetime.fromtimestamp(fri["ts_utc"], time_et.ET)
+    pin_clock(at.year, at.month, at.day, at.hour, at.minute)
+    snap = compute_terrain("PCG", fri["contracts"], fri["spot"])
+    payload = {**snap.to_dict(), "_per_strike": snap.per_strike, "computed_ts_utc": fri["ts_utc"],
+               "_chain_fetched_ts": fri["ts_utc"]}
+    pin_clock(2026, 9, 27, 12, 0)                                        # Sunday
+    monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload if tk == "PCG" else None)
+    monkeypatch.setattr(server, "get_db", lambda: type("D", (), {"db_path": str(db)})())
+    body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
+    assert body["prior_source"] == "chain_capture:2026-09-24"
+    m = body["migration"]["all"]
+    assert m["compared"] and sum(1 for r in m["rows"] if r[3]) > 10       # real changes, not self vs self
