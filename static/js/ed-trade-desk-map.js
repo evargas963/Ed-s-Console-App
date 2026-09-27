@@ -26,7 +26,8 @@
     '30': { lbl: 'this session' }, '60': { lbl: 'last 2 days' }, 'D': { lbl: 'last 20 days' } };
   var FAMILIES = [
     { id: 'value_area', lbl: 'Value area' }, { id: 'vwap', lbl: 'VWAP' }, { id: 'gamma', lbl: 'Gamma' },
-    { id: 'prior_day', lbl: 'Prior day' }, { id: 'opening_range', lbl: 'Opening range' }, { id: 'overnight', lbl: 'Overnight' }];
+    { id: 'expected_move', lbl: '±1σ move' }, { id: 'prior_day', lbl: 'Prior day' }, { id: 'opening_range', lbl: 'Opening range' },
+    { id: 'overnight', lbl: 'Overnight' }];
   var SHORT = { TODAY_VAH: 'VAH', TODAY_VAL: 'VAL', TODAY_POC: 'POC', PDH: 'PDH', PDL: 'PDL', PDC: 'PDC',
     PD_POC: 'pPOC', PD_VAH: 'pVAH', PD_VAL: 'pVAL', ORB_HIGH: 'ORH', ORB_LOW: 'ORL', ORB_MID: 'ORM',
     OVERNIGHT_HIGH: 'ONH', OVERNIGHT_LOW: 'ONL' };
@@ -78,7 +79,7 @@
   var S = {
     tf: sget('ed.desk.tf', '5'), nearest: Number(sget('ed.desk.nearest', '6')) || 6,
     fam: (function () { try { return JSON.parse(sget('ed.desk.fam', 'null')) || null; } catch (e) { return null; } })() ||
-      { value_area: 1, vwap: 1, gamma: 1, prior_day: 1, opening_range: 1, overnight: 1 },
+      { value_area: 1, vwap: 1, gamma: 1, expected_move: 1, prior_day: 1, opening_range: 1, overnight: 1 },
     ticker: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
     analytics: null, liq: null, quotes: {}, lastTail: 0, tailBusy: false, queue: [], sel: null
   };
@@ -125,14 +126,14 @@
       return '<button type="button" class="tdm-fam fam-' + f.id + '" data-fam="' + f.id + '"><i></i>' + f.lbl + '</button>'; }).join('');
     fam.addEventListener('click', function (e) {
       var b = e.target.closest('[data-fam]'); if (!b) return;
-      var id = b.getAttribute('data-fam'); S.fam[id] = S.fam[id] ? 0 : 1;
+      var id = b.getAttribute('data-fam'); S.fam[id] = S.fam[id] === 0 ? 1 : 0;   // a family not yet saved is on
       sset('ed.desk.fam', JSON.stringify(S.fam)); paintFamilies(); paintChartLevels();
     });
     paintFamilies(); paintTfButtons();
   }
   function paintFamilies() {
     document.querySelectorAll('#tdmFamilies [data-fam]').forEach(function (b) {
-      b.classList.toggle('on', !!S.fam[b.getAttribute('data-fam')]); });
+      b.classList.toggle('on', S.fam[b.getAttribute('data-fam')] !== 0); });
   }
   function paintTfButtons() {
     document.querySelectorAll('#tdmToolbar [data-tf]').forEach(function (b) {
@@ -204,17 +205,16 @@
   // ------------------------------------------------------------------ chart overlays
   function levelList() {
     var P = S.chart.palette(), out = [];
-    var style = { value_area: [P.accent2, 2, 1], prior_day: [P.ink3, 1, 1], opening_range: [P.stale, 2, 1], overnight: [P.research, 2, 1] };
+    var style = { value_area: [P.accent2, 2, 1], prior_day: [P.ink3, 1, 1], opening_range: [P.stale, 2, 1], overnight: [P.research, 2, 1],
+      expected_move: [P.accent2, 3, 1], gamma: [P.research, 2, 1] };
     var gamma = { call_wall: ['Call wall', P.up, 0, 2], put_wall: ['Put wall', P.down, 0, 2],
       gamma_flip: ['γ flip', P.accent, 0, 2], max_pain: ['Max pain', P.ink3, 3, 1] };
     var byId = {}; ((S.levels && S.levels.levels) || []).forEach(function (l) { byId[l.id] = l; });
     // served order: nearest the live price first (by_distance); the chart keeps the first N on screen
     ((S.levels && S.levels.by_distance) || []).forEach(function (id) {
-      var l = byId[id]; if (!l || l.price == null || !S.fam[l.family]) return;
-      if (l.family === 'gamma') {
-        var g = gamma[l.id]; if (g) out.push({ id: l.id, price: Number(l.price), label: g[0], color: g[1], style: g[2], width: g[3] });
-        return;
-      }
+      var l = byId[id]; if (!l || l.price == null || S.fam[l.family] === 0) return;
+      var g = l.family === 'gamma' && gamma[l.id];
+      if (g) { out.push({ id: l.id, price: Number(l.price), label: g[0], color: g[1], style: g[2], width: g[3] }); return; }
       var s = style[l.family]; if (!s) return;
       out.push({ id: l.id, price: Number(l.price), label: SHORT[l.id] || l.label || l.id, color: s[0], style: s[1], width: s[2] });
     });
