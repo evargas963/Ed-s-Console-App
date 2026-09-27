@@ -829,21 +829,11 @@ def _l1_light_sse_try_reserve(request: Request, key: tuple[str, str]) -> tuple[a
             _l1_sse_diag["l1_light_sse_duplicate_scope_same_client_warn_total"] = int(
                 _l1_sse_diag.get("l1_light_sse_duplicate_scope_same_client_warn_total", 0)
             ) + 1
-            # RC-230 severity calibration (quiet-gate finding, reasoning on record): a SAME-client
-            # duplicate is the operator's own multi-tab/multi-monitor viewing — designed-normal,
-            # not a malfunction — so it logs INFO with the full diag counter retained. The
-            # per-scope and global CAPS above keep their WARNING+503 teeth for real floods;
-            # approaching the cap re-escalates to WARNING here so leak growth stays loud.
+            # a same-client duplicate is the operator's own extra tab: counted, not logged; only
+            # approaching the per-scope cap is logged
             if dup + 1 >= MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE - 1:
                 log.warning(
                     "L1 light SSE same-client duplicates approaching per-scope cap for %s from %s (existing=%s)",
-                    key,
-                    remote,
-                    dup,
-                )
-            else:
-                log.info(
-                    "duplicate L1 light SSE connections for scope %s from client %s (existing=%s) — same-client multi-tab, designed-normal",
                     key,
                     remote,
                     dup,
@@ -3449,7 +3439,8 @@ def _terrain_loop() -> None:
         # sleep floor. This number was already computed and only logged; readers had no access
         # to it, so terrain_staleness was left comparing against a cadence the loop never meets.
         globals()["_terrain_last_cycle_sec"] = float(elapsed)
-        log.info("Terrain cycle: %d tickers in %.1fs", len(tickers), elapsed)
+        if tickers:   # a cycle with nothing to do prints nothing
+            log.info("Terrain cycle: %d tickers in %.1fs", len(tickers), elapsed)
         sleep_end = time.monotonic() + max(0.0, TERRAIN_REFRESH_SEC - elapsed)
         while _terrain_loop_running and time.monotonic() < sleep_end:
             time.sleep(0.5)
