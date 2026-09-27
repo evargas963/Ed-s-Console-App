@@ -44,7 +44,9 @@ def test_every_row_is_schema_valid_and_none_is_bookkeeping():
     # (_atr_pair, _read_bars_1m) (556 -> 541)
     # 2026-09-26: the ML stack and the analytics pipeline were deleted with their rows (541 -> 170);
     # 2026-09-27: three order-flow reader delegates (P1-5) and four /api/desk routes (P2-4) (-> 166)
-    assert len(ROWS) >= 166, "the consolidated rows lost provenance claims"
+    # 2026-09-27: /exposure and its accrual deleted (P2-4): _accrue_chain_observation and
+    # get_exposure_flow (-> 164), and /api/forces charm_book_scope, read only by /exposure (-> 163)
+    assert len(ROWS) >= 163, "the consolidated rows lost provenance claims"
 
 
 def _qualified_defs(tree: ast.AST) -> set[str]:

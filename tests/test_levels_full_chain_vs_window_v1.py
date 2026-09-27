@@ -78,7 +78,6 @@ def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture
     monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t: False)
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (_SPOT, "fixture", 0.0))
-    monkeypatch.setattr(server, "_accrue_chain_observation", lambda *a, **k: None)
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
     monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
 

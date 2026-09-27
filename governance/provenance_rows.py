@@ -586,11 +586,6 @@ ROWS: tuple[Row, ...] = (
         justification='Schwab option chain wrapper.',
     ),
     Row(
-        file='server.py', derivation='_accrue_chain_observation', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Banks one wide-chain per-strike observation into option_chain_accrual and never raises into the producer; the per-strike values are already derived upstream.',
-    ),
-    Row(
         file='server.py', derivation='_app_lifespan', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_app_lifespan).',
@@ -604,11 +599,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='_canonical_price_level_bars', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Phase 2A: the ONE bar input for the canonical snapshot -- price_bars_1m (written only from streamed CHART_EQUITY bars) plus the forming minute; a thin prior session is stamped degraded, never filled; no direct Schwab read.',
-    ),
-    Row(
-        file='server.py', derivation='_charm_book_scope', disposition='SCHWAB_LEAF',
-        schwab_leaf='chains.*.expirationDate',
-        justification="RC-288: counts the DISTINCT expirations in the contracts actually summed and reports single_expiry_banked:<date>, full_chain_banked, or unknown. It replaced a hardcoded literal that matched the client's own fallback, so the label could never disagree with itself. An empty or unreadable chain yields unknown, never a confident book for a chain nobody looked at.",
     ),
     Row(
         file='schwab_client.py', derivation='_option_expiries', disposition='SCHWAB_LEAF',
@@ -727,11 +717,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='get_options_gamma_surface', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='RC-UI-1: strike x expiry GEX$ surface (Options/Gamma heatmap). PREFERRED source is the LIVE terrain cache (current terrain-refresh contracts + live spot, bounded near-money window) — an in-memory read, no SQLite. This SQLite read is the FALLBACK ONLY: the banked morning wide reference (option_chain_morning_full), stale, not intraday, not proven complete. Both paths partition by native expirationDate and route each expiry slice through the shared compute_exposures_by_strike faucet; the endpoint owns no gamma/GEX math and is a projection of the one exposure producer.',
-    ),
-    Row(
-        file='server.py', derivation='get_exposure_flow', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='RC-208: serves banked option_chain_accrual frames for the latest banked session; reads rows this repo already persisted rather than re-deriving them.',
     ),
     Row(
         file='server.py', derivation='get_forces', disposition='ALLOWLISTED',

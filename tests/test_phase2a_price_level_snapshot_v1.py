@@ -333,23 +333,6 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
     assert src == [], src
 
 
-
-
-
-
-
-
-def test_exposure_draws_carried_values_only():
-    exposure = (ROOT / "static" / "exposure.html").read_text(
-        encoding="utf-8", errors="replace")
-
-    assert "computeVwapSeries" not in exposure, (
-        "the exposure tab's own VWAP/σ accumulation is back")
-    assert "lv.vwap_series" in exposure, (
-        "the exposure tab no longer carries the server VWAP curve")
-    assert client_level_reconstruction_violations("exposure.html", exposure) == []
-
-
 def test_liquidity_snapshot_scopes_checkpoint_ids_away_from_canonical():
     """A checkpoint cutoff is a different measurement, so it gets a different id."""
     import server as srv

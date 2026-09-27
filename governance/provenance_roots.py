@@ -14,7 +14,6 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/build': ('OPS', None),
     '/api/chain': ('PRODUCER', 'server.py:get_chain'),
     '/api/expiries': ('PRODUCER', None),
-    '/api/exposure/flow': ('PRODUCER', 'server.py:get_exposure_flow'),
     '/api/forces': ('PRODUCER', 'server.py:get_forces'),
     '/api/health': ('OPS', None),
     '/api/levels': ('PRODUCER', 'server.py:get_levels'),
@@ -36,7 +35,6 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/terrain': ('PRODUCER', 'server.py:get_terrain'),
     '/api/terrain/strikes': ('PRODUCER', 'server.py:get_terrain_strikes'),
     '/api/watchlist-quotes': ('PRODUCER', 'server.py:api_watchlist_quotes'),
-    '/exposure': ('PAGE', None),
     '/favicon.ico': ('PAGE', None),
 }
 
