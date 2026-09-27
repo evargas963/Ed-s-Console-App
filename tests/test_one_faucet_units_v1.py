@@ -90,3 +90,19 @@ def test_the_put_call_volume_ratio_is_todays_trading_and_says_so_when_volume_is_
     book[105.0]["volume_unreported"] = 0
     book[110.0] = {"call_volume": None, "put_volume": 50.0, "volume_unreported": 0}
     assert put_call_volume_ratio(book) == pytest.approx(550.0 / 500.0)
+
+
+def test_a_book_that_priced_no_vanna_or_no_dollars_serves_absent_not_zero():
+    """Audit M-17/M-20: vanna and DEX-dollar fields start at 0.0 in every bucket, and the totals
+    read those zeros as data. Real chain priced the day after its own expiry (Schwab still lists
+    an expired Friday on the weekend): no contract has a vanna, so there is no net vanna; built
+    without spot there are no dollars, so there is no DEX $."""
+    from datetime import timedelta
+    from math_exposure_core import bucket_metric
+    chain, spot = _FX["chain"], float(_FX["spot"])
+    next_day = datetime(*_CAPTURED, tzinfo=time_et.ET) + timedelta(days=1)
+    per, _ = compute_exposures_by_strike(chain, spot=spot, require_oi=True, now=next_day)
+    assert [bucket_metric(b, "net_vanna") for b in per.values()] == [None] * len(per)
+    assert compute_net_vanna(per, spot) is None
+    no_spot, _ = compute_exposures_by_strike(chain, spot=None, require_oi=True)
+    assert compute_net_dex_dollars(no_spot) is None

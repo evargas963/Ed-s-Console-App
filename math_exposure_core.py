@@ -62,6 +62,7 @@ _GREEK_FIELD_FLAG = {
                      "call_gex_1pct", "put_gex_1pct", "net_gex_1pct"), "has_valid_gamma"),
     **dict.fromkeys(("call_delta", "put_delta", "net_delta",
                      "call_dex_dollars", "put_dex_dollars", "net_dex_dollars"), "has_valid_delta"),
+    **dict.fromkeys(("call_vanna", "put_vanna", "net_vanna"), "has_valid_vanna"),
 }
 
 
@@ -124,6 +125,8 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             # contributed. A bucket whose deltas were all invalid keeps net_delta 0.0 from its
             # initialiser -- that 0.0 is NOT data (audit M-01, 2026-09-23).
             "has_valid_delta": False,
+            # True once a contract with OI priced a vanna (valid IV and time to expiry)
+            "has_valid_vanna": False,
             # True when the book was built WITH spot, i.e. the *_dollars / *_gex_1pct fields are
             # real dollar values. Set explicitly at build; never inferred from values.
             "dollarized": False,
@@ -301,6 +304,7 @@ def compute_exposures_by_strike(
                     _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["call_vanna"] += _vn * 0.01 * oi * mult   # per 1 vol point
+                        b["has_valid_vanna"] = True
         elif side == "PUT":
             if oi is not None:
                 prev = b.get("put_oi")
@@ -330,6 +334,7 @@ def compute_exposures_by_strike(
                     _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["put_vanna"] += _vn * 0.01 * oi * mult    # per 1 vol point
+                        b["has_valid_vanna"] = True
         else:
             continue
 
@@ -402,7 +407,7 @@ def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics
 
 #: The per-strike bucket fields that are flags (OR-ed when books merge); every other field is
 #: a sum, None when no contract reported it (_strike_bucket, compute_exposures_by_strike).
-_BUCKET_FLAGS = frozenset({"has_oi", "has_valid_gamma", "has_valid_delta", "dollarized"})
+_BUCKET_FLAGS = frozenset({"has_oi", "has_valid_gamma", "has_valid_delta", "has_valid_vanna", "dollarized"})
 
 
 #: streamed-state key -> (chain contract field it overlays, that field's own freshness key).
@@ -684,8 +689,7 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
     """
     if not exposures or spot is None or spot <= 0:
         return None
-    nets = [float(b["net_vanna"]) for b in exposures.values()
-            if isinstance(b, dict) and b.get("net_vanna") is not None]
+    nets = [v for b in exposures.values() if (v := bucket_metric(b, "net_vanna")) is not None]
     if not nets:
         return None
     net_shares_per_volpt = sum(nets)                 # the book is already per vol point
@@ -704,20 +708,12 @@ def compute_net_dex_dollars(exposures: dict) -> dict | None:
     """
     if not exposures:
         return None
-    call_dex = 0.0
-    put_dex = 0.0
-    seen = False
-    for b in exposures.values():
-        if not isinstance(b, dict):
-            continue
-        c = b.get("call_dex_dollars")
-        p = b.get("put_dex_dollars")
-        if c is not None:
-            call_dex += float(c); seen = True
-        if p is not None:
-            put_dex += float(p); seen = True
-    if not seen:
+    priced = [b for b in exposures.values() if isinstance(b, dict) and b.get("dollarized")
+              and bucket_metric(b, "net_dex_dollars") is not None]
+    if not priced:
         return None
+    call_dex = sum(b["call_dex_dollars"] for b in priced)
+    put_dex = sum(b["put_dex_dollars"] for b in priced)
     return {"net_dex": round(call_dex - put_dex, 2),
             "call_dex": round(call_dex, 2), "put_dex": round(put_dex, 2)}
 
@@ -956,45 +952,24 @@ def pick_volatility_point_strikes(
 def pick_gamma_wall_strikes(
     exposures: Dict[float, dict], strikes: List[float]
 ) -> tuple[tuple[float | None, float | None], tuple[float | None, float | None]]:
-    """Call/put gamma walls: max |side GEX$| (or |side γ| fallback)."""
-    if exposures_have_dollar_gex(exposures):
-        return (
-            _pick_strike_max_metric(
-                exposures, strikes, lambda b: bucket_metric_abs(b, "call_gex_1pct")
-            ),
-            _pick_strike_max_metric(
-                exposures, strikes, lambda b: bucket_metric_abs(b, "put_gex_1pct")
-            ),
-        )
+    """Call/put gamma walls: max |side GEX$|; none without a dollarized book (no spot)."""
+    if not exposures_have_dollar_gex(exposures):
+        return (None, None), (None, None)
     return (
-        _pick_strike_max_metric(
-            exposures, strikes, lambda b: bucket_metric_abs(b, "call_gamma")
-        ),
-        _pick_strike_max_metric(
-            exposures, strikes, lambda b: bucket_metric_abs(b, "put_gamma")
-        ),
+        _pick_strike_max_metric(exposures, strikes, lambda b: bucket_metric_abs(b, "call_gex_1pct")),
+        _pick_strike_max_metric(exposures, strikes, lambda b: bucket_metric_abs(b, "put_gex_1pct")),
     )
 
 
 def pick_delta_wall_strikes(
     exposures: Dict[float, dict], strikes: List[float]
 ) -> tuple[tuple[float | None, float | None], tuple[float | None, float | None]]:
-    if exposures_have_dollar_gex(exposures):
-        return (
-            _pick_strike_max_metric(
-                exposures, strikes, lambda b: bucket_metric_abs(b, "call_dex_dollars")
-            ),
-            _pick_strike_max_metric(
-                exposures, strikes, lambda b: bucket_metric_abs(b, "put_dex_dollars")
-            ),
-        )
+    """Call/put delta walls: max |side DEX$|; none without a dollarized book (no spot)."""
+    if not exposures_have_dollar_gex(exposures):
+        return (None, None), (None, None)
     return (
-        _pick_strike_max_metric(
-            exposures, strikes, lambda b: bucket_metric_abs(b, "call_delta")
-        ),
-        _pick_strike_max_metric(
-            exposures, strikes, lambda b: bucket_metric_abs(b, "put_delta")
-        ),
+        _pick_strike_max_metric(exposures, strikes, lambda b: bucket_metric_abs(b, "call_dex_dollars")),
+        _pick_strike_max_metric(exposures, strikes, lambda b: bucket_metric_abs(b, "put_dex_dollars")),
     )
 
 
