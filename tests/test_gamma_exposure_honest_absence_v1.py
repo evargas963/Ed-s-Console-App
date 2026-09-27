@@ -1,25 +1,7 @@
-"""SPX honest-display fix (operator directive, 2026-09-14): a strike/expiry bucket that never
-cleared the open-interest gate must never present its pre-initialized 0.0 accumulator as a
-computed exposure value, and a persisted fallback chain must never be presented as today's data
-when it is not.
-
-Live-reproduced defect: Schwab's SPX chain feed returned openInterest=0 (a stuck vendor
-snapshot) for every contract while SPY/QQQ were unaffected through the identical code path at
-the same instant. `math_exposure_core.compute_exposures_by_strike` creates a strike bucket (via
-`_strike_bucket`) BEFORE its own `require_oi` filter runs, so every accumulator on that bucket
-(net_gex_1pct, net_dex_dollars, call_vanna/put_vanna...) stayed at its pre-initialized 0.0 --
-indistinguishable, to a reader of the raw field, from a strike genuinely measured at flat
-exposure. `has_oi` is the fix: set exactly when a contract actually clears the OI gate, checked
-by every consumer before treating a bucket's numeric fields as real.
-
-This file proves three things with synthetic (never live-vendor) chain data:
-  1. Missing/unusable OI reads as ABSENT (has_oi=False, gamma_available=False, cells None) --
-     never a fabricated numeric zero.
-  2. A genuinely computed zero (real OI on both sides, net exposure nets to exactly 0.0) still
-     renders as a real 0 -- absence-detection must not swallow real measurements.
-  3. The banked "morning reference" gamma-surface fallback may only populate a ticker's data
-     from a chain captured on TODAY's ET session date, discloses a real elapsed-seconds age
-     (never a bare boolean `stale`), and is never labelled live.
+"""A strike whose open interest Schwab did not report never shows its 0.0 accumulator as a
+computed exposure; a strike whose open interest Schwab reported as 0 shows 0 (operator ruling
+2026-09-27, take what Schwab sends -- superseding the 2026-09-14 rule that showed a reported 0 as
+absent); a genuinely netted zero shows 0; a banked chain never stands in for the live surface.
 """
 from __future__ import annotations
 
@@ -52,53 +34,57 @@ def _ct(strike: float, side: str, oi, *, gamma=0.04, delta=0.5, iv=20.0, dte=5,
 SPOT = 100.0
 
 
-# ---------------------------------------------------------------- 1. missing OI is absent ----
+# ------------------------------------------- 1. reported 0 is 0; unreported is absent ----
 
-def test_zero_oi_everywhere_yields_has_oi_false_not_a_fabricated_zero():
-    """The exact live-SPX shape: every contract reports openInterest=0."""
-    chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),
-             _ct(100.0, "CALL", 0), _ct(100.0, "PUT", 0)]
-    exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
-    assert exposures, "buckets must still exist (created before the OI gate runs)"
-    for k, b in exposures.items():
-        assert b["has_oi"] is False, f"strike {k} cleared has_oi with zero OI everywhere"
-        assert b["net_gex_1pct"] == 0.0, "the raw accumulator is still its pre-init 0.0"
+def _crwd():
+    import json
+    from pathlib import Path
+    return json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
+                      .read_text(encoding="utf-8"))
 
 
-def test_zero_oi_everywhere_surface_reports_gamma_unavailable_and_null_cells():
-    chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),
-             _ct(100.0, "CALL", 0), _ct(100.0, "PUT", 0)]
-    surface = project_gamma_surface(chain, exposure_books(chain, spot=SPOT))
-    assert surface["gamma_available"] is False
-    assert surface["gamma_unavailable_reason"] is not None
-    assert "no usable open interest" in surface["gamma_unavailable_reason"]
-    assert surface["cells"], "the strike axis is still built from the raw buckets"
-    for row in surface["cells"]:
-        assert row["gex"] == [None]
-        assert row["dex"] == [None]
-        assert row["vanna"] == [None]
+def test_real_chain_reported_zero_oi_shows_zero_and_unreported_shows_absent(pin_clock):
+    """Real CRWD chain. Stand-in: open interest removed from every contract at one strike, as
+    Schwab never omitted it in the captures."""
+    import copy
+    pin_clock(2026, 9, 2, 12, 0)   # the chain's capture
+    fx = _crwd()
+    chain = copy.deepcopy(fx["chain"])
+    ois = {}
+    for c in chain:
+        ois.setdefault(c["strikePrice"], []).append(c["openInterest"])
+    zero_k = next(k for k, v in ois.items() if all(o == 0 for o in v))
+    gone_k = next(k for k, v in ois.items() if k != zero_k)
+    for c in chain:
+        if c["strikePrice"] == gone_k:
+            del c["openInterest"]
+    surface = project_gamma_surface(chain, exposure_books(chain, spot=fx["spot"]))
+    cell = {r["strike"]: r for r in surface["cells"]}
+    assert all(v == 0 for v in cell[zero_k]["gex"] if v is not None) and cell[zero_k]["gex"] != [None]
+    assert cell[gone_k]["gex"] == [None]
+    exposures, _ = compute_exposures_by_strike(chain, spot=fx["spot"], require_oi=True)
+    assert exposures[zero_k]["has_oi"] and not exposures[gone_k]["has_oi"]
+    rows = {r[0] for r in _per_strike_rows(exposures)}
+    assert zero_k in rows and gone_k not in rows
 
 
-def test_zero_oi_everywhere_terrain_per_strike_rows_draws_no_bars():
-    chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0)]
-    exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
-    rows = _per_strike_rows(exposures)
-    assert rows == [], f"drew a fabricated $0 bar for a no-OI strike: {rows}"
-
-
-def test_vanna_by_strike_route_omits_no_oi_strikes_instead_of_a_fabricated_zero():
+def test_vanna_by_strike_route_omits_unreported_oi_strikes(pin_clock):
+    import copy
+    import json
+    pin_clock(2026, 9, 2, 12, 0)   # the chain's capture
+    fx = _crwd()
+    chain = copy.deepcopy(fx["chain"])
+    for c in chain:
+        del c["openInterest"]
     tk = server.ticker_storage_key("ZZTESTNOOI")
-    chain = [_ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),
-             _ct(100.0, "CALL", 0), _ct(100.0, "PUT", 0)]
-    snap = compute_terrain(tk, chain, SPOT)
+    snap = compute_terrain(tk, chain, fx["spot"])
     with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"ticker": tk, "spot": SPOT, "computed_ts_utc": time.time(),
+        server._terrain_cache[tk] = {"ticker": tk, "spot": fx["spot"], "computed_ts_utc": time.time(),
                                      "_vanna_rows": server._vanna_rows(snap)}
     try:
-        import json
         body = json.loads(server.get_vanna_by_strike(ticker="ZZTESTNOOI").body)
         assert body["available"] is True
-        assert body["rows"] == [], f"a no-OI chain must yield zero rows, not fabricated ones: {body['rows']}"
+        assert body["rows"] == [], f"a chain with no reported OI yields no rows: {body['rows']}"
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
@@ -131,21 +117,6 @@ def test_real_oi_that_nets_to_exactly_zero_terrain_row_is_zero_not_dropped():
     exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
     rows = _per_strike_rows(exposures)
     assert len(rows) == 1 and rows[0][0] == 100.0 and rows[0][1] == 0.0
-
-
-def test_a_mixed_chain_keeps_the_no_oi_strike_absent_beside_the_real_zero_strike():
-    """Negative + positive control in one chain: absence and a real zero must coexist correctly."""
-    chain = [
-        _ct(95.0, "CALL", 0), _ct(95.0, "PUT", 0),                     # no OI -> absent
-        _ct(100.0, "CALL", 500, gamma=0.04, delta=0.5),
-        _ct(100.0, "PUT", 500, gamma=0.04, delta=-0.5),                # real OI, nets to 0
-    ]
-    surface = project_gamma_surface(chain, exposure_books(chain, spot=SPOT))
-    assert surface["gamma_available"] is True, "one real strike is enough to make the surface available"
-    row95 = [r for r in surface["cells"] if r["strike"] == 95.0][0]
-    row100 = [r for r in surface["cells"] if r["strike"] == 100.0][0]
-    assert row95["gex"] == [None]
-    assert row100["gex"] == [0]
 
 
 # ------------------------------------------ 3. persisted SPX fallback: date match + real age ----

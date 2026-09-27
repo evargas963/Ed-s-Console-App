@@ -160,12 +160,22 @@ def test_unchanged_bid_ask_stand_with_their_own_age():
     assert row["field_received_ts"]["LAST_PRICE"] > t0
 
 
-def test_an_explicit_zero_price_clears_the_field():
-    _rec("CLR", {"key": "CLR", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
-    _rec("CLR", {"key": "CLR", "BID_PRICE": 0})        # vendor says: no bid now
-    row = lmp.get_quote("CLR")
-    assert row["bid"] is None and row["spread_pts"] is None
-    assert "BID_PRICE" not in row["field_received_ts"]
+def test_a_zero_price_is_taken_as_sent():
+    """Operator ruling 2026-09-27: take what Schwab sends; a reported 0 is 0."""
+    _rec("ZRO", {"key": "ZRO", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
+    _rec("ZRO", {"key": "ZRO", "BID_PRICE": 0})
+    row = lmp.get_quote("ZRO")
+    assert row["bid"] == 0.0 and row["spread_pts"] == 10.1
+
+
+def test_a_value_that_is_not_a_number_clears_the_field():
+    """AGENTS.md rule 2: -999 and text are not numbers."""
+    for bad in (-999, "9.9"):
+        _rec("CLR", {"key": "CLR", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
+        _rec("CLR", {"key": "CLR", "BID_PRICE": bad})
+        row = lmp.get_quote("CLR")
+        assert row["bid"] is None and row["spread_pts"] is None, bad
+        assert "BID_PRICE" not in row["field_received_ts"]
 
 def test_record_from_level_one_rejects_mark_as_current_spot():
     ok = _rec(

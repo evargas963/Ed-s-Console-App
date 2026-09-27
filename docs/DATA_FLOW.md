@@ -124,7 +124,7 @@ does not prove no second one exists under another name.
 
 | Rule | Check | Covers | Does not cover |
 |---|---|---|---|
-| Schwab as sent | `vendor_field_coercion` | Schwab fields parsed through `numeric_contract` | a reader that bounds or substitutes after parsing |
+| Schwab as sent | `vendor_field_coercion` (`tools/check_vendor_field_coercion.py`) | every chain, quote and stream numeric field read only through `schwab_number` / `schwab_count`: any other converter or local delegate on one fails | bar fields (`open`/`high`/`low`/`close`/`volume` share names with internal rows); a bound applied after the reader |
 | One producer | `one_producer` (`governance/computation_registry.json`) | 6 registered fields computed at one site | 303 other fields `server.py` serves |
 | One producer: spot | `single_spot_authority` | spot read only through `resolve_spot` in `server.py`, `terrain_engine.py` | page scripts |
 | One producer: levels | `domain_faucet_registry`, `phase2a_single_level_computation`, `chain_width_single_faucet` | level routes registered; price levels computed once; the chain not narrowed | exposure values outside the levels list |

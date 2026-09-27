@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Dict, List
 import math
 
-from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 
 
 # Schwab options API missing-greek sentinel (documented wire value).
@@ -25,7 +25,8 @@ def schwab_iv_to_sigma(iv: float | None) -> float | None:
 
     MEASURED 2026-09-27 on 49,244 contracts across the 43-ticker board: min 7.967, median 51.0,
     max 4,256.8 -- every value a percent. One fixed conversion; the old "> 3.0 means percent"
-    guess would have read a real 2.5% IV as 250%. Zero or less is not a volatility."""
+    guess would have read a real 2.5% IV as 250%. Schwab's IV is carried as sent; a model input
+    needs sigma > 0, so 0 or less gives no sigma."""
     if iv is None or iv <= 0:
         return None
     return iv / 100.0
@@ -53,12 +54,6 @@ def greek_reported(value: float | None, *, iv: float | None = None) -> bool:
 
 
 
-# ── Formatting helpers ────────────────────────────────────────────────────────
-
-def _f(x) -> float | None:
-    return float_finite_or_none(x)
-
-
 #: Bucket fields priced from Schwab's gamma / delta, and the flag that says a contract at the
 #: strike carried one. A strike where no contract with OI carried a reported Greek has no value
 #: for it -- its 0.0 initialiser is never read as data.
@@ -78,7 +73,7 @@ def bucket_metric(bucket: dict, key: str) -> float | None:
     flag = _GREEK_FIELD_FLAG.get(key)
     if flag is not None and flag in bucket and not bucket[flag]:     # every priced strike carries it
         return None
-    return _f(bucket[key])
+    return float_finite_or_none(bucket[key])
 
 
 def bucket_metric_abs(bucket: dict, key: str) -> float | None:
@@ -102,22 +97,12 @@ class ExposureDiagnostics:
 def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dict:
     if strike not in exposures_by_strike:
         exposures_by_strike[strike] = {
-            # Operator directive (2026-09-14, live SPX reproduction): every accumulator below
-            # (call_gamma, net_gex_1pct, ...) is pre-initialized to a real 0.0 so mid-loop `+=`
-            # never needs a None-guard -- but that same 0.0 is indistinguishable from "every
-            # contract at this strike/expiry was skipped by the require_oi gate" to any reader
-            # who only looks at the accumulator itself (exactly the live SPX defect: Schwab's
-            # chain returned openInterest=0 for every contract, so nothing here was EVER wrong
-            # math, just a bucket that never had a chance to accumulate anything real). has_oi
-            # is the ONE canonical "did any contract actually clear the OI gate" signal -- every
-            # consumer of this bucket's dollar/gamma fields must check it before treating 0.0 as
-            # a computed value, not re-derive presence from call_oi/put_oi being non-None
-            # (equivalent today, but a second definition of the same fact is how these drift).
+            # has_oi: a contract at this strike reported openInterest (a reported 0 counts:
+            # operator ruling 2026-09-27, take what Schwab sends). Every accumulator below starts
+            # at 0.0; a consumer checks has_oi before reading one as computed.
             "has_oi": False,
-            # Contracts at this strike whose openInterest was NOT REPORTED (absent / invalid).
-            # With the OI gate a leg with no positive-OI contract is a real zero, but a
-            # contract that never reported OI is UNKNOWN -- strike_total_oi() reads this so
-            # no total ever treats unknown as zero (audit T-04 / M-06..08, 2026-09-24).
+            # Contracts at this strike whose openInterest was NOT REPORTED (absent, -999, text);
+            # strike_total_oi() reads this so no total treats unknown as zero.
             "oi_unreported": 0,
             # Same discipline for the flow fields (bidSize / askSize / totalVolume): Schwab
             # reports them on every contract (measured 2026-09-24, 568 real contracts), so an
@@ -220,28 +205,28 @@ def compute_exposures_by_strike(
 
     for ct in contracts:
         total += 1
-        strike = _f(ct.get("strikePrice"))
+        strike = schwab_number(ct.get("strikePrice"))
         if strike is None:
             continue
 
-        dte = _f(ct.get("daysToExpiration"))
+        dte = schwab_number(ct.get("daysToExpiration"))
         if use_only_dte_max is not None and dte is not None and dte > use_only_dte_max:
             continue
 
-        oi = _f(ct.get("openInterest"))
+        oi = schwab_count(ct.get("openInterest"))   # -999 / text / negative: unreported
         side = (ct.get("putCall") or "").upper()
         if side not in ("CALL", "PUT"):
             continue
 
-        mult = _f(ct.get("multiplier"))
+        mult = schwab_number(ct.get("multiplier"))
         if mult is None or mult <= 0:
             missing += 1
             continue
 
         b = _strike_bucket(exposures, strike)
-        vol = float_nonnegative_or_none(ct.get("totalVolume"))  # volume: 0 valid, negatives are corruption
-        bsz = float_nonnegative_or_none(ct.get("bidSize"))   # a size is never negative
-        asz = float_nonnegative_or_none(ct.get("askSize"))
+        vol = schwab_count(ct.get("totalVolume"))
+        bsz = schwab_count(ct.get("bidSize"))
+        asz = schwab_count(ct.get("askSize"))
         if bsz is None or asz is None:
             b["size_unreported"] += 1
         if vol is None:
@@ -266,14 +251,14 @@ def compute_exposures_by_strike(
         if oi is None:
             missing += 1
             b["oi_unreported"] += 1
-        if require_oi and (oi is None or oi <= 0):
+        if require_oi and oi is None:
             continue
 
-        delta = _f(ct.get("delta"))
-        gamma = _f(ct.get("gamma"))
-        iv = _f(ct.get("volatility"))
-        delta_ok = greek_reported(delta, iv=iv)
-        gamma_ok = greek_reported(gamma, iv=iv)
+        delta = schwab_number(ct.get("delta"))
+        gamma = schwab_number(ct.get("gamma"))
+        iv = schwab_number(ct.get("volatility"))
+        delta_ok = greek_reported(delta, iv=ct.get("volatility"))   # raw: a -999 IV voids its greeks
+        gamma_ok = greek_reported(gamma, iv=ct.get("volatility"))
         if not delta_ok or not gamma_ok:
             missing += 1
 
@@ -381,7 +366,7 @@ def exposure_books(contracts: List[dict], *, spot: float | None, now=None
     groups: "dict[tuple[str, float | None], list]" = {}
     for ct in contracts or []:
         if isinstance(ct, dict):
-            key = (str(ct.get("expirationDate") or "")[:10], _f(ct.get("daysToExpiration")))
+            key = (str(ct.get("expirationDate") or "")[:10], schwab_number(ct.get("daysToExpiration")))
             groups.setdefault(key, []).append(ct)
     return {k: compute_exposures_by_strike(cs, spot=spot, require_oi=True, now=now)
             for k, cs in groups.items()}

@@ -1,210 +1,152 @@
-"""Mechanical lock: single-source coercion of Schwab vendor fields (RC-FAUCET).
+"""Every Schwab numeric field is read through `numeric_contract.schwab_number` / `schwab_count`
+(AGENTS.md rule 2).
 
-A trading UI where "data IS the product" cannot afford the SAME raw vendor field
-parsed a dozen different ways. Raw ``float(ct.get("strikePrice"))`` inside a
-``try/except (TypeError, ValueError)`` looks safe but SILENTLY ADMITS NaN/±inf
-(``float('nan')`` does not raise): a NaN strike has become a dict key, slipped into
-sorted strike sets (corrupting ATM/spacing), and passed ``abs(nan-target) >= 0.01``
-as a FALSE contract match. Every such field must be read through the canonical
-``numeric_contract`` readers so absence/corruption is rejected identically everywhere.
+Failures this catches: raw ``float(ct.get("strikePrice"))`` admitted NaN (2026-07-25); and
+(2026-09-27) the older readers -- ``float_finite_or_none``, ``float_nonnegative_or_none``,
+``float_positive_or_none`` and local delegates of them -- passed Schwab's -999 and text through
+as numbers, and dropped a reported 0 price or volume (114,675 zero-volume bars fell out of VWAP).
 
-This check flags raw ``float(...)`` / ``int(float(...))`` coercion of a vendor field,
-in BOTH forms the adversarial audit found bugs in:
+A violation: any numeric converter other than the two Schwab readers applied to a Schwab field
+read -- directly (``conv(x.get("F"))``, ``conv(x["F"])``, ``conv(f(x, "F"))``) or through a name
+bound from one in the same scope. Converters: ``float``, ``int``, every other function in
+``numeric_contract``, and any scanned function that returns a converter's result without calling
+a Schwab reader. Parsed with ``ast``; no exceptions list.
 
-  (a) DIRECT:        ``float(ct.get("strikePrice"))`` / ``float(c["strikePrice"])``
-  (b) INTERMEDIATE:  ``sp = ct.get("strikePrice")`` ... later ``float(sp)``
-      (the form a field-name grep MISSES — where 2 real bugs hid on 2026-07-25)
-
-A site is CLEAN when the coercion goes through a canonical reader
-(``float_finite_or_none`` / ``float_nonnegative_or_none`` / ``float_positive_or_none``
-or a module-local delegate: ``_f`` / ``_f_ms`` / ``_safe_float`` / ``_nonnegative_float``
-/ ``_num`` / ``_sf`` / ``_fin``), OR when the line carries an explicit, reasoned
-suppression marker::
-
-    # vendor-coercion-ok: <reason it is provably safe here>
-
-Suppressions are for sites that are safe BY CONSTRUCTION (e.g. a diagnostic counter
-that gates every use on ``isfinite``), never to silence a real one. Each must state why.
-
-Run standalone:   python tools/check_vendor_field_coercion.py [--verbose]
-Exit code 0 = clean, 1 = unmarked vendor coercion found.
-
-Schwab CSV authority checked: yes — this governs HOW Schwab leaves are parsed; it reads
-no market field itself. SCHWAB_CSV_CHECKED / NO_SCHWAB_EQUIVALENT (tooling gate).
+Run standalone:   python tools/check_vendor_field_coercion.py
+Exit code 0 = clean, 1 = violations found.
 """
 
 from __future__ import annotations
 
-import re
-import sys
+import ast
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-#: Schwab option-chain / quote leaf fields whose coercion must be single-sourced.
+#: Numeric leaves of a Schwab option-chain contract / quote (REST).
 VENDOR_FIELDS = frozenset({
     "strikePrice", "totalVolume", "openInterest", "gamma", "delta", "theta", "vega",
     "volatility", "bid", "ask", "mark", "last", "lastSize", "bidSize", "askSize",
     "multiplier", "daysToExpiration", "highPrice", "lowPrice", "openPrice",
     "closePrice", "netChange", "lastPrice", "mid",
-    # numeric leaves added 2026-07-25 (iteration-4 finding: float(underlyingPrice) admitted
-    # NaN and the `<= 0` spot guard did not catch it):
     "underlyingPrice", "rho", "theoreticalOptionValue", "theoreticalVolatility",
     "timeValue", "intrinsicValue", "markChange", "markPercentChange", "netPercentChange",
-    # 2026-07-26: the hand-maintained list was proven INCOMPLETE by reconciling against
-    # every numeric contract leaf in real captured chains (test_vendor_field_coercion_
-    # completeness). These price/value leaves were missing:
     "breakEven", "extrinsicValue", "high52Week", "low52Week", "percentChange",
+    "deliverableUnits", "avg10DaysVolume",
+    # Streamer LEVELONE_* / *_BOOK numeric fields.
+    "BID_PRICE", "ASK_PRICE", "LAST_PRICE", "MARK", "TOTAL_VOLUME", "LAST_SIZE", "BID_SIZE",
+    "ASK_SIZE", "OPEN_INTEREST", "DELTA", "GAMMA", "VOLATILITY", "THETA", "VEGA", "NET_CHANGE",
+    "NET_CHANGE_PERCENT", "HIGH_PRICE", "LOW_PRICE", "OPEN_PRICE", "CLOSE_PRICE", "MULTIPLIER",
+    "STRIKE_TYPE", "BOOK_TIME", "TRADE_TIME_MILLIS", "QUOTE_TIME_MILLIS",
 })
 
-#: Numeric contract leaves that are NOT prices/greeks — epoch-millisecond timestamps and
-#: security ids. They are still coerced through canonical readers where used, but they are
-#: deliberately OUT of the price/greek faucet class; the completeness test treats them as
-#: intentionally-excluded rather than a coverage gap. (Reconsider if any becomes a money input.)
+#: Numeric contract leaves that are not prices/greeks/counts (ids, clocks, codes).
 EXCLUDED_NUMERIC_LEAVES = frozenset({
     "quoteTimeInLong", "tradeTimeInLong", "lastTradingDay", "expirationDate", "ssid",
     "settlementType", "deliverableNote", "penny", "optionRoot",
 })
 
-#: Canonical readers (and their in-scope module-local delegates) that make a coercion safe.
-CANONICAL_READERS = frozenset({
-    "float_finite_or_none", "float_nonnegative_or_none", "float_positive_or_none",
-    "float_or_none", "_f", "_f_ms", "_safe_float", "_nonnegative_float", "_num",
-    "_sf", "_fin", "_fin2",
-})
+SCHWAB_READERS = frozenset({"schwab_number", "schwab_count"})
 
-SUPPRESS_MARKER = "vendor-coercion-ok"
-
-#: Source objects that are ALREADY-parsed payloads / internal outputs, NOT a raw Schwab
-#: chain contract or quote leaf. A field read off these is not a vendor coercion — the
-#: canonicalization already happened upstream (e.g. pq["bid"] = _safe_float_quote(...)).
-SOURCE_DENYLIST = frozenset({
-    "pq", "mc_output", "ms_dict", "snapshot", "snap", "parsed", "payload",
-})
-
-#: Directories whose Python is out of the live money-path (offline/vendored/generated).
-EXCLUDE_DIRS = (
-    ".claude", ".venv", "node_modules", "research",
-    "schwab-py-main", "__pycache__",
-)
+EXCLUDE_DIRS = (".claude", ".venv", "node_modules", "research", "schwab-py-main", "__pycache__",
+                "tools", "tests", "calibration")
 
 
-def _is_excluded(path: Path) -> bool:
-    rel = path.relative_to(REPO).as_posix()
-    if rel.startswith("tools/") or rel.startswith("tests/") or "/tests/" in rel:
-        return True
-    if rel.startswith("calibration/"):
-        return True  # offline morning calibration; not the live serving path
-    for d in EXCLUDE_DIRS:
-        if rel == d or rel.startswith(d + "/"):
-            return True
-    if path.name.startswith("test_") or path.name.endswith("_test.py"):
-        return True
-    return False
+def numeric_contract_converters() -> frozenset[str]:
+    tree = ast.parse((REPO / "numeric_contract.py").read_text(encoding="utf-8"))
+    return frozenset({"float", "int"} | {
+        n.name for n in tree.body if isinstance(n, ast.FunctionDef)} - SCHWAB_READERS)
 
 
-# float(EXPR) or int(float(EXPR)) — capture the inner expression EXPR, allowing ONE
-# level of nested parens so ``float(ct.get("strikePrice"))`` (the DIRECT form) is matched,
-# not just ``float(sp)`` (the intermediate form). Missing the nested case was a detector
-# blind spot: it silently reduced the lock to intermediate-only.
-_FLOAT_CALL = re.compile(r"(?:int\(\s*)?(?<![A-Za-z0-9_])float\(\s*([^()]*(?:\([^()]*\))?[^()]*?)\s*\)")
-# EXPR is a direct vendor get: x.get("field") or x["field"]
-_DIRECT_GET = re.compile(r"""\.get\(\s*['"](?P<f>[A-Za-z0-9_]+)['"]""")
-_DIRECT_SUB = re.compile(r"""\[\s*['"](?P<f>[A-Za-z0-9_]+)['"]\s*\]""")
-# Assignment of a bare name from a vendor get:  var = x.get("field")  /  var = x["field"]
-_ASSIGN_GET = re.compile(
-    r"""^\s*(?P<var>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?P<rhs>.+?\.get\(\s*['"](?P<f>[A-Za-z0-9_]+)['"].*|.+?\[\s*['"](?P<f2>[A-Za-z0-9_]+)['"]\s*\].*)$"""
-)
-_DEF_RE = re.compile(r"^\s*(?:async\s+)?def\s+\w+")
-_BARE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+def _name(func: ast.AST) -> str | None:
+    if isinstance(func, ast.Name):
+        return func.id
+    return func.attr if isinstance(func, ast.Attribute) else None
 
 
-def _rhs_uses_canonical(expr: str) -> bool:
-    return any(r + "(" in expr for r in CANONICAL_READERS)
+def _calls(node: ast.AST) -> set[str]:
+    return {n for n in (_name(c.func) for c in ast.walk(node) if isinstance(c, ast.Call)) if n}
 
 
-def scan_file(path: Path) -> list[tuple[int, str, str]]:
-    """Return (lineno, kind, code) for each unmarked vendor coercion in the file."""
-    findings: list[tuple[int, str, str]] = []
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    vendor_vars: dict[str, str] = {}  # varname -> field, reset per def
-    for i, line in enumerate(lines, start=1):
-        if _DEF_RE.match(line):
-            vendor_vars = {}
-        stripped = line.strip()
-        if stripped.startswith("#"):
-            continue
-        marked = SUPPRESS_MARKER in line
+def _defs(tree: ast.AST) -> list:
+    return [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
 
-        # Record vendor-var assignments (intermediate form), unless RHS is already canonical.
-        m = _ASSIGN_GET.match(line)
-        if m:
-            fld = m.group("f") or m.group("f2")
-            var = m.group("var")
-            rhs = m.group("rhs")
-            src_m = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\.get\(|\[)", rhs)
-            src = src_m.group(1) if src_m else ""
-            if fld in VENDOR_FIELDS and src in SOURCE_DENYLIST:
-                vendor_vars.pop(var, None)  # already-parsed payload / internal output -> safe
-            elif fld in VENDOR_FIELDS and not _rhs_uses_canonical(rhs):
-                vendor_vars[var] = fld
-            elif fld in VENDOR_FIELDS:
-                vendor_vars.pop(var, None)  # reassigned through a canonical reader -> safe
 
-        # Inspect every float()/int(float()) call on this line.
-        for fm in _FLOAT_CALL.finditer(line):
-            inner = fm.group(1).strip()
-            # (a) DIRECT vendor get inside the float()
-            dg = _DIRECT_GET.search(inner) or _DIRECT_SUB.search(inner)
-            if dg and dg.group("f") in VENDOR_FIELDS:
-                if not marked:
-                    findings.append((i, "direct", stripped))
+def with_delegates(trees: list, conv: frozenset[str]) -> frozenset[str]:
+    """`conv` plus every function in `trees` that returns a converter's result without calling
+    a Schwab reader (so `_f`, imported from another module, is a converter too)."""
+    conv, defs = set(conv), [d for t in trees for d in _defs(t)]
+    grew = True
+    while grew:
+        grew = False
+        for d in defs:
+            if d.name in conv or _calls(d) & SCHWAB_READERS:
                 continue
-            # (b) INTERMEDIATE: float() on a bare name previously bound to a vendor field
-            if _BARE_NAME.match(inner) and inner in vendor_vars:
-                if not marked:
-                    findings.append((i, f"intermediate({vendor_vars[inner]})", stripped))
-    return findings
+            if any(isinstance(r, ast.Return) and r.value is not None and _calls(r.value) & conv
+                   for r in ast.walk(d)):
+                conv.add(d.name)
+                grew = True
+    return frozenset(conv)
 
 
-def violations() -> list[tuple[str, int, str]]:
-    """(rel_path, line, message) for each unmarked vendor coercion — for the gate wrapper."""
-    out: list[tuple[str, int, str]] = []
+def scan_source(src: str, converters: frozenset[str] | None = None) -> list[tuple[int, str]]:
+    """(line, message) for each Schwab field read through a converter other than a Schwab reader."""
+    tree = ast.parse(src)
+    conv = with_delegates([tree], converters if converters is not None else numeric_contract_converters())
+    consts = {t.id: n.value.value for n in tree.body if isinstance(n, ast.Assign)
+              and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)
+              for t in n.targets if isinstance(t, ast.Name)}
+    defs = _defs(tree)
+
+    def field_read(e: ast.AST) -> str | None:
+        if not isinstance(e, (ast.Call, ast.Subscript)) or _calls(e) & (conv | SCHWAB_READERS):
+            return None
+        for n in ast.walk(e):
+            v = n.value if isinstance(n, ast.Constant) else consts.get(n.id) if isinstance(n, ast.Name) else None
+            if isinstance(v, str) and v in VENDOR_FIELDS:
+                return v
+        return None
+
+    out = set()
+    for scope in [tree, *defs]:
+        bound = {}
+        for n in ast.walk(scope):
+            if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name):
+                f = field_read(n.value)
+                if f:
+                    bound[n.targets[0].id] = f
+        for n in ast.walk(scope):
+            if isinstance(n, ast.Call) and _name(n.func) in conv and n.args:
+                a = n.args[0]
+                f = field_read(a) or (bound.get(a.id) if isinstance(a, ast.Name) else None)
+                if f:
+                    out.add((n.lineno, f"Schwab field {f} read through {_name(n.func)}(); "
+                                       f"use schwab_number / schwab_count"))
+    return sorted(out)
+
+
+def scanned_sources() -> dict[str, str]:
+    out = {}
     for path in sorted(REPO.rglob("*.py")):
-        if _is_excluded(path):
-            continue
         rel = path.relative_to(REPO).as_posix()
-        for (ln, kind, code) in scan_file(path):
-            out.append((rel, ln,
-                        f"raw float()/int(float()) coercion of a Schwab vendor field [{kind}] — "
-                        f"read it through numeric_contract (float_finite_or_none / "
-                        f"float_nonnegative_or_none), or add '# vendor-coercion-ok: <reason>' "
-                        f"if provably safe by construction: {code}"))
+        if rel != "numeric_contract.py" and rel.split("/")[0] not in EXCLUDE_DIRS and "/tests/" not in rel:
+            out[rel] = path.read_text(encoding="utf-8")
     return out
 
 
-def main(argv: list[str]) -> int:
-    total: list[tuple[Path, int, str, str]] = []
-    for path in sorted(REPO.rglob("*.py")):
-        if _is_excluded(path):
-            continue
-        for (ln, kind, code) in scan_file(path):
-            total.append((path, ln, kind, code))
+def violations(sources: dict[str, str] | None = None) -> list[tuple[str, int, str]]:
+    sources = scanned_sources() if sources is None else sources
+    conv = with_delegates([ast.parse(s) for s in sources.values()], numeric_contract_converters())
+    return [(rel, ln, msg) for rel, src in sources.items() for ln, msg in scan_source(src, conv)]
 
-    if not total:
-        print("vendor-field coercion: CLEAN — every Schwab vendor field is read through "
-              "a canonical numeric_contract reader (or an explicit vendor-coercion-ok marker).")
-        return 0
 
-    print(f"vendor-field coercion: {len(total)} unmarked raw coercion(s) of a Schwab vendor field:")
-    for (path, ln, kind, code) in total:
-        rel = path.relative_to(REPO).as_posix()
-        print(f"  {rel}:{ln}  [{kind}]  {code}")
-    print("\nFix: read the field through numeric_contract (float_finite_or_none / "
-          "float_nonnegative_or_none), or, if provably safe by construction, add "
-          "'# vendor-coercion-ok: <reason>' on the line.")
-    return 1
+def main() -> int:
+    found = violations()
+    for rel, ln, msg in found:
+        print(f"{rel}:{ln}  {msg}")
+    print(f"vendor-field coercion: {len(found)} violation(s)")
+    return 1 if found else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(main())

@@ -25,6 +25,7 @@ import time
 from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
+from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 
 log = logging.getLogger(__name__)
 
@@ -49,32 +50,6 @@ def next_fast_generation(ticker: str) -> int:
         return n
 
 
-def _safe_float(val: Any) -> Optional[float]:
-    if val is None:
-        return None
-    try:
-        x = float(val)
-    except (TypeError, ValueError):
-        return None
-    if x != x:  # NaN
-        return None
-    return x
-
-
-def _positive_float(val: Any) -> Optional[float]:
-    f = _safe_float(val)
-    if f is None or f <= 0:
-        return None
-    return f
-
-
-def _epoch_seconds_from_millis(val: Any) -> Optional[float]:
-    f = _safe_float(val)
-    if f is None or f <= 0:
-        return None
-    return f / 1000.0
-
-
 #: Schwab LEVELONE_EQUITIES sends only the fields that CHANGED since the last message for a
 #: symbol. Measured on 4,039 real captured messages (stream_quotes_raw, 2026-09-24): only 11%
 #: carried bid, ask and last together; 17% were ask-only, 15% bid-only, 23% none of the three.
@@ -93,14 +68,11 @@ _fields_by_ticker: dict[str, dict[str, tuple[float, float]]] = {}
 
 
 def _read_stream_field(name: str, raw: Any) -> Optional[float]:
-    if name in _PRICE_FIELDS:
-        return _positive_float(raw)
+    """Each field as Schwab sent it (AGENTS.md rule 2); a reported 0 is 0."""
     if name in _COUNT_FIELDS:
-        v = _safe_float(raw)
-        return v if v is not None and v >= 0 else None
-    if name in _SIGNED_FIELDS:
-        return _safe_float(raw)
-    return _epoch_seconds_from_millis(raw)
+        return schwab_count(raw)
+    v = schwab_number(raw)
+    return v / 1000.0 if v is not None and name in _CLOCK_FIELDS else v
 
 
 def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
@@ -134,7 +106,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
             seen = True
             v = _read_stream_field(name, item.get(name))
             if v is None:
-                fs.pop(name, None)       # vendor sent "none" (e.g. BID_PRICE 0): cleared
+                fs.pop(name, None)       # not a number (-999, text, NaN): cleared
             else:
                 fs[name] = (v, rts)
         snapshot = dict(fs)
@@ -148,13 +120,13 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     bid, ask, mark = val("BID_PRICE"), val("ASK_PRICE"), val("MARK")
     quote_ts = val("QUOTE_TIME_MILLIS")   # exchange quote clock; TRADE_TIME never stands in
     spread_pts = round(ask - bid, 4) if bid is not None and ask is not None else None
-    spread_frac = (ask - bid) / mark if spread_pts is not None and mark is not None else None
+    spread_frac = (ask - bid) / mark if spread_pts is not None and mark else None   # MARK 0: no fraction
     out = {
         "ticker": t,
-        "spot": float(spot_f),
+        "spot": spot_f,
         "bid": bid,
         "ask": ask,
-        "spot_disp": f"{float(spot_f):.2f}",
+        "spot_disp": f"{spot_f:.2f}",
         "bid_disp": f"{bid:.2f}" if bid is not None else "—",
         "ask_disp": f"{ask:.2f}" if ask is not None else "—",
         "quote_mid": mark,
@@ -246,8 +218,7 @@ def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
     """True only when this plane row's spot is a native Schwab LAST_PRICE."""
     if not row or not isinstance(row, dict):
         return False
-    spot = _positive_float(row.get("spot"))
-    if spot is None:
+    if float_finite_or_none(row.get("spot")) is None:
         return False
     qsd = row.get("quote_source_detail")
     if not isinstance(qsd, dict):
@@ -305,7 +276,7 @@ def spot_is_fresh(q: dict[str, Any]) -> bool:
     """Is this row's LAST_PRICE live right now: the stream delivered a LAST_PRICE for it this
     session (`spot_received_ts`) and the feed is live for its symbol (feed_live_for). Its
     age since the last trade is information (`trade_ts`), never a reason to blank it."""
-    if _safe_float((q or {}).get("spot_received_ts")) is None:  # caps-ok: fail-closed -- no LAST_PRICE this session is not live
+    if float_finite_or_none((q or {}).get("spot_received_ts")) is None:  # caps-ok: fail-closed -- no LAST_PRICE this session is not live
         return False
     return feed_live_for((q or {}).get("ticker"))
 
@@ -317,7 +288,6 @@ def streamed_chg_pct(row: dict[str, Any] | None) -> Optional[float]:
     None: no REST value, no stale row (2026-09-24)."""
     if not (row and plane_row_is_streamed(row) and spot_is_fresh(row)):
         return None
-    from numeric_contract import float_finite_or_none
     return float_finite_or_none(row.get("chg_pct"))
 
 
@@ -326,7 +296,7 @@ def quote_is_fresh(q: dict[str, Any]) -> bool:
     (`server_received_ts`) and the feed is live for its symbol (feed_live_for). Under
     Schwab's changed-fields-only delivery an unchanged bid IS the current bid while the feed
     is live; a missing server_received_ts cannot be assumed live (fail closed)."""
-    if _safe_float(q.get("server_received_ts")) is None:
+    if float_finite_or_none(q.get("server_received_ts")) is None:
         return False
     return feed_live_for(q.get("ticker"))
 

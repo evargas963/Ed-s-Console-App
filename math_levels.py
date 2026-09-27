@@ -10,8 +10,8 @@ from __future__ import annotations
 import math
 from typing import Dict, List
 
+from numeric_contract import schwab_count, schwab_number
 from math_exposure_core import (
-    _f,
     bucket_metric,
     strike_oi_legs,
     key_level_strikes_with_oi,
@@ -194,19 +194,19 @@ def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, fl
     24x near the close and flattened the real 1/sqrt(T) gamma/charm spike (RC-42; validated
     against Schwab-reported gamma). Offline/replay callers pass `now` = the snapshot time.
     """
-    from math_exposure_core import _f, schwab_iv_to_sigma
+    from math_exposure_core import schwab_iv_to_sigma
     from time_et import time_to_expiry_years
 
-    strike = _f(ct.get("strikePrice"))
-    oi = _f(ct.get("openInterest"))
-    mult = _f(ct.get("multiplier"))
+    strike = schwab_number(ct.get("strikePrice"))
+    oi = schwab_count(ct.get("openInterest"))
+    mult = schwab_number(ct.get("multiplier"))
     side = str(ct.get("putCall") or "").upper()
     if strike is None or strike <= 0 or oi is None or oi <= 0:
         return None
     if mult is None or mult <= 0 or side not in ("CALL", "PUT"):
         return None
     # schwab_iv_to_sigma already rejects None/non-positive, so no separate iv guard.
-    sigma = schwab_iv_to_sigma(_f(ct.get("volatility")))  # single source: math_exposure_core
+    sigma = schwab_iv_to_sigma(schwab_number(ct.get("volatility")))  # single source: math_exposure_core
     if sigma is None or sigma <= 0:
         return None
     t_years = time_to_expiry_years(ct.get("expirationDate"), now=now)  # single source: intraday-to-close
@@ -655,7 +655,7 @@ def compute_gamma_flip_v2(
     """
     if not contracts or not spot or spot <= 0:
         return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_contracts_or_spot"}
-    strikes = [k for k in (_f(c.get("strikePrice")) for c in contracts if isinstance(c, dict)) if k]
+    strikes = [k for k in (schwab_number(c.get("strikePrice")) for c in contracts if isinstance(c, dict)) if k is not None]
     if not strikes:
         return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_strikes"}
     lo, hi = min(strikes), max(strikes)

@@ -125,6 +125,7 @@ P1/P2 rows are to be merged here as each file is repaired.
 | N-13 | server.py _fetch_state | REST Cum Delta "tape" from one polled quote per cycle; candle volume from REST price history (nearest-in-time candle, ms-vs-s magnitude guess, $-stripped retry); plane_quote_authority "rest_*" labels and exception -> "rest_only" | snapshots, cum delta, diagnostics | FIXED e7361e68 |
 | R-01 | server.py get_chain (/api/chain) | a failed live chain fetch (vendor non-200, error, or a different expiry returned) was answered from, in turn, the vendor's other expiry, an older persisted complete capture, or a bounded stored snapshot that could belong to a different expiry -- labeled, still a substitute; SPY's expired 0DTE drew HTTP 400 and was served from storage on every refresh (measured 2026-09-24; the vendor-400 case replays with `pytest tests/test_chain_api_v1.py -k non_200`) | Chain ladder, Strike Detail, contract specs, /options | FIXED 018f7268 |
 | N-14 | live_market_plane vs app/options/order_flow/state | two stores hold the same streamed L1 fields (plane per-field state; order-flow `_top` with its own 25s field freshness) -- not a fallback, a duplicate store that can disagree | order-flow engine vs header | OPEN |
+| N-15 | liquidity_value_engine.py `_cluster_reference_price` | the cluster reference price is the first positive of orb mid, prior close, prior POC (a chain of stand-ins) | liquidity clusters | OPEN |
 
 ### v2 decision (advisory; persisted training rows only)
 | ID | file:line | Violation | Status |

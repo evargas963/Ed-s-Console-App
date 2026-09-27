@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from instrument_identity import ticker_storage_key
-from numeric_contract import float_finite_or_none
+from numeric_contract import float_finite_or_none, schwab_number
 from time_et import RTH_END_MINS, now_et
 
 from calibration.complete_chain_capture import nearest_complete_chain_capture
@@ -35,7 +35,7 @@ def pick_atm_call_symbol(contracts: list[Any], spot: float | None) -> str | None
         if str(raw.get("putCall") or "").upper() != "CALL":
             continue
         sym = str(raw.get("symbol") or "").strip()
-        strike = float_finite_or_none(raw.get("strikePrice"))
+        strike = schwab_number(raw.get("strikePrice"))
         if not sym or strike is None:
             continue
         dist = abs(strike - px)

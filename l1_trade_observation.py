@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 
 # Source classification — mechanical, not aspirational.
 NATIVE_AGGRESSOR_AVAILABLE = False
@@ -41,8 +41,8 @@ VENDOR_LAST_PRICE = "LAST_PRICE"
 VENDOR_LAST_SIZE = "LAST_SIZE"
 
 
-def _safe_int(val: Any) -> Optional[int]:
-    v = float_finite_or_none(val)
+def _schwab_int(val: Any) -> Optional[int]:
+    v = schwab_number(val)
     return int(v) if v is not None else None
 
 
@@ -50,7 +50,7 @@ def vendor_triple(
     trade_ms: Any, price: Any, size: Any
 ) -> tuple[Optional[int], Optional[float], Optional[float]]:
     """Vendor last-print key. Not a native trade id."""
-    return (_safe_int(trade_ms), float_finite_or_none(price), float_nonnegative_or_none(size))
+    return (_schwab_int(trade_ms), schwab_number(price), schwab_count(size))
 
 
 def is_adjacent_restatement(
@@ -65,20 +65,13 @@ def extract_vendor_print(item: dict[str, Any]) -> Optional[dict[str, Any]]:
     """Pull LEVELONE last-print fields. Missing LAST_PRICE is not a trade observation."""
     if not isinstance(item, dict):
         return None
-    price = float_finite_or_none(item.get(VENDOR_LAST_PRICE))
-    if price is None:
-        price = float_finite_or_none(item.get("price"))
+    price = schwab_number(item.get(VENDOR_LAST_PRICE))
     if price is None:
         return None
-    size = float_nonnegative_or_none(item.get(VENDOR_LAST_SIZE))
-    if size is None:
-        raw_size = item.get("size")
-        if raw_size is not None:
-            size = float_nonnegative_or_none(raw_size)
-    trade_ms = _safe_int(item.get(VENDOR_TRADE_TIME))
-    if trade_ms is None:
-        trade_ms = _safe_int(item.get("time_millis"))
-    receive_seq = _safe_int(item.get("receive_seq"))
+    size = schwab_count(item.get(VENDOR_LAST_SIZE))
+    trade_ms = _schwab_int(item.get(VENDOR_TRADE_TIME))
+    seq = float_finite_or_none(item.get("receive_seq"))
+    receive_seq = int(seq) if seq is not None else None
     received_ts = float_finite_or_none(item.get("server_received_ts"))
     return {
         "price": price,

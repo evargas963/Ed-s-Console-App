@@ -19,6 +19,7 @@ from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any, Optional
 
 from instrument_identity import ticker_storage_key
+from numeric_contract import float_finite_or_none, float_positive_or_none, schwab_count, schwab_number
 from liquidity_models import (
     PlaybookConfig,
     SnapshotOutput,
@@ -50,25 +51,15 @@ RTH_OPEN = time(RTH_OPEN_MINS // 60, RTH_OPEN_MINS % 60)
 RTH_CLOSE = time(RTH_END_MINS // 60, RTH_END_MINS % 60)
 
 
-def _positive_float_or_none(value) -> Optional[float]:
-    from numeric_contract import float_positive_or_none
-
-    return float_positive_or_none(value)
-
-
 def _cluster_reference_price(*candidates) -> Optional[float]:
     """First positive price among candidates; None when no valid reference (no 500.0 fabrication)."""
     for value in candidates:
-        p = _positive_float_or_none(value)
+        p = float_positive_or_none(value)
         if p is not None:
             return p
     return None
 
 
-def _float_or_none(value) -> Optional[float]:
-    from numeric_contract import float_finite_or_none
-
-    return float_finite_or_none(value)
 
 
 def liquidity_zone_tradeable_score(
@@ -150,10 +141,10 @@ def _bars_to_list(bars) -> list[dict]:
             ts = _resolve_bar_timestamp(d)
             if ts is None:
                 continue
-            o = _float_or_none(d.get("open"))
-            h = _float_or_none(d.get("high"))
-            l_ = _float_or_none(d.get("low"))
-            c = _float_or_none(d.get("close"))
+            o = schwab_number(d.get("open"))
+            h = schwab_number(d.get("high"))
+            l_ = schwab_number(d.get("low"))
+            c = schwab_number(d.get("close"))
             v = d.get("volume")
             if o is None or h is None or l_ is None or c is None:
                 continue
@@ -169,7 +160,7 @@ def _bars_to_list(bars) -> list[dict]:
                 "high": h,
                 "low": l_,
                 "close": c,
-                "volume": _positive_float_or_none(v),
+                "volume": schwab_count(v),
             })
             if _ts is not None:
                 out[-1]["_ts"] = _ts
@@ -197,10 +188,10 @@ def _bars_to_list(bars) -> list[dict]:
                 row["_ts"] = ts.timestamp() if hasattr(ts, "timestamp") else (ts / 1000.0 if ts > 1e12 else ts)
             else:
                 row["_ts"] = None
-        o = _float_or_none(row.get("open"))
-        h = _float_or_none(row.get("high"))
-        l_ = _float_or_none(row.get("low"))
-        c = _float_or_none(row.get("close"))
+        o = schwab_number(row.get("open"))
+        h = schwab_number(row.get("high"))
+        l_ = schwab_number(row.get("low"))
+        c = schwab_number(row.get("close"))
         v = row.get("volume")
         if o is None or h is None or l_ is None or c is None:
             continue
@@ -211,7 +202,7 @@ def _bars_to_list(bars) -> list[dict]:
             "high": h,
             "low": l_,
             "close": c,
-            "volume": _positive_float_or_none(v),
+            "volume": schwab_count(v),
         })
         if row.get("_ts") is not None:
             out[-1]["_ts"] = row["_ts"]
@@ -428,7 +419,7 @@ def compute_session_vwap_series(
     cum_tpv = cum_vol = cum_tp2v = 0.0
     series: list[tuple[float, float, float, float, float, float]] = []
     for b in rth_bars:
-        vol = _positive_float_or_none(b.get("volume"))
+        vol = b["volume"]   # a 0-volume minute adds nothing and keeps its VWAP point
         if vol is None:
             continue
         tp = (b["high"] + b["low"] + b["close"]) / 3.0
@@ -455,7 +446,7 @@ def count_session_rth_positive_volume_bars(
     """INPUT RTH bars with positive volume on session_date — independent of the VWAP series."""
     n = 0
     for b in _filter_rth_bars(_bars_to_list(bars), session_date, cutoff_dt):
-        if _positive_float_or_none(b.get("volume")) is not None:
+        if b["volume"] is not None and b["volume"] > 0:
             n += 1
     return n
 
@@ -491,7 +482,7 @@ def compute_vwap_bands(
         return None, None, None, None
     cum_var = cum_vol = 0.0
     for b in rth_bars:
-        vol = _positive_float_or_none(b.get("volume"))
+        vol = b["volume"]
         if vol is None:
             continue
         tp = (b["high"] + b["low"] + b["close"]) / 3.0
@@ -637,7 +628,7 @@ def cluster_price_levels_into_zones(
         if p and p > 0:
             tag_map[p].append(tag)
 
-    max_width = _positive_float_or_none(getattr(config, "max_zone_width", None))
+    max_width = float_positive_or_none(getattr(config, "max_zone_width", None))
 
     def _flush_current(cur):
         if not cur:
@@ -1705,7 +1696,7 @@ def build_price_level_snapshot(
     def _put(level_id: str, price, *, producer: str, window: str) -> None:
         if price is None:
             return
-        v = _float_or_none(price)
+        v = float_finite_or_none(price)
         if v is None:
             return
         family, scope, tier = PHASE2A_LEVEL_IDS[level_id]

@@ -12,7 +12,7 @@ from collections import deque
 from typing import Optional
 from time_et import now_et, RTH_END_MINS, RTH_OPEN_MINS
 from instrument_identity import ticker_storage_key
-from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+from numeric_contract import schwab_count, schwab_number
 from l1_trade_observation import (
     TAPE_COMPLETENESS,
     is_adjacent_restatement,
@@ -137,19 +137,8 @@ class OrderFlowState:
         except Exception as e:
             log.debug("RTH reset check failed (continuing): %s", e)
 
-        # Operator finding (2026-09-11): `or` drops a legitimate 0 TOTAL_VOLUME (the honest
-        # state before any trade prints today, or for a contract with genuinely no volume
-        # yet) and falls through to VOLUME instead -- the same class of bug already fixed
-        # below for chg_pct. `vf > 0` compounded it further: a genuine 0 was rejected
-        # outright, and a negative value was accepted outright -- so a symbol that
-        # legitimately has zero volume so far never got an entry, a corrupt negative tick
-        # was stored and served as if real, and a symbol whose cache already held a real
-        # number kept showing that STALE number if a later observation was honestly 0.
-        # float_nonnegative_or_none (the repo's existing canonical reader for vendor
-        # counts like totalVolume/size) rejects negative and non-finite values while
-        # admitting a real, finite zero.
-        # TOTAL_VOLUME only: "VOLUME" (a CHART field) used to stand in (2026-09-24)
-        vf = float_nonnegative_or_none(content_item.get("TOTAL_VOLUME"))
+        # TOTAL_VOLUME as sent; a reported 0 is 0 (AGENTS.md rule 2).
+        vf = schwab_count(content_item.get("TOTAL_VOLUME"))
         if vf is not None:
             with self._lock:
                 self._stream_volume[sym] = vf
@@ -175,14 +164,11 @@ class OrderFlowState:
         # (which reads a contract's OWN totalVolume) can apply the SAME newer-than-REST
         # precedence rule already used for gamma/delta/open_interest, instead of a bare
         # ticker-level number with no freshness of its own.
-        gamma = float_finite_or_none(content_item.get("GAMMA")) if "GAMMA" in content_item else None
-        delta = float_finite_or_none(content_item.get("DELTA")) if "DELTA" in content_item else None
-        oi = (float_nonnegative_or_none(content_item.get("OPEN_INTEREST"))
-              if "OPEN_INTEREST" in content_item else None)
+        gamma = schwab_number(content_item.get("GAMMA"))
+        delta = schwab_number(content_item.get("DELTA"))
+        oi = schwab_count(content_item.get("OPEN_INTEREST"))
         # VOLATILITY too: the model's input must be as fresh as the gamma beside it
-        iv = float_finite_or_none(content_item.get("VOLATILITY")) if "VOLATILITY" in content_item else None
-        if iv == -999:
-            iv = None
+        iv = schwab_number(content_item.get("VOLATILITY"))
         if gamma is not None or delta is not None or oi is not None or vf is not None or iv is not None:
             with self._lock:
                 g = self._stream_greeks.setdefault(sym, {})
