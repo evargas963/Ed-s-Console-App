@@ -126,14 +126,13 @@ _DATASHEET_REQUIRED = frozenset({"motivation", "composition", "collection", "rec
 
 
 def new_table_names_in_diff(diff_lines: list[str]) -> set[str]:
-    names: set[str] = set()
-    for ln in diff_lines:
-        if not ln.startswith("+") or ln.startswith("+++"):
-            continue
-        m = re.search(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", ln, re.I)
-        if m:
-            names.add(m.group(1).lower())
-    return names
+    """Tables a diff creates and does not also remove: a CREATE TABLE moved from one file to
+    another is the same table, not a new one."""
+    def created(sign: str) -> set[str]:
+        return {m.group(1).lower() for ln in diff_lines
+                if ln.startswith(sign) and not ln.startswith(sign * 3)
+                and (m := re.search(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", ln, re.I))}
+    return created("+") - created("-")
 
 
 def collect_datasheet_violations(table: str, yaml_text: str | None) -> list[str]:

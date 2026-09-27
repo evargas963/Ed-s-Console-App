@@ -1,25 +1,33 @@
-"""Canonical persistence for the COMPLETE vendor options-chain capture, one expiry at a
-time — distinct from option_chain_morning_full.py (near-term MULTI-expiry, gated to a
-once-daily morning window, tuned width) and from the bounded ANALYTICAL chain snapshots
-in `snapshots.option_chain_json` (gamma/terrain width, one row per refresh). Neither of
-those tables is a record of what contracts actually existed for a ticker+expiry — this one
-is, and only this one carries `completeness_basis`, the machine-readable record of WHY a
-given capture is believed complete (not merely wide).
-
-Written from the SAME live single-expiry fetch that serves GET /api/chain
-(server.get_chain) — no separate scheduled job, no second producer duplicating the fetch.
+"""The chain history (DATA_FLOW decision 7): every 30 minutes from 9:30 to the close (ET) on
+market days, the capture daemon fetches the full chain (every expiry, every strike) of each
+ticker on the board and writes it here, one row per expiry, compressed, with Schwab's own
+underlying price. Schwab has no past option chains, so a chain not saved is gone. Nothing is
+captured while the market is closed (weekend chains blank open interest). Research reads this
+table; the console loads the newest capture per ticker at startup.
 """
 
 from __future__ import annotations
 
+import logging
 import math
 import sqlite3
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
+from schwab_client import fetch_full_chain, flatten_chain_contracts, safe_get_chain
+from time_et import ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date
+
+log = logging.getLogger("chain_history")
+
+CAPTURE_EVERY_MIN = 30
+COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
+#: the source of the daemon's full captures; older rows (one or two expiries at scattered
+#: times, written by the console before 2026-09-27) are not full chains and are not read
+CAPTURE_SOURCE = "capture_daemon_full_chain"
 
 TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS complete_chain_captures (
@@ -94,75 +102,6 @@ def persist_complete_chain_capture(
         conn.close()
     return {"status": "written", "ticker": tk, "expiry": exp, "ts_utc": ts,
             "n_contracts": len(clean), "completeness_basis": completeness_basis}
-
-
-def has_complete_chain_capture_today(
-    db_path: Path | str, ticker: str, expiry: str, et_date: str
-) -> bool:
-    """True when a COMPLETE capture for (ticker, expiry) already exists for the given
-    ET calendar date. DB-backed (not an in-process memo) so the once-daily systematic
-    iteration survives a restart without re-fetching an expiry it already proved
-    complete today, and correctly re-attempts on a fresh day."""
-    path = Path(db_path)
-    if not path.is_file():
-        return False
-    tk = ticker_storage_key(ticker)
-    exp = str(expiry or "").strip()[:10]
-    day = str(et_date or "").strip()[:10]
-    if not tk or not exp or not day:
-        return False
-    try:
-        conn = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
-    except sqlite3.Error:
-        return False
-    try:
-        if not conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='complete_chain_captures'"
-        ).fetchone():
-            return False
-        row = conn.execute(
-            "SELECT ts_utc FROM complete_chain_captures WHERE ticker=? AND expiry=? "
-            "ORDER BY ts_utc DESC LIMIT 1",
-            (tk, exp),
-        ).fetchone()
-    except sqlite3.Error:
-        return False
-    finally:
-        conn.close()
-    if not row:
-        return False
-    from calibration.option_chain_morning_full import et_date_and_mins
-    captured_day, _mins = et_date_and_mins(float(row[0]))
-    return captured_day == day
-
-
-def eligible_near_term_expiries(
-    expiry_dates: "set[str] | list[str]", *, max_dte_days: float, now_et_date: str
-) -> list[str]:
-    """The declared systematic-collection expiry scope: listed expiries from today
-    through `max_dte_days` out — the SAME near-term horizon
-    `option_chain_morning_full.MAX_DTE_DAYS` already uses for its own systematic
-    capture, so the two mechanisms share one definition of "near-term," not two.
-    Far-dated expiries (LEAPS, distant monthlies) are deliberately OUT of this
-    systematic scope; they remain reachable only via an operator's manual /api/chain
-    request, unchanged from before this function existed."""
-    from datetime import date as _date
-    today = _date.fromisoformat(str(now_et_date)[:10])
-    out = []
-    for e in expiry_dates or []:
-        exp = str(e or "").strip()[:10]
-        if not exp:
-            continue
-        try:
-            d = _date.fromisoformat(exp)
-        except ValueError:
-            continue
-        dte = (d - today).days
-        if 0 <= dte <= max_dte_days:
-            out.append(exp)
-    return sorted(set(out))
-
-
 
 
 #: RC spot/gamma-360-audit (2026-09-14, live RTH reproduction): this function opens a fresh
@@ -246,3 +185,91 @@ def _nearest_complete_chain_capture_uncached(
     return {"ticker": tk, "expiry": str(row[0]), "ts_utc": float(row[1]), "spot": row[2],
             "n_contracts": int(row[3]), "completeness_basis": row[4],
             "contracts": contracts, "source": str(row[6])}
+
+
+def next_capture_ts(now_ts: float) -> float:
+    """The next capture time after `now_ts`: 9:30, 10:00, ... through the close (13:00 on an
+    early close) ET, on market days only (the one market calendar, time_et)."""
+    now = datetime.fromtimestamp(now_ts, ET)
+    for add in range(15):
+        day = (now + timedelta(days=add)).date()
+        if not is_trading_day_et(day.isoformat()):
+            continue
+        close = session_close_mins_for_et_date(day.isoformat())
+        for m in range(RTH_START_MINS, close + 1, CAPTURE_EVERY_MIN):
+            ts = datetime(day.year, day.month, day.day, m // 60, m % 60, tzinfo=ET).timestamp()
+            if ts > now_ts:
+                return ts
+    raise RuntimeError(f"no market day within 15 days of {now:%Y-%m-%d} (calendar not covered)")
+
+
+def board_tickers(db_path: Path | str) -> list[str]:
+    """Every ticker on the board (the logging_universe table), read-only."""
+    conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
+    try:
+        return [r[0] for r in conn.execute("SELECT ticker FROM logging_universe ORDER BY ticker")]
+    finally:
+        conn.close()
+
+
+def capture_round(client, db_path: Path | str) -> dict[str, Any]:
+    """Fetch and write the full chain of every board ticker. A ticker Schwab does not answer is
+    logged and skipped until the next capture; nothing is filled in."""
+    written, failed = 0, []
+    for tk in board_tickers(db_path):
+        resp = fetch_full_chain(client, tk, lambda **d: safe_get_chain(
+            client, tk, strike_range="ALL", **d))
+        if resp.status_code != 200:
+            failed.append(tk)
+            log.warning("chain capture %s: %s", tk, resp.reason or f"HTTP {resp.status_code}")
+            continue
+        ts = time.time()
+        payload = resp.json()
+        spot = payload.get("underlyingPrice")          # Schwab's field, as sent
+        if spot == -999:
+            spot = None
+        by_expiry: dict[str, list[dict]] = {}
+        for ct in flatten_chain_contracts(payload):
+            by_expiry.setdefault(str(ct.get("expirationDate") or "")[:10], []).append(ct)
+        for expiry, contracts in by_expiry.items():
+            persist_complete_chain_capture(
+                db_path, ticker=tk, expiry=expiry, contracts=contracts, spot=spot,
+                completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL, ts_utc=ts,
+                source=CAPTURE_SOURCE)
+        written += 1
+    return {"written": written, "failed": failed}
+
+
+def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
+                         before_et_date: str | None = None) -> list[dict[str, Any]]:
+    """The last full capture of each of the newest `days` market days (newest first), each as
+    {et_date, ts_utc, spot, contracts} with every expiry of that capture. `before_et_date`
+    keeps only days before it (the previous market day's close for a day-over-day view)."""
+    tk = ticker_storage_key(ticker)
+    conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
+    try:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                            "AND name='complete_chain_captures'").fetchone():
+            return []                     # no capture has ever been written
+        picked: list[tuple[str, float]] = []
+        for (ts,) in conn.execute(
+                "SELECT DISTINCT ts_utc FROM complete_chain_captures WHERE ticker=? AND source=? "
+                "ORDER BY ts_utc DESC", (tk, CAPTURE_SOURCE)):
+            day = datetime.fromtimestamp(ts, ET).date().isoformat()
+            if before_et_date is not None and day >= before_et_date:
+                continue
+            if picked and picked[-1][0] == day:
+                continue
+            picked.append((day, ts))
+            if len(picked) == days:
+                break
+        out = []
+        for day, ts in picked:
+            rows = conn.execute(
+                "SELECT spot, chain_json FROM complete_chain_captures "
+                "WHERE ticker=? AND source=? AND ts_utc=?", (tk, CAPTURE_SOURCE, ts)).fetchall()
+            out.append({"et_date": day, "ts_utc": ts, "spot": rows[0][0],
+                        "contracts": [c for r in rows for c in decode_json_blob(r[1])]})
+        return out
+    finally:
+        conn.close()

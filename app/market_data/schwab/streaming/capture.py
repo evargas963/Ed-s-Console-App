@@ -431,6 +431,27 @@ def _start_log() -> None:
                         format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 
+async def capture_chains(make_client, stop: asyncio.Event) -> None:
+    """The chain history (DATA_FLOW decision 7): at each capture time the full chain of every
+    board ticker is fetched and written, in a thread so the stream never waits."""
+    from calibration.complete_chain_capture import capture_round, next_capture_ts
+    from db_authority import canonical_console_db_path
+    db_path = canonical_console_db_path()
+    while True:
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=max(0.0, next_capture_ts(time.time()) - time.time()))
+            return
+        except asyncio.TimeoutError:
+            pass
+        started = time.monotonic()
+        try:
+            result = await asyncio.to_thread(capture_round, make_client().client, db_path)
+            log.info("chain capture: %d tickers written in %.0fs, failed %s",
+                     result["written"], time.monotonic() - started, result["failed"])
+        except Exception:
+            log.exception("chain capture failed")
+
+
 async def run() -> int:
     """The whole daemon: writer, the two local sockets, and the Schwab connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
@@ -450,6 +471,7 @@ async def run() -> int:
     daemon = Daemon(bus, health, wanted_path())
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
+             asyncio.create_task(capture_chains(make_client, stop)),
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
                                                  on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]

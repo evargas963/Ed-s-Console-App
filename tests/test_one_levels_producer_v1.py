@@ -347,25 +347,38 @@ def test_an_option_quote_lands_in_state_with_no_callback(monkeypatch):
 
 # ── the closed market: the last session's levels stand, saved and labeled ─────────────────────
 
-def test_a_publication_is_saved_and_a_restart_restores_it(monkeypatch, tmp_path):
-    monkeypatch.setattr(server, "SESSION_LEVELS_DIR", tmp_path)
-    _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time()}}, monkeypatch)
-    _put_chain(fetched_ts=time.time() - 5.0)
-    server._publish_levels(TK)
-    published = _cached()
+def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypatch, tmp_path):
+    """DATA_FLOW decision 7: after a restart, a weekend or the close, each board ticker's newest
+    full chain capture is priced once with Schwab's underlying price from that capture and
+    valued and dated at the capture's time. Rows the console wrote before the daemon captured
+    (one or two expiries) are not full chains and are never loaded."""
+    from calibration.complete_chain_capture import CAPTURE_SOURCE, persist_complete_chain_capture
+    db = tmp_path / "ed_console.db"
+    taken = time.time() - 3600.0
+    by_expiry: dict = {}
+    for ct in _CONTRACTS:
+        by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
+    for expiry, cts in by_expiry.items():
+        persist_complete_chain_capture(db, ticker=TK, expiry=expiry, contracts=cts, spot=_SPOT,
+                                       completeness_basis="strike_range=ALL", ts_utc=taken,
+                                       source=CAPTURE_SOURCE)
+    persist_complete_chain_capture(db, ticker=TK, expiry=next(iter(by_expiry)),
+                                   contracts=_CONTRACTS[:2], spot=1.0,
+                                   completeness_basis="strike_range=ALL", ts_utc=taken + 60)
+    monkeypatch.setattr(server, "get_db", lambda: type("Db", (), {"db_path": db})())
+    monkeypatch.setattr(server, "_logger_tickers", [TK])
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
     with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK)
-    assert server._load_session_levels() == 1
-    restored = _cached()
-    assert "_chain" not in restored, "the raw chain is not saved"
-    for k in ("gamma_flip", "call_wall", "put_wall", "computed_ts_utc", "_per_strike",
-              "_vanna_rows", "_charm_rows"):
-        assert restored[k] == json.loads(json.dumps(published[k])), k
-    # nothing has streamed a saved heatmap since it was saved
-    states = {leg["state"] for cell in restored["_gamma_surface"]["cells"]
-              for pair in cell["stream"] if pair for leg in pair.values() if isinstance(leg, dict)}
-    assert "live" not in states
+        server._terrain_cache.pop(TK, None)
 
+    assert server._load_stored_levels() == 1
+    loaded = _cached()
+    assert loaded["computed_ts_utc"] == taken
+    assert loaded["spot"] == _SPOT and loaded["spot_source"] == server.SPOT_SOURCE_CAPTURE
+    expected = compute_terrain(TK, _CONTRACTS, _SPOT,
+                               now=datetime.fromtimestamp(taken, ZoneInfo("America/New_York")))
+    for k in ("gamma_flip", "call_wall", "put_wall", "max_pain"):
+        assert loaded[k] == getattr(expected, k), k
 
 def test_while_closed_the_levels_are_the_last_sessions_labeled_with_their_time(monkeypatch):
     monkeypatch.setattr(server, "_is_loggable_session", lambda: False)

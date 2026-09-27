@@ -9,6 +9,7 @@ import socket
 import threading
 import time
 from dataclasses import dataclass
+from datetime import date
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -16,6 +17,7 @@ from authlib.common.errors import AuthlibBaseError
 from schwab import auth
 
 from api_pressure import record_schwab_http_response
+from time_et import now_et
 import logging
 
 log = logging.getLogger(__name__)
@@ -465,3 +467,138 @@ def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
         raise
     record_schwab_http_response(resp, f"option_chain:{ticker}")
     return resp
+
+
+class FullChainResponse:
+    """The whole chain as one response: `status_code` 200 and `.json()` the merged Schwab
+    payload, or the failing part's status with no payload."""
+
+    def __init__(self, status_code: "int | None", payload: "dict | None" = None,
+                 parts: int = 0, reason: str = ""):
+        self.status_code = status_code
+        self._payload = payload
+        self.parts = parts
+        self.reason = reason
+
+    def json(self) -> dict:
+        return self._payload if self._payload is not None else {}
+
+
+#: Vendor answers that mean "this request covers too much", not "this symbol is refused".
+#: MEASURED 2026-09-25: SPY (13,290 contracts), QQQ (11,710), MU (11,204) and $SPX (29,858)
+#: answered a one-shot strike_range=ALL request with HTTP 502; META (7,988) and AMD (6,628)
+#: did not. No Schwab document states the limit, so none is assumed here: a refused range is
+#: split and retried.
+_CHAIN_TOO_BIG_CODES = (502, 413, 500, 504)
+#: ticker -> how many date-range parts its whole chain last needed (learned, never guessed).
+_full_chain_parts: dict[str, int] = {}
+_full_chain_parts_lock = threading.Lock()
+
+
+def _option_expiries(client, ticker: str) -> "list[date] | None":
+    """Every listed expiry for `ticker` that has not passed (ET date), ascending; None when the
+    vendor does not answer 200. MEASURED 2026-09-26 (Saturday): the expiration chain still lists
+    Friday's expired 2026-09-25, and a chain request whose fromDate is in the past is refused
+    with HTTP 400 ("Check Param Values") -- the same range from today answers 200."""
+    resp = client.get_option_expiration_chain(ticker)
+    if resp is None or resp.status_code != 200:
+        return None
+    today = now_et().date()
+    return sorted({d for d in (date.fromisoformat(str(e["expirationDate"])[:10])
+                               for e in (resp.json().get("expirationList") or []) if e.get("expirationDate"))  # external-key-ok: Schwab expiration chain response
+                   if d >= today})
+
+
+def fetch_full_chain(client, ticker: str, get, *,
+                     expiry: "date | None" = None) -> FullChainResponse:
+    """EVERY strike of every listed expiry (or of the one `expiry`) -- the chain all level
+    math is computed from. `get(**dates)` makes one strike_range=ALL request for `ticker`
+    and returns Schwab's response (the console passes its gated request, the daemon a plain
+    one).
+
+    MEASURED 2026-09-25 across the 42 board tickers: levels computed from the old strike
+    window disagreed with the same code run on the full chain -- gamma flip missing for 10
+    tickers, max pain different for 16, put wall for 4, $SPX walls 3-4% apart. Operator
+    decision 2026-09-25: the full chain for all calculations.
+
+    One request when Schwab answers it. When the vendor answers that the request covers too
+    much, the listed expiries are split into contiguous date ranges, halving any range that
+    is itself refused; the part count that worked is remembered per ticker. Every part must
+    land: a missing part is a failed response (the reason names it), never a partial chain."""
+
+    def _get(**dates):
+        resp = get(**dates)
+        return resp, resp.status_code
+
+    if expiry is not None:
+        resp, code = _get(from_date=expiry, to_date=expiry)
+        if code != 200:
+            return FullChainResponse(code, reason=f"chain for {expiry} returned HTTP {code}")
+        return FullChainResponse(200, resp.json(), parts=1)
+
+    with _full_chain_parts_lock:
+        known_parts = _full_chain_parts.get(ticker, 1)
+    if known_parts <= 1:
+        resp, code = _get()
+        if code == 200:
+            return FullChainResponse(200, resp.json(), parts=1)
+        if code not in _CHAIN_TOO_BIG_CODES:
+            return FullChainResponse(code, reason=f"full chain returned HTTP {code}")
+        known_parts = 2
+
+    expiries = _option_expiries(client, ticker)
+    if not expiries:
+        return FullChainResponse(None, reason="expiration list unavailable")
+    size = -(-len(expiries) // min(known_parts, len(expiries)))
+    pending = [expiries[i:i + size] for i in range(0, len(expiries), size)]
+    merged: "dict | None" = None
+    done = 0
+    while pending:
+        part = pending.pop(0)
+        resp, code = _get(from_date=part[0], to_date=part[-1])
+        if code == 200:
+            payload = resp.json()
+            if merged is None:
+                merged = payload
+                merged["callExpDateMap"] = dict(payload.get("callExpDateMap") or {})
+                merged["putExpDateMap"] = dict(payload.get("putExpDateMap") or {})
+            else:
+                merged["callExpDateMap"].update(payload.get("callExpDateMap") or {})
+                merged["putExpDateMap"].update(payload.get("putExpDateMap") or {})
+            done += 1
+            continue
+        if code in _CHAIN_TOO_BIG_CODES and len(part) > 1:
+            half = len(part) // 2
+            pending[:0] = [part[:half], part[half:]]
+            continue
+        return FullChainResponse(code, reason=(f"chain for {part[0]}..{part[-1]} returned HTTP "
+                                               f"{code}; the full chain is incomplete"))
+    with _full_chain_parts_lock:
+        _full_chain_parts[ticker] = done
+    return FullChainResponse(200, merged, parts=done)
+
+
+def flatten_chain_contracts(c_json: dict) -> list[dict]:
+    """Flatten a Schwab chain response into a flat contract list.
+
+    Single source: this was inline inside _fetch_state and is now shared with the
+    terrain loop, so both consume the chain identically. Schwab CSV authority: reads
+    chains.callExpDateMap.* / chains.putExpDateMap.* only; no derivation.
+    """
+    out: list[dict] = []
+    if not isinstance(c_json, dict):
+        return out
+    for side_key in ("callExpDateMap", "putExpDateMap"):
+        side_map = c_json.get(side_key) or {}
+        if not isinstance(side_map, dict):
+            continue
+        for exp_map in side_map.values():
+            if not isinstance(exp_map, dict):
+                continue
+            for strike_list in exp_map.values():
+                if not isinstance(strike_list, list):
+                    continue
+                for ct in strike_list:
+                    if isinstance(ct, dict):
+                        out.append(dict(ct))
+    return out

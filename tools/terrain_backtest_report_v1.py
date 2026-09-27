@@ -692,7 +692,7 @@ def pdca_verdict(gap_pts: float | None, sessions: int) -> tuple[str, str]:
 
 def _todays_coverage() -> int:
     """How many tickers got their wide capture today — the DO-step health number."""
-    from calibration.option_chain_morning_full import et_date_and_mins
+    from calibration.option_chain_accrual import et_date_and_mins
     day, _ = et_date_and_mins()
     try:
         con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=30)
@@ -775,7 +775,7 @@ def main() -> int:
     ap.add_argument("--since", default=None, help="YYYY-MM-DD lower bound (ET days)")
     args = ap.parse_args()
     rep = run(args.since)
-    from calibration.option_chain_morning_full import et_date_and_mins
+    from calibration.option_chain_accrual import et_date_and_mins
     day, _ = et_date_and_mins()
     coverage = _todays_coverage()
     hist = _append_history(rep, day, coverage)

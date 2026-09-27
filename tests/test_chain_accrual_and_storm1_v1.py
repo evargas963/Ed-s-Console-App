@@ -11,10 +11,9 @@ from datetime import datetime
 
 os.environ.setdefault("PYTEST_CURRENT_TEST", "boot")
 
-from calibration.option_chain_morning_full import (  # noqa: E402
+from calibration.option_chain_accrual import (  # noqa: E402
     ACCRUAL_END_MINS,
     ACCRUAL_START_MINS,
-    MORNING_START_MINS,
     accrual_window,
     persist_chain_accrual,
 )
@@ -54,13 +53,6 @@ def test_premarket_before_the_cash_open_is_in_scope():
     day arrived after the open (MEASURED 2026-07-30: SPY 09:53:02 ET)."""
     for mins in range(9 * 60 + 15, 9 * 60 + 30):
         assert accrual_window(mins) is True, f"premarket minute {mins} still excluded"
-
-
-def test_morning_full_first_write_window_opens_at_the_mandated_start():
-    """The once-per-day archive must not keep asserting the retired 09:30 start."""
-    assert MORNING_START_MINS == ACCRUAL_START_MINS == 555, (
-        f"morning_full still opens at {MORNING_START_MINS} — the old 09:30 gate"
-    )
 
 
 # ── accrual persistence ──────────────────────────────────────────────────────────────────
@@ -226,3 +218,11 @@ def test_outside_contention_viewing_never_rotates_the_board():
     board = _board()
     now, deferred = s.terrain_cycle_tickers(board, 720, 1, viewed=[board[0]])
     assert deferred == [] and now == board
+
+
+def test_accrual_persist_refuses_saturday(tmp_path):
+    """RC-193: 10:00 ET is inside the span on a Saturday too; the calendar comes first."""
+    ts = datetime(2026, 8, 1, 10, 0, tzinfo=ET).timestamp()
+    res = persist_chain_accrual(tmp_path / "ac.db", ticker="SPY",
+                                per_strike_rows=[[745.0, 1.0, 10.0]], spot=745.0, ts_utc=ts)
+    assert res["status"] == "skipped" and res["reason"] == "non_trading_day", res

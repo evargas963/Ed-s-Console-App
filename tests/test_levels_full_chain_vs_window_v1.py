@@ -21,6 +21,7 @@ import pytest
 
 import server
 import time_et
+from schwab_client import FullChainResponse
 from terrain_engine import compute_terrain
 
 _FX = json.loads((Path(__file__).resolve().parent / "fixtures"
@@ -69,16 +70,14 @@ def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # an open-market test
     requested = []
 
-    def fake_fetch(client, ticker, *, priority=False, expiry=None):
+    def fake_fetch(client, ticker, get, *, expiry=None):
         requested.append((ticker, expiry))
-        return server.FullChainResponse(200, json.loads(json.dumps(_FX["full"])), parts=1)
+        return FullChainResponse(200, json.loads(json.dumps(_FX["full"])), parts=1)
 
     monkeypatch.setattr(server, "fetch_full_chain", fake_fetch)
     monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t: False)
     monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "_universal_capture_wanted", lambda t: (False, None))
     monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (_SPOT, "fixture", 0.0))
-    monkeypatch.setattr(server, "_persist_universal_complete_chain", lambda *a, **k: None)
     monkeypatch.setattr(server, "_accrue_chain_observation", lambda *a, **k: None)
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
     monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)

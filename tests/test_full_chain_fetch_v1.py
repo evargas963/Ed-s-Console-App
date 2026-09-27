@@ -11,7 +11,9 @@ from datetime import date, timedelta
 
 import pytest
 
-import server as srv
+import schwab_client as sc
+from server import flatten_chain_contracts
+from time_et import now_et
 
 _EXPIRIES = [date(2030, 1, 4) + timedelta(days=7 * i) for i in range(8)]
 
@@ -53,79 +55,72 @@ class _Vendor:
     def get_option_expiration_chain(self, ticker):
         return _Resp(200, {"expirationList": [{"expirationDate": e.isoformat()} for e in _EXPIRIES]})
 
-    def gated(self, client, ticker, *, strike_count=None, strike_range=None, priority=False,
-              to_date=None, from_date=None):
-        assert strike_count is None and strike_range == "ALL", "level math must never use a window"
+    def get(self, *, to_date=None, from_date=None):
         lo, hi = from_date or _EXPIRIES[0], to_date or _EXPIRIES[-1]
         span = [e for e in _EXPIRIES if lo <= e <= hi]
         self.calls.append((lo, hi))
         if len(span) > self.max_expiries:
-            return _Resp(502), 0.1, 0.2
+            return _Resp(502)
         if any(e in self.refuse for e in span):
-            return _Resp(400), 0.1, 0.2
-        return _Resp(200, _payload(span)), 0.1, 0.2
+            return _Resp(400)
+        return _Resp(200, _payload(span))
 
 
 @pytest.fixture
 def vendor(monkeypatch):
     def make(max_expiries, refuse=None):
-        v = _Vendor(max_expiries, refuse)
-        monkeypatch.setattr(srv, "_gated_safe_get_chain", v.gated)
-        monkeypatch.setattr(srv, "_full_chain_parts", {})
-        return v
+        monkeypatch.setattr(sc, "_full_chain_parts", {})
+        return _Vendor(max_expiries, refuse)
     return make
 
 
 def _expiries_in(resp) -> set:
-    return {c["expirationDate"][:10] for c in srv.flatten_chain_contracts(resp.json())}
+    return {c["expirationDate"][:10] for c in flatten_chain_contracts(resp.json())}
 
 
 def test_one_request_when_the_vendor_answers_it(vendor):
     v = vendor(max_expiries=100)
-    r = srv.fetch_full_chain(v, "ZZ")
+    r = sc.fetch_full_chain(v, "ZZ", v.get)
     assert r.status_code == 200 and r.parts == 1 and len(v.calls) == 1
     assert _expiries_in(r) == {e.isoformat() for e in _EXPIRIES}
-    assert r.gate_wait_sec == pytest.approx(0.1) and r.fetch_sec == pytest.approx(0.2)
 
 
 def test_a_too_big_chain_is_split_until_every_part_lands(vendor):
     v = vendor(max_expiries=3)                 # one-shot 502, halves 502, quarters land
-    r = srv.fetch_full_chain(v, "ZZ")
+    r = sc.fetch_full_chain(v, "ZZ", v.get)
     assert r.status_code == 200
     assert _expiries_in(r) == {e.isoformat() for e in _EXPIRIES}, "every expiry, none twice-lost"
-    assert len(srv.flatten_chain_contracts(r.json())) == 2 * len(_EXPIRIES)
+    assert len(flatten_chain_contracts(r.json())) == 2 * len(_EXPIRIES)
     assert r.parts == 4
 
 
 def test_the_learned_split_is_reused_without_the_refused_one_shot(vendor):
     v = vendor(max_expiries=3)
-    srv.fetch_full_chain(v, "ZZ")
+    sc.fetch_full_chain(v, "ZZ", v.get)
     v.calls.clear()
-    r = srv.fetch_full_chain(v, "ZZ")
+    r = sc.fetch_full_chain(v, "ZZ", v.get)
     assert r.status_code == 200 and len(v.calls) == 4, v.calls
     assert (_EXPIRIES[0], _EXPIRIES[-1]) not in v.calls, "the known-refused one-shot was re-sent"
 
 
 def test_a_part_that_cannot_land_is_no_chain_not_a_partial_one(vendor):
     v = vendor(max_expiries=3, refuse={_EXPIRIES[5]})
-    r = srv.fetch_full_chain(v, "ZZ")
+    r = sc.fetch_full_chain(v, "ZZ", v.get)
     assert r.status_code == 400 and r.json() == {}
     assert "incomplete" in r.reason
 
 
 def test_a_symbol_refusal_is_not_split(vendor):
     v = vendor(max_expiries=100, refuse={_EXPIRIES[0]})
-    r = srv.fetch_full_chain(v, "ZZ")
+    r = sc.fetch_full_chain(v, "ZZ", v.get)
     assert r.status_code == 400 and len(v.calls) == 1
 
 
 def test_single_expiry_mode_takes_every_strike_of_that_expiry(vendor):
     v = vendor(max_expiries=100)
-    r = srv.fetch_full_chain(v, "ZZ", expiry=_EXPIRIES[2])
+    r = sc.fetch_full_chain(v, "ZZ", v.get, expiry=_EXPIRIES[2])
     assert r.status_code == 200 and v.calls == [(_EXPIRIES[2], _EXPIRIES[2])]
     assert _expiries_in(r) == {_EXPIRIES[2].isoformat()}
-
-
 
 
 def test_an_expired_listed_expiry_is_never_requested(vendor, monkeypatch):
@@ -134,16 +129,14 @@ def test_an_expired_listed_expiry_is_never_requested(vendor, monkeypatch):
     board ticker failed all weekend and was quarantined. The expired listing is dropped before
     the date ranges are built."""
     v = vendor(3)
-    yesterday = srv.now_et().date() - timedelta(days=1)
+    yesterday = now_et().date() - timedelta(days=1)
     monkeypatch.setattr(v, "get_option_expiration_chain", lambda ticker: _Resp(200, {
         "expirationList": [{"expirationDate": e.isoformat()} for e in [yesterday, *_EXPIRIES]]}))
-    real = v.gated
 
-    def refuses_the_past(client, ticker, **kw):
-        if kw.get("from_date") is not None and kw["from_date"] < srv.now_et().date():
-            return _Resp(400), 0.1, 0.2
-        return real(client, ticker, **kw)
-    monkeypatch.setattr(srv, "_gated_safe_get_chain", refuses_the_past)
-    r = srv.fetch_full_chain(v, "ZZ")
+    def refuses_the_past(**kw):
+        if kw.get("from_date") is not None and kw["from_date"] < now_et().date():
+            return _Resp(400)
+        return v.get(**kw)
+    r = sc.fetch_full_chain(v, "ZZ", refuses_the_past)
     assert r.status_code == 200, r.reason
-    assert all(lo >= srv.now_et().date() for lo, _hi in v.calls[1:])
+    assert all(lo >= now_et().date() for lo, _hi in v.calls[1:])

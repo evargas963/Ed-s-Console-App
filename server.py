@@ -12,14 +12,14 @@ import concurrent.futures
 import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Optional
 from dataclasses import asdict, dataclass
 
 import time_et as _time_et
-from time_et import (now_et, RTH_OPEN_MINS, is_capturable_session,
+from time_et import (ET, now_et, RTH_OPEN_MINS, is_capturable_session,
                      is_trading_day_et, session_label)
 
 import json
@@ -77,7 +77,7 @@ class _FlushingFileHandler(logging.FileHandler):
 # uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
 # RC-523: under the RUNTIME root (runtime_layout), which is this checkout unless
 # ED_RUNTIME_ROOT moves it — runtime output must not pollute the source tree (§8).
-from runtime_layout import data_dir, logs_dir as _runtime_logs_dir, reports_dir as _artifact_reports_dir  # noqa: E402
+from runtime_layout import logs_dir as _runtime_logs_dir, reports_dir as _artifact_reports_dir  # noqa: E402
 
 ED_SERVER_LOG_PATH = _runtime_logs_dir() / "ed_server.log"
 
@@ -156,12 +156,13 @@ from config import build_config, load_dotenv_file
 from schwab_client import (
     auth_is_refreshable,
     build_client_from_token,
+    fetch_full_chain,
+    flatten_chain_contracts,
     inspect_token_file,
     safe_get_chain,
     SchwabAuthError,
 )
 from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
-from json_blob_codec import decode_json_blob   # RC-REHAB-3: transparent gzip on JSON blob columns
 from math_levels import gamma_at_price
 from market_context import (
     market_context_panel_symbols_excluding_core,
@@ -446,32 +447,6 @@ _chain_inflight_lock = threading.Lock()
 _chain_inflight: dict = {}
 
 
-def flatten_chain_contracts(c_json: dict) -> list[dict]:
-    """Flatten a Schwab chain response into a flat contract list.
-
-    Single source: this was inline inside _fetch_state and is now shared with the
-    terrain loop, so both consume the chain identically. Schwab CSV authority: reads
-    chains.callExpDateMap.* / chains.putExpDateMap.* only; no derivation.
-    """
-    out: list[dict] = []
-    if not isinstance(c_json, dict):
-        return out
-    for side_key in ("callExpDateMap", "putExpDateMap"):
-        side_map = c_json.get(side_key) or {}
-        if not isinstance(side_map, dict):
-            continue
-        for exp_map in side_map.values():
-            if not isinstance(exp_map, dict):
-                continue
-            for strike_list in exp_map.values():
-                if not isinstance(strike_list, list):
-                    continue
-                for ct in strike_list:
-                    if isinstance(ct, dict):
-                        out.append(dict(ct))
-    return out
-
-
 
 
 #: Precedence for the ONE spot authority. Highest wins; every entry records where the
@@ -499,6 +474,7 @@ def flatten_chain_contracts(c_json: dict) -> list[dict]:
 # usually agree.
 SPOT_SOURCE_PLANE = "streaming_plane"          # live_market_plane.get_quote — the freshest real trade this process has seen
 SPOT_SOURCE_QUOTE = "schwab_quote_last"        # quotes.{SYM}.quote.lastPrice - a real trade
+SPOT_SOURCE_CAPTURE = "chain_capture"          # underlyingPrice of a stored chain capture (DATA_FLOW decision 7)
 
 
 #: Seconds the graceful shutdown gets before the process is killed outright. Generous
@@ -738,137 +714,6 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_rang
             else:
                 holder["result"] = (resp, 0.0, round(time.monotonic() - fetch_started, 3))
             holder["event"].set()
-
-
-class FullChainResponse:
-    """The whole chain as one response: `status_code` 200 and `.json()` the merged Schwab
-    payload, or the failing part's status with no payload. Callers read it exactly like the
-    vendor response they used to receive."""
-
-    def __init__(self, status_code: "int | None", payload: "dict | None" = None,
-                 parts: int = 0, reason: str = "", gate_wait_sec: float = 0.0,
-                 fetch_sec: "float | None" = None):
-        self.status_code = status_code
-        self._payload = payload
-        self.parts = parts
-        self.reason = reason
-        #: summed over every vendor request this chain took (the gate's own measurements)
-        self.gate_wait_sec = gate_wait_sec
-        self.fetch_sec = fetch_sec
-
-    def json(self) -> dict:
-        return self._payload if self._payload is not None else {}
-
-
-#: Vendor answers that mean "this request covers too much", not "this symbol is refused".
-#: MEASURED 2026-09-25: SPY (13,290 contracts), QQQ (11,710), MU (11,204) and $SPX (29,858)
-#: answered a one-shot strike_range=ALL request with HTTP 502; META (7,988) and AMD (6,628)
-#: did not. No Schwab document states the limit, so none is assumed here: a refused range is
-#: split and retried.
-_CHAIN_TOO_BIG_CODES = (502, 413, 500, 504)
-#: ticker -> how many date-range parts its whole chain last needed (learned, never guessed).
-_full_chain_parts: dict[str, int] = {}
-_full_chain_parts_lock = threading.Lock()
-
-
-def _option_expiries(client, ticker: str) -> "list[date] | None":
-    """Every listed expiry for `ticker` that has not passed (ET date), ascending; None when the
-    vendor does not answer 200. MEASURED 2026-09-26 (Saturday): the expiration chain still lists
-    Friday's expired 2026-09-25, and a chain request whose fromDate is in the past is refused
-    with HTTP 400 ("Check Param Values") -- the same range from today answers 200."""
-    resp = client.get_option_expiration_chain(ticker)
-    if resp is None or resp.status_code != 200:
-        return None
-    today = now_et().date()
-    out = sorted({d for d in (date.fromisoformat(str(e["expirationDate"])[:10])
-                              for e in (resp.json().get("expirationList") or []) if e.get("expirationDate"))  # external-key-ok: Schwab expiration chain response
-                  if d >= today})
-    return out
-
-
-def fetch_full_chain(client, ticker: str, *, priority: bool = False,
-                     expiry: "date | None" = None) -> FullChainResponse:
-    """EVERY strike of every listed expiry (or of the one `expiry`) -- the chain all level
-    math is computed from.
-
-    MEASURED 2026-09-25 across the 42 board tickers: levels computed from the old strike
-    window (strike_count sized to +/-5% around spot, 20 strikes for most names) disagreed
-    with the same code run on the full chain -- gamma flip missing for 10 tickers, max pain
-    different for 16, put wall for 4, $SPX walls 3-4% apart -- while the window held only
-    15-60% of each ticker's open interest. Operator decision 2026-09-25: the full chain for
-    all calculations.
-
-    One strike_range=ALL request when Schwab answers it. When the vendor answers that the
-    request covers too much, the listed expiries are split into contiguous date ranges and
-    each range is fetched the same way, halving any range that is itself refused; the part
-    count that worked is remembered per ticker so the next call starts there. Every part must
-    land: a missing part is a failed response (the reason names it), never a partial chain."""
-    tk = ticker_storage_key(ticker)
-    timing = {"gate": 0.0, "fetch": 0.0}
-
-    def _get(**dates):
-        resp, gate_wait, fetch_sec = _gated_safe_get_chain(client, tk, strike_range="ALL",
-                                                           priority=priority, **dates)
-        timing["gate"] += gate_wait or 0.0
-        timing["fetch"] += fetch_sec or 0.0
-        return resp, getattr(resp, "status_code", None)
-
-    def _answer(code, payload=None, parts=0, reason=""):
-        return FullChainResponse(code, payload, parts=parts, reason=reason,
-                                 gate_wait_sec=round(timing["gate"], 3),
-                                 fetch_sec=round(timing["fetch"], 3))
-
-    if expiry is not None:
-        resp, code = _get(from_date=expiry, to_date=expiry)
-        if code != 200:
-            return _answer(code, reason=f"chain for {expiry} returned HTTP {code}")
-        return _answer(200, resp.json(), parts=1)
-
-    with _full_chain_parts_lock:
-        known_parts = _full_chain_parts.get(tk, 1)
-    if known_parts <= 1:
-        resp, code = _get()
-        if code == 200:
-            return _answer(200, resp.json(), parts=1)
-        if code not in _CHAIN_TOO_BIG_CODES:
-            return _answer(code, reason=f"full chain returned HTTP {code}")
-        known_parts = 2
-
-    expiries = _option_expiries(client, tk)
-    if not expiries:
-        return _answer(None, reason="expiration list unavailable")
-    size = -(-len(expiries) // min(known_parts, len(expiries)))
-    pending = [expiries[i:i + size] for i in range(0, len(expiries), size)]
-    merged: "dict | None" = None
-    done = 0
-    while pending:
-        part = pending.pop(0)
-        resp, code = _get(from_date=part[0], to_date=part[-1])
-        if code == 200:
-            payload = resp.json()
-            if merged is None:
-                merged = payload
-                merged["callExpDateMap"] = dict(payload.get("callExpDateMap") or {})
-                merged["putExpDateMap"] = dict(payload.get("putExpDateMap") or {})
-            else:
-                merged["callExpDateMap"].update(payload.get("callExpDateMap") or {})
-                merged["putExpDateMap"].update(payload.get("putExpDateMap") or {})
-            done += 1
-            continue
-        if code in _CHAIN_TOO_BIG_CODES and len(part) > 1:
-            half = len(part) // 2
-            pending[:0] = [part[:half], part[half:]]
-            continue
-        return _answer(code, reason=(f"chain for {part[0]}..{part[-1]} returned HTTP "
-                                     f"{code}; the full chain is incomplete"))
-    with _full_chain_parts_lock:
-        _full_chain_parts[tk] = done
-    return _answer(200, merged, parts=done)
-
-
-
-
-
 
 
 # ── Server-side state cache (avoids re-fetching everything on each poll) ─────
@@ -1380,25 +1225,14 @@ from timeframe_config import CANONICAL_TIMEFRAME
 # the server AT BOOT -- loud, immediate, and impossible to trade through unnoticed. This
 # also ends the fail-open/fail-closed argument (Cursor audit 2026-07-20): the runtime
 # path now has no failure mode to pick a policy for.
-from calibration.option_chain_morning_full import (
-    MAX_DTE_DAYS as COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS,
-    # RC-161: the MORNING_* aliases are gone from this import because the scheduler no longer
-    # reads them. That coupling WAS the defect — the archive's write window was steering the
-    # terrain loop's contention guard. The guard now owns TERRAIN_CONTENTION_*, and the archive
-    # keeps MORNING_* to itself, so neither can move the other by accident again.
+from calibration.option_chain_accrual import (
     accrual_window as gex_accrual_window,
-    latest_accrual_rows,
     persist_chain_accrual,
-    SOURCE_WIDE as GEX_SOURCE_WIDE,
     et_date_and_mins as gex_et_date_and_mins,
-    has_morning_full_capture,
-    maybe_persist_morning_full_chain,
-    universal_capture_window,
 )
 from calibration.complete_chain_capture import (
-    eligible_near_term_expiries,
-    has_complete_chain_capture_today,
-    persist_complete_chain_capture,
+    COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
+    last_capture_per_day,
 )
 
 
@@ -2460,125 +2294,6 @@ def terrain_cache_get(ticker: str) -> dict | None:
     return out
 
 
-#: (ticker, et_date) pairs whose morning wide capture is already persisted — in-process
-#: memo so the loop does not hit the DB with has_morning_full_capture every 60s.
-_morning_capture_done: set[tuple[str, str]] = set()
-_morning_capture_lock = threading.Lock()
-
-
-def _universal_capture_wanted(tk: str) -> tuple[bool, tuple[str, str]]:
-    """Does `tk` still need today's wide morning capture?
-
-    UNIVERSAL MORNING CAPTURE (operator 2026-07-20). The sentinel-only capture rides the
-    money-path logger, which RC-1's operator-mode gate skips for non-sentinels whenever a
-    viewer is connected — measured result: 3 of ~51 tickers captured today. The terrain
-    loop touches EVERY ticker each cycle, so it closes the gap in the post-window span
-    (10:00-11:30 ET, deliberately AFTER the money-path window): one wide fetch serves
-    both terrain and the archive. Idempotent per (ticker, ET day); DB checked once per
-    day per ticker, then memoised in-process.
-    """
-    cap_date, cap_mins = gex_et_date_and_mins()
-    key = (tk, cap_date)
-    if not universal_capture_window(cap_mins):
-        return False, key
-    with _morning_capture_lock:
-        if key in _morning_capture_done:
-            return False, key
-        attempts = _morning_capture_attempts.get(key, 0)
-        if attempts >= _MORNING_CAPTURE_MAX_ATTEMPTS:
-            # Three wide fetches produced nothing persistable — stop paying for wide
-            # width every cycle; the day is a miss for this ticker, said out loud once.
-            _morning_capture_done.add(key)
-            log.warning("morning wide capture GIVEN UP ticker=%s after %d attempts",
-                        tk, attempts)
-            return False, key
-        _morning_capture_attempts[key] = attempts + 1
-    if has_morning_full_capture(get_db().db_path, tk, cap_date):
-        with _morning_capture_lock:
-            _morning_capture_done.add(key)
-        return False, key
-    return True, key
-
-
-#: Per-(ticker, et_date) persist attempts. Bugbot MEDIUM (confirmed): an empty flatten
-#: skipped persist WITHOUT memoising, so the loop re-forced the wide width every ~60s for
-#: the entire 90-minute span. Three strikes and the day is done for that ticker.
-_morning_capture_attempts: dict[tuple[str, str], int] = {}
-_MORNING_CAPTURE_MAX_ATTEMPTS = 3
-
-
-def _persist_universal_capture(tk: str, key: tuple[str, str],
-                               contracts: list, spot: float | None) -> None:
-    """Persist the wide chain just fetched. Archive concern — terrain must still serve.
-
-    Bugbot 2026-07-20 (HIGH — confirmed): the first version ignored the persist RETURN
-    DICT and memoised + logged success on any non-exception — including the status
-    dicts that mean "nothing was written". A silently-discarded capture then read as
-    captured for the rest of the ET day. The dict is now the arbiter:
-      ok / idempotent_skip            -> memoise (done for the day), log accordingly
-      too_few_near_term_contracts    -> memoise WITH WARNING (a thin chain will not
-                                         thicken intraday; retrying burns wide fetches)
-      anything else                  -> warn, do NOT memoise, bounded by the attempt cap
-    """
-    try:
-        result = maybe_persist_morning_full_chain(
-            get_db().db_path, ticker=tk, contracts=contracts,
-            spot=float(spot) if spot is not None else None,
-            ts_utc=time.time(), source=GEX_SOURCE_WIDE,
-        )
-    except Exception as e:
-        log.warning("morning wide capture persist failed ticker=%s: %s", tk, e)
-        return
-    status = str(result.get("status", ""))
-    if status == "ok":
-        with _morning_capture_lock:
-            _morning_capture_done.add(key)
-        log.info("morning full-chain capture persisted ticker=%s n=%s",
-                 tk, result.get("n_contracts"))
-    elif status == "idempotent_skip":
-        with _morning_capture_lock:
-            _morning_capture_done.add(key)
-    elif result.get("reason") == "too_few_near_term_contracts":
-        with _morning_capture_lock:
-            _morning_capture_done.add(key)
-        log.warning("morning wide capture SKIPPED for the day ticker=%s: only %s "
-                    "near-term contracts", tk, result.get("n"))
-    else:
-        log.warning("morning wide capture not persisted ticker=%s status=%s reason=%s",
-                    tk, status, result.get("reason"))
-
-
-def _persist_universal_complete_chain(tk: str, contracts: list,
-                                      ts_utc: float | None = None) -> None:
-    """Save each near-term expiry of the full chain just fetched into complete_chain_captures,
-    once per ET day. Zero vendor calls: the contracts are already in hand (they come from the
-    same strike_range=ALL request the capture's completeness basis names). Runs only inside the
-    capture window on a trading day; `ts_utc` is the one clock read, so the "already saved
-    today" check and the rows it writes agree on the ET day."""
-    ts = float(ts_utc if ts_utc is not None else time.time())
-    et_date, mins = gex_et_date_and_mins(ts)
-    if not universal_capture_window(mins) or not is_trading_day_et(et_date):
-        return
-    by_expiry: dict[str, list] = {}
-    for c in contracts:
-        if isinstance(c, dict) and c.get("expirationDate"):
-            by_expiry.setdefault(str(c["expirationDate"])[:10], []).append(c)
-    db_path = get_db().db_path
-    spot = None
-    for expiry in eligible_near_term_expiries(set(by_expiry), now_et_date=et_date,
-                                              max_dte_days=COMPLETE_CHAIN_NEAR_TERM_MAX_DTE_DAYS):
-        if has_complete_chain_capture_today(db_path, tk, expiry, et_date):
-            continue
-        if spot is None:
-            spot = resolve_spot(tk)[0]
-        result = persist_complete_chain_capture(
-            db_path, ticker=tk, expiry=expiry, contracts=by_expiry[expiry], spot=spot,
-            completeness_basis=COMPLETENESS_BASIS_STRIKE_RANGE_ALL, ts_utc=ts)
-        if result.get("status") != "written":
-            log.warning("complete-chain capture ticker=%s expiry=%s not written: %s",
-                        tk, expiry, result)
-
-
 #: Flip-drift measurement (unproven-register row due 2026-07-31): the mechanism is
 #: proven (gamma depends on spot/IV/time) but the intraday MAGNITUDE of flip movement
 #: is unmeasured. Every terrain-loop compute appends one JSONL row here so a week of
@@ -3352,38 +3067,47 @@ def _levels_lock(tk: str) -> threading.Lock:
         return _levels_locks.setdefault(tk, threading.Lock())
 
 
-def _publish_levels(tk: str, chain: "list | None" = None,
-                    fetched_ts: "float | None" = None) -> "TerrainSnapshot | None":
+def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
+                    *, capture: "dict | None" = None) -> "TerrainSnapshot | None":
     """THE producer of a ticker's levels, per-strike rows and gamma-surface grid.
 
     Prices the ticker's chain once -- overlaid with any fresher streamed option greeks, at the
     current spot -- and publishes all three together, so the heatmap, Strike Detail and Key
     Levels always show one computation. The terrain loop passes a newly fetched chain; a tick on
     a viewed ticker passes none and the kept chain is repriced. One call at a time per ticker:
-    each publication is computed from inputs read after the one it replaces. Returns the
-    snapshot, or None when there is no chain to price."""
+    each publication is computed from inputs read after the one it replaces. A stored
+    `capture` (startup, DATA_FLOW decision 7) is priced with Schwab's underlying price from that
+    capture, valued and dated at its own time. Returns the snapshot, or None when there is no
+    chain to price."""
     from math_exposure_core import overlay_streamed_contract_fields
     from app.options.order_flow.streaming import (
         read_producer_rejected_option_contracts, is_option_producer_daemon_available)
     with _levels_lock(tk):
         with _terrain_cache_lock:
             payload = dict(_terrain_cache.get(tk) or {})
+        if capture is not None:
+            chain, fetched_ts = capture["contracts"], capture["ts_utc"]
         if chain is None:
             chain, fetched_ts = payload.get("_chain"), payload.get("_chain_fetched_ts")
             if not chain:
                 return None
-        spot, spot_source, spot_ts = resolve_spot(tk)
+        if capture is not None:
+            spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
+        else:
+            spot, spot_source, spot_ts = resolve_spot(tk)
         prev_spot = payload.get("spot")
         streamed = _desired_stream_greeks_for_ticker(tk)
         priced, n_live = overlay_streamed_contract_fields(
             chain, streamed, newer_than_ts=fetched_ts,
             max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
         live_syms = _overlaid_symbols(chain, priced)
-        snap = compute_terrain(tk, priced, spot)
+        snap = compute_terrain(tk, priced, spot, now=(
+            datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
         payload.update(snap.to_dict())
         viewed = _gamma_surface_wanted(tk)
         payload.update({
-            "computed_ts_utc": time.time(), "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
+            "computed_ts_utc": fetched_ts if capture is not None else time.time(),
+            "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
             "chain_basis": "full", "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
             "_per_strike": snap.per_strike, "_gamma_surface": None,
             "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
@@ -3405,8 +3129,8 @@ def _publish_levels(tk: str, chain: "list | None" = None,
                 payload["_gamma_surface"]["surface_seq"] = _next_gamma_surface_seq(tk)
             _terrain_cache[tk] = payload
             _terrain_profile_cache[tk] = snap.profile
-        _save_session_levels(tk, payload, snap.profile)
-        _log_level_crosses(tk, prev_spot, snap)
+        if capture is None:
+            _log_level_crosses(tk, prev_spot, snap)
         return snap
 
 
@@ -3424,37 +3148,6 @@ def _log_level_crosses(tk: str, prev_spot: "float | None", snap: "TerrainSnapsho
         ticker=tk, prev_spot=prev_spot, cur_spot=snap.spot, levels=levels, ts_utc=now,
         ts_et=now_et().strftime("%Y-%m-%d %H:%M:%S ET"))
 
-
-#: The last levels each ticker published while the market was open, one JSON file per ticker:
-#: what the screen shows while the market is closed and after a restart then.
-SESSION_LEVELS_DIR = data_dir() / "session_levels"
-
-
-def _save_session_levels(tk: str, payload: dict, profile: list) -> None:
-    """Write `tk`'s published payload (without the kept raw chain) and gamma profile."""
-    path = SESSION_LEVELS_DIR / f"{tk.replace('$', '_')}.json"
-    body = {k: v for k, v in payload.items() if k != "_chain"}
-    SESSION_LEVELS_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"payload": body, "profile": profile}), encoding="utf-8")
-    os.replace(tmp, path)
-
-
-def _load_session_levels() -> int:
-    """Put every saved ticker's last published levels into the cache; returns how many. Their
-    heatmap cells are marked not streaming -- nothing streamed them since they were saved."""
-    n = 0
-    for path in sorted(SESSION_LEVELS_DIR.glob("*.json")) if SESSION_LEVELS_DIR.exists() else []:
-        saved = json.loads(path.read_text(encoding="utf-8"))
-        payload = saved["payload"]
-        tk = payload["ticker"]
-        if payload.get("_gamma_surface"):
-            _stamp_gamma_surface_cell_stream_state(payload["_gamma_surface"], {}, set(), {}, set())
-        with _terrain_cache_lock:
-            _terrain_cache[tk] = payload
-            _terrain_profile_cache[tk] = saved["profile"]
-        n += 1
-    return n
 
 
 def _vanna_rows(snap: "TerrainSnapshot") -> list:
@@ -3561,19 +3254,19 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     # continues has not fixed anything. A `priority` request (an operator is on the endpoint,
     # waiting) still honours the hold — the answer would be the same HTTP 400, just slower.
     if not _is_loggable_session():
-        # market closed: the saved last-session levels stand (weekend chains blank open
-        # interest -- measured 2026-09-26: every $SPX contract, 18% of SPY's OI)
+        # market closed: the levels loaded from the newest chain capture stand (weekend chains
+        # blank open interest -- measured 2026-09-26: every $SPX contract, 18% of SPY's OI)
         if terrain_cache_get(tk) is None:
-            _terrain_refresh_last_error[tk] = "market closed; no levels were saved from the last session"
+            _terrain_refresh_last_error[tk] = "market closed; no chain capture of this ticker yet"
         return "skip:market_closed"
     if _terrain_quarantine_blocks(tk):
         return "skip:quarantined"
     try:
         client = get_client()
-        want_capture, cap_key = _universal_capture_wanted(tk)
         # The FULL chain -- every strike of every listed expiry (fetch_full_chain; operator
         # decision 2026-09-25 after the strike window was measured disagreeing with it).
-        resp = fetch_full_chain(client, tk, priority=priority)
+        resp = fetch_full_chain(client, tk, lambda **d: _gated_safe_get_chain(
+            client, tk, strike_range="ALL", priority=priority, **d)[0])
         if resp.status_code != 200:
             _code = resp.status_code
             _msg = f"chain fetch failed ({resp.reason or f'HTTP {_code}'})"
@@ -3585,10 +3278,6 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             return "error:chain_http"
         fetched_ts = time.time()   # the chain's as-of: an older streamed value never overrides it
         contracts = flatten_chain_contracts(resp.json())
-        if want_capture and contracts:
-            _persist_universal_capture(tk, cap_key, contracts, resolve_spot(tk)[0])
-        if contracts:
-            _persist_universal_complete_chain(tk, contracts)
         snap = _publish_levels(tk, contracts, fetched_ts)
         _atr = _atr_pair(tk)
         with _terrain_cache_lock:
@@ -3783,6 +3472,20 @@ def _persist_1m_bars(tk: str, bars) -> int:
     return get_db().upsert_1m_bars(tk, bars)
 
 
+def _load_stored_levels() -> int:
+    """At startup, each board ticker's newest full chain capture is priced once (DATA_FLOW
+    decision 7), so a restart, a weekend or the close shows the last reading with its time.
+    Returns how many tickers were loaded."""
+    with _logger_lock:
+        board = list(_logger_tickers)
+    n = 0
+    for tk in board:
+        caps = last_capture_per_day(get_db().db_path, tk, 1)
+        if caps and _publish_levels(tk, capture=caps[0]) is not None:
+            n += 1
+    return n
+
+
 def start_terrain_loop() -> None:
     """Start the terrain collection thread.
 
@@ -3798,7 +3501,7 @@ def start_terrain_loop() -> None:
         return
     if _terrain_loop_running:
         return
-    log.info("session levels loaded for %d tickers", _load_session_levels())
+    log.info("levels loaded from chain captures for %d tickers", _load_stored_levels())
     _terrain_loop_running = True
     _terrain_loop_thread = threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True)
     _terrain_loop_thread.start()
@@ -3916,10 +3619,9 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
 
 # ── CR-03 screen 1 — per-strike gamma/volume bars for the histogram panel ────
 # Feeds the /chart sidebar: today's per-strike dealer gamma + traded volume, plus
-# the PRIOR wide capture's bars (the day-over-day migration ghosts), each in three
-# expiry scopes (all / near<=7DTE / far). Sources are STORED chains only (wide
-# morning capture preferred, live narrow chain as fallback) — read-only, no Schwab
-# call, no model stack. Bar heights use the same exposure math as terrain.
+# the previous market day's last chain capture (the day-over-day migration ghosts), each in
+# three expiry scopes (all / near<=7DTE / far). Read-only, no Schwab call. Bar heights use the
+# same exposure math as terrain.
 @app.get("/api/terrain/strikes")
 def get_terrain_strikes(ticker: str = Query(...)):
     from math_exposure_core import compute_exposures_by_strike as _cebs
@@ -3956,7 +3658,6 @@ def get_terrain_strikes(ticker: str = Query(...)):
         far = [c for c in contracts if (d := _dte_of(c)) is not None and d > 7]
         return {"all": _scope(contracts), "near": _scope(near), "far": _scope(far)}
 
-    import sqlite3 as _sq
     today_src, prior_src = None, None
     today, prior = None, None
     spot_used = None
@@ -3992,64 +3693,11 @@ def get_terrain_strikes(ticker: str = Query(...)):
             today_src = "terrain_live_cache"
     except Exception as e:
         log.debug("terrain strikes live read failed %s: %s", tk, e)
-    # RC-162 — THE BANK'S FIRST READER. RC-159 built the accrual writer and RC-161 made the
-    # producer universal, but nothing ever read it: with a cold, thin or stale live cache the
-    # Chart painted NOTHING while this session's own gamma and volume sat in the DB. Banking is
-    # not rendering, and a bank with no reader satisfies no operator intent.
-    #
-    # This is a DECLARED SECOND SOURCE, not a silent one, and it is bounded three ways so it
-    # cannot become the RC-68 failure again (a 09:47 archive served at 11:31 under a live label):
-    #   1. It serves only when the live snapshot is ABSENT or older than TERRAIN_STALE_AFTER_SEC.
-    #   2. It serves only rows banked TODAY, and only if they are NEWER than what live has.
-    #   3. It stamps its own source and age, so no consumer can mistake it for the live cache.
-    # The prior-day morning_full archive is untouched and still serves ONLY the ghost — a bank
-    # row is this session's own wide book, which is exactly what the archive is not.
-    try:
-        _live_ts = float(_snap.get("computed_ts_utc") or 0.0) if isinstance(_snap, dict) else 0.0  # silent-zero-ok: epoch-0 ancient sentinel — an undated snapshot must lose every freshness comparison
-        _live_stale = (today is None) or (
-            _live_ts <= 0.0) or ((time.time() - _live_ts) > TERRAIN_STALE_AFTER_SEC)
-        if _live_stale:
-            _bank = latest_accrual_rows(get_db().db_path, tk)
-            if _bank and _bank.get("rows") and _bank["ts_utc"] > _live_ts:
-                # `near`/`far` stay EMPTY on purpose: the bank holds the `all` scope only, and
-                # inventing a DTE split it never measured would be a fabricated level. The scope
-                # chips render empty and say so rather than showing `all` under another name.
-                today = {"all": _bank["rows"], "near": [], "far": []}
-                spot_used = _bank.get("spot") if _bank.get("spot") is not None else spot_used
-                today_age_sec = round(time.time() - _bank["ts_utc"], 1)
-                today_src = f"accrual_bank:{_bank['et_minute']:04d}et"
-    except Exception as e:
-        log.debug("terrain strikes accrual fallback failed %s: %s", tk, e)
-    try:
-        db = get_db()
-        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-        try:
-            rows = con.execute(
-                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
-                "WHERE ticker=? ORDER BY et_date DESC LIMIT 2", (tk,)).fetchall()
-        finally:
-            con.close()
-        if rows:
-            # ONE FAUCET FOR TODAY. The archive is NOT a fallback for today's per-strike data —
-            # a fallback IS a second faucet, and it is exactly how a 09:47 capture ended up
-            # rendering at 11:31 under the label "TODAY'S OPTION VOLUME". If the live terrain
-            # snapshot is absent (cold start), `today` stays empty and today_source stays None so
-            # the panel can say so: absence reads as absence, never as a stale substitute.
-            # The archive serves ONLY the prior-day ghost, which is what it is genuinely correct
-            # for — yesterday's close does not change.
-            _prior_row = rows[1] if len(rows) > 1 else (rows[0] if today_src else None)
-            if _prior_row is not None:
-                d1, s1, c1 = _prior_row
-                prior = _per_strike(decode_json_blob(c1), float(s1))
-                prior_src = f"wide_capture:{d1}"
-    except Exception as e:
-        log.debug("terrain strikes wide read failed %s: %s", tk, e)
-    # The narrow-snapshot fallback is REMOVED (RC-68). It was the third faucet for one field:
-    # the same panel could be fed by the live cache, the morning archive, or a stored narrow
-    # chain — three different widths and three different clocks — with nothing on screen saying
-    # which. If the live snapshot is absent the panel renders empty and says so.
-    live_spot, live_src, _ts = resolve_spot(tk)
-    _payload_spot = live_spot if live_spot is not None else spot_used
+    # the previous market day's close: a chain capture does not change after it is taken
+    caps = last_capture_per_day(get_db().db_path, tk, 1, before_et_date=now_et().date().isoformat())
+    if caps and caps[0]["spot"] is not None:
+        prior = _per_strike(caps[0]["contracts"], float(caps[0]["spot"]))
+        prior_src = f"chain_capture:{caps[0]['et_date']}"
 
     # STRIP kill (one-faucet-closeout-v1): per-side GEX/OV sums are computed HERE, against
     # the exact spot this payload serves — the chart strip used to re-derive them in the
@@ -4078,10 +3726,10 @@ def get_terrain_strikes(ticker: str = Query(...)):
                 "spot_basis": float(s)}
 
     return JSONResponse({
-        "ticker": tk, "spot": _payload_spot,
-        "spot_source": live_src,
+        "ticker": tk, "spot": spot_used,
+        "spot_source": _snap.get("spot_source"),
         "today": today or {"all": [], "near": [], "far": []},
-        "today_side_sums": _side_sums((today or {}).get("all"), _payload_spot),
+        "today_side_sums": _side_sums((today or {}).get("all"), spot_used),
         "today_source": today_src,
         # RC-68: every consumer must be able to render an AGE on the panel's face. A number with
         # no age is how a 2.1-hour-old volume histogram sat under the label "TODAY'S OPTION VOLUME".
@@ -4310,8 +3958,6 @@ def get_forces(ticker: str = Query(...)):
     2026-08-02 revoked the DIR-01(i) vote-lock — serve dealer-signed net_charm below/above
     spot from the newer banked chain via compute_charm_by_strike (same book as terrain walls).
     """
-    import sqlite3 as _sq
-
     from math_exposure_core import compute_exposures_by_strike as _cebs
     from math_levels import compute_charm_by_strike as _ccs
 
@@ -4321,23 +3967,14 @@ def get_forces(ticker: str = Query(...)):
     if hit and now - hit[0] < 300.0:
         return JSONResponse(hit[1])
     payload: dict = {"ticker": tk, "available": False,
-                     "reason": "fewer than 2 banked wide captures for this ticker"}
+                     "reason": "fewer than 2 market days of chain captures for this ticker"}
     try:
-        db = get_db()
-        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-        try:
-            # RC-193: pull a wider candidate window and keep only trading ET dates —
-            # ORDER BY et_date DESC LIMIT 2 silently preferred Sunday stock.
-            cand = con.execute(
-                "SELECT et_date, spot, chain_json FROM option_chain_morning_full "
-                "WHERE ticker=? ORDER BY et_date DESC LIMIT 12", (tk,)).fetchall()
-        finally:
-            con.close()
-        rows = [r for r in cand if r[0] and is_trading_day_et(str(r[0]))][:2]
+        rows = [(c["et_date"], c["spot"], c["contracts"])
+                for c in last_capture_per_day(get_db().db_path, tk, 2) if c["spot"] is not None]
         if len(rows) >= 2:
             (d1, s1, c1), (d0, s0, c0) = rows[0], rows[1]
-            per1 = _cebs(decode_json_blob(c1), spot=float(s1))[0]
-            per0 = _cebs(decode_json_blob(c0), spot=float(s0))[0]
+            per1 = _cebs(c1, spot=float(s1))[0]
+            per0 = _cebs(c0, spot=float(s0))[0]
 
             from math_exposure_core import bucket_metric as _bm, strike_total_oi as _sto
 
@@ -4352,10 +3989,7 @@ def get_forces(ticker: str = Query(...)):
             charm_below = charm_above = None
             charm_err = None
             try:
-                chain1 = decode_json_blob(c1)
-                contracts = chain1 if isinstance(chain1, list) else (
-                    (chain1.get("contracts") if isinstance(chain1, dict) else None) or [])
-                per_ch = _ccs(contracts, spot1) if contracts else {}
+                per_ch = _ccs(c1, spot1) if c1 else {}
                 if not per_ch:
                     charm_err = "charm_by_strike empty on newer banked chain"
                 else:
@@ -4392,7 +4026,7 @@ def get_forces(ticker: str = Query(...)):
                 # compute_net_charm on ONE selected expiry, compute_charm_by_strike on the
                 # whole book. Counting the distinct expiries in `contracts` reports which
                 # book these numbers came from and changes if the producer ever changes.
-                "charm_book_scope": _charm_book_scope(contracts),
+                "charm_book_scope": _charm_book_scope(c1),
                 "charm_error": charm_err,
                 "newer_et_date": d1, "older_et_date": d0, "bucket_spot": spot1,
                 "method": ("per-strike OI delta first, bucketed by the newer capture's spot; "

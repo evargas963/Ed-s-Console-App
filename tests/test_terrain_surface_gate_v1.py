@@ -33,11 +33,9 @@ def _stub_terrain(monkeypatch, proj):
 
     monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t: False)
     monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "_universal_capture_wanted", lambda t: (False, None))
     monkeypatch.setattr(server, "_gated_safe_get_chain", lambda *a, **k: (R(), 0.0, 0.0))
     monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [dict(ct) for ct in _REAL_CHAIN])
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (100.0, "stub", 0.0))
-    monkeypatch.setattr(server, "_persist_universal_complete_chain", lambda *a, **k: None)
     monkeypatch.setattr(server, "compute_terrain", lambda tk, contracts, spot, **k: Snap(contracts))
     monkeypatch.setattr(server, "_accrue_chain_observation", lambda *a, **k: None)
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
@@ -309,7 +307,7 @@ def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch):
     monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
     real_refresh = server._terrain_refresh_one
     fetched: list[str] = []
-    monkeypatch.setattr(server, "fetch_full_chain", lambda client, tk, **k: fetched.append(tk))
+    monkeypatch.setattr(server, "fetch_full_chain", lambda client, tk, get: fetched.append(tk))
 
     def spy_refresh(tk, priority=False):
         calls.append(tk)
