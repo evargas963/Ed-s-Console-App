@@ -340,6 +340,9 @@ def compute_exposures_by_strike(
         # terrain's dex_dollars -- one meaning of DEX on every screen (2026-09-27: the bucket
         # summed call + put, the holder's side, while terrain subtracted)
         b["net_delta"] = b["call_delta"] - b["put_delta"]
+        # net dealer vanna, delta-shares per vol point, +call/-put: THE per-strike net vanna the
+        # heatmap, the vanna-by-strike rows and the book total all carry
+        b["net_vanna"] = b["call_vanna"] - b["put_vanna"]
         # Dollarized net fields (remain 0.0 if spot is None)
         b["net_dex_dollars"] = b.get("call_dex_dollars", 0.0) - b.get("put_dex_dollars", 0.0)
         b["net_gex_1pct"] = b.get("call_gex_1pct", 0.0) - b.get("put_gex_1pct", 0.0)
@@ -537,7 +540,10 @@ def strike_total_oi(bucket: dict) -> float | None:
     every one-sided strike from PCR / OI center / max pain), two counted a missing leg as 0
     whether or not its OI was reported (audit T-04 / M-06 / M-07 / M-08, 2026-09-24)."""
     legs = strike_oi_legs(bucket)
-    return None if legs is None else legs[0] + legs[1]
+    if legs is None:
+        return None
+    call_oi, put_oi = legs
+    return call_oi + put_oi
 
 
 def strike_oi_legs(bucket: dict) -> tuple[float, float] | None:
@@ -570,7 +576,10 @@ def strike_volume_legs(bucket: dict) -> tuple[float, float] | None:
 def strike_total_volume(bucket: dict) -> float | None:
     """THE total session volume at one strike, or None when a contract there did not report it."""
     legs = strike_volume_legs(bucket)
-    return None if legs is None else legs[0] + legs[1]
+    if legs is None:
+        return None
+    call_volume, put_volume = legs
+    return call_volume + put_volume
 
 
 def book_total_oi(exposures: Dict[float, dict]) -> float | None:
@@ -667,29 +676,19 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
     """RC-362: aggregate dealer vanna — how much dealer DELTA shifts per IV point.
 
     Same naive dealer-sign model (dealer +calls/−puts): net vanna Δ-shares per 1.00 vol
-    = Σ call_vanna − Σ put_vanna over the ONE exposures book (per-strike values are the
-    exact Black-Scholes bs_vanna since RC-211, accumulated ·OI·mult at parse time). Per VOL-POINT = /100;
+    = Σ net_vanna over the ONE exposures book (each strike's net_vanna from
+    compute_exposures_by_strike: exact Black-Scholes bs_vanna, per vol point, ·OI·mult);
     dollars per vol-pt = × spot. Positive net: IV UP forces dealer delta up → they SELL
     into vol spikes; IV DOWN (crush) → they BUY, the vanna-tailwind rally mechanic.
     FAIL-CLOSED: None on an empty/valueless book or missing spot.
     """
     if not exposures or spot is None or spot <= 0:
         return None
-    call_v = 0.0
-    put_v = 0.0
-    seen = False
-    for b in exposures.values():
-        if not isinstance(b, dict):
-            continue
-        c = b.get("call_vanna")
-        p = b.get("put_vanna")
-        if c is not None:
-            call_v += float(c); seen = True
-        if p is not None:
-            put_v += float(p); seen = True
-    if not seen:
+    nets = [float(b["net_vanna"]) for b in exposures.values()
+            if isinstance(b, dict) and b.get("net_vanna") is not None]
+    if not nets:
         return None
-    net_shares_per_volpt = call_v - put_v          # the book is already per vol point
+    net_shares_per_volpt = sum(nets)                 # the book is already per vol point
     return {"net_vanna_dollars_per_volpt": round(net_shares_per_volpt * float(spot), 2),
             "net_vanna_shares_per_volpt": round(net_shares_per_volpt, 2)}
 

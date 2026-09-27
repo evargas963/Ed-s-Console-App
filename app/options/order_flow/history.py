@@ -280,13 +280,23 @@ def book_heatmap_for_ticker(
         return {"ticker": sym, "available": False, "reason": "database unavailable"}
     try:
         con.execute("PRAGMA query_only=ON")
+        # the newest message that carries a price level: after the close Schwab keeps sending
+        # empty book snapshots, and anchoring on those showed an empty grid all weekend
+        # (measured 2026-09-27: SPY and TSLA blank, their last populated book on 2026-09-25)
         latest = con.execute(
-            "SELECT MAX(ts_recv) FROM stream_book_raw WHERE symbol = ? AND service IN (?, ?)",
+            "SELECT MAX(ts_recv) FROM stream_book_raw WHERE symbol = ? AND service IN (?, ?) "
+            "AND (native_json LIKE '%\"BID_PRICE\"%' OR native_json LIKE '%\"ASK_PRICE\"%')",
             (sym, "NASDAQ_BOOK", "NYSE_BOOK"),
         ).fetchone()
         latest_ts = latest[0] if latest else None
         if latest_ts is None:
-            return {"ticker": sym, "available": False, "reason": "no book history captured for this ticker"}
+            any_row = con.execute(
+                "SELECT 1 FROM stream_book_raw WHERE symbol = ? AND service IN (?, ?) LIMIT 1",
+                (sym, "NASDAQ_BOOK", "NYSE_BOOK"),
+            ).fetchone()
+            return {"ticker": sym, "available": False,
+                    "reason": ("captured rows carried no populated price levels in this window" if any_row
+                               else "no book history captured for this ticker")}
         lower_bound = float(latest_ts) - max(1.0, float(minutes)) * 60.0
         # DESC + LIMIT keeps the NEWEST max_rows rows in the window, then reversed below to
         # oldest-first for the binning loop -- an earlier ASC+LIMIT form kept the OLDEST rows
@@ -301,9 +311,9 @@ def book_heatmap_for_ticker(
         # rows_capped:true on a window with no truncation at all.
         rows = con.execute(
             "SELECT ts_recv, native_json FROM stream_book_raw "
-            "WHERE symbol = ? AND service IN (?, ?) AND ts_recv >= ? "
+            "WHERE symbol = ? AND service IN (?, ?) AND ts_recv >= ? AND ts_recv <= ? "
             "ORDER BY ts_recv DESC LIMIT ?",
-            (sym, "NASDAQ_BOOK", "NYSE_BOOK", lower_bound, int(max_rows) + 1),
+            (sym, "NASDAQ_BOOK", "NYSE_BOOK", lower_bound, float(latest_ts), int(max_rows) + 1),
         ).fetchall()
         rows_capped = len(rows) > int(max_rows)
         rows = rows[:int(max_rows)]

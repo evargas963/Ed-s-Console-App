@@ -361,14 +361,27 @@ def test_rc362_net_vanna_math_and_fail_closed():
     """RC-362: net vanna = Σcall_vanna − Σput_vanna shares per vol-pt (the book is per vol point
     since 2026-09-27, one unit everywhere), ×spot in $; None on empty/valueless book or missing
     spot."""
-    from math_exposure_core import compute_net_vanna
+    import json
+    from pathlib import Path
+    import time_et
+    from math_exposure_core import compute_exposures_by_strike, compute_net_vanna
 
-    book = {700.0: {"call_vanna": 5000.0, "put_vanna": -3000.0},
-            705.0: {"call_vanna": 1000.0, "put_vanna": -1000.0}}
+    # Schwab's real CRWD chain (captured 2026-09-02), valued at its capture time; each strike's
+    # net_vanna is the producer's own, the expectation is worked out here from the legs
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
+                    .read_text(encoding="utf-8"))
+    real_now = time_et.now_et
+    from datetime import datetime
+    time_et.now_et = lambda: datetime(2026, 9, 2, 10, 5, tzinfo=time_et.ET)
+    try:
+        book, _ = compute_exposures_by_strike(fx["chain"], spot=fx["spot"], require_oi=True)
+    finally:
+        time_et.now_et = real_now
+    want = sum(b["call_vanna"] for b in book.values()) - sum(b["put_vanna"] for b in book.values())
+    assert want != 0
     out = compute_net_vanna(book, 800.0)
-    # net shares/volpt = 6000 − (−4000) = 10,000; dollars = 10,000×800 = 8,000,000
-    assert out == {"net_vanna_dollars_per_volpt": 8000000.0,
-                   "net_vanna_shares_per_volpt": 10000.0}
+    assert out["net_vanna_shares_per_volpt"] == round(want, 2)
+    assert out["net_vanna_dollars_per_volpt"] == round(want * 800.0, 2)
     assert compute_net_vanna({}, 800.0) is None
     assert compute_net_vanna(book, None) is None
     assert compute_net_vanna({700.0: {"other": 1}}, 800.0) is None

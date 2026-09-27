@@ -62,3 +62,21 @@ def test_the_subscription_state_is_served(monkeypatch, l1, book, want):
     monkeypatch.setattr(S, "_pick_producer_contract", lambda held, q: q if q in held else next(iter(held), None))
     monkeypatch.setattr(S, "daemon_status", lambda: {"ok": True})
     assert S.get_option_contract_streaming_diagnostics(for_contract="Q")["subscription_state"] == want
+
+
+def test_the_window_ends_at_the_newest_book_with_levels_not_the_empty_after_close_snapshots(tmp_path):
+    """After the close Schwab keeps sending empty book snapshots (measured 2026-09-27: SPY's latest
+    NASDAQ_BOOK message is {"key": "SPY", "BOOK_TIME": ..., "BIDS": [], "ASKS": []}); anchoring the
+    window on those left the heatmap blank all weekend."""
+    db = tmp_path / "stream_capture.db"
+    last = _FX["rows"][-1][0]
+    empties = [(last + 3600 * h, "NASDAQ_BOOK", {"key": "TSLA", "BOOK_TIME": int((last + 3600 * h) * 1000), "BIDS": [], "ASKS": []})
+               for h in range(1, 40)]
+    con = sqlite3.connect(db)
+    con.executescript(STREAM_SCHEMA_SQL)
+    con.executemany("INSERT INTO stream_book_raw(ts_recv,service,symbol,native_json,src) VALUES(?,?,?,?,?)",
+                    [(ts, svc, "TSLA", json.dumps(nat), "schwab_book") for ts, svc, nat in _FX["rows"] + empties])
+    con.commit(); con.close()
+    d = book_heatmap_for_ticker("TSLA", minutes=60, db_path=db)
+    assert d["available"] is True and d["cells"]
+    assert d["until_ts"] == last
