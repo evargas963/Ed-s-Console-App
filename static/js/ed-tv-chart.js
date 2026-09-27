@@ -244,12 +244,12 @@
       var b = barAt(S.pinned.time);
       if (!b) { S.pinned = null; pinBox.hidden = true; return; }
       pinBox.hidden = false;
-      var chg = b.c - b.o, pct = b.o ? (chg / b.o) * 100 : null;
+      var chg = b.chg, pct = b.chg_pct;   // served per bar
       pinBox.innerHTML = '<div class="tvc-pin-h"><span>' + esc(CT_FULL.format(new Date(b.t * 1000))) + ' CT</span>' +
         '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
         '<div class="tvc-pin-g"><span>Open</span><b>' + b.o.toFixed(2) + '</b><span>High</span><b>' + b.h.toFixed(2) +
         '</b><span>Low</span><b>' + b.l.toFixed(2) + '</b><span>Close</span><b>' + b.c.toFixed(2) +
-        '</b><span>Bar change</span><b class="' + (chg >= 0 ? 'up' : 'dn') + '">' + (chg >= 0 ? '+' : '') + chg.toFixed(2) +
+        '</b><span>Bar change</span><b class="' + (chg == null ? '' : chg >= 0 ? 'up' : 'dn') + '">' + (chg == null ? '—' : (chg >= 0 ? '+' : '') + chg.toFixed(2)) +
         (pct == null ? '' : ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)') + '</b><span>Volume</span><b>' + fmtVol(b.v) + '</b>' +
         (S.pinned.price != null ? '<span>Price at click</span><b>' + S.pinned.price.toFixed(2) + '</b>' : '') + '</div>';
       pinBox.querySelector('.tvc-pin-x').addEventListener('click', function () { unpin(); });
@@ -348,9 +348,8 @@
       S.priceLines.forEach(function (l) { candles.removePriceLine(l); }); S.priceLines = [];
       if (top == null || bot == null || ref == null) return;
       var lo = Math.min(top, bot), hi = Math.max(top, bot);
-      var pick = S.levels.filter(function (l) { return l.price >= lo && l.price <= hi; })
-        .sort(function (a, b) { return Math.abs(a.price - ref) - Math.abs(b.price - ref); })
-        .slice(0, S.nearestN);
+      // the levels arrive nearest-first (served); keep the first N inside the visible range
+      var pick = S.levels.filter(function (l) { return l.price >= lo && l.price <= hi; }).slice(0, S.nearestN);
       pick.forEach(function (l) {
         S.priceLines.push(candles.createPriceLine({ price: l.price, color: l.color || P.ink3, lineWidth: l.width || 1,
           lineStyle: l.style == null ? 2 : l.style, axisLabelVisible: true, title: l.label || '' }));
@@ -429,18 +428,12 @@
         return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.c >= b.o ? P.up : P.down, 0.45) };
       },
       setVolume: function (bars) { volume.setData((bars || []).map(api._volPoint)); },
-      // VWAP + bands, one point per bar: the server's value as of that bar's close (the last
-      // 1m series point inside the bar). Rows are [t, vwap, +1, -1, +2, -2].
+      // VWAP + bands, one point per bar, served for the chart's timeframe (/api/levels?tf=:
+      // the value as of the bar's last minute, stamped with the bar's t). Rows are
+      // [t, vwap, +1, -1, +2, -2].
       setVwap: function (rows) {
-        rows = (rows || []).filter(function (r) { return r && r[1] != null; });
-        var byBar = {}, order = [];
-        rows.forEach(function (r) {
-          var i = barIndexAt(Number(r[0])); if (i < 0) return;
-          var t = S.bars[i].t; if (!(t in byBar)) order.push(t);
-          byBar[t] = r;
-        });
         var cols = [1, 2, 3, 4, 5], out = cols.map(function () { return []; });
-        order.forEach(function (t) { cols.forEach(function (c, k) { if (byBar[t][c] != null) out[k].push({ time: t, value: byBar[t][c] }); }); });
+        (rows || []).forEach(function (r) { cols.forEach(function (c, k) { if (r && r[c] != null) out[k].push({ time: r[0], value: r[c] }); }); });
         vwapLine.setData(out[0]);
         bandLines.forEach(function (s, k) { s.setData(out[k + 1]); });
       },

@@ -90,7 +90,8 @@
       ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', classOf(cls, 'ages.book_age_sec')],
     ];
     var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
-    var heroUnit = imb == null ? '' : (imb > 0.05 ? 'bid-heavy (depth 5)' : imb < -0.05 ? 'ask-heavy (depth 5)' : 'balanced (depth 5)');
+    var side = dep(5, 'side');   // served: BID / ASK / EVEN by the imbalance's sign
+    var heroUnit = side == null ? '' : side === 'BID' ? 'bid-heavy (depth 5)' : side === 'ASK' ? 'ask-heavy (depth 5)' : 'balanced (depth 5)';
     // Operator-reproduced defect (2026-09-14): this badge was hardcoded 'LIVE' regardless of
     // book_age_sec -- a book observation aged to 3,600s still rendered LIVE. ages.book_stale is
     // server-computed (app.options.order_flow.engine.compute_book_microstructure), the SAME
@@ -98,22 +99,22 @@
     // only reads the verdict, it does not invent its own threshold.
     // LIVE only on the server's explicit "not stale"; an unknown book age is not live
     var bs = ages.book_stale;
-    return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, imb > 0.05 ? 1 : imb < -0.05 ? -1 : 0,
+    return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, side === 'BID' ? 1 : side === 'ASK' ? -1 : 0,
       rows, bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN', bs === false ? 'live' : 'stale');
   }
 
-  function frameStage(levelsD, spot) {
+  function frameStage(levelsD) {
     var levels = (levelsD && levelsD.levels) || [];
     if (!levels.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No levels', '', 0, [], null);
-    // a level with no price is not a level at price 0 (audit of #280)
-    var sorted = levels.filter(function (r) { return r.price != null && isFinite(Number(r.price)); })
-      .sort(function (a, b) { return Math.abs(a.price - spot) - Math.abs(b.price - spot); });
+    // served: levels ordered by distance to the live price (by_distance), each with its distance and side
+    var byId = {}; levels.forEach(function (r) { byId[r.id] = r; });
+    var sorted = ((levelsD && levelsD.by_distance) || []).map(function (id) { return byId[id]; }).filter(Boolean);
     if (!sorted.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No priced levels', '', 0, [], null);
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
-    var dist = isFinite(spot) && nearest ? nearest.price - spot : null;
-    var heroVal = nearest ? (nearest.label || nearest.id) + ' ' + num(nearest.price) : '—';
-    var heroUnit = dist != null ? (Math.abs(dist) < 0.005 ? 'at spot' : (dist > 0 ? num(Math.abs(dist)) + ' above spot' : num(Math.abs(dist)) + ' below spot')) : '';
+    var heroVal = (nearest.label || nearest.id) + ' ' + num(nearest.price);
+    var heroUnit = nearest.side === 'AT' ? 'at spot' : nearest.side === 'ABOVE' ? num(nearest.distance) + ' above spot'
+      : nearest.side === 'BELOW' ? num(-nearest.distance) + ' below spot' : '';
     return stage(2, 'td-accent-green', 'Frame — nearest liquidity level', heroVal, heroUnit, 0, rows, null);
   }
 
@@ -135,30 +136,15 @@
 
   // ---- Context Summary: plain-English arrangement of the SAME 4 responses. Classifies
   // (inside a zone / between two zones), never invents a value. ----
-  function locateSpot(spot, zones) {
-    if (!isFinite(spot) || !zones || !zones.length) return null;
-    for (var i = 0; i < zones.length; i++) {
-      var z = zones[i];
-      if (spot >= z.zone_low && spot <= z.zone_high) {
-        return { inside: z };
-      }
-    }
-    var above = null, below = null;
-    zones.forEach(function (z) {
-      if (z.zone_low > spot && (above == null || z.zone_low < above.zone_low)) above = z;
-      if (z.zone_high < spot && (below == null || z.zone_high > below.zone_high)) below = z;
-    });
-    return { above: above, below: below };
-  }
-
   function contextSummary(terrain, snap, spot) {
     var lines = [];
     if (terrain) {
       lines.push(['Regime', (terrain.regime || '—') + (terrain.posture ? ' · ' + terrain.posture : '')]);
       if (terrain.headline) lines.push(['Read', terrain.headline]);
     }
-    var zones = (snap && snap.zones) || [];
-    var loc = locateSpot(spot, zones);
+    var zones = (snap && snap.zones) || [], sl = snap && snap.spot_location;   // served
+    var loc = sl ? { inside: sl.inside != null ? zones[sl.inside] : null,
+                     above: sl.above != null ? zones[sl.above] : null, below: sl.below != null ? zones[sl.below] : null } : null;
     if (loc && loc.inside) {
       var z = loc.inside;
       lines.push(['Location', 'Inside a ' + (z.zone_type === 'support_liquidity' ? 'support' : 'resistance') +
@@ -169,9 +155,8 @@
       if (loc.below) parts.push('support near ' + num(loc.below.zone_high) + ' (confluence ' + loc.below.confluence_score + ')');
       lines.push(['Location', parts.length ? 'Between zones — ' + parts.join(', ') : 'No scored zone nearby']);
     }
-    if (terrain && terrain.call_wall != null && terrain.put_wall != null && isFinite(spot)) {
-      var toCall = terrain.call_wall - spot, toPut = spot - terrain.put_wall;
-      lines.push(['Box', num(toPut) + ' above put wall, ' + num(toCall) + ' below call wall']);
+    if (terrain && terrain.dist_to_put_wall != null && terrain.dist_to_call_wall != null) {   // served
+      lines.push(['Box', num(terrain.dist_to_put_wall) + ' above put wall, ' + num(terrain.dist_to_call_wall) + ' below call wall']);
     }
     if (!lines.length) return '';
     return '<div class="td-context"><h4>Context summary</h4>' +
@@ -195,38 +180,28 @@
   // position label, not a provenance claim, and reusing them would misread as one.
   function migTag(txt, cls) { return '<span class="mig-mark ' + cls + '">' + esc(txt) + '</span>'; }
 
-  function migrationCoach(withGhost, byVol, terrain) {
+  var DRIFT_WORDS = { UP: 'UP the chain', DOWN: 'DOWN the chain', FLAT: 'with little net drift' };
+  var WALL_WORDS = { ABOVE_CALL_WALL: 'ABOVE the call wall', BELOW_PUT_WALL: 'BELOW the put wall', INSIDE_WALLS: 'inside the wall range' };
+  function migrationCoach(m) {   // m: the served positioning_migration for this DTE scope
     var out = '';
-    if (!withGhost.length) {
+    if (!m || !m.compared) {
       out += '<div class="mig-coach"><b>Migration view warming up</b>The first day-over-day comparison lands after the next wide morning capture.</div>';
     } else {
-      var sPos = 0, wPos = 0, sPosY = 0, wPosY = 0;
-      withGhost.forEach(function (r) {
-        if (r.gx > 0) { sPos += r.k * r.gx; wPos += r.gx; }
-        if (r.gy > 0) { sPosY += r.k * r.gy; wPosY += r.gy; }
-      });
-      var wmT = wPos ? sPos / wPos : null, wmY = wPosY ? sPosY / wPosY : null;
-      var dir = (wmT != null && wmY != null)
-        ? (wmT - wmY > 0.15 ? 'UP the chain' : wmY - wmT > 0.15 ? 'DOWN the chain' : 'with little net drift')
-        : 'with no positive-gamma mass in view';
-      var sorted = withGhost.map(function (r) { return [r.k, r.gx - r.gy]; }).sort(function (a, b) { return b[1] - a[1]; });
-      var grew = sorted.filter(function (d) { return d[1] > 0; }).slice(0, 2).map(function (d) { return num(d[0], 0); }).join('/');
-      var shrank = sorted.filter(function (d) { return d[1] < 0; }).slice(-2).map(function (d) { return num(d[0], 0); }).join('/');
+      var dir = m.drift ? DRIFT_WORDS[m.drift] : 'with no positive-gamma mass to compare';
+      var grew = (m.grew || []).map(function (k) { return num(k, 0); }).join('/');
+      var shrank = (m.shrank || []).map(function (k) { return num(k, 0); }).join('/');
       out += '<div class="mig-coach"><b>Positive gamma mass moved ' + esc(dir) + '</b>' +
         (grew ? 'Grew most at ' + esc(grew) : 'No strike grew') +
         (shrank ? '; shrank most at ' + esc(shrank) + '. ' : '. ') +
         'Opened or closed? Tomorrow’s ΔOI confirms.</div>';
     }
-    if (byVol.length) {
-      var kk = byVol.map(function (r) { return r.k; });
-      var cw = terrain && terrain.call_wall, pw = terrain && terrain.put_wall;
-      var loc = (cw != null && Math.min.apply(null, kk) > cw) ? 'ABOVE the call wall'
-        : (pw != null && Math.max.apply(null, kk) < pw) ? 'BELOW the put wall' : 'inside the wall range';
-      out += '<div class="mig-coach"><b>Heaviest option trading at ' + kk.map(function (k) { return num(k, 0); }).join('–') + '</b>' +
-        'That is ' + esc(loc) + '. Activity fact only — buyer/seller split stays unproven until the ΔOI test.</div>';
+    if (m && m.busiest && m.busiest.length) {
+      out += '<div class="mig-coach"><b>Heaviest option trading at ' + m.busiest.map(function (k) { return num(k, 0); }).join('–') + '</b>' +
+        'That is ' + esc(WALL_WORDS[m.busiest_vs_walls] || '—') + '. Activity fact only — buyer/seller split stays unproven until the ΔOI test.</div>';
     }
     return out;
   }
+
 
   // ---- Repo-wide chart interaction standard, adapted for this surface's real shape ----
   // Same reasoning as GEX by Strike (ed-gamma-panels.js), which this panel reuses the exact
@@ -325,8 +300,10 @@
         (why ? 'no per-strike rows — ' + esc(why) : 'no per-strike gamma for this symbol yet') +
         '</div></div></div>';
     }
-    var priorAll = (strikesD.prior && strikesD.prior[_migScope]) || [];
-    var ghost = {}; priorAll.forEach(function (r) { ghost[r[0]] = r[1]; });
+    // served: day-over-day rows [strike, gex today, gex prior, change] and the verdicts
+    var mig = (strikesD.migration || {})[_migScope] || null;
+    var migRow = {}; ((mig && mig.rows) || []).forEach(function (r) { migRow[r[0]] = r; });
+    function prior(k) { return migRow[k] ? migRow[k][2] : null; }
     var asc = todayAll.slice().sort(function (a, b) { return a[0] - b[0]; });
     var ascStrikes = asc.map(function (r) { return r[0]; });
     var sel = (window.EdShell && window.EdShell.scopeSelect)
@@ -339,23 +316,20 @@
       ' — not following spot; double-click a strike label to resume</div>';
     var maxAbs = 1, maxVol = 1;
     win.forEach(function (r) {
-      maxAbs = Math.max(maxAbs, Math.abs(r[1]), Math.abs(ghost[r[0]] || 0));
+      maxAbs = Math.max(maxAbs, Math.abs(r[1]), Math.abs(prior(r[0]) == null ? 0 : prior(r[0])));   // bar scale (drawing)
       maxVol = Math.max(maxVol, r[2] || 0);
     });
     var spotStrike = strikesD.spot_strike;   // served: the listed strike nearest the live price
     var cw = terrain && terrain.call_wall, pw = terrain && terrain.put_wall;
-    var withGhost = [], byVolRows = [];
     var rows = '';
     win.forEach(function (r) {
       // a strike with no GEX value is unknown, not a zero bar (audit of #280)
-      var k = r[0], gx = (r[1] == null || !isFinite(Number(r[1]))) ? null : Number(r[1]), vol = r[2], gy = ghost[k];
+      var k = r[0], gx = (r[1] == null || !isFinite(Number(r[1]))) ? null : Number(r[1]), vol = r[2], gy = prior(k);
       var hasGy = gy != null && gx != null;
-      if (hasGy) withGhost.push({ k: k, gx: gx, gy: gy });
-      if (vol) byVolRows.push({ k: k, vol: vol });
       var pos = gx != null && gx >= 0, wToday = gx == null ? 0 : Math.min(100, Math.abs(gx) / maxAbs * 100);
       var ghostBar = hasGy
         ? '<i class="mig-ghost ' + (gy >= 0 ? 'pos' : 'neg') + '" style="width:' + Math.min(100, Math.abs(gy) / maxAbs * 100).toFixed(1) + '%"></i>' : '';
-      var delta = hasGy ? gx - gy : null;
+      var delta = migRow[k] ? migRow[k][3] : null;   // served change
       var deltaHtml = delta == null ? '<span class="mig-delta"></span>'
         : '<span class="mig-delta ' + (delta >= 0 ? 'pos' : 'neg') + '">' + (delta >= 0 ? '▲' : '▼') + usd(Math.abs(delta)) + '</span>';
       var rowCls = 'gbs-row mig-row' + (k === spotStrike ? ' spot' : '') +
@@ -372,7 +346,6 @@
         (pw != null && k === pw ? migTag('PUT WALL', 'put') : '') +
         '</div>';
     });
-    var byVolTop = byVolRows.slice().sort(function (a, b) { return b.vol - a.vol; }).slice(0, 2);
     var scopeChips = '<div class="mig-chips">' + MIG_SCOPES.map(function (s) {
       return '<span class="mig-chip' + (s[0] === _migScope ? ' on' : '') + '" data-mig-scope="' + s[0] + '">' + s[1] + '</span>';
     }).join('') + '<span class="mig-chip' + (_migGhost ? ' on' : '') + '" data-mig-ghost="1">GHOST</span></div>';
@@ -380,9 +353,9 @@
     // genuinely traded nothing yet, or the chain behind these rows was read before it started
     // trading and hasn't refreshed since (ported verbatim from static/chart.html's drawGamma,
     // same /api/terrain/strikes staleness fields GEX-by-Strike's own badge already reads).
-    var totVol = win.reduce(function (a, r) { return a + (r[2] || 0); }, 0);
+    var totVol = mig ? mig.volume_total : null;   // served: the scope's session volume
     var volNote = '';
-    if (totVol <= 0) {
+    if (totVol === 0) {
       volNote = strikesD.levels_stale
         ? '<div class="mig-vol-note stale">zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source badge above</div>'
         : '<div class="mig-vol-note">no option volume yet this session — the counter resets at the new session and fills from the open</div>';
@@ -398,7 +371,7 @@
       scopeChips + '<div class="mig-top">' + note + volNote + '</div>' +
       '<div class="gbs-scroll"><div class="gbs">' + rows + '</div></div>' +
       '<div class="gbs-scale"><span class="neg">−' + usd(maxAbs) + '</span><span>0</span><span class="pos">+' + usd(maxAbs) + '</span></div>' +
-      migrationCoach(withGhost, byVolTop, terrain) +
+      migrationCoach(mig) +
       '</div>';
   }
 
@@ -450,7 +423,7 @@
       h.innerHTML =
         '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
         '</span><span class="fl-meta">' + (isFinite(spot) ? 'spot ' + num(spot) : '') + '</span></div></div>' +
-        '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD, spot) + confirmStage(terrain) + '</div>' +
+        '<div class="td-grid">' + detectStage(detect) + frameStage(levelsD) + confirmStage(terrain) + '</div>' +
         contextSummary(terrain, snap, spot) +
         migrationSection(strikesD, terrain, spot, tk) +
         '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +

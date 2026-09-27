@@ -300,9 +300,11 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
             )
 
     fams = {f["family"] for f in payload["families_absent"]}
-    assert "gamma" in fams, (
-        "gamma remains OUT-OF-SCOPE for Tier-B and must be DECLARED absent (RC-68)"
-    )
+    # 2026-09-27: the gamma family is CARRIED from the terrain (one ranked list of levels for the
+    # Trade Desk chart), never computed by Tier-B: every gamma row says so in its provenance.
+    for lv in payload["levels"]:
+        if lv["family"] == "gamma":
+            assert lv["provenance"] == {"producer": "terrain_engine.compute_terrain", "carried": True}
     # Tier-B (levels-tierb-session-collapse-v1): session families are served from the engine
     # when today bars exist — not left as soft B1-absent placeholders.
     by_fam = {}

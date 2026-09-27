@@ -4,7 +4,7 @@
      MARKET MAP   <- /api/bars1m (server-rolled timeframe + the server's forming bar),
                      /api/levels (value area, VWAP + bands, prior day, opening range, overnight),
                      /api/terrain (call/put wall, gamma flip, max pain -- full chain)
-     ATTENTION    <- /api/level_crosses (numbered on the chart, linked both ways),
+     ATTENTION    <- /api/desk/events (served, numbered; on the chart, linked both ways),
                      /api/terrain wall states, /api/order-flow/microstructure wall candidates
      CARDS        <- /api/order-flow/microstructure, /api/terrain (pcr_by_expiry), /api/alerts,
                      /api/liquidity-snapshot (value/VWAP relation)
@@ -21,9 +21,9 @@
   var FULL_LIMIT = { '1': 1200, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
   var TAIL_LIMIT = { '1': 5, '5': 15, '15': 35, '30': 65, '60': 125, 'D': 2000 };
   // The ONE global timeframe also sets how far back the queue and the event markers reach.
-  var LOOKBACK = { '1': { s: 900, lbl: 'last 15 min' }, '5': { s: 3600, lbl: 'last 1 h' },
-    '15': { s: 14400, lbl: 'last 4 h' }, '30': { s: 'session', lbl: 'this session' },
-    '60': { s: 172800, lbl: 'last 2 days' }, 'D': { s: 1728000, lbl: 'last 20 days' } };
+  // the event window per timeframe is the server's (DESK_LOOKBACK_SEC); these are its words only
+  var LOOKBACK = { '1': { lbl: 'last 15 min' }, '5': { lbl: 'last 1 h' }, '15': { lbl: 'last 4 h' },
+    '30': { lbl: 'this session' }, '60': { lbl: 'last 2 days' }, 'D': { lbl: 'last 20 days' } };
   var FAMILIES = [
     { id: 'value_area', lbl: 'Value area' }, { id: 'vwap', lbl: 'VWAP' }, { id: 'gamma', lbl: 'Gamma' },
     { id: 'prior_day', lbl: 'Prior day' }, { id: 'opening_range', lbl: 'Opening range' }, { id: 'overnight', lbl: 'Overnight' }];
@@ -157,7 +157,7 @@
   function setTf(tf) {
     if (tf === S.tf) return;
     S.tf = tf; sset('ed.desk.tf', tf); paintTfButtons();
-    loadBars(true); paintQueue();
+    loadBars(true); loadSlow();   // levels (VWAP per bar) and events are per timeframe
   }
 
   // ------------------------------------------------------------------ data
@@ -183,14 +183,13 @@
   function loadSlow() {
     var tk = S.ticker, gen = S.gen, q = encodeURIComponent(tk);
     return Promise.all([
-      fetchJson('/api/levels?ticker=' + q),
+      fetchJson('/api/levels?ticker=' + q + '&tf=' + encodeURIComponent(S.tf)),
       fetchJson('/api/terrain?ticker=' + q),
-      fetchJson('/api/level_crosses?ticker=' + q + '&n=200'),
-      fetchJson('/api/alerts?ticker=' + q),
+      fetchJson('/api/desk/events?ticker=' + q + '&tf=' + encodeURIComponent(S.tf)),
       fetchJson('/api/liquidity-snapshot?ticker=' + q + '&snapshot=live')
     ]).then(function (r) {
       if (gen !== S.gen) return;
-      S.levels = r[0]; S.terrain = r[1]; S.crosses = r[2]; S.analytics = r[3]; S.liq = r[4];
+      S.levels = r[0]; S.terrain = r[1]; S.events = r[2]; S.liq = r[3];
       paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
     });
   }
@@ -206,17 +205,19 @@
   function levelList() {
     var P = S.chart.palette(), out = [];
     var style = { value_area: [P.accent2, 2, 1], prior_day: [P.ink3, 1, 1], opening_range: [P.stale, 2, 1], overnight: [P.research, 2, 1] };
-    ((S.levels && S.levels.levels) || []).forEach(function (l) {
-      var s = style[l.family]; if (!s || !S.fam[l.family] || l.price == null) return;
+    var gamma = { call_wall: ['Call wall', P.up, 0, 2], put_wall: ['Put wall', P.down, 0, 2],
+      gamma_flip: ['γ flip', P.accent, 0, 2], max_pain: ['Max pain', P.ink3, 3, 1] };
+    var byId = {}; ((S.levels && S.levels.levels) || []).forEach(function (l) { byId[l.id] = l; });
+    // served order: nearest the live price first (by_distance); the chart keeps the first N on screen
+    ((S.levels && S.levels.by_distance) || []).forEach(function (id) {
+      var l = byId[id]; if (!l || l.price == null || !S.fam[l.family]) return;
+      if (l.family === 'gamma') {
+        var g = gamma[l.id]; if (g) out.push({ id: l.id, price: Number(l.price), label: g[0], color: g[1], style: g[2], width: g[3] });
+        return;
+      }
+      var s = style[l.family]; if (!s) return;
       out.push({ id: l.id, price: Number(l.price), label: SHORT[l.id] || l.label || l.id, color: s[0], style: s[1], width: s[2] });
     });
-    var t = S.terrain;
-    if (t && !t.error && S.fam.gamma) {
-      [['call_wall', 'Call wall', P.up, 0, 2], ['put_wall', 'Put wall', P.down, 0, 2],
-        ['gamma_flip', 'γ flip', P.accent, 0, 2], ['max_pain', 'Max pain', P.ink3, 3, 1]].forEach(function (g) {
-        if (t[g[0]] != null) out.push({ id: g[0], price: Number(t[g[0]]), label: g[1], color: g[2], style: g[3], width: g[4] });
-      });
-    }
     return out;
   }
   function paintChartLevels() {
@@ -233,63 +234,14 @@
     var P = S.chart.palette();
     // the newest 40 events are drawn (the queue lists every one); a 20-day daily chart would
     // otherwise carry hundreds of dots on thirty candles
-    S.chart.setMarkers(queueItems().filter(function (q) { return q.marker; }).slice(0, 40).map(function (q) {
+    S.chart.setMarkers(queueItems().filter(function (q) { return q.marker; }).map(function (q) {   // served flag: the newest 40
       return { id: q.key, time: q.ts, text: String(q.n), color: q.dir === 'up' ? P.up : q.dir === 'down' ? P.down : P.accent2,
         position: q.dir === 'down' ? 'aboveBar' : 'belowBar', shape: 'circle', meta: q.key };
     }), function (key) { selectItem(key, false); });
   }
 
   // ------------------------------------------------------------------ attention queue
-  function windowStart() {
-    var lb = LOOKBACK[S.tf].s;
-    if (lb === 'session') {
-      var last = S.bars.length ? S.bars[S.bars.length - 1].t : Date.now() / 1000;
-      var day = CT_DAYKEY.format(new Date(last * 1000));
-      for (var i = S.bars.length - 1; i >= 0; i--) if (CT_DAYKEY.format(new Date(S.bars[i].t * 1000)) !== day) return S.bars[i + 1].t;
-      return S.bars.length ? S.bars[0].t : last - 86400;
-    }
-    return Date.now() / 1000 - lb;
-  }
-  function queueItems() {
-    var items = [], from = windowStart();
-    var cr = ((S.crosses && S.crosses.crosses) || []).filter(function (c) { return c.ts_utc >= from; })
-      .sort(function (a, b) { return a.ts_utc - b.ts_utc; });
-    cr.forEach(function (c, i) {
-      var names = (c.level_names && c.level_names.length ? c.level_names : [c.level_name]).join(' + ');
-      items.push({ key: 'x' + c.cross_id, n: i + 1, ts: c.ts_utc, dom: 'LEVELS', dir: c.direction, marker: true,
-        title: 'Crossed ' + (c.direction === 'up' ? 'above ' : 'below ') + names,
-        detail: num(c.level_value) + ' · spot ' + num(c.spot_at_cross) + (c.zone_after ? ' · zone ' + c.zone_after : ''),
-        src: '/api/level_crosses' });
-    });
-    var t = S.terrain;
-    if (t && !t.error) {
-      var tts = t.computed_ts_utc;   // the server's time or none -- never this browser's clock
-      if (t.call_wall_state === 'breached') items.push({ key: 'cw', ts: tts, dom: 'OPTIONS', dir: 'up',
-        title: 'Spot through the call wall', detail: 'call wall ' + num(t.call_wall) + ' · spot ' + num(t.spot), src: '/api/terrain' });
-      if (t.put_wall_state === 'breached') items.push({ key: 'pw', ts: tts, dom: 'OPTIONS', dir: 'down',
-        title: 'Spot through the put wall', detail: 'put wall ' + num(t.put_wall) + ' · spot ' + num(t.spot), src: '/api/terrain' });
-      if (t.levels_stale) items.push({ key: 'ls', ts: tts, dom: 'DATA', dir: null, warn: true,
-        title: 'Gamma levels are ' + age(t.levels_age_sec) + ' old', detail: t.levels_stale_reason || '', src: '/api/terrain' });
-    }
-    var m = S.micro;
-    if (m && m.wall_candidates && m.wall_candidates.length) {
-      m.wall_candidates.slice(0, 3).forEach(function (w, i) {
-        items.push({ key: 'wall' + i, ts: m.provenance && m.provenance.server_received_ts, dom: 'LIQUIDITY',
-          dir: w.side === 'bid' ? 'up' : 'down',
-          title: 'Displayed size wall · ' + (w.side || '') + ' ' + num(w.price),
-          detail: fmtVol(w.volume) + ' shown · ' + (w.median_mult != null ? num(w.median_mult, 1) + '× the median level' : 'size outlier'),
-          src: '/api/order-flow/microstructure' });
-      });
-    }
-    ((S.analytics && S.analytics.alerts) || []).forEach(function (a, i) {
-      items.push({ key: 'ra' + i, ts: a.ts_utc, dom: 'ALERT', dir: null, title: String(a.text), detail: '', src: '/api/alerts' });
-    });
-    // newest first; an item the server gave no time sorts last and shows no time
-    return items.sort(function (a, b) {
-      var ka = a.ts == null ? -Infinity : a.ts, kb = b.ts == null ? -Infinity : b.ts;
-      return kb === ka ? 0 : (kb > ka ? 1 : -1);
-    });
-  }
+  function queueItems() { return (S.events && S.events.items) || []; }   // served, ordered, numbered
   function paintQueue() {
     var host = $('tdmQueue'); if (!host) return;
     var items = queueItems(); S.queue = items;
@@ -319,7 +271,7 @@
   function state(el, txt, cls) { var s = el.querySelector('.tdm-state'); s.textContent = txt; s.className = 'tdm-state ' + (cls || ''); }
   function seriesNote() { return '<div class="tdm-series">1h change · sparkline: not produced yet</div>'; }
   function paintCards() {
-    var m = S.micro, t = S.terrain, a = S.analytics;
+    var m = S.micro, t = S.terrain;
     // LIQUIDITY — displayed book depth
     var c = $('tdmCardLiq');
     if (c) {
@@ -332,8 +284,9 @@
       } else {
         var imb = Number(d5.imbalance);
         var bs = m.ages ? m.ages.book_stale : null;   // true, false, or unknown (null)
-        state(c, bs === true ? 'STALE BOOK' : bs !== false ? 'BOOK AGE UNKNOWN' : (imb > 0 ? 'BID HEAVY' : imb < 0 ? 'OFFER HEAVY' : 'BALANCED'),
-          bs !== false ? 'warn' : (imb > 0 ? 'up' : imb < 0 ? 'dn' : ''));
+        var sd = d5.side;   // served: BID / ASK / EVEN
+        state(c, bs === true ? 'STALE BOOK' : bs !== false ? 'BOOK AGE UNKNOWN' : (sd === 'BID' ? 'BID HEAVY' : sd === 'ASK' ? 'OFFER HEAVY' : 'BALANCED'),
+          bs !== false ? 'warn' : (sd === 'BID' ? 'up' : sd === 'ASK' ? 'dn' : ''));
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (imb >= 0 ? 'up' : 'dn') + '">' + (imb >= 0 ? '+' : '') + num(imb * 100, 1) + '%</span><small>depth imbalance · 5 levels</small>';
         c.querySelector('.tdm-rows').innerHTML = row('Bid depth (5)', fmtVol(d5.bid_total)) + row('Ask depth (5)', fmtVol(d5.ask_total)) +
           row('Spread', num(m.spread_pts, 2) + ' pts') + row('Size walls shown', String((m.wall_candidates || []).length)) +
@@ -346,19 +299,18 @@
     c = $('tdmCardFlow');
     if (c) {
       var fl = m && m.flow, tob = m && m.top_of_book;
-      var from = windowStart(), cr = ((S.crosses && S.crosses.crosses) || []).filter(function (x) { return x.ts_utc >= from; });
-      var up = cr.filter(function (x) { return x.direction === 'up'; }).length, dn = cr.length - up;
+      var cc = (S.events && S.events.cross_counts) || null;   // served for the window
       function pct(v) { return v == null ? '—' : '<span class="' + (v > 0 ? 'up' : v < 0 ? 'dn' : '') + '">' + (v > 0 ? '+' : '') + num(v * 100, 0) + '%</span>'; }
-      var p5 = fl ? fl.tape_pressure_5m : null;
-      state(c, p5 == null ? (m === undefined ? 'LOADING' : 'NO TRADES SEEN') : (p5 > 0 ? 'NET BUYING' : p5 < 0 ? 'NET SELLING' : 'BALANCED'),
-        p5 == null ? 'warn' : (p5 > 0 ? 'up' : p5 < 0 ? 'dn' : ''));
+      var p5 = fl ? fl.tape_pressure_5m : null, ts5 = fl ? fl.tape_side_5m : null;   // served side
+      state(c, ts5 == null ? (m === undefined ? 'LOADING' : 'NO TRADES SEEN') : (ts5 === 'BUY' ? 'NET BUYING' : ts5 === 'SELL' ? 'NET SELLING' : 'BALANCED'),
+        ts5 == null ? 'warn' : (ts5 === 'BUY' ? 'up' : ts5 === 'SELL' ? 'dn' : ''));
       c.querySelector('.tdm-hero').innerHTML = p5 == null ? '—<small>no trades in the tape buffer yet</small>'
         : pct(p5) + '<small>net traded volume, last 5 min (tick rule, PROXY)</small>';
       c.querySelector('.tdm-rows').innerHTML =
         row('Last 30 s · 2 min', (fl ? pct(fl.tape_pressure_30s) : '—') + ' · ' + (fl ? pct(fl.tape_pressure_2m) : '—')) +
         row('Cum. delta (tape buffer)', fl && fl.cum_delta_proxy != null ? (fl.cum_delta_proxy >= 0 ? '+' : '−') + fmtVol(Math.abs(fl.cum_delta_proxy)) + ' sh' : '—') +
         row('Top of book', tob && tob.bid_size != null ? fmtVol(tob.bid_size) + ' × ' + fmtVol(tob.ask_size) : '—') +
-        row('Level crosses (' + LOOKBACK[S.tf].lbl + ')', cr.length ? up + ' up · ' + dn + ' down' : '0');
+        row('Level crosses (' + LOOKBACK[S.tf].lbl + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '—');
     }
     // OPTIONS POSITIONING — full-chain terrain
     c = $('tdmCardOpt');
@@ -402,11 +354,11 @@
     var host = $('tdmAgree'); if (!host) return;
     var m = S.micro, t = S.terrain, l = S.liq, d5 = m && m.depth && m.depth['5'];
     var cells = [
-      ['LIQUIDITY', d5 && d5.imbalance != null ? (d5.imbalance > 0 ? 'Bid heavy' : d5.imbalance < 0 ? 'Offer heavy' : 'Balanced') : 'No book', d5 && d5.imbalance != null ? (d5.imbalance > 0 ? 'up' : 'dn') : ''],
+      ['LIQUIDITY', d5 && d5.side ? (d5.side === 'BID' ? 'Bid heavy' : d5.side === 'ASK' ? 'Offer heavy' : 'Balanced') : 'No book', d5 && d5.side === 'BID' ? 'up' : d5 && d5.side === 'ASK' ? 'dn' : ''],
       ['VALUE', l && l.summary ? String(l.summary.value_state || '—').replace(/_/g, ' ') : '—', ''],
       ['VWAP', l && l.summary ? String(l.summary.vwap_relation || '—').replace(/_/g, ' ') : '—', ''],
       ['OPTIONS', t && !t.error ? String(t.posture || t.regime || '—').replace(/_/g, ' ') : '—', ''],
-      ['GAMMA', t && !t.error && t.gamma_flip != null && t.spot != null ? (t.spot >= t.gamma_flip ? 'Above flip' : 'Below flip') : '—', t && t.spot >= t.gamma_flip ? 'up' : 'dn']
+      ['GAMMA', t && t.flip_relation ? (t.flip_relation === 'ABOVE' ? 'Above flip' : 'Below flip') : '—', t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
     ];
     host.innerHTML = cells.map(function (c) {
       return '<div class="tdm-ag"><span>' + c[0] + '</span><b class="' + c[2] + '">' + esc(c[1]) + '</b></div>'; }).join('') +
@@ -461,7 +413,7 @@
     if (!tk) return;
     if (tk !== S.ticker) {
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed
-      S.levels = S.terrain = S.micro = S.crosses = S.analytics = S.liq = undefined; S.sel = null;
+      S.levels = S.terrain = S.micro = S.events = S.liq = undefined; S.sel = null;
       paintHeader(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
       loadBars(true); loadSlow(); loadFast();
     } else if (!S.bars.length) { loadBars(true); loadSlow(); loadFast(); }

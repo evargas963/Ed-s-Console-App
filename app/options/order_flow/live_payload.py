@@ -27,6 +27,9 @@ def flow_block(of: dict[str, Any]) -> dict[str, Any]:
     """The labeled PROXY tape flow out of one OrderFlowEngine.compute result -- the same block
     for an option contract and an equity (Trade Desk Order Flow card)."""
     flow = {k: of.get(k) for k in _FLOW_KEYS}
+    p5 = flow.get("tape_pressure_5m")
+    # net traded side over 5 minutes, by the pressure's sign (tick rule, PROXY)
+    flow["tape_side_5m"] = None if p5 is None else "BUY" if p5 > 0 else "SELL" if p5 < 0 else "EVEN"
     flow["classification"] = {
         "tape_pressure_30s": "PROXY",
         "tape_pressure_2m": "PROXY",

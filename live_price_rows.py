@@ -65,11 +65,20 @@ def _note_trade(ticker: str) -> None:
 lmp.add_row_listener(_note_trade)
 
 
+def with_change(bar: dict[str, Any]) -> dict[str, Any]:
+    """`bar` with its change over the bar (close - open) and that change as a percent of the
+    open: THE bar-change computation for every bar served (history and the forming minute)."""
+    o, c = bar.get("o"), bar.get("c")
+    bar["chg"] = c - o if c is not None and o is not None else None
+    bar["chg_pct"] = bar["chg"] / o * 100 if bar["chg"] is not None and o else None
+    return bar
+
+
 def forming_bar(ticker: str) -> Optional[dict[str, Any]]:
     t = ticker_storage_key(ticker)
     with _forming_lock:
         bar = _forming.get(t)
-        return dict(bar) if bar else None
+        return with_change(dict(bar)) if bar else None
 
 
 def _trade_age_sec(trade_ts: Optional[float], now: float) -> Optional[float]:

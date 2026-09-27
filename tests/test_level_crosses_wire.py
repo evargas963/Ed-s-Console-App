@@ -222,11 +222,10 @@ def test_coincident_crossings_collapse_to_one_event(tmp_path):
     import ast
     from pathlib import Path
     src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    seg = ""
-    for node in ast.walk(ast.parse(src)):
-        if isinstance(node, ast.FunctionDef) and node.name == "api_level_crosses":
-            seg = ast.get_source_segment(src, node) or ""
-    assert seg, "api_level_crosses not found"
+    # the route and the one merge it calls (_merged_recent_crosses, shared with /api/desk/events)
+    seg = "".join(ast.get_source_segment(src, node) or "" for node in ast.walk(ast.parse(src))
+                  if isinstance(node, ast.FunctionDef) and node.name in ("api_level_crosses", "_merged_recent_crosses"))
+    assert "_merged_recent_crosses(" in seg, "api_level_crosses not found or not using the one merge"
     assert "coincident_levels" in seg, (
         "RC-88 regression: the endpoint no longer reports how many levels shared the crossing, so "
         "a collapsed event is indistinguishable from a lone one"
@@ -245,7 +244,7 @@ def test_collapse_keys_on_price_event_not_level_name():
     from pathlib import Path
     src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
     seg = next(ast.get_source_segment(src, n) for n in ast.walk(ast.parse(src))
-               if isinstance(n, ast.FunctionDef) and n.name == "api_level_crosses")
+               if isinstance(n, ast.FunctionDef) and n.name == "_merged_recent_crosses")
     assert 'r.get("ts_utc"), r.get("level_value"), r.get("direction")' in seg, (
         "the collapse key is no longer the price event; a level_name-keyed merge cannot see two "
         "names sharing one strike, which is the whole defect"
