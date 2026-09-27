@@ -66,13 +66,15 @@ def test_charm_by_strike_unavailable_with_no_cached_chain():
     assert "reason" in body
 
 
-def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_vanna():
+def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_vanna(monkeypatch):
     _put_live_chain()
     from math_exposure_core import compute_exposures_by_strike as cebs
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (_SPOT + 1.0, "live", time.time()))
 
     body = json.loads(server.get_vanna_by_strike(ticker="CRWD").body)
     assert body["available"] is True
-    assert body["spot"] == _SPOT
+    # spot is the live price (the header's own); the rows were computed at priced_at_spot
+    assert body["spot"] == _SPOT + 1.0 and body["priced_at_spot"] == _SPOT
     rows = {r[0]: r[1] for r in body["rows"]}
     assert rows, "a real chain must yield at least one vanna row"
 

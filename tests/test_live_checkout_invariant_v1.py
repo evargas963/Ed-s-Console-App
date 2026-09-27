@@ -303,7 +303,7 @@ def test_prod_checkout_rails_are_not_evaded_by_a_bare_newline(tmp_path, monkeypa
     # a genuine line continuation (trailing `\`) is NOT a statement break — it must still block
     # the single logical command it forms, not be split into two harmless halves.
     assert plg.production_checkout_shell_app_write_violations(
-        f"cp /tmp/evil.py \\\nserver.py", cwd), \
+        "cp /tmp/evil.py \\\nserver.py", cwd), \
         "a backslash-continued single command must still be read as one command and BLOCK"
 
 

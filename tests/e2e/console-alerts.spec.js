@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * Proximity Alerts strip (ed-alerts.js) <- /api/alerts: the server's alert strings, shown as sent.
+ * Proximity Alerts strip (ed-alerts.js) <- /api/alerts: the server's alert text, shown as sent.
  * Hidden with none; one pill per alert; hidden again when the next ticker has none. Offline.
  */
 const { test, expect } = require('@playwright/test');
@@ -31,7 +31,8 @@ test.describe('proximity alerts strip', () => {
   });
 
   test('shows each alert the server sends, as sent', async ({ page }) => {
-    alertsBody = { alerts: ['Within 0.8pts of 590.00 ceiling wall', 'Just crossed down through gamma_flip level'] };
+    alertsBody = { alerts: [{ text: 'Within 0.8pts of 590.00 ceiling wall', ts_utc: 1757000200 },
+      { text: 'Just crossed down through gamma_flip level', ts_utc: 1757000100 }] };
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#alertsStrip')).toBeVisible();
     await expect(page.locator('.alert-pill')).toHaveCount(2);
@@ -40,7 +41,7 @@ test.describe('proximity alerts strip', () => {
   });
 
   test('a ticker switch to a symbol with no alerts hides the strip again', async ({ page }) => {
-    alertsBody = { alerts: ['Within 0.8pts of 580.00 floor wall'] };
+    alertsBody = { alerts: [{ text: 'Within 0.8pts of 580.00 floor wall', ts_utc: 1757000200 }] };
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#alertsStrip')).toBeVisible();
     alertsBody = { alerts: [] };

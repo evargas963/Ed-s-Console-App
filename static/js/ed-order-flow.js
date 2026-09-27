@@ -139,10 +139,11 @@
     // the Freshness section -- a book observation aged to 3,600s still rendered LIVE. book_stale
     // is server-computed (app.options.order_flow.engine.compute_book_microstructure); this only
     // reads the verdict.
-    var stale = ages.book_stale === true;
+    // LIVE only on the server's explicit "not stale"; an unknown book age is not live
+    var bs = ages.book_stale, badge = bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN';
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
-      '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge ' + (stale ? 'stale' : 'live') + '">' + (stale ? 'STALE' : 'LIVE') + '</span></div></div>' +
+      '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge ' + (bs === false ? 'live' : 'stale') + '">' + badge + '</span></div></div>' +
       '<div class="dom-wrap">' +
         '<div class="dom-ladder">' + ladderHtml(bidLevels, askLevels, wallSet) + midHtml + '</div>' +
         '<div class="dom-stats">' +

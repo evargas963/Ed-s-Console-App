@@ -343,9 +343,13 @@ def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_tot
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
             exp_oi = {"call": round(float(bucket["call_oi"])) if bucket.get("call_oi") is not None else None,
                       "put": round(float(bucket["put_oi"])) if bucket.get("put_oi") is not None else None}
+            exp_oi["total"] = (exp_oi["call"] + exp_oi["put"]
+                               if exp_oi["call"] is not None and exp_oi["put"] is not None else None)
             assert row["oi"][col] == exp_oi
             exp_vol = {"call": round(float(bucket["call_volume"])) if bucket.get("call_volume") is not None else None,
                        "put": round(float(bucket["put_volume"])) if bucket.get("put_volume") is not None else None}
+            exp_vol["total"] = (exp_vol["call"] + exp_vol["put"]
+                                if exp_vol["call"] is not None and exp_vol["put"] is not None else None)
             assert row["volume"][col] == exp_vol
             checked += 1
     assert checked > 20
@@ -369,8 +373,8 @@ def test_K_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zer
     assert row["gex"][e1_col] is None   # the pre-existing field's own fail-closed behavior
     assert row["dex"][e1_col] is None
     assert row["vanna"][e1_col] is None
-    assert row["oi"][e1_col] == {"call": None, "put": None}
-    assert row["volume"][e1_col] == {"call": None, "put": None}
+    assert row["oi"][e1_col] == {"call": None, "put": None, "total": None}
+    assert row["volume"][e1_col] == {"call": None, "put": None, "total": None}
 
 
 # ---- the exposure books every view is shaped from merge back to the one full book ----

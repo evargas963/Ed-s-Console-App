@@ -125,18 +125,12 @@
   // computation. This is the ONE place that picks which of those a render actually reads,
   // so every consumer (maxAbs, the cell loop, the just-updated flash map) agrees on the
   // same measure the operator selected, never a mix of measures across the same render.
-  // oi/volume are {call, put} per cell (unlike gex/dex, which are signed dealer-net
-  // dollars) -- summed to a magnitude (call + put) for heatmap coloring, since OI/volume
-  // concentration, not a net dealer sign, is the question those two measures answer.
+  // oi/volume are {call, put, total} per cell (unlike gex/dex, which are signed dealer-net
+  // dollars) -- the heatmap colours by the server's total (call + put; unknown when either
+  // side is), since OI/volume concentration, not a net dealer sign, is the question.
   function _measureRow(row, measure) {
     if (measure === 'oi' || measure === 'volume') {
-      return (row[measure] || []).map(function (cp) {
-        if (!cp) return null;
-        var c = cp.call, p = cp.put;
-        // both sides or unknown: one missing side is not a zero (audit of #280 -- a missing put
-        // OI used to colour the cell by call OI alone, as if that were the total)
-        return (c == null || p == null) ? null : c + p;
-      });
+      return (row[measure] || []).map(function (cp) { return cp ? cp.total : null; });
     }
     // NEVER fall back to a different measure's own array here -- a row whose `dex` field is
     // genuinely absent/null for this strike (an absence the projection reports on purpose, see
@@ -828,7 +822,9 @@
     // to the old one and the table silently kept showing stale cells. surface_seq is a
     // server-owned counter bumped on EVERY publication, REST or streamed (server.py's
     // _next_gamma_surface_seq) — its inclusion is what makes a streamed-only change visible.
-    return [s.ticker || s.symbol, s.source, s.chain_as_of_ts_utc, s.spot_as_of_ts_utc, s.chain_basis, s.et_date, expFilter, s.surface_seq].join('|');
+    // priced_at_spot_as_of_ts_utc is the cells' own stamp; spot_as_of_ts_utc is the live price's
+    // time (2026-09-27, one spot on every screen) and moves every poll -- it must not rebuild the grid.
+    return [s.ticker || s.symbol, s.source, s.chain_as_of_ts_utc, s.priced_at_spot_as_of_ts_utc, s.chain_basis, s.et_date, expFilter, s.surface_seq].join('|');
   }
   // lightweight STATUS: banner (warming/requested/stale/reference/degraded) + recede dimming + scope
   // age — always refreshed, even when the DATA revision is unchanged, so nothing is left frozen.
