@@ -57,6 +57,8 @@ class _Resp:
 
 
 def _chain(price, expiries):
+    # institutional-synthetic-ok: transport test -- the capture groups contracts by
+    # expirationDate and stores them verbatim; no contract field is priced here.
     ct = lambda e, side: {"symbol": f"ZZ {e}{side}", "putCall": side, "strikePrice": 100.0,
                           "expirationDate": f"{e}T20:00:00.000+00:00", "openInterest": 7}
     return {"underlyingPrice": price,
@@ -99,11 +101,14 @@ def test_the_daemon_task_stops_when_told(monkeypatch):
         await asyncio.sleep(0)
         stop.set()
         await asyncio.wait_for(task, timeout=2)
-    asyncio.run(go())
+        return task
+    task = asyncio.run(go())
+    assert task.done() and task.exception() is None
 
 
 def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
     db = tmp_path / "ed_console.db"
+    # institutional-synthetic-ok: the reader returns stored contracts verbatim; none is priced.
     ct = lambda e: {"symbol": f"ZZ {e}", "expirationDate": f"{e}T20:00:00.000+00:00"}
     def put(when, spot, expiries, source=cch.CAPTURE_SOURCE):
         for e in expiries:
