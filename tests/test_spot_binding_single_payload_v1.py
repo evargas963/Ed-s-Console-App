@@ -19,8 +19,6 @@ if str(ROOT) not in sys.path:
 import tools.spot_binding_lock as L  # noqa: E402
 from tools.data_faucet_audit import audit_client  # noqa: E402
 
-EXPOSURE = ROOT / "static" / "exposure.html"
-
 
 def test_shipped_static_spot_binding_is_clean():
     bad = L.scan_tracked_static(ROOT)
@@ -29,20 +27,6 @@ def test_shipped_static_spot_binding_is_clean():
 
 def test_shipped_client_faucet_audit_clean():
     assert audit_client() == [], "client spot read outside authority"
-
-
-def test_exposure_kills_cycle_fallback():
-    src = EXPOSURE.read_text(encoding="utf-8")
-    assert "function currentSpot()" in src
-    assert "strikes.spot" not in src
-    assert "terrain.spot" not in src
-    assert "spotBindingAgeLabel" in src
-    assert "msg.rows.forEach(ingestSpotRow)" in src and "q.trade_ts" in src
-    assert "forming = { t: mt" not in src          # the forming candle is the server's
-    assert L.exposure_binding_violations(src) == []
-    polled = src.replace("openSpotStream(); setInterval(checkSpotSilence, 1000);",
-                         "setInterval(() => fetch('/api/spot?ticker=SPY'), 1500);")
-    assert any("/api/spot" in m for m in L.exposure_binding_violations(polled))
 
 
 def test_console_dual_field_injection_screams():
@@ -186,17 +170,4 @@ def test_shipped_ed_js_spot_binding_is_clean():
                 files[rel] = path.read_text(encoding="utf-8", errors="ignore")
     assert L.ed_js_dual_spot_fallback_violations(files) == []
     assert L.spot_number_null_fabrication_violations(files) == []
-
-
-def test_exposure_fallback_injection_screams():
-    bad = L.exposure_binding_violations(
-        "function currentSpot() { return liveSpot; }\n"
-        "const spot = liveSpot != null ? liveSpot\n"
-        "  : (strikes && strikes.spot != null ? Number(strikes.spot)\n"
-        "    : (terrain && terrain.spot != null ? Number(terrain.spot) : null));\n"
-        "function spotBindingAgeLabel() { return ''; }\n"
-        "spotBindingAgeLabel();\n"
-        "spot_as_of_ts_utc\n"
-    )
-    assert any("strikes.spot" in m or "fallback" in m for m in bad), bad
 

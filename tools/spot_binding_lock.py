@@ -1,8 +1,7 @@
 """Census #8 / RC-225 — per-screen spot binds ONE payload field with as_of visible.
 
 Compute authority remains resolve_spot (RC-14). This lock kills BINDING-level dual ages:
-exposure must not borrow strikes.spot / terrain.spot when /api/spot is absent, and
-must surface spot_as_of age so a stale binding cannot paint as current.
+a page must not pick spot from whichever of two payloads is present.
 """
 from __future__ import annotations
 
@@ -11,17 +10,6 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-_SCAN = (
-    "static/exposure.html",
-)
-
-# Silent dual-age shapes the mission kills.
-_CYCLE_FALLBACK_RE = re.compile(
-    r"_cycleSpot\s*\(|strikes\s*&&\s*strikes\.spot|terrain\s*\?\s*terrain\.spot"
-    r"|strikes\.spot\s*\?\?"
-    r"|liveSpot\s*!=\s*null[^\n]{0,120}strikes\.spot",
-    re.M,
-)
 _CONSOLE_DUAL_FIELD_RE = re.compile(
     r"d\.spot\s*\?\?\s*d\.last_price\s*\?\?\s*d\.quote_mid"
     r"|parseFloat\(\s*d\.spot\s*\?\?\s*d\.last_price"
@@ -31,29 +19,6 @@ _CONSOLE_DUAL_FIELD_RE = re.compile(
 def _strip_comments(text: str) -> str:
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     return re.sub(r"//.*$", "", text, flags=re.M)
-
-
-def exposure_binding_violations(text: str) -> list[str]:
-    out: list[str] = []
-    code = _strip_comments(text)
-    if "function currentSpot()" not in text:
-        out.append("static/exposure.html: missing currentSpot() authority")
-    if _CYCLE_FALLBACK_RE.search(code):
-        out.append(
-            "static/exposure.html: strikes.spot / terrain.spot fallback shape remains (RC-225)"
-        )
-    if "function spotBindingAgeLabel" not in text:
-        out.append("static/exposure.html: missing spotBindingAgeLabel() as_of surface")
-    if "spotBindingAgeLabel()" not in code:
-        out.append("static/exposure.html: spotBindingAgeLabel() never called")
-    # the daemon price socket (live_ui) is the binding; its as_of is the row's Schwab trade_ts
-    if ("new WebSocket(url)" not in code or "msg.rows.forEach(ingestSpotRow)" not in code):
-        out.append("static/exposure.html: spot must bind the daemon price socket (live_ui)")
-    if "q.trade_ts" not in code:
-        out.append("static/exposure.html: binding must read the row's trade_ts as_of")
-    if "/api/spot" in code:
-        out.append("static/exposure.html: no /api/spot poll -- prices come from the daemon socket")
-    return out
 
 
 def console_binding_violations(text: str) -> list[str]:
@@ -252,7 +217,7 @@ def ed_js_dual_spot_fallback_violations(files: dict[str, str]) -> list[str]:
     further (independent git review, 2026-09-16, after the first version of this only matched a
     single same-line literal shape): no shared currentSpot()-shaped function exists in this
     architecture (each file reads its own already-resolve_spot()-backed endpoint response
-    inline, per call site), so the chart/exposure-shaped scanners above cannot apply
+    inline, per call site), so the former chart/exposure page scanners cannot apply
     structurally, but the underlying defect (a spot value chosen from whichever of two
     independently-fetched payloads happens to be present -- which can reflect two different
     observation instants even when both trace back to resolve_spot on the backend) can still
@@ -341,16 +306,6 @@ def spot_number_null_fabrication_violations(files: dict[str, str]) -> list[str]:
 def scan_tracked_static(repo: Path | None = None) -> list[str]:
     root = repo if repo is not None else REPO
     out: list[str] = []
-    scanners = {
-        "static/exposure.html": exposure_binding_violations,
-        "static/index.html": console_binding_violations,
-    }
-    for rel in _SCAN:
-        path = root / rel
-        if not path.is_file():
-            out.append(f"{rel}: missing")
-            continue
-        out.extend(scanners[rel](path.read_text(encoding="utf-8", errors="ignore")))
     js_files: dict[str, str] = {}
     for rel in discover_frontend_execution_surfaces(root):
         if rel.endswith(".js"):
