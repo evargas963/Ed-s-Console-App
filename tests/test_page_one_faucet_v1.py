@@ -105,7 +105,7 @@ def test_every_alert_carries_the_time_it_was_observed(held, monkeypatch):
     """The Trade Desk stamped alerts with the browser's clock; each now carries its own time."""
     wall = held["call_wall"]
     near = wall * (1 - server.LEVEL_NEAR_SPOT_FRACTION / 2)   # inside the one near-spot rule
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (near, "live_quote", 1_788_000_000.0))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (near, server.SPOT_SOURCE_QUOTE, 1_788_000_000.0))
     cross_ts = time.time() - 5
     monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda tk, n=10: [
         {"ts_utc": cross_ts, "direction": "up", "level_name": "gamma_flip"}])
@@ -113,6 +113,18 @@ def test_every_alert_carries_the_time_it_was_observed(held, monkeypatch):
     (at_wall,) = [a for a in alerts if a["text"].startswith(f"At Call wall {wall:.2f}")]
     assert at_wall["text"].endswith("above spot)") and at_wall["ts_utc"] == 1_788_000_000.0
     assert alerts[-1]["ts_utc"] == cross_ts
+
+
+def test_no_near_level_alert_without_a_live_price(held, monkeypatch):
+    """Rule 5: on a closed market the price is a stored capture's -- a past observation -- and
+    raises no near-level alert, with the reason served (2026-09-27: Friday's levels against
+    Friday's last price fired as current alerts on Sunday)."""
+    wall = held["call_wall"]
+    near = wall * (1 - server.LEVEL_NEAR_SPOT_FRACTION / 2)
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (near, server.SPOT_SOURCE_CAPTURE, 1_788_000_000.0))
+    monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda tk, n=10: [])
+    body = json.loads(server.get_alerts(ticker=TK).body)
+    assert body["alerts"] == [] and body["withheld"].startswith("no live price")
 
 
 def test_a_book_with_no_age_is_not_reported_fresh():
