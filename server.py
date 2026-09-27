@@ -20,7 +20,7 @@ from dataclasses import asdict, dataclass
 
 import time_et as _time_et
 from time_et import (ET, now_et, RTH_OPEN_MINS, is_capturable_session,
-                     is_trading_day_et, session_label)
+                     is_trading_day_et, session_close_mins_for_et_date, session_label)
 
 import json
 import queue
@@ -1188,7 +1188,27 @@ PRE_MARKET_MINS:     int   = 525    # 8:45 AM ET  (logger session buffer start; 
 #   from 9:00 on 2026-08-25 for the universal by-9:30 readiness requirement — the full
 #   sweep measured ~43s/ticker, so 61 enrolled tickers need ~44 min; an 08:45 start
 #   finishes the first full-snapshot sweep by ~09:29 ET when the process is up)
-LOGGER_BUFFER_MINS:  int   = 990    # 4:30 PM ET  (logger session buffer end)
+#: the refresh ends this long after the day's close (16:00, or 13:00 on an early close):
+#: 15 minutes after SPY/QQQ/IWM and the index options stop trading (16:15 / 13:15 ET)
+REFRESH_AFTER_CLOSE_MIN: int = 30
+
+
+def _refresh_window_et(et_date: str) -> "tuple[int, int] | None":
+    """(start, end) ET minute-of-day of the console's chain refresh on `et_date`; None when
+    the market does not open that day (the one calendar, time_et)."""
+    close = session_close_mins_for_et_date(et_date) if is_trading_day_et(et_date) else None
+    return None if close is None else (PRE_MARKET_MINS, close + REFRESH_AFTER_CLOSE_MIN)
+
+
+def _refresh_window_ct(et_date: str) -> str:
+    """The refresh window as the operator reads it: Central time."""
+    win = _refresh_window_et(et_date)
+    if win is None:
+        return "no refresh today (market closed)"
+    day = datetime.fromisoformat(et_date)
+    ct = [datetime(day.year, day.month, day.day, m // 60, m % 60, tzinfo=ET)
+          .astimezone(ZoneInfo("America/Chicago")).strftime("%I:%M %p").lstrip("0") for m in win]
+    return f"{ct[0]}-{ct[1]} CT"
 
 # Re-seed the in-memory 1m grid from Schwab pricehistory (canonical OHLCV leaf
 # pricehistory.candles[]) whenever the last completed bar is older than this gap.
@@ -1445,7 +1465,8 @@ def _is_loggable_session() -> bool:
     """
     Background snapshot logging session gate (Issue 22 — explicit product policy).
 
-    When RTH_ONLY is True (default): allow ET minutes in [PRE_MARKET_MINS, LOGGER_BUFFER_MINS]
+    When RTH_ONLY is True (default): allow ET minutes in _refresh_window_et (PRE_MARKET_MINS to
+    30 minutes after the day's close)
     (see server.py constants — 08:45 pre through extended post-market buffer; the pre-market
     edge widened from 09:00 on 2026-08-25 so the whole enrolled roster is swept by the
     operator's 09:30 readiness bar, RC-482) AND only on a
@@ -1461,8 +1482,8 @@ def _is_loggable_session() -> bool:
     if not is_capturable_session():   # RC-48: weekend / full holiday / overnight -> never loggable
         return False
     et = now_et()
-    mins = et.hour * 60 + et.minute
-    return PRE_MARKET_MINS <= mins <= LOGGER_BUFFER_MINS
+    win = _refresh_window_et(et.date().isoformat())
+    return win is not None and win[0] <= et.hour * 60 + et.minute <= win[1]
 
 
 
@@ -2379,7 +2400,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
     MEASURED 2026-07-27 18:02 ET: /api/terrain computed_ts_utc did not advance across 90s against
     a 60s cadence, the gamma panel served data 90 MINUTES old under a `terrain_live_cache` label,
     and spot beside it was 3 seconds old. The terrain loop refreshes only while
-    _is_loggable_session() is true, which ends at LOGGER_BUFFER_MINS (16:30 ET) — 210 minutes
+    _is_loggable_session() is true, which ends 30 minutes after the day's close — 210 minutes
     before the capture window closes. That function is the BACKGROUND LOGGING gate; using it to
     decide whether the screen is current answered a different question with the same switch.
 
@@ -2448,8 +2469,8 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
                   f"levels are {age:.0f}s old and every refresh since is failing — {failure}"
                   if failure else
                   f"levels are {age:.0f}s old; the terrain loop is not refreshing "
-                  f"(outside the background-logging window, which closes at "
-                  f"{LOGGER_BUFFER_MINS // 60:02d}:{LOGGER_BUFFER_MINS % 60:02d} ET)"
+                  f"(outside the refresh window: "
+                  f"{_refresh_window_ct(now_et().date().isoformat())})"
                   if not refreshing else
                   f"levels are {age:.0f}s old — over two full sweeps at the loop's DELIVERED "
                   f"cycle of {expected:.0f}s (nominal floor {TERRAIN_REFRESH_SEC:.0f}s), so this "
@@ -3373,6 +3394,20 @@ def _feed_record_state() -> str:
             else f"FEED RECORD STALE: last written {age / 60:.0f} min ago")
 
 
+def _next_refresh_ct() -> str:
+    """The next market day's refresh window, in Central time."""
+    day = now_et().date()
+    for _ in range(15):
+        if _refresh_window_et(day.isoformat()) is not None:
+            et = now_et()
+            win = _refresh_window_et(day.isoformat())
+            if day > et.date() or et.hour * 60 + et.minute <= win[1]:
+                label = "today" if day == et.date() else day.strftime("%a %m/%d")
+                return f"{label} {_refresh_window_ct(day.isoformat())}"
+        day += timedelta(days=1)
+    return "(no market day within 15 days)"
+
+
 def _status_line() -> str:
     """One line for the console window: is each part working right now, from its own check."""
     from app.options.order_flow.streaming import daemon_status
@@ -3390,8 +3425,10 @@ def _status_line() -> str:
         f"SPY {spot:.2f}" if spot is not None else "SPY: no live price",
         f"levels: {len(as_of)} tickers, newest as of {newest}",
         _feed_record_state(),
-        "chain refresh " + ("running every 5 s" if _is_loggable_session()
-                            else "8:45 AM-4:30 PM ET on market days"),
+        (("chain refresh: last sweep of the board took "
+          f"{_terrain_last_cycle_sec:.0f} s" if _terrain_last_cycle_sec
+          else "chain refresh: first sweep running") if _is_loggable_session()
+         else "chain refresh next " + _next_refresh_ct()),
     ])
 
 
@@ -3578,7 +3615,8 @@ def start_terrain_loop() -> None:
     log.info("Ready: levels for %d of %d board tickers loaded (session: %s). %s", loaded, board,
              session_label(now_et()),
              "Levels refresh every 5 s." if _is_loggable_session() else
-             "Levels refresh 8:45 AM-4:30 PM ET on market days; until then this window is quiet.")
+             "Levels refresh (a full-chain sweep of the board, 1-2 min each) "
+             + _next_refresh_ct() + ".")
     _terrain_loop_running = True
     _terrain_loop_thread = threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True)
     _terrain_loop_thread.start()
