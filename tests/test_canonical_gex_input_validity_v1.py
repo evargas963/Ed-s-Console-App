@@ -6,6 +6,8 @@ where no contract carried a reported Greek has no value, never its 0.0 initialis
 """
 from __future__ import annotations
 
+import pytest
+
 import json
 from pathlib import Path
 
@@ -21,6 +23,13 @@ from server import project_gamma_surface
 _FX = Path(__file__).resolve().parent / "fixtures"
 SPOT = 100.0
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """Valued at the stored chain's capture (2026-09-22 12:46 ET), so its expiries passing never change
+    what this test measures."""
+    return pin_clock(2026, 9, 22, 12, 46)
 
 def _ct(strike: float, side: str, oi, *, gamma=0.04, delta=0.5, iv=20.0):
     # institutional-synthetic-ok: each case needs one exactly-controlled field

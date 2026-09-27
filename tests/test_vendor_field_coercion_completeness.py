@@ -4,6 +4,8 @@ EXCLUDED_NUMERIC_LEAVES with a reason. The truth comes from every real captured 
 under tests/fixtures (CDE, CRWD, SPY 0DTE, TSLA), so a hand list cannot drift."""
 from __future__ import annotations
 
+import pytest
+
 import json
 from pathlib import Path
 
@@ -14,6 +16,13 @@ _CHAINS = {name: json.loads((_FIXTURES / name).read_text(encoding="utf-8"))["cha
     "real_cde_complete_chain_half_dollar.json", "real_crwd_complete_chain_quarter.json",
     "real_spy_0dte_chain.json", "real_tsla_complete_chain_strike_range_all.json")}
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """Valued at the stored chain's capture (2026-08-30), so its expiries passing never change
+    what this test measures."""
+    return pin_clock(2026, 8, 30, 12, 0)
 
 def test_vendor_fields_covers_every_numeric_contract_leaf():
     numeric = {k for chain in _CHAINS.values() for c in chain for k, v in c.items()

@@ -3435,7 +3435,7 @@ def _status_line() -> str:
 def _terrain_loop() -> None:
     log.info("Terrain loop started (levels only, no model stack)")
     _terrain_cycle_n = 0        # RC-161: drives the morning rotation; monotonic per loop
-    next_status = time.monotonic()
+    next_status = time.monotonic() + STATUS_EVERY_SEC   # the ready line covers the start
     while _terrain_loop_running:
         cycle_start = time.monotonic()
         if cycle_start >= next_status:

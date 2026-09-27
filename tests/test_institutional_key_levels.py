@@ -1,6 +1,7 @@
 """Institutional consistency: dollar GEX pickers and aggregates."""
 
 
+import pytest
 from math_exposure_core import (
     bucket_metric_abs,
     compute_exposures_by_strike,
@@ -11,6 +12,12 @@ from math_exposure_core import (
     pick_volatility_point_strikes,
 )
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """real_spy_0dte_chain.json was captured 2026-09-22 12:46 ET."""
+    return pin_clock(2026, 9, 22, 12, 46)
 
 def _dollarized_exposures():
   # Real captured SPY 0DTE chain (tests/fixtures/) — level invariants must hold on real data.
@@ -163,6 +170,7 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
                 "absolute_gamma_strike", "pin_candidate", "pin_candidate_blockers"):
         assert fld in d, fld + " missing from terrain payload"
     assert "gamma_pin" not in d, "the retired gamma_pin key returned to the terrain payload"
+    assert d["net_gex_at_spot"] is not None, "the chain must price (valued at its capture)"
     assert d["net_gex_at_spot"] == (d["flip_diag"] or {}).get("gamma_at_spot")
     exposures, _ = compute_exposures_by_strike(fx["chain"], spot=float(fx["spot"]), require_oi=True)
     strikes = sorted(exposures.keys())

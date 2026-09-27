@@ -13,6 +13,7 @@ expirationDate, so which underlying a slice came from is immaterial to the ident
 test (cell == faucet on the slice; per-expiry additivity; expiry isolation); nothing about the
 rows is invented.
 """
+import pytest
 import inspect
 import json
 import re
@@ -23,6 +24,12 @@ from math_exposure_core import compute_exposures_by_strike, exposure_books
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """The CRWD and CDE complete chains were captured 2026-09-02 (10:05 ET for CDE)."""
+    return pin_clock(2026, 9, 2, 10, 5)
 
 def _real(name: str) -> dict:
     return json.loads((_FX / name).read_text(encoding="utf-8"))
@@ -301,7 +308,7 @@ def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
 def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_convention_as_net_gex():
     chain = _chain()
     surface = _surface(chain, SPOT)
-    checked = 0
+    checked = nonzero = 0
     for exp in (E1, E2):
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
@@ -320,7 +327,9 @@ def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_conventi
             expected = bucket["call_vanna"] - bucket["put_vanna"]
             assert abs(row["vanna"][col] - expected) < 0.1
             checked += 1
+            nonzero += expected != 0
     assert checked > 20
+    assert nonzero > 10, "vanna must be real values, not zero against zero"
 
 
 def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_totals():

@@ -100,20 +100,15 @@ def test_near_expiry_minutes_to_close_matches_finite_difference():
 
 
 
-def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path():
+def test_vanna_is_identical_for_calls_and_puts_in_the_bucket_path(pin_clock):
     """RC-211: put-call parity kills any call/put vanna split — same strike/expiry/IV must
     aggregate the SAME per-contract vanna into both bucket sides (splits come from OI only)."""
-    from datetime import date, timedelta
-
     from math_exposure_core import compute_exposures_by_strike
 
-    # compute_exposures_by_strike's vanna faucet reads REAL wall-clock time
-    # (time_et.now_et(), no injection point) to compute time-to-expiration -- a HARDCODED
-    # expirationDate here would rot the instant real time passes it (T <= 0 silently skips
-    # vanna entirely, exactly the "call vanna did not compute" failure this test exists to
-    # catch -- REPRODUCED 2026-09-21: the prior hardcoded "2026-09-18" had already elapsed).
-    # Always 30 real days out instead.
-    expiry = (date.today() + timedelta(days=30)).isoformat()
+    # valued at a pinned instant 30 days before a fixed expiry: the date never ages out, and
+    # never lands on a holiday (a rolling today+30 did on 2026-10-27, 11-25, ...)
+    pin_clock(2026, 9, 28, 12, 0)
+    expiry = "2026-10-28"
     base = {"strikePrice": 100.0, "expirationDate": expiry, "gamma": 0.05,
             "delta": 0.5, "volatility": 20.0, "openInterest": 100, "multiplier": 100,
             "daysToExpiration": 30, "vega": 0.11, "bidSize": 1, "askSize": 1,

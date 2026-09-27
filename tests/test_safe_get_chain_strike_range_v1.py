@@ -10,10 +10,19 @@ was never the one measured live.
 
 from __future__ import annotations
 
+import pytest
+
 from datetime import date
 
 from schwab_client import safe_get_chain
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """Valued at the stored chain's capture (2026-08-30), so its expiries passing never change
+    what this test measures."""
+    return pin_clock(2026, 8, 30, 12, 0)
 
 class _FakeClient:
     def __init__(self):

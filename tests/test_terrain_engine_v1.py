@@ -9,6 +9,8 @@ whatever the actual data produces.
 
 from __future__ import annotations
 
+import pytest
+
 import json
 from pathlib import Path
 
@@ -22,6 +24,12 @@ from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain
 
 _REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json"
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """real_spy_0dte_chain.json was captured 2026-09-22 12:46 ET."""
+    return pin_clock(2026, 9, 22, 12, 46)
 
 def _real_chain() -> tuple[list, float]:
     data = json.loads(_REAL_CHAIN.read_text(encoding="utf-8"))
@@ -112,6 +120,7 @@ def test_narrow_0dte_slice_fails_closed_gate_retained() -> None:
     """
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot)
+    assert snap.profile, "the chain must price, so the NARROW gate (not an expiry) is tested"
     assert snap.confidence != GAMMA_FLIP_TRUSTED
     assert snap.regime == "UNAVAILABLE"
     assert snap.posture == "STAND_ASIDE"

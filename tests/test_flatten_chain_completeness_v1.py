@@ -8,6 +8,8 @@ flatten_chain_contracts.
 """
 from __future__ import annotations
 
+import pytest
+
 import json
 from pathlib import Path
 
@@ -17,6 +19,13 @@ _FIXTURES = Path(__file__).parent / "fixtures"
 _CDE = json.loads((_FIXTURES / "real_cde_complete_chain_half_dollar.json").read_text(encoding="utf-8"))
 _CDE_CONTRACTS = _CDE["chain"]
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """Valued at the stored chain's capture (2026-09-02 10:05 ET), so its expiries passing never change
+    what this test measures."""
+    return pin_clock(2026, 9, 2, 10, 5)
 
 def _chain_json_for(contracts):
     """The Schwab callExpDateMap/putExpDateMap payload a flat contract list came from."""

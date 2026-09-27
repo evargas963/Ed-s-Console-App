@@ -9,6 +9,8 @@ set — no rounding, no coercion, no dropped rows.
 
 from __future__ import annotations
 
+import pytest
+
 import json
 import sqlite3
 from pathlib import Path
@@ -38,6 +40,13 @@ _TSLA_EXPIRY = _FIXTURE["expiry"]
 
 
 
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """Valued at the stored chain's capture (2026-08-30), so its expiries passing never change
+    what this test measures."""
+    return pin_clock(2026, 8, 30, 12, 0)
 
 def test_write_skips_missing_completeness_basis_fail_closed(tmp_path):
     """A row with no stated basis for its completeness claim would be worse than no row —

@@ -18,6 +18,13 @@ _REAL_CHAIN = json.loads(
     .read_text(encoding="utf-8"))["chain"]
 
 
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """Valued at the stored chain's capture (2026-09-02 10:05 ET), so its expiries passing never change
+    what this test measures."""
+    return pin_clock(2026, 9, 2, 10, 5)
+
 @pytest.fixture(autouse=True)
 def _session_open(monkeypatch):
     """These tests are about the open market: levels are computed only then (closed-market
@@ -256,6 +263,9 @@ def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(mon
     _stub_terrain(monkeypatch, proj)
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
     monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
+    # midday ET: between 09:30 and 10:00 the loop defers tickers, and this test failed whenever
+    # it ran then (2026-09-27 audit); the minute is fixed, not read from the clock
+    monkeypatch.setattr(server, "gex_et_date_and_mins", lambda ts_utc=None: ("2026-09-28", 720))
     real_refresh = server._terrain_refresh_one
 
     def spy_refresh(tk, priority=False):

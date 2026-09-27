@@ -13,6 +13,8 @@ repo's existing gamma-surface test convention, not invented contracts), and agai
 branches."""
 from __future__ import annotations
 
+import pytest
+
 import json
 import time
 from pathlib import Path
@@ -37,6 +39,13 @@ TK = ticker_storage_key("CRWD")
 # ---------------------------------------------------------------------------
 # Unit-level: _stamp_gamma_surface_cell_stream_state / _gamma_surface_cell_state_counts
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _at_capture(pin_clock):
+    """Valued at the stored chain's capture (2026-09-02), so its expiries passing never change
+    what this test measures."""
+    return pin_clock(2026, 9, 2, 10, 5)
 
 def _surface(*rows):
     return {"cells": [{"strike": float(i), "contracts": [row]} for i, row in enumerate(rows)]}

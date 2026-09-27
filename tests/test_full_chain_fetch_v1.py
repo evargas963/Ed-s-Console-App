@@ -13,7 +13,7 @@ import pytest
 
 import schwab_client as sc
 from server import flatten_chain_contracts
-from time_et import now_et
+import time_et
 
 _EXPIRIES = [date(2030, 1, 4) + timedelta(days=7 * i) for i in range(8)]
 
@@ -64,6 +64,13 @@ class _Vendor:
         if any(e in self.refuse for e in span):
             return _Resp(400)
         return _Resp(200, _payload(span))
+
+
+@pytest.fixture(autouse=True)
+def _before_the_expiries(pin_clock):
+    """_EXPIRIES are 2030 dates and expired listings are dropped against today: valued before
+    them, the test never ages out."""
+    return pin_clock(2029, 12, 3, 12, 0)
 
 
 @pytest.fixture
@@ -129,14 +136,14 @@ def test_an_expired_listed_expiry_is_never_requested(vendor, monkeypatch):
     board ticker failed all weekend and was quarantined. The expired listing is dropped before
     the date ranges are built."""
     v = vendor(3)
-    yesterday = now_et().date() - timedelta(days=1)
+    yesterday = time_et.now_et().date() - timedelta(days=1)
     monkeypatch.setattr(v, "get_option_expiration_chain", lambda ticker: _Resp(200, {
         "expirationList": [{"expirationDate": e.isoformat()} for e in [yesterday, *_EXPIRIES]]}))
 
     def refuses_the_past(**kw):
-        if kw.get("from_date") is not None and kw["from_date"] < now_et().date():
+        if kw.get("from_date") is not None and kw["from_date"] < time_et.now_et().date():
             return _Resp(400)
         return v.get(**kw)
     r = sc.fetch_full_chain(v, "ZZ", refuses_the_past)
     assert r.status_code == 200, r.reason
-    assert all(lo >= now_et().date() for lo, _hi in v.calls[1:])
+    assert all(lo >= time_et.now_et().date() for lo, _hi in v.calls[1:])
