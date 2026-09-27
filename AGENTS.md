@@ -6,7 +6,9 @@ Read the parts a change touches before writing it.
 ## Rules (operator; a change that cannot meet one stops and goes to the operator)
 
 1. **Simple.** Fewest files, functions and hops that do the job. No prose in code.
-2. **Schwab fields as sent.** No bounds, no substitution. Only -999 or an absent field is not a number.
+2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value
+   Schwab's own field definition excludes (a negative volume or size). Everything else is taken
+   as sent; a reported 0 is 0. No other bounds, no substitution.
 3. **One producer.** A value on screen is a Schwab field as sent, or a derived value computed by
    exactly one function. Consumers carry it; none recompute it.
 4. **The UI computes nothing.** Page code formats and draws. Every number, total, choice,
@@ -18,20 +20,44 @@ Read the parts a change touches before writing it.
 7. **Nothing without a job.** A change deletes what it replaces, in the same PR.
 8. **All tickers.** Measure and report across the board, never one ticker.
 9. **Clocks.** Market logic in ET; the UI shows Central Time.
+10. **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code.
+    A stand-in (e.g. the live price) is named in the test.
 
 ## Before writing code
 
-- Name each value the change touches and its one producer. One exists: call it. None exists:
-  write it once, on the server.
+- Trace each value the change touches: its source, its one producer, its live and stored
+  consumers, and what each shows when the value is missing. A producer exists: call it. None
+  exists: write it once, on the server.
 - Page code: no arithmetic, sum, min/max, sort by value or date math on served data.
-- A rule check fails on today's code before its fix lands; its exception list starts empty.
+- A new check exists only for a failure that happened; it fails on the old code; it starts with
+  no exceptions.
 
 ## Before saying done
 
-- `npm run test:all` (Playwright, then pytest) and `python -m ruff check . --select F401,F821,E9`
-  pass. Market hours: push; CI runs them.
+- While working: the tests of the files touched. Once per PR, before pushing: `npm run test:all`
+  (Playwright, then pytest) and `python -m ruff check . --select F401,F821,E9`. Market hours:
+  push; CI runs them.
+- Never kill a commit hook mid-run; a long one runs in the background.
 - Every factual claim cites same-turn output, or is marked `[UNVERIFIED]`.
-- After deploy, check the real screen.
+- A runtime change is on disk only until the process restarts after it; say which.
+- Merged is not deployed; deployed is production at the merge commit, both processes restarted,
+  the real screen checked.
+
+## Close the change
+
+A PR that changes code, a design, a plan or a sequence updates, in the same PR, every affected
+instruction, design, work item, check, test and caller; removes superseded statements and paths;
+and lists each affected path it did not verify as NOT_PROVEN. A finished work item leaves
+`ACTIVE_PROGRAM.md` in the PR that finishes it. A changed sequence updates its dependents there
+and every document that states the old one.
+
+## Review verdicts
+
+- **PASS**: every required condition proven. **FAIL**: any condition violated, whatever else
+  passed. **NOT_PROVEN**: any condition without proof. Never PASS with a FAIL or NOT_PROVEN open.
+- Name the tier of each proof: unit, integration, browser, deployed app, live market. A pass at
+  one tier does not stand in for another.
+- A changed test expectation cites the required behavior that changed.
 
 ## Found broken → fix it
 

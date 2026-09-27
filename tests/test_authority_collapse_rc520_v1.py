@@ -169,13 +169,12 @@ def test_adapters_point_at_the_owners_and_carry_no_law():
     claude = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
     assert "AGENTS.md" in claude and claude.count("\n") <= 4
     skill = (ROOT / ".claude" / "skills" / "drift-audit" / "SKILL.md").read_text(encoding="utf-8")
-    assert "AGENT_OPERATING_PROCESS_V1.md" in skill and "Phase 3" not in skill
-    process = (ROOT / "governance" / "AGENT_OPERATING_PROCESS_V1.md").read_text(encoding="utf-8")
-    # RC-520 moved the checklist here; superseded 2026-09-12 by the consolidated
-    # fourteen-requirement canonical review standard (still living in this same file, same
-    # section number, so the skill-file pointer above needs no change).
-    assert "## 8. CANONICAL REVIEW STANDARD" in process
-    assert "launch / pre-push / CI). This file" not in process
+    # the review standard lives in AGENTS.md (2026-09-27: the operating-process file that held
+    # it contradicted AGENTS.md and was retired); the skill points there and carries no copy
+    assert "AGENTS.md" in skill and "Review verdicts" in skill and "Phase 3" not in skill
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "## Review verdicts" in agents
+    assert not (ROOT / "governance" / "AGENT_OPERATING_PROCESS_V1.md").exists()
 
 
 # test_no_code_owner_file_exists_rc530 was deleted 2026-09-11 (RC-550): it forbade a CODEOWNERS

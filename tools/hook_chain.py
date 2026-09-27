@@ -19,7 +19,7 @@ tell an executed mutation from one the hook refused, so one BLOCKED command pois
 later event; and none of that machinery protected anything the checkout's own guards, the
 pre-commit hooks of the target tree and required CI do not already protect. The guards judge
 the ACTION in the payload; the checkout that runs the session is the checkout whose guards
-run, and the operator launches sessions in the tree they work in (AGENT_OPERATING_PROCESS §6).
+run, and the operator launches sessions in the tree they work in (AGENTS.md, Authority: work in a worktree).
 
 INVARIANT: BLOCKED OR UNEXECUTED ACTION => ZERO MUTATION => ZERO EFFECT ON ANY LATER EVENT.
 There is no place for an effect to live.

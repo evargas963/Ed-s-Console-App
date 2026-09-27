@@ -221,7 +221,7 @@ def prod_checkout_git_move_violations(cmd: str, payload_cwd: str = "") -> list[s
                 f"PRODUCTION checkout {primary}. That checkout is production ONLY — always "
                 f"main == origin/main. Do this in the separate dev worktree and land via PR; "
                 f"production updates by fast-forward to origin/main. See "
-                f"governance/AGENT_OPERATING_PROCESS_V1.md.")
+                f"AGENTS.md.")
     return out
 
 
@@ -259,7 +259,7 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
                 f"PROD_CHECKOUT_APP_EDIT (live-checkout invariant): {resolved} is app code in the "
                 f"PRODUCTION checkout {primary}. Development does not edit the live checkout — make "
                 f"the change in the separate dev worktree and land via PR. "
-                f"See governance/AGENT_OPERATING_PROCESS_V1.md."
+                f"See AGENTS.md."
             )
     return out
 
@@ -425,7 +425,7 @@ def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = 
                     f"writes {resolved} — app code in the PRODUCTION checkout {primary}. "
                     f"Development does not modify the live checkout by ANY means; make the change "
                     f"in the separate dev worktree and land via PR. "
-                    f"See governance/AGENT_OPERATING_PROCESS_V1.md.")
+                    f"See AGENTS.md.")
     return out
 
 
@@ -485,9 +485,9 @@ def main() -> int:
     if not bad:
         return 0
     sys.stderr.write(
-        "BLOCKED by operating process lock (RC-217 / AGENT_OPERATING_PROCESS_V1).\n\n"
+        "BLOCKED by operating process lock (RC-217).\n\n"
         + "".join(f"  {b}\n" for b in bad)
-        + "\nSee governance/AGENT_OPERATING_PROCESS_V1.md, "
+        + "\nSee AGENTS.md, "
         + "tools/operating_process_lock.py --measure\n"
     )
     return 2

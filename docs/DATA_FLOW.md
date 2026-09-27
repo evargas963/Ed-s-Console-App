@@ -115,20 +115,27 @@ operator.
   bars are loaded, the levels are computed from them once, and the screens show them with their
   time.
 
-## 5. Checks (a failing check blocks the merge)
+## 5. Checks (measured 2026-09-27)
 
-One general test per rule; it scans every file and fails on today's code before its fix lands.
-None is built (measured 2026-09-27); ACTIVE_PROGRAM P1-3 builds them.
+What each existing check covers and what it cannot. `hardening` fails a PR only on NEW violations of
+`tools/check_institutional_correctness.py` (62 stand on main). A scan that finds one named producer
+does not prove no second one exists under another name.
 
-| Rule | Check | Test |
-|---|---|---|
-| One producer | every served field maps to one producing function; none computed twice | not built |
-| UI computes nothing | no arithmetic, sum, min/max, sort by value or date math on served data in `static/js` | not built |
-| One path | every page GET goes through the page's one reader; each event reads a URL at most once | not built |
-| No polling | no page timer reads `/api`; a closed market reads nothing after load | not built |
-| No fallbacks | no second source, copy or default for a value; no branch that swaps sources | not built |
-| One writer | every stored value is written by the one writer | not built |
-| Nothing without a job | unused code, routes, tables and timers fail | not built |
+| Rule | Check | Covers | Does not cover |
+|---|---|---|---|
+| Schwab as sent | `vendor_field_coercion` | Schwab fields parsed through `numeric_contract` | a reader that bounds or substitutes after parsing |
+| One producer | `one_producer` (`governance/computation_registry.json`) | 6 registered fields computed at one site | 303 other fields `server.py` serves |
+| One producer: spot | `single_spot_authority` | spot read only through `resolve_spot` in `server.py`, `terrain_engine.py` | page scripts |
+| One producer: levels | `domain_faucet_registry`, `phase2a_single_level_computation`, `chain_width_single_faucet` | level routes registered; price levels computed once; the chain not narrowed | exposure values outside the levels list |
+| UI computes nothing | `single_faucet_provenance` (`tools/data_faucet_audit.py`) | spot reads in `static/chart.html` | `static/js/` (the console page) |
+| No fallbacks | `no_fake_defaults`, `absence_has_a_type`, `no_silent_swallow` | default literals, absent-as-value return types, swallowed exceptions | a branch that picks a second source |
+| One path, no polling | none | | page timers that read `/api` |
+| One writer | `single_stream_authority`, `collect_window_single_law` | one Schwab stream; the 1-minute bar write seam | other writes outside the one writer |
+| Nothing without a job | `level_producers_have_consumers` (reported, not blocking) | a level route has a page consumer | unused code, routes, tables, timers |
+| Real data | `test_hygiene` | inline synthetic option contracts in tests | other hand-built test inputs |
+| Documents match the tree | `tests/test_governing_docs_v1.py` | every path the four governing documents name exists; `AGENTS.md` under 200 lines | whether a statement is true |
+
+A gap gets a check only when a failure it would have caught has happened (ACTIVE_PROGRAM names each).
 
 ## 6. Operator decisions (2026-09-26)
 
