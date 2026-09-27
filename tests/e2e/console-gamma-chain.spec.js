@@ -6,6 +6,7 @@
  * centre strike selects only the shared strike. Symbols are the vendor's own, never reconstructed.
  */
 const { test, expect } = require('@playwright/test');
+const { served } = require('./fixtures/served_chain');
 
 function ct(side, strike, sym, oi, vol, iv, delta, expDate) {
   return { putCall: side, strikePrice: strike, symbol: sym, openInterest: oi, totalVolume: vol,
@@ -37,7 +38,7 @@ async function intercept(page) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: contract, command_generation: 1 }) });
     }
     let body = { available: false };
-    if (url.includes('/api/chain')) body = CHAIN;
+    if (url.includes('/api/chain')) body = served(CHAIN);
     else if (url.includes('/api/options/gamma-surface')) body = { ticker: 'SPY', available: true, spot: 100,
       source: 'terrain_live_cache', live: true, stale: false, expirations: [{ expiry: '2026-09-11', dte: 2 }],
       strikes: [100], cells: [{ strike: 100, gex: [1] }] };
@@ -132,7 +133,7 @@ test.describe('D — Gamma Chain subview', () => {
     const BIG = () => ({ ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
       scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
       contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, vol, 10, 0.1)) });
-    await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BIG()) }));
+    await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(BIG())) }));
     await page.setViewportSize({ width: 900, height: 640 });   // a representative, not maximal, size
     await toChain(page);
     await expect(page.locator('#chainBody tbody tr')).toHaveCount(80);
@@ -199,7 +200,7 @@ test.describe('D — Gamma Chain subview', () => {
     const BIG = () => ({ ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
       scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
       contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, vol, 10, 0.1)) });
-    await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BIG()) }));
+    await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(BIG())) }));
     await toChain(page);
     await expect(page.locator('#chainBody tbody tr')).toHaveCount(80);
     await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('10');
@@ -244,7 +245,7 @@ test.describe('D — Gamma Chain subview', () => {
       const body = { ticker: 'SPY', spot: strike, expiry: exp, status: 'ok',
         scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
         contracts: [ct('CALL', strike, sym, 1, 1, 1, 0.1, exp)] };   // expirationDate == exp, genuinely
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(body)) });
     });
     await toChain(page);
     await expect(page.locator('#chainBody .chn-head')).toContainText('SINGLE EXPIRY · ' + EXP_A);
@@ -258,7 +259,7 @@ test.describe('D — Gamma Chain subview', () => {
   });
 
   // A FOURTH independent review (2026-09-13), NAMED as the same class of risk already fixed
-  // in the retained /options page (see options-page-chain-race.spec.js's own A->B->A test,
+  // in the former /options page (deleted 2026-09-27, P2-4),
   // which DOES fail on its pre-fix code): stillChain(tk, exp) proves the CURRENT identity
   // matches, but two different requests issued at different times for the IDENTICAL
   // (ticker, expiry) are indistinguishable to it -- whichever resolves LAST wins, not
@@ -289,17 +290,17 @@ test.describe('D — Gamma Chain subview', () => {
           const body = { ticker: 'SPY', spot: 111, expiry: EXP_A, status: 'ok',
             scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
             contracts: [ct('CALL', 111, symA1, 1, 1, 1, 0.1, EXP_A)] };
-          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(body)) });
         }
         const body = { ticker: 'SPY', spot: 333, expiry: EXP_A, status: 'ok',
           scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
           contracts: [ct('CALL', 333, symA2, 1, 1, 1, 0.1, EXP_A)] };
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(body)) });
       }
       const body = { ticker: 'SPY', spot: 222, expiry: EXP_B, status: 'ok',
         scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
         contracts: [ct('CALL', 222, occSymbol('SPY', EXP_B, 'CALL', 222), 1, 1, 1, 0.1, EXP_B)] };
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served(body)) });
     });
     await toChain(page);   // fires the first, held A request
     await expect(page.locator('#chainBody .chn-head')).toContainText(EXP_A);

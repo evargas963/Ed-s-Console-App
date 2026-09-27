@@ -46,7 +46,7 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 | `static/index.html`, `static/js/`, `static/css/` | `static/` |
 | `start_*.bat`, `runtime_preflight.py`, `live_schwab_env.py`, `launcher_port_guard.py`, `wait_for_ready_then_open.py`, `reauth_schwab.py` | stay at the root |
 | `ml_horizon.py`, `horizon_outcomes.py`, `movement_target_threshold.py`, `decision_record.py`, `execution_identity.py`, `calibration/schema.py` | delete (the ML stack; P2-5) |
-| `static/chart.html`, `desk.html`, `exposure.html`, `options.html` | delete after P2-4 (what is unique moves into the shell) |
+| `static/chart.html`, `desk.html`, `exposure.html` | delete after P2-4 (what is unique moves into the shell) |
 | `schwab_field_dictionary_builder.py` | checked at its step: delete if nothing needs it |
 
 ## 3. Taking apart the two big files (measured 2026-09-26)

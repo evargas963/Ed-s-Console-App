@@ -78,28 +78,17 @@
 
   function render(host, d) {
     setSrc(d);
-    var cs = (d && d.contracts) || [];
-    if (!cs.length) { host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(window.EdShell.chainEmptyText(d)) + '</div></div>'; return; }
-    // D: preserve EVERY exact vendor contract identity — group by strike into ARRAYS per side, so a
-    // second contract that shares (strike, side) is never silently overwritten. One display row per
-    // duplicate index; a "dup" marker discloses when the single-expiry surface is not strike-unique.
-    var byK = {}, dup = d.has_duplicate_contracts === true;   // served
-    cs.forEach(function (c) {
-      var k = Number(c.strikePrice); if (!isFinite(k)) return;
-      byK[k] = byK[k] || { c: [], p: [] };
-      var side = (c.putCall || '').toUpperCase() === 'PUT' ? 'p' : 'c';
-      byK[k][side].push(c);
-    });
-    var strikes = Object.keys(byK).map(Number).sort(function (a, b) { return b - a; });
+    var rows = (d && d.ladder) || [];   // served: strikes high to low, one row per listed contract
+    if (!rows.length) { host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(window.EdShell.chainEmptyText(d)) + '</div></div>'; return; }
+    var dup = d.has_duplicate_contracts === true;   // served
     // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
     var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
-    var spotK = d.spot_strike;   // served: the listed strike nearest the live price
     var desired = (window.EdStream && window.EdStream.getDesired && window.EdStream.getDesired()) || null;
     // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
     // flag when the workspace filter was null (the server chose the default expiry).
     var filterNull = !(window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry());
     var head = '<div class="chn-head"><span>SINGLE EXPIRY · ' + esc(d.expiry || '—') +
-      (filterNull ? ' <span class="chn-default">(server default)</span>' : '') + ' · ' + strikes.length + ' strikes' +
+      (filterNull ? ' <span class="chn-default">(server default)</span>' : '') + ' · ' + esc(d.n_strikes) + ' strikes' +
       (dup ? ' · <span class="chn-dup">duplicate contracts retained</span>' : '') + '</span>' +
       '<span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + (d.spot_source ? ' · ' + esc(d.spot_source) : '') + '</span></div>';
     function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? v.toFixed(dg == null ? 2 : dg) : esc(v)); }
@@ -116,31 +105,30 @@
     // no sticky positioning anywhere for a compositor or scroll-chaining bug to intermittently
     // mishandle. A shared fixed-percentage <colgroup> on both tables keeps every column
     // pixel-aligned between them despite being unrelated table layouts.
-    var COLGROUP = '<colgroup><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%">' +
-      '<col style="width:20%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%"></colgroup>';
+    var COLGROUP = '<colgroup>' + new Array(8).join('<col style="width:6.25%">') + '<col style="width:12.5%">' +
+      new Array(8).join('<col style="width:6.25%">') + '</colgroup>';
     var h = '<table class="chn chn-headtbl">' + COLGROUP + '<thead><tr>' +
-      '<th colspan="4" class="cflag" style="text-align:center">Calls</th><th class="mid">Strike</th>' +
-      '<th colspan="4" class="pflag" style="text-align:center">Puts</th></tr>' +
-      '<tr><th>OI</th><th>Vol</th><th>IV%</th><th>Δ</th><th class="mid"></th><th>Δ</th><th>IV%</th><th>Vol</th><th>OI</th></tr></thead></table>' +
+      '<th colspan="7" class="cflag" style="text-align:center">Calls</th><th class="mid">Strike</th>' +
+      '<th colspan="7" class="pflag" style="text-align:center">Puts</th></tr>' +
+      '<tr><th>OI</th><th>Vol</th><th>IV%</th><th>Δ</th><th>Γ</th><th>Bid</th><th>Ask</th><th class="mid"></th>' +
+      '<th>Bid</th><th>Ask</th><th>Γ</th><th>Δ</th><th>IV%</th><th>Vol</th><th>OI</th></tr></thead></table>' +
       '<div class="chn-scroll" id="chainScroll">' + head +
       '<table class="chn chn-bodytbl">' + COLGROUP + '<tbody>';
-    strikes.forEach(function (k) {
-      var g = byK[k], n = Math.max(g.c.length, g.p.length);
-      for (var i = 0; i < n; i++) {
-        var c = g.c[i] || null, p = g.p[i] || null;
-        var cSel = (c && sym(c) === desired) ? ' chn-selc' : '', pSel = (p && sym(p) === desired) ? ' chn-selc' : '';
-        h += '<tr' + (k === spotK && i === 0 ? ' class="spot"' : '') + ' data-strike="' + k + '"' +
-          (c ? ' data-csym="' + esc(sym(c)) + '"' : '') + (p ? ' data-psym="' + esc(sym(p)) + '"' : '') + '>' +
-          '<td class="chn-call' + cSel + '"' + selAttr(c) + '>' + cell(c, 'openInterest', 0) + '</td>' +
-          '<td class="chn-call' + cSel + '">' + cell(c, 'totalVolume', 0) + '</td>' +
-          '<td class="chn-call' + cSel + '">' + cell(c, 'volatility', 1) + '</td>' +
-          '<td class="chn-call' + cSel + '">' + cell(c, 'delta', 3) + '</td>' +
-          '<td class="k">' + (i === 0 ? px(k, k % 1 ? 2 : 0) : '·') + '</td>' +
-          '<td class="chn-put' + pSel + '">' + cell(p, 'delta', 3) + '</td>' +
-          '<td class="chn-put' + pSel + '">' + cell(p, 'volatility', 1) + '</td>' +
-          '<td class="chn-put' + pSel + '">' + cell(p, 'totalVolume', 0) + '</td>' +
-          '<td class="chn-put' + pSel + '">' + cell(p, 'openInterest', 0) + '</td></tr>';
-      }
+    var CALL = [['openInterest', 0], ['totalVolume', 0], ['volatility', 1], ['delta', 3], ['gamma', 4], ['bid', 2], ['ask', 2]];
+    var PUT = [['bid', 2], ['ask', 2], ['gamma', 4], ['delta', 3], ['volatility', 1], ['totalVolume', 0], ['openInterest', 0]];
+    function side(c, cls, itm, cols) {   // itm: served per row (strike vs the live spot)
+      var klass = cls + (c && sym(c) === desired ? ' chn-selc' : '') + (itm === true ? ' chn-itm' : '');
+      return cols.map(function (f, j) {
+        return '<td class="' + klass + '"' + (j === 0 ? selAttr(c) : '') + '>' + cell(c, f[0], f[1]) + '</td>';
+      }).join('');
+    }
+    rows.forEach(function (r) {
+      var c = r.call, p = r.put, k = r.strike;
+      h += '<tr' + (r.spot ? ' class="spot"' : '') + ' data-strike="' + k + '"' +
+        (c ? ' data-csym="' + esc(sym(c)) + '"' : '') + (p ? ' data-psym="' + esc(sym(p)) + '"' : '') + '>' +
+        side(c, 'chn-call', r.call_itm, CALL) +
+        '<td class="k">' + (r.first ? px(k, k % 1 ? 2 : 0) : '·') + '</td>' +
+        side(p, 'chn-put', r.put_itm, PUT) + '</tr>';
     });
     h += '</tbody></table></div>';   // close .chn-scroll
     // Independent-review finding (2026-09-13), REPRODUCED by the frozen-header redesign's own

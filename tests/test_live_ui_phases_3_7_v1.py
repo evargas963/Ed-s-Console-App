@@ -58,7 +58,7 @@ def test_three_labels_are_not_collapsed_into_streaming():
     gamma = (REPO / "static" / "js" / "ed-gamma.js").read_text(encoding="utf-8")
     assert "OPT CELLS·" in gamma
     flow = (REPO / "static" / "js" / "ed-gamma-flow.js").read_text(encoding="utf-8")
-    assert "Book slot" in flow
+    assert "Book upstream" in flow and "L1 upstream" in flow   # three feeds, served separately (/options moved in)
     assert "['Streaming'" not in flow
 
 

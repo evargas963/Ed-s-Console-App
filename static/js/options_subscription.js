@@ -3,14 +3,8 @@
  *
  * ONE CONTRACT IDENTITY must bind: operator selection -> subscription request ->
  * subscription acknowledgement -> active stream contract -> book payload -> stream
- * health -> UI rendering. Before this module, static/options.html committed the
- * selection and started polling IMMEDIATELY on click, fired the subscribe POST as
- * `.catch(function(){})` fire-and-forget, and rendered health without ever comparing
- * the plane's contract to the selected one -- so a failed, mismatched or stale
- * subscription could display a healthy state belonging to a different contract.
- *
- * Loaded before the inline app script in options.html; exposed as
- * globalThis.EdOptionsSubscription so tests/l1 diagnostics can execute the REAL
+ * health -> UI rendering. Used by the console's stream control (ed-stream.js); exposed as
+ * globalThis.EdOptionsSubscription so tests can execute the REAL
  * shipped rules rather than a re-implementation (see tests/options_subscription_node.mjs).
  */
 (function (g) {
