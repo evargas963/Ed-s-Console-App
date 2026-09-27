@@ -3763,7 +3763,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
             # carrying the same raw-gamma fallback (audit T-01) -- the live panel and this ghost
             # must be one computation or they draw a positioning shift that did not happen.
             from terrain_engine import _per_strike_rows
-            return _per_strike_rows(exposures, cts)
+            return _per_strike_rows(exposures)
 
         # Cursor-audit F8: unknown DTE must belong to NEITHER near nor far, not silently to far.
         # This endpoint carried its own near/far splitter with the old 999.0 sentinel — a duplicate
@@ -4240,16 +4240,16 @@ def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
     dex = _bf(bucket.get("net_dex_dollars")) if _has_gex_data else None
     _vn = bucket["call_vanna"] - bucket["put_vanna"] if _has_gex_data else None
     vanna = round(_vn, 2) if _vn is not None else None
-    def _legs(call, put):
-        # the cell's total is served, not added up in the browser; one unknown side leaves the
-        # total unknown -- a missing side is not a zero
-        c, p = _bf(call), _bf(put)
-        return {"call": c, "put": p, "total": (c + p) if c is not None and p is not None else None}
+    def _legs(legs):
+        # the one readers (strike_oi_legs / strike_volume_legs): Schwab's values as sent, 0 a real
+        # zero; unknown only when a contract at the strike did not report the field
+        if legs is None:
+            return {"call": None, "put": None, "total": None}
+        return {"call": _bf(legs[0]), "put": _bf(legs[1]), "total": _bf(legs[0] + legs[1])}
 
-    b = bucket or {}
-    none = {"call": None, "put": None, "total": None}
-    oi = _legs(b.get("call_oi"), b.get("put_oi")) if bucket is not None else none
-    volume = _legs(b.get("call_volume"), b.get("put_volume")) if bucket is not None else dict(none)
+    from math_exposure_core import strike_oi_legs, strike_volume_legs
+    oi = _legs(strike_oi_legs(bucket) if bucket is not None else None)
+    volume = _legs(strike_volume_legs(bucket) if bucket is not None else None)
     contracts = {"call": syms.get("call"), "put": syms.get("put")}
     return gex, dex, vanna, oi, volume, contracts, _has_gex_data, _has_oi
 

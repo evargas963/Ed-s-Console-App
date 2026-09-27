@@ -71,14 +71,14 @@ def test_a_strike_with_no_resolvable_gamma_draws_no_bar():
     rendered bar"). An unknown GAMMA was drawn at 0.0 anyway -- visually identical to a strike
     measured at flat gamma, on the surface used to read where dealers are short.
     """
-    rows = TE._per_strike_rows({500.0: {}}, [])
+    rows = TE._per_strike_rows({500.0: {}})
     assert rows == [], f"drew a bar for a strike with no gamma: {rows}"
 
 
 def test_a_measured_gamma_still_draws_its_bar():
     """Negative control: absence is refused, presence is not."""
     rows = TE._per_strike_rows({500.0: {"has_oi": True, "has_valid_gamma": True, "dollarized": True,
-                                        "net_gex_1pct": 1_234_567.0}}, [])
+                                        "net_gex_1pct": 1_234_567.0}})
     assert len(rows) == 1
     assert rows[0][0] == pytest.approx(500.0)
     assert rows[0][1] == pytest.approx(1_234_567.0, rel=1e-6)
@@ -87,7 +87,7 @@ def test_a_measured_gamma_still_draws_its_bar():
 def test_a_genuine_zero_gamma_still_draws_its_bar():
     """A strike measured at flat gamma is information and must remain on the chart."""
     rows = TE._per_strike_rows({500.0: {"has_oi": True, "has_valid_gamma": True, "dollarized": True,
-                                        "net_gex_1pct": 0.0}}, [])
+                                        "net_gex_1pct": 0.0}})
     assert len(rows) == 1 and rows[0][1] == pytest.approx(0.0)
 
 
@@ -98,7 +98,7 @@ def test_a_strike_with_no_oi_at_all_draws_no_bar_even_with_a_nonzero_accumulator
     metric itself. This is the exact live SPX defect: a bucket that never cleared the OI gate
     must never present its accumulator as a computed value, regardless of what that
     accumulator happens to hold."""
-    rows = TE._per_strike_rows({500.0: {"has_oi": False, "net_gex_1pct": 1_234_567.0}}, [])
+    rows = TE._per_strike_rows({500.0: {"has_oi": False, "net_gex_1pct": 1_234_567.0}})
     assert rows == [], f"drew a bar for a strike that never cleared the OI gate: {rows}"
 
 
@@ -199,7 +199,7 @@ def test_the_server_strike_row_builder_draws_no_bar_for_unknown_gamma():
         "the per-strike row builder fabricates a 0.0 gamma bar again")
     # 2026-09-24: the server copy is gone -- it delegates to the ONE producer, which refuses
     # a bar for unknown / invalid gamma (tested above) and has no raw-gamma fallback (T-01).
-    assert "_per_strike_rows(exposures, cts)" in src
+    assert "_per_strike_rows(exposures)" in src
     assert "total_gamma_raw_at_strike" not in src
 
 

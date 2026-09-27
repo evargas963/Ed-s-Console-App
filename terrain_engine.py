@@ -246,7 +246,7 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
     )
 
 
-def _per_strike_rows(exposures: dict, contracts: list[dict]) -> list[list]:
+def _per_strike_rows(exposures: dict) -> list[list]:
     """`[[strike, net_gex_1pct$, session_volume], …]` — the EXACT shape the panel renders.
 
     THE one producer of GEX-by-strike rows (live panel AND the prior-day ghost -- server.py
@@ -259,24 +259,15 @@ def _per_strike_rows(exposures: dict, contracts: list[dict]) -> list[list]:
       * the bar is net GEX$ from a DOLLARIZED book on a strike whose gamma was VALID. It used
         to fall back to total_gamma_raw_at_strike -- UNSIGNED raw gamma drawn on the signed
         GEX$ axis. A strike with no valid gamma, or a book built without spot, has no bar.
-      * volume is the summed totalVolume of the strike's contracts that REPORTED one (0 is a
-        real zero); a strike where no contract reported volume is None ("—"), not 0.
+      * volume is strike_total_volume, the one reader: Schwab's volumes as sent (0 is a real
+        zero); None ("—") when a contract at the strike did not report it, never a partial sum.
     """
-    from math_exposure_core import exposures_have_dollar_gex, net_gex_dollars_at_strike
-    from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+    from math_exposure_core import (exposures_have_dollar_gex, net_gex_dollars_at_strike,
+                                    strike_total_volume)
+    from numeric_contract import float_finite_or_none
 
     if not exposures or not exposures_have_dollar_gex(exposures):
         return []
-    vol_by_k: dict[float, float] = {}
-    for ct in contracts or []:
-        if not isinstance(ct, dict):
-            continue
-        sk = float_finite_or_none(ct.get("strikePrice"))
-        v = float_nonnegative_or_none(ct.get("totalVolume"))
-        if sk is not None and v is not None:
-            vol_by_k[sk] = vol_by_k.get(sk, 0.0) + v
-
-    vol_int = {k: int(v) for k, v in vol_by_k.items()}   # absent key = no volume reported
     rows: list[list] = []
     for k, b in exposures.items():
         sk = float_finite_or_none(k)
@@ -290,7 +281,8 @@ def _per_strike_rows(exposures: dict, contracts: list[dict]) -> list[list]:
         gf = float_finite_or_none(net_gex_dollars_at_strike(b))
         if gf is None:
             continue
-        rows.append([round(sk, 2), round(gf, 1), vol_int.get(sk)])
+        vol = strike_total_volume(b)
+        rows.append([round(sk, 2), round(gf, 1), None if vol is None else int(vol)])
     rows.sort(key=lambda r: r[0])
     return rows
 
@@ -432,7 +424,7 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     }
 
 
-def per_strike_view(books: dict, exposures: dict, contracts: list[dict]) -> dict:
+def per_strike_view(books: dict, exposures: dict) -> dict:
     """`{all, near, far}` rows -- the ALL / <=7DTE / MONTHLY+ chips -- from the chain's
     exposure_books and their merged full book `exposures` (one pricing pass). A contract whose
     days-to-expiry cannot be read belongs to `all` only: a maturity split it cannot answer is
@@ -444,10 +436,9 @@ def per_strike_view(books: dict, exposures: dict, contracts: list[dict]) -> dict
         if not chosen:
             return []
         subset_exposures, _diag = merge_exposure_books(chosen)
-        subset = [c for c in contracts if isinstance(c, dict) and keep(_dte_of(c))]
-        return _per_strike_rows(subset_exposures, subset)
+        return _per_strike_rows(subset_exposures)
 
-    return {"all": _per_strike_rows(exposures, contracts),
+    return {"all": _per_strike_rows(exposures),
             "near": rows(lambda d: d is not None and d <= 7),
             "far": rows(lambda d: d is not None and d > 7)}
 
@@ -749,7 +740,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         # computed from THIS chain; the per-strike histogram was previously rendered from the
         # frozen morning archive purely because nothing persisted this. Session volume is carried
         # alongside so the volume panel stops serving a 09:47 corpse at 11:31.
-        per_strike=per_strike_view(books, exposures, contracts),
+        per_strike=per_strike_view(books, exposures),
         books=books,
         charm_by_strike=charm_by_strike,
         pcr_by_expiry={e: put_call_oi_ratio(book) for (e, _d), (book, _diag) in books.items()},

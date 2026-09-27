@@ -572,6 +572,22 @@ def strike_oi_legs(bucket: dict) -> tuple[float, float] | None:
     return legs[0], legs[1]
 
 
+def strike_volume_legs(bucket: dict) -> tuple[float, float] | None:
+    """(call, put) session volume at one strike when every contract there reported totalVolume
+    (0 is a real zero), else None. A leg with no listed contract is a known 0.0. THE one reader:
+    GEX-by-Strike rows, heatmap cells and the put/call volume ratio."""
+    if not isinstance(bucket, dict) or bucket.get("volume_unreported") != 0:
+        return None
+    c, p = bucket.get("call_volume"), bucket.get("put_volume")
+    return (0.0 if c is None else float(c)), (0.0 if p is None else float(p))
+
+
+def strike_total_volume(bucket: dict) -> float | None:
+    """THE total session volume at one strike, or None when a contract there did not report it."""
+    legs = strike_volume_legs(bucket)
+    return None if legs is None else legs[0] + legs[1]
+
+
 def book_total_oi(exposures: Dict[float, dict]) -> float | None:
     """Total OI of the whole book, or None if ANY strike's OI is unknown."""
     if not exposures:
@@ -600,11 +616,11 @@ def put_call_volume_ratio(exposures: Dict[float, dict]) -> float | None:
     (https://cdn.cboe.com/resources/us/options/market_statistics/daily/cone/archive/html/2002-05-17.html).
     None when any contract in the book did not report its volume, or no call traded. A strike with
     no call (or put) contract listed has no volume on that side, not a zero."""
-    if not exposures or any(b.get("volume_unreported") for b in exposures.values()):
+    legs = [strike_volume_legs(b) for b in (exposures or {}).values()]
+    if not legs or None in legs:
         return None
-    calls = sum(v for v in (b.get("call_volume") for b in exposures.values()) if v is not None)
-    puts = sum(v for v in (b.get("put_volume") for b in exposures.values()) if v is not None)
-    return puts / calls if calls > 0 else None
+    calls = sum(c for c, _ in legs)
+    return sum(p for _, p in legs) / calls if calls > 0 else None
 
 
 def exposures_have_dollar_gex(exposures: Dict[float, dict]) -> bool:

@@ -20,7 +20,8 @@ import re
 from pathlib import Path
 
 from server import project_gamma_surface
-from math_exposure_core import compute_exposures_by_strike, exposure_books
+from math_exposure_core import (compute_exposures_by_strike, exposure_books, strike_oi_legs,
+                                strike_volume_legs)
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -341,16 +342,11 @@ def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_tot
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
         for k, bucket in exposures_e.items():
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
-            exp_oi = {"call": round(float(bucket["call_oi"])) if bucket.get("call_oi") is not None else None,
-                      "put": round(float(bucket["put_oi"])) if bucket.get("put_oi") is not None else None}
-            exp_oi["total"] = (exp_oi["call"] + exp_oi["put"]
-                               if exp_oi["call"] is not None and exp_oi["put"] is not None else None)
-            assert row["oi"][col] == exp_oi
-            exp_vol = {"call": round(float(bucket["call_volume"])) if bucket.get("call_volume") is not None else None,
-                       "put": round(float(bucket["put_volume"])) if bucket.get("put_volume") is not None else None}
-            exp_vol["total"] = (exp_vol["call"] + exp_vol["put"]
-                                if exp_vol["call"] is not None and exp_vol["put"] is not None else None)
-            assert row["volume"][col] == exp_vol
+            # the cell carries the one readers' answers: Schwab's values as sent, 0 a real zero
+            for key, legs in (("oi", strike_oi_legs(bucket)), ("volume", strike_volume_legs(bucket))):
+                exp_cell = ({"call": None, "put": None, "total": None} if legs is None else
+                            {"call": round(legs[0]), "put": round(legs[1]), "total": round(legs[0] + legs[1])})
+                assert row[key][col] == exp_cell
             checked += 1
     assert checked > 20
 
