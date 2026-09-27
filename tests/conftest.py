@@ -89,6 +89,16 @@ def _live_feed_starts_down():
     _lmp_feed.record_feed_down()
 
 
+@pytest.fixture(autouse=True)
+def _market_in_session(monkeypatch):
+    """Stand-in for the session clock: the market is in session (is_capturable_session), so a
+    test's live price does not depend on the day it runs. Closed-market tests set it False."""
+    import live_market_plane as _lmp_s
+    import live_price_rows as _lpr_s
+    monkeypatch.setattr(_lmp_s, "is_capturable_session", lambda: True)
+    monkeypatch.setattr(_lpr_s, "is_capturable_session", lambda: True)
+
+
 
 
 

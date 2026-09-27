@@ -462,7 +462,6 @@ _chain_inflight: dict = {}
 # same number the header shows, instead of two parallel hierarchies that happened to
 # usually agree.
 SPOT_SOURCE_PLANE = "streaming_plane"          # live_market_plane.get_quote — the freshest real trade this process has seen
-SPOT_SOURCE_QUOTE = "schwab_quote_last"        # quotes.{SYM}.quote.lastPrice - a real trade
 SPOT_SOURCE_CAPTURE = "chain_capture"          # underlyingPrice of a stored chain capture (DATA_FLOW decision 7)
 
 
@@ -579,21 +578,11 @@ def resolve_spot(ticker: str, *, chain_json: dict | None = None,
 
 
 def current_spot_state(source: str, ticker: str) -> str:
-    """Label resolve_spot's answer: live, stale, or unavailable. Not a second selector."""
-    if source in (None, "none"):
+    """Label a spot resolve_spot gave: live while the one live rule (live_price_rows.live_spot)
+    still holds, stale once it no longer does, unavailable for any other source."""
+    if source != SPOT_SOURCE_PLANE:
         return "unavailable"
-    if source == SPOT_SOURCE_QUOTE:
-        return "live"
-    if source == SPOT_SOURCE_PLANE:
-        try:
-            row = _lmp.get_quote(ticker)
-        except Exception:
-            return "stale"
-        if (row and _lmp.plane_spot_is_last_price(row) and _lmp.plane_row_is_streamed(row)
-                and _lmp.spot_is_fresh(row)):
-            return "live"
-        return "stale"
-    return "unavailable"
+    return "live" if _lpr.live_spot(ticker) is not None else "stale"
 
 
 def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_range=None,
