@@ -62,10 +62,18 @@ def test_a_bar_missing_a_field_is_not_written():
     assert server._bars_1m(TK) == []
 
 
-def test_a_zero_negative_or_non_finite_price_is_not_written():
-    for bad in (0.0, -1.0, float("nan"), float("inf")):
+def test_a_price_that_is_not_a_number_is_not_written():
+    """AGENTS.md rule 2: -999, text, NaN and infinity are not numbers."""
+    for bad in (-999, "10.0", float("nan"), float("inf")):
         assert not server._write_streamed_bar(dict(_bar(T0), low=bad)), bad
     assert server._bars_1m(TK) == []
+
+
+def test_a_reported_zero_is_written_as_sent():
+    """Operator ruling 2026-09-27: take what Schwab sends; a 0 price or volume is 0."""
+    assert server._write_streamed_bar(_bar(T0, lo=0.0, v=0.0))
+    (b,) = server._bars_1m(TK)
+    assert (b.low, b.volume) == (0.0, 0.0)
 
 
 def test_a_minute_the_stream_did_not_deliver_stays_missing():

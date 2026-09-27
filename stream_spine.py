@@ -117,7 +117,7 @@ def rank_option_contracts(requested, contract_inputs: "dict[str, dict]",
     missing any of them is not admitted and says which). An expired contract is never admitted:
     it ranked FIRST by date, so on a weekend the budget filled with Friday's expired contracts
     (measured 2026-09-27: 200 DELL 2026-09-25 contracts subscribed)."""
-    from numeric_contract import float_finite_or_none
+    from numeric_contract import float_finite_or_none, schwab_number
     from time_et import now_et
     today = now_et().date().isoformat()
 
@@ -128,7 +128,7 @@ def rank_option_contracts(requested, contract_inputs: "dict[str, dict]",
         if inp is None:
             not_admitted[sym] = "not admitted: contract not in the console's current Schwab chain"
             continue
-        strike = float_finite_or_none(inp.get("strikePrice"))
+        strike = schwab_number(inp.get("strikePrice"))
         spot = float_finite_or_none(inp.get("spot"))
         missing = [k for k, v in (("expirationDate", inp.get("expirationDate")),
                                   ("strikePrice", strike), ("spot", spot)) if v is None]

@@ -617,8 +617,7 @@ def check_no_orphan_dict_keys() -> list[Violation]:
     # RC-84 — a key that genuinely arrives from OUTSIDE this repo (a Schwab OAuth token, a chain
     # node, a SQL column alias, an operator's POST body) is never written here and never will be,
     # so without a way to say so the list can only grow and can never be worked to zero. The repo
-    # already uses this idiom for the coercion gate ('# vendor-coercion-ok:') and for synthetic
-    # test fixtures; the declaration carries a REASON so it is reviewed rather than waved through.
+    # already uses this idiom for synthetic test fixtures; the declaration carries a REASON so it is reviewed rather than waved through.
     out: list[Violation] = []
     for key, (path, line) in sorted(reads.items()):
         if key in writes:
@@ -1839,20 +1838,8 @@ def check_ui_data_integration() -> list[Violation]:
 
 
 def check_vendor_field_coercion() -> list[Violation]:
-    """One faucet for every Schwab vendor field: single-source numeric coercion (RC-FAUCET).
-
-    OBSERVED (2026-07-25): the SAME raw leaf (strikePrice, totalVolume, bid/ask, greeks,
-    daysToExpiration, mark, netChange, multiplier) was parsed a dozen ways across the
-    money-path. Raw ``float(ct.get("strikePrice"))`` inside ``try/except (TypeError,
-    ValueError)`` SILENTLY ADMITS NaN/±inf (``float('nan')`` does not raise): NaN became a
-    dict key, corrupted sorted strike sets (ATM/spacing), poisoned volume sums, entered the
-    IV smile, produced NaN charm, and passed ``abs(nan-target) >= 0.01`` as a FALSE contract
-    match. A self-adversarial 5-iteration sweep found bugs the field-name grep MISSED —
-    hidden behind intermediate variables (``sp = ct.get("strikePrice"); float(sp)``). This
-    lock forbids raw float()/int(float()) coercion of a vendor field in BOTH forms; a site is
-    clean only through a canonical numeric_contract reader or an explicit, reasoned
-    ``# vendor-coercion-ok: <why safe>`` marker. VALIDATED: driven to zero the same day.
-    """
+    """Every Schwab numeric field is read through schwab_number / schwab_count (AGENTS.md rule 2);
+    see tools/check_vendor_field_coercion.py for the failures it catches."""
     if str(REPO) not in sys.path:
         sys.path.insert(0, str(REPO))
     from tools.check_vendor_field_coercion import violations

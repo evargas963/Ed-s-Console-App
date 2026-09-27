@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from instrument_identity import ticker_storage_key
+from numeric_contract import schwab_count, schwab_number
 from app.options.order_flow.state import OrderFlowState
 from stream_spine import resolve_stream_db_path
 
@@ -168,21 +169,21 @@ def tape_rows_for_symbol(
         # fields absent -> not a trade print at all, skipped before the de-dup check even
         # runs (so it also never overwrites `last_trade_key`, protecting the NEXT genuine
         # trade's own comparison).
-        if item.get("LAST_PRICE") is None or item.get("TRADE_TIME_MILLIS") is None:
+        if schwab_number(item.get("LAST_PRICE")) is None or item.get("TRADE_TIME_MILLIS") is None:
             continue
         trade_key = (item["TRADE_TIME_MILLIS"], item["LAST_PRICE"], item.get("LAST_SIZE"))
         if trade_key == last_trade_key:
             continue
         last_trade_key = trade_key
-        strike = context.get("STRIKE_TYPE")
+        strike = schwab_number(context.get("STRIKE_TYPE"))
         side = put_call_side(context.get("CONTRACT_TYPE"))
         y, m, d = context.get("EXPIRATION_YEAR"), context.get("EXPIRATION_MONTH"), context.get("EXPIRATION_DAY")
         expiry = f"{y:04d}-{m:02d}-{d:02d}" if (y and m and d) else None
-        mult = context.get("MULTIPLIER")
-        trade, size = item.get("LAST_PRICE"), item.get("LAST_SIZE")
-        premium = (float(trade) * float(size) * float(mult)
+        mult = schwab_number(context.get("MULTIPLIER"))
+        trade, size = schwab_number(item.get("LAST_PRICE")), schwab_count(item.get("LAST_SIZE"))
+        premium = (trade * size * mult
                    if (trade is not None and size is not None and mult is not None) else None)
-        bid, ask = item.get("BID_PRICE"), item.get("ASK_PRICE")
+        bid, ask = schwab_number(item.get("BID_PRICE")), schwab_number(item.get("ASK_PRICE"))
         classification = "unknown"
         if trade is not None and bid is not None and ask is not None:
             if trade <= bid:
@@ -194,11 +195,11 @@ def tape_rows_for_symbol(
         out.append({
             "ts_recv": float(ts_recv), "symbol": sym, "underlying": context.get("UNDERLYING"),
             "expiry": expiry, "type": side, "strike": strike,
-            "bid": bid, "bid_size": item.get("BID_SIZE"),
-            "ask": ask, "ask_size": item.get("ASK_SIZE"),
+            "bid": bid, "bid_size": schwab_count(item.get("BID_SIZE")),
+            "ask": ask, "ask_size": schwab_count(item.get("ASK_SIZE")),
             "trade": trade, "size": size, "premium": premium,
-            "volume": item.get("TOTAL_VOLUME"), "oi": item.get("OPEN_INTEREST"),
-            "iv": item.get("VOLATILITY"), "delta": item.get("DELTA"),
+            "volume": schwab_count(item.get("TOTAL_VOLUME")), "oi": schwab_count(item.get("OPEN_INTEREST")),
+            "iv": schwab_number(item.get("VOLATILITY")), "delta": schwab_number(item.get("DELTA")),
             "multiplier": mult, "classification": classification,
         })
         if len(out) > bounded_limit:
@@ -349,10 +350,9 @@ def book_heatmap_for_ticker(
             for lvl in levels:
                 if not isinstance(lvl, dict):
                     continue
-                px, vol = lvl.get(price_key), lvl.get("TOTAL_VOLUME")
+                px, vol = schwab_number(lvl.get(price_key)), schwab_count(lvl.get("TOTAL_VOLUME"))
                 if px is None or vol is None:
                     continue
-                px = round(float(px), 2)
                 cell = cells.setdefault((bucket, px), {"bid": 0.0, "ask": 0.0})
                 # Operator-reproduced defect (2026-09-14): NASDAQ_BOOK/NYSE_BOOK messages are
                 # full-book snapshots, not deltas -- an UNCHANGED 100-share resting level gets
@@ -363,7 +363,7 @@ def book_heatmap_for_ticker(
                 # already oldest-to-newest (see the DESC+LIMIT+reverse() above), so a plain
                 # overwrite leaves each cell holding the LAST observed size at that price within
                 # the bucket -- a real captured value, never a sum across repeated observations.
-                cell[side] = float(vol)
+                cell[side] = vol
                 prices_seen.add(px)
 
     if not prices_seen:

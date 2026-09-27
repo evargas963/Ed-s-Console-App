@@ -100,8 +100,7 @@ def test_each_field_is_independently_updatable():
 
 
 def test_a_negative_open_interest_is_rejected_not_stored():
-    """float_nonnegative_or_none is this repo's canonical reader for vendor counts
-    (already used for TOTAL_VOLUME); a corrupt negative OI tick must not be stored."""
+    """schwab_count (AGENTS.md rule 2): a negative count is not a number and is not stored."""
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"OPEN_INTEREST": -5}, ts_recv=time.time())
     assert st.get_stream_greeks("SPY   260116C00580000") is None

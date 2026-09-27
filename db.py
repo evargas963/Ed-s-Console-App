@@ -2693,25 +2693,17 @@ class EdDB:
 
         Returns count of rows written (after timestamp/OHLC validation), 0 if none.
         """
+        from numeric_contract import schwab_count
         tkr = ticker_storage_key(ticker)
         if not tkr or not bars:
             return 0
         rows = []
-        def _volume_or_none(raw):
-            if raw is None:
-                return None
-            try:
-                v = float(raw)
-            except (TypeError, ValueError):
-                return None
-            return v if v >= 0 else None
-
         for b in bars:
             src = AUTHORITATIVE_1M_SOURCE
             if hasattr(b, "ts"):
                 ts = float(b.ts)
                 o, h, lo, c = float(b.open), float(b.high), float(b.low), float(b.close)
-                vol = _volume_or_none(getattr(b, "volume", None))
+                vol = schwab_count(getattr(b, "volume", None))
             elif isinstance(b, dict):
                 raw_ts = b.get("datetime", b.get("ts", b.get("timestamp", b.get("_ts", 0))))
                 try:
@@ -2725,7 +2717,7 @@ class EdDB:
                     c = float(b["close"])
                 except (KeyError, TypeError, ValueError):
                     continue
-                vol = _volume_or_none(b.get("volume"))
+                vol = schwab_count(b.get("volume"))
                 if b.get("source"):
                     src = str(b["source"])
             else:

@@ -9,10 +9,7 @@ from __future__ import annotations
 
 from typing import List
 
-from math_exposure_core import (
-    MISSING_GREEK_SENTINEL,
-    _f,
-)
+from numeric_contract import schwab_number
 
 
 
@@ -47,17 +44,15 @@ def compute_25d_risk_reversal(contracts: List[dict]) -> dict | None:
     for ct in contracts:
         if not isinstance(ct, dict):
             continue
-        dte = _f(ct.get("daysToExpiration"))
-        delta = _f(ct.get("delta"))
-        iv = _f(ct.get("volatility"))
+        dte = schwab_number(ct.get("daysToExpiration"))
+        delta = schwab_number(ct.get("delta"))
+        iv = schwab_number(ct.get("volatility"))
         side = (ct.get("putCall") or "").upper().strip()
-        if dte is None or dte < 0 or delta is None or iv is None or iv <= 0:
-            continue
-        if delta == MISSING_GREEK_SENTINEL or iv == MISSING_GREEK_SENTINEL:
+        if dte is None or delta is None or iv is None:
             continue
         if side not in ("CALL", "PUT"):
             continue
-        usable.append((int(dte), side, float(delta), float(iv)))
+        usable.append((int(dte), side, delta, iv))
     if not usable:
         return None
     front_dte = min({u[0] for u in usable if u[0] >= 1}, key=lambda d: (abs(d - 30), d), default=None)

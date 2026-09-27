@@ -1288,15 +1288,15 @@ def _bar_dict(c: "Candle") -> dict:
 def _write_streamed_bar(msg: dict) -> bool:
     """Write one streamed 1-minute bar (Schwab CHART_EQUITY) to price_bars_1m; False when it
     lacks a field (then nothing is written)."""
-    from numeric_contract import float_positive_or_none
-    o, h, lo, c = (float_positive_or_none(msg.get(k)) for k in ("open", "high", "low", "close"))
+    from numeric_contract import schwab_count, schwab_number
+    o, h, lo, c = (schwab_number(msg.get(k)) for k in ("open", "high", "low", "close"))
     start_ms = msg.get("bar_start_ms")
     if None in (o, h, lo, c, start_ms):
-        # a missing, zero, negative or non-finite price is not a price
+        # not a number (AGENTS.md rule 2): absent, -999, text, NaN or infinity
         log.warning("streamed bar for %s lacks a valid field, not written: %s", msg.get("symbol"), msg)
         return False
-    _persist_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=float(o), high=float(h),
-                                            low=float(lo), close=float(c), volume=msg.get("volume"))])
+    _persist_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=o, high=h,
+                                            low=lo, close=c, volume=schwab_count(msg.get("volume")))])
     return True
 
 
@@ -3837,7 +3837,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
     # browser from the same rows (a second aggregation site that breaks silently when the
     # payload changes, and can straddle a different spot than the server's). One aggregator.
     def _side_sums(rows, s):
-        from numeric_contract import float_finite_or_none, float_nonnegative_or_none
+        from numeric_contract import float_finite_or_none
         if not rows or s is None:
             return None
         gb = ga = vb = va = 0.0
@@ -3847,7 +3847,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
             # the unmeasured strikes. Absence is dropped, not counted as flat.
             k = float_finite_or_none(r[0])
             g = float_finite_or_none(r[1])
-            v = float_nonnegative_or_none(r[2])
+            v = float_finite_or_none(r[2])
             if k is None or g is None or v is None:
                 continue
             if k < s:
@@ -4306,7 +4306,7 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
     and per-strike rows were computed from. No exposure math here. A contract with a missing
     or malformed expiry is counted, never given a column."""
     from math_exposure_core import merge_exposure_books
-    from numeric_contract import float_finite_or_none
+    from numeric_contract import schwab_number
 
     chain = chain if isinstance(chain, list) else []
     by_expiry: "dict[str, list]" = {}
@@ -4326,13 +4326,11 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
             continue
         contracts_used += 1
         if exp_dte.get(e) is None:   # native DTE for the column header, never inferred
-            try:
-                exp_dte[e] = int(ct.get("daysToExpiration"))
-            except (TypeError, ValueError):
-                exp_dte[e] = None
+            d = schwab_number(ct.get("daysToExpiration"))
+            exp_dte[e] = int(d) if d is not None else None
         side = (ct.get("putCall") or "").upper()
         sym = ct.get("symbol")
-        k = float_finite_or_none(ct.get("strikePrice"))
+        k = schwab_number(ct.get("strikePrice"))
         if sym and side in ("CALL", "PUT") and k is not None:
             symbols_by_expiry.setdefault(e, {}).setdefault(k, {})[side.lower()] = str(sym)
     total_contracts = len(chain)
@@ -5387,13 +5385,13 @@ def get_expiries(ticker: str = Query(...)):
 def _adjusted_deliverable(ct: dict, ticker: str) -> bool:
     """A contract whose deliverable is not the routine one: 100 shares of the underlying itself
     (a merger or spin-off adjusted contract). Every ordinary equity option lists that one entry."""
-    from numeric_contract import float_finite_or_none
+    from numeric_contract import schwab_number
     lst = ct.get("optionDeliverablesList") or []   # external-key-ok: Schwab option chain contract
     if not lst:
         return False
     d0 = lst[0] or {}
     kind = d0.get("assetType")                        # external-key-ok: Schwab optionDeliverablesList entry
-    units = float_finite_or_none(d0.get("deliverableUnits"))   # external-key-ok: Schwab optionDeliverablesList entry
+    units = schwab_number(d0.get("deliverableUnits"))   # external-key-ok: Schwab optionDeliverablesList entry
     return len(lst) > 1 or not (kind == "STOCK" and units == 100
                                 and str(d0.get("symbol") or "").upper() == ticker.lstrip("$").upper())
 

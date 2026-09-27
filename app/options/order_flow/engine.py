@@ -19,9 +19,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-import math as _of_math
 
-from math_exposure_core import MISSING_GREEK_SENTINEL
+from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from l1_trade_observation import (
     canonical_tape_prints,
     compute_cum_delta_proxy as _canonical_cum_delta,
@@ -58,29 +57,9 @@ import numpy as np
 # DATA EXTRACTION — safe access to nested structures
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _safe_float(val: Any) -> Optional[float]:
-    """Convert to float; None if invalid. SINGLE SOURCE: delegates to the canonical
-    numeric_contract.float_finite_or_none so a NaN/±inf field is rejected identically
-    everywhere — this used to accept NaN/inf, counting a bad field the exposure engine
-    drops (so the same contract diverged across order-flow vs exposures)."""
-    from numeric_contract import float_finite_or_none
-    return float_finite_or_none(val)
-
-
-def _nonnegative_float(val: Any) -> Optional[float]:
-    """Non-negative vendor quantity (size/volume): 0 valid, negatives+non-finite dropped.
-    SINGLE SOURCE: delegates to numeric_contract.float_nonnegative_or_none so totalVolume
-    reads identically here, in the exposure engine, and in the REST aggregation."""
-    from numeric_contract import float_nonnegative_or_none
-    return float_nonnegative_or_none(val)
-
-
-def _safe_int(val: Any) -> Optional[int]:
-    """Convert to int; None if invalid. SINGLE SOURCE: finite-gates through
-    numeric_contract.float_finite_or_none first, so NaN/±inf are rejected — raw int()
-    caught only TypeError/ValueError and leaked an uncaught OverflowError on +inf."""
-    from numeric_contract import float_finite_or_none
-    v = float_finite_or_none(val)
+def _schwab_int(val: Any) -> Optional[int]:
+    """A whole-number Schwab field (size, days, epoch ms) as sent."""
+    v = schwab_number(val)
     return int(v) if v is not None else None
 
 
@@ -111,15 +90,15 @@ def _iter_bids_levels(content_item: dict) -> list[tuple[float, float]]:
     out = []
     for level in (bids if isinstance(bids, list) else [bids]):
         if isinstance(level, dict):
-            p = _safe_float(level.get("BID_PRICE"))
-            v = _safe_float(level.get("TOTAL_VOLUME"))
+            p = schwab_number(level.get("BID_PRICE"))
+            v = schwab_count(level.get("TOTAL_VOLUME"))
             if p is not None and v is not None:
                 out.append((p, v))
         elif isinstance(level, list):
             for sub in level:
                 if isinstance(sub, dict):
-                    p = _safe_float(sub.get("BID_PRICE"))
-                    v = _safe_float(sub.get("TOTAL_VOLUME"))
+                    p = schwab_number(sub.get("BID_PRICE"))
+                    v = schwab_count(sub.get("TOTAL_VOLUME"))
                     if p is not None and v is not None:
                         out.append((p, v))
     return out
@@ -135,15 +114,15 @@ def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
     out = []
     for level in (asks if isinstance(asks, list) else [asks]):
         if isinstance(level, dict):
-            p = _safe_float(level.get("ASK_PRICE"))
-            v = _safe_float(level.get("TOTAL_VOLUME"))
+            p = schwab_number(level.get("ASK_PRICE"))
+            v = schwab_count(level.get("TOTAL_VOLUME"))
             if p is not None and v is not None:
                 out.append((p, v))
         elif isinstance(level, list):
             for sub in level:
                 if isinstance(sub, dict):
-                    p = _safe_float(sub.get("ASK_PRICE"))
-                    v = _safe_float(sub.get("TOTAL_VOLUME"))
+                    p = schwab_number(sub.get("ASK_PRICE"))
+                    v = schwab_count(sub.get("TOTAL_VOLUME"))
                     if p is not None and v is not None:
                         out.append((p, v))
     return out
@@ -252,9 +231,9 @@ def _compute_top_book_pressure(data: dict, *, now_ts: Optional[float] = None) ->
     import time as _t
     now = _t.time() if now_ts is None else now_ts
     items = _iter_content(data)
-    bid_sz = _safe_float(_latest_content_field(
+    bid_sz = schwab_count(_latest_content_field(
         items, "BID_SIZE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
-    ask_sz = _safe_float(_latest_content_field(
+    ask_sz = schwab_count(_latest_content_field(
         items, "ASK_SIZE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
     if bid_sz is None or ask_sz is None:
         return None, "unavailable"
@@ -274,9 +253,9 @@ def _resolve_bid_ask_prices(
     import time as _t
     now = _t.time() if now_ts is None else now_ts
     items = _iter_content(data)
-    bid_p = _safe_float(_latest_content_field(
+    bid_p = schwab_number(_latest_content_field(
         items, "BID_PRICE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
-    ask_p = _safe_float(_latest_content_field(
+    ask_p = schwab_number(_latest_content_field(
         items, "ASK_PRICE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
     bid_leaf = "streaming.BID_PRICE" if bid_p is not None else None
     ask_leaf = "streaming.ASK_PRICE" if ask_p is not None else None
@@ -292,7 +271,7 @@ def _resolve_quote_mark(data: dict, *, now_ts: Optional[float] = None) -> tuple[
     in are deleted (2026-09-24)."""
     import time as _t
     now = _t.time() if now_ts is None else now_ts
-    mark_p = _safe_float(_latest_content_field(
+    mark_p = schwab_number(_latest_content_field(
         _iter_content(data), "MARK", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
     if mark_p is not None and mark_p > 0:
         return mark_p, "streaming.MARK"
@@ -366,7 +345,7 @@ _MICRO_STRUCTURAL_CACHE: dict[str, tuple[tuple, dict]] = {}
 
 def _sorted_valid_levels(levels: list[tuple[float, float]], *, descending: bool) -> list[tuple[float, float]]:
     """Normalize a raw book side ONCE: drop invalid levels (non-positive price, negative or
-    non-finite displayed size — the raw reader already drops non-finite via _safe_float), then
+    non-finite displayed size — the raw reader already drops non-finite via schwab_count), then
     SORT so `[:N]` is the true Top-N regardless of the vendor's array order: bids DESCENDING,
     asks ASCENDING."""
     valid = [(p, v) for (p, v) in levels if p is not None and v is not None and p > 0 and v >= 0]
@@ -396,14 +375,10 @@ def _extract_canonical_book(data: dict, *, now_ts: Optional[float] = None) -> di
     snapshot = _latest_book_snapshot(items)
 
     bid, ask, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data, now_ts=now)
-    bid_size = _safe_int(_latest_content_field(
-        items, "BID_SIZE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
-    ask_size = _safe_int(_latest_content_field(
-        items, "ASK_SIZE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC))
-    if bid_size is not None and bid_size < 0:   # reject invalid displayed size
-        bid_size = None
-    if ask_size is not None and ask_size < 0:
-        ask_size = None
+    bid_size = _schwab_int(schwab_count(_latest_content_field(
+        items, "BID_SIZE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC)))
+    ask_size = _schwab_int(schwab_count(_latest_content_field(
+        items, "ASK_SIZE", now=now, max_age_sec=OF_TOP_OF_BOOK_FIELD_STALE_SEC)))
 
     bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
     ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
@@ -413,7 +388,7 @@ def _extract_canonical_book(data: dict, *, now_ts: Optional[float] = None) -> di
         "bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size,
         "bid_leaf": bid_leaf, "ask_leaf": ask_leaf,
         "bid_levels": bid_levels, "ask_levels": ask_levels,
-        "book_time_ms": _safe_float(snapshot.get("BOOK_TIME")) if snapshot else None,
+        "book_time_ms": schwab_number(snapshot.get("BOOK_TIME")) if snapshot else None,
         "mark": mark, "mark_leaf": mark_leaf,
     }
 
@@ -630,7 +605,7 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
             _MICRO_STRUCTURAL_CACHE[ticker] = (identity, structural)
 
     # Ages + per-serialization stamps are the only wall-clock-dependent fields.
-    exch_ts = _safe_float(data.get("exchange_quote_ts"))
+    exch_ts = float_finite_or_none(data.get("exchange_quote_ts"))
     payload = dict(structural)
     prov = dict(structural["provenance_structural"])
     prov["exchange_quote_ts"] = exch_ts             # NATIVE (plane quote clock)
@@ -716,49 +691,24 @@ def _iter_option_exp_levels(exp_map: dict) -> list[dict]:
             for opt in (opts if isinstance(opts, list) else [opts]):
               if not isinstance(opt, dict):
                   continue
-              d_raw = _safe_float(opt.get("delta"))
-              d_val = d_raw if (d_raw is not None and d_raw != MISSING_GREEK_SENTINEL
-                                and _of_math.isfinite(d_raw)) else None
-              g_raw = _safe_float(opt.get("gamma"))
-              g_val = g_raw if (g_raw is not None and g_raw != MISSING_GREEK_SENTINEL
-                                and _of_math.isfinite(g_raw)) else None
-              v_raw = _safe_float(opt.get("vega"))
-              v_val = v_raw if (v_raw is not None and v_raw != MISSING_GREEK_SENTINEL
-                                and _of_math.isfinite(v_raw)) else None
-              t_raw = _safe_float(opt.get("theta"))
-              t_val = t_raw if (t_raw is not None and t_raw != MISSING_GREEK_SENTINEL
-                                and _of_math.isfinite(t_raw)) else None
-              iv_raw = _safe_float(opt.get("volatility"))
-              iv_val = iv_raw if (iv_raw is not None and iv_raw > 0
-                                  and iv_raw != MISSING_GREEK_SENTINEL
-                                  and _of_math.isfinite(iv_raw)) else None
-              tt_raw = opt.get("tradeTimeInLong")
-              tt_val: Optional[int] = None
-              if tt_raw is not None and not isinstance(tt_raw, bool):
-                  try:
-                      tt_f = float(tt_raw)
-                      if _of_math.isfinite(tt_f):
-                          tt_val = int(tt_f)
-                  except (TypeError, ValueError):
-                      tt_val = None
               out.append({
                   "exp": exp_key,
-                  "strike": _safe_float(opt.get("strikePrice")),
-                  "totalVolume": _safe_float(opt.get("totalVolume")),
-                  "openInterest": _safe_float(opt.get("openInterest")),
-                  "lastSize": _safe_float(opt.get("lastSize")),
-                  "bidSize": _safe_float(opt.get("bidSize")),
-                  "askSize": _safe_float(opt.get("askSize")),
-                  "bid": _safe_float(opt.get("bid")),
-                  "ask": _safe_float(opt.get("ask")),
-                  "mark": _safe_float(opt.get("mark")),
-                  "delta": d_val,
-                  "gamma": g_val,
-                  "vega": v_val,
-                  "theta": t_val,
-                  "volatility": iv_val,
-                  "daysToExpiration": _safe_int(opt.get("daysToExpiration")),
-                  "tradeTimeInLong": tt_val,
+                  "strike": schwab_number(opt.get("strikePrice")),
+                  "totalVolume": schwab_count(opt.get("totalVolume")),
+                  "openInterest": schwab_count(opt.get("openInterest")),
+                  "lastSize": schwab_count(opt.get("lastSize")),
+                  "bidSize": schwab_count(opt.get("bidSize")),
+                  "askSize": schwab_count(opt.get("askSize")),
+                  "bid": schwab_number(opt.get("bid")),
+                  "ask": schwab_number(opt.get("ask")),
+                  "mark": schwab_number(opt.get("mark")),
+                  "delta": schwab_number(opt.get("delta")),
+                  "gamma": schwab_number(opt.get("gamma")),
+                  "vega": schwab_number(opt.get("vega")),
+                  "theta": schwab_number(opt.get("theta")),
+                  "volatility": schwab_number(opt.get("volatility")),
+                  "daysToExpiration": _schwab_int(opt.get("daysToExpiration")),
+                  "tradeTimeInLong": _schwab_int(opt.get("tradeTimeInLong")),
               })
     return out
 
@@ -766,11 +716,11 @@ def _iter_option_exp_levels(exp_map: dict) -> list[dict]:
 def _option_contract_volume(c: dict, *, tick_mode: bool) -> tuple[Optional[float], Optional[str]]:
     """Schwab volume leaf: totalVolume default; lastSize only when tick_mode is explicit."""
     if tick_mode:
-        v = _nonnegative_float(c.get("lastSize"))
+        v = schwab_count(c.get("lastSize"))
         if v is not None:
             return v, "schwab_chain_lastSize_tick_mode"
         return None, None
-    v = _nonnegative_float(c.get("totalVolume"))
+    v = schwab_count(c.get("totalVolume"))
     if v is not None:
         return v, "schwab_chain_totalVolume"
     return None, None
@@ -850,10 +800,10 @@ def _compute_rvol(data: dict) -> tuple[Optional[float], Optional[str]]:
     (avg10DaysVolume, avg1YearVolume, four instrument spellings, then an average of recent
     CANDLES -- an invented baseline). Returns (rvol, unavailable_reason).
     """
-    current = _nonnegative_float(data.get("stream_total_volume"))
+    current = schwab_count(data.get("stream_total_volume"))
     if current is None:
         return None, "current_volume_unavailable"
-    avg = _safe_float((data.get("fundamental") or {}).get("avg10DaysVolume"))
+    avg = schwab_count((data.get("fundamental") or {}).get("avg10DaysVolume"))
     if avg is None or avg <= 0:
         return None, "avg_volume_unavailable"
     return current / avg, None

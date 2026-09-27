@@ -431,11 +431,6 @@ ROWS: tuple[Row, ...] = (
         justification='Structural book microstructure: depth totals, imbalance, microprice, slope, concentration and wall candidates from one canonical book snapshot.',
     ),
     Row(
-        file='app/options/order_flow/engine.py', derivation='_nonnegative_float', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_nonnegative_float).',
-    ),
-    Row(
         file='app/options/order_flow/engine.py', derivation='_option_contract_volume', disposition='ALLOWLISTED',
         allowlist_id='mega2_schwab_stream_l1',
         justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_option_contract_volume).',
@@ -449,16 +444,6 @@ ROWS: tuple[Row, ...] = (
         file='app/options/order_flow/engine.py', derivation='_resolve_quote_mark', disposition='ALLOWLISTED',
         allowlist_id='mega2_schwab_stream_l1',
         justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_resolve_quote_mark).',
-    ),
-    Row(
-        file='app/options/order_flow/engine.py', derivation='_safe_float', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_safe_float).',
-    ),
-    Row(
-        file='app/options/order_flow/engine.py', derivation='_safe_int', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_safe_int).',
     ),
     Row(
         file='app/options/order_flow/engine.py', derivation='_sorted_valid_levels', disposition='ALLOWLISTED',
@@ -876,7 +861,7 @@ ROWS: tuple[Row, ...] = (
     Row(
         file='terrain_engine.py', derivation='_per_strike_rows', disposition='SCHWAB_LEAF',
         schwab_leaf='chains.*.totalVolume',
-        justification="Builds the [[strike, net_gex_1pct$, session_volume], ...] triples the per-strike panel renders; volume is summed from the chain's own totalVolume through float_nonnegative_or_none, strikes through float_finite_or_none, so a NaN can never become a key or a bar.",
+        justification="Builds the [[strike, net_gex_1pct$, session_volume], ...] triples the per-strike panel renders; volume is summed from the chain's own totalVolume through schwab_count, strikes through schwab_number, so a NaN can never become a key or a bar.",
     ),
     Row(
         file='terrain_engine.py', derivation='per_strike_view', disposition='DERIVED',

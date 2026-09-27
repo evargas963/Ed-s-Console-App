@@ -363,8 +363,8 @@ def _dte_of(ct: object) -> float | None:
     None cannot be compared to 7 by accident — a caller must decide what unknown means,
     which for a maturity SPLIT is "belongs to neither side".
     """
-    from numeric_contract import float_finite_or_none
-    return float_finite_or_none(ct.get("daysToExpiration")) if isinstance(ct, dict) else None
+    from numeric_contract import schwab_number
+    return schwab_number(ct.get("daysToExpiration")) if isinstance(ct, dict) else None
 
 
 def compute_wall_value_area(
@@ -440,7 +440,7 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     in price points; the client centers it on the LIVE spot so the band can never disagree
     with the price beside it (the RC-28/RC-77 one-spot discipline).
     """
-    from numeric_contract import float_finite_or_none
+    from numeric_contract import schwab_number
 
     if spot is None or spot <= 0 or not contracts:
         return None
@@ -459,10 +459,10 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     for c in contracts:
         if not isinstance(c, dict) or _dte_of(c) != front:
             continue
-        strike = float_finite_or_none(c.get("strikePrice"))
-        iv_pct = float_finite_or_none(c.get("volatility"))
+        strike = schwab_number(c.get("strikePrice"))
+        iv_pct = schwab_number(c.get("volatility"))
         side = str(c.get("putCall") or "").upper()
-        if strike is None or iv_pct is None or iv_pct <= 0 or side not in ("CALL", "PUT"):
+        if strike is None or iv_pct is None or side not in ("CALL", "PUT"):
             continue
         # Cursor-audit A3: single IV-conversion authority (was an unguarded inline /100 that would
         # mis-scale on a silent Schwab units flip, unlike the guarded charm/levels/vanna paths).
