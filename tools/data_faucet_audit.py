@@ -218,6 +218,9 @@ PAGE_CALCULATIONS = {
     "sort by distance": re.compile(r"\.sort\(\s*function\s*\(a,\s*b\)\s*\{\s*return\s+Math\.abs\("),
     "calendar arithmetic": re.compile(r"Date\.UTC\(|86400000"),
     "first-key pick": re.compile(r"Object\.keys\([^)]*\)\.sort\(\)\[0\]"),
+    # 2026-09-27: five panels re-sorted served per-strike rows by strike (P1-9)
+    "sort by strike": re.compile(r"\.sort\(\s*function\s*\(a,\s*b\)\s*\{\s*return\s+[ab]\[0\]\s*-\s*[ab]\[0\]"
+                                 r"|Object\.keys\([^)]*\)\.map\(Number\)\.sort\("),
 }
 
 

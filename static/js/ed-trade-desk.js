@@ -304,12 +304,12 @@
     var mig = (strikesD.migration || {})[_migScope] || null;
     var migRow = {}; ((mig && mig.rows) || []).forEach(function (r) { migRow[r[0]] = r; });
     function prior(k) { return migRow[k] ? migRow[k][2] : null; }
-    var asc = todayAll.slice().sort(function (a, b) { return a[0] - b[0]; });
+    var asc = todayAll;   // served in strike order
     var ascStrikes = asc.map(function (r) { return r[0]; });
     var sel = (window.EdShell && window.EdShell.scopeSelect)
       ? window.EdShell.scopeSelect(ascStrikes, _migPanAnchor != null ? _migPanAnchor : strikesD.spot_strike)
       : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
-    var win = sel.idx.map(function (i) { return asc[i]; }).sort(function (a, b) { return b[0] - a[0]; });
+    var win = sel.idx.map(function (i) { return asc[i]; }).reverse();   // high strikes on top
     var note = (window.EdShell && window.EdShell.scopeNote)
       ? window.EdShell.scopeNote({ total: todayAll.length, shown: win.length }) : '';
     if (_migPanAnchor != null) note += '<div class="gbs-allexp">PANNED to ' + num(_migPanAnchor, _migPanAnchor % 1 ? 2 : 0) +
