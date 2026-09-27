@@ -27,7 +27,6 @@ ROUTES: dict[str, tuple[str, str | None]] = {
     '/api/order-flow/options-microstructure': ('PRODUCER', 'server.py:api_order_flow_options_microstructure'),
     '/api/release/current': ('OPS', None),
     '/api/session': ('PRODUCER', 'server.py:get_session'),
-    '/api/spot': ('PRODUCER', 'server.py:get_spot'),
     '/api/streaming/active-option-contract': ('OPERATOR_INPUT', None),
     '/api/streaming/active-option-contracts': ('OPERATOR_INPUT', None),
     '/api/streaming/active-ticker': ('OPERATOR_INPUT', None),

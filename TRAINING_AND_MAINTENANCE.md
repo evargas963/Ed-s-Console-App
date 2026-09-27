@@ -37,7 +37,6 @@ Long jobs (e.g. `ml_scheduler.py --run-now`) may run **many minutes or hours**; 
 | `/guide/data-stewardship` | `DATA_STEWARDSHIP.md` |
 | `/guide/pipeline-quality` | `PIPELINE_QUALITY.md` |
 | `/guide/training-and-maintenance` | this file |
-| `/ops` | `static/ops.html` + whitelist in `ops_runner.py` |
 
 When you add a script to the click-to-run panel, **update `ops_runner.py`** (and optionally this doc). The panel builds its button list from that file.
 

@@ -72,7 +72,6 @@ UNIVERSAL_AUTHORITIES = frozenset({"resolve_spot"})
 #: Logical concept -> endpoints that render it. >1 distinct DATA faucet for one concept is a
 #: violation (the spot authority above is excluded from the count).
 CONCEPTS: dict[str, tuple[str, ...]] = {
-    "spot":          ("/api/spot",),
     "price_bars":    ("/api/bars1m",),
     "levels":        ("/api/terrain",),
     "per_strike":    ("/api/terrain/strikes",),
@@ -458,7 +457,7 @@ def freshness_violations(base: str = "http://127.0.0.1:8000") -> list[dict]:
         except Exception as e:
             return {"__err__": f"{type(e).__name__}: {e}"}
 
-    probe = get("/api/spot?ticker=SPY")
+    probe = get("/api/health")
     if "__err__" in probe:
         return [{"concept": "(console unreachable)", "detail": probe["__err__"][:70],
                  "unreachable": True}]

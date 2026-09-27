@@ -19,8 +19,6 @@ _LOCALE_DATE_RE = re.compile(r"\.toLocaleDateString\s*\(")
 # Tracked UI surfaces that may group/label by calendar date.
 _SCAN_RELS = (
     "static/index.html",
-    "static/ops.html",
-    "static/governance.html",
 )
 
 

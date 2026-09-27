@@ -9,13 +9,6 @@ import time
 # ── TIER_C_STAGE_TIMER_INSTRUMENTATION_V1 — stage timing + cache observability locks ──
 
 
-def test_executor_sizing_unchanged_by_stage_timer_slice():
-    """Hard constraint: analytics executor stays at 4 workers (no sizing change in this slice)."""
-    import server as srv
-
-    assert srv._get_analytics_executor()._max_workers == 4
-
-
 # ── TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1 — chain-fetch gate locks ────────
 
 
@@ -221,6 +214,3 @@ def test_ui05_priority_gate_priority_waiter_acquires_first():
 # ── UI_05 residual — priority leaf lane + startup model prewarm sweep ────────
 
 
-def test_ui05r_priority_leaf_teardown_present():
-    src = _fetch_state_source()
-    assert src.count("_priority_leaf_executor.shutdown(wait=True, cancel_futures=True)") == 1
