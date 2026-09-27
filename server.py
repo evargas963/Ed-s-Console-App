@@ -20,6 +20,7 @@ from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
 from time_et import (ET, now_et, RTH_OPEN_MINS, is_capturable_session, et_date_str_from_ts_utc,
+                     et_minute_total_from_ts_utc,
                      is_trading_day_et, session_close_mins_for_et_date, session_label)
 
 import json
@@ -150,8 +151,6 @@ _install_visual_severity_markers(logging.INFO)
 log = logging.getLogger("ed_server")
 
 
-
-
 # ── Import all existing Ed Console modules (unchanged) ───────────────────────
 from config import build_config, load_dotenv_file
 
@@ -277,16 +276,6 @@ def schwab_capability_state() -> tuple[str, str]:
         _client = state.client
         return "AVAILABLE", ""
     return "UNAVAILABLE", (state.message or "").strip()
-
-
-
-
-
-
-
-
-
-
 
 
 # ── TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1 — serialize Schwab chain fetches ──
@@ -449,8 +438,6 @@ _chain_inflight_lock = threading.Lock()
 _chain_inflight: dict = {}
 
 
-
-
 #: Precedence for the ONE spot authority. Highest wins; every entry records where the
 #: number came from so a caller can never silently accept a lower-confidence source.
 #
@@ -564,8 +551,6 @@ def _install_signal_handlers() -> None:
         except (ValueError, OSError, AttributeError) as e:
             # Not the main thread, or the platform lacks it — never fatal.
             log.debug("could not install handler for %s: %s", sig, e)
-
-
 
 
 def resolve_spot(ticker: str, *, chain_json: dict | None = None,
@@ -737,15 +722,6 @@ UI_MAXIMIZE_SLA_MS: dict[str, int] = {
 }
 
 
-
-
-
-
-
-
-
-
-
 # ── L1 light SSE (/api/analytics/light/stream) — event-driven delivery; same payload as HTTP GET ──
 _l1_light_sse_clients: list[tuple[asyncio.Queue, tuple[str, str | None]]] = []
 _l1_light_sse_lock = threading.Lock()
@@ -864,16 +840,6 @@ def _l1_light_sse_release(q: asyncio.Queue, key: tuple[str, str], rs_key: tuple[
             _l1_light_sse_remote_scope[rs_key] = left
 
 
-
-
-
-
-
-
-
-
-
-
 def _l1_put_l1_client_queue(q: asyncio.Queue, env: dict) -> None:
     """
     Per-client asyncio.Queue (maxsize=8): on QueueFull, drop oldest pending event for this
@@ -941,8 +907,6 @@ _db_fill_outcomes_executor: Optional[ThreadPoolExecutor] = None
 _recompute_leaf_executor: Optional[ThreadPoolExecutor] = None
 
 
-
-
 def _get_route_offload_executor() -> ThreadPoolExecutor:
     global _route_offload_executor
     if _route_offload_executor is None:
@@ -970,15 +934,6 @@ def _get_l1_sse_dispatch_executor() -> ThreadPoolExecutor:
     return _l1_sse_dispatch_executor
 
 
-
-
-
-
-
-
-
-
-
 # Tier C — background _fetch_state only; HTTP handlers never await heavy work.
 _analytics_executor: Optional[ThreadPoolExecutor] = None
 _analytics_bg_shutdown: bool = False
@@ -998,8 +953,6 @@ def _get_analytics_executor() -> ThreadPoolExecutor:
             thread_name_prefix="ed_analytics_bg",
         )
     return _analytics_executor
-
-
 
 
 def _startup_analytics_executor() -> None:
@@ -1022,138 +975,9 @@ def _shutdown_analytics_executor(*, wait: bool = True) -> None:
             log.debug("analytics executor shutdown: %s", exc)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def _charm_book_scope(contracts: object) -> str:
-    """Which BOOK a charm figure was summed over, counted from the contracts themselves.
-
-    RC-288: this was the literal `"full_chain_banked"`, and `static/exposure.html` carries
-    the same literal as its fallback — a label written identically at both ends can never
-    disagree with itself, so it could not detect the one thing it exists for.
-
-    It is worth detecting. `compute_net_charm` runs on ONE selected expiry while
-    `compute_charm_by_strike` runs on the whole chain, so "charm" names two different
-    quantities depending on which producer answered, and the Exposure tab renders them
-    under one heading. Counting distinct expirations reports the book actually used and
-    changes on its own if the producer changes.
-
-    Absence is reported as absence: an empty or unreadable chain yields "unknown", never a
-    confident "full_chain_banked" for a book nobody looked at (RC-274).
-    """
-    if not isinstance(contracts, list) or not contracts:
-        return "unknown"
-    expiries = {
-        str(c.get("expirationDate") or c.get("expiry") or "").strip()
-        for c in contracts if isinstance(c, dict)
-    }
-    expiries.discard("")
-    if not expiries:
-        return "unknown"
-    if len(expiries) == 1:
-        return f"single_expiry_banked:{sorted(expiries)[0][:10]}"
-    return "full_chain_banked"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #: a prior session with fewer 1-minute bars than this (of ~390 RTH minutes) is disclosed as
 #: partial on the price levels built from it
 LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
-
-
-
 
 
 # (REST fast-quote writer DELETED 2026-09-24, independent-audit finding #3: it wrote REST
@@ -1161,16 +985,6 @@ LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
 # merge onto the prior row, so the next streamed delta could inherit REST bid/ask under the
 # schwab_streaming_level_one label. It also served a stale row "carried forward" on auth
 # failure. The plane now has ONE writer: the stream. /api/fast-quote reads it.)
-
-
-
-
-
-
-
-
-
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1211,15 +1025,7 @@ def _refresh_window_ct(et_date: str) -> str:
 # find forward bars at +1/+5/+15/+60m and the daily scoreboard never scored them.
 
 
-
 # ETF zone classification (spy_zone / qqq_zone / iwm_zone)
-
-
-
-
-
-
-
 
 
 # Builds OHLC bars from spot price ticks. Server polls every ~30s, so:
@@ -1237,17 +1043,10 @@ from timeframe_config import CANONICAL_TIMEFRAME
 # the server AT BOOT -- loud, immediate, and impossible to trade through unnoticed. This
 # also ends the fail-open/fail-closed argument (Cursor audit 2026-07-20): the runtime
 # path now has no failure mode to pick a policy for.
-from calibration.option_chain_accrual import (
-    accrual_window as gex_accrual_window,
-    persist_chain_accrual,
-    et_date_and_mins as gex_et_date_and_mins,
-)
 from calibration.complete_chain_capture import (
     COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
     last_capture_per_day,
 )
-
-
 
 
 def _read_bars_1m(tk: str, limit: int) -> list:
@@ -1271,8 +1070,6 @@ def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> "list[Candle]":
     absent, never filled in."""
     return [Candle(ts=float(r[0]), open=r[1], high=r[2], low=r[3], close=r[4], volume=r[5])
             for r in _read_bars_1m(tk, limit)]
-
-
 
 
 def _bar_dict(c: "Candle") -> dict:
@@ -1311,13 +1108,6 @@ def start_bar_writer() -> None:
     threading.Thread(target=_bar_writer, name="bar-writer", daemon=True).start()
 
 
-
-
-
-
-
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # BACKGROUND MULTI-TICKER LOGGER
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1353,7 +1143,6 @@ CORE_TICKERS:   list[str] = []
 RTH_ONLY:       bool      = True  # only log during RTH + 30min pre/post buffer
 
 
-
 def _market_context_panel_auto_candidates() -> list[str]:
     """Symbols quoted every ``fetch_market_context`` cycle (excluding ``CORE_TICKERS`` duplicates)."""
     core_u = frozenset((c or "").upper().strip() for c in CORE_TICKERS)
@@ -1372,10 +1161,6 @@ def _sync_market_context_panel_into_logging_universe(db, now_ts: float) -> None:
             )
     except Exception as e:
         log.warning("logging_universe panel_auto sync failed: %s", e)
-
-
-
-
 
 
 # ── Legacy flat JSON (pre–Issue 22). Migrated idempotently via EdDB (migration_log + transaction).
@@ -1403,8 +1188,6 @@ def _run_legacy_logger_json_migration(db) -> None:
             log.info("Issue 22 legacy logger json migration: %s", r)
     except Exception as e:
         log.warning("legacy logger json migration: %s", e)
-
-
 
 
 def _hydrate_logger_tickers_from_db() -> None:
@@ -1454,7 +1237,6 @@ _logger_running:  bool      = False
 _logger_lock:     threading.Lock   = threading.Lock()
 
 
-
 def _is_loggable_session() -> bool:
     """
     Background snapshot logging session gate (Issue 22 — explicit product policy).
@@ -1480,12 +1262,6 @@ def _is_loggable_session() -> bool:
     return win is not None and win[0] <= et.hour * 60 + et.minute <= win[1]
 
 
-
-
-
-
-
-
 def _touch_tracked_ticker_view(ticker: str) -> None:
     """VIEW-path last-seen touch — TICKER-PREVIEW-NO-ENROLL (operator 2026-05-31).
 
@@ -1509,74 +1285,10 @@ def _touch_tracked_ticker_view(ticker: str) -> None:
         log.debug("view touch_seen failed ticker=%s: %s", t, e, exc_info=True)
 
 
-
-
-
-
-
-
-
-
 # _operator_mode_cycle_roster REMOVED 2026-08-25 (RC-493): it throttled the background
 # logger to trio + one rotating guest while a viewer was connected, refreshing non-trio
 # tickers only ~once per 30 min — the operator ruled universal collection unconditional, so
 # the throttle is gone (see _logger_loop) rather than left as dead code (RC-474 class).
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1591,62 +1303,6 @@ def _touch_tracked_ticker_view(ticker: str) -> None:
 
 
 # Last good bid-ask width (pts) when quote had both sides — reused if a poll drops one side
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 async def _l1_light_sse_dispatch_loop() -> None:
@@ -1681,16 +1337,6 @@ async def _l1_light_sse_dispatch_loop() -> None:
             if csk != sk:
                 continue
             _l1_put_l1_client_queue(q, env)
-
-
-
-
-
-
-
-
-
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1845,7 +1491,6 @@ async def _app_lifespan(app):
     asyncio.create_task(_l1_light_sse_dispatch_loop())
 
 
-
     yield
 
     # ── Shutdown ───────────────────────────────────────────────────────────
@@ -1968,16 +1613,6 @@ def favicon():
     return Response(status_code=204)
 
 
-
-
-
-
-
-
-
-
-
-
 def _merged_recent_crosses(edb, ticker: str, n: int) -> "tuple[list[dict], int]":
     """The newest `n` level crosses with coincident rows merged into one event, and how many
     stored rows they came from. The one reader of level crosses for every route."""
@@ -2018,10 +1653,6 @@ def _required_ticker(ticker: Optional[str]) -> str:
     if not t:
         raise HTTPException(status_code=400, detail="ticker is required")
     return t
-
-
-
-
 
 
 # ── TERRAIN COLLECTION LOOP ──────────────────────────────────────────────────
@@ -2426,44 +2057,9 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
             "levels_quarantined": bool(quarantined), **token}
 
 
-#: RC-159 accrual cadence, stated rather than implied: ONE floor between writes for every
-#: ticker (universality, operator 2026-09-23 -- it used to be 60s for SPY/QQQ/IWM and 300s for
-#: everyone else). A FLOOR, not a schedule: the terrain loop's own cycle still governs when a
-#: chain exists to bank, and a full-board cycle is longer than this floor.
-ACCRUAL_MIN_INTERVAL_SEC: float = 60.0
 #: Rotation depth inside the 09:30-10:00 contention window for tickers nobody is viewing: each
 #: still refreshes at least once per this many seconds.
 CONTENTION_ROTATION_SEC: float = 300.0
-_accrual_last_write: dict[str, float] = {}
-_accrual_lock = threading.Lock()
-
-
-def _accrue_chain_observation(tk: str, snap) -> None:
-    """Bank one wide-chain per-strike observation. Never raises into the producer.
-
-    A failure to ARCHIVE must never take down the loop that FEEDS the screen: collection is
-    downstream of display, and losing a row is recoverable while losing the refresh is not.
-    """
-    try:
-        _d, mins = gex_et_date_and_mins()
-        if not gex_accrual_window(mins):
-            return
-        floor = ACCRUAL_MIN_INTERVAL_SEC
-        now = time.time()
-        with _accrual_lock:
-            if now - _accrual_last_write.get(tk, 0.0) < floor:
-                return
-            _accrual_last_write[tk] = now
-        rows = (getattr(snap, "per_strike", None) or {}).get("all") or []
-        if not rows:
-            return                      # absence stays absence; never bank an empty observation
-        res = persist_chain_accrual(
-            get_db().db_path, ticker=tk, per_strike_rows=rows,
-            spot=getattr(snap, "spot", None), ts_utc=now)
-        if res.get("status") != "written":
-            log.debug("chain accrual %s: %s", tk, res)
-    except Exception as e:
-        log.warning("chain accrual failed for %s: %s", tk, e)
 
 
 #: RC-161 — the morning contention guard's OWN start, decoupled from the archive write gate.
@@ -3113,7 +2709,6 @@ def _log_level_crosses(tk: str, prev_spot: "float | None", snap: "TerrainSnapsho
         ts_et=now_et().strftime("%Y-%m-%d %H:%M:%S ET"))
 
 
-
 def _vanna_rows(snap: "TerrainSnapshot") -> list:
     """[strike, net dealer vanna] for every strike with open interest, from the published book:
     each strike's net_vanna as compute_exposures_by_strike computed it (+call/-put)."""
@@ -3245,13 +2840,6 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             payload = _terrain_cache[tk]
             payload.update(atr_daily=round(_atr.daily, 3) if _atr.daily else None,
                            atr_15m=round(_atr.m15, 3) if _atr.m15 else None)
-        # RC-159 (operator mandate 2026-07-30): ACCRUE the wide chain across
-        # [09:15, 16:15] ET == [08:15, 15:15] CT. The chain is already fetched and the
-        # per-strike map already computed above, so this costs ZERO additional vendor calls —
-        # it persists what RC-68 kept in memory and then discarded every cycle. Sentinels bank
-        # every minute; the rest of the board every five, because 40 tickers x 1/min of
-        # per-strike JSON is hundreds of MB a day for data no surface reads at that resolution.
-        _accrue_chain_observation(tk, snap)
         _log_flip_drift(tk, payload)
         _terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
         _note_terrain_success(tk)                   # RC-148: and the failure streak with it
@@ -3433,7 +3021,7 @@ def _terrain_loop() -> None:
             # terrain sweep on top of that — refresh sentinels only until the window ends.
             # No try/except: the imports are module-level, so this path cannot fail at
             # runtime — a missing module stops the server at boot instead.
-            _d, _mins = gex_et_date_and_mins()
+            _mins = et_minute_total_from_ts_utc(time.time())
             _terrain_cycle_n += 1
             _all_this_cycle = list(tickers)
             try:
@@ -3585,14 +3173,6 @@ def _atr_pair(ticker: str) -> "AtrPair":
     with _atr_lock:
         _atr_cache[tk] = (time.time(), pair)
     return pair
-
-
-
-
-
-
-
-
 
 
 #: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
@@ -4095,7 +3675,7 @@ def get_forces(ticker: str = Query(...)):
                     charm_err = "charm_by_strike empty on newer banked chain"
                 else:
                     # RC-276: a strike with no net_charm is not a strike with zero charm.
-                    # Summed as 0.0 it silently tilted the below/above pair the Exposure tab
+                    # Summed as 0.0 it silently tilted the below/above pair the console
                     # renders as dealer charm pressure.
                     from numeric_contract import float_finite_or_none as _fin_ch
 
@@ -4119,15 +3699,6 @@ def get_forces(ticker: str = Query(...)):
                 "strikes_diffed": len(doi),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
-                # RC-288: DERIVED from the chain actually summed, not asserted. This was the
-                # string literal "full_chain_banked", and static/exposure.html hardcodes the
-                # same literal as its fallback — a label identical on both sides of the wire
-                # can never disagree with itself, so it could not detect the one thing it
-                # exists for. It matters because the repo computes charm two ways:
-                # compute_net_charm on ONE selected expiry, compute_charm_by_strike on the
-                # whole book. Counting the distinct expiries in `contracts` reports which
-                # book these numbers came from and changes if the producer ever changes.
-                "charm_book_scope": _charm_book_scope(c1),
                 "charm_error": charm_err,
                 "newer_et_date": d1, "older_et_date": d0, "bucket_spot": spot1,
                 "method": ("per-strike OI delta first, bucketed by the newer capture's spot; "
@@ -4136,58 +3707,6 @@ def get_forces(ticker: str = Query(...)):
             }
     except Exception as e:
         payload = {"ticker": tk, "available": False, "reason": f"forces read failed: {e}"}
-    return JSONResponse(payload)
-
-
-#: RC-208 (re-landed with RC-210): the banked intraday accrual frames — the only per-minute
-#: per-strike exposure time series the console has.
-
-
-@app.get("/api/exposure/flow")
-def get_exposure_flow(ticker: str = Query(...)):
-    """RC-208: serve option_chain_accrual frames for the latest banked session so the
-    Exposure tab paints per-minute Pika/Barney structure, the intraday King path, and
-    volume-delta bubbles at the minute they happened. per_strike_json served verbatim
-    ([[strike, gex_dollars, session_volume], ...]; MEASURED: SPY 07-31 = 133 frames, ET
-    minutes 556-975), spot-windowed ±5%."""
-    import sqlite3 as _sq
-
-    tk = ticker_storage_key(_required_ticker(ticker))
-    payload: dict = {"ticker": tk, "available": False,
-                     "reason": "no banked accrual frames for this ticker"}
-    try:
-        db = get_db()
-        frames: list[dict] = []
-        latest = None
-        con = _sq.connect(f"file:{db.db_path}?mode=ro", uri=True, timeout=10.0)
-        try:
-            latest = con.execute(
-                "SELECT MAX(et_date) FROM option_chain_accrual WHERE ticker=?", (tk,),
-            ).fetchone()
-            if latest and latest[0]:
-                for ts, m, spot, psj in con.execute(
-                        "SELECT ts_utc, et_minute, spot, per_strike_json "
-                        "FROM option_chain_accrual WHERE ticker=? AND et_date=? "
-                        "ORDER BY ts_utc", (tk, latest[0])):
-                    try:
-                        rows2 = json.loads(psj)
-                    except (ValueError, TypeError):
-                        continue
-                    sp = float(spot) if spot is not None else None
-                    if sp:
-                        rows2 = [r for r in rows2 if abs(float(r[0]) - sp) <= sp * 0.05]
-                    frames.append({"t": int(float(ts) // 60) * 60, "m": int(m),
-                                   "spot": sp, "rows": rows2})
-        finally:
-            con.close()
-        if frames:
-            payload = {"ticker": tk, "available": True, "et_date": latest[0],
-                       "n_frames": len(frames), "frames": frames,
-                       "method": ("option_chain_accrual per_strike_json verbatim "
-                                  "[[strike, gex_dollars, session_volume]...], "
-                                  "spot-windowed ±5%, latest banked session")}
-    except Exception as e:
-        payload = {"ticker": tk, "available": False, "reason": f"flow read failed: {e}"}
     return JSONResponse(payload)
 
 
@@ -4550,23 +4069,10 @@ def get_spot(ticker: str = Query(...)):
             done.set()
 
 
-@app.get("/exposure", response_class=HTMLResponse)
-def exposure_page():
-    """RC-200 (re-landed with RC-210) — the Exposure Overlay tab: dealer positioning on
-    price (operator #1 project, LIVE order 2026-08-02)."""
-    p = static_dir / "exposure.html"
-    if not p.exists():
-        return HTMLResponse("<p>static/exposure.html not found</p>", status_code=404)
-    return HTMLResponse(_with_live_ui_port(p.read_text(encoding="utf-8")),
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
-
-
-
 # RC-UI-1's dev route (/console) converged into `/` here (operator directive 2026-09-14):
 # static/console.html was renamed to static/index.html in this same commit, so the existing
 # `/` route above (root(), reading static_dir/index.html) now serves it directly. No
 # transitional dual-serving period -- /console is gone, not aliased.
-
 
 
 @app.get("/api/terrain")
@@ -4618,10 +4124,6 @@ def get_terrain(ticker: str = Query(...)):
         # is not a flag, and "absent" is indistinguishable from "healthy" to every reader.
         **terrain_staleness(None, tk),
     }
-
-
-
-
 
 
 def _sse_event_name_for_envelope(env) -> str:
@@ -4787,10 +4289,6 @@ async def get_analytics_light_stream(
             "X-Accel-Buffering": "no",
         },
     )
-
-
-
-
 
 
 @app.get("/api/order-flow/microstructure")
@@ -5052,10 +4550,6 @@ def _watchlist_row(t: str) -> "dict | None":
     }
 
 
-
-
-
-
 @app.get("/api/expiries")
 # SWITCH-LATENCY FIX: sync def → threadpool (DB write + Schwab expiry fetch, no await).
 def get_expiries(ticker: str = Query(...)):
@@ -5066,8 +4560,6 @@ def get_expiries(ticker: str = Query(...)):
     return JSONResponse({"expiries": t.get("expiries") or [],
                          "dte": t.get("expiry_dte") or {},   # Schwab's daysToExpiration, as sent
                          "reason": None if t.get("expiries") else "levels not computed yet"})
-
-
 
 
 def _adjusted_deliverable(ct: dict, ticker: str) -> bool:
@@ -5389,8 +4881,6 @@ def api_build():
         # been attempted yet) -- a non-empty entry is a real, named degradation to
         # in-memory-only-this-session for that ticker, never silent.
     }
-
-
 
 
 def _canonical_price_level_bars(tk: str, session_date) -> tuple[list, str, list]:
@@ -5829,7 +5319,5 @@ def get_liquidity_snapshot(
         return JSONResponse({"error": e.detail}, status_code=e.status_code)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
-
-
 
 

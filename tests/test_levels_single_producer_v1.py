@@ -392,7 +392,7 @@ def test_domain_faucet_registry_negative_control():
         "check_domain_faucet_registry callee stayed silent on an unregistered producer"
     )
     ok = domain_faucet_violations(
-        "server.py", '@app.get("/api/exposure/flow")\ndef f(): pass', registry_text)
+        "server.py", '@app.get("/api/forces")\ndef f(): pass', registry_text)
     assert not ok, "a REGISTERED producer must not scream"
 
 

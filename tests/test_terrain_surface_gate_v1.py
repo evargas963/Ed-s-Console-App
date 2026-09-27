@@ -44,7 +44,6 @@ def _stub_terrain(monkeypatch, proj):
     monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [dict(ct) for ct in _REAL_CHAIN])
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (100.0, "stub", 0.0))
     monkeypatch.setattr(server, "compute_terrain", lambda tk, contracts, spot, **k: Snap(contracts))
-    monkeypatch.setattr(server, "_accrue_chain_observation", lambda *a, **k: None)
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
     monkeypatch.setattr(server, "_atr_pair", lambda t: types.SimpleNamespace(daily=None, m15=None))
     monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
@@ -269,7 +268,7 @@ def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(mon
     monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
     # midday ET: between 09:30 and 10:00 the loop defers tickers, and this test failed whenever
     # it ran then (2026-09-27 audit); the minute is fixed, not read from the clock
-    monkeypatch.setattr(server, "gex_et_date_and_mins", lambda ts_utc=None: ("2026-09-28", 720))
+    monkeypatch.setattr(server, "et_minute_total_from_ts_utc", lambda ts_utc: 720)
     real_refresh = server._terrain_refresh_one
 
     def spy_refresh(tk, priority=False):

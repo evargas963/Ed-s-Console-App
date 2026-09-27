@@ -97,21 +97,6 @@ FRESH_LIMITS = {"LIVE": 60, "LOOP": 180, "DB_TABLE": 300, "ARCHIVE": 86400}
 #: `authorities` are the only functions allowed to decide between sources. A read anywhere else is
 #: a private precedence — that line picks its own faucet, and two such lines is two prices.
 CLIENT_CONCEPTS: dict[str, dict] = {
-    # RC-225: exposure had the same silent strikes/terrain age fork; same structural rule.
-    "exposure_spot": {
-        "files": ("static/exposure.html",),
-        "reader": r"\bliveSpot\b|\b[A-Za-z_$][\w$]*\.spot\b",
-        "authorities": (
-            "currentSpot",
-            "spotBindingAgeSec",
-            "spotBindingStale",
-            "spotBindingAgeLabel",
-        ),
-        # the daemon price socket (Stage 1 of the live-UI architecture) replaced the /api/spot
-        # poll: one row writer plus the silence watchdog that withdraws it
-        "writers": ("ingestSpotRow", "checkSpotSilence"),
-        "assign_only": r"\bliveSpot\w*\s*=",
-    },
     # RC-77. The console page carries the same defect class on a much larger surface, so its
     # reader is NARROW BY NECESSITY rather than by preference: `r.spot` on a ladder row is a
     # boolean "this is the spot row" flag, not a price, and a check that flags it would be a
