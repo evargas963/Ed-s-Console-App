@@ -8,6 +8,7 @@ import sys
 import time
 import asyncio
 import logging
+from logging.handlers import RotatingFileHandler
 import concurrent.futures
 import contextlib
 import threading
@@ -66,14 +67,6 @@ class _LevelMarkerFormatter(logging.Formatter):
         return marker + super().format(record)
 
 
-class _FlushingFileHandler(logging.FileHandler):
-    """FileHandler that flushes after every emit so quiet-window gates see live lines."""
-
-    def emit(self, record: logging.LogRecord) -> None:
-        super().emit(record)
-        self.flush()
-
-
 # Quiet-window / LIVE closeout sink. Root handler so ANY logger (db, ed_server,
 # uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
 # RC-523: under the RUNTIME root (runtime_layout), which is this checkout unless
@@ -97,7 +90,9 @@ def install_ed_server_file_sink(
     *,
     level: int = logging.INFO,
 ) -> logging.Handler:
-    """Attach a flushing plain FileHandler on the root logger for logs/ed_server.log.
+    """Attach the log file on the root logger for logs/ed_server.log: rotated at 50 MB with one
+    previous file kept, the capture daemon's own policy (the plain file reached 1.3 GB, 2026-09-27).
+    Every record is flushed as it is written (logging.StreamHandler.emit).
 
     Captures all loggers (root). INFO+ so a healthy process proves the sink is
     alive (gate fail-closes on a stale file); WARNING+/ERROR/CRITICAL still
@@ -115,7 +110,7 @@ def install_ed_server_file_sink(
                 existing = ""
             if existing == abs_target:
                 return h
-    handler = _FlushingFileHandler(path, encoding="utf-8")
+    handler = RotatingFileHandler(path, maxBytes=50 * 1024 * 1024, backupCount=1, encoding="utf-8")
     handler.setLevel(level)
     handler.setFormatter(
         _console_formatter(use_ansi=False)
