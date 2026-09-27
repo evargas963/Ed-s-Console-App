@@ -561,6 +561,20 @@ def wall_geometry_state(spot: float | None, wall: float | None,
     raise ValueError(f"side must be 'call' or 'put', got {side!r}")
 
 
+def wall_lean(call_wall, put_wall, call_state, put_state, regime, confidence) -> tuple:
+    """(call, put) wall labels as the chart states them: one strike holding both walls is
+    TWO-SIDED (a magnet, not a barrier); a breached wall says so; a containing wall earns the
+    dealer lean (resistance: dealers sell, support: dealers buy) only on a TRUSTED flip with a
+    regime; otherwise None. Moved from static/chart.html (RC-83/RC-130/RC-131)."""
+    if call_wall is not None and call_wall == put_wall:
+        return ("TWO-SIDED — magnet, not a barrier",) * 2
+    earn = regime != "UNAVAILABLE" and confidence == "TRUSTED"
+    def one(state, breached, lean):
+        return breached if state == "breached" else lean if state == "contains" and earn else None
+    return (one(call_state, "BREACHED — spot above", "DEALERS SELL"),
+            one(put_state, "BREACHED — spot below", "DEALERS BUY"))
+
+
 #: RC-292 pin-candidate qualification thresholds. Hardwired, not configurable. Each cites
 #: its source; neither is a new invention:
 #: — proximity: strike within 0.5% of spot — the "strike near spot" cut of the operator's

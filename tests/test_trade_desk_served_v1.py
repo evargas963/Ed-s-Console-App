@@ -81,6 +81,44 @@ def test_wall_distances_and_flip_relation_are_served():
                                     else "ABOVE" if live >= payload["gamma_flip"] else "BELOW")
 
 
+def _crwd_repriced_at(live, pin_clock):
+    pin_clock(2026, 9, 2, 12, 0)
+    fx = _load("real_crwd_complete_chain_quarter.json")
+    payload = {**compute_terrain("CRWD", [dict(c) for c in fx["chain"]], float(fx["spot"])).to_dict(),
+               "computed_ts_utc": time.time()}
+    orig = server.resolve_spot
+    server.resolve_spot = lambda t, **k: (live(payload), "live_quote", time.time())
+    try:
+        return payload, server._reprice_cached_terrain(payload, "CRWD")
+    finally:
+        server.resolve_spot = orig
+
+
+def test_a_breached_wall_says_so_at_the_live_price(pin_clock):
+    """Real CRWD chain; stand-in live prices one dollar beyond each wall."""
+    payload, out = _crwd_repriced_at(lambda p: p["call_wall"] + 1.0, pin_clock)
+    assert out["call_wall_state"] == "breached" and out["call_wall_lean"] == "BREACHED — spot above"
+    payload, out = _crwd_repriced_at(lambda p: p["put_wall"] - 1.0, pin_clock)
+    assert out["put_wall_state"] == "breached" and out["put_wall_lean"] == "BREACHED — spot below"
+
+
+def test_a_containing_wall_earns_the_dealer_lean_only_on_a_trusted_flip(pin_clock):
+    payload, out = _crwd_repriced_at(lambda p: (p["call_wall"] + p["put_wall"]) / 2, pin_clock)
+    assert out["call_wall_state"] == out["put_wall_state"] == "contains"
+    earned = out["regime"] != "UNAVAILABLE" and payload["confidence"] == "TRUSTED"
+    assert out["call_wall_lean"] == ("DEALERS SELL" if earned else None)
+    assert out["put_wall_lean"] == ("DEALERS BUY" if earned else None)
+
+
+def test_one_strike_holding_both_walls_is_two_sided():
+    from terrain_engine import wall_lean
+    assert wall_lean(770.0, 770.0, "contains", "breached", "LONG_GAMMA_CHOP", "TRUSTED") == (
+        ("TWO-SIDED — magnet, not a barrier",) * 2)
+    assert wall_lean(780.0, 760.0, "contains", "contains", "LONG_GAMMA_CHOP", "TRUSTED") == ("DEALERS SELL", "DEALERS BUY")
+    for regime, conf in (("UNAVAILABLE", "TRUSTED"), ("LONG_GAMMA_CHOP", "LEVEL_APPROX_NARROW_SPAN")):
+        assert wall_lean(780.0, 760.0, "contains", "contains", regime, conf) == (None, None)
+
+
 @pytest.fixture
 def spy_levels(monkeypatch, pin_clock):
     bars = _load("real_spy_1m_bars_2026_09_24_25.json")["bars"]
