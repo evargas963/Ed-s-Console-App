@@ -22,7 +22,8 @@ const { test, expect } = require('@playwright/test');
 // heatmap, the Chart and GEX-by-strike.
 const STRIKES_WIDE = (function () {
   const all = [];
-  for (let k = 120; k >= 80; k--) all.push([k, (k % 2 ? 1 : -1) * (100000 + k * 10), 1000]);
+  // in strike order, as the server serves them (terrain_engine._per_strike_rows)
+  for (let k = 80; k <= 120; k++) all.push([k, (k % 2 ? 1 : -1) * (100000 + k * 10), 1000]);
   return { ticker: 'SPY', spot: 100, spot_strike: 100, today: { all: all } };
 })();
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 106, put_wall: 94,

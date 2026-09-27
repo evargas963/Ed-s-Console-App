@@ -295,12 +295,12 @@
     // ±6% window kept 92 of them and crushed the panel). `rows` is the current canonical input, so
     // the disclosure below states exactly how many of them are on screen vs clipped; All available
     // scrolls the complete population at the same row height.
-    var asc = rows.slice().sort(function (a, b) { return a[0] - b[0]; });
+    var asc = rows;   // served in strike order
     var ascStrikes = asc.map(function (r) { return r[0]; });
     var sel = (window.EdShell && window.EdShell.scopeSelect)
       ? window.EdShell.scopeSelect(ascStrikes, _gbsPanAnchor != null ? _gbsPanAnchor : d.spot_strike)
       : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
-    var win = sel.idx.map(function (i) { return asc[i]; }).sort(function (a, b) { return b[0] - a[0]; });
+    var win = sel.idx.map(function (i) { return asc[i]; }).reverse();   // high strikes on top
     var note = (window.EdShell && window.EdShell.scopeNote)
       ? window.EdShell.scopeNote({ total: rows.length, shown: win.length }) : '';
     // A manual pan is never silent (same discipline the heatmap grid's own note uses).
@@ -610,12 +610,12 @@
       }
       // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
       var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
-      var asc = d.rows.slice().sort(function (a, b) { return a[0] - b[0]; });
+      var asc = d.rows;   // served in strike order
       var ascStrikes = asc.map(function (r) { return r[0]; });
       var sel = (window.EdShell && window.EdShell.scopeSelect)
         ? window.EdShell.scopeSelect(ascStrikes, _panAnchor != null ? _panAnchor : d.spot_strike)
         : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
-      var win = sel.idx.map(function (i) { return asc[i]; }).sort(function (a, b) { return b[0] - a[0]; });
+      var win = sel.idx.map(function (i) { return asc[i]; }).reverse();   // high strikes on top
       var note = (window.EdShell && window.EdShell.scopeNote)
         ? window.EdShell.scopeNote({ total: d.rows.length, shown: win.length }) : '';
       if (_panAnchor != null) note += '<div class="gbs-allexp">PANNED to ' + px(_panAnchor, _panAnchor % 1 ? 2 : 0) +
@@ -686,21 +686,14 @@
   // ADJUSTED DELIVERABLE: served per contract (server.py _adjusted_deliverable)
   function renderStructures(host, d, tk) {
     var src = document.getElementById('stSrc'); if (src) src.textContent = '';
-    var cs = (d && d.contracts) || [];
-    if (!cs.length) {
+    var ladder = ((d && d.ladder) || []).filter(function (r) { return r.first; });   // served: one row per strike, high to low
+    if (!ladder.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
         (d ? esc(window.EdShell.chainEmptyText(d)) : 'no console serving /api/chain') + '</div></div>';
       return;
     }
-    var byStrike = {};
-    cs.forEach(function (c) {
-      var k = Number(c.strikePrice);
-      var b = byStrike[k] || (byStrike[k] = {});
-      b[(c.putCall || '').toUpperCase() === 'PUT' ? 'put' : 'call'] = c;
-    });
-    var strikes = Object.keys(byStrike).map(Number).sort(function (a, b) { return b - a; });
-    var rows = strikes.map(function (k) {
-      var b = byStrike[k], rep = b.call || b.put;   // settlement/exercise/expiration/multiplier are contract-level, same both sides at one strike/expiry
+    var rows = ladder.map(function (r) {
+      var k = r.strike, rep = r.call || r.put;   // settlement/exercise/expiration/multiplier are contract-level, same both sides at one strike/expiry
       var flags = [
         _flag('NON-STD', rep.nonStandard === true),
         _flag('PENNY', rep.pennyPilot === true),
