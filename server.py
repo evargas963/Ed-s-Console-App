@@ -3186,7 +3186,7 @@ def _log_level_crosses(tk: str, prev_spot: "float | None", snap: "TerrainSnapsho
 
 def _vanna_rows(snap: "TerrainSnapshot") -> list:
     """[strike, net dealer vanna] for every strike with open interest, from the published book:
-    net_vanna = call_vanna - put_vanna (+call/-put dealer convention)."""
+    each strike's net_vanna as compute_exposures_by_strike computed it (+call/-put)."""
     from math_exposure_core import merge_exposure_books
     from numeric_contract import float_finite_or_none as _fin
     exposures, _diag = merge_exposure_books(snap.books.values())
@@ -3195,10 +3195,7 @@ def _vanna_rows(snap: "TerrainSnapshot") -> list:
         # call_vanna/put_vanna start as a real 0.0 in every bucket; has_oi is the gate
         if not b.get("has_oi"):
             continue
-        cv, pv = b.get("call_vanna"), b.get("put_vanna")
-        if cv is None and pv is None:
-            continue
-        net = _fin(cv or 0.0) - _fin(pv or 0.0) if (_fin(cv) is not None or _fin(pv) is not None) else None
+        net = _fin(b.get("net_vanna"))
         if net is None:
             continue
         rows.append([round(float(k), 2), round(net, 2)])
@@ -4287,7 +4284,7 @@ def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
     _has_gex_data = bool(_has_oi and bucket.get("has_valid_gamma"))
     gex = _bf(bucket.get("net_gex_1pct")) if _has_gex_data else None
     dex = _bf(bucket.get("net_dex_dollars")) if _has_gex_data else None
-    _vn = bucket["call_vanna"] - bucket["put_vanna"] if _has_gex_data else None
+    _vn = bucket["net_vanna"] if _has_gex_data else None   # the book's own net vanna
     vanna = round(_vn, 2) if _vn is not None else None
     def _legs(legs):
         # the one readers (strike_oi_legs / strike_volume_legs): Schwab's values as sent, 0 a real

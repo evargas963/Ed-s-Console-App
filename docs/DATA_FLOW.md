@@ -125,7 +125,7 @@ does not prove no second one exists under another name.
 | Rule | Check | Covers | Does not cover |
 |---|---|---|---|
 | Schwab as sent | `vendor_field_coercion` | Schwab fields parsed through `numeric_contract` | a reader that bounds or substitutes after parsing |
-| One producer | `one_producer` (`governance/computation_registry.json`) | 6 registered fields computed at one site | 303 other fields `server.py` serves |
+| One producer | `one_producer` (`governance/computation_registry.json`) | 9 registered fields (net GEX, DEX, delta, gamma, vanna, charm at a strike; strike OI and volume totals; the price levels), each found at exactly its producer (measured 2026-09-27) | a duplicate under other names (the 2026-09-27 heatmap `c + p`); a semantic duplicate such as two gamma sources; the 338 fields `server.py` serves that are not registered |
 | One producer: spot | `single_spot_authority` | spot read only through `resolve_spot` in `server.py`, `terrain_engine.py` | page scripts |
 | One producer: levels | `domain_faucet_registry`, `phase2a_single_level_computation`, `chain_width_single_faucet` | level routes registered; price levels computed once; the chain not narrowed | exposure values outside the levels list |
 | UI computes nothing | `single_faucet_provenance` (`tools/data_faucet_audit.py`, `PAGE_CALCULATIONS`) | spot reads in `static/chart.html`; sums, weighted sums, distance to spot, sort by distance, calendar arithmetic, first-key picks in every `static/js/` script | a threshold or comparison that picks a label; the standalone pages' inline scripts |
