@@ -129,7 +129,7 @@ test.describe('D — Gamma Chain subview', () => {
     // interval while the Chain view is active, not by dispatching the old event.
     await page.clock.install();
     let vol = 10;
-    const BIG = () => ({ ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
+    const BIG = () => ({ ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
       scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
       contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, vol, 10, 0.1)) });
     await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BIG()) }));
@@ -196,7 +196,7 @@ test.describe('D — Gamma Chain subview', () => {
     // not a reaction to the generic ed:refresh{slow} broadcast.
     await page.clock.install();
     let vol = 10;
-    const BIG = () => ({ ticker: 'SPY', spot: 100, expiry: '2026-09-11', status: 'ok',
+    const BIG = () => ({ ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
       scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
       contracts: Array.from({ length: 80 }, (_, i) => ct('CALL', 50 + i, 'SPY   260911C00' + (50 + i) + '000', 10, vol, 10, 0.1)) });
     await page.route('**/api/chain*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BIG()) }));
