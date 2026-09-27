@@ -1,112 +1,58 @@
-# Ed Console — Governing Charter
+# Ed Console — rules for every change
 
-## Read first — before any change
+Design: `docs/DATA_FLOW.md`. Work order: `ACTIVE_PROGRAM.md`. Code map: `docs/ARCHITECTURE.md`.
+Read the parts a change touches before writing it.
 
-1. **[`docs/DATA_FLOW.md`](docs/DATA_FLOW.md)** — how data moves from Schwab to the screen, and the
-   operator's rules. Agreed by the operator; every change is built to it.
-2. **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** — where code lives (the module tree),
-   updated in the same change as every move.
-3. **[`ACTIVE_PROGRAM.md`](ACTIVE_PROGRAM.md)** — the current work, in order.
+## Rules (operator; a change that cannot meet one stops and goes to the operator)
 
-Every change states which part of `DATA_FLOW.md` it builds or preserves. A change that does not
-fit it stops and goes to the operator; it is never worked around.
+1. **Simple.** Fewest files, functions and hops that do the job. No prose in code.
+2. **Schwab fields as sent.** No bounds, no substitution. Only -999 or an absent field is not a number.
+3. **One producer.** A value on screen is a Schwab field as sent, or a derived value computed by
+   exactly one function. Consumers carry it; none recompute it.
+4. **The UI computes nothing.** Page code formats and draws. Every number, total, choice,
+   comparison and date the page shows is served.
+5. **No fallbacks.** Missing, stale or invalid shows absent, with its reason. No second source,
+   copy or default.
+6. **One path.** Schwab → daemon memory → pushed to the screen. The database is history: one
+   writer; read at startup, after the close and for research; never for a live screen.
+7. **Nothing without a job.** A change deletes what it replaces, in the same PR.
+8. **All tickers.** Measure and report across the board, never one ticker.
+9. **Clocks.** Market logic in ET; the UI shows Central Time.
 
-**This file is SPECIFICATION. It enforces nothing.** Where it names a mechanism, the code is the
-authority on what that mechanism actually DOES; this file and the records it names are the
-authority on what it MUST do; a measurement is the only authority on what is TRUE. When a
-sentence here misdescribes a mechanism, the sentence is the defect. When a mechanism refuses a
-state that measurement shows true and recorded authority permits, the mechanism is the defect.
-Everything mechanical lives in three places and nowhere else: the guard chain in
-`.claude/settings.json` / `.cursor/hooks.json` (in session — `tools/hook_chain.py` running
-`operator_law_guard`, `process_lock_guard` and `stop_guard` from the session's own checkout),
-`.pre-commit-config.yaml` (at commit), and the two required checks at merge — `pytest-full`
-(the candidate's own tests) and `hardening` (`tools/check_delta_adds_no_debt.py --base
-origin/main`: no new enforced violation of `tools/check_institutional_correctness.py`, no
-undeclared check removal, every closing ledger row's cited command executed). Measured limit,
-not prose: those checks run CANDIDATE code, branch protection matches them by NAME, and the
-operator's credential is the one coding agents use — so the repository cannot mechanically
-defend the checker's predicates against its own author; review of a checker diff (the
-`hardening` log prints VALIDATOR CHANGED when one exists) is the entire boundary. A
-credential-scoped boundary was proposed under GOV-REMOTE-ENFORCEMENT (OPEN_ITEMS.md) and the
-operator explicitly descoped it 2026-09-11 — containing a repository administrator who
-deliberately rewrites its own judge is not this repository's job; that row records the ruling,
-not an active mechanism. A "trusted" lane that judged the candidate with base code was built
-and deleted on 2026-09-10 (RC-546): its overlay still executed candidate root modules, and its
-contract froze ownership.
+## Before writing code
 
-Ed Console is a clean trading intelligence system, institutional in this exact sense: every
-claim rests on a measurement anyone can re-run from the tree; every material fact has one
-canonical owner; every control fails closed and changes only by a reviewed commit; and every
-decision survives its author as a validated choice, a verified implementation, and durable
-evidence. It is built on two convictions:
+- Name each value the change touches and its one producer. One exists: call it. None exists:
+  write it once, on the server.
+- Page code: no arithmetic, sum, min/max, sort by value or date math on served data.
+- A rule check fails on today's code before its fix lands; its exception list starts empty.
 
-**Edge exists — and it is found, not revealed.** Markets carry real, recurring inefficiencies: in structure, in order flow, in dealer positioning and hedging pressure, in volatility behavior, in regime persistence, in patterns that repeat because the participants creating them don't change. None of it announces itself. Edge yields only to deliberate search — the right systems, in place at the right time, applying every tool available to us: market structure, order flow, volatility, dealer positioning, regime analysis, statistical learning, deep learning, simulation, and historical analogs.
+## Before saying done
 
-**Nothing is trusted until proven.** No technique, signal, or model earns a place in the decision path until it proves real predictive edge — out of sample, net of realistic costs, against trivial baselines.
+- `npm run test:all` (Playwright, then pytest) and `python -m ruff check . --select F401,F821,E9`
+  pass. Market hours: push; CI runs them.
+- Every factual claim cites same-turn output, or is marked `[UNVERIFIED]`.
+- After deploy, check the real screen.
 
-It does three things, in order:
+## Found broken → fix it
 
-- **Collect** — preserve high-fidelity, causally honest market data (storage timestamps UTC; sessions from the exchange calendar in exchange timezone; Schwab wire fields consumed directly, CSV-first; no fabricated defaults, no silent fallbacks). The data we capture today is the search space we mine tomorrow — collection is the system that has to be in place before the edge can be found.
-- **Find & Prove** — run a standing search program, not a review board. Generate candidate hypotheses across every tool listed above; subject each to pre-registered experiments (purged/embargoed walk-forward, cost-aware, baseline-compared); kill what fails and keep hunting. Techniques are candidates, not residents. A high kill rate is the sign the search is honest, not that the search is failing.
-- **Decide** — combine only proven edge into calibrated TRADE/WAIT/AVOID; abstain by default; every decision logged and scored against realized outcomes, so the decision layer itself generates the evidence for the next round of search.
+Same session, or name the exact blocker. "Pre-existing", "out of scope" and "follow-up" are not
+dispositions.
 
-**Removal rule:** every file materially serves Collect, Find & Prove, or Decide, or is a supporting control that directly protects one — anything else is removed.
+## Authority
 
-**Placement rule:** the removal rule says what belongs in the repository; [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) says *where*. It documents the current target architecture as intent and hypothesis, not as proof the architecture is good — like every other document in this repository, it is evidence to inspect against professional engineering judgment, not authority to obey because it is written down. When work materially touches an area, move the touched files, responsibilities, imports and ownership toward the documented target **when independent judgment finds the target sound and the movement safe and cohesive** — do not preserve misplaced code merely because tests import it there today, and do not broaden into unrelated repository-wide migration. If the target itself is wrong, impossible, or materially inferior for something you encounter, say so with the evidence and fix it — reversing a demonstrably bad prior design is expected engineering, not an amendment that waits on permission. What still needs the operator is a genuine product or business tradeoff with no answer available in engineering evidence, not a disagreement the code and its behavior can settle. Like the rest of this file, that is specification: no check enforces it.
-
-## Operating model
-
-**The operator directs each session in chat.** Who reads, who writes, who audits is decided per session by the operator — there are no standing AI roles and no per-file authority machinery. **Standing merge authority (operator ruling, 2026-09-11, superseding the narrower per-merge-word rule this paragraph stated through PR #239): a development agent merges its own PR once the mission is fully proven — exact final HEAD known, worktree clean, required CI green on that exact HEAD, PR mergeable, no material FAIL or required NOT_PROVEN remaining, net repository quality improved, no unauthorized scope expansion — without asking for a separate operator MERGE word first, and that includes changes to who-is-in-charge surfaces (workflows, agent settings/hooks, guard rosters, the institutional gate and the tools it imports, the delta gate, every owner a Requirements SCOPE names).** The operator's conversational GO remains the approval channel for the cases this does not cover: a task explicitly marked AUDIT ONLY or DO NOT MERGE, an operator halt word (`STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`) in force, a destructive production/data action, or a material unresolved architecture/policy decision that genuinely has no answer in the repository and requires the operator's judgment — those stop for the operator's explicit word before merging, same as before. *This is a working agreement, not a mechanism: there is no CODEOWNERS file, zero required reviews, and coding agents operate GitHub with the operator's credential, so no repository code can prove WHO changed an enforcement file — required CI is what actually gates an ordinary merge, not a human re-reading the diff. The trust-anchor authorization machinery that tried to make WHO provable (RC-539) was deleted 2026-09-10 (RC-546) and the attempt to replace it with a second-principal/CODEOWNERS architecture was itself descoped 2026-09-11 (RC-539 closing note, RC-475): containing a repository administrator who deliberately rewrites the checker, the gate or the workflow is not this repository's job — coding agents are development agents, and required CI catching honest regressions is the whole technical authority model; the operator's word is reserved for the exceptions named above, not spent on every green merge.*
-
-**An instruction binds when it is spoken.** A stated law is the obligation itself; a check or hook only adds detection, because agent compliance has a measured failure rate. Absence of a lock is never a licence — it only means the operator is doing the detecting. New mechanical locks are added when the operator asks for one, never manufactured from the words "law" or "mandate": that recipe is how governance sprawl grew, and it is retired. A control that decides a real question by matching English in free text is not enforcement — it fails correct work phrased differently and passes wrong work phrased well.
-
-**Two kinds of authority, never collapsed.** *What is true* is established only by a fair, reproducible measurement — never by an operator sentence, a test, a guard, a comment, or an agent's belief. *What the system must do* is established only by canonical recorded authority: the operator's own words in the session record, `OPEN_ITEMS.md`, the invariants in this file, and `docs/ARCHITECTURE.md` as their implementation. Tests, guards, procedures, schemas, workflows and existing code are evidence of present behaviour and instruments of enforcement; they decide neither axis, and a mechanism is normative only insofar as it traces to such a record — an untraceable mechanism is convention, and yields. A chat instruction that contradicts this file is surfaced as a conflict, not silently obeyed or ignored. **Conflict rule:** a mechanism that refuses a state measurement shows true and recorded authority shows permitted or required is defective once its own stated purpose is shown not violated. It still binds until it is repaired through its governed change path, and that path may never run through the defective mechanism itself — where it does, the narrowest admitted repair door is used, never a general bypass. State is never manufactured, relabeled, backdated or duplicated to satisfy a control; silence of authority is not permission; a block that cannot be repaired now stands, and the conflict is reported in plain sight.
-
-**Find something broken → fix it.** Discovery creates the obligation to remediate through the full blast radius in the active session. A material defect is never disposed as queued / logged / TODO / follow-up / pre-existing / out-of-scope; if it genuinely cannot be fixed now, say exactly what blocks it, in plain sight. A material defect gets a row in `governance/root_cause_log.md`; ordinary work is identified by its branch and PR. The repair lifecycle is **MEASURE → DIAGNOSE → VALIDATE → REPAIR → VERIFY → CLOSE**. MEASURE: capture the observed state in a same-turn artifact before explaining it. DIAGNOSE: establish the lowest causal defect (the wrong model, assumption, semantics, placement, computation or transformation whose correction makes the symptom impossible), the semantic responsibility involved, its canonical owner, and its material blast radius; a missing control is one possible finding, never the mandatory terminus. VALIDATE, before touching implementation: write in the row the actual state, the required state cited to a canonical record (never inferred), the invariants and architecture that apply, every mechanism that reads, enforces, quotes or supersedes the same fact with its disposition, the smallest complete scope, and the measurement that would prove the design itself wrong. REPAIR: the smallest complete solution across that scope, correcting contradictory mechanisms rather than accommodating them. VERIFY: prove the behaviour and prove recurrence fails at the actual seam, re-runnable from the tree, with the falsifier run. CLOSE: root, design rationale, evidence and carrying commit in the row. If a proof fails, return to REPAIR; return to DIAGNOSE only when the falsifier fires, a connected mechanism proves the recorded requirement different, or a defect with a different root appears. A new manifestation, an edge case, a failed test, or a failed repair does not by itself reopen discovery, and no audit is commissioned mid-repair. Mechanism: `tools/mission_latch.py` — a turn may not end while a row this worktree introduced is OPEN and neither finished nor BLOCKED with a live date; a row may be CLOSED only with a cited, re-runnable command and a carrying commit.
-
-**Cleanup is not done when the instances are gone.** Deleting an accumulated population without repairing the producer that creates it leaves the defect intact and the ledger claiming otherwise. Closure needs the population disposed of, the producer or its lifecycle repaired, and a control proving recurrence fails — demonstrated at the actual producer being repaired, in that change's own tests.
-
-**Research, then act.** Before editing, read the reference the change rests on — the existing implementation, the direction doc, the vendor spec — and name it.
-
-**Conduct:** never present unverified claims as verified; name limits in the same sentence as the tool; do not leave the changed path internally inconsistent, and do not expand into unrelated cleanup; extend existing files over creating new ones; run the smallest relevant tests during development and the required suite before code sign-off, showing output.
-
-**Agent truth.** No false completion, no promise-without-execution, no approximate counts presented as exact, no model-family bait-and-switch. Operator halt words: `STOP` / `PAUSE` / `HANG IT UP` / `DO NOT CONTINUE`.
-
-## Correctness laws
-
-**Evidence before assertion (RC-53; universal — chat prose included).** Every empirical or quantitative claim — about market structure, this repo's data, code behaviour, or performance — is stated ONLY in one of two forms:
-1. **PROVEN** — the tool call that establishes it ran in the SAME turn, BEFORE the claim, and its output is shown. State the method with the number.
-2. **`[UNVERIFIED]`** — explicitly tagged as a hypothesis to be tested. Never asserted as fact, never used as a premise for a conclusion.
-There is no third form. Plausible-sounding domain lore is `[UNVERIFIED]` until measured on our data.
-**Fair-method clause.** A measurement is evidence only if its method cannot manufacture the result — equal-width comparison buckets, per-unit normalisation alongside totals, stated sample and selection rule, and no discarding of the inconvenient subset. A flawed check is more dangerous than no check, because it launders a false claim as verified.
-Claims that cannot be measured now go in `governance/unproven_register.md`. Staged governance/report markdown adding a numeric finding is checked by `check_measured_claims_cite_evidence`; live chat prose has no hook and is bound by the law itself.
-**Required behavior is established independently of the implementation under review** — from the product requirement, verified external semantics (a vendor's own documented contract, not an assumption about it), and engineering evidence — never read off what the current code happens to do. A review or claim of improvement needs its own evidence covering correctness, ownership, design, consumer migration, and failure handling; passing tests, a green required check, or a larger test count are not by themselves that evidence — they confirm the candidate meets whatever the tests encode, which may itself be wrong. The full canonical review structure enumerating this is `governance/AGENT_OPERATING_PROCESS_V1.md` §8.
-
-**ONE computation.** Every job — research, backtest, training, scoreboard — imports and calls the live functions; it never reimplements them. Calling the canonical function itself, unmodified, across different inputs — a different ticker, a different option contract, a different strike, a different time window — is the SAME producer exercised repeatedly; that is ordinary use, not a second authority, and nothing about handling more than one input at a time requires a new computation path. What DOES create a second producer, even while nominally "calling the same function": a wrapper that pre/post-processes its inputs or outputs outside the canonical path, a stubbed or partially-mocked call whose result is then treated as if it were live, or a parallel harness that reaches the function through different plumbing than the live caller uses. "Validated in research" must mean "runs live" by construction. **Clarification (2026-09-12, independent-review request):** an independent TEST harness that calls the canonical function itself — unmodified, through the same plumbing production uses — with synthetic or fixture inputs it constructs and controls is not thereby a second authority; it is proof-of-behavior for the ONE producer, the same category as calling it with a different ticker. What disqualifies a test is not that it is a harness, or that its inputs are synthetic — it is intercepting or replacing the COMPUTATION itself (a stub standing in for the real formula, or a reimplementation the test checks itself against) rather than exercising the real function and checking its real output. **Second clarification (2026-09-12):** different test plumbing (a controlled double standing in for an EXTERNAL dependency — a vendor stream, a network client — not for the calculation) LIMITS the tier of proof a test establishes; it does not by itself create a second production authority. A test that calls the real calculation but doubles its external dependency is a valid COMPONENT/INTEGRATION-level proof; it is not RUNTIME/live-vendor proof, and must not be reported as if it were. Calling the same production calculation to produce both the "actual" and the "expected" side of an assertion proves the function is deterministic, not that its output is correct — an independently-derived expected value (worked by hand, cited from a spec, or read from a real captured observation) is required wherever a test's claim is mathematical correctness, not merely "the function ran and returned something."
-
-**Decision-path admission.** No component may influence TRADE — or any output that authorizes or shapes exposure — unless `config/decision_path_admissions.json` records it ADMITTED with evidence (preregistration, OOS results, costs, baselines, scope, leakage review) and an operator admission decision. Registry starts empty; unadmitted influence → WAIT. Enforced by `decision_gate.py` in `call_engine.compute_call`, and by `check_decision_path_wired`.
-
-**Find & Prove substance (RC-210).** Staged experiment reports claiming significance/Sharpe/alpha require `n_trials` + a multiple-testing method, or `[UNVERIFIED]`. Research runners must not use plain `KFold`/`train_test_split` on labeled financial paths without purge/embargo, or `# leakage-ok:`. CONFIRMATORY claims in `research/**` require a resolvable prereg path.
-
-**UNIVERSAL ticker scope (RC-160).** Collect, Find & Prove, Chart, prompts and reports default to the enrolled universe — never SPY-only or sentinel-only framed as complete. Narrow samples require `OUT-OF-SCOPE:` (or `# universal-scope-ok:`) with a reason; sentinel-clean ≠ operable-clean. What is mechanical: `check_universal_ticker_scope` (in the institutional gate, at commit and in CI) reads `tools/universal_scope_lock.py`'s two STRUCTURAL rules — SPY-only ticker defaults in experiment tools and SPY-gated Chart features; the PreToolUse guard runs neither (the prose half and its Edit gate were retired under the bedrock doctrine, 2026-09-06, and this sentence said otherwise until RC-543). A marker the same change writes (`OUT-OF-SCOPE:`, `# universal-scope-ok:`) is a self-exemption a reviewer reads in the diff; no mechanism authorizes markers. Universality itself is NOT proven by these rules — they are regression attacks on two known narrowings; PA-1 in `OPEN_ITEMS.md` carries the requirement as NOT_PROVEN with no canonical boundary authority yet measured.
-
-**Chart-intent + next-RTH residuals (RC-163).** Collect/accrual finish language cannot soft-out Chart render as OUT-OF-SCOPE without an open residual or a proven consumer — banking ≠ render Done. Forward residuals must not hardcode a weekday-named live-proof label when the next RTH is a different weekday. Escapes: `# chart-intent-ok:` / `# next-rth-ok:`.
-
-**Honesty / no dodge (RC-209).** Do not lie directly or by omission; do not dodge a plain yes/no or score question; do not substitute deflection for requested deliverables; do not claim a mechanical lock via `.md`/`.mdc`. Declarative by design: the Stop guard that matched answer tokens and deflection phrases was retired under the bedrock doctrine (2026-09-06) because matching English is not enforcement; the operator, present in the same turn, is the detector.
-
-**Close contract.** A `CLOSED` root-cause row carries a causally sufficient why-chain (it ends at the wrong model, assumption, semantics, placement or computation, each link a measured fact), at least one backticked re-runnable command as its evidence, and, where it says a code change exists, the named files staged with the row or carried by a cited commit. Enforced by `check_root_cause_log` for the checkable parts (schema, dates, status vocabulary, the command, the carrying commit, overdue rows); causal sufficiency is judged in review, never by counting. **The cited command is EXECUTED, not matched** (RC-540/RC-545): the required check `hardening` (`tools/check_delta_adds_no_debt.py --base origin/main`) runs the first CI-executable command (interpreter-led: `python` / `pytest` / `node` / `npm`; a bare backticked file path is a mention, a tool is cited as `python tools/x.py`) of every row a delta closes, in the candidate tree, and the row closes only on exit 0; a row whose only evidence is a live probe (`curl`, `SELECT` against the desk) does not close in CI — it cites a re-runnable test beside the probe. **Recurrence proof covers the seam, not the incident's path.** Where the seam the defect lives on publishes an enumeration of its own entries, the recurrence control drives every entry of that enumeration, never only the entry the incident happened through (RC-531). The hook seam's enumeration is the two live wiring files, `.claude/settings.json` and `.cursor/hooks.json`, and `tests/test_hook_chain_v1.py` reads both. Where a seam has no authoritative enumeration, materially connected scope is judged in review, never claimed by a machine.
-
-**Backlog.** Honest PARTIAL with a tracker is legal; mass-fake CLOSE is not. A due date moves only when the row is blocked outside this repository, recorded as `RE-DATED <old>-><new>: BLOCKED_ON_*` — "need more time" is not a blocker.
-
-**Agent operating process (RC-217; `governance/AGENT_OPERATING_PROCESS_V1.md` carries the detail).** §8 of that file is the single canonical review standard — the fourteen requirements a candidate change, an audit, or a "MET / clean / verified / PASS" claim is judged against; run it on the actual repository state before any such claim, never from a pasted summary. Elsewhere: measure before claiming, land small, never kill a pre-commit mid-hook, and distinguish LIVE from DISK until a restart is proven. PreToolUse blocks destructive-git forms, piped commits, and edits targeting the production checkout. **The session's checkout judges every event, from that event's payload alone (RC-544):** `tools/hook_chain.py` runs the wired guards in the checkout the session was launched in and names that checkout on every block; there is no cross-worktree delegation, no transcript is read, no session record exists, and a BLOCKED or unexecuted action has zero effect on any later event. Launch the session in the worktree you work in (§6 of the operating process); a stale production checkout judging a session is a topology error reported by `tools/check_live_path_is_main.py`, not something the hooks route around. **Live-checkout invariant:** the production `EdWebConsole` checkout is `main == origin/main` only; development runs on the separate `EdWebConsole-dev` worktree.
-
-**Immune rule.** Any proposed new mechanism must prove it prevents a real, observed failure that the page, the question, or an existing gate cannot already handle. If two controls protect the same failure, one of them goes.
+- Merge on green CI. Stop for: the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE; a task
+  marked AUDIT ONLY or DO NOT MERGE; a destructive data action; a product decision code cannot settle.
+- Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.
+  Work in a worktree.
+- Never: `git reset`, `git checkout --`, `git stash`, force push, `--no-verify`, `git add -A` / `.`,
+  deleting anything under `data/`, `backups/`, `models/`.
+- May restart the console and the capture daemon; confirm both came back.
 
 ## Running it
 
-The only long-lived service is the FastAPI monolith: `python -m uvicorn server:app` (port via `ED_CONSOLE_PORT`). It serves the UI at `/`, JSON/SSE under `/api/*`, plus `/governance` and `/ops`, and starts the Collect logger on lifespan. SQLite (`data/ed_console.db`) is the only datastore.
-
-- **Python must be 3.13** (ruff/mypy target it); use the project `.venv`, not the system `python3`.
-- **Without live Schwab credentials:** set `ED_CI_OFFLINE=1` with placeholder `SCHWAB_API_KEY` / `SCHWAB_APP_SECRET`. The server boots and serves; expect a red token banner, `STALE`/`—` quotes and `MANIFEST_MISSING` model warnings. That is fail-closed behaviour, not a broken environment. Live data also needs `schwab_token.json` (`python reauth_schwab.py`).
-- **Tests: `make test-all`, not bare `pytest`** — Playwright E2E runs first, then the full pytest suite through the output sink; each step's exit code is its proof (the `.playwright_last_run_success` marker that pytest used to require was retired by RC-542 — a hand-editable stamp is not a run). Full run ~4–5 min.
-- **Blocking lint:** `python -m ruff check . --select F401,F821,E9`. `ruff`/`bandit`/`pip-audit` are installed by the Hardening job, not by `requirements*.txt`.
+- Console: `start_ed_console.bat` (`uvicorn server:app`, port 8000). Capture daemon:
+  `start_capture_daemon.bat`.
+- Python 3.13, the project `.venv`.
+- Offline: `ED_CI_OFFLINE=1`, placeholder `SCHWAB_API_KEY` / `SCHWAB_APP_SECRET`. Live:
+  `schwab_token.json` (`python reauth_schwab.py`).
+- Probe `127.0.0.1`, never `localhost`.
