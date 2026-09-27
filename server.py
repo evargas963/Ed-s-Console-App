@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
 import time_et as _time_et
@@ -1998,6 +1998,39 @@ def favicon():
 
 
 
+def _merged_recent_crosses(edb, ticker: str, n: int) -> "tuple[list[dict], int]":
+    """The newest `n` level crosses with coincident rows merged into one event, and how many
+    stored rows they came from. The one reader of level crosses for every route."""
+    # RC-88: COLLAPSE COINCIDENT CROSSINGS. Price crossing one strike writes one row per
+    # NAMED level sitting there, and the producer's debounce is keyed on level_name, so it
+    # cannot see that eight names share a value. MEASURED 2026-07-27: 4,747 of 8,108 stored
+    # rows (58.5%) share a (ticker, ts_utc, level_value) with another; IWM 295.0 wrote 8 rows
+    # for a single tick. The chart asks for n=8, so one coincident crossing filled every slot
+    # and hid every other event. That several concepts coincide is real information — it is
+    # carried in `level_names` — but it is ONE crossing, not eight. Collapsed at the READ
+    # boundary so the stored history stays intact for anything that needs per-level rows.
+    raw = edb.get_recent_crosses(ticker=ticker, n=max(int(n) * 8, 64))
+    merged: list[dict] = []
+    seen: dict[tuple, dict] = {}
+    for r in raw:
+        key = (r.get("ts_utc"), r.get("level_value"), r.get("direction"))
+        hit = seen.get(key)
+        if hit is None:
+            row = dict(r)
+            row["level_names"] = [r.get("level_name")]
+            row["coincident_levels"] = 1
+            seen[key] = row
+            merged.append(row)
+            continue
+        nm = r.get("level_name")
+        if nm and nm not in hit["level_names"]:
+            hit["level_names"].append(nm)
+            hit["coincident_levels"] = len(hit["level_names"])
+            # One event, one name on screen: say what it is rather than picking one arbitrarily.
+            hit["level_name"] = f"{len(hit['level_names'])} levels @ {r.get('level_value')}"
+    return merged[:n], len(raw)
+
+
 @app.get("/api/level_crosses")
 def api_level_crosses(ticker: str, n: int = 20, level_name: str | None = None,
                             level_value: float | None = None, lookback_hours: float = 6.5):
@@ -2021,36 +2054,10 @@ def api_level_crosses(ticker: str, n: int = 20, level_name: str | None = None,
             return JSONResponse({"ok": True, "mode": "test_count", "ticker": ticker,
                                  "level_name": level_name, "level_value": float(level_value),
                                  "lookback_hours": float(lookback_hours), **counts})
-        # RC-88: COLLAPSE COINCIDENT CROSSINGS. Price crossing one strike writes one row per
-        # NAMED level sitting there, and the producer's debounce is keyed on level_name, so it
-        # cannot see that eight names share a value. MEASURED 2026-07-27: 4,747 of 8,108 stored
-        # rows (58.5%) share a (ticker, ts_utc, level_value) with another; IWM 295.0 wrote 8 rows
-        # for a single tick. The chart asks for n=8, so one coincident crossing filled every slot
-        # and hid every other event. That several concepts coincide is real information — it is
-        # carried in `level_names` — but it is ONE crossing, not eight. Collapsed at the READ
-        # boundary so the stored history stays intact for anything that needs per-level rows.
-        raw = edb.get_recent_crosses(ticker=ticker, n=max(int(n) * 8, 64))
-        merged: list[dict] = []
-        seen: dict[tuple, dict] = {}
-        for r in raw:
-            key = (r.get("ts_utc"), r.get("level_value"), r.get("direction"))
-            hit = seen.get(key)
-            if hit is None:
-                row = dict(r)
-                row["level_names"] = [r.get("level_name")]
-                row["coincident_levels"] = 1
-                seen[key] = row
-                merged.append(row)
-                continue
-            nm = r.get("level_name")
-            if nm and nm not in hit["level_names"]:
-                hit["level_names"].append(nm)
-                hit["coincident_levels"] = len(hit["level_names"])
-                # One event, one name on screen: say what it is rather than picking one arbitrarily.
-                hit["level_name"] = f"{len(hit['level_names'])} levels @ {r.get('level_value')}"
+        merged, raw_count = _merged_recent_crosses(edb, ticker, int(n))
         return JSONResponse({"ok": True, "mode": "recent", "ticker": ticker,
-                             "n": int(n), "crosses": merged[:int(n)],
-                             "collapsed_from": len(raw)})
+                             "n": int(n), "crosses": merged,
+                             "collapsed_from": raw_count})
     except Exception as exc:  # pragma: no cover — defensive ops surface
         log.warning("api_level_crosses failed ticker=%s: %s", ticker, exc)
         return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
@@ -3696,6 +3703,7 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
                    regime=read.regime, posture=read.posture, headline=read.headline,
                    lines=read.lines, net_gex_at_spot=None,
                    call_wall_state=None, put_wall_state=None,
+                   dist_to_call_wall=None, dist_to_put_wall=None, flip_relation=None,
                    flip_diag={**(payload.get("flip_diag") or {}), "gamma_at_spot": None})
         return out
 
@@ -3709,6 +3717,11 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
     # containment the painted spot contradicts. Needs only spot + the cached walls.
     out["call_wall_state"] = wall_geometry_state(spot, payload.get("call_wall"), "call")
     out["put_wall_state"] = wall_geometry_state(spot, payload.get("put_wall"), "put")
+    # the live price against the walls and the flip, served (the desk worked these out)
+    cw, pw, flip = payload.get("call_wall"), payload.get("put_wall"), payload.get("gamma_flip")
+    out["dist_to_call_wall"] = (cw - spot) if cw is not None else None
+    out["dist_to_put_wall"] = (spot - pw) if pw is not None else None
+    out["flip_relation"] = None if flip is None else "ABOVE" if spot >= flip else "BELOW"
 
     # gamma at the live spot: Schwab's gamma as published (the walls' own), carried to the live
     # price by the dollar-GEX scale S^2 -- the one gamma source, never the model curve
@@ -3890,7 +3903,30 @@ def get_bars1m(ticker: str = Query(...),
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
     out = aggregate_bars(overlay_forming_bar_from_plane(bars, tk), tf)
+    out = [_lpr.with_change(b) for b in out]   # each bar's change, served (the chart's readout computed it)
     return JSONResponse({"ticker": tk, "bars": out, "tf": tf, "n": len(out)})
+
+
+def _tf_bucket_key(t: float, tf: str):
+    """The chart bar a timestamp belongs to: its ET trading date ("D") or its tf-minute bucket."""
+    return datetime.fromtimestamp(t, ET).date() if tf == "D" else int(t // (int(tf) * 60))
+
+
+def aggregate_vwap(rows: list, tf: str) -> list:
+    """VWAP rows [t, vwap, +1s, -1s, +2s, -2s] rolled up to the chart timeframe exactly as
+    aggregate_bars rolls the bars: each bar takes the value as of its last minute, stamped with the
+    bar's first minute (the bar's own `t`)."""
+    if tf == "1":
+        return [list(r) for r in rows]
+    out, cur_key = [], None
+    for r in rows:
+        k = _tf_bucket_key(float(r[0]), tf)
+        if k != cur_key:
+            out.append([r[0]] + list(r[1:]))
+            cur_key = k
+        else:
+            out[-1] = [out[-1][0]] + list(r[1:])
+    return out
 
 
 def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
@@ -3900,11 +3936,9 @@ def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
     sum or a 0. A bucket holding the forming minute is itself forming."""
     if tf == "1":
         return list(bars)
-    from time_et import ET
-    step = None if tf == "D" else int(tf) * 60
 
     def key(t: float):
-        return datetime.fromtimestamp(t, ET).date() if step is None else int(t // step)
+        return _tf_bucket_key(t, tf)
 
     out: list[dict] = []
     cur: dict | None = None
@@ -4925,6 +4959,84 @@ APPROACH_PTS: float = 1.5
 RECENT_CROSS_SEC: float = 120.0
 
 
+#: The Trade Desk's lookback per chart timeframe, seconds ("session": the latest regular session).
+DESK_LOOKBACK_SEC = {"1": 900, "5": 3600, "15": 14400, "30": "session", "60": 172800, "D": 1728000}
+
+
+def _desk_window_start(tf: str) -> float:
+    """Start of the Trade Desk's event window for chart timeframe `tf`: now minus its lookback,
+    or the 9:30 ET open of the latest regular session that has begun."""
+    now = now_et()
+    lb = DESK_LOOKBACK_SEC.get(tf, DESK_LOOKBACK_SEC["30"])
+    if lb != "session":
+        return now.timestamp() - lb
+    from time_et import is_trading_day_et
+    day = now.date()
+    for _ in range(10):
+        start = datetime(day.year, day.month, day.day, 9, 30, tzinfo=ET)
+        if is_trading_day_et(day.isoformat()) and start <= now:
+            return start.timestamp()
+        day -= timedelta(days=1)
+    return now.timestamp() - 86400
+
+
+def _f2(v) -> str:
+    return "—" if v is None else f"{float(v):.2f}"
+
+
+@app.get("/api/desk/events")
+def get_desk_events(ticker: str = Query(...),
+                    tf: Annotated[str, Query(pattern=r"^(1|5|15|30|60|D)$")] = "30"):
+    """The Trade Desk's attention queue, served: level crosses in the timeframe's window (numbered
+    oldest first; the newest 40 flagged for the chart), wall breaches and stale levels from the
+    terrain, the book's size walls, and the rule alerts -- newest first, an item with no time last
+    -- plus the window's up/down cross counts. The page draws it; it selects, numbers and orders
+    nothing."""
+    tk = ticker_storage_key(_required_ticker(ticker))
+    start = _desk_window_start(tf)
+    crosses, _raw = _merged_recent_crosses(get_db(), tk, 200)
+    in_window = sorted((c for c in crosses if c.get("ts_utc") is not None and c["ts_utc"] >= start),
+                       key=lambda c: c["ts_utc"])
+    items = []
+    for i, c in enumerate(in_window):
+        names = " + ".join(c.get("level_names") or [c.get("level_name")])
+        items.append({"key": f"x{c.get('cross_id')}", "n": i + 1, "ts": c["ts_utc"], "dom": "LEVELS",
+                      "dir": c.get("direction"), "marker": True,
+                      "title": f"Crossed {'above' if c.get('direction') == 'up' else 'below'} {names}",
+                      "detail": f"{_f2(c.get('level_value'))} · spot {_f2(c.get('spot_at_cross'))}"
+                                + (f" · zone {c['zone_after']}" if c.get("zone_after") else ""),
+                      "src": "/api/level_crosses"})
+    for it in items[:-40]:
+        it["marker"] = False                      # the chart draws the newest 40
+    t = get_terrain(ticker=tk)                       # the same payload the terrain route serves
+    tts = t.get("computed_ts_utc")
+    for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
+        if t.get(f"{side}_wall_state") == "breached":
+            items.append({"key": key, "ts": tts, "dom": "OPTIONS", "dir": "up" if side == "call" else "down",
+                          "title": f"Spot through the {word} wall",
+                          "detail": f"{word} wall {_f2(t.get(f'{side}_wall'))} · spot {_f2(t.get('spot'))}",
+                          "src": "/api/terrain"})
+    if t.get("levels_stale"):
+        items.append({"key": "ls", "ts": tts, "dom": "DATA", "dir": None, "warn": True,
+                      "title": "Gamma levels are stale", "detail": t.get("levels_stale_reason") or "",
+                      "src": "/api/terrain"})
+    micro = json.loads(api_order_flow_microstructure(ticker=tk).body)
+    for i, w in enumerate((micro.get("wall_candidates") or [])[:3]):
+        items.append({"key": f"wall{i}", "ts": (micro.get("provenance") or {}).get("server_received_ts"),
+                      "dom": "LIQUIDITY", "dir": "up" if w.get("side") == "bid" else "down",
+                      "title": f"Displayed size wall · {w.get('side') or ''} {_f2(w.get('price'))}",
+                      "detail": f"{w.get('volume')} shown · "
+                                + (f"{w['median_mult']:.1f}× the median level" if w.get("median_mult") is not None else "size outlier"),
+                      "src": "/api/order-flow/microstructure"})
+    for i, a in enumerate(json.loads(get_alerts(ticker=tk).body)["alerts"]):
+        items.append({"key": f"ra{i}", "ts": a["ts_utc"], "dom": "ALERT", "dir": None,
+                      "title": a["text"], "detail": "", "src": "/api/alerts"})
+    items.sort(key=lambda it: (it["ts"] is None, -(it["ts"] if it["ts"] is not None else 0.0)))
+    up = sum(1 for c in in_window if c.get("direction") == "up")
+    return JSONResponse({"ticker": tk, "tf": tf, "window_start_ts_utc": start, "items": items,
+                         "cross_counts": {"up": up, "down": len(in_window) - up}})
+
+
 @app.get("/api/alerts")
 def get_alerts(ticker: str = Query(...)):
     """Proximity alerts: spot near a gamma wall, and levels crossed in the last RECENT_CROSS_SEC.
@@ -5640,7 +5752,8 @@ LEVEL_NEAR_SPOT_FRACTION = 0.0015
 # one materialized PriceLevelSnapshot — it serializes, it does not compute. Every other
 # surface (liquidity-snapshot, market_context, /api/state, ML features, persistence,
 # chart) carries the values out of the same snapshot object and generation.
-def get_levels(ticker: str = Query(...)):
+def get_levels(ticker: str = Query(...),
+               tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "1"):
     """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
     import time as _time
 
@@ -5666,11 +5779,28 @@ def get_levels(ticker: str = Query(...)):
             "stale": False,
             "reason": f"carried from canonical snapshot generation {snap.generation}",
         }
+        levels.append(row)
+    # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values)
+    t = terrain_cache_get(tk) or {}
+    for gid, label in (("call_wall", "Call wall"), ("put_wall", "Put wall"),
+                       ("gamma_flip", "Gamma flip"), ("max_pain", "Max pain")):
+        if t.get(gid) is not None:
+            as_of = t.get("computed_ts_utc")
+            levels.append({"id": gid, "price": t[gid], "family": "gamma", "label": label,
+                           "evidence_tier": "DERIVED",
+                           "provenance": {"producer": "terrain_engine.compute_terrain", "carried": True},
+                           "staleness": {"as_of_ts_utc": as_of,
+                                         "age_sec": None if as_of is None else round(served_ts - as_of, 1),
+                                         "stale_after_sec": None, "stale": bool(t.get("levels_stale")),
+                                         "reason": "carried from the terrain"}})
+    for row in levels:
         price = row.get("price")
         row["distance"] = (price - spot) if price is not None and spot else None
         row["near_spot"] = (row["distance"] is not None
                             and abs(row["distance"]) / spot < LEVEL_NEAR_SPOT_FRACTION)
-        levels.append(row)
+        # which side of spot, at the price's own two decimals (AT: prints as 0.00 away)
+        row["side"] = (None if row["distance"] is None else "AT" if round(row["distance"], 2) == 0
+                       else "ABOVE" if row["distance"] > 0 else "BELOW")
     # the ladder in price order (highest first, unpriced last), and the order by distance to spot
     levels = (sorted((r for r in levels if r.get("price") is not None), key=lambda r: r["price"], reverse=True)
               + [r for r in levels if r.get("price") is None])
@@ -5679,7 +5809,6 @@ def get_levels(ticker: str = Query(...)):
 
     families_absent = list(snap.families_absent)
     for fam, why in (
-        ("gamma", "Phase 2A slice excludes gamma — served by /api/terrain until migration"),
         ("expected_move", "Phase 2A slice excludes EM — served by /api/state until migration"),
     ):
         families_absent.append({"family": fam, "reason": why})
@@ -5700,7 +5829,8 @@ def get_levels(ticker: str = Query(...)):
         # used to accumulate their own from /api/bars1m — two more VWAPs for one
         # session, drawn beside a level neither of them agreed with.
         # [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
-        "vwap_series": [list(row) for row in snap.vwap_series],
+        "vwap_series": aggregate_vwap(snap.vwap_series, tf),   # one point per chart bar of `tf`
+        "tf": tf,
         "families_absent": families_absent,
         "degraded": list(snap.degraded),
     })
@@ -5825,6 +5955,21 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
     zp["tradeable_score"] = liquidity_zone_tradeable_score(
         n_tags=len(tags), n_opt=n_opt, inside=inside, dist_pen=dist_pen, spot=sf
     )
+
+
+def _spot_location(zones: list, spot) -> "dict | None":
+    """Where spot sits among the zones, by index into `zones`: the zone it is inside, else the
+    nearest zone above and below. None without a spot or a zone."""
+    if spot is None or not zones:
+        return None
+    for i, z in enumerate(zones):
+        if z.get("zone_low") is not None and z.get("zone_high") is not None and z["zone_low"] <= spot <= z["zone_high"]:
+            return {"inside": i, "above": None, "below": None}
+    above = [i for i, z in enumerate(zones) if z.get("zone_low") is not None and z["zone_low"] > spot]
+    below = [i for i, z in enumerate(zones) if z.get("zone_high") is not None and z["zone_high"] < spot]
+    return {"inside": None,
+            "above": min(above, key=lambda i: zones[i]["zone_low"]) if above else None,
+            "below": max(below, key=lambda i: zones[i]["zone_high"]) if below else None}
 
 
 @app.get("/api/liquidity-snapshot")
@@ -5953,6 +6098,7 @@ def get_liquidity_snapshot(
             result["bar_merge"] = bar_merge_note
             result["as_of_cutoff_et"] = (out.raw_levels or {}).get("cutoff_et")
             result["spot_used_for_scoring"] = spot_for_zones
+            result["spot_location"] = _spot_location(zones_payload, spot_for_zones)
             # Phase 2A carriage stamp: which snapshot generation these level values ARE.
             # Two carriers that agree on the number but not on the generation are still
             # two answers — the generation travels so the skew is visible, never silent.

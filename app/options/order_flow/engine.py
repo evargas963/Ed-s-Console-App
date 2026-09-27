@@ -537,7 +537,10 @@ def _microstructure_structural(cb: dict) -> dict:
         bt = _book_side_depth_total(bid_levels, n)
         at = _book_side_depth_total(ask_levels, n)
         totals[n] = (bt, at)
-        depth[str(n)] = {"bid_total": bt, "ask_total": at, "imbalance": _book_imbalance_from_totals(bt, at)}
+        imb = _book_imbalance_from_totals(bt, at)
+        # the heavier side, by the imbalance's sign (no threshold): what every panel labels
+        side = None if imb is None else "BID" if imb > 0 else "ASK" if imb < 0 else "EVEN"
+        depth[str(n)] = {"bid_total": bt, "ask_total": at, "imbalance": imb, "side": side}
     deep_bt, deep_at = totals[OF_BOOK_DEPTH_DEEP]
 
     return {
