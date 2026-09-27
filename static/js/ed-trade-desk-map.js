@@ -192,10 +192,12 @@
       fetchJson('/api/levels?ticker=' + q + '&tf=' + encodeURIComponent(S.tf)),
       fetchJson('/api/terrain?ticker=' + q),
       fetchJson('/api/desk/events?ticker=' + q + '&tf=' + encodeURIComponent(S.tf)),
-      fetchJson('/api/liquidity-snapshot?ticker=' + q + '&snapshot=live')
+      fetchJson('/api/liquidity-snapshot?ticker=' + q + '&snapshot=live'),
+      fetchJson('/api/terrain/strikes?ticker=' + q),
+      fetchJson('/api/forces?ticker=' + q)
     ]).then(function (r) {
       if (gen !== S.gen) return;
-      S.levels = r[0]; S.terrain = r[1]; S.events = r[2]; S.liq = r[3];
+      S.levels = r[0]; S.terrain = r[1]; S.events = r[2]; S.liq = r[3]; S.strikes = r[4]; S.forces = r[5];
       paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
     });
   }
@@ -279,6 +281,16 @@
   }
 
   // ------------------------------------------------------------------ cards
+  // the FORCES split, served: GEX below/above spot (/api/terrain/strikes today_side_sums), and
+  // OI change, DEX and charm below/above from the last two market days' captures (/api/forces)
+  function forcesRows() {
+    var ss = S.strikes && S.strikes.today_side_sums, f = S.forces || {};
+    var out = row('GEX below / above', ss ? usd(ss.gex_below) + ' / ' + usd(ss.gex_above) : '—');
+    if (f.available !== true) return out + row('ΔOI · DEX · charm', esc(f.reason || '—'));
+    return out + row('ΔOI below / above', num(f.doi_below, 0) + ' / ' + num(f.doi_above, 0)) +
+      row('DEX below / above', usd(f.dex_below_dollars) + ' / ' + usd(f.dex_above_dollars)) +
+      row('Charm below / above', num(f.charm_below, 4) + ' / ' + num(f.charm_above, 4));
+  }
   function row(k, v, cls) { return '<div class="tdm-r"><span>' + esc(k) + '</span><b class="' + (cls || '') + '">' + v + '</b></div>'; }
   function state(el, txt, cls) { var s = el.querySelector('.tdm-state'); s.textContent = txt; s.className = 'tdm-state ' + (cls || ''); }
   function seriesNote() { return '<div class="tdm-series">1h change · sparkline: not produced yet</div>'; }
@@ -339,6 +351,7 @@
           row('Put wall', num(t.put_wall) + (t.put_wall_state ? ' · ' + esc(t.put_wall_state) : ''), 'dn') +
           row('Gamma flip', num(t.gamma_flip)) + row('Max pain', num(t.max_pain)) +
           row('Put/Call OI (all exp)', num(t.pcr_all, 2)) +
+          forcesRows() +
           row('Chain', esc(t.chain_basis || '—') + ' · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + ' contracts');
       }
     }
@@ -425,7 +438,7 @@
     if (!tk) return;
     if (tk !== S.ticker) {
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed
-      S.levels = S.terrain = S.micro = S.events = S.liq = undefined; S.sel = null;
+      S.levels = S.terrain = S.micro = S.events = S.liq = S.strikes = S.forces = undefined; S.sel = null;
       paintHeader(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
       loadBars(true); loadSlow(); loadFast();
     } else if (!S.bars.length) { loadBars(true); loadSlow(); loadFast(); }

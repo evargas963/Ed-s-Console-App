@@ -4807,8 +4807,6 @@ def get_session():
     return JSONResponse({"session_label": session_label(now_et())})
 
 
-#: spot within this many points of a gamma wall raises a proximity alert
-APPROACH_PTS: float = 1.5
 #: a cross younger than this is shown as an alert
 RECENT_CROSS_SEC: float = 120.0
 
@@ -4894,19 +4892,15 @@ def get_desk_events(ticker: str = Query(...),
 
 @app.get("/api/alerts")
 def get_alerts(ticker: str = Query(...)):
-    """Proximity alerts: spot near a gamma wall, and levels crossed in the last RECENT_CROSS_SEC.
-    Each carries the time it was observed -- the price's own time, or the cross's -- so no page
-    stamps an alert with its own clock."""
+    """Proximity alerts: every level /api/levels marks near_spot (one rule for every family), and
+    levels crossed in the last RECENT_CROSS_SEC. Each carries the time it was observed -- the
+    price's own time, or the cross's -- so no page stamps an alert with its own clock."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    t = terrain_cache_get(tk) or {}
-    spot, _src, spot_ts = resolve_spot(tk)
-    alerts = []
-    if spot is not None:
-        for key, word in (("call_wall", "ceiling"), ("put_wall", "floor")):
-            lvl = t.get(key)
-            if lvl is not None and abs(spot - lvl) <= APPROACH_PTS:
-                alerts.append({"text": f"Within {abs(spot - lvl):.1f}pts of {lvl:.2f} {word} wall",
-                               "ts_utc": spot_ts})
+    lv = json.loads(get_levels(ticker=tk).body)
+    alerts = [{"text": f"At {r.get('label') or r['id']} {r['price']:.2f} "
+                       f"({abs(r['distance']):.2f} {'above' if r['side'] == 'ABOVE' else 'below' if r['side'] == 'BELOW' else 'at'} spot)",
+               "ts_utc": lv["spot_as_of_ts_utc"]}
+              for r in lv["levels"] if r.get("near_spot")]
     for c in get_db().get_recent_crosses(tk, n=10):
         if time.time() - float(c["ts_utc"]) <= RECENT_CROSS_SEC:
             alerts.append({"text": f"Just crossed {'up' if c['direction'] == 'up' else 'down'} "

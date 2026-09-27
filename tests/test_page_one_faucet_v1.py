@@ -104,14 +104,15 @@ def test_oi_and_volume_cells_carry_the_served_total(held):
 def test_every_alert_carries_the_time_it_was_observed(held, monkeypatch):
     """The Trade Desk stamped alerts with the browser's clock; each now carries its own time."""
     wall = held["call_wall"]
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (wall - 0.5, "live_quote", 1_788_000_000.0))
+    near = wall * (1 - server.LEVEL_NEAR_SPOT_FRACTION / 2)   # inside the one near-spot rule
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (near, "live_quote", 1_788_000_000.0))
     cross_ts = time.time() - 5
     monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda tk, n=10: [
         {"ts_utc": cross_ts, "direction": "up", "level_name": "gamma_flip"}])
     alerts = json.loads(server.get_alerts(ticker=TK).body)["alerts"]
-    assert alerts[0]["text"].startswith(f"Within 0.5pts of {wall:.2f} ceiling")
-    assert alerts[0]["ts_utc"] == 1_788_000_000.0
-    assert alerts[1]["ts_utc"] == cross_ts
+    (at_wall,) = [a for a in alerts if a["text"].startswith(f"At Call wall {wall:.2f}")]
+    assert at_wall["text"].endswith("above spot)") and at_wall["ts_utc"] == 1_788_000_000.0
+    assert alerts[-1]["ts_utc"] == cross_ts
 
 
 def test_a_book_with_no_age_is_not_reported_fresh():
