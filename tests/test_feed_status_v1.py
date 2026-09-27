@@ -56,3 +56,43 @@ def test_an_expired_option_contract_is_never_streamed():
     admitted, not_admitted = rank_option_contracts(["OLD", "NEW"], inputs)
     assert admitted == ["NEW"]
     assert not_admitted["OLD"] == f"not admitted: expired {yesterday}"
+
+
+def test_a_stopped_record_reads_stale_in_the_console(tmp_path, monkeypatch):
+    import time
+    import db_authority
+    import server
+    db = tmp_path / "stream_capture.db"
+    CaptureWriter(db).insert("feedstatus.NEWS_HEADLINE", {
+        "ts": time.time() - 600, "service": "NEWS_HEADLINE", "socket_open": True,
+        "schwab_last_frame_ts": None, "held": 1, "last_data_ts": None})
+    monkeypatch.setattr(db_authority, "canonical_stream_db_path", lambda: db)
+    assert server._feed_record_state() == "FEED RECORD STALE: last written 10 min ago"
+
+
+def test_a_failed_round_is_logged_and_the_next_round_runs(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(capture, "FEED_STATUS_EVERY_SEC", 0.01)
+    bus, health = MessageBus(), HealthRegistry()
+    daemon = capture.Daemon(bus, health, tmp_path / "wanted.json")
+    daemon.stream = _Stream()
+    calls = {"n": 0}
+    real = daemon.status
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return real()
+    monkeypatch.setattr(daemon, "status", flaky)
+    got = []
+    monkeypatch.setattr(bus, "publish", lambda topic, msg: got.append(topic))
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(capture.record_feed_status(daemon, stop))
+        await asyncio.sleep(0.1)
+        stop.set()
+        await task
+    asyncio.run(go())
+    assert "feed status round failed: RuntimeError: boom" in caplog.text
+    assert len(got) >= len(capture.SERVICES), "the round after the failure still wrote"
