@@ -23,19 +23,21 @@ def _et(ts: float) -> str:
 @pytest.mark.parametrize("now, expected", [
     ("2026-09-28 08:00", "2026-09-28 09:30"),   # Monday before the open
     ("2026-09-28 09:30", "2026-09-28 10:00"),   # strictly after now
-    ("2026-09-28 15:45", "2026-09-28 16:00"),   # the close is captured
-    ("2026-09-28 16:00", "2026-09-29 09:30"),   # nothing after the close
+    ("2026-09-28 15:45", "2026-09-28 16:00"),
+    ("2026-09-28 16:00", "2026-09-28 16:15"),   # the close capture: options trade to 16:15
+    ("2026-09-28 16:15", "2026-09-29 09:30"),   # nothing after it
     ("2026-09-26 12:00", "2026-09-28 09:30"),   # Saturday: next market day
     ("2026-11-25 16:30", "2026-11-27 09:30"),   # Thanksgiving is skipped
-    ("2026-11-27 12:45", "2026-11-27 13:00"),   # early close: last capture 13:00
-    ("2026-11-27 13:00", "2026-11-30 09:30"),
+    ("2026-11-27 12:45", "2026-11-27 13:00"),
+    ("2026-11-27 13:00", "2026-11-27 13:15"),   # early close: the close capture at 13:15
+    ("2026-11-27 13:15", "2026-11-30 09:30"),
     ("2026-11-02 09:00", "2026-11-02 09:30"),   # after the DST change, still 9:30 ET
 ])
 def test_capture_clock(now, expected):
     assert _et(cch.next_capture_ts(_ts(now))) == expected
 
 
-def test_fourteen_captures_on_a_full_day():
+def test_fifteen_captures_on_a_full_day():
     ts, day = _ts("2026-09-28 00:00"), []
     while True:
         ts = cch.next_capture_ts(ts)
@@ -43,8 +45,8 @@ def test_fourteen_captures_on_a_full_day():
             break
         day.append(_et(ts)[11:])
     assert day == [f"{h:02d}:{m:02d}" for h in range(9, 17) for m in (0, 30)
-                   if (9, 30) <= (h, m) <= (16, 0)]
-    assert len(day) == 14
+                   if (9, 30) <= (h, m) <= (16, 0)] + ["16:15"]
+    assert len(day) == 15
 
 
 class _Resp:

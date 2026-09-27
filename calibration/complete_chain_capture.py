@@ -1,5 +1,5 @@
-"""The chain history (DATA_FLOW decision 7): every 30 minutes from 9:30 to the close (ET) on
-market days, the capture daemon fetches the full chain (every expiry, every strike) of each
+"""The chain history (DATA_FLOW decision 7): every 30 minutes from 9:30 to the close (ET), and once
+more 15 minutes after the close (the day's close capture), on market days, the capture daemon fetches the full chain (every expiry, every strike) of each
 ticker on the board and writes it here, one row per expiry, compressed, with Schwab's own
 underlying price. Schwab has no past option chains, so a chain not saved is gone. Nothing is
 captured while the market is closed (weekend chains blank open interest). Research reads this
@@ -24,6 +24,10 @@ from time_et import ET, RTH_START_MINS, is_trading_day_et, session_close_mins_fo
 log = logging.getLogger("chain_history")
 
 CAPTURE_EVERY_MIN = 30
+#: the close capture: SPY, QQQ, IWM and the $SPX/NDX/RUT index options trade until 4:15 PM ET,
+#: 15 minutes after the stock close (Cboe hours; checked 2026-09-26), so the day's last capture
+#: is taken 15 minutes after the close, when every option has stopped trading
+CLOSE_CAPTURE_AFTER_MIN = 15
 COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
 #: why the daemon's captures are complete: every listed expiry, every strike. Older rows (one or
 #: two expiries at scattered times, written by the console before 2026-09-27) carry
@@ -197,14 +201,16 @@ def _nearest_complete_chain_capture_uncached(
 
 def next_capture_ts(now_ts: float) -> float:
     """The next capture time after `now_ts`: 9:30, 10:00, ... through the close (13:00 on an
-    early close) ET, on market days only (the one market calendar, time_et)."""
+    early close) ET, then the close capture 15 minutes after the close, on market days only
+    (the one market calendar, time_et)."""
     now = datetime.fromtimestamp(now_ts, ET)
     for add in range(15):
         day = (now + timedelta(days=add)).date()
         if not is_trading_day_et(day.isoformat()):
             continue
         close = session_close_mins_for_et_date(day.isoformat())
-        for m in range(RTH_START_MINS, close + 1, CAPTURE_EVERY_MIN):
+        for m in [*range(RTH_START_MINS, close + 1, CAPTURE_EVERY_MIN),
+                  close + CLOSE_CAPTURE_AFTER_MIN]:
             ts = datetime(day.year, day.month, day.day, m // 60, m % 60, tzinfo=ET).timestamp()
             if ts > now_ts:
                 return ts

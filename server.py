@@ -3495,7 +3495,14 @@ def start_terrain_loop() -> None:
         return
     if _terrain_loop_running:
         return
-    log.info("levels loaded from chain captures for %d tickers", _load_stored_levels())
+    loaded = _load_stored_levels()
+    with _logger_lock:
+        board = len(_logger_tickers)
+    # the window's last startup line: the app is up, and why it may be quiet
+    log.info("Ready: levels for %d of %d board tickers loaded (session: %s). %s", loaded, board,
+             session_label(now_et()),
+             "Levels refresh every 5 s." if _is_loggable_session() else
+             "Levels refresh 8:45 AM-4:30 PM ET on market days; until then this window is quiet.")
     _terrain_loop_running = True
     _terrain_loop_thread = threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True)
     _terrain_loop_thread.start()
