@@ -474,33 +474,11 @@ def compute_session_vwap(bars: list, session_date: date, cutoff_dt: Optional[dat
 def compute_vwap_bands(
     bars: list,
     session_date: date,
-    vwap_val: float,
     cutoff_dt: Optional[datetime] = None,
 ) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
-    """Volume-weighted std dev. Returns (vwap+1σ, vwap-1σ, vwap+2σ, vwap-2σ)."""
-    if vwap_val is None:
-        return None, None, None, None
-    bars_norm = _bars_to_list(bars)
-    rth_bars = _filter_rth_bars(bars_norm, session_date, cutoff_dt)
-    if not rth_bars:
-        return None, None, None, None
-    cum_var = cum_vol = 0.0
-    for b in rth_bars:
-        vol = b["volume"]
-        if vol is None:
-            continue
-        tp = (b["high"] + b["low"] + b["close"]) / 3.0
-        cum_var += (tp - vwap_val) ** 2 * vol
-        cum_vol += vol
-    if cum_vol <= 0:
-        return None, None, None, None
-    std = (cum_var / cum_vol) ** 0.5
-    return (
-        round(vwap_val + std, 4),
-        round(vwap_val - std, 4),
-        round(vwap_val + 2 * std, 4),
-        round(vwap_val - 2 * std, 4),
-    )
+    """(vwap+1σ, vwap-1σ, vwap+2σ, vwap-2σ): the last point of compute_session_vwap_series."""
+    series = compute_session_vwap_series(bars, session_date, cutoff_dt)
+    return series[-1][2:] if series else (None, None, None, None)
 
 
 def _filter_rth_bars(bars: list, session_date: date, cutoff_dt: Optional[datetime] = None) -> list:
@@ -824,7 +802,7 @@ def build_opening_snapshot(
     vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
     vwap_bands = None
     if vwap is not None:
-        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, vwap, cutoff)
+        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, cutoff)
         vwap_bands = {
             "vwap": vwap,
             "plus1": vwap_p1,
@@ -857,7 +835,7 @@ def build_midday_snapshot(
     vwap = compute_session_vwap(bars, session_date, cutoff)
     vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
     if vwap is not None:
-        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, vwap, cutoff)
+        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, cutoff)
 
     levels = []
     if prev.get("pdh"):
@@ -955,7 +933,7 @@ def build_afternoon_snapshot(
     vwap = compute_session_vwap(bars, session_date, cutoff)
     vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
     if vwap is not None:
-        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, vwap, cutoff)
+        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, cutoff)
 
     levels = []
     if vah:
@@ -1179,7 +1157,7 @@ def build_live_snapshot(
         vwap = compute_session_vwap(bars_norm, session_date, cutoff)
         vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
         if vwap is not None:
-            vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars_norm, session_date, vwap, cutoff)
+            vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars_norm, session_date, cutoff)
 
     levels: list[tuple[float, str]] = []
     if prev.get("pdh"):
@@ -1645,17 +1623,10 @@ def build_price_level_snapshot(
     else:
         _put("VWAP", vwap_val,
              producer=f"{_PRODUCER_NS}.compute_session_vwap_series", window=sess_window)
-        p1, m1, p2, m2 = compute_vwap_bands(bars_norm, session_date, vwap_val)
+        p1, m1, p2, m2 = vwap_series[-1][2:]      # the curve's last point IS the served band
         for lid, val in (("VWAP_P1", p1), ("VWAP_M1", m1), ("VWAP_P2", p2), ("VWAP_M2", m2)):
             _put(lid, val,
-                 producer=f"{_PRODUCER_NS}.compute_vwap_bands", window=sess_window)
-        # The drawn curve must END on the served level. The band scalars come from
-        # compute_vwap_bands' two-pass form about the final VWAP and the curve from the
-        # cumulative moments — algebraically the same quantity, so pinning the last
-        # point removes any float-noise gap between the line and the number beside it.
-        if None not in (p1, m1, p2, m2):
-            t_last, w_last = vwap_series[-1][0], vwap_series[-1][1]
-            vwap_series[-1] = (t_last, w_last, p1, m1, p2, m2)
+                 producer=f"{_PRODUCER_NS}.compute_session_vwap_series", window=sess_window)
     vwap_path = [(t, w) for t, w, _a, _b, _c, _d in vwap_series]
 
     # ── opening range ────────────────────────────────────────────────────────
