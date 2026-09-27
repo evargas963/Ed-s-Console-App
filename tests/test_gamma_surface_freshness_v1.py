@@ -56,17 +56,19 @@ def test_live_terrain_surface_is_preferred_and_discloses_coverage(monkeypatch):
         _clear(tk)
 
 
-def test_freshness_is_the_one_terrain_authority_not_a_second_policy():
-    # gamma-surface freshness must EQUAL terrain_cache_get's canonical freshness, field-for-field
+def test_freshness_is_the_one_terrain_authority_not_a_second_policy(monkeypatch):
+    # gamma-surface freshness must EQUAL terrain_cache_get's canonical freshness, field-for-field.
+    # The clock is held still: the two reads compared ages taken at two real instants and failed
+    # when a loaded machine put 2.5 s between them (2026-09-27).
+    now = time.time()
+    monkeypatch.setattr(time, "time", lambda: now)
     tk = ticker_storage_key("SPY")
-    _clear(tk); _put_live(tk, computed_ts=time.time() - 240)   # 4 min old — a 5-min roster cadence is legitimate
+    _clear(tk); _put_live(tk, computed_ts=now - 240)   # 4 min old — a 5-min roster cadence is legitimate
     try:
         live = server.terrain_cache_get(tk)                    # the one authority
         d = _call(tk)
         assert d["stale"] == bool(live.get("levels_stale"))
-        # one authority, read at two instants: the same as-of, so the ages differ only by the
-        # time between the two reads
-        assert abs(d["age_sec"] - live.get("levels_age_sec")) < 2.0
+        assert d["age_sec"] == live.get("levels_age_sec") == 240.0   # one authority, one as-of
         expected_reason = live.get("levels_stale_reason") if bool(live.get("levels_stale")) else None
         assert (d["degraded"] or None) == expected_reason
         # no separate 180s threshold survives on the module

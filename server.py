@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
-from time_et import (ET, now_et, RTH_OPEN_MINS, is_capturable_session,
+from time_et import (ET, now_et, RTH_OPEN_MINS, is_capturable_session, et_date_str_from_ts_utc,
                      et_minute_total_from_ts_utc,
                      is_trading_day_et, session_close_mins_for_et_date, session_label)
 
@@ -3339,8 +3339,13 @@ def get_terrain_strikes(ticker: str = Query(...)):
             today_src = "terrain_live_cache"
     except Exception as e:
         log.debug("terrain strikes live read failed %s: %s", tk, e)
-    # the previous market day's close: a chain capture does not change after it is taken
-    caps = last_capture_per_day(get_db().db_path, tk, 1, before_et_date=now_et().date().isoformat())
+    # the previous market day's close before the day of the chain today's rows came from. On a
+    # closed market today's rows ARE the newest capture; the wall clock's date picked that same
+    # capture and compared it with itself (every change 0, `compared` true -- 2026-09-27).
+    _chain_ts = _snap.get("_chain_fetched_ts")
+    caps = (last_capture_per_day(get_db().db_path, tk, 1,
+                                 before_et_date=et_date_str_from_ts_utc(float(_chain_ts)))
+            if _chain_ts else [])
     if caps and caps[0]["spot"] is not None:
         prior = _per_strike(caps[0]["contracts"], float(caps[0]["spot"]))
         prior_src = f"chain_capture:{caps[0]['et_date']}"
