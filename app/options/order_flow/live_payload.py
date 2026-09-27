@@ -10,7 +10,8 @@ from typing import Any
 
 from l1_trade_observation import NATIVE_AGGRESSOR_AVAILABLE, TAPE_CLASSIFICATION
 from app.options.order_flow.engine import OrderFlowEngine
-from app.options.order_flow.state import get_content_for_symbol
+import live_market_plane as lmp
+from app.options.order_flow.state import get_content_for_symbol, option_top
 
 
 _FLOW_KEYS = (
@@ -43,10 +44,11 @@ def flow_block(of: dict[str, Any]) -> dict[str, Any]:
     return flow
 
 
-def options_live_payload(contract: str, *, content: list | None = None) -> dict[str, Any]:
+def options_live_payload(contract: str) -> dict[str, Any]:
     """Book microstructure + labeled PROXY flow for one option contract."""
-    items = content if content is not None else get_content_for_symbol(contract)
-    of = OrderFlowEngine().compute({"content": items or []}, ticker=contract)
+    items = get_content_for_symbol(contract)
+    top = option_top(contract) if lmp.feed_live_for(contract) else None
+    of = OrderFlowEngine().compute({"content": items or [], "top": top}, ticker=contract)
     book = dict(of.get("book_microstructure") or {})
     book["flow"] = flow_block(of)
     return book

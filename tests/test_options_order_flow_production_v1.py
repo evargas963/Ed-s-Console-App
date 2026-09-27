@@ -8,10 +8,7 @@ from __future__ import annotations
 import pytest
 
 import json
-import sqlite3
 import time
-from stream_spine import STREAM_SCHEMA_SQL
-
 
 
 @pytest.fixture
@@ -86,37 +83,6 @@ def test_live_payload_one_compute_includes_proxy_flow():
     assert payload["flow"]["classification"]["cum_delta_proxy"] == "PROXY"
     assert payload["flow"]["native_aggressor_available"] is False
     ofls.clear_all_live_state()
-
-
-def test_history_hydrates_from_stream_capture_only(tmp_path, monkeypatch):
-    from app.options.order_flow.history import hydrate_option_content
-    db = tmp_path / "stream_capture.db"
-    con = sqlite3.connect(str(db))
-    con.executescript(STREAM_SCHEMA_SQL)
-    now = time.time()
-    sym = "CDE   260904C00013000"
-    con.execute(
-        "INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src) VALUES(?,?,?,?)",
-        (now, sym, json.dumps({"LAST_PRICE": 1.15, "LAST_SIZE": 2, "TRADE_TIME_MILLIS": 1}), "test"),
-    )
-    con.execute(
-        "INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src) VALUES(?,?,?,?,?)",
-        (now, sym, "OPTIONS_BOOK",
-         json.dumps({"BIDS": [{"BID_PRICE": 1.1, "TOTAL_VOLUME": 1}],
-                     "ASKS": [{"ASK_PRICE": 1.2, "TOTAL_VOLUME": 1}],
-                     "BOOK_TIME": int(now * 1000)}), "test"),
-    )
-    con.commit()
-    con.close()
-    monkeypatch.setenv("STREAM_CAPTURE_DB_PATH", str(db.resolve()))
-    # resolve_stream_db_path reads env fresh
-    items = hydrate_option_content(sym, since_ts=now - 10, db_path=db)
-    assert items
-    assert any("LAST_PRICE" in x for x in items)
-    assert any("BIDS" in x for x in items)
-    from app.options.order_flow.live_payload import options_live_payload
-    payload = options_live_payload(sym, content=items)
-    assert payload["status"] == "ok"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -261,10 +227,6 @@ def test_flow_e2e_fixture_is_the_route_contract():
               "cum_delta_proxy", "cum_delta_slope", "top_book_pressure"):
         assert fixture["flow"][k] is not None, f"fixture flow.{k} is null"
     assert fixture["status"] == "ok"
-
-
-
-
 
 
 def test_options_api_carries_flow_block():

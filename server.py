@@ -31,7 +31,6 @@ from fastapi import Body, FastAPI, Query, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes.options_order_flow import router as options_order_flow_router
 
 # ── App directory = same folder as this file ─────────────────────────────────
 APP_DIR = str(Path(__file__).parent.resolve())
@@ -1539,7 +1538,6 @@ async def _app_lifespan(app):
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
-app.include_router(options_order_flow_router)
 
 
 class _RevalidateStaticFiles(StaticFiles):
@@ -4304,6 +4302,10 @@ def api_order_flow_microstructure(ticker: str = Query(...)):
     _row = _lmp.get_quote(t)
     if _row and _row.get("exchange_quote_ts") is not None:
         data["exchange_quote_ts"] = _row.get("exchange_quote_ts")
+    # the one L1 store and its live rule: the top of book the engine reads
+    data["top"] = ({"bid": _row.get("bid"), "ask": _row.get("ask"), "bid_size": _row.get("bid_size"),
+                    "ask_size": _row.get("ask_size"), "mark": _row.get("quote_mid")}
+                   if _row and _lmp.quote_is_fresh(_row) else None)
     from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
     payload = compute_book_microstructure(data, ticker=t)

@@ -239,11 +239,13 @@ _feed: dict[str, Any] = {"rx": None, "socket_open": False, "held": frozenset()}
 
 def record_feed_heartbeat(msg: dict[str, Any], received_at: float) -> None:
     """Apply one daemon heartbeat (topic ``daemon.heartbeat``)."""
-    held = (msg.get("held") or {}).get("LEVELONE_EQUITIES") if isinstance(msg, dict) else None
+    held_by = (msg.get("held") or {}) if isinstance(msg, dict) else {}
+    held = [s for svc in ("LEVELONE_EQUITIES", "LEVELONE_OPTIONS")
+            if isinstance(held_by.get(svc), list) for s in held_by[svc]]
     with _lock:
         _feed["rx"] = float(received_at)
         _feed["socket_open"] = bool(isinstance(msg, dict) and msg.get("schwab_socket_open") is True)
-        _feed["held"] = frozenset(ticker_storage_key(s) for s in held) if isinstance(held, list) else frozenset()
+        _feed["held"] = frozenset(ticker_storage_key(s) for s in held)
 
 
 def record_feed_down() -> None:
