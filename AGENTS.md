@@ -9,12 +9,17 @@ Read the parts a change touches before writing it.
 2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value
    Schwab's own field definition excludes (a negative volume or size). Everything else is taken
    as sent; a reported 0 is 0. No other bounds, no substitution.
-3. **One producer.** A value on screen is a Schwab field as sent, or a derived value computed by
-   exactly one function. Consumers carry it; none recompute it.
+3. **One authority.** Each value served, stored or shown has one computation authority.
+   Consumers carry its result; they never select, compute, repair or relabel it. A second authority
+   for the same value is banned whatever it is called: helper, parser, resolver or cache.
 4. **The UI computes nothing.** Page code formats and draws. Every number, total, choice,
    comparison and date the page shows is served.
-5. **No fallbacks.** Missing, stale or invalid shows absent, with its reason. No second source,
-   copy or default.
+5. **No substitute paths.** Input missing, invalid, or stale for its use: no current value, shown
+   absent with its reason. A valid past observation may be shown with its source, time and a label
+   saying so; it never substitutes for a current value or feeds current logic. No fallback,
+   default, estimate, proxy, carry-forward, interpolation or synthetic value. Test: when the source
+   cannot produce the value now, the screen shows it absent with its reason, or a labeled past
+   observation, never a value from elsewhere.
 6. **One path.** Schwab → daemon memory → pushed to the screen. The database is history: one
    writer; read at startup, after the close and for research; never for a live screen.
 7. **Nothing without a job.** A change deletes what it replaces, in the same PR.
@@ -25,9 +30,9 @@ Read the parts a change touches before writing it.
 
 ## Before writing code
 
-- Trace each value the change touches: its source, its one producer, its live and stored
-  consumers, and what each shows when the value is missing. A producer exists: call it. None
-  exists: write it once, on the server.
+- Trace each value the change touches: its source, its one producer, its validity rule and time,
+  its live and stored consumers, and what each shows when the value is missing. A producer
+  exists: call it. None exists: write it once, on the server.
 - Page code: no arithmetic, sum, min/max, sort by value or date math on served data.
 - A new check exists only for a failure that happened; it fails on the old code; it starts with
   no exceptions.
