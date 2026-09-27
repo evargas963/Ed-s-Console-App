@@ -246,8 +246,12 @@ def book_heatmap_for_ticker(
         return {"ticker": sym, "available": False, "reason": "database unavailable"}
     try:
         con.execute("PRAGMA query_only=ON")
+        # the newest message that carries a price level: after the close Schwab keeps sending
+        # empty book snapshots, and anchoring on those showed an empty grid all weekend
+        # (measured 2026-09-27: SPY and TSLA blank, their last populated book on 2026-09-25)
         latest = con.execute(
-            "SELECT MAX(ts_recv) FROM stream_book_raw WHERE symbol = ? AND service IN (?, ?)",
+            "SELECT MAX(ts_recv) FROM stream_book_raw WHERE symbol = ? AND service IN (?, ?) "
+            "AND (native_json LIKE '%\"BID_PRICE\"%' OR native_json LIKE '%\"ASK_PRICE\"%')",
             (sym, "NASDAQ_BOOK", "NYSE_BOOK"),
         ).fetchone()
         latest_ts = latest[0] if latest else None
