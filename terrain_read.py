@@ -209,6 +209,9 @@ def build_terrain_read(
         )
 
     regime = _regime_for(spot, flip, gamma_at_spot)
+    if regime == REGIME_UNAVAILABLE:
+        return _unavailable("Dealer gamma at spot is zero or unknown, so the regime cannot be "
+                            "determined.", spot, flip_confidence, put_wall, call_wall)
     posture = _posture_for(regime)
 
     # Gamma-audit (operator requirement): dealer positioning is MODELLED from public OI under the

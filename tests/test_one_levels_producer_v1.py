@@ -395,3 +395,36 @@ def test_a_tick_while_closed_reprices_nothing(monkeypatch):
     server._on_stream_tick("CRWD")
     time.sleep(0.05)
     assert calls == []
+
+
+def test_a_reprice_on_a_kept_chain_keeps_the_chains_time(monkeypatch):
+    """Levels are as of the chain they come from: repricing a kept chain on a tick must not make
+    them newer, or a chain that stops arriving would never show as stale."""
+    fetched = time.time() - 600.0
+    _put_chain(fetched_ts=fetched)
+    server._publish_levels(TK)
+    assert _cached()["computed_ts_utc"] == fetched
+
+
+def test_no_live_price_means_no_regime_and_the_levels_stand(monkeypatch):
+    """Your rule: the price is the live last trade or nothing. With no live price, the regime,
+    headline and wall-vs-price states are read from nothing, so they read UNAVAILABLE; the walls
+    and flip, which come from the chain, stay."""
+    server._publish_levels(TK, _CONTRACTS, time.time())
+    published = _cached()
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
+    out = server._reprice_cached_terrain(published, TK)
+    assert out["spot"] is None and out["spot_state"] == "unavailable"
+    assert out["regime"] == "UNAVAILABLE" and "Short gamma" not in out["headline"]
+    assert out["net_gex_at_spot"] is None and out["call_wall_state"] is None
+    assert out["call_wall"] == published["call_wall"] and out["gamma_flip"] == published["gamma_flip"]
+
+
+def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
+    """Measured 2026-09-26: with gamma at spot unknown, the regime read UNAVAILABLE while the
+    headline said "Short gamma -- trend regime. Follow breaks" -- advice from nothing."""
+    from terrain_read import GAMMA_FLIP_TRUSTED, build_terrain_read
+    r = build_terrain_read(spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED,
+                           gamma_at_spot=None)
+    assert r.regime == "UNAVAILABLE" and "gamma" not in r.headline.lower().split("—")[0]
+    assert "Short gamma" not in r.headline and "Long gamma" not in r.headline
