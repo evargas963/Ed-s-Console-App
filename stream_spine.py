@@ -88,6 +88,15 @@ CREATE TABLE IF NOT EXISTS stream_subscriptions (
     reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ssub_ts ON stream_subscriptions(ts);
+CREATE TABLE IF NOT EXISTS stream_feed_status (
+    ts REAL NOT NULL,
+    service TEXT NOT NULL,
+    socket_open INTEGER NOT NULL,
+    schwab_last_frame_ts REAL,
+    held INTEGER NOT NULL,
+    last_data_ts REAL
+);
+CREATE INDEX IF NOT EXISTS idx_sfs_ts ON stream_feed_status(ts);
 """
 
 #: Most equities the console asks the daemon to stream on LEVELONE_EQUITIES (ranked by the
@@ -105,8 +114,12 @@ def rank_option_contracts(requested, contract_inputs: "dict[str, dict]",
                           ) -> "tuple[list[str], dict[str, str]]":
     """(admitted, {not_admitted_symbol: reason}) -- which contracts fit the budget, ranked by
     expirationDate, then |strikePrice - spot|, then symbol (Schwab's own fields; a contract
-    missing any of them is not admitted and says which)."""
+    missing any of them is not admitted and says which). An expired contract is never admitted:
+    it ranked FIRST by date, so on a weekend the budget filled with Friday's expired contracts
+    (measured 2026-09-27: 200 DELL 2026-09-25 contracts subscribed)."""
     from numeric_contract import float_finite_or_none
+    from time_et import now_et
+    today = now_et().date().isoformat()
 
     not_admitted: "dict[str, str]" = {}
     rankable = []
@@ -121,6 +134,10 @@ def rank_option_contracts(requested, contract_inputs: "dict[str, dict]",
                                   ("strikePrice", strike), ("spot", spot)) if v is None]
         if missing:
             not_admitted[sym] = f"not admitted: no {', '.join(missing)}"
+            continue
+        expiry = str(inp["expirationDate"])[:10]
+        if expiry < today:
+            not_admitted[sym] = f"not admitted: expired {expiry}"
             continue
         rankable.append((str(inp["expirationDate"]), abs(strike - spot), sym))
     rankable.sort()
@@ -278,6 +295,10 @@ class HealthRegistry:
             return "DEGRADED"
         return "STALE"
 
+    def last(self, feed: str) -> float | None:
+        """When this feed last carried data (None: never, this connection)."""
+        return self._last.get(feed)
+
     def report(self, now: float | None = None) -> dict[str, dict]:
         t = now if now is not None else time.time()
         return {f: {"state": self.state(f, t), "age_sec": round(t - ts, 3)}
@@ -287,6 +308,10 @@ class HealthRegistry:
 # ---------------------------------------------------------------------------- the writer
 
 _INSERTS = {
+    "feedstatus": ("INSERT INTO stream_feed_status(ts,service,socket_open,schwab_last_frame_ts,"
+                   "held,last_data_ts) VALUES(?,?,?,?,?,?)",
+                   lambda m: (m["ts"], m["service"], int(m["socket_open"]),
+                              m.get("schwab_last_frame_ts"), m["held"], m.get("last_data_ts"))),
     "quote": ("INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
               "last_size,total_volume,quote_time_ms,trade_time_ms,src,native_json) "
               "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",

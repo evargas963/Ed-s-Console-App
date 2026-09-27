@@ -10,6 +10,8 @@ spot_source=streaming_plane / live. These tests lock each repair at its real sea
 """
 from __future__ import annotations
 
+import pytest
+
 import asyncio
 import time
 
@@ -45,6 +47,15 @@ def _inputs(contracts: list, spot):
     return {c["symbol"]: {"expirationDate": c["expirationDate"], "strikePrice": c["strikePrice"],
                           "spot": spot} for c in contracts}
 
+
+
+@pytest.fixture(autouse=True)
+def _before_the_fixture_expiries(monkeypatch):
+    """The ranking never admits an expired contract; these tests rank stored chains whose
+    expiries are past, so "today" is pinned before them."""
+    from datetime import datetime
+    import time_et
+    monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 1, 2, 10, 0, tzinfo=time_et.ET))
 
 def test_ranking_on_a_real_schwab_chain():
     """The real, complete TSLA chain Schwab returned (236 contracts, one expiry, fractional

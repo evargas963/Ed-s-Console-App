@@ -93,6 +93,15 @@ def _push_option_book(symbol, content, ts_recv, service="OPTIONS_BOOK"):
         src="schwab_book", ts_recv=ts_recv))
 
 
+
+@pytest.fixture(autouse=True)
+def _before_the_fixture_expiries(monkeypatch):
+    """The ranking never admits an expired contract; these tests rank stored chains whose
+    expiries are past, so "today" is pinned before them."""
+    from datetime import datetime
+    import time_et
+    monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 1, 2, 10, 0, tzinfo=time_et.ET))
+
 def test_option_contract_l1_lands_in_order_flow_state(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     _push_option_l1(_SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=time.time())
