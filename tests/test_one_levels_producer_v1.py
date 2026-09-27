@@ -352,7 +352,7 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
     full chain capture is priced once with Schwab's underlying price from that capture and
     valued and dated at the capture's time. Rows the console wrote before the daemon captured
     (one or two expiries) are not full chains and are never loaded."""
-    from calibration.complete_chain_capture import CAPTURE_SOURCE, persist_complete_chain_capture
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
     db = tmp_path / "ed_console.db"
     taken = time.time() - 3600.0
     by_expiry: dict = {}
@@ -360,8 +360,7 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
         by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
     for expiry, cts in by_expiry.items():
         persist_complete_chain_capture(db, ticker=TK, expiry=expiry, contracts=cts, spot=_SPOT,
-                                       completeness_basis="strike_range=ALL", ts_utc=taken,
-                                       source=CAPTURE_SOURCE)
+                                       completeness_basis=CAPTURE_BASIS, ts_utc=taken)
     persist_complete_chain_capture(db, ticker=TK, expiry=next(iter(by_expiry)),
                                    contracts=_CONTRACTS[:2], spot=1.0,
                                    completeness_basis="strike_range=ALL", ts_utc=taken + 60)
