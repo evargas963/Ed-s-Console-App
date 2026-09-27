@@ -611,11 +611,6 @@ ROWS: tuple[Row, ...] = (
         justification='Schwab get_chain wrapper serialized behind the chain-fetch gate; call shape unchanged, fail-open on gate timeout.',
     ),
     Row(
-        file='server.py', derivation='_get_fast_quote_executor', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_get_fast_quote_executor).',
-    ),
-    Row(
         file='server.py', derivation='_hydrate_logger_tickers_from_db', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (_hydrate_logger_tickers_from_db).',
@@ -732,11 +727,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='get_liquidity_snapshot', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (get_liquidity_snapshot).',
-    ),
-    Row(
-        file='server.py', derivation='get_spot', disposition='DERIVED',
-        producer_refs=('server.py:resolve_spot',),
-        justification='Featherweight live spot via the single spot authority resolve_spot (RC-14); no direct leaf here.',
     ),
     Row(
         file='server.py', derivation='get_terrain', disposition='ALLOWLISTED',
