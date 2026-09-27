@@ -110,15 +110,15 @@ def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
     db = tmp_path / "ed_console.db"
     # institutional-synthetic-ok: the reader returns stored contracts verbatim; none is priced.
     ct = lambda e: {"symbol": f"ZZ {e}", "expirationDate": f"{e}T20:00:00.000+00:00"}
-    def put(when, spot, expiries, source=cch.CAPTURE_SOURCE):
+    def put(when, spot, expiries, basis=cch.CAPTURE_BASIS):
         for e in expiries:
             cch.persist_complete_chain_capture(
                 db, ticker="ZZ", expiry=e, contracts=[ct(e)], spot=spot,
-                completeness_basis="strike_range=ALL", ts_utc=_ts(when), source=source)
+                completeness_basis=basis, ts_utc=_ts(when))
     put("2026-09-24 15:30", 10.0, ["2030-01-04"])
     put("2026-09-24 16:00", 11.0, ["2030-01-04", "2030-01-11"])       # Thursday's last
     put("2026-09-25 16:00", 12.0, ["2030-01-04", "2030-01-11"])       # Friday's last
-    put("2026-09-25 16:05", 99.0, ["2030-01-04"], source="schwab_chain_strike_range_all")  # old row
+    put("2026-09-25 16:05", 99.0, ["2030-01-04"], basis="strike_range=ALL")  # old row
     caps = cch.last_capture_per_day(db, "ZZ", 2)
     assert [(c["et_date"], c["spot"], len(c["contracts"])) for c in caps] == [
         ("2026-09-25", 12.0, 2), ("2026-09-24", 11.0, 2)]
