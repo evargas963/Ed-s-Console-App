@@ -1054,15 +1054,22 @@ def get_option_contract_streaming_diagnostics(
             # contract exists in either case -- fail closed rather than lending another
             # contract's health, or a not-yet-established subscription's, to this one.
             healthy = False
+    pl1 = _pick_producer_contract(producer["LEVELONE_OPTIONS"], queried)
+    pbk = _pick_producer_contract(producer["OPTIONS_BOOK"], queried)
+    # the queried contract's subscription, as the page shows it: SUBSCRIBED (the producer holds it),
+    # MOVED (both services hold one other contract), else PENDING; None with no contract queried
+    subscription_state = (None if not queried else "SUBSCRIBED" if contract_match
+                          else "MOVED" if pl1 and pl1 == pbk and pl1 != queried else "PENDING")
     return {
         "streaming_connected": bool(_feed_running),
         # Back-compatible name; it has always been the SERVER-REQUESTED contract.
         "option_contract": _active_option_contract,
         "server_requested_contract": _active_option_contract,
-        "producer_l1_contract": _pick_producer_contract(producer["LEVELONE_OPTIONS"], queried),
-        "producer_book_contract": _pick_producer_contract(producer["OPTIONS_BOOK"], queried),
+        "producer_l1_contract": pl1,
+        "producer_book_contract": pbk,
         "queried_contract": queried,
         "contract_match": contract_match,
+        "subscription_state": subscription_state,
         "streaming_last_update_ts": last,
         "streaming_staleness_ms": stale_ms,
         "streaming_healthy": healthy,

@@ -84,8 +84,9 @@ operator.
 3. **The console talks to Schwab** (REST chains) — the daemon should own every Schwab call.
 4. **The console computes the levels** in the same process that serves the page.
 5. **The browser polls** for bars, order flow, liquidity and the levels themselves.
-6. **The browser computes values**: 64 sites inventoried 2026-09-27; the gamma screens' moved to the
-   server (PR A), the Trade Desk's (PR B); the order-flow and Flow ones remain (ACTIVE_PROGRAM P1-3).
+6. **The standalone pages compute values** in their inline scripts (`static/chart.html`,
+   `static/exposure.html`): P2-4. The console's page scripts compute none (the 64 sites inventoried
+   2026-09-27 moved to the server, P1-3).
 
 ## 4. The target
 
@@ -127,7 +128,7 @@ does not prove no second one exists under another name.
 | One producer | `one_producer` (`governance/computation_registry.json`) | 6 registered fields computed at one site | 303 other fields `server.py` serves |
 | One producer: spot | `single_spot_authority` | spot read only through `resolve_spot` in `server.py`, `terrain_engine.py` | page scripts |
 | One producer: levels | `domain_faucet_registry`, `phase2a_single_level_computation`, `chain_width_single_faucet` | level routes registered; price levels computed once; the chain not narrowed | exposure values outside the levels list |
-| UI computes nothing | `single_faucet_provenance` (`tools/data_faucet_audit.py`) | spot reads in `static/chart.html` | `static/js/` (the console page) |
+| UI computes nothing | `single_faucet_provenance` (`tools/data_faucet_audit.py`, `PAGE_CALCULATIONS`) | spot reads in `static/chart.html`; sums, weighted sums, distance to spot, sort by distance, calendar arithmetic, first-key picks in every `static/js/` script | a threshold or comparison that picks a label; the standalone pages' inline scripts |
 | No fallbacks | `no_fake_defaults`, `absence_has_a_type`, `no_silent_swallow` | default literals, absent-as-value return types, swallowed exceptions | a branch that picks a second source |
 | One path, no polling | none | | page timers that read `/api` |
 | One writer | `single_stream_authority`, `collect_window_single_law` | one Schwab stream; the 1-minute bar write seam | other writes outside the one writer |

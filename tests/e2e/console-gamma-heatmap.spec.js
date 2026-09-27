@@ -1184,18 +1184,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect((await page.evaluate((c) => window.EdStream.setActiveContract(c), X)).accepted).toBe(true);
     expect((await page.evaluate((c) => window.EdStream.status({}, c), X)).active).toBe(false);
     // producer binds X (A polls the plane for X) -> A ACTIVE
-    const boundX = { contract_match: true, producer_l1_contract: X, producer_book_contract: X };
+    const boundX = { contract_match: true, subscription_state: 'SUBSCRIBED', producer_l1_contract: X, producer_book_contract: X };
     expect((await page.evaluate(([p, c]) => window.EdStream.status(p, c), [boundX, X])).active).toBe(true);
 
     // B selects Y (newer legitimate global intent) -> accepted; the global slot moves to Y
     expect((await page.evaluate((c) => window.EdStream.setActiveContract(c), Y)).accepted).toBe(true);
     // A now polls the plane for X and sees the producer is Y (contract_match:false) -> NOT ACTIVE,
     // so A cannot render Y's data as if it were X. A does NOT re-POST X.
-    const aAfter = await page.evaluate(([p, c]) => window.EdStream.status(p, c), [{ contract_match: false, producer_l1_contract: Y, producer_book_contract: Y }, X]);
+    const aAfter = await page.evaluate(([p, c]) => window.EdStream.status(p, c), [{ contract_match: false, subscription_state: 'MOVED', producer_l1_contract: Y, producer_book_contract: Y }, X]);
     expect(aAfter.active).toBe(false);
     expect(aAfter.bound).toBe(false);
     // B polls the plane for Y and is ACTIVE
-    const boundY = { contract_match: true, producer_l1_contract: Y, producer_book_contract: Y };
+    const boundY = { contract_match: true, subscription_state: 'SUBSCRIBED', producer_l1_contract: Y, producer_book_contract: Y };
     expect((await page.evaluate(([p, c]) => window.EdStream.status(p, c), [boundY, Y])).active).toBe(true);
     // no oscillation: exactly the two operator selections (X, Y) were POSTed — losing the slot re-POSTs nothing
     expect(postCount).toBe(2);

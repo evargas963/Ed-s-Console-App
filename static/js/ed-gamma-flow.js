@@ -21,7 +21,6 @@
   function int(n) { return (n == null || isNaN(n)) ? '—' : String(Math.round(Number(n))); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function isFlow() { var s = st(); return s.workspace === 'options' && s.subview === 'flow'; }
-  function cpOf(symbol) { var s = String(symbol || ''); return s.length >= 13 ? (s.charAt(12) === 'P' ? 'Put' : (s.charAt(12) === 'C' ? 'Call' : '—')) : '—'; }
 
   function host() { return document.getElementById('flowBody'); }
   function set() { var el = document.getElementById('flTicker'); if (el) el.textContent = (st().ticker || '').replace('$', ''); }
@@ -95,16 +94,12 @@
   }
 
   // subscription state from the CANONICAL producer truth (EdStream.status over the payload's plane).
-  function subState(plane, desired) {
-    var ES = window.EdStream;
-    var s = (ES && ES.status) ? ES.status(plane, desired) : { active: false };
-    if (s.active) return { label: 'ACTIVE', cls: 'live' };
-    plane = plane || {};
-    var pl1 = plane.producer_l1_contract, pbk = plane.producer_book_contract;
-    // H: MOVED = the slot is clearly held by ANOTHER single contract (both producers on the same
-    // non-desired contract). A partial state (only one service matches) is PENDING, not MOVED.
-    if (pl1 && pbk && pl1 === pbk && pl1 !== desired) return { label: 'MOVED', cls: 'stale' };
-    return { label: 'PENDING', cls: 'warn' };                 // accepted, awaiting/partial producer binding
+  // the queried contract's subscription, served (streaming_plane.subscription_state)
+  function subState(plane) {
+    var s = (plane || {}).subscription_state;
+    if (s === 'SUBSCRIBED') return { label: 'ACTIVE', cls: 'live' };
+    if (s === 'MOVED') return { label: 'MOVED', cls: 'stale' };
+    return { label: 'PENDING', cls: 'warn' };
   }
 
   // The backend's classification string for one canonical key, verbatim — or null when the
@@ -114,7 +109,7 @@
 
   function render(h, desired, d) {
     var plane = d.streaming_plane || {};
-    var ss = subState(plane, desired);
+    var ss = subState(plane);
     var tob = d.top_of_book || {};
     var depth = d.depth || {};
     var ages = d.ages || {};
@@ -159,7 +154,7 @@
         (plane.streaming_staleness_ms != null ? ' · ' + Math.round(plane.streaming_staleness_ms) + 'ms' : ''),
         'streaming_plane.streaming_healthy', undefined],
     ];
-    h.innerHTML = header(desired, ss) +
+    h.innerHTML = header(desired, ss, d && d.put_call) +
       '<div class="fl-grid">' +
       section('Top of book', rowsTob, '') +
       section('Book microstructure', rowsBook, dim) +
@@ -171,11 +166,11 @@
       '; no signed buys/sells, CVD, or bull/bear verdict is canonical.</div>';
   }
 
-  function header(desired, ss) {
+  function header(desired, ss, putCall) {   // putCall: Schwab's CONTRACT_TYPE, served
     var strike = st().selStrike, expiry = st().selExpiry;
     return '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
       '<span class="fl-sym">' + esc(desired || '—') + '</span>' +
-      '<span class="fl-meta">' + cpOf(desired) + (strike != null ? ' · ' + strike : '') + (expiry ? ' · ' + esc(expiry) : '') + '</span></div>' +
+      '<span class="fl-meta">' + (putCall === 'CALL' ? 'Call' : putCall === 'PUT' ? 'Put' : '—') + (strike != null ? ' · ' + strike : '') + (expiry ? ' · ' + esc(expiry) : '') + '</span></div>' +
       '<div class="fl-sub"><span class="fl-lab">Subscription</span><span class="fl-badge ' + ss.cls + '">' + ss.label + '</span></div></div>';
   }
   function shell(h, desired, badge, msg, x) {

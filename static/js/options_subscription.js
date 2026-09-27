@@ -100,15 +100,9 @@
    * and BOTH option services must agree.
    */
   function planeIsBoundToContract(plane, selectedContract) {
-    const p = plane || {};
-    if (p.contract_match === false) return false;
+    // the server's verdict only (streaming_plane.contract_match); no verdict is not bound
     const sel = selectedContract == null ? '' : String(selectedContract);
-    if (!sel) return false;
-    if (p.contract_match === true) return true;
-    // No server verdict: require explicit producer confirmation on BOTH services.
-    const l1 = p.producer_l1_contract == null ? '' : String(p.producer_l1_contract);
-    const book = p.producer_book_contract == null ? '' : String(p.producer_book_contract);
-    return l1 === sel && book === sel;
+    return !!sel && (plane || {}).contract_match === true;
   }
 
   /**
@@ -127,16 +121,10 @@
    *   'subscribed' producer confirmed this contract on both services
    */
   function subscriptionState(plane, selectedContract) {
+    // the server's state only (streaming_plane.subscription_state); no fallback to producer ids
     const sel = selectedContract == null ? '' : String(selectedContract);
     if (!sel) return 'none';
-    const p = plane || {};
-    if (p.contract_match === true) return 'subscribed';
-    if (p.contract_match === false) return 'pending';
-    // No server verdict available (older payload / plane not yet read): fall back to the
-    // producer identities themselves, and require BOTH. Never infer from requested state.
-    const l1 = p.producer_l1_contract == null ? '' : String(p.producer_l1_contract);
-    const book = p.producer_book_contract == null ? '' : String(p.producer_book_contract);
-    return (l1 === sel && book === sel) ? 'subscribed' : 'pending';
+    return (plane || {}).subscription_state === 'SUBSCRIBED' ? 'subscribed' : 'pending';
   }
 
   g.EdOptionsSubscription = {
