@@ -86,8 +86,8 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | M-03 | liquidity_value_engine.py:79 | 5 | tradeable_score | no spot -> a different formula | liquidity map | OPEN |
 | M-04 | liquidity_value_engine.py:388 | 3 | RTH open | hard-coded 9:30 beside RTH_OPEN | ORB on /api/levels | OPEN |
 | M-05 | liquidity_value_engine.py:426, 490 | 5 | VWAP | bars with no volume skipped uncounted | VWAP | OPEN |
-| M-06 | liquidity_value_engine.py:439 | 5 | VWAP sigma | negative variance clamped to 0 | bands | OPEN |
-| M-07 | liquidity_value_engine.py:474, 1648, 1656 | 3 | VWAP bands | two computations; the series' last point overwritten by the other | /api/levels, chart | OPEN |
+| M-06 | liquidity_value_engine.py:439 | 5 | VWAP sigma | negative variance clamped to 0 | bands | NOT A VIOLATION: a variance is never negative; the clamp removes float rounding below 0 |
+| M-07 | liquidity_value_engine.py:474, 1648, 1656 | 3 | VWAP bands | two computations; the series' last point overwritten by the other | /api/levels, chart | FIXED c86e95dd |
 | M-08 | liquidity_value_engine.py:569, 575, 667-682, 764-809, 865-880, 961-983, 1185-1216 | 2/5 | level prices | truthiness treats 0 as missing | zones | OPEN |
 | M-09 | liquidity_value_engine.py:984, 1050-1059 | 5 | value_state, vwap_relation, new_value_area | missing input -> "unchanged"/"at_value"; floor 0.01 | snapshot summary | OPEN |
 | M-10 | liquidity_value_engine.py:757, 853, 952, 1174, 1341 | 3 | PDH..VWAP | checkpoint and replay builders recompute the Phase 2A families under the same ids | /api/liquidity-snapshot | OPEN |
@@ -97,18 +97,18 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | M-14 | math_exposure_core.py:209, 218, 222-223, 252 | 5/3 | contracts | dropped uncounted; bad multiplier skipped before OI counted so the leg reads a known 0; diag counts them as "greeks missing" | OI, PCR, max pain | OPEN |
 | M-15 | math_exposure_core.py:156-159, 239-249, 347-349 | 5 | sizes, dollars | accumulators start at 0.0; unreported reads 0 | per-strike | OPEN |
 | M-16 | math_exposure_core.py:292, 324 | 3 | IV validity | inline re-implementation of schwab_iv_to_sigma | vanna | OPEN |
-| M-17 | math_exposure_core.py:345, 687 | 5 | net vanna | $0 served when nothing priced a vanna | vanna_agg | OPEN |
+| M-17 | math_exposure_core.py:345, 687 | 5 | net vanna | $0 served when nothing priced a vanna | vanna_agg | FIXED 238ae6fb |
 | M-18 | math_exposure_core.py:497, 500 | 2/5 | quoteTimeInLong, overlay baseline | raw float, 0 missing; fallback baseline | overlay | OPEN |
 | M-19 | math_exposure_core.py:557, 573, 763, 921 | 5 | leg OI/volume, unwind, key delta strike | missing leg read as 0 | max pain, PCR, key delta | OPEN |
-| M-20 | math_exposure_core.py:713 | 5/3 | DEX$ | reads 0.0-initialised fields, always "seen", $0 served; re-sums net_dex | dex_dollars | OPEN |
+| M-20 | math_exposure_core.py:713 | 5/3 | DEX$ | reads 0.0-initialised fields, always "seen", $0 served; re-sums net_dex | dex_dollars | FIXED 238ae6fb |
 | M-21 | math_exposure_core.py:795, 867 | 5 | 0DTE share, gamma strength | missing book -> 0%; single strike -> 100% | terrain | OPEN |
 | M-22 | math_exposure_core.py:35 | 5 | book net GEX | partly valid strikes summed, invalid dropped silently | regime | OPEN |
-| M-23 | math_exposure_core.py:969, 991 | 5 | gamma/delta walls | raw-gamma/raw-delta fallback when not dollarized | walls | OPEN |
+| M-23 | math_exposure_core.py:969, 991 | 5 | gamma/delta walls | raw-gamma/raw-delta fallback when not dollarized | walls | FIXED 238ae6fb |
 | M-24 | math_levels.py:150, 666 | 2 | spot | `not spot` | charm, flip | OPEN |
 | M-25 | math_levels.py:297 | 5 | contract gamma | non-finite -> 0.0 uncounted | flip | OPEN |
 | M-26 | math_levels.py:334 | 5 | flip | no spot -> first crossing | flip | OPEN |
 | M-27 | math_levels.py:353-357, 609-634 | 3/5 | profile at a price | two interpolators, both carry the endpoint off the profile | GSF, flip diag | OPEN |
-| M-28 | math_levels.py:429; terrain_engine.py:742 | 3 | gamma at spot | GSF uses the curve, regime uses Schwab's book; flip_diag's gamma_at_spot overwritten by the other producer under the same key | regime vs gsf_state | OPEN |
+| M-28 | math_levels.py:429; terrain_engine.py:742 | 3 | gamma at spot | GSF uses the curve, regime uses Schwab's book; flip_diag's gamma_at_spot overwritten by the other producer under the same key | regime vs gsf_state | FIXED 12daaf9f for the flip_diag key; GSF (curve) vs regime (Schwab book) are two measures, open to label |
 | M-29 | terrain_engine.py:365 | 5 | contract side | anything not PUT becomes call | chain ladder | OPEN |
 | M-30 | terrain_engine.py:332 | 2 | strike volume | `if r[2]` | migration | OPEN |
 | M-31 | terrain_engine.py:859 | 5 | computed_ts_utc | compute time labelled as fetch time | ages | OPEN |
