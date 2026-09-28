@@ -783,7 +783,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('key levels rail reflects /api/terrain', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klSpot')).toHaveText('583.41');
     await expect(page.locator('#klFlip')).toHaveText('582.90');
     await expect(page.locator('#klCall')).toHaveText('586.00');
     await expect(page.locator('#klPut')).toHaveText('580.00');
@@ -2011,16 +2010,27 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('the Key Levels rail updates on a levels push', async ({ page }) => {
-    let terrainSpot = 583.41;
+    let terrainFlip = 582.90;
     await page.route('**/api/terrain?**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, { spot: terrainSpot })),
+      body: JSON.stringify(Object.assign({}, TERRAIN, { gamma_flip: terrainFlip })),
     }));
     await routeOneLevelsPush(page, 1000);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klSpot')).toHaveText('583.41');
-    terrainSpot = 601.23;
+    await expect(page.locator('#klFlip')).toHaveText('582.90');
+    terrainFlip = 590.00;
     await page.waitForTimeout(1100);   // past the push
+    await expect(page.locator('#klFlip')).toHaveText('590.00');
+  });
+
+  test('Key Levels Spot is the header price, not the levels fetch', async ({ page }) => {
+    await page.route('**/api/terrain?**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, { spot: 583.41 })),   // the fetch's copy
+    }));
+    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);                    // the pushed price
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#klSpot')).toHaveText('601.23');
   });
 
