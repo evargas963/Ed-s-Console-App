@@ -1137,26 +1137,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(postCount).toBe(2);
   });
 
-  test('#10 active-ticker ack is fail-closed (request-accepted only; bookBound NOT_PROVEN)', async ({ page }) => {
-    let mode = 'ok';
-    await page.route('**/api/streaming/active-ticker', (route) => {
-      var status = 200, body;
-      if (mode === 'missing') body = { ok: true };                       // ok but NO echoed ticker
-      else if (mode === 'wrong') body = { ok: true, ticker: 'QQQ' };      // echoed ticker != requested
-      else if (mode === 'err500') { status = 500; body = { ok: true, ticker: 'SPY' }; }  // non-2xx, valid-looking body
-      else body = { ok: true, ticker: 'SPY' };                           // exact 2xx + ok + matching ticker
-      return route.fulfill({ status: status, contentType: 'application/json', body: JSON.stringify(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const run = () => page.evaluate(() => window.EdStream.setActiveTicker('SPY'));
-    mode = 'missing'; expect((await run()).requestAccepted).toBe(false);   // missing ticker -> rejected
-    mode = 'wrong';   expect((await run()).requestAccepted).toBe(false);   // mismatched ticker -> rejected
-    mode = 'err500';  expect((await run()).requestAccepted).toBe(false);   // non-2xx -> rejected
-    mode = 'ok';      const ok = await run();
-    expect(ok.requestAccepted).toBe(true);                                 // request accepted only
-    expect(ok.bookBound).toBeNull();                                       // book binding NOT_PROVEN here
-  });
-
   test('#1 perf: a large heatmap surface renders synchronously without pathological jank', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const ms = await page.evaluate(() => {

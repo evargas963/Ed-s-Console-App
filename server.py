@@ -3764,9 +3764,14 @@ CHANGES_SESSION_SEC = 5.0
 async def get_changes(ticker: str = Query(...)):
     """The console's push to the page: `levels`, `flow` or `liquidity` when that value of the
     ticker changed (the page reloads it), and `session` with the market session label. Prices
-    and bars come from the daemon's own push."""
+    and bars come from the daemon's own push. Opening it makes the ticker the active one, whose
+    NYSE_BOOK and NASDAQ_BOOK the daemon streams: every page reconnects after a console
+    restart, so the books follow the page with no separate request."""
+    from app.options.order_flow.streaming import set_streaming_active_ticker
+
     t = ticker_storage_key(_required_ticker(ticker))
     _get_route_offload_executor().submit(_touch_tracked_ticker_view, t)
+    _get_route_offload_executor().submit(set_streaming_active_ticker, t)
     client = push_changes.subscribe(t)
 
     async def event_generator():
@@ -3879,8 +3884,8 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
 @app.post("/api/streaming/active-option-contract")
 async def post_streaming_active_option_contract(payload: dict = Body(default={})):
     """Subscribe LEVELONE_OPTIONS+OPTIONS_BOOK to one option contract (dynamic; replaces
-    prior subscription). Mirrors /api/streaming/active-ticker exactly, for the SEPARATE
-    option-contract slot (an equity ticker and an option contract on that same underlying
+    prior subscription): the option-contract slot, separate from the equity books (an equity
+    ticker and an option contract on that same underlying
     can be watched at once — see app/options/order_flow/streaming.py's module docstring)."""
     c = str(payload.get("contract") or "").strip()
     if not c:
@@ -3980,25 +3985,6 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
                              "superseded": True}, status_code=409)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e), "contracts": contracts}, status_code=500)
-    return JSONResponse(out)
-
-
-@app.post("/api/streaming/active-ticker")
-async def post_streaming_active_ticker(payload: dict = Body(default={})):
-    """Subscribe Schwab L1+book to the active UI ticker (dynamic; replaces prior subscription)."""
-    t = ticker_storage_key(_required_ticker(payload.get("ticker")))
-    # SWITCH-LATENCY FIX (critical): set_streaming_active_ticker blocks on fut.result(timeout=30)
-    # while it does 6 websocket re-subscribe round-trips, and this endpoint fires on EVERY ticker
-    # switch. Running it on the async event loop froze the entire UI (all SSE/requests) for up to
-    # 30s per switch. Offload the whole blocking block to the thread pool; the loop stays free.
-    def _apply():
-        from app.options.order_flow.streaming import set_streaming_active_ticker
-
-        return {"ok": set_streaming_active_ticker(t), "ticker": t}
-    try:
-        out = await asyncio.get_event_loop().run_in_executor(_get_route_offload_executor(), _apply)
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e), "ticker": t}, status_code=500)
     return JSONResponse(out)
 
 

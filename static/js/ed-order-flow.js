@@ -6,13 +6,8 @@
    view's exact .fl-* CSS grammar so a book reads the same whether it's an option contract's
    or the ticker's own -- one visual language, not a second one invented here.
 
-   EdStream.setActiveTicker (ed-stream.js) is the ONE owner of "please subscribe this ticker's
-   NASDAQ/NYSE book" -- built this mission but never called from anywhere in the new console
-   (confirmed: every ticker's book returned {"status":"no_book"} even for an actively-viewed
-   symbol). This view calls it once per ticker on entry, per that function's own doc comment
-   ("only a view that genuinely needs the single-symbol equity BOOK/DOM should call this").
-   The POST is REQUEST-ACCEPTED only, no producer-binding identity -- so a book that has not
-   arrived yet renders as an honest "no book yet" state, never a fabricated ladder. */
+   The console streams the books of the ticker whose /api/changes connection is open (the page
+   opens it for its ticker); a book not yet arrived reads "No <venue> for <ticker>". */
 (function () {
   'use strict';
 
@@ -25,15 +20,6 @@
   function ticker() { return (st().ticker || ''); }
   function host() { return document.getElementById('obBody'); }
   function stillBook(tk) { return isBook() && ticker() === tk; }
-
-  // Operator-reproduced defect (2026-09-14): a PRIVATE "already warmed AMD" cache here could
-  // not see that Trade Desk moved the real subscription to PLTR in between -- AMD Book -> PLTR
-  // Trade Desk -> AMD Book left the live subscription stuck on PLTR while this screen still
-  // showed AMD. EdStream.warmActiveTicker is the ONE shared de-dup authority now (ed-stream.js);
-  // no view keeps its own copy of "did I already ask for this ticker".
-  function warm(tk) {
-    if (window.EdStream && window.EdStream.warmActiveTicker) window.EdStream.warmActiveTicker(tk);
-  }
 
   function loadImpl(tk, signal) {
     var h = host();
@@ -54,7 +40,6 @@
     if (!isBook()) return;
     var tk = ticker();
     var tEl = document.getElementById('obTicker'); if (tEl) tEl.textContent = tk.replace('$', '');
-    warm(tk);
     _loader.trigger(tk);
   }
 

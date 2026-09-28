@@ -76,6 +76,18 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Desk: selecting a ticker opens its /api/changes connection (the book request)', async ({ page }) => {
+    await intercept(page);
+    const opened = [];
+    page.on('request', (r) => { if (r.url().includes('/api/changes')) opened.push(new URL(r.url()).searchParams.get('ticker')); });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => opened).toContain('SPY');
+    await page.evaluate(() => window.EdShell.setTicker('MU'));
+    await expect.poll(() => opened).toContain('MU');
+    expect(await page.evaluate(() => window.EdStream.setActiveTicker)).toBeUndefined();   // no separate request
+  });
+
   test('Market Map: the served last completed bar; a price tick moves the live LAST line and reads no bars', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);

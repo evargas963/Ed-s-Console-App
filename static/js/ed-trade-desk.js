@@ -24,14 +24,6 @@
   function host() { return document.getElementById('tdBody'); }
   function stillRightNow(tk) { return isRightNow() && ticker() === tk; }
 
-  // Operator-reproduced defect (2026-09-14): this file's own private "already warmed" cache
-  // could not see ed-order-flow.js's identical cache moving the subscription elsewhere (or vice
-  // versa) -- AMD Book -> PLTR Trade Desk -> AMD Book left the real subscription on PLTR.
-  // EdStream.warmActiveTicker is the ONE shared de-dup authority now (ed-stream.js).
-  function warmBook(tk) {
-    if (window.EdStream && window.EdStream.warmActiveTicker) window.EdStream.warmActiveTicker(tk);
-  }
-
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
   function tag(c) {
     if (c === undefined || c == null) return '';
@@ -395,7 +387,6 @@
     var h = host();
     if (!h || !stillRightNow(tk)) return;
     h.setAttribute('aria-busy', 'true');
-    warmBook(tk);
     return Promise.all([
       fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
