@@ -729,28 +729,18 @@
     if (!live || stale) {
       var warming = !live && surface.warming === true;
       var requested = !live && !warming && surface.requested === true;
-      // #1-A: distinguish "on the board, a refresh is coming" from "not on the board, nothing is
-      // collecting this symbol". Only the former may promise a next refresh.
-      var onBoard = surface.on_board === true;
-      var notCollecting = requested && !onBoard;
       // No reference surface exists (operator rule 2026-09-23: no fallbacks) -- a surface that is
       // not live is simply absent; the state says why.
       // WHERE the live surface stands (state)
       var stateLabel = warming ? 'LIVE SURFACE WARMING'
-        : notCollecting ? 'NOT COLLECTING'
         : requested ? 'LIVE SURFACE REQUESTED'
         : (live ? 'STALE' : '');
-      var cls = warming ? 'warming'
-        : (requested && !notCollecting) ? 'warming'
-        : (live ? 'stale' : '');
+      var cls = (warming || requested) ? 'warming' : (live ? 'stale' : '');
       // CONCISE primary line; the full reason is disclosed in the tooltip (title) — never a paragraph
       // that consumes the analytical panel.
       var brief = !live ? 'no live surface for this symbol' : 'live surface is stale';
-      var detail = surface.degraded
-        || (notCollecting ? 'live terrain collection is not currently active for this symbol'
-          : requested ? 'awaiting next eligible terrain refresh' : brief);
-      var text = [stateLabel].filter(Boolean).join(' — ') + (stateLabel ? ' · ' : '') + brief +
-        (notCollecting ? ' · collection is not currently active for this symbol' : '');
+      var detail = surface.degraded || (requested ? 'awaiting next eligible terrain refresh' : brief);
+      var text = [stateLabel].filter(Boolean).join(' — ') + (stateLabel ? ' · ' : '') + brief;
       out += '<div class="heat-banner ' + cls + '" title="' + escapeHtml(detail) + '"><span class="hb-main">' + text +
         '</span><span class="hb-more" aria-label="details">details</span></div>';
     }

@@ -2277,12 +2277,6 @@ def _reprice_worker(tk: str) -> None:
             log.warning("levels reprice failed for %s: %s", tk, e)
 
 
-def _ticker_on_terrain_board(tk: str) -> bool:
-    # current board membership (the terrain loop's universe), read under the existing lock
-    with _logger_lock:
-        return tk in _logger_tickers
-
-
 def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     """Fetch one chain and compute terrain into the cache. Never raises.
 
@@ -3348,23 +3342,16 @@ def get_options_gamma_surface(ticker: str = Query(...)):
         })
 
     # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----
-    # #1-A: separate the two truths the UI must not conflate.
-    #   REQUESTED = this endpoint has actually recorded demand for the surface (above).
-    #   ON BOARD  = the ticker is in the ACTUAL current canonical terrain/logger board — read under
-    #               the board's own lock (_ticker_on_terrain_board), NOT inferred from "a cached
-    #               snapshot happens to exist". A stale snapshot is not proof of current membership.
-    #   WARMING   = requested AND on the board AND the terrain producer can refresh THIS ticker right
-    #               now — reusing terrain_staleness's canonical output merged onto `live`
-    #               (levels_refresh_active, not quarantined, not paused). No copied scheduler policy.
+    # REQUESTED: this ticker is viewed. WARMING: viewed and the levels loop can refresh it now
+    # (terrain_staleness's output on `live`: refresh active, not quarantined, not paused). The loop
+    # refreshes every viewed ticker each cycle, on the board or not.
     _requested = _gamma_surface_wanted(tk)
-    _on_board = _ticker_on_terrain_board(tk)
-    _warming = (_requested and _on_board and bool(live) and bool(live.get("levels_refresh_active"))
+    _warming = (_requested and bool(live) and bool(live.get("levels_refresh_active"))
                 and not live.get("levels_quarantined") and not live.get("levels_paused_on_purpose"))
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-                     "live": False, "stale": True, "warming": _warming,
-                     "requested": _requested, "on_board": _on_board,
-                     "reason": ("no live gamma surface for this ticker yet -- the terrain loop "
-                                "projects it once the ticker is viewed and on the board")}
+                     "live": False, "stale": True, "warming": _warming, "requested": _requested,
+                     "reason": ("no live gamma surface for this ticker yet -- the levels loop "
+                                "projects it while the ticker is viewed")}
     return JSONResponse(payload)
 
 
