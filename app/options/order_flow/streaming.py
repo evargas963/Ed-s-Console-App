@@ -24,10 +24,8 @@ feed loop sends the new list. The daemon's one-second status comes back on the s
 (topic "daemon.heartbeat") and is the one source for "is the daemon / Schwab alive" and
 "what does Schwab hold / refuse".
 
-Public API is unchanged from the pre-repair module (same names, same call sites in
-server.py): `start_order_flow_stream` / `stop_order_flow_stream` /
-`set_streaming_active_ticker` / `get_plane_authority_for_ticker` /
-`streaming_l1_cache_usable` / `get_streaming_diagnostics` / `is_order_flow_stream_running`.
+Public API: `start_order_flow_stream` / `stop_order_flow_stream` / `set_streaming_active_ticker`
+/ `set_active_option_contract` / `get_option_contract_streaming_diagnostics`.
 """
 
 from __future__ import annotations
@@ -134,7 +132,6 @@ _feed_task: Optional[asyncio.Task] = None
 _feed_running = False
 _active_ticker: Optional[str] = None
 _streaming_last_update_ts: Optional[float] = None
-_last_subscribe_completed_ts: Optional[float] = None
 #: Push connection state for diagnostics: when the current connection opened (None while
 #: disconnected) and how many messages it has applied.
 _push_connected_ts: Optional[float] = None
@@ -148,7 +145,6 @@ _active_option_contract: Optional[str] = None
 #: Own staleness clock, separate from the equity ticker's — an option contract watched
 #: alongside a ticker must be able to go stale (or come up fresh) independently.
 _option_streaming_last_update_ts: Optional[float] = None
-_option_last_subscribe_completed_ts: Optional[float] = None
 #: PER-CONTRACT staleness clock (RC-UI-3 finding #4, 2026-09-12, REPRODUCED): the single
 #: scalar above is updated by ANY contract's message -- primary OR any additional one (see
 #: _ingest_pushed) -- so a fresh additional contract can mask a genuinely
@@ -178,9 +174,6 @@ def _tick(sym: str) -> None:
             log.warning("tick callback failed for %s (%s failures): %s",
                         sym, _tick_callback_failures, e)
 
-
-STREAMING_STALE_MS = 25_000.0
-GRACE_AFTER_SUBSCRIBE_SEC = 8.0
 
 #: FRESHNESS/HEALTH SEMANTIC AUDIT (OPTIONS_ORDER_FLOW_V1, 2026-08-30): this module's own
 #: streaming_connected/streaming_healthy answer ONE question — "is my live-push feed
@@ -214,62 +207,6 @@ def _log_stream(phase: str, **kwargs: Any) -> None:
         log.info("STREAM_DIAG %s %s", phase, extra)
     else:
         log.info("STREAM_DIAG %s", phase)
-
-
-def _streaming_healthy() -> bool:
-    if not (_feed_running and _active_ticker):
-        return False
-    now = time.time()
-    if _streaming_last_update_ts is not None:
-        return (now - _streaming_last_update_ts) * 1000.0 <= STREAMING_STALE_MS
-    if _last_subscribe_completed_ts is not None and (now - _last_subscribe_completed_ts) < GRACE_AFTER_SUBSCRIBE_SEC:
-        return True
-    return False
-
-
-
-
-def get_plane_authority_for_ticker(ticker: str) -> str:
-    """The state of this ticker's STREAMED quote: streaming | stream_not_running |
-    not_active_ticker | stream_unhealthy. (It named REST modes -- rest_only /
-    rest_fallback_explicit / rest_mismatch -- until 2026-09-24; nothing writes REST quotes
-    into the plane any more, so those labels described a path that does not exist.)"""
-    t = ticker_storage_key(ticker)
-    if not _feed_running:
-        return "stream_not_running"
-    if not _active_ticker or _active_ticker.upper() != t:
-        return "not_active_ticker"
-    if _streaming_healthy():
-        return "streaming"
-    return "stream_unhealthy"
-
-
-
-
-
-
-def get_streaming_diagnostics() -> dict[str, Any]:
-    now = time.time()
-    last = _streaming_last_update_ts
-    stale_ms: Optional[float]
-    if last is not None:
-        stale_ms = max(0.0, (now - last) * 1000.0)
-    elif _last_subscribe_completed_ts is not None and (now - _last_subscribe_completed_ts) < GRACE_AFTER_SUBSCRIBE_SEC:
-        stale_ms = 0.0
-    else:
-        stale_ms = None
-    st = daemon_status()
-    return {
-        "streaming_connected": bool(_feed_running),
-        "streaming_ticker": _active_ticker,
-        "streaming_last_update_ts": last,
-        "streaming_staleness_ms": stale_ms,
-        # healthy needs BOTH: fresh rows for the active ticker and a live daemon status
-        "streaming_healthy": _streaming_healthy() and st is not None,
-        "daemon_upstream_health": _read_daemon_upstream_health(("LEVELONE_EQUITIES",)),
-        "daemon_status_age_sec": None if _daemon_status_rx is None else round(now - _daemon_status_rx, 2),
-        "schwab_socket_open": bool(st and st.get("schwab_socket_open")),
-    }
 
 
 def _ingest_pushed(topic: str, msg: Any) -> None:
@@ -602,7 +539,7 @@ def set_streaming_active_ticker(ticker: str) -> bool:
     """Make `ticker` the active symbol: the daemon adds its NASDAQ_BOOK/NYSE_BOOK depth
     (stream_active_ticker.json) and, when it is outside the daemon's roster, its
     LEVELONE_EQUITIES stream (stream_equity_symbols.json, ranked first)."""
-    global _active_ticker, _last_subscribe_completed_ts, _streaming_last_update_ts
+    global _active_ticker, _streaming_last_update_ts
     t = ticker_storage_key(ticker)
     if not t:
         return False
@@ -614,7 +551,6 @@ def set_streaming_active_ticker(ticker: str) -> bool:
     forget_unsubscribed_symbols(old, [t])
     _active_ticker = t
     _publish_equity_symbols()
-    _last_subscribe_completed_ts = time.time()
     _streaming_last_update_ts = None
     log.info("Live-plane feed active ticker -> %s", t)
     _log_stream("STREAM_RESUBSCRIBE_DONE", ticker=t)
@@ -665,7 +601,7 @@ def set_active_option_contract(contract_symbol: str,
     off. The browser-side token cannot prevent that: it only stops a stale RESPONSE from
     repainting, never a stale WRITE from landing. Omitting the generation preserves the
     historical single-caller behavior for internal/test callers."""
-    global _active_option_contract, _option_last_subscribe_completed_ts, _option_streaming_last_update_ts
+    global _active_option_contract, _option_streaming_last_update_ts
     t = ticker_storage_key(contract_symbol)
     if not t:
         return False
@@ -693,7 +629,6 @@ def set_active_option_contract(contract_symbol: str,
             clear_symbol(old)
         _active_option_contract = t
         _wanted_changed()
-        _option_last_subscribe_completed_ts = time.time()
         _option_streaming_last_update_ts = None
         log.info("Live-plane feed active option contract -> %s", t)
         _log_stream("OPTION_CONTRACT_RESUBSCRIBE_DONE", contract=t)
@@ -881,44 +816,6 @@ def get_option_contract_book_microstructure(contract_symbol: str) -> dict:
     return options_live_payload(t)
 
 
-def _option_streaming_healthy(*, for_contract: Optional[str] = None) -> bool:
-    """RC-UI-3 finding #4 (2026-09-12), REPRODUCED: the top-line guard below used to
-    unconditionally require `_active_option_contract` (the PRIMARY slot) to be set,
-    even when the caller was asking about an ADDITIONAL-only contract with genuinely
-    fresh, confirmed coverage -- with no primary requested, this returned False no
-    matter how healthy the additional contract's own feed was, and
-    get_option_contract_streaming_diagnostics never overrode that False back to True
-    (it only ever forced healthy -> False on a mismatch, never healthy -> True on a
-    match). Passing `for_contract` answers health for THAT contract alone, from its
-    own PER-CONTRACT last-update timestamp -- not the single global clock every
-    contract's rows all update together (see _option_contract_last_update_ts), so one
-    contract's freshness can never mask or borrow another's. `for_contract=None`
-    keeps the historical whole-plane (primary-gated) answer for back-compat callers
-    that do not name a specific contract."""
-    if not _feed_running:
-        return False
-    now = time.time()
-    if for_contract is not None:
-        key = ticker_storage_key(for_contract)
-        if not key:
-            return False
-        last = _option_contract_last_update_ts.get(key)
-        if last is not None:
-            return (now - last) * 1000.0 <= STREAMING_STALE_MS
-        is_requested = key == _active_option_contract or key in _active_option_contracts
-        return bool(
-            is_requested and _option_last_subscribe_completed_ts is not None
-            and (now - _option_last_subscribe_completed_ts) < GRACE_AFTER_SUBSCRIBE_SEC)
-    if not _active_option_contract:
-        return False
-    if _option_streaming_last_update_ts is not None:
-        return (now - _option_streaming_last_update_ts) * 1000.0 <= STREAMING_STALE_MS
-    if (_option_last_subscribe_completed_ts is not None
-            and (now - _option_last_subscribe_completed_ts) < GRACE_AFTER_SUBSCRIBE_SEC):
-        return True
-    return False
-
-
 #: The two Schwab option services whose durable open coverage epochs constitute
 #: PRODUCER-side subscription identity (as opposed to the server's desired state).
 OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
@@ -973,8 +870,7 @@ def _pick_producer_contract(symbols: "list[str]", queried: Optional[str]) -> Opt
 def get_option_contract_streaming_diagnostics(
     for_contract: Optional[str] = None,
 ) -> dict[str, Any]:
-    """FRESHNESS/HEALTH for the option-contract feed — the SAME shape as
-    get_streaming_diagnostics(), mirrored for the separate option-contract slot. Answers
+    """FRESHNESS/HEALTH for the option-contract feed. Answers
     "is the daemon actually subscribed and receiving data for this contract", distinct
     from get_option_contract_book_microstructure's book-CONTENT-level ages/status (which
     answer "how stale is the replayed book itself"). Both distinctions matter: a feed can
@@ -1002,18 +898,11 @@ def get_option_contract_streaming_diagnostics(
     # DIFFERENT contract's own recent traffic. When a specific contract is queried, answer
     # from THAT contract's own per-contract clock instead.
     last = _option_contract_last_update_ts.get(queried) if queried else _option_streaming_last_update_ts
-    stale_ms: Optional[float]
-    if last is not None:
-        stale_ms = max(0.0, (now - last) * 1000.0)
-    elif (_option_last_subscribe_completed_ts is not None
-          and (now - _option_last_subscribe_completed_ts) < GRACE_AFTER_SUBSCRIBE_SEC):
-        stale_ms = 0.0
-    else:
-        stale_ms = None
-
-    healthy = _option_streaming_healthy(for_contract=queried) if queried else _option_streaming_healthy()
-    if daemon_status() is None:
-        healthy = False   # no live daemon status: nothing can be confirmed
+    stale_ms = None if last is None else max(0.0, (now - last) * 1000.0)
+    # the one live rule (live_market_plane.feed_live_for): the daemon's heartbeat is current,
+    # its Schwab socket is open, and it holds this contract
+    subject = queried or _active_option_contract
+    healthy = bool(_feed_running and subject and _lmp.feed_live_for(subject))
 
     # Contract binding: compare on the SAME canonical key set_active_option_contract
     # stores (ticker_storage_key), so a caller passing the raw chain "symbol" string

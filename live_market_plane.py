@@ -35,20 +35,7 @@ log = logging.getLogger(__name__)
 _lock = threading.RLock()
 # ticker UPPER -> last plane payload (streaming and/or REST fast quote)
 _by_ticker: dict[str, dict[str, Any]] = {}
-# ticker -> last fast_generation_id we pushed on SSE live_quote (coalesce duplicate rows)
-_last_sse_pushed_gen: dict[str, float] = {}
 
-_gen_lock = threading.Lock()
-_fast_lane_gen_by_ticker: dict[str, int] = {}
-
-
-def next_fast_generation(ticker: str) -> int:
-    """Monotonic per-ticker generation for SSE coalescing (independent of decision_generation_id)."""
-    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
-    with _gen_lock:
-        n = _fast_lane_gen_by_ticker.get(t, 0) + 1
-        _fast_lane_gen_by_ticker[t] = n
-        return n
 
 
 #: Schwab LEVELONE_EQUITIES sends only the fields that CHANGED since the last message for a
@@ -120,22 +107,13 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     spot_f = val("LAST_PRICE")
     bid, ask, mark = val("BID_PRICE"), val("ASK_PRICE"), val("MARK")
     quote_ts = val("QUOTE_TIME_MILLIS")   # exchange quote clock; TRADE_TIME never stands in
-    spread_pts = round(ask - bid, 4) if bid is not None and ask is not None else None
-    spread_frac = (ask - bid) / mark if spread_pts is not None and mark else None   # MARK 0: no fraction
     out = {
         "ticker": t,
         "spot": spot_f,
         "bid": bid,
         "ask": ask,
         "spot_disp": f"{spot_f:.2f}",
-        "bid_disp": f"{bid:.2f}" if bid is not None else "—",
-        "ask_disp": f"{ask:.2f}" if ask is not None else "—",
         "quote_mid": mark,
-        "mid_source": "schwab_streaming_mark" if mark is not None else None,
-        "spread": spread_frac,
-        "spread_pts": spread_pts,
-        "spread_source": "derived_bid_ask_fraction_schwab_mark_denom" if spread_frac is not None else None,
-        "spread_pts_source": "derived_bid_ask_pts" if spread_pts is not None else None,
         "bid_size": val("BID_SIZE"),
         "ask_size": val("ASK_SIZE"),
         "last_size": val("LAST_SIZE"),
@@ -147,7 +125,6 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         # Schwab's own change of LAST_PRICE vs prior close (0 hops) -- the watchlist / header %
         "chg_pct": val("NET_CHANGE_PERCENT"),
         "net_change": val("NET_CHANGE"),
-        "fast_generation_id": next_fast_generation(t),
         "exchange_quote_ts": quote_ts,
         #: TRADE_TIME_MILLIS (epoch s): the exchange time of the last trade -- the clock a
         #: LAST_PRICE tick belongs to (candles); never used as the quote time.
@@ -155,15 +132,12 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
         "server_received_ts": rts,
         "spot_received_ts": snapshot["LAST_PRICE"][1],
-        #: each field's own receive time -- a value's age is the age of the message that set it
-        "field_received_ts": {name: ts for name, (_, ts) in snapshot.items()},
         "quote_ingestion": "schwab_streaming_level_one",
         "quote_source_detail": {
             "spot": "LAST_PRICE",
             "bid": "BID_PRICE" if bid is not None else None,
             "ask": "ASK_PRICE" if ask is not None else None,
             "mid": "schwab_streaming_mark" if mark is not None else "unavailable_missing_mark",
-            "spread": "schwab_bid_ask" if spread_pts is not None else "unavailable_missing_bid_or_ask",
             "quote_ts": "QUOTE_TIME_MILLIS" if quote_ts is not None else "unavailable",
         },
     }
@@ -308,16 +282,3 @@ def quote_is_fresh(q: dict[str, Any]) -> bool:
     if float_finite_or_none(q.get("server_received_ts")) is None:
         return False
     return feed_live_for(q.get("ticker"))
-
-
-
-
-
-
-
-
-def reset_sse_push_cursor(ticker: str) -> None:
-    """Force next SSE live_quote push (e.g. after ticker change)."""
-    t = ticker_storage_key(ticker)  # RC-345/F25: canonical quote-plane key (write+read consistent; idempotent on Schwab stream symbols)
-    with _lock:
-        _last_sse_pushed_gen.pop(t, None)

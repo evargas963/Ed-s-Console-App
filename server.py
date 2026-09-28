@@ -4315,12 +4315,9 @@ async def post_streaming_active_ticker(payload: dict = Body(default={})):
     # switch. Running it on the async event loop froze the entire UI (all SSE/requests) for up to
     # 30s per switch. Offload the whole blocking block to the thread pool; the loop stays free.
     def _apply():
-        from app.options.order_flow.streaming import set_streaming_active_ticker, get_streaming_diagnostics, get_plane_authority_for_ticker
+        from app.options.order_flow.streaming import set_streaming_active_ticker
 
-        ok = set_streaming_active_ticker(t)
-        _lmp.reset_sse_push_cursor(t)
-        diag = get_streaming_diagnostics()
-        return {"ok": ok, "ticker": t, **diag, "plane_quote_authority": get_plane_authority_for_ticker(t)}
+        return {"ok": set_streaming_active_ticker(t), "ticker": t}
     try:
         out = await asyncio.get_event_loop().run_in_executor(_get_route_offload_executor(), _apply)
     except Exception as e:

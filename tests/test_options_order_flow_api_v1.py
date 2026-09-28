@@ -84,18 +84,19 @@ def test_options_microstructure_streaming_plane_reflects_real_diagnostics(monkey
     import json
 
     import app.options.order_flow.streaming as ofs
+    import live_market_plane as lmp
     import server as srv
 
     ofs._feed_running = True
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = None
-    ofs._option_last_subscribe_completed_ts = None
+    lmp.record_feed_down()
     try:
         plane = json.loads(srv.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)["streaming_plane"]
         assert plane["option_contract"] == _SPY_CONTRACT
         assert plane["streaming_connected"] is True
-        assert plane["streaming_healthy"] is False   # no tick, no fresh subscribe grace
+        assert plane["streaming_healthy"] is False   # the daemon holds nothing
     finally:
         ofs._feed_running = False
         ofs._active_option_contract = None
@@ -286,7 +287,6 @@ def _force_live_option_plane(ofs, active_contract):
     ofs._feed_running = True
     ofs._active_option_contract = ofs.ticker_storage_key(active_contract)
     ofs._option_streaming_last_update_ts = _t.time()
-    ofs._option_last_subscribe_completed_ts = _t.time()
 
 
 def _seed_producer_epochs(ofs, monkeypatch, tmp_path, *, l1=None, book=None):
@@ -310,12 +310,13 @@ def _seed_multi_contract_producer_epochs(ofs, monkeypatch, tmp_path, *,
 
 
 def _reset_option_plane(ofs):
+    import live_market_plane as lmp
     ofs._feed_running = False
     ofs._active_option_contract = None
     ofs._active_option_contracts = []
     ofs._option_streaming_last_update_ts = None
-    ofs._option_last_subscribe_completed_ts = None
     ofs._option_contract_last_update_ts = {}
+    lmp.record_feed_down()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -434,11 +435,11 @@ def test_per_contract_freshness_not_borrowed_between_primary_and_additional(monk
     specific freshness as well as membership"), REPRODUCED: `streaming_staleness_ms`/
     `streaming_healthy` used to read the ONE global `_option_streaming_last_update_ts`,
     which every contract's rows -- primary OR any additional one -- all bump together.
-    Here QQQ (primary) has gone genuinely STALE on its OWN feed while SPY (additional)
-    remains genuinely fresh, but the shared global clock was last touched by SPY's own
-    recent tick. A query for QQQ must not borrow SPY's freshness through that shared
-    clock -- it must read unhealthy on its own per-contract staleness, while SPY still
-    correctly reads healthy."""
+    Here QQQ (primary) has been quiet 30 s on its OWN feed while SPY (additional) ticked
+    just now, and the shared global clock was last touched by SPY's tick. A query for QQQ
+    must report its own 30 s staleness, never SPY's. Both are held by the daemon on a live
+    socket, so both read healthy (O-11: health is live_market_plane.feed_live_for, not the
+    age of the last message)."""
     import json
     import time as _t
 
@@ -454,7 +455,7 @@ def test_per_contract_freshness_not_borrowed_between_primary_and_additional(monk
     # contract's freshness (or vice versa) before per-contract tracking existed.
     ofs._option_streaming_last_update_ts = _t.time()
     ofs._option_contract_last_update_ts = {
-        ofs.ticker_storage_key(_QQQ_CONTRACT): _t.time() - 30.0,   # QQQ: genuinely stale
+        ofs.ticker_storage_key(_QQQ_CONTRACT): _t.time() - 30.0,   # QQQ: quiet 30 s
         ofs.ticker_storage_key(_SPY_CONTRACT): _t.time(),          # SPY: genuinely fresh
     }
     _seed_multi_contract_producer_epochs(
@@ -463,10 +464,9 @@ def test_per_contract_freshness_not_borrowed_between_primary_and_additional(monk
         primary_plane = json.loads(srv.api_order_flow_options_microstructure(
             contract=_QQQ_CONTRACT).body)["streaming_plane"]
         assert primary_plane["contract_match"] is True    # requested + producer-confirmed
-        assert primary_plane["streaming_healthy"] is False, (
-            f"QQQ's own feed is 30s stale -- it must not read healthy by borrowing "
-            f"SPY's fresher tick through a shared clock: {primary_plane}")
-        assert primary_plane["streaming_staleness_ms"] >= 30_000.0
+        assert primary_plane["streaming_healthy"] is True
+        assert primary_plane["streaming_staleness_ms"] >= 30_000.0, (
+            f"QQQ's own staleness, not SPY's fresher tick through a shared clock: {primary_plane}")
 
         extra_plane = json.loads(srv.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)["streaming_plane"]

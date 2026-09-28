@@ -126,11 +126,6 @@ ROWS: tuple[Row, ...] = (
         justification='DDL migration: takes a sqlite3.Connection, alters calibration_decision_log to add the (ticker, decision_ts_utc) unique constraint. Persistence-only; no Schwab wire derivation.',
     ),
     Row(
-        file='live_market_plane.py', derivation='reset_sse_push_cursor', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (reset_sse_push_cursor).',
-    ),
-    Row(
         file='market_context.py', derivation='market_context_panel_symbols_excluding_core', disposition='SCHWAB_LEAF',
         schwab_leaf='quotes.quote.lastPrice',
         justification='Schwab API or wire JSON ingest path.',
@@ -506,11 +501,6 @@ ROWS: tuple[Row, ...] = (
         justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_log_stream).',
     ),
     Row(
-        file='app/options/order_flow/streaming.py', derivation='_option_streaming_healthy', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification='FRESHNESS/HEALTH 2026-08-30: same feed-connection health gate as _streaming_healthy, mirrored for the independent option-contract slot (_option_streaming_healthy).',
-    ),
-    Row(
         file='app/options/order_flow/streaming.py', derivation='_read_daemon_upstream_health', disposition='ALLOWLISTED',
         allowlist_id='mega1_diagnostic_log',
         justification="Per-service Schwab health from the capture daemon's own status (its HealthRegistry), pushed on the console socket every second (_read_daemon_upstream_health).",
@@ -521,11 +511,6 @@ ROWS: tuple[Row, ...] = (
         justification="What Schwab holds per option service, from the capture daemon's pushed status -- distinct from the console's DESIRED contract (_read_producer_option_contracts).",
     ),
     Row(
-        file='app/options/order_flow/streaming.py', derivation='_streaming_healthy', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (_streaming_healthy).',
-    ),
-    Row(
         file='app/options/order_flow/streaming.py', derivation='get_option_contract_book_microstructure', disposition='DERIVED',
         producer_refs=('app/options/order_flow/engine.py:compute_book_microstructure',),
         justification="Order-flow semantic product for one option contract's live book — delegates to the SAME producer the equity route reads, never a second book-imbalance computation (get_option_contract_book_microstructure).",
@@ -533,17 +518,7 @@ ROWS: tuple[Row, ...] = (
     Row(
         file='app/options/order_flow/streaming.py', derivation='get_option_contract_streaming_diagnostics', disposition='ALLOWLISTED',
         allowlist_id='mega1_diagnostic_log',
-        justification='FRESHNESS/HEALTH 2026-08-30: same diagnostics shape as get_streaming_diagnostics, mirrored for the independent option-contract slot (get_option_contract_streaming_diagnostics).',
-    ),
-    Row(
-        file='app/options/order_flow/streaming.py', derivation='get_plane_authority_for_ticker', disposition='ALLOWLISTED',
-        allowlist_id='mega2_schwab_stream_l1',
-        justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (get_plane_authority_for_ticker).',
-    ),
-    Row(
-        file='app/options/order_flow/streaming.py', derivation='get_streaming_diagnostics', disposition='ALLOWLISTED',
-        allowlist_id='mega1_diagnostic_log',
-        justification='Schwab LEVEL_ONE/stream book fields ingested via streaming adapter (get_streaming_diagnostics).',
+        justification='Option-contract feed diagnostics: healthy by live_market_plane.feed_live_for (daemon heartbeat, socket open, contract held); staleness from the contract own last update.',
     ),
     Row(
         file='app/options/order_flow/streaming.py', derivation='set_active_option_contract', disposition='ALLOWLISTED',

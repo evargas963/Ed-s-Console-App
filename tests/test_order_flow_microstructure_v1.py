@@ -441,12 +441,6 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
         ofls.clear_symbol("O01EQ")
 
 
-def test_book_staleness_bound_matches_existing_streaming_stale_ms():
-    """book_stale's bound is the existing stream-health threshold, not a second number."""
-    import app.options.order_flow.streaming as ofs
-    assert ofe.OF_BOOK_STALE_SEC * 1000.0 == ofs.STREAMING_STALE_MS
-
-
 def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_level_one(monkeypatch):
     """The production seam (order_flow_streaming._ingest_pushed, fed by the daemon's live
     push) must hand push_level_one the MESSAGE's own ts_recv for both equity
