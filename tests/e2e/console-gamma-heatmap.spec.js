@@ -944,11 +944,21 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // Stage 1 of the live-UI architecture: the capture daemon pushes the finished row
     // (live_price_rows.price_row) straight to the page; the console is not in the path.
     await mockPriceSocket(page, [priceRow('SPY', 601.23, { bid: 601.20, ask: 601.25, chg_pct: 0.5,
-      quote_ingestion: 'schwab_streaming_level_one' })]);
+      chg_pct_regular: 0.4, quote_ingestion: 'schwab_streaming_level_one' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hFeed')).toContainText('LIVE');
     await expect(page.locator('#hBidAsk')).toHaveText('601.20 × 601.25');
+    // Schwab's two change percents, each under its own label
+    await expect(page.locator('#hChgReg')).toHaveText('REG +0.40%');
+    await expect(page.locator('#hChg')).toHaveText('EXT +0.50%');
+  });
+
+  test('before the session the regular-session percent reads absent, the extended one live', async ({ page }) => {
+    await mockPriceSocket(page, [priceRow('SPY', 601.23, { chg_pct: -0.495313, chg_pct_regular: null })]);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hChg')).toHaveText('EXT -0.50%');
+    await expect(page.locator('#hChgReg')).toHaveText('REG —');
   });
 
   test('a price that stops arriving is withdrawn within seconds (the daemon beats every 1 s)', async ({ page }) => {
