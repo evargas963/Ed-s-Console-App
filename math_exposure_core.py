@@ -198,12 +198,12 @@ def compute_exposures_by_strike(
     # the wall clock, so the same stored chain gave a different vanna on every run), else now.
     from time_et import time_to_expiry_years as _tte, now_et as _now_et
     _tte_now = now if now is not None else _now_et()
-    _tte_cache: dict[str, float | None] = {}
+    _tte_cache: dict[tuple, float | None] = {}
 
-    def _tte_memo(exp_raw) -> float | None:
-        key = str(exp_raw)
+    def _tte_memo(ct: dict) -> float | None:
+        key = (str(ct.get("expirationDate")), ct.get("settlementType"))
         if key not in _tte_cache:
-            _tte_cache[key] = _tte(exp_raw, now=_tte_now)
+            _tte_cache[key] = _tte(key[0], now=_tte_now, settlement_type=key[1])
         return _tte_cache[key]
 
     for ct in contracts:
@@ -293,7 +293,7 @@ def compute_exposures_by_strike(
                 # independently FD-verified). The prior vega/(S*sigma) shortcut dropped the
                 # -d2 factor: always positive, wrong sign below spot, wrong magnitude.
                 _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
-                _T = _tte_memo(ct.get("expirationDate"))
+                _T = _tte_memo(ct)
                 if _iv_ok and _T is not None and _T > 0:
                     from math_levels import bs_vanna as _bsv
                     # Cursor-audit F7: route through the ONE IV-conversion authority instead of an
@@ -326,7 +326,7 @@ def compute_exposures_by_strike(
                 # RC-211: same exact-vanna faucet as the CALL side (vanna is IDENTICAL for
                 # calls and puts at a strike/expiry — any split comes from OI, never math).
                 _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
-                _T = _tte_memo(ct.get("expirationDate"))
+                _T = _tte_memo(ct)
                 if _iv_ok and _T is not None and _T > 0:
                     from math_levels import bs_vanna as _bsv
                     # Cursor-audit F7: single IV-conversion authority (see CALL side above).
