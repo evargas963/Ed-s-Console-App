@@ -3882,19 +3882,6 @@ def get_expiries(ticker: str = Query(...)):
                          "reason": None if t.get("expiries") else "levels not computed yet"})
 
 
-def _adjusted_deliverable(ct: dict, ticker: str) -> bool:
-    """A contract whose deliverable is not the routine one: 100 shares of the underlying itself
-    (a merger or spin-off adjusted contract). Every ordinary equity option lists that one entry."""
-    from numeric_contract import schwab_number
-    lst = ct.get("optionDeliverablesList") or []   # external-key-ok: Schwab option chain contract
-    if not lst:
-        return False
-    d0 = lst[0] or {}
-    kind = d0.get("assetType")                        # external-key-ok: Schwab optionDeliverablesList entry
-    units = schwab_number(d0.get("deliverableUnits"))   # external-key-ok: Schwab optionDeliverablesList entry
-    return len(lst) > 1 or not (kind == "STOCK" and units == 100
-                                and str(d0.get("symbol") or "").upper() == ticker.lstrip("$").upper())
-
 
 @app.get("/api/chain")
 def get_chain(ticker: str = Query(...),
@@ -3944,8 +3931,9 @@ def get_chain(ticker: str = Query(...),
         "net_gex_by_strike": net_gex_by_strike,
         "spot_strike": nearest_strike({k for c in response_contracts
                                        if (k := schwab_number(c.get("strikePrice"))) is not None}, live_spot),
+        # Schwab's own flag for a non-standard (adjusted) deliverable, as sent
         "adjusted_deliverable_symbols": [c.get("symbol") for c in response_contracts
-                                         if _adjusted_deliverable(c, t)],
+                                         if c.get("nonStandard") is True],   # external-key-ok: Schwab option chain contract
         # two contracts listed at one (strike, side): the chain is not strike-unique
         "has_duplicate_contracts": len({(schwab_number(c.get("strikePrice")), c.get("putCall")) for c in response_contracts})
                                    < len(response_contracts),

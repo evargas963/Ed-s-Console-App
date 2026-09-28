@@ -37,7 +37,6 @@ spot (Key Levels = header, #372).
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
 | TICK-01 | QUEUED | Index symbol form from a hand-kept list of 11 roots (`instrument_identity.BROKER_INDEX_BARE_ROOTS`); Schwab's own instrument answer decides. |
 | TICK-02 | QUEUED | Option contract → ticker matched by root name, with weekly/adjusted roots (SPXW, NDXP) through a second path that needs a stored capture; Schwab's underlying field on the contract decides. |
-| TICK-03 | QUEUED | "Adjusted deliverable" defined as 100 shares of stock, so cash-settled index options are all flagged; needs a captured index deliverable first. |
 | TICK-05 | QUEUED | Time to expiry always to 16:00; Schwab's `settlementType` (AM-settled index monthlies) not read. |
 | TICK-07 | QUEUED | `schwab_field_dictionary_builder.is_ticker` (board symbol form) also passes a hand-kept `KNOWN_TICKERS` list. Found 2026-09-28. |
 
