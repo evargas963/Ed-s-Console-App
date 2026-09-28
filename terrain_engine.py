@@ -239,10 +239,7 @@ _HEAVY_FIELDS = ("profile", "per_strike", "oi_by_strike", "books", "charm_by_str
 
 
 def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapshot:
-    # Pass ticker even on the unavailable path so SIGN-DEMOTION's fail-closed
-    # contract stays visible at every call site (AST-audited 2026-07-22).
-    read = build_terrain_read(spot=spot, flip=None, flip_confidence="UNAVAILABLE",
-                              ticker=ticker)
+    read = build_terrain_read(spot=spot, flip=None, flip_confidence="UNAVAILABLE")
     return TerrainSnapshot(
         ticker=ticker, spot=spot, regime=read.regime, posture=read.posture,
         confidence=read.confidence, headline=read.headline, lines=read.lines,
@@ -780,7 +777,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         spot=spot, flip=flip, flip_confidence=confidence,
         put_wall=put_wall, call_wall=call_wall,
         gamma_at_spot=flip_diag.get("gamma_at_spot"),
-        ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
         flip_curve_agrees=flip_diag.get("curve_agrees_with_schwab_at_spot"),
     )
     call_state, put_state = wall_geometry_state(spot, call_wall, "call"), wall_geometry_state(spot, put_wall, "put")

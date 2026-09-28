@@ -163,7 +163,6 @@ def build_terrain_read(
     put_wall: float | None = None,
     call_wall: float | None = None,
     gamma_at_spot: float | None = None,
-    ticker: str | None = None,
     flip_curve_agrees: bool | None = None,
 ) -> TerrainRead:
     """Deterministic terrain read. Fail-closed on missing spot, or on coverage below the
