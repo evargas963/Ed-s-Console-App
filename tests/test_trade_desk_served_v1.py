@@ -64,48 +64,37 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses(monkeypa
     assert body["cross_counts"] == {"up": up, "down": len(events) - up}
 
 
-def test_wall_distances_and_flip_relation_are_served():
-    fx = _load("real_crwd_complete_chain_quarter.json")
-    snap = compute_terrain("CRWD", [dict(c) for c in fx["chain"]], float(fx["spot"]))
-    payload = {**snap.to_dict(), "computed_ts_utc": time.time()}
-    live = float(fx["spot"]) + 1.0
-    orig = server.resolve_spot
-    server.resolve_spot = lambda t, **k: (live, "live_quote", time.time())
-    try:
-        out = server._reprice_cached_terrain(payload, "CRWD")
-    finally:
-        server.resolve_spot = orig
-    assert out["dist_to_call_wall"] == pytest.approx(payload["call_wall"] - live)
-    assert out["dist_to_put_wall"] == pytest.approx(live - payload["put_wall"])
-    assert out["flip_relation"] == (None if payload["gamma_flip"] is None
-                                    else "ABOVE" if live >= payload["gamma_flip"] else "BELOW")
-
-
-def _crwd_repriced_at(live, pin_clock):
+def _crwd_at(live, pin_clock):
+    """The levels producer's snapshot on the real CRWD chain, priced at `live(base)` where base
+    is the snapshot at the chain's own price (stand-in live prices, named by each test)."""
     pin_clock(2026, 9, 2, 12, 0)
     fx = _load("real_crwd_complete_chain_quarter.json")
-    payload = {**compute_terrain("CRWD", [dict(c) for c in fx["chain"]], float(fx["spot"])).to_dict(),
-               "computed_ts_utc": time.time()}
-    orig = server.resolve_spot
-    server.resolve_spot = lambda t, **k: (live(payload), "live_quote", time.time())
-    try:
-        return payload, server._reprice_cached_terrain(payload, "CRWD")
-    finally:
-        server.resolve_spot = orig
+    base = compute_terrain("CRWD", [dict(c) for c in fx["chain"]], float(fx["spot"])).to_dict()
+    return compute_terrain("CRWD", [dict(c) for c in fx["chain"]], live(base)).to_dict()
+
+
+def test_wall_distances_and_flip_relation_are_served(pin_clock):
+    out = _crwd_at(lambda b: b["spot"] + 1.0, pin_clock)
+    assert out["dist_to_call_wall"] == pytest.approx(out["call_wall"] - out["spot"])
+    assert out["dist_to_put_wall"] == pytest.approx(out["spot"] - out["put_wall"])
+    assert out["flip_relation"] == (None if out["gamma_flip"] is None
+                                    else "ABOVE" if out["spot"] >= out["gamma_flip"] else "BELOW")
 
 
 def test_a_breached_wall_says_so_at_the_live_price(pin_clock):
     """Real CRWD chain; stand-in live prices one dollar beyond each wall."""
-    payload, out = _crwd_repriced_at(lambda p: p["call_wall"] + 1.0, pin_clock)
+    out = _crwd_at(lambda b: b["call_wall"] + 1.0, pin_clock)
+    assert out["spot"] > out["call_wall"]
     assert out["call_wall_state"] == "breached" and out["call_wall_lean"] == "BREACHED — spot above"
-    payload, out = _crwd_repriced_at(lambda p: p["put_wall"] - 1.0, pin_clock)
+    out = _crwd_at(lambda b: b["put_wall"] - 1.0, pin_clock)
+    assert out["spot"] < out["put_wall"]
     assert out["put_wall_state"] == "breached" and out["put_wall_lean"] == "BREACHED — spot below"
 
 
 def test_a_containing_wall_earns_the_dealer_lean_only_on_a_trusted_flip(pin_clock):
-    payload, out = _crwd_repriced_at(lambda p: (p["call_wall"] + p["put_wall"]) / 2, pin_clock)
+    out = _crwd_at(lambda b: (b["call_wall"] + b["put_wall"]) / 2, pin_clock)
     assert out["call_wall_state"] == out["put_wall_state"] == "contains"
-    earned = out["regime"] != "UNAVAILABLE" and payload["confidence"] == "TRUSTED"
+    earned = out["regime"] != "UNAVAILABLE" and out["confidence"] == "TRUSTED"
     assert out["call_wall_lean"] == ("DEALERS SELL" if earned else None)
     assert out["put_wall_lean"] == ("DEALERS BUY" if earned else None)
 

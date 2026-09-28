@@ -178,9 +178,16 @@ class TerrainSnapshot:
     #: is deliberately NOT side-constrained — SpotGamma's wall stays at the concentration max
     #: and their own SPX stats track breach frequency and closes beyond it; what changes on a
     #: breach is the LABEL/state, not the strike. None = wall or spot missing (absence, never
-    #: a guessed state). Recomputed by the server at every spot reprice via wall_geometry_state.
+    #: a guessed state). Computed with the snapshot, at its spot.
     call_wall_state: str | None = None
     put_wall_state: str | None = None
+    #: the walls' dealer lean (wall_lean), and the spot's distance to each wall and side of the
+    #: flip, at this snapshot's spot
+    call_wall_lean: str | None = None
+    put_wall_lean: str | None = None
+    dist_to_call_wall: float | None = None
+    dist_to_put_wall: float | None = None
+    flip_relation: str | None = None
 
     # provenance — never render a level without knowing where it came from
     contracts_used: int = 0
@@ -189,10 +196,7 @@ class TerrainSnapshot:
     flip_diag: dict[str, Any] = field(default_factory=dict)
     error: str = ""
 
-    #: (price, net dealer gamma) samples. Kept OUT of to_dict(): it is ~240 pairs, far too
-    #: heavy for every poll, but it is what lets a cached payload be re-priced against a
-    #: fresh spot without refetching the chain (RC-28). The levels are slow-moving; spot
-    #: is not; the regime is the sign of this curve AT spot.
+    #: (price, net dealer gamma) samples; kept OUT of to_dict() (~240 pairs).
     profile: list[tuple[float, float]] = field(default_factory=list, repr=False)
 
     #: RC-68 — the LIVE per-strike map, kept instead of discarded. compute_exposures_by_strike
@@ -779,6 +783,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
         flip_curve_agrees=flip_diag.get("curve_agrees_with_schwab_at_spot"),
     )
+    call_state, put_state = wall_geometry_state(spot, call_wall, "call"), wall_geometry_state(spot, put_wall, "put")
+    call_lean, put_lean = wall_lean(call_wall, put_wall, call_state, put_state, read.regime, read.confidence)
 
     return TerrainSnapshot(
         ticker=ticker,
@@ -823,8 +829,13 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         # RC-130: the geometry state ships WITH the wall so no paint site can claim
         # support/resistance the spot contradicts (live SPY 2026-07-29: put wall 740
         # painted "dealer support" while spot sat at 735.13 below it).
-        call_wall_state=wall_geometry_state(spot, call_wall, "call"),
-        put_wall_state=wall_geometry_state(spot, put_wall, "put"),
+        call_wall_state=call_state,
+        put_wall_state=put_state,
+        call_wall_lean=call_lean,
+        put_wall_lean=put_lean,
+        dist_to_call_wall=(call_wall - spot) if call_wall is not None else None,
+        dist_to_put_wall=(spot - put_wall) if put_wall is not None else None,
+        flip_relation=None if flip is None else "ABOVE" if spot >= flip else "BELOW",
         max_pain=_front_max_pain,
         max_pain_dte=_front_dte,
         call_charm_wall=call_charm_wall,

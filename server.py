@@ -167,9 +167,7 @@ from numeric_contract import schwab_number
 from market_context import (
     market_context_panel_symbols_excluding_core,
 )
-from terrain_read import build_terrain_read
-from terrain_engine import (TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike, positioning_migration,
-                            wall_geometry_state, wall_lean)
+from terrain_engine import (TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike, positioning_migration)
 from terrain_atr import AtrPair, compute_atr_pair
 
 from db import get_db
@@ -2303,7 +2301,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             if payload["_gamma_surface"] is not None:
                 payload["_gamma_surface"]["surface_seq"] = _next_gamma_surface_seq(tk)
             _terrain_cache[tk] = payload
-            _terrain_profile_cache[tk] = snap.profile
         push_changes.changed(tk, push_changes.LEVELS)
         if new_chain:
             push_changes.changed(tk, push_changes.CHAIN)
@@ -2758,89 +2755,6 @@ def _atr_pair(ticker: str) -> "AtrPair":
 #: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
 #: unlabelled merge is how systematically-different numbers get ranked as peers (RC-82).
 LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _terrain_refresh_one, the single producer
-
-
-#: Gamma profiles for cached tickers, keyed by ticker. Kept beside the payload cache so a
-#: cached payload can be re-priced without refetching the chain (RC-28).
-_terrain_profile_cache: dict[str, list] = {}
-
-
-def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
-    """Serve CACHED LEVELS against a LIVE SPOT.
-
-    RC-28: levels move slowly (a 60 s loop is right for them) but spot moves continuously,
-    and spot was frozen into the cached payload. The card therefore ran up to 75 s behind
-    the header -- observed 745.10 on the card against 744.88 live.
-
-    Levels, walls and the profile stay as cached. Spot is re-resolved every request, and
-    the REGIME is recomputed as the sign of the cached profile at that fresh spot, so the
-    regime can never disagree with the price shown beside it.
-    """
-    spot, spot_source, spot_ts = resolve_spot(ticker)
-    out = dict(payload)
-    out.update(terrain_staleness(payload.get("computed_ts_utc"), ticker))
-    if spot is None:
-        # no live price: the price is unavailable and so is everything read from it (regime,
-        # posture, headline, gamma at spot, wall-vs-price states); the levels stand with their
-        # chain's time. Never a regime from one moment beside a price from another.
-        read = build_terrain_read(spot=None, flip=payload.get("gamma_flip"),
-                                  flip_confidence=payload.get("confidence") or "UNAVAILABLE")
-        out.update(spot=None, spot_source="none", spot_state="unavailable",
-                   spot_as_of_ts_utc=None, spot_disp="UNAVAILABLE",
-                   regime=read.regime, posture=read.posture, headline=read.headline,
-                   lines=read.lines, net_gex_at_spot=None,
-                   call_wall_state=None, put_wall_state=None, call_wall_lean=None, put_wall_lean=None,
-                   dist_to_call_wall=None, dist_to_put_wall=None, flip_relation=None,
-                   flip_diag={**(payload.get("flip_diag") or {}), "gamma_at_spot": None})
-        return out
-
-    out["spot"] = spot
-    out["spot_source"] = spot_source
-    out["spot_state"] = current_spot_state(spot_source, ticker)
-    out["spot_as_of_ts_utc"] = spot_ts
-    # RC-130: wall geometry states are a function of SPOT, which was just re-resolved —
-    # recomputed with the SAME producer definition (wall_geometry_state), and BEFORE the
-    # profile early-return below, or a wall crossed intra-cycle would keep claiming the
-    # containment the painted spot contradicts. Needs only spot + the cached walls.
-    out["call_wall_state"] = wall_geometry_state(spot, payload.get("call_wall"), "call")
-    out["put_wall_state"] = wall_geometry_state(spot, payload.get("put_wall"), "put")
-    # the live price against the walls and the flip, served (the desk worked these out)
-    cw, pw, flip = payload.get("call_wall"), payload.get("put_wall"), payload.get("gamma_flip")
-    out["dist_to_call_wall"] = (cw - spot) if cw is not None else None
-    out["dist_to_put_wall"] = (spot - pw) if pw is not None else None
-    out["flip_relation"] = None if flip is None else "ABOVE" if spot >= flip else "BELOW"
-
-    # gamma at the live spot: Schwab's gamma as published (the walls' own), carried to the live
-    # price by the dollar-GEX scale S^2 -- the one gamma source, never the model curve
-    pub, pub_spot = payload.get("net_gex_at_spot"), payload.get("spot")
-    fresh_gamma = (float(pub) * (float(spot) / float(pub_spot)) ** 2
-                   if pub is not None and pub_spot else None)
-    read = build_terrain_read(
-        spot=spot,
-        flip=payload.get("gamma_flip"),
-        flip_confidence=payload.get("confidence") or "UNAVAILABLE",
-        put_wall=payload.get("put_wall"),
-        call_wall=payload.get("call_wall"),
-        gamma_at_spot=fresh_gamma,
-        ticker=ticker,   # SIGN-DEMOTION: single names get regime withheld, levels stand
-        flip_curve_agrees=(payload.get("flip_diag") or {}).get("curve_agrees_with_schwab_at_spot"),
-    )
-    out["regime"] = read.regime
-    out["call_wall_lean"], out["put_wall_lean"] = wall_lean(   # at the live spot and its regime
-        payload.get("call_wall"), payload.get("put_wall"), out["call_wall_state"], out["put_wall_state"],
-        read.regime, payload.get("confidence"))
-    out["posture"] = read.posture
-    out["headline"] = read.headline
-    out["lines"] = read.lines
-    # flip_diag travels WITH the regime it justified. The regime above was recomputed at
-    # the fresh spot but flip_diag still carried the loop-time gamma_at_spot, so the
-    # dealer tile printed a stale γ beside a live regime — the two could even disagree in
-    # sign (Bugbot 2026-07-20, confirmed: the UI renders flip_diag.gamma_at_spot).
-    out["flip_diag"] = {**(payload.get("flip_diag") or {}), "gamma_at_spot": fresh_gamma}
-    # net_gex_at_spot IS gamma_at_spot (schema v2) — reprice both or the NET GEX chip
-    # would show loop-time gamma beside a live-spot regime (same defect class as above).
-    out["net_gex_at_spot"] = fresh_gamma
-    return out
 
 
 # ── CR-03 screen 1 — per-strike gamma/volume bars for the histogram panel ────
@@ -3613,10 +3527,13 @@ def get_terrain(ticker: str = Query(...)):
         _terrain_refresh_one(tk, priority=True)
         cached = terrain_cache_get(tk)
     if cached is not None:
-        # Cached LEVELS, live SPOT (RC-28). Never serve a frozen price beside a live header.
-        # internal fields (the kept chain, the heatmap grid, per-strike rows) are served by their
-        # own endpoints -- never shipped on every terrain poll
-        return {k: v for k, v in _reprice_cached_terrain(cached, tk).items() if not k.startswith("_")}
+        # the levels as the producer published them, every at-spot value computed at the
+        # publication's spot (a viewed ticker is republished on every streamed tick); internal
+        # fields (the kept chain, the heatmap grid, per-strike rows) have their own routes
+        out = {k: v for k, v in cached.items() if not k.startswith("_")}
+        out.update(terrain_staleness(cached.get("computed_ts_utc"), tk),
+                   spot_state=current_spot_state(cached.get("spot_source") or "none", tk))
+        return out
     spot, spot_source, spot_ts = resolve_spot(tk)
     _why = _terrain_refresh_last_error.get(tk)
     return compute_terrain(tk, None, spot).to_dict() | {

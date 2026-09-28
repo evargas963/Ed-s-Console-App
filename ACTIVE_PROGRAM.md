@@ -34,7 +34,6 @@ spot (Key Levels = header, #372).
 | ONE-05 | QUEUED | Option quotes and greeks: the order-flow copy, the REST chain in the levels state merged field by field by time (`overlay_streamed_contract_fields`), and the DB copy read by the options tape. |
 | ONE-06 | QUEUED | 1-minute bars in two databases, and live charts and levels reading `price_bars_1m` (with P2-DB4). |
 | ONE-07 | QUEUED | Option chains fetched by two processes with two writers to `ed_console.db` (with P2-1). |
-| ONE-08 | QUEUED | Gamma at spot, regime, wall states, distances and headline recomputed per request (`_reprice_cached_terrain`, the gamma rescale); the publish result is carried. |
 | ONE-09 | QUEUED | VWAP, prior day and value area recomputed by `/api/liquidity-snapshot`'s own path (`liquidity_value_engine` checkpoint builders) instead of the one price-level snapshot. |
 | ONE-10 | QUEUED | The regular session re-derived without the holiday calendar (`state.is_rth_open`); `app/options/contracts/default.py` ignores early closes. |
 | ONE-11 | QUEUED | Trade identity: history's own dedupe (`history.py`) beside `l1_trade_observation`. |
