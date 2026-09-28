@@ -2537,7 +2537,16 @@ def _status_line() -> str:
 
 
 def _terrain_loop() -> None:
-    log.info("Terrain loop started (levels only, no model stack)")
+    # the stored levels load here, on this thread: the console serves the page meanwhile, and
+    # each ticker's levels appear as they are priced (it took about a minute before serving)
+    loaded = _load_stored_levels()
+    with _logger_lock:
+        board = len(_logger_tickers)
+    log.info("Ready: levels for %d of %d board tickers loaded (session: %s). %s", loaded, board,
+             session_label(now_et()),
+             "Levels refresh every 5 s." if _is_loggable_session() else
+             "Levels refresh (a full-chain sweep of the board, 1-2 min each) "
+             + _next_refresh_ct() + ".")
     _terrain_cycle_n = 0        # RC-161: drives the morning rotation; monotonic per loop
     next_status = time.monotonic() + STATUS_EVERY_SEC   # the ready line covers the start
     while _terrain_loop_running:
@@ -2696,15 +2705,6 @@ def start_terrain_loop() -> None:
         return
     if _terrain_loop_running:
         return
-    loaded = _load_stored_levels()
-    with _logger_lock:
-        board = len(_logger_tickers)
-    # the window's last startup line: the app is up, and why it may be quiet
-    log.info("Ready: levels for %d of %d board tickers loaded (session: %s). %s", loaded, board,
-             session_label(now_et()),
-             "Levels refresh every 5 s." if _is_loggable_session() else
-             "Levels refresh (a full-chain sweep of the board, 1-2 min each) "
-             + _next_refresh_ct() + ".")
     _terrain_loop_running = True
     _terrain_loop_thread = threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True)
     _terrain_loop_thread.start()
