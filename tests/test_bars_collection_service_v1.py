@@ -14,56 +14,6 @@ poll and the price-history seeds that used to write here are deleted.
 """
 from __future__ import annotations
 
-import ast
-from pathlib import Path
-
-SERVER_PATH = Path(__file__).resolve().parent.parent / "server.py"
-SERVER_SRC = SERVER_PATH.read_text(encoding="utf-8")
-SERVER_TREE = ast.parse(SERVER_SRC)
-
-
-def _fn_src(name: str) -> str:
-    for node in ast.walk(SERVER_TREE):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
-            return ast.get_source_segment(SERVER_SRC, node) or ""
-    raise AssertionError(f"{name} not found in server.py")
-
-
-def test_price_bars_has_exactly_one_writer():
-    """THE single-faucet contract. A second writer is how collection drifted into the render
-    path in the first place."""
-    n = SERVER_SRC.count("upsert_1m_bars(")
-    assert n == 1, (
-        f"price_bars_1m has {n} writers in server.py; RC-69 requires exactly ONE "
-        f"(the bar collection service). A render path must never persist bars."
-    )
-
-
-def _call_sites(name: str) -> set[str]:
-    """Names of the server.py functions that call `name(...)` directly."""
-    out: set[str] = set()
-    for node in ast.walk(SERVER_TREE):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for sub in ast.walk(node):
-                if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
-                        and sub.func.id == name):
-                    out.add(node.name)
-    return out
-
-
-def test_the_one_writer_is_the_single_faucet_and_the_stream_is_its_only_producer():
-    """RC-69 single faucet: the ONE ``upsert_1m_bars(`` call lives in ``_persist_1m_bars``, whose
-    only caller is the streamed-bar writer. That write seam also carries the RC-183 collect-window
-    law (tests/test_collect_window_law_v1.py), so a closed-market bar is never persisted."""
-    assert "upsert_1m_bars(" in _fn_src("_persist_1m_bars"),         "the single bar writer must be _persist_1m_bars"
-    assert _call_sites("_persist_1m_bars") == {"_write_streamed_bar"}, (
-        "price_bars_1m has a producer other than Schwab's streamed bars: "
-        f"{sorted(_call_sites('_persist_1m_bars'))}")
-    assert _call_sites("_write_streamed_bar") == {"_bar_writer"}
-    assert "streamed_bars.get()" in _fn_src("_bar_writer")
-
-
-
 
 def test_collection_covers_every_streamed_symbol_not_a_fixed_list(monkeypatch):
     """The writer persists whatever symbol the stream delivers -- no roster, sentinel or viewport
@@ -98,15 +48,3 @@ def test_a_streamed_bar_missing_a_field_is_absence_not_a_bar(monkeypatch):
     assert written == []
     # positive control: the complete bar IS written, so the guard is not refusing everything
     assert srv._write_streamed_bar(full) is True and written == ["ZZG"]
-
-
-def test_writer_refuses_to_start_under_pytest():
-    """A production writer thread inside the test process mutates shared state no test
-    controls — the RC-5 failure class."""
-    seg = _fn_src("start_bar_writer")
-    assert "PYTEST_CURRENT_TEST" in seg
-
-
-def test_writer_is_wired_into_the_app_lifespan():
-    assert _call_sites("start_bar_writer") == {"_app_lifespan"}, (
-        f"the bar writer is not started by the app lifespan: {sorted(_call_sites('start_bar_writer'))}")

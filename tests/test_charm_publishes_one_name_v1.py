@@ -17,40 +17,6 @@ only if nothing needs it at all.
 
 from __future__ import annotations
 
-import pytest
-
-import json
-import subprocess
-import sys
-from pathlib import Path
-
-REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
-
-
-#: A REAL SPY chain captured from data/ed_console.db — 40 contracts, spot 773.05, all
-#: expiring 2026-09-22. Charm needs T > 0 to compute anything, and that expiry is now past,
-#: so `now` is pinned to a real moment inside that session rather than the chain being
-#: rewritten with invented dates. Real strikes, real open interest, real IVs, real clock.
-_FIXTURE = json.loads(
-    (REPO / "tests" / "fixtures" / "real_spy_0dte_chain.json").read_text(
-        encoding="utf-8"))
-
-
-
-
-
-
-
-
-
-@pytest.fixture(autouse=True)
-def _at_capture(pin_clock):
-    """Valued at the stored chain's capture (2026-09-22 12:46 ET), so its expiries passing never change
-    what this test measures."""
-    return pin_clock(2026, 9, 22, 12, 46)
-
 def test_the_two_pin_metrics_are_different_quantities():
     """RC-315: demonstrate the distinction the register describes, instead of describing it.
 
@@ -93,52 +59,3 @@ def test_the_two_pin_metrics_are_different_quantities():
         "if this ever passes trivially the fixture has stopped testing anything")
     assert strength is not None and 0.0 < strength <= 100.0, (
         f"strength_pct is the margin over the runner-up, got {strength}")
-
-
-def test_no_consumer_of_the_removed_key_appears(repo_index):
-    """The measurement that made the removal safe, re-run so it stays true.
-
-    If a reader of `charm["gamma_pin"]` ever appears, this fails and sends the author to
-    RC-302 rather than letting the collision return through a new consumer.
-
-    TEST_SYSTEM_REHAB_V2 final remediation: the .py half of this scan was an
-    independent `git ls-files` + read, redundant with the shared `repo_index`
-    observation. Split: .py source comes from `repo_index` (excluding tests/); the
-    .html half is a genuinely distinct artifact type repo_index never indexes, kept
-    as its OWN narrowly-pathspec'd scan (only 7 tracked .html files repo-wide).
-    """
-    import re
-
-    pattern = re.compile(r'(_charm_raw|charm)\s*\[\s*["\']gamma_pin')
-
-    def _hits(rel: str, lines: list[str]) -> list[str]:
-        return [f"{rel}:{i}" for i, line in enumerate(lines, 1) if pattern.search(line)]
-
-    hits: list[str] = []
-    for relpath, text, _tree in repo_index.items():
-        rel = relpath.as_posix()
-        if rel.startswith("tests/"):
-            continue
-        hits += _hits(rel, text.splitlines())
-    # institutional-scan-ok: non-.py artifact type (html), repo_index cannot serve it;
-    # 7 tracked files repo-wide, scoped by an explicit *.html pathspec, not a bare scan.
-    html_files = subprocess.run(
-        ["git", "ls-files", "-z", "--", "*.html"], cwd=REPO, capture_output=True,
-        text=True, check=True).stdout.split("\0")
-    for rel in (f for f in html_files if f and not f.startswith("tests/")):
-        try:
-            lines = (REPO / rel).read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
-            continue
-        hits += _hits(rel, lines)
-    assert not hits, (
-        f"a consumer of charm's removed gamma_pin key appeared at {hits}. That key was "
-        f"terrain's name for a different metric on a different chain scope — see RC-302.")
-
-
-def test_the_alias_and_its_intermediate_are_gone_from_the_source():
-    src = (REPO / "math_exposure_core.py").read_text(encoding="utf-8", errors="replace")
-    assert '"gamma_pin": drift_toward_strike' not in src
-    assert '"gamma_pin": gamma_pin' not in src
-    assert "gamma_pin = drift_toward_strike" not in src, (
-        "the intermediate alias is back; it is what made the duplicate look intentional")

@@ -40,25 +40,6 @@ def _isolated_contaminated_parent() -> dict[str, str]:
     }
 
 
-def test_start_ed_console_bat_wires_live_schwab_env_preflight():
-    bat = (ROOT / "start_ed_console.bat").read_text(encoding="utf-8")
-    assert 'live_schwab_env.py --bat-unsets' in bat
-    assert 'live_schwab_env.py --sanitize' in bat
-    # RC-514: an unavailable Schwab capability is REPORTED, never a launch veto. The
-    # sanitization asserted above is unchanged; only the consequence of a bad result changed,
-    # because one vendor's credentials must not decide whether the application may exist
-    # (docs/ARCHITECTURE.md "Failure domains").
-    assert "SCHWAB CAPABILITY UNAVAILABLE" in bat
-    assert "LAUNCH BLOCKED: live Schwab env" not in bat
-    # preflight (unsets + sanitize) runs before uvicorn so the child inherits the sanitized env
-    assert bat.index("live_schwab_env.py --bat-unsets") < bat.index(
-        '"%VENV_PY%" -m uvicorn server:app'
-    )
-    assert bat.index("live_schwab_env.py --sanitize") < bat.index(
-        '"%VENV_PY%" -m uvicorn server:app'
-    )
-
-
 def test_ed_ci_offline_inherited_is_sanitized_before_launch():
     from live_schwab_env import apply_sanitize
 

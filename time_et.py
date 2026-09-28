@@ -6,17 +6,15 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
+CT = ZoneInfo("America/Chicago")
 
 
+def ct_label(ts_utc: float) -> str:
+    """An instant as the screen shows it: "Fri 09/25 06:59 PM CT"."""
+    return datetime.fromtimestamp(float(ts_utc), CT).strftime("%a %m/%d %I:%M %p CT")
 
 
-
-
-
-
-
-
-# RTH 09:30–16:00 ET (minute-of-day); shared with ml_data_common.
+# RTH 09:30–16:00 ET (minute-of-day).
 RTH_START_MINS = 570
 RTH_OPEN_MINS = RTH_START_MINS  # 9:30 AM ET (alias for cross-module authority)
 RTH_END_MINS = 960

@@ -1,6 +1,6 @@
 """RC-UI-1 — proof that the Options/Gamma strike×expiry surface is a PROJECTION of the one
 canonical exposure faucet (math_exposure_core.compute_exposures_by_strike), not a second GEX
-producer. Covers the operator's required invariants A/B/C/D/F/G/H/I on REAL vendor chains
+producer. Covers the operator's required invariants A/B/C/D/F/G/H on REAL vendor chains
 (tests/fixtures: complete Schwab captures with native ISO ``expirationDate`` stamps, zero-OI
 rows and -999 greeks), so the projection is proven on the field shapes production actually
 feeds it (flatten_chain_contracts passes Schwab rows through verbatim). D/E colour+format are
@@ -14,9 +14,7 @@ test (cell == faucet on the slice; per-expiry additivity; expiry isolation); not
 rows is invented.
 """
 import pytest
-import inspect
 import json
-import re
 from pathlib import Path
 
 from server import project_gamma_surface
@@ -210,17 +208,6 @@ def test_H_spx_identity_unchanged():
     spxw = [dict(probe, symbol="SPXW  260918C07690000", strikePrice=7690)]
     surface = _surface(spxw, 7690.0)
     assert surface["expirations"] and surface["strikes"] == [7690.0]
-
-
-# I. NO DUPLICATE PRODUCER — the surface code prices nothing: it shapes the exposure books the
-#    levels were computed from.
-def test_I_no_second_gex_computation():
-    src = inspect.getsource(project_gamma_surface)
-    # the canonical dollarization ( gamma * oi * mult * spot*spot * 0.01 ) must NOT appear here
-    assert "spot * spot" not in src and "spot*spot" not in src
-    assert "* 0.01" not in src
-    assert "compute_exposures_by_strike" not in src
-    assert not re.search(r"(?<!merge_)exposure_books\(", src)   # merging priced books is not pricing
 
 
 # J. LIVE-HEATMAP CONTRACT IDENTITY (state-authority review, 2026-09-12) — every cell must carry

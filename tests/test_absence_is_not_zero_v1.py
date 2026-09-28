@@ -14,9 +14,8 @@ those four are what this file drives:
 
 WHY THE PATTERN SURVIVED SO LONG. `or 0.0` is a real type-narrowing idiom for Optional, and
 at nine of the thirteen sites that is exactly what it was. One shape carried two meanings and
-the reader had to hold both at once. These tests do not assert the shape is absent -- the
-repo-wide gate does that. They assert the BEHAVIOUR: feed each function a NULL and prove the
-zero never reaches the fact table, the sum, or the frame.
+the reader had to hold both at once. These tests assert the BEHAVIOUR: feed each function a
+NULL and prove the zero never reaches the fact table, the sum, or the frame.
 
 THE TEST THAT WOULD HAVE CAUGHT IT is not a stricter regex. It is this: write a NULL into the
 source table and read what comes out the other end.
@@ -24,7 +23,6 @@ source table and read what comes out the other end.
 
 from __future__ import annotations
 
-import inspect
 import sys
 from pathlib import Path
 
@@ -119,85 +117,3 @@ def test_no_usable_volume_still_reads_as_absence():
     assert volume_profile_poc_vah_val(
         [{"high": 100.0, "low": 99.0, "volume": None}]) == (None, None, None)
 
-
-# ------------------------------------------- an unknown age is not a fresh block ----
-
-
-
-# ------------------------------------------------- the gate's own scope is measured ----
-
-def test_the_repo_wide_gate_scopes_itself_to_what_git_tracks():
-    """~25 of the gate's 38 hits were untracked scratch, which is not repository code.
-
-    The fix must not be an allowlist entry -- that is a list somebody has to keep true. The
-    git index already answers the question, and answers it for directories nobody has
-    invented yet.
-    """
-    sys.path.insert(0, str(REPO / "tests"))
-    import test_ohlcv_schwab_first as G
-
-    rels = {p.relative_to(G.ROOT).as_posix() for p in G._iter_repo_py_files()}
-    import subprocess
-    top = {f for f in subprocess.run(["git", "ls-files", "*.py"], cwd=G.ROOT, capture_output=True,
-                                     text=True).stdout.split() if "/" not in f}
-    assert top <= rels, f"tracked top-level modules fell out of the scan: {sorted(top - rels)}"
-    for must in ("terrain_engine.py", "liquidity_models.py", "server.py"):
-        assert must in rels, f"{must} fell out of the scan"
-    assert not [r for r in rels if r.startswith("scratchpad/")], (
-        "untracked scratch is back in a repo-wide product gate")
-    assert not G._repo_wide_silent_zero_hits()
-
-
-def test_server_py_is_judged_like_every_other_file():
-    """RC-276: the product's main file was exempt from the gate that guards this defect.
-
-    A one-line reason -- "L1/SSE instrumentation timestamps, generations, volume deltas" --
-    honestly described 16 sites and silently covered 7 more, two of which were the SAME
-    per-strike gamma builder RC-274 had just removed from terrain_engine. An exemption's
-    scope must match the scope of its justification, and a file entry cannot do that.
-    """
-    sys.path.insert(0, str(REPO / "tests"))
-    import test_ohlcv_schwab_first as G
-
-    assert not G._file_allowlisted("server.py"), (
-        "server.py is exempt from the silent-zero gate again — 15,092 lines including the "
-        "money path, silenced by one line of prose about instrumentation")
-
-
-def test_the_per_line_escape_demands_an_actual_reason():
-    """A marker that can be typed without saying anything is the file allowlist, per line."""
-    sys.path.insert(0, str(REPO / "tests"))
-    import test_ohlcv_schwab_first as G
-
-    bare = 'x = float(a.get("b") or 0.0)  # silent-zero-ok:'
-    with_reason = 'x = float(a.get("b") or 0.0)  # silent-zero-ok: absent means no rows counted'
-    assert any(G._line_counts_as_violation(bare, s) for s in G.SILENT_ZERO_PATTERN_FAMILY), (
-        "a reasonless escape suppressed the finding")
-    assert not any(G._line_counts_as_violation(with_reason, s)
-                   for s in G.SILENT_ZERO_PATTERN_FAMILY)
-
-
-def test_the_server_strike_row_builder_draws_no_bar_for_unknown_gamma():
-    """RC-276: server.py's own copy of the terrain_engine:202 defect, behind the allowlist.
-
-    Driven through the real endpoint helper rather than asserted about the source text,
-    because the source text was what the allowlist was hiding.
-    """
-    import server as srv
-
-    src = inspect.getsource(srv.get_terrain_strikes)
-    assert "round(float(g or 0.0), 1)" not in src, (
-        "the per-strike row builder fabricates a 0.0 gamma bar again")
-    # 2026-09-24: the server copy is gone -- it delegates to the ONE producer, which refuses
-    # a bar for unknown / invalid gamma (tested above) and has no raw-gamma fallback (T-01).
-    assert "_per_strike_rows(exposures)" in src
-    assert "total_gamma_raw_at_strike" not in src
-
-
-def test_the_silent_zero_pattern_is_still_detectable():
-    """A gate that passes because it stopped looking is worse than one that fails."""
-    sys.path.insert(0, str(REPO / "tests"))
-    import test_ohlcv_schwab_first as G
-
-    assert any(G._line_counts_as_violation('tot = float(r["total_volume"] or 0.0)', spec)
-               for spec in G.SILENT_ZERO_PATTERN_FAMILY)

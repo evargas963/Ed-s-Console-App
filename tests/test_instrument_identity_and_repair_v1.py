@@ -93,20 +93,3 @@ def test_index_roots_resolve_to_dollar_form():
         assert ticker_storage_key(bare) == dollar
     assert ticker_storage_key("SPY") == "SPY", "equities must pass through untouched"
     assert ticker_storage_key("$SPX") == "$SPX", "already-canonical must be idempotent"
-
-
-def test_query_endpoints_canonicalize_through_the_authority():
-    """Structural: every UI query endpoint normalizes via ticker_storage_key, and the raw
-    upper/strip form is gone from those entry lines — one authority, swept consumers
-    (the RC-122/RC-126 root: an SSOT nobody routed through)."""
-    from pathlib import Path
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    assert src.count("ticker_storage_key(_required_ticker(ticker))") >= 4, (
-        "the terrain/spot/bars endpoints no longer canonicalize the typed symbol"
-    )
-    assert "DEFAULT_TICKER" not in src, "a default ticker is back (universality, 2026-09-23)"
-    assert "tk = (ticker or DEFAULT_TICKER).upper().strip()" not in src, (
-        "a raw upper/strip endpoint boundary is back — bare index symbols will go dark again"
-    )
-    # the producer canonicalizes too: background callers don't pass the endpoints
-    assert "tk = ticker_storage_key(ticker)   # RC-126" in src

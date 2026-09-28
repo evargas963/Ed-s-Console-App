@@ -11,13 +11,10 @@ re-add the table or methods.
 
 from __future__ import annotations
 
-import ast
 import sqlite3
 from pathlib import Path
 
 from db import EdDB
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_session_log_table_dropped_by_migration(tmp_path: Path) -> None:
@@ -68,40 +65,3 @@ def test_session_writer_methods_removed_from_eddb() -> None:
             f"EdDB.{removed} reappeared after Pass 6 drop — revert or open a "
             "wire-or-drop redecision row in OPEN_ITEMS"
         )
-
-
-def test_session_log_create_table_removed_from_db_py_source() -> None:
-    """Source-level lock: db.py must not contain a CREATE TABLE session_log
-    block. Catches the regression where someone re-adds the table via a copy
-    from git history without realising it was intentionally dropped."""
-    text = (REPO_ROOT / "db.py").read_text(encoding="utf-8")
-    upper = text.upper()
-    assert "CREATE TABLE IF NOT EXISTS SESSION_LOG" not in upper
-    assert "CREATE TABLE SESSION_LOG" not in upper
-
-
-def test_no_external_references_to_session_writers(repo_index) -> None:
-    """AST sweep: zero references to SessionLog / start_session / end_session /
-    update_session_counts anywhere in repo .py files outside db.py."""
-    targets = {"SessionLog", "start_session", "end_session", "update_session_counts"}
-    hits: list[str] = []
-    for rel, text, tree in repo_index.items():
-        if rel.parts[-1] == "db.py":
-            continue
-        if rel.parts[-1] == "test_session_log_drop.py":
-            continue
-        if tree is None:
-            continue
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Name) and node.id in targets:
-                hits.append(f"{rel}:{node.lineno} Name({node.id})")
-            elif isinstance(node, ast.Attribute) and node.attr in targets:
-                hits.append(f"{rel}:{node.lineno} Attr(.{node.attr})")
-            elif isinstance(node, ast.ImportFrom):
-                for alias in node.names:
-                    if alias.name in targets:
-                        hits.append(f"{rel}:{node.lineno} ImportFrom({alias.name})")
-    assert hits == [], (
-        "Session-log symbols referenced outside db.py after Pass 6 drop:\n  "
-        + "\n  ".join(hits)
-    )

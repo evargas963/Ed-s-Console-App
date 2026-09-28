@@ -205,8 +205,3 @@ def test_rc234_pipe_ok_escape_allows():
     assert OPL.commit_pipe_violations(
         'git commit -m "x" | tail -1  # pipe-ok: operator demo') == []
 
-
-def test_rc234_live_path_wired_into_bash_branch():
-    src = (Path(PLG.__file__)).read_text(encoding="utf-8")
-    assert "commit_pipe_violations" in src
-

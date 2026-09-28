@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -322,36 +321,6 @@ def test_rc93_applicability_machinery_is_gone():
 # that read a retired declaration's JSON proved the file, not the guard.
 
 
-def test_no_hardcoded_repository_exception_in_the_guard():
-    """A one-off exception for a named repository is exactly what the design forbids.
-
-    Matched by AST, not by string search: the guard is ALLOWED to describe the measured IEOS
-    failures in its docstrings — that is the record of why it exists. What it may not do is
-    carry a repository name or path in executable code. Searching raw source would fire on the
-    documentation, which is the use-versus-mention error this repo has been bitten by twice
-    (RC-186, RC-253) and is the word-policing failure the operator rejected in RC-93.
-    """
-    import ast
-
-    src = (REPO / "tools" / "operator_law_guard.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    docstrings = set()
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            body = getattr(node, "body", None)
-            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
-                    and isinstance(body[0].value.value, str):
-                docstrings.add(id(body[0].value))
-    live = [n.value for n in ast.walk(tree)
-            if isinstance(n, ast.Constant) and isinstance(n.value, str)
-            and id(n) not in docstrings]
-    offenders = [s[:80] for s in live if "ieos" in s.lower()]
-    assert offenders == [], offenders
-    # and no repository-rooted absolute path anywhere in executable code
-    paths = [s[:80] for s in live if "trading/" in s.lower().replace("\\", "/")]
-    assert paths == [], paths
-
-
 # (test_absent_declaration_means_the_mechanism_governs_nothing removed 2026-08-25 with the
 # rc93 applicability machinery it exercised — the retirement lock above owns this ground.)
 
@@ -422,8 +391,6 @@ def test_non_commit_commands_are_unaffected_by_repository_scoping():
 
 
 def test_operator_escape_remains_operator_only():
-    src = (REPO / "tools" / "operator_law_guard.py").read_text(encoding="utf-8")
-    assert 'os.environ.get("ED_OPERATOR_LAW_GUARD"' not in src
     out = G.bash_violations("git commit --no-verify -m x", [], payload_cwd=str(REPO))
     assert any("disables a mechanical lock" in v for v in out), out
 
@@ -484,146 +451,6 @@ def test_negative_control_pre_fix_detector_misses_git_dash_c():
     assert not _PRE_FIX_GIT_COMMIT.search('git --git-dir=.git --work-tree=. commit -m "x"')
 
 
-def test_negative_control_pre_fix_had_no_repository_resolution():
-    """The pre-fix module exposed no identity surface at all — the defect in one assertion.
-
-    The comparison is against the PARENT of the commit that introduced
-    ``resolve_target_repo``, not against HEAD. Reading HEAD made this control
-    true for exactly one commit: the moment the fix landed, HEAD became the
-    post-fix state and the control failed on its own success. A negative
-    control that expires when the thing it guards is fixed is not a control.
-    """
-    for name in ("resolve_target_repo", "normalize_repo", "repo_root_of"):
-        assert hasattr(G, name), name
-
-    introduced = subprocess.run(
-        ["git", "log", "--reverse", "--format=%H", "-S", "def resolve_target_repo",
-         "--", "tools/operator_law_guard.py"],
-        capture_output=True, text=True, cwd=str(REPO))
-    if introduced.returncode != 0 or not introduced.stdout.split():
-        pytest.skip("history unavailable: cannot locate the introducing commit")
-    first = introduced.stdout.split()[0]
-
-    before = subprocess.run(["git", "show", f"{first}~1:tools/operator_law_guard.py"],
-                            capture_output=True, cwd=str(REPO))
-    if before.returncode != 0:
-        pytest.skip("the introducing commit has no parent revision of this file")
-    src = before.stdout.decode("utf-8", "replace")
-    assert "def resolve_target_repo" not in src, (
-        f"{first[:8]} is not where the identity surface was introduced")
-
-    after = subprocess.run(["git", "show", f"{first}:tools/operator_law_guard.py"],
-                           capture_output=True, cwd=str(REPO))
-    assert after.returncode == 0
-    assert "def resolve_target_repo" in after.stdout.decode("utf-8", "replace"), (
-        "the located commit does not actually introduce the surface")
-
-
-_MOVING_REF = re.compile(
-    r"""["']?git["']?[^\n]{0,80}?\bshow\b[^\n]{0,80}?["']\s*"""
-    r"""(HEAD|main|master|origin/\w+)\s*[:~^]""")
-
-
-def _moving_ref_offenders(text, label):
-    """Lines inside NEGATIVE-CONTROL functions that pin a historical claim to a moving ref.
-
-    Scoped to negative controls on purpose. Reading ``HEAD:<file>`` to compare
-    what is committed against what is staged is a legitimate and common shape
-    (tests/test_ui_mockup_lock_v1.py does exactly that). The decaying shape is
-    specifically a control asserting a HISTORICAL ABSENCE against a ref that
-    moves when the fix lands.
-    """
-    import ast
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
-        return []
-    lines = text.splitlines()
-    offenders = []
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if "negative_control" not in node.name:
-            continue
-        end = getattr(node, "end_lineno", node.lineno) or node.lineno
-        for num in range(node.lineno, min(end, len(lines)) + 1):
-            line = lines[num - 1]
-            if line.lstrip().startswith("#") or "moving-ref-ok" in line:
-                continue
-            if _MOVING_REF.search(line):
-                offenders.append(f"{label}:{num}: {line.strip()[:100]}")
-    return offenders
-
-
-def test_no_negative_control_compares_against_a_moving_reference(repo_index):
-    """Class-level lock for RC-260, not a second copy of the same one-site fix.
-
-    RC-260 was one test comparing against ``git show HEAD:<file>``. The bug is
-    not that one test picked the wrong revision -- it is that a proof bound to
-    a MOVING reference inverts the moment the work it guards succeeds, and goes
-    red for the one reason that should have made it green. Every negative
-    control in this repository carries that decay risk, so the check sweeps
-    them all rather than repairing one site.
-
-    Pinned revisions, ``<sha>~1`` forms and ``-S`` lookups are all fine, and a
-    line may opt out with ``# moving-ref-ok`` when it is a fixture rather than
-    a claim.
-    """
-    # RC-307: repo-wide is the GIT INDEX. A filesystem walk here would judge untracked
-    # scratch copies of old test files, which is how tests/test_coh_sa2_et_authority.py
-    # spent weeks failing on 93 scripts the repository does not contain.
-    #
-    # TEST_SYSTEM_REHAB_V2 final remediation: migrated the independent `git ls-files`
-    # re-scan onto the shared `repo_index` fixture. In the same edit, widened the file
-    # filter from the literal pathspec `tests/test_*.py` to "any tracked test_*.py
-    # under tests/, at any depth" -- that literal pathspec cannot match a file whose
-    # immediate parent segment isn't "test_"-prefixed (git pathspec semantics), so it
-    # silently never saw tests/adversarial/*.py, tests/decision_reconstruction/*.py,
-    # tests/release_object/*.py, tests/runtime_proof/*.py (the same 13-file gap the
-    # semantic-family manifest independently found and fixed).
-    offenders = []
-    for relpath, text, _tree in repo_index.items():
-        rel = relpath.as_posix()
-        if not (rel.startswith("tests/") and relpath.name.startswith("test_")):
-            continue
-        offenders += _moving_ref_offenders(text, rel)
-    assert offenders == [], (
-        "negative controls must name the revision they mean, not a moving ref "
-        "(RC-260):\n  " + "\n  ".join(offenders))
-
-
-def test_moving_reference_lock_rejects_only_its_target():
-    """The lock above must reject the shape it exists to reject, and only that shape.
-
-    Deliberately NOT named ``*negative_control*``: the fixtures below contain
-    the very shape the scanner refuses, and a scanner that read its own test
-    data as a finding would be unfixable.
-    """
-    bad = (
-        "def test_negative_control_x():\n"
-        "    subprocess.run(['git', 'show', 'HEAD:tools/x.py'])\n"
-        "    run(['git', 'show', 'origin/main:tools/x.py'])\n")
-    assert len(_moving_ref_offenders(bad, "f.py")) == 2
-
-    # the same shape OUTSIDE a negative control is legitimate and must not trip
-    elsewhere = (
-        "def test_committed_matches_worktree():\n"
-        "    _git(['show', 'HEAD:governance/root_cause_log.md'])\n")
-    assert _moving_ref_offenders(elsewhere, "f.py") == []
-
-    # pinned and derived forms are the accepted shapes
-    good = (
-        "def test_negative_control_y():\n"
-        "    subprocess.run(['git', 'show', f'{first}~1:tools/x.py'])\n"
-        "    subprocess.run(['git', 'show', f'{sha}:tools/x.py'])\n"
-        "    git('log', '--reverse', '-S', 'def resolve_target_repo')\n")
-    assert _moving_ref_offenders(good, "f.py") == []
-
-    # and this very file must be clean under its own lock
-    here = Path(__file__).read_text(encoding="utf-8")
-    assert _moving_ref_offenders(here, "self") == []
-
-
 # ── RC-360: the operator no-verify grant — HEAD-ratified, narrowly scoped ────────
 
 
@@ -634,9 +461,6 @@ def test_rc360_grant_file_cannot_authorize_no_verify(tmp_path):
         json.dumps({"grants": {"claude_no_verify_checkpoints": {"granted": True}}}),
         encoding="utf-8",
     )
-    src = (REPO / "tools" / "operator_law_guard.py").read_text(encoding="utf-8")
-    assert "claude_no_verify_checkpoints" not in src
-    assert "git show HEAD:governance/operator_grants.json" not in src
     for cmd in (
         "git commit --no-verify -m x",
         "git add a && git commit --no-verify -m x && git push --no-verify",

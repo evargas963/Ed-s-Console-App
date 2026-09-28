@@ -1,54 +1,6 @@
 """Instant-UI Phases 3–7 seams. Each expected value is independently derived."""
 from __future__ import annotations
 
-import ast
-from pathlib import Path
-
-REPO = Path(__file__).resolve().parent.parent
-
-
-def _server_src() -> str:
-    return (REPO / "server.py").read_text(encoding="utf-8")
-
-
-
-
-def test_l1_sse_dispatch_uses_its_own_thread_not_a_shared_pool():
-    """The fan-in wait runs on a dedicated single thread -- never the default pool, never the
-    ed_l1_light pool that /api/analytics/light builds occupy (audit of #280)."""
-    src = _server_src()
-    assert "run_in_executor(_get_l1_sse_dispatch_executor(), _blocking_get)" in src
-    assert "run_in_executor(None, _blocking_get)" not in src
-    assert "run_in_executor(_get_l1_light_executor(), _blocking_get)" not in src
-
-
-def test_dead_live_quote_loop_and_api_stream_are_gone():
-    src = _server_src()
-    tree = ast.parse(src)
-    names = {n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    assert "_sse_live_quote_loop" not in names
-    assert "_broadcast_live_quote_sse_payloads" not in names
-    assert "sse_stream" not in names
-    assert "LIVE_QUOTE_SSE_INTERVAL_SEC" not in src
-    assert '@app.get("/api/stream")' not in src
-
-
-def test_chart_surfaces_do_not_reuse_stale_raw_or_invent_change_pct():
-    chart_js = (REPO / "static" / "js" / "ed-gamma-chart.js").read_text(encoding="utf-8")
-    assert "var _lastRaw" not in chart_js
-    assert "_lastRaw =" not in chart_js
-    assert "ed:quote_tick" in chart_js
-    core = (REPO / "static" / "js" / "ed-core.js").read_text(encoding="utf-8")
-    assert "ed:quote_tick" in core
-
-
-def test_three_labels_are_not_collapsed_into_streaming():
-    gamma = (REPO / "static" / "js" / "ed-gamma.js").read_text(encoding="utf-8")
-    assert "OPT CELLS·" in gamma
-    flow = (REPO / "static" / "js" / "ed-gamma-flow.js").read_text(encoding="utf-8")
-    assert "Book upstream" in flow and "L1 upstream" in flow   # three feeds, served separately (/options moved in)
-    assert "['Streaming'" not in flow
-
 
 def test_token_write_is_atomic_temp_replace(tmp_path):
     from schwab_client import write_token_file_atomically

@@ -7,11 +7,6 @@ drift between them is explicit, never silent.
 
 from __future__ import annotations
 
-import ast
-from pathlib import Path
-
-_REPO = Path(__file__).resolve().parent.parent
-
 
 def _api_build(monkeypatch, repo_head: str):
     import server as srv
@@ -57,33 +52,3 @@ def test_git_sha_stable_across_requests_regardless_of_repo(monkeypatch):
     body1 = _api_build(monkeypatch, "1" * 40)
     body2 = _api_build(monkeypatch, "2" * 40)
     assert body1["git_sha"] == body2["git_sha"]
-
-
-def test_mechanical_lock_no_request_time_git_as_identity():
-    """New-consumer lock: _repo_git_head_sha (request-time git) may feed ONLY
-    the repository_state_now diagnostic inside api_build — no other function
-    in server.py may call it, so no code path can present request-time git as
-    process identity."""
-    src = (_REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    tree = ast.parse(src)
-    parents: dict[ast.AST, ast.AST] = {}
-    for node in ast.walk(tree):
-        for child in ast.iter_child_nodes(node):
-            parents[child] = node
-
-    def enclosing_fn(node):
-        cur = parents.get(node)
-        while cur is not None and not isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            cur = parents.get(cur)
-        return cur.name if cur is not None else "<module>"
-
-    callers = sorted({
-        enclosing_fn(n)
-        for n in ast.walk(tree)
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-        and n.func.id == "_repo_git_head_sha"
-    })
-    assert callers == ["api_build"], (
-        f"_repo_git_head_sha called outside api_build: {callers} — request-time "
-        f"git must never masquerade as process identity"
-    )

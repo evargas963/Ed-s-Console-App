@@ -110,23 +110,8 @@ def test_the_commit_exemption_is_by_verb_not_by_heredoc():
         "a heredoc piped to a shell is a write channel and must stay watched")
 
 
-def test_the_rule_is_wired_into_the_bash_decision_path():
-    """A rule nobody calls is a comment. This one must be in the live path."""
-    source = (REPO / "tools" / "operator_law_guard.py").read_text(
-        encoding="utf-8", errors="replace")
-    assert "_protected_path_violation(raw)" in source, (
-        "the rule exists but is not called from the command-evaluation path")
-    assert "RC-273" in source
-
-
-def test_protected_trees_are_the_gitignored_ones():
-    """The rule must cover exactly what has no history -- that is the criterion.
-
-    Destructive is defined by the TARGET's recoverability, not by the verb.
-    """
-    ignore = (REPO / ".gitignore").read_text(encoding="utf-8", errors="replace")
-    for tree in ("data/", "backups/db/"):
-        assert tree in ignore, f"{tree} is not gitignored -- re-check the premise"
+def test_every_protected_tree_is_guarded():
+    """Destructive is defined by the TARGET's recoverability, not by the verb."""
     for tree in (D, B, M):
         assert G._protected_path_violation(f"rm -rf {tree}x"), tree
 

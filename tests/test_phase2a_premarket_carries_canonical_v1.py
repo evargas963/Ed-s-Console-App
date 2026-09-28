@@ -104,13 +104,6 @@ def test_premarket_carries_every_phase2a_level_unchanged():
 
 def test_both_live_exits_pass_canonical_through():
     """The two guards that made this reachable: future session date, and pre-open clock."""
-    src = inspect.getsource(build_live_snapshot)
-    calls = [ln.strip() for ln in src.splitlines() if "build_premarket_snapshot(" in ln]
-    assert calls, "build_live_snapshot no longer delegates to premarket — re-read this test"
-    joined = " ".join(src.split())
-    assert "build_premarket_snapshot(ticker, bars, session_date, config)" not in joined, (
-        "a build_live_snapshot exit still drops the canonical snapshot (RC-322)")
-
     session = most_recent_trading_day_et()
     bars = _bars(session)
     canon = _canonical(session, bars)

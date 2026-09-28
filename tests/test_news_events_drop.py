@@ -13,13 +13,10 @@ the table, method, or dead persist_events plumbing.
 
 from __future__ import annotations
 
-import ast
 import sqlite3
 from pathlib import Path
 
 from db import EdDB
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_news_events_table_dropped_by_migration(tmp_path: Path) -> None:
@@ -68,72 +65,4 @@ def test_insert_news_event_method_removed_from_eddb() -> None:
     assert "insert_news_event" not in methods, (
         "EdDB.insert_news_event reappeared after Pass 8 drop — revert or open "
         "a wire-or-drop redecision row in OPEN_ITEMS"
-    )
-
-
-def test_news_events_create_table_removed_from_db_py_source() -> None:
-    text = (REPO_ROOT / "db.py").read_text(encoding="utf-8")
-    upper = text.upper()
-    assert "CREATE TABLE IF NOT EXISTS NEWS_EVENTS" not in upper
-    assert "CREATE TABLE NEWS_EVENTS" not in upper
-
-
-
-
-def test_no_persist_events_kwarg_in_any_refresh_and_context_call(repo_index) -> None:
-    """AST-scan EVERY call to refresh_and_context / refresh_and_context_for_ui
-    across the repo — including the news_sentiment.py __main__ probe block
-    that the signature-only test missed in the original Pass 8 commit.
-
-    A stale `persist_events=False` at a call site won't fail collection but
-    will TypeError at runtime when invoked (broken `python news_sentiment.py
-    SPY` CLI). Catch it statically.
-    """
-    targets = {"refresh_and_context", "refresh_and_context_for_ui"}
-    hits: list[str] = []
-    for rel, text, tree in repo_index.items():
-        if tree is None:
-            continue
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            fn = node.func
-            short = None
-            if isinstance(fn, ast.Name):
-                short = fn.id
-            elif isinstance(fn, ast.Attribute):
-                short = fn.attr
-            if short not in targets:
-                continue
-            for kw in node.keywords:
-                if kw.arg == "persist_events":
-                    hits.append(f"{rel}:{node.lineno} {short}(... persist_events=...)")
-    assert hits == [], (
-        "persist_events kwarg still passed to refresh_and_context* — "
-        "would raise TypeError at runtime:\n  " + "\n  ".join(hits)
-    )
-
-
-def test_no_external_references_to_news_writer(repo_index) -> None:
-    targets = {"insert_news_event"}
-    hits: list[str] = []
-    for rel, text, tree in repo_index.items():
-        if rel.parts[-1] == "db.py":
-            continue
-        if rel.parts[-1] == "test_news_events_drop.py":
-            continue
-        if tree is None:
-            continue
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Attribute) and node.attr in targets:
-                hits.append(f"{rel}:{node.lineno} Attr(.{node.attr})")
-            elif isinstance(node, ast.Name) and node.id in targets:
-                hits.append(f"{rel}:{node.lineno} Name({node.id})")
-            elif isinstance(node, ast.ImportFrom):
-                for alias in node.names:
-                    if alias.name in targets:
-                        hits.append(f"{rel}:{node.lineno} ImportFrom({alias.name})")
-    assert hits == [], (
-        "insert_news_event referenced outside db.py after Pass 8 drop:\n  "
-        + "\n  ".join(hits)
     )

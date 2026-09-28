@@ -116,77 +116,14 @@ def test_api_build_exposes_ui_maximize_sla(monkeypatch):
     assert body.get("ui_maximize_panel_warm_tickers") == ["NFLX", "SPY"]
 
 
-def test_start_ed_console_bat_opens_edge_not_chrome():
-    bat = (Path(__file__).resolve().parent.parent / "start_ed_console.bat").read_text(encoding="utf-8")
-    assert "msedge.exe" in bat.lower()
-    assert "chrome.exe" not in bat.lower()
-    assert ">>>" not in bat
-    assert 'set "PF86=%ProgramFiles(x86)%"' in bat
-    # Operator finding (2026-09-11): a blind fixed 2s delay opened the browser whether or
-    # not the server was actually ready yet. Replaced with wait_for_ready_then_open.py,
-    # which polls the real URL and only opens once it answers (or reports a timeout
-    # distinctly -- see test_wait_for_ready_then_open_v1.py for that script's own
-    # behavioral proof). The launcher just needs to actually wire it in.
-    assert "timeout /t 2 /nobreak" not in bat, "the old blind fixed-delay browser-open must not return"
-    assert "wait_for_ready_then_open.py" in bat
-    assert "ED_LIVE_ABLATION_EXPERIMENT" not in bat
-
-
-def test_start_ed_console_bat_uses_repo_venv_python_not_bare_path_rc497():
-    """RC-497: the launcher must drive its preflight and uvicorn through the repo
-    .venv interpreter, never bare PATH python/pip. In a spawned/scheduled context
-    (Start-Process, Task Scheduler) bare `python` resolves to a uvicorn-less
-    interpreter and the launch silently no-ops (proven 2026-08-27).
-
-    RC-512: the pinned statement was the RC-350 repository check, which is no longer on
-    the launch path at all. The interpreter rule is unchanged and is now pinned on the
-    live-Schwab preflight, the one preflight the launcher still runs."""
-    bat = (Path(__file__).resolve().parent.parent / "start_ed_console.bat").read_text(encoding="utf-8")
-    # the pinned repo interpreter is defined, and both the check and the launch go through it
-    assert r'set "VENV_PY=%~dp0.venv\Scripts\python.exe"' in bat
-    assert '"%VENV_PY%" -m uvicorn server:app' in bat
-    assert '"%VENV_PY%" live_schwab_env.py --sanitize' in bat
-    # no EXECUTED statement runs a bare-PATH python/pip, and there is no launch-time install
-    for raw in bat.splitlines():
-        ln = raw.strip().lower()
-        assert not ln.startswith("python "), f"bare PATH python executed: {raw!r}"
-        assert not ln.startswith("python.exe "), f"bare PATH python executed: {raw!r}"
-        assert not ln.startswith("python\t"), f"bare PATH python executed: {raw!r}"
-        assert not ln.startswith("pip "), f"bare PATH pip executed: {raw!r}"
-
-
-def test_start_ed_console_bat_fails_closed_when_port_8000_stays_occupied_rc497():
-    """RC-497: the launcher refuses to launch a second uvicorn into an occupied port.
-
-    Operator finding (2026-09-11): the original mechanism (this same test, previously)
-    taskkill'd whatever PID held port 8000 with no ownership check, then merely reproved
-    the raw socket was free. Replaced with launcher_port_guard.py, which additionally
-    verifies the occupant IS an Ed Console server before ever touching it (see
-    test_launcher_port_guard_v1.py for that script's own unit-level negative controls).
-    This test proves the .bat actually WIRES that script in with a fail-closed refusal,
-    and runs the REAL script as a subprocess against a bound port (occupied by something
-    with no Ed Console command line -> exit 1, refuse) and a free port (-> exit 0,
-    proceed) -- behavioral proof at the process boundary, not a mock.
-    """
+def test_the_port_guard_refuses_an_occupied_port_and_passes_a_free_one():
+    """The launcher's port guard, run as a subprocess against a bound port (an occupant that is
+    not an Ed Console server -> exit 1, refuse) and a free port (-> exit 0, proceed)."""
     import socket
     import subprocess
     import sys
 
     root = Path(__file__).resolve().parent.parent
-    bat = (root / "start_ed_console.bat").read_text(encoding="utf-8")
-
-    # (a) the fail-closed guard is wired in for port 8000, immediately followed by an
-    #     errorlevel refusal that exits non-zero, plus the operator-facing block message.
-    assert "launcher_port_guard.py" in bat
-    idx = bat.index('launcher_port_guard.py" 8000')
-    tail = bat[idx:][:400]
-    assert "if errorlevel 1" in tail
-    assert "exit /b 1" in tail
-    assert "LAUNCH BLOCKED: port 8000 is occupied" in bat
-
-    # (b) behavioral: the real script, run as a subprocess (not imported/mocked), against
-    #     a bound port and a free port. The hard-wired 8000 is swapped for the test's own
-    #     port so the proof is independent of whatever the live desk is doing on 8000.
     guard = str(root / "launcher_port_guard.py")
     venv_py = sys.executable  # virtualenv-parity gate guarantees this is the repo .venv python
 

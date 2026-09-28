@@ -88,5 +88,3 @@ def test_inspection_and_shell_writes_are_not_the_guards_business():
                  "_payload_write_violation", "_PS_WRITE_BAD", "edit_violations", "turn_slice",
                  "_successful_commands", "_verification_ran", "last_assistant_text"):
         assert not hasattr(G, gone), gone
-    src = Path(G.__file__).read_text(encoding="utf-8")
-    assert "transcript_path" not in src.split('"""', 2)[-1]

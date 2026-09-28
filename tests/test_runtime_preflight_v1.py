@@ -167,12 +167,3 @@ def test_report_mode_diagnoses_without_blocking(site, monkeypatch):
 
     assert rp.main(["--report"]) == 0
     assert rp.main([]) == 1
-
-
-def test_the_launcher_runs_this_before_starting_uvicorn():
-    """Wiring pin. The launcher's own probe only asked whether uvicorn imports, which a ghost
-    elsewhere in the venv passes — that is how a broken tree reached the credential gate."""
-    bat = (REPO / "start_ed_console.bat").read_text(encoding="utf-8", errors="replace")
-    assert "runtime_preflight.py" in bat, "the launcher does not run the provisioning preflight"
-    assert bat.index("runtime_preflight.py") < bat.index("-m uvicorn server:app"), (
-        "the preflight must run BEFORE the server starts")

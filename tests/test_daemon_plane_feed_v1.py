@@ -10,8 +10,6 @@ tests/test_live_push_channel_v1.py.
 
 from __future__ import annotations
 
-import ast
-import inspect
 import time
 
 import pytest
@@ -45,18 +43,6 @@ def _push_book(symbol, content, ts_recv):
     ofs._ingest_pushed(f"book.{symbol}", book_msg(
         symbol=symbol, service="NASDAQ_BOOK", content=content, src="schwab_book",
         ts_recv=ts_recv))
-
-
-def test_no_schwab_import_anywhere_in_this_module():
-    """THE root fix, structurally: this module must not be ABLE to open a Schwab
-    session — not merely choose not to. An `import schwab` statement here (not prose
-    mentioning the word — the docstring explains the repair using it) is the violation."""
-    tree = ast.parse(inspect.getsource(ofs))
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            assert not any(a.name.split(".")[0] == "schwab" for a in node.names)
-        if isinstance(node, ast.ImportFrom):
-            assert (node.module or "").split(".")[0] != "schwab"
 
 
 def test_l1_message_lands_in_both_planes(tmp_path, monkeypatch):

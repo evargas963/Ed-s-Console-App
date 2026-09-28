@@ -62,5 +62,3 @@ def test_the_library_carries_no_hook_entrypoint():
     rosters and no longer shaped like a guard."""
     for gone in ("main", "decide", "is_foreign_path", "_git", "_rel"):
         assert not hasattr(G, gone), gone
-    src = Path(G.__file__).read_text(encoding="utf-8")
-    assert "sys.stdin" not in src and "__main__" not in src

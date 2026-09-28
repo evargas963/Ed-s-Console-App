@@ -32,10 +32,9 @@ def missing_paths(text: str, tracked: list[str]) -> list[str]:
     return missing
 
 
-def test_every_path_the_governing_documents_name_exists(repo_index):
-    """File names come from the shared `repo_index` (tests/conftest.py): one `git ls-files`."""
-    assert repo_index.tracked, "the shared index lists no tracked files"
-    bad = {d: missing_paths((ROOT / d).read_text(encoding="utf-8"), repo_index.tracked) for d in DOCS}
+def test_every_path_the_governing_documents_name_exists(tracked_files):
+    assert tracked_files, "git lists no tracked files"
+    bad = {d: missing_paths((ROOT / d).read_text(encoding="utf-8"), tracked_files) for d in DOCS}
     assert not any(bad.values()), f"paths that do not exist: {bad}"
 
 
