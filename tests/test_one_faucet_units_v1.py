@@ -68,9 +68,9 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path, monkeypatc
             persist_complete_chain_capture(db, ticker="SPY", expiry=exp, contracts=cts,
                                            spot=float(_FX["spot"]), completeness_basis=CAPTURE_BASIS,
                                            ts_utc=ts)
-    monkeypatch.setattr(server, "get_db", lambda: type("Db", (), {"db_path": db})())
+    from calibration.complete_chain_capture import last_capture_per_day
     pin_clock(2026, 10, 30, 12, 0)                  # the chain's expiry is long past
-    body = server._forces_from_captures("SPY")      # the levels producer's forces computation
+    body = server._forces_from_captures("SPY", last_capture_per_day(db, "SPY", 2))   # the producer's forces
     assert body["available"] is True
     assert body["charm_below"] is not None and body.get("charm_error") is None, body
 

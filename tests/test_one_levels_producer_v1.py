@@ -283,7 +283,8 @@ def test_publications_for_one_ticker_never_overlap(monkeypatch):
 
 def _count_publishes(monkeypatch):
     calls = []
-    monkeypatch.setattr(server, "_publish_levels", lambda tk, *a: calls.append((tk, time.monotonic())))
+    monkeypatch.setattr(server, "_publish_levels",
+                        lambda tk, *a: calls.append((tk, time.monotonic())) or True)   # published
     return calls
 
 
@@ -295,6 +296,49 @@ def _wait_idle(tk, timeout=10.0):
                 return
         time.sleep(0.01)
     raise AssertionError("reprice worker did not finish")
+
+
+def test_a_ticker_just_put_on_screen_gets_its_chain_on_the_first_tick(monkeypatch):
+    """2026-09-28, operator: switching tickers, the heatmap took ~45 s (measured: AMD). Only a
+    viewed ticker's chain is kept, so a ticker just put on screen had none and every tick
+    repriced nothing until the levels loop came round to it. The first tick now fetches its
+    chain through the one producer, as an operator-facing request."""
+    monkeypatch.setattr(server, "LEVELS_REPRICE_MIN_INTERVAL_SEC", 0.05)
+    fetched = []
+    monkeypatch.setattr(server, "_terrain_refresh_one", lambda tk, priority=False: fetched.append((tk, priority)))
+    _stream({}, monkeypatch)
+    server._gamma_surface_demand.pop(TK, None)
+    server._publish_levels(TK, _CONTRACTS, time.time())                 # published while not viewed
+    server._note_gamma_surface_demand(TK)                                # the operator switches to it
+    server._on_stream_tick(TK)
+    _wait_idle(TK)
+    assert fetched == [(TK, True)]
+
+
+def test_the_console_serves_while_the_stored_levels_load(monkeypatch):
+    """2026-09-28, operator: the console window's start was "slow as molasses". The stored-levels
+    load (every board ticker's newest capture priced, with its forces and prior-day rows: about
+    2.8 s for SPY, 5.4 s for $SPX, measured) ran before the app served its first request. It runs
+    on the levels loop's own thread now; starting the loop returns at once."""
+    import threading as _th
+    release, started, finished = _th.Event(), _th.Event(), _th.Event()
+
+    def slow_load():
+        started.set()
+        release.wait(2)
+        finished.set()
+        return 0
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(server, "_load_stored_levels", slow_load)
+    monkeypatch.setattr(server, "_terrain_loop_running", False)
+    server.start_terrain_loop()
+    try:
+        assert not finished.is_set(), "start returned before the load finished"
+        assert started.wait(2), "the load runs on the loop's thread"
+    finally:
+        monkeypatch.setattr(server, "_terrain_loop_running", False)   # the loop exits at its check
+        release.set()
+        server._terrain_loop_thread.join(5)
 
 
 def test_a_tick_on_an_unviewed_ticker_reprices_nothing(monkeypatch):
