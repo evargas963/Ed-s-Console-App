@@ -57,6 +57,9 @@ def test_bars1m_endpoint_serves_canonical_bars_shape(monkeypatch):
     assert (row["t"], row["c"]) == (rows[-1][0], rows[-1][4])
     ts = [b["t"] for b in body["bars"]]
     assert ts == sorted(ts), "bars must be newest-last (ascending time)"
+    # the chart's candles are Schwab's completed bars exactly as stored, never altered
+    full = json.loads(srv.get_bars1m(ticker="SPY", limit=len(rows), tf="1").body)["bars"]
+    assert [(b["t"], b["o"], b["h"], b["l"], b["c"], b["v"]) for b in full] == rows
 
 
 def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
