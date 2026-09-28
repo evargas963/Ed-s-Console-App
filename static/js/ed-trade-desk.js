@@ -443,7 +443,6 @@
   function retrigger() { if (isRightNow()) _loader.trigger(_loadKey()); }
   function load() {
     if (!isRightNow()) return;
-    var tEl = document.getElementById('tdTicker'); if (tEl) tEl.textContent = ticker().replace('$', '');
     _loader.trigger(_loadKey());
   }
 

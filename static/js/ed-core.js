@@ -83,8 +83,13 @@
   // only — the window never changes any value, only which canonical strikes are on screen.
   var SCOPE_MODES = ['auto', 'wider', 'all'];
   function _lsScope() { var v = _ls('ed_scope', 'auto'); return SCOPE_MODES.indexOf(v) !== -1 ? v : 'auto'; }
+  // every asked-for symbol's served identity, {requested: {requested, key, display}} (ingestIdentity)
+  var _served = {};
   var state = {
     ticker: (_ls(TICKER_KEY, '') || '').toUpperCase(),
+    // the selected instrument's identity as the daemon's price socket serves it (ingestIdentity):
+    // the key every price row and route uses ("$SPX") and its display name ("SPX"); null until served
+    key: null, display: null,
     workspace: _ls('ed_ws', app.getAttribute('data-workspace') || 'options'),
     subview: _ls('ed_sub', app.getAttribute('data-subview') || 'gamma'),
     view: _ls('ed_view', app.getAttribute('data-view') || 'heatmap'),
@@ -491,7 +496,7 @@
       // Remove is a real <button> in normal flow (not display:none swapped by hover JS), so
       // Tab reaches it and Enter/Space activates it natively — CSS (:hover/:focus-within/
       // :focus) alone controls its visibility, no mouse required to discover or use it.
-      row.innerHTML = '<span class="wl-sym s">' + sym.replace('$', '') + '</span>' +
+      row.innerHTML = '<span class="wl-sym s">' + (_served[sym] ? _served[sym].display : sym) + '</span>' +
         '<span class="wl-px" data-wlpx="' + sym + '">—</span>' +
         '<span class="wl-chg" data-wlchg="' + sym + '">—</span>' +
         '<button class="st-x" data-rm="' + sym + '" aria-label="Remove ' + sym + ' from watchlist">×</button>';
@@ -552,21 +557,22 @@
   }
 
   // ================= ticker store (ONE selected-symbol state across every surface) =================
+  // The instrument's name on every header: as typed until the daemon's price socket serves its
+  // display name (ingestIdentity).
+  // Every panel header ticker label shares .hticker, so a panel added later is never missed.
+  function paintIdentity(name) {
+    ['hSym', 'aiCtxSym'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = name; });
+    document.querySelectorAll('.hticker').forEach(function (el) { el.textContent = name; });
+    document.querySelectorAll('.wl-row').forEach(function (r) {
+      var s = r.querySelector('.wl-sym'); r.classList.toggle('sel', !!s && (s.textContent === name || s.textContent === state.ticker));
+    });
+  }
   function setTicker(sym) {
     state.ticker = (sym || '').toUpperCase();
+    state.key = null; state.display = null;
     try { localStorage.setItem(TICKER_KEY, state.ticker); } catch (e) {}
-    ['hSym', 'aiCtxSym'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = state.ticker.replace('$', ''); });
-    // Every panel header ticker label shares .hticker (mvTicker, chTicker, flTicker, vnTicker,
-    // chmTicker, stTicker, and any future one) -- a hand-maintained id list here silently froze
-    // 5 of these 6 at their HTML placeholder ("SPX") the moment a panel was added without also
-    // updating this array (reproduced live: vanna-by-strike/charm-by-strike returned genuinely
-    // per-ticker data, e.g. a real TSLA spot/strikes, while their header still read "SPX").
-    // Selecting the whole class instead of naming ids makes this un-forgettable.
-    document.querySelectorAll('.hticker').forEach(function (el) { el.textContent = state.ticker.replace('$', ''); });
+    paintIdentity(state.ticker);
     var si = document.getElementById('symInput'); if (si) { si.value = state.ticker; buildSymList(); }   // the control reflects the ONE state
-    document.querySelectorAll('.wl-row').forEach(function (r) {
-      var s = r.querySelector('.wl-sym'); r.classList.toggle('sel', s && s.textContent === state.ticker.replace('$', ''));
-    });
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
     openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
@@ -711,14 +717,13 @@
   // quote_tick handler (and markWlDegraded). A null field CLEARS to "—" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
   function setWlRow(sym, spot, chgPct, spotState, closedDisp) {
-    var key = (sym || '').replace('$', '');
-    var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]') || document.querySelector('.wl-px[data-wlpx="' + key + '"]');
+    var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
     if (pe) {
       if (closedDisp) pe.textContent = closedDisp + ' CLOSED';
       else if (spotState === 'unavailable' || spot == null) pe.textContent = 'UNAVAILABLE';
       else pe.textContent = fmt(spot) + (spotState === 'stale' ? ' STALE' : '');
     }
-    var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]') || document.querySelector('.wl-chg[data-wlchg="' + key + '"]');
+    var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]');
     if (ce) {
       if (chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
       else { ce.textContent = '—'; ce.className = 'wl-chg'; }
@@ -758,13 +763,17 @@
     if (!/^\d+$/.test(port)) return null;
     return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/';
   }
-  // The market context the server always streams (streaming.MARKET_CONTEXT_SYMBOLS); the
-  // socket pushes only what a page subscribes to, so every page asks for it.
-  var MARKET_CONTEXT = ['SPX', 'NDX', 'VIX'];
+  // The market context the server always streams, served in the page (meta ed-market-context,
+  // from streaming.MARKET_CONTEXT_SYMBOLS): [{key, display}]. The socket pushes only what a page
+  // subscribes to, so every page asks for it.
+  var MARKET_CONTEXT = (function () {
+    var m = document.querySelector('meta[name="ed-market-context"]');
+    try { return JSON.parse(m ? m.getAttribute('content') : '[]') || []; } catch (e) { return []; }
+  })();
   function priceSymbols() {
     var out = [];
     if (state.ticker) out.push(String(state.ticker).toUpperCase());
-    MARKET_CONTEXT.forEach(function (s) { if (out.indexOf(s) === -1) out.push(s); });
+    MARKET_CONTEXT.forEach(function (c) { if (out.indexOf(c.key) === -1) out.push(c.key); });
     loadWL().forEach(function (s) { s = String(s).toUpperCase(); if (out.indexOf(s) === -1) out.push(s); });
     return out;
   }
@@ -782,6 +791,7 @@
     ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
       if (!msg || !Array.isArray(msg.rows)) return;
       _priceUp = true; _lastPriceTs = Date.now();
       msg.rows.forEach(ingestPriceRow);
@@ -796,14 +806,24 @@
     var ms = Math.min(2000, 250 * Math.pow(2, _priceRetry++));
     setTimeout(function () { if (!_priceWs) openPriceSocket(); }, ms);
   }
+  // What each symbol the page asked for is, as the daemon answers the subscribe: the key its rows
+  // carry ("$SPX") and its display name ("SPX"). Rows are matched to what was asked by that key.
+  function ingestIdentity(list) {
+    list.forEach(function (s) {
+      if (!s || !s.key) return;
+      _served[s.requested] = s;
+      if (s.requested === state.ticker && state.key !== s.key) {
+        state.key = s.key; state.display = s.display;
+        paintIdentity(s.display);
+        emit('ed:identity', { key: s.key, display: s.display });
+      }
+    });
+  }
   // ONE row in (the daemon's price_row), every surface painted from it. Every number and
   // verdict is the server's; the browser only picks the words.
   function ingestPriceRow(q) {
     if (!q || !q.ticker) return;
-    // identity: the server keys the storage form ("$SPX"); the operator types "SPX"
-    var sym = String(q.ticker).toUpperCase();
-    var bare = sym.replace(/^\$/, '');
-    if (bare === String(state.ticker || '').toUpperCase().replace(/^\$/, '')) {
+    if (q.ticker === state.key) {
       var live = q.spot_state === 'live' && q.spot != null;
       var closed = q.spot_state === 'closed' && q.closed_last;   // the last trade, labelled
       // painted NOW, not on requestAnimationFrame: the browser slows or pauses rAF for a
@@ -819,14 +839,13 @@
           : q.trade_age_sec != null ? ('last trade ' + Math.round(q.trade_age_sec) + 's')
           : (live ? 'live' : (q.feed_live ? 'feed live · no trade this session' : 'no live feed')) });
     }
-    var wl = loadWL();
-    var wlSym = wl.indexOf(sym) !== -1 ? sym : (wl.indexOf(bare) !== -1 ? bare : null);
-    if (wlSym) {
+    loadWL().forEach(function (wlSym) {
+      if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
       setWlRow(wlSym, q.spot_state === 'live' ? q.spot : null,
         q.spot_state === 'live' ? q.chg_pct : null,
         q.spot_state || 'unavailable', q.spot_state === 'closed' && q.closed_last ? q.closed_last.spot_disp : null);
       markWlHealthy();
-    }
+    });
     try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
   }
   function pricePushHealthy() { return _priceUp && (Date.now() - _lastPriceTs <= PRICE_SILENCE_MS); }
@@ -997,6 +1016,7 @@
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
     addSymbol: addSymbol, removeSymbol: removeSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
+    marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
     scopeRows: scopeRows, scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },

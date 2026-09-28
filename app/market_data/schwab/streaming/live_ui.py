@@ -10,6 +10,10 @@ No web server sits in this path, so no analytics load can delay a price.
 
 Protocol (JSON text frames):
   browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...]}   (replaces the set)
+  server  -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe:
+                                                                     what each asked-for symbol
+                                                                     is -- "SPX" is key "$SPX",
+                                                                     shown "SPX")
   server  -> {"type": "quotes", "rows": [price_row, ...]}            (snapshot on subscribe,
                                                                      then every change)
   server  -> {"type": "feed", "feed": {...}, "rows": [...]}           (every HEARTBEAT_SEC:
@@ -33,7 +37,7 @@ import time
 
 import live_market_plane as lmp
 import live_price_rows
-from instrument_identity import ticker_storage_key
+from instrument_identity import display_symbol, ticker_storage_key
 from stream_spine import COUNT_DROPS, MessageBus
 
 log = logging.getLogger(__name__)
@@ -49,12 +53,13 @@ MAX_SYMBOLS_PER_CLIENT = 200
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "wake")
+    __slots__ = ("ws", "symbols", "pending", "identity", "wake")
 
     def __init__(self, ws) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
         self.pending: set[str] = set()      # symbols changed since the last send
+        self.identity: list[dict] | None = None   # the last subscribe's answer, not yet sent
         self.wake = asyncio.Event()
 
 
@@ -107,6 +112,9 @@ class LiveUiServer:
         while True:
             await c.wake.wait()
             c.wake.clear()
+            if c.identity is not None:
+                identity, c.identity = c.identity, None
+                await self._send(c, {"type": "symbols", "symbols": identity})
             syms, c.pending = c.pending, set()
             rows = [live_price_rows.price_row(s) for s in syms if s in c.symbols]
             if rows:
@@ -123,12 +131,16 @@ class LiveUiServer:
             raw = req.get("symbols")
             if not isinstance(raw, list):
                 continue
-            keys = []
+            keys, identity = [], []
             for s in raw[:MAX_SYMBOLS_PER_CLIENT]:
                 k = ticker_storage_key(s) if isinstance(s, str) else ""
-                if k and k not in keys:
+                if not k:
+                    continue
+                identity.append({"requested": s, "key": k, "display": display_symbol(k)})
+                if k not in keys:
                     keys.append(k)
             c.symbols = frozenset(keys)
+            c.identity = identity            # what each asked-for symbol is, before its rows
             c.pending = set(keys)            # snapshot: the current row for each, now
             c.wake.set()
 

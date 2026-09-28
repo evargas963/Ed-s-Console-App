@@ -131,24 +131,8 @@ const CHAIN = {
   ],
 };
 
-// The capture daemon's price socket (live_ui.py). The console tells the page port 1 under
-// e2e (playwright.config ED_LIVE_UI_PORT), so the page never reaches a real daemon; this
-// stands in for it. `rows` is a list of price rows, each sent 300 ms apart after the page
-// subscribes -- the same frames the daemon sends ({type:'quotes', rows:[...]}).
-function priceRow(ticker, spot, extra) {
-  return Object.assign({ ticker: ticker, spot: spot, spot_disp: spot.toFixed(2), spot_state: 'live',
-    feed_live: true, spot_source: 'streaming_plane', server_ts: Date.now() / 1000,
-    trade_age_sec: 1 }, extra || {});
-}
-async function mockPriceSocket(page, rows) {
-  await page.routeWebSocket(/:1\/$/, (ws) => {
-    ws.onMessage((m) => {
-      let req; try { req = JSON.parse(String(m)); } catch (e) { return; }
-      if (!req || req.op !== 'subscribe') return;
-      rows.forEach((r, i) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [r] })), 300 * i));
-    });
-  });
-}
+// The capture daemon's price socket, stood in for (tests/e2e/fixtures/price_socket.js).
+const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
 
 // the console pushes one `levels` change for `ticker` after `delayMs`; reconnects get the session
 async function routeOneLevelsPush(page, delayMs, ticker = 'SPY') {

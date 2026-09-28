@@ -44,9 +44,9 @@
   // as ed:quote_tick; producer live_price_rows.price_row, pushed by the capture daemon).
   // The chart used to take its spot from /api/terrain -- a second producer that could differ.
   var _liveQuote = null;
-  function sameSym(a, b) { return String(a || '').toUpperCase().replace(/^\$/, '') === String(b || '').toUpperCase().replace(/^\$/, ''); }
-  function liveSpot() {
-    return (_liveQuote && sameSym(_liveQuote.ticker, ticker()) && _liveQuote.spot_state === 'live'
+  function liveSpot() {   // the row whose served key is the selected instrument's (EdShell state.key)
+    var key = ((window.EdShell && window.EdShell.getState()) || {}).key;
+    return (_liveQuote && _liveQuote.ticker === key && _liveQuote.spot_state === 'live'
             && _liveQuote.spot != null) ? Number(_liveQuote.spot) : NaN;
   }
   var _viewTicker = null, _viewMode = null;   // domain resets only on a genuine context change
@@ -627,7 +627,7 @@
   }
 
   function applyQuoteTick(q) {
-    if (!q || !sameSym(q.ticker, ticker())) return;
+    if (!q || q.ticker !== ((window.EdShell && window.EdShell.getState()) || {}).key) return;
     _liveQuote = q;
     if (!isChart() || !_lastCtx) return;
     var spot = liveSpot();
