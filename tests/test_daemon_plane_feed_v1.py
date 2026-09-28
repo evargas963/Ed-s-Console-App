@@ -105,6 +105,30 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
     assert ofs._streaming_last_update_ts is None
 
 
+def test_a_page_connecting_for_a_ticker_subscribes_its_books_and_again_after_a_restart(monkeypatch):
+    """The Trade Desk never asked for books and a console restart forgot the one-shot request,
+    so MU read no_book all session (2026-09-28). The page's /api/changes connection is the
+    request: it survives restarts because the page reconnects."""
+    import asyncio
+
+    import push_changes
+    import server
+
+    def books_after_connect():
+        asyncio.run(server.get_changes(ticker="mu"))     # the page opens its connection
+        end = time.monotonic() + 5
+        while time.monotonic() < end and ofs.current_wanted()["NYSE_BOOK"] != ["MU"]:
+            time.sleep(0.02)
+        w = ofs.current_wanted()
+        return w["NYSE_BOOK"], w["NASDAQ_BOOK"]
+
+    monkeypatch.setattr(push_changes, "_clients", {})
+    monkeypatch.setattr(ofs, "_active_ticker", None)
+    assert books_after_connect() == (["MU"], ["MU"])
+    monkeypatch.setattr(ofs, "_active_ticker", None)     # a console restart forgets it
+    assert books_after_connect() == (["MU"], ["MU"])     # the page reconnects: books again
+
+
 def test_set_active_ticker_puts_its_book_and_quote_in_the_wanted_list(tmp_path, monkeypatch):
     """The wanted list is the ONLY channel by which this module influences the daemon's
     subscriptions -- the active ticker's book and quote must be in it."""

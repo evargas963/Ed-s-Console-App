@@ -1,8 +1,7 @@
 """OPTIONS_ORDER_FLOW_V1 — options order-flow API contract.
 
-/api/order-flow/options-microstructure and /api/streaming/active-option-contract mirror
-the EXISTING equity endpoints (/api/order-flow/microstructure,
-/api/streaming/active-ticker) exactly — same delegation pattern, same producer
+/api/order-flow/options-microstructure mirrors the equity endpoint
+(/api/order-flow/microstructure) exactly — same delegation pattern, same producer
 (order_flow_engine.compute_book_microstructure), just keyed by an option contract symbol
 instead of a ticker.
 """

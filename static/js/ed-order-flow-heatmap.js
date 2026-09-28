@@ -233,12 +233,6 @@
     var h = host();
     if (!h || !stillHeatmap(tk)) return;
     h.setAttribute('aria-busy', 'true');
-    // Operator-reproduced defect (2026-09-14): opening this tab directly made NO book-
-    // subscription request of its own, so a fresh capture for this ticker depended entirely on
-    // some OTHER screen (Book/DOM, Trade Desk) having already asked for it. This view reads
-    // captured history, not the live ladder, but the history has nothing to bin until something
-    // asks the stream to start capturing this ticker's book -- so it must ask too.
-    if (window.EdStream && window.EdStream.warmActiveTicker) window.EdStream.warmActiveTicker(tk);
     return fetch('/api/order-flow/book-heatmap?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue + '&minutes=' + _minutes, { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillHeatmap(tk)) render(h, tk, d); })

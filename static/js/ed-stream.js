@@ -77,35 +77,6 @@
     });
   }
 
-  function setActiveTicker(ticker) {
-    // Only a view that genuinely needs the single-symbol equity BOOK/DOM should call this — NOT on
-    // every shell ticker change (equity L1 is captured roster-wide). The endpoint is single-owner,
-    // last-writer-wins, NOT generation-guarded (only the option-contract slot is). It returns
-    // REQUEST ACCEPTED (ok + echoed ticker) but exposes NO canonical active-book-producer identity,
-    // so book binding is NOT_PROVEN here — Order Flow Book must confirm from producer truth (or mark
-    // NOT_PROVEN) before rendering the book as this ticker. We never manufacture success from ok alone.
-    ticker = String(ticker || '').trim().toUpperCase();
-    if (!ticker) return Promise.resolve({ requestAccepted: false, requested: ticker, bookBound: null });
-    return fetch('/api/streaming/active-ticker', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker: ticker }),
-    }).then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }, function () { return { status: r.status, body: null }; }); })
-      .then(function (res) {
-        // FAIL-CLOSED. The endpoint canonically echoes `ticker` (server.py:post_streaming_active_ticker,
-        // both the 200 and the 500 body), so request-acceptance REQUIRES all of: HTTP 2xx, a parsed
-        // JSON object, ok===true, an echoed ticker PRESENT, and that ticker exactly equal to the
-        // requested canonical ticker. ok:true alone is never identity proof.
-        var ok2xx = !!res && typeof res.status === 'number' && res.status >= 200 && res.status < 300;
-        var b = (res && res.body && typeof res.body === 'object') ? res.body : null;
-        var acked = (b && b.ticker != null) ? String(b.ticker).toUpperCase() : null;
-        var accepted = ok2xx && !!b && b.ok === true && acked !== null && acked === ticker;
-        return {
-          requestAccepted: accepted, acknowledgedTicker: acked, requested: ticker,
-          status: (res && res.status) || null,
-          bookBound: null,   // NOT_PROVEN: this endpoint exposes no active-book-producer identity
-        };
-      }, function () { return { requestAccepted: false, acknowledgedTicker: null, requested: ticker, bookBound: null }; });
-  }
-
   // RC-UI-3 (2026-09-12): the ADDITIONAL-contracts slot, beside the ONE primary contract
   // above -- POST /api/streaming/active-option-contracts, mirrored server-side on its own
   // independent generation counter (server.py:post_streaming_active_option_contracts /
@@ -313,25 +284,7 @@
   }
   function getDesiredAdditional() { return _desiredAdditional.slice(); }
 
-  // Operator-reproduced defect (2026-09-14): AMD Book -> PLTR Trade Desk -> AMD Book left the
-  // live equity book subscription on PLTR while the Book screen kept showing AMD. Cause: THREE
-  // call sites (ed-order-flow.js, ed-trade-desk.js, and none at all in
-  // ed-order-flow-heatmap.js) each fire-and-forget setActiveTicker with their OWN private
-  // "have I already warmed this ticker" cache -- so switching screens (not just tickers) moved
-  // the real subscription without any of those private caches finding out. This module's own
-  // docstring already claims "the ONE streaming-control writer" for exactly this reason; the
-  // de-dup belongs here, once, not copied into every consumer. warmActiveTicker() is the ONE
-  // gate every equity-book-consuming view must call instead of keeping a local `_warmedFor`.
-  var _warmedTicker = null;
-  function warmActiveTicker(ticker) {
-    ticker = String(ticker || '').trim().toUpperCase();
-    if (!ticker || _warmedTicker === ticker) return;
-    _warmedTicker = ticker;
-    setActiveTicker(ticker);
-  }
-
-  window.EdStream = { setActiveContract: setActiveContract, setActiveTicker: setActiveTicker,
-    warmActiveTicker: warmActiveTicker,
+  window.EdStream = { setActiveContract: setActiveContract,
     setAdditionalContracts: setAdditionalContracts, getDesiredAdditional: getDesiredAdditional,
     status: status, getDesired: getDesired, acceptedForDesired: acceptedForDesired,
     controlState: controlState, clearDesired: clearDesired, gate: gate };

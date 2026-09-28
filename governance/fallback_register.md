@@ -172,7 +172,7 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | P-16 | ed-trade-desk-map.js:56, 64, 182, 236, 311-347, 369, 403-404, 427 | 4 | ages, date format, tail bars, VAH/VAL pick, colours, LEVELS age | page math and picks | Desk | OPEN |
 | P-17 | ed-trade-desk-map.js:224, 351, 384, 385, 412, 415 | 5 | labels, not-priced, posture, flip relation, bars label, strikes | first-of; posture -> regime; any non-ABOVE -> "Below flip"; served 0 -> "—" | Desk | OPEN |
 | P-18 | ed-trade-desk.js:114-117, 150, 309-336 | 4/5 | labels, distance, zone type, migration window/tags | first-of; negation; unknown type -> resistance; strike matching | Right Now | OPEN |
-| P-19 | ed-stream.js:72-73, 328-330 | 3/5 | ACK verdict, book subscription | second ACK validator; marked warmed before ack, failure never shown | Flow, Book | OPEN |
+| P-19 | ed-stream.js:72-73, 328-330 | 3/5 | ACK verdict, book subscription | second ACK validator; marked warmed before ack, failure never shown | Flow, Book | FIXED for the book subscription (deleted: the page's /api/changes connection is the request); the option-contract ACK left |
 | P-20 | ed-order-flow-heatmap.js:131-205 | 4/5/3 | grid, buckets, cell side, axis, readout | defaults (`|| 90`, `|| 0.01`); re-binning with last-wins; EVEN painted bid; date math | order-flow heatmap | OPEN |
 | P-21 | ed-liquidity-map.js:27, 105-155 | 3/4/5 | zone type, PD/ON levels, range | unknown -> Resistance; levels from a second route; min/max range; invalid zones dropped uncounted | Liquidity Map | OPEN |
 | P-22 | ed-gamma-flow.js:102, 172-175; options_subscription.js:121 | 3/5 | subscription badge, header contract | unknown -> PENDING; contract from shell state, not served | Options Flow | OPEN |
@@ -192,7 +192,7 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | X-06 | live_market_plane.py:38-51, 150, 317-321 | SSE cursor and fast generation with no reader | FIXED 972beb7d |
 | X-07 | liquidity_value_engine.py:750, 846, 945 (+ premarket via generate_*) | checkpoint snapshot builders; the page sends only snapshot=live | OPEN |
 | X-08 | math_levels.py:234-240, 703; math_exposure_core.py:167, 895; liquidity_models.py:212; terrain_read.py:95, 106; micro_structure.py:52 | unused branches, parameters and fields | OPEN |
-| X-09 | static/js: ed-stream.js status/acceptedForDesired/getDesiredAdditional/gate/setActiveTicker export; l1_sse_guards.js five test-only functions; options_subscription.js planeIsBoundToContract/subscriptionState/isCurrent/pendingContract; ed-core.js exports and `_wlLastGoodTs`; ed-gamma.js `_heatmapVisibleContracts`, exports; ed-tv-chart.js exports; fallback formatters and loader stubs; unused locals | test-only or never called | OPEN |
+| X-09 | static/js: ed-stream.js status/acceptedForDesired/getDesiredAdditional/gate export; l1_sse_guards.js five test-only functions; options_subscription.js planeIsBoundToContract/subscriptionState/isCurrent/pendingContract; ed-core.js exports and `_wlLastGoodTs`; ed-gamma.js `_heatmapVisibleContracts`, exports; ed-tv-chart.js exports; fallback formatters and loader stubs; unused locals | test-only or never called | OPEN |
 | X-10 | tools/rth_completeness_check_v1.py:104; tests/test_runtime_layout_v1.py:31-33; db_safety.py:1-19 | call or name things that do not exist | OPEN |
 
 Note (M-13): IV 0 is rule 2 "a reported 0 is 0"; a contract with sigma 0 has no Black-Scholes
