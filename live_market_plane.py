@@ -33,9 +33,10 @@ _PRICE_FIELDS = ("LAST_PRICE", "BID_PRICE", "ASK_PRICE", "MARK", "CLOSE_PRICE",
 _COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "LAST_SIZE", "TOTAL_VOLUME")
 _CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
 #: signed values (any finite number): Schwab's own change of the LAST_PRICE vs the prior close.
-#: Measured 2026-09-24: NET_CHANGE_PERCENT arrives with every LAST_PRICE (1,232 of 1,232
-#: captured); REGULAR_MARKET_CHANGE_PERCENT only on full refreshes; CHANGE_PERCENT never.
-_SIGNED_FIELDS = ("NET_CHANGE", "NET_CHANGE_PERCENT")
+#: Measured: NET_CHANGE_PERCENT arrives with every LAST_PRICE; REGULAR_MARKET_CHANGE_PERCENT
+#: with every LAST_PRICE in the regular session (2026-09-28: SPY 113/113, MU 112/112, PCG 17/17)
+#: and outside it only on a full refresh; CHANGE_PERCENT never.
+_SIGNED_FIELDS = ("NET_CHANGE", "NET_CHANGE_PERCENT", "REGULAR_MARKET_CHANGE_PERCENT")
 _fields_by_ticker: dict[str, dict[str, tuple[float, float]]] = {}
 
 
@@ -106,8 +107,10 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         "high_price": val("HIGH_PRICE"),
         "low_price": val("LOW_PRICE"),
         "prior_close": val("CLOSE_PRICE"),
-        # Schwab's own change of LAST_PRICE vs prior close (0 hops) -- the watchlist / header %
+        # Schwab's own change vs the prior close (0 hops): NET_CHANGE_PERCENT is the last price's,
+        # extended hours included; REGULAR_MARKET_CHANGE_PERCENT is the regular session's
         "chg_pct": val("NET_CHANGE_PERCENT"),
+        "chg_pct_regular": val("REGULAR_MARKET_CHANGE_PERCENT"),
         "net_change": val("NET_CHANGE"),
         "exchange_quote_ts": quote_ts,
         #: TRADE_TIME_MILLIS (epoch s): the exchange time of the last trade -- the clock a
@@ -243,14 +246,14 @@ def spot_is_fresh(q: dict[str, Any]) -> bool:
     return feed_live_for((q or {}).get("ticker"))
 
 
-def streamed_chg_pct(row: dict[str, Any] | None) -> Optional[float]:
-    """THE percent change: Schwab LEVELONE_EQUITIES NET_CHANGE_PERCENT (0 hops) from a row the
-    stream wrote, while its LAST_PRICE is fresh -- NET_CHANGE_PERCENT arrives with every
-    LAST_PRICE (measured on 4,039 messages), so it is live exactly while the last is. Otherwise
-    None: no REST value, no stale row (2026-09-24)."""
+def streamed_chg_pct(row: dict[str, Any] | None, key: str = "chg_pct") -> Optional[float]:
+    """A Schwab LEVELONE_EQUITIES percent change (0 hops) from a row the stream wrote, while its
+    LAST_PRICE is fresh: `chg_pct` (NET_CHANGE_PERCENT, extended hours included, sent with every
+    LAST_PRICE -- measured on 4,039 messages) or `chg_pct_regular` (REGULAR_MARKET_CHANGE_PERCENT).
+    Otherwise None: no REST value, no stale row (2026-09-24)."""
     if not (row and plane_row_is_streamed(row) and spot_is_fresh(row)):
         return None
-    return float_finite_or_none(row.get("chg_pct"))
+    return float_finite_or_none(row.get(key))
 
 
 def quote_is_fresh(q: dict[str, Any]) -> bool:

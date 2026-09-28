@@ -694,12 +694,15 @@
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
     }
     if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
-    if (chg) {  // formatting only — sign/value are canonical
-      if (q.chgPct !== undefined && q.chgPct !== null) {
-        chg.textContent = (q.chgPct >= 0 ? '+' : '') + fmt(q.chgPct) + '%';
-        chg.className = 'chg mono ' + (q.chgPct >= 0 ? 'pos' : 'neg');
-      } else chg.textContent = '';
-    }
+    // Schwab's two change percents, each labelled: the regular session's and the last price's
+    // (extended hours included). Formatting only; absent reads "—".
+    [[document.getElementById('hChgReg'), 'REG ', q.chgPctRegular], [chg, 'EXT ', q.chgPct]].forEach(function (c) {
+      if (!c[0]) return;
+      if (c[2] != null) {
+        c[0].textContent = c[1] + (c[2] >= 0 ? '+' : '') + fmt(c[2]) + '%';
+        c[0].className = 'chg mono ' + (c[2] >= 0 ? 'pos' : 'neg');
+      } else { c[0].textContent = c[1] + '—'; c[0].className = 'chg mono'; }
+    });
     setFeed(q.feedCls, q.feedLabel, q.ageLabel);
     // paintQuote owns the header display only; watchlist rows are written by setWlRow from
     // the same quote_tick event (one producer, two surfaces).
@@ -825,7 +828,7 @@
       // The daemon already conflates to the newest row per symbol, so there is no burst to
       // throttle -- a few text writes per second.
       paintQuote({ spot_disp: closed ? q.closed_last.spot_disp + ' CLOSED' : q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
-        chgPct: q.chg_pct, quoteIngestion: q.quote_ingestion,
+        chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
         spotState: q.spot_state,
         feedCls: live ? '' : 'stale',
         feedLabel: live ? 'LIVE' : (q.spot_state === 'closed' ? 'MARKET CLOSED' : (q.feed_live ? 'NO TRADE YET' : 'UNAVAILABLE')),
@@ -887,7 +890,7 @@
     // just asked for this ticker (page load or a ticker change): the row is on its way
     // (WAITING); otherwise the push itself is down (OFFLINE)
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
-    paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null,
+    paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
       spotState: 'unavailable', feedCls: 'stale',
       feedLabel: connecting ? 'WAITING' : 'OFFLINE',
       ageLabel: connecting ? 'no push yet' : 'live push down' });
