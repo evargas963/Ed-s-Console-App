@@ -81,6 +81,7 @@ def price_row(ticker: str) -> dict[str, Any]:
         "last_size": field("last_size") if spot is not None else None,
         "total_volume": field("total_volume"),
         "chg_pct": lmp.streamed_chg_pct(row),
+        "chg_pct_regular": lmp.streamed_chg_pct(row, "chg_pct_regular"),
         "net_change": field("net_change") if spot is not None else None,
         "open_price": field("open_price"),
         "high_price": field("high_price"),
