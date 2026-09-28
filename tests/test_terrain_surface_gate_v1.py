@@ -82,7 +82,7 @@ def _cached_surface(tk):
     return (server.terrain_cache_get(tk) or {}).get("_gamma_surface")
 
 
-def test_producer_gates_projection_on_demand(monkeypatch):
+def test_producer_gates_projection_on_demand(monkeypatch, view):
     tk = server.ticker_storage_key("SPY")
     server._gamma_surface_seq.pop(tk, None)   # surface_seq is a running per-ticker counter
     calls = {"n": 0, "args": None}
@@ -94,14 +94,13 @@ def test_producer_gates_projection_on_demand(monkeypatch):
 
     _stub_terrain(monkeypatch, proj)
 
-    # UNWANTED ticker -> the producer path does NOT invoke project_gamma_surface
-    server._gamma_surface_demand.pop(tk, None)
+    # UNWANTED ticker (no page open) -> the producer path does NOT invoke project_gamma_surface
     server._terrain_refresh_one(tk)
     assert calls["n"] == 0
     assert _cached_surface(tk) is None
 
     # WANTED ticker -> shaped EXACTLY ONCE, from that cycle's contracts and the snapshot's books
-    server._note_gamma_surface_demand(tk)
+    view(tk)
     server._terrain_refresh_one(tk)
     assert calls["n"] == 1
     assert calls["args"] == (len(_REAL_CHAIN), {("2026-09-04", 0.0): ({}, ExposureDiagnostics(0, 0, 0, ""))})
@@ -115,10 +114,8 @@ def test_producer_gates_projection_on_demand(monkeypatch):
         "stream_by_expiry": {},          # each column's served streaming state (none: no columns)
     }
 
-    server._gamma_surface_demand.pop(tk, None)
 
-
-def test_a_projection_failure_is_reported_and_publishes_nothing(monkeypatch):
+def test_a_projection_failure_is_reported_and_publishes_nothing(monkeypatch, view):
     tk = server.ticker_storage_key("SPY")
 
     def boom(contracts, books):
@@ -127,15 +124,14 @@ def test_a_projection_failure_is_reported_and_publishes_nothing(monkeypatch):
     _stub_terrain(monkeypatch, boom)
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
-    server._note_gamma_surface_demand(tk)
+    view(tk)
     res = server._terrain_refresh_one(tk)
     assert res == "error:RuntimeError"
     assert server.terrain_cache_get(tk) is None      # nothing half-published
     assert "projection boom" in server._terrain_refresh_last_error[tk]
-    server._gamma_surface_demand.pop(tk, None)
 
 
-def test_producer_overlays_the_active_streaming_contract_before_projecting(monkeypatch):
+def test_producer_overlays_the_active_streaming_contract_before_projecting(monkeypatch, view):
     """An option contract of THIS ticker streaming fresher greeks than the fetched chain is
     overlaid before pricing -- the levels, per-strike rows and surface are all priced from the
     overlaid contracts -- while the raw chain is kept for the next tick-driven reprice."""
@@ -167,7 +163,7 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
         lambda sym: streamed if sym == contract_symbol else None)
     _daemon_holds(contract_symbol)
 
-    server._note_gamma_surface_demand(tk)
+    view(tk)
     server._terrain_refresh_one(tk)
 
     surf = _cached_surface(tk)
@@ -180,10 +176,8 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     assert cached["_chain"] == _REAL_CHAIN, "the raw chain is kept, unoverlaid"
     assert cached["_chain_fetched_ts"] <= cached["computed_ts_utc"]
 
-    server._gamma_surface_demand.pop(tk, None)
 
-
-def test_surface_seq_publication_is_atomic_with_the_cache_write(monkeypatch):
+def test_surface_seq_publication_is_atomic_with_the_cache_write(monkeypatch, view):
     """The seq bump and the cache write happen under one lock acquisition, so no reader sees
     a new surface_seq with the previous payload."""
     tk = server.ticker_storage_key("SPY")
@@ -223,7 +217,7 @@ def test_surface_seq_publication_is_atomic_with_the_cache_write(monkeypatch):
         return {"expirations": [], "strikes": [], "cells": []}
 
     _stub_terrain(monkeypatch, proj)
-    server._note_gamma_surface_demand(tk)
+    view(tk)
     server._terrain_refresh_one(tk)
 
     assert seen["seq_call_enter_n"] is not None, "the surface-seq path was not exercised"
@@ -234,10 +228,9 @@ def test_surface_seq_publication_is_atomic_with_the_cache_write(monkeypatch):
         f"acquisitions -- a concurrent reader could acquire the lock in the gap between "
         f"them and observe the new surface_seq with the old cached payload"
     )
-    server._gamma_surface_demand.pop(tk, None)
 
 
-def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(monkeypatch):
+def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(monkeypatch, view):
     """Independent-review finding (2026-09-12, state-authority review), REPRODUCED: a ticker
     merely PREVIEWED (never enrolled onto _logger_tickers -- TICKER-PREVIEW-NO-ENROLL) got
     exactly ONE on-demand terrain compute (the /api/terrain cache-miss priority path) and
@@ -275,8 +268,7 @@ def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(mon
     with server._logger_lock:
         prev_logger_tickers = list(server._logger_tickers)
         server._logger_tickers[:] = [enrolled_tk]
-    server._gamma_surface_demand.pop(previewed_tk, None)
-    server._note_gamma_surface_demand(previewed_tk)   # "viewed" but never enrolled
+    view(previewed_tk)                                 # a page open on it, never enrolled
 
     server._terrain_loop_running = True
     t = threading.Thread(target=server._terrain_loop, daemon=True)
@@ -290,7 +282,6 @@ def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(mon
         t.join(timeout=5.0)
         with server._logger_lock:
             server._logger_tickers[:] = prev_logger_tickers
-        server._gamma_surface_demand.pop(previewed_tk, None)
 
     assert enrolled_tk in calls, "the enrolled ticker must still refresh as before"
     assert previewed_tk in calls, (
@@ -299,7 +290,7 @@ def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(mon
         "pre-enrolled board")
 
 
-def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch):
+def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch, view):
     """Operator design 2026-09-26: while the market is closed no chain is downloaded -- not for
     the board, not for a ticker someone is viewing. Weekend chains blank open interest (every
     $SPX contract, 18% of SPY's OI, measured 2026-09-26); the last session's levels stand."""
@@ -325,7 +316,7 @@ def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch):
     with server._logger_lock:
         prev_logger_tickers = list(server._logger_tickers)
         server._logger_tickers[:] = [server.ticker_storage_key("SPY")]
-    server._note_gamma_surface_demand(viewed_tk)
+    view(viewed_tk)
     server._terrain_loop_running = True
     th = threading.Thread(target=server._terrain_loop, daemon=True)
     th.start()
@@ -336,14 +327,13 @@ def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch):
         th.join(timeout=5.0)
         with server._logger_lock:
             server._logger_tickers[:] = prev_logger_tickers
-        server._gamma_surface_demand.pop(viewed_tk, None)
     assert calls == [], "the loop refreshed a ticker while the market was closed"
     # a direct request (the /api/terrain cold miss) is refused before any vendor call
     assert real_refresh(viewed_tk, priority=True) == "skip:market_closed"
     assert fetched == []
 
 
-def test_a_stream_observation_after_the_chain_fetch_is_admitted(monkeypatch):
+def test_a_stream_observation_after_the_chain_fetch_is_admitted(monkeypatch, view):
     """The overlay's freshness baseline is the instant the chain response arrived, not any later
     point of the publication: a streamed value observed after the fetch (here, while the chain
     is still being flattened) overrides the chain's own value."""
@@ -371,11 +361,9 @@ def test_a_stream_observation_after_the_chain_fetch_is_admitted(monkeypatch):
     _daemon_holds(contract_symbol)
 
     server._gamma_surface_seq.pop(tk, None)
-    server._note_gamma_surface_demand(tk)
+    view(tk)
     server._terrain_refresh_one(tk)
 
     surf = _cached_surface(tk)
     assert surf["stream_overlay_contracts"] == 1
     assert surf["_overlaid_gamma"] == 0.777
-
-    server._gamma_surface_demand.pop(tk, None)

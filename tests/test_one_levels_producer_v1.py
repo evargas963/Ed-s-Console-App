@@ -17,6 +17,7 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import push_changes
 import server
 from math_exposure_core import merge_exposure_books
 from stream_spine import options_quote_msg
@@ -42,10 +43,9 @@ def _put_chain(*, fetched_ts=None, viewed=True):
         server._terrain_cache[TK] = {"_chain": _CONTRACTS,
                                      "_contract_symbols": frozenset(c["symbol"] for c in _CONTRACTS),
                                      "_chain_fetched_ts": time.time() if fetched_ts is None else fetched_ts}
+    push_changes._clients.pop(TK, None)
     if viewed:
-        server._note_gamma_surface_demand(TK)
-    else:
-        server._gamma_surface_demand.pop(TK, None)
+        push_changes.subscribe(TK)                  # a page open on the ticker
 
 
 def _cached():
@@ -57,12 +57,12 @@ def _cached():
 def _clean(monkeypatch):
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", 1.0))
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # the open market, unless a test closes it
+    monkeypatch.setattr(push_changes, "_clients", {})                    # no page open
     ofs._active_option_contract = _A
     ofs._active_option_contracts = [_B]
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
-    server._gamma_surface_demand.pop(TK, None)
     ofs._active_option_contract = None
     ofs._active_option_contracts = []
 
@@ -141,7 +141,7 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale(monkeypatch):
     streamed one."""
     now = time.time()
     chain = [dict(_CONTRACTS[0], quoteTimeInLong=int(now * 1000))] + _CONTRACTS[1:]   # a fresh chain
-    server._note_gamma_surface_demand(TK)
+    push_changes.subscribe(TK)                                                         # a page open on it
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": now - 60.0}}, monkeypatch)          # last change a minute ago
     server._publish_levels(TK, chain, now)
     surface = _cached()["_gamma_surface"]
@@ -223,7 +223,6 @@ def test_a_moved_spot_reprices_every_view_at_the_new_spot(monkeypatch):
 
 def test_an_unviewed_ticker_keeps_no_chain_and_gets_no_heatmap(monkeypatch):
     _stream({}, monkeypatch)
-    server._gamma_surface_demand.pop(TK, None)
     server._publish_levels(TK, _CONTRACTS, time.time())
     c = _cached()
     assert c["_chain"] is None and c["_gamma_surface"] is None
@@ -323,9 +322,8 @@ def test_a_ticker_just_put_on_screen_gets_its_chain_on_the_first_tick(monkeypatc
     fetched = []
     monkeypatch.setattr(server, "_terrain_refresh_one", lambda tk, priority=False: fetched.append((tk, priority)))
     _stream({}, monkeypatch)
-    server._gamma_surface_demand.pop(TK, None)
     server._publish_levels(TK, _CONTRACTS, time.time())                 # published while not viewed
-    server._note_gamma_surface_demand(TK)                                # the operator switches to it
+    push_changes.subscribe(TK)                                           # the operator switches to it
     server._on_stream_tick(TK)
     _wait_idle(TK)
     assert fetched == [(TK, True)]
@@ -359,7 +357,6 @@ def test_the_console_serves_while_the_stored_levels_load(monkeypatch):
 
 def test_a_tick_on_an_unviewed_ticker_reprices_nothing(monkeypatch):
     calls = _count_publishes(monkeypatch)
-    server._gamma_surface_demand.pop("ZZUNVIEWED", None)
     server._on_stream_tick("ZZUNVIEWED")
     time.sleep(0.05)
     assert calls == []
@@ -368,14 +365,11 @@ def test_a_tick_on_an_unviewed_ticker_reprices_nothing(monkeypatch):
 def test_a_burst_of_ticks_reprices_at_most_once_per_interval_and_prices_the_last(monkeypatch):
     monkeypatch.setattr(server, "LEVELS_REPRICE_MIN_INTERVAL_SEC", 0.2)
     calls = _count_publishes(monkeypatch)
-    server._note_gamma_surface_demand("ZZBURST")
-    try:
-        for _ in range(50):
-            server._on_stream_tick("ZZBURST")
-            time.sleep(0.002)
-        _wait_idle("ZZBURST")
-    finally:
-        server._gamma_surface_demand.pop("ZZBURST", None)
+    push_changes.subscribe("ZZBURST")
+    for _ in range(50):
+        server._on_stream_tick("ZZBURST")
+        time.sleep(0.002)
+    _wait_idle("ZZBURST")
     assert len(calls) == 2          # the first tick at once, the rest of the burst once, after
     assert calls[1][1] - calls[0][1] >= 0.2 - 0.01
 

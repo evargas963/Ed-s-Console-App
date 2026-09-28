@@ -40,9 +40,9 @@ def test_changes_reach_only_the_tickers_page_each_kind_once():
 
 
 def test_a_streamed_equity_quote_and_book_mark_flow(monkeypatch):
-    # no page is viewing the ticker's gamma surface (a viewed one is also repriced, which marks
-    # levels; another test's /api/chain call on TSLA had left it viewed, in session hours)
-    monkeypatch.setattr(server, "_gamma_surface_demand", {})
+    # a closed market: the page open on TSLA makes it viewed, and a viewed ticker's tick is also
+    # repriced in session (which marks levels); this test is about the flow mark alone
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
     q, b = _FX["quote"], _FX["book"]
     assert _run(lambda: ofs._ingest_pushed(f"quote.{TK}", {"symbol": TK, "ts_recv": q["ts_recv"],
                                                             "native": q["native"]}))[0] == {"flow"}

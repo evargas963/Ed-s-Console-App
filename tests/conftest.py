@@ -227,3 +227,15 @@ def pin_clock(monkeypatch):
             monkeypatch.setattr(mod, "now_et", lambda: at)
         return at
     return pin
+
+
+@pytest.fixture
+def view(monkeypatch):
+    """Open the page on tickers: `view("SPY")` opens its /api/changes connection (the one viewing
+    signal) as the page does; the test starts with no page open and ends with them closed."""
+    import push_changes
+    monkeypatch.setattr(push_changes, "_clients", {})
+
+    def open_(*tickers):
+        return [push_changes.subscribe(tk) for tk in tickers]
+    return open_

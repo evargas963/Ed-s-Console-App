@@ -202,15 +202,15 @@ def _clear_cache():
         server._terrain_cache.pop(TK, None)
 
 
-def _put_chain(*, fetched_ts=None):
-    """A viewed ticker whose chain the terrain loop fetched at `fetched_ts`."""
+def _put_chain(view, *, fetched_ts=None):
+    """A viewed ticker (a page open on it) whose chain the terrain loop fetched at `fetched_ts`."""
     with server._terrain_cache_lock:
         server._terrain_cache[TK] = {
             "_chain": _CONTRACTS,
             "_contract_symbols": frozenset(c["symbol"] for c in _CONTRACTS),
             "_chain_fetched_ts": time.time() if fetched_ts is None else fetched_ts,
         }
-    server._note_gamma_surface_demand(TK)
+    view(TK)
     server._gamma_surface_seq.pop(TK, None)
 
 
@@ -239,8 +239,8 @@ def _daemon_holds(*symbols):
                                "held": {"LEVELONE_OPTIONS": list(symbols)}}, time.time())
 
 
-def test_a_fresh_tick_marks_the_ticking_contracts_own_cell_live(monkeypatch):
-    _put_chain(fetched_ts=time.time() - 10.0)
+def test_a_fresh_tick_marks_the_ticking_contracts_own_cell_live(monkeypatch, view):
+    _put_chain(view, fetched_ts=time.time() - 10.0)
     now = time.time()
     _daemon_holds(_CONTRACT_SYMBOL)
     live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": now}}
@@ -262,10 +262,10 @@ def test_a_fresh_tick_marks_the_ticking_contracts_own_cell_live(monkeypatch):
     assert found_live, "fixture must contain the streamed symbol on at least one cell"
 
 
-def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monkeypatch):
+def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monkeypatch, view):
     # The contract is desired (primary slot, set in setup_function) and ticked a second ago, but
     # the daemon no longer holds it: by the one live rule it is a past observation.
-    _put_chain(fetched_ts=time.time() - 10.0)
+    _put_chain(view, fetched_ts=time.time() - 10.0)
     _daemon_holds()
     live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": time.time()}}
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
@@ -279,9 +279,9 @@ def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monke
     assert counts["stale"] > 0
 
 
-def test_dropped_contract_becomes_unavailable_not_lingering_stale(monkeypatch):
+def test_dropped_contract_becomes_unavailable_not_lingering_stale(monkeypatch, view):
     import app.options.order_flow.streaming as _ofs
-    _put_chain()
+    _put_chain(view)
     _ofs._active_option_contract = None   # coverage genuinely ended -- no longer desired at all
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: None)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
