@@ -203,7 +203,7 @@ def _bar(d: date, hh: int, mm: int, high: float, low: float, close: float = None
     from datetime import datetime as _dt
     from time_et import ET as _ET
     ts = _dt(d.year, d.month, d.day, hh, mm, tzinfo=_ET)
-    return {"datetime": int(ts.timestamp() * 1000), "open": low,
+    return {"timestamp": int(ts.timestamp() * 1000), "open": low,
             "high": high, "low": low, "close": close if close is not None else high,
             "volume": volume}
 

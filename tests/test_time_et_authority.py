@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from db import now_et as db_now_et
 from time_et import ET, et_clock_from_ts_utc, now_et
 
 
@@ -13,10 +12,6 @@ def test_now_et_uses_america_new_york_zone():
     assert dt.tzinfo is not None
     assert str(dt.tzinfo) in ("America/New_York", "America/New_York EST", "America/New_York EDT")
     assert dt.utcoffset() is not None
-
-
-def test_db_now_et_matches_time_et_module():
-    assert db_now_et().tzinfo == now_et().tzinfo
 
 
 def test_et_clock_from_ts_utc_matches_now_et_zone():

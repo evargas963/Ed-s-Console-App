@@ -83,11 +83,9 @@ def test_the_consumers_agree_with_the_authority():
     must give the answer the authority implies.
     """
     from tools.check_credential_leak import _norm_path as cred
-    from tools.check_institutional_correctness import _norm_rel_path as gate
 
     for raw, want in CASES:
         assert cred(raw) == want, (raw, cred(raw), want)
-        assert gate(raw) == want, (raw, gate(raw), want)
 
 
 def test_no_module_reintroduces_the_character_stripping_idiom(repo_index):

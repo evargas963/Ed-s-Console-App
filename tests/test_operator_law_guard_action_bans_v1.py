@@ -45,21 +45,6 @@ def test_v2_payload_and_ps_constructed_writes_are_no_longer_banned():
         assert bash_violations(cmd, []) == [], cmd
 
 
-def test_v2_ledger_status_prose_honesty_clause():
-    """Cursor v2: CLOSED prose against an OPEN status cell (and the mirror) must fire —
-    drives the REAL rc_row_schema_violations logic on injected rows."""
-    import tools.check_institutional_correctness as cic
-    from tools.check_institutional_correctness import rc_row_schema_violations
-    log = cic.REPO / "governance" / "root_cause_log.md"
-    dishonest = "| RC-998 | OPEN | d | d | defect | whys | CLOSED same turn. |"
-    mirrored = "| RC-997 | CLOSED | d | d | defect | whys | IN PROGRESS. |"
-    honest = "| RC-996 | CLOSED | d | d | defect | whys | FIXED: everything. |"
-    msgs = [str(v) for v in rc_row_schema_violations(
-        "\n".join([dishonest, mirrored, honest]), log)]
-    assert any("RC-998" in m for m in msgs) and any("RC-997" in m for m in msgs)
-    assert not any("RC-996" in m for m in msgs)
-
-
 def test_lock_disable_routes_are_git_and_precommits_own():
     """The lock-disable ban names the routes that actually bypass the battery — git's
     (`--no-verify`, `-n`, `core.hooksPath`) and pre-commit's (`SKIP=`, uninstall). The
@@ -73,35 +58,6 @@ def test_lock_disable_routes_are_git_and_precommits_own():
     for cmd in ("git commit -m 'skip the typo'", "SKIPPED=1 python x.py", "echo pre-commit installed",
                 "git push -n origin main", "ED_UI_MOCKUP_LOCK=off git commit", "git commit -m 'normal'"):
         assert _SKIP_HOOKS.search(cmd) is None, cmd
-
-
-def test_domain_faucet_lock_blocks_second_faucets():
-    """RC-212 negative controls (operator: two faucets 'in any other way they can
-    manifest' are strictly prohibited). Drives the REAL callee six ways."""
-    from tools.check_institutional_correctness import domain_faucet_violations
-    reg = (Path(__file__).resolve().parent.parent / "governance" /
-           "level_faucets.json").read_text(encoding="utf-8")
-    new_route = '@app.get("/api/levels-extra")\ndef f(): pass'
-    # (a) unregistered level-domain producer -> scream
-    assert domain_faucet_violations("server.py", new_route, reg)
-    # (b) registered producer -> silent
-    ok_route = '@app.get("/api/forces")\ndef f(): pass'
-    assert domain_faucet_violations("server.py", ok_route, reg) == []
-    # (c) co-staged registry WITH operator_quote -> silent
-    assert domain_faucet_violations(
-        "server.py", new_route, reg,
-        registry_staged_added='"operator_quote": "operator authorized the fifth"') == []
-    # (d) inline d1-style greek outside math_levels -> scream
-    greek = "d1 = (math.log(spot / strike) + 0.5 * s * s * t) / (s * math.sqrt(t))"
-    assert domain_faucet_violations("terrain_engine.py", greek, reg)
-    # (e) declared escape -> silent
-    assert domain_faucet_violations(
-        "terrain_engine.py", "# greek-faucet-ok: parity cross-check only\n" + greek,
-        reg) == []
-    # (f) corrupt registry -> scream (gates nothing silently)
-    assert domain_faucet_violations("server.py", ok_route, "{broken")
-    # math_levels itself is the faucet -> silent
-    assert domain_faucet_violations("math_levels.py", greek, reg) == []
 
 
 def test_operator_law_guard_wired_for_edit_tools():

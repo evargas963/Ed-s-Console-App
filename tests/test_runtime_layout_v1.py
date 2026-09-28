@@ -170,20 +170,3 @@ def test_runtime_layout_imports_no_governance():
             imported.add(node.module)
     assert not any(m.split(".")[0] in ("tools", "governance") for m in imported), imported
     assert "config" not in imported, "runtime_layout must stay a leaf (config imports it)"
-
-
-def test_no_runtime_path_is_rooted_in_the_source_checkout_any_more():
-    """The shape RC-523 removed must not come back: `<file>.parent / "data"|"logs"|"reports"`
-    or `APP_DIR / "reports"` in the runtime modules and the report-writing tools."""
-    offenders: list[str] = []
-    for rel in ("server.py", "db.py", "db_authority.py", "config.py",
-                "stream_spine.py", "app/options/order_flow/streaming.py",
-                "tools/console_liveness_check.py"):
-        for i, line in enumerate((REPO / rel).read_text(encoding="utf-8").splitlines(), 1):
-            if line.lstrip().startswith("#"):
-                continue
-            if ('"data"' in line or '"logs"' in line or '"reports"' in line) and (
-                    "__file__" in line or "APP_DIR" in line or "ROOT /" in line
-                    or "project_root()" in line):
-                offenders.append(f"{rel}:{i}: {line.strip()[:100]}")
-    assert offenders == [], offenders

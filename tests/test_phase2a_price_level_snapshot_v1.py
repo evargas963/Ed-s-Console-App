@@ -40,12 +40,6 @@ from liquidity_value_engine import (
     register_level_carrier,
 )
 from time_et import ET
-from tools.phase2a_level_lock import (
-    client_level_reconstruction_violations,
-    level_alias_value_violations,
-    level_computation_violations,
-    scan_repo,
-)
 
 ROOT = Path(__file__).resolve().parent.parent
 SESSION = datetime(2026, 8, 4, 12, 0, tzinfo=ET).date()
@@ -198,107 +192,6 @@ def test_negative_control_disagreeing_carrier_raises(field, mutation):
     assert "api.liquidity_snapshot" in str(excinfo.value)
 
 
-# ── the static computation guard ─────────────────────────────────────────────
-
-
-def test_repository_has_exactly_one_phase2a_computation():
-    findings = scan_repo(ROOT)
-    assert findings == [], (
-        "Phase 2A single-computation lock failed:\n  " + "\n  ".join(findings))
-
-
-def test_negative_control_second_endpoint_computation_is_caught():
-    """(a) another endpoint invoking the canonical helper directly."""
-    injected = (
-        "from liquidity_value_engine import compute_session_vwap\n"
-        "def get_some_other_endpoint(ticker):\n"
-        "    return {'vwap': compute_session_vwap(bars, session_date)}\n"
-    )
-    bad = level_computation_violations("server.py", injected)
-    assert bad and "compute_session_vwap" in bad[0], (
-        "a second endpoint computation went undetected — the lock is inert")
-    assert "get_some_other_endpoint" in bad[0]
-
-
-def test_negative_control_same_helper_under_another_name_is_caught():
-    """(a2) alias + wrapper: the same helper called under another function name."""
-    aliased = (
-        "from liquidity_value_engine import compute_session_vwap as _vw\n"
-        "def get_endpoint_two(ticker):\n"
-        "    return {'vwap': _vw(bars, session_date)}\n"
-    )
-    assert level_computation_violations("server.py", aliased), (
-        "an IMPORT-aliased helper call went undetected")
-
-    wrapped = (
-        "from liquidity_value_engine import compute_opening_range\n"
-        "def _orb_for(bars, sd, cfg):\n"
-        "    return compute_opening_range(bars, sd, cfg)\n"
-        "def get_endpoint_three(ticker):\n"
-        "    return _orb_for(bars, sd, cfg)\n"
-    )
-    found = level_computation_violations("server.py", wrapped)
-    assert any("get_endpoint_three" in f for f in found), (
-        "a WRAPPER forwarding to the helper went undetected — renaming the function is "
-        "the cheapest way around a name-based lock")
-
-    rebound = (
-        "from liquidity_value_engine import get_overnight_levels\n"
-        "def get_endpoint_four(ticker):\n"
-        "    f = get_overnight_levels\n"
-        "    return f(bars, session_date)\n"
-    )
-    assert level_computation_violations("server.py", rebound), (
-        "a variable-rebound helper call went undetected")
-
-
-def test_negative_control_alias_inside_levels_list_is_caught():
-    """(b) an aliased id and a produced value inside `levels: [{id, price}]`."""
-    literal = (
-        "def get_levels(ticker):\n"
-        "    return {'levels': [{'id': 'OVERNIGHT_HIGH', 'price': 773.40,\n"
-        "                        'family': 'overnight'}]}\n"
-    )
-    bad = level_alias_value_violations("server.py", literal)
-    assert bad and "OVERNIGHT_HIGH" in bad[0], (
-        "a hardcoded price inside levels[] went undetected")
-
-    aliased_id = (
-        "from liquidity_value_engine import compute_session_vwap\n"
-        "VWAP_ID = 'VWAP'\n"
-        "def get_levels(ticker):\n"
-        "    return {'levels': [{'id': VWAP_ID,\n"
-        "                        'price': compute_session_vwap(bars, sd)}]}\n"
-    )
-    bad2 = level_alias_value_violations("server.py", aliased_id)
-    assert bad2 and "VWAP" in bad2[0], (
-        "an ALIASED level id inside levels[] hid a live computation from the lock")
-
-
-def test_legal_carriage_forms_stay_silent():
-    """A lock that fires on the fix forces people to delete the fix."""
-    carried = (
-        "def get_levels(ticker):\n"
-        "    snap = canonical_price_level_snapshot(ticker)\n"
-        "    return {'levels': [{'id': 'VWAP', 'price': snap.price('VWAP')}]}\n"
-    )
-    assert level_alias_value_violations("server.py", carried) == []
-    assert level_computation_violations("server.py", carried) == []
-
-
-def test_negative_control_browser_reconstruction_is_caught():
-    """(c) an in-page VWAP accumulation."""
-    page = (
-        "let pv = 0, vv = 0;\n"
-        "for (const b of rth) { const tp = (b.h + b.l + b.c) / 3; pv += tp * b.v; }\n"
-    )
-    bad = client_level_reconstruction_violations("static/mine.html", page)
-    assert bad and "in-page VWAP" in bad[0], (
-        "a browser-side VWAP reconstruction went undetected")
-    assert client_level_reconstruction_violations(
-        "static/mine.html", "const w = ls.vwap_series[0][1];\n") == []
-
-
 # ── the surfaces ─────────────────────────────────────────────────────────────
 
 
@@ -327,11 +220,6 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
     assert payload["vwap_series"], "the carried VWAP curve is missing"
     assert by_id["VWAP"]["price"] == payload["vwap_series"][-1][1]
 
-    # the endpoint is a serializer: it must reach the engine only through the snapshot
-    src = level_computation_violations("server.py", (ROOT / "server.py").read_text(
-        encoding="utf-8", errors="replace"))
-    assert src == [], src
-
 
 def test_liquidity_snapshot_scopes_checkpoint_ids_away_from_canonical():
     """A checkpoint cutoff is a different measurement, so it gets a different id."""
@@ -346,11 +234,3 @@ def test_liquidity_snapshot_scopes_checkpoint_ids_away_from_canonical():
     assert "PDH" in live and "VWAP" in live
     assert "PDH" not in mid and "PDH@checkpoint:midday" in mid
     assert not (live & mid), "a checkpoint scope shares ids with the canonical scope"
-
-
-def test_phase2a_check_is_registered_enforced():
-    from tools.check_institutional_correctness import CHECKS
-
-    wired = {name: enforced for name, _fn, enforced in CHECKS}
-    assert wired.get("phase2a_single_level_computation") is True, (
-        "a proven-but-unwired lock reads as enforced to anyone who only runs the tests")

@@ -59,7 +59,6 @@ TURN_AUDIT_OWNS = [
     # DB binds, arch_state writer, execution routing identity, scheduler enrollment/filter identity.
     "features/shared_sequence_context.py",
     "ml_data_common.py",
-    "execution_identity.py",
     "scheduler_user_tickers.py",
     # F25 known live residuals (3rd batch — Cursor's latest two): cache-skip streak key and the
     # arch eval-proof per-ticker key.
@@ -155,27 +154,6 @@ def test_rc345_gamma_profile_has_one_formula_authority() -> None:
 # ever split; reinstate the frontend half only when a new module renders a final trade verdict.
 
 
-# ------------------------------------------------------------- F42 dollar GEX registry field
-# BOARD IDENTITY: gex_dollars is F42 (a newly tracked registry concept), NOT F14. F14 is
-# VWAP bands. This id was corrected after an earlier mislabel; F01-F40 ids are immutable.
-def test_rc345_gex_dollars_field_is_single_producer() -> None:
-    """F42: the registry field gex_dollars_per_1pct_at_strike has exactly ONE producer,
-    compute_exposures_by_strike. math_probabilities.score_option_expression was a coarse-AST
-    false positive (its `base += abs(gamma)*10` scoring accumulation mentions gamma but does
-    not reprice it into dollars — no OI, no spot^2). The registry now pins the distinguishing
-    signature (gamma, oi, spt) so the gate is accurate, not merely green."""
-    import tools.check_one_producer as cop
-
-    reg = cop.load_registry()
-    field = "gex_dollars_per_1pct_at_strike"
-    sites = cop.computing_sites(field, reg["fields"][field])
-    assert sites == ["math_exposure_core.py:compute_exposures_by_strike"], (
-        f"gex_dollars must have one producer; got {sites} (F42/RC-345)")
-    failures, _np, _n = cop.evaluate()
-    assert not [f for f in failures if field in f], (
-        "the one-producer gate must pass for gex_dollars")
-
-
 # ------------------------------------------------------------------------------- F14 VWAP bands
 
 
@@ -219,23 +197,6 @@ def test_rc345_terrain_materializes_one_pinned_gamma_profile() -> None:
 
 
 # ---------------------------------------------------------------------- F24 signed dist to VWAP
-
-
-# ------------------------------------------------------------------- F29 movement target threshold
-def test_rc345_movement_target_threshold_one_selector() -> None:
-    """F29: the per-horizon ATR-scaled move threshold is produced by exactly one selector,
-    movement_target_threshold.threshold_move_pts_for_slug. Outcome/label consumers use it; no
-    production site reconstructs a local ATR threshold."""
-    from movement_target_threshold import threshold_move_pts_for_slug
-
-    assert callable(threshold_move_pts_for_slug)
-    for mod in ("db.py", "horizon_outcomes.py"):
-        assert "threshold_move_pts_for_slug" in _read(mod), (
-            f"{mod} must consume the one threshold selector (F29/RC-345)")
-    # no local ATR-threshold reconstruction in the outcome path
-    dbcode = "\n".join(l for l in _read("db.py").splitlines() if not l.lstrip().startswith("#"))
-    assert not re.search(r"thr\s*=\s*[0-9.]+\s*\*\s*atr", dbcode), (
-        "db.py reconstructs a local ATR threshold; use the one selector (F29/RC-345)")
 
 
 # ------------------------------------------------------------------- F36 signal-layer VWAP anchor

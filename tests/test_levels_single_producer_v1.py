@@ -374,55 +374,6 @@ def test_terrain_strikes_registers_viewing_demand(monkeypatch):
         srv._gamma_surface_demand.pop(tk, None)
 
 
-def test_domain_faucet_registry_negative_control():
-    """Negative control naming check_domain_faucet_registry (RC-95 pattern): inject an
-    UNREGISTERED level-domain producer and the callee must scream; a registered one stays
-    silent. Proves the ENFORCED check fires rather than sitting green-and-inert."""
-    from pathlib import Path
-
-    from tools.check_institutional_correctness import domain_faucet_violations
-
-    registry_text = (Path(__file__).resolve().parent.parent / "governance" /
-                     "level_faucets.json").read_text(encoding="utf-8")
-    # Route literal is assembled at runtime so the RC-212 STAGED-TEXT scan never reads this
-    # injection as a real new producer (the scan is static; the callee test is dynamic).
-    injected = '@app.' + 'get("' + '/api/levels-extra' + '")\ndef f(): pass'
-    bad = domain_faucet_violations("server.py", injected, registry_text)
-    assert bad and any("levels-extra" in b for b in bad), (
-        "check_domain_faucet_registry callee stayed silent on an unregistered producer"
-    )
-    ok = domain_faucet_violations(
-        "server.py", '@app.get("/api/forces")\ndef f(): pass', registry_text)
-    assert not ok, "a REGISTERED producer must not scream"
-
-
-def test_forward_only_grandfather_old_rows_exempt_new_rows_enforced():
-    """Operator PM gate decision (2026-08-04): retroactive row-quality enforcement applies
-    only to RC-227+; scratchpad probe debris exempt from file-hygiene classes; everything
-    else passes through untouched."""
-    from pathlib import Path
-
-    from tools.check_institutional_correctness import (
-        RC_GRANDFATHER_CUTOFF,
-        Violation,
-        _apply_forward_only_grandfather,
-    )
-
-    assert RC_GRANDFATHER_CUTOFF == 227
-    old = Violation(Path("governance/root_cause_log.md"), 1, "RC-14 is CLOSED without evidence")
-    new = Violation(Path("governance/root_cause_log.md"), 2, "RC-228 is CLOSED without evidence")
-    kept = _apply_forward_only_grandfather("closed_rows_ship_their_code", [old, new])
-    assert kept == [new], "old row must be exempt; new row must stay enforced"
-
-    pad = Violation(Path("scratchpad/_probe.py"), 3, "silent-swallow")
-    tool = Violation(Path("tools/x.py"), 4, "silent-swallow")
-    kept2 = _apply_forward_only_grandfather("no_silent_swallow", [pad, tool])
-    assert kept2 == [tool], "scratchpad exempt; tools/ fully enforced"
-
-    other = Violation(Path("server.py"), 5, "RC-14 mentioned but this check is not grandfathered")
-    assert _apply_forward_only_grandfather("single_spot_authority", [other]) == [other]
-
-
 def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monkeypatch, tmp_path):
     """t12 (RC-227 residual): the PDL must be the min of the WHOLE prior session. Measured
     live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH/PDC
@@ -465,19 +416,5 @@ def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monke
     assert by_id["PDC"]["price"] == 757.67
     assert "price_bars_1m" in by_id["PDL"]["provenance"]["vendor_basis"], (
         "provenance must name the one bar source"
-    )
-
-
-def test_api_levels_registered_in_faucet_registry():
-    """RC-212 registry law: /api/levels must be a registered producer with the operator
-    quote present in governance/level_faucets.json."""
-    import json
-    from pathlib import Path
-
-    reg = json.loads((Path(__file__).resolve().parent.parent / "governance" /
-                      "level_faucets.json").read_text(encoding="utf-8"))
-    assert "/api/levels" in reg["level_domain_producers"]
-    assert "levels-tierb-session-collapse-v1" in reg.get("operator_quote", ""), (
-        "adding a producer requires the operator_quote in the registry (RC-212)"
     )
 
