@@ -460,7 +460,10 @@
       S.quotes[bare(q.ticker)] = q;
       if (!onDesk()) return;
       paintHeader();
-      if (bare(q.ticker) === bare(S.ticker)) paintTrust();
+      if (bare(q.ticker) === bare(S.ticker)) {
+        paintTrust();
+        if (S.chart) S.chart.setLivePrice(q.spot_state === 'live' ? q.spot : null, q.trade_age_sec);
+      }
     });
     $('tdmQueue').addEventListener('click', function (e) {
       var b = e.target.closest('[data-q]'); if (b) selectItem(b.getAttribute('data-q'), true);
