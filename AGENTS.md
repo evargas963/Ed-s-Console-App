@@ -107,9 +107,10 @@ Same session, at its source (rule 1), or name the exact blocker. "Pre-existing",
 - Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.
   Work in a worktree.
 - Never: `git reset`, `git checkout --`, `git stash`, force push, `--no-verify`, `git add -A` / `.`,
-  deleting anything under `data/`, `backups/`, `models/`; editing source through generated
-  find-and-replace scripts (edits are made one at a time, as written); changing a file's line
-  endings (every file is LF, set by `.gitattributes`).
+  deleting anything under `data/`, `backups/`, `models/`; editing source through a script
+  (edits are made one at a time, as written; a block too long for one edit is removed in
+  consecutive edits); changing a file's line endings (every file is LF, set by `.gitattributes`).
+- Shell steps that depend on each other are joined with `&&`, so a failure stops the chain.
 - Every rule above is enforced by ruff settings, `.gitattributes`, or a behavior test once the
   code meets it; until then its enforcement is a work item in `ACTIVE_PROGRAM.md`.
 - May restart the console and the capture daemon; confirm both came back.
