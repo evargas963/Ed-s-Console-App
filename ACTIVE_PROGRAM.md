@@ -29,7 +29,7 @@ spot (Key Levels = header, #372).
 | ID | Status | Work item |
 |---|---|---|
 | ONE-02 | QUEUED | Equity last price and size kept a second time in the console's order-flow tape (`state.py` tape and receive log). |
-| ONE-03 | QUEUED | Feed liveness: the daemon heartbeat recorded in both processes, plus a separate 5 s daemon-status rule (`streaming.py` DAEMON_STATUS_STALE_SEC). |
+| ONE-03 | QUEUED | Feed liveness judged in both processes: the daemon applies its own heartbeat to its price rows (`live_ui.beat`), and the console applies the pushed copy again (`feed_live_for`); one rule since ONE-15, two places it runs. |
 | ONE-04 | QUEUED | Equity books: the console's order-flow copy and the database copy read by the Book Heatmap (`history.book_heatmap_for_ticker`, a live screen reading the DB). |
 | ONE-05 | QUEUED | Option quotes and greeks: the order-flow copy, the REST chain in the levels state merged field by field by time (`overlay_streamed_contract_fields`), and the DB copy read by the options tape. |
 | ONE-06 | QUEUED | 1-minute bars in two databases, and live charts and levels reading `price_bars_1m` (with P2-DB4). |
@@ -39,7 +39,6 @@ spot (Key Levels = header, #372).
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
 | ONE-13 | QUEUED | Ticker roster built twice (console `CORE_TICKERS` + filtered board; daemon's full board). |
 | ONE-14 | QUEUED | Ticker identity re-derived in page code (`$` stripping in `ed-gamma-chart.js`, `ed-core.js`, `ed-trade-desk-map.js`); the server serves the display form. |
-| ONE-15 | QUEUED | "Is it live": four thresholds (3 s, 5 s, 10 s, 25 s); one rule. |
 | TICK-01 | QUEUED | Index symbol form from a hand-kept list of 11 roots (`instrument_identity.BROKER_INDEX_BARE_ROOTS`); Schwab's own instrument answer decides. |
 | TICK-02 | QUEUED | Option contract → ticker matched by root name, with weekly/adjusted roots (SPXW, NDXP) through a second path that needs a stored capture; Schwab's underlying field on the contract decides. |
 | TICK-03 | QUEUED | "Adjusted deliverable" defined as 100 shares of stock, so cash-settled index options are all flagged; needs a captured index deliverable first. |

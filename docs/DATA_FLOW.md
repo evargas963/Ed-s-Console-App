@@ -96,8 +96,17 @@ Schwab sends is taken as sent (rule 2), never computed.
   serve that result and read no stored chain. Everything computed from spot (gamma at spot, regime,
   wall states and leans, wall distances, flip side, headline) is computed in that one publication
   at that publication's price; `/api/terrain` serves it as published and recomputes nothing.
-  Once the price is not live the served publication is a past observation (`spot_state` stale,
-  with its spot's time), and the next publication has no levels, with its reason.
+  Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`), never
+  called live; the live price is the daemon's price row. With no live price the next publication
+  has no levels, with its reason.
+- **Live.** One rule for every streamed value (price, quote, option quote and greeks, each book):
+  it is live while the daemon's heartbeat, sent every second, is under 3 s old
+  (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
+  symbol on that Schwab service (`live_market_plane.feed_live_for`). A value's age is never the
+  test: Schwab sends a field only when it changes. The daemon's status is read from the same
+  heartbeat (`live_market_plane.daemon_status`). Owner: the console's feed loop records each
+  heartbeat; when the daemon stops or the socket to it drops, every streamed value reads not live
+  within 3 s.
 - **Alerts and level crosses.** Computed by the console at each levels publish; crosses written to
   `ed_console.db` → the `levels` push → `/api/alerts` → browser.
 - **Market session.** From the market calendar → pushed on `/api/changes` when the page connects

@@ -35,8 +35,6 @@ OF_TAPE_WINDOW_2M_SEC: float = 120.0
 OF_TAPE_WINDOW_5M_SEC: float = 300.0
 OF_CUM_DELTA_NORM_DIVISOR: float = 10000.0
 OF_OPTIONS_DELTA_NORM_DIVISOR: float = 50000.0
-# A book whose BOOK_TIME is older than this reads stale.
-OF_BOOK_STALE_SEC: float = 25.0
 # Book-depth ladder for _compute_book_imbalance: top of book, shallow, deep.
 OF_BOOK_DEPTH_TOP: int = 1
 OF_BOOK_DEPTH_SHALLOW: int = 3
@@ -486,7 +484,8 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
     """Canonical L2 book microstructure for one symbol — the ONE producer the engine's
     book_imbalance and the `/api/order-flow/microstructure` route both read. `data.content`
     carries the live streaming book + top-of-book (app.options.order_flow.state.get_content_for_symbol);
-    `data.exchange_quote_ts` (optional) is the plane's exchange quote clock. The structural state
+    `data.exchange_quote_ts` (optional) is the plane's exchange quote clock; `data.book_live` is
+    the live rule's answer for the book's service (absent: not live). The structural state
     is extracted/computed ONCE and memoized per (ticker, BOOK_TIME); a caller with the same
     unchanged book SERIALIZES the cached state instead of re-walking raw data. Only the age
     fields depend on `now` and are always stamped fresh. Fail-closed: no book snapshot -> status
@@ -520,14 +519,9 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
     payload["ages"] = {
         "book_age_sec": book_age_sec,
         "quote_age_sec": round(now - exch_ts, 3) if exch_ts else None,
-        # Operator-reproduced defect (2026-09-14): the Book/DOM screen and Trade Desk's Detect
-        # card both rendered a hardcoded "LIVE" badge whenever status != 'no_book', with no
-        # gate on book_age_sec at all -- a book observation aged to 3,600s (subscription long
-        # dead) still painted LIVE. book_age_sec was already computed and even displayed as a
-        # plain number beside that badge; nothing consumed it.
-        # None when the book's age is unknown: unknown is not fresh (2026-09-27: it read False,
-        # and every badge showed LIVE over a book with no age)
-        "book_stale": (None if book_age_sec is None else book_age_sec > OF_BOOK_STALE_SEC),
+        # the live rule (live_market_plane.feed_live_for on the book's service), which the caller
+        # passes as data["book_live"]; None with no book
+        "book_stale": None if book_age_sec is None else data.get("book_live") is not True,
     }
     return payload
 

@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
 import server as srv
 from app.options.order_flow.state import clear_symbol, push_level_one
 
@@ -51,9 +52,12 @@ def _held_chain(tk, contracts, fetched_ts, spot=None):
 
 @contextmanager
 def _streamed(symbol, fields_by_ts):
-    """Stream `fields` for `symbol` at each ts, as the capture daemon's push would."""
+    """Stream `fields` for `symbol` at each ts, as the capture daemon's push would, with its
+    heartbeat holding the contract on LEVELONE_OPTIONS."""
     prior = ofs._active_option_contract, ofs._active_option_contracts
     ofs._active_option_contract, ofs._active_option_contracts = symbol, []
+    lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [symbol]}},
+                              time.time())
     try:
         for ts, fields in fields_by_ts:
             push_level_one(symbol, {"key": symbol, "assetMainType": "OPTION", "UNDERLYING": "TSLA",

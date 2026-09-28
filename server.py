@@ -163,6 +163,7 @@ from schwab_client import (
     SchwabAuthError,
 )
 from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
+import live_market_plane as lmp
 from numeric_contract import schwab_number
 from market_context import (
     market_context_panel_symbols_excluding_core,
@@ -1770,11 +1771,9 @@ def _gamma_surface_wanted(tk: str) -> bool:
     return (time.time() - _gamma_surface_demand.get(tk, 0.0)) < GAMMA_SURFACE_DEMAND_TTL
 
 
-#: A streamed GAMMA/DELTA/OPEN_INTEREST value older than this is not trusted AT ALL, even if
-#: it is newer than the REST baseline it would override — an app-side absolute bound (not a
-#: vendor-documented cadence), chosen to be well inside a stalled-feed operator would notice,
-#: composed with (never a substitute for) the REST-baseline precedence check below.
-GAMMA_SURFACE_STREAM_STALENESS_SEC = 10.0
+def _live_stream_greeks(streamed: dict) -> dict:
+    """The streamed option values whose contract is live now (the one live rule)."""
+    return {s: g for s, g in streamed.items() if lmp.feed_live_for(s, "LEVELONE_OPTIONS")}
 
 #: Per-ticker revision of `_gamma_surface`, bumped on every publication; guarded by
 #: _terrain_cache_lock.
@@ -1851,18 +1850,9 @@ def _option_contract_admission_summary(tk: str) -> dict:
     independent-review follow-up mandate item 1: "expose the exact admitted, active,
     pending and rejected contracts"). Every bucket answers a materially different
     question about a desired symbol:
-      'active'   — has produced a tick WITHIN the canonical staleness window
-                   (GAMMA_SURFACE_STREAM_STALENESS_SEC, the SAME bound
-                   overlay_streamed_contract_fields/the 'live' cell state already use) —
-                   freshness-gated, not merely "has ever ticked". A symbol whose only
-                   observation is older than this window is 'observed', not 'active':
-                   correctness finding (2026-09-17) — a harness or UI claiming a stale
-                   historical observation is "currently active" is exactly the false-
-                   success shape the operator's own negative controls exist to catch.
-      'observed' — has produced at least one real tick EVER (present in
-                   _desired_stream_greeks_for_ticker's own output) but that tick is
-                   OLDER than the staleness window — the vendor genuinely sent data at
-                   some point; it is not necessarily still fresh right now.
+      'active'   — has produced a tick and is live now (live_market_plane.feed_live_for,
+                   LEVELONE_OPTIONS -- the rule the overlay and the 'live' cell state use).
+      'observed' — has produced a tick but is not live now: a past observation.
       'admitted' — the DAEMON's own durable, heartbeat-confirmed open coverage epoch names
                    this symbol (streaming.read_producer_admitted_option_contracts,
                    LEVELONE_OPTIONS service) but no tick has EVER arrived — the vendor
@@ -1888,18 +1878,13 @@ def _option_contract_admission_summary(tk: str) -> dict:
     rejected_all = read_producer_rejected_option_contracts()
     admitted_l1 = set((read_producer_admitted_option_contracts() or {}).get("LEVELONE_OPTIONS") or [])
     streamed = _desired_stream_greeks_for_ticker(tk)
-    now = time.time()
     admitted, active, observed, pending = [], [], [], []
     rejected: "dict[str, str]" = {}
     for sym in desired:
         if sym in rejected_all:
             rejected[sym] = rejected_all[sym]
         elif sym in streamed:
-            ts_recv = _leg_stream_ts_recv(streamed.get(sym))
-            if ts_recv is not None and (now - ts_recv) <= GAMMA_SURFACE_STREAM_STALENESS_SEC:
-                active.append(sym)
-            else:
-                observed.append(sym)
+            (active if lmp.feed_live_for(sym, "LEVELONE_OPTIONS") else observed).append(sym)
         elif sym in admitted_l1:
             admitted.append(sym)
         elif daemon_available:
@@ -1958,12 +1943,10 @@ def _gamma_surface_contracts_with_stream_overlay(
     try:
         from math_exposure_core import overlay_streamed_contract_fields
 
-        streamed = _desired_stream_greeks_for_ticker(tk)
+        streamed = _live_stream_greeks(_desired_stream_greeks_for_ticker(tk))
         if not streamed:
             return contracts, 0, []
-        overlaid, n = overlay_streamed_contract_fields(
-            contracts, streamed,
-            newer_than_ts=newer_than_ts, max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
+        overlaid, n = overlay_streamed_contract_fields(contracts, streamed, newer_than_ts=newer_than_ts)
         return overlaid, n, _overlaid_symbols(contracts, overlaid)
     except Exception as e:  # institutional-swallow-ok: best-effort freshening, never load-bearing
         log.debug("gamma-surface stream overlay skipped for %s: %s", tk, e)
@@ -2015,7 +1998,7 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
 
     Per leg, `overlay_symbols` is the EXACT set _publish_levels's stream overlay already
     decided passed this cycle's
-    REST-precedence + GAMMA_SURFACE_STREAM_STALENESS_SEC check for this specific symbol — reused
+    REST-precedence check and the live rule for this specific symbol — reused
     verbatim rather than re-deriving a second staleness policy. `rejected_symbols` (2026-09-16,
     audit finding #6 — "fail the affected cells visibly", bounded-vendor-call reconciliation) is
     the producer's own {symbol: vendor_error} map (streaming.read_producer_rejected_option_
@@ -2260,8 +2243,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         prev_spot = payload.get("spot")
         streamed = _desired_stream_greeks_for_ticker(tk)
         priced, n_live = overlay_streamed_contract_fields(
-            chain, streamed, newer_than_ts=fetched_ts,
-            max_staleness_sec=GAMMA_SURFACE_STREAM_STALENESS_SEC)
+            chain, _live_stream_greeks(streamed), newer_than_ts=fetched_ts)
         live_syms = _overlaid_symbols(chain, priced)
         snap = compute_terrain(tk, priced, spot, now=(
             datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
@@ -2531,8 +2513,7 @@ def _next_refresh_ct() -> str:
 
 def _status_line() -> str:
     """One line for the console window: is each part working right now, from its own check."""
-    from app.options.order_flow.streaming import daemon_status
-    st = daemon_status()
+    st = lmp.daemon_status()
     spot, _src, _ts = resolve_spot("SPY")
     with _terrain_cache_lock:
         as_of = [p.get("computed_ts_utc") for p in _terrain_cache.values() if p.get("computed_ts_utc")]
@@ -3528,11 +3509,11 @@ def get_terrain(ticker: str = Query(...)):
         cached = terrain_cache_get(tk)
     if cached is not None:
         # the levels as the producer published them, every at-spot value computed at the
-        # publication's spot (a viewed ticker is republished on every streamed tick); internal
-        # fields (the kept chain, the heatmap grid, per-strike rows) have their own routes
+        # publication's spot -- the price they were computed at, labelled by spot_source and
+        # spot_as_of_ts_utc, never called live (the live price is the daemon's price row);
+        # internal fields (the kept chain, the heatmap grid, per-strike rows) have their own routes
         out = {k: v for k, v in cached.items() if not k.startswith("_")}
-        out.update(terrain_staleness(cached.get("computed_ts_utc"), tk),
-                   spot_state=current_spot_state(cached.get("spot_source") or "none", tk))
+        out.update(terrain_staleness(cached.get("computed_ts_utc"), tk))
         return out
     spot, spot_source, spot_ts = resolve_spot(tk)
     _why = _terrain_refresh_last_error.get(tk)
@@ -3733,6 +3714,7 @@ def api_order_flow_microstructure(ticker: str = Query(...),
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
                    if _row and (_row.get("bid") is not None or _row.get("ask") is not None) else None)
+    data["book_live"] = lmp.feed_live_for(t, venue)
     from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
     payload = compute_book_microstructure(data, ticker=t)

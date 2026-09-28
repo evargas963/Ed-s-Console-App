@@ -70,8 +70,7 @@ def _reset(tmp_path, monkeypatch):
     ofs._option_contract_last_update_ts.clear()
     ofls.clear_all_live_state()
     db = tmp_path / "stream_capture.db"
-    monkeypatch.setattr(ofs, "_daemon_status", None)
-    monkeypatch.setattr(ofs, "_daemon_status_rx", None)
+    lmp.record_feed_down()
     monkeypatch.setattr(
         "app.options.contracts.default.default_option_contract",
         lambda *a, **k: None,
@@ -82,7 +81,7 @@ def _reset(tmp_path, monkeypatch):
 def _live_daemon():
     """The daemon's status arriving on the console socket: health can only be confirmed
     while the daemon itself is alive."""
-    ofs._note_daemon_status({"schwab_socket_open": True, "held": {}, "health": {}})
+    lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {}, "health": {}}, time.time())
 
 
 def _push_option_l1(symbol, content, ts_recv):
@@ -307,8 +306,6 @@ def _reset_option_feed_globals():
     ofs._active_option_contracts = []
     ofs._option_streaming_last_update_ts = None
     ofs._option_contract_last_update_ts.clear()
-    ofs._daemon_status = None
-    ofs._daemon_status_rx = None
     lmp.record_feed_down()
 
 
@@ -320,8 +317,8 @@ def _real_fixture_contract():
 def _daemon_heartbeat(*held_contracts):
     """The daemon's heartbeat as it arrives on the console socket, holding these contracts
     on both option services."""
-    ofs._note_daemon_status({"schwab_socket_open": True, "health": {}, "held": {
-        "LEVELONE_OPTIONS": list(held_contracts), "OPTIONS_BOOK": list(held_contracts)}})
+    lmp.record_feed_heartbeat({"schwab_socket_open": True, "health": {}, "held": {
+        "LEVELONE_OPTIONS": list(held_contracts), "OPTIONS_BOOK": list(held_contracts)}}, time.time())
 
 
 def test_option_contract_streaming_diagnostics_healthy_on_recent_tick():
@@ -409,5 +406,5 @@ def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()
 
-    assert lmp.feed_live_for("SPY") is False
+    assert lmp.feed_live_for("SPY", "LEVELONE_EQUITIES") is False
     assert ofs.get_option_contract_streaming_diagnostics()["streaming_healthy"] is True

@@ -140,11 +140,11 @@
     "feed_health": {
       "book": {
         "age_sec": null,
-        "state": "UNKNOWN"
+        "state": "NOT LIVE"
       },
       "l1": {
         "age_sec": null,
-        "state": "UNKNOWN"
+        "state": "NOT LIVE"
       },
       "replay": "not connected"
     },

@@ -280,7 +280,7 @@ class Daemon:
                 "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "refused": {k: dict(v) for k, v in self.refused.items() if v},
-                "health": self.health.report()}
+                "health": self.health.report(now)}
 
     async def sync(self) -> None:
         for svc, cmd, symbols in plan(self.wanted, self.held, self.refused):
