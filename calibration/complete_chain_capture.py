@@ -28,7 +28,6 @@ CAPTURE_EVERY_MIN = 30
 #: 15 minutes after the stock close (Cboe hours; checked 2026-09-26), so the day's last capture
 #: is taken 15 minutes after the close, when every option has stopped trading
 CLOSE_CAPTURE_AFTER_MIN = 15
-COMPLETENESS_BASIS_STRIKE_RANGE_ALL = "strike_range=ALL"
 #: why the daemon's captures are complete: every listed expiry, every strike. Older rows (one or
 #: two expiries at scattered times, written by the console before 2026-09-27) carry
 #: "strike_range=ALL" and are not full chains, so they are not read. The basis is stored before

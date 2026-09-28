@@ -737,7 +737,6 @@ from micro_structure import Candle
 from app.options.contracts.default import front_atm_call
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
-    COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
     board_tickers,
     last_capture_per_day,
     newest_capture_ts,
@@ -3760,7 +3759,7 @@ def get_chain(ticker: str = Query(...),
         "ladder": ladder, "n_strikes": len({r["strike"] for r in ladder}),
         "stream_overlay_contracts": overlay_n,
         "scope": {"kind": "complete_single_expiry", "requested_expiry": resolved_expiry,
-                  "completeness_basis": COMPLETENESS_BASIS_STRIKE_RANGE_ALL},
+                  "completeness_basis": held.get("chain_basis")},   # the publication's own label
     })
 
 @app.get("/api/health")

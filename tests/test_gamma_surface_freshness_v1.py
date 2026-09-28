@@ -192,6 +192,9 @@ def test_closed_market_prices_the_stored_capture_on_every_route(_fresh, monkeypa
     assert not t["error"] and t["chain_basis"] == CAPTURE_BASIS and t["spot"] == _CRWD["spot"]
     assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
     assert _call(tk)["available"] is True           # the heatmap from the same publication
+    # the chain view carries the publication's own basis label (it served a constant before)
+    chain = json.loads(server.get_chain(ticker=tk, expiry=None).body)
+    assert chain["status"] == "ok" and chain["scope"]["completeness_basis"] == t["chain_basis"]
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
