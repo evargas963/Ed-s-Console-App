@@ -92,20 +92,6 @@ if errorlevel 1 (
     echo.
 )
 
-REM RC-512 (operator mission 2026-09-03, DECOUPLE GOVERNANCE FROM APP RUNTIME): the
-REM RC-350 ONE-APP LOCK call is no longer on the launch path. It asserted repository
-REM state - branch==main, HEAD==origin/main zero-ahead AND zero-behind, no uncommitted
-REM app file - and began with `git fetch origin main`, so desk availability depended on
-REM git position and on reaching a remote. MEASURED 2026-09-03: the production checkout
-REM was 9 commits behind origin/main and this line aborted the launcher, with no app
-REM defect of any kind.
-REM
-REM The invariant is not lost and this was never its only enforcement: an agent is
-REM PREVENTED from moving, committing to, or editing app code in the production checkout
-REM by tools/process_lock_guard.py on every PreToolUse event. Repository lineage is an
-REM agent/commit/merge concern and stays there; it does not decide whether the desk runs.
-REM Operator-side lineage remains readable on demand:
-REM     .venv\Scripts\python.exe tools\check_live_path_is_main.py
 
 REM Stop any prior instance on port 8000 -- ownership-verified: only a process
 REM whose own command line names an Ed Console server (uvicorn ... server:app)

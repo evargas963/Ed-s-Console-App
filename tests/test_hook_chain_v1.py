@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.hook_chain import STOP_CHAIN, _argv_members, run_chain  # noqa: E402
+from tools.hook_chain import _argv_members, run_chain  # noqa: E402
 
 _ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 PRE_ROSTER = ("tools/operator_law_guard.py", "tools/process_lock_guard.py")
@@ -96,9 +96,14 @@ def _wired_commands() -> dict[str, list[str]]:
 # ============================================================ executor contract
 
 def test_argv_roster_maps_hook_spellings_to_modules():
-    assert _argv_members(["tools/stop_guard.py", "tools\\operator_law_guard.py", "x.py"]) == (
-        "tools.stop_guard", "tools.operator_law_guard", "tools.x")
-    assert _argv_members([]) == () and STOP_CHAIN == ("tools.stop_guard",)
+    assert _argv_members(["tools/process_lock_guard.py", "tools\\operator_law_guard.py", "x.py"]) == (
+        "tools.process_lock_guard", "tools.operator_law_guard", "tools.x")
+    assert _argv_members([]) == ()
+
+
+def test_no_guard_named_is_refused_not_passed():
+    r = _chain(bash("git status", cwd=ROOT), roster=())
+    assert r.returncode == 2 and "no guard named" in r.stderr, r.stderr
 
 
 def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
@@ -110,16 +115,15 @@ def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
         assert not (ROOT / "tools" / retired.split(".")[0]).with_suffix(".py").exists() or retired.endswith("guard"), retired
     def roster(c: str) -> set[str]:
         return {t for t in c.split() if t.startswith("tools/") and "chain" not in t}
-    assert wired["PreToolUse"] and wired["preToolUse"] and wired["Stop"] and wired["stop"]
+    assert set(wired) == {"PreToolUse", "preToolUse"}, wired
     assert all(roster(c) == set(PRE_ROSTER) for c in wired["PreToolUse"] + wired["preToolUse"]), wired
-    assert all(roster(c) == {"tools/stop_guard.py"} for c in wired["Stop"] + wired["stop"]), wired
 
 
 def test_every_wired_executable_refuses_an_unreadable_payload():
     """RC-541: 'cannot judge' and 'judged clean' must not share an exit code — measured for
     every executable the wiring names, not a hand list."""
     members = {t for cmds in _wired_commands().values() for c in cmds for t in c.split() if t.startswith("tools/")}
-    assert members >= {"tools/hook_chain.py", "tools/operator_law_guard.py", "tools/process_lock_guard.py", "tools/stop_guard.py"}
+    assert members >= {"tools/hook_chain.py", "tools/operator_law_guard.py", "tools/process_lock_guard.py"}
     for rel in sorted(members):
         r = subprocess.run([sys.executable, str(ROOT / rel)], cwd=str(ROOT), input="{not json",
                            capture_output=True, text=True, encoding="utf-8", errors="replace", env=_ENV, timeout=120)
@@ -127,7 +131,7 @@ def test_every_wired_executable_refuses_an_unreadable_payload():
 
 
 def test_a_crashing_or_missing_member_blocks_and_the_chain_keeps_running(capsys):
-    assert run_chain(json.dumps({"tool_name": "Stop"}), ("tools.zz_no_such_guard_zz",)) == 2
+    assert run_chain(json.dumps({"tool_name": "Bash"}), ("tools.zz_no_such_guard_zz",)) == 2
     r = _chain(bash("git reset --hard", cwd=ROOT), roster=("tools/process_lock_guard.py", "tools/zz_absent.py"))
     assert r.returncode == 2 and "RESET_GUARD" in r.stderr and "tools.zz_absent crashed" in r.stderr, r.stderr
 
@@ -161,9 +165,8 @@ def test_2_a_nonexistent_worktree_in_a_blocked_command_has_zero_future_effect(tm
     ghost = tmp_path / "EdWebConsole-does-not-exist"
     blocked = _chain(bash(f'git -C "{ghost}" reset --hard && git branch -D main', cwd=ROOT))
     assert blocked.returncode == 2, blocked.stderr
-    for later in (edit(tmp_path / "later.py"), bash("git status", cwd=ROOT),
-                  {"hook_event_name": "Stop", "stop_hook_active": False}):
-        r = _chain(later, roster=("tools/stop_guard.py",) if "hook_event_name" in later else PRE_ROSTER)
+    for later in (edit(tmp_path / "later.py"), bash("git status", cwd=ROOT)):
+        r = _chain(later)
         assert r.returncode == 0, (later, r.stderr)
         assert ghost.name not in r.stderr and "cannot determine" not in r.stderr and "REFUSED" not in r.stderr
 

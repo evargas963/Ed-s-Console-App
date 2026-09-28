@@ -29,26 +29,18 @@ if str(REPO) not in sys.path:
 # would be one truth with two answers.
 from tools.shell_parse import iter_command_segments  # noqa: E402
 
-CHECKER_REL = "tools/check_institutional_correctness.py"
-DB_REL = "db.py"
-
-
-#: Paths where index≠WT is catastrophic (enforcement / collect seam / locks).
+#: Paths where index≠WT is catastrophic: the one writer and the guards.
 ENFORCEMENT_PATHS: tuple[str, ...] = (
-    CHECKER_REL,
-    DB_REL,
-    "tools/find_prove_locks.py",
+    "db.py",
+    "tools/hook_chain.py",
     "tools/pretooluse_guard.py",
     "tools/operator_law_guard.py",
-    "tools/stop_guard.py",
     "tools/operating_process_lock.py",
     "tools/process_lock_guard.py",
 )
 
-#: Wipe-protected paths (LOCK-2 reach): enforcement surfaces plus the calibration
-#: producers below — role-free since the 2026-08-24 teardown.
-PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS + (
-)
+#: Wipe-protected paths (LOCK-2 reach).
+PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS
 
 #: LOCK-2 (RC-231): the tree-destructive git CLASS, not just `reset --hard`. Three wipes on
 #: 2026-08-03 (RC-210 x2, RC-229) used soft forms the literal-match ban never saw. A command
@@ -219,13 +211,6 @@ def _git(args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedPro
         errors="replace",
         timeout=30,
     )
-
-
-def _rel(p: str | Path) -> str:
-    try:
-        return Path(p).resolve().relative_to(REPO).as_posix()
-    except (ValueError, OSError):
-        return Path(p).as_posix().replace("\\", "/")
 
 
 def enforcement_paths(repo: Path | None = None) -> list[str]:

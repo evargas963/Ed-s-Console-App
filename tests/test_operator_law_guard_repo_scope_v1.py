@@ -481,7 +481,3 @@ def test_rc360_worktree_only_grant_is_inert(tmp_path):
     out = G.bash_violations("git commit --no-verify -m x", [], payload_cwd=str(tmp_path))
     assert any("disables a mechanical lock" in v for v in out), out
 
-
-# RC-379 (sibling-retry deadlock at Stop) controls were REMOVED 2026-09-06 with this guard's
-# Stop role: there is no Stop path here to deadlock. tools/stop_guard.py is the one Stop
-# owner and tests/test_stop_guard_v1.py pins its retry-flag behaviour.
