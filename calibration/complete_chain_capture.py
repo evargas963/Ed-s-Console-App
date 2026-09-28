@@ -253,6 +253,20 @@ def capture_round(client, db_path: Path | str) -> dict[str, Any]:
     return {"written": written, "failed": failed}
 
 
+def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
+    """When the ticker's newest capture (of the bases last_capture_per_day reads) was taken."""
+    conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
+    try:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                            "AND name='complete_chain_captures'").fetchone():
+            return None
+        return conn.execute("SELECT MAX(ts_utc) FROM complete_chain_captures WHERE ticker=? "
+                            "AND completeness_basis IN (?, ?)",
+                            (ticker_storage_key(ticker), *READ_BASES)).fetchone()[0]
+    finally:
+        conn.close()
+
+
 def last_capture_per_day(db_path: Path | str, ticker: str, days: int, *,
                          before_et_date: str | None = None) -> list[dict[str, Any]]:
     """The last capture of each of the newest `days` market days (newest first) -- the close --

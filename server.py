@@ -769,6 +769,7 @@ from micro_structure import Candle
 from calibration.complete_chain_capture import (
     COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
     last_capture_per_day,
+    newest_capture_ts,
 )
 
 
@@ -2292,6 +2293,14 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             # only a viewed ticker is repriced between chain fetches, so only its chain is kept
             "_chain": chain if viewed else None, "_chain_fetched_ts": fetched_ts,
         })
+        # the values read from the stored chain captures (forces, the prior day's per-strike rows)
+        # change only with a new capture or a new chain day: computed then, once, for all readers
+        if new_chain:
+            captures_key = (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(float(fetched_ts)))
+            if payload.get("_captures_key") != captures_key:
+                payload.update(_forces=_forces_from_captures(tk),
+                               _prior_strikes=_prior_strikes(tk, fetched_ts),
+                               _captures_key=captures_key)
         if viewed and spot is not None and snap.books:
             surface = project_gamma_surface(priced, snap.books)
             surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts,
@@ -2851,20 +2860,13 @@ def _reprice_cached_terrain(payload: dict, ticker: str) -> dict:
 # the previous market day's last chain capture (the day-over-day migration ghosts), each in
 # three expiry scopes (all / near<=7DTE / far). Read-only, no Schwab call. Bar heights use the
 # same exposure math as terrain.
-@app.get("/api/terrain/strikes")
-def get_terrain_strikes(ticker: str = Query(...)):
+def _prior_strikes(tk: str, chain_ts: float) -> "tuple[dict | None, str | None]":
+    """The previous market day's close before the day of the chain the ticker's rows came from,
+    as per-strike rows ({all, near, far}), with its source. On a closed market today's rows ARE
+    the newest capture; the wall clock's date picked that same capture and compared it with
+    itself (every change 0, `compared` true -- 2026-09-27). Run by _publish_levels when the
+    ticker's newest capture or its chain's day changes."""
     from math_exposure_core import compute_exposures_by_strike as _cebs
-
-    tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
-    # Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
-    # viewing"): _note_gamma_surface_demand was only ever called from
-    # get_options_gamma_surface (the Heatmap grid's own route) -- GEX-by-Strike, the
-    # Positioning Migration panel, and the Chart view all read THIS route instead and never
-    # registered that anyone was watching. A ticker viewed only through one of those three
-    # screens could never reach _terrain_loop's `_previewed` set, so it never got a live
-    # refresh attempt regardless of enrollment. Every screen that shows this ticker's live
-    # terrain-derived data must register the same demand signal, not just one of them.
-    _note_gamma_surface_demand(tk)
 
     def _per_strike(contracts: list, spot: float) -> dict:
         def _scope(cts: list) -> list:
@@ -2886,6 +2888,26 @@ def get_terrain_strikes(ticker: str = Query(...)):
         near = [c for c in contracts if (d := _dte_of(c)) is not None and d <= 7]
         far = [c for c in contracts if (d := _dte_of(c)) is not None and d > 7]
         return {"all": _scope(contracts), "near": _scope(near), "far": _scope(far)}
+
+    caps = last_capture_per_day(get_db().db_path, tk, 1,
+                                before_et_date=et_date_str_from_ts_utc(float(chain_ts)))
+    if caps and caps[0]["spot"] is not None:
+        return _per_strike(caps[0]["contracts"], float(caps[0]["spot"])), f"chain_capture:{caps[0]['et_date']}"
+    return None, None
+
+
+@app.get("/api/terrain/strikes")
+def get_terrain_strikes(ticker: str = Query(...)):
+    tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
+    # Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
+    # viewing"): _note_gamma_surface_demand was only ever called from
+    # get_options_gamma_surface (the Heatmap grid's own route) -- GEX-by-Strike, the
+    # Positioning Migration panel, and the Chart view all read THIS route instead and never
+    # registered that anyone was watching. A ticker viewed only through one of those three
+    # screens could never reach _terrain_loop's `_previewed` set, so it never got a live
+    # refresh attempt regardless of enrollment. Every screen that shows this ticker's live
+    # terrain-derived data must register the same demand signal, not just one of them.
+    _note_gamma_surface_demand(tk)
 
     today_src, prior_src = None, None
     today, prior = None, None
@@ -2922,16 +2944,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
             today_src = "terrain_live_cache"
     except Exception as e:
         log.debug("terrain strikes live read failed %s: %s", tk, e)
-    # the previous market day's close before the day of the chain today's rows came from. On a
-    # closed market today's rows ARE the newest capture; the wall clock's date picked that same
-    # capture and compared it with itself (every change 0, `compared` true -- 2026-09-27).
-    _chain_ts = _snap.get("_chain_fetched_ts")
-    caps = (last_capture_per_day(get_db().db_path, tk, 1,
-                                 before_et_date=et_date_str_from_ts_utc(float(_chain_ts)))
-            if _chain_ts else [])
-    if caps and caps[0]["spot"] is not None:
-        prior = _per_strike(caps[0]["contracts"], float(caps[0]["spot"]))
-        prior_src = f"chain_capture:{caps[0]['et_date']}"
+    prior, prior_src = _snap.get("_prior_strikes") or (None, None)
 
     # STRIP kill (one-faucet-closeout-v1): per-side GEX/OV sums are computed HERE, against
     # the exact spot this payload serves — the chart strip used to re-derive them in the
@@ -3187,17 +3200,25 @@ def get_order_flow_book_heatmap(ticker: str = Query(...),
 
 @app.get("/api/forces")
 def get_forces(ticker: str = Query(...)):
+    """The ticker's forces, as the levels producer computed them from its chain captures."""
+    tk = ticker_storage_key(_required_ticker(ticker))
+    forces = (terrain_cache_get(tk) or {}).get("_forces")
+    return JSONResponse(forces if forces is not None else {
+        "ticker": tk, "available": False, "reason": "no levels published for this ticker yet"})
+
+
+def _forces_from_captures(tk: str) -> dict:
     """Forces rows from banked chains (RC-192/RC-199): per-strike OI delta FIRST, then
     bucketed by the NEWER capture's spot — bucketing each day by its own spot lets the moving
     boundary masquerade as OI change (measured inversion, OPEN_ITEMS DIR-01 method note).
     DEX is the newer capture's net_dex_dollars side sums. CHARM side sums (RC-199): operator
     2026-08-02 revoked the DIR-01(i) vote-lock — serve dealer-signed net_charm below/above
     spot from the newer banked chain via compute_charm_by_strike (same book as terrain walls).
+    Run by _publish_levels when the ticker's newest capture changes.
     """
     from math_exposure_core import compute_exposures_by_strike as _cebs
     from math_levels import compute_charm_by_strike as _ccs
 
-    tk = ticker_storage_key(_required_ticker(ticker))
     payload: dict = {"ticker": tk, "available": False,
                      "reason": "fewer than 2 market days of chain captures for this ticker"}
     try:
@@ -3259,7 +3280,7 @@ def get_forces(ticker: str = Query(...)):
             }
     except Exception as e:
         payload = {"ticker": tk, "available": False, "reason": f"forces read failed: {e}"}
-    return JSONResponse(payload)
+    return payload
 
 
 # RC-UI-1: strike × expiry GEX surface for the rebuilt Options→Gamma heatmap. A PROJECTION over the
