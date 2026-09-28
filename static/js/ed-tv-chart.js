@@ -156,7 +156,10 @@
       kineticScroll: { mouse: false, touch: true }
     });
     var candles = chart.addSeries(LWC.CandlestickSeries, { upColor: P.up, downColor: P.down,
-      wickUpColor: P.up, wickDownColor: P.down, borderVisible: false, priceLineVisible: true });
+      wickUpColor: P.up, wickDownColor: P.down, borderVisible: false, priceLineVisible: false, lastValueVisible: false });
+    // the live Schwab LAST_PRICE (the header's value), drawn as its own line; the candles are
+    // Schwab's completed bars only
+    var liveLine = null;
     // line mode: the closes as one line; the candles stay (transparent) so price lines keep their series
     var closeLine = chart.addSeries(LWC.LineSeries, { color: P.accent, lineWidth: 2, visible: false,
       lastValueVisible: false, priceLineVisible: false });
@@ -419,6 +422,7 @@
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
         api.setVolume(S.bars);
         if (changed) {
+          api.setLivePrice(null);
           S.pinned = null; paintPin();
           var dk = 'ed.tvc.draw.' + symbol;
           if (dk !== S.drawKey) { S.drawKey = dk; loadDrawings(); }
@@ -501,9 +505,18 @@
         var el = opts.fullscreenEl || host;
         if (document.fullscreenElement) document.exitFullscreen(); else if (el.requestFullscreen) el.requestFullscreen();
       },
+      // The live price row's LAST_PRICE and its served age since the Schwab trade; null when the
+      // price is not live (the line is removed, never left at an old price).
+      setLivePrice: function (price, ageSec) {
+        if (price == null) { if (liveLine) { candles.removePriceLine(liveLine); liveLine = null; } return; }
+        var opts = { price: price, color: P.accent, lineWidth: 1, lineStyle: 2, axisLabelVisible: true,
+          title: 'LAST' + (ageSec != null ? ' · ' + Math.round(ageSec) + 's' : '') };
+        if (liveLine) liveLine.applyOptions(opts); else liveLine = candles.createPriceLine(opts);
+      },
       state: function () {
         var r = chart.timeScale().getVisibleLogicalRange();
         return { bars: S.bars.length, tf: S.tf, symbol: S.symbol, from: r && r.from, to: r && r.to,
+          livePrice: liveLine ? liveLine.options().price : null, liveTitle: liveLine ? liveLine.options().title : null,
           autoScale: chart.priceScale('right').options().autoScale, levelsShown: S.priceLines.length,
           pinned: S.pinned, tool: S.tool, drawings: draw.lines.length + S.hlines.length };
       }
