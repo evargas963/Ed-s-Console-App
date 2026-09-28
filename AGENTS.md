@@ -7,9 +7,10 @@ Read the parts a change touches before writing it.
 
 1. **Simple.** Fewest files, functions and hops that do the job. No prose in code: history,
    incidents and dates go in the commit message. No patches: a defect is fixed where it is
-   produced, by changing or deleting that code, never by a guard,
-   wrapper, flag, special case or check around it. If that takes a restructure, the restructure
-   is the fix.
+   produced, by changing or deleting that code, never by a guard, wrapper, flag, special case or
+   check around it. If that takes a restructure, the restructure is the fix. Nothing new (process,
+   cache, helper, file, check) without a job its existing owner cannot do, shown in the PR; an
+   existing piece that cannot show one is removed.
 2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value
    Schwab's own field definition excludes (a negative volume or size). Everything else is taken
    as sent; a reported 0 is 0. No other bounds, no substitution.
@@ -38,6 +39,9 @@ Read the parts a change touches before writing it.
 - Trace each value the change touches: its source, its one producer, its validity rule and time,
   its live and stored consumers, and what each shows when the value is missing. A producer
   exists: call it. None exists: write it once, on the server.
+- For each responsibility the change touches, name its one lifecycle owner (what starts,
+  refreshes, retries and expires it) and what fails when that owner fails, in the affected
+  section of `docs/DATA_FLOW.md` and in the code, never in a register.
 - Page code: no arithmetic, sum, min/max, sort by value or date math on served data.
 - A new check is a test of behavior, for a failure that happened; it fails on the old code; it
   starts with no exceptions. No new tool, register or gate.
@@ -52,16 +56,17 @@ Read the parts a change touches before writing it.
 
 ## Before saying done
 
-- While working: the tests of the files touched. Once per PR, before pushing: `npm run test:all`
-  (Playwright, then pytest) and `python -m ruff check . --select F401,F821,E9`. Market hours:
-  push; CI runs them.
+- While working: the tests of the files touched. Before the PR is offered: `npm run test:all`
+  (Playwright, then pytest) and `python -m ruff check . --select F401,F821,E9` on its final
+  commit; after any later change to it (a fix, a merge, a conflict resolution) the affected tests
+  run again, and CI tests that commit. Market hours: push; CI runs them.
 - Never kill a commit hook mid-run; a long one runs in the background.
 - Every factual claim cites same-turn output, or is marked `[UNVERIFIED]`.
 - Proof is reproducible: a committed test or a command anyone can re-run. A scratch script is
   not proof.
 - No hand-maintained counts, floors or lists that a check compares against; the check computes
   them.
-- Work another agent wrote is read in full by whoever merges it, as their own work.
+- Work another agent wrote is read in full by the agent offering the PR, as its own work.
 - A runtime change is on disk only until the process restarts after it; say which.
 - Merged is not deployed; deployed is production at the merge commit, both processes restarted,
   the real screen checked.
@@ -83,6 +88,8 @@ and every document that states the old one.
 - Name the tier of each proof: unit, integration, browser, deployed app, live market. A pass at
   one tier does not stand in for another.
 - A changed test expectation cites the required behavior that changed.
+- A check proves only the paths it covers. A report names them; "check passed" never stands for
+  "compliant" beyond them, and the rest stays NOT_PROVEN.
 
 ## Found broken → fix it
 
@@ -91,8 +98,12 @@ Same session, at its source (rule 1), or name the exact blocker. "Pre-existing",
 
 ## Authority
 
-- Merge on green CI. Stop for: the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE; a task
-  marked AUDIT ONLY or DO NOT MERGE; a destructive data action; a product decision code cannot settle.
+- Checkpoints: about every 15 minutes of work the agent reports to the operator what changed,
+  what was deleted, each proof and its tier, and what is NOT_PROVEN, then continues.
+- A PR merges when its required proof on its final commit is complete and CI is green; green CI
+  alone is not proof. A change to AGENTS.md, CI, a hook or a check is merged only by the operator.
+- Stop for: the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE; a task marked AUDIT ONLY
+  or DO NOT MERGE; a destructive data action; a product decision code cannot settle.
 - Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.
   Work in a worktree.
 - Never: `git reset`, `git checkout --`, `git stash`, force push, `--no-verify`, `git add -A` / `.`,
