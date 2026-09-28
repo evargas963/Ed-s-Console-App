@@ -231,15 +231,26 @@ def test_an_unviewed_ticker_keeps_no_chain_and_gets_no_heatmap(monkeypatch):
     assert server._publish_levels(TK) is None                            # nothing to reprice
 
 
-def test_fields_the_terrain_loop_adds_survive_a_tick_reprice(monkeypatch):
+def test_a_stored_capture_and_a_live_chain_publish_the_same_fields(monkeypatch):
+    """2026-09-28 audit: ATR and the delta-OI walls were set only after a live download
+    (_terrain_refresh_one), so every publication from a stored capture (startup, a closed market)
+    served them absent for every ticker, and the chain basis carried two labels for the same full
+    chain ("full" live, the capture's own label stored). The one producer sets them all."""
+    from terrain_atr import AtrPair
     _stream({}, monkeypatch)
-    _put_chain()
-    server._publish_levels(TK)
-    with server._terrain_cache_lock:
-        server._terrain_cache[TK]["atr_daily"] = 4.2
-        server._terrain_cache[TK]["delta_oi_walls"] = {"x": 1}
-    server._publish_levels(TK)
-    assert _cached()["atr_daily"] == 4.2 and _cached()["delta_oi_walls"] == {"x": 1}
+    monkeypatch.setattr(server, "_atr_pair", lambda tk: AtrPair(4.2, 0.7))
+    now = time.time()
+    server._publish_levels(TK, _CONTRACTS, now)
+    live = _cached()
+    capture = {"contracts": _CONTRACTS, "ts_utc": now, "spot": _SPOT, "et_date": "2026-09-02",
+               "basis": server.CAPTURE_BASIS}
+    server._publish_levels(TK, captures=[capture])
+    stored = _cached()
+    public = {k for k in live if not k.startswith("_")}
+    assert public == {k for k in stored if not k.startswith("_")}
+    for c in (live, stored):
+        assert (c["atr_daily"], c["atr_15m"]) == (4.2, 0.7)
+        assert c["chain_basis"] == server.CAPTURE_BASIS and "delta_oi_walls" in c
 
 
 def test_vanna_and_charm_by_strike_read_the_published_snapshot(monkeypatch):
@@ -428,7 +439,9 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
     persist_complete_chain_capture(db, ticker=TK, expiry=next(iter(by_expiry)),
                                    contracts=_CONTRACTS[:2], spot=1.0,
                                    completeness_basis="strike_range=ALL", ts_utc=taken + 60)
-    monkeypatch.setattr(server, "get_db", lambda: type("Db", (), {"db_path": db})())
+    from db import EdDB
+    edb = EdDB(db)
+    monkeypatch.setattr(server, "get_db", lambda: edb)
     monkeypatch.setattr(server, "_logger_tickers", [TK])
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
     with server._terrain_cache_lock:

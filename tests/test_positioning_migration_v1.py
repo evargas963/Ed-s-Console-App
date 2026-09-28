@@ -70,7 +70,9 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
             persist_complete_chain_capture(db, ticker="PCG", expiry=exp, contracts=cs, spot=day["spot"],
                                            completeness_basis=CAPTURE_BASIS, ts_utc=day["ts_utc"])
     pin_clock(2026, 9, 27, 12, 0)                                        # Sunday
-    monkeypatch.setattr(server, "get_db", lambda: type("D", (), {"db_path": str(db)})())
+    from db import EdDB
+    edb = EdDB(db)
+    monkeypatch.setattr(server, "get_db", lambda: edb)
     monkeypatch.setattr(server, "_terrain_cache", {})
     # startup on a closed market: the levels producer prices the newest capture (Friday) and,
     # with it, the prior day's rows the route serves

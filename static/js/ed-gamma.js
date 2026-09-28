@@ -754,10 +754,6 @@
       out += '<div class="heat-banner ' + cls + '" title="' + escapeHtml(detail) + '"><span class="hb-main">' + text +
         '</span><span class="hb-more" aria-label="details">details</span></div>';
     }
-    if (live && surface.chain_basis && surface.chain_basis !== 'full') {
-      out += '<div class="heat-banner degraded">NARROWED — live chain basis "' + escapeHtml(surface.chain_basis) +
-        '" (reduced expiry window under load), not the usual full basis</div>';
-    }
     return out;
   }
   function applyStatus(host, surface) {   // refresh status WITHOUT rebuilding the table
@@ -824,8 +820,7 @@
     } else {
       liveWord = 'OPT CELLS·' + cov.live_pct.toFixed(0) + '%';
     }
-    var srcLabel = surface.source === 'terrain_live_cache' ? (liveWord + (surface.complete === false ? '·window' : ''))
-      : (surface.source || '');
+    var srcLabel = surface.source === 'terrain_live_cache' ? liveWord : (surface.source || '');
     var age = surface.age_sec != null ? ' ' + Math.round(surface.age_sec) + 's' : '';
     var basis = (surface.coverage && surface.coverage.chain_basis) ? ' ' + surface.coverage.chain_basis : '';
     var el = document.getElementById('heatScope');

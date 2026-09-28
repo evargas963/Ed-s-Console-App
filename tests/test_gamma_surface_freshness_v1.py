@@ -1,6 +1,6 @@
 """RC-UI-1 — proof that /api/options/gamma-surface PREFERS the live terrain surface, borrows its
 freshness from the ONE authority (terrain_staleness via terrain_cache_get, RC-424) rather than a
-second age policy, discloses coverage honestly (live near-money window, not a complete chain), and
+second age policy, discloses its coverage (the full chain the levels were priced from), and
 never presents the banked morning snapshot as intraday."""
 import json
 import time
@@ -49,10 +49,9 @@ def test_live_terrain_surface_is_preferred_and_discloses_coverage(monkeypatch):
         # the live price, and the price the cells were computed at, each named
         assert d["spot"] == 584.0 and d["priced_at_spot"] == 583.41
         assert d["provenance"]["spot_basis"] == "live_resolve_spot"
-        # coverage is honest: a live near-money window, NOT a complete strike_range=ALL chain
-        assert d["complete"] is False
+        # coverage: the levels' chain is every expiry, strike_range=ALL (fetch_full_chain)
         assert d["coverage"]["strike_count"] == 3 and d["coverage"]["strike_min"] == 580.0
-        assert "not the full strike_range=all" in d["coverage"]["note"].lower()
+        assert "strike_range=all" in d["coverage"]["note"].lower()
     finally:
         _clear(tk)
 
