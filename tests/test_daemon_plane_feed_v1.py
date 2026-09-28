@@ -105,28 +105,39 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
     assert ofs._streaming_last_update_ts is None
 
 
-def test_a_page_connecting_for_a_ticker_subscribes_its_books_and_again_after_a_restart(monkeypatch):
+def test_the_selected_ticker_gets_its_books_a_change_replaces_them_and_a_restart_restores_them(monkeypatch):
     """The Trade Desk never asked for books and a console restart forgot the one-shot request,
-    so MU read no_book all session (2026-09-28). The page's /api/changes connection is the
-    request: it survives restarts because the page reconnects."""
+    so MU read no_book all session (2026-09-28). The page opens /api/changes for the selected
+    ticker (and again on a change or after a restart); that makes it the active ticker. Checked
+    through to the daemon's Schwab requests (capture.plan)."""
     import asyncio
 
     import push_changes
     import server
+    from app.market_data.schwab.streaming.capture import normalize_wanted, plan
 
-    def books_after_connect():
-        asyncio.run(server.get_changes(ticker="mu"))     # the page opens its connection
+    def select(tk):
+        asyncio.run(server.get_changes(ticker=tk))       # the page opens its connection
         end = time.monotonic() + 5
-        while time.monotonic() < end and ofs.current_wanted()["NYSE_BOOK"] != ["MU"]:
+        while time.monotonic() < end and ofs.current_wanted()["NYSE_BOOK"] != [tk.upper()]:
             time.sleep(0.02)
-        w = ofs.current_wanted()
-        return w["NYSE_BOOK"], w["NASDAQ_BOOK"]
+        return normalize_wanted(ofs.current_wanted())
+
+    def book_requests(wanted, held):
+        return [r for r in plan(wanted, held, {}) if r[0] in ("NYSE_BOOK", "NASDAQ_BOOK")]
 
     monkeypatch.setattr(push_changes, "_clients", {})
     monkeypatch.setattr(ofs, "_active_ticker", None)
-    assert books_after_connect() == (["MU"], ["MU"])
+    w = select("mu")                                      # select MU
+    assert book_requests(w, {}) == [("NYSE_BOOK", "SUBS", ["MU"]), ("NASDAQ_BOOK", "SUBS", ["MU"])]
+    held = {"NYSE_BOOK": frozenset({"MU"}), "NASDAQ_BOOK": frozenset({"MU"})}
+    w = select("spy")                                     # change to SPY: MU's books replaced
+    assert book_requests(w, held) == [("NYSE_BOOK", "UNSUBS", ["MU"]), ("NYSE_BOOK", "SUBS", ["SPY"]),
+                                      ("NASDAQ_BOOK", "UNSUBS", ["MU"]), ("NASDAQ_BOOK", "SUBS", ["SPY"])]
     monkeypatch.setattr(ofs, "_active_ticker", None)     # a console restart forgets it
-    assert books_after_connect() == (["MU"], ["MU"])     # the page reconnects: books again
+    assert normalize_wanted(ofs.current_wanted())["NYSE_BOOK"] == frozenset()
+    w = select("spy")                                     # the page reconnects: SPY's books again
+    assert w["NYSE_BOOK"] == w["NASDAQ_BOOK"] == frozenset({"SPY"})
 
 
 def test_set_active_ticker_puts_its_book_and_quote_in_the_wanted_list(tmp_path, monkeypatch):
