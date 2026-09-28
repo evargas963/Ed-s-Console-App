@@ -15,22 +15,22 @@ Columns: file:line | rule | value | what the code does | who sees it.
 
 | ID | file:line | rule | value | what it does | seen by | status |
 |---|---|---|---|---|---|---|
-| S-01 | server.py:570 | 3 | ticker key | second normalizer after ticker_storage_key: `or (ticker or "").upper().strip()` | every route via resolve_spot | OPEN |
+| S-01 | server.py:570 | 3 | ticker key | second normalizer after ticker_storage_key: `or (ticker or "").upper().strip()` | every route via resolve_spot | FIXED 7b64cae6 |
 | S-02 | server.py:1073 | 2 | CHART_EQUITY bar_start_ms | read raw, not schwab_number | stored price_bars_1m | OPEN |
 | S-03 | server.py:1209-1211 | 5 | logger roster | filter failure keeps the unfiltered roster | terrain board | OPEN |
-| S-04 | server.py:1264, 4250, 4293, 4469, 4509, 4518, 5176 | 3 | ticker key | `.upper().strip()` instead of ticker_storage_key; "SPX" misses "$SPX" (SSE scope, watchlist, last_seen) | L1 SSE push, watchlist, order flow | OPEN |
+| S-04 | server.py:1264, 4250, 4293, 4469, 4509, 4518, 5176 | 3 | ticker key | `.upper().strip()` instead of ticker_storage_key; "SPX" misses "$SPX" (SSE scope, watchlist, last_seen) | L1 SSE push, watchlist, order flow | FIXED 7b64cae6 (watchlist route: NOT A VIOLATION, price_row keys through ticker_storage_key) |
 | S-05 | server.py:1634 | 3 | level_name | read-time relabel of the stored name | /api/desk/events | OPEN |
-| S-06 | server.py:1890 | 5 | flip-drift ts | `computed_ts_utc or time.time()` | stored flip_drift_log | OPEN |
-| S-07 | server.py:1942 | 3 | token age | hard-coded token path, not cfg.token_path | every terrain_staleness payload | OPEN |
+| S-06 | server.py:1890 | 5 | flip-drift ts | `computed_ts_utc or time.time()` | stored flip_drift_log | FIXED 317093a8 |
+| S-07 | server.py:1942 | 3 | token age | hard-coded token path, not cfg.token_path | every terrain_staleness payload | FIXED 7b64cae6 |
 | S-08 | server.py:1991-1997 | 5 | levels_stale | market closed + any snapshot of any age -> not stale | /api/terrain, surface, strikes | OPEN |
 | S-09 | server.py:2016 | 5 | stale threshold | missing cycle time replaced by TERRAIN_REFRESH_SEC | levels_stale | OPEN |
 | S-10 | server.py:2578 | 5 | stream_coverage live_pct | no relevant cells -> 0.0 | gamma-surface | OPEN |
 | S-11 | server.py:2636-2659 | 3/5 | chain_basis, DTE clock, crosses | stored capture repriced with today's clock and relabelled; its past spot seeds level crosses | levels, heatmap, level_crosses | OPEN |
-| S-12 | server.py:2666, 4980 | 2 | spot | truthiness treats 0 as missing | heatmap, /api/levels | OPEN |
+| S-12 | server.py:2666, 4980 | 2 | spot | truthiness treats 0 as missing | heatmap, /api/levels | FIXED 317093a8 at the heatmap; /api/levels divides by spot (a guard, not a substitute) |
 | S-13 | server.py:2737 | 5 | option->ticker | first match wins | reprice routing | OPEN |
 | S-14 | server.py:2824 | 5 | chain as-of | local time after the fetch | computed_ts_utc | OPEN |
-| S-15 | server.py:2830-2831 | 2 | atr_daily/atr_15m | 0 read as missing | /api/terrain | OPEN |
-| S-16 | server.py:2841 | 2 | iv_pct_atm | IV 0 rejected | stored iv_daily | OPEN |
+| S-15 | server.py:2830-2831 | 2 | atr_daily/atr_15m | 0 read as missing | /api/terrain | FIXED 317093a8 |
+| S-16 | server.py:2841 | 2 | iv_pct_atm | IV 0 rejected | stored iv_daily | FIXED 317093a8 (writer deleted: nothing reads iv_daily) |
 | S-17 | server.py:2862-2867 vs 3651-3653 | 3 | day-over-day OI change | two producers (banked oi_daily; chain captures) | terrain delta_oi_walls vs /api/forces | OPEN |
 | S-18 | server.py:2931 | 8 | status spot | SPY only | console log | OPEN |
 | S-19 | server.py:2967-2968, 3019-3020 | 5 | board, viewed set | `except: tickers = []` / `_viewed_syms = []` hide failures | terrain loop | OPEN |
@@ -39,20 +39,20 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | S-22 | server.py:3292-3293 | 3 | near/far split | route hard-codes `d <= 7`; terrain_engine has its own split | /api/terrain/strikes | OPEN |
 | S-23 | server.py:3357-3359 | 5 | side sums | rows with missing strike/gamma/volume dropped uncounted | today_side_sums | OPEN |
 | S-24 | server.py:3409, 3584, 5083 | 6 | chart bars, tape, liquidity bars | live screens read the DB | chart, tape, liquidity | OPEN (P2-3) |
-| S-25 | server.py:3511/3515, 3530/3533 | 3 | spot | resolve_spot twice in one response | vanna/charm-by-strike | OPEN |
-| S-26 | server.py:3911 | 5 | gamma_available | missing flag defaults to available | gamma-surface | OPEN |
+| S-25 | server.py:3511/3515, 3530/3533 | 3 | spot | resolve_spot twice in one response | vanna/charm-by-strike | FIXED 7b64cae6 |
+| S-26 | server.py:3911 | 5 | gamma_available | missing flag defaults to available | gamma-surface | FIXED 7b64cae6 |
 | S-27 | server.py:3955-3979 | 3 | complete/coverage | labels a full chain "near-money, complete False" | heatmap coverage label | OPEN (fixed in #346, unmerged) |
-| S-28 | server.py:4154, 4180, 4212 | 5 | desk window, cross direction/counts | window defaults to one day; missing direction reads "below"/down | /api/desk/events | OPEN |
-| S-29 | server.py:4229-4233 | 3/6 | level crosses | raw DB read beside _merged_recent_crosses; missing direction -> down | /api/alerts | OPEN |
+| S-28 | server.py:4154, 4180, 4212 | 5 | desk window, cross direction/counts | window defaults to one day; missing direction reads "below"/down | /api/desk/events | FIXED 317093a8 |
+| S-29 | server.py:4229-4233 | 3/6 | level crosses | raw DB read beside _merged_recent_crosses; missing direction -> down | /api/alerts | FIXED 317093a8 (DB read on the live path: S-24/P2-3) |
 | S-30 | server.py:4318, 4356-4357 | 5 | flow, streaming_plane | exception -> None / {} with no reason | order flow, options microstructure | OPEN |
-| S-31 | server.py:4345 | 5 | put_call | first-of | options microstructure | OPEN |
-| S-32 | server.py:4582 | 5 | expiry | first expiry when none asked | /api/chain | OPEN |
-| S-33 | server.py:4614, 4619 | 2 | strikePrice | read raw | /api/chain | OPEN |
-| S-34 | server.py:4952-4957 | 5 | canonical levels stale | hard-coded `"stale": False` | /api/levels, alerts | OPEN |
+| S-31 | server.py:4345 | 5 | put_call | first-of | options microstructure | NOT A VIOLATION: one contract carries one CONTRACT_TYPE |
+| S-32 | server.py:4582 | 5 | expiry | first expiry when none asked | /api/chain | NOT A VIOLATION: the served default view is the front expiry, named in the response |
+| S-33 | server.py:4614, 4619 | 2 | strikePrice | read raw | /api/chain | FIXED 317093a8 |
+| S-34 | server.py:4952-4957 | 5 | canonical levels stale | hard-coded `"stale": False` | /api/levels, alerts | FIXED 7b64cae6 |
 | S-35 | server.py:4964-4965 | 3/5 | em_up/em_dn | live spot + chain-time move under the terrain's as-of | /api/levels | OPEN |
 | S-36 | server.py:5040 | 5 | prev-day levels | first-of across keys | liquidity raw_levels_used | OPEN |
 | S-37 | server.py:5111-5135 | 3/5 | zone anchor, tradeable_score | mid substituted; score with no spot; distance penalty computed in the route | liquidity zones | OPEN |
-| S-38 | server.py:4633, 4650 | 5 | logger_running | never set True; /api/health always False | /api/health | OPEN |
+| S-38 | server.py:4633, 4650 | 5 | logger_running | never set True; /api/health always False | /api/health | FIXED 7b64cae6 |
 
 ## D — database and infrastructure
 

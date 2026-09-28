@@ -163,6 +163,7 @@ from schwab_client import (
     SchwabAuthError,
 )
 from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
+from numeric_contract import schwab_number
 from market_context import (
     market_context_panel_symbols_excluding_core,
 )
@@ -566,7 +567,7 @@ def resolve_spot(ticker: str, *, chain_json: dict | None = None,
     `chain_json`, `allow_stored` and `quote_node` stay on the signature for existing
     callers and are ignored."""
     _ = chain_json, allow_stored, quote_node
-    tk = ticker_storage_key(ticker) or (ticker or "").upper().strip()
+    tk = ticker_storage_key(ticker)
     if not tk:
         return None, "none", None
     spot = _lpr.live_spot(tk)             # the one rule, shared with the capture daemon
@@ -1159,7 +1160,6 @@ def _hydrate_logger_tickers_from_db() -> None:
 # (server.py:_app_lifespan). The cheap JSON-file fallback (no DB) is retained for the degraded
 # no-signals path so its behavior is unchanged.
 _logger_tickers:  list[str] = list(CORE_TICKERS)
-_logger_running:  bool      = False
 _logger_lock:     threading.Lock   = threading.Lock()
 
 
@@ -1198,7 +1198,7 @@ def _touch_tracked_ticker_view(ticker: str) -> None:
     update the old ``_register_tracked_ticker`` early-return branch did); for an un-enrolled
     ticker it is a no-op and never writes. Safe to call from the offloaded SSE/async paths.
     """
-    t = (ticker or "").upper().strip()
+    t = ticker_storage_key(ticker)
     if not t or len(t) > 10:
         return
     with _logger_lock:
@@ -1505,6 +1505,10 @@ def favicon():
     return Response(status_code=204)
 
 
+#: the stored cross direction in words; a direction not stored reads "through", never a side
+_CROSS_WORD = {"up": "above", "down": "below"}
+
+
 def _merged_recent_crosses(edb, ticker: str, n: int) -> "tuple[list[dict], int]":
     """The newest `n` level crosses with coincident rows merged into one event, and how many
     stored rows they came from. The one reader of level crosses for every route."""
@@ -1790,7 +1794,9 @@ def _log_flip_drift(tk: str, payload: dict) -> None:
         flip = payload.get("gamma_flip")
         if flip is None:
             return
-        _ts = round(float(payload.get("computed_ts_utc") or time.time()), 1)
+        if payload.get("computed_ts_utc") is None:
+            return                      # no compute time, no row: never stamped "now"
+        _ts = round(float(payload["computed_ts_utc"]), 1)
         # RC-58: INTRADAY drift is the question, so only real trading sessions may be logged.
         # The loop runs around the clock, and the first week of this log was 784 of 784 rows from
         # a single SUNDAY window — spot frozen, so it measured a median 0.023 percent movement and
@@ -1842,7 +1848,7 @@ def schwab_token_countdown(creation_ts: float | None) -> dict:
 def _schwab_token_creation_ts() -> float | None:
     """creation_timestamp from schwab_token.json; None (never a fake age) when unreadable."""
     try:
-        raw = json.loads((Path(APP_DIR) / "schwab_token.json").read_text(encoding="utf-8"))
+        raw = json.loads(Path(cfg.token_path).read_text(encoding="utf-8"))
         return float(raw["creation_timestamp"])
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -2566,7 +2572,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             # only a viewed ticker is repriced between chain fetches, so only its chain is kept
             "_chain": chain if viewed else None, "_chain_fetched_ts": fetched_ts,
         })
-        if viewed and spot and snap.books:
+        if viewed and spot is not None and snap.books:
             surface = project_gamma_surface(priced, snap.books)
             surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts,
                            stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
@@ -2726,27 +2732,11 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         _atr = _atr_pair(tk)
         with _terrain_cache_lock:
             payload = _terrain_cache[tk]
-            payload.update(atr_daily=round(_atr.daily, 3) if _atr.daily else None,
-                           atr_15m=round(_atr.m15, 3) if _atr.m15 else None)
+            payload.update(atr_daily=round(_atr.daily, 3) if _atr.daily is not None else None,
+                           atr_15m=round(_atr.m15, 3) if _atr.m15 is not None else None)
         _log_flip_drift(tk, payload)
         _terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
         _note_terrain_success(tk)                   # RC-148: and the failure streak with it
-        # RC-354: bank the day's ATM IV from the sigma band this refresh already computed
-        # (one faucet, zero added vendor calls). UPSERT — last write of the session wins,
-        # converging to the CLOSING IV that IV Rank/Percentile are defined against.
-        try:
-            _em_band = payload.get("implied_1d_move") or {}
-            _iv = _em_band.get("iv_pct_atm")
-            if _iv is not None and float(_iv) > 0:
-                from time_et import now_et as _iv_now_et
-                get_db().bank_daily_atm_iv(
-                    tk, _iv_now_et().strftime("%Y-%m-%d"), float(_iv),
-                    _em_band.get("dte_used"), _em_band.get("method"), time.time())
-        except Exception as _iv_e:
-            # institutional-swallow-ok: IV banking is an accrual side-effect — a write
-            # failure is logged but must never take down the terrain refresh that feeds
-            # the live desk. The gap simply shows as a missing day in iv_daily.
-            log.warning("iv_daily banking failed for %s: %s", tk, _iv_e)
         # RC-359: bank today's per-strike OI (same exposures book) and compute the ΔOI
         # walls vs the prior banked session. Fail-closed: no prior session -> walls None
         # (the Console says 'banking'), never a fabricated diff.
@@ -2765,8 +2755,8 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
                     if tk in _terrain_cache:
                         _terrain_cache[tk]["delta_oi_walls"] = _walls
         except Exception as _oi_e:
-            # institutional-swallow-ok: same accrual doctrine as iv_daily above — log,
-            # never break the refresh; a missing day is a visible gap.
+            # institutional-swallow-ok: an accrual side effect -- log, never break the
+            # refresh; a missing day is a visible gap.
             log.warning("oi_daily banking failed for %s: %s", tk, _oi_e)
         return f"ok:{snap.confidence}"
     except Exception as e:
@@ -3407,11 +3397,11 @@ def get_vanna_by_strike(ticker: str = Query(...)):
     if "_vanna_rows" not in payload:
         return JSONResponse({"ticker": tk, "available": False,
                              "reason": "no levels published for this ticker yet"})
-    return JSONResponse({"ticker": tk, "available": True, "spot": resolve_spot(tk)[0],
+    spot = resolve_spot(tk)[0]
+    return JSONResponse({"ticker": tk, "available": True, "spot": spot,
                          "priced_at_spot": payload.get("spot"),
                          "rows": payload["_vanna_rows"], "levels_as_of": payload.get("levels_as_of"),
-                         "spot_strike": nearest_strike([r[0] for r in payload["_vanna_rows"]],
-                                                       resolve_spot(tk)[0]),
+                         "spot_strike": nearest_strike([r[0] for r in payload["_vanna_rows"]], spot),
                          "method": "the published levels' exposure book -> call_vanna - put_vanna"})
 
 
@@ -3426,10 +3416,11 @@ def get_charm_by_strike(ticker: str = Query(...)):
         return JSONResponse({"ticker": tk, "available": False,
                              "reason": "no levels published for this ticker yet"})
     rows = payload["_charm_rows"]
-    return JSONResponse({"ticker": tk, "available": bool(rows), "spot": resolve_spot(tk)[0],
+    spot = resolve_spot(tk)[0]
+    return JSONResponse({"ticker": tk, "available": bool(rows), "spot": spot,
                          "priced_at_spot": payload.get("spot"),
                          "rows": rows, "levels_as_of": payload.get("levels_as_of"),
-                         "spot_strike": nearest_strike([r[0] for r in rows], resolve_spot(tk)[0]),
+                         "spot_strike": nearest_strike([r[0] for r in rows], spot),
                          "reason": None if rows else "charm_by_strike produced no usable strikes for this chain",
                          "method": "the published levels' charm map -> call_charm - put_charm"})
 
@@ -3808,7 +3799,7 @@ def get_options_gamma_surface(ticker: str = Query(...)):
         # sense an operator cares about -- `available` now reflects project_gamma_surface's
         # own gamma_available signal (computed from the SAME per-cell _has_data gate the grid
         # itself renders from), not merely "did the live cache have a surface object at all".
-        _gamma_available = surf.get("gamma_available", True)
+        _gamma_available = surf["gamma_available"]   # project_gamma_surface always sets it
         # Always-live heatmap mandate (2026-09-15): `"live": True` above means "sourced from the
         # live terrain pathway", NOT "currently backed by a confirmed-fresh Schwab stream tick"
         # (a cold-stream surface still reaches here with cells stamped 'stale'/'unavailable' by
@@ -4025,7 +4016,7 @@ def get_desk_events(ticker: str = Query(...),
         cid = c.get("cross_id")                      # external-key-ok: ed_console.db level_crosses column
         items.append({"key": f"x{cid}", "n": i + 1, "ts": c["ts_utc"], "dom": "LEVELS",
                       "dir": c.get("direction"), "marker": True,
-                      "title": f"Crossed {'above' if c.get('direction') == 'up' else 'below'} {names}",
+                      "title": f"Crossed {_CROSS_WORD.get(c.get('direction'), 'through')} {names}",
                       "detail": f"{_f2(c.get('level_value'))} · spot {_f2(c.get('spot_at_cross'))}"
                                 + (f" · zone {c['zone_after']}" if c.get("zone_after") else ""),
                       "src": "level_crosses"})
@@ -4055,9 +4046,9 @@ def get_desk_events(ticker: str = Query(...),
         items.append({"key": f"ra{i}", "ts": a["ts_utc"], "dom": "ALERT", "dir": None,
                       "title": a["text"], "detail": "", "src": "/api/alerts"})
     items.sort(key=lambda it: (it["ts"] is None, -(it["ts"] if it["ts"] is not None else 0.0)))
-    up = sum(1 for c in in_window if c.get("direction") == "up")
     return JSONResponse({"ticker": tk, "tf": tf, "window_start_ts_utc": start, "items": items,
-                         "cross_counts": {"up": up, "down": len(in_window) - up}})
+                         "cross_counts": {d: sum(1 for c in in_window if c.get("direction") == d)
+                                          for d in ("up", "down")}})
 
 
 @app.get("/api/alerts")
@@ -4074,10 +4065,10 @@ def get_alerts(ticker: str = Query(...)):
                        f"({abs(r['distance']):.2f} {'above' if r['side'] == 'ABOVE' else 'below' if r['side'] == 'BELOW' else 'at'} spot)",
                "ts_utc": lv["spot_as_of_ts_utc"]}
               for r in lv["levels"] if live and r.get("near_spot")]
-    for c in get_db().get_recent_crosses(tk, n=10):
-        if time.time() - float(c["ts_utc"]) <= RECENT_CROSS_SEC:
-            alerts.append({"text": f"Just crossed {'up' if c['direction'] == 'up' else 'down'} "
-                                   f"through {c['level_name']} level",
+    for c in _merged_recent_crosses(get_db(), tk, 10)[0]:
+        if c.get("ts_utc") is not None and time.time() - float(c["ts_utc"]) <= RECENT_CROSS_SEC:
+            alerts.append({"text": f"Just crossed {_CROSS_WORD.get(c.get('direction'), 'through')} "
+                                   f"{' + '.join(c['level_names'])}",
                            "ts_utc": float(c["ts_utc"])})
     return JSONResponse({"ticker": tk, "alerts": alerts,
                          "withheld": None if live else "no live price: near-level alerts need the current price"})
@@ -4095,7 +4086,7 @@ async def get_analytics_light_stream(
     the browser (app/market_data/schwab/streaming/live_ui.py), so no analytics load in this
     process can ever delay a price.
     """
-    t = ticker.upper().strip()
+    t = ticker_storage_key(ticker)
     # TICKER-PREVIEW-NO-ENROLL: an L1 SSE subscription is a VIEW (chart open), not a track —
     # touch last-seen only. Fire-and-forget (RC-166): do not block SSE setup on SQLite.
     try:
@@ -4138,7 +4129,7 @@ def api_order_flow_microstructure(ticker: str = Query(...)):
     engine's already-computed structural state for the current book (memoized per ticker +
     BOOK_TIME) rather than re-walking the raw book. No Schwab REST quote call; the client
     renders, never recomputes."""
-    t = _required_ticker(ticker).upper().strip()
+    t = ticker_storage_key(_required_ticker(ticker))
     # VIEW endpoint: touch last-seen only, never enroll (RC-160 ticker-scope discipline).
     _touch_tracked_ticker_view(t)
     data: dict = {}
@@ -4318,7 +4309,7 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
 @app.post("/api/streaming/active-ticker")
 async def post_streaming_active_ticker(payload: dict = Body(default={})):
     """Subscribe Schwab L1+book to the active UI ticker (dynamic; replaces prior subscription)."""
-    t = _required_ticker(payload.get("ticker")).upper().strip()
+    t = ticker_storage_key(_required_ticker(payload.get("ticker")))
     # SWITCH-LATENCY FIX (critical): set_streaming_active_ticker blocks on fut.result(timeout=30)
     # while it does 6 websocket re-subscribe round-trips, and this endpoint fires on EVERY ticker
     # switch. Running it on the async event loop froze the entire UI (all SSE/requests) for up to
@@ -4463,12 +4454,12 @@ def get_chain(ticker: str = Query(...),
         "ticker": t, "spot": live_spot, "priced_at_spot": held.get("spot"),
         "expiry": resolved_expiry,
         "net_gex_by_strike": net_gex_by_strike,
-        "spot_strike": nearest_strike({c.get("strikePrice") for c in response_contracts
-                                       if c.get("strikePrice") is not None}, live_spot),
+        "spot_strike": nearest_strike({k for c in response_contracts
+                                       if (k := schwab_number(c.get("strikePrice"))) is not None}, live_spot),
         "adjusted_deliverable_symbols": [c.get("symbol") for c in response_contracts
                                          if _adjusted_deliverable(c, t)],
         # two contracts listed at one (strike, side): the chain is not strike-unique
-        "has_duplicate_contracts": len({(c.get("strikePrice"), c.get("putCall")) for c in response_contracts})
+        "has_duplicate_contracts": len({(schwab_number(c.get("strikePrice")), c.get("putCall")) for c in response_contracts})
                                    < len(response_contracts),
         "chain_as_of_ts_utc": fetched_ts,
         "contracts": response_contracts, "status": "ok",
@@ -4481,7 +4472,6 @@ def get_chain(ticker: str = Query(...),
 @app.get("/api/health")
 def health():
     with _logger_lock:
-        running = _logger_running
         n       = len(_logger_tickers)
     # RC-514 / docs/ARCHITECTURE.md "Failure domains": application availability and capability
     # availability are separate, so `status` answers "is the app alive" and never folds a
@@ -4499,7 +4489,6 @@ def health():
     return {
         "status": "ok",
         "time": datetime.now().isoformat(),
-        "logger_running": running,
         "logger_tickers": n,
         "capabilities": capability,
     }
@@ -4805,8 +4794,9 @@ def get_levels(ticker: str = Query(...),
             "as_of_ts_utc": as_of,
             "age_sec": None if as_of is None else round(served_ts - as_of, 1),
             "stale_after_sec": None,
-            "stale": False,
-            "reason": f"carried from canonical snapshot generation {snap.generation}",
+            "stale": None,
+            "reason": f"carried from canonical snapshot generation {snap.generation}; a session "
+                      "price level has no staleness rule, its age is shown",
         }
         levels.append(row)
     # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values)
@@ -5025,7 +5015,7 @@ def get_liquidity_snapshot(
         from liquidity_models import SnapshotType, PlaybookConfig
 
         session_date = date or now_et().strftime("%Y-%m-%d")
-        ticker_upper = ticker.upper().strip()
+        ticker_upper = ticker_storage_key(ticker)
         # TICKER-PREVIEW-NO-ENROLL: liquidity snapshot is a VIEW — touch last-seen only.
         _touch_tracked_ticker_view(ticker_upper)
         from datetime import date as date_type
