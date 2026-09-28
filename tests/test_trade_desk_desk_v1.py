@@ -55,7 +55,7 @@ def test_market_context_indices_are_always_requested_and_subscribed():
 
 def test_equity_microstructure_serves_the_engines_tick_rule_flow_labelled_proxy():
     client = TestClient(srv.app)
-    d = client.get("/api/order-flow/microstructure", params={"ticker": "SPY"}).json()
+    d = client.get("/api/order-flow/microstructure", params={"ticker": "SPY", "venue": "NYSE_BOOK"}).json()
     flow = d["flow"]
     assert set(flow) >= {"tape_pressure_30s", "tape_pressure_2m", "tape_pressure_5m", "cum_delta_proxy"}
     assert flow["classification"]["tape_pressure_5m"] == "PROXY"
