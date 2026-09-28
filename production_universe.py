@@ -6,7 +6,8 @@ Goal: one normalized string form for enrollment + runtime loops + validators.
 Rules (code-grounded, conservative):
 - Uppercase/strip.
 - Reject empty.
-- Reject obvious migration/fragment tokens (single-char roots like '$', '$SP', 'SP', 'IW', 'NV').
+- No name list: whether a well-formed symbol is real is Schwab's answer (a symbol Schwab refuses
+  is held off the levels loop, server._terrain_quarantine_blocks).
 - Allow broker-index storage keys like '$SPX' / '$VIX' (see instrument_identity.BROKER_INDEX_BARE_ROOTS).
 - Allow standard US equity/root symbols: letters only, length 1..5 (Schwab equity tickers are short;
   longer symbols exist but are not supported by this validator — enroll via a supported symbol).
@@ -21,16 +22,6 @@ from typing import Iterable
 from instrument_identity import ticker_storage_key
 from schwab_field_dictionary_builder import is_ticker
 
-_FRAGMENT = frozenset(
-    {
-        "$",
-        "$SP",
-        "SP",
-        "IW",
-        "NV",
-    }
-)
-
 
 def normalize_production_ticker(raw: str | None) -> str:
     """Normalize user input to canonical storage key where applicable."""
@@ -40,8 +31,6 @@ def normalize_production_ticker(raw: str | None) -> str:
 def is_valid_production_ticker(raw: str | None) -> bool:
     t = normalize_production_ticker(raw)
     if not t:
-        return False
-    if t in _FRAGMENT:
         return False
     return bool(is_ticker(t))
 
