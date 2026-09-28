@@ -77,7 +77,6 @@
       txt('klSrc', d && d.error ? 'terrain not ready' : 'offline');
       return;
     }
-    txt('klSpot', px(d.spot));
     txt('klFlip', px(d.gamma_flip));
     txt('klCall', px(d.call_wall));
     txt('klPut', px(d.put_wall));
@@ -766,6 +765,13 @@
   function loadAll() { loadLevels(); loadGbs(); loadVanna(); loadCharm(); loadStructures(); loadOf(); }
   document.addEventListener('ed:ticker', function () { resetStrikeDetailForTickerChange(); loadAll(); });
   document.addEventListener('ed:expiry', loadLevels);   // the ratio is scoped to the selected expiry
+  // Key Levels' Spot is the header's price row, painted on every push (the daemon's
+  // live_price_rows.price_row), never the levels fetch's copy
+  window.addEventListener('ed:quote_tick', function (e) {
+    var q = e.detail;
+    if (!q || String(q.ticker || '').replace(/^\$/, '') !== String(ticker() || '').toUpperCase().replace(/^\$/, '')) return;
+    txt('klSpot', q.spot_state === 'live' && q.spot_disp ? q.spot_disp : '—');
+  });
   document.addEventListener('ed:view', loadAll);
   document.addEventListener('ed:scope', loadGbs);   // #3: re-window the GEX-by-strike panel only
   document.addEventListener('ed:changed', function (e) {

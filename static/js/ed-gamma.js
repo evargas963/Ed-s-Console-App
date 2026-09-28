@@ -802,7 +802,7 @@
     // function above -- Number(surface.spot) fabricates a real, finite 0 when surface.spot is
     // explicitly null, which then passes the isFinite(spot) guard below as if it were real.
     var strikes = surface.strikes || [], exps = surface.expirations || [],
-        spot = surface.spot == null ? NaN : Number(surface.spot);
+        priced = surface.priced_at_spot == null ? NaN : Number(surface.priced_at_spot);
     // Audit finding #6 (2026-09-16), FIXED, THEN CORRECTED (follow-up mandate): "LIVE" used
     // to mean only "surface.source == terrain_live_cache" -- true for nearly every live-
     // pathway surface with NO per-cell coverage requirement at all. Gating it on coverage
@@ -833,7 +833,7 @@
       var shownRows = document.querySelectorAll('#heatBody .heat tbody tr').length;
       var shownCols = document.querySelectorAll('#heatBody .heat thead .hexp').length;
       var shown = (shownRows && shownCols) ? ' · ' + shownRows + '×' + shownCols + ' shown' : '';
-      el.textContent = strikes.length + '×' + exps.length + ' canonical' + shown + ' · spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
+      el.textContent = strikes.length + '×' + exps.length + ' canonical' + shown + ' · priced at ' + (isFinite(priced) ? priced.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
       // Exact coverage breakdown on hover -- counts and percentages for live/partial/
       // stale/pending/daemon-unavailable/rejected/unavailable of the VISIBLE cells
       // specifically (not the canonical surface's own, possibly much larger, cell count).
