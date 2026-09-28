@@ -120,7 +120,8 @@ operator.
 
 What each existing check covers and what it cannot. `hardening` fails a PR only on NEW violations of
 `tools/check_institutional_correctness.py` (62 stand on main). A scan that finds one named producer
-does not prove no second one exists under another name.
+does not prove no second one exists under another name. A passing check proves only its "Covers"
+column; everything else stays NOT_PROVEN.
 
 | Rule | Check | Covers | Does not cover |
 |---|---|---|---|
@@ -136,7 +137,8 @@ does not prove no second one exists under another name.
 | Real data | `test_hygiene` | inline synthetic option contracts in tests | other hand-built test inputs |
 | Documents match the tree | `tests/test_governing_docs_v1.py` | every path the four governing documents name exists; `AGENTS.md` under 200 lines | whether a statement is true |
 
-A gap gets a check only when a failure it would have caught has happened (ACTIVE_PROGRAM names each).
+A gap gets a check only when a failure it would have caught has happened; the check is a test of
+behavior (AGENTS.md).
 
 ## 6. Operator decisions (2026-09-26)
 
