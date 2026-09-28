@@ -70,7 +70,7 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path, monkeypatc
                                            ts_utc=ts)
     monkeypatch.setattr(server, "get_db", lambda: type("Db", (), {"db_path": db})())
     pin_clock(2026, 10, 30, 12, 0)                  # the chain's expiry is long past
-    body = json.loads(bytes(server.get_forces(ticker="SPY").body))
+    body = server._forces_from_captures("SPY")      # the levels producer's forces computation
     assert body["available"] is True
     assert body["charm_below"] is not None and body.get("charm_error") is None, body
 

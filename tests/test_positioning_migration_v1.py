@@ -69,16 +69,50 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
         for exp, cs in by_exp.items():
             persist_complete_chain_capture(db, ticker="PCG", expiry=exp, contracts=cs, spot=day["spot"],
                                            completeness_basis=CAPTURE_BASIS, ts_utc=day["ts_utc"])
-    fri = _FX["days"][1]
-    at = datetime.fromtimestamp(fri["ts_utc"], time_et.ET)
-    pin_clock(at.year, at.month, at.day, at.hour, at.minute)
-    snap = compute_terrain("PCG", fri["contracts"], fri["spot"])
-    payload = {**snap.to_dict(), "_per_strike": snap.per_strike, "computed_ts_utc": fri["ts_utc"],
-               "_chain_fetched_ts": fri["ts_utc"]}
     pin_clock(2026, 9, 27, 12, 0)                                        # Sunday
-    monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload if tk == "PCG" else None)
     monkeypatch.setattr(server, "get_db", lambda: type("D", (), {"db_path": str(db)})())
+    monkeypatch.setattr(server, "_terrain_cache", {})
+    # startup on a closed market: the levels producer prices the newest capture (Friday) and,
+    # with it, the prior day's rows the route serves
+    from calibration.complete_chain_capture import last_capture_per_day
+    (newest,) = last_capture_per_day(str(db), "PCG", 1)
+    assert server._publish_levels("PCG", capture=newest) is not None
     body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
     assert body["prior_source"] == "chain_capture:2026-09-24"
     m = body["migration"]["all"]
     assert m["compared"] and sum(1 for r in m["rows"] if r[3]) > 10       # real changes, not self vs self
+    # the stored chains are read by the producer once per new capture, never by a page request
+    reads = []
+    monkeypatch.setattr(server, "last_capture_per_day", lambda *a, **k: reads.append(a) or [])
+    for _ in range(3):
+        assert json.loads(server.get_terrain_strikes(ticker="PCG").body)["prior_source"] == "chain_capture:2026-09-24"
+        server.get_forces(ticker="PCG")
+    server._publish_levels("PCG", capture=newest)                        # same capture: nothing new
+    assert reads == []
+    # a new capture is computed once, by the next publish
+    key_before = server.terrain_cache_get("PCG")["_captures_key"]
+    later = newest["ts_utc"] + 1800
+    for exp, cs in {str(c.get("expirationDate") or "")[:10]: [] for c in newest["contracts"]}.items():
+        persist_complete_chain_capture(db, ticker="PCG", expiry=exp,
+                                       contracts=[c for c in newest["contracts"]
+                                                  if str(c.get("expirationDate") or "")[:10] == exp],
+                                       spot=newest["spot"], completeness_basis=CAPTURE_BASIS, ts_utc=later)
+    monkeypatch.setattr(server, "last_capture_per_day",
+                        lambda *a, **k: reads.append(a) or last_capture_per_day(*a, **k))
+    (newer,) = last_capture_per_day(str(db), "PCG", 1)
+    server._publish_levels("PCG", capture=newer)
+    assert server.terrain_cache_get("PCG")["_captures_key"] != key_before
+    assert len(reads) == 2                        # forces (2 days) + prior day, each read once
+    server._publish_levels("PCG", capture=newer)
+    assert len(reads) == 2                        # and not again for the same capture
+    # a new market day's first chain, before that day's first capture: the prior day is recomputed
+    # against the new day (Friday's capture becomes the prior day), once
+    monkeypatch.setattr(server, "resolve_spot", lambda tk: (newer["spot"], "streaming_plane", later))
+    monkeypatch.setattr(server, "_log_level_crosses", lambda *a, **k: None)
+    monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET).timestamp()
+    pin_clock(2026, 9, 28, 10, 0)
+    server._publish_levels("PCG", newer["contracts"], monday)
+    assert len(reads) == 4
+    assert json.loads(server.get_terrain_strikes(ticker="PCG").body)["prior_source"] == "chain_capture:2026-09-25"
+    server._publish_levels("PCG", newer["contracts"], monday + 5)
+    assert len(reads) == 4
