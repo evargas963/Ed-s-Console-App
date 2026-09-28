@@ -1,7 +1,6 @@
 """app.options.order_flow.history.book_heatmap_for_ticker (operator field-inventory audit,
-2026-09-13: "we don't have an order flow heatmap"). Bins the SAME persisted NASDAQ_BOOK/
-NYSE_BOOK rows the live /api/order-flow/microstructure ladder already reads into a time x
-price grid -- the historical, time-dimensioned counterpart a single live snapshot cannot show.
+2026-09-13: "we don't have an order flow heatmap"). Bins one venue's persisted NASDAQ_BOOK or
+NYSE_BOOK rows into a time x price grid -- the historical, time-dimensioned counterpart a single live snapshot cannot show.
 No interpolation: every cell traces to a real captured tick's own native BID_PRICE/ASK_PRICE/
 TOTAL_VOLUME."""
 from __future__ import annotations
@@ -50,7 +49,7 @@ def test_repeated_unchanged_levels_do_not_inflate_the_cell(tmp_path):
         (1000.1, "NASDAQ_BOOK", _book(100.00, 100, 100.05, 30)),
         (1000.2, "NASDAQ_BOOK", _book(100.00, 100, 100.05, 30)),
     ])
-    d = book_heatmap_for_ticker(SYM, minutes=60, db_path=db)
+    d = book_heatmap_for_ticker(SYM, "NASDAQ_BOOK", minutes=60, db_path=db)
     assert d["available"] is True
     assert d["rows_scanned"] == 3
     cells = {(c["t"], c["price"]): c for c in d["cells"]}
@@ -66,7 +65,7 @@ def test_a_changed_level_in_the_same_bucket_reads_as_its_latest_observed_size(tm
         (1000.0, "NASDAQ_BOOK", _book(100.00, 50, 100.05, 30)),
         (1000.4, "NASDAQ_BOOK", _book(100.00, 20, 100.05, 10)),  # same bucket, same price -> latest wins
     ])
-    d = book_heatmap_for_ticker(SYM, minutes=60, db_path=db)
+    d = book_heatmap_for_ticker(SYM, "NASDAQ_BOOK", minutes=60, db_path=db)
     assert d["available"] is True
     assert d["rows_scanned"] == 2
     cells = {(c["t"], c["price"]): c for c in d["cells"]}
@@ -74,20 +73,17 @@ def test_a_changed_level_in_the_same_bucket_reads_as_its_latest_observed_size(tm
     assert (0, 100.05) in cells and cells[(0, 100.05)]["ask"] == 10.0 and cells[(0, 100.05)]["bid"] == 0.0
 
 
-def test_both_venues_are_merged_not_one_silently_picked(tmp_path):
-    """Same ts_recv for both venues: sqlite has no guaranteed row order for ties, so this
-    asserts the LAST-observed value is one of the two real per-venue sizes, never their sum
-    (300.00 -> {50,25} or {25,50} depending on read order, but never 75)."""
+def test_each_venue_shows_only_its_own_book(tmp_path):
     db = tmp_path / "stream_capture.db"
     _write_book_rows(db, [
         (1000.0, "NASDAQ_BOOK", _book(100.00, 50, 100.05, 30)),
         (1000.0, "NYSE_BOOK", _book(100.00, 25, 100.05, 15)),
     ])
-    d = book_heatmap_for_ticker(SYM, minutes=60, db_path=db)
-    assert d["available"] is True and d["rows_scanned"] == 2
-    cells = {(c["t"], c["price"]): c for c in d["cells"]}
-    assert cells[(0, 100.00)]["bid"] in (50.0, 25.0)
-    assert cells[(0, 100.05)]["ask"] in (30.0, 15.0)
+    for venue, bid, ask in (("NASDAQ_BOOK", 50.0, 30.0), ("NYSE_BOOK", 25.0, 15.0)):
+        d = book_heatmap_for_ticker(SYM, venue, minutes=60, db_path=db)
+        assert d["venue"] == venue and d["rows_scanned"] == 1
+        cells = {(c["t"], c["price"]): c for c in d["cells"]}
+        assert (cells[(0, 100.00)]["bid"], cells[(0, 100.05)]["ask"]) == (bid, ask)
 
 
 def test_window_anchors_to_the_datas_own_latest_row_never_wallclock_now(tmp_path):
@@ -98,7 +94,7 @@ def test_window_anchors_to_the_datas_own_latest_row_never_wallclock_now(tmp_path
     db = tmp_path / "stream_capture.db"
     old_ts = 500_000.0   # far from any real wall-clock "now" in a test run
     _write_book_rows(db, [(old_ts, "NASDAQ_BOOK", _book(50.00, 10, 50.05, 10))])
-    d = book_heatmap_for_ticker(SYM, minutes=5, db_path=db)
+    d = book_heatmap_for_ticker(SYM, "NASDAQ_BOOK", minutes=5, db_path=db)
     assert d["available"] is True
     assert d["latest_captured_ts"] == old_ts
     assert d["since_ts"] <= old_ts <= d["until_ts"]
@@ -111,9 +107,9 @@ def test_rows_outside_the_minutes_window_are_excluded(tmp_path):
         (100_290.0, "NASDAQ_BOOK", _book(60.00, 10, 60.05, 10)),     # within 5 min of the latest row
         (100_300.0, "NASDAQ_BOOK", _book(60.10, 5, 60.15, 5)),       # latest row
     ])
-    d = book_heatmap_for_ticker(SYM, minutes=5, db_path=db)
+    d = book_heatmap_for_ticker(SYM, "NASDAQ_BOOK", minutes=5, db_path=db)
     assert d["available"] is True
-    prices = {c["price"] for c in d["cells"]}
+    prices ={c["price"] for c in d["cells"]}
     assert 50.00 not in prices and 50.05 not in prices
     assert 60.00 in prices and 60.10 in prices
 
@@ -123,7 +119,7 @@ def test_no_book_history_at_all_fails_closed_with_a_plain_reason(tmp_path):
     con = sqlite3.connect(db)
     con.executescript(STREAM_SCHEMA_SQL)
     con.close()
-    d = book_heatmap_for_ticker(SYM, minutes=60, db_path=db)
+    d = book_heatmap_for_ticker(SYM, "NASDAQ_BOOK", minutes=60, db_path=db)
     assert d["available"] is False
     assert d["reason"] == "no book history captured for this ticker"
 
@@ -131,7 +127,7 @@ def test_no_book_history_at_all_fails_closed_with_a_plain_reason(tmp_path):
 def test_rows_present_but_every_level_array_empty_fails_closed_not_a_fabricated_grid(tmp_path):
     db = tmp_path / "stream_capture.db"
     _write_book_rows(db, [(1000.0, "NASDAQ_BOOK", _book(None, None, None, None))])
-    d = book_heatmap_for_ticker(SYM, minutes=60, db_path=db)
+    d = book_heatmap_for_ticker(SYM, "NASDAQ_BOOK", minutes=60, db_path=db)
     assert d["available"] is False
     assert "no populated price levels" in d["reason"]
 
@@ -143,6 +139,6 @@ def test_options_book_rows_for_a_contract_never_leak_into_the_underlyings_heatma
     _write_book_rows(db, [
         (1000.0, "OPTIONS_BOOK", _book(1.00, 5000, 1.05, 5000)),
     ])
-    d = book_heatmap_for_ticker(SYM, minutes=60, db_path=db)
+    d = book_heatmap_for_ticker(SYM, "NASDAQ_BOOK", minutes=60, db_path=db)
     assert d["available"] is False
     assert d["reason"] == "no book history captured for this ticker"

@@ -86,8 +86,9 @@ class OrderFlowState:
                 self._receive_log[symbol] = deque(maxlen=MAX_TAPE_PRINTS)
             return self._receive_log[symbol]
 
-    def push_book(self, symbol: str, content_item: dict) -> None:
-        """Apply one Schwab book observation to this state instance."""
+    def push_book(self, symbol: str, content_item: dict, service: str) -> None:
+        """Apply one Schwab book observation (from `service`: NYSE_BOOK, NASDAQ_BOOK or
+        OPTIONS_BOOK) to this state instance."""
         if not content_item or not isinstance(content_item, dict):
             return
         bids = content_item.get("BIDS")
@@ -101,6 +102,7 @@ class OrderFlowState:
             "BIDS": list(bids) if isinstance(bids, list) else [bids],
             "ASKS": list(asks) if isinstance(asks, list) else [asks],
             "BOOK_TIME": content_item.get("BOOK_TIME"),
+            "SERVICE": service,
         }
         with self._lock:
             self._get_book(sym).append(item)
@@ -223,14 +225,16 @@ class OrderFlowState:
             }
             self._get_tape(sym).append(receipt)
 
-    def get_content_for_symbol(self, symbol: str) -> list[dict]:
-        """Return the canonical engine-facing state for one symbol."""
+    def get_content_for_symbol(self, symbol: str, venue: Optional[str] = None) -> list[dict]:
+        """Return the canonical engine-facing state for one symbol; with `venue`, only that
+        Schwab book service's books (an equity has two: NYSE_BOOK and NASDAQ_BOOK)."""
         sym = ticker_storage_key(symbol)
         if not sym:
             return []
         out: list[dict] = []
         with self._lock:
-            out.extend(dict(item) for item in self._get_book(sym))
+            out.extend(dict(item) for item in self._get_book(sym)
+                       if venue is None or item["SERVICE"] == venue)
             out.extend(dict(item) for item in self._get_tape(sym))
         return out
 
@@ -329,9 +333,9 @@ def option_top(symbol: str) -> Optional[dict]:
     return _LIVE_STATE.option_top(symbol)
 
 
-def push_book(symbol: str, content_item: dict) -> None:
+def push_book(symbol: str, content_item: dict, service: str) -> None:
     """Apply a book observation to the live singleton."""
-    _LIVE_STATE.push_book(symbol, content_item)
+    _LIVE_STATE.push_book(symbol, content_item, service)
 
 
 def push_level_one(
@@ -341,9 +345,9 @@ def push_level_one(
     _LIVE_STATE.push_level_one(symbol, content_item, ts_recv=ts_recv)
 
 
-def get_content_for_symbol(symbol: str) -> list[dict]:
+def get_content_for_symbol(symbol: str, venue: Optional[str] = None) -> list[dict]:
     """Return canonical engine content from the live singleton."""
-    return _LIVE_STATE.get_content_for_symbol(symbol)
+    return _LIVE_STATE.get_content_for_symbol(symbol, venue)
 
 
 

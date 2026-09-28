@@ -89,6 +89,8 @@
     subview: _ls('ed_sub', app.getAttribute('data-subview') || 'gamma'),
     view: _ls('ed_view', app.getAttribute('data-view') || 'heatmap'),
     scope: _lsScope(),
+    // the one Schwab book every book panel shows; the two are never combined
+    bookVenue: _ls('ed_book_venue', 'NYSE_BOOK') === 'NASDAQ_BOOK' ? 'NASDAQ_BOOK' : 'NYSE_BOOK',
     expiryFilter: null,   // null = All Expirations; else a single 'YYYY-MM-DD' from /api/expiries
     selStrike: null, selExpiry: null,
     // Operator field-inventory audit (2026-09-13): the Gamma heatmap grid, Strike Detail's
@@ -375,6 +377,16 @@
     if (SCOPE_MODES.indexOf(mode) === -1 || mode === state.scope) { reflectScope(); return; }
     state.scope = mode; _lsSet('ed_scope', mode); reflectScope();
     emit('ed:scope', { scope: mode });
+  }
+  function reflectBookVenue() {
+    document.querySelectorAll('.bookvenue .scbtn').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-venue') === state.bookVenue);
+    });
+  }
+  function setBookVenue(v) {
+    if (v === state.bookVenue) return;
+    state.bookVenue = v; _lsSet('ed_book_venue', v); reflectBookVenue();
+    emit('ed:book_venue', { venue: v });
   }
   // The ONE scope policy is a COUNT of canonical strikes around spot — never a percentage.
   // MEASURED 2026-09-10 on the live SPY reference surface (116 strikes at $1 spacing, spot 764):
@@ -912,6 +924,10 @@
     if (scopeCtl) scopeCtl.querySelectorAll('.scbtn').forEach(function (b) {
       b.addEventListener('click', function () { setScope(b.getAttribute('data-scope')); });
     });
+    document.querySelectorAll('.bookvenue .scbtn').forEach(function (b) {
+      b.addEventListener('click', function () { setBookVenue(b.getAttribute('data-venue')); });
+    });
+    reflectBookVenue();
     // ONE canonical strike x expiry projection presents gex/dex/oi/volume -- this control
     // switches which one, on the same grid (see state.measure's own comment).
     var measureSel = document.getElementById('measureSel');

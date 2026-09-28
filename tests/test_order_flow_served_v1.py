@@ -1,6 +1,6 @@
 """Order flow computes nothing in the page (P1-3, PR C): the book heatmap's default window, each
 cell's dominant side and the colour scale's top are served; so are an option contract's put/call
-(Schwab's CONTRACT_TYPE) and its subscription state. Book rows are real TSLA NASDAQ/NYSE messages
+(Schwab's CONTRACT_TYPE) and its subscription state. Book rows are real TSLA NASDAQ_BOOK messages
 (tests/fixtures/real_tsla_book_rows.json)."""
 import json
 import sqlite3
@@ -23,7 +23,7 @@ def heat(tmp_path):
     con.executemany("INSERT INTO stream_book_raw(ts_recv,service,symbol,native_json,src) VALUES(?,?,?,?,?)",
                     [(ts, svc, "TSLA", json.dumps(nat), "schwab_book") for ts, svc, nat in _FX["rows"]])
     con.commit(); con.close()
-    d = book_heatmap_for_ticker("TSLA", minutes=240, db_path=db)
+    d = book_heatmap_for_ticker("TSLA", "NASDAQ_BOOK", minutes=240, db_path=db)
     assert d["available"] is True and len(d["cells"]) > 50
     return d
 
@@ -77,6 +77,6 @@ def test_the_window_ends_at_the_newest_book_with_levels_not_the_empty_after_clos
     con.executemany("INSERT INTO stream_book_raw(ts_recv,service,symbol,native_json,src) VALUES(?,?,?,?,?)",
                     [(ts, svc, "TSLA", json.dumps(nat), "schwab_book") for ts, svc, nat in _FX["rows"] + empties])
     con.commit(); con.close()
-    d = book_heatmap_for_ticker("TSLA", minutes=60, db_path=db)
+    d = book_heatmap_for_ticker("TSLA", "NASDAQ_BOOK", minutes=60, db_path=db)
     assert d["available"] is True and d["cells"]
     assert d["until_ts"] == last

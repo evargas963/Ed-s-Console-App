@@ -288,6 +288,7 @@ def _extract_canonical_book(data: dict) -> dict:
     mark, mark_leaf = _resolve_quote_mark(data)
     return {
         "has_book": snapshot is not None,
+        "venue": snapshot.get("SERVICE") if snapshot else None,
         "bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size,
         "bid_leaf": bid_leaf, "ask_leaf": ask_leaf,
         "bid_levels": bid_levels, "ask_levels": ask_levels,
@@ -303,7 +304,7 @@ def _canonical_book_identity(cb: dict) -> tuple:
     identity differs and `compute_book_microstructure` recomputes instead of serving stale state.
     BOOK_TIME is included, but only as one component — its uniqueness is not assumed."""
     return (
-        cb["book_time_ms"],
+        cb["book_time_ms"], cb["venue"],
         cb["bid"], cb["ask"], cb["bid_size"], cb["ask_size"], cb["mark"],
         tuple(cb["bid_levels"]), tuple(cb["ask_levels"]),
     )
@@ -452,7 +453,7 @@ def _microstructure_structural(cb: dict) -> dict:
             "book_time_ms": cb["book_time_ms"],
             "n_bid_levels": len(bid_levels),
             "n_ask_levels": len(ask_levels),
-            "book_source": "schwab_streaming_book" if cb["has_book"] else "unavailable",
+            "book_source": cb["venue"] if cb["has_book"] else "unavailable",
             "top_of_book_bid_leaf": cb["bid_leaf"],
             "top_of_book_ask_leaf": cb["ask_leaf"],
         },

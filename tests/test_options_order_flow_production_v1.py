@@ -70,7 +70,7 @@ def test_live_payload_one_compute_includes_proxy_flow():
         "BOOK_TIME": int(time.time() * 1000),
         "BIDS": [{"BID_PRICE": 1.10, "TOTAL_VOLUME": 40}],
         "ASKS": [{"ASK_PRICE": 1.20, "TOTAL_VOLUME": 50}],
-    })
+    }, "OPTIONS_BOOK")
     ofls.push_level_one(contract, {
         "key": contract,
         "BID_PRICE": 1.10, "ASK_PRICE": 1.20,
@@ -129,7 +129,7 @@ def build_flow_e2e_fixture_response() -> dict:
             "ASKS": [{"ASK_PRICE": 1.25, "TOTAL_VOLUME": 55},
                      {"ASK_PRICE": 1.26, "TOTAL_VOLUME": 85},
                      {"ASK_PRICE": 1.27, "TOTAL_VOLUME": 70}],
-        })
+        }, "OPTIONS_BOOK")
         # Distinct vendor triples spanning the 5m / 2m / 30s tape windows so every PROXY
         # flow field is non-null (a null-only fixture could not prove value rendering).
         # Tape windows are relative to the newest vendor print clock; the top-of-book
@@ -239,7 +239,7 @@ def test_options_api_carries_flow_block():
         "key": contract, "BOOK_TIME": int(time.time() * 1000),
         "BIDS": [{"BID_PRICE": 1.28, "TOTAL_VOLUME": 10}],
         "ASKS": [{"ASK_PRICE": 1.30, "TOTAL_VOLUME": 12}],
-    })
+    }, "OPTIONS_BOOK")
     body = json.loads(srv.api_order_flow_options_microstructure(contract=contract).body)
     assert body["status"] == "ok"
     assert body["flow"]["classification"]["tape_pressure_30s"] == "PROXY"

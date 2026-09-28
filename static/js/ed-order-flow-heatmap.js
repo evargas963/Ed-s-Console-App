@@ -239,7 +239,7 @@
     // captured history, not the live ladder, but the history has nothing to bin until something
     // asks the stream to start capturing this ticker's book -- so it must ask too.
     if (window.EdStream && window.EdStream.warmActiveTicker) window.EdStream.warmActiveTicker(tk);
-    return fetch('/api/order-flow/book-heatmap?ticker=' + encodeURIComponent(tk) + '&minutes=' + _minutes, { cache: 'no-store', signal: signal })
+    return fetch('/api/order-flow/book-heatmap?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue + '&minutes=' + _minutes, { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillHeatmap(tk)) render(h, tk, d); })
       .catch(function (e) {
@@ -256,12 +256,13 @@
     // Key on ticker+minutes, not ticker alone -- clicking a different time-range button while
     // the previous window's fetch is still in flight must ABORT it (a real context change),
     // not just queue a trailing re-run behind it (what an unchanged key does).
-    _loader.trigger(ticker() + '|' + _minutes);
+    _loader.trigger(ticker() + '|' + st().bookVenue + '|' + _minutes);
   }
 
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
+    document.addEventListener('ed:book_venue', load);
     document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') load(); });
     document.addEventListener('click', function (e) {
       var btn = e.target.closest && e.target.closest('[data-ofh-minutes]');

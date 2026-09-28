@@ -24,7 +24,7 @@ const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series
     { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', near_spot: false },
   ],
   by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [] };
-const MICRO = { ticker: 'SPY', status: 'ok', top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
+const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
   spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2, side: 'BID' } },
   ages: { book_age_sec: 1, book_stale: false }, wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
   flow: { tape_pressure_5m: 0.3, tape_side_5m: 'BUY', tape_pressure_30s: 0.1, tape_pressure_2m: 0.2, cum_delta_proxy: 1000 } };
@@ -97,13 +97,31 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Desk: the venue switch asks for one Schwab book at a time', async ({ page }) => {
+    const errs = watchErrors(page);
+    await intercept(page);
+    const reads = [];
+    page.on('request', (r) => { if (/\/api\/(order-flow\/microstructure|desk\/events)/.test(r.url())) reads.push(r.url()); });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); localStorage.removeItem('ed_book_venue'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const nyse = page.locator('#tdmCardLiq .bookvenue [data-venue="NYSE_BOOK"]');
+    const nasdaq = page.locator('#tdmCardLiq .bookvenue [data-venue="NASDAQ_BOOK"]');
+    await expect(nyse).toHaveClass(/on/);
+    await expect.poll(() => reads.filter((u) => u.includes('venue=NYSE_BOOK')).length).toBeGreaterThan(1);
+    await nasdaq.click();
+    await expect(nasdaq).toHaveClass(/on/);
+    await expect.poll(() => reads.filter((u) => u.includes('venue=NASDAQ_BOOK')).length).toBeGreaterThan(1);
+    expect(reads.every((u) => /venue=(NYSE|NASDAQ)_BOOK/.test(u))).toBe(true);
+    expect(errs).toEqual([]);
+  });
+
   test('Right Now: detect, frame, context and the migration read the served fields', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const body = page.locator('#tdBody');
-    await expect(body).toContainText('bid-heavy (depth 5)');
+    await expect(body).toContainText('bid-heavy (NASDAQ_BOOK, depth 5)');
     await expect(body).toContainText('Max pain 770.00');           // nearest by the served by_distance
     await expect(body).toContainText('1.30 below spot');
     await expect(body).toContainText('6.30 above put wall, 3.70 below call wall');

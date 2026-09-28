@@ -44,7 +44,7 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses(monkeypa
     monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 9, 25, 16, 30, tzinfo=time_et.ET))
     monkeypatch.setattr(server, "now_et", lambda: datetime(2026, 9, 25, 16, 30, tzinfo=time_et.ET))
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (None, "none", None))
-    body = json.loads(server.get_desk_events(ticker="SPY", tf="30").body)
+    body = json.loads(server.get_desk_events(ticker="SPY", venue="NYSE_BOOK", tf="30").body)
     start = datetime(2026, 9, 25, 9, 30, tzinfo=time_et.ET).timestamp()
     assert body["window_start_ts_utc"] == start
     # the events: the window's crosses, one per (time, value, direction)

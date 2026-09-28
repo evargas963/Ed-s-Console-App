@@ -122,7 +122,7 @@
   "microprice": 1.2210526315789474,
   "mid": 1.225,
   "provenance": {
-    "book_source": "schwab_streaming_book",
+    "book_source": "OPTIONS_BOOK",
     "book_time_ms": 1789000000000.0,
     "exchange_quote_ts": null,
     "n_ask_levels": 3,
