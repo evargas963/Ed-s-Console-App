@@ -13,7 +13,6 @@ These drive the REAL builders on ONE canonical snapshot and require identical va
 
 from __future__ import annotations
 
-import inspect
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -72,23 +71,13 @@ def _canonical(session: date, bars: list):
         generation=1)
 
 
-def test_premarket_accepts_canonical_and_stops_recomputing():
-    """The signature change itself — an exit that cannot accept the snapshot cannot carry it."""
-    params = inspect.signature(build_premarket_snapshot).parameters
-    assert "canonical" in params, (
-        "build_premarket_snapshot cannot accept the canonical snapshot, so the pre-open "
-        "exits of build_live_snapshot must recompute (RC-322)")
-    assert params["canonical"].kind is inspect.Parameter.KEYWORD_ONLY
-
-
 def test_premarket_carries_every_phase2a_level_unchanged():
     """One computation, two builders, identical values."""
     session = most_recent_trading_day_et()
     bars = _bars(session)
     canon = _canonical(session, bars)
 
-    carried = build_premarket_snapshot("SPY", bars, session, PlaybookConfig(),
-                                       canonical=canon)
+    carried = build_premarket_snapshot("SPY", session, PlaybookConfig(), canonical=canon)
     got = _published(carried)
     for level_id in _PHASE2A_IDS:
         want = canon.price(level_id)
@@ -102,26 +91,18 @@ def test_premarket_carries_every_phase2a_level_unchanged():
                 f"snapshot holds {want!r} — a second faucet (RC-322)")
 
 
-def test_both_live_exits_pass_canonical_through():
-    """The two guards that made this reachable: future session date, and pre-open clock."""
+def test_the_live_builder_before_the_open_carries_the_snapshot():
+    """Before the session's open the live builder returns the premarket shape, from the same
+    snapshot (ONE-09: no recompute path remains)."""
     session = most_recent_trading_day_et()
-    bars = _bars(session)
-    canon = _canonical(session, bars)
-
-    # Future session date -> the first early return.
-    future = datetime.now(ET).date() + timedelta(days=3)
-    out = build_live_snapshot("SPY", bars, future, PlaybookConfig(), canonical=canon)
+    canon = _canonical(session, _bars(session))
+    pre_open = datetime(session.year, session.month, session.day, 9, 0, tzinfo=ET)
+    out = build_live_snapshot("SPY", PlaybookConfig(), canonical=canon, now=pre_open)
+    assert out.snapshot_type.value == "premarket"
     got = _published(out)
     for level_id in _PHASE2A_IDS:
         want = canon.price(level_id)
         if want is not None:
             assert got.get(level_id) == want, (
-                f"{level_id} diverged through the future-date exit: {got.get(level_id)!r} "
+                f"{level_id} diverged through the pre-open exit: {got.get(level_id)!r} "
                 f"vs canonical {want!r}")
-
-
-def test_without_canonical_the_builder_still_works():
-    """Negative control: replay of a historical session has no snapshot and must not crash."""
-    session = most_recent_trading_day_et()
-    out = build_premarket_snapshot("SPY", _bars(session), session, PlaybookConfig())
-    assert out is not None and isinstance(out.raw_levels, dict)

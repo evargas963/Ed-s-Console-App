@@ -2,10 +2,11 @@
 liquidity_value_engine.py — Liquidity & Value Playbook Engine
 ============================================================
 Deterministic institutional intraday zone mapper. Works for any ticker.
-No continuous redraw — levels update only at structural checkpoints:
-  PREMARKET (before 09:30 ET), OPENING (09:45 ET), MIDDAY (10:30 ET), AFTERNOON (14:00 ET).
+The price levels (prior day, overnight, opening range, VWAP, value area) are computed once per
+generation into the materialized PriceLevelSnapshot (build_price_level_snapshot); the zones
+(build_live_snapshot, build_premarket_snapshot before the open) are built from that snapshot.
 
-Data source agnostic: consumes normalized OHLCV bars (DataFrame or list of dicts).
+Data source agnostic: consumes normalized OHLCV bars (list of dicts).
 All calculations derived from bars; no Schwab-specific logic.
 """
 
@@ -16,7 +17,7 @@ import logging
 import threading
 from collections import defaultdict
 from datetime import date, datetime, time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, float_positive_or_none, schwab_count, schwab_number
@@ -29,9 +30,6 @@ from liquidity_models import (
     ZoneType,
     volume_profile_poc_vah_val,
 )
-
-if TYPE_CHECKING:  # forward-ref only — the "pd.DataFrame" annotations; no runtime pandas import
-    import pandas as pd
 
 log = logging.getLogger(__name__)
 
@@ -561,56 +559,20 @@ def cluster_price_levels_into_zones(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _cutoff_for_snapshot(snapshot_type: SnapshotType, session_date: date) -> Optional[datetime]:
-    """
-    Return latest datetime allowed for this snapshot (no lookahead).
-    Exact checkpoint cutoffs:
-      PREMARKET: before 09:30 (09:29:59)
-      OPENING: through 09:45:00 ET
-      MIDDAY: through 10:30:00 ET
-      AFTERNOON: through 14:00:00 ET
-    """
-    if snapshot_type == SnapshotType.PREMARKET:
-        last = int(RTH_OPEN_MINS) - 1  # last full minute before cash RTH open
-        return datetime.combine(session_date, time(last // 60, last % 60), tzinfo=ET)
-    if snapshot_type == SnapshotType.OPENING:
-        return datetime.combine(session_date, time(9, 45), tzinfo=ET)
-    if snapshot_type == SnapshotType.MIDDAY:
-        return datetime.combine(session_date, time(10, 30), tzinfo=ET)
-    if snapshot_type == SnapshotType.AFTERNOON:
-        return datetime.combine(session_date, time(14, 0), tzinfo=ET)
-    return None
-
-
 def build_premarket_snapshot(
     ticker: str,
-    bars: list,
     session_date: date,
     config: PlaybookConfig,
     *,
-    canonical: Optional["PriceLevelSnapshot"] = None,
+    canonical: "PriceLevelSnapshot",
 ) -> SnapshotOutput:
     """Premarket: PDH/PDL/PDC, PD POC/VAH/VAL, overnight high/low. No same-day RTH.
 
-    RC-322 / Phase 2A: when ``canonical`` is supplied the families are CARRIED from that one
-    materialized snapshot and no level helper runs here — the contract
-    ``build_live_snapshot`` already honoured. This exit used to recompute unconditionally,
-    and ``build_live_snapshot`` returns HERE whenever the session date is in the future or
-    the clock is before the RTH open, so on those paths the canonical snapshot was built,
-    published on /api/levels, and then discarded by the surface beside it. A latent second
-    faucet on the pre-open path.
-
-    Absent stays absent: a family missing from the snapshot is missing here, never replaced
-    by spot, zero or a neighbouring level (RC-68).
+    The families are CARRIED from the one materialized snapshot (``canonical``); no level
+    helper runs here. Absent stays absent: a family missing from the snapshot is missing here,
+    never replaced by spot, zero or a neighbouring level (RC-68).
     """
-    bars_norm = _bars_to_list(bars)
-    if canonical is not None:
-        prev, over, _orb, _poc, _vah, _val, _vwap, _bands = (
-            _phase2a_families_from_canonical(canonical)
-        )
-    else:
-        prev = get_previous_day_levels(bars_norm, session_date, config)
-        over = get_overnight_levels(bars_norm, session_date)
+    prev, over, _orb, _poc, _vah, _val, _vwap, _bands = _phase2a_families_from_canonical(canonical)
 
     levels = []
     if prev.get("pdh"):
@@ -692,300 +654,6 @@ def build_premarket_snapshot(
         snapshot_type=SnapshotType.PREMARKET,
         zones=out_zones,
         summary=None,
-        raw_levels=raw,
-    )
-
-
-def build_opening_snapshot(
-    ticker: str,
-    bars: list,
-    session_date: date,
-    config: PlaybookConfig,
-) -> SnapshotOutput:
-    """Opening (09:45 ET): data through 09:45:00. Add ORB, VWAP. Breakout/Breakdown triggers."""
-    prev = get_previous_day_levels(bars, session_date, config)
-    over = get_overnight_levels(bars, session_date)
-    orb = compute_opening_range(bars, session_date, config)
-    cutoff = _cutoff_for_snapshot(SnapshotType.OPENING, session_date)
-    vwap = compute_session_vwap(bars, session_date, cutoff)
-
-    levels = []
-    if prev.get("pdh"):
-        levels.append((prev["pdh"], "PDH"))
-    if prev.get("pd_vah"):
-        levels.append((prev["pd_vah"], "PD_VAH"))
-    if prev.get("pd_poc"):
-        levels.append((prev["pd_poc"], "PD_POC"))
-    if orb.get("orb_high"):
-        levels.append((orb["orb_high"], "ORB_HIGH"))
-    if orb.get("orb_mid"):
-        levels.append((orb["orb_mid"], "ORB_MID"))
-    if orb.get("orb_low"):
-        levels.append((orb["orb_low"], "ORB_LOW"))
-    if vwap is not None:
-        levels.append((vwap, "VWAP_0945"))
-    if prev.get("pd_val"):
-        levels.append((prev["pd_val"], "PD_VAL"))
-    if prev.get("pdl"):
-        levels.append((prev["pdl"], "PDL"))
-    if over.get("overnight_high"):
-        levels.append((over["overnight_high"], "OVERNIGHT_HIGH"))
-    if over.get("overnight_low"):
-        levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
-
-    clusters = cluster_price_levels_into_zones(levels, config)
-
-    zones = []
-    _orb_h, orb_l = orb.get("orb_high"), orb.get("orb_low")
-    for lo, hi, mid, tags, source_pairs in clusters:
-        zt = ZoneType.PIVOT_VALUE
-        notes = ""
-        if "ORB_HIGH" in tags:
-            zt = ZoneType.BREAKOUT_TRIGGER
-            notes = "Breakout trigger above opening range high"
-        elif "ORB_LOW" in tags:
-            zt = ZoneType.BREAKDOWN_TRIGGER
-            notes = "Breakdown trigger below opening range low"
-        elif "PDH" in str(tags) or "PD_VAH" in str(tags):
-            zt = ZoneType.RESISTANCE_LIQUIDITY
-            notes = "Overhead structure"
-        elif "PDL" in str(tags) or "PD_VAL" in str(tags):
-            zt = ZoneType.SUPPORT_LIQUIDITY
-            notes = "Underside structure"
-        elif "VWAP" in str(tags) or "ORB_MID" in str(tags):
-            zt = ZoneType.PIVOT_VALUE
-            notes = "Intraday pivot zone"
-        elif orb_l and lo < orb_l * 0.995:
-            zt = ZoneType.LOW_EXTREME
-            notes = "Extreme low, below the opening range"
-        sl = [{"label": t, "value": round(p, 4)} for p, t in source_pairs]
-        z = Zone(
-            zone_type=zt,
-            zone_low=lo, zone_high=hi, zone_mid=mid,
-            source_levels=sl,
-            source_tags=tags,
-            confluence_score=len(tags),
-            snapshot_type=SnapshotType.OPENING,
-            interpretation_notes=notes,
-        )
-        zones.append(z)
-
-    vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
-    vwap_bands = None
-    if vwap is not None:
-        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, cutoff)
-        vwap_bands = {
-            "vwap": vwap,
-            "plus1": vwap_p1,
-            "minus1": vwap_m1,
-            "plus2": vwap_p2,
-            "minus2": vwap_m2,
-        }
-    raw = {"prev_day": prev, "overnight": over, "orb": orb, "vwap": vwap, "vwap_bands": vwap_bands}
-    return SnapshotOutput(
-        ticker=ticker,
-        session_date=session_date.isoformat(),
-        snapshot_type=SnapshotType.OPENING,
-        zones=zones,
-        summary=None,
-        raw_levels=raw,
-    )
-
-
-def build_midday_snapshot(
-    ticker: str,
-    bars: list,
-    session_date: date,
-    config: PlaybookConfig,
-) -> SnapshotOutput:
-    """Midday (10:30 ET): data through 10:30:00. Current POC/VAH/VAL, VWAP migration, value shift."""
-    cutoff = _cutoff_for_snapshot(SnapshotType.MIDDAY, session_date)
-    prev = get_previous_day_levels(bars, session_date, config)
-    orb = compute_opening_range(bars, session_date, config)
-    poc, vah, val = compute_volume_profile_levels(bars, session_date, config, cutoff)
-    vwap = compute_session_vwap(bars, session_date, cutoff)
-    vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
-    if vwap is not None:
-        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, cutoff)
-
-    levels = []
-    if prev.get("pdh"):
-        levels.append((prev["pdh"], "PDH"))
-    if vah:
-        levels.append((vah, "TODAY_VAH"))
-    if vwap_p1:
-        levels.append((vwap_p1, "VWAP_P1"))
-    if vwap is not None:
-        levels.append((vwap, "VWAP"))
-    if vwap_m1:
-        levels.append((vwap_m1, "VWAP_M1"))
-    if poc:
-        levels.append((poc, "TODAY_POC"))
-    if val:
-        levels.append((val, "TODAY_VAL"))
-    if prev.get("pd_val"):
-        levels.append((prev["pd_val"], "PD_VAL"))
-    if orb.get("orb_low"):
-        levels.append((orb["orb_low"], "ORB_LOW"))
-
-    clusters = cluster_price_levels_into_zones(levels, config)
-
-    # Value shift: compare today POC vs prev POC
-    value_state, vwap_relation, auction_interp = _classify_value_state_and_vwap_relation(
-        poc, prev.get("pd_poc"), vwap
-    )
-
-    zones = []
-    for lo, hi, mid, tags, source_pairs in clusters:
-        zt = ZoneType.PIVOT_VALUE
-        notes = ""
-        if "VWAP" in str(tags) and "TODAY_VAH" in str(tags):
-            zt = ZoneType.RESISTANCE_LIQUIDITY
-            notes = "VWAP remains above developing value; rallies into this area may meet supply."
-        elif "VWAP" in str(tags) and "TODAY_VAL" in str(tags):
-            zt = ZoneType.SUPPORT_LIQUIDITY
-            notes = "VWAP near value low; selloffs into this area may find demand."
-        elif "TODAY_POC" in str(tags):
-            zt = ZoneType.PIVOT_VALUE
-            notes = "Midday fair value zone"
-        elif "PDH" in str(tags) or "TODAY_VAH" in str(tags):
-            zt = ZoneType.RESISTANCE_LIQUIDITY
-            notes = "Major resistance zone"
-        elif "ORB_LOW" in str(tags) or "PD_VAL" in str(tags):
-            zt = ZoneType.LOW_EXTREME
-            notes = "Extreme low of the session so far"
-        sl = [{"label": t, "value": round(p, 4)} for p, t in source_pairs]
-        z = Zone(
-            zone_type=zt,
-            zone_low=lo, zone_high=hi, zone_mid=mid,
-            source_levels=sl,
-            source_tags=tags,
-            confluence_score=len(tags),
-            snapshot_type=SnapshotType.MIDDAY,
-            interpretation_notes=notes,
-        )
-        zones.append(z)
-
-    vwap_bands = None
-    if vwap is not None:
-        vwap_bands = {
-            "vwap": vwap,
-            "plus1": vwap_p1,
-            "minus1": vwap_m1,
-            "plus2": vwap_p2,
-            "minus2": vwap_m2,
-        }
-    raw = {"prev": prev, "orb": orb, "poc": poc, "vah": vah, "val": val, "vwap": vwap, "vwap_bands": vwap_bands}
-    summary = SnapshotSummary(
-        value_state=value_state,
-        vwap_relation=vwap_relation,
-        auction_interpretation=auction_interp,
-    )
-    return SnapshotOutput(
-        ticker=ticker,
-        session_date=session_date.isoformat(),
-        snapshot_type=SnapshotType.MIDDAY,
-        zones=zones,
-        summary=summary,
-        raw_levels=raw,
-    )
-
-
-def build_afternoon_snapshot(
-    ticker: str,
-    bars: list,
-    session_date: date,
-    config: PlaybookConfig,
-) -> SnapshotOutput:
-    """Afternoon (14:00 ET): data through 14:00:00. Updated profile, afternoon fair value, new value area."""
-    cutoff = _cutoff_for_snapshot(SnapshotType.AFTERNOON, session_date)
-    prev = get_previous_day_levels(bars, session_date, config)
-    poc, vah, val = compute_volume_profile_levels(bars, session_date, config, cutoff)
-    vwap = compute_session_vwap(bars, session_date, cutoff)
-    vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
-    if vwap is not None:
-        vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars, session_date, cutoff)
-
-    levels = []
-    if vah:
-        levels.append((vah, "TODAY_VAH"))
-    if vwap is not None:
-        levels.append((vwap, "VWAP"))
-    if poc:
-        levels.append((poc, "TODAY_POC"))
-    if val:
-        levels.append((val, "TODAY_VAL"))
-    if prev.get("pd_val"):
-        levels.append((prev["pd_val"], "PD_VAL"))
-    if prev.get("pdl"):
-        levels.append((prev["pdl"], "PDL"))
-
-    clusters = cluster_price_levels_into_zones(levels, config)
-
-    # Value shift: compare today POC vs prev POC (same logic as midday)
-    value_state, vwap_relation, auction_interp = _classify_value_state_and_vwap_relation(
-        poc, prev.get("pd_poc"), vwap
-    )
-
-    # New value area: afternoon POC shifted vs morning
-    new_value_area = False
-    if poc and prev.get("pd_poc"):
-        if abs(poc - prev["pd_poc"]) / max(prev["pd_poc"], 0.01) > 0.005:
-            new_value_area = True
-
-    zones = []
-    for lo, hi, mid, tags, source_pairs in clusters:
-        zt = ZoneType.PIVOT_VALUE
-        notes = "Afternoon fair value zone"
-        if "TODAY_VAH" in str(tags):
-            zt = ZoneType.RESISTANCE_LIQUIDITY
-            notes = "Updated resistance"
-        elif "PDL" in str(tags) or "PD_VAL" in str(tags):
-            zt = ZoneType.SUPPORT_LIQUIDITY
-            notes = "Updated support"
-        sl = [{"label": t, "value": round(p, 4)} for p, t in source_pairs]
-        z = Zone(
-            zone_type=zt,
-            zone_low=lo, zone_high=hi, zone_mid=mid,
-            source_levels=sl,
-            source_tags=tags,
-            confluence_score=len(tags),
-            snapshot_type=SnapshotType.AFTERNOON,
-            interpretation_notes=notes,
-        )
-        zones.append(z)
-
-    vwap_bands = None
-    if vwap is not None:
-        vwap_bands = {
-            "vwap": vwap,
-            "plus1": vwap_p1,
-            "minus1": vwap_m1,
-            "plus2": vwap_p2,
-            "minus2": vwap_m2,
-        }
-    raw = {
-        "prev": prev,
-        "poc": poc,
-        "vah": vah,
-        "val": val,
-        "vwap": vwap,
-        "vwap_bands": vwap_bands,
-        "new_value_area": new_value_area,
-    }
-    notes_list = ["New value area formed" if new_value_area else "Value area unchanged"]
-    summary = SnapshotSummary(
-        value_state=value_state,
-        vwap_relation=vwap_relation,
-        auction_interpretation=auction_interp,
-        notes=notes_list,
-    )
-    return SnapshotOutput(
-        ticker=ticker,
-        session_date=session_date.isoformat(),
-        snapshot_type=SnapshotType.AFTERNOON,
-        zones=zones,
-        summary=summary,
         raw_levels=raw,
     )
 
@@ -1077,60 +745,27 @@ def _phase2a_families_from_canonical(canonical: "PriceLevelSnapshot"):
 
 def build_live_snapshot(
     ticker: str,
-    bars: list,
-    session_date: date,
     config: PlaybookConfig,
     *,
+    canonical: "PriceLevelSnapshot",
+    now: datetime,
     extra_levels: Optional[list[tuple[float, str]]] = None,
-    canonical: Optional["PriceLevelSnapshot"] = None,
 ) -> SnapshotOutput:
     """
-    Rolling intraday snapshot: RTH cutoff is min(now ET, the day's close) on the session date;
-    historical session_date (prior calendar days) uses full RTH through its close (the market
-    calendar's, early closes included; a day with no session has an empty window).
-    Before today's RTH open → same as premarket snapshot.
-
-    Merges optional ``extra_levels`` (e.g. options walls from cache) with VWAP / profile / ORB context.
-
-    Phase 2A: when ``canonical`` is supplied (every live serving path does), the Phase 2A
-    families are CARRIED from that one materialized snapshot and no level helper runs here.
-    The self-computing path remains only for replay of a historical session_date, which is
-    a different generation and is never served beside a live /api/levels payload.
+    The session's zones from the one materialized price-level snapshot (``canonical``), with
+    optional ``extra_levels`` (the option levels and spot) fused in; no level helper runs here.
+    Before the session's RTH open it is the premarket shape. The cutoff shown is min(now, the
+    day's close) -- the market calendar's, early closes included.
     """
-    today_et = datetime.now(ET).date()
-    now = datetime.now(ET)
+    session_date = canonical.session_date
     open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
     close = rth_close(session_date)
     close_dt = datetime.combine(session_date, close, tzinfo=ET) if close is not None else open_dt
-
-    # RC-322: both exits carry `canonical` through. They used to drop it, so the pre-open
-    # and future-date paths recomputed the Phase 2A families beside the materialized ones.
-    if session_date > today_et:
-        return build_premarket_snapshot(ticker, bars, session_date, config,
-                                        canonical=canonical)
-
-    if session_date < today_et:
-        cutoff = close_dt
-    else:
-        if now < open_dt:
-            return build_premarket_snapshot(ticker, bars, session_date, config,
-                                            canonical=canonical)
-        cutoff = min(now, close_dt)
-
-    bars_norm = _bars_to_list(bars)
-    if canonical is not None:
-        prev, over, orb, poc, vah, val, vwap, (vwap_p1, vwap_m1, vwap_p2, vwap_m2) = (
-            _phase2a_families_from_canonical(canonical)
-        )
-    else:
-        prev = get_previous_day_levels(bars_norm, session_date, config)
-        over = get_overnight_levels(bars_norm, session_date)
-        orb = compute_opening_range(bars_norm, session_date, config)
-        poc, vah, val = compute_volume_profile_levels(bars_norm, session_date, config, cutoff)
-        vwap = compute_session_vwap(bars_norm, session_date, cutoff)
-        vwap_p1 = vwap_m1 = vwap_p2 = vwap_m2 = None
-        if vwap is not None:
-            vwap_p1, vwap_m1, vwap_p2, vwap_m2 = compute_vwap_bands(bars_norm, session_date, cutoff)
+    if now < open_dt:
+        return build_premarket_snapshot(ticker, session_date, config, canonical=canonical)
+    cutoff = min(now, close_dt)
+    prev, over, orb, poc, vah, val, vwap, (vwap_p1, vwap_m1, vwap_p2, vwap_m2) = (
+        _phase2a_families_from_canonical(canonical))
 
     levels: list[tuple[float, str]] = []
     if prev.get("pdh"):
@@ -1220,11 +855,10 @@ def build_live_snapshot(
         "vwap": vwap,
         "vwap_bands": vwap_bands,
         "cutoff_et": cutoff.isoformat(),
-        # Phase 2A: which (scope, generation) these numbers ARE, in the payload, so a
-        # consumer can never mistake a replayed historical scope for the canonical one.
-        "semantic_scope": "session_rth" if canonical is not None else f"replay_cutoff:{cutoff.isoformat()}",
-        "level_generation": canonical.generation if canonical is not None else None,
-        "level_snapshot_as_of_ts_utc": canonical.as_of_ts_utc if canonical is not None else None,
+        # which snapshot generation these numbers ARE, in the payload
+        "semantic_scope": "session_rth",
+        "level_generation": canonical.generation,
+        "level_snapshot_as_of_ts_utc": canonical.as_of_ts_utc,
     }
     summary = SnapshotSummary(
         value_state=value_state,
@@ -1242,65 +876,6 @@ def build_live_snapshot(
         summary=summary,
         raw_levels=raw,
     )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# INTERPRETATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MASTER FUNCTION
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def generate_liquidity_value_snapshot(
-    ticker: str,
-    bars_dataframe: list | "pd.DataFrame",
-    session_date: str | date,
-    snapshot_type: SnapshotType | str,
-    config: Optional[PlaybookConfig] = None,
-) -> SnapshotOutput:
-    """
-    Master function: generate structural snapshot for given ticker/session/type.
-
-    Args:
-        ticker: Instrument symbol (e.g. SPY, QQQ)
-        bars_dataframe: OHLCV bars (DataFrame or list of dicts)
-        session_date: "YYYY-MM-DD" or date
-        snapshot_type: PREMARKET | OPENING | MIDDAY | AFTERNOON
-        config: Optional. Uses defaults if None.
-
-    Returns:
-        SnapshotOutput with zones, summary, raw_levels.
-
-    No lookahead: each snapshot uses only data allowed for that checkpoint.
-    """
-    if config is None:
-        config = PlaybookConfig()
-
-    if isinstance(session_date, str):
-        session_date = date.fromisoformat(session_date)
-
-    st = snapshot_type
-    if isinstance(st, str):
-        st = SnapshotType(st.lower().replace(" ", "_"))
-
-    if st == SnapshotType.PREMARKET:
-        return build_premarket_snapshot(ticker, bars_dataframe, session_date, config)
-    if st == SnapshotType.OPENING:
-        return build_opening_snapshot(ticker, bars_dataframe, session_date, config)
-    if st == SnapshotType.MIDDAY:
-        return build_midday_snapshot(ticker, bars_dataframe, session_date, config)
-    if st == SnapshotType.AFTERNOON:
-        return build_afternoon_snapshot(ticker, bars_dataframe, session_date, config)
-    if st == SnapshotType.LIVE:
-        return build_live_snapshot(
-            ticker, bars_dataframe, session_date, config, extra_levels=None
-        )
-    raise ValueError(f"Unknown snapshot_type: {snapshot_type}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

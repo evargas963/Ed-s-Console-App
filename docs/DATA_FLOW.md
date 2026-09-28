@@ -85,6 +85,10 @@ Schwab sends is taken as sent (rule 2), never computed.
   candle is built from quotes: level-one prices matched Schwab's completed bars on all four of
   open, high, low and close in 36.1% of 12,364 minutes (43 tickers, 2026-09-25 10:00–15:00 ET),
   so a quote-built candle would misstate the high or low (operator 2026-09-28).
+- **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
+  generation from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
+  → `/api/levels`, and the liquidity zones of `/api/liquidity-snapshot` are built from that same
+  snapshot (today only; no checkpoint or past-date path).
 - **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per board or
   viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule (#312).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
