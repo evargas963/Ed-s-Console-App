@@ -89,7 +89,7 @@ def test_regime_survives_the_middle_tier_but_level_is_disclosed_approximate():
     at spot, independent of flip-level precision — while the flip LEVEL says it is approximate."""
     read = build_terrain_read(
         spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_LEVEL_APPROX,
-        put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9, ticker="SPY",
+        put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9,
     )
     assert read.regime, "the regime must survive the middle tier (its basis is the at-spot sign)"
     assert read.posture, "posture accompanies a resolved regime"
@@ -100,7 +100,7 @@ def test_regime_survives_the_middle_tier_but_level_is_disclosed_approximate():
 def test_a_chain_too_narrow_for_the_at_spot_sign_still_stands_everything_aside():
     read = build_terrain_read(
         spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_NARROW,
-        put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9, ticker="SPY",
+        put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9,
     )
     # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 5): was a 3-way
     # `or` in which the first two disjuncts are DEAD (measured: regime is the truthy
@@ -127,7 +127,7 @@ def test_regime_wording_discloses_the_modeled_dealer_sign():
     """Operator requirement: modeled dealer positioning must not read as observed fact."""
     read = build_terrain_read(
         spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED,
-        put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9, ticker="SPY",
+        put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9,
     )
     mech = " ".join(read.lines)
     assert "modelled" in mech.lower(), f"the mechanism line must disclose the modeled sign: {mech}"
