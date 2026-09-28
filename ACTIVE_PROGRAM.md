@@ -36,7 +36,6 @@ spot (Key Levels = header, #372).
 | ONE-07 | QUEUED | Option chains fetched by two processes with two writers to `ed_console.db` (with P2-1). |
 | ONE-09 | QUEUED | VWAP, prior day and value area recomputed by `/api/liquidity-snapshot`'s own path (`liquidity_value_engine` checkpoint builders) instead of the one price-level snapshot. |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
-| ONE-13 | QUEUED | Ticker roster built twice (console `CORE_TICKERS` + filtered board; daemon's full board). |
 | TICK-01 | QUEUED | Index symbol form from a hand-kept list of 11 roots (`instrument_identity.BROKER_INDEX_BARE_ROOTS`); Schwab's own instrument answer decides. |
 | TICK-02 | QUEUED | Option contract → ticker matched by root name, with weekly/adjusted roots (SPXW, NDXP) through a second path that needs a stored capture; Schwab's underlying field on the contract decides. |
 | TICK-03 | QUEUED | "Adjusted deliverable" defined as 100 shares of stock, so cash-settled index options are all flagged; needs a captured index deliverable first. |

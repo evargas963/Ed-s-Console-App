@@ -756,6 +756,7 @@ from micro_structure import Candle
 # path now has no failure mode to pick a policy for.
 from calibration.complete_chain_capture import (
     COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
+    board_tickers,
     last_capture_per_day,
     newest_capture_ts,
 )
@@ -847,19 +848,14 @@ def start_bar_writer() -> None:
 # chain). 5 core tickers = 10 calls per 30s cycle = well within limits.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── No built-in ticker list (universality, operator 2026-09-23) ─────────────────
-# This used to hard-code 11 "core" tickers (SPY/QQQ/IWM + 8 mega-caps) that were always
-# enrolled, exempt from the collectability probe, and could not be removed. Every ticker is
-# now enrolled the same way, through the logging_universe table; rows an earlier build
-# wrote with category 'core' stay enrolled as ordinary rows (see the roster loaders).
-CORE_TICKERS:   list[str] = []
+# No built-in ticker list (universality, operator 2026-09-23): the board is the logging_universe
+# table, read by board_tickers in both processes.
 RTH_ONLY:       bool      = True  # only log during RTH + 30min pre/post buffer
 
 
 def _market_context_panel_auto_candidates() -> list[str]:
-    """Symbols quoted every ``fetch_market_context`` cycle (excluding ``CORE_TICKERS`` duplicates)."""
-    core_u = frozenset((c or "").upper().strip() for c in CORE_TICKERS)
-    return market_context_panel_symbols_excluding_core(core_u)
+    """Symbols quoted every ``fetch_market_context`` cycle."""
+    return market_context_panel_symbols_excluding_core(frozenset())
 
 
 def _sync_market_context_panel_into_logging_universe(db, now_ts: float) -> None:
@@ -895,7 +891,7 @@ def _run_legacy_logger_json_migration(db) -> None:
         r = db.logging_universe_migrate_legacy_json_file(
             primary_path=Path(_TICKER_FILE),
             archive_path=Path(_TICKER_ARCHIVE),
-            core_tickers=list(CORE_TICKERS),
+            core_tickers=[],
         )
         if r.get("status") not in ("already_completed", "skipped_no_source"):
             log.info("Issue 22 legacy logger json migration: %s", r)
@@ -904,15 +900,14 @@ def _run_legacy_logger_json_migration(db) -> None:
 
 
 def _hydrate_logger_tickers_from_db() -> None:
-    """Re-merge CORE + user_persisted + pinned + panel_auto from DB (startup / heal drift).
-    Issue 22; panel_auto added 2026-08-25 for universal collection (RC-482/RC-483)."""
+    """The board, read from the logging_universe table by board_tickers -- the same reader the
+    capture daemon uses, so both processes hold one roster (startup / heal drift)."""
     global _logger_tickers, _LOGGING_UNIVERSE_DB_LOAD_COUNT
     try:
         _LOGGING_UNIVERSE_DB_LOAD_COUNT += 1
         db = get_db()
         logging_universe_sync_wall_ts = time.time()
         _run_legacy_logger_json_migration(db)
-        db.logging_universe_sync_core(CORE_TICKERS, logging_universe_sync_wall_ts)
         try:
             removed = db.logging_universe_prune_invalid_enrollments()
             if removed:
@@ -920,21 +915,9 @@ def _hydrate_logger_tickers_from_db() -> None:
         except Exception as e:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
         _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
-        merged = [ticker_storage_key(t) for t in CORE_TICKERS]  # RC-345/F25: canonical logger hydration
-        for row in db.logging_universe_list_rows():
-            # UNIVERSAL COLLECTION (RC-482/RC-483): panel_auto joins the roster here too.
-            if row.get("category") in ("user_persisted", "pinned", "panel_auto", "core"):
-                t = ticker_storage_key(row.get("ticker"))  # RC-345/F25: canonical (legacy bare rows resolve on-read)
-                if t and t not in merged:
-                    merged.append(t)
-        try:
-            from scheduler_user_tickers import filter_tickers_for_background_logging
-
-            merged = filter_tickers_for_background_logging(merged, str(db.db_path))
-        except Exception as e:
-            log.warning("filter_tickers_for_background_logging: %s", e)
+        board = board_tickers(db.db_path)
         with _logger_lock:
-            _logger_tickers = merged
+            _logger_tickers = board
     except Exception as e:
         log.warning("hydrate logger tickers from DB: %s", e)
 
@@ -945,7 +928,7 @@ def _hydrate_logger_tickers_from_db() -> None:
 # universe is loaded in the FastAPI lifespan via start_logger() -> _hydrate_logger_tickers_from_db()
 # (server.py:_app_lifespan). The cheap JSON-file fallback (no DB) is retained for the degraded
 # no-signals path so its behavior is unchanged.
-_logger_tickers:  list[str] = list(CORE_TICKERS)
+_logger_tickers:  list[str] = []
 _logger_lock:     threading.Lock   = threading.Lock()
 
 
@@ -2391,10 +2374,9 @@ def _reprice_worker(tk: str) -> None:
 
 
 def _ticker_on_terrain_board(tk: str) -> bool:
-    # canonical current board membership (the terrain loop's universe = the logger cycle set +
-    # core), read under the existing lock — NOT a new registry, and NOT merely "a snapshot exists".
+    # current board membership (the terrain loop's universe), read under the existing lock
     with _logger_lock:
-        return tk in _logger_tickers or tk in CORE_TICKERS
+        return tk in _logger_tickers
 
 
 def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
@@ -2568,12 +2550,8 @@ def _terrain_loop() -> None:
             except Exception as e:  # noqa: BLE001 -- the status line says it failed, never silence
                 log.warning("status: could not be read (%s: %s)", type(e).__name__, e)
             next_status = cycle_start + STATUS_EVERY_SEC
-        tickers: list[str] = []
-        try:
-            with _logger_lock:
-                tickers = list(_logger_tickers)
-        except Exception:
-            tickers = list(CORE_TICKERS)
+        with _logger_lock:
+            tickers = list(_logger_tickers)
         # Independent-review finding (2026-09-12, state-authority review), REPRODUCED: a
         # ticker merely PREVIEWED (never enrolled onto _logger_tickers -- see
         # TICKER-PREVIEW-NO-ENROLL below) got exactly ONE on-demand terrain compute (the
