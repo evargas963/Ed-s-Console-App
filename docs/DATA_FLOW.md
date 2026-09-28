@@ -108,8 +108,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   wall states and leans, wall distances, flip side, headline) is computed in that one publication
   at that publication's price; `/api/terrain` serves it as published and recomputes nothing.
   A publication carries the same fields whatever its chain's source (a live download or a stored
-  capture): the ATR pair (from the 1-minute bars) and the delta-OI walls (the chain's per-strike
-  open interest, banked under the chain's ET date, against the previous banked session) included.
+  capture), the ATR pair (from the 1-minute bars) included. The day-over-day open-interest change
+  has one producer: the forces, from the stored captures (`/api/forces`, shown on the Trade Desk).
   An ATR leg that cannot be computed is served absent with its reason (how many trading days or
   15-minute periods of bars exist; ATR(14) needs 15). Every rule here is the same for any ticker,
   on the board or not: a viewed ticker (a page has it open: its `/api/changes` connection, on any

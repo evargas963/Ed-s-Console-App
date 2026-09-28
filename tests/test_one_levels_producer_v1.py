@@ -231,10 +231,10 @@ def test_an_unviewed_ticker_keeps_no_chain_and_gets_no_heatmap(monkeypatch):
 
 
 def test_a_stored_capture_and_a_live_chain_publish_the_same_fields(monkeypatch):
-    """2026-09-28 audit: ATR and the delta-OI walls were set only after a live download
-    (_terrain_refresh_one), so every publication from a stored capture (startup, a closed market)
-    served them absent for every ticker, and the chain basis carried two labels for the same full
-    chain ("full" live, the capture's own label stored). The one producer sets them all."""
+    """2026-09-28 audit: ATR was set only after a live download (_terrain_refresh_one), so every
+    publication from a stored capture (startup, a closed market) served it absent for every
+    ticker, and the chain basis carried two labels for the same full chain ("full" live, the
+    capture's own label stored). The one producer sets them all."""
     from terrain_atr import AtrPair
     _stream({}, monkeypatch)
     monkeypatch.setattr(server, "_atr_pair", lambda tk: AtrPair(4.2, 0.7))
@@ -249,7 +249,7 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields(monkeypatch):
     assert public == {k for k in stored if not k.startswith("_")}
     for c in (live, stored):
         assert (c["atr_daily"], c["atr_15m"]) == (4.2, 0.7)
-        assert c["chain_basis"] == server.CAPTURE_BASIS and "delta_oi_walls" in c
+        assert c["chain_basis"] == server.CAPTURE_BASIS
 
 
 def test_vanna_and_charm_by_strike_read_the_published_snapshot(monkeypatch):

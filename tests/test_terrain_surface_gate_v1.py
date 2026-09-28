@@ -62,7 +62,6 @@ class Snap:
     """compute_terrain's stand-in: remembers the contracts it was asked to price."""
     profile = {}
     per_strike = {}
-    oi_by_strike = {}
     charm_by_strike = {}
     confidence = None
     spot = 100.0

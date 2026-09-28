@@ -337,57 +337,6 @@ def test_rc362_net_vanna_math_and_fail_closed():
     assert compute_net_vanna({700.0: {"other": 1}}, 800.0) is None
 
 
-def test_rc359_delta_oi_walls_build_unwind_and_fail_closed():
-    """RC-359: ΔOI walls — biggest call/put OI builds + biggest unwind; None until a
-    prior session exists; only a strike present both days has a change (a strike missing from
-    yesterday's bank is not known to have had zero)."""
-    from math_exposure_core import compute_delta_oi_walls
-
-    prev = {700.0: (1000.0, 500.0), 705.0: (2000.0, 800.0)}
-    today = {700.0: (1500.0, 450.0),          # call +500, put −50
-             705.0: (1800.0, 3000.0),         # call −200, put +2200
-             710.0: (900.0, 100.0)}           # not in yesterday's bank: no change computed
-    out = compute_delta_oi_walls(today, prev)
-    assert out is not None
-    assert out["call_build_strike"] == 700.0 and out["call_build_doi"] == 500
-    assert out["put_build_strike"] == 705.0 and out["put_build_doi"] == 2200
-    assert out["unwind_strike"] is None       # no strike shrank NET (705: -200+2200>0)
-
-    shrink = compute_delta_oi_walls({700.0: (100.0, 100.0)}, {700.0: (1000.0, 500.0)})
-    assert shrink["unwind_strike"] == 700.0 and shrink["unwind_doi"] == -1300
-    assert shrink["call_build_strike"] is None
-
-    assert compute_delta_oi_walls(today, {}) is None   # no prior session -> fail closed
-    assert compute_delta_oi_walls({}, prev) is None
-
-
-def test_rc359_oi_banking_and_prev_session_reader(tmp_path):
-    import sqlite3
-
-    from db import EdDB
-
-    d = EdDB(tmp_path / "oi.db", allow_noncanonical=True)
-    d.bank_daily_strike_oi("SPY", "2026-08-14", [(700.0, 1000.0, 500.0)], 1.0)
-    d.bank_daily_strike_oi("SPY", "2026-08-14", [(700.0, 1100.0, 500.0)], 2.0)  # upsert wins
-    d.bank_daily_strike_oi("SPY", "2026-08-15", [(700.0, 1500.0, 450.0)], 3.0)
-    prev = d.prev_session_strike_oi("SPY", "2026-08-15")
-    assert prev == {700.0: (1100.0, 500.0)}            # most recent BEFORE the 15th, upserted
-    assert d.prev_session_strike_oi("SPY", "2026-08-14") == {}   # nothing before day 1
-    d.bank_daily_strike_oi("SPY", "2026-08-15", [], 4.0)          # empty writes nothing
-    with sqlite3.connect(tmp_path / "oi.db") as conn:
-        assert conn.execute("SELECT COUNT(*) FROM oi_daily").fetchone()[0] == 2
-
-
-    # The UI half of this test (a ΔOI ladder row in static/index.html) was retired here
-    # (/console cutover, operator directive 2026-09-14), alongside the same-shaped UI
-    # assertions in the GSF/GRC, 0DTE share, RR25, Vanna, and DEX tests above -- none of
-    # these six terrain metrics has any consumer in the new console (grepped static/js/*.js
-    # and static/console.html, zero matches for any of their labels/kl_ keys). The backend
-    # wiring above (server.py stamps the field) is real and unaffected either way. Flagged
-    # for the operator: six already-computed risk metrics currently have no UI consumer at
-    # all post-cutover, not fixed here.
-
-
 def test_the_flip_counts_the_contracts_it_could_not_price():
     """M-10: Schwab sent volatility 0 on 5 SNDK contracts with open interest (real 09-25
     capture). The profile cannot price them; the served flip says how many and why."""

@@ -201,7 +201,7 @@ def test_a_refresh_publishes_the_same_fields_for_any_ticker(_fresh, monkeypatch,
     view(tk)                                        # selected on the page
     server._publish_levels(tk, [dict(c) for c in _CRWD["chain"]], _CAPTURED)
     t = server.get_terrain(ticker=tk)
-    assert t["chain_basis"] == CAPTURE_BASIS and t["delta_oi_walls"] is None   # no prior banked day
+    assert t["chain_basis"] == CAPTURE_BASIS
     assert t["atr_15m"] is None and "0 15-minute periods" in t["atr_15m_reason"]
     assert _call(tk)["available"] is True
 

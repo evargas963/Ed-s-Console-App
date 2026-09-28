@@ -2141,7 +2141,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         # the values read from the stored chain captures (forces, the prior day's per-strike rows)
         # change only with a new capture or a new chain day: computed then, once, for all readers
         if new_chain:
-            payload["delta_oi_walls"] = _delta_oi_walls(tk, snap, fetched_ts)
             captures_key = (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(float(fetched_ts)))
             if payload.get("_captures_key") != captures_key:
                 stored = captures if captures is not None else last_capture_per_day(get_db().db_path, tk, 2)
@@ -2572,24 +2571,6 @@ def _atr_fields(tk: str) -> dict:
     return {"atr_daily": round(pair.daily, 3) if pair.daily is not None else None,
             "atr_15m": round(pair.m15, 3) if pair.m15 is not None else None,
             "atr_daily_reason": pair.daily_reason, "atr_15m_reason": pair.m15_reason}
-
-
-def _delta_oi_walls(tk: str, snap: "TerrainSnapshot", chain_ts: float) -> "dict | None":
-    """Banks the chain's per-strike open interest under the chain's ET date (last write wins)
-    and returns the change against the previous banked session (compute_delta_oi_walls); None
-    with no prior session or when the bank cannot be written (logged)."""
-    from math_exposure_core import compute_delta_oi_walls
-    oi = snap.oi_by_strike or {}
-    if not oi:
-        return None
-    day = et_date_str_from_ts_utc(float(chain_ts))
-    try:
-        db = get_db()
-        db.bank_daily_strike_oi(tk, day, [(k, c, p) for k, (c, p) in oi.items()], time.time())
-        return compute_delta_oi_walls(oi, db.prev_session_strike_oi(tk, day))
-    except sqlite3.Error as e:
-        log.warning("oi_daily banking failed for %s: %s", tk, e)
-        return None
 
 
 #: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
