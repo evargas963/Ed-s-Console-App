@@ -214,7 +214,7 @@ def test_every_level_shaped_payload_name_is_declared():
     payload = compute_terrain("SPY", chain, spot).to_dict()
     declared_terrain = {n for (s, n) in DECLARED if s == "terrain"}
     for key in payload:
-        if key.endswith(("_state", "_range", "_blockers")):
+        if key.endswith(("_state", "_range", "_blockers")) or key.startswith("dist_to_"):   # distances, not levels
             continue
         if key.endswith(_LEVEL_SUFFIXES) or key in _LEVEL_EXTRAS:
             assert key in declared_terrain or key in _SINGLE_SURFACE_FULL_BOOK, (

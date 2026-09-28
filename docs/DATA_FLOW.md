@@ -93,7 +93,11 @@ Schwab sends is taken as sent (rule 2), never computed.
   newest chain capture (#312). The values read from the stored captures (forces: ΔOI, DEX and
   charm by side; the prior day's per-strike rows) are computed by the same producer only when the
   ticker's newest capture or its chain's day changes; `/api/forces` and `/api/terrain/strikes`
-  serve that result and read no stored chain.
+  serve that result and read no stored chain. Everything computed from spot (gamma at spot, regime,
+  wall states and leans, wall distances, flip side, headline) is computed in that one publication
+  at that publication's price; `/api/terrain` serves it as published and recomputes nothing.
+  Once the price is not live the served publication is a past observation (`spot_state` stale,
+  with its spot's time), and the next publication has no levels, with its reason.
 - **Alerts and level crosses.** Computed by the console at each levels publish; crosses written to
   `ed_console.db` → the `levels` push → `/api/alerts` → browser.
 - **Market session.** From the market calendar → pushed on `/api/changes` when the page connects

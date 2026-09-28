@@ -62,27 +62,3 @@ def test_plane_mark_cannot_replace_prior_last_price() -> None:
     assert row["spot"] == 50.0
     assert row["quote_source_detail"]["spot"] == "LAST_PRICE"
     L._by_ticker.pop("KEEPLAST", None)
-
-
-
-
-
-
-def test_reprice_and_api_spot_do_not_use_bar_close_or_snapshot(monkeypatch) -> None:
-    monkeypatch.setattr(server, "get_client", lambda: object())
-    cached = {
-        "ticker": "SPY",
-        "spot": 745.10,
-        "spot_source": server.SPOT_SOURCE_PLANE,  # the terrain loop's own stamp on a cached spot
-        "regime": "LONG_GAMMA_CHOP",
-        "call_wall": 750.0,
-        "put_wall": 740.0,
-    }
-    out = server._reprice_cached_terrain(cached, "SPY")
-    assert out["spot"] is None
-    assert out["spot_state"] == "unavailable"
-    assert out["call_wall"] == 750.0
-
-    spot, source, _ts = server.resolve_spot("SPY")
-    assert spot is None
-    assert source == "none"

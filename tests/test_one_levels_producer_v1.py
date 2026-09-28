@@ -414,18 +414,25 @@ def test_a_reprice_on_a_kept_chain_keeps_the_chains_time(monkeypatch):
     assert _cached()["computed_ts_utc"] == fetched
 
 
-def test_no_live_price_means_no_regime_and_the_levels_stand(monkeypatch):
-    """Your rule: the price is the live last trade or nothing. With no live price, the regime,
-    headline and wall-vs-price states are read from nothing, so they read UNAVAILABLE; the walls
-    and flip, which come from the chain, stay."""
+def test_the_route_serves_the_publication_and_no_live_price_publishes_no_levels(monkeypatch):
+    """/api/terrain serves the levels exactly as the producer published them -- every at-spot
+    value from the publication, none recomputed per request. Once the price is no longer live
+    they are a past observation: labelled stale, with their spot and its time. The next
+    publication with no live price has no levels, with its reason."""
+    from app.options.order_flow import streaming as ofs_mod
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, server.SPOT_SOURCE_PLANE, 1.0))
     server._publish_levels(TK, _CONTRACTS, time.time())
     published = _cached()
+    monkeypatch.setattr(ofs_mod, "_price_rows", {})              # the price is no longer live
+    out = server.get_terrain(ticker=TK)
+    for k in ("spot", "regime", "net_gex_at_spot", "call_wall", "call_wall_state", "call_wall_lean",
+              "dist_to_call_wall", "flip_relation", "headline"):
+        assert out[k] == published[k], k
+    assert out["spot_state"] == "stale" and out["spot_as_of_ts_utc"] == 1.0
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
-    out = server._reprice_cached_terrain(published, TK)
-    assert out["spot"] is None and out["spot_state"] == "unavailable"
-    assert out["regime"] == "UNAVAILABLE" and "Short gamma" not in out["headline"]
-    assert out["net_gex_at_spot"] is None and out["call_wall_state"] is None
-    assert out["call_wall"] == published["call_wall"] and out["gamma_flip"] == published["gamma_flip"]
+    server._publish_levels(TK, _CONTRACTS, time.time())          # the next chain: no live price
+    out = server.get_terrain(ticker=TK)
+    assert out["regime"] == "UNAVAILABLE" and out["call_wall"] is None and out["error"] == "no spot price"
 
 
 def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
