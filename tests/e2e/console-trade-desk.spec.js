@@ -48,7 +48,6 @@ async function intercept(page) {
     else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
     else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
     else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/session')) body = { session_label: 'RTH' };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
 }
@@ -110,7 +109,6 @@ test.describe('Trade Desk renders served values', () => {
       else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
       else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
       else if (url.includes('/api/bars1m')) body = BARS;
-      else if (url.includes('/api/session')) body = { session_label: 'RTH' };
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });

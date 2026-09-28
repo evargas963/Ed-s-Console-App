@@ -175,23 +175,8 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
 
 
 def test_surface_seq_publication_is_atomic_with_the_cache_write(monkeypatch):
-    """Independent-review finding (2026-09-12, state-authority review), REPRODUCED: the seq
-    bump (_next_gamma_surface_seq, which ALSO pushes the SSE 'gamma_surface_seq' notify) used
-    to run inside its OWN, EARLIER `with _terrain_cache_lock:` block -- a real gap of several
-    statements (and a possible exception) before `_terrain_cache[tk] = payload` in a SECOND,
-    later lock acquisition. Any reader in that window (an SSE subscriber reacting to the
-    notify by immediately re-fetching, or an ordinary concurrent poll) could acquire the
-    now-released lock and observe the NEW surface_seq while `_terrain_cache[tk]` still held
-    the PREVIOUS cycle's payload -- publication announced before the published data was
-    visible ("the REST producer can announce surface revision 2 while the serving cache
-    still returns revision 1").
-
-    This proves the STRUCTURAL fix directly rather than racing real threads against a gap of
-    a few Python statements (unreliable to hit deterministically): the seq bump and the
-    cache write must now occur under the SAME lock acquisition (the same `with
-    _terrain_cache_lock:` __enter__ call), so no other thread can ever acquire that lock in
-    between them.
-    """
+    """The seq bump and the cache write happen under one lock acquisition, so no reader sees
+    a new surface_seq with the previous payload."""
     tk = server.ticker_storage_key("SPY")
     server._gamma_surface_seq.pop(tk, None)
 

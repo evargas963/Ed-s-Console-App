@@ -62,20 +62,25 @@ operator.
 - **Equity quote.** Schwab → daemon bus → (a) daemon writer → `stream_capture.db`; (b) daemon's
   price row → browser socket → header and watchlist; (c) console socket → console memory → the
   spot the levels use. Pushed end to end.
-- **Option quote and order book.** Schwab → daemon bus → writer, and → console memory → the
-  order-flow and heatmap routes → browser, **read on a timer**.
+- **Option quote and order book.** Schwab → daemon bus → writer, and → console memory → a
+  `flow` push on `/api/changes` → the browser reads the order-flow and heatmap routes.
 - **1-minute bar.** Schwab → daemon bus → writer (`stream_capture.db`), and → console → the
-  console's own bar writer → `ed_console.db` → `/api/bars1m` → browser, **read on a timer**. The
-  forming candle rides the price row.
+  console's own bar writer → `ed_console.db` → a `liquidity` push on `/api/changes` → the browser
+  reads `/api/bars1m`. The forming candle rides the price row.
 - **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per board or
   viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule (#312).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
-  chain in memory + spot → console memory → a push signal → the browser reads `/api/terrain` and
-  four other slice routes. Not stored; at startup and after the close they are computed from the
+  chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
+  a new chain arrived) → the browser reads `/api/terrain` and four other slice routes. Not stored; at startup and after the close they are computed from the
   newest chain capture (#312).
 - **Alerts and level crosses.** Computed by the console at each levels publish; crosses written to
-  `ed_console.db` → `/api/alerts` → browser.
-- **Market session.** From the market calendar → `/api/session`, read at load and at each change.
+  `ed_console.db` → the `levels` push → `/api/alerts` → browser.
+- **Market session.** From the market calendar → pushed on `/api/changes` when the page connects
+  and every 5 s with no other change.
+- **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the stream
+  handler (equity quote and book) and the bar writer mark a ticker's kind changed; each page
+  connection gets at most one push a second. The console down: the page's session label reads
+  `—` and no panel reloads until the browser's EventSource reconnects.
 
 ### 3.5 Where today breaks the design
 
@@ -83,7 +88,8 @@ operator.
 2. **Two writers and two databases** (the daemon's and the console's).
 3. **The console talks to Schwab** (REST chains) — the daemon should own every Schwab call.
 4. **The console computes the levels** in the same process that serves the page.
-5. **The browser polls** for bars, order flow, liquidity and the levels themselves.
+5. **The browser reads a route after each push** for bars, order flow, liquidity and the levels,
+   instead of receiving the values; bars are not yet on the daemon's push.
 6. **No standalone page remains**, and the console's page scripts compute none (the 64 sites
    inventoried 2026-09-27 moved to the server, P1-3; the standalone pages were deleted, the last
    of them /exposure, P2-4).

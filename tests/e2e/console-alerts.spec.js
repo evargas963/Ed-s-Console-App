@@ -14,7 +14,6 @@ async function intercept(page) {
     if (url.includes('/api/alerts')) body = alertsBody;
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-18'] };
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
-    else if (url.includes('/api/session')) body = { session_label: 'RTH' };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
 }

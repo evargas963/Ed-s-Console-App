@@ -50,18 +50,12 @@
   };
 
   // ---------- Key Levels rail ----------
-  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
-  // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
-  // per-call generation counter live-locks once pushes outrun the round trip.
   function stillLevelsCtx(tk) { return isGamma() && !!document.getElementById('klSpot') && ticker() === tk; }
   // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
   // aborted immediately once a different ticker is selected, instead of blocking it.
   function loadLevelsImpl(tk, _signal) {
     if (!stillLevelsCtx(tk)) return;
-    // 2026-09-17, live-UI field audit: shared, cross-module deduped fetch (see
-    // l1_sse_guards.js:sharedFetchJson) -- ed-gamma-chart.js's own Gamma Chart spot line
-    // reads this SAME /api/terrain for the SAME ticker on the SAME ed:gamma-push tick
-    // (see that file's own fix); this collapses the two into one real network call.
+    // shared with ed-gamma-chart.js's read of the same /api/terrain: one network call
     var sharedFetch = (window.EdL1SseGuards && window.EdL1SseGuards.sharedFetchJson) || function (u) {
       return fetch(u, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
     };
@@ -152,21 +146,13 @@
   }
 
   // ---------- GEX by Strike ----------
-  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
-  // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
-  // per-call generation counter live-locks once pushes outrun the round trip.
   function stillGbsCtx(tk) { var host = document.getElementById('gbsBody'); return isGamma() && !!host && ticker() === tk; }
   // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
   // aborted immediately once a different ticker is selected, instead of blocking it.
   function loadGbsImpl(tk, _signal) {
     var host = document.getElementById('gbsBody');
     if (!stillGbsCtx(tk)) return;
-    // 2026-09-16 audit follow-up (finding #3): shared, cross-module deduped fetch --
-    // ed-gamma-chart.js's own GEX-by-strike profile reads this SAME endpoint for the SAME
-    // ticker on the SAME `ed:gamma-push` tick; sharedFetchJson collapses the two into one
-    // real network request instead of two independent ones. No AbortSignal is passed (see
-    // that function's own docstring) -- stillGbsCtx() below still discards a response that
-    // arrives for a context this panel has since left.
+    // shared with ed-gamma-chart.js's read of the same endpoint: one network call
     var sharedFetch = (window.EdL1SseGuards && window.EdL1SseGuards.sharedFetchJson) || function (u) {
       return fetch(u, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
     };
@@ -354,30 +340,12 @@
   }
 
   // ---------- Strike Detail ----------
-  // Independent-review finding (2026-09-13), REPRODUCED: a private `_lastExpiry` variable
-  // here duplicated the CANONICAL "which expiry is this strike selected under" fact that
-  // ed-core.js's setStrike() already stores as state.selExpiry, but only the `ed:strike`
-  // handler kept it in sync -- `ed:expiry` (a workspace expiry-filter CHANGE) called
-  // loadStrike with the fresh filter but never updated `_lastExpiry`, so the two fell out
-  // of agreement the instant the operator changed the expiry filter without re-clicking a
-  // strike. The next `ed:refresh` tick then used the now-STALE `_lastExpiry`, reverting
-  // Strike Detail to the OLD expiry while the workspace shell stayed on the new one --
-  // reproduced exactly as select Sept 18 -> switch filter to Sept 25 -> ed:refresh ->
-  // chain requests go 18 -> 25 -> 18. Fixed by deleting the second authority entirely:
-  // `strikeDetailExpiry()` resolves the expiry to use FRESH, every time, from the same two
-  // canonical sources the original code was trying to shadow (the workspace filter, else
-  // the selected strike's own expiry) -- there is nothing left to fall out of sync.
+  // the workspace expiry filter, else the selected strike's own expiry
   function strikeDetailExpiry() {
     var s = (window.EdShell && window.EdShell.getState()) || {};
     return expiryFilter() || s.selExpiry || null;
   }
-  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
-  // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
-  // per-call generation counter live-locks once pushes outrun the round trip. loadStrike()
-  // callers pass the desired (strike, expiry) explicitly (like EdStream's desired-contract
-  // pattern elsewhere): the coalescing loader always re-fetches the CURRENT desired pair, so
-  // a burst of loadStrike() calls for different strikes converges on the latest one, never a
-  // stale one landing after it.
+  // loadStrike() records the desired (strike, expiry); the loader always fetches the current one
   var _sdDesired = { strike: null, expiry: null };
   function stillStrikeCtx(tk, strike, expiry) {
     return ticker() === tk && _sdDesired.strike === strike && _sdDesired.expiry === expiry;
@@ -445,7 +413,7 @@
       window.EdStream.setAdditionalContracts([], 'strike:' + _lastStrikeOwnerTicker);
     }
     _lastStrikeOwnerTicker = tk;
-    window.EdStream.setAdditionalContracts(symbols || [], 'strike:' + tk);
+    return window.EdStream.setAdditionalContracts(symbols || [], 'strike:' + tk);
   }
   function renderStrike(host, d, strike, expiry) {
     setSdAsOf(d);
@@ -481,17 +449,10 @@
       '<tr class="sd-net"><td class="side">Net</td><td>—</td><td>—</td><td>—</td><td class="' + netCls + '">' +
       (net == null ? '—' : usd(net)) + '</td><td>—</td><td>—</td></tr>' +
       '</tbody></table><div class="sd-src">vendor per-contract · net GEX$ this expiry · /api/chain</div>';
-    // RC-UI-3 (2026-09-12): connect the displayed strike's own vendor contract identity
-    // (both sides -- call AND put, "both sides where required") to LIVE streaming, so its
-    // gamma/delta/OI/volume can freshen sub-second instead of waiting the ~60s REST cycle.
-    // Independent-review finding: the new UI never called the plural subscription
-    // endpoint at all. This is the ONE panel with a genuinely resolved, DISPLAYED
-    // per-contract identity (the heatmap itself is a computed aggregate projection with
-    // no per-cell contract symbol) -- see EdStream.setAdditionalContracts for the
-    // request-dedup discipline that keeps this safe to call on every render. Always
-    // stated, even when empty (neither side found for this strike) -- a silent "do
-    // nothing" here would leave a PRIOR strike's contracts subscribed indefinitely.
-    _setAdditionalContractsDemand([call && call.symbol, put && put.symbol].filter(Boolean));
+    // stream the displayed strike's two contracts (always stated, even empty); the tape reads
+    // the streamed contracts, so it loads once the server has accepted a changed demand
+    var p = _setAdditionalContractsDemand([call && call.symbol, put && put.symbol].filter(Boolean));
+    if (p) p.then(function (r) { if (r && r.accepted && !r.unchanged) loadOf(); });
   }
 
   // Independent-review finding (2026-09-12), REPRODUCED: switching the active ticker did
@@ -807,38 +768,10 @@
   document.addEventListener('ed:expiry', loadLevels);   // the ratio is scoped to the selected expiry
   document.addEventListener('ed:view', loadAll);
   document.addEventListener('ed:scope', loadGbs);   // #3: re-window the GEX-by-strike panel only
-  document.addEventListener('ed:refresh', function (e) {
-    if (!e.detail || !e.detail.slow) return;
-    loadAll();
-    // Independent-review finding (2026-09-12): "Strike Detail reads volume from /api/chain.
-    // Its refresh handler does not reload that detail." loadAll() never included Strike
-    // Detail, so a selected strike's OI/Vol/Gamma/Delta/IV froze at whatever they were when
-    // the strike was first clicked. Reload it too, exactly like ed:expiry already does below,
-    // whenever a strike is currently selected.
-    var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
-    if (sel != null) loadStrike(sel, strikeDetailExpiry());
-  });
-  // Audit finding #3 (2026-09-16), FIXED: a streamed gamma-surface tick used to broadcast
-  // the SAME generic ed:refresh{slow} this file's 12s poll listener above reacts to, so
-  // EVERY endpoint loadAll() touches (terrain, PCR, vanna, charm, structures, order-flow
-  // tape -- none of them gamma-surface-tick-derived) refetched on every single streamed
-  // tick, not just the two pieces that actually ARE gamma-surface-derived (GEX-by-strike
-  // and a selected Strike Detail row, both backed by the SAME _per_strike cache
-  // server.py's _publish_levels also refreshes). Those two now react to
-  // the narrow ed:gamma-push event instead; everything else stays on the 12s cadence above.
-  //
-  // CONFIRMED REGRESSION (2026-09-17, live-UI field audit), FIXED: Key Levels (klSpot/
-  // klFlip/klCall/klPut/klAbs/klPeak/klNet/klRegime, all read from /api/terrain) was left
-  // OUT of that split entirely -- it stayed on the 12s cadence alone, yet its own "terrain
-  // · live" label (renderLevels, above) claimed unconditional liveness whenever not stale.
-  // /api/terrain's spot/walls/flip/net-GEX-at-spot are exactly as gamma-surface/spot-
-  // derived as GEX-by-strike is -- a spot-only tick (_publish_levels)
-  // moves every one of them just as much as it moves the heatmap. loadLevels() now reacts
-  // to the SAME push, closing the identical "header moves, this panel does not" gap the
-  // Gamma Chart's own spot line just had fixed.
-  document.addEventListener('ed:gamma-push', function () {
-    loadLevels();
-    loadGbs();
+  document.addEventListener('ed:changed', function (e) {
+    if (e.detail.kind === 'flow') { loadOf(); return; }
+    if (e.detail.kind !== 'levels') return;
+    loadLevels(); loadGbs(); loadVanna(); loadCharm(); loadStructures();
     var sel = ((window.EdShell && window.EdShell.getState()) || {}).selStrike;
     if (sel != null) loadStrike(sel, strikeDetailExpiry());
   });
@@ -846,12 +779,6 @@
     var det = e.detail || {};
     applyGbsHighlight();                       // A: sync the GEX-by-strike highlight
     if (det.strike != null) loadStrike(det.strike, det.expiry);
-    // The tape scopes to whichever contract(s) are DESIRED server-side -- that identity is
-    // only current once the streaming demand POST Strike Detail just issued resolves, so a
-    // short delay (not the full ~12s slow-refresh cadence) is a deliberate, disclosed
-    // approximation, not a race: loadOf() itself re-verifies isGamma()/ticker() at the
-    // moment it actually runs, same as every other coalesced loader in this file.
-    if (det.strike != null) setTimeout(loadOf, 600);
   });
   document.addEventListener('ed:expiry', function () {   // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
     loadLevels(); loadGbs(); loadStructures();   // Structures is expiry-scoped, same as Chain/Strike Detail

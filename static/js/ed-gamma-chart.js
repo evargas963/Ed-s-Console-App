@@ -256,12 +256,6 @@
     renderInto(host, _lastCtx.bars, _lastCtx.win, _lastCtx.spot, _lastCtx.terrain, _lastCtx.legend);
   }
 
-  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- required because
-  // `ed:refresh{slow}` now also fires on every streamed gamma_surface_seq push (ed-core.js),
-  // not just the 12s poll tick; a naive per-call generation counter live-locks (never applies
-  // a response) once pushes arrive faster than this 3-endpoint round trip. Ticker/view
-  // changed mid-flight is checked at resolution time (stillChart), not inferred from a
-  // counter.
   function stillChart(tk) { return isChart() && ticker() === tk; }
   // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
   // aborted immediately once a different ticker is selected, instead of blocking it.
@@ -286,26 +280,7 @@
   function okJson(r){ if(!r.ok) throw new Error(r.status); return r.json(); }
   function nullp(){ return null; }
 
-  // Audit finding #3 (2026-09-16, follow-up): a streamed gamma-surface push carries no new
-  // information for /api/bars1m (price history) -- that alone stays on the 12s/view-entry
-  // cadence. /api/terrain/strikes (the GEX-by-strike profile this chart's 'profile' mode
-  // plots) IS gamma-surface-derived and always was.
-  //
-  // CONFIRMED REGRESSION (2026-09-17, live-UI field audit): /api/terrain was ALSO excluded
-  // here on the reasoning "a streamed OPTION tick carries no new terrain/spot information" --
-  // true when this was written, but FALSE now that ed:gamma-push also fires on a canonical
-  // SPOT-ONLY tick (_publish_levels, server.py) with no option tick at
-  // all. (Then /api/terrain's spot field was this chart's spot; since the audit of #280 the
-  // spot is the header's quote_tick and /api/terrain supplies only flip/walls.) It was left pointing at `_lastRaw.terrain` -- the STALE
-  // object from the last full 12s-cadence load() -- so the header's spot could move on every
-  // tick while this chart's own spot line sat frozen for up to 12s. The exact same class of
-  // "header moves, this panel does not" defect the heatmap fix (2026-09-17) already closed,
-  // now closed here too: /api/terrain is refetched on every push, alongside /api/terrain/
-  // strikes (both via the shared, cross-module deduped fetch -- l1_sse_guards.js:
-  // sharedFetchJson -- so a simultaneous panels.js loadGbs() reading /api/terrain/strikes
-  // for the SAME ticker on the SAME push still collapses to one real network call each).
-  // /api/bars1m stays excluded -- a streamed tick, spot or option, cannot change PRIOR
-  // minute bars.
+  // new levels: the profile (/api/terrain/strikes) and flip/walls (/api/terrain); bars unchanged
   function loadGammaPushOnlyImpl(tk, _signal) {
     var host = document.getElementById('chartBody');
     if (!host || !stillChart(tk)) return;
@@ -674,12 +649,10 @@
   document.addEventListener('ed:view', load);
   document.addEventListener('ed:ticker', function () { _lastBarsData = null; load(); });
   document.addEventListener('ed:scope', load);   // #3: re-window on a scope change
-  document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
-  // Audit finding #3 (2026-09-16, follow-up): only /api/terrain/strikes (this widget's
-  // GEX-by-strike profile) is gamma-surface-derived -- react to the narrow push with the
-  // SCOPED reload (loadGammaPushOnlyImpl, above), never the full load() the 12s poll uses,
-  // which would also refetch /api/bars1m and /api/terrain for no reason on every streamed tick.
-  document.addEventListener('ed:gamma-push', loadGammaPushOnly);
+  // a new bar reloads the chart; new levels reload only the levels it draws
+  document.addEventListener('ed:changed', function (e) {
+    if (e.detail.kind === 'liquidity') load(); else if (e.detail.kind === 'levels') loadGammaPushOnly();
+  });
   document.addEventListener('ed:strike', function () { applyChartHighlight(); });   // A: cross-panel sync
   document.addEventListener('ed:theme', load);   // re-render SVG for the new theme's tokens
   // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's

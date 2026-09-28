@@ -557,11 +557,10 @@
     });
     state.selStrike = null; state.selExpiry = null;   // a new ticker clears the shared selection
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
-    openAnalyticsStream(state.ticker);   // gamma/L1 analytics pushes for this ticker
+    openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
     _priceSubTs = Date.now();
     subscribePrices();                   // the daemon answers with this ticker's row at once
     markHeaderPushDown();                // WAITING until that row lands (milliseconds)
-    refreshSession();
     emit('ed:ticker', { ticker: state.ticker });
   }
 
@@ -608,7 +607,7 @@
       .then(function (d) {
         if (state.ticker !== tk) return;   // a newer ticker switch superseded this request
         var exps = (d && d.expiries) || [];
-        _expiriesPending = !exps.length;   // levels not computed yet: the slow tick asks again
+        _expiriesPending = !exps.length;   // levels not computed yet: asked again when they change
         var opts = '<option value="">All Expirations</option>';
         var dte = (d && d.dte) || {};
         exps.forEach(function (e) { opts += '<option value="' + e + '">' + _fmtExpOpt(e, dte[e]) + '</option>'; });
@@ -748,7 +747,7 @@
     _wlDeclared = key;
     fetch('/api/streaming/watchlist-symbols', { method: 'POST', cache: 'no-store',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: list }) })
-      .catch(function () { _wlDeclared = null; });   // retried on the next poll
+      .catch(function () { _wlDeclared = null; });   // retried when the console push reopens
   }
   // ---- the price socket (daemon -> browser) ----
   var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
@@ -841,41 +840,32 @@
     if (!(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
   }
 
-  // ---- analytics stream (console): gamma-surface / L1-projection pushes only, no prices ----
-  var _sse = null;
-  function openAnalyticsStream(tk) {
-    if (_sse) { try { _sse.close(); } catch (e) {} }
-    _sse = null;
+  // ---- the console's push: which of this ticker's values changed, and the session label.
+  // Each panel reloads on `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
+  var _changes = null;
+  function openChangeStream(tk) {
+    if (_changes) { try { _changes.close(); } catch (e) {} }
+    _changes = null;
     if (typeof EventSource === 'undefined') return;
-    try { _sse = new EventSource('/api/analytics/light/stream?ticker=' + encodeURIComponent(tk)); }
-    catch (e) { _sse = null; return; }
-    // A gamma-surface change dispatches its own, narrow `ed:gamma-push` event, consumed only by
-    // the modules that read gamma-surface/per-strike data (ed-gamma.js, ed-gamma-panels.js,
-    // ed-gamma-chart.js) -- the browser reacts to the PUSH instead of waiting out the slow poll,
-    // and the 12s poll's `ed:refresh{slow}` stays the only driver of every other module
-    // (audit finding #3, 2026-09-16).
-    _sse.addEventListener('gamma_surface_seq', function (ev) {
-      var env; try { env = JSON.parse(ev.data); } catch (e) { return; }
-      if (!env || !env.scope || String(env.scope.ticker || '').toUpperCase() !== String(state.ticker || '').toUpperCase()) return;
-      emit('ed:gamma-push', { surfaceSeq: env.surface_seq });
+    try { _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk)); }
+    catch (e) { return; }
+    _changes.onopen = function () { _wlDeclared = null; declareWatchlistStream(loadWL()); };
+    _changes.onerror = function () { paintSession(null); };
+    _changes.addEventListener('session', function (ev) { paintSession(ev.data); });
+    ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
+      _changes.addEventListener(kind, function () {
+        if (kind === 'levels' && _expiriesPending) loadExpiries(state.ticker);
+        emit('ed:changed', { kind: kind });
+      });
     });
   }
 
-  // market session (RTH / Pre-Market / After-Hours / Closed) <- /api/session
+  // market session (RTH / Pre-Market / After-Hours / Closed), pushed with the changes
   function paintSession(label) {
     var el = document.getElementById('hSession'); if (!el) return;
     var m = { 'RTH': ['RTH', 'rth'], 'Pre-Market': ['PRE', 'pre'], 'After-Hours': ['AH', 'ah'], 'Closed': ['CLOSED', 'closed'] };
     var v = m[label] || [(label || '—'), ''];
     el.textContent = v[0]; el.className = 'sess ' + v[1];
-  }
-
-  var _sessGen = 0;
-  function refreshSession() {
-    var g = ++_sessGen;
-    fetch('/api/session', { cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (g === _sessGen) paintSession(d.session_label); })
-      .catch(function () { if (g === _sessGen) paintSession(null); });
   }
 
   // The push is not delivering: withdraw the quote instead of leaving the last one on screen
@@ -889,21 +879,6 @@
       spotState: 'unavailable', feedCls: 'stale',
       feedLabel: connecting ? 'WAITING' : 'OFFLINE',
       ageLabel: connecting ? 'no push yet' : 'live push down' });
-  }
-
-  // ONE coordinated scheduler. The header quote comes ONLY from the daemon price socket above
-  // (checkPriceSilence watches it every second); this timer drives the SLOW gamma/terrain refresh -- that
-  // producer changes on a 60s/5min cadence, so coordinated POLLING (not SSE) is the correct,
-  // lowest-cost delivery for it. No duplicate subscriptions, no polling storm.
-  var _tick = 0;
-  function liveTick() {
-    _tick++;
-    if (!state.ticker) { paintNoTicker(); if (_tick % 4 === 0) declareWatchlistStream(loadWL()); return; }
-    if (!pricePushHealthy() || _tick % 4 === 0) refreshSession();
-    if (_expiriesPending && _tick % 4 === 0) loadExpiries(state.ticker);
-    // the daemon is told the watchlist on the slow tick (it streams only what is asked for)
-    if (_tick % 4 === 0) declareWatchlistStream(loadWL());
-    emit('ed:refresh', { tick: _tick, slow: _tick % 4 === 0 });
   }
 
   // ================= CT clock =================
@@ -995,7 +970,6 @@
     tickClock(); setInterval(tickClock, 1000);
     openPriceSocket();                   // prices: daemon -> browser, one socket for the page
     setInterval(checkPriceSilence, 1000);
-    setInterval(liveTick, 3000);   // session label + the slow gamma/terrain refresh
   }
 
   // Audit finding #4 (2026-09-16): every view module (ed-gamma.js, ed-gamma-panels.js, etc.)

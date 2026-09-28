@@ -262,7 +262,7 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') load(); });
     document.addEventListener('click', function (e) {
       var btn = e.target.closest && e.target.closest('[data-ofh-minutes]');
       if (!btn) return;

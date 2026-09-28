@@ -1,21 +1,5 @@
-"""
-Layer A — authoritative in-process live quote plane (Ed Console).
-
-Canonical quote fields per ticker are updated primarily from Schwab **streaming**
-`LEVEL_ONE_EQUITY` WebSocket rows (`record_from_level_one_equity`). REST `/api/fast-quote`
-remains a secondary / fallback path (`record_quote` from `_fetch_fast_quote_payload`).
-
-Tier A `GET /api/live/state` and optional SSE `live_quote` events read this plane so
-visible spot/bid/ask track the latest row. Tier B `GET /api/analytics/light` merges the
-plane for live spot vs cached structure + order-flow engine input. Full analytical payloads
-(`GET /api/analytics/state`, legacy `GET /api/state`, `_fetch_state`) also merge from the plane.
-
-Layers (see server lifespan / architecture docs):
-  A — Tick/quote plane (this module)
-  B — Client fast mark-to-market (reads plane via HTTP + SSE live_quote)
-  C — Analytical refresh (`_fetch_state`, SSE full snapshots)
-  D — Persistence (DB, outcomes, training) — never on quote hot path
-"""
+"""The live quote per ticker, from Schwab's streamed LEVEL_ONE_EQUITY rows
+(`record_from_level_one_equity`), with its live rule (`spot_is_fresh`, `quote_is_fresh`)."""
 
 from __future__ import annotations
 

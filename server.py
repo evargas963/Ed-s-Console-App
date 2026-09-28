@@ -25,10 +25,9 @@ from time_et import (ET, now_et, RTH_OPEN_MINS, ct_label, is_capturable_session,
 from math_exposure_core import bucket_metric, merge_exposure_books
 
 import json
-import queue
 
 
-from fastapi import Body, FastAPI, Query, HTTPException, Request
+from fastapi import Body, FastAPI, Query, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -177,6 +176,7 @@ from db import get_db
 
 import live_market_plane as _lmp
 import live_price_rows as _lpr        # THE displayed price row (shared with the capture daemon)
+import push_changes
 
 # ── Config + Schwab client (refreshable singleton) ────────────────────────────
 load_dotenv_file()
@@ -441,27 +441,6 @@ _chain_inflight: dict = {}
 
 #: Precedence for the ONE spot authority. Highest wins; every entry records where the
 #: number came from so a caller can never silently accept a lower-confidence source.
-#
-# Operator-reproduced defect (2026-09-14, "360 audit... spot can be a different number on
-# the gamma chart"): resolve_spot's OWN docstring has claimed "THE single spot authority"
-# since RC-14, and a real static lock (tests/test_spot_authority_v1.py::
-# test_every_vendor_quote_read_goes_through_the_memo) keeps every RAW REST vendor quote
-# fetch behind it. That lock is real and it worked -- for the REST world it covers. It
-# never covered live_market_plane (Layer A): that module is ALSO an authoritative,
-# internally-disciplined quote store (its own docstring: "authoritative in-process live
-# quote plane... Tier A GET /api/live/state, Tier B GET /api/analytics/light, and Tier C
-# _fetch_state/GET /api/state all read this plane"), fed primarily by the Schwab
-# **streaming** websocket, completely independent of resolve_spot's REST-polling
-# _memoized_quote_response/_quote_memo. Two individually well-governed producers, never
-# reconciled with each other, is what allowed this: resolve_spot's 9 call sites (terrain,
-# /api/terrain/strikes -- the Gamma Chart's own inputs -- and others) never saw a streaming
-# tick at all, while the header/analytics stack read the plane FIRST and only fell back to
-# the REST memo when the plane was empty. Both sides were locked against duplicating
-# THEMSELVES; nothing ever locked them against diverging from EACH OTHER. Fixed at the
-# root: the plane is now resolve_spot's own highest-precedence source (freshness-gated,
-# never trusted stale), so every caller of the one authority function converges on the
-# same number the header shows, instead of two parallel hierarchies that happened to
-# usually agree.
 SPOT_SOURCE_PLANE = "streaming_plane"          # live_market_plane.get_quote — the freshest real trade this process has seen
 SPOT_SOURCE_CAPTURE = "chain_capture"          # underlyingPrice of a stored chain capture (DATA_FLOW decision 7)
 
@@ -712,172 +691,6 @@ UI_MAXIMIZE_SLA_MS: dict[str, int] = {
 }
 
 
-# ── L1 light SSE (/api/analytics/light/stream) — event-driven delivery; same payload as HTTP GET ──
-_l1_light_sse_clients: list[tuple[asyncio.Queue, tuple[str, str | None]]] = []
-_l1_light_sse_lock = threading.Lock()
-_l1_sse_thread_queue: queue.Queue = queue.Queue(maxsize=500)
-_l1_sse_diag: dict[str, int] = {
-    "l1_light_sse_connections": 0,
-    "l1_light_sse_events_queued": 0,
-    "l1_light_sse_events_delivered": 0,
-    # Legacy: kept for dashboards; prefer evicted_oldest counters (deterministic policy).
-    "l1_light_sse_events_dropped_full": 0,
-    "l1_light_sse_thread_queue_evicted_oldest": 0,
-    "l1_light_sse_client_queue_evicted_oldest": 0,
-    "l1_light_sse_events_throttled": 0,
-    "l1_payload_identity_violation": 0,
-    # Issue 31 — scaling / multi-connection diagnostics
-    "l1_light_sse_connections_peak": 0,
-    "l1_light_sse_duplicate_scope_same_client_warn_total": 0,
-    "l1_light_sse_rejected_total": 0,
-}
-# Process-local monotonic instant of last SSE backpressure drop (not Schwab/market time).
-
-
-# Issue 31 — hard caps for /api/analytics/light/stream (defined behavior beyond browser limits).
-MAX_L1_LIGHT_SSE_CONNECTIONS_TOTAL = 64
-MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE = 8
-# (remote_key, ticker, expiry_key) -> connection count (same client + scope = potential duplicate tab).
-_l1_light_sse_remote_scope: dict[tuple[str, str, str], int] = {}
-
-
-def _l1_sse_remote_key(request: Request) -> str:
-    """Coarse client key for duplicate-scope warnings (not authenticated identity)."""
-    xf = (request.headers.get("x-forwarded-for") or "").strip()
-    if xf:
-        return xf.split(",")[0].strip() or "unknown"
-    if request.client:
-        return request.client.host or "unknown"
-    return "unknown"
-
-
-def _l1_light_sse_try_reserve(request: Request, key: tuple[str, str]) -> tuple[asyncio.Queue, tuple[str, str, str]]:
-    """
-    Atomically enforce L1 light SSE limits. Raises HTTPException(503) when over cap.
-    Returns (queue, rs_key) for _l1_light_sse_release on disconnect.
-    """
-    remote = _l1_sse_remote_key(request)
-    t, exp_key = key
-    rs_key = (remote, t, exp_key)
-    with _l1_light_sse_lock:
-        n_total = len(_l1_light_sse_clients)
-        n_scope = sum(1 for _, csk in _l1_light_sse_clients if csk == key)
-        if n_total >= MAX_L1_LIGHT_SSE_CONNECTIONS_TOTAL:
-            _l1_sse_diag["l1_light_sse_rejected_total"] = int(_l1_sse_diag.get("l1_light_sse_rejected_total", 0)) + 1
-            log.warning(
-                "L1 light SSE rejected: global cap %s (current=%s)",
-                MAX_L1_LIGHT_SSE_CONNECTIONS_TOTAL,
-                n_total,
-            )
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    f"L1 SSE connection limit reached ({MAX_L1_LIGHT_SSE_CONNECTIONS_TOTAL} total). "
-                    "Close other tabs or connections."
-                ),
-            )
-        if n_scope >= MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE:
-            _l1_sse_diag["l1_light_sse_rejected_total"] = int(_l1_sse_diag.get("l1_light_sse_rejected_total", 0)) + 1
-            log.warning(
-                "L1 light SSE rejected: per-scope cap %s (scope=%s current=%s)",
-                MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE,
-                key,
-                n_scope,
-            )
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    f"L1 SSE per-scope connection limit reached ({MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE}). "
-                    "Close duplicate streams for this ticker/expiry."
-                ),
-            )
-        dup = int(_l1_light_sse_remote_scope.get(rs_key, 0))
-        if dup >= 1:
-            _l1_sse_diag["l1_light_sse_duplicate_scope_same_client_warn_total"] = int(
-                _l1_sse_diag.get("l1_light_sse_duplicate_scope_same_client_warn_total", 0)
-            ) + 1
-            # a same-client duplicate is the operator's own extra tab: counted, not logged; only
-            # approaching the per-scope cap is logged
-            if dup + 1 >= MAX_L1_LIGHT_SSE_CONNECTIONS_PER_SCOPE - 1:
-                log.warning(
-                    "L1 light SSE same-client duplicates approaching per-scope cap for %s from %s (existing=%s)",
-                    key,
-                    remote,
-                    dup,
-                )
-        _l1_light_sse_remote_scope[rs_key] = dup + 1
-        q: asyncio.Queue = asyncio.Queue(maxsize=8)
-        _l1_light_sse_clients.append((q, key))
-        _l1_sse_diag["l1_light_sse_connections"] = int(_l1_sse_diag.get("l1_light_sse_connections", 0)) + 1
-        cur = len(_l1_light_sse_clients)
-        peak = max(int(_l1_sse_diag.get("l1_light_sse_connections_peak", 0)), cur)
-        _l1_sse_diag["l1_light_sse_connections_peak"] = peak
-    return q, rs_key
-
-
-def _l1_light_sse_release(q: asyncio.Queue, key: tuple[str, str], rs_key: tuple[str, str, str]) -> None:
-    with _l1_light_sse_lock:
-        for i, pair in enumerate(list(_l1_light_sse_clients)):
-            if pair[0] is q and pair[1] == key:
-                _l1_light_sse_clients.pop(i)
-                break
-        _l1_sse_diag["l1_light_sse_connections"] = max(0, int(_l1_sse_diag.get("l1_light_sse_connections", 0)) - 1)
-        left = int(_l1_light_sse_remote_scope.get(rs_key, 0)) - 1
-        if left <= 0:
-            _l1_light_sse_remote_scope.pop(rs_key, None)
-        else:
-            _l1_light_sse_remote_scope[rs_key] = left
-
-
-def _l1_put_l1_client_queue(q: asyncio.Queue, env: dict) -> None:
-    """
-    Per-client asyncio.Queue (maxsize=8): on QueueFull, drop oldest pending event for this
-    connection, then enqueue the newest — preserves latest projection under saturation.
-    """
-    while True:
-        try:
-            q.put_nowait(env)
-            _l1_sse_diag["l1_light_sse_events_delivered"] = int(_l1_sse_diag.get("l1_light_sse_events_delivered", 0)) + 1
-            return
-        except asyncio.QueueFull:
-            try:
-                q.get_nowait()
-                _l1_sse_diag["l1_light_sse_client_queue_evicted_oldest"] = int(
-                    _l1_sse_diag.get("l1_light_sse_client_queue_evicted_oldest", 0)
-                ) + 1
-            except asyncio.QueueEmpty:
-                _l1_sse_diag["l1_light_sse_events_dropped_full"] = int(_l1_sse_diag.get("l1_light_sse_events_dropped_full", 0)) + 1
-                return
-
-
-def _l1_put_thread_queue_notify(sk: tuple[str, str | None], env: dict) -> None:
-    """
-    Cross-thread fan-in queue: on Full, evict oldest global item until the newest notify fits.
-
-    Fairness policy (explicit, deliberate — not accidental):
-    - Priority is "latest notify always gets queued" for backpressure recovery.
-    - Under extreme cross-scope saturation, an older pending notify for scope A may be
-      evicted to make room for scope B's newest notify. Per-scope correctness is preserved
-      by monotonic l1_generation on the client; a quiet scope may see delayed SSE until its
-      next build. No starvation of the newest event for the producer that is currently pushing.
-    - Alternative per-scope thread queues would add complexity and memory; not justified here.
-    """
-    while True:
-        try:
-            _l1_sse_thread_queue.put_nowait((sk, env))
-            _l1_sse_diag["l1_light_sse_events_queued"] = int(_l1_sse_diag.get("l1_light_sse_events_queued", 0)) + 1
-            return
-        except queue.Full:
-            try:
-                _l1_sse_thread_queue.get_nowait()
-                _l1_sse_diag["l1_light_sse_thread_queue_evicted_oldest"] = int(
-                    _l1_sse_diag.get("l1_light_sse_thread_queue_evicted_oldest", 0)
-                ) + 1
-            except queue.Empty:
-                _l1_sse_diag["l1_light_sse_events_dropped_full"] = int(_l1_sse_diag.get("l1_light_sse_events_dropped_full", 0)) + 1
-                return
-
-
 _route_offload_executor: Optional[ThreadPoolExecutor] = None
 
 
@@ -889,18 +702,6 @@ def _get_route_offload_executor() -> ThreadPoolExecutor:
             thread_name_prefix="ed_route_offload",
         )
     return _route_offload_executor
-
-
-_l1_sse_dispatch_executor: Optional[ThreadPoolExecutor] = None
-
-
-def _get_l1_sse_dispatch_executor() -> ThreadPoolExecutor:
-    """ONE thread for the L1 SSE fan-in wait -- never shared with /api/analytics/light builds,
-    so a slow cold build can never hold up delivery (audit of #280)."""
-    global _l1_sse_dispatch_executor
-    if _l1_sse_dispatch_executor is None:
-        _l1_sse_dispatch_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ed_l1_sse_dispatch")
-    return _l1_sse_dispatch_executor
 
 
 #: a prior session with fewer 1-minute bars than this (of ~390 RTH minutes) is disclosed as
@@ -1008,8 +809,9 @@ def _write_streamed_bar(msg: dict) -> bool:
         # not a number (AGENTS.md rule 2): absent, -999, text, NaN or infinity
         log.warning("streamed bar for %s lacks a valid field, not written: %s", msg.get("symbol"), msg)
         return False
-    _persist_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=o, high=h,
-                                            low=lo, close=c, volume=schwab_count(msg.get("volume")))])
+    get_db().upsert_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo,
+                                                   close=c, volume=schwab_count(msg.get("volume")))])
+    push_changes.changed(msg["symbol"], push_changes.LIQUIDITY)
     return True
 
 
@@ -1223,43 +1025,6 @@ def _touch_tracked_ticker_view(ticker: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-# Last good bid-ask width (pts) when quote had both sides — reused if a poll drops one side
-
-
-async def _l1_light_sse_dispatch_loop() -> None:
-    """
-    Drain cross-thread queue and fan out to per-connection asyncio queues (L1 light stream only).
-
-    Backpressure (explicit, deterministic):
-    - Thread queue (producer): on queue.Full, evict oldest global item until the newest
-      (sk, env) fits — see _l1_put_thread_queue_notify.
-    - Per-client asyncio.Queue(maxsize=8): on QueueFull, evict oldest pending event for
-      that connection, then enqueue newest — see _l1_put_l1_client_queue (latest projection wins).
-    - Clients must tolerate skipped intermediate generations; monotonic l1_generation +
-      _server_build_ts (+ optional fingerprint) on the client preserves correctness.
-    """
-    loop = asyncio.get_running_loop()
-
-    def _blocking_get():
-        try:
-            return _l1_sse_thread_queue.get(timeout=0.5)
-        except queue.Empty:
-            return None
-
-    while True:
-        item = await loop.run_in_executor(_get_l1_sse_dispatch_executor(), _blocking_get)
-        if item is None:
-            await asyncio.sleep(0.02)
-            continue
-        sk, env = item
-        with _l1_light_sse_lock:
-            clients = list(_l1_light_sse_clients)
-        for q, csk in clients:
-            if csk != sk:
-                continue
-            _l1_put_l1_client_queue(q, env)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # FastAPI app
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1394,7 +1159,7 @@ async def _app_lifespan(app):
     # which reprices a viewed ticker through the one levels producer
     start_order_flow_stream(None, None, None, on_tick_callback=_on_stream_tick)
 
-    asyncio.create_task(_l1_light_sse_dispatch_loop())
+    push_changes.bind(asyncio.get_running_loop())
 
 
     yield
@@ -2024,43 +1789,15 @@ def _gamma_surface_wanted(tk: str) -> bool:
 #: composed with (never a substitute for) the REST-baseline precedence check below.
 GAMMA_SURFACE_STREAM_STALENESS_SEC = 10.0
 
-#: Per-ticker counter bumped every time `_gamma_surface` is (re)published — by the REST cycle
-#: or the eager stream refresh alike. Independent-review finding (2026-09-12), REPRODUCED: the
-#: browser's renderSurface() skips its table rebuild when its own revision key (built from
-#: chain_as_of_ts_utc/spot_as_of_ts_utc — REST-only fields) is unchanged; the eager refresh
-#: changes cell VALUES without ever touching those REST fields, so a genuinely new surface
-#: rendered as the old one until the next REST cycle happened to land. This counter is a
-#: revision identity ANY publication bumps, REST or streamed, so the browser has something
-#: that actually changes when the data does. Guarded by _terrain_cache_lock, like the cache
-#: it describes.
+#: Per-ticker revision of `_gamma_surface`, bumped on every publication; guarded by
+#: _terrain_cache_lock.
 _gamma_surface_seq: dict[str, int] = {}
 
 
 def _next_gamma_surface_seq(tk: str) -> int:
-    """Caller must hold _terrain_cache_lock. Also PUSHES a lightweight SSE notify -- no data of
-    its own, just {ticker, surface_seq} -- to any /api/analytics/light/stream client currently
-    viewing this ticker, so the browser refetches the instant a new generation publishes
-    instead of waiting out the slow 3s/12s poll.
-
-    Independent-review finding (2026-09-12): "the browser still polls every 12 seconds. The
-    new Playwright test manually triggers the refresh event, bypassing that wait. It proves
-    rendering after delivery, not timely delivery." True of the prior commit: surface_seq made
-    a change DETECTABLE once the browser next asked, but nothing made it ASK sooner. This
-    reuses the EXISTING SSE connection/queue/dispatch pipe wholesale
-    (_l1_put_thread_queue_notify -> _l1_light_sse_dispatch_loop -> the /api/analytics/light/
-    stream generator, which now picks the wire event name from the envelope instead of
-    hardcoding "l1_projection") -- no second SSE endpoint, connection, or daemon. Best-effort:
-    a failed push here still leaves surface_seq bumped and the slow poll as an honest fallback
-    (SSE down/stalled already falls back to polling on the client)."""
+    """Caller must hold _terrain_cache_lock."""
     n = _gamma_surface_seq.get(tk, 0) + 1
     _gamma_surface_seq[tk] = n
-    try:
-        _l1_put_thread_queue_notify(
-            (tk, "__auto__"),
-            {"_sse_event_name": "gamma_surface_seq", "scope": {"ticker": tk}, "surface_seq": n},
-        )
-    except Exception as e:  # institutional-swallow-ok: push notify is best-effort; poll fallback still exists
-        log.debug("gamma_surface_seq SSE notify failed for %s: %s", tk, e)
     return n
 
 
@@ -2524,6 +2261,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             payload = dict(_terrain_cache.get(tk) or {})
         if capture is not None:
             chain, fetched_ts = capture["contracts"], capture["ts_utc"]
+        new_chain = chain is not None
         if chain is None:
             chain, fetched_ts = payload.get("_chain"), payload.get("_chain_fetched_ts")
             if not chain:
@@ -2569,6 +2307,9 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                 payload["_gamma_surface"]["surface_seq"] = _next_gamma_surface_seq(tk)
             _terrain_cache[tk] = payload
             _terrain_profile_cache[tk] = snap.profile
+        push_changes.changed(tk, push_changes.LEVELS)
+        if new_chain:
+            push_changes.changed(tk, push_changes.CHAIN)
         if capture is None:
             _log_level_crosses(tk, prev_spot, snap)
         return snap
@@ -2934,14 +2675,6 @@ def _terrain_loop() -> None:
         while _terrain_loop_running and time.monotonic() < sleep_end:
             time.sleep(0.5)
     log.info("Terrain loop stopped")
-
-
-def _persist_1m_bars(tk: str, bars) -> int:
-    """THE single price_bars_1m writer in server.py (RC-69 single-faucet contract).
-
-    Called only by _bar_writer with Schwab's streamed bars; the audit counts the literal
-    db-write call, so the invariant is that this function is its only occurrence."""
-    return get_db().upsert_1m_bars(tk, bars)
 
 
 def _load_stored_levels() -> int:
@@ -3925,20 +3658,6 @@ def get_terrain(ticker: str = Query(...)):
     }
 
 
-def _sse_event_name_for_envelope(env) -> str:
-    """The wire `event:` name for one /api/analytics/light/stream envelope. Every existing L1
-    envelope omits `_sse_event_name` and gets "l1_projection" exactly as before this function
-    existed; `_next_gamma_surface_seq`'s gamma-surface publish notify is the one caller that
-    sets it, to "gamma_surface_seq". A small pure function (not inlined in the generator) so it
-    is directly unit-testable without driving the async generator/SSE connection."""
-    return env.get("_sse_event_name", "l1_projection") if isinstance(env, dict) else "l1_projection"
-
-
-@app.get("/api/session")
-def get_session():
-    return JSONResponse({"session_label": session_label(now_et())})
-
-
 #: a cross younger than this is shown as an alert
 RECENT_CROSS_SEC: float = 120.0
 
@@ -4045,40 +3764,34 @@ def get_alerts(ticker: str = Query(...)):
                          "withheld": None if live else "no live price: near-level alerts need the current price"})
 
 
-@app.get("/api/analytics/light/stream")
-async def get_analytics_light_stream(
-    request: Request,
-    ticker: str = Query(...),
-    expiry: Optional[str] = Query(default=None),
-):
-    """
-    Server-Sent Events for ANALYTICS only: l1_projection / gamma_surface_seq after _project_l1 /
-    surface publish. Prices are not served here -- the capture daemon pushes them straight to
-    the browser (app/market_data/schwab/streaming/live_ui.py), so no analytics load in this
-    process can ever delay a price.
-    """
-    t = ticker_storage_key(ticker)
-    # TICKER-PREVIEW-NO-ENROLL: an L1 SSE subscription is a VIEW (chart open), not a track —
-    # touch last-seen only. Fire-and-forget (RC-166): do not block SSE setup on SQLite.
-    try:
-        _get_route_offload_executor().submit(_touch_tracked_ticker_view, t)
-    except Exception:
-        log.debug("analytics_light_stream: touch_seen submit failed ticker=%s", t, exc_info=True)
-    exp_key = expiry if expiry is not None else "__auto__"
-    key = (t, exp_key)
-    q, rs_key = _l1_light_sse_try_reserve(request, key)
+#: At most one push per this many seconds per page; changes in between arrive together.
+CHANGES_PUSH_MIN_SEC = 1.0
+#: With no change, the session label is pushed this often (it doubles as the heartbeat).
+CHANGES_SESSION_SEC = 5.0
+
+
+@app.get("/api/changes")
+async def get_changes(ticker: str = Query(...)):
+    """The console's push to the page: `levels`, `flow` or `liquidity` when that value of the
+    ticker changed (the page reloads it), and `session` with the market session label. Prices
+    and bars come from the daemon's own push."""
+    t = ticker_storage_key(_required_ticker(ticker))
+    _get_route_offload_executor().submit(_touch_tracked_ticker_view, t)
+    client = push_changes.subscribe(t)
 
     async def event_generator():
-        yield ": ok\n\n"
         try:
+            yield f"event: session\ndata: {session_label(now_et())}\n\n"
             while True:
-                try:
-                    env = await asyncio.wait_for(q.get(), timeout=30.0)
-                    yield f"event: {_sse_event_name_for_envelope(env)}\ndata: {json.dumps(env, default=str)}\n\n"
-                except asyncio.TimeoutError:
-                    yield ": heartbeat\n\n"
+                kinds = await push_changes.next_changes(client, CHANGES_SESSION_SEC)
+                for k in sorted(kinds):
+                    yield f"event: {k}\ndata: {t}\n\n"
+                if not kinds:
+                    yield f"event: session\ndata: {session_label(now_et())}\n\n"
+                    continue
+                await asyncio.sleep(CHANGES_PUSH_MIN_SEC)
         finally:
-            _l1_light_sse_release(q, key, rs_key)
+            push_changes.unsubscribe(t, client)
 
     return StreamingResponse(
         event_generator(),

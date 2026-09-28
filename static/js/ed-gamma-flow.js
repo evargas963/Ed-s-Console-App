@@ -31,12 +31,6 @@
   // still in flight for the PRIOR contract, so its late response could still land and
   // paint under the new ticker's label. Fixed by checking desired identity AT RESOLUTION
   // time (stillFlow) instead of a generation counter captured at issue time.
-  //
-  // ROOT-CAUSE FIX (2026-09-13, controlled reproduction confirmed): separately, `ed:refresh
-  // {slow}` also fires on every streamed gamma_surface_seq push now, not just the 12s poll
-  // tick; a naive per-call generation counter live-locks (never applies a response) once
-  // pushes outrun the round trip -- see l1_sse_guards.js:makeCoalescedLoader, which every
-  // gamma view module now uses for this same reason.
   // Independent-review finding (2026-09-13), REPRODUCED ("Flow can repaint ACTIVE from an
   // older observation after a newer subscription attempt has failed"): `stillFlow` checked
   // only DESIRED-CONTRACT identity, not the CURRENT control state. Scenario: contract A is
@@ -203,7 +197,7 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);           // fires on subview change too
     document.addEventListener('ed:contract', load);       // an explicit Chain selection
-    document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels' || e.detail.kind === 'flow') load(); });
     // E: a ticker or expiry-context change clears THIS tab's old contract intent LOCALLY (no POST,
     // no fight for the slot). A fresh explicit selection is then required to observe again.
     document.addEventListener('ed:ticker', function () { if (window.EdStream && window.EdStream.clearDesired) window.EdStream.clearDesired(); load(); });
