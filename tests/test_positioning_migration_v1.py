@@ -105,3 +105,14 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
     assert len(reads) == 2                        # forces (2 days) + prior day, each read once
     server._publish_levels("PCG", capture=newer)
     assert len(reads) == 2                        # and not again for the same capture
+    # a new market day's first chain, before that day's first capture: the prior day is recomputed
+    # against the new day (Friday's capture becomes the prior day), once
+    monkeypatch.setattr(server, "resolve_spot", lambda tk: (newer["spot"], "streaming_plane", later))
+    monkeypatch.setattr(server, "_log_level_crosses", lambda *a, **k: None)
+    monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET).timestamp()
+    pin_clock(2026, 9, 28, 10, 0)
+    server._publish_levels("PCG", newer["contracts"], monday)
+    assert len(reads) == 4
+    assert json.loads(server.get_terrain_strikes(ticker="PCG").body)["prior_source"] == "chain_capture:2026-09-25"
+    server._publish_levels("PCG", newer["contracts"], monday + 5)
+    assert len(reads) == 4
