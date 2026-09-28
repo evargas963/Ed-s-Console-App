@@ -93,3 +93,25 @@ def test_index_roots_resolve_to_dollar_form():
         assert ticker_storage_key(bare) == dollar
     assert ticker_storage_key("SPY") == "SPY", "equities must pass through untouched"
     assert ticker_storage_key("$SPX") == "$SPX", "already-canonical must be idempotent"
+
+
+def test_every_bare_index_root_is_what_schwab_names_an_index_with_dollar():
+    """TICK-01 (2026-09-28 audit): the typed-shorthand list BROKER_INDEX_BARE_ROOTS is held to
+    Schwab's own answer (tests/fixtures/real_schwab_index_identity_2026_09_28.json): Schwab
+    names each index only with "$" (instruments symbol-search: assetType INDEX; quoted), knows
+    no bare root, and no equity or ETF uses those letters -- so mapping a bare root to its "$"
+    form never misroutes, and a root cannot join the list without Schwab's evidence."""
+    import json
+    from pathlib import Path
+
+    from instrument_identity import BROKER_INDEX_BARE_ROOTS
+    fx = json.loads((Path(__file__).parent / "fixtures" / "real_schwab_index_identity_2026_09_28.json")
+                    .read_text(encoding="utf-8"))
+    search, quoted = fx["instruments_symbol_search"], fx["quotes_asset_main_type"]
+    assert fx["bare_roots_quoted"] == []
+    for root in BROKER_INDEX_BARE_ROOTS:
+        assert search[root] == [], f"Schwab knows bare {root}"
+        assert search["$" + root] == [["$" + root, "INDEX"]], root
+        assert quoted["$" + root] == "INDEX", root
+        assert ticker_storage_key(root) == "$" + root
+    assert search["SPY"] == [["SPY", "ETF"]] and search["MU"] == [["MU", "EQUITY"]]   # others untouched

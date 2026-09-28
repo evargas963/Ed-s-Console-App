@@ -420,59 +420,32 @@ _BUCKET_FLAGS = frozenset({"has_oi", "has_valid_gamma", "has_valid_delta", "has_
 #: without it, a volume-only tick (no Greeks/OI change) never reached ANY display, since
 #: _per_strike's volume column and compute_exposures_by_strike's own call/put volume both read
 #: a contract's `totalVolume` directly, not the ticker-level ``_stream_volume`` cache.
-_STREAMED_GREEK_FIELDS: tuple[tuple[str, str, str], ...] = (
-    ("gamma", "gamma", "gamma_ts_recv"),
-    ("delta", "delta", "delta_ts_recv"),
-    ("open_interest", "openInterest", "open_interest_ts_recv"),
-    ("total_volume", "totalVolume", "total_volume_ts_recv"),
-    ("volatility", "volatility", "volatility_ts_recv"),
+_STREAMED_GREEK_FIELDS: tuple[tuple[str, str], ...] = (
+    ("gamma", "gamma"),
+    ("delta", "delta"),
+    ("open_interest", "openInterest"),
+    ("total_volume", "totalVolume"),
+    ("volatility", "volatility"),
 )
 
 
 def overlay_streamed_contract_fields(
     contracts: List[dict],
     streamed_by_symbol: Dict[str, dict],
-    *,
-    newer_than_ts: float | None = None,
 ) -> tuple[List[dict], int]:
-    """Merge freshly-streamed GAMMA/DELTA/OPEN_INTEREST onto a base REST chain contract list,
-    matched by each contract's own `symbol` field (the same OSI-style option symbol the
-    streaming daemon subscribes and app.options.order_flow.state keys its per-symbol state by).
+    """A live contract's streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLATILITY onto the REST
+    chain, matched by each contract's own `symbol` field.
 
-    Sparse, non-destructive, and PURE (returns a new list; `contracts` and its dicts are never
-    mutated): a contract absent from `streamed_by_symbol`, or one whose streamed entry carries
-    none of the three fields, is passed through UNCHANGED (same dict, not a copy) -- only a
-    contract that actually gets at least one field overlaid is copied. This is the same "fill
-    fresher, never fabricate" discipline as live_market_plane's quote overlay, applied to the
-    exposure faucet's own inputs instead of a second exposure computation.
+    `streamed_by_symbol` holds only contracts the daemon holds live now (the caller applies
+    live_market_plane.feed_live_for). For those the stream is the one owner of these fields:
+    Schwab streams a field only when it changes, so its last streamed value IS the current value
+    however long ago it arrived -- it is never compared with the chain's quote time (ONE-05,
+    2026-09-28: that comparison dropped every streamed value after each chain download, and the
+    heatmap flipped to all-stale while the feed was live). A field the stream has not sent keeps
+    the chain's value; every other contract keeps the chain's values.
 
-    `newer_than_ts` is the FALLBACK precedence baseline, used only for a contract that
-    carries no native vendor observation time of its own (see `quoteTimeInLong` below) --
-    e.g. a test fixture or non-Schwab-shaped dict. Independent-review finding (2026-09-12):
-    "being received within ten seconds does not establish that a stream value is newer than
-    the REST input it replaces." A streamed value 8 seconds old is not "fresher" than a REST
-    snapshot fetched 2 seconds ago just because 8 < some absolute bound; it is fresher only
-    when it is more recent than the baseline it would override.
-
-    A FIFTH independent review (2026-09-13), REPRODUCED: a single scalar `newer_than_ts`
-    (the REST FETCH's own completion instant, the same for every contract in the response)
-    is the wrong baseline whenever the vendor's OWN report for a SPECIFIC contract already
-    lagged behind that instant -- Schwab's chain contracts each carry their own
-    `quoteTimeInLong` (epoch ms), and an illiquid strike can genuinely go un-requoted for
-    tens of seconds inside one otherwise-fresh chain response. Reproduced: REST fetch
-    completes "now", but this contract's own `quoteTimeInLong` is "now-30s" (its last real
-    quote); a stream tick for the SAME contract received at "now-1s" is genuinely newer than
-    what the vendor itself last reported for it -- yet comparing against the fetch's
-    completion instant ("now") wrongly rejected it as not-newer-enough. Fixed: each
-    contract's own native `quoteTimeInLong`, when present, IS this contract's precedence
-    baseline (never the shared fetch-completion instant); `newer_than_ts` only fills in for
-    a contract that has no native observation time to compare against.
-
-    `streamed_by_symbol` holds only contracts that are live now (the caller applies
-    live_market_plane.feed_live_for); a value's age is not a liveness test.
-
-    Returns (new_contracts, overlaid_count) -- the count is for tests and latency/coverage
-    diagnostics, never load-bearing for the projection itself.
+    Pure: `contracts` and its dicts are never mutated; only a contract that gets a field is
+    copied. Returns (new_contracts, overlaid_count).
     """
     if not contracts:
         return [], 0
@@ -486,22 +459,10 @@ def overlay_streamed_contract_fields(
         if not streamed:
             out.append(ct)
             continue
-        # This contract's OWN vendor-reported observation time, not the shared REST-fetch
-        # instant -- see the docstring's fifth-review finding. Schwab reports
-        # `quoteTimeInLong` in epoch milliseconds; `_ts_recv` values are epoch seconds.
-        native_qt = ct.get("quoteTimeInLong") if isinstance(ct, dict) else None  # external-key-ok: Schwab option-chain contract field (vendor wire, epoch ms)
-        try:
-            native_baseline = float(native_qt) / 1000.0 if native_qt else None
-        except (TypeError, ValueError):
-            native_baseline = None
-        baseline = native_baseline if native_baseline is not None else newer_than_ts
         new_ct = None
-        for streamed_key, chain_key, ts_key in _STREAMED_GREEK_FIELDS:
+        for streamed_key, chain_key in _STREAMED_GREEK_FIELDS:
             val = streamed.get(streamed_key)
             if val is None:
-                continue
-            ts = streamed.get(ts_key)
-            if baseline is not None and (ts is None or ts <= baseline):
                 continue
             if new_ct is None:
                 new_ct = dict(ct)

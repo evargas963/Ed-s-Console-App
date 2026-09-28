@@ -643,7 +643,7 @@
     if (isNaN(d.getTime())) return '—';
     return d.toISOString().slice(0, 10);
   }
-  // ADJUSTED DELIVERABLE: served per contract (server.py _adjusted_deliverable)
+  // ADJUSTED DELIVERABLE: served per contract (Schwab's nonStandard flag, as sent)
   function renderStructures(host, d, tk) {
     var src = document.getElementById('stSrc'); if (src) src.textContent = '';
     var ladder = ((d && d.ladder) || []).filter(function (r) { return r.first; });   // served: one row per strike, high to low

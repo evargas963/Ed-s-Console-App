@@ -211,6 +211,27 @@ def test_chain_flags_are_served(held):
     assert body["has_duplicate_contracts"] is False
 
 
+def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_is(monkeypatch):
+    """TICK-03 (2026-09-28 audit): the page's ADJUSTED DELIVERABLE flag was our own rule ("100
+    shares of the underlying"), which compared Schwab's deliverable symbol "$SPX" with the ticker
+    stripped of its "$" -- so every $SPX (29,436) and $VIX (1,520) contract read adjusted, while
+    Schwab's own nonStandard flag was false on all 43 board tickers. The flag is Schwab's, as
+    sent. Real $SPX contracts (tests/fixtures/real_spx_chain_contracts_2026_09_28.json): none
+    flagged; the same contract with nonStandard true: flagged."""
+    fx = json.loads((Path(__file__).parent / "fixtures" / "real_spx_chain_contracts_2026_09_28.json")
+                    .read_text(encoding="utf-8"))
+    cts = [dict(c) for c in fx["contracts"]]
+    cts[0]["nonStandard"] = True                      # stand-in: Schwab marking one contract
+    payload = {"_chain": cts, "_chain_fetched_ts": time.time(), "computed_ts_utc": time.time()}
+    monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (fx["spot"], "live_quote", time.time()))
+    monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk: None)
+    monkeypatch.setattr(server, "_gamma_surface_contracts_with_stream_overlay",
+                        lambda t, c, newer_than_ts=None: (c, 0, None))
+    body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
+    assert body["adjusted_deliverable_symbols"] == [cts[0]["symbol"]]
+
+
 def test_the_largest_gex_strike_is_served(held):
     rows = held["_per_strike"]["all"]
     body = json.loads(server.get_terrain_strikes(ticker=TK).body)

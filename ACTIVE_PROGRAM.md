@@ -31,14 +31,11 @@ spot (Key Levels = header, #372).
 | ONE-02 | QUEUED | Equity last price and size kept a second time in the console's order-flow tape (`state.py` tape and receive log). |
 | ONE-03 | QUEUED | Feed liveness judged in both processes: the daemon applies its own heartbeat to its price rows (`live_ui.beat`), and the console applies the pushed copy again (`feed_live_for`); one rule since ONE-15, two places it runs. |
 | ONE-04 | QUEUED | Equity books: the console's order-flow copy and the database copy read by the Book Heatmap (`history.book_heatmap_for_ticker`, a live screen reading the DB). |
-| ONE-05 | QUEUED | Option quotes and greeks: the order-flow copy, the REST chain in the levels state merged field by field by time (`overlay_streamed_contract_fields`), and the DB copy read by the options tape. Seen live 2026-09-28 (SNDK): 41 heatmap legs read "stale" while their contract was live, only because the streamed value was not newer than the chain's own quote; MU 15:46 ET: all 200 legs flipped between live and stale (0 overlaid) as chains arrived, the feed live throughout. The MU heatmap route took 10-21 s under load (3.7 MB). |
+| ONE-05 | QUEUED | Option quotes: the options tape reads the database copy (`history.tape_rows_for_symbol`, a live screen reading the DB) beside the order-flow copy. (The merge-by-time of streamed fields into the chain, which flipped the heatmap to stale, is fixed: the stream owns a live contract's fields.) The MU heatmap route took 10-21 s under load (3.7 MB). |
 | ONE-06 | QUEUED | 1-minute bars in two databases, and live charts and levels reading `price_bars_1m` (with P2-DB4). |
 | ONE-07 | QUEUED | Option chains fetched by two processes with two writers to `ed_console.db` (with P2-1). |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
-| ONE-16 | OPERATOR DECISION | Six panels scale their bars to the largest value in the visible strike window (`maxAbs` in ed-gamma-chart, ed-gamma-panels, ed-gamma, ed-trade-desk). The window follows the viewport (scope, pan), which the server does not know. Decision: is an axis scaled to what is on screen drawing (as TradingView does), or a max over served data the server must serve per window (rule 4)? Found 2026-09-28. |
-| TICK-01 | QUEUED | Index symbol form from a hand-kept list of 11 roots (`instrument_identity.BROKER_INDEX_BARE_ROOTS`); Schwab's own instrument answer decides. |
 | TICK-02 | QUEUED | Option contract → ticker matched by root name, with weekly/adjusted roots (SPXW, NDXP) through a second path that needs a stored capture; Schwab's underlying field on the contract decides. |
-| TICK-03 | QUEUED | "Adjusted deliverable" defined as 100 shares of stock, so cash-settled index options are all flagged; needs a captured index deliverable first. |
 | TICK-05 | QUEUED | Time to expiry always to 16:00; Schwab's `settlementType` (AM-settled index monthlies) not read. |
 | TICK-07 | QUEUED | `schwab_field_dictionary_builder.is_ticker` (board symbol form) also passes a hand-kept `KNOWN_TICKERS` list. Found 2026-09-28. |
 

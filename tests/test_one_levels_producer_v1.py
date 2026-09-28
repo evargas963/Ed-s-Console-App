@@ -132,17 +132,22 @@ def test_a_fresh_streamed_greek_reprices_levels_heatmap_and_rows(monkeypatch):
     assert c["_per_strike"] == compute_terrain(TK, overlaid, _SPOT).per_strike
 
 
-def test_a_streamed_value_older_than_the_chains_own_quote_is_not_applied(monkeypatch):
-    """The baseline is each contract's own vendor quote time (quoteTimeInLong)."""
+def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale(monkeypatch):
+    """ONE-05 (measured live 2026-09-28, MU 15:46 ET): each chain download carried a quote time
+    newer than the contract's last streamed change, the overlay dropped every streamed value,
+    and all 200 heatmap legs flipped between live and stale while the feed stayed live. The
+    stream owns a live contract's fields: a new chain leaves the leg live and its value the
+    streamed one."""
     now = time.time()
-    chain = [dict(_CONTRACTS[0], quoteTimeInLong=int(now * 1000))] + _CONTRACTS[1:]
+    chain = [dict(_CONTRACTS[0], quoteTimeInLong=int(now * 1000))] + _CONTRACTS[1:]   # a fresh chain
     server._note_gamma_surface_demand(TK)
-    _stream({_A: {"gamma": 0.9, "gamma_ts_recv": now - 1.0}}, monkeypatch)
+    _stream({_A: {"gamma": 0.9, "gamma_ts_recv": now - 60.0}}, monkeypatch)          # last change a minute ago
     server._publish_levels(TK, chain, now)
-    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
-    _stream({_A: {"gamma": 0.9, "gamma_ts_recv": now + 0.5}}, monkeypatch)
-    server._publish_levels(TK, chain, now)
-    assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 1
+    surface = _cached()["_gamma_surface"]
+    assert surface["stream_overlay_symbols"] == [_A]
+    legs = [col[side] for cell in surface["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
+            for side in ("call", "put") if pair.get(side) == _A and col]
+    assert legs and all(leg["state"] == "live" for leg in legs)
 
 
 def test_only_a_live_contracts_streamed_value_is_applied_whatever_its_age(monkeypatch):

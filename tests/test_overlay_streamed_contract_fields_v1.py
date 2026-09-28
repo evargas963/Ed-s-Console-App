@@ -88,99 +88,15 @@ def test_only_the_matching_symbol_is_copied_others_stay_the_original_object():
     assert out[1] is contracts[1], "an unmatched contract must never be copied either"
 
 
-def test_a_streamed_value_older_than_the_rest_baseline_is_not_applied():
-    """Independent-review finding (2026-09-12): 'being received within ten seconds does not
-    establish that a stream value is newer than the REST input it replaces.' Here the
-    streamed value (ts_recv=100) is only 2s old relative to `now` (102) -- well inside any
-    reasonable absolute bound -- but the REST baseline it would override was fetched AFTER
-    it (newer_than_ts=101). The absolute-age framing alone would wrongly apply it."""
-    contracts = [_contract("A", gamma=0.01)]
-    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 100.0}}
-    out, n = overlay_streamed_contract_fields(
-        contracts, streamed, newer_than_ts=101.0)
-    assert n == 0, "a streamed value from BEFORE the REST baseline must not override it"
-    assert out[0]["gamma"] == 0.01
-
-
-def test_a_streamed_value_newer_than_the_rest_baseline_is_applied():
-    contracts = [_contract("A", gamma=0.01)]
-    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 102.0}}
-    out, n = overlay_streamed_contract_fields(
-        contracts, streamed, newer_than_ts=101.0)
-    assert n == 1
-    assert out[0]["gamma"] == 0.99
-
-
-def test_a_streamed_value_exactly_at_the_rest_baseline_is_not_applied():
-    """Equal-timestamp is not PROVEN newer -- ties go to the REST baseline, never the stream."""
-    contracts = [_contract("A", gamma=0.01)]
-    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 101.0}}
-    out, n = overlay_streamed_contract_fields(
-        contracts, streamed, newer_than_ts=101.0)
-    assert n == 0
-
-
-def test_a_field_with_no_ts_recv_is_never_applied_under_a_newer_than_bound():
-    contracts = [_contract("A", gamma=0.01)]
-    streamed = {"A": {"gamma": 0.99}}  # no gamma_ts_recv at all
-    out, n = overlay_streamed_contract_fields(contracts, streamed, newer_than_ts=101.0)
-    assert n == 0
-
-
-def test_a_live_contracts_value_applies_whatever_its_age():
-    """Schwab sends a field only when it changes: an old value of a live contract is current."""
-    contracts = [_contract("A", gamma=0.01)]
+def test_a_live_contracts_value_applies_whatever_its_age_or_the_chains_quote_time():
+    """ONE-05: Schwab sends a field only when it changes, so a live contract's streamed value is
+    its current value even when it arrived before the chain's own quote time (the rule that
+    compared the two dropped every streamed value after each chain download)."""
+    contracts = [_contract("A", gamma=0.01, quoteTimeInLong=990_000)]
     streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 0.0}}
     out, n = overlay_streamed_contract_fields(contracts, streamed)
     assert n == 1
     assert out[0]["gamma"] == 0.99
-
-
-def test_a_contracts_own_native_quote_time_is_the_baseline_not_the_shared_fetch_instant():
-    """Independent-review finding (2026-09-13), REPRODUCED: `newer_than_ts` used to be ONE
-    scalar (the REST fetch's own completion instant) applied identically to every contract
-    in the response -- wrong whenever the vendor's OWN report for a SPECIFIC contract
-    already lagged behind that instant. Reproduced exactly as audited: the REST fetch
-    completes at t=1000 (so a fetch-instant baseline would be 1000), but THIS contract's own
-    vendor-reported `quoteTimeInLong` is t=970 (970000ms) -- an illiquid strike Schwab had
-    not re-quoted in 30s even though the surrounding chain response was fresh. A streamed
-    tick for the SAME contract at ts_recv=999 is newer than the contract's own last quote
-    (970) even though it is NOT newer than the shared fetch instant (1000). The contract's
-    own native quote time must be the baseline, not the fetch instant."""
-    contracts = [_contract("A", gamma=0.01, quoteTimeInLong=970_000)]
-    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 999.0}}
-    out, n = overlay_streamed_contract_fields(
-        contracts, streamed, newer_than_ts=1000.0)
-    assert n == 1, "newer than this contract's OWN quote time -- must overlay"
-    assert out[0]["gamma"] == 0.99
-
-
-def test_a_streamed_value_older_than_the_contracts_own_native_quote_time_is_rejected():
-    """The flip side of the case above: a contract whose own native quote time (990) is
-    itself newer than a stream tick (985) must reject that tick, even though 985 is newer
-    than a stale shared `newer_than_ts` fallback (900) -- proving the native per-contract
-    baseline, not the fallback, governs whenever it is present."""
-    contracts = [_contract("A", gamma=0.01, quoteTimeInLong=990_000)]
-    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 985.0}}
-    out, n = overlay_streamed_contract_fields(
-        contracts, streamed, newer_than_ts=900.0)
-    assert n == 0, "older than this contract's OWN quote time -- must not overlay"
-    assert out[0]["gamma"] == 0.01
-
-
-def test_newer_than_ts_fallback_still_governs_a_contract_with_no_native_quote_time():
-    """A contract that carries no `quoteTimeInLong` at all (synthetic fixture, non-Schwab
-    shape) has no native baseline to compare against -- `newer_than_ts` must still apply
-    exactly as before, so every pre-existing caller and test keeps its prior behavior."""
-    contracts = [_contract("A", gamma=0.01)]  # no quoteTimeInLong
-    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 100.0}}
-    out, n = overlay_streamed_contract_fields(
-        contracts, streamed, newer_than_ts=101.0)
-    assert n == 0
-    out2, n2 = overlay_streamed_contract_fields(
-        contracts, streamed, newer_than_ts=99.0)
-    assert n2 == 1
-    assert out2[0]["gamma"] == 0.99
 
 
 def test_a_contract_with_no_symbol_field_is_untouched_never_raises():

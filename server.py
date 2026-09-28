@@ -1804,21 +1804,10 @@ def _overlaid_symbols(pre: list, post: list) -> list[str]:
             if new is not orig and isinstance(new, dict) and new.get("symbol")]
 
 
-def _gamma_surface_contracts_with_stream_overlay(
-        tk: str, contracts: list, *, newer_than_ts: float | None = None) -> tuple[list, int, list[str]]:
-    """Overlay EVERY currently-streaming option contract's freshest known GAMMA/DELTA/
-    OPEN_INTEREST/VOLUME onto `contracts` before projection, for whichever of them
-    belong to `tk` (RC-UI-3: primary AND every additional contract — see
-    _desired_stream_greeks_for_ticker).
-
-    Still the ONE canonical faucet (project_gamma_surface -> compute_exposures_by_strike,
-    RC-UI-1): this changes no formula and adds no second producer, it only lets those
-    fields be fresher than the REST chain snapshot they arrived in.
-
-    `newer_than_ts`, when given, is passed straight through as the REST-baseline precedence
-    bound (see overlay_streamed_contract_fields) — independent-review finding (2026-09-12):
-    "being received within ten seconds does not establish that a stream value is newer than
-    the REST input it replaces."
+def _gamma_surface_contracts_with_stream_overlay(tk: str, contracts: list) -> tuple[list, int, list[str]]:
+    """`contracts` with every live streamed option contract of `tk` carrying its streamed
+    fields (overlay_streamed_contract_fields; RC-UI-3: primary AND every additional contract).
+    Changes no formula; the stream owns a live contract's fields.
 
     Fails closed to the unmodified `contracts` on any error or when nothing applies — this is
     a best-effort freshening, never a precondition for the projection to run at all."""
@@ -1828,7 +1817,7 @@ def _gamma_surface_contracts_with_stream_overlay(
         streamed = _live_stream_greeks(_desired_stream_greeks_for_ticker(tk))
         if not streamed:
             return contracts, 0, []
-        overlaid, n = overlay_streamed_contract_fields(contracts, streamed, newer_than_ts=newer_than_ts)
+        overlaid, n = overlay_streamed_contract_fields(contracts, streamed)
         return overlaid, n, _overlaid_symbols(contracts, overlaid)
     except Exception as e:  # institutional-swallow-ok: best-effort freshening, never load-bearing
         log.debug("gamma-surface stream overlay skipped for %s: %s", tk, e)
@@ -2126,8 +2115,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             spot, spot_source, spot_ts = resolve_spot(tk)
         prev_spot = payload.get("spot")
         streamed = _desired_stream_greeks_for_ticker(tk)
-        priced, n_live = overlay_streamed_contract_fields(
-            chain, _live_stream_greeks(streamed), newer_than_ts=fetched_ts)
+        priced, n_live = overlay_streamed_contract_fields(chain, _live_stream_greeks(streamed))
         live_syms = _overlaid_symbols(chain, priced)
         snap = compute_terrain(tk, priced, spot, now=(
             datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
@@ -3768,26 +3756,13 @@ def get_expiries(ticker: str = Query(...)):
                          "reason": None if t.get("expiries") else "levels not computed yet"})
 
 
-def _adjusted_deliverable(ct: dict, ticker: str) -> bool:
-    """A contract whose deliverable is not the routine one: 100 shares of the underlying itself
-    (a merger or spin-off adjusted contract). Every ordinary equity option lists that one entry."""
-    from numeric_contract import schwab_number
-    lst = ct.get("optionDeliverablesList") or []   # external-key-ok: Schwab option chain contract
-    if not lst:
-        return False
-    d0 = lst[0] or {}
-    kind = d0.get("assetType")                        # external-key-ok: Schwab optionDeliverablesList entry
-    units = schwab_number(d0.get("deliverableUnits"))   # external-key-ok: Schwab optionDeliverablesList entry
-    return len(lst) > 1 or not (kind == "STOCK" and units == 100
-                                and str(d0.get("symbol") or "").upper() == ticker.lstrip("$").upper())
-
 
 @app.get("/api/chain")
 def get_chain(ticker: str = Query(...),
               expiry: Optional[str] = Query(default=None)):
     """One expiry of the ticker's full chain -- every contract Schwab listed, every field as sent
-    -- from the chain the levels loop downloads (strike_range=ALL), with streamed option updates
-    newer than that download overlaid. The loop keeps a ticker's chain while it is viewed
+    -- from the chain the levels loop downloads (strike_range=ALL), with each live streamed
+    contract's streamed fields as its values (the stream owns them). The loop keeps a ticker's chain while it is viewed
     (/api/terrain and this route mark it). Answers `status: unavailable` with a reason when no
     chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
@@ -3811,8 +3786,7 @@ def get_chain(ticker: str = Query(...),
     if not contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
     fetched_ts = held.get("_chain_fetched_ts")
-    response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(
-        t, contracts, newer_than_ts=fetched_ts)
+    response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(t, contracts)
     live_spot, _src, _ts = resolve_spot(t)       # the one spot on every screen
     ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
@@ -3828,8 +3802,9 @@ def get_chain(ticker: str = Query(...),
         "net_gex_by_strike": net_gex_by_strike,
         "spot_strike": nearest_strike({k for c in response_contracts
                                        if (k := schwab_number(c.get("strikePrice"))) is not None}, live_spot),
+        # Schwab's own flag for a non-standard (adjusted) deliverable, as sent
         "adjusted_deliverable_symbols": [c.get("symbol") for c in response_contracts
-                                         if _adjusted_deliverable(c, t)],
+                                         if c.get("nonStandard") is True],   # external-key-ok: Schwab option chain contract
         # two contracts listed at one (strike, side): the chain is not strike-unique
         "has_duplicate_contracts": len({(schwab_number(c.get("strikePrice")), c.get("putCall")) for c in response_contracts})
                                    < len(response_contracts),

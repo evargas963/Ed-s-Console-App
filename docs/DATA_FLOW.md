@@ -76,7 +76,10 @@ Schwab sends is taken as sent (rule 2), never computed.
   has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
   under its service and served for the `venue` the screen's venue switch names, never combined.
   The books streamed are those of the ticker whose page has `/api/changes` open (opening it makes
-  that ticker the active one); a console restart is recovered when the page reconnects.
+  that ticker the active one); a console restart is recovered when the page reconnects. For an
+  option contract the daemon holds live, the stream owns its gamma, delta, open interest, volume
+  and IV: its last streamed value is the value, whatever its age, and replaces the chain's (a
+  field the stream has not sent keeps the chain's); every other contract has the chain's values.
 - **1-minute bar.** Schwab → daemon bus → writer (`stream_capture.db`), and → console → the
   console's own bar writer → `ed_console.db` → a `liquidity` push on `/api/changes` → the browser
   reads `/api/bars1m`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
@@ -201,5 +204,12 @@ behavior (AGENTS.md).
    computation. After the close, the levels are that producer run on the newest capture, with
    the capture's price and time (operator 2026-09-26; a weekend chain blanks open interest).
    The morning table folds into this table (P2-DB3).
+8. **A panel scales its bars to what is visible** (operator 2026-09-28, ONE-16). Fitting bar
+   lengths to the largest value in the visible strike window is drawing, like fitting a chart
+   axis: the server does not know the pan position. The panel draws the server's values
+   unchanged; the visible maximum is never shown as a number, never a market metric, and never
+   alters a displayed value.
+9. **No trade side** (operator 2026-09-28, ONE-12). Schwab supplies no aggressor side, so no
+   inferred buy/sell side (tick rule, quote rule) is computed or shown as order flow.
 
 The work that closes the gaps in §3.5, in order, is `ACTIVE_PROGRAM.md`.
