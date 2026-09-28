@@ -58,6 +58,7 @@ def _clean(monkeypatch):
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", 1.0))
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # the open market, unless a test closes it
     monkeypatch.setattr(push_changes, "_clients", {})                    # no page open
+    monkeypatch.setattr(push_changes, "_loop", None)                     # changes recorded, not delivered
     ofs._active_option_contract = _A
     ofs._active_option_contracts = [_B]
     yield
