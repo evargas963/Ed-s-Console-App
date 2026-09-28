@@ -3,7 +3,7 @@ never the word). PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`
 
 What survives, and the concrete failure each prevents (KEEP/MERGE/DELETE, 2026-09-10):
 
-  * UNRECOVERABLE-TREE DESTRUCTION (RC-273). `.gitignore` excludes data/, backups/ and models/,
+  * UNRECOVERABLE-TREE DESTRUCTION (RC-273). `.gitignore` excludes data/ and backups/,
     so the 27 GB database has no history at all. The agent destroyed it TWICE in ten minutes
     (`mv` to exercise a missing-file branch, `rm -f` while testing the ACL meant to prevent the
     first). The live database files carry an OS deny-delete (file) plus deny-delete-contents
@@ -48,7 +48,7 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell parser
 
 #: RC-273 — the gitignored trees with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
-_PROTECTED_TREE = re.compile(r"(?:^|[\\/\"'=(,\s])(?:data|backups|models)[\\/]", re.I)
+_PROTECTED_TREE = re.compile(r"(?:^|[\\/\"'=(,\s])(?:data|backups)[\\/]", re.I)
 #: Shell commands that delete, move or rename their arguments.
 _SHELL_REMOVERS = frozenset({"rm", "del", "erase", "rmdir", "rd", "remove-item", "ri", "unlink",
                              "mv", "move", "move-item", "mi", "ren", "rename", "rename-item",
@@ -108,8 +108,8 @@ def _shell_violation(script: str) -> bool:
 
 
 def _protected_path_violation(raw: str) -> bool:
-    """True when a command would delete, move, overwrite or unprotect a file under data/, backups/
-    or models/ -- judged on what RUNS, never on text that only mentions those paths.
+    """True when a command would delete, move, overwrite or unprotect a file under data/ or
+    backups/ -- judged on what RUNS, never on text that only mentions those paths.
 
     The shell command itself is parsed (heredoc bodies and quoted -c payloads are data there). A
     heredoc body is judged by what receives it: a Python interpreter's is parsed as Python, a
@@ -159,7 +159,7 @@ def bash_violations(cmd: str, ledger=None, payload_cwd: str = "") -> list[str]:
                    "a commit asserts authorship of everything in it.")
     if _protected_path_violation(raw):
         out.append("ACTION BLOCKED (RC-273): this deletes, moves or truncates something under "
-                   "data/, backups/ or models/. Those trees are gitignored -- there is NO "
+                   "data/ or backups/. Those trees are gitignored -- there is NO "
                    "history and NO undo. The agent destroyed the 27GB database twice in ten "
                    "minutes this way, both times while 'just testing'. Test destructive "
                    "behaviour against a COPY in a temp directory, never the real artefact. "

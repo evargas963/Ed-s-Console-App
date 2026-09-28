@@ -95,22 +95,6 @@ def _market_in_session(monkeypatch):
     monkeypatch.setattr(_lpr_s, "is_capturable_session", lambda: True)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
     """The newest ET date the market calendar admits, at or before `on_or_before` (today).
 

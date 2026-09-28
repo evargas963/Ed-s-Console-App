@@ -63,7 +63,7 @@ def _real_build_body(**overrides):
     override individual fields to construct adversarial variants."""
     import json
     body = {
-        "git_sha": "abc123", "contract": "meet_or_exceed_v1", "release_id": "r1",
+        "git_sha": "abc123", "contract": "meet_or_exceed_v1",
         "process_identity": {"startup_git_sha": "abc123", "process_id": 4242},
         "git_sha_semantics": "startup_process_identity",
     }
@@ -86,13 +86,7 @@ def test_is_actually_ed_console_true_when_the_reported_pid_matches_the_real_list
 
 
 def test_is_actually_ed_console_false_when_the_reported_pid_does_not_match_the_real_listener(monkeypatch):
-    """Independent-review finding (2026-09-12), REPRODUCED directly against this function
-    (round 2): 'an unrelated matching uvicorn process with ordinary nonempty build
-    identifiers still passes.' Nonempty git_sha/release_id, and even the app-specific
-    contract/git_sha_semantics magic strings, are not proof by themselves -- an unrelated
-    process reporting SOME identity cannot be reporting THIS process's real OS pid unless it
-    genuinely is this process. listening_pid(port) found pid 4242 actually listening; this
-    body claims process_identity.process_id=99999 -- a different process's own self-report."""
+    """The listener is pid 4242; the body claims process_id 99999."""
     monkeypatch.setattr(
         lpg.urllib.request, "urlopen",
         lambda url, timeout=None: _FakeResponse(200, _real_build_body(
@@ -160,18 +154,13 @@ def test_is_actually_ed_console_false_when_body_is_missing_expected_keys(monkeyp
 
 
 def test_is_actually_ed_console_false_when_the_identity_values_are_null(monkeypatch):
-    """Independent-review finding (2026-09-12), REPRODUCED directly against this function:
-    `"git_sha" in body` tests KEY MEMBERSHIP, not a real value -- a body of
-    {"git_sha": null, "release_id": null} has both keys present and passed the old check.
-    Any unrelated JSON endpoint naming these two keys with nothing behind them must not be
-    misidentified as Ed Console."""
-    body = b'{"git_sha": null, "release_id": null}'
+    body = b'{"git_sha": null}'
     monkeypatch.setattr(lpg.urllib.request, "urlopen", lambda url, timeout=None: _FakeResponse(200, body))
     assert lpg.is_actually_ed_console(8000) is False
 
 
 def test_is_actually_ed_console_false_when_the_identity_values_are_empty_strings(monkeypatch):
-    body = b'{"git_sha": "", "release_id": ""}'
+    body = b'{"git_sha": ""}'
     monkeypatch.setattr(lpg.urllib.request, "urlopen", lambda url, timeout=None: _FakeResponse(200, body))
     assert lpg.is_actually_ed_console(8000) is False
 

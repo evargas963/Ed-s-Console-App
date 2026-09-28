@@ -4,6 +4,7 @@ schwab_token.json
 .env
 *.key
 *.pem
+_schwab_auth_url.txt
 
 # Python
 __pycache__/
@@ -16,209 +17,32 @@ env/
 # Node
 node_modules/
 
-# Logs & temp files
+# Runtime output: logs, data, backups, runtime files the app writes
 *.log
-diagnostics.txt
-report.txt
-login_err*.txt
-login_out*.txt
-manual_err.txt
-manual_out.txt
-reauth_capture_*.txt
-feature_contract_validation.txt
-
-# Data files (large/sensitive)
+logs/
+.runtime/
+reports/
 data/*
 !data/trading_calendar/
 !data/trading_calendar/us_equities.json
-
-# Schwab field inventory — track curated canonical references only
-schwab_field_inventory/**
-!schwab_field_inventory/
-!schwab_field_inventory/README.md
-!schwab_field_inventory/schwab_canonical_fields.txt
-!schwab_field_inventory/schwab_field_dictionary.csv
-!schwab_field_inventory/schwab_field_dictionary_grouped.csv
+backups/db/*
+!backups/db/.gitkeep
+calibration/trading_data.db
 
 # Test artifacts
 test-results/
-
-# Generated daily health reports
-reports/daily_health/history/*.json
-reports/daily_health/history/*.md
-reports/daily_health/latest_daily_health.*
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Model artifacts — local runtime outputs (not source control)
-# Legacy baseline tickers may remain tracked in git history; new scheduler/training
-# outputs under models/active* are local runtime only — see governance/docs/SOURCE_CONTROL_HYGIENE.md
-models/parallel/
-models/cascade/
-models/_artifact_archive/
-models/cache/
-models/training_report.jsonl
-models/arch_state*.json
-models/arch_eval_proof.json
-models/eval_dashboard_metrics.json
-models/realized_contract_eval_aggregate.json
-models/arch_competition/
-models/active/
-models/active_5c/
-models/active_15c/
-models/active_60c/
-
-# Benchmark and runtime logs
-benchmark_logs/
-.runtime/
-
-# Tooling caches / local agent (machine-specific; do not commit)
+# Local agent and tooling state
 .claude/worktrees/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
-
-# Host manifest snapshots (regenerate via scripts/export_host_manifest.ps1)
-host_manifest.json
-host_manifest.*.json
-
-# Cursor IDE — track project rules AND the hook continuum (RC-374: hooks.json was
-# ignored, so the enforcement wiring existed only on this machine while the parity
-# checks demanded it on every checkout)
+.claude/launch.json
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**
 !.cursor/hooks.json
-
-
-# Operator/tool dry-run audits (local only)
-reports/audits/backfill_et_clock_from_ts_utc_v1_*.json
-
-# Local auth / secrets (Schwab OAuth redirect capture — never commit)
-_schwab_auth_url.txt
-
-# Local databases and backups (operator snapshots — not source)
-backups/db/*
-!backups/db/.gitkeep
-calibration/trading_data.db
-
-# Logs and local scoreboard reports
-logs/
-reports/daily_scoreboard/
-
-# One-off audit / probe / turn-dump artifacts (generated evidence, never source)
-reports/_*
-reports/coverage.xml
-reports/console_monitor_tail.jsonl
-reports/charm_surface_*
-reports/claude_finish_*
-reports/cursor_*_audit_*
-reports/*_audit_v*.md
-reports/*_latest.json
-reports/*_latest.txt
-
-# Local analysis / audit scratch outputs (repo root)
-feature_ablation_universe.xlsx
-feature_analysis.xlsx
-feature_consolidated_full.xlsx
-enforce_all_out.txt
-
-# Local timing probes (repo-root scratch — not production tooling)
-timing_probe.py
-timing_probe2.py
-
-# Static design mockups (not wired to production; local review only)
-static/redesign_mockup.html
-
-# Remaining model paths (candidates, archives, caches, run outputs) — not source
-models/**
-# GOV-GATE-PERF-V1: cross-process governance gate cache (success-only, full-identity keys)
-reports/artifacts/.gate_cache/
-
-# EXEC_IDENTITY noncanonical runtime-proof scratch databases (local evidence only)
-data_proof/
-
-# Study #1 run artifacts (evidence lives in the PR/report JSON kept locally)
-reports/incumbent_eval/
-reports/challenger_eval/
-reports/structural_eval/
-reports/elastic_net_eval/
-reports/lightgbm_eval/
-reports/tcn_eval/
-reports/kalman_eval/
-reports/har_rv_eval/
-reports/survival_eval/
-reports/quantile_eval/
-reports/cost_aware_eval/
-reports/order_flow_eval/
-reports/l1_book_eval/
-reports/tod_eval/
-reports/regime_har_eval/
-reports/cross_asset_eval/
-reports/vol_regime_har_eval/
-reports/iv_context_eval/
-reports/abstention_eval/
-reports/interaction_eval/
-reports/gamma_walls_eval/
-reports/pa_returns_eval/
-reports/hedging_flow_eval/
-reports/zone_vwap_eval/
-reports/divergence_eval/
-reports/session_range_eval/
-reports/micro_stack_eval/
-reports/har_micro_eval/
-reports/lgbm_micro_eval/
-reports/mlp_micro_eval/
-
-reports/quantile_eval/
-
-# Local agent/tooling state — machine-specific, never shared (2026-07-20).
-# settings.local.json is already ignored at the top of this file but is still TRACKED,
-# so gitignore cannot apply to it — the commit must `git rm --cached` it once.
-.claude/launch.json
-
-# RC-89: generated audit artifacts carry absolute operator-home paths, so the credential-leak
-# hook rejects them on every commit. They were unstaged by hand three times on 2026-07-27 —
-# fixing the instance instead of the cause. They are regenerated output, never source.
-reports/audits/
-
-# RC-89 pattern: generated stream artifacts embed the absolute repo path, so the
-# credential-leak hook rejects them on every commit. They are regenerable output, never
-# source. (The locks_* audit tools and their reports were removed in the 2026-08-24
-# teardown; the ignore rows keep any stale local outputs unstaged.)
-reports/locks_inventory_v1.json
-reports/locks_violation_audit_v1.json
-reports/locks_violation_monitor_v1.json
-reports/locks_violation_monitor_prev_v1.json
-reports/stream_raw_sample_*.json
-reports/stream_capture_status.json
-
-# RC-101: the scorecard artifacts are COMMITTED again — run_provenance now records the
-# interpreter repo-relatively, so the artifacts carry no home paths. Only the run log stays
-# ignored (it is a log). Gitignoring the artifacts was treating the symptom: it left a fresh
-# clone with NO coach data while a local leftover silently served the API.
-reports/scorecard_run.log
-
-# runtime measurement log (RC-54 producer) - grows every session, never a repo artifact
-reports/flip_drift_log.jsonl
-# RC-251 / bedrock 2026-09-06: the rehab scan, TQM queue and advisory report are gone; any
-# stale local copies of their outputs stay ignored.
-reports/rehab_queue.jsonl
-reports/rehab_latest.json
-reports/rehab_latest.md
-reports/tqm_queue_latest.json
-reports/advisory_debt_latest.json
-# RC-524: the dead-tests audit snapshot is regenerated by `python -m tools.dead_tests_audit_v1
-# --json`; nothing reads the file, so it is not tracked.
-reports/dead_tests_audit_v1.json
-# Generated Schwab crosswalk outputs (tools/classify_schwab_csv_crosswalk.py,
-# tools/schwab_market_derivation_catalog_v1.py) — regenerated on demand, never tracked.
-reports/schwab_crosswalk/
-
-# RC-263: scratch has no lifecycle. 7,793 tracked files / 485,275,039 bytes -- 75% of the
-# repository -- was throwaway debugging output, including six committed Chrome browser
-# profiles and a 98.5%-identical second copy of server.py. Nothing imports it; the only
-# reference outside it is a docstring citation in math_levels.py. Untracked 2026-08-06.
-# Files stay on disk; git history retains them. Nothing here may be imported by production.
 scratchpad/

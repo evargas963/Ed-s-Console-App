@@ -140,7 +140,7 @@ def test_t5_git_unavailable_truthful(monkeypatch):
     assert ident.startup_git_sha_short is None
     assert ident.startup_git_dirty is None
     assert ident.identity_capture_error == "git_executable_unavailable"
-    assert ident.identity_source in ("release_object_package", "unavailable")
+    assert ident.identity_source == "unavailable"
     monkeypatch.setattr(srv, "PROCESS_IDENTITY_V1", ident)
     with TestClient(srv.app) as client:
         r = client.get("/api/build")
@@ -241,7 +241,7 @@ def test_t10_response_contract_compatibility():
     with TestClient(srv.app) as client:
         body = client.get("/api/build").json()
     for legacy_key in (
-        "git_sha", "contract", "release_id",
+        "git_sha", "contract",
         "ui_maximize_sla_ms", "ui_maximize_panel_warm_tickers",
     ):
         assert legacy_key in body, f"legacy /api/build key missing: {legacy_key}"
@@ -251,7 +251,7 @@ def test_t10_response_contract_compatibility():
         "schema_version", "startup_git_sha", "startup_git_sha_short",
         "startup_git_dirty", "startup_git_available",
         "startup_identity_captured_at_utc", "process_started_at_utc",
-        "process_id", "package_build_id", "identity_source",
+        "process_id", "identity_source",
         "identity_capture_error",
     }
     assert pi["schema_version"] == "1"
