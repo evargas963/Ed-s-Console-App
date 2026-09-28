@@ -18,6 +18,17 @@ def mark_feed_down() -> None:
     lmp.record_feed_down()
 
 
+def publish_daemon_rows(*tickers: str) -> None:
+    """What the daemon's price push hands the console: its price row per ticker, built by the
+    daemon's own function from the daemon's plane (the test's live_market_plane stands in for
+    the daemon's)."""
+    import live_price_rows
+    from app.options.order_flow import streaming as ofs
+    for tk in tickers:
+        row = live_price_rows.price_row(tk)
+        ofs._price_rows[row["ticker"]] = row
+
+
 def feed_live_during(monkeypatch, *tickers: str) -> None:
     """For route tests that start the app (TestClient): the app's own push feed loop cannot
     reach a daemon in CI and marks the feed down on every retry, racing the test. Hold the

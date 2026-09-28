@@ -67,8 +67,19 @@ log = logging.getLogger(__name__)
 #: The daemon's live push endpoint (app.market_data.schwab.streaming.live_push). Module
 #: attribute, read at connect time, so a test can point the feed at its own server.
 from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
+from app.market_data.schwab.streaming.live_ui import HEARTBEAT_SEC as LIVE_UI_BEAT_SEC, LIVE_UI_PORT
 
 LIVE_PUSH_URL = f"ws://{LIVE_PUSH_HOST}:{LIVE_PUSH_PORT}"
+#: The daemon's price-row push (live_ui), the one the browser reads.
+LIVE_UI_URL = f"ws://127.0.0.1:{LIVE_UI_PORT}"
+#: The daemon's finished price row per ticker (live_price_rows.price_row), exactly as it pushes
+#: it to the browser. The console keeps no other copy of a live price; the rows are dropped when
+#: the push is gone or silent for three of its one-second beats.
+_price_rows: "dict[str, dict]" = {}
+
+
+def price_row(ticker: str) -> "dict | None":
+    return _price_rows.get(ticker_storage_key(ticker) or "")
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
 PUSH_RECONNECT_SEC = 1.0
@@ -218,14 +229,14 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     time for it -- never the time this console processed it (a delayed message must not
     read as fresh; 2026-09-23 audit P0).
 
-      quote.SYM    LEVELONE_EQUITIES -> order-flow state + live_market_plane (every roster
-                   symbol; the plane serves each one's streamed LAST_PRICE)
+      quote.SYM    LEVELONE_EQUITIES -> order-flow state (the tape); the live price is the
+                   daemon's price row (_rows_loop), never rebuilt here
       book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book; OPTIONS_BOOK -> the option
                    contract's book
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
 
-    Every equity quote, and every option quote carrying GAMMA/DELTA/OPEN_INTEREST/
-    TOTAL_VOLUME/VOLUME, is passed to the tick callback. A message missing its symbol, its
+    Every option quote carrying GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME is passed to the
+    tick callback (an equity's tick is its price row's arrival). A message missing its symbol, its
     receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
     part."""
     global _streaming_last_update_ts, _option_streaming_last_update_ts, _push_messages_applied
@@ -245,15 +256,10 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if not isinstance(item, dict):
             return None
         push_level_one(sym, item, ts_recv=ts)
-        try:
-            _lmp.record_from_level_one_equity(sym, item, received_ts=ts)
-        except Exception as e:  # noqa: BLE001 -- one malformed row must not end the feed
-            log.debug("live_market_plane ingest %s: %s", sym, e)
         _push_messages_applied += 1
         if sym == _active_ticker:
             _streaming_last_update_ts = ts
         push_changes.changed(sym, push_changes.FLOW)
-        _tick(sym)
         return None
     if kind == "book":
         content = msg.get("content")
@@ -284,6 +290,40 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     return None
 
 
+async def _rows_loop() -> None:
+    """Hold the daemon's price rows for the equities this console wants streamed: one browser
+    client of the daemon's price push. Each row's arrival is the equity's tick."""
+    from websockets.asyncio.client import connect
+
+    while _feed_running:
+        try:
+            async with connect(LIVE_UI_URL, max_size=None, open_timeout=5) as ws:
+                sent = None
+                while _feed_running:
+                    want = current_wanted()["LEVELONE_EQUITIES"]
+                    if want != sent:
+                        await ws.send(json.dumps({"op": "subscribe", "symbols": want}))
+                        sent = want
+                    try:
+                        frame = await asyncio.wait_for(ws.recv(), 3 * LIVE_UI_BEAT_SEC)
+                    except asyncio.TimeoutError:
+                        _price_rows.clear()          # the daemon beats every second: silence
+                        continue
+                    msg = json.loads(frame)
+                    for row in msg.get("rows") or []:
+                        _price_rows[row["ticker"]] = row
+                        if msg.get("type") == "quotes":
+                            _tick(row["ticker"])
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
+            log.info("price rows unavailable (%s: %s); retrying in %.1fs",
+                     type(e).__name__, e, PUSH_RECONNECT_SEC)
+        _price_rows.clear()
+        if _feed_running:
+            await asyncio.sleep(PUSH_RECONNECT_SEC)
+
+
 async def _feed_loop() -> None:
     """Consume the daemon's live push (LIVE_PUSH_URL) until the feed stops.
 
@@ -309,6 +349,7 @@ async def _feed_loop() -> None:
                 _note_daemon_status(env.get("msg"))
                 continue
             _ingest_pushed(str(env.get("topic") or ""), env.get("msg"))
+    rows = asyncio.create_task(_rows_loop(), name="daemon-price-rows")
     try:
         while _feed_running:
             try:
@@ -332,6 +373,9 @@ async def _feed_loop() -> None:
             if _feed_running:
                 await asyncio.sleep(PUSH_RECONNECT_SEC)
     finally:
+        rows.cancel()
+        await asyncio.gather(rows, return_exceptions=True)
+        _price_rows.clear()
         _push_connected_ts = None
         _lmp.record_feed_down()
         _log_stream("FEED_LOOP_STOP_DONE")

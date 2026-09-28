@@ -45,7 +45,7 @@ def _push_book(symbol, content, ts_recv):
         ts_recv=ts_recv))
 
 
-def test_l1_message_lands_in_both_planes(tmp_path, monkeypatch):
+def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path, monkeypatch):
     _reset(tmp_path)
     monkeypatch.setattr(lmp, "_by_ticker", {})
     native = {"key": "SPY", "BID_PRICE": 449.98, "ASK_PRICE": 450.02, "LAST_PRICE": 450.0,
@@ -54,7 +54,7 @@ def test_l1_message_lands_in_both_planes(tmp_path, monkeypatch):
 
     top = ofls.get_content_for_symbol("SPY")
     assert any(item.get("LAST_PRICE") == 450.0 for item in top)
-    assert lmp.get_quote("SPY")["spot"] == 450.0
+    assert lmp.get_quote("SPY") is None          # the price is the daemon's row, not a copy here
 
 
 def test_book_message_lands_verbatim(tmp_path):
@@ -90,8 +90,8 @@ def test_each_venue_serves_only_its_own_book(tmp_path):
 
 
 def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
-    """Every roster symbol is applied (the watchlist reads each one's streamed LAST_PRICE),
-    each into its OWN state: a QQQ tick must never appear in SPY's."""
+    """Every roster symbol is applied, each into its OWN state: a QQQ tick must never appear in
+    SPY's."""
     _reset(tmp_path)
     monkeypatch.setattr(lmp, "_by_ticker", {})
     ofs._active_ticker = "SPY"
@@ -99,8 +99,6 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
 
     assert not any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("SPY"))
     assert any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("QQQ"))
-    assert lmp.get_quote("QQQ")["spot"] == 380.0
-    assert lmp.get_quote("SPY") is None
     # the ACTIVE ticker's feed-health clock is not advanced by another symbol's tick
     assert ofs._streaming_last_update_ts is None
 

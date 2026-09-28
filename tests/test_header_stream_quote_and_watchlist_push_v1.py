@@ -1,12 +1,6 @@
-"""The displayed price (header + watchlist + chart) is ONE row: live_price_rows.price_row.
-
-Since the daemon-to-browser change (Stage 1 of the live-UI architecture) the capture daemon
-pushes that row straight to the browser (app/market_data/schwab/streaming/live_ui.py, proven
-end to end in tests/test_live_ui_daemon_to_browser_v1.py). The console keeps no price
-relay: its analytics stream carries gamma/L1 analytics only, and its watchlist route reads
-the same row function -- so a price on screen and a price in a console calculation cannot
-come from two rules.
-"""
+"""The price is one row, built once by the capture daemon (live_price_rows.price_row) and pushed
+to the browser (live_ui.py) and to the console alike: a price on screen and a price in a
+console calculation are the same value."""
 from __future__ import annotations
 
 import time
@@ -25,11 +19,32 @@ def test_an_unheld_symbol_row_is_unavailable_with_every_quote_field_withheld(mon
     assert row["spot"] is None and row["spot_state"] == "unavailable" and row["feed_live"] is False
 
 
-def test_console_spot_and_watchlist_read_the_same_row_function(monkeypatch) -> None:
-    feed_live_during(monkeypatch, "ZZW1")
-    lmp.record_from_level_one_equity("ZZW1", {"LAST_PRICE": 20.0}, received_ts=time.time())
-    spot, src, _ = srv.resolve_spot("ZZW1")
-    assert spot == live_price_rows.live_spot("ZZW1") == 20.0 and src == srv.SPOT_SOURCE_PLANE
+def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy(monkeypatch) -> None:
+    """Measured 2026-09-28: the console's spot differed from the header's in 25 of 200
+    same-moment checks -- the console rebuilt LAST_PRICE from the forwarded messages. Real TSLA
+    quote as Schwab sent it (tests/fixtures/real_equity_book.json), received now."""
+    import json
+    from pathlib import Path
+
+    from app.options.order_flow import streaming as ofs
+    from tests.feed_live_helper import publish_daemon_rows
+
+    fx = json.loads((Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8"))
+    tk, native, now = fx["ticker"], fx["quote"]["native"], time.time()
+    monkeypatch.setattr(lmp, "_by_ticker", {})
+    monkeypatch.setattr(lmp, "_fields_by_ticker", {})
+    monkeypatch.setattr(ofs, "_price_rows", {})
+    feed_live_during(monkeypatch, tk)
+    # the console receives Schwab's message (its order-flow tape) and keeps no price of its own
+    ofs._ingest_pushed(f"quote.{tk}", {"symbol": tk, "ts_recv": now, "native": native})
+    assert lmp.get_quote(tk) is None and srv.resolve_spot(tk)[0] is None
+    # the daemon builds its price row from the same message and pushes it
+    lmp.record_from_level_one_equity(tk, native, received_ts=now)
+    publish_daemon_rows(tk)
+    row = ofs.price_row(tk)
+    assert row["spot"] == native["LAST_PRICE"]
+    assert srv.resolve_spot(tk) == (row["spot"], srv.SPOT_SOURCE_PLANE, row["trade_ts"])
+    assert srv.current_spot_state(srv.SPOT_SOURCE_PLANE, tk) == "live"
 
 
 def test_pages_are_told_the_daemon_price_port(monkeypatch) -> None:

@@ -96,40 +96,19 @@ async def _run(port, body, heartbeat_fn=None):
         await asyncio.gather(client, server, return_exceptions=True)
 
 
-def test_a_schwab_trade_reaches_the_plane_with_its_own_receive_time(feed):
+def _received(ts):
+    """The console applied the active ticker's message that the daemon received at `ts`."""
+    return lambda: ofs._streaming_last_update_ts == ts
+
+
+def test_a_schwab_trade_reaches_the_console_with_its_own_receive_time(feed):
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
         ts = time.time() - 0.5          # received by the daemon half a second ago
         bus.publish("quote.SPY", _spy_trade(501.25, ts))
-        assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("spot") == 501.25)
-        row = lmp.get_quote("SPY")
-        assert row["server_received_ts"] == ts, "freshness must judge the daemon's receive time"
-        assert row["spot_received_ts"] == ts
-        assert ofs._streaming_last_update_ts == ts
+        assert await _until(_received(ts)), "freshness must judge the daemon's receive time"
         assert await _until(lambda: lmp.feed_live_for("SPY"))
-        assert lmp.spot_is_fresh(row)
-    asyncio.run(_run(feed, body))
-
-
-def test_a_quote_only_tick_does_not_refresh_the_last_trade_age(feed):
-    """Schwab resends only changed fields: a bid/ask tick keeps LAST_PRICE, and the price's
-    age stays the age of the trade that set it (information, `spot_received_ts`). On a live
-    feed that unchanged LAST_PRICE IS the current last trade -- it stays live however old the
-    trade is (2026-09-24: arrival age blanked quiet names on a healthy feed)."""
-    async def body(bus, stats):
-        assert await _until(lambda: stats["clients"] == 1)
-        t_trade = time.time() - 40.0     # a quiet symbol: last trade 40 s ago
-        bus.publish("quote.SPY", _spy_trade(500.0, t_trade))
-        assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("spot") == 500.0)
-        t_quote = time.time()
-        bus.publish("quote.SPY", quote_msg(
-            symbol="SPY", bid=500.1, ask=500.2, src="schwab_l1", ts_recv=t_quote,
-            native={"key": "SPY", "BID_PRICE": 500.1, "ASK_PRICE": 500.2}))
-        assert await _until(lambda: lmp.get_quote("SPY").get("server_received_ts") == t_quote)
-        row = lmp.get_quote("SPY")
-        assert row["spot"] == 500.0 and row["spot_received_ts"] == t_trade
-        assert await _until(lambda: lmp.feed_live_for("SPY"))
-        assert lmp.quote_is_fresh(row) and lmp.spot_is_fresh(row)
+        assert lmp.get_quote("SPY") is None      # the console keeps no price of its own
     asyncio.run(_run(feed, body))
 
 
@@ -139,24 +118,23 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
     push connection ends."""
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
-        bus.publish("quote.SPY", _spy_trade(501.0, time.time()))
-        assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("spot") == 501.0)
+        ts = time.time()
+        bus.publish("quote.SPY", _spy_trade(501.0, ts))
+        assert await _until(_received(ts))
         assert await _until(lambda: lmp.feed_live_for("SPY"))
-        assert lmp.spot_is_fresh(lmp.get_quote("SPY"))
         assert not lmp.feed_live_for("QQQ")                 # not held by the daemon
     asyncio.run(_run(feed, body))
     assert not lmp.feed_live_for("SPY")                     # push ended -> feed down
-    assert not lmp.spot_is_fresh(lmp.get_quote("SPY"))
 
 
 def test_a_closed_schwab_socket_is_not_live(feed):
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
-        bus.publish("quote.SPY", _spy_trade(501.0, time.time()))
-        assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("spot") == 501.0)
+        ts = time.time()
+        bus.publish("quote.SPY", _spy_trade(501.0, ts))
+        assert await _until(_received(ts))
         await asyncio.sleep(1.3)                            # at least one heartbeat arrived
         assert not lmp.feed_live_for("SPY")
-        assert not lmp.spot_is_fresh(lmp.get_quote("SPY"))
     asyncio.run(_run(feed, body, heartbeat_fn=_daemon_heartbeat(socket_open=False)))
 
 
@@ -166,20 +144,23 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
         bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=1.0, ask=1.1, last=1.05,
                                            src="not_schwab", ts_recv=time.time(),
                                            native={"LAST_PRICE": 1.05}))
-        bus.publish("quote.SPY", _spy_trade(502.0, time.time()))
-        assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("spot") == 502.0)
+        ts = time.time()
+        bus.publish("quote.SPY", _spy_trade(502.0, ts))
+        assert await _until(_received(ts))
         assert stats["sent"] == 1
     asyncio.run(_run(feed, body))
 
 
 def test_a_connecting_console_receives_the_last_values_first(feed):
+    ts = time.time()
+
     async def body(bus, stats):
-        assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("spot") == 499.5)
+        assert await _until(_received(ts))
     bus_holder = {}
 
     async def run():
         bus = MessageBus()
-        bus.publish("quote.SPY", _spy_trade(499.5, time.time()))   # before any client
+        bus.publish("quote.SPY", _spy_trade(499.5, ts))   # before any client
         bus_holder["bus"] = bus
         stop = asyncio.Event()
         stats: dict = {}
@@ -223,8 +204,9 @@ def test_the_live_loop_never_opens_the_capture_database(feed, monkeypatch):
 
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
-        bus.publish("quote.SPY", _spy_trade(503.0, time.time()))
-        assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("spot") == 503.0)
+        ts = time.time()
+        bus.publish("quote.SPY", _spy_trade(503.0, ts))
+        assert await _until(_received(ts))
     asyncio.run(_run(feed, body))
 
 
@@ -233,7 +215,7 @@ def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
         ofs._feed_running = True
         client = asyncio.create_task(ofs._feed_loop())
         await asyncio.sleep(0.3)                    # no server: several failed connects
-        assert lmp.get_quote("SPY") is None
+        assert ofs._streaming_last_update_ts is None
         assert ofs._push_connected_ts is None
         bus = MessageBus()
         stop = asyncio.Event()
@@ -241,8 +223,9 @@ def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
         server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=feed, stats=stats))
         try:
             assert await _until(lambda: stats.get("clients") == 1)
-            bus.publish("quote.SPY", _spy_trade(504.0, time.time()))
-            assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("spot") == 504.0)
+            ts = time.time()
+            bus.publish("quote.SPY", _spy_trade(504.0, ts))
+            assert await _until(_received(ts))
         finally:
             ofs._feed_running = False
             client.cancel()
@@ -252,14 +235,13 @@ def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
 
 
 def test_a_message_missing_its_receive_time_is_dropped_whole(monkeypatch):
-    monkeypatch.setattr(lmp, "_by_ticker", {})
+    applied = ofs._push_messages_applied
     assert ofs._ingest_pushed("quote.SPY", {"symbol": "SPY", "native": {"LAST_PRICE": 1.0}}) is None
-    assert lmp.get_quote("ZZZNOPE") is None
     msg = _spy_trade(1.0, time.time())
     msg["symbol"] = "ZZZNOPE"
     del msg["ts_recv"]
     ofs._ingest_pushed("quote.ZZZNOPE", msg)
-    assert lmp.get_quote("ZZZNOPE") is None
+    assert ofs._push_messages_applied == applied
 
 
 def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
@@ -286,10 +268,10 @@ def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
     asyncio.run(run())
 
 
-def test_a_late_console_gets_every_field_with_the_time_it_really_arrived(feed):
+def test_a_late_console_gets_every_message_with_the_time_it_really_arrived(feed):
     """Schwab LEVELONE sends only changed fields. A console connecting after a trade and a
-    later bid/ask tick must still get LAST_PRICE and CLOSE_PRICE -- each with the receive
-    time of the message that carried it -- not just the last (bid/ask-only) message."""
+    later bid/ask tick still gets both messages -- each with the receive time the daemon gave
+    it -- not just the last (bid/ask-only) one."""
     async def run():
         bus = MessageBus()
         stop = asyncio.Event()
@@ -306,14 +288,12 @@ def test_a_late_console_gets_every_field_with_the_time_it_really_arrived(feed):
                                            native={"key": "SPY", "BID_PRICE": 504.9,
                                                    "ASK_PRICE": 505.1}))
         await asyncio.sleep(0.05)
+        applied = ofs._push_messages_applied
         ofs._feed_running = True
         client = asyncio.create_task(ofs._feed_loop())
         try:
-            assert await _until(lambda: (lmp.get_quote("SPY") or {}).get("bid") == 504.9)
-            row = lmp.get_quote("SPY")
-            assert row["spot"] == 505.0 and row["spot_received_ts"] == t_trade
-            assert row["prior_close"] == 500.0
-            assert row["server_received_ts"] == t_quote
+            assert await _until(_received(t_quote))           # the later one applied last
+            assert ofs._push_messages_applied == applied + 2  # and the trade before it
         finally:
             ofs._feed_running = False
             client.cancel()

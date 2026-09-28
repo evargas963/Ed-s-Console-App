@@ -40,7 +40,7 @@ Schwab sends is taken as sent (rule 2), never computed.
 | Process | Started by | What it does |
 |---|---|---|
 | **Capture daemon** | `start_capture_daemon.bat` (its own window, restarts itself) | Holds the one Schwab WebSocket. Subscribes to what the console asks for. Every Schwab message goes once onto its in-memory message bus, and from there to three places: its database writer, the console, and the browser's price socket. Keeps the latest equity quote per symbol in memory to build the price row the browser shows. Every 30 minutes of the session it downloads the full chain of each board ticker and writes it to the chain history in `ed_console.db` (decision 7). |
-| **Console** | `start_ed_console.bat` (`uvicorn server:app`, port 8000) | Receives the daemon's messages into its own in-memory copy of the live state. Downloads full option chains from Schwab over REST, computes the levels every 5 s for the tickers on the board and being viewed, and keeps them in memory. Writes the 1-minute bars, level crosses and daily OI/IV to its own database. Serves the page and every `/api` route. Tells the daemon what to subscribe. |
+| **Console** | `start_ed_console.bat` (`uvicorn server:app`, port 8000) | Receives the daemon's messages (books, option quotes, the equity tape) and the daemon's finished price rows; it keeps no price of its own. Downloads full option chains from Schwab over REST, computes the levels every 5 s for the tickers on the board and being viewed, and keeps them in memory. Writes the 1-minute bars, level crosses and daily OI/IV to its own database. Serves the page and every `/api` route. Tells the daemon what to subscribe. |
 | **Browser** | the operator | Loads one page from the console. Gets prices pushed from the daemon; gets a "levels changed" signal pushed from the console; reads everything else from the console's `/api` routes. |
 
 ### 3.2 How they talk
@@ -51,6 +51,7 @@ Schwab sends is taken as sent (rule 2), never computed.
 | daemon → console | local WebSocket 127.0.0.1:8799 | every Schwab message as sent; on connect, the current state first |
 | console → daemon | same socket | the "wanted" list: every symbol per Schwab service |
 | daemon → browser | local WebSocket :8800 | the finished price row per symbol, on every change, plus a heartbeat every second |
+| daemon → console | the same :8800 push | the same price rows, for the equities the console wants streamed: the console's only live price |
 | Schwab → console | Schwab REST | full option chains; one quote at startup to validate the login |
 | console → browser | HTTP `/api/*` | everything else, on request |
 | console → browser | Server-Sent Events | "levels for this ticker were just published" |
@@ -60,15 +61,16 @@ Schwab sends is taken as sent (rule 2), never computed.
 | Place | Owner | What it holds |
 |---|---|---|
 | Daemon memory | daemon | the message bus; the latest equity quote per symbol (for the browser's price row) |
-| Console memory | console | a second copy of the live quotes and books (fed from 8799); the downloaded chains; the computed levels |
+| Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the downloaded chains; the computed levels |
 | `stream_capture.db` (21.8 GB) | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers |
 | `ed_console.db` (77.0 GB) | console | 1-minute bars, level crosses, daily OI and IV, the ticker board, chain captures (22.2 GB) and a morning chain per ticker (2.7 GB) — plus about 49 GB of tables of the deleted ML pipeline |
 
 ### 3.4 The journey of each kind of data
 
 - **Equity quote.** Schwab → daemon bus → (a) daemon writer → `stream_capture.db`; (b) daemon's
-  price row → browser socket → header and watchlist; (c) console socket → console memory → the
-  spot the levels use. Pushed end to end.
+  price row → browser socket → header and watchlist, and the same row → the console → the spot the
+  levels, alerts and top of book use; (c) the raw message → the console's order-flow tape. Pushed
+  end to end; one price row everywhere.
 - **Option quote and order book.** Schwab → daemon bus → writer, and → console memory → a
   `flow` push on `/api/changes` → the browser reads the order-flow and heatmap routes. An equity
   has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
@@ -103,7 +105,9 @@ Schwab sends is taken as sent (rule 2), never computed.
 
 ### 3.5 Where today breaks the design
 
-1. **Two copies of live state** (daemon memory and console memory).
+1. **Two copies of live state** (daemon memory and console memory) for books, option quotes and
+   the equity tape; the live price is one row (the daemon's). Each remaining copy and duplicate
+   computation is a row in `ACTIVE_PROGRAM.md` (ONE-*), with its behavior test when fixed.
 2. **Two writers and two databases** (the daemon's and the console's).
 3. **The console talks to Schwab** (REST chains) — the daemon should own every Schwab call.
 4. **The console computes the levels** in the same process that serves the page.

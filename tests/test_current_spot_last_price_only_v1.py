@@ -23,11 +23,9 @@ class _FakeResp:
 def test_resolve_spot_rejects_mark_close_chain_and_snapshot(monkeypatch) -> None:
     monkeypatch.setattr(server, "get_client", lambda: object())
     L._by_ticker.pop("SPY", None)
-    spot, source, _ts = server.resolve_spot(
-        "SPY",
-        allow_stored=True,
-        chain_json={"underlying": {"last": 743.29, "mark": 743.20, "close": 743.10}},
-    )
+    from app.options.order_flow import streaming as ofs
+    monkeypatch.setattr(ofs, "_price_rows", {})   # no daemon price row: a chain, MARK or close is no spot
+    spot, source, _ts = server.resolve_spot("SPY")
     assert spot is None
     assert source == "none"
     assert server.current_spot_state(source, "SPY") == "unavailable"
