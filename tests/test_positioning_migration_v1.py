@@ -89,3 +89,19 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
         server.get_forces(ticker="PCG")
     server._publish_levels("PCG", capture=newest)                        # same capture: nothing new
     assert reads == []
+    # a new capture is computed once, by the next publish
+    key_before = server.terrain_cache_get("PCG")["_captures_key"]
+    later = newest["ts_utc"] + 1800
+    for exp, cs in {str(c.get("expirationDate") or "")[:10]: [] for c in newest["contracts"]}.items():
+        persist_complete_chain_capture(db, ticker="PCG", expiry=exp,
+                                       contracts=[c for c in newest["contracts"]
+                                                  if str(c.get("expirationDate") or "")[:10] == exp],
+                                       spot=newest["spot"], completeness_basis=CAPTURE_BASIS, ts_utc=later)
+    monkeypatch.setattr(server, "last_capture_per_day",
+                        lambda *a, **k: reads.append(a) or last_capture_per_day(*a, **k))
+    (newer,) = last_capture_per_day(str(db), "PCG", 1)
+    server._publish_levels("PCG", capture=newer)
+    assert server.terrain_cache_get("PCG")["_captures_key"] != key_before
+    assert len(reads) == 2                        # forces (2 days) + prior day, each read once
+    server._publish_levels("PCG", capture=newer)
+    assert len(reads) == 2                        # and not again for the same capture
