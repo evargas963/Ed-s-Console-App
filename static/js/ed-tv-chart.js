@@ -238,12 +238,13 @@
       var chg = b.c - b.o, cls = chg >= 0 ? 'up' : 'dn';
       return '<span>O <b class="' + cls + '">' + b.o.toFixed(2) + '</b></span><span>H <b class="' + cls + '">' + b.h.toFixed(2) +
         '</b></span><span>L <b class="' + cls + '">' + b.l.toFixed(2) + '</b></span><span>C <b class="' + cls + '">' + b.c.toFixed(2) +
-        '</b></span><span>Vol <b>' + fmtVol(b.v) + '</b></span>' + (b.forming ? '<span class="tvc-forming">FORMING</span>' : '');
+        '</b></span><span>Vol <b>' + fmtVol(b.v) + '</b></span>';
     }
     function paintLegend() {
       var b = S.pinned ? barAt(S.pinned.time) : S.bars[S.bars.length - 1];
       var tfLbl = S.tf === 'D' ? '1D' : (S.tf === '60' ? '1h' : S.tf + 'm');
-      legend.innerHTML = '<span class="tvc-sym">' + esc(S.symbol) + '</span><span class="tvc-tf">' + tfLbl + '</span>' + ohlcHtml(b);
+      legend.innerHTML = '<span class="tvc-sym">' + esc(S.symbol) + '</span><span class="tvc-tf">' + tfLbl + '</span>' + ohlcHtml(b) +
+        (S.lastBarLabel ? '<span>Last completed bar ' + esc(S.lastBarLabel) + '</span>' : '');
     }
     function paintPin() {
       if (!S.pinned) { pinBox.hidden = true; return; }
@@ -409,9 +410,10 @@
       chart: chart, candles: candles, palette: function () { return P; },
       TF_SECONDS: TF_SECONDS,
       // Replace the whole series (ticker or timeframe change).
-      setBars: function (bars, tf, symbol) {
+      setBars: function (bars, tf, symbol, lastBarLabel) {
         var changed = tf !== S.tf || symbol !== S.symbol;
-        S.bars = (bars || []).map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, forming: !!b.forming }; });
+        S.lastBarLabel = lastBarLabel || null;
+        S.bars = (bars || []).map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v }; });
         S.tf = tf; S.symbol = symbol;
         candles.setData(S.bars.map(function (b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }; }));
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
@@ -425,16 +427,15 @@
         }
         paintLegend(); paintPin(); draw.redraw(); syncButtons(); paintLevels(true);
       },
-      // The newest bars only (the forming bar and the one it replaced) -- series.update keeps
-      // the operator's zoom/scroll exactly where it is.
-      updateTail: function (tail) {
+      // The newest bars only -- series.update keeps the operator's zoom/scroll exactly where it is.
+      updateTail: function (tail, lastBarLabel) {
         if (!S.bars.length || !tail || !tail.length) return;
+        if (lastBarLabel) S.lastBarLabel = lastBarLabel;
         var lastT = S.bars[S.bars.length - 1].t;
         tail.forEach(function (b0) {
-          var b = { t: Number(b0.t), o: b0.o, h: b0.h, l: b0.l, c: b0.c, v: b0.v, forming: !!b0.forming };
+          var b = { t: Number(b0.t), o: b0.o, h: b0.h, l: b0.l, c: b0.c, v: b0.v };
           if (b.t < lastT) {
             var i = barIndexAt(b.t); if (i < 0 || S.bars[i].t !== b.t) return;
-            // only the most recent completed bar may still be revised (forming -> closed)
             if (i < S.bars.length - 2) return;
             S.bars[i] = b;
           } else if (b.t === lastT) S.bars[S.bars.length - 1] = b;

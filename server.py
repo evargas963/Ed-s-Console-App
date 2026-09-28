@@ -2996,13 +2996,14 @@ def get_terrain_strikes(ticker: str = Query(...)):
 def get_bars1m(ticker: str = Query(...),
                limit: int = Query(default=780, ge=1, le=12000),
                tf: str = Query(default="1", pattern=r"^(1|3|5|15|30|60|D)$")):
-    """Canonical 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts. `tf` rolls
-    them up server-side (aggregate_bars) -- the chart page used to aggregate in the browser."""
+    """Completed Schwab 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts, rolled
+    up to `tf` by aggregate_bars. `last_bar`: the newest completed minute and its label."""
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
-    out = aggregate_bars(overlay_forming_bar_from_plane(bars, tk), tf)
-    out = [_lpr.with_change(b) for b in out]   # each bar's change, served (the chart's readout computed it)
-    return JSONResponse({"ticker": tk, "bars": out, "tf": tf, "n": len(out)})
+    out = [_lpr.with_change(b) for b in aggregate_bars(bars, tf)]
+    last = bars[-1]["t"] if bars else None
+    return JSONResponse({"ticker": tk, "bars": out, "tf": tf, "n": len(out),
+                         "last_bar": {"t": last, "label": ct_label(last)} if last is not None else None})
 
 
 def _tf_bucket_key(t: float, tf: str):
@@ -3031,7 +3032,7 @@ def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
     """THE chart-timeframe roll-up of 1m bars ("1", "3", "5", "15", "30", "60" minutes, or "D" =
     the ET trading date): first open, max high, min low, last close. Volume is the sum only
     when every minute in the bucket reported one -- otherwise None (unknown), never a partial
-    sum or a 0. A bucket holding the forming minute is itself forming."""
+    sum or a 0."""
     if tf == "1":
         return list(bars)
 
@@ -3047,48 +3048,14 @@ def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
             if cur is not None:
                 out.append(cur)
             cur = {"t": b["t"], "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "v": b.get("v")}
-            if b.get("forming"):
-                cur["forming"] = True
             cur_key = k
             continue
         cur["h"] = max(cur["h"], b["h"])
         cur["l"] = min(cur["l"], b["l"])
         cur["c"] = b["c"]
         cur["v"] = None if (cur["v"] is None or b.get("v") is None) else cur["v"] + b["v"]
-        if b.get("forming"):
-            cur["forming"] = True
     if cur is not None:
         out.append(cur)
-    return out
-
-
-def overlay_forming_bar_from_plane(bars: list[dict], ticker: str) -> list[dict]:
-    """`bars` with the forming minute from the live price plane (live_price_rows.forming_bar:
-    streamed LAST_PRICE placed on its own trade minute) appended or merged."""
-    forming = _lpr.forming_bar(ticker)
-    return list(bars) if forming is None else _merge_forming_bar(list(bars), forming)
-
-
-def _merge_forming_bar(bars: list[dict], forming: dict) -> list[dict]:
-    bar_t = float(forming["t"])
-    out = [dict(b) for b in bars]
-    if out and float(out[-1]["t"]) == bar_t:
-        last = out[-1]
-        last["c"] = forming["c"]
-        if last.get("h") is not None:
-            last["h"] = max(float(last["h"]), float(forming["h"]))
-        else:
-            last["h"] = forming["h"]
-        if last.get("l") is not None:
-            last["l"] = min(float(last["l"]), float(forming["l"]))
-        else:
-            last["l"] = forming["l"]
-        last["forming"] = True
-        out[-1] = last
-        return out
-    if out and float(out[-1]["t"]) > bar_t:
-        return out
-    out.append(dict(forming))
     return out
 
 
@@ -4357,11 +4324,11 @@ def api_build():
 
 
 def _canonical_price_level_bars(tk: str, session_date) -> tuple[list, str, list]:
-    """THE bar input for the canonical price-level snapshot: price_bars_1m plus the forming
-    minute. A thin prior session is disclosed, never filled."""
+    """THE bar input for the canonical price-level snapshot: the completed Schwab 1m bars in
+    price_bars_1m. A thin prior session is disclosed, never filled."""
     from liquidity_value_engine import _bar_dt_et, _bars_to_list, prior_trading_session_date
 
-    bars_norm = _bars_to_list(_liquidity_live_1m_overlay_bars(tk))
+    bars_norm = _bars_to_list(_liquidity_1m_bars(tk))
     degraded: list[dict] = []
     prior = prior_trading_session_date(bars_norm, session_date)
     if prior is not None:
@@ -4549,8 +4516,8 @@ def _build_raw_levels_used(raw_levels: dict, snapshot_type: str) -> list:
 
 def _session_bars(tk: str, session_date) -> list[dict]:
     """1-minute bars from the prior trading day's 00:00 ET through `session_date`'s close (the
-    liquidity engine's window), from price_bars_1m, with the forming minute when the session is
-    today -- in the engine's shape."""
+    liquidity engine's window): the completed Schwab bars in price_bars_1m, in the engine's
+    shape."""
     from datetime import datetime as _dt, time as _time, timedelta as _td
     from time_et import ET, RTH_END_MINS, is_trading_day_et
     prior = session_date - _td(days=1)
@@ -4558,16 +4525,15 @@ def _session_bars(tk: str, session_date) -> list[dict]:
         prior -= _td(days=1)
     lo = _dt.combine(prior, _time(0, 0), tzinfo=ET).timestamp()
     hi = _dt.combine(session_date, _time(RTH_END_MINS // 60, RTH_END_MINS % 60), tzinfo=ET).timestamp()
-    bars = [b for b in _liquidity_live_1m_overlay_bars(tk) if lo <= b["timestamp"] / 1000.0 < hi]
+    bars = [b for b in _liquidity_1m_bars(tk) if lo <= b["timestamp"] / 1000.0 < hi]
     return bars
 
 
-def _liquidity_live_1m_overlay_bars(ticker: str) -> list[dict]:
-    """The ticker's 1-minute bars (price_bars_1m) with the forming minute, in the liquidity
-    engine's shape."""
-    bars = overlay_forming_bar_from_plane([_bar_dict(c) for c in _bars_1m(ticker, 2500)], ticker)
-    return [{"timestamp": int(float(b["t"]) * 1000), "open": b["o"], "high": b["h"],
-             "low": b["l"], "close": b["c"], "volume": b.get("v")} for b in bars]
+def _liquidity_1m_bars(ticker: str) -> list[dict]:
+    """The ticker's completed Schwab 1-minute bars (price_bars_1m), in the liquidity engine's
+    shape."""
+    return [{"timestamp": int(float(c.ts) * 1000), "open": c.open, "high": c.high,
+             "low": c.low, "close": c.close, "volume": c.volume} for c in _bars_1m(ticker, 2500)]
 
 
 #: the terrain levels the liquidity zones are fused with, and the tag each carries

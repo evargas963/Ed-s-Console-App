@@ -35,7 +35,8 @@ const STRIKES = { ticker: 'SPY', spot: SPOT, spot_strike: 771, today_source: 'te
   today: { all: [[770, 500000, 1000], [771, 900000, 5000], [772, -200000, 3000]] }, prior: { all: [[770, 400000, 800], [771, 700000, 2000], [772, -100000, 900]] },
   migration: { all: { compared: true, drift: 'UP', grew: [771, 770], shrank: [772], busiest: [771, 772], busiest_vs_walls: 'INSIDE_WALLS',
     volume_total: 9000, rows: [[770, 500000, 400000, 100000], [771, 900000, 700000, 200000], [772, -200000, -100000, -100000]] } } };
-const BARS = { ticker: 'SPY', tf: '30', bars: [{ t: 1790343000, o: 770, h: 772, l: 769, c: SPOT, v: 1000, chg: SPOT - 770, chg_pct: (SPOT - 770) / 770 * 100 }] };
+const BARS = { ticker: 'SPY', tf: '30', bars: [{ t: 1790343000, o: 770, h: 772, l: 769, c: SPOT, v: 1000, chg: SPOT - 770, chg_pct: (SPOT - 770) / 770 * 100 }],
+  last_bar: { t: 1790343660, label: 'Fri 09/25 09:21 AM CT' } };
 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
@@ -72,6 +73,27 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmCardFlow')).toContainText(EVENTS.cross_counts.up + ' up · ' + EVENTS.cross_counts.down + ' down');
     await expect(page.locator('#tdmAgree')).toContainText('Above flip');
     await expect(page.locator('#tdmAgree')).toContainText('Bid heavy');
+    expect(errs).toEqual([]);
+  });
+
+  test('Market Map: the served last completed bar; a price tick reads no bars', async ({ page }) => {
+    const errs = watchErrors(page);
+    await intercept(page);
+    const barReads = [];
+    page.on('request', (r) => { if (r.url().includes('/api/bars1m')) barReads.push(r.url()); });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const legend = page.locator('#tdmChart .tvc-legend');
+    await expect(legend).toContainText('Last completed bar Fri 09/25 09:21 AM CT');
+    const before = barReads.length;
+    await page.evaluate((spot) => {
+      for (let i = 0; i < 3; i++) window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: spot + i / 100,
+        spot_disp: (spot + i / 100).toFixed(2), spot_state: 'live', feed_live: true, trade_age_sec: 1 } }));
+    }, SPOT);
+    await page.waitForTimeout(1500);
+    expect(barReads.length).toBe(before);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'liquidity' } })));
+    await expect.poll(() => barReads.length).toBeGreaterThan(before);
     expect(errs).toEqual([]);
   });
 

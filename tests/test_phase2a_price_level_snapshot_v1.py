@@ -202,7 +202,7 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
     import time_et as te
 
     tape = _tape()
-    monkeypatch.setattr(srv, "_liquidity_live_1m_overlay_bars", lambda t: tape)
+    monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda t: tape)
     monkeypatch.setattr(srv, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (106.0, "schwab_quote_last", 1.0))
     monkeypatch.setattr(te, "now_et", lambda: datetime(2026, 8, 4, 12, 0, tzinfo=ET))

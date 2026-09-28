@@ -55,7 +55,6 @@ def test_thin_banked_prior_session_is_stamped_degraded(tmp_path, monkeypatch):
     class _StubDB:
         db_path = str(dbp)
 
-    monkeypatch.setattr(server._lpr, "forming_bar", lambda tk: None)   # no forming minute
     monkeypatch.setattr(server, "get_db", lambda: _StubDB())
     bars, source, degraded = server._canonical_price_level_bars("THIN", session_date)
     assert source == "price_bars_1m"
@@ -76,7 +75,6 @@ def test_full_banked_prior_session_carries_no_stamp(tmp_path, monkeypatch):
     class _StubDB:
         db_path = str(dbp)
 
-    monkeypatch.setattr(server._lpr, "forming_bar", lambda tk: None)   # no forming minute
     monkeypatch.setattr(server, "get_db", lambda: _StubDB())
     _bars, source, degraded = server._canonical_price_level_bars("FULL", session_date)
     assert source == "price_bars_1m"

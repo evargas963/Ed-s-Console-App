@@ -171,7 +171,7 @@ def test_levels_are_served_in_ladder_order_with_distance_and_near_spot(monkeypat
     fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
                     .read_text(encoding="utf-8"))
     spot = fx["bars"][-1]["close"]                               # the session's last real close
-    monkeypatch.setattr(server, "_liquidity_live_1m_overlay_bars", lambda t: fx["bars"])
+    monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
     body = json.loads(server.get_levels(ticker="SPY").body)

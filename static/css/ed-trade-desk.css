@@ -16,7 +16,6 @@
 .tvc-legend .tvc-tf{color:var(--ed-ink-3)}
 .tvc-legend .up,.tvc-pin .up{color:var(--ed-pos-ink)}
 .tvc-legend .dn,.tvc-pin .dn{color:var(--ed-neg-ink)}
-.tvc-forming{font-size:9.5px;letter-spacing:.06em;color:var(--ed-warn);font-weight:700}
 .tvc-pin{position:absolute;left:8px;top:28px;z-index:4;min-width:200px;background:var(--ed-panel-2);border:1px solid var(--ed-edge-strong);
   border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.35);font:12px/1.35 var(--ed-sans);color:var(--ed-ink)}
 .tvc-pin-h{display:flex;align-items:center;gap:8px;padding:5px 6px 5px 9px;border-bottom:1px solid var(--ed-edge);font-weight:600}

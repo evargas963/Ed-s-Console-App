@@ -28,7 +28,7 @@ def _wire_common(monkeypatch, *, raw_levels, zones=None, resolved_spot=None):
     monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
     monkeypatch.setattr(srv, "_liquidity_option_levels", lambda *a, **k: ([], "disabled"))
     monkeypatch.setattr(srv, "resolve_spot", lambda *a, **k: (resolved_spot, None, None))
-    # the route's one bar input: the session window of price_bars_1m (+ forming minute)
+    # the route's one bar input: the session window of price_bars_1m
     monkeypatch.setattr(srv, "_session_bars", lambda *a, **k: [_BAR])
 
     fake_out = _FakeSnapshotOutput("SPY", "2020-01-02", raw_levels, zones=zones)

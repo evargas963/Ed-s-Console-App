@@ -26,7 +26,7 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
         _bar(2026, 8, 3, 9, 35, 103, 104, 102, 103),   # today inside ORB window
         _bar(2026, 8, 3, 9, 45, 103, 104, 102, 103),   # today post-ORB
     ]
-    monkeypatch.setattr(srv, "_liquidity_live_1m_overlay_bars", lambda t: tape)
+    monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda t: tape)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (103.5, "schwab_quote_last", 1.0))
     # This fixture tests WINDOW SELECTION with tiny sessions; the t12 coverage floor is
     # exercised by its own dedicated test below.
@@ -143,7 +143,6 @@ def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monke
     import server as srv
     from time_et import ET
 
-    monkeypatch.setattr(srv._lpr, "forming_bar", lambda t: None)   # no forming minute
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (758.0, "schwab_quote_last", 1.0))
     import time_et as te
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 4, 10, 0, tzinfo=ET))

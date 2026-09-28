@@ -630,19 +630,11 @@
     if (!q || !sameSym(q.ticker, ticker())) return;
     _liveQuote = q;
     if (!isChart() || !_lastCtx) return;
-    var bars = (_lastCtx.bars || []).slice();
-    var f = q.forming_1m;                 // THE forming candle, built server-side
-    if (f && f.t != null) {
-      var lastT = bars.length ? bars[bars.length - 1].t : null;
-      if (lastT != null && Number(f.t) === Number(lastT)) bars[bars.length - 1] = f;
-      else if (lastT == null || Number(f.t) > Number(lastT)) bars = bars.concat([f]);
-    }
     var spot = liveSpot();
-    _lastCtx.bars = bars;
     _lastCtx.spot = spot;
     _lastCtx.legend = buildLegend(_lastCtx.legendHead || '', spot, isFinite(spot) ? q.spot_source : null);
     var host = document.getElementById('chartBody');
-    if (host) renderInto(host, bars, _lastCtx.win, spot, _lastCtx.terrain, _lastCtx.legend);
+    if (host) renderInto(host, _lastCtx.bars || [], _lastCtx.win, spot, _lastCtx.terrain, _lastCtx.legend);
   }
   window.addEventListener('ed:quote_tick', function (ev) { applyQuoteTick((ev && ev.detail) || {}); });
 

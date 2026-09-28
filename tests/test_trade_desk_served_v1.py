@@ -126,7 +126,7 @@ def spy_levels(monkeypatch, pin_clock):
     pin_clock(2026, 9, 22, 12, 46)                                   # the chain's own capture time
     terrain = {**compute_terrain("SPY", chain["chain"], chain["spot"]).to_dict(), "computed_ts_utc": time.time()}
     spot = bars[-1]["close"]
-    monkeypatch.setattr(server, "_liquidity_live_1m_overlay_bars", lambda t: bars)
+    monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: bars)
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
     monkeypatch.setattr(server, "terrain_cache_get", lambda t: terrain)
     pin_clock(2026, 9, 25, 16, 5)
