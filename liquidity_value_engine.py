@@ -1627,8 +1627,9 @@ def build_price_level_snapshot(
     # ── current-session value area ───────────────────────────────────────────
     poc, vah, val = compute_volume_profile_levels(bars_norm, session_date, cfg)
     if poc is None and vah is None and val is None:
-        families_absent.append({
-            "family": "value_area", "reason": "no today RTH bars for volume profile"})
+        families_absent.append({"family": "value_area", "reason": (
+            "no RTH volume for the volume profile in available bars" if session_rth_vol_n == 0
+            else "RTH volume bars present but the volume profile did not materialize")})
     else:
         for lid, price in (("TODAY_POC", poc), ("TODAY_VAH", vah), ("TODAY_VAL", val)):
             _put(lid, price,
