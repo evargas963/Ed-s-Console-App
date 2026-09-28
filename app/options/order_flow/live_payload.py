@@ -47,8 +47,10 @@ def flow_block(of: dict[str, Any]) -> dict[str, Any]:
 def options_live_payload(contract: str) -> dict[str, Any]:
     """Book microstructure + labeled PROXY flow for one option contract."""
     items = get_content_for_symbol(contract)
-    top = option_top(contract) if lmp.feed_live_for(contract) else None
-    of = OrderFlowEngine().compute({"content": items or [], "top": top}, ticker=contract)
+    top = option_top(contract) if lmp.feed_live_for(contract, "LEVELONE_OPTIONS") else None
+    of = OrderFlowEngine().compute({"content": items or [], "top": top,
+                                    "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK")},
+                                   ticker=contract)
     book = dict(of.get("book_microstructure") or {})
     book["flow"] = flow_block(of)
     return book

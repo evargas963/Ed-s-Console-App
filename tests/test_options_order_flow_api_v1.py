@@ -293,8 +293,9 @@ def _seed_producer_epochs(ofs, monkeypatch, tmp_path, *, l1=None, book=None):
     OPTIONS_BOOK (None = not held). Producer truth arrives only this way now."""
     held = {"LEVELONE_OPTIONS": [ofs.ticker_storage_key(l1)] if l1 else [],
             "OPTIONS_BOOK": [ofs.ticker_storage_key(book)] if book else []}
-    monkeypatch.setattr(ofs, "_daemon_status", None)
-    ofs._note_daemon_status({"schwab_socket_open": True, "held": held, "health": {}})
+    import time as _t
+    import live_market_plane as lmp
+    lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": held, "health": {}}, _t.time())
 
 
 def _seed_multi_contract_producer_epochs(ofs, monkeypatch, tmp_path, *,
@@ -303,9 +304,10 @@ def _seed_multi_contract_producer_epochs(ofs, monkeypatch, tmp_path, *,
     primary_book=False); every symbol in `extra` held on LEVELONE_OPTIONS only."""
     l1 = ([ofs.ticker_storage_key(primary)] if primary else []) +         [ofs.ticker_storage_key(s) for s in (extra or [])]
     book = [ofs.ticker_storage_key(primary)] if primary and primary_book else []
-    monkeypatch.setattr(ofs, "_daemon_status", None)
-    ofs._note_daemon_status({"schwab_socket_open": True, "health": {},
-                             "held": {"LEVELONE_OPTIONS": l1, "OPTIONS_BOOK": book}})
+    import time as _t
+    import live_market_plane as lmp
+    lmp.record_feed_heartbeat({"schwab_socket_open": True, "health": {},
+                               "held": {"LEVELONE_OPTIONS": l1, "OPTIONS_BOOK": book}}, _t.time())
 
 
 def _reset_option_plane(ofs):
@@ -386,7 +388,7 @@ def test_additional_contract_never_requires_options_book(monkeypatch, tmp_path):
     _seed_multi_contract_producer_epochs(
         ofs, monkeypatch, tmp_path, primary=_QQQ_CONTRACT, extra=[_SPY_CONTRACT])
     # Sanity: Schwab genuinely holds no OPTIONS_BOOK for SPY.
-    assert ofs.ticker_storage_key(_SPY_CONTRACT) not in ofs.daemon_status()["held"]["OPTIONS_BOOK"]
+    assert not ofs._lmp.feed_live_for(_SPY_CONTRACT, "OPTIONS_BOOK")
     try:
         plane = json.loads(srv.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)["streaming_plane"]

@@ -67,14 +67,14 @@ log = logging.getLogger(__name__)
 #: The daemon's live push endpoint (app.market_data.schwab.streaming.live_push). Module
 #: attribute, read at connect time, so a test can point the feed at its own server.
 from app.market_data.schwab.streaming.live_push import LIVE_PUSH_HOST, LIVE_PUSH_PORT
-from app.market_data.schwab.streaming.live_ui import HEARTBEAT_SEC as LIVE_UI_BEAT_SEC, LIVE_UI_PORT
+from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
 
 LIVE_PUSH_URL = f"ws://{LIVE_PUSH_HOST}:{LIVE_PUSH_PORT}"
 #: The daemon's price-row push (live_ui), the one the browser reads.
 LIVE_UI_URL = f"ws://127.0.0.1:{LIVE_UI_PORT}"
 #: The daemon's finished price row per ticker (live_price_rows.price_row), exactly as it pushes
 #: it to the browser. The console keeps no other copy of a live price; the rows are dropped when
-#: the push is gone or silent for three of its one-second beats.
+#: the push is gone or silent for the live limit (live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC).
 _price_rows: "dict[str, dict]" = {}
 
 
@@ -85,11 +85,6 @@ def price_row(ticker: str) -> "dict | None":
 PUSH_RECONNECT_SEC = 1.0
 #: How often the feed loop checks whether the wanted list changed (it sends only on change).
 WANTED_SEND_SEC = 0.25
-#: The daemon's last status (its one-second heartbeat on the push socket) and when it came.
-_daemon_status: "dict | None" = None
-_daemon_status_rx: "float | None" = None
-#: A daemon status older than this means the daemon, or the socket to it, is down.
-DAEMON_STATUS_STALE_SEC = 5.0
 #: Bumped whenever what this console wants streamed changes; the feed loop sends the new list.
 _wanted_version = 0
 
@@ -97,21 +92,6 @@ _wanted_version = 0
 def _wanted_changed() -> None:
     global _wanted_version
     _wanted_version += 1
-
-
-def _note_daemon_status(msg) -> None:
-    global _daemon_status, _daemon_status_rx
-    if isinstance(msg, dict):
-        _daemon_status, _daemon_status_rx = msg, time.time()
-        _lmp.record_feed_heartbeat(msg, _daemon_status_rx)
-
-
-def daemon_status() -> "dict | None":
-    """The daemon's latest status, or None when it is older than DAEMON_STATUS_STALE_SEC."""
-    if (_daemon_status is None or _daemon_status_rx is None
-            or time.time() - _daemon_status_rx > DAEMON_STATUS_STALE_SEC):
-        return None
-    return _daemon_status
 
 
 def current_wanted() -> "dict[str, list[str]]":
@@ -187,30 +167,13 @@ def _tick(sym: str) -> None:
                         sym, _tick_callback_failures, e)
 
 
-#: FRESHNESS/HEALTH SEMANTIC AUDIT (OPTIONS_ORDER_FLOW_V1, 2026-08-30): this module's own
-#: streaming_connected/streaming_healthy answer ONE question — "is my live-push feed
-#: running, and did a message for the active symbol arrive recently (by its own receive
-#: time)" — which is a PROXY for daemon health, not the daemon's Schwab-socket truth itself:
-#: a quiet symbol and a dead socket look alike to it. The daemon
-#: itself already computes the REAL truth per Schwab service (stream_spine.HealthRegistry,
-#: fed by health.beat() calls inside the actual message handlers in tools/
-#: run_stream_capture.py) and writes it to STATUS_PATH every ~10s — but nothing ever read
-#: it back into the UI-facing diagnostics until now. "local feed task exists" must never
-#: masquerade as "Schwab stream connected" — _read_daemon_upstream_health is the ground
-#: truth for that distinct question, surfaced as its own field, never blended into
-#: streaming_healthy.
-def _read_daemon_upstream_health(services: tuple[str, ...]) -> dict[str, dict]:
-    """Per Schwab service {state, age_sec} from the daemon's own status (its HealthRegistry);
-    UNKNOWN for every service when that status is missing or stale."""
-    st = daemon_status()
-    health = (st or {}).get("health")
-    health = health if isinstance(health, dict) else {}
-    out: dict[str, dict] = {}
-    for s in services:
-        entry = health.get(s)
-        out[s] = ({"state": entry.get("state"), "age_sec": entry.get("age_sec")}
-                  if isinstance(entry, dict) else {"state": "UNKNOWN", "age_sec": None})
-    return out
+def _service_feed(symbol: "str | None", service: str) -> dict:
+    """One Schwab service's feed for `symbol`, as the page shows it: LIVE by the one live rule
+    (live_market_plane.feed_live_for), and how long ago the daemon last received anything on
+    that service (its own report)."""
+    health = ((_lmp.daemon_status() or {}).get("health") or {}).get(service) or {}
+    return {"state": "LIVE" if _lmp.feed_live_for(symbol, service) else "NOT LIVE",
+            "age_sec": health.get("age_sec")}
 
 
 def _log_stream(phase: str, **kwargs: Any) -> None:
@@ -305,7 +268,7 @@ async def _rows_loop() -> None:
                         await ws.send(json.dumps({"op": "subscribe", "symbols": want}))
                         sent = want
                     try:
-                        frame = await asyncio.wait_for(ws.recv(), 3 * LIVE_UI_BEAT_SEC)
+                        frame = await asyncio.wait_for(ws.recv(), _lmp.FEED_HEARTBEAT_MAX_AGE_SEC)
                     except asyncio.TimeoutError:
                         _price_rows.clear()          # the daemon beats every second: silence
                         continue
@@ -346,7 +309,7 @@ async def _feed_loop() -> None:
             if not isinstance(env, dict):
                 continue
             if env.get("topic") == "daemon.heartbeat":
-                _note_daemon_status(env.get("msg"))
+                _lmp.record_feed_heartbeat(env.get("msg"), time.time())
                 continue
             _ingest_pushed(str(env.get("topic") or ""), env.get("msg"))
     rows = asyncio.create_task(_rows_loop(), name="daemon-price-rows")
@@ -497,7 +460,7 @@ def _ensure_default_option_contract_for_ticker(ticker: str) -> None:
     ):
         return
     # After a console restart: keep the contract the daemon still holds, if it is this ticker's
-    held = ((daemon_status() or {}).get("held") or {}).get("OPTIONS_BOOK") or []
+    held = ((_lmp.daemon_status() or {}).get("held") or {}).get("OPTIONS_BOOK") or []
     signaled = held[0] if held else None
     if _contract_matches_underlying(signaled, ticker, chain_db_path=chain_db):
         set_active_option_contract(signaled)
@@ -872,7 +835,7 @@ OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 def _read_producer_option_contracts() -> dict[str, list[str]]:
     """What Schwab holds per option service, from the daemon's status; empty when that status
     is missing or stale (unknown is never confirmation)."""
-    held = (daemon_status() or {}).get("held") or {}
+    held = (_lmp.daemon_status() or {}).get("held") or {}
     return {s: sorted(held.get(s) or []) for s in OPTION_PRODUCER_SERVICES}
 
 
@@ -887,12 +850,12 @@ def read_producer_admitted_option_contracts() -> "dict[str, list[str]]":
 
 def is_option_producer_daemon_available() -> bool:
     """True while the daemon's status is fresh."""
-    return daemon_status() is not None
+    return _lmp.daemon_status() is not None
 
 
 def read_producer_rejected_option_contracts() -> "dict[str, str]":
     """{symbol: Schwab's reason} for option contracts Schwab refused, from the daemon's status."""
-    refused = (daemon_status() or {}).get("refused") or {}
+    refused = (_lmp.daemon_status() or {}).get("refused") or {}
     return dict(refused.get("LEVELONE_OPTIONS") or {})
 
 
@@ -950,7 +913,7 @@ def get_option_contract_streaming_diagnostics(
     # the one live rule (live_market_plane.feed_live_for): the daemon's heartbeat is current,
     # its Schwab socket is open, and it holds this contract
     subject = queried or _active_option_contract
-    healthy = bool(_feed_running and subject and _lmp.feed_live_for(subject))
+    healthy = bool(_feed_running and subject and _lmp.feed_live_for(subject, "LEVELONE_OPTIONS"))
 
     # Contract binding: compare on the SAME canonical key set_active_option_contract
     # stores (ticker_storage_key), so a caller passing the raw chain "symbol" string
@@ -997,7 +960,6 @@ def get_option_contract_streaming_diagnostics(
     pbk = _pick_producer_contract(producer["OPTIONS_BOOK"], queried)
     # the queried contract's subscription, as the page shows it: SUBSCRIBED (the producer holds it),
     # MOVED (both services hold one other contract), else PENDING; None with no contract queried
-    upstream = _read_daemon_upstream_health(("LEVELONE_OPTIONS", "OPTIONS_BOOK"))
     subscription_state = (None if not queried else "SUBSCRIBED" if contract_match
                           else "MOVED" if pl1 and pl1 == pbk and pl1 != queried else "PENDING")
     return {
@@ -1013,9 +975,9 @@ def get_option_contract_streaming_diagnostics(
         "streaming_last_update_ts": last,
         "streaming_staleness_ms": stale_ms,
         "streaming_healthy": healthy,
-        # Schwab's own per-service health (the daemon's) beside the local replay: never collapsed.
         "feed_health": {"replay": "not connected" if not _feed_running else "healthy" if healthy else "stale",
-                        "l1": upstream["LEVELONE_OPTIONS"], "book": upstream["OPTIONS_BOOK"]},
+                        "l1": _service_feed(subject, "LEVELONE_OPTIONS"),
+                        "book": _service_feed(subject, "OPTIONS_BOOK")},
     }
 
 

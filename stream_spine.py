@@ -270,13 +270,10 @@ class MessageBus:
 
 
 
-#: Seconds since a service's last message: DEGRADED past the first, STALE past the second.
-HEALTH_DEGRADED_SEC = 5.0
-HEALTH_STALE_SEC = 30.0
-
-
 class HealthRegistry:
-    """Per-service liveness: RUNNING / DEGRADED / STALE / DOWN, judged by message age."""
+    """When each Schwab service last carried data: an observation, not a liveness verdict
+    (live is live_market_plane.feed_live_for -- Schwab sends only changes, so a quiet service
+    on an open socket is live)."""
 
     def __init__(self) -> None:
         self._last: dict[str, float] = {}
@@ -284,25 +281,12 @@ class HealthRegistry:
     def beat(self, feed: str, ts: float | None = None) -> None:
         self._last[feed] = ts if ts is not None else time.time()
 
-    def state(self, feed: str, now: float | None = None) -> str:
-        last = self._last.get(feed)
-        if last is None:
-            return "DOWN"
-        age = (now if now is not None else time.time()) - last
-        if age <= HEALTH_DEGRADED_SEC:
-            return "RUNNING"
-        if age <= HEALTH_STALE_SEC:
-            return "DEGRADED"
-        return "STALE"
-
     def last(self, feed: str) -> float | None:
         """When this feed last carried data (None: never, this connection)."""
         return self._last.get(feed)
 
-    def report(self, now: float | None = None) -> dict[str, dict]:
-        t = now if now is not None else time.time()
-        return {f: {"state": self.state(f, t), "age_sec": round(t - ts, 3)}
-                for f, ts in self._last.items()}
+    def report(self, now: float) -> dict[str, dict]:
+        return {f: {"age_sec": round(now - ts, 3)} for f, ts in self._last.items()}
 
 
 # ---------------------------------------------------------------------------- the writer

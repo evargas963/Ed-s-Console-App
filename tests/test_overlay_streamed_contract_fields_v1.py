@@ -127,51 +127,11 @@ def test_a_field_with_no_ts_recv_is_never_applied_under_a_newer_than_bound():
     assert n == 0
 
 
-def test_newer_than_ts_and_max_staleness_sec_are_both_applied_when_both_given():
-    """A value can be newer than the REST baseline yet still absolutely too old to trust --
-    both guards are independent and composable."""
-    contracts = [_contract("A", gamma=0.01)]
-    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 50.0}}
-    out, n = overlay_streamed_contract_fields(
-        contracts, streamed, newer_than_ts=10.0,       # newer than REST baseline: passes
-        max_staleness_sec=5.0, now=200.0)               # but 150s old in absolute terms: fails
-    assert n == 0
-    assert out[0]["gamma"] == 0.01
-
-
-def test_a_stale_streamed_value_beyond_max_staleness_is_not_applied():
-    contracts = [_contract("A", gamma=0.01)]
-    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 100.0}}
-    out, n = overlay_streamed_contract_fields(
-        contracts, streamed, max_staleness_sec=5.0, now=200.0)
-    assert n == 0, "a value 100s old must not override a same-cycle REST read under a 5s bound"
-    assert out[0]["gamma"] == 0.01
-    assert out[0] is contracts[0]
-
-
-def test_a_fresh_streamed_value_within_max_staleness_is_applied():
-    contracts = [_contract("A", gamma=0.01)]
-    streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 198.0}}
-    out, n = overlay_streamed_contract_fields(
-        contracts, streamed, max_staleness_sec=5.0, now=200.0)
-    assert n == 1
-    assert out[0]["gamma"] == 0.99
-
-
-def test_a_field_with_no_ts_recv_is_never_applied_under_a_staleness_bound():
-    """A missing freshness stamp is treated as unknown-age, never as 'fresh enough'."""
-    contracts = [_contract("A", gamma=0.01)]
-    streamed = {"A": {"gamma": 0.99}}  # no gamma_ts_recv at all
-    out, n = overlay_streamed_contract_fields(
-        contracts, streamed, max_staleness_sec=5.0, now=200.0)
-    assert n == 0
-    assert out[0]["gamma"] == 0.01
-
-
-def test_no_staleness_bound_applies_regardless_of_age():
+def test_a_live_contracts_value_applies_whatever_its_age():
+    """Schwab sends a field only when it changes: an old value of a live contract is current."""
     contracts = [_contract("A", gamma=0.01)]
     streamed = {"A": {"gamma": 0.99, "gamma_ts_recv": 0.0}}
-    out, n = overlay_streamed_contract_fields(contracts, streamed, now=1_000_000.0)
+    out, n = overlay_streamed_contract_fields(contracts, streamed)
     assert n == 1
     assert out[0]["gamma"] == 0.99
 

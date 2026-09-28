@@ -16,6 +16,7 @@ import pytest
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
 import server
 from math_exposure_core import merge_exposure_books
 from stream_spine import options_quote_msg
@@ -65,8 +66,12 @@ def _clean(monkeypatch):
     ofs._active_option_contracts = []
 
 
-def _stream(values: dict, monkeypatch):
+def _stream(values: dict, monkeypatch, held=None):
+    """Streamed option values, and the daemon's heartbeat holding `held` (default: every
+    streamed contract) on LEVELONE_OPTIONS -- what a live daemon streaming them reports."""
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: values.get(sym))
+    lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {
+        "LEVELONE_OPTIONS": list(values if held is None else held)}}, time.time())
 
 
 # ── one computation behind every view ────────────────────────────────────────────────────────
@@ -140,11 +145,14 @@ def test_a_streamed_value_older_than_the_chains_own_quote_is_not_applied(monkeyp
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 1
 
 
-def test_a_stale_streamed_value_is_not_applied(monkeypatch):
-    _put_chain(fetched_ts=time.time() - 60.0)
-    _stream({_A: {"gamma": 0.9,
-                  "gamma_ts_recv": time.time() - server.GAMMA_SURFACE_STREAM_STALENESS_SEC - 5}},
-            monkeypatch)
+def test_only_a_live_contracts_streamed_value_is_applied_whatever_its_age(monkeypatch):
+    """The one live rule: a contract the daemon holds is live however long its gamma has been
+    unchanged; one it no longer holds is a past observation and never reprices the levels."""
+    _put_chain(fetched_ts=time.time() - 120.0)
+    _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time() - 60.0}}, monkeypatch)
+    server._publish_levels(TK)
+    assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == [_A]
+    _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time()}}, monkeypatch, held=[])
     server._publish_levels(TK)
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
 
@@ -416,9 +424,10 @@ def test_a_reprice_on_a_kept_chain_keeps_the_chains_time(monkeypatch):
 
 def test_the_route_serves_the_publication_and_no_live_price_publishes_no_levels(monkeypatch):
     """/api/terrain serves the levels exactly as the producer published them -- every at-spot
-    value from the publication, none recomputed per request. Once the price is no longer live
-    they are a past observation: labelled stale, with their spot and its time. The next
-    publication with no live price has no levels, with its reason."""
+    value from the publication, none recomputed per request. Their spot is the price they were
+    computed at, labelled by its source and time and never called live (it can be a minute old
+    while the ticker's feed is live). The next publication with no live price has no levels,
+    with its reason."""
     from app.options.order_flow import streaming as ofs_mod
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, server.SPOT_SOURCE_PLANE, 1.0))
     server._publish_levels(TK, _CONTRACTS, time.time())
@@ -428,7 +437,8 @@ def test_the_route_serves_the_publication_and_no_live_price_publishes_no_levels(
     for k in ("spot", "regime", "net_gex_at_spot", "call_wall", "call_wall_state", "call_wall_lean",
               "dist_to_call_wall", "flip_relation", "headline"):
         assert out[k] == published[k], k
-    assert out["spot_state"] == "stale" and out["spot_as_of_ts_utc"] == 1.0
+    assert "spot_state" not in out and out["spot_as_of_ts_utc"] == 1.0
+    assert out["spot_source"] == server.SPOT_SOURCE_PLANE
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
     server._publish_levels(TK, _CONTRACTS, time.time())          # the next chain: no live price
     out = server.get_terrain(ticker=TK)

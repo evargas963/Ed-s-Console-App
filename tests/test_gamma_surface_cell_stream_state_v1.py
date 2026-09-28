@@ -19,6 +19,7 @@ import json
 import time
 from pathlib import Path
 
+import live_market_plane as lmp
 import server
 from server import (
     _stamp_gamma_surface_cell_stream_state,
@@ -231,9 +232,16 @@ def teardown_function(_fn):
     _ofs._active_option_contracts = []
 
 
+def _daemon_holds(*symbols):
+    """The daemon's heartbeat: Schwab socket open, these contracts held on LEVELONE_OPTIONS."""
+    lmp.record_feed_heartbeat({"schwab_socket_open": True,
+                               "held": {"LEVELONE_OPTIONS": list(symbols)}}, time.time())
+
+
 def test_a_fresh_tick_marks_the_ticking_contracts_own_cell_live(monkeypatch):
     _put_chain(fetched_ts=time.time() - 10.0)
     now = time.time()
+    _daemon_holds(_CONTRACT_SYMBOL)
     live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": now}}
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
@@ -253,17 +261,18 @@ def test_a_fresh_tick_marks_the_ticking_contracts_own_cell_live(monkeypatch):
     assert found_live, "fixture must contain the streamed symbol on at least one cell"
 
 
-def test_a_desired_contract_with_an_old_tick_is_stale_never_live(monkeypatch):
-    # The contract is desired (primary slot, set in setup_function) but its streamed record is
-    # too old to pass the staleness gate -- the chain alone must never present it as 'live'.
-    _put_chain()
-    live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": time.time() - 999.0}}
+def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monkeypatch):
+    # The contract is desired (primary slot, set in setup_function) and ticked a second ago, but
+    # the daemon no longer holds it: by the one live rule it is a past observation.
+    _put_chain(fetched_ts=time.time() - 10.0)
+    _daemon_holds()
+    live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": time.time()}}
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
     _publish_levels(TK)
     surface = _published_surface()
-    assert surface["stream_overlay_contracts"] == 0   # too stale to overlay at all
+    assert surface["stream_overlay_contracts"] == 0   # not live: never overlaid
     counts = _gamma_surface_cell_state_counts(surface)
     assert counts["live"] == 0
     assert counts["stale"] > 0

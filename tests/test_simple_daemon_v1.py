@@ -285,8 +285,8 @@ def test_every_service_is_published_verbatim_and_only_delivered_data_counts_as_a
     cap._publisher("NEWS_HEADLINE", bus, health)({"content": [news]})
     assert sub.queue.get_nowait()[1]["content"] == news
     cap._publisher("LEVELONE_OPTIONS", bus, health)({"content": [{"BIDS": []}]})
-    assert health.state("LEVELONE_OPTIONS") == "DOWN", "a frame that delivered nothing is not life"
-    assert health.state("NYSE_BOOK") == "RUNNING"
+    assert health.last("LEVELONE_OPTIONS") is None, "a frame that delivered nothing is not data"
+    assert health.last("NYSE_BOOK") is not None
 
 
 def test_the_daemon_never_asks_for_a_trade_tape():
@@ -355,8 +355,8 @@ def console(monkeypatch):
     monkeypatch.setattr(ofs, "_active_option_contracts", [])
     monkeypatch.setattr(ofs, "_equity_demand", {"context": list(ofs.MARKET_CONTEXT_SYMBOLS),
                                                 "watchlist": [], "board": []})
-    monkeypatch.setattr(ofs, "_daemon_status", None)
-    monkeypatch.setattr(ofs, "_daemon_status_rx", None)
+    import live_market_plane as lmp
+    lmp.record_feed_down()
     return ofs
 
 
@@ -392,20 +392,36 @@ def test_every_desired_state_change_is_sent_once(console):
     assert len(sent) == 2 and "AMD" in sent[1]["wanted"]["LEVELONE_EQUITIES"]
 
 
-def test_health_and_holdings_come_from_the_daemons_status_and_fail_closed_when_it_stops(console):
+def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(console):
+    """ONE-15 (2026-09-28 audit): "is it live" had four limits -- 3 s (price), 5 s (daemon
+    status), 10 s (option greeks), 25 s (book) -- plus the daemon's 5 s/30 s message-age states,
+    so one moment could read live on one card and dead on the next. One rule now: the daemon's
+    heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
+    symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes)."""
+    import live_market_plane as lmp
     ofs = console
-    assert ofs._read_daemon_upstream_health(("NYSE_BOOK",)) == {"NYSE_BOOK": {"state": "UNKNOWN", "age_sec": None}}
-    assert ofs.is_option_producer_daemon_available() is False
-    ofs._note_daemon_status({"schwab_socket_open": True,
-                             "health": {"NYSE_BOOK": {"state": "RUNNING", "age_sec": 0.4}},
-                             "held": {"LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]},
-                             "refused": {"LEVELONE_OPTIONS": {"C": "code 19"}}})
-    assert ofs._read_daemon_upstream_health(("NYSE_BOOK",))["NYSE_BOOK"]["state"] == "RUNNING"
+    status = {"schwab_socket_open": True,
+              "health": {"OPTIONS_BOOK": {"age_sec": 45.0}},
+              "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]},
+              "refused": {"LEVELONE_OPTIONS": {"C": "code 19"}}}
+
+    def readers():
+        return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES"), lmp.feed_live_for("A", "LEVELONE_OPTIONS"),
+                ofs._service_feed("A", "OPTIONS_BOOK")["state"], ofs.is_option_producer_daemon_available())
+
+    assert readers() == (False, False, "NOT LIVE", False)
+    limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
+    lmp.record_feed_heartbeat(status, time.time() - limit + 0.5)
+    assert readers() == (True, True, "LIVE", True)
+    assert ofs._service_feed("A", "OPTIONS_BOOK")["age_sec"] == 45.0
+    assert not lmp.feed_live_for("B", "OPTIONS_BOOK")               # held on L1 only
     assert ofs.read_producer_admitted_option_contracts() == {"LEVELONE_OPTIONS": ["A", "B"], "OPTIONS_BOOK": ["A"]}
     assert ofs.read_producer_rejected_option_contracts() == {"C": "code 19"}
-    ofs._daemon_status_rx = time.time() - ofs.DAEMON_STATUS_STALE_SEC - 1
-    assert ofs.is_option_producer_daemon_available() is False
+    lmp.record_feed_heartbeat(status, time.time() - limit - 0.5)
+    assert readers() == (False, False, "NOT LIVE", False)
     assert ofs.read_producer_admitted_option_contracts() == {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}
+    lmp.record_feed_heartbeat({**status, "schwab_socket_open": False}, time.time())
+    assert readers() == (False, False, "NOT LIVE", True)             # the daemon is up, Schwab is not
 
 
 # ------------------------------------------------------------------ the process

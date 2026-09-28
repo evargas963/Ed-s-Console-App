@@ -60,7 +60,6 @@ def test_the_subscription_state_is_served(monkeypatch, l1, book, want):
     monkeypatch.setattr(S, "_active_option_contract", "Q")
     monkeypatch.setattr(S, "_read_producer_option_contracts", lambda: {"LEVELONE_OPTIONS": l1, "OPTIONS_BOOK": book})
     monkeypatch.setattr(S, "_pick_producer_contract", lambda held, q: q if q in held else next(iter(held), None))
-    monkeypatch.setattr(S, "daemon_status", lambda: {"ok": True})
     assert S.get_option_contract_streaming_diagnostics(for_contract="Q")["subscription_state"] == want
 
 
