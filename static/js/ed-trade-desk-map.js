@@ -188,7 +188,7 @@
     return Promise.all([
       fetchJson('/api/levels?ticker=' + q + '&tf=' + encodeURIComponent(S.tf)),
       fetchJson('/api/terrain?ticker=' + q),
-      fetchJson('/api/desk/events?ticker=' + q + '&tf=' + encodeURIComponent(S.tf)),
+      fetchJson('/api/desk/events?ticker=' + q + '&venue=' + st().bookVenue + '&tf=' + encodeURIComponent(S.tf)),
       fetchJson('/api/liquidity-snapshot?ticker=' + q + '&snapshot=live'),
       fetchJson('/api/terrain/strikes?ticker=' + q),
       fetchJson('/api/forces?ticker=' + q)
@@ -200,7 +200,7 @@
   }
   function loadFast() {
     var tk = S.ticker, gen = S.gen;
-    return fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk)).then(function (d) {
+    return fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue).then(function (d) {
       if (gen !== S.gen) return;
       S.micro = d; paintCards(); paintTrust(); paintQueue(); paintAgreement(); paintFooter();
     });
@@ -301,7 +301,7 @@
         state(c, m && m.status === 'no_book' ? 'NO BOOK' : 'UNAVAILABLE', 'warn');
         c.querySelector('.tdm-hero').innerHTML = '—';
         c.querySelector('.tdm-rows').innerHTML = row('Book source', esc((m && m.provenance && m.provenance.book_source) || 'unavailable')) +
-          row('Reason', m && m.status === 'no_book' ? 'no NASDAQ/NYSE book rows for this symbol right now' : m === undefined ? 'loading…' : 'microstructure request failed');
+          row('Reason', m && m.status === 'no_book' ? 'no ' + esc(m.venue) + ' for this symbol right now' : m === undefined ? 'loading…' : 'microstructure request failed');
       } else {
         var imb = Number(d5.imbalance);
         var bs = m.ages ? m.ages.book_stale : null;   // true, false, or unknown (null)
@@ -397,7 +397,7 @@
     var h = '';
     h += q ? pill('PRICE', q.spot_state === 'live' ? 'LIVE' : String(q.spot_state || '—').toUpperCase(), q.spot_state === 'live' ? 'ok' : 'bad', 'daemon price socket')
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
-    h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no NASDAQ/NYSE book rows')
+    h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
       : pill('BOOK', m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
     var la = L && L.snapshot_as_of_ts_utc ? Date.now() / 1000 - L.snapshot_as_of_ts_utc : null;
@@ -446,6 +446,7 @@
     if (!$('tdmMap')) return;
     document.addEventListener('ed:view', start);
     document.addEventListener('ed:ticker', start);
+    document.addEventListener('ed:book_venue', function () { if (onDesk() && S.ticker) { loadFast(); loadSlow(); } });
     document.addEventListener('ed:changed', function (e) {
       if (!onDesk() || !S.ticker) return;
       var k = e.detail.kind;

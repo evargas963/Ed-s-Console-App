@@ -158,6 +158,7 @@ def _display_window(cells: list[dict]) -> tuple[float, float]:
 
 def book_heatmap_for_ticker(
     ticker: str,
+    venue: str,
     *,
     minutes: float = 60.0,
     max_rows: int = 20000,
@@ -165,9 +166,8 @@ def book_heatmap_for_ticker(
 ) -> dict[str, Any]:
     """Historical book-depth heatmap for one underlying ticker's own book (operator field-
     inventory audit, 2026-09-13 — "we don't have an order flow heatmap"). Bins the SAME
-    persisted `stream_book_raw` rows the live `/api/order-flow/microstructure` ladder already
-    reads (NASDAQ_BOOK + NYSE_BOOK, merged — the combined displayed liquidity across both
-    venues, never one venue silently picked as "the" book) into a time x price grid, cell
+    persisted `stream_book_raw` rows of one Schwab book, `venue` (NYSE_BOOK or NASDAQ_BOOK;
+    the two are never merged), into a time x price grid, cell
     value = the LAST observed native TOTAL_VOLUME at that price within the bucket -- NOT a sum
     across every captured tick (NASDAQ_BOOK/NYSE_BOOK messages are full-book snapshots, so an
     unchanged resting level is re-transmitted every time any OTHER level moves; summing would
@@ -199,15 +199,15 @@ def book_heatmap_for_ticker(
         # empty book snapshots, and anchoring on those showed an empty grid all weekend
         # (measured 2026-09-27: SPY and TSLA blank, their last populated book on 2026-09-25)
         latest = con.execute(
-            "SELECT MAX(ts_recv) FROM stream_book_raw WHERE symbol = ? AND service IN (?, ?) "
+            "SELECT MAX(ts_recv) FROM stream_book_raw WHERE symbol = ? AND service = ? "
             "AND (native_json LIKE '%\"BID_PRICE\"%' OR native_json LIKE '%\"ASK_PRICE\"%')",
-            (sym, "NASDAQ_BOOK", "NYSE_BOOK"),
+            (sym, venue),
         ).fetchone()
         latest_ts = latest[0] if latest else None
         if latest_ts is None:
             any_row = con.execute(
-                "SELECT 1 FROM stream_book_raw WHERE symbol = ? AND service IN (?, ?) LIMIT 1",
-                (sym, "NASDAQ_BOOK", "NYSE_BOOK"),
+                "SELECT 1 FROM stream_book_raw WHERE symbol = ? AND service = ? LIMIT 1",
+                (sym, venue),
             ).fetchone()
             return {"ticker": sym, "available": False,
                     "reason": ("captured rows carried no populated price levels in this window" if any_row
@@ -226,9 +226,9 @@ def book_heatmap_for_ticker(
         # rows_capped:true on a window with no truncation at all.
         rows = con.execute(
             "SELECT ts_recv, native_json FROM stream_book_raw "
-            "WHERE symbol = ? AND service IN (?, ?) AND ts_recv >= ? AND ts_recv <= ? "
+            "WHERE symbol = ? AND service = ? AND ts_recv >= ? AND ts_recv <= ? "
             "ORDER BY ts_recv DESC LIMIT ?",
-            (sym, "NASDAQ_BOOK", "NYSE_BOOK", lower_bound, float(latest_ts), int(max_rows) + 1),
+            (sym, venue, lower_bound, float(latest_ts), int(max_rows) + 1),
         ).fetchall()
         rows_capped = len(rows) > int(max_rows)
         rows = rows[:int(max_rows)]
@@ -293,7 +293,7 @@ def book_heatmap_for_ticker(
     )
     display_lo, display_hi = _display_window(cell_list)
     return {
-        "ticker": sym, "available": True,
+        "ticker": sym, "venue": venue, "available": True,
         "since_ts": t0, "until_ts": float(rows[-1][0]), "latest_captured_ts": float(latest_ts),
         "n_buckets": n_buckets, "bucket_sec": round(bucket_sec, 2),
         "price_min": min(prices_seen), "price_max": max(prices_seen),

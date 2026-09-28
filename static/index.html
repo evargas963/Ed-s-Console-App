@@ -994,7 +994,7 @@
               </aside>
             </div>
             <div class="tdm-cards" id="tdmCards">
-              <div class="tdm-card panel" id="tdmCardLiq"><div class="tdm-card-h"><span class="t">Liquidity</span><button type="button" class="tdm-eye" data-drill="liquidity" title="Drill down: book heatmap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">NASDAQ/NYSE displayed book · /api/order-flow/microstructure</div></div>
+              <div class="tdm-card panel" id="tdmCardLiq"><div class="tdm-card-h"><span class="t">Liquidity</span><button type="button" class="tdm-eye" data-drill="liquidity" title="Drill down: book heatmap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="bookvenue"><button type="button" class="scbtn" data-venue="NYSE_BOOK">NYSE book</button><button type="button" class="scbtn" data-venue="NASDAQ_BOOK">NASDAQ book</button></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">displayed book · /api/order-flow/microstructure</div></div>
               <div class="tdm-card panel" id="tdmCardFlow"><div class="tdm-card-h"><span class="t">Order Flow</span><button type="button" class="tdm-eye" data-drill="flow" title="Drill down: Book / DOM"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Tick-rule tape (PROXY) + level crosses · microstructure, /api/desk/events</div></div>
               <div class="tdm-card panel" id="tdmCardOpt"><div class="tdm-card-h"><span class="t">Options Positioning</span><button type="button" class="tdm-eye" data-drill="options" title="Drill down: Gamma"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Full option chain · /api/terrain</div></div>
               <div class="tdm-card panel" id="tdmCardVol"><div class="tdm-card-h"><span class="t">Volatility</span><button type="button" class="tdm-eye" data-drill="vol" title="Drill down: option chain"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Nearest-expiry ATM IV · /api/terrain, price socket</div></div>
@@ -1025,14 +1025,14 @@
         <div class="sub-pane" data-sub-pane="book">
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="obTicker">SPX</span><span class="t">Book / DOM</span><span class="sub">top-of-book · depth · imbalance</span>
-              <div class="r"><span class="prov native">NASDAQ/NYSE BOOK</span></div></div>
+              <div class="r"><span class="bookvenue"><button type="button" class="scbtn" data-venue="NYSE_BOOK">NYSE book</button><button type="button" class="scbtn" data-venue="NASDAQ_BOOK">NASDAQ book</button></span></div></div>
             <div class="panel-b" id="obBody"><div class="placeholder"><div class="sm">Real L2 book microstructure from /api/order-flow/microstructure — top-of-book/spread/depth/imbalance NATIVE/DERIVED; aggressor side deferred (Schwab exposes no native field).</div></div></div>
           </div>
         </div>
         <div class="sub-pane" data-sub-pane="heatmap">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="ofhTicker">SPX</span><span class="t">Book Heatmap</span><span class="sub">displayed depth over time · NASDAQ/NYSE</span>
-              <div class="r">
+            <div class="panel-h"><span class="hticker" id="ofhTicker">SPX</span><span class="t">Book Heatmap</span><span class="sub">displayed depth over time</span>
+              <div class="r"><span class="bookvenue"><button type="button" class="scbtn" data-venue="NYSE_BOOK">NYSE book</button><button type="button" class="scbtn" data-venue="NASDAQ_BOOK">NASDAQ book</button></span>
                 <div class="chart-modes">
                   <button type="button" class="cmode" data-ofh-minutes="15">15m</button>
                   <button type="button" class="cmode on" data-ofh-minutes="60">60m</button>

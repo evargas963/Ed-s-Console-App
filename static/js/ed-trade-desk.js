@@ -91,7 +91,7 @@
     ];
     var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
     var side = dep(5, 'side');   // served: BID / ASK / EVEN by the imbalance's sign
-    var heroUnit = side == null ? '' : side === 'BID' ? 'bid-heavy (depth 5)' : side === 'ASK' ? 'ask-heavy (depth 5)' : 'balanced (depth 5)';
+    var heroUnit = side == null ? '' : (side === 'BID' ? 'bid-heavy' : side === 'ASK' ? 'ask-heavy' : 'balanced') + ' (' + esc(d.venue) + ', depth 5)';
     // Operator-reproduced defect (2026-09-14): this badge was hardcoded 'LIVE' regardless of
     // book_age_sec -- a book observation aged to 3,600s still rendered LIVE. ages.book_stale is
     // server-computed (app.options.order_flow.engine.compute_book_microstructure), the SAME
@@ -397,7 +397,7 @@
     h.setAttribute('aria-busy', 'true');
     warmBook(tk);
     return Promise.all([
-      fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk), signal),
+      fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
       // snapshot=live -- see ed-liquidity-map.js's identical comment; the endpoint's own
@@ -459,6 +459,7 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
+    document.addEventListener('ed:book_venue', load);
     document.addEventListener('ed:changed', load);
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.

@@ -67,6 +67,28 @@ def test_book_message_lands_verbatim(tmp_path):
     assert any(i.get("BIDS") == content["BIDS"] for i in items)
 
 
+def test_each_venue_serves_only_its_own_book(tmp_path):
+    """Real SPY NYSE_BOOK and NASDAQ_BOOK messages (tests/fixtures/real_spy_nyse_nasdaq_books.json)
+    through the real ingest: each venue's route answer is that venue's book, never the newest
+    of the two."""
+    import json
+    from pathlib import Path
+
+    import server
+    _reset(tmp_path)
+    fx = json.loads((Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json")
+                    .read_text(encoding="utf-8"))["books"]
+    for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
+        ofs._ingest_pushed("book.SPY", book_msg(symbol="SPY", service=svc, content=fx[svc]["content"],
+                                                src="schwab_book", ts_recv=fx[svc]["ts_recv"]))
+    for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
+        body = json.loads(server.api_order_flow_microstructure(ticker="SPY", venue=svc).body)
+        prov = body["provenance"]
+        assert (body["venue"], prov["book_source"]) == (svc, svc)
+        assert prov["n_bid_levels"] == len(fx[svc]["content"]["BIDS"])
+        assert prov["book_time_ms"] == fx[svc]["content"]["BOOK_TIME"]
+
+
 def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
     """Every roster symbol is applied (the watchlist reads each one's streamed LAST_PRICE),
     each into its OWN state: a QQQ tick must never appear in SPY's."""

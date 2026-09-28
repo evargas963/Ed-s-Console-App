@@ -70,7 +70,9 @@ Schwab sends is taken as sent (rule 2), never computed.
   price row → browser socket → header and watchlist; (c) console socket → console memory → the
   spot the levels use. Pushed end to end.
 - **Option quote and order book.** Schwab → daemon bus → writer, and → console memory → a
-  `flow` push on `/api/changes` → the browser reads the order-flow and heatmap routes.
+  `flow` push on `/api/changes` → the browser reads the order-flow and heatmap routes. An equity
+  has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
+  under its service and served for the `venue` the screen's venue switch names, never combined.
 - **1-minute bar.** Schwab → daemon bus → writer (`stream_capture.db`), and → console → the
   console's own bar writer → `ed_console.db` → a `liquidity` push on `/api/changes` → the browser
   reads `/api/bars1m`. Charts show completed Schwab bars only, with the newest bar's minute

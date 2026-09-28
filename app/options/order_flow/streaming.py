@@ -259,7 +259,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         content = msg.get("content")
         if not isinstance(content, dict):
             return None
-        push_book(sym, content)
+        push_book(sym, content, msg["service"])
         _push_messages_applied += 1
         if msg.get("service") == "OPTIONS_BOOK":
             _option_streaming_last_update_ts = ts

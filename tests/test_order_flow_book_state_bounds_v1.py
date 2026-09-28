@@ -24,8 +24,8 @@ def test_canonical_book_state_is_bounded_and_contract_isolated():
 
     base_time = int(first_book["BOOK_TIME"])
     for i in range(MAX_BOOK_SNAPSHOTS + 5):
-        state.push_book(first["symbol"], dict(first_book, BOOK_TIME=base_time + i))
-    state.push_book(second["symbol"], second_book)
+        state.push_book(first["symbol"], dict(first_book, BOOK_TIME=base_time + i), "OPTIONS_BOOK")
+    state.push_book(second["symbol"], second_book, "OPTIONS_BOOK")
 
     first_content = state.get_content_for_symbol(first["symbol"])
     second_content = state.get_content_for_symbol(second["symbol"])

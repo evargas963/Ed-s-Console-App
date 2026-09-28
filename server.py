@@ -3158,8 +3158,9 @@ def get_options_tape(ticker: str = Query(...),
 
 @app.get("/api/order-flow/book-heatmap")
 def get_order_flow_book_heatmap(ticker: str = Query(...),
+                                venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
                                 minutes: float = Query(default=60.0)):
-    """Historical book-depth heatmap for the underlying ticker's own NASDAQ/NYSE book (operator
+    """Historical book-depth heatmap for one of the ticker's Schwab books, `venue` (operator
     field-inventory audit, 2026-09-13: "we don't have an order flow heatmap"). SERIALIZER, not a
     second producer: delegates entirely to app.options.order_flow.history.book_heatmap_for_ticker,
     which bins the SAME persisted stream_book_raw rows the live /api/order-flow/microstructure
@@ -3174,7 +3175,7 @@ def get_order_flow_book_heatmap(ticker: str = Query(...),
         bounded_minutes = max(5.0, min(240.0, float(minutes)))
     except (TypeError, ValueError):
         bounded_minutes = 60.0
-    payload = book_heatmap_for_ticker(tk, minutes=bounded_minutes)
+    payload = book_heatmap_for_ticker(tk, venue, minutes=bounded_minutes)
     return JSONResponse(payload)
 
 
@@ -3656,6 +3657,7 @@ def _f2(v) -> str:
 
 @app.get("/api/desk/events")
 def get_desk_events(ticker: str = Query(...),
+                    venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
                     tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "30"):
     """The Trade Desk's attention queue, served: level crosses in the timeframe's window (numbered
     oldest first; the newest 40 flagged for the chart), wall breaches and stale levels from the
@@ -3691,11 +3693,11 @@ def get_desk_events(ticker: str = Query(...),
         items.append({"key": "ls", "ts": tts, "dom": "DATA", "dir": None, "warn": True,
                       "title": "Gamma levels are stale", "detail": t.get("levels_stale_reason") or "",
                       "src": "/api/terrain"})
-    micro = json.loads(api_order_flow_microstructure(ticker=tk).body)
+    micro = json.loads(api_order_flow_microstructure(ticker=tk, venue=venue).body)
     for i, w in enumerate((micro.get("wall_candidates") or [])[:3]):
         items.append({"key": f"wall{i}", "ts": (micro.get("provenance") or {}).get("server_received_ts"),
                       "dom": "LIQUIDITY", "dir": "up" if w.get("side") == "bid" else "down",
-                      "title": f"Displayed size wall · {w.get('side') or ''} {_f2(w.get('price'))}",
+                      "title": f"{venue} size wall · {w.get('side') or ''} {_f2(w.get('price'))}",
                       "detail": f"{w.get('volume')} shown · "
                                 + (f"{w['median_mult']:.1f}× the median level" if w.get("median_mult") is not None else "size outlier"),
                       "src": "/api/order-flow/microstructure"})
@@ -3771,7 +3773,8 @@ async def get_changes(ticker: str = Query(...)):
 
 
 @app.get("/api/order-flow/microstructure")
-def api_order_flow_microstructure(ticker: str = Query(...)):
+def api_order_flow_microstructure(ticker: str = Query(...),
+                                  venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$")):
     """Canonical L2 book microstructure (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1): top-of-book,
     spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
     liquidity concentration, wall_candidates, and ages — every field classified
@@ -3779,14 +3782,15 @@ def api_order_flow_microstructure(ticker: str = Query(...)):
     app.options.order_flow.engine.compute_book_microstructure keyed by this ticker, which carries the
     engine's already-computed structural state for the current book (memoized per ticker +
     BOOK_TIME) rather than re-walking the raw book. No Schwab REST quote call; the client
-    renders, never recomputes."""
+    renders, never recomputes. `venue` is the one Schwab book shown: NYSE_BOOK (exchanges) or
+    NASDAQ_BOOK (market makers); the two are never combined."""
     t = ticker_storage_key(_required_ticker(ticker))
     # VIEW endpoint: touch last-seen only, never enroll (RC-160 ticker-scope discipline).
     _touch_tracked_ticker_view(t)
     data: dict = {}
     try:
         from app.options.order_flow.state import get_content_for_symbol
-        _content = get_content_for_symbol(t)
+        _content = get_content_for_symbol(t, venue)
         if _content:
             data["content"] = _content
     except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
@@ -3811,6 +3815,7 @@ def api_order_flow_microstructure(ticker: str = Query(...)):
         log.debug("microstructure flow failed for %s: %s", t, e)
         payload["flow"] = None
     payload["ticker"] = t
+    payload["venue"] = venue
     return JSONResponse(payload)
 
 

@@ -509,8 +509,8 @@ def test_the_equity_book_reads_the_one_l1_store_under_its_live_rule():
     mark_feed_live("ZZTB")
     lmp.record_from_level_one_equity("ZZTB", {"LAST_PRICE": 10.01, "BID_PRICE": 10.0, "ASK_PRICE": 10.02,
                                               "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01}, received_ts=time.time())
-    body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB").body)
+    body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
     assert body["flow"]["top_book_pressure"] == (3 - 5) / 8
     lmp.record_feed_down()
-    body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB").body)
+    body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
     assert body["flow"]["top_book_pressure"] is None

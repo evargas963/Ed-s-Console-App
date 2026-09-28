@@ -67,7 +67,7 @@ def test_options_microstructure_serves_replayed_content(monkeypatch):
     content = {"key": _SPY_CONTRACT, "BOOK_TIME": 1787234093764,
               "BIDS": [{"BID_PRICE": 1.28, "TOTAL_VOLUME": 1746}],
               "ASKS": [{"ASK_PRICE": 1.30, "TOTAL_VOLUME": 1533}]}
-    ofls.push_book(_SPY_CONTRACT, content)
+    ofls.push_book(_SPY_CONTRACT, content, "OPTIONS_BOOK")
 
     body = json.loads(srv.api_order_flow_options_microstructure(contract=_SPY_CONTRACT).body)
     assert body["contract"] == _SPY_CONTRACT

@@ -39,7 +39,7 @@
     var h = host();
     if (!h || !stillBook(tk)) return;
     h.setAttribute('aria-busy', 'true');
-    return fetch('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
+    return fetch('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillBook(tk)) render(h, tk, d); })
       .catch(function (e) {
@@ -98,8 +98,8 @@
     if (!d || d.status === 'no_book') {
       h.innerHTML = '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' + esc(tk) + '</span></div>' +
         '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge warn">NO BOOK YET</span></div></div>' +
-        '<div class="placeholder"><div class="sm">Subscription just requested for ' + esc(tk) +
-        ' — the ladder populates once Schwab confirms the NASDAQ/NYSE book (this view never fabricates a book).</div></div>';
+        '<div class="placeholder"><div class="sm">No ' + esc(st().bookVenue) + ' for ' + esc(tk) +
+        ' — Schwab has sent no book from this venue for this symbol.</div></div>';
       return;
     }
     var tob = d.top_of_book || {}, depth = d.depth || {}, ages = d.ages || {}, cls = d.classification || {};
@@ -158,6 +158,7 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
+    document.addEventListener('ed:book_venue', load);
     document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'flow') load(); });
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
