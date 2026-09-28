@@ -11,14 +11,18 @@ computation for options.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
+from pathlib import Path
 
 import pytest
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
 from stream_spine import book_msg, options_quote_msg
 
+_REAL_STREAM_SAMPLES = Path(__file__).parent / "fixtures" / "real_options_stream_history_samples.json"
 _SPY_CONTRACT = "SPY   260820C00767000"
 _QQQ_CONTRACT = "QQQ   260820C00450000"
 
@@ -302,24 +306,32 @@ def _reset_option_feed_globals():
     ofs._active_option_contract = None
     ofs._active_option_contracts = []
     ofs._option_streaming_last_update_ts = None
-    ofs._option_last_subscribe_completed_ts = None
+    ofs._option_contract_last_update_ts.clear()
     ofs._daemon_status = None
     ofs._daemon_status_rx = None
+    lmp.record_feed_down()
+
+
+def _real_fixture_contract():
+    """A contract Schwab streamed (tests/fixtures/real_options_stream_history_samples.json)."""
+    return json.loads(_REAL_STREAM_SAMPLES.read_text(encoding="utf-8"))["contracts"][0]["symbol"]
+
+
+def _daemon_heartbeat(*held_contracts):
+    """The daemon's heartbeat as it arrives on the console socket, holding these contracts
+    on both option services."""
+    ofs._note_daemon_status({"schwab_socket_open": True, "health": {}, "held": {
+        "LEVELONE_OPTIONS": list(held_contracts), "OPTIONS_BOOK": list(held_contracts)}})
 
 
 def test_option_contract_streaming_diagnostics_healthy_on_recent_tick():
-    """Mirrors get_streaming_diagnostics()'s own equity-side contract exactly, for the
-    independent option-contract slot: a recent update ts reads healthy with ~0 staleness."""
+    """A contract the daemon holds on a live socket, with a recent update, reads healthy
+    with ~0 staleness."""
     _reset_option_feed_globals()
-    _live_daemon()
+    _daemon_heartbeat(_SPY_CONTRACT)
     ofs._feed_running = True
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()
-    # Gap 2 (PR214 final remediation): streaming_healthy now also requires a producer
-    # identity that is either confirmed (a fresh DB heartbeat) or still within the
-    # startup grace window — this test has no real daemon/DB behind it, so it must
-    # establish that grace explicitly, same as test_..._grace_window_before_first_tick.
-    ofs._option_last_subscribe_completed_ts = time.time()
 
     diag = ofs.get_option_contract_streaming_diagnostics()
     assert diag["streaming_connected"] is True
@@ -329,32 +341,50 @@ def test_option_contract_streaming_diagnostics_healthy_on_recent_tick():
     assert diag["streaming_staleness_ms"] < 1000.0
 
 
-def test_option_contract_streaming_diagnostics_stale_past_threshold():
-    """Past STREAMING_STALE_MS (25s) with no fresher tick, the contract must read
-    unhealthy — the same staleness gate the equity slot enforces."""
+def test_a_quiet_contract_on_a_live_feed_reads_healthy_with_its_own_staleness():
+    """Health is the one live rule (live_market_plane.feed_live_for), not the age of the last
+    message: Schwab sends a field only when it changes, so a contract quiet for 30 s on a
+    live feed is healthy, and its staleness is the true 30 s."""
     _reset_option_feed_globals()
+    _daemon_heartbeat(_SPY_CONTRACT)
     ofs._feed_running = True
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time() - 30.0
 
     diag = ofs.get_option_contract_streaming_diagnostics()
-    assert diag["streaming_healthy"] is False
+    assert diag["streaming_healthy"] is True
     assert diag["streaming_staleness_ms"] >= 30_000.0
 
 
-def test_option_contract_streaming_diagnostics_grace_window_before_first_tick():
-    """Immediately after subscribing (no data yet), the grace window
-    (GRACE_AFTER_SUBSCRIBE_SEC=8s) must read healthy with a fabricated-zero staleness —
-    not unhealthy just because no tick has landed yet."""
+def test_a_just_subscribed_contract_the_daemon_does_not_hold_is_not_healthy():
+    """O-11: a contract subscribed a moment ago, with no update and not held by the daemon,
+    has no live evidence: unhealthy, staleness absent. (It read healthy with a synthetic
+    0.0 staleness for an 8 s grace window.)"""
     _reset_option_feed_globals()
-    _live_daemon()
+    contract = _real_fixture_contract()
+    _daemon_heartbeat()
     ofs._feed_running = True
-    ofs._active_option_contract = _SPY_CONTRACT
-    ofs._option_last_subscribe_completed_ts = time.time()
+    assert ofs.set_active_option_contract(contract) is True
 
     diag = ofs.get_option_contract_streaming_diagnostics()
+    assert diag["option_contract"] == contract
+    assert diag["streaming_healthy"] is False
+    assert diag["streaming_staleness_ms"] is None
+
+
+def test_a_just_subscribed_contract_the_daemon_holds_is_healthy():
+    """The same contract, once the daemon's heartbeat holds it on an open Schwab socket,
+    reads healthy and bound to the queried contract."""
+    _reset_option_feed_globals()
+    contract = _real_fixture_contract()
+    _daemon_heartbeat(contract)
+    ofs._feed_running = True
+    assert ofs.set_active_option_contract(contract) is True
+
+    diag = ofs.get_option_contract_streaming_diagnostics(for_contract=contract)
+    assert diag["contract_match"] is True
     assert diag["streaming_healthy"] is True
-    assert diag["streaming_staleness_ms"] == 0.0
+    assert diag["streaming_staleness_ms"] is None
 
 
 def test_option_contract_streaming_diagnostics_unhealthy_when_feed_not_running():
@@ -369,25 +399,15 @@ def test_option_contract_streaming_diagnostics_unhealthy_when_feed_not_running()
 
 
 def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
-    """The two diagnostics functions must read their own module-level state only — a
-    stale/dead equity ticker must not drag down a healthy option contract, and vice
-    versa, since the mission requires both to be watchable independently at once."""
+    """The option diagnostics read their own state only: a stale equity ticker the daemon
+    does not hold must not drag down a healthy option contract."""
     _reset_option_feed_globals()
-    _live_daemon()
+    _daemon_heartbeat(_SPY_CONTRACT)
     ofs._active_ticker = "SPY"
     ofs._streaming_last_update_ts = time.time() - 60.0
-    ofs._last_subscribe_completed_ts = None
     ofs._feed_running = True
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()
-    # Gap 2: see test_option_contract_streaming_diagnostics_healthy_on_recent_tick — no
-    # real daemon/DB behind this test, so the option slot's healthy=True needs explicit
-    # startup grace. The equity slot deliberately has none (it must read unhealthy).
-    ofs._option_last_subscribe_completed_ts = time.time()
 
-    assert ofs._streaming_healthy() is False
-    assert ofs._option_streaming_healthy() is True
-    assert ofs.get_streaming_diagnostics()["streaming_healthy"] is False
+    assert lmp.feed_live_for("SPY") is False
     assert ofs.get_option_contract_streaming_diagnostics()["streaming_healthy"] is True
-
-

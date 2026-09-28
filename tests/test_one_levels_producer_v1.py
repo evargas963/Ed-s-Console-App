@@ -438,3 +438,15 @@ def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
                            gamma_at_spot=None)
     assert r.regime == "UNAVAILABLE" and "gamma" not in r.headline.lower().split("—")[0]
     assert "Short gamma" not in r.headline and "Long gamma" not in r.headline
+
+
+def test_a_view_typed_bare_touches_the_enrolled_storage_key(monkeypatch):
+    """Audit S-04: the roster holds storage keys ("$SPX"); a view of "SPX" upper-cased itself to
+    "SPX", never matched, and never refreshed last_seen. Every route now keys through
+    ticker_storage_key."""
+    import server
+    touched = []
+    monkeypatch.setattr(server, "_logger_tickers", ["$SPX"])
+    monkeypatch.setattr(server.get_db(), "logging_universe_touch_seen", lambda t, ts: touched.append(t))
+    server._touch_tracked_ticker_view("SPX")
+    assert touched == ["$SPX"]

@@ -35,8 +35,7 @@ OF_TAPE_WINDOW_2M_SEC: float = 120.0
 OF_TAPE_WINDOW_5M_SEC: float = 300.0
 OF_CUM_DELTA_NORM_DIVISOR: float = 10000.0
 OF_OPTIONS_DELTA_NORM_DIVISOR: float = 50000.0
-# A book whose BOOK_TIME is older than this reads stale. Same value as
-# order_flow_streaming.STREAMING_STALE_MS (cross-checked by tests/test_order_flow_microstructure_v1.py).
+# A book whose BOOK_TIME is older than this reads stale.
 OF_BOOK_STALE_SEC: float = 25.0
 # Book-depth ladder for _compute_book_imbalance: top of book, shallow, deep.
 OF_BOOK_DEPTH_TOP: int = 1
@@ -536,9 +535,9 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
 # TAPE METRICS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _compute_tape_pressure(data: dict, window_sec: float) -> Optional[float]:
+def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> Optional[float]:
     """PROXY reconstructed L1 tick-rule pressure. ONE FAUCET: l1_trade_observation."""
-    return _canonical_tape_pressure(canonical_tape_prints(_iter_content(data)), window_sec)
+    return _canonical_tape_pressure(canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -550,9 +549,9 @@ def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
     return _canonical_cum_delta(canonical_tape_prints(_iter_content(data)))
 
 
-def _compute_cum_delta_slope(data: dict, window_sec: float = 60.0) -> Optional[float]:
+def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -> Optional[float]:
     """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
-    points = iter_signed_cum_points(canonical_tape_prints(_iter_content(data)), window_sec)
+    points = iter_signed_cum_points(canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0)
     if len(points) < 2:
         return None
     xs = np.array([p[0] for p in points])
@@ -798,13 +797,13 @@ class OrderFlowEngine:
         spread_pts = spread_d.get("spread_pts")
 
         # Tape metrics
-        tape_pressure_30s = _compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC)
-        tape_pressure_2m = _compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC)
-        tape_pressure_5m = _compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC)
+        tape_pressure_30s = _compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC, now)
+        tape_pressure_2m = _compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC, now)
+        tape_pressure_5m = _compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC, now)
 
         # Cumulative delta
         cum_delta_proxy = _compute_cum_delta_proxy(data)
-        cum_delta_slope = _compute_cum_delta_slope(data)
+        cum_delta_slope = _compute_cum_delta_slope(data, now)
 
         # TRUTH_V1: the legacy _compute_absorption (P1) was RETIRED — it computed a volume/price-range
         # density (never level-based absorption), was removed from the composite, and its output keys
