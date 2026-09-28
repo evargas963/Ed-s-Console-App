@@ -1368,13 +1368,6 @@ async def _app_lifespan(app):
     except Exception as e:
         log.warning("Schwab auth check: %s", e)
 
-    try:
-        from release_object import initialize_release_at_startup
-
-        initialize_release_at_startup()
-    except Exception as rel_e:
-        log.error("release_object startup failed: %s — production decisions will not stamp release_id", rel_e)
-
     # DB-WRITE-PATH-FIXES (d): start_logger() -> _hydrate_logger_tickers_from_db() performs the
     # DB-backed logging-universe load here in the lifespan (kept off the module-import path).
     _hydrate_logger_tickers_from_db()
@@ -4488,18 +4481,6 @@ def _repo_git_head_sha() -> Optional[str]:
         return None
 
 
-@app.get("/api/release/current")
-def api_release_current():
-    """Current process release object (I-25)."""
-    from release_object import get_current_release, validate_release_for_emission
-
-    release = get_current_release(required=False)
-    ok, reason = validate_release_for_emission(release)
-    if not ok:
-        return JSONResponse({"ok": False, "reason": reason, "release": release}, status_code=503)
-    return {"ok": True, "release": release}
-
-
 # ── BUILD_IDENTITY_PROCESS_DRIFT_V1 — immutable process-start identity ───────
 # Root cause fixed here: /api/build used to serve _repo_git_head_sha() (a
 # request-time repo read) as the only identity, so a HEAD move after launch
@@ -4532,7 +4513,6 @@ class ProcessIdentityV1:
     startup_identity_captured_at_utc: float
     process_started_at_utc: Optional[float]
     process_id: int
-    package_build_id: Optional[str]
     identity_source: str
     identity_capture_error: Optional[str]
 
@@ -4608,21 +4588,7 @@ def _capture_process_identity() -> ProcessIdentityV1:
             if capture_error is None:
                 capture_error = "git_dirty_state_unavailable"
 
-    package_build_id: Optional[str] = None
-    try:
-        from release_object import get_current_release
-
-        _rel = get_current_release(required=False)
-        package_build_id = _rel.get("release_id") if _rel else None
-    except Exception:  # noqa: BLE001 — identity capture must never kill startup
-        package_build_id = None
-
-    if git_available:
-        identity_source = "git_startup_capture"
-    elif package_build_id is not None:
-        identity_source = "release_object_package"
-    else:
-        identity_source = "unavailable"
+    identity_source = "git_startup_capture" if git_available else "unavailable"
 
     return ProcessIdentityV1(
         schema_version="1",
@@ -4633,7 +4599,6 @@ def _capture_process_identity() -> ProcessIdentityV1:
         startup_identity_captured_at_utc=captured_at,
         process_started_at_utc=started_at,
         process_id=pid,
-        package_build_id=package_build_id,
         identity_source=identity_source,
         identity_capture_error=capture_error,
     )
@@ -4657,16 +4622,12 @@ def api_build():
     Mechanical lock: tests/test_build_identity_semantics.py forbids new code
     from sourcing process identity from request-time git.
     """
-    from release_object import get_current_release
-
-    release = get_current_release(required=False)
     repo_head_now = _repo_git_head_sha()
     identity = asdict(PROCESS_IDENTITY_V1)
     startup_sha = identity.get("startup_git_sha")
     return {
         "git_sha": startup_sha,  # PROCESS IDENTITY (startup capture) — never request-time git
         "contract": "meet_or_exceed_v1",
-        "release_id": release.get("release_id") if release else None,
         "ui_maximize_sla_ms": dict(UI_MAXIMIZE_SLA_MS),
         "ui_maximize_panel_warm_tickers": list(panel_warm_tickers()),
         "process_identity": identity,
@@ -4678,13 +4639,7 @@ def api_build():
             "running_code": startup_sha,
             "checked_out_code": repo_head_now,
         },
-        "git_sha_semantics": "startup_process_identity",  # deprecation notice for request-time readers
-        # Operator directive (2026-09-15, canonical input-validity rules, THIRD pass):
-        # "Database hydrate/flush failures must be observable and fail honestly; they may not
-        # be swallowed at debug level while the product implies restart durability." Empty
-        # dict means every hydrate/flush this process has attempted succeeded (or none has
-        # been attempted yet) -- a non-empty entry is a real, named degradation to
-        # in-memory-only-this-session for that ticker, never silent.
+        "git_sha_semantics": "startup_process_identity",
     }
 
 

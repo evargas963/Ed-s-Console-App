@@ -26,8 +26,7 @@ Two refusals:
   EOL STYLE FLIP   — content genuinely changed AND the dominant terminator switched.
                      The real edit is legitimate; the reflow riding along is not.
 
-Exemptions are read from git, never guessed: binary blobs and paths marked `-text`
-(models/** carries it, because ML_PIPE Item 4 pins exact artifact bytes).
+Exemptions are read from git, never guessed: binary blobs and paths marked `-text`.
 
 Usage:
     python tools/check_eol_style_invariant.py            # staged changes (pre-commit)
@@ -65,9 +64,7 @@ def changed_paths(staged: bool) -> list[str]:
 def is_text_governed(path: str) -> bool:
     """False when git itself says this path is binary or `-text` (exempt).
 
-    Read from git attributes rather than inferred from the extension: models/** is
-    deliberately `-text` because the bundle integrity manifests pin exact bytes, and
-    guessing by suffix would either miss that or invent exemptions of its own.
+    Read from git attributes rather than inferred from the extension.
     """
     attr = _text("check-attr", "text", "--", path).strip()
     if attr.endswith(": unset") or attr.endswith(": -text"):

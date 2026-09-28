@@ -44,7 +44,6 @@ TURN_AUDIT_OWNS = [
 #: Split so this test file is not itself refused when its text is scanned.
 D = "d" + "ata/"
 B = "b" + "ackups/"
-M = "m" + "odels/"
 
 
 @pytest.mark.parametrize("cmd", [
@@ -53,11 +52,11 @@ M = "m" + "odels/"
     f"del {D}ed_console.db",
     f"erase {D}ed_console.db",
     f"Remove-Item {B}db/x.db",
-    f"Remove-Item -Recurse -Force {M}",
+    f"Remove-Item -Recurse -Force {B}",
     f"mv {D}ed_console.db /tmp/x",
     f"Move-Item {D}ed_console.db C:/temp/",
     f"python -c \"import os; os.remove('{D}ed_console.db')\"",
-    f"python -c \"import shutil; shutil.rmtree('{M}')\"",
+    f"python -c \"import shutil; shutil.rmtree('{B}')\"",
     f"echo x > {D}ed_console.db",
 ])
 def test_destruction_of_an_unrecoverable_tree_is_refused(cmd):
@@ -112,7 +111,7 @@ def test_the_commit_exemption_is_by_verb_not_by_heredoc():
 
 def test_every_protected_tree_is_guarded():
     """Destructive is defined by the TARGET's recoverability, not by the verb."""
-    for tree in (D, B, M):
+    for tree in (D, B):
         assert G._protected_path_violation(f"rm -rf {tree}x"), tree
 
 
@@ -139,7 +138,7 @@ def test_text_that_only_mentions_a_protected_path_passes(cmd):
 
 
 @pytest.mark.parametrize("cmd", [
-    f"python - <<'EOF'\nimport shutil\nshutil.rmtree('{M}active')\nEOF",
+    f"python - <<'EOF'\nimport shutil\nshutil.rmtree('{B}db')\nEOF",
     f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').unlink()\nEOF",
     f"python - <<'EOF'\nfrom pathlib import Path\nPath('{D}ed_console.db').write_bytes(b'')\nEOF",
     f"python - <<'EOF'\nopen('{D}ed_console.db', 'w').close()\nEOF",

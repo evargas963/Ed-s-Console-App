@@ -74,7 +74,6 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | D-14 | calibration/complete_chain_capture.py:95, 247, 252 | 5 | contracts, counts | non-dict and no-expiry contracts dropped uncounted; skipped writes counted as written | captures | OPEN |
 | D-15 | calibration/complete_chain_capture.py:157 | 5 | nearest capture | 30 s memo serves a cached None after a newer capture | option root match | OPEN |
 | D-16 | live_schwab_env.py:257, 355 | 3 | placeholder credentials, capability | second authority beside config | launcher | OPEN |
-| D-17 | release_object.py:35, 102 | 5/3 | git_sha | build label in place of the SHA; same value under two names | /api/build | OPEN |
 | D-18 | runtime_preflight.py:293 | 5 | requirements | missing requirements.txt reports OK | launcher | OPEN |
 
 ## M — math, levels and terrain

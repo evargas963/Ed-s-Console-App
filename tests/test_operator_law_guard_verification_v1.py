@@ -30,7 +30,7 @@ def test_appdata_redirect_not_protected_tree():
     "rm data/ed_console.db",
     "> data/x.db",
     "mv backups/a b",
-    "Remove-Item models/active/x.bin",
+    "Remove-Item backups/db/x.db",
     "python -c \"import os; os.remove('data/ed_console.db')\"",
 ])
 def test_real_protected_tree_targets_still_block(cmd):

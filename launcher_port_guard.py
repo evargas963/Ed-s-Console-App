@@ -104,36 +104,9 @@ def is_ed_console_command_line(cmd: str) -> bool:
 
 
 def is_actually_ed_console(port: int, *, pid: int | None = None, timeout: float = 2.0) -> bool:
-    """Definitive ownership check: ask whatever is listening on `port` for its own
-    identity via /api/build -- this app's existing identity endpoint -- and cross-validate
-    the claim against real, hard-to-coincide-with evidence.
-
-    Independent-review finding (2026-09-12), REPRODUCED directly against this function
-    (round 1): a body of `{"git_sha": null, "release_id": null}` has both KEYS present and
-    passed the old `"git_sha" in body` check, which tests key membership, not a real value.
-    Fixed by requiring truthy string values.
-
-    Independent-review finding (2026-09-12), REPRODUCED directly against this function
-    (round 2): "an unrelated matching uvicorn process with ordinary nonempty build
-    identifiers still passes." Truthy strings alone are still forgeable by any unrelated app
-    that happens to expose SOME endpoint naming these two generic keys with SOME nonempty
-    values -- neither "git_sha" nor "release_id" is unique to this codebase. Fixed with two
-    independent, much harder to coincidentally satisfy checks:
-
-      1. `contract == "meet_or_exceed_v1"` and `git_sha_semantics ==
-         "startup_process_identity"` -- fixed, app-specific magic strings this exact
-         /api/build route emits (server.py:api_build), not generic field names.
-      2. THE definitive check, when `pid` is supplied (the psutil-observed OS pid actually
-         LISTENING on `port`, from listening_pid): `process_identity.process_id` --
-         captured via `os.getpid()` once at THIS process's own startup
-         (server.py:_capture_process_identity) -- must equal that real OS pid. An unrelated
-         process cannot produce this match without literally reporting ITS OWN real pid
-         inside this exact nested response shape, which only server.py's own /api/build
-         route does; a copy-pasted or coincidentally similar app reports a DIFFERENT pid
-         (its own), not this one's.
-
-    Both `contract`/`git_sha_semantics` and (when `pid` is given) the process_id cross-check
-    must pass, on top of the truthy git_sha/release_id values, for ownership to be confirmed."""
+    """True when the listener's /api/build answers with this app's identity: a nonempty
+    git_sha matching process_identity.startup_git_sha, this route's contract strings, and
+    (when `pid` is given) process_identity.process_id equal to the listening pid."""
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/build", timeout=timeout) as resp:
             if resp.status != 200:
@@ -143,8 +116,8 @@ def is_actually_ed_console(port: int, *, pid: int | None = None, timeout: float 
         return False
     if not isinstance(body, dict):
         return False
-    git_sha, release_id = body.get("git_sha"), body.get("release_id")
-    if not (bool(git_sha) and bool(release_id) and isinstance(git_sha, str) and isinstance(release_id, str)):
+    git_sha = body.get("git_sha")
+    if not (git_sha and isinstance(git_sha, str)):
         return False
     if body.get("contract") != "meet_or_exceed_v1":
         return False

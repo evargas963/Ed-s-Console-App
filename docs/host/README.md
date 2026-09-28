@@ -1,32 +1,15 @@
-> **Classification:** Operator Runbook | **Scope:** Host-local secrets, backup, and environment guidance.
-
-# Host vs Git — operator mirror guide
-
-This folder documents what belongs in **Git** (reproducible code + tracked production models) versus what stays on the **launch machine** (database, secrets, training caches, OS env).
+# Host vs Git
 
 | Doc | Purpose |
 |-----|---------|
-| [BACKUP_AND_MIRROR.md](BACKUP_AND_MIRROR.md) | What is tracked, ignored, and how to back up the rest |
-| [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) | All `ED_*` knobs (names, defaults, when to set) |
+| [BACKUP_AND_MIRROR.md](BACKUP_AND_MIRROR.md) | What Git holds, what stays on the host, and restoring a new machine |
+| [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) | The `ED_*` settings |
 
-**Templates in repo root:**
+Templates in the repo root: [`.env.example`](../../.env.example) (copy to `.env`) and
+[`schwab_token.json.example`](../../schwab_token.json.example) (the real file comes from
+`python reauth_schwab.py`).
 
-- [`.env.example`](../../.env.example) — copy to `.env` locally (never commit `.env`)
-- [`schwab_token.json.example`](../../schwab_token.json.example) — OAuth token placeholder (real file from `python reauth_schwab.py`)
-
-**Regenerate local inventory (gitignored output):**
-
-```powershell
-.\scripts\export_host_manifest.ps1
-```
-
-**Worktree and host facts** (moved here from the deleted root memory pointer file, 2026-09-05, RC-520):
-
-- **Per-worktree venv:** `python tools/bootstrap_worktree_venv.py` (isolated `.venv`; `run_with_repo_venv` re-execs into it).
-- **TWO permanent DBs:** every linked worktree resolves the primary worktree's canonical
-  `data/ed_console.db` and `data/stream_capture.db`. Ambient per-database overrides are refused;
-  tests and recovery tools pass explicit non-canonical paths.
-- **Git lock defense:** `tools/check_git_index_lock.py` clears `index.lock` older than 60s (wired into `run_with_repo_venv`).
-- **Multi-agent sync:** HEAD is the shared brain; the operator assigns work per session in chat (no standing agent roles, no worktree hand-off checker).
-
-Related runbook: [`TRAINING_AND_MAINTENANCE.md`](../../TRAINING_AND_MAINTENANCE.md). Historical incident memories: git history (`git show a360416a:governance/archive/2026-Q2/memory_archive/`; the archive directory was removed 2026-09-10 — git is the archive).
+- Per-worktree venv: `python tools/bootstrap_worktree_venv.py`; `tools/run_with_repo_venv.py`
+  re-execs into it and clears a stale `index.lock` (`tools/check_git_index_lock.py`).
+- Every linked worktree resolves the primary checkout's `data/ed_console.db` and
+  `data/stream_capture.db`.

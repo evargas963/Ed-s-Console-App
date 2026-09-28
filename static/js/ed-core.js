@@ -70,7 +70,7 @@
       { id: 'risk', label: 'Risk', state: 'na' }, { id: 'scenarios', label: 'Scenarios', state: 'na' } ], views: Object.create(null) },
     'system': { title: 'SYSTEM / TRUST', subs: [
       { id: 'data-health', label: 'Data Health' }, { id: 'feeds', label: 'Feeds' },
-      { id: 'provenance', label: 'Provenance' }, { id: 'models', label: 'Models' }, { id: 'runtime', label: 'Runtime' } ], views: Object.create(null) }
+      { id: 'provenance', label: 'Provenance' }, { id: 'runtime', label: 'Runtime' } ], views: Object.create(null) }
   };
 
   function _ls(k, d) { try { var v = localStorage.getItem(k); return (v == null || v === '') ? d : v; } catch (e) { return d; } }

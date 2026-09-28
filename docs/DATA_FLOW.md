@@ -97,7 +97,7 @@ operator.
 | **Capture daemon** | Holds the one Schwab connection: the streamer, and the REST chain fetch. Holds the one in-memory state: latest quotes, books, bars, chains. Pushes every change. Its writer thread is the one database writer. At startup it loads the latest stored values into memory. |
 | **Levels producer** | Its own process. Receives the chain and quotes from the daemon, computes each derived value once, and hands the results back to the daemon to push and write. The daemon never waits on it: it sends and moves on, and results arrive as their own message. Kept out of the daemon because heavy computing in the daemon's process stalls its event loop and Schwab drops the socket (measured 2026-09-24). |
 | **Console** | Serves the page and the read routes, from the daemon's state. Computes nothing and holds no copy. |
-| **Browser** | One page, one push connection. Every panel reads from what is pushed; opening the Chain view reads one expiry from the state. |
+| **Browser** | One page, two push connections: the daemon's (prices, bars) and the console's (levels, flow and liquidity changed). No refresh timer. Every panel reads from what is pushed; opening the Chain view reads one expiry from the state. |
 
 ### 4.2 The journey of each kind of data
 
@@ -133,7 +133,8 @@ behavior (AGENTS.md).
    list and open interest come only from Schwab's REST chain endpoint.
 2. **The levels producer runs in its own process**, not inside the daemon.
 3. **The browser is never pushed a whole chain.**
-4. **One shell, one connection.** One page; tabs switch what is shown; one push connection.
+4. **One shell, two connections** (operator 2026-09-27). One page; tabs switch what is shown;
+   the daemon pushes prices and bars, the console pushes that levels, flow or liquidity changed.
 5. **One database, written only by the daemon's writer; the console reads it read-only.** The
    one database is `ed_console.db` (operator 2026-09-26: the chain history is already there);
    the stream tables move into it, and the console's writes today (bars, level crosses, daily
