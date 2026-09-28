@@ -119,6 +119,27 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Market Map: a pinned bar shows its served change (the chart kept the bar without it)', async ({ page }) => {
+    // 2026-09-28 (ONE-16): the chart copied each served bar without chg/chg_pct, so the pinned
+    // readout's "Bar change" always read "—" while the legend recomputed close - open.
+    const errs = watchErrors(page);
+    await intercept(page);
+    // 60 served 30-minute bars, each with its served change (0.25 each), so a click lands on one
+    const bars = Array.from({ length: 60 }, (_v, i) => ({ t: 1790343000 - (59 - i) * 1800, o: 770 + i * 0.1,
+      h: 771 + i * 0.1, l: 769 + i * 0.1, c: 770.25 + i * 0.1, v: 1000, chg: 0.25, chg_pct: 0.0325 }));
+    await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, BARS, { bars: bars })) }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmChart .tvc-legend')).toContainText('Last completed bar');
+    const box = await page.locator('#tdmChart .tvc-plot').boundingBox();
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    const pin = page.locator('#tdmChart .tvc-pin');
+    await expect(pin).toBeVisible();
+    await expect(pin).toContainText('Bar change+0.25 (+0.03%)');
+    expect(errs).toEqual([]);
+  });
+
   test('Desk: the venue switch asks for one Schwab book at a time', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);

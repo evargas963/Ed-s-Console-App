@@ -238,7 +238,7 @@
     function barAt(t) { var i = barIndexAt(t); return i >= 0 && S.bars[i].t === t ? S.bars[i] : null; }
     function ohlcHtml(b) {
       if (!b) return '';
-      var chg = b.c - b.o, cls = chg >= 0 ? 'up' : 'dn';
+      var cls = b.chg == null ? '' : b.chg >= 0 ? 'up' : 'dn';   // the served bar change
       return '<span>O <b class="' + cls + '">' + b.o.toFixed(2) + '</b></span><span>H <b class="' + cls + '">' + b.h.toFixed(2) +
         '</b></span><span>L <b class="' + cls + '">' + b.l.toFixed(2) + '</b></span><span>C <b class="' + cls + '">' + b.c.toFixed(2) +
         '</b></span><span>Vol <b>' + fmtVol(b.v) + '</b></span>';
@@ -416,7 +416,7 @@
       setBars: function (bars, tf, symbol, lastBarLabel) {
         var changed = tf !== S.tf || symbol !== S.symbol;
         S.lastBarLabel = lastBarLabel || null;
-        S.bars = (bars || []).map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v }; });
+        S.bars = (bars || []).map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; });
         S.tf = tf; S.symbol = symbol;
         candles.setData(S.bars.map(function (b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }; }));
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
@@ -437,7 +437,7 @@
         if (lastBarLabel) S.lastBarLabel = lastBarLabel;
         var lastT = S.bars[S.bars.length - 1].t;
         tail.forEach(function (b0) {
-          var b = { t: Number(b0.t), o: b0.o, h: b0.h, l: b0.l, c: b0.c, v: b0.v };
+          var b = { t: Number(b0.t), o: b0.o, h: b0.h, l: b0.l, c: b0.c, v: b0.v, chg: b0.chg, chg_pct: b0.chg_pct };
           if (b.t < lastT) {
             var i = barIndexAt(b.t); if (i < 0 || S.bars[i].t !== b.t) return;
             if (i < S.bars.length - 2) return;
@@ -451,7 +451,7 @@
         paintLegend(); if (S.pinned) paintPin(); syncButtons(); scheduleLevels();
       },
       _volPoint: function (b) {
-        return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.c >= b.o ? P.up : P.down, 0.45) };
+        return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.45) };
       },
       setVolume: function (bars) { volume.setData((bars || []).map(api._volPoint)); },
       // VWAP + bands, one point per bar, served for the chart's timeframe (/api/levels?tf=:

@@ -24,14 +24,28 @@ def test_board_validity_is_the_symbols_form_never_a_list_of_names():
     assert filter_valid_tickers(["nv", "NV", "spx", None]) == ["NV", "$SPX"]
 
 
-def test_filter_tickers_for_background_logging_is_universal():
-    """UNIVERSAL COLLECTION (operator requirement, restated 2026-08-25): panel_auto
-    enrollment no longer excludes a ticker from the full-snapshot roster — the filter
-    passes the roster through unchanged (RC-482)."""
-    from scheduler_user_tickers import filter_tickers_for_background_logging
+def test_the_console_and_the_daemon_hold_one_board(tmp_path, monkeypatch):
+    """ONE-13 (2026-09-28 audit): the console built its roster by merging an (empty) built-in
+    list with the table's rows by category and a pass-through filter; the daemon read the table
+    with board_tickers. The console now reads the board with that same reader: every enrolled
+    row, whatever its category (user, index, ETF, panel symbol), in one order."""
+    import json
 
-    out = filter_tickers_for_background_logging(["SPY", "PSCI", "QQQ"], ":memory:")
-    assert out == ["SPY", "PSCI", "QQQ"]
+    import server
+    from calibration.complete_chain_capture import board_tickers
+    from db import EdDB
+    legacy = tmp_path / "legacy.json"
+    legacy.write_text(json.dumps(["mu", "SPY"]), encoding="utf-8")
+    edb = EdDB(tmp_path / "board.db")
+    edb.logging_universe_migrate_legacy_json_file(primary_path=legacy, archive_path=tmp_path / "a.json",
+                                                  core_tickers=[])
+    edb.logging_universe_sync_panel_auto(["QQQ", "TLT"], 1.0)
+    monkeypatch.setattr(server, "get_db", lambda: edb)
+    monkeypatch.setattr(server, "_market_context_panel_auto_candidates", lambda: ["QQQ", "TLT"])
+    monkeypatch.setattr(server, "_logger_tickers", [])
+    server._hydrate_logger_tickers_from_db()
+    assert server._logger_tickers == board_tickers(edb.db_path)
+    assert {"MU", "SPY", "QQQ", "TLT"} <= set(server._logger_tickers)
 
 
 def test_retired_chg_map_cannot_alias_goog_onto_googl():

@@ -451,31 +451,6 @@ class EdDB:
 
         return _do()
 
-    def logging_universe_sync_core(self, core_tickers: list[str], now_ts: float) -> None:
-        """Upsert core symbols — always category core (authoritative list from server)."""
-
-        def _do() -> None:
-            with self._connect() as conn:
-                for raw in core_tickers:
-                    t = ticker_storage_key(raw)  # RC-345/F25: canonical enrollment write identity
-                    if not t:
-                        continue
-                    conn.execute(
-                        """
-                        INSERT INTO logging_universe
-                            (ticker, category, enrollment_source, enrolled_ts_utc, last_seen_ts_utc)
-                        VALUES (?, 'core', 'core_bootstrap', ?, ?)
-                        ON CONFLICT(ticker) DO UPDATE SET
-                            category='core',
-                            enrollment_source='core_bootstrap',
-                            last_seen_ts_utc=excluded.last_seen_ts_utc
-                        """,
-                        (t, now_ts, now_ts),
-                    )
-
-        _do()
-
-
 
 
 

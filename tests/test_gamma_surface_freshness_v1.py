@@ -117,7 +117,6 @@ def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch)
     # board must read REQUESTED but NOT WARMING, and disclose it is not on the board — otherwise the
     # UI would falsely promise a next refresh for a symbol nothing is collecting.
     tk = ticker_storage_key("NFLX")
-    assert tk not in server.CORE_TICKERS
     with server._logger_lock:
         had = tk in server._logger_tickers
         if had:
