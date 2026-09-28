@@ -81,6 +81,11 @@ own sake. A finished work item leaves
 `ACTIVE_PROGRAM.md` in the PR that finishes it. A changed sequence updates its dependents there
 and every document that states the old one.
 
+Each rule, design statement or ownership claim a change adds or edits names its enforcement: a
+behavior test, or an `ACTIVE_PROGRAM.md` row until the test exists; with neither, the PR says so
+and the agent raises it with the operator in the same turn. Code carries no ownership claims
+("the one", "single authority", "canonical"): a test proves ownership, or it is not claimed.
+
 ## Review verdicts
 
 - **PASS**: every required condition proven. **FAIL**: any condition violated, whatever else

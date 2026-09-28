@@ -7,6 +7,9 @@
 ## Closed
 <!-- changed plan or behavior → affected docs, tests, checks and callers updated; superseded statements removed; ACTIVE_PROGRAM rows finished or changed; unverified paths listed NOT_PROVEN -->
 
+## Enforcement
+<!-- each rule, design statement or ownership claim this PR adds or edits → its behavior test or ACTIVE_PROGRAM row; NONE where neither exists (then raised with the operator) -->
+
 ## Deleted
 <!-- what this replaces, removed in this PR -->
 
