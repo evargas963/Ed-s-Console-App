@@ -5,7 +5,10 @@ Read the parts a change touches before writing it.
 
 ## Rules (operator; a change that cannot meet one stops and goes to the operator)
 
-1. **Simple.** Fewest files, functions and hops that do the job. No prose in code.
+1. **Simple.** Fewest files, functions and hops that do the job. No prose in code. No patches: a
+   defect is fixed where it is produced, by changing or deleting that code, never by a guard,
+   wrapper, flag, special case or check around it. If that takes a restructure, the restructure
+   is the fix.
 2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value
    Schwab's own field definition excludes (a negative volume or size). Everything else is taken
    as sent; a reported 0 is 0. No other bounds, no substitution.
@@ -22,7 +25,8 @@ Read the parts a change touches before writing it.
    observation, never a value from elsewhere.
 6. **One path.** Schwab → daemon memory → pushed to the screen. The database is history: one
    writer; read at startup, after the close and for research; never for a live screen.
-7. **Nothing without a job.** A change deletes what it replaces, in the same PR.
+7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,
+   report or check lives only while it has a job; once answered, it is deleted.
 8. **All tickers.** Measure and report across the board, never one ticker.
 9. **Clocks.** Market logic in ET; the UI shows Central Time.
 10. **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code.
@@ -34,8 +38,8 @@ Read the parts a change touches before writing it.
   its live and stored consumers, and what each shows when the value is missing. A producer
   exists: call it. None exists: write it once, on the server.
 - Page code: no arithmetic, sum, min/max, sort by value or date math on served data.
-- A new check exists only for a failure that happened; it fails on the old code; it starts with
-  no exceptions.
+- A new check is a test of behavior, for a failure that happened; it fails on the old code; it
+  starts with no exceptions. No new tool, register or gate.
 
 ## Before saying done
 
@@ -68,8 +72,8 @@ and every document that states the old one.
 
 ## Found broken → fix it
 
-Same session, or name the exact blocker. "Pre-existing", "out of scope" and "follow-up" are not
-dispositions.
+Same session, at its source (rule 1), or name the exact blocker. "Pre-existing", "out of scope" and
+"follow-up" are not dispositions.
 
 ## Authority
 
