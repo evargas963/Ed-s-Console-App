@@ -14,19 +14,6 @@ ET = ZoneInfo("America/New_York")
 # ── SCOREBOARD_TARGET_TRUTH_V1 (v4) — abstention, baselines, warnings ─────────
 
 
-def test_invalid_threshold_classification_is_flat_and_disclosed():
-    """Historical behavior preserved and DISCLOSED: classify_direction_pts turns a
-    missing/non-positive threshold into 'flat'. The forward fail-closed change to
-    the truth writer (no-label instead of flat) belongs to the target-redesign
-    mission; until then the risk flag is the governed disclosure."""
-    from math_probabilities import classify_direction_pts
-
-    assert classify_direction_pts(5.0, None) == "flat"
-    assert classify_direction_pts(5.0, 0.0) == "flat"
-    assert classify_direction_pts(5.0, -1.0) == "flat"
-    assert classify_direction_pts(5.0, 1.0) == "up"
-
-
 # ── DEFECT-1: operator semantic safety (independent requirements) ─────────────
 # These tests assert the REQUIRED CONCEPTS as independent strings — they do NOT
 # import the production display-contract constants and echo them back.

@@ -280,7 +280,6 @@ CAPS_PREFIX_ALLOWLIST: tuple[tuple[str, str], ...] = (
     ("live_market_plane.py", "streaming plane timestamps and carry-forward guards"),
     ("api_pressure.py", "HTTP client status_code getattr default"),
     ("micro_structure.py", "microstructure derived metrics"),
-    ("movement_target_threshold.py", "movement target threshold derived metrics"),
     ("app/options/order_flow/state.py", "order-flow live state derived metrics"),
     ("app/options/order_flow/streaming.py", "order-flow streaming diagnostics"),
     ("math_volatility.py", "volatility derived metrics"),
@@ -304,8 +303,6 @@ CAPS_LINE_ALLOWLIST: tuple[tuple[str, int | str, str, str], ...] = (
     # ANTI_PATTERN_CAPS_VIOLATIONS bucket — exact line+variant exemptions for reviewed
     # non-market-leaf hits (no whole-file prefix; any future hit on another line/variant
     # in these files is still caught). Reasons state the reviewed category.
-    ("decision_record.py", 352, "IF_TRUTHY_ELSE", "explicit fail-closed no-payload result"),
-    ("decision_record.py", 422, "IF_TRUTHY_ELSE", "explicit fail-closed no-payload result"),
     ("release_object.py", 35, "GET_WITH_DEFAULT", "env config only"),
     ("release_object.py", 106, "GET_WITH_DEFAULT", "env config only"),
     ("release_object.py", 107, "GET_WITH_DEFAULT", "env config only"),

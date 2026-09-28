@@ -8,15 +8,9 @@ import pytest
 
 from time_et import ET
 from liquidity_value_engine import (
-    _schwab_pricehistory_bar_missing_datetime,
     compute_session_vwap,
     generate_liquidity_value_snapshot,
 )
-
-
-def test_schwab_pricehistory_bar_missing_datetime_when_datetime_absent():
-    bar = {"source": "schwab_pricehistory", "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0}
-    assert _schwab_pricehistory_bar_missing_datetime(bar) is True
 
 
 def test_compute_session_vwap_none_when_volume_missing():

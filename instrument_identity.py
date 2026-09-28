@@ -1,11 +1,11 @@
 """
-Canonical ticker key for SQLite tables keyed like Schwab/stream ingestion: `snapshots`,
-`price_bars_1m`, and exact-match Issue 19 SQL.
+Canonical ticker key for SQLite tables keyed like Schwab/stream ingestion: `price_bars_1m`
+and exact-match Issue 19 SQL.
 
 Policy (Repair v1):
 - Equity-style symbols: uppercase alphanumeric, e.g. `spy` -> `SPY`.
 - Index-style symbols with leading `$` (e.g. `$SPX`): **preserve** `$` and uppercase
-  the remainder → `$SPX`. This matches stored bars and `fill_outcomes` joins.
+  the remainder → `$SPX`. This matches stored bars.
 
 Do **not** strip `$` for DB retrieval or anchor keys intended to hit those rows.
 

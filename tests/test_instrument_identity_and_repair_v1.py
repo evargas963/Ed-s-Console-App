@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from db import EdDB
 from instrument_identity import ticker_storage_key
+from micro_structure import Candle
 
 
 def _in_window_ts(hour: int = 10, minute: int = 0) -> float:
@@ -37,18 +38,8 @@ def test_upsert_1m_bars_uses_ticker_storage_key_for_spx_family(tmp_path):
     """Bars must persist under $SPX when caller passes bare SPX (Issue 19 rehydration)."""
     dbp = tmp_path / "bars_id.db"
     db = EdDB(dbp)
-    # Canonical 60s UTC grid (BAR_ANCHOR_V1); upsert snaps near-grid floats to the minute open.
     ts = _in_window_ts()
-    bars = [
-        {
-            "datetime": ts * 1000.0,
-            "open": 100.0,
-            "high": 101.0,
-            "low": 99.0,
-            "close": 100.5,
-            "volume": 1.0,
-        }
-    ]
+    bars = [Candle(ts=ts, open=100.0, high=101.0, low=99.0, close=100.5, volume=1.0)]
     db.upsert_1m_bars("spx", bars)
     with db._connect() as conn:
         rows = conn.execute(

@@ -13,10 +13,9 @@ Tests:
     1. Architecture — correct files exist, no orphans
     2. Formula ownership — no duplicate formulas across modules
     3. Import chain — all modules import cleanly
-    4. Dataclass integrity — SnapshotRow, MarketState, SignalInput fields
+    4. Dataclass integrity — MarketState, SignalInput fields
     5. Payload stability — all expected API fields present
     6. Model health — checkpoint files valid
-    7. DB schema — migration columns match SnapshotRow
 """
 from __future__ import annotations
 
@@ -234,57 +233,6 @@ def test_model_health():
                 _warn(f"  {meta_path.name}: not found")
         else:
             _warn(f"{mp.name}: not trained yet")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TEST 7: DB SCHEMA ALIGNMENT
-# ══════════════════════════════════════════════════════════════════════════════
-
-@fails_closed
-def test_db_schema(full=False):
-    print("\n7. DB SCHEMA — migration alignment")
-
-    if not full:
-        _warn("Skipped (use --full to test DB)")
-        return
-
-    try:
-        from db import DB_PATH as db_path, EdDB, SnapshotRow
-        if not db_path.exists():
-            _warn(f"DB not found at {db_path}")
-            return
-
-        EdDB(db_path)
-
-        # Get actual DB columns
-        import sqlite3
-        conn = sqlite3.connect(str(db_path))
-        cursor = conn.execute("PRAGMA table_info(snapshots)")
-        db_columns = set(row[1] for row in cursor.fetchall())
-        conn.close()
-
-        # Get dataclass fields
-        dc_fields_set = set(SnapshotRow.__dataclass_fields__.keys())
-        dc_fields_set.discard("snapshot_id")  # auto-generated
-
-        # Fields in dataclass but not in DB
-        missing_in_db = dc_fields_set - db_columns - {"snapshot_id", "created_at"}
-        if missing_in_db:
-            for f in sorted(missing_in_db):
-                _warn(f"  SnapshotRow.{f} not in DB (needs migration)")
-        else:
-            _pass("All SnapshotRow fields present in DB")
-
-        # Fields in DB but not in dataclass
-        extra_in_db = db_columns - dc_fields_set - {"snapshot_id", "created_at"}
-        if extra_in_db:
-            for f in sorted(extra_in_db):
-                _warn(f"  DB column '{f}' not in SnapshotRow (orphaned)")
-        else:
-            _pass("No orphaned DB columns")
-
-    except Exception as e:
-        _fail(f"DB schema test: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

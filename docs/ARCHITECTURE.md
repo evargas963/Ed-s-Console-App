@@ -41,10 +41,9 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 | `app/options/order_flow/`, `l1_trade_observation.py`, `micro_structure.py` | `producer/` |
 | From `server.py`: the levels loop, `_publish_levels`, the gamma-surface projection | `producer/` |
 | From `server.py`: the routes, startup; `release_object.py` | `console/` |
-| `time_et.py`, `timeframe_config.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `production_universe.py`, `scheduler_user_tickers.py`, `numeric_contract.py` | `shared/` |
+| `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `production_universe.py`, `scheduler_user_tickers.py`, `numeric_contract.py` | `shared/` |
 | `static/index.html`, `static/js/`, `static/css/` | `static/` |
 | `start_*.bat`, `runtime_preflight.py`, `live_schwab_env.py`, `launcher_port_guard.py`, `wait_for_ready_then_open.py`, `reauth_schwab.py` | stay at the root |
-| `ml_horizon.py`, `horizon_outcomes.py`, `movement_target_threshold.py`, `decision_record.py`, `execution_identity.py`, `calibration/schema.py` | delete (the ML stack; P2-5) |
 | `schwab_field_dictionary_builder.py` | checked at its step: delete if nothing needs it |
 
 ## 3. Taking apart the two big files (measured 2026-09-26)
@@ -52,13 +51,13 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 Each step is one change: delete what has no job, move what remains, update §2, pass the full test
 suite and the browser suite, check the running app. Nothing is copied.
 
-**db.py (3,892 lines).** Product code calls 14 of the database class's 35 methods (664 lines); it
-reads or writes 6 of the 12 tables the file creates.
-- Delete: the snapshot writer and `SnapshotRow` (~700 lines), the ML outcome labels (~470), the
-  migrations for tables that are gone, `market_session` (the session comes from `time_et`),
-  `get_db_stats`, and the one-time JSON migration once its flag shows it ran.
+**db.py (1,343 lines after P2-5 part 1).** The snapshot writer, `SnapshotRow`, the ML outcome
+labels, the snapshot column migrations, `market_session` and `get_db_stats` are deleted.
+- Left to delete: the one-time JSON migration once its flag shows it ran; the `snapshots` table's
+  DDL once nothing reads the table (no writer; `tools/console_liveness_check.py` and
+  `tools/data_faucet_audit.py` still read it).
 - Keep, and move to `daemon/`: bars, level history (crosses, daily OI and IV), enrollment (the
-  ticker board), the connection — about 900 lines.
+  ticker board), the connection.
 - The console stops writing (DATA_FLOW decision 5); its writes go to the daemon's writer, into `ed_console.db`.
 
 **server.py (6,130 lines: 40 routes, 112 functions).**
