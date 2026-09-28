@@ -166,9 +166,6 @@ from schwab_client import (
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
 from numeric_contract import schwab_number
-from market_context import (
-    market_context_panel_symbols_excluding_core,
-)
 from terrain_engine import (TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike, positioning_migration)
 from terrain_atr import AtrPair, compute_atr_pair
 
@@ -822,81 +819,12 @@ def start_bar_writer() -> None:
     threading.Thread(target=_bar_writer, name="bar-writer", daemon=True).start()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# BACKGROUND MULTI-TICKER LOGGER
-# ─────────────────────────────────────────────────────────────────────────────
-# Core tickers always logged regardless of what the UI is showing.
-# Additional tickers are added automatically when the user views them.
-# The logger runs every LOG_INTERVAL seconds, cycling through all tracked
-# tickers with a STAGGER_SECS delay between each to avoid rate-limit bursts.
-#
-# Base money-path tickers (SPY/QQQ/IWM) require equal RTH capture — not guest-style sparsity.
-#   • Dedicated ``_base_money_path_logger_loop`` sustains ~1 lightweight quote snapshot/min
-#     per base symbol via concurrent capture (logger_source=base_money_path), independent
-#     of which ticker is active in the UI (see money_path_ticker_tiers.py).
-#   • ED_DB_SNAPSHOT_THROTTLE (default on): at most one INSERT per ticker per UTC-minute bucket.
-#   • The general logger still rotates mega-caps + user_persisted; cycle length grows with count.
-#   • RTH_ONLY may skip background fetches outside the ET session window.
-#   • UNIVERSAL COLLECTION IS UNCONDITIONAL (operator, 2026-08-25, RC-493): the background
-#     logger sweeps EVERY enrolled ticker every cycle whether or not a viewer is connected.
-#     The former operator-mode throttle (trio + one rotating guest while viewing) is removed;
-#     _live_operator_mode_active now governs only UI-side refresh skips, never the sweep.
-#   • Guest / briefly viewed symbols legitimately have fewer rows — base trio must not.
-#     Gate: ``python tools/check_base_ticker_observability.py --date YYYY-MM-DD``.
-#
-# Schwab rate limits: ~120 requests/min. Each ticker needs 2 calls (quote +
-# chain). 5 core tickers = 10 calls per 30s cycle = well within limits.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# No built-in ticker list (universality, operator 2026-09-23): the board is the logging_universe
-# table, read by board_tickers in both processes.
+# The board is the logging_universe table, read by board_tickers in both processes; every row is
+# processed alike, whatever its category.
 RTH_ONLY:       bool      = True  # only log during RTH + 30min pre/post buffer
 
-
-def _market_context_panel_auto_candidates() -> list[str]:
-    """Symbols quoted every ``fetch_market_context`` cycle."""
-    return market_context_panel_symbols_excluding_core(frozenset())
-
-
-def _sync_market_context_panel_into_logging_universe(db, now_ts: float) -> None:
-    """Persist cross-panel quote universe into ``logging_universe`` as ``panel_auto`` (data-plane SSOT)."""
-    try:
-        r = db.logging_universe_sync_panel_auto(_market_context_panel_auto_candidates(), now_ts)
-        if r.get("desired"):
-            log.info(
-                "Issue 22: panel_auto sync — desired=%s upsert_round=%s",
-                r.get("desired"),
-                r.get("upserted"),
-            )
-    except Exception as e:
-        log.warning("logging_universe panel_auto sync failed: %s", e)
-
-
-# ── Legacy flat JSON (pre–Issue 22). Migrated idempotently via EdDB (migration_log + transaction).
-_TICKER_FILE = os.path.join(os.path.dirname(__file__), ".logger_tickers.json")
-_TICKER_ARCHIVE = _TICKER_FILE + ".migrated_issue22"
-
-# DB-WRITE-PATH-FIXES (d), 2026-05-31: import-time-defer guard. Counts how many times the
-# HEAVY DB-backed logging-universe load (migrations / sync_core / prune / panel-sync) has run.
-# The module-import path must NOT trigger it (that work belongs in the FastAPI lifespan); the
-# paired test asserts this counter is 0 immediately after `import server`.
+# Times the board was read from the database; `import server` leaves it 0 (read in the lifespan).
 _LOGGING_UNIVERSE_DB_LOAD_COUNT = 0
-
-
-def _run_legacy_logger_json_migration(db) -> None:
-    """Delegate to EdDB hardened migration (provably one-time, transactional)."""
-    try:
-        from pathlib import Path
-
-        r = db.logging_universe_migrate_legacy_json_file(
-            primary_path=Path(_TICKER_FILE),
-            archive_path=Path(_TICKER_ARCHIVE),
-            core_tickers=[],
-        )
-        if r.get("status") not in ("already_completed", "skipped_no_source"):
-            log.info("Issue 22 legacy logger json migration: %s", r)
-    except Exception as e:
-        log.warning("legacy logger json migration: %s", e)
 
 
 def _hydrate_logger_tickers_from_db() -> None:
@@ -906,28 +834,19 @@ def _hydrate_logger_tickers_from_db() -> None:
     try:
         _LOGGING_UNIVERSE_DB_LOAD_COUNT += 1
         db = get_db()
-        logging_universe_sync_wall_ts = time.time()
-        _run_legacy_logger_json_migration(db)
         try:
             removed = db.logging_universe_prune_invalid_enrollments()
             if removed:
                 log.warning("Issue 22: pruned invalid logging_universe enrollments: %s", removed)
         except Exception as e:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
-        _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
         board = board_tickers(db.db_path)
         with _logger_lock:
             _logger_tickers = board
     except Exception as e:
         log.warning("hydrate logger tickers from DB: %s", e)
 
-# DB-WRITE-PATH-FIXES (d), 2026-05-31: do NOT run the heavy DB-backed logging-universe load
-# (migrations / sync_core / prune / panel-sync) on the module-import path. That work raced the
-# retrain write-lock and produced the slow init + the "db load failed" warning that dropped
-# pinned tickers. When signals/db are available, import-time init is core-only; the authoritative
-# universe is loaded in the FastAPI lifespan via start_logger() -> _hydrate_logger_tickers_from_db()
-# (server.py:_app_lifespan). The cheap JSON-file fallback (no DB) is retained for the degraded
-# no-signals path so its behavior is unchanged.
+
 _logger_tickers:  list[str] = []
 _logger_lock:     threading.Lock   = threading.Lock()
 
@@ -956,34 +875,6 @@ def _is_loggable_session() -> bool:
     win = _refresh_window_et(et.date().isoformat())
     return win is not None and win[0] <= et.hour * 60 + et.minute <= win[1]
 
-
-def _touch_tracked_ticker_view(ticker: str) -> None:
-    """VIEW-path last-seen touch — TICKER-PREVIEW-NO-ENROLL (operator 2026-05-31).
-
-    Merely looking up / viewing levels, quotes, or analytics for an arbitrary symbol must NOT
-    enroll it (no ``logging_universe`` row, no scheduler user-ticker file write) — enrollment
-    into the training roster is reserved for explicit track/pin actions (``/api/logger/add``,
-    ``/api/logger/pin``). For an ALREADY-enrolled ticker this refreshes ``last_seen`` (the same
-    update the old ``_register_tracked_ticker`` early-return branch did); for an un-enrolled
-    ticker it is a no-op and never writes. Safe to call from the offloaded SSE/async paths.
-    """
-    t = ticker_storage_key(ticker)
-    if not t or len(t) > 10:
-        return
-    with _logger_lock:
-        enrolled = t in _logger_tickers
-    if not enrolled:
-        return
-    try:
-        get_db().logging_universe_touch_seen(t, time.time())
-    except Exception as e:
-        log.debug("view touch_seen failed ticker=%s: %s", t, e, exc_info=True)
-
-
-# _operator_mode_cycle_roster REMOVED 2026-08-25 (RC-493): it throttled the background
-# logger to trio + one rotating guest while a viewer was connected, refreshing non-trio
-# tickers only ~once per 30 min — the operator ruled universal collection unconditional, so
-# the throttle is gone (see _logger_loop) rather than left as dead code (RC-474 class).
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2510,7 +2401,9 @@ def _next_refresh_ct() -> str:
 def _status_line() -> str:
     """One line for the console window: is each part working right now, from its own check."""
     st = lmp.daemon_status()
-    spot, _src, _ts = resolve_spot("SPY")
+    with _logger_lock:
+        board = list(_logger_tickers)
+    priced = sum(1 for tk in board if resolve_spot(tk)[0] is not None)
     with _terrain_cache_lock:
         as_of = [p.get("computed_ts_utc") for p in _terrain_cache.values() if p.get("computed_ts_utc")]
     newest = ct_label(max(as_of)) if as_of else "none"
@@ -2519,7 +2412,7 @@ def _status_line() -> str:
         f"session {session_label(now_et())}",
         "daemon link: " + ("connected" if st is not None else "NOT CONNECTED"),
         "Schwab socket: " + ("open" if st and st.get("schwab_socket_open") is True else "NOT OPEN"),
-        f"SPY {spot:.2f}" if spot is not None else "SPY: no live price",
+        f"live prices: {priced} of {len(board)} board tickers",
         f"levels: {len(as_of)} tickers, newest as of {newest}",
         _feed_record_state(),
         (("chain refresh: last sweep of the board took "
@@ -2954,7 +2847,6 @@ def get_vanna_by_strike(ticker: str = Query(...)):
     """Per-strike dealer VANNA exposure from the published levels (net_vanna = call_vanna -
     put_vanna, aggregated across every expiry; no per-expiry surface yet)."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    _touch_tracked_ticker_view(tk)
     payload = terrain_cache_get(tk) or {}
     if "_vanna_rows" not in payload:
         return JSONResponse({"ticker": tk, "available": False,
@@ -2972,7 +2864,6 @@ def get_charm_by_strike(ticker: str = Query(...)):
     """Per-strike dealer CHARM exposure from the published levels' charm map (the charm walls'
     own): net_charm = call_charm - put_charm per strike, delta-shares/day."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    _touch_tracked_ticker_view(tk)
     payload = terrain_cache_get(tk) or {}
     if "_charm_rows" not in payload:
         return JSONResponse({"ticker": tk, "available": False,
@@ -3651,7 +3542,6 @@ async def get_changes(ticker: str = Query(...)):
     from app.options.order_flow.streaming import set_streaming_active_ticker
 
     t = ticker_storage_key(_required_ticker(ticker))
-    _get_route_offload_executor().submit(_touch_tracked_ticker_view, t)
     _get_route_offload_executor().submit(set_streaming_active_ticker, t)
     client = push_changes.subscribe(t)
 
@@ -3692,8 +3582,6 @@ def api_order_flow_microstructure(ticker: str = Query(...),
     renders, never recomputes. `venue` is the one Schwab book shown: NYSE_BOOK (exchanges) or
     NASDAQ_BOOK (market makers); the two are never combined."""
     t = ticker_storage_key(_required_ticker(ticker))
-    # VIEW endpoint: touch last-seen only, never enroll (RC-160 ticker-scope discipline).
-    _touch_tracked_ticker_view(t)
     data: dict = {}
     try:
         from app.options.order_flow.state import get_content_for_symbol
@@ -3874,8 +3762,6 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
 # SWITCH-LATENCY FIX: sync def → threadpool (DB write + Schwab expiry fetch, no await).
 def get_expiries(ticker: str = Query(...)):
     ticker = ticker_storage_key(_required_ticker(ticker))   # SPX -> $SPX: the cache's own key
-    # TICKER-PREVIEW-NO-ENROLL: listing expiries is a VIEW — touch last-seen only.
-    _touch_tracked_ticker_view(ticker)
     t = terrain_cache_get(ticker) or {}
     return JSONResponse({"expiries": t.get("expiries") or [],
                          "dte": t.get("expiry_dte") or {},   # Schwab's daysToExpiration, as sent
@@ -3905,9 +3791,7 @@ def get_chain(ticker: str = Query(...),
     (/api/terrain and this route mark it). Answers `status: unavailable` with a reason when no
     chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
-    _touch_tracked_ticker_view(t)
-
-    _note_gamma_surface_demand(t)          # a viewed ticker's full chain is kept by the levels loop
+    _note_gamma_surface_demand(t)         # a viewed ticker's full chain is kept by the levels loop
     _price_stored_chain_when_closed(t)
     held = terrain_cache_get(t) or {}
     resolved_expiry = (expiry or "").strip()[:10] or (held.get("expiries") or [None])[0]
@@ -4435,8 +4319,6 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
         from liquidity_models import PlaybookConfig
 
         ticker_upper = ticker_storage_key(ticker)
-        # TICKER-PREVIEW-NO-ENROLL: liquidity snapshot is a VIEW — touch last-seen only.
-        _touch_tracked_ticker_view(ticker_upper)
         config = PlaybookConfig(max_zone_width=2.0)
         extra, fusion_status = _liquidity_option_levels(ticker_upper)
         # the one spot (resolve_spot); a stale side-cache served 759.725 beside a 760.13 header

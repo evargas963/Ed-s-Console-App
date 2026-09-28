@@ -204,9 +204,7 @@ def is_capturable_session(now: "datetime | None" = None) -> bool:
     does not move), are excluded from training (ml_train RTH filter), and are
     read by nothing — so they must not be written or accumulated.
 
-    Mirrors market_context._derive_session's calendar logic (weekday -> holiday
-    -> hours) as a single boolean, and takes an optional `now` for deterministic
-    testing. Callers pass now_et() live; offline/replay callers pass their clock.
+    Takes an optional `now` for deterministic testing. Callers pass now_et() live; offline/replay callers pass their clock.
     """
     n = now if now is not None else now_et()
     if n.weekday() >= 5:                                    # Sat / Sun

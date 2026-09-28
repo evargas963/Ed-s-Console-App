@@ -246,7 +246,6 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot(monkeypatch):
     _stream({}, monkeypatch)
     _put_chain()
     snap = server._publish_levels(TK)
-    monkeypatch.setattr(server, "_touch_tracked_ticker_view", lambda tk: None)
     charm = json.loads(server.get_charm_by_strike(TK).body)
     assert charm["available"] and charm["spot"] == snap.spot
     assert len(charm["rows"]) == sum(1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None)
@@ -497,15 +496,3 @@ def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
                            gamma_at_spot=None)
     assert r.regime == "UNAVAILABLE" and "gamma" not in r.headline.lower().split("—")[0]
     assert "Short gamma" not in r.headline and "Long gamma" not in r.headline
-
-
-def test_a_view_typed_bare_touches_the_enrolled_storage_key(monkeypatch):
-    """Audit S-04: the roster holds storage keys ("$SPX"); a view of "SPX" upper-cased itself to
-    "SPX", never matched, and never refreshed last_seen. Every route now keys through
-    ticker_storage_key."""
-    import server
-    touched = []
-    monkeypatch.setattr(server, "_logger_tickers", ["$SPX"])
-    monkeypatch.setattr(server.get_db(), "logging_universe_touch_seen", lambda t, ts: touched.append(t))
-    server._touch_tracked_ticker_view("SPX")
-    assert touched == ["$SPX"]

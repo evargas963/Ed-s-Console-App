@@ -17,6 +17,8 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from production_universe import is_symbol_form as is_ticker
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -29,9 +31,6 @@ OUTPUT_DIR = INPUT_DIR  # Same directory for outputs
 
 MASTER_FILE = INPUT_DIR / "schwab_all_fields_master.txt"
 SUMMARY_CSV = INPUT_DIR / "schwab_field_inventory_summary.csv"
-
-# Known ticker symbols (from inventory) — strip these prefixes
-KNOWN_TICKERS = {"SPY", "QQQ", "AAPL", "NVDA", "IWM", "TSLA", "$VIX"}
 
 
 # Field → category mapping (keyword-based)
@@ -85,19 +84,6 @@ PRIORITY_PATTERNS = [
 
 def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
-
-
-def is_ticker(seg: str) -> bool:
-    """Check if segment looks like a ticker symbol."""
-    if not seg or len(seg) > 10:
-        return False
-    if seg in KNOWN_TICKERS:
-        return True
-    if seg.startswith("$") and seg[1:].isalpha():
-        return True
-    if seg.isupper() and 1 <= len(seg) <= 5:
-        return True
-    return False
 
 
 def is_numeric_index(seg: str) -> bool:
@@ -235,7 +221,7 @@ def infer_endpoint_from_path(raw: str) -> str:
         return "pricehistory"
     if "market" in raw_lower and ("hour" in raw_lower or "session" in raw_lower):
         return "market_hours"
-    if any(t in raw for t in KNOWN_TICKERS) and (".quote." in raw or ".extended." in raw or ".fundamental." in raw):
+    if is_ticker(raw.split(".")[0]) and (".quote." in raw or ".extended." in raw or ".fundamental." in raw):
         return "quotes"
     if "content." in raw or "service" in raw:
         return "streaming"
