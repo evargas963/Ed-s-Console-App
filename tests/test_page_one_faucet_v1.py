@@ -106,7 +106,8 @@ def test_every_alert_carries_the_time_it_was_observed(held, monkeypatch):
     wall = held["call_wall"]
     near = wall * (1 - server.LEVEL_NEAR_SPOT_FRACTION / 2)   # inside the one near-spot rule
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (near, server.SPOT_SOURCE_PLANE, 1_788_000_000.0))
-    monkeypatch.setattr(server._lpr, "live_spot", lambda tk: near)   # stand-in: the live price
+    from app.options.order_flow import streaming as ofs          # stand-in: the daemon's live row
+    monkeypatch.setattr(ofs, "_price_rows", {TK: {"ticker": TK, "spot": near, "spot_state": "live"}})
     cross_ts = time.time() - 5
     monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda ticker, n=10: [
         {"ts_utc": cross_ts, "direction": "up", "level_name": "gamma_flip"}])

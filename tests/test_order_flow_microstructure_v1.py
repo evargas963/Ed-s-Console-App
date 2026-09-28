@@ -498,19 +498,21 @@ def test_an_option_contracts_top_is_read_only_while_the_daemon_holds_it():
         state.clear_all_live_state()
 
 
-def test_the_equity_book_reads_the_one_l1_store_under_its_live_rule():
-    """O-01: /api/order-flow/microstructure takes the equity top of book from live_market_plane
-    while quote_is_fresh holds, and has none when the feed is down. Stand-in quote (named): bid
-    10.00 x 3, ask 10.02 x 5."""
+def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
+    """O-01: /api/order-flow/microstructure takes the equity top of book from the daemon's price
+    row (the header's) while its quote is live, and has none when the feed is down. Stand-in
+    quote (named): bid 10.00 x 3, ask 10.02 x 5."""
     import time
     import live_market_plane as lmp
     import server
-    from tests.feed_live_helper import mark_feed_live
+    from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
     mark_feed_live("ZZTB")
     lmp.record_from_level_one_equity("ZZTB", {"LAST_PRICE": 10.01, "BID_PRICE": 10.0, "ASK_PRICE": 10.02,
                                               "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01}, received_ts=time.time())
+    publish_daemon_rows("ZZTB")
     body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
     assert body["flow"]["top_book_pressure"] == (3 - 5) / 8
     lmp.record_feed_down()
+    publish_daemon_rows("ZZTB")
     body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
     assert body["flow"]["top_book_pressure"] is None

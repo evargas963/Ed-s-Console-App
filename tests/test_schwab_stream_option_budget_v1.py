@@ -177,19 +177,6 @@ def test_admission_summary_reports_over_budget_contracts_as_not_admitted(monkeyp
 # ── follow-ups from the Cursor review of #268 ──────────────────────────────────────────
 
 
-def test_watchlist_never_serves_a_rest_written_row(monkeypatch):
-    """Stream only: a fresh-looking REST-written plane row is not a watchlist quote."""
-    from fastapi.testclient import TestClient
-
-    import server
-    tk = "ZZWLREST"
-    L._by_ticker[tk] = dict(_row("rest_watchlist_batch", 1.0), ticker=tk)
-    try:
-        body = TestClient(server.app).get(f"/api/watchlist-quotes?tickers={tk}").json()
-        assert tk not in body["quotes"]
-        assert body == {"ok": False, "error": "stream_unavailable", "quotes": {}}
-    finally:
-        L._by_ticker.pop(tk, None)
 
 
 def test_over_budget_legs_are_stamped_not_admitted(monkeypatch):

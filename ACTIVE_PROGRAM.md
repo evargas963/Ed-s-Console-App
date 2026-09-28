@@ -17,6 +17,38 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 | LIVE-0928 | QUEUED | **Monday 2026-09-28 session checks**: the 9:30 and 4:15 chain captures and their log lines; Schwab's gamma against the model curve in session (the flip's clock); IV units; TIMESALE_EQUITY re-tested; IEX prints inside NYSE_BOOK; the zeros taken as sent (operator ruling 2026-09-27: open interest, price and IV 0 are 0) measured in session against the weekend's ($SPX 2026-09-14: 19,440 of 19,520 contracts OI 0); rule 5 both ways: a valid past observation on screen shows its source, time and a label saying so, and none feeds current logic; the price reads LIVE from 04:00 ET and MARKET CLOSED with the last trade's time from 20:00 ET, across the board; the charts' last completed bar advances each minute about 3 s after it closes (Schwab CHART_EQUITY), each candle equal to Schwab's bar, and the chart's LAST line moves with the header's price on every update, across the board; each Schwab book (NYSE_BOOK, NASDAQ_BOOK) arriving and shown under its own venue, across the board. |
 | DATA-SYN | OPERATOR | **Fabricated bars in `price_bars_1m`**: 14,491 rows with source `synthetic_interior_grid_repair_v1` (14,490, 47 tickers, 2026-03-24 to 2026-07-17) and `synthetic_anchor_coverage_pad_v1` (1); no code writes them; every bar reader reads them. Deleting data is the operator's. |
 
+## One producer — the 2026-09-28 audit (rule 3, rule 6)
+
+Each row is a second copy or a second computation found by the audit of in-code ownership claims
+(18 of 24 false) and of per-ticker logic. It is fixed by deleting down to one producer, with a
+behavior test that fails if the second one returns, and the false claim comments removed. Done:
+the console's copy of the live price (its spot is the daemon's price row; test
+`test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy`) and the on-screen
+spot (Key Levels = header, #372).
+
+| ID | Status | Work item |
+|---|---|---|
+| ONE-02 | QUEUED | Equity last price and size kept a second time in the console's order-flow tape (`state.py` tape and receive log). |
+| ONE-03 | QUEUED | Feed liveness: the daemon heartbeat recorded in both processes, plus a separate 5 s daemon-status rule (`streaming.py` DAEMON_STATUS_STALE_SEC). |
+| ONE-04 | QUEUED | Equity books: the console's order-flow copy and the database copy read by the Book Heatmap (`history.book_heatmap_for_ticker`, a live screen reading the DB). |
+| ONE-05 | QUEUED | Option quotes and greeks: the order-flow copy, the REST chain in the levels state merged field by field by time (`overlay_streamed_contract_fields`), and the DB copy read by the options tape. |
+| ONE-06 | QUEUED | 1-minute bars in two databases, and live charts and levels reading `price_bars_1m` (with P2-DB4). |
+| ONE-07 | QUEUED | Option chains fetched by two processes with two writers to `ed_console.db` (with P2-1). |
+| ONE-08 | QUEUED | Gamma at spot, regime, wall states, distances and headline recomputed per request (`_reprice_cached_terrain`, the gamma rescale); the publish result is carried. |
+| ONE-09 | QUEUED | VWAP, prior day and value area recomputed by `/api/liquidity-snapshot`'s own path (`liquidity_value_engine` checkpoint builders) instead of the one price-level snapshot. |
+| ONE-10 | QUEUED | The regular session re-derived without the holiday calendar (`state.is_rth_open`); `app/options/contracts/default.py` ignores early closes. |
+| ONE-11 | QUEUED | Trade identity: history's own dedupe (`history.py`) beside `l1_trade_observation`. |
+| ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
+| ONE-13 | QUEUED | Ticker roster built twice (console `CORE_TICKERS` + filtered board; daemon's full board). |
+| ONE-14 | QUEUED | Ticker identity re-derived in page code (`$` stripping in `ed-gamma-chart.js`, `ed-core.js`, `ed-trade-desk-map.js`); the server serves the display form. |
+| ONE-15 | QUEUED | "Is it live": four thresholds (3 s, 5 s, 10 s, 25 s); one rule. |
+| TICK-01 | QUEUED | Index symbol form from a hand-kept list of 11 roots (`instrument_identity.BROKER_INDEX_BARE_ROOTS`); Schwab's own instrument answer decides. |
+| TICK-02 | QUEUED | Option contract → ticker matched by root name, with weekly/adjusted roots (SPXW, NDXP) through a second path that needs a stored capture; Schwab's underlying field on the contract decides. |
+| TICK-03 | QUEUED | "Adjusted deliverable" defined as 100 shares of stock, so cash-settled index options are all flagged; needs a captured index deliverable first. |
+| TICK-04 | QUEUED | Board enrollment rejects SP, IW, NV by name (`production_universe._FRAGMENT`). |
+| TICK-05 | QUEUED | Time to expiry always to 16:00; Schwab's `settlementType` (AM-settled index monthlies) not read. |
+| TICK-06 | QUEUED | The market-context list ($SPX, $NDX, $VIX) kept twice (server and page). |
+
 ## Phase 2 — the rest of the design, then decomposition
 
 | ID | Status | Work item |

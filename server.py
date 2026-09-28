@@ -174,8 +174,7 @@ from terrain_atr import AtrPair, compute_atr_pair
 
 from db import get_db
 
-import live_market_plane as _lmp
-import live_price_rows as _lpr        # THE displayed price row (shared with the capture daemon)
+import live_price_rows as _lpr        # with_change: the bar-change computation
 import push_changes
 
 # ── Config + Schwab client (refreshable singleton) ────────────────────────────
@@ -532,37 +531,26 @@ def _install_signal_handlers() -> None:
             log.debug("could not install handler for %s: %s", sig, e)
 
 
-def resolve_spot(ticker: str, *, chain_json: dict | None = None,
-                 allow_stored: bool = True,
-                 quote_node: dict | None = None) -> tuple[float | None, str, float | None]:
-    """THE single current-spot authority. Returns (spot, source, as_of_ts_utc).
+def resolve_spot(ticker: str) -> tuple[float | None, str, float | None]:
+    """(spot, source, as_of_ts_utc): the daemon's price row's live Schwab LAST_PRICE and its
+    trade time, the value the header shows; (None, "none", None) while it is not live."""
+    from app.options.order_flow.streaming import price_row
 
-    SPOT IS Schwab LEVELONE_EQUITIES LAST_PRICE, as streamed -- 0 hops, one source.
-    It is served only while that streamed value is fresh. There is NO second source:
-    no REST quote, no stale stream value, no MARK/mid/close/chain/snapshot/cache/bar.
-    If the stream is not delivering a fresh LAST_PRICE, spot is UNAVAILABLE
-    (None, "none", None) so the failure is visible and gets fixed (operator rule,
-    2026-09-23: "I would rather know that a field is not working than fallback").
-
-    `chain_json`, `allow_stored` and `quote_node` stay on the signature for existing
-    callers and are ignored."""
-    _ = chain_json, allow_stored, quote_node
-    tk = ticker_storage_key(ticker)
-    if not tk:
+    row = price_row(ticker)
+    if not row or row.get("spot_state") != "live":
         return None, "none", None
-    spot = _lpr.live_spot(tk)             # the one rule, shared with the capture daemon
-    if spot is None:
-        return None, "none", None
-    row = _lmp.get_quote(tk)
-    return spot, SPOT_SOURCE_PLANE, (row.get("exchange_quote_ts") if row else None)
+    return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
 
 
 def current_spot_state(source: str, ticker: str) -> str:
-    """Label a spot resolve_spot gave: live while the one live rule (live_price_rows.live_spot)
-    still holds, stale once it no longer does, unavailable for any other source."""
+    """Label a spot resolve_spot gave: live while the daemon's row still says live, stale once
+    it no longer does, unavailable for any other source."""
+    from app.options.order_flow.streaming import price_row
+
     if source != SPOT_SOURCE_PLANE:
         return "unavailable"
-    return "live" if _lpr.live_spot(ticker) is not None else "stale"
+    row = price_row(ticker)
+    return "live" if row and row.get("spot_state") == "live" else "stale"
 
 
 def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_range=None,
@@ -3821,13 +3809,13 @@ def api_order_flow_microstructure(ticker: str = Query(...),
             data["content"] = _content
     except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
         log.debug("microstructure content build failed for %s: %s", t, e)
-    _row = _lmp.get_quote(t)
-    if _row and _row.get("exchange_quote_ts") is not None:
-        data["exchange_quote_ts"] = _row.get("exchange_quote_ts")
-    # the one L1 store and its live rule: the top of book the engine reads
-    data["top"] = ({"bid": _row.get("bid"), "ask": _row.get("ask"), "bid_size": _row.get("bid_size"),
-                    "ask_size": _row.get("ask_size"), "mark": _row.get("quote_mid")}
-                   if _row and _lmp.quote_is_fresh(_row) else None)
+    # top of book: the daemon's price row (its fields are None while the quote is not live)
+    from app.options.order_flow.streaming import price_row
+    _row = price_row(t)
+    if _row and _row.get("quote_ts") is not None:
+        data["exchange_quote_ts"] = _row["quote_ts"]
+    data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
+                   if _row and (_row.get("bid") is not None or _row.get("ask") is not None) else None)
     from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
     payload = compute_book_microstructure(data, ticker=t)
@@ -3986,60 +3974,6 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e), "contracts": contracts}, status_code=500)
     return JSONResponse(out)
-
-
-#: No Schwab-documented batch-quote symbol ceiling exists anywhere in this repo (checked:
-#: schwab_client.py, schwab_field_dictionary*, tools/sync_schwab_field_dictionary.py).
-@app.get("/api/watchlist-quotes")
-async def api_watchlist_quotes(tickers: str = Query(default="")):
-    """
-    Every watchlist row from the ONE streamed source: each symbol's live_market_plane row,
-    written by the capture daemon's LEVELONE_EQUITIES push. STREAM ONLY (operator rule
-    2026-09-23: no fallbacks). This route used to fetch Schwab REST quotes for any symbol
-    the stream was not answering and record them into the plane -- a second source that hid
-    exactly the gap the operator wants to see. Now:
-
-      spot     LEVELONE_EQUITIES LAST_PRICE, served while that trade price is fresh (0 hops)
-      chg_pct  REGULAR_MARKET_CHANGE_PERCENT from the same streamed row (0 hops)
-
-    A symbol with no fresh streamed LAST_PRICE is simply absent from `quotes` (the row
-    reads UNAVAILABLE). `ok` is false with error "stream_unavailable" when NO requested
-    symbol has one -- the whole live feed is down, not a per-symbol gap. No vendor call.
-
-    Returns {"ok": bool, "error": str|None, "quotes": {SYMBOL: {spot, spot_disp, spot_state,
-    spot_source, chg_pct, exchange_quote_ts}}}.
-    """
-    raw = [t.strip().upper() for t in (tickers or "").split(",") if t.strip()]
-    seen: list[str] = []
-    for t in raw:
-        if t not in seen:
-            seen.append(t)
-    if not seen:
-        return JSONResponse({"ok": True, "error": None, "quotes": {}})
-    out: dict = {}
-    for t in seen:
-        wl = _watchlist_row(t)
-        if wl is not None:
-            out[t] = wl
-    if not out:
-        return JSONResponse({"ok": False, "error": "stream_unavailable", "quotes": {}})
-    return JSONResponse({"ok": True, "error": None, "quotes": out})
-
-
-def _watchlist_row(t: str) -> "dict | None":
-    """ONE watchlist row: the shared price row (live_price_rows.price_row), withheld when not live."""
-    ev = _lpr.price_row(t)
-    if ev.get("spot_state") != "live" or ev.get("spot") is None:
-        return None
-    return {
-        "spot": ev["spot"],
-        "spot_disp": ev["spot_disp"],
-        "spot_state": ev["spot_state"],
-        "spot_source": SPOT_SOURCE_PLANE,
-        "chg_pct": ev["chg_pct"],
-        "ts_recv": ev.get("ts_recv"),
-        "quote_ingestion": ev.get("quote_ingestion"),
-    }
 
 
 @app.get("/api/expiries")
