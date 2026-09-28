@@ -58,15 +58,15 @@ Columns: file:line | rule | value | what the code does | who sees it.
 
 | ID | file:line | rule | value | what it does | seen by | status |
 |---|---|---|---|---|---|---|
-| D-01 | db.py:2703, 2714 | 2 | price_bars_1m OHLC | bare float(), no schwab_number (-999/NaN stored as a price) | charts, ATR, labels | OPEN |
-| D-02 | db.py:2708 | 5 | bar timestamp | first-of over 4 keys, default 0 | price_bars_1m | OPEN |
-| D-03 | db.py:2711, 2719, 2724, 2752, 2758 | 5 | bars | dropped silently, uncounted | price_bars_1m | OPEN |
-| D-04 | db.py:2721 | 5 | bar source | no source labelled authoritative | price_bars_1m.source | OPEN |
-| D-05 | db.py:2732-2734 | 2 | bar time | unit guessed by magnitude; rounded to the minute grid | price_bars_1m | OPEN |
-| D-06 | db.py:2654 | 3 | snapshots.timeframe | relabelled to 1m | (writer dead) | OPEN |
-| D-07 | db.py:2319 | 3 | horizon slugs | hard-coded second copy | schema | OPEN |
-| D-08 | db.py:3462, 3540, 3588; movement_target_threshold.py:165-245; calibration/movement_target_thresholds_by_horizon_v1.json | 5/8 | outcome labels | placeholder point thresholds, same for every ticker; fallback chain JSON -> legacy blend -> 1e-9 | stored snapshot labels, rewritten on every bar write | OPEN |
-| D-09 | db.py:3625 | 5 | outcome_filled | first-of new vs stored | stored | OPEN |
+| D-01 | db.py:2703, 2714 | 2 | price_bars_1m OHLC | bare float(), no schwab_number (-999/NaN stored as a price) | charts, ATR, labels | FIXED 6a1672d9: the dict path is deleted; the one caller passes Candle bars whose OHLC server._write_streamed_bar read with schwab_number |
+| D-02 | db.py:2708 | 5 | bar timestamp | first-of over 4 keys, default 0 | price_bars_1m | FIXED 6a1672d9: dict path deleted; ts is the Candle's bar start |
+| D-03 | db.py:2711, 2719, 2724, 2752, 2758 | 5 | bars | dropped silently, uncounted | price_bars_1m | FIXED 6a1672d9: the parse drops went with the dict path; an off-grid bar is refused and counted (warning), a bar outside the collect window counted (debug) |
+| D-04 | db.py:2721 | 5 | bar source | no source labelled authoritative | price_bars_1m.source | FIXED 6a1672d9: no caller-supplied source; the column default labels every row |
+| D-05 | db.py:2732-2734 | 2 | bar time | unit guessed by magnitude; rounded to the minute grid | price_bars_1m | FIXED 6a1672d9: no unit guess, no snapping; an off-grid bar is refused and counted |
+| D-06 | db.py:2654 | 3 | snapshots.timeframe | relabelled to 1m | (writer dead) | FIXED 6a1672d9: insert_snapshot deleted |
+| D-07 | db.py:2319 | 3 | horizon slugs | hard-coded second copy | schema | FIXED 6a1672d9: the migration and its slug fallback deleted |
+| D-08 | db.py:3462, 3540, 3588; movement_target_threshold.py:165-245; calibration/movement_target_thresholds_by_horizon_v1.json | 5/8 | outcome labels | placeholder point thresholds, same for every ticker; fallback chain JSON -> legacy blend -> 1e-9 | stored snapshot labels, rewritten on every bar write | FIXED 6a1672d9: the outcome pipeline, movement_target_threshold.py and both threshold JSON files deleted |
+| D-09 | db.py:3625 | 5 | outcome_filled | first-of new vs stored | stored | FIXED 6a1672d9: the outcome pipeline deleted |
 | D-10 | db.py:3689 | 3 | session label | second session classifier beside time_et.session_label | tools | OPEN |
 | D-11 | db.py:3148 | 5/6 | prior-session OI | returned without its date; live path reads the DB | delta_oi_walls | OPEN |
 | D-12 | db.py:3205-3207 | 5 | level crosses | invalid levels skipped uncounted | level_crosses | OPEN |
@@ -187,8 +187,8 @@ Columns: file:line | rule | value | what the code does | who sees it.
 |---|---|---|---|
 | X-01 | static/governance.html, static/ops.html | whole pages; every route they call is gone (404) | FIXED bea2630b |
 | X-02 | server.py:887-937, 734, 1131, 4016 | executors never used, `_main_event_loop`, `_l1_sse_last_drop_mono`, empty CORE_TICKERS, /api/spot (no page caller) | FIXED bea2630b, except CORE_TICKERS (goes with S-03) |
-| X-03 | db.py:274, 282, 2601, 2866, 2981, 3073, 3285, 3399, 3638, 3689, 3718, 118-129, 1399-1426, 1439, 1488, 1848, 2521, 3106, 3115, 3267-3275 | snapshot writer and outcome pipeline with no writer, dead tables' code, iv_daily (no reader), unread rings and constants | OPEN |
-| X-04 | execution_identity.py, decision_record.py, horizon_outcomes.py, ml_horizon.py, movement_target_threshold.py, api_pressure.py, schwab_field_dictionary_builder.py:117-395, config.py:92-96 | modules or parts with no product caller | OPEN (verify each) |
+| X-03 | db.py:274, 282, 2601, 2866, 2981, 3073, 3285, 3399, 3638, 3689, 3718, 118-129, 1399-1426, 1439, 1488, 1848, 2521, 3106, 3115, 3267-3275 | snapshot writer and outcome pipeline with no writer, dead tables' code, iv_daily (no reader), unread rings and constants | FIXED 6a1672d9 (writer, pipeline, dead-table DDL, rings, constants, no-op at 3106); iv_daily kept: NOT A VIOLATION, it is session history for IV rank (RC-354), and the database is history (rule 6) |
+| X-04 | execution_identity.py, decision_record.py, horizon_outcomes.py, ml_horizon.py, movement_target_threshold.py, api_pressure.py, schwab_field_dictionary_builder.py:117-395, config.py:92-96 | modules or parts with no product caller | FIXED 6a1672d9 for execution_identity.py, decision_record.py, horizon_outcomes.py, ml_horizon.py, movement_target_threshold.py; api_pressure.py kept, schwab_client imports it (its unread _events ring and its UI-banner log text stay OPEN); schwab_field_dictionary_builder.py:117-395 and config.py:92-96 OPEN (not checked in P2-5 part 1) |
 | X-05 | app/options/order_flow/engine.py:680-835, 942-998; routes/options_order_flow.py; history.py:19; state.py `_stream_volume` | options-flow, rvol and institutional proxy paths that always return None; retired fields; dead route | FIXED 7fab75b4 for the history route and hydrate_option_content; the engine's always-None paths left |
 | X-06 | live_market_plane.py:38-51, 150, 317-321 | SSE cursor and fast generation with no reader | OPEN |
 | X-07 | liquidity_value_engine.py:750, 846, 945 (+ premarket via generate_*) | checkpoint snapshot builders; the page sends only snapshot=live | OPEN |
