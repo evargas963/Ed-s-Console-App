@@ -27,13 +27,13 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | S-10 | server.py:2578 | 5 | stream_coverage live_pct | no relevant cells -> 0.0 | gamma-surface | OPEN |
 | S-11 | server.py:2636-2659 | 3/5 | chain_basis, DTE clock, crosses | stored capture repriced with today's clock and relabelled; its past spot seeds level crosses | levels, heatmap, level_crosses | OPEN |
 | S-12 | server.py:2666, 4980 | 2 | spot | truthiness treats 0 as missing | heatmap, /api/levels | FIXED 317093a8 at the heatmap; /api/levels divides by spot (a guard, not a substitute) |
-| S-13 | server.py:2737 | 5 | option->ticker | first match wins | reprice routing | OPEN |
+| S-13 | server.py:2737 | 5 | option->ticker | first match wins | reprice routing | FIXED dcd0f203 (the ticker whose chain Schwab listed the symbol in; an OSI symbol is in one ticker's chain) |
 | S-14 | server.py:2824 | 5 | chain as-of | local time after the fetch | computed_ts_utc | OPEN |
 | S-15 | server.py:2830-2831 | 2 | atr_daily/atr_15m | 0 read as missing | /api/terrain | FIXED 317093a8 |
 | S-16 | server.py:2841 | 2 | iv_pct_atm | IV 0 rejected | stored iv_daily | FIXED 317093a8 (writer deleted: nothing reads iv_daily) |
-| S-17 | server.py:2862-2867 vs 3651-3653 | 3 | day-over-day OI change | two producers (banked oi_daily; chain captures) | terrain delta_oi_walls vs /api/forces | OPEN |
-| S-18 | server.py:2931 | 8 | status spot | SPY only | console log | OPEN |
-| S-19 | server.py:2967-2968, 3019-3020 | 5 | board, viewed set | `except: tickers = []` / `_viewed_syms = []` hide failures | terrain loop | OPEN |
+| S-17 | server.py:2862-2867 vs 3651-3653 | 3 | day-over-day OI change | two producers (banked oi_daily; chain captures) | terrain delta_oi_walls vs /api/forces | FIXED b170eb32 (delta_oi_walls and oi_daily writer deleted; the forces are the one producer) |
+| S-18 | server.py:2931 | 8 | status spot | SPY only | console log | FIXED 379398f8 (live prices counted across the board) |
+| S-19 | server.py:2967-2968, 3019-3020 | 5 | board, viewed set | `except: tickers = []` / `_viewed_syms = []` hide failures | terrain loop | FIXED 29088b6a (one viewing signal, push_changes.watched; no exception path) |
 | S-20 | server.py:3208, 585 | 3 | spot_state | live_spot evaluated again after resolve_spot | /api/terrain, alerts | OPEN |
 | S-21 | server.py:3225-3226 | 3/5 | net_gex_at_spot, gamma_at_spot | carried to a new spot by (S/S0)^2 outside compute_terrain | NET GEX chip, regime | OPEN |
 | S-22 | server.py:3292-3293 | 3 | near/far split | route hard-codes `d <= 7`; terrain_engine has its own split | /api/terrain/strikes | OPEN |
@@ -41,7 +41,7 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | S-24 | server.py:3409, 3584, 5083 | 6 | chart bars, tape, liquidity bars | live screens read the DB | chart, tape, liquidity | OPEN (P2-3) |
 | S-25 | server.py:3511/3515, 3530/3533 | 3 | spot | resolve_spot twice in one response | vanna/charm-by-strike | FIXED 7b64cae6 |
 | S-26 | server.py:3911 | 5 | gamma_available | missing flag defaults to available | gamma-surface | FIXED 7b64cae6 |
-| S-27 | server.py:3955-3979 | 3 | complete/coverage | labels a full chain "near-money, complete False" | heatmap coverage label | OPEN (fixed in #346, unmerged) |
+| S-27 | server.py:3955-3979 | 3 | complete/coverage | labels a full chain "near-money, complete False" | heatmap coverage label | FIXED 3a2329b5 |
 | S-28 | server.py:4154, 4180, 4212 | 5 | desk window, cross direction/counts | window defaults to one day; missing direction reads "below"/down | /api/desk/events | FIXED 317093a8 |
 | S-29 | server.py:4229-4233 | 3/6 | level crosses | raw DB read beside _merged_recent_crosses; missing direction -> down | /api/alerts | FIXED 317093a8 (DB read on the live path: S-24/P2-3) |
 | S-30 | server.py:4318, 4356-4357 | 5 | flow, streaming_plane | exception -> None / {} with no reason | order flow, options microstructure | OPEN |
@@ -68,7 +68,7 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | D-08 | db.py:3462, 3540, 3588; movement_target_threshold.py:165-245; calibration/movement_target_thresholds_by_horizon_v1.json | 5/8 | outcome labels | placeholder point thresholds, same for every ticker; fallback chain JSON -> legacy blend -> 1e-9 | stored snapshot labels, rewritten on every bar write | FIXED 6a1672d9: the outcome pipeline, movement_target_threshold.py and both threshold JSON files deleted |
 | D-09 | db.py:3625 | 5 | outcome_filled | first-of new vs stored | stored | FIXED 6a1672d9: the outcome pipeline deleted |
 | D-10 | db.py:3689 | 3 | session label | second session classifier beside time_et.session_label | tools | OPEN |
-| D-11 | db.py:3148 | 5/6 | prior-session OI | returned without its date; live path reads the DB | delta_oi_walls | OPEN |
+| D-11 | db.py:3148 | 5/6 | prior-session OI | returned without its date; live path reads the DB | delta_oi_walls | FIXED b170eb32 (reader deleted) |
 | D-12 | db.py:3205-3207 | 5 | level crosses | invalid levels skipped uncounted | level_crosses | OPEN |
 | D-13 | calibration/complete_chain_capture.py:242 | 2 | underlyingPrice | `== -999` only, not schwab_number; text aborts the round | stored captures | OPEN |
 | D-14 | calibration/complete_chain_capture.py:95, 247, 252 | 5 | contracts, counts | non-dict and no-expiry contracts dropped uncounted; skipped writes counted as written | captures | OPEN |
