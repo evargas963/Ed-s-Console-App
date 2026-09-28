@@ -2360,7 +2360,9 @@ def _on_stream_tick(sym: str) -> None:
 
 def _reprice_worker(tk: str) -> None:
     """Reprice `tk` while ticks keep arriving, at most once per LEVELS_REPRICE_MIN_INTERVAL_SEC;
-    the last tick of a burst is always priced."""
+    the last tick of a burst is always priced. A ticker just put on screen has no kept chain
+    (only a viewed ticker's is kept): its chain is fetched now, by the one producer, rather than
+    when the levels loop next comes round to it."""
     last = float("-inf")
     while True:
         time.sleep(max(0.0, last + LEVELS_REPRICE_MIN_INTERVAL_SEC - time.monotonic()))
@@ -2371,7 +2373,8 @@ def _reprice_worker(tk: str) -> None:
             _reprice_dirty.discard(tk)
         last = time.monotonic()
         try:
-            _publish_levels(tk)
+            if _publish_levels(tk) is None:
+                _terrain_refresh_one(tk, priority=True)
         except Exception as e:  # noqa: BLE001 -- logged; the next tick or chain fetch reprices
             log.warning("levels reprice failed for %s: %s", tk, e)
 
