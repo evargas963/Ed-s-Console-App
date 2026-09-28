@@ -35,7 +35,6 @@ spot (Key Levels = header, #372).
 | ONE-06 | QUEUED | 1-minute bars in two databases, and live charts and levels reading `price_bars_1m` (with P2-DB4). |
 | ONE-07 | QUEUED | Option chains fetched by two processes with two writers to `ed_console.db` (with P2-1). |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
-| ONE-16 | QUEUED | Page code computes on served data (rule 4): six `maxAbs` scale maxima over served rows (ed-gamma-chart, ed-gamma-panels, ed-gamma, ed-trade-desk) and the Market Map chart recomputing a bar's change (`ed-tv-chart.js` `b.c - b.o`) beside the served `chg`. (Sign and colour of a served number are formatting.) Found 2026-09-28. |
 | TICK-01 | QUEUED | Index symbol form from a hand-kept list of 11 roots (`instrument_identity.BROKER_INDEX_BARE_ROOTS`); Schwab's own instrument answer decides. |
 | TICK-02 | QUEUED | Option contract → ticker matched by root name, with weekly/adjusted roots (SPXW, NDXP) through a second path that needs a stored capture; Schwab's underlying field on the contract decides. |
 | TICK-03 | QUEUED | "Adjusted deliverable" defined as 100 shares of stock, so cash-settled index options are all flagged; needs a captured index deliverable first. |
