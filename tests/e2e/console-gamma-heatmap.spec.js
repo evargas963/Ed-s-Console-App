@@ -738,7 +738,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify({ ticker: 'SPY', available: false, source: 'unavailable', live: false, stale: true,
-        warming: false, requested: true, on_board: true,
+        warming: false, requested: true,
         reason: 'no live gamma surface for this ticker yet' }),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -1165,30 +1165,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, SURFACE, {
         available: false, source: 'unavailable', live: false, stale: true, warming: true,
-        requested: true, on_board: true, reason: 'no live gamma surface for this ticker yet',
+        requested: true, reason: 'no live gamma surface for this ticker yet',
       })),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.heat-banner.warming')).toContainText('LIVE SURFACE WARMING');
-  });
-
-  test('#1-A requested but NOT on the board says collection is not active (never awaiting a refresh)', async ({ page }) => {
-    // A new/non-enrolled symbol: the endpoint recorded demand (requested) but the ticker is not on
-    // the canonical terrain board (on_board:false), so no next refresh can occur for it. The banner
-    // must say collection is not active for this symbol — never promise an "awaiting next refresh".
-    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify({
-        available: false, source: 'unavailable', live: false, stale: true,
-        warming: false, requested: true, on_board: false,
-        reason: 'no live terrain surface and no banked wide chain',
-      }),
-    }));
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    var b = page.locator('.heat-banner').first();
-    await expect(b).toContainText('NOT COLLECTING');
-    await expect(b).toContainText('not currently active for this symbol');
-    await expect(b).not.toContainText('awaiting');
   });
 
   test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {

@@ -110,37 +110,27 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch):
             server._terrain_cache.pop(tk, None)
 
 
-def test_warming_false_when_snapshot_exists_but_ticker_not_on_board(monkeypatch):
-    # #1-A negative control: a cached terrain snapshot is NOT proof of CURRENT board membership.
-    # A ticker with a refresh-eligible snapshot but absent from the canonical _logger_tickers/CORE
-    # board must read REQUESTED but NOT WARMING, and disclose it is not on the board — otherwise the
-    # UI would falsely promise a next refresh for a symbol nothing is collecting.
-    tk = ticker_storage_key("NFLX")
-    with server._logger_lock:
-        had = tk in server._logger_tickers
-        if had:
-            server._logger_tickers.remove(tk)
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}  # snapshot, no surface
-    # session/quarantine are eligible — the ONLY thing withholding warming is board membership
+def test_a_viewed_ticker_warms_whether_or_not_it_is_on_the_board(monkeypatch):
+    """2026-09-28 audit: the levels loop refreshes every viewed ticker each cycle (_previewed),
+    but the surface route said a viewed ticker off the board was not collecting. One rule: a
+    viewed ticker the loop can refresh now is warming, on the board or not."""
     monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+    board, off_board = ticker_storage_key("NFLX"), ticker_storage_key("ZZQX")
+    monkeypatch.setattr(server, "_logger_tickers", [board])
     try:
-        assert server._ticker_on_terrain_board(tk) is False
-        d = _call(tk)
-        assert d["requested"] is True
-        assert d["on_board"] is False
-        assert d["warming"] is False        # snapshot present + session eligible, but NOT on the board
+        for tk in (board, off_board):
+            with server._terrain_cache_lock:
+                server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}  # no surface
+            d = _call(tk)
+            assert d["requested"] is True and d["warming"] is True and "on_board" not in d, tk
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-        server._gamma_surface_demand.pop(tk, None)
-        if had:
-            with server._logger_lock:
-                if tk not in server._logger_tickers:
-                    server._logger_tickers.append(tk)
+        for tk in (board, off_board):
+            with server._terrain_cache_lock:
+                server._terrain_cache.pop(tk, None)
+            server._gamma_surface_demand.pop(tk, None)
 
 
 def test_surface_session_identity_is_stamped_by_the_server_clock():
