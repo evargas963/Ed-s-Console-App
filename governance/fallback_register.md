@@ -136,7 +136,7 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | O-11 | streaming.py:224-257, 907-916, 1006-1008 | 5 | streaming_healthy | healthy with no data for 8 s; synthetic stale_ms 0.0 | feed badges | FIXED 972beb7d |
 | O-12 | streaming.py:952-968, 513-516 | 5 | producer contract, active contract | `symbols[0]` / `held[0]` when the asked contract is not held | subscription panel | NOT A VIOLATION: the field names the producer's held contract; the asked contract's state is subscription_state |
 | O-13 | streaming.py:297-312, 361-364, 426-457, 504-507 | 5 | ingest, contract match, DB path | failures swallowed as False/None, uncounted | contract selection | OPEN |
-| O-14 | live_price_rows.py:44-66 | 3/5 | forming 1m bar | built from L1 ticks while Schwab streams CHART_EQUITY; a same-price trade in a new minute never opens it | chart | OPEN |
+| O-14 | live_price_rows.py:44-66 | 3/5 | forming 1m bar | built from L1 ticks while Schwab streams CHART_EQUITY; a same-price trade in a new minute never opens it | chart | FIXED (deleted: charts show completed Schwab bars only, operator 2026-09-28) |
 | O-15 | live_price_rows.py:92 | 2 | trade_age_sec | negative age clamped to 0 | header | OPEN |
 | O-16 | live_price_rows.py:121-123 | 5 | closed_last | carries time and label, not its source | header | OPEN |
 | O-17 | history.py:356-366 | 3/5 | heatmap cell | venues overwrite each other; unobserved side reads 0 | order-flow heatmap | OPEN |
@@ -166,7 +166,7 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | P-10 | ed-gamma-panels.js:10-27; ed-gamma-chart.js:11-16; ed-tv-chart.js:31-38 | 3 | USD/volume formatting | three formatters with different precision | panels, chart | OPEN |
 | P-11 | ed-gamma-panels.js:313-339, 623-635; ed-gamma-chart.js:563-615; ed-trade-desk.js:317-329; ed-order-flow.js:82-85; ed-order-flow-heatmap.js:137 | 4/5 | bar scales | max over served data, `|| 0`/`|| 1`, scale endpoints shown as numbers | GBS, vanna/charm, chart, migration, book, heatmap | OPEN |
 | P-12 | ed-gamma-panels.js:372, 458-473, 696-700, 684 | 4/5 | Strike Detail, Structures | tolerance pick of contract and net; put substituted for call; UTC date | Strike Detail, Structures | OPEN |
-| P-13 | ed-gamma-panels.js:70-71, 86, 197; ed-gamma-chart.js:19, 49-50, 208-227, 321, 361-436, 500-539, 659-664 | 3/4/5 | spot, badges, domain, readout, forming bar | page-formatted spot from a second source; min/max domain + synthetic ±2%; readout computed; forming bar merged on the page; stale drawing kept | chart, Key Levels | OPEN |
+| P-13 | ed-gamma-panels.js:70-71, 86, 197; ed-gamma-chart.js:19, 49-50, 208-227, 321, 361-436, 500-539, 659-664 | 3/4/5 | spot, badges, domain, readout | page-formatted spot from a second source; min/max domain + synthetic ±2%; readout computed; stale drawing kept (the page's forming-bar merge: FIXED with O-14) | chart, Key Levels | OPEN |
 | P-14 | ed-tv-chart.js:238, 358-365, 435-481 | 4/5 | bar colour, levels shown, revisions, markers | arithmetic on bars; page filters levels; drops uncounted | Trade Desk chart | OPEN |
 | P-15 | ed-trade-desk-map.js:25 | 3 | lookback words | second copy of DESK_LOOKBACK_SEC | Desk | OPEN |
 | P-16 | ed-trade-desk-map.js:56, 64, 182, 236, 311-347, 369, 403-404, 427 | 4 | ages, date format, tail bars, VAH/VAL pick, colours, LEVELS age | page math and picks | Desk | OPEN |

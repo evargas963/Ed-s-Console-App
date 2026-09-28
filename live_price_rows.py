@@ -7,12 +7,10 @@ read the same function -- so a price on screen and a price in a calculation can 
 from two different rules.
 
 Nothing here computes a market value: every number is a Schwab field or its receive time; the
-only derivations are the live verdict, the trade age, and the forming 1-minute candle (the OHLC
-of the LAST_PRICEs whose Schwab TRADE_TIME falls in the current minute).
+only derivations are the live verdict and the trade age.
 """
 from __future__ import annotations
 
-import threading
 import time
 from typing import Any, Optional
 
@@ -21,12 +19,6 @@ from instrument_identity import ticker_storage_key
 from time_et import ct_label, is_capturable_session
 
 SPOT_SOURCE = "streaming_plane"
-
-_forming_lock = threading.Lock()
-#: ticker -> the forming 1m candle {t, o, h, l, c} from streamed LAST_PRICE / TRADE_TIME
-_forming: dict[str, dict[str, Any]] = {}
-#: ticker -> the spot_received_ts already folded into its forming candle (one trade, once)
-_forming_seen: dict[str, float] = {}
 
 
 def live_spot(ticker: str) -> Optional[float]:
@@ -38,48 +30,13 @@ def live_spot(ticker: str) -> Optional[float]:
     return None
 
 
-def _note_trade(ticker: str) -> None:
-    """Row listener: fold a NEW LAST_PRICE into its minute's forming candle."""
-    row = lmp.get_quote(ticker)
-    if not row or row.get("spot") is None or row.get("trade_ts") is None:
-        return
-    received = row.get("spot_received_ts")
-    t = row["ticker"]
-    with _forming_lock:
-        if received is not None and _forming_seen.get(t) == received:
-            return                      # a bid/ask-only change: no new trade
-        _forming_seen[t] = received
-        px = float(row["spot"])
-        ts = float(row["trade_ts"])     # epoch SECONDS (the plane converts TRADE_TIME_MILLIS)
-        minute = ts - (ts % 60.0)
-        bar = _forming.get(t)
-        if bar is None or minute > bar["t"]:
-            _forming[t] = {"t": minute, "o": px, "h": px, "l": px, "c": px, "forming": True}
-        elif minute == bar["t"]:
-            bar["h"] = max(bar["h"], px)
-            bar["l"] = min(bar["l"], px)
-            bar["c"] = px
-        # a trade stamped in an EARLIER minute than the forming one is late: it never
-        # reopens a closed minute
-
-
-lmp.add_row_listener(_note_trade)
-
-
 def with_change(bar: dict[str, Any]) -> dict[str, Any]:
     """`bar` with its change over the bar (close - open) and that change as a percent of the
-    open: THE bar-change computation for every bar served (history and the forming minute)."""
+    open: THE bar-change computation for every bar served."""
     o, c = bar.get("o"), bar.get("c")
     bar["chg"] = c - o if c is not None and o is not None else None
     bar["chg_pct"] = bar["chg"] / o * 100 if bar["chg"] is not None and o else None
     return bar
-
-
-def forming_bar(ticker: str) -> Optional[dict[str, Any]]:
-    t = ticker_storage_key(ticker)
-    with _forming_lock:
-        bar = _forming.get(t)
-        return with_change(dict(bar)) if bar else None
 
 
 def _trade_age_sec(trade_ts: Optional[float], now: float) -> Optional[float]:
@@ -131,7 +88,6 @@ def price_row(ticker: str) -> dict[str, Any]:
         "prior_close": field("prior_close"),
         "trade_ts": trade_ts,
         "trade_age_sec": _trade_age_sec(trade_ts, now),
-        "forming_1m": forming_bar(tk) if spot is not None else None,
         "ts_recv": row.get("server_received_ts") if row else None,
         "quote_ingestion": row.get("quote_ingestion") if row else None,
         "server_ts": now,

@@ -139,10 +139,8 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     return True
 
 
-#: callables told the ticker of every published row, in the process that owns this plane --
-#: the console registers its L1 rebuild, the capture daemon its browser push, live_price_rows
-#: its forming candle. The plane itself knows no consumer (it used to import the console's
-#: planes.l1_events directly, which tied the price table to the console process).
+#: callables told the ticker of every published row, in the process that owns this plane: the
+#: capture daemon's browser push (live_ui).
 _row_listeners: list = []
 _row_listener_failures = [0]
 

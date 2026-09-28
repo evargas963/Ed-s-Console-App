@@ -73,7 +73,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   `flow` push on `/api/changes` → the browser reads the order-flow and heatmap routes.
 - **1-minute bar.** Schwab → daemon bus → writer (`stream_capture.db`), and → console → the
   console's own bar writer → `ed_console.db` → a `liquidity` push on `/api/changes` → the browser
-  reads `/api/bars1m`. The forming candle rides the price row.
+  reads `/api/bars1m`. Charts show completed Schwab bars only, with the newest bar's minute
+  (`last_bar`); the live last price is the header's (operator 2026-09-28).
 - **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per board or
   viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule (#312).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the

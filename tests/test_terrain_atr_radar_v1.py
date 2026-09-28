@@ -42,15 +42,12 @@ def test_bars1m_endpoint_serves_canonical_bars_shape(monkeypatch):
 
     import server as srv
 
-    # Real SPY price_bars_1m rows (tests/fixtures) as the table read returns them; no forming
-    # minute. The test read whatever bars the shared database and the live plane held, and
-    # skipped its assertions when there were none -- it failed once another test in the same
-    # worker left a forming SPY minute (found 2026-09-27 while landing P2-1).
+    # Real SPY price_bars_1m rows (tests/fixtures) as the table read returns them. The test read
+    # whatever bars the shared database held, and skipped its assertions when there were none.
     fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
                     .read_text(encoding="utf-8"))["bars"]
     rows = [(b["timestamp"] / 1000.0, b["open"], b["high"], b["low"], b["close"], b["volume"]) for b in fx]
     monkeypatch.setattr(srv, "_read_bars_1m", lambda tk, limit: rows[-int(limit):] if tk == "SPY" else [])
-    monkeypatch.setattr(srv._lpr, "forming_bar", lambda tk: None)
     body = json.loads(srv.get_bars1m(ticker="SPY", limit=5, tf="1").body)
     assert body["ticker"] == "SPY" and len(body["bars"]) == 5
     row = body["bars"][-1]

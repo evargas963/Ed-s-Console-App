@@ -1,7 +1,6 @@
 """Bars come from one source: Schwab's streamed CHART_EQUITY 1-minute bars. The capture daemon
 forwards them, the console writes them to price_bars_1m (its one writer), every reader reads that
-table, and the forming minute comes from the live price plane. A minute the stream did not deliver
-stays missing."""
+table. Only completed bars are served. A minute the stream did not deliver stays missing."""
 from __future__ import annotations
 
 
@@ -11,6 +10,7 @@ import app.options.order_flow.streaming as ofs
 import server
 from app.market_data.schwab.streaming.live_push import is_forwarded
 from stream_spine import bar_msg
+from time_et import ct_label
 
 TK = "ZZBARS"
 T0 = 1_790_000_040.0            # a minute boundary
@@ -84,17 +84,10 @@ def test_a_minute_the_stream_did_not_deliver_stays_missing():
 
 
 
-def test_the_bars_endpoint_serves_the_table_plus_the_planes_forming_minute(monkeypatch):
-    server._write_streamed_bar(_bar(T0))
-    forming = {"t": T0 + 60, "o": 10.5, "h": 10.7, "l": 10.4, "c": 10.6, "forming": True}
-    monkeypatch.setattr(server._lpr, "forming_bar", lambda tk: dict(forming))
+def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute():
+    for m in (0, 1):
+        server._write_streamed_bar(_bar(T0 + 60 * m))
     body = TestClient(server.app).get(f"/api/bars1m?ticker={TK}").json()
     assert [b["t"] for b in body["bars"]] == [T0, T0 + 60]
-    assert body["bars"][-1]["forming"] is True and "source" not in body
-
-
-def test_no_forming_minute_means_none_is_invented(monkeypatch):
-    server._write_streamed_bar(_bar(T0))
-    monkeypatch.setattr(server._lpr, "forming_bar", lambda tk: None)
-    body = TestClient(server.app).get(f"/api/bars1m?ticker={TK}").json()
-    assert [b["t"] for b in body["bars"]] == [T0]
+    assert not any("forming" in b for b in body["bars"])
+    assert body["last_bar"] == {"t": T0 + 60, "label": ct_label(T0 + 60)}

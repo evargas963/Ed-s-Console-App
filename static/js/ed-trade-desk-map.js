@@ -1,7 +1,7 @@
 /* Ed Console — Trade Desk / "Desk" subview (the operator's 2026-09-25 mockup). PRESENTATION ONLY.
 
    One page for the SELECTED ticker, one global timeframe:
-     MARKET MAP   <- /api/bars1m (server-rolled timeframe + the server's forming bar),
+     MARKET MAP   <- /api/bars1m (completed Schwab 1m bars, server-rolled timeframe),
                      /api/levels (value area, VWAP + bands, prior day, opening range, overnight),
                      /api/terrain (call/put wall, gamma flip, max pain -- full chain)
      ATTENTION    <- /api/desk/events (served, numbered; on the chart, linked both ways),
@@ -16,8 +16,8 @@
 
   var TFS = [{ id: '1', lbl: '1m' }, { id: '3', lbl: '3m' }, { id: '5', lbl: '5m' }, { id: '15', lbl: '15m' },
     { id: '30', lbl: '30m' }, { id: '60', lbl: '1h' }, { id: 'D', lbl: 'D' }];
-  // 1m rows fetched per timeframe (the server rolls them up), and the tail re-read on each tick:
-  // two whole buckets, so the bar before the forming one is always complete.
+  // 1m rows fetched per timeframe (the server rolls them up), and the tail re-read on each new
+  // completed bar: two whole buckets.
   var FULL_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
   var TAIL_LIMIT = { '1': 5, '3': 9, '5': 15, '15': 35, '30': 65, '60': 125, 'D': 2000 };
   // The ONE global timeframe also sets how far back the queue and the event markers reach.
@@ -79,7 +79,7 @@
       { value_area: 1, vwap: 1, gamma: 1, expected_move: 1, prior_day: 1, opening_range: 1, overnight: 1 },
     style: sget('ed.desk.style', 'candles'),
     ticker: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
-    analytics: null, liq: null, quotes: {}, lastTail: 0, tailBusy: false, queue: [], sel: null
+    analytics: null, liq: null, quotes: {}, queue: [], sel: null
   };
 
   // ------------------------------------------------------------------ layout wiring
@@ -172,14 +172,14 @@
       var bars = (d && d.bars) || [];
       if (full) {
         S.bars = bars;
-        S.chart.setBars(bars, tf, bare(tk));
+        S.chart.setBars(bars, tf, bare(tk), d.last_bar && d.last_bar.label);
         $('tdmChartEmpty').hidden = bars.length > 0;
         $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + bare(tk) + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
           : 'No bars for ' + bare(tk) + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
         paintChartOverlays(); paintQueue();
         var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
       } else if (bars.length) {
-        S.chart.updateTail(bars.slice(-2));
+        S.chart.updateTail(bars.slice(-2), d.last_bar && d.last_bar.label);
       }
     });
   }
@@ -451,22 +451,15 @@
       var k = e.detail.kind;
       if (k === 'flow') loadFast();
       if (k === 'levels' || k === 'liquidity') loadSlow();
-      if (k === 'liquidity') { S.lastTail = Date.now(); loadBars(false); }
+      if (k === 'liquidity') loadBars(false);   // a completed Schwab bar was written
     });
-    // Every streamed price row: header + indices; the active symbol also re-reads the chart's
-    // tail (the server's forming bar) at most once a second.
+    // Every streamed price row: header + indices. The chart moves only on a completed bar.
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || !q.ticker) return;
       S.quotes[bare(q.ticker)] = q;
       if (!onDesk()) return;
       paintHeader();
-      if (bare(q.ticker) === bare(S.ticker)) {
-        paintTrust();
-        if (!S.tailBusy && Date.now() - S.lastTail > 1000 && S.bars.length) {
-          S.tailBusy = true; S.lastTail = Date.now();
-          loadBars(false).then(function () { S.tailBusy = false; }, function () { S.tailBusy = false; });
-        }
-      }
+      if (bare(q.ticker) === bare(S.ticker)) paintTrust();
     });
     $('tdmQueue').addEventListener('click', function (e) {
       var b = e.target.closest('[data-q]'); if (b) selectItem(b.getAttribute('data-q'), true);

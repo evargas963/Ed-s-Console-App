@@ -23,7 +23,6 @@ def test_an_unheld_symbol_row_is_unavailable_with_every_quote_field_withheld(mon
                                      received_ts=time.time())
     row = live_price_rows.price_row("ZZNOTHELD")
     assert row["spot"] is None and row["spot_state"] == "unavailable" and row["feed_live"] is False
-    assert row["forming_1m"] is None
 
 
 def test_console_spot_and_watchlist_read_the_same_row_function(monkeypatch) -> None:

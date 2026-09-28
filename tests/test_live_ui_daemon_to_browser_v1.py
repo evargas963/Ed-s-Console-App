@@ -6,7 +6,7 @@ no database. Proves:
 
   * a subscribed symbol gets its current row at once, then a row for every Schwab change;
   * the row is the one producer's row (live_price_rows.price_row): spot, feed verdict,
-    Schwab trade age, forming 1m candle;
+    Schwab trade age, and no bar (charts show Schwab's completed bars only);
   * a symbol nobody subscribed to is never sent;
   * the feed verdict rides every beat: a closed Schwab socket turns the price UNAVAILABLE
     within one beat, with no message needed from Schwab;
@@ -23,7 +23,6 @@ import time
 import pytest
 
 import live_market_plane as lmp
-import live_price_rows
 from app.market_data.schwab.streaming import live_ui
 from stream_spine import MessageBus, quote_msg
 
@@ -40,8 +39,6 @@ def _free_port() -> int:
 def _fresh_plane(monkeypatch):
     monkeypatch.setattr(lmp, "_by_ticker", {})
     monkeypatch.setattr(lmp, "_fields_by_ticker", {})
-    monkeypatch.setattr(live_price_rows, "_forming", {})
-    monkeypatch.setattr(live_price_rows, "_forming_seen", {})
     monkeypatch.setattr(live_ui, "HEARTBEAT_SEC", 0.2)
 
 
@@ -106,15 +103,13 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
         assert row["bid"] == pytest.approx(583.40) and row["ask"] == pytest.approx(583.42)
         assert row["trade_ts"] == pytest.approx(now, abs=0.001)      # epoch SECONDS
         assert 0 <= row["trade_age_sec"] < 2
-        bar = row["forming_1m"]
-        assert bar["t"] == now - (now % 60) and bar["c"] == 583.41
+        assert "forming_1m" not in row
         # the next trade moves it, pushed on its own (not on the beat)
         t0 = time.monotonic()
         bus.publish("quote.SPY", _trade("SPY", 583.90, time.time()))
         msg, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.90)
         assert msg["type"] == "quotes"
         assert time.monotonic() - t0 < 0.15, "a change must go out immediately, not on the beat"
-        assert row["forming_1m"]["h"] == 583.90
     asyncio.run(_run(body))
 
 

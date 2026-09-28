@@ -35,32 +35,6 @@ def test_terrain_rotates_only_inside_the_contention_window():
 
 
 
-def test_forming_bar_is_keyed_on_trade_time_only(monkeypatch):
-    """The forming minute (live_price_rows.forming_bar, the one forming-bar source) is placed on
-    the trade's own TRADE_TIME minute; the quote / receive clocks never stand in for it."""
-    import live_price_rows as lpr
-    import server as srv
-
-    tk = "ZZTT"
-    monkeypatch.setattr(lpr, "_forming", {})
-    monkeypatch.setattr(lpr, "_forming_seen", {})
-    # receive and quote clocks sit in the NEXT minute (..160); only TRADE_TIME is in ..100
-    row = {"ticker": tk, "spot": 50.0, "quote_ingestion": "schwab_streaming_level_one",
-           "quote_source_detail": {"spot": "LAST_PRICE"}, "spot_received_ts": 1_700_000_170.0,
-           "server_received_ts": 1_700_000_170.0, "exchange_quote_ts": 1_700_000_170.0}
-    monkeypatch.setattr(lpr.lmp, "get_quote", lambda t: dict(row) if t == tk else None)
-    bars = [{"t": 1_700_000_100.0, "o": 49.0, "h": 49.5, "l": 48.5, "c": 49.2, "v": 5}]
-    # no TRADE_TIME: no forming minute at all
-    lpr._note_trade(tk)
-    assert lpr.forming_bar(tk) is None
-    assert srv.overlay_forming_bar_from_plane(bars, tk) == bars
-    row["trade_ts"] = 1_700_000_130.0          # epoch SECONDS, as the plane stores TRADE_TIME (..100 minute)
-    lpr._note_trade(tk)
-    out = srv.overlay_forming_bar_from_plane(bars, tk)
-    assert len(out) == 1 and out[0]["t"] == 1_700_000_100.0
-    assert (out[0]["c"], out[0]["h"], out[0]["l"]) == (50.0, 50.0, 48.5)
-
-
 # ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
 
 
@@ -120,7 +94,7 @@ def test_daily_roll_up_is_keyed_on_the_et_trading_date():
     assert len(out) == 2 and out[0]["h"] == 3 and out[0]["v"] == 2
 
 
-def test_the_price_row_carries_feed_state_trade_age_and_the_forming_bar(monkeypatch):
+def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar(monkeypatch):
     import time as _t
 
     import live_market_plane as lmp
@@ -135,10 +109,9 @@ def test_the_price_row_carries_feed_state_trade_age_and_the_forming_bar(monkeypa
     ev = live_price_rows.price_row("ZZQF")
     assert ev["feed_live"] is True and ev["spot"] == 42.0 and ev["spot_source"] == srv.SPOT_SOURCE_PLANE
     assert 6.0 <= ev["trade_age_sec"] <= 9.0
-    f = ev["forming_1m"]
-    assert f is not None and f["c"] == 42.0 and f["t"] == (now - 7) - ((now - 7) % 60)
+    assert "forming_1m" not in ev
     held_no_trade = live_price_rows.price_row("ZZNOTRADE")
-    assert held_no_trade["spot"] is None and held_no_trade["forming_1m"] is None
+    assert held_no_trade["spot"] is None
 
 
 def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch):
