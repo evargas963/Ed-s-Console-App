@@ -724,24 +724,8 @@
       else { ce.textContent = '—'; ce.className = 'wl-chg'; }
     }
   }
-  // Bounded batch poll: ONE /api/watchlist-quotes request per slow tick for the WHOLE
-  // watchlist, active ticker included — one vendor round trip regardless of list size, not
-  // N sequential single-symbol polls. Every requested symbol is explicitly resolved
-  // (present -> its value, absent from the batch response -> null), so a symbol the vendor
-  // dropped from the response gets cleared via setWlRow's null path above, never left
-  // showing its last good number.
-  //
-  // _wlPollGen guards against overlapping/out-of-order responses — this fires on the slow
-  // tick AND immediately after every add/remove (renderWatchlist), so a fast add/remove can
-  // legitimately have two requests in flight at once. Without a generation check, an OLDER
-  // request that happens to resolve AFTER a newer one would overwrite fresher data with
-  // stale data for whatever symbols both requests shared. Same pattern refreshSession uses
-  // (_sessGen).
-  var _wlPollGen = 0;
-  // A failed poll withdraws every row to UNAVAILABLE (operator rule 2026-09-23: no
-  // fallbacks, not even a labelled last-known value) and marks the list degraded with the
-  // reason, until a poll succeeds again.
-  var _wlLastGoodTs = null;
+  // A silent price push withdraws every row to UNAVAILABLE and marks the list degraded with
+  // the reason, until a row arrives again.
   function markWlDegraded(reason) {
     var host = document.getElementById('watchlist');
     if (host) host.classList.add('wl-degraded');
@@ -751,7 +735,6 @@
   function markWlHealthy() {
     var host = document.getElementById('watchlist');
     if (host) host.classList.remove('wl-degraded');
-    _wlLastGoodTs = Date.now();
   }
   // The daemon streams only what is asked for: hand it the watchlist whenever it changes
   // (and once at start), so every row can be a streamed quote.
