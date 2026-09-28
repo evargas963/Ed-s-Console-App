@@ -75,8 +75,12 @@ Schwab sends is taken as sent (rule 2), never computed.
   under its service and served for the `venue` the screen's venue switch names, never combined.
 - **1-minute bar.** Schwab → daemon bus → writer (`stream_capture.db`), and → console → the
   console's own bar writer → `ed_console.db` → a `liquidity` push on `/api/changes` → the browser
-  reads `/api/bars1m`. Charts show completed Schwab bars only, with the newest bar's minute
-  (`last_bar`); the live last price is the header's (operator 2026-09-28).
+  reads `/api/bars1m`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
+  the newest bar's minute (`last_bar`). The live Schwab LAST_PRICE (the header's price row, with
+  its age since the trade) is drawn on the chart as its own line and moves with every update; no
+  candle is built from quotes: level-one prices matched Schwab's completed bars on all four of
+  open, high, low and close in 36.1% of 12,364 minutes (43 tickers, 2026-09-25 10:00–15:00 ET),
+  so a quote-built candle would misstate the high or low (operator 2026-09-28).
 - **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per board or
   viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule (#312).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
