@@ -35,7 +35,6 @@ spot (Key Levels = header, #372).
 | ONE-06 | QUEUED | 1-minute bars in two databases, and live charts and levels reading `price_bars_1m` (with P2-DB4). |
 | ONE-07 | QUEUED | Option chains fetched by two processes with two writers to `ed_console.db` (with P2-1). |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
-| TICK-02 | QUEUED | Option contract → ticker matched by root name, with weekly/adjusted roots (SPXW, NDXP) through a second path that needs a stored capture; Schwab's underlying field on the contract decides. |
 
 ## Phase 2 — the rest of the design, then decomposition
 

@@ -1,157 +1,74 @@
-"""Contract -> underlying identity: vendor OSI root, not prefix match.
-
-# universal-scope-ok: fixtures use banked CDE/CRWD/TSLA/SPY vendor symbols as
-# examples of the enrolled-universe capture path, not a single-ticker product claim.
-"""
+"""Contract -> underlying: a contract is the ticker's when Schwab listed it in the ticker's chain.
+One rule for every instrument, whatever the contract's root (TICK-02, 2026-09-28 audit: roots
+were compared by name, and $SPX's SPXW contracts went through a second path that read a stored
+capture from the database on the live path). Real chains: $SPX (SPX and SPXW roots, the same
+expiration), CDE (whose root starts with C) and TSLA."""
 from __future__ import annotations
 
+import json
+import time
+from pathlib import Path
 
-def test_real_cde_osi_is_not_ticker_c():
-    """Prefix match is not identity: real CDE vendor symbol must not bind to C."""
-    from instrument_identity import option_underlying_root, vendor_option_root
-    from app.options.order_flow.streaming import _contract_matches_underlying
+import pytest
 
-    cde = "CDE   260904C00005000"
-    assert vendor_option_root(cde) == "CDE"
-    assert option_underlying_root("C") == "C"
-    assert option_underlying_root("CDE") == "CDE"
-    assert _contract_matches_underlying(cde, "CDE") is True
-    assert _contract_matches_underlying(cde, "C") is False
+import app.options.order_flow.streaming as ofs
+import server
 
-
-def test_a_does_not_match_aa_or_aal_osi_roots():
-    """Short equity roots must not prefix-match longer distinct underlyings."""
-    from instrument_identity import vendor_option_root
-    from app.options.order_flow.streaming import _contract_matches_underlying
-
-    aa = "AA    260904C00050000"
-    aal = "AAL   260904C00050000"
-    a = "A     260904C00050000"
-    assert vendor_option_root(aa) == "AA"
-    assert vendor_option_root(aal) == "AAL"
-    assert vendor_option_root(a) == "A"
-    assert _contract_matches_underlying(aa, "A") is False
-    assert _contract_matches_underlying(aal, "A") is False
-    assert _contract_matches_underlying(a, "A") is True
+_FX = Path(__file__).resolve().parent / "fixtures"
+_SPX = json.loads((_FX / "real_spx_chain_contracts_2026_09_28.json").read_text(encoding="utf-8"))
+_CDE = json.loads((_FX / "real_cde_complete_chain_half_dollar.json").read_text(encoding="utf-8"))
+_TSLA = json.loads((_FX / "real_tsla_complete_chain_strike_range_all.json").read_text(encoding="utf-8"))
+_CHAINS = {"$SPX": (_SPX["contracts"], _SPX["spot"]),
+           "CDE": (_CDE["chain"], 5.0),                  # stand-in: the CDE capture carries no spot
+           "TSLA": (_TSLA["chain"], 330.0)}              # stand-in: the TSLA capture carries no spot
 
 
-def test_exact_underlying_matches_real_vendor_symbols():
-    from app.options.order_flow.streaming import _contract_matches_underlying
-
-    assert _contract_matches_underlying("CDE   260904C00013000", "CDE") is True
-    assert _contract_matches_underlying("CRWD  260918C00038750", "CRWD") is True
-    assert _contract_matches_underlying("TSLA  260831C00160000", "TSLA") is True
-    assert _contract_matches_underlying("SPY   260820C00767000", "SPY") is True
-
-
-def test_index_alias_uses_broker_roots_not_invented_weeklies():
-    """$SPX/SPX share OSI root SPX via BROKER_INDEX_BARE_ROOTS. SPXW is not aliased."""
-    from instrument_identity import option_underlying_root, vendor_option_root
-    from app.options.order_flow.streaming import _contract_matches_underlying
-
-    assert option_underlying_root("$SPX") == "SPX"
-    assert option_underlying_root("SPX") == "SPX"
-    spx_osi = "SPX   260918C05000000"
-    assert vendor_option_root(spx_osi) == "SPX"
-    assert _contract_matches_underlying(spx_osi, "$SPX") is True
-    assert _contract_matches_underlying(spx_osi, "SPX") is True
-    weekly = "SPXW  260918C05000000"
-    assert vendor_option_root(weekly) == "SPXW"
-    assert _contract_matches_underlying(weekly, "$SPX") is False
+@pytest.fixture(autouse=True)
+def _published(monkeypatch, pin_clock):
+    pin_clock(2026, 8, 30, 12, 0)                        # before every fixture chain's expiry
+    spots = {tk: spot for tk, (_c, spot) in _CHAINS.items()}
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (spots.get(tk), "stub", 1.0))
+    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk, listed=None: {})
+    for tk, (chain, _spot) in _CHAINS.items():
+        server._publish_levels(tk, [dict(c) for c in chain], time.time())
+    yield
+    with server._terrain_cache_lock:
+        for tk in _CHAINS:
+            server._terrain_cache.pop(tk, None)
+    ofs._active_option_contract = None
 
 
-def test_non_osi_symbol_is_fail_closed():
-    from instrument_identity import vendor_option_root
-    from app.options.order_flow.streaming import _contract_matches_underlying
-
-    assert vendor_option_root("CDE") == ""
-    assert vendor_option_root("") == ""
-    assert _contract_matches_underlying("CDE", "CDE") is False
-    assert _contract_matches_underlying(None, "CDE") is False
+def test_every_contract_schwab_listed_for_a_ticker_is_that_tickers_whatever_its_root():
+    roots = {c["symbol"][:6].strip() for c in _SPX["contracts"]}
+    assert roots == {"SPX", "SPXW"}
+    for tk, (chain, _spot) in _CHAINS.items():
+        assert all(server._contract_is_for(c["symbol"], tk) for c in chain), tk
+        assert {server._contract_ticker(c["symbol"]) for c in chain} == {tk}
 
 
-def test_spxw_matches_dollar_spx_only_via_banked_chain():
-    """Real 2026-09-04 $SPX complete chain uses OSI root SPXW, not SPX.
-
-    Without chain evidence SPXW must not alias to $SPX (no invented weekly map).
-    With the vendor chain, the same root matches $SPX and still does not match SPY.
-    """
-    from app.options.order_flow.streaming import _contract_matches_underlying
-
-    weekly = "SPXW  260904C07735000"
-    assert _contract_matches_underlying(weekly, "$SPX") is False
-    assert _contract_matches_underlying(weekly, "SPY") is False
-
-    cap = {
-        "ticker": "$SPX",
-        "expiry": "2026-09-04",
-        "contracts": [
-            {"symbol": weekly},
-        ],
-    }
-
-    def _nearest(db_path, ticker, *, on_or_after_expiry):
-        tk = (ticker or "").strip().upper()
-        if tk in ("$SPX", "SPX"):
-            return cap
-        return None
-
-    import calibration.complete_chain_capture as ccc
-    import app.options.order_flow.streaming as ofs
-    orig = ccc.nearest_complete_chain_capture
-    ccc.nearest_complete_chain_capture = _nearest
-    try:
-        db = "unused.db"
-        assert ofs._contract_matches_underlying(weekly, "$SPX", chain_db_path=db) is True
-        assert ofs._contract_matches_underlying(weekly, "SPY", chain_db_path=db) is False
-        assert ofs._contract_matches_underlying("SPY   260904C00772000", "$SPX", chain_db_path=db) is False
-    finally:
-        ccc.nearest_complete_chain_capture = orig
+def test_a_contract_is_no_other_tickers_and_a_ticker_with_no_chain_has_none():
+    cde = _CDE["chain"][0]["symbol"]
+    assert not server._contract_is_for(cde, "C")              # CDE's root starts with C
+    assert not server._contract_is_for(_TSLA["chain"][0]["symbol"], "$SPX")
+    assert not server._contract_is_for(_SPX["contracts"][0]["symbol"], "SPY")
+    assert server._contract_ticker("ZZZ   261016C00001000") is None
+    assert not server._contract_is_for(None, "$SPX")
 
 
-def test_public_contract_matches_underlying_wrapper_resolves_the_weekly_root(monkeypatch):
-    """server.py's streaming-overlay wiring (_desired_option_symbols_for_ticker,
-    _tick_ticker) uses the PUBLIC contract_matches_underlying wrapper so
-    it does not need to know about DB_PATH/chain_db_path plumbing. Independent-review finding
-    (2026-09-12): a bare vendor-root == ticker-root equality check would silently exclude this
-    exact SPXW/$SPX case -- proving the wrapper reaches the SAME chain-aware fallback as
-    _contract_matches_underlying's own test above, not a narrower reimplementation."""
-    from app.options.order_flow.streaming import contract_matches_underlying
-
-    weekly = "SPXW  260904C07735000"
-    cap = {"ticker": "$SPX", "expiry": "2026-09-04", "contracts": [{"symbol": weekly}]}
-
-    def _nearest(db_path, ticker, *, on_or_after_expiry):
-        tk = (ticker or "").strip().upper()
-        return cap if tk in ("$SPX", "SPX") else None
-
-    import calibration.complete_chain_capture as ccc
-    orig = ccc.nearest_complete_chain_capture
-    ccc.nearest_complete_chain_capture = _nearest
-    try:
-        assert contract_matches_underlying(weekly, "$SPX") is True
-        assert contract_matches_underlying(weekly, "SPY") is False
-        assert contract_matches_underlying("SPY   260904C00772000", "$SPX") is False
-    finally:
-        ccc.nearest_complete_chain_capture = orig
-
-
-def test_public_contract_matches_underlying_wrapper_survives_a_missing_db_path(monkeypatch):
-    """If `from db import DB_PATH` itself fails, the wrapper must degrade to the fast
-    root-equality path rather than raising -- ownership checks are best-effort, never a hard
-    dependency on the DB module being importable."""
-    from app.options.order_flow.streaming import contract_matches_underlying
-    import builtins
-
-    real_import = builtins.__import__
-
-    def _blocked_import(name, *args, **kwargs):
-        if name == "db":
-            raise ImportError("simulated: db module unavailable")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", _blocked_import)
-    assert contract_matches_underlying("SPY   260904C00772000", "SPY") is True
-    assert contract_matches_underlying("SPY   260904C00772000", "QQQ") is False
-
-
+def test_the_streamed_contract_follows_the_ticker_by_the_same_rule(monkeypatch):
+    """The page's ticker gets its front expiry's at-the-money call, for an index and a single
+    name alike; a contract already desired for the ticker is kept (an SPXW contract for $SPX)."""
+    chosen = []
+    monkeypatch.setattr(ofs, "set_active_option_contract", lambda sym: chosen.append(sym) or True)
+    monkeypatch.setattr(server.lmp, "daemon_status", lambda: None)
+    for tk in _CHAINS:
+        ofs._active_option_contract = None
+        server._ensure_default_option_contract(tk)
+        with server._terrain_cache_lock:
+            want = server._terrain_cache[tk]["_default_contract"]
+        assert want and chosen[-1] == want and server._contract_is_for(want, tk)
+    weekly = next(c["symbol"] for c in _SPX["contracts"] if c["symbol"].startswith("SPXW"))
+    ofs._active_option_contract = weekly
+    n = len(chosen)
+    server._ensure_default_option_contract("$SPX")
+    assert len(chosen) == n                               # kept: it is $SPX's

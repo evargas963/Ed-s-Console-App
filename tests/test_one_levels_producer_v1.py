@@ -40,6 +40,7 @@ def _at_capture(pin_clock):
 def _put_chain(*, fetched_ts=None, viewed=True):
     with server._terrain_cache_lock:
         server._terrain_cache[TK] = {"_chain": _CONTRACTS,
+                                     "_contract_symbols": frozenset(c["symbol"] for c in _CONTRACTS),
                                      "_chain_fetched_ts": time.time() if fetched_ts is None else fetched_ts}
     if viewed:
         server._note_gamma_surface_demand(TK)

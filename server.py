@@ -751,6 +751,7 @@ from micro_structure import Candle
 # the server AT BOOT -- loud, immediate, and impossible to trade through unnoticed. This
 # also ends the fail-open/fail-closed argument (Cursor audit 2026-07-20): the runtime
 # path now has no failure mode to pick a policy for.
+from app.options.contracts.default import front_atm_call
 from calibration.complete_chain_capture import (
     COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
     board_tickers,
@@ -1669,7 +1670,7 @@ def _next_gamma_surface_seq(tk: str) -> int:
     return n
 
 
-def _desired_stream_greeks_for_ticker(tk: str) -> dict:
+def _desired_stream_greeks_for_ticker(tk: str, listed: "frozenset | None" = None) -> dict:
     """Every currently-live streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME entry for a
     contract belonging to `tk` — the PRIMARY/pinned contract AND every ADDITIONALLY-
     desired contract (RC-UI-3 multi-contract coverage), gathered FRESH on every call.
@@ -1686,22 +1687,18 @@ def _desired_stream_greeks_for_ticker(tk: str) -> dict:
     re-querying it for every currently-desired symbol on every refresh, no matter which
     one triggered it, always reconstructs every symbol's latest known state, and a symbol
     whose coverage has ended is correctly absent (never lingers as a stale entry here).
-
-    Native contract identity uses app.options.order_flow.streaming.contract_matches_underlying
-    (chain-aware: a vendor root that genuinely differs from the ticker's own root, e.g.
-    Schwab's $SPX -> SPXW weekly, is still recognized via the nearest banked complete chain) —
-    independent-review finding (2026-09-12): a bare vendor-root == ticker-root equality check
-    silently excludes exactly this legitimate case."""
+    A contract is the ticker's when Schwab listed it in the ticker's chain: `listed`, the chain
+    being published, else the held one."""
     from app.options.order_flow.state import get_stream_greeks
     out: dict = {}
-    for sym in _desired_option_symbols_for_ticker(tk):
+    for sym in _desired_option_symbols_for_ticker(tk, listed):
         greeks = get_stream_greeks(sym)
         if greeks:
             out[sym] = greeks
     return out
 
 
-def _desired_option_symbols_for_ticker(tk: str) -> "list[str]":
+def _desired_option_symbols_for_ticker(tk: str, listed: "frozenset | None" = None) -> "list[str]":
     """Every option-contract symbol this daemon currently DESIRES for `tk` — the primary/
     pinned contract AND every additionally-desired contract (RC-UI-3 multi-contract
     coverage) — regardless of whether a stream tick has landed for it yet.
@@ -1714,14 +1711,14 @@ def _desired_option_symbols_for_ticker(tk: str) -> "list[str]":
     set on its own, so a caller can tell "requested, awaiting first tick" (PENDING) apart
     from "never desired at all" (UNAVAILABLE)."""
     from app.options.order_flow.streaming import (
-        get_active_option_contract, get_active_option_contracts, contract_matches_underlying)
+        get_active_option_contract, get_active_option_contracts)
     out: "list[str]" = []
     candidates = list(get_active_option_contracts())
     primary = get_active_option_contract()
     if primary:
         candidates.append(primary)
     for sym in candidates:
-        if sym and sym not in out and contract_matches_underlying(sym, tk):
+        if sym and sym not in out and (sym in listed if listed is not None else _contract_is_for(sym, tk)):
             out.append(sym)
     return out
 
@@ -1775,10 +1772,8 @@ def _option_contract_admission_summary(tk: str) -> dict:
     # Requested by the view but left out by the shared Schwab socket's budget
     # (stream_spine.OPTION_CONTRACTS_MAX_HELD): a capacity decision, reported as itself --
     # never as pending (it is not coming) nor as a vendor rejection (the vendor never saw it).
-    from app.options.order_flow.streaming import (
-        contract_matches_underlying, get_option_contracts_over_budget)
-    not_admitted = sorted(s for s in get_option_contracts_over_budget()
-                          if contract_matches_underlying(s, tk))
+    from app.options.order_flow.streaming import get_option_contracts_over_budget
+    not_admitted = sorted(s for s in get_option_contracts_over_budget() if _contract_is_for(s, tk))
     return {
         "daemon_available": daemon_available,
         "admitted": sorted(admitted), "active": sorted(active), "observed": sorted(observed),
@@ -2073,8 +2068,38 @@ _levels_locks_guard = threading.Lock()
 _reprice_dirty: "set[str]" = set()
 _reprice_running: "set[str]" = set()
 _reprice_guard = threading.Lock()
-#: option contract symbol -> the cached ticker it belongs to (found once per symbol)
-_option_ticker: "dict[str, str]" = {}
+
+
+def _contract_is_for(sym: "str | None", tk: str) -> bool:
+    """An option contract belongs to `tk` when Schwab listed it in `tk`'s chain -- the same rule
+    for every instrument, whatever the contract's root (SPXW and SPX are both $SPX's)."""
+    with _terrain_cache_lock:
+        return bool(sym) and sym in ((_terrain_cache.get(tk) or {}).get("_contract_symbols") or ())
+
+
+def _contract_ticker(sym: str) -> "str | None":
+    """The ticker whose chain Schwab listed `sym` in, or None."""
+    with _terrain_cache_lock:
+        return next((tk for tk, p in _terrain_cache.items() if sym in (p.get("_contract_symbols") or ())), None)
+
+
+def _ensure_default_option_contract(tk: str) -> None:
+    """The option contract whose OPTIONS_BOOK streams follows the page's ticker: the one already
+    desired or held by the daemon when it is this ticker's, else the at-the-money call of the
+    ticker's front expiry; cleared when the ticker has none. The operator's POST
+    /api/streaming/active-option-contract still wins until the ticker changes."""
+    from app.options.order_flow.streaming import (
+        clear_active_option_contract, get_active_option_contract, set_active_option_contract)
+    if _contract_is_for(get_active_option_contract(), tk):
+        return
+    held = ((lmp.daemon_status() or {}).get("held") or {}).get("OPTIONS_BOOK") or []
+    with _terrain_cache_lock:
+        default = (_terrain_cache.get(tk) or {}).get("_default_contract")
+    sym = held[0] if held and _contract_is_for(held[0], tk) else default
+    if sym:
+        set_active_option_contract(sym)
+    elif get_active_option_contract():
+        clear_active_option_contract(reason="no_contract_for_ticker")
 
 
 def _levels_lock(tk: str) -> threading.Lock:
@@ -2114,7 +2139,11 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         else:
             spot, spot_source, spot_ts = resolve_spot(tk)
         prev_spot = payload.get("spot")
-        streamed = _desired_stream_greeks_for_ticker(tk)
+        if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
+            payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")),
+                           _default_contract=front_atm_call(chain, spot))
+        listed = payload.get("_contract_symbols") or frozenset()
+        streamed = _desired_stream_greeks_for_ticker(tk, listed)
         priced, n_live = overlay_streamed_contract_fields(chain, _live_stream_greeks(streamed))
         live_syms = _overlaid_symbols(chain, priced)
         snap = compute_terrain(tk, priced, spot, now=(
@@ -2149,7 +2178,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                            stream_overlay_computed_ts_utc=time.time())
             _stamp_gamma_surface_cell_stream_state(
                 surface, streamed, set(live_syms), read_producer_rejected_option_contracts(),
-                set(_desired_option_symbols_for_ticker(tk)),
+                set(_desired_option_symbols_for_ticker(tk, listed)),
                 daemon_available=is_option_producer_daemon_available())
             payload["_gamma_surface"] = surface
         with _terrain_cache_lock:
@@ -2205,15 +2234,7 @@ def _tick_ticker(sym: str) -> "str | None":
     from instrument_identity import vendor_option_root
     if not vendor_option_root(sym):
         return ticker_storage_key(sym)
-    tk = _option_ticker.get(sym)
-    if tk is None:
-        from app.options.order_flow.streaming import contract_matches_underlying
-        with _terrain_cache_lock:
-            keys = list(_terrain_cache)
-        tk = next((k for k in keys if contract_matches_underlying(sym, k)), None)
-        if tk is not None:
-            _option_ticker[sym] = tk
-    return tk
+    return _contract_ticker(sym)
 
 
 def _on_stream_tick(sym: str) -> None:
@@ -2883,7 +2904,7 @@ def get_options_tape(ticker: str = Query(...),
     already resolves for the gamma-surface overlay), merged newest-first and capped at
     `limit` across the whole merge, not per-contract."""
     from app.options.order_flow.streaming import (
-        get_active_option_contract, get_active_option_contracts, contract_matches_underlying)
+        get_active_option_contract, get_active_option_contracts)
     from app.options.order_flow.history import tape_rows_for_symbol
 
     tk = ticker_storage_key(_required_ticker(ticker))
@@ -2902,7 +2923,7 @@ def get_options_tape(ticker: str = Query(...),
         seen: set[str] = set()
         symbols = []
         for sym in candidates:
-            if sym and sym not in seen and contract_matches_underlying(sym, tk):
+            if sym and sym not in seen and _contract_is_for(sym, tk):
                 seen.add(sym)
                 symbols.append(sym)
 
@@ -3530,7 +3551,7 @@ async def get_changes(ticker: str = Query(...)):
     from app.options.order_flow.streaming import set_streaming_active_ticker
 
     t = ticker_storage_key(_required_ticker(ticker))
-    _get_route_offload_executor().submit(set_streaming_active_ticker, t)
+    _get_route_offload_executor().submit(lambda: (set_streaming_active_ticker(t), _ensure_default_option_contract(t)))
     client = push_changes.subscribe(t)
 
     async def event_generator():

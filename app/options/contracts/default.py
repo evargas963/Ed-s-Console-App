@@ -1,19 +1,14 @@
-"""Default snapshot-collectable option contract for one underlying.
-
-Uses a banked COMPLETE chain capture and the vendor's own ``symbol`` field.
-Never constructs an OSI string. Quote-only / unchainable names yield None.
+"""Default option contract for one underlying: the at-the-money call of its front expiry, from
+the chain Schwab sent for it. Uses the vendor's own ``symbol`` field; never constructs an OSI
+string. A ticker with no chain or no live price has none.
 """
 from __future__ import annotations
 
 from datetime import timedelta
-from pathlib import Path
 from typing import Any
 
-from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_number
 from time_et import now_et, session_close_mins_for_et_date
-
-from calibration.complete_chain_capture import nearest_complete_chain_capture
 
 
 def _expiry_cutoff_et() -> str:
@@ -46,14 +41,9 @@ def pick_atm_call_symbol(contracts: list[Any], spot: float | None) -> str | None
     return best[1] if best else None
 
 
-def default_option_contract(ticker: str, *, chain_db_path: str | Path) -> str | None:
-    """ATM CALL on the nearest still-listed expiry, or None if no banked chain."""
-    tk = ticker_storage_key(ticker)
-    if not tk:
-        return None
-    cap = nearest_complete_chain_capture(
-        chain_db_path, tk, on_or_after_expiry=_expiry_cutoff_et()
-    )
-    if not cap:
-        return None
-    return pick_atm_call_symbol(cap.get("contracts") or [], cap.get("spot"))
+def front_atm_call(chain: list[dict], spot: float | None) -> str | None:
+    """The at-the-money call of the chain's nearest expiry still trading."""
+    cutoff = _expiry_cutoff_et()
+    front = min((str(c.get("expirationDate") or "")[:10] for c in chain
+                 if str(c.get("expirationDate") or "")[:10] >= cutoff), default=None)
+    return pick_atm_call_symbol([c for c in chain if str(c.get("expirationDate") or "")[:10] == front], spot)

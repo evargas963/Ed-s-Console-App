@@ -36,14 +36,9 @@ import queue
 import logging
 import threading
 import time
-from pathlib import Path
 from typing import Any, Callable, Optional
 
-from instrument_identity import (
-    option_underlying_root,
-    ticker_storage_key,
-    vendor_option_root,
-)
+from instrument_identity import ticker_storage_key
 import push_changes
 from stream_spine import (
     EQUITY_SYMBOLS_MAX_HELD,
@@ -345,69 +340,6 @@ async def _feed_loop() -> None:
 
 
 
-def _contract_matches_underlying(
-    contract: str | None, ticker: str, *, chain_db_path: Path | str | None = None,
-) -> bool:
-    """True when the vendor OSI symbol is for this exact underlying.
-
-    Identity is the OCC/Schwab option root already in the vendor ``symbol``
-    versus ``option_underlying_root`` (ticker_storage_key + BROKER_INDEX_BARE_ROOTS).
-    Prefix match is not identity: ``CDE   260904C00005000`` is not ticker ``C``.
-
-    Weekly index roots are not invented (``SPXW`` is not aliased to ``SPX``).
-    When ``chain_db_path`` is given, a vendor root that actually appears on the
-    ticker's nearest banked complete chain also matches — that is Schwab's
-    ``$SPX`` → ``SPXW`` weekly root, read from the chain, not a hardcoded map.
-    """
-    if not contract or not ticker:
-        return False
-    osi_root = vendor_option_root(contract)
-    und_root = option_underlying_root(ticker)
-    if osi_root and und_root and osi_root == und_root:
-        return True
-    if not osi_root or chain_db_path is None:
-        return False
-    try:
-        from app.options.contracts.default import _expiry_cutoff_et
-        from calibration.complete_chain_capture import nearest_complete_chain_capture
-        cap = nearest_complete_chain_capture(
-            chain_db_path, ticker, on_or_after_expiry=_expiry_cutoff_et(),
-        )
-    except Exception:
-        return False
-    if not cap:
-        return False
-    for raw in cap.get("contracts") or []:
-        if not isinstance(raw, dict):
-            continue
-        if vendor_option_root(str(raw.get("symbol") or "")) == osi_root:
-            return True
-    return False
-
-
-def contract_matches_underlying(contract: str | None, ticker: str) -> bool:
-    """Public wrapper for `_contract_matches_underlying` that resolves the chain DB path
-    itself, for callers outside this module (server.py's streaming-overlay wiring) that
-    should not need to know about DB_PATH plumbing to ask "does this option contract
-    belong to this ticker".
-
-    Independent-review finding (2026-09-12): server.py's own bare
-    `vendor_option_root(contract) == option_underlying_root(ticker)` equality check silently
-    excludes a valid contract whose vendor root genuinely differs from the underlying's
-    (Schwab's $SPX -> SPXW weekly root is the canonical example) -- the exact case
-    `_contract_matches_underlying`'s chain-aware fallback already exists to handle, and which
-    this repo's own default-contract selection already relies on
-    (`_ensure_default_option_contract_for_ticker`). Reusing it here means a legitimate weekly
-    or adjusted-root contract's streamed Greeks are not silently dropped from the overlay."""
-    chain_db: Path | str | None = None
-    try:
-        from db import DB_PATH
-        chain_db = DB_PATH
-    except Exception:
-        chain_db = None
-    return _contract_matches_underlying(contract, ticker, chain_db_path=chain_db)
-
-
 def get_active_option_contract() -> Optional[str]:
     """The DESIRED option contract symbol (this daemon's own signal), or None.
 
@@ -440,47 +372,6 @@ def clear_active_option_contract(*, reason: str) -> None:
     _option_streaming_last_update_ts = None
     _wanted_changed()
 
-
-def _ensure_default_option_contract_for_ticker(ticker: str) -> None:
-    """Server-owned collectable contract so OPTIONS_BOOK is not browser-gated.
-
-    Operator POST /api/streaming/active-option-contract still wins. This only
-    fills an empty slot or replaces a leftover contract from a different underlying.
-    A foreign contract with no replacement is CLEARED, not retained.
-    """
-    global _active_option_contract
-    chain_db: Path | str | None = None
-    try:
-        from db import DB_PATH
-        chain_db = DB_PATH
-    except Exception:
-        chain_db = None
-    if _contract_matches_underlying(
-        _active_option_contract, ticker, chain_db_path=chain_db,
-    ):
-        return
-    # After a console restart: keep the contract the daemon still holds, if it is this ticker's
-    held = ((_lmp.daemon_status() or {}).get("held") or {}).get("OPTIONS_BOOK") or []
-    signaled = held[0] if held else None
-    if _contract_matches_underlying(signaled, ticker, chain_db_path=chain_db):
-        set_active_option_contract(signaled)
-        return
-    try:
-        from app.options.contracts.default import default_option_contract
-        if chain_db is None:
-            from db import DB_PATH
-            chain_db = DB_PATH
-        sym = default_option_contract(ticker, chain_db_path=chain_db)
-    except Exception as e:
-        log.debug("default option contract lookup failed: %s", e)
-        if _active_option_contract:
-            clear_active_option_contract(reason="lookup_failed_foreign_cleared")
-        return
-    if not sym:
-        if _active_option_contract:
-            clear_active_option_contract(reason="no_replacement_foreign_cleared")
-        return
-    set_active_option_contract(sym)
 
 #: Which stocks/indexes a screen shows a live price for, by source. The daemon streams its
 #: fixed --symbols roster only; everything else is requested here (the no-fallback rule
@@ -556,7 +447,6 @@ def set_streaming_active_ticker(ticker: str) -> bool:
         return False
     old = [_active_ticker] if _active_ticker else []
     if _active_ticker == t:
-        _ensure_default_option_contract_for_ticker(t)
         return True
     _log_stream("STREAM_RESUBSCRIBE_START", old=old, new=[t])
     forget_unsubscribed_symbols(old, [t])
@@ -565,7 +455,6 @@ def set_streaming_active_ticker(ticker: str) -> bool:
     _streaming_last_update_ts = None
     log.info("Live-plane feed active ticker -> %s", t)
     _log_stream("STREAM_RESUBSCRIBE_DONE", ticker=t)
-    _ensure_default_option_contract_for_ticker(t)
     return True
 
 

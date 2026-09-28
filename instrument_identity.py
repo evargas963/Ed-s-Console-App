@@ -12,8 +12,6 @@ Do **not** strip `$` for DB retrieval or anchor keys intended to hit those rows.
 P1 repair: some Schwab **index** symbols are persisted with a leading `$` while anchors,
 APIs, or human input use the bare root (`SPX` vs `$SPX`). For exact SQLite joins with
 `price_bars_1m`, bare roots listed in ``BROKER_INDEX_BARE_ROOTS`` map to the stored form.
-Source: ``schwab_full_field_inventory.py`` fallback index tuple labels SPX/DJI/COMPX;
-``market_context.py`` uses ``$VIX`` / ``$VXN`` / ``$RVX`` for vol-index fetches.
 """
 from __future__ import annotations
 
@@ -64,21 +62,3 @@ def vendor_option_root(symbol: str | None) -> str:
     if not raw[6:12].isdigit() or raw[12] not in "CP" or not raw[13:].isdigit():
         return ""
     return raw[:6].rstrip()
-
-
-def option_underlying_root(ticker: str | None) -> str:
-    """Ticker root to compare against ``vendor_option_root``.
-
-    Uses ``ticker_storage_key`` and the existing ``BROKER_INDEX_BARE_ROOTS`` alias
-    set. ``$SPX`` on disk is the same instrument as OSI root ``SPX``. Weekly
-    suffix roots (``SPXW``) are not invented here.
-    """
-    key = ticker_storage_key(ticker)
-    if not key:
-        return ""
-    if key.startswith("$"):
-        bare = key[1:]
-        if bare in BROKER_INDEX_BARE_ROOTS:
-            return bare
-    return key
-
