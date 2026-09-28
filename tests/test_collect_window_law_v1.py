@@ -12,6 +12,7 @@ classic cash RTH [570,960) nor vendor extended hours. MEASURED before the lock: 
 """
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import sys
@@ -32,12 +33,12 @@ from time_et import (  # noqa: E402
     is_collect_window_bar_end_ts_utc,
 )
 
+from micro_structure import Candle  # noqa: E402
 from tests.conftest import most_recent_trading_day_et  # noqa: E402
 
 
-def _bar(ts_end: float, px: float = 100.0, vol: float = 10.0) -> dict:
-    return {"datetime": (ts_end - 60.0) * 1000.0, "open": px, "high": px, "low": px,
-            "close": px, "volume": vol}
+def _bar(ts_end: float, px: float = 100.0, vol: float = 10.0) -> Candle:
+    return Candle(ts=ts_end - 60.0, open=px, high=px, low=px, close=px, volume=vol)
 
 
 def test_the_authority_boundary_table():
@@ -72,7 +73,7 @@ def test_the_seam_blocks_outside_window_writes(tmp_path):
         _bar(mon(16, 30)),    # post-window — must die
         _bar(datetime(2026, 8, 1, 11, 0, tzinfo=ET).timestamp()),  # Saturday — must die
     ]
-    written = db.upsert_1m_bars("SPY", bars, refresh_governed_outcomes=False)
+    written = db.upsert_1m_bars("SPY", bars)
     assert written == 3, f"seam wrote {written} of 7 — the law admits exactly 3 of these bars"
     con = sqlite3.connect(str(tmp_path / "law.db"))
     got = sorted(r[0] for r in con.execute(
@@ -81,6 +82,29 @@ def test_the_seam_blocks_outside_window_writes(tmp_path):
     assert got == sorted([mon(9, 16), mon(12, 0), mon(16, 15)]), (
         "an outside-window bar reached the table through the seam"
     )
+
+
+def test_the_seam_refuses_and_counts_off_grid_bars(tmp_path, caplog):
+    """A bar whose start is off the minute grid is refused and counted, never snapped to the
+    nearest minute. Stand-in: the first real SPY bar of
+    tests/fixtures/real_spy_1m_bars_2026_09_24_25.json with its start shifted by 7 seconds."""
+    from db import EdDB
+
+    fx = json.loads((REPO / "tests" / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
+                    .read_text(encoding="utf-8"))
+    b = fx["bars"][0]
+    real = Candle(ts=b["timestamp"] / 1000.0, open=b["open"], high=b["high"], low=b["low"],
+                  close=b["close"], volume=b["volume"])
+    shifted = Candle(ts=real.ts + 7.0, open=real.open, high=real.high, low=real.low,
+                     close=real.close, volume=real.volume)
+    db = EdDB(str(tmp_path / "grid.db"))
+    with caplog.at_level("WARNING", logger="db"):
+        assert db.upsert_1m_bars("SPY", [shifted]) == 0, "an off-grid bar was written"
+    assert any("1 bar(s) off the minute grid refused" in r.getMessage() for r in caplog.records)
+    con = sqlite3.connect(str(tmp_path / "grid.db"))
+    assert con.execute("SELECT COUNT(*) FROM price_bars_1m").fetchone()[0] == 0
+    con.close()
+    assert db.upsert_1m_bars("SPY", [real]) == 1, "the same bar on the grid is in the window"
 
 
 def test_completeness_grid_is_the_law_grid(tmp_path):

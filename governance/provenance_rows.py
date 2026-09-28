@@ -111,21 +111,6 @@ ROWS: tuple[Row, ...] = (
         justification='Assembles the terrain payload (regime, walls, pin, HVL, max pain, charm walls) from one chain; no model stack.',
     ),
     Row(
-        file='calibration/schema.py', derivation='_migrate_calibration_decision_log_columns', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='DDL migration: takes a sqlite3.Connection, ADD COLUMN on calibration_decision_log for any missing nullable columns under the current schema. Persistence-only; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/schema.py', derivation='_migrate_calibration_pending_index', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='DDL migration: takes a sqlite3.Connection, CREATE INDEX IF NOT EXISTS on the pending rows index. Persistence-only; no Schwab wire derivation.',
-    ),
-    Row(
-        file='calibration/schema.py', derivation='_migrate_calibration_unique_ticker_decision_ts', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='DDL migration: takes a sqlite3.Connection, alters calibration_decision_log to add the (ticker, decision_ts_utc) unique constraint. Persistence-only; no Schwab wire derivation.',
-    ),
-    Row(
         file='live_market_plane.py', derivation='reset_sse_push_cursor', disposition='ALLOWLISTED',
         allowlist_id='mega1_sqlite_internal',
         justification='Reads persisted snapshot SQLite rows, not Schwab wire JSON (reset_sse_push_cursor).',
@@ -792,11 +777,6 @@ ROWS: tuple[Row, ...] = (
         file='server.py', derivation='schwab_capability_state', disposition='DERIVED',
         producer_refs=('schwab_client.py:build_client_from_token',),
         justification='RC-514: capability verdict for /api/health, taken from the canonical client and the same _client cache get_client() uses.',
-    ),
-    Row(
-        file='snapshot_access.py', derivation='require_snapshot_timeframe', disposition='ALLOWLISTED',
-        allowlist_id='mega1_sqlite_internal',
-        justification='Enforces explicit timeframe on snapshot SQL reads.',
     ),
     Row(
         file='terrain_engine.py', derivation='_dte_of', disposition='SCHWAB_LEAF',

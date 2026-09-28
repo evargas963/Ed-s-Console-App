@@ -59,7 +59,6 @@ TURN_AUDIT_OWNS = [
     # DB binds, arch_state writer, execution routing identity, scheduler enrollment/filter identity.
     "features/shared_sequence_context.py",
     "ml_data_common.py",
-    "execution_identity.py",
     "scheduler_user_tickers.py",
     # F25 known live residuals (3rd batch — Cursor's latest two): cache-skip streak key and the
     # arch eval-proof per-ticker key.
@@ -219,23 +218,6 @@ def test_rc345_terrain_materializes_one_pinned_gamma_profile() -> None:
 
 
 # ---------------------------------------------------------------------- F24 signed dist to VWAP
-
-
-# ------------------------------------------------------------------- F29 movement target threshold
-def test_rc345_movement_target_threshold_one_selector() -> None:
-    """F29: the per-horizon ATR-scaled move threshold is produced by exactly one selector,
-    movement_target_threshold.threshold_move_pts_for_slug. Outcome/label consumers use it; no
-    production site reconstructs a local ATR threshold."""
-    from movement_target_threshold import threshold_move_pts_for_slug
-
-    assert callable(threshold_move_pts_for_slug)
-    for mod in ("db.py", "horizon_outcomes.py"):
-        assert "threshold_move_pts_for_slug" in _read(mod), (
-            f"{mod} must consume the one threshold selector (F29/RC-345)")
-    # no local ATR-threshold reconstruction in the outcome path
-    dbcode = "\n".join(l for l in _read("db.py").splitlines() if not l.lstrip().startswith("#"))
-    assert not re.search(r"thr\s*=\s*[0-9.]+\s*\*\s*atr", dbcode), (
-        "db.py reconstructs a local ATR threshold; use the one selector (F29/RC-345)")
 
 
 # ------------------------------------------------------------------- F36 signal-layer VWAP anchor

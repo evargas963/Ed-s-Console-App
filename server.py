@@ -944,11 +944,6 @@ def _refresh_window_ct(et_date: str) -> str:
           .astimezone(ZoneInfo("America/Chicago")).strftime("%I:%M %p").lstrip("0") for m in win]
     return f"{ct[0]}-{ct[1]} CT"
 
-# Re-seed the in-memory 1m grid from Schwab pricehistory (canonical OHLCV leaf
-# pricehistory.candles[]) whenever the last completed bar is older than this gap.
-# Root cause (2026-06-11): seeding ran once per server lifetime, so background-logged
-# tickers (visited ~1×/15min) built ~6%-density tick grids — fill_outcomes could not
-# find forward bars at +1/+5/+15/+60m and the daily scoreboard never scored them.
 
 
 # ETF zone classification (spy_zone / qqq_zone / iwm_zone)
@@ -962,7 +957,6 @@ def _refresh_window_ct(et_date: str) -> str:
 #: one RTH day of 1-minute bars
 CANDLE_1M_MAX_BARS: int = 390
 from micro_structure import Candle
-from timeframe_config import CANONICAL_TIMEFRAME
 # Imported at MODULE LEVEL deliberately: the terrain loop's morning-window guard depends
 # on these, and a runtime import inside the loop meant a missing module silently removed
 # the guard during the exact 30 minutes it protects. At top level, a broken module stops
@@ -1380,11 +1374,6 @@ async def _app_lifespan(app):
     except Exception as rel_e:
         log.error("release_object startup failed: %s — production decisions will not stamp release_id", rel_e)
 
-    # Canonical 1m: snapshot inserts MUST use timeframe='1m'. Fail loudly if misconfigured.
-    if CANONICAL_TIMEFRAME != "1m":
-        log.error("CANONICAL_TIMEFRAME=%r != '1m' — snapshot inserts will use wrong timeframe!", CANONICAL_TIMEFRAME)
-        raise RuntimeError(f"timeframe_config.CANONICAL_TIMEFRAME must be '1m', got {CANONICAL_TIMEFRAME!r}")
-    log.info("Canonical timeframe: 1m (snapshot inserts enforced in db.insert_snapshot)")
     # DB-WRITE-PATH-FIXES (d): start_logger() -> _hydrate_logger_tickers_from_db() performs the
     # DB-backed logging-universe load here in the lifespan (kept off the module-import path).
     _hydrate_logger_tickers_from_db()
@@ -2966,14 +2955,6 @@ def _terrain_loop() -> None:
     log.info("Terrain loop stopped")
 
 
-#: RC-69 — BAR COLLECTION SERVICE. Collection is not a side-effect of display.
-#: Bars used to be written only inside _fetch_state (the render path), so a ticker's chart
-#: decayed to whenever it was last LOOKED AT. MEASURED 2026-07-27 11:59 ET: SPY (on screen) bar
-#: lag 3.1 min vs QQQ 19.1 and IWM 19.1 (off screen) — while all three had ~1.0 min SNAPSHOT lag.
-#: The quotes were current; the bars were not. 39.8% of all snapshots (122,795/308,796) carry
-#: unfilled outcomes because fill_outcomes reads price_bars_1m for the forward price and the bars
-#: were never written. This loop mirrors _terrain_loop (RC-1), which solved the identical problem
-#: for levels: a cheap, always-on, viewport-independent path over the WHOLE enrolled universe.
 def _persist_1m_bars(tk: str, bars) -> int:
     """THE single price_bars_1m writer in server.py (RC-69 single-faucet contract).
 

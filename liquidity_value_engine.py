@@ -80,44 +80,13 @@ def liquidity_zone_tradeable_score(
     return round(3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen, 2)
 
 
-_SCHWAB_PRICEHISTORY_SOURCE = "schwab_pricehistory"
-
-
 def _resolve_bar_timestamp(d: dict) -> Optional[Any]:
-    """
-    Bar time key resolution aligned with market_data_adapter.normalize_bar.
-
-    Schwab pricehistory bars require the datetime leaf (fail-closed when absent).
-    Non-Schwab bars may use timestamp, datetime, date, or ts.
-    """
-    source = str(d.get("source") or "")
-    if source == _SCHWAB_PRICEHISTORY_SOURCE:
-        if d.get("datetime") is not None:
-            return d.get("datetime")
-        if d.get("timestamp") is not None:
-            return d.get("timestamp")
-        return None
-    if (
-        d.get("datetime") is not None
-        and d.get("open") is not None
-        and d.get("high") is not None
-        and d.get("low") is not None
-        and d.get("close") is not None
-        and d.get("timestamp") is None
-    ):
-        return d.get("datetime")
-    for key in ("timestamp", "datetime", "date", "ts"):
+    """Bar time: the first of timestamp, date, ts present on the bar."""
+    for key in ("timestamp", "date", "ts"):
         val = d.get(key)
         if val is not None:
             return val
     return None
-
-
-def _schwab_pricehistory_bar_missing_datetime(d: dict) -> bool:
-    return (
-        str(d.get("source") or "") == _SCHWAB_PRICEHISTORY_SOURCE
-        and _resolve_bar_timestamp(d) is None
-    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -140,8 +109,6 @@ def _bars_to_list(bars) -> list[dict]:
     if is_df:
         for _, row in bars.iterrows():
             d = row.to_dict() if hasattr(row, "to_dict") else dict(row)
-            if _schwab_pricehistory_bar_missing_datetime(d):
-                continue
             ts = _resolve_bar_timestamp(d)
             if ts is None:
                 continue
@@ -173,8 +140,6 @@ def _bars_to_list(bars) -> list[dict]:
     for b in bars:
         if isinstance(b, dict):
             row = b
-            if _schwab_pricehistory_bar_missing_datetime(row):
-                continue
             ts = _resolve_bar_timestamp(row)
             if ts is None:
                 continue

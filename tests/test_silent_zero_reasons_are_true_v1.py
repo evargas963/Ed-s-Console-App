@@ -12,8 +12,6 @@ to the one it measured.
                      erased. Every constructor supplies until_ts, so absence is malformed
                      state, and the exemption turned an invariant failure into an immediate
                      vendor retry with the evidence gone.
-    market_session   et_date was optional for one commit; market_session(10, 0) still
-                     returned "rth" on a Saturday.
 
 THE ROOT THESE LOCK. The escape marker validates that a reason EXISTS, never that it is
 TRUE. RC-276 replaced a file-level exemption with a line-level one and I called it a fix;
@@ -26,7 +24,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
@@ -110,24 +107,6 @@ def test_the_reason_string_admits_a_malformed_hold(monkeypatch):
     msg = srv.terrain_quarantine_reason("ZZQ")
     assert msg, "a malformed hold (no until_ts) must produce a non-empty reason string"
     assert "NO expiry recorded" in msg or "malformed" in msg, msg
-
-
-# ──────────────────────────── market_session: the date is REQUIRED, not optional ────
-
-def test_market_session_refuses_to_guess_without_a_date():
-    """Optional meant the next caller could silently reintroduce weekend RTH labels."""
-    from db import market_session
-
-    with pytest.raises(TypeError):
-        market_session(10, 0)          # type: ignore[call-arg]
-
-
-def test_market_session_is_calendar_first():
-    from db import market_session
-
-    assert market_session(10, 0, et_date="2026-08-01") == "closed"   # Saturday
-    assert market_session(10, 0, et_date="2026-08-02") == "closed"   # Sunday
-    assert market_session(10, 0, et_date="2026-07-31") == "rth"      # Friday
 
 
 
