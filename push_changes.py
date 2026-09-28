@@ -34,6 +34,11 @@ def unsubscribe(tk: str, c: Client) -> None:
         _clients.pop(tk, None)
 
 
+def watched() -> list[str]:
+    """The tickers a page has open now (an open push connection), on any workspace."""
+    return list(_clients)
+
+
 def changed(tk: str, kind: str) -> None:
     """Callable from any thread."""
     if _loop is not None and tk in _clients:

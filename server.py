@@ -1653,7 +1653,17 @@ def _note_gamma_surface_demand(tk: str) -> None:
 
 
 def _gamma_surface_wanted(tk: str) -> bool:
-    return (time.time() - _gamma_surface_demand.get(tk, 0.0)) < GAMMA_SURFACE_DEMAND_TTL
+    """Viewed: a page has the ticker open (whatever its workspace), or a route read it within
+    GAMMA_SURFACE_DEMAND_TTL. The same for every ticker, on the board or not."""
+    return tk in push_changes.watched() or (
+        time.time() - _gamma_surface_demand.get(tk, 0.0)) < GAMMA_SURFACE_DEMAND_TTL
+
+
+def _viewed_tickers() -> list[str]:
+    """Every viewed ticker (_gamma_surface_wanted): the levels loop refreshes each one every
+    cycle, on the board or not."""
+    return sorted({tk for tk in list(_gamma_surface_demand) if _gamma_surface_wanted(tk)}
+                  | set(push_changes.watched()))
 
 
 def _live_stream_greeks(streamed: dict) -> dict:
@@ -2440,7 +2450,7 @@ def _terrain_loop() -> None:
         # the pre-enrolled board. A snapshot of the keys, never the live dict, since
         # another thread's concurrent _note_gamma_surface_demand write must not raise
         # "dictionary changed size during iteration" here.
-        _viewed_now = [tk for tk in list(_gamma_surface_demand.keys()) if _gamma_surface_wanted(tk)]
+        _viewed_now = _viewed_tickers()
         _previewed = [tk for tk in _viewed_now if tk not in tickers]
         # Every board ticker's spot is the streamed LAST_PRICE only, so the daemon must
         # stream each one (its fixed roster is just --symbols).
