@@ -191,7 +191,7 @@
       fetchJson('/api/levels?ticker=' + q + '&tf=' + encodeURIComponent(S.tf)),
       fetchJson('/api/terrain?ticker=' + q),
       fetchJson('/api/desk/events?ticker=' + q + '&venue=' + st().bookVenue + '&tf=' + encodeURIComponent(S.tf)),
-      fetchJson('/api/liquidity-snapshot?ticker=' + q + '&snapshot=live'),
+      fetchJson('/api/liquidity-snapshot?ticker=' + q),
       fetchJson('/api/terrain/strikes?ticker=' + q),
       fetchJson('/api/forces?ticker=' + q)
     ]).then(function (r) {

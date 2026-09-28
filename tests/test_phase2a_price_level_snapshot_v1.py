@@ -244,16 +244,29 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
     assert by_id["VWAP"]["price"] == payload["vwap_series"][-1][1]
 
 
-def test_liquidity_snapshot_scopes_checkpoint_ids_away_from_canonical():
-    """A checkpoint cutoff is a different measurement, so it gets a different id."""
-    import server as srv
+def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_ids(monkeypatch):
+    """ONE-09 (2026-09-28 audit): /api/liquidity-snapshot kept its own path -- checkpoint
+    snapshots (premarket, opening, midday, afternoon) and a past-date replay that recomputed the
+    prior day, overnight, VWAP and value area from bars, and a default ("premarket") that served
+    those under "@checkpoint" ids. It serves the one snapshot now: every level it shows is the
+    /api/levels value under the same id."""
+    import json
 
-    raw = {"prev": {"pdh": 105.0}, "overnight": {"overnight_high": 104.0},
-           "orb": {"orb_high": 106.0}, "vwap": 105.5,
-           "vwap_bands": {"plus1": 106.0, "minus1": 105.0},
-           "poc": 105.2, "vah": 106.1, "val": 104.4}
-    live = {i["tag"] for i in srv._build_raw_levels_used(raw, "live")}
-    mid = {i["tag"] for i in srv._build_raw_levels_used(raw, "midday")}
-    assert "PDH" in live and "VWAP" in live
-    assert "PDH" not in mid and "PDH@checkpoint:midday" in mid
-    assert not (live & mid), "a checkpoint scope shares ids with the canonical scope"
+    import server as srv
+    import time_et as te
+
+    tape = _tape()
+    noon = datetime(2026, 8, 4, 12, 0, tzinfo=ET)
+    monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda t: tape)
+    monkeypatch.setattr(srv, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
+    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (106.0, "schwab_quote_last", 1.0))
+    monkeypatch.setattr(srv, "_liquidity_option_levels", lambda t: ([], "n/a"))
+    monkeypatch.setattr(te, "now_et", lambda: noon)
+    monkeypatch.setattr(srv, "now_et", lambda: noon)
+
+    levels = {lv["id"]: lv["price"] for lv in json.loads(bytes(srv.get_levels(ticker="SPY").body))["levels"]}
+    liq = srv.get_liquidity_snapshot(ticker="SPY")
+    used = {i["tag"]: i["value"] for i in liq["raw_levels_used"]}
+    assert used and set(used) <= set(PHASE2A_LEVEL_IDS), used
+    for tag, value in used.items():
+        assert levels[tag] == value, tag

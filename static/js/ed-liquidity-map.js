@@ -183,10 +183,7 @@
     if (!h || !stillMap(tk)) return;
     h.setAttribute('aria-busy', 'true');
     return Promise.all([
-      // snapshot=live: the endpoint's OWN default is "premarket" -- a frozen before-9:30ET
-      // snapshot, not the current session. Omitting this silently showed a pre-market-only
-      // picture all day; snapshot_type is still echoed in the header badge either way.
-      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk) + '&snapshot=live', signal),
+      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
     ]).then(function (results) {
       if (stillMap(tk)) render(h, tk, results[0], results[1]);

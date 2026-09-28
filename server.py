@@ -4331,17 +4331,10 @@ def get_levels(ticker: str = Query(...),
     })
 
 
-def _build_raw_levels_used(raw_levels: dict, snapshot_type: str) -> list:
-    """Flatten raw_levels into [{tag, value}] for display, ordered by price.
-
-    Phase 2A scope rule: a canonical id names the canonical (ticker, scope, generation)
-    value and nothing else. A CHECKPOINT snapshot (premarket/opening/midday/afternoon)
-    measures the same concept through a different cutoff — a legitimately different
-    number — so it travels under an explicitly distinct id (`VWAP@checkpoint:midday`)
-    and is never compared against, or mistaken for, the canonical `VWAP`.
-    """
+def _build_raw_levels_used(raw_levels: dict) -> list:
+    """Flatten raw_levels (the one price-level snapshot's values) into [{tag, value}] for
+    display, ordered by price, under their canonical ids."""
     items = []
-    _scope = "" if snapshot_type == "live" else f"@checkpoint:{snapshot_type}"
     tag_map = {
         "pdh": "PDH", "pdl": "PDL", "pdc": "PDC",
         "pd_poc": "PD_POC", "pd_vah": "PD_VAH", "pd_val": "PD_VAL",
@@ -4354,43 +4347,26 @@ def _build_raw_levels_used(raw_levels: dict, snapshot_type: str) -> list:
     prev = raw_levels.get("prev_day") or raw_levels.get("prev") or {}
     for k, v in prev.items():
         if v is not None and isinstance(v, (int, float)) and k in tag_map:
-            items.append({"tag": tag_map[k] + _scope, "value": float(v)})
+            items.append({"tag": tag_map[k], "value": float(v)})
     for k in ["overnight_high", "overnight_low"]:
         v = (raw_levels.get("overnight") or {}).get(k)
         if v is not None:
-            items.append({"tag": tag_map[k] + _scope, "value": float(v)})
+            items.append({"tag": tag_map[k], "value": float(v)})
     orb = raw_levels.get("orb") or {}
     for k in ["orb_high", "orb_low", "orb_mid"]:
         if orb.get(k) is not None:
-            items.append({"tag": tag_map[k] + _scope, "value": float(orb[k])})
-    if raw_levels.get("vwap") is not None and snapshot_type != "premarket":
-        items.append({"tag": "VWAP" + _scope, "value": float(raw_levels["vwap"])})
+            items.append({"tag": tag_map[k], "value": float(orb[k])})
+    if raw_levels.get("vwap") is not None:
+        items.append({"tag": "VWAP", "value": float(raw_levels["vwap"])})
     vwap_bands = raw_levels.get("vwap_bands") or {}
     for k, tag in [("plus2", "VWAP_P2"), ("plus1", "VWAP_P1"),
                    ("minus1", "VWAP_M1"), ("minus2", "VWAP_M2")]:
         if vwap_bands.get(k) is not None:
-            items.append({"tag": tag + _scope, "value": float(vwap_bands[k])})
+            items.append({"tag": tag, "value": float(vwap_bands[k])})
     for k in ["poc", "vah", "val"]:
         if raw_levels.get(k) is not None:
-            items.append({"tag": tag_map[k] + _scope, "value": float(raw_levels[k])})
+            items.append({"tag": tag_map[k], "value": float(raw_levels[k])})
     return sorted(items, key=lambda x: x["value"])
-
-
-def _session_bars(tk: str, session_date) -> list[dict]:
-    """1-minute bars from the prior trading day's 00:00 ET through `session_date`'s close (the
-    liquidity engine's window): the completed Schwab bars in price_bars_1m, in the engine's
-    shape."""
-    from datetime import datetime as _dt, time as _time, timedelta as _td
-    from time_et import ET, is_trading_day_et, session_close_mins_for_et_date
-    close = session_close_mins_for_et_date(session_date.isoformat())
-    prior = next((d for d in (session_date - _td(days=n) for n in range(1, 15))
-                  if is_trading_day_et(d.isoformat())), None)
-    if close is None or prior is None:
-        return []                       # no session that day, or none before it in the calendar
-    lo = _dt.combine(prior, _time(0, 0), tzinfo=ET).timestamp()
-    hi = _dt.combine(session_date, _time(close // 60, close % 60), tzinfo=ET).timestamp()
-    bars = [b for b in _liquidity_1m_bars(tk) if lo <= b["timestamp"] / 1000.0 < hi]
-    return bars
 
 
 def _liquidity_1m_bars(ticker: str) -> list[dict]:
@@ -4472,80 +4448,28 @@ def _spot_location(zones: list, spot) -> "dict | None":
 # SWITCH-LATENCY FIX: sync def → threadpool. This fires on every ticker switch (client
 # setTimeout pollLiquiditySnapshot) and every 60s; it does a blocking Schwab bar fetch with
 # no await, so as async it stalled the event loop on each switch.
-def get_liquidity_snapshot(
-    ticker: str = Query(...),
-    date: Optional[str] = Query(default=None, description="Session date YYYY-MM-DD (default: today ET)"),
-    snapshot: str = Query(
-        default="premarket",
-        description="live | premarket | opening | midday | afternoon. live = rolling cutoff (now ET) + optional options fusion",
-    ),
-    fusion: bool = Query(default=True, description="When snapshot=live, fuse the terrain option levels"),
-):
-    """Return liquidity & value playbook snapshot (zones, summary, raw_levels) for ticker/session.
-    ``live`` uses min(now,RTH close) cutoff; checkpoints unchanged."""
+def get_liquidity_snapshot(ticker: str = Query(...)):
+    """Today's liquidity & value zones for the ticker: built from the one price-level snapshot
+    (canonical_price_level_snapshot, the same values /api/levels serves) with the terrain's
+    option levels and the live price fused in. It computes no level of its own."""
     try:
-        from liquidity_value_engine import build_live_snapshot, generate_liquidity_value_snapshot
-        from liquidity_models import SnapshotType, PlaybookConfig
+        from liquidity_value_engine import build_live_snapshot, carry_snapshot_levels
+        from liquidity_models import PlaybookConfig
 
-        session_date = date or now_et().strftime("%Y-%m-%d")
         ticker_upper = ticker_storage_key(ticker)
         # TICKER-PREVIEW-NO-ENROLL: liquidity snapshot is a VIEW — touch last-seen only.
         _touch_tracked_ticker_view(ticker_upper)
-        from datetime import date as date_type
-
-        session_date_obj = date_type.fromisoformat(session_date)
-        bars = _session_bars(ticker_upper, session_date_obj)
-        if not bars:
-            return JSONResponse(
-                {"error": f"No bar data for {ticker_upper} on {session_date}"},
-                status_code=404,
-            )
         config = PlaybookConfig(max_zone_width=2.0)
-        snap_raw = snapshot.lower().strip()
-        fusion_status = "n/a"
-        spot_for_zones: Optional[float] = None
-        extra: list[tuple[float, str]] = []
-        bar_merge_note = "price_bars_1m"
-
-        if snap_raw == "live":
-            extra, fusion_status = _liquidity_option_levels(ticker_upper) if fusion else ([], "disabled")
-            # RC spot-360-audit (2026-09-14, live RTH reproduction): spot_for_zones used to come
-            # from _state_cache (the /api/state cache -- last-write-wins, NO freshness gate) via
-            # _liquidity_fusion_from_cache / _liquidity_spot_from_cache_any_expiry: a THIRD spot
-            # producer next to resolve_spot()/live_market_plane. Reproduced live: this route
-            # served 759.725 off a cache entry 1061s (17.7 min) old while the header read 760.13
-            # at the same instant. resolve_spot() is THE spot authority for every other consumer
-            # in this file (RC-14); zone scoring must read the same one, not a stale side-cache
-            # keyed off whichever (ticker, expiry) /api/state happened to be called for last.
-            spot_for_zones, _, _ = resolve_spot(ticker_upper)
-            _extra_for_build = list(extra) if fusion else []
-            if spot_for_zones is not None and fusion:
-                _extra_for_build.append((spot_for_zones, "SPOT_LIVE"))
-            # Phase 2A: this endpoint CARRIES the canonical snapshot; it does not compute
-            # the Phase 2A families. MEASURED before this change, same instant, same
-            # ticker: /api/levels overnight 773.3975/773.3975 vs this endpoint
-            # 773.40/772.55 — one concept, two bar inputs, two answers on two screens.
-            _canon = None
-            if session_date_obj == now_et().date():
-                from liquidity_value_engine import carry_snapshot_levels
-                _canon = canonical_price_level_snapshot(ticker_upper)
-                carry_snapshot_levels(_canon, "api.liquidity_snapshot")
-            out = build_live_snapshot(
-                ticker_upper,
-                bars,
-                session_date_obj,
-                config,
-                extra_levels=_extra_for_build if fusion else None,
-                canonical=_canon,
-            )
-        else:
-            out = generate_liquidity_value_snapshot(
-                ticker=ticker_upper,
-                bars_dataframe=bars,
-                session_date=session_date,
-                snapshot_type=SnapshotType(snap_raw),
-                config=config,
-            )
+        extra, fusion_status = _liquidity_option_levels(ticker_upper)
+        # the one spot (resolve_spot); a stale side-cache served 759.725 beside a 760.13 header
+        # (2026-09-14, RC spot-360-audit)
+        spot_for_zones, _, _ = resolve_spot(ticker_upper)
+        if spot_for_zones is not None:
+            extra = list(extra) + [(spot_for_zones, "SPOT_LIVE")]
+        _canon = canonical_price_level_snapshot(ticker_upper)
+        carry_snapshot_levels(_canon, "api.liquidity_snapshot")
+        out = build_live_snapshot(ticker_upper, config, canonical=_canon, now=now_et(),
+                                  extra_levels=extra)
         snapshot_val = out.snapshot_type.value
         zones_payload = []
         for z in out.zones:
@@ -4567,17 +4491,15 @@ def get_liquidity_snapshot(
                 "last_snapshot": snapshot_val,
                 "persistence": 1,
             }
-            if snap_raw == "live":
-                _liquidity_zone_tradeable_fields(zp, spot_for_zones)
+            _liquidity_zone_tradeable_fields(zp, spot_for_zones)
             zones_payload.append(zp)
-        if snap_raw == "live":
-            zones_payload.sort(
-                key=lambda x: (
-                    x["distance_to_spot"] is None,
-                    x["distance_to_spot"] if x["distance_to_spot"] is not None else 1e9,
-                    -x.get("tradeable_score", 0),
-                )
+        zones_payload.sort(
+            key=lambda x: (
+                x["distance_to_spot"] is None,
+                x["distance_to_spot"] if x["distance_to_spot"] is not None else 1e9,
+                -x.get("tradeable_score", 0),
             )
+        )
         result = {
             "ticker": out.ticker,
             "symbol": ticker_upper,
@@ -4586,22 +4508,17 @@ def get_liquidity_snapshot(
             "zones": zones_payload,
             "summary": None,
             "raw_levels": out.raw_levels,
-            "raw_levels_used": _build_raw_levels_used(out.raw_levels, snapshot_val),
+            "raw_levels_used": _build_raw_levels_used(out.raw_levels),
+            "fusion": fusion_status,
+            "as_of_cutoff_et": (out.raw_levels or {}).get("cutoff_et"),
+            "spot_used_for_scoring": spot_for_zones,
+            "spot_location": _spot_location(zones_payload, spot_for_zones),
+            # which snapshot generation these level values ARE
+            "level_generation": _canon.generation,
+            "level_semantic_scope": (out.raw_levels or {}).get("semantic_scope"),
+            "level_snapshot_as_of_ts_utc": _canon.as_of_ts_utc,
+            "level_bar_source": _canon.bar_source,
         }
-        if snap_raw == "live":
-            result["fusion"] = fusion_status
-            result["bar_merge"] = bar_merge_note
-            result["as_of_cutoff_et"] = (out.raw_levels or {}).get("cutoff_et")
-            result["spot_used_for_scoring"] = spot_for_zones
-            result["spot_location"] = _spot_location(zones_payload, spot_for_zones)
-            # Phase 2A carriage stamp: which snapshot generation these level values ARE.
-            # Two carriers that agree on the number but not on the generation are still
-            # two answers — the generation travels so the skew is visible, never silent.
-            result["level_generation"] = _canon.generation if _canon is not None else None
-            result["level_semantic_scope"] = (out.raw_levels or {}).get("semantic_scope")
-            result["level_snapshot_as_of_ts_utc"] = (
-                _canon.as_of_ts_utc if _canon is not None else None)
-            result["level_bar_source"] = _canon.bar_source if _canon is not None else None
         if out.summary:
             result["summary"] = {
                 "value_state": out.summary.value_state,
