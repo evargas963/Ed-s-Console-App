@@ -39,7 +39,10 @@ def test_changes_reach_only_the_tickers_page_each_kind_once():
     assert _run(body) == ({"levels", "flow"}, set())
 
 
-def test_a_streamed_equity_quote_and_book_mark_flow():
+def test_a_streamed_equity_quote_and_book_mark_flow(monkeypatch):
+    # no page is viewing the ticker's gamma surface (a viewed one is also repriced, which marks
+    # levels; another test's /api/chain call on TSLA had left it viewed, in session hours)
+    monkeypatch.setattr(server, "_gamma_surface_demand", {})
     q, b = _FX["quote"], _FX["book"]
     assert _run(lambda: ofs._ingest_pushed(f"quote.{TK}", {"symbol": TK, "ts_recv": q["ts_recv"],
                                                             "native": q["native"]}))[0] == {"flow"}
