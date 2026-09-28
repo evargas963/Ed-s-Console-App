@@ -23,6 +23,7 @@ guard screams; a guard that has never failed has never been tested.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -109,6 +110,28 @@ def test_one_materialization_per_generation_returns_the_same_object():
     c = materialize_price_level_snapshot("SPY", SESSION, moved, bar_source="unit_tape")
     assert c is not a and c.generation == 2, "a new bar input must bump the generation"
     assert all(v.generation == 2 for v in c.levels.values())
+
+
+def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them(pin_clock):
+    """All tickers, one rule; the instrument's data decides. Schwab's $SPX 1-minute bars carry no
+    traded volume (real bars 2026-09-25/28: 501 with volume 0, 12 without the field), so VWAP and
+    the value area cannot exist for it and are absent with that reason; the value area said "no
+    today RTH bars" over 278 RTH bars (2026-09-28, the running app). SPY's real bars have volume and
+    get both. The prior day is price-only and present for both."""
+    fx = ROOT / "tests" / "fixtures"
+    for name, tk, session, has_volume in (
+            ("real_spx_1m_bars_2026_09_25_28.json", "$SPX", (2026, 9, 28), False),
+            ("real_spy_1m_bars_2026_09_24_25.json", "SPY", (2026, 9, 25), True)):
+        pin_clock(*session, 16, 30)
+        bars = json.loads((fx / name).read_text(encoding="utf-8"))["bars"]
+        snap = build_price_level_snapshot(tk, datetime(*session, tzinfo=ET).date(), bars, bar_source=name)
+        absent = {f["family"]: f["reason"] for f in snap.families_absent}
+        assert snap.price("PDH") is not None and "prior_day" not in absent, tk
+        if has_volume:
+            assert snap.price("VWAP") is not None and "value_area" not in absent, tk
+        else:
+            assert absent["vwap"] == "no RTH volume for session VWAP in available bars"
+            assert absent["value_area"] == "no RTH volume for the volume profile in available bars"
 
 
 def test_absent_input_stays_absent_and_is_declared():

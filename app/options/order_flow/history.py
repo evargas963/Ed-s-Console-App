@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from instrument_identity import ticker_storage_key
+from l1_trade_observation import extract_vendor_print, is_adjacent_restatement, vendor_triple
 from numeric_contract import schwab_count, schwab_number
 from stream_spine import resolve_stream_db_path
 
@@ -75,19 +76,13 @@ def tape_rows_for_symbol(
                   "EXPIRATION_DAY", "MULTIPLIER", "UNDERLYING"):
             if item.get(k) is not None:
                 context[k] = item[k]
-        # A genuine trade print requires its OWN price and its OWN trade timestamp on the
-        # SAME tick -- reproduced live against real captured Friday data: a partial update
-        # can carry a fresh LAST_SIZE with no LAST_PRICE at all (a size-only field bumping
-        # TOTAL_VOLUME on its own), which this loop's OWN de-dup key would otherwise treat
-        # as a "new" trade because the tuple differs, emitting a tape row with trade=None
-        # and a stray size attached to whatever price happened to print last. Required
-        # fields absent -> not a trade print at all, skipped before the de-dup check even
-        # runs (so it also never overwrites `last_trade_key`, protecting the NEXT genuine
-        # trade's own comparison).
-        if schwab_number(item.get("LAST_PRICE")) is None or item.get("TRADE_TIME_MILLIS") is None:
+        # a trade print and its identity are l1_trade_observation's (the live tape's): no
+        # LAST_PRICE is no print; an adjacent repeat of the same vendor triple is not a new one
+        p = extract_vendor_print(item)
+        if p is None:
             continue
-        trade_key = (item["TRADE_TIME_MILLIS"], item["LAST_PRICE"], item.get("LAST_SIZE"))
-        if trade_key == last_trade_key:
+        trade_key = vendor_triple(p["time_millis"], p["price"], p["size"])
+        if is_adjacent_restatement(last_trade_key, trade_key):
             continue
         last_trade_key = trade_key
         strike = schwab_number(context.get("STRIKE_TYPE"))
@@ -95,7 +90,7 @@ def tape_rows_for_symbol(
         y, m, d = context.get("EXPIRATION_YEAR"), context.get("EXPIRATION_MONTH"), context.get("EXPIRATION_DAY")
         expiry = f"{y:04d}-{m:02d}-{d:02d}" if (y and m and d) else None
         mult = schwab_number(context.get("MULTIPLIER"))
-        trade, size = schwab_number(item.get("LAST_PRICE")), schwab_count(item.get("LAST_SIZE"))
+        trade, size = p["price"], p["size"]
         premium = (trade * size * mult
                    if (trade is not None and size is not None and mult is not None) else None)
         bid, ask = schwab_number(item.get("BID_PRICE")), schwab_number(item.get("ASK_PRICE"))
