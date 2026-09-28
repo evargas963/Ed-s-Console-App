@@ -131,11 +131,11 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | O-05 | engine.py:618 | 5 | quote_age_sec | computed from a quote that is not live | ages | OPEN |
 | O-06 | engine.py:830-833 | 2/5 | institutional_flow_proxy | clamp with invented divisors | (always None) | OPEN |
 | O-07 | state.py:28-38, 137-138 | 3/5 | session reset | own RTH test; clock failure -> "closed"; failure swallowed | tape/book reset | OPEN |
-| O-08 | l1_trade_observation.py:143-147, 192-197 | 5 | tape pressure 30s/2m/5m | window anchored to the last print, not now; `now_ms = 0` substitute | Trade Desk flow card | OPEN |
-| O-09 | live_market_plane.py:123-138 | 3/7 | spread, quote_mid, *_disp, generation | computed per row, no consumer | none | OPEN |
-| O-10 | live_market_plane.py:232; streaming.py:78-103, 181, 223, 905-916; stream_spine.py:274; capture.py:64 | 3 | feed liveness | four thresholds; heartbeat stored twice (5 s vs 3 s) | header vs diagnostics | OPEN |
-| O-11 | streaming.py:224-257, 907-916, 1006-1008 | 5 | streaming_healthy | healthy with no data for 8 s; synthetic stale_ms 0.0 | feed badges | OPEN |
-| O-12 | streaming.py:952-968, 513-516 | 5 | producer contract, active contract | `symbols[0]` / `held[0]` when the asked contract is not held | subscription panel | OPEN |
+| O-08 | l1_trade_observation.py:143-147, 192-197 | 5 | tape pressure 30s/2m/5m | window anchored to the last print, not now; `now_ms = 0` substitute | Trade Desk flow card | FIXED 972beb7d |
+| O-09 | live_market_plane.py:123-138 | 3/7 | spread, quote_mid, *_disp, generation | computed per row, no consumer | none | FIXED 972beb7d (quote_mid kept: the book's MARK); spot_disp formatted twice left |
+| O-10 | live_market_plane.py:232; streaming.py:78-103, 181, 223, 905-916; stream_spine.py:274; capture.py:64 | 3 | feed liveness | four thresholds; heartbeat stored twice (5 s vs 3 s) | header vs diagnostics | FIXED 972beb7d for the option and equity quote health (feed_live_for); book age (OF_BOOK_STALE_SEC) and the daemon's own HealthRegistry left |
+| O-11 | streaming.py:224-257, 907-916, 1006-1008 | 5 | streaming_healthy | healthy with no data for 8 s; synthetic stale_ms 0.0 | feed badges | FIXED 972beb7d |
+| O-12 | streaming.py:952-968, 513-516 | 5 | producer contract, active contract | `symbols[0]` / `held[0]` when the asked contract is not held | subscription panel | NOT A VIOLATION: the field names the producer's held contract; the asked contract's state is subscription_state |
 | O-13 | streaming.py:297-312, 361-364, 426-457, 504-507 | 5 | ingest, contract match, DB path | failures swallowed as False/None, uncounted | contract selection | OPEN |
 | O-14 | live_price_rows.py:44-66 | 3/5 | forming 1m bar | built from L1 ticks while Schwab streams CHART_EQUITY; a same-price trade in a new minute never opens it | chart | OPEN |
 | O-15 | live_price_rows.py:92 | 2 | trade_age_sec | negative age clamped to 0 | header | OPEN |
@@ -190,7 +190,7 @@ Columns: file:line | rule | value | what the code does | who sees it.
 | X-03 | db.py:274, 282, 2601, 2866, 2981, 3073, 3285, 3399, 3638, 3689, 3718, 118-129, 1399-1426, 1439, 1488, 1848, 2521, 3106, 3115, 3267-3275 | snapshot writer and outcome pipeline with no writer, dead tables' code, iv_daily (no reader), unread rings and constants | OPEN |
 | X-04 | execution_identity.py, decision_record.py, horizon_outcomes.py, ml_horizon.py, movement_target_threshold.py, api_pressure.py, schwab_field_dictionary_builder.py:117-395, config.py:92-96 | modules or parts with no product caller | OPEN (verify each) |
 | X-05 | app/options/order_flow/engine.py:680-835, 942-998; routes/options_order_flow.py; history.py:19; state.py `_stream_volume` | options-flow, rvol and institutional proxy paths that always return None; retired fields; dead route | FIXED 7fab75b4 for the history route and hydrate_option_content; the engine's always-None paths left |
-| X-06 | live_market_plane.py:38-51, 150, 317-321 | SSE cursor and fast generation with no reader | OPEN |
+| X-06 | live_market_plane.py:38-51, 150, 317-321 | SSE cursor and fast generation with no reader | FIXED 972beb7d |
 | X-07 | liquidity_value_engine.py:750, 846, 945 (+ premarket via generate_*) | checkpoint snapshot builders; the page sends only snapshot=live | OPEN |
 | X-08 | math_levels.py:234-240, 703; math_exposure_core.py:167, 895; liquidity_models.py:212; terrain_read.py:95, 106; micro_structure.py:52 | unused branches, parameters and fields | OPEN |
 | X-09 | static/js: ed-stream.js status/acceptedForDesired/getDesiredAdditional/gate/setActiveTicker export; l1_sse_guards.js five test-only functions; options_subscription.js planeIsBoundToContract/subscriptionState/isCurrent/pendingContract; ed-core.js exports and `_wlLastGoodTs`; ed-gamma.js `_heatmapVisibleContracts`, exports; ed-tv-chart.js exports; fallback formatters and loader stubs; unused locals | test-only or never called | OPEN |

@@ -31,7 +31,6 @@ def _reset(tmp_path):
     ofs._feed_running = False
     ofs._active_ticker = None
     ofs._streaming_last_update_ts = None
-    ofs._last_subscribe_completed_ts = None
     ofls.clear_all_live_state()
     return tmp_path / "stream_capture.db"
 
@@ -96,16 +95,6 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
     assert lmp.get_quote("SPY") is None
     # the ACTIVE ticker's feed-health clock is not advanced by another symbol's tick
     assert ofs._streaming_last_update_ts is None
-
-
-def test_authority_is_streaming_after_a_pushed_tick_for_the_active_ticker(tmp_path, monkeypatch):
-    _reset(tmp_path)
-    ofs._feed_running = True
-    ofs.set_streaming_active_ticker("SPY")
-    _push_l1("SPY", {"key": "SPY", "LAST_PRICE": 450.0}, ts_recv=time.time())
-
-    assert ofs.get_plane_authority_for_ticker("SPY") == "streaming"
-    assert ofs.get_plane_authority_for_ticker("QQQ") == "not_active_ticker"
 
 
 def test_set_active_ticker_puts_its_book_and_quote_in_the_wanted_list(tmp_path, monkeypatch):

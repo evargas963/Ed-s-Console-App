@@ -147,7 +147,7 @@ def test_slope_uses_same_signed_size_walk():
     points = l1.iter_signed_cum_points(prints)
     assert points[-1][1] == l1.compute_cum_delta_proxy(prints) == 4 - 6
     assert [(round(t, 6), c) for t, c in points] == [(1.0, 0.0), (2.0, 4.0), (3.0, -2.0)]
-    slope = ofe._compute_cum_delta_slope({"content": content}, window_sec=60.0)
+    slope = ofe._compute_cum_delta_slope({"content": content}, now=3.0, window_sec=60.0)
     assert slope is not None
     assert math.isclose(slope, -1.0, rel_tol=0.0, abs_tol=1e-9)
 

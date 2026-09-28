@@ -31,8 +31,7 @@ def test_record_from_level_one_equity_updates_plane():
     assert row["quote_ingestion"] == "schwab_streaming_level_one"
     assert abs(row["spot"] - 101.0) < 1e-6
     assert row["quote_source_detail"]["spot"] == "LAST_PRICE"
-    assert row["quote_source_detail"]["spread"] == "schwab_bid_ask"
-    assert set(row["field_received_ts"]) >= {"LAST_PRICE", "BID_PRICE", "ASK_PRICE"}
+    assert row["bid"] == 100.9 and row["ask"] == 101.1
 
 
 def test_record_from_level_one_uses_schwab_quote_timestamp_for_fast_ts():
@@ -104,7 +103,6 @@ def test_a_carried_last_price_keeps_the_age_of_its_own_trade():
     _rec("CARRY", {"key": "CARRY", "BID_PRICE": 9.95, "ASK_PRICE": 10.05})
     row = lmp.get_quote("CARRY")
     assert row["spot"] == 10.0
-    assert row["field_received_ts"]["LAST_PRICE"] == t_trade
     assert row["spot_received_ts"] == t_trade
     assert not lmp.quote_is_fresh(row) and not lmp.spot_is_fresh(row)   # no heartbeat yet
     mark_feed_live("CARRY")
@@ -126,7 +124,6 @@ def test_record_from_level_one_new_schwab_timestamp_not_suppressed_as_duplicate(
             "QUOTE_TIME_MILLIS": 1_778_018_399_000,
         },
     )
-    g0 = lmp.get_quote("TIMEDUP")["fast_generation_id"]
 
     ok = _rec(
         "TIMEDUP",
@@ -141,23 +138,20 @@ def test_record_from_level_one_new_schwab_timestamp_not_suppressed_as_duplicate(
 
     assert ok is True
     row = lmp.get_quote("TIMEDUP")
-    assert row["fast_generation_id"] > g0
     assert row["exchange_quote_ts"] == 1_778_018_400.0
 
 
 def test_unchanged_bid_ask_stand_with_their_own_age():
     """Schwab LEVELONE sends only CHANGED fields (measured 2026-09-24 on 4,039 captured
     messages: 11% carried bid+ask+last together, 17% ask-only, 15% bid-only). A message with
-    no BID_PRICE means the bid is unchanged -- it used to blank the bid, ask and spread."""
+    no BID_PRICE means the bid is unchanged -- it used to blank the bid and ask."""
     t0 = time.time() - 5.0
     _rec("NOCARRY", {"key": "NOCARRY", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1},
          received_ts=t0)
     assert _rec("NOCARRY", {"key": "NOCARRY", "LAST_PRICE": 11.0}) is True
     row = lmp.get_quote("NOCARRY")
     assert row["spot"] == 11.0 and row["bid"] == 9.9 and row["ask"] == 10.1
-    assert row["spread_pts"] == 0.2
-    assert row["field_received_ts"]["BID_PRICE"] == t0            # its own, older age
-    assert row["field_received_ts"]["LAST_PRICE"] > t0
+    assert row["spot_received_ts"] > t0
 
 
 def test_a_zero_price_is_taken_as_sent():
@@ -165,7 +159,7 @@ def test_a_zero_price_is_taken_as_sent():
     _rec("ZRO", {"key": "ZRO", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
     _rec("ZRO", {"key": "ZRO", "BID_PRICE": 0})
     row = lmp.get_quote("ZRO")
-    assert row["bid"] == 0.0 and row["spread_pts"] == 10.1
+    assert row["bid"] == 0.0 and row["ask"] == 10.1
 
 
 def test_a_value_that_is_not_a_number_clears_the_field():
@@ -174,8 +168,7 @@ def test_a_value_that_is_not_a_number_clears_the_field():
         _rec("CLR", {"key": "CLR", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
         _rec("CLR", {"key": "CLR", "BID_PRICE": bad})
         row = lmp.get_quote("CLR")
-        assert row["bid"] is None and row["spread_pts"] is None, bad
-        assert "BID_PRICE" not in row["field_received_ts"]
+        assert row["bid"] is None and row["ask"] == 10.1, bad
 
 def test_record_from_level_one_rejects_mark_as_current_spot():
     ok = _rec(
@@ -219,13 +212,6 @@ def test_record_from_level_one_ignores_non_canonical_bid_ask_keys():
     assert row["ask"] is None
     assert row["quote_source_detail"]["bid"] is None
     assert row["quote_source_detail"]["ask"] is None
-    assert row["quote_source_detail"]["spread"] == "unavailable_missing_bid_or_ask"
-
-
-def test_next_fast_generation_monotonic():
-    a = lmp.next_fast_generation("M")
-    b = lmp.next_fast_generation("M")
-    assert b > a
 
 
 def test_prior_close_is_the_streamed_close_price_and_stands_between_sends():

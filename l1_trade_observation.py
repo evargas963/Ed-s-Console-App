@@ -135,22 +135,22 @@ def tick_rule_signed_size(
 def iter_signed_cum_points(
     prints: list[dict[str, Any]],
     window_sec: Optional[float] = None,
+    now_ms: Optional[float] = None,
 ) -> list[tuple[float, float]]:
     """ONE signed-size walk. x is vendor seconds when present, else receive index.
 
-    Receive index is not a native trade id. Used by CVD and CVD-slope only.
+    Receive index is not a native trade id. Used by CVD and CVD-slope only. With a window, only
+    prints whose trade time is within `window_sec` before `now_ms` count; a print with no time
+    cannot be placed in the window and is left out.
     """
-    times = [p.get("time_millis") for p in prints if p.get("time_millis") is not None]
-    cutoff = None
-    if window_sec is not None and times:
-        cutoff = max(times) - int(window_sec * 1000)
+    cutoff = None if window_sec is None else now_ms - int(window_sec * 1000)
     points: list[tuple[float, float]] = []
     cum = 0.0
     prev_price: Optional[float] = None
     for i, p in enumerate(prints):
         t = p.get("time_millis")
         price = p.get("price")
-        if cutoff is not None and t is not None and t < cutoff:
+        if cutoff is not None and (t is None or t < cutoff):
             if price is not None:
                 prev_price = price
             continue
@@ -185,15 +185,10 @@ def compute_cum_delta_proxy(prints: list[dict[str, Any]]) -> Optional[float]:
 
 
 def compute_tape_pressure(
-    prints: list[dict[str, Any]], window_sec: float
+    prints: list[dict[str, Any]], window_sec: float, now_ms: float
 ) -> Optional[float]:
-    if not prints:
-        return None
-    times = [p.get("time_millis") for p in prints if p.get("time_millis") is not None]
-    if times:
-        now_ms = max(times)
-    else:
-        now_ms = 0
+    """Tick-rule signed size over total size for the prints traded in the `window_sec` before
+    `now_ms`; None when none traded in it. A print with no trade time is left out."""
     cutoff_ms = now_ms - int(window_sec * 1000)
     total_delta = 0.0
     total_sz = 0
@@ -201,7 +196,7 @@ def compute_tape_pressure(
     for p in prints:
         t = p.get("time_millis")
         price = p.get("price")
-        if t is not None and t < cutoff_ms:
+        if t is None or t < cutoff_ms:
             if price is not None:
                 prev_price = price
             continue
