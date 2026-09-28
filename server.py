@@ -25,6 +25,7 @@ from time_et import (ET, now_et, RTH_OPEN_MINS, ct_label, is_capturable_session,
 from math_exposure_core import bucket_metric, merge_exposure_books
 
 import json
+from html import escape as html_escape
 
 
 from fastapi import Body, FastAPI, Query, HTTPException
@@ -162,7 +163,7 @@ from schwab_client import (
     safe_get_chain,
     SchwabAuthError,
 )
-from instrument_identity import ticker_storage_key   # RC-126: the ONE query-symbol authority
+from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
 from numeric_contract import schwab_number
 from market_context import (
@@ -1209,15 +1210,22 @@ app.mount("/static", _RevalidateStaticFiles(directory=str(static_dir)), name="st
 # ─────────────────────────────────────────────────────────────────────────────
 
 _LIVE_UI_PORT_META = '<meta name="ed-live-ui-port" content="">'
+_MARKET_CONTEXT_META = '<meta name="ed-market-context" content="">'
 
 
 def _with_live_ui_port(html: str) -> str:
     """Tell the page where the capture daemon's price socket listens (the same
-    ED_LIVE_UI_PORT the daemon binds). An unfilled page opens no price socket -- its prices
-    read UNAVAILABLE rather than reaching a daemon nobody configured it for."""
+    ED_LIVE_UI_PORT the daemon binds) and which market-context symbols it always shows
+    (streaming.MARKET_CONTEXT_SYMBOLS, each with its display name). An unfilled page opens no
+    price socket -- its prices read UNAVAILABLE rather than reaching a daemon nobody configured
+    it for."""
     from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
-    return html.replace(_LIVE_UI_PORT_META,
-                        f'<meta name="ed-live-ui-port" content="{int(LIVE_UI_PORT)}">', 1)
+    from app.options.order_flow.streaming import MARKET_CONTEXT_SYMBOLS
+    context = json.dumps([{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT_SYMBOLS])
+    return (html.replace(_LIVE_UI_PORT_META,
+                         f'<meta name="ed-live-ui-port" content="{int(LIVE_UI_PORT)}">', 1)
+            .replace(_MARKET_CONTEXT_META,
+                     f'<meta name="ed-market-context" content="{html_escape(context)}">', 1))
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -65,7 +65,9 @@
   }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function onDesk() { var s = st(); return s.workspace === 'trade-desk' && s.subview === 'desk'; }
-  function bare(t) { return String(t || '').toUpperCase().replace(/^\$/, ''); }
+  // the instrument's served display name (the daemon's answer, EdShell state.display); as typed
+  // until it arrives
+  function shown() { return st().display || S.ticker; }
   function $(id) { return document.getElementById(id); }
   function fetchJson(url) {
     return fetch(url, { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
@@ -172,10 +174,10 @@
       var bars = (d && d.bars) || [];
       if (full) {
         S.bars = bars;
-        S.chart.setBars(bars, tf, bare(tk), d.last_bar && d.last_bar.label);
+        S.chart.setBars(bars, tf, shown(), d.last_bar && d.last_bar.label);
         $('tdmChartEmpty').hidden = bars.length > 0;
-        $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + bare(tk) + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
-          : 'No bars for ' + bare(tk) + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
+        $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
+          : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
         paintChartOverlays(); paintQueue();
         var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
       } else if (bars.length) {
@@ -357,7 +359,8 @@
     // VOLATILITY
     c = $('tdmCardVol');
     if (c) {
-      var im = t && t.implied_1d_move, vix = S.quotes.VIX;
+      var vixC = window.EdShell.marketContext().filter(function (c) { return c.display === 'VIX'; })[0];
+      var im = t && t.implied_1d_move, vix = vixC && S.quotes[vixC.key];
       if (!im || im.iv_pct_atm == null) {
         state(c, t === undefined ? 'LOADING' : 'UNAVAILABLE', t === undefined ? '' : 'warn'); c.querySelector('.tdm-hero').innerHTML = '—';
       } else {
@@ -393,7 +396,7 @@
   function pill(lbl, val, cls, title) { return '<span class="tdm-pill ' + (cls || '') + '" title="' + esc(title || '') + '"><i></i>' + esc(lbl) + ' <b>' + esc(val) + '</b></span>'; }
   function paintTrust() {
     var host = $('tdmTrust'); if (!host) return;
-    var q = S.quotes[bare(S.ticker)], t = S.terrain, m = S.micro, L = S.levels;
+    var q = S.quotes[st().key], t = S.terrain, m = S.micro, L = S.levels;
     var h = '';
     h += q ? pill('PRICE', q.spot_state === 'live' ? 'LIVE' : String(q.spot_state || '—').toUpperCase(), q.spot_state === 'live' ? 'ok' : 'bad', 'daemon price socket')
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
@@ -419,11 +422,11 @@
   // The shell header already carries the symbol, price, change and CT clock; this page adds
   // the index context and the data-trust row beside it.
   function paintHeader() {
-    ['SPX', 'NDX', 'VIX'].forEach(function (s) {
-      var el = $('tdmIdx' + s); if (!el) return;
-      var r = S.quotes[s];
-      el.title = r ? '' : 'waiting for the ' + s + ' stream';
-      el.innerHTML = '<span>' + s + '</span><b>' + (r && r.spot != null ? num(r.spot) : '—') + '</b>' +
+    window.EdShell.marketContext().forEach(function (c) {   // the served context symbols
+      var el = $('tdmIdx' + c.display); if (!el) return;
+      var r = S.quotes[c.key];
+      el.title = r ? '' : 'waiting for the ' + c.display + ' stream';
+      el.innerHTML = '<span>' + c.display + '</span><b>' + (r && r.spot != null ? num(r.spot) : '—') + '</b>' +
         (r && r.chg_pct != null ? '<em class="' + (r.chg_pct >= 0 ? 'up' : 'dn') + '">' + (r.chg_pct >= 0 ? '+' : '') + num(r.chg_pct) + '%</em>' : '');
     });
   }
@@ -457,10 +460,10 @@
     // Every streamed price row: header + indices. The chart moves only on a completed bar.
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || !q.ticker) return;
-      S.quotes[bare(q.ticker)] = q;
+      S.quotes[q.ticker] = q;
       if (!onDesk()) return;
       paintHeader();
-      if (bare(q.ticker) === bare(S.ticker)) {
+      if (q.ticker === st().key) {
         paintTrust();
         if (S.chart) S.chart.setLivePrice(q.spot_state === 'live' ? q.spot : null, q.trade_age_sec);
       }

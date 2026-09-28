@@ -37,13 +37,11 @@ spot (Key Levels = header, #372).
 | ONE-09 | QUEUED | VWAP, prior day and value area recomputed by `/api/liquidity-snapshot`'s own path (`liquidity_value_engine` checkpoint builders) instead of the one price-level snapshot. |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
 | ONE-13 | QUEUED | Ticker roster built twice (console `CORE_TICKERS` + filtered board; daemon's full board). |
-| ONE-14 | QUEUED | Ticker identity re-derived in page code (`$` stripping in `ed-gamma-chart.js`, `ed-core.js`, `ed-trade-desk-map.js`); the server serves the display form. |
 | TICK-01 | QUEUED | Index symbol form from a hand-kept list of 11 roots (`instrument_identity.BROKER_INDEX_BARE_ROOTS`); Schwab's own instrument answer decides. |
 | TICK-02 | QUEUED | Option contract → ticker matched by root name, with weekly/adjusted roots (SPXW, NDXP) through a second path that needs a stored capture; Schwab's underlying field on the contract decides. |
 | TICK-03 | QUEUED | "Adjusted deliverable" defined as 100 shares of stock, so cash-settled index options are all flagged; needs a captured index deliverable first. |
 | TICK-04 | QUEUED | Board enrollment rejects SP, IW, NV by name (`production_universe._FRAGMENT`). |
 | TICK-05 | QUEUED | Time to expiry always to 16:00; Schwab's `settlementType` (AM-settled index monthlies) not read. |
-| TICK-06 | QUEUED | The market-context list ($SPX, $NDX, $VIX) kept twice (server and page). |
 
 ## Phase 2 — the rest of the design, then decomposition
 

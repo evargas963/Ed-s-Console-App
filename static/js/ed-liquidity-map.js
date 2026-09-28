@@ -208,7 +208,6 @@
     : { trigger: function () { loadImpl(ticker()); }, reset: function () {} };
   function load() {
     if (!isMap()) return;
-    var tEl = document.getElementById('liqmTicker'); if (tEl) tEl.textContent = ticker().replace('$', '');
     _loader.trigger(ticker());
   }
 

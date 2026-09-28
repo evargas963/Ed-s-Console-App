@@ -769,7 +769,7 @@
   // live_price_rows.price_row), never the levels fetch's copy
   window.addEventListener('ed:quote_tick', function (e) {
     var q = e.detail;
-    if (!q || String(q.ticker || '').replace(/^\$/, '') !== String(ticker() || '').toUpperCase().replace(/^\$/, '')) return;
+    if (!q || q.ticker !== ((window.EdShell && window.EdShell.getState()) || {}).key) return;   // the served key
     txt('klSpot', q.spot_state === 'live' && q.spot_disp ? q.spot_disp : '—');
   });
   document.addEventListener('ed:view', loadAll);

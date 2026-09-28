@@ -46,6 +46,12 @@ def ticker_storage_key(ticker: str | None) -> str:
     return u
 
 
+def display_symbol(key: str) -> str:
+    """How the screen names the instrument whose storage key is `key` ("$SPX" -> "SPX"): the one
+    display form, served with the key so the page never re-derives either."""
+    return key[1:] if key.startswith("$") else key
+
+
 def vendor_option_root(symbol: str | None) -> str:
     """Option root already encoded in a Schwab/OCC OSI vendor symbol.
 

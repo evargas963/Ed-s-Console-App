@@ -23,7 +23,6 @@
   function isFlow() { var s = st(); return s.workspace === 'options' && s.subview === 'flow'; }
 
   function host() { return document.getElementById('flowBody'); }
-  function set() { var el = document.getElementById('flTicker'); if (el) el.textContent = (st().ticker || '').replace('$', ''); }
 
   // Independent-review finding (2026-09-12, state-authority review), REPRODUCED
   // ("Flow resurrection"): a ticker switch calls EdStream.clearDesired() then load();
@@ -75,7 +74,6 @@
     : { trigger: function () { loadImpl(_pendingDesired); }, reset: function () {} };
   function load() {
     var h = host(); if (!h || !isFlow()) return;
-    set();
     var ES = window.EdStream;
     var desired = (ES && ES.getDesired && ES.getDesired()) || null;
     var ctl = (ES && ES.controlState && ES.controlState()) || 'none';

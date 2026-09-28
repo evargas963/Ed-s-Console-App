@@ -246,7 +246,6 @@
     : { trigger: function () { loadImpl(ticker()); }, reset: function () {} };
   function load() {
     if (!isHeatmap()) return;
-    var tEl = document.getElementById('ofhTicker'); if (tEl) tEl.textContent = ticker().replace('$', '');
     // Key on ticker+minutes, not ticker alone -- clicking a different time-range button while
     // the previous window's fetch is still in flight must ABORT it (a real context change),
     // not just queue a trailing re-run behind it (what an unchanged key does).
