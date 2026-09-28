@@ -1,0 +1,108 @@
+{
+ "source": "Schwab marketdata v1: GET /instruments?projection=symbol-search per symbol, and GET /quotes, 2026-09-28 ~16:10 ET (read-only, the console token)",
+ "instruments_symbol_search": {
+  "SPX": [],
+  "NDX": [],
+  "VIX": [],
+  "RUT": [],
+  "DJX": [],
+  "XSP": [],
+  "OEX": [],
+  "DJI": [],
+  "COMPX": [],
+  "VXN": [],
+  "RVX": [],
+  "$SPX": [
+   [
+    "$SPX",
+    "INDEX"
+   ]
+  ],
+  "$NDX": [
+   [
+    "$NDX",
+    "INDEX"
+   ]
+  ],
+  "$VIX": [
+   [
+    "$VIX",
+    "INDEX"
+   ]
+  ],
+  "$RUT": [
+   [
+    "$RUT",
+    "INDEX"
+   ]
+  ],
+  "$DJX": [
+   [
+    "$DJX",
+    "INDEX"
+   ]
+  ],
+  "$XSP": [
+   [
+    "$XSP",
+    "INDEX"
+   ]
+  ],
+  "$OEX": [
+   [
+    "$OEX",
+    "INDEX"
+   ]
+  ],
+  "$DJI": [
+   [
+    "$DJI",
+    "INDEX"
+   ]
+  ],
+  "$COMPX": [
+   [
+    "$COMPX",
+    "INDEX"
+   ]
+  ],
+  "$VXN": [
+   [
+    "$VXN",
+    "INDEX"
+   ]
+  ],
+  "$RVX": [
+   [
+    "$RVX",
+    "INDEX"
+   ]
+  ],
+  "SPY": [
+   [
+    "SPY",
+    "ETF"
+   ]
+  ],
+  "MU": [
+   [
+    "MU",
+    "EQUITY"
+   ]
+  ]
+ },
+ "quotes_asset_main_type": {
+  "$SPX": "INDEX",
+  "$NDX": "INDEX",
+  "$VIX": "INDEX",
+  "$RUT": "INDEX",
+  "$DJX": "INDEX",
+  "$XSP": "INDEX",
+  "$OEX": "INDEX",
+  "$DJI": "INDEX",
+  "$COMPX": "INDEX",
+  "$VXN": "INDEX",
+  "$RVX": "INDEX"
+ },
+ "bare_roots_quoted": []
+}

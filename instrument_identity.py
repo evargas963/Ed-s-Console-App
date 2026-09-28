@@ -17,11 +17,10 @@ Source: ``schwab_full_field_inventory.py`` fallback index tuple labels SPX/DJI/C
 """
 from __future__ import annotations
 
-# Uppercase roots (no `$`) that must resolve to broker-prefixed keys in DB.
-# RC-126 (operator /goal: levels for ALL tickers): NDX/RUT/DJX/XSP/OEX added — the widely
-# traded Schwab dollar-indexes an operator will type bare. Extend here, nowhere else: this
-# set IS the query-boundary alias authority since the terrain/quote/bars endpoints
-# canonicalize through ticker_storage_key.
+# Index roots an operator types bare, mapped to Schwab's own name for the index ("$" + root).
+# Schwab names indexes only with "$" and knows none of these bare (instruments symbol-search and
+# quotes, 2026-09-28, tests/fixtures/real_schwab_index_identity_2026_09_28.json); a root joins
+# only with that evidence (test_every_bare_index_root_is_what_schwab_names_an_index_with_dollar).
 BROKER_INDEX_BARE_ROOTS: frozenset[str] = frozenset(
     {"SPX", "DJI", "COMPX", "VIX", "VXN", "RVX", "NDX", "RUT", "DJX", "XSP", "OEX"},
 )
