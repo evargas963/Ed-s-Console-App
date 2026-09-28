@@ -107,6 +107,9 @@ Schwab sends is taken as sent (rule 2), never computed.
   serve that result and read no stored chain. Everything computed from spot (gamma at spot, regime,
   wall states and leans, wall distances, flip side, headline) is computed in that one publication
   at that publication's price; `/api/terrain` serves it as published and recomputes nothing.
+  A publication carries the same fields whatever its chain's source (a live download or a stored
+  capture): the ATR pair (from the 1-minute bars) and the delta-OI walls (the chain's per-strike
+  open interest, banked under the chain's ET date, against the previous banked session) included.
   Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`), never
   called live; the live price is the daemon's price row. With no live price the next publication
   has no levels, with its reason.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import signal
+import sqlite3
 import sys
 import time
 import asyncio
@@ -753,6 +754,7 @@ from micro_structure import Candle
 # path now has no failure mode to pick a policy for.
 from app.options.contracts.default import front_atm_call
 from calibration.complete_chain_capture import (
+    CAPTURE_BASIS,
     COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
     board_tickers,
     last_capture_per_day,
@@ -2155,8 +2157,9 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             # the levels newer, so a chain that stops arriving shows as stale
             "computed_ts_utc": fetched_ts,
             "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
-            "chain_basis": capture["basis"] if capture is not None else "full",
+            "chain_basis": capture["basis"] if capture is not None else CAPTURE_BASIS,
             "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
+            **_atr_fields(tk),
             "_per_strike": snap.per_strike, "_gamma_surface": None,
             "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
             # only a viewed ticker is repriced between chain fetches, so only its chain is kept
@@ -2165,6 +2168,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         # the values read from the stored chain captures (forces, the prior day's per-strike rows)
         # change only with a new capture or a new chain day: computed then, once, for all readers
         if new_chain:
+            payload["delta_oi_walls"] = _delta_oi_walls(tk, snap, fetched_ts)
             captures_key = (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(float(fetched_ts)))
             if payload.get("_captures_key") != captures_key:
                 stored = captures if captures is not None else last_capture_per_day(get_db().db_path, tk, 2)
@@ -2323,35 +2327,11 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         fetched_ts = time.time()   # the chain's as-of: an older streamed value never overrides it
         contracts = flatten_chain_contracts(resp.json())
         snap = _publish_levels(tk, contracts, fetched_ts)
-        _atr = _atr_pair(tk)
         with _terrain_cache_lock:
             payload = _terrain_cache[tk]
-            payload.update(atr_daily=round(_atr.daily, 3) if _atr.daily is not None else None,
-                           atr_15m=round(_atr.m15, 3) if _atr.m15 is not None else None)
         _log_flip_drift(tk, payload)
         _terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
         _note_terrain_success(tk)                   # RC-148: and the failure streak with it
-        # RC-359: bank today's per-strike OI (same exposures book) and compute the ΔOI
-        # walls vs the prior banked session. Fail-closed: no prior session -> walls None
-        # (the Console says 'banking'), never a fabricated diff.
-        try:
-            _oi_map = getattr(snap, "oi_by_strike", None) or {}
-            if _oi_map:
-                from math_exposure_core import compute_delta_oi_walls as _doiw
-                from time_et import now_et as _oi_now_et
-                _oi_date = _oi_now_et().strftime("%Y-%m-%d")
-                get_db().bank_daily_strike_oi(
-                    tk, _oi_date,
-                    [(k, c, p) for k, (c, p) in _oi_map.items()], time.time())
-                _prev_oi = get_db().prev_session_strike_oi(tk, _oi_date)
-                _walls = _doiw(_oi_map, _prev_oi)
-                with _terrain_cache_lock:
-                    if tk in _terrain_cache:
-                        _terrain_cache[tk]["delta_oi_walls"] = _walls
-        except Exception as _oi_e:
-            # institutional-swallow-ok: an accrual side effect -- log, never break the
-            # refresh; a missing day is a visible gap.
-            log.warning("oi_daily banking failed for %s: %s", tk, _oi_e)
         return f"ok:{snap.confidence}"
     except Exception as e:
         # RC-126: DEBUG here meant $SPX failed silently for a full session while the operator
@@ -2374,7 +2354,6 @@ FEED_RECORD_STALE_SEC = 150.0
 def _feed_record_state() -> str:
     """How old the newest stream_feed_status row in stream_capture.db is: it proves the whole
     path (the daemon's loop, the bus, the writer, the database) wrote this minute."""
-    import sqlite3
     from db_authority import canonical_stream_db_path
     path = canonical_stream_db_path()
     if not path.is_file():
@@ -2625,6 +2604,32 @@ def _atr_pair(ticker: str) -> "AtrPair":
     with _atr_lock:
         _atr_cache[tk] = (time.time(), pair)
     return pair
+
+
+def _atr_fields(tk: str) -> dict:
+    """atr_daily / atr_15m for every publication of the ticker's levels, whatever the chain's
+    source (a live download or a stored capture)."""
+    pair = _atr_pair(tk)
+    return {"atr_daily": round(pair.daily, 3) if pair.daily is not None else None,
+            "atr_15m": round(pair.m15, 3) if pair.m15 is not None else None}
+
+
+def _delta_oi_walls(tk: str, snap: "TerrainSnapshot", chain_ts: float) -> "dict | None":
+    """Banks the chain's per-strike open interest under the chain's ET date (last write wins)
+    and returns the change against the previous banked session (compute_delta_oi_walls); None
+    with no prior session or when the bank cannot be written (logged)."""
+    from math_exposure_core import compute_delta_oi_walls
+    oi = snap.oi_by_strike or {}
+    if not oi:
+        return None
+    day = et_date_str_from_ts_utc(float(chain_ts))
+    try:
+        db = get_db()
+        db.bank_daily_strike_oi(tk, day, [(k, c, p) for k, (c, p) in oi.items()], time.time())
+        return compute_delta_oi_walls(oi, db.prev_session_strike_oi(tk, day))
+    except sqlite3.Error as e:
+        log.warning("oi_daily banking failed for %s: %s", tk, e)
+        return None
 
 
 #: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
@@ -3312,18 +3317,13 @@ def get_options_gamma_surface(ticker: str = Query(...)):
             "age_sec": live.get("levels_age_sec"),            # terrain's canonical age
             "refresh_active": live.get("levels_refresh_active"),
             "chain_basis": live.get("chain_basis"),
-            # coverage: the live terrain chain is strike_count-bounded (near-money), NOT the full
-            # strike_range=ALL book — disclosed so the heatmap is never presented as a complete chain.
-            "complete": False,
             "coverage": {
-                "window": "live_near_money", "chain_basis": live.get("chain_basis"),
+                "chain_basis": live.get("chain_basis"),
                 "strike_count": len(strikes),
                 "strike_min": (strikes[0] if strikes else None),
                 "strike_max": (strikes[-1] if strikes else None),
                 "expiry_count": len(surf.get("expirations") or []),
-                "note": ("near-money LIVE window (strike_count-bounded terrain chain) — NOT the "
-                         "full strike_range=ALL book. Proven-complete captures are per-expiry "
-                         "(complete_chain_captures), not exposed by this surface"),
+                "note": "every expiry and every strike Schwab listed (strike_range=ALL)",
             },
             **_stamp_surface_session(surf, reference_date=None),
             # one spot on every screen (2026-09-27): the live price, the header's own rule, after
@@ -3338,7 +3338,7 @@ def get_options_gamma_surface(ticker: str = Query(...)):
             "priced_at_spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc"),
             "provenance": {
                 "producer": "math_exposure_core.compute_exposures_by_strike",
-                "source": "live_terrain_wide_chain (_terrain_refresh_one, strike_count-width basis)",
+                "source": "the ticker's published levels (_publish_levels, the full chain)",
                 "classification": "DERIVED", "cell_metric": "net_gex_1pct",
                 "spot_basis": "live_resolve_spot",
             },

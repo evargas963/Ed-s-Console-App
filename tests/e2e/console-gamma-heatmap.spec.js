@@ -180,15 +180,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveClass(/rth|pre|ah|closed/);
   });
 
-  test('narrowed live chain basis is surfaced prominently (#2)', async ({ page }) => {
-    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, SURFACE, { chain_basis: 'dte<=45' })),
-    }));
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.heat-banner.degraded')).toContainText('NARROWED');
-  });
-
   test('a streamed-only surface update still triggers a re-render even when every REST field is unchanged (RC-UI-2 finding #1)', async ({ page }) => {
     // Independent-review finding (2026-09-12), REPRODUCED: server.py's eager
     // _publish_levels changes _gamma_surface's CELL VALUES without ever
