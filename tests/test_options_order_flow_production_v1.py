@@ -59,10 +59,32 @@ def test_default_contract_from_banked_chain(tmp_path, monkeypatch, _at_capture):
     assert default_option_contract(fx["ticker"], chain_db_path=db) == pick_atm_call_symbol(fx["chain"], 16.1)
 
 
-def test_live_payload_one_compute_includes_proxy_flow():
+@pytest.mark.parametrize("day,hh,mm,want", [
+    ("2026-11-27", 12, 59, "2026-11-27"),     # early close (13:00, time_et's calendar): still trading
+    ("2026-11-27", 13, 30, "2026-11-28"),     # after the early close: today's expiry is done
+    ("2026-09-25", 15, 59, "2026-09-25"),     # a full session
+    ("2026-09-25", 16, 0, "2026-09-26"),
+])
+def test_the_default_contracts_expiry_cutoff_is_the_calendars_close(monkeypatch, day, hh, mm, want):
+    """ONE-10: the cutoff was a fixed 16:00, so after a 13:00 early close the default contract
+    could still be one that expired that afternoon."""
+    import datetime as _dt
+    from app.options.contracts import default as dflt
+    from time_et import ET
+    y, m, d = (int(x) for x in day.split("-"))
+    monkeypatch.setattr(dflt, "now_et", lambda: _dt.datetime(y, m, d, hh, mm, tzinfo=ET))
+    assert dflt._expiry_cutoff_et() == want
+
+
+def test_live_payload_one_compute_includes_proxy_flow(monkeypatch):
+    import datetime as _dt
     import app.options.order_flow.state as ofls
     from app.options.order_flow.live_payload import options_live_payload
+    from time_et import ET
 
+    # before the open: the session reset (tests/test_stack_wire_5_v1.py) is not this test's
+    # subject, and on the wall clock the suite's first quote of a session day would trigger it
+    monkeypatch.setattr(ofls, "now_et", lambda: _dt.datetime(2026, 9, 25, 8, 0, tzinfo=ET))
     contract = "CDE   260904C00013000"
     ofls.clear_all_live_state()
     ofls.push_book(contract, {

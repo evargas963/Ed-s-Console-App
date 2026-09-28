@@ -101,7 +101,10 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Alerts and level crosses.** Computed by the console at each levels publish; crosses written to
   `ed_console.db` → the `levels` push → `/api/alerts` → browser.
 - **Market session.** From the market calendar → pushed on `/api/changes` when the page connects
-  and every 5 s with no other change.
+  and every 5 s with no other change. One calendar (`time_et`: holidays, 13:00 early closes,
+  `session_label`, `session_close_mins_for_et_date`) decides every session window: the order-flow
+  session reset, the prior-day, overnight, VWAP and value-area windows, and the default option
+  contract's expiry cutoff. A day with no session has an empty window.
 - **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the stream
   handler (equity quote and book) and the bar writer mark a ticker's kind changed; each page
   connection gets at most one push a second. The console down: the page's session label reads
