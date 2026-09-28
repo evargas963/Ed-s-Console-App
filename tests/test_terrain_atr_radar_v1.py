@@ -99,9 +99,6 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     write; a TypeError inside the logger must not turn ok: into error:."""
     import server as srv
     monkeypatch.setattr(srv, "_is_loggable_session", lambda: True)   # an open-market test
-    from types import SimpleNamespace
-
-    import server as srv
 
     calls: list = []
     real = srv._log_flip_drift
@@ -134,7 +131,8 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
 
     monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: TerrainSnapshot(
         ticker="SPY", spot=100.0, gamma_flip=99.5, confidence="TRUSTED"))
-    monkeypatch.setattr(srv, "_atr_pair", lambda _tk: SimpleNamespace(daily=1.0, m15=0.2))
+    from terrain_atr import AtrPair
+    monkeypatch.setattr(srv, "_atr_pair", lambda _tk: AtrPair(1.0, 0.2))
 
     out = srv._terrain_refresh_one("SPY")
     assert out == "ok:TRUSTED"

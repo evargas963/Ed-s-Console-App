@@ -169,7 +169,8 @@ def test_a_banked_chain_from_any_session_is_never_served_in_place_of_the_live_su
             body = json.loads(get_options_gamma_surface(ticker=name).body)
             assert body["available"] is False and body["source"] == "unavailable", name
             assert body["live"] is False
-            assert "no live gamma surface" in body["reason"].lower()
+            # the reason is the ticker's refresh state, never a banked source
+            assert body["reason"] == server.terrain_staleness(None, tk)["levels_stale_reason"], name
         finally:
             _clear_gamma_surface(tk)
 
