@@ -90,7 +90,8 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
   chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
   a new chain arrived) → the browser reads `/api/terrain` and four other slice routes. Not stored; at startup and after the close they are computed from the
-  newest chain capture (#312). The values read from the stored captures (forces: ΔOI, DEX and
+  newest chain capture (#312), on the levels loop's thread while the console already serves the
+  page (each ticker's levels appear as they are priced). The values read from the stored captures (forces: ΔOI, DEX and
   charm by side; the prior day's per-strike rows) are computed by the same producer only when the
   ticker's newest capture or its chain's day changes; `/api/forces` and `/api/terrain/strikes`
   serve that result and read no stored chain. Everything computed from spot (gamma at spot, regime,
