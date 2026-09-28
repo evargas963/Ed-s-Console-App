@@ -71,10 +71,6 @@ def _reset(tmp_path, monkeypatch):
     ofls.clear_all_live_state()
     db = tmp_path / "stream_capture.db"
     lmp.record_feed_down()
-    monkeypatch.setattr(
-        "app.options.contracts.default.default_option_contract",
-        lambda *a, **k: None,
-    )
     return db
 
 

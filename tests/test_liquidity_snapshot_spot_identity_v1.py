@@ -26,7 +26,6 @@ class _FakeCanon:
 
 
 def _wire_common(monkeypatch, *, raw_levels, zones=None, resolved_spot=None):
-    monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
     monkeypatch.setattr(srv, "_liquidity_option_levels", lambda *a, **k: ([], "n/a"))
     monkeypatch.setattr(srv, "resolve_spot", lambda *a, **k: (resolved_spot, None, None))
     # the route's one level input: the materialized price-level snapshot

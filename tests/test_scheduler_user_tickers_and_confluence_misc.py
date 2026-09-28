@@ -1,15 +1,4 @@
-"""STACK-VERIFY-CAND-LOAD-TICKERS-RETURN-TYPE: typed return contract guard.
-
-`load_user_scheduler_tickers` now returns `Optional[list[str]]` — None on DB
-failure, distinct from empty list ("DB OK but nobody enrolled"). Legacy callers
-that want the pre-fix `list[str]` semantic call `load_user_scheduler_tickers_or_empty()`.
-
-This file pins:
-- The typed function's None branch on DB failure.
-- The convenience wrapper returns [] on DB failure.
-- Every existing production caller uses the `_or_empty` wrapper (no caller
-  accidentally feeds None into list-comprehension or filter_valid_tickers).
-"""
+"""The ticker board: which symbols are valid, and the one reader both processes use."""
 
 from __future__ import annotations
 
@@ -29,37 +18,40 @@ def test_the_console_and_the_daemon_hold_one_board(tmp_path, monkeypatch):
     list with the table's rows by category and a pass-through filter; the daemon read the table
     with board_tickers. The console now reads the board with that same reader: every enrolled
     row, whatever its category (user, index, ETF, panel symbol), in one order."""
-    import json
+    import sqlite3
 
     import server
     from calibration.complete_chain_capture import board_tickers
     from db import EdDB
-    legacy = tmp_path / "legacy.json"
-    legacy.write_text(json.dumps(["mu", "SPY"]), encoding="utf-8")
     edb = EdDB(tmp_path / "board.db")
-    edb.logging_universe_migrate_legacy_json_file(primary_path=legacy, archive_path=tmp_path / "a.json",
-                                                  core_tickers=[])
-    edb.logging_universe_sync_panel_auto(["QQQ", "TLT"], 1.0)
+    with sqlite3.connect(edb.db_path) as conn:
+        conn.executemany("INSERT INTO logging_universe (ticker, category, enrolled_ts_utc, last_seen_ts_utc) "
+                         "VALUES (?, ?, 1, 1)", [("MU", "user_persisted"), ("SPY", "core"),
+                                                 ("$SPX", "pinned"), ("$VIX", "panel_auto")])
     monkeypatch.setattr(server, "get_db", lambda: edb)
-    monkeypatch.setattr(server, "_market_context_panel_auto_candidates", lambda: ["QQQ", "TLT"])
     monkeypatch.setattr(server, "_logger_tickers", [])
     server._hydrate_logger_tickers_from_db()
-    assert server._logger_tickers == board_tickers(edb.db_path)
-    assert {"MU", "SPY", "QQQ", "TLT"} <= set(server._logger_tickers)
+    assert server._logger_tickers == board_tickers(edb.db_path) == ["$SPX", "$VIX", "MU", "SPY"]
 
 
-def test_retired_chg_map_cannot_alias_goog_onto_googl():
-    """The GOOG/GOOGL alias lived in the retired weighted-push map. Absence is the pin."""
-    import market_context as mc
+def test_the_board_is_what_the_table_holds_no_symbol_list_adds_to_it(tmp_path, monkeypatch):
+    """2026-09-28 audit: the console enrolled $VIX at every start from a hand-kept list
+    (market_context.py) beside the streamed context list (MARKET_CONTEXT_SYMBOLS). Reading the
+    board writes no row: an empty table is an empty board, for every instrument type."""
+    import server
+    from db import EdDB
+    edb = EdDB(tmp_path / "empty.db")
+    monkeypatch.setattr(server, "get_db", lambda: edb)
+    monkeypatch.setattr(server, "_logger_tickers", ["STALE"])
+    server._hydrate_logger_tickers_from_db()
+    assert server._logger_tickers == []
 
-    assert not hasattr(mc, "SYMBOL_TO_SNAPSHOT_CHG_COL")
-    assert not hasattr(mc, "snapshot_row_chg_map")
 
-
-def test_no_stored_percent_change_patches_a_live_confluence_value():
-    """Audit P0 (2026-09-23): a missing live confluence value was patched from the latest
-    stored %-change with no age limit. That path is gone -- missing stays missing."""
-    import db as db_mod
-    import market_context
-    assert not hasattr(market_context, "patch_context_confluence_from_quote_ticks")
-    assert not hasattr(db_mod.EdDB, "fetch_latest_confluence_quote_chg")
+def test_the_console_status_line_counts_live_prices_across_the_board(monkeypatch):
+    """2026-09-28 audit: the console's status line judged the live price by SPY alone. It now
+    counts every board ticker's price row (an index, an ETF, a single name, an arbitrary one)."""
+    import server
+    live = {"$SPX": 7690.19, "QQQ": None, "MU": 161.2, "ZZQX": None}
+    monkeypatch.setattr(server, "_logger_tickers", list(live))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk: (live[tk], "plane", None))
+    assert "live prices: 2 of 4 board tickers" in server._status_line()

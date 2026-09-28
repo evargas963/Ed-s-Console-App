@@ -41,22 +41,14 @@ def test_pick_atm_call_uses_vendor_symbol_not_constructed(_at_capture):
     assert pick_atm_call_symbol(contracts, None) is None
 
 
-def test_default_contract_from_banked_chain(tmp_path, monkeypatch, _at_capture):
-    from app.options.contracts.default import default_option_contract, pick_atm_call_symbol
-    from calibration.complete_chain_capture import persist_complete_chain_capture
+def test_default_contract_is_the_front_expirys_atm_call_of_the_chain(monkeypatch, _at_capture):
+    from app.options.contracts.default import front_atm_call, pick_atm_call_symbol
 
     fx = _cde_fixture_chain()
     monkeypatch.setattr("app.options.contracts.default._expiry_cutoff_et", lambda: fx["expiry"])
-    db = tmp_path / "ed.db"
-    persist_complete_chain_capture(
-        db,
-        ticker=fx["ticker"],
-        expiry=fx["expiry"],
-        contracts=fx["chain"],
-        spot=16.1,
-        completeness_basis=fx["completeness_basis"],
-    )
-    assert default_option_contract(fx["ticker"], chain_db_path=db) == pick_atm_call_symbol(fx["chain"], 16.1)
+    later = [dict(c, expirationDate="2099-01-16T21:00:00.000+00:00") for c in fx["chain"]]
+    assert front_atm_call(later + fx["chain"], 16.1) == pick_atm_call_symbol(fx["chain"], 16.1)
+    assert front_atm_call(fx["chain"], None) is None
 
 
 @pytest.mark.parametrize("day,hh,mm,want", [

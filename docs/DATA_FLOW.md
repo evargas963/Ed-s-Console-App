@@ -80,6 +80,9 @@ Schwab sends is taken as sent (rule 2), never computed.
   option contract the daemon holds live, the stream owns its gamma, delta, open interest, volume
   and IV: its last streamed value is the value, whatever its age, and replaces the chain's (a
   field the stream has not sent keeps the chain's); every other contract has the chain's values.
+  A contract is a ticker's when Schwab listed it in that ticker's chain (whatever its root:
+  SPX and SPXW are both $SPX's). The option contract whose book streams follows the page's
+  ticker: the at-the-money call of its front expiry, from its chain.
 - **1-minute bar.** Schwab → daemon bus → writer (`stream_capture.db`), and → console → the
   console's own bar writer → `ed_console.db` → a `liquidity` push on `/api/changes` → the browser
   reads `/api/bars1m`. Charts show completed Schwab bars only, exactly as Schwab sent them, with

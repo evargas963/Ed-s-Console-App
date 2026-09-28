@@ -37,6 +37,7 @@ def _held_chain(tk, contracts, fetched_ts, spot=None):
         prior = srv._terrain_cache.get(tk)
         srv._terrain_cache[tk] = {
             "_chain": contracts, "_chain_fetched_ts": fetched_ts, "spot": spot,
+            "_contract_symbols": frozenset(c["symbol"] for c in contracts),
             "expiries": sorted({c["expirationDate"][:10] for c in contracts}),
             "computed_ts_utc": time.time(),
         }

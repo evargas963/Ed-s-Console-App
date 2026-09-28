@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-import json
 import time as _wall_time
-import hashlib
 import logging
 import threading
 from pathlib import Path
@@ -17,7 +15,7 @@ from db_authority import (
     is_canonical_db_path,
 )
 from dataclasses import dataclass, asdict
-from typing import Any, Callable, Optional, TypeVar
+from typing import Callable, Optional, TypeVar
 
 from instrument_identity import ticker_storage_key
 from time_et import is_collect_window_bar_end_ts_utc
@@ -174,7 +172,6 @@ class EdDB:
             try:
                 self._init_schema()
                 self._ensure_logging_universe_table()
-                self._ensure_logging_universe_aux_tables()
                 self._migrate_drop_session_log_v1()
                 self._migrate_drop_confluence_log_v1()
                 self._migrate_drop_news_events_v1()
@@ -364,97 +361,6 @@ class EdDB:
                 "ON logging_universe (category, enrolled_ts_utc)"
             )
 
-    def _ensure_logging_universe_aux_tables(self):
-        """Idempotent migration bookkeeping (Issue 22 hardening)."""
-        with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS logging_universe_migration_log (
-                    name TEXT PRIMARY KEY,
-                    completed_ts_utc REAL NOT NULL,
-                    source_sha256 TEXT,
-                    detail_json TEXT
-                )
-                """
-            )
-
-
-
-
-    def logging_universe_sync_panel_auto(self, panel_candidates: list[str], now_ts: float) -> dict[str, Any]:
-        """
-        Upsert ``panel_auto`` rows — cross-instrument panel symbols discovered from the
-        market-context panel. The ``panel_auto`` CATEGORY records how a ticker was enrolled
-        (auto, from the panel) — not how much data it gets: since 2026-08-25 (RC-482/RC-483,
-        universal collection) panel_auto tickers take full option-chain snapshot rotation on
-        the same terms as every other enrolled ticker (the roster loops in server.py include
-        them). They also still feed the thin ``confluence_quote_ticks`` path via
-        ``fetch_market_context``.
-
-        Does not alter existing ``core`` / ``user_persisted`` / ``pinned`` rows. Drops ``panel_auto``
-        rows no longer in the desired panel list (e.g. holdings table refresh).
-        """
-        from production_universe import filter_valid_tickers, is_valid_production_ticker, normalize_production_ticker
-
-        want_list = [normalize_production_ticker(x) for x in filter_valid_tickers(panel_candidates)]
-        want_list = [t for t in want_list if t and is_valid_production_ticker(t)]
-        want = frozenset(want_list)
-
-        def _do() -> dict[str, Any]:
-            upserted = 0
-            with self._connect() as conn:
-                if not want:
-                    conn.execute("DELETE FROM logging_universe WHERE category = 'panel_auto'")
-                    return {"upserted": 0, "desired": 0, "symbols": []}
-
-                qmarks = ",".join("?" * len(want))
-                conn.execute(
-                    f"""
-                    DELETE FROM logging_universe
-                    WHERE category = 'panel_auto'
-                      AND UPPER(ticker) NOT IN ({qmarks})
-                    """,
-                    tuple(sorted(want)),
-                )
-
-                for sym in want_list:
-                    row = conn.execute(
-                        "SELECT category FROM logging_universe WHERE ticker = ? COLLATE NOCASE",
-                        (sym,),
-                    ).fetchone()
-                    cat = str(row[0]) if row else None
-                    if cat is None:
-                        conn.execute(
-                            """
-                            INSERT INTO logging_universe
-                                (ticker, category, enrollment_source, enrolled_ts_utc, last_seen_ts_utc)
-                            VALUES (?, 'panel_auto', 'market_context_panel_v1', ?, ?)
-                            """,
-                            (sym, now_ts, now_ts),
-                        )
-                        upserted += 1
-                    elif cat == "panel_auto":
-                        conn.execute(
-                            """
-                            UPDATE logging_universe SET
-                                last_seen_ts_utc = ?,
-                                enrollment_source = 'market_context_panel_v1'
-                            WHERE ticker = ? COLLATE NOCASE AND category = 'panel_auto'
-                            """,
-                            (now_ts, sym),
-                        )
-                        upserted += 1
-                    elif cat in ("core", "user_persisted", "pinned"):
-                        continue
-
-            return {"upserted": upserted, "desired": len(want), "symbols": want_list}
-
-        return _do()
-
-
-
-
-
     def logging_universe_prune_invalid_enrollments(self) -> list[str]:
         """
         Remove invalid user_persisted/pinned rows (migration fragments, corrupted keys).
@@ -489,206 +395,6 @@ class EdDB:
 
         _do()
         return removed
-
-
-
-
-
-
-
-
-
-    def logging_universe_migration_completed(self, name: str) -> bool:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT 1 FROM logging_universe_migration_log WHERE name = ?",
-                (name,),
-            ).fetchone()
-            return row is not None
-
-    def logging_universe_migration_mark(
-        self, name: str, ts: float, source_sha256: str, detail: dict
-    ) -> None:
-        def _do() -> None:
-            with self._connect() as conn:
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO logging_universe_migration_log
-                        (name, completed_ts_utc, source_sha256, detail_json)
-                    VALUES (?,?,?,?)
-                    """,
-                    (name, ts, source_sha256, json.dumps(detail)),
-                )
-
-        _do()
-
-
-    def logging_universe_migrate_legacy_json_file(
-        self,
-        *,
-        primary_path: Path,
-        archive_path: Path,
-        core_tickers: list[str],
-    ) -> dict:
-        """
-        Idempotent one-time import of legacy [.logger_tickers.json] list into logging_universe.
-        Uses a single transaction; archives primary only after successful commit.
-        """
-        mname = "legacy_logger_tickers_json_v1"
-        if self.logging_universe_migration_completed(mname):
-            return {"status": "already_completed", "migration": mname}
-        src = primary_path if primary_path.is_file() else None
-        archived_only = False
-        if src is None and archive_path.is_file():
-            src = archive_path
-            archived_only = True
-        if src is None:
-            self.logging_universe_migration_mark(
-                mname, _wall_time.time(), "", {"detail": "no_source_file"}
-            )
-            return {"status": "skipped_no_source", "migration": mname}
-        raw_bytes = src.read_bytes()
-        h = hashlib.sha256(raw_bytes).hexdigest()
-        try:
-            payload = json.loads(raw_bytes.decode("utf-8"))
-        except Exception as e:
-            return {"status": "error_json", "migration": mname, "error": str(e)}
-        if not isinstance(payload, list):
-            return {"status": "error_not_list", "migration": mname}
-        tickers = [str(x) for x in payload]
-        core_u = {(c or "").upper().strip() for c in core_tickers}
-        expected = sorted(
-            {
-                str(t).upper().strip()
-                for t in tickers
-                if t
-                and not str(t).startswith("$")
-                and str(t).upper().strip() not in core_u
-            }
-        )
-        now = _wall_time.time()
-
-        def _body() -> dict:
-            conn = sqlite3.connect(str(self.db_path), timeout=30.0)
-            conn.row_factory = sqlite3.Row
-            configure_sqlite_connection(conn)
-            try:
-                conn.execute("BEGIN IMMEDIATE")
-                seen: set[str] = set()
-                imported = 0
-                for raw in tickers:
-                    t = str(raw).upper().strip()
-                    if not t or t.startswith("$") or t in core_u or t in seen:
-                        continue
-                    seen.add(t)
-                    cur = conn.execute(
-                        "SELECT category FROM logging_universe WHERE ticker = ? COLLATE NOCASE",
-                        (t,),
-                    ).fetchone()
-                    if cur is None:
-                        conn.execute(
-                            """
-                            INSERT INTO logging_universe
-                              (ticker, category, enrollment_source, enrolled_ts_utc, last_seen_ts_utc)
-                            VALUES (?, 'user_persisted', ?, ?, ?)
-                            """,
-                            (t, "migrated_logger_tickers_json", now, now),
-                        )
-                        imported += 1
-                    elif cur[0] == "user_persisted":
-                        conn.execute(
-                            """
-                            UPDATE logging_universe SET last_seen_ts_utc = ?
-                            WHERE ticker = ? COLLATE NOCASE AND category = 'user_persisted'
-                            """,
-                            (now, t),
-                        )
-                n_db = conn.execute(
-                    """
-                    SELECT COUNT(*) FROM logging_universe
-                    WHERE category = 'user_persisted'
-                      AND enrollment_source = 'migrated_logger_tickers_json'
-                    """
-                ).fetchone()[0]
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO logging_universe_migration_log
-                        (name, completed_ts_utc, source_sha256, detail_json)
-                    VALUES (?,?,?,?)
-                    """,
-                    (
-                        mname,
-                        now,
-                        h,
-                        json.dumps(
-                            {
-                                "source_path": str(src.resolve()),
-                                "archived_only": archived_only,
-                                "expected_non_core_symbols": expected,
-                                "upsert_touched": imported,
-                                "rows_migrated_enrollment": int(n_db),
-                            }
-                        ),
-                    ),
-                )
-                conn.commit()
-            except Exception:
-                conn.rollback()
-                raise
-            finally:
-                conn.close()
-            return {
-                "status": "imported",
-                "migration": mname,
-                "sha256": h,
-                "upsert_touched": imported,
-                "archived_only": archived_only,
-            }
-
-        out = _body()
-        if not archived_only and primary_path.is_file():
-            try:
-                archive_path.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(str(primary_path), str(archive_path))
-            except OSError as e:
-                log.warning("legacy logger json archive replace failed: %s", e)
-        return out
-
-
-    def logging_universe_touch_seen(self, ticker: str, now_ts: float) -> None:
-        t = ticker_storage_key(ticker)  # RC-345/F25: canonical identity — touch hits the $-canonical row via any alias
-        nt = now_ts
-
-        def _do() -> None:
-            with self._connect() as conn:
-                conn.execute(
-                    "UPDATE logging_universe SET last_seen_ts_utc = ? WHERE ticker = ? COLLATE NOCASE",
-                    (nt, t),
-                )
-
-        _do()
-
-
-
-
-    def logging_universe_list_rows(self) -> list[dict]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT ticker, category, enrollment_source,
-                       enrolled_ts_utc, last_seen_ts_utc, last_background_log_ts_utc
-                FROM logging_universe
-                ORDER BY CASE category
-                    WHEN 'core' THEN 0
-                    WHEN 'pinned' THEN 1
-                    WHEN 'panel_auto' THEN 2
-                    WHEN 'user_persisted' THEN 3
-                    ELSE 4 END,
-                    ticker COLLATE NOCASE
-                """
-            ).fetchall()
-            return [dict(r) for r in rows]
-
 
     def _migrate_drop_session_log_v1(self) -> None:
         """Pass 6 — drop the session_log table.

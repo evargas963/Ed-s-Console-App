@@ -73,8 +73,8 @@ def test_desired_but_not_overlaid_this_cycle_is_stale_not_live():
 
 def test_never_desired_is_unavailable_covers_unsubscribed_missing_mismatched():
     # "AAA"/"BBB" never appear in `streamed` at all -- exactly the shape of an unsubscribed,
-    # never-streamed, or (since _desired_stream_greeks_for_ticker already filters by
-    # contract_matches_underlying) mismatched-identity contract.
+    # never-streamed, or (since _desired_stream_greeks_for_ticker keeps only contracts Schwab
+    # listed in the ticker's chain) another ticker's contract.
     surf = _surface({"call": "AAA", "put": "BBB"})
     _stamp_gamma_surface_cell_stream_state(surf, {}, set())
     col = surf["cells"][0]["stream"][0]
@@ -207,6 +207,7 @@ def _put_chain(*, fetched_ts=None):
     with server._terrain_cache_lock:
         server._terrain_cache[TK] = {
             "_chain": _CONTRACTS,
+            "_contract_symbols": frozenset(c["symbol"] for c in _CONTRACTS),
             "_chain_fetched_ts": time.time() if fetched_ts is None else fetched_ts,
         }
     server._note_gamma_surface_demand(TK)

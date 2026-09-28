@@ -166,9 +166,6 @@ from schwab_client import (
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
 from numeric_contract import schwab_number
-from market_context import (
-    market_context_panel_symbols_excluding_core,
-)
 from terrain_engine import (TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike, positioning_migration)
 from terrain_atr import AtrPair, compute_atr_pair
 
@@ -754,6 +751,7 @@ from micro_structure import Candle
 # the server AT BOOT -- loud, immediate, and impossible to trade through unnoticed. This
 # also ends the fail-open/fail-closed argument (Cursor audit 2026-07-20): the runtime
 # path now has no failure mode to pick a policy for.
+from app.options.contracts.default import front_atm_call
 from calibration.complete_chain_capture import (
     COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
     board_tickers,
@@ -822,81 +820,12 @@ def start_bar_writer() -> None:
     threading.Thread(target=_bar_writer, name="bar-writer", daemon=True).start()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# BACKGROUND MULTI-TICKER LOGGER
-# ─────────────────────────────────────────────────────────────────────────────
-# Core tickers always logged regardless of what the UI is showing.
-# Additional tickers are added automatically when the user views them.
-# The logger runs every LOG_INTERVAL seconds, cycling through all tracked
-# tickers with a STAGGER_SECS delay between each to avoid rate-limit bursts.
-#
-# Base money-path tickers (SPY/QQQ/IWM) require equal RTH capture — not guest-style sparsity.
-#   • Dedicated ``_base_money_path_logger_loop`` sustains ~1 lightweight quote snapshot/min
-#     per base symbol via concurrent capture (logger_source=base_money_path), independent
-#     of which ticker is active in the UI (see money_path_ticker_tiers.py).
-#   • ED_DB_SNAPSHOT_THROTTLE (default on): at most one INSERT per ticker per UTC-minute bucket.
-#   • The general logger still rotates mega-caps + user_persisted; cycle length grows with count.
-#   • RTH_ONLY may skip background fetches outside the ET session window.
-#   • UNIVERSAL COLLECTION IS UNCONDITIONAL (operator, 2026-08-25, RC-493): the background
-#     logger sweeps EVERY enrolled ticker every cycle whether or not a viewer is connected.
-#     The former operator-mode throttle (trio + one rotating guest while viewing) is removed;
-#     _live_operator_mode_active now governs only UI-side refresh skips, never the sweep.
-#   • Guest / briefly viewed symbols legitimately have fewer rows — base trio must not.
-#     Gate: ``python tools/check_base_ticker_observability.py --date YYYY-MM-DD``.
-#
-# Schwab rate limits: ~120 requests/min. Each ticker needs 2 calls (quote +
-# chain). 5 core tickers = 10 calls per 30s cycle = well within limits.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# No built-in ticker list (universality, operator 2026-09-23): the board is the logging_universe
-# table, read by board_tickers in both processes.
+# The board is the logging_universe table, read by board_tickers in both processes; every row is
+# processed alike, whatever its category.
 RTH_ONLY:       bool      = True  # only log during RTH + 30min pre/post buffer
 
-
-def _market_context_panel_auto_candidates() -> list[str]:
-    """Symbols quoted every ``fetch_market_context`` cycle."""
-    return market_context_panel_symbols_excluding_core(frozenset())
-
-
-def _sync_market_context_panel_into_logging_universe(db, now_ts: float) -> None:
-    """Persist cross-panel quote universe into ``logging_universe`` as ``panel_auto`` (data-plane SSOT)."""
-    try:
-        r = db.logging_universe_sync_panel_auto(_market_context_panel_auto_candidates(), now_ts)
-        if r.get("desired"):
-            log.info(
-                "Issue 22: panel_auto sync — desired=%s upsert_round=%s",
-                r.get("desired"),
-                r.get("upserted"),
-            )
-    except Exception as e:
-        log.warning("logging_universe panel_auto sync failed: %s", e)
-
-
-# ── Legacy flat JSON (pre–Issue 22). Migrated idempotently via EdDB (migration_log + transaction).
-_TICKER_FILE = os.path.join(os.path.dirname(__file__), ".logger_tickers.json")
-_TICKER_ARCHIVE = _TICKER_FILE + ".migrated_issue22"
-
-# DB-WRITE-PATH-FIXES (d), 2026-05-31: import-time-defer guard. Counts how many times the
-# HEAVY DB-backed logging-universe load (migrations / sync_core / prune / panel-sync) has run.
-# The module-import path must NOT trigger it (that work belongs in the FastAPI lifespan); the
-# paired test asserts this counter is 0 immediately after `import server`.
+# Times the board was read from the database; `import server` leaves it 0 (read in the lifespan).
 _LOGGING_UNIVERSE_DB_LOAD_COUNT = 0
-
-
-def _run_legacy_logger_json_migration(db) -> None:
-    """Delegate to EdDB hardened migration (provably one-time, transactional)."""
-    try:
-        from pathlib import Path
-
-        r = db.logging_universe_migrate_legacy_json_file(
-            primary_path=Path(_TICKER_FILE),
-            archive_path=Path(_TICKER_ARCHIVE),
-            core_tickers=[],
-        )
-        if r.get("status") not in ("already_completed", "skipped_no_source"):
-            log.info("Issue 22 legacy logger json migration: %s", r)
-    except Exception as e:
-        log.warning("legacy logger json migration: %s", e)
 
 
 def _hydrate_logger_tickers_from_db() -> None:
@@ -906,28 +835,19 @@ def _hydrate_logger_tickers_from_db() -> None:
     try:
         _LOGGING_UNIVERSE_DB_LOAD_COUNT += 1
         db = get_db()
-        logging_universe_sync_wall_ts = time.time()
-        _run_legacy_logger_json_migration(db)
         try:
             removed = db.logging_universe_prune_invalid_enrollments()
             if removed:
                 log.warning("Issue 22: pruned invalid logging_universe enrollments: %s", removed)
         except Exception as e:
             log.warning("Issue 22: logging_universe prune failed: %s", e)
-        _sync_market_context_panel_into_logging_universe(db, logging_universe_sync_wall_ts)
         board = board_tickers(db.db_path)
         with _logger_lock:
             _logger_tickers = board
     except Exception as e:
         log.warning("hydrate logger tickers from DB: %s", e)
 
-# DB-WRITE-PATH-FIXES (d), 2026-05-31: do NOT run the heavy DB-backed logging-universe load
-# (migrations / sync_core / prune / panel-sync) on the module-import path. That work raced the
-# retrain write-lock and produced the slow init + the "db load failed" warning that dropped
-# pinned tickers. When signals/db are available, import-time init is core-only; the authoritative
-# universe is loaded in the FastAPI lifespan via start_logger() -> _hydrate_logger_tickers_from_db()
-# (server.py:_app_lifespan). The cheap JSON-file fallback (no DB) is retained for the degraded
-# no-signals path so its behavior is unchanged.
+
 _logger_tickers:  list[str] = []
 _logger_lock:     threading.Lock   = threading.Lock()
 
@@ -956,34 +876,6 @@ def _is_loggable_session() -> bool:
     win = _refresh_window_et(et.date().isoformat())
     return win is not None and win[0] <= et.hour * 60 + et.minute <= win[1]
 
-
-def _touch_tracked_ticker_view(ticker: str) -> None:
-    """VIEW-path last-seen touch — TICKER-PREVIEW-NO-ENROLL (operator 2026-05-31).
-
-    Merely looking up / viewing levels, quotes, or analytics for an arbitrary symbol must NOT
-    enroll it (no ``logging_universe`` row, no scheduler user-ticker file write) — enrollment
-    into the training roster is reserved for explicit track/pin actions (``/api/logger/add``,
-    ``/api/logger/pin``). For an ALREADY-enrolled ticker this refreshes ``last_seen`` (the same
-    update the old ``_register_tracked_ticker`` early-return branch did); for an un-enrolled
-    ticker it is a no-op and never writes. Safe to call from the offloaded SSE/async paths.
-    """
-    t = ticker_storage_key(ticker)
-    if not t or len(t) > 10:
-        return
-    with _logger_lock:
-        enrolled = t in _logger_tickers
-    if not enrolled:
-        return
-    try:
-        get_db().logging_universe_touch_seen(t, time.time())
-    except Exception as e:
-        log.debug("view touch_seen failed ticker=%s: %s", t, e, exc_info=True)
-
-
-# _operator_mode_cycle_roster REMOVED 2026-08-25 (RC-493): it throttled the background
-# logger to trio + one rotating guest while a viewer was connected, refreshing non-trio
-# tickers only ~once per 30 min — the operator ruled universal collection unconditional, so
-# the throttle is gone (see _logger_loop) rather than left as dead code (RC-474 class).
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1778,7 +1670,7 @@ def _next_gamma_surface_seq(tk: str) -> int:
     return n
 
 
-def _desired_stream_greeks_for_ticker(tk: str) -> dict:
+def _desired_stream_greeks_for_ticker(tk: str, listed: "frozenset | None" = None) -> dict:
     """Every currently-live streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME entry for a
     contract belonging to `tk` — the PRIMARY/pinned contract AND every ADDITIONALLY-
     desired contract (RC-UI-3 multi-contract coverage), gathered FRESH on every call.
@@ -1795,22 +1687,18 @@ def _desired_stream_greeks_for_ticker(tk: str) -> dict:
     re-querying it for every currently-desired symbol on every refresh, no matter which
     one triggered it, always reconstructs every symbol's latest known state, and a symbol
     whose coverage has ended is correctly absent (never lingers as a stale entry here).
-
-    Native contract identity uses app.options.order_flow.streaming.contract_matches_underlying
-    (chain-aware: a vendor root that genuinely differs from the ticker's own root, e.g.
-    Schwab's $SPX -> SPXW weekly, is still recognized via the nearest banked complete chain) —
-    independent-review finding (2026-09-12): a bare vendor-root == ticker-root equality check
-    silently excludes exactly this legitimate case."""
+    A contract is the ticker's when Schwab listed it in the ticker's chain: `listed`, the chain
+    being published, else the held one."""
     from app.options.order_flow.state import get_stream_greeks
     out: dict = {}
-    for sym in _desired_option_symbols_for_ticker(tk):
+    for sym in _desired_option_symbols_for_ticker(tk, listed):
         greeks = get_stream_greeks(sym)
         if greeks:
             out[sym] = greeks
     return out
 
 
-def _desired_option_symbols_for_ticker(tk: str) -> "list[str]":
+def _desired_option_symbols_for_ticker(tk: str, listed: "frozenset | None" = None) -> "list[str]":
     """Every option-contract symbol this daemon currently DESIRES for `tk` — the primary/
     pinned contract AND every additionally-desired contract (RC-UI-3 multi-contract
     coverage) — regardless of whether a stream tick has landed for it yet.
@@ -1823,14 +1711,14 @@ def _desired_option_symbols_for_ticker(tk: str) -> "list[str]":
     set on its own, so a caller can tell "requested, awaiting first tick" (PENDING) apart
     from "never desired at all" (UNAVAILABLE)."""
     from app.options.order_flow.streaming import (
-        get_active_option_contract, get_active_option_contracts, contract_matches_underlying)
+        get_active_option_contract, get_active_option_contracts)
     out: "list[str]" = []
     candidates = list(get_active_option_contracts())
     primary = get_active_option_contract()
     if primary:
         candidates.append(primary)
     for sym in candidates:
-        if sym and sym not in out and contract_matches_underlying(sym, tk):
+        if sym and sym not in out and (sym in listed if listed is not None else _contract_is_for(sym, tk)):
             out.append(sym)
     return out
 
@@ -1884,10 +1772,8 @@ def _option_contract_admission_summary(tk: str) -> dict:
     # Requested by the view but left out by the shared Schwab socket's budget
     # (stream_spine.OPTION_CONTRACTS_MAX_HELD): a capacity decision, reported as itself --
     # never as pending (it is not coming) nor as a vendor rejection (the vendor never saw it).
-    from app.options.order_flow.streaming import (
-        contract_matches_underlying, get_option_contracts_over_budget)
-    not_admitted = sorted(s for s in get_option_contracts_over_budget()
-                          if contract_matches_underlying(s, tk))
+    from app.options.order_flow.streaming import get_option_contracts_over_budget
+    not_admitted = sorted(s for s in get_option_contracts_over_budget() if _contract_is_for(s, tk))
     return {
         "daemon_available": daemon_available,
         "admitted": sorted(admitted), "active": sorted(active), "observed": sorted(observed),
@@ -2182,8 +2068,38 @@ _levels_locks_guard = threading.Lock()
 _reprice_dirty: "set[str]" = set()
 _reprice_running: "set[str]" = set()
 _reprice_guard = threading.Lock()
-#: option contract symbol -> the cached ticker it belongs to (found once per symbol)
-_option_ticker: "dict[str, str]" = {}
+
+
+def _contract_is_for(sym: "str | None", tk: str) -> bool:
+    """An option contract belongs to `tk` when Schwab listed it in `tk`'s chain -- the same rule
+    for every instrument, whatever the contract's root (SPXW and SPX are both $SPX's)."""
+    with _terrain_cache_lock:
+        return bool(sym) and sym in ((_terrain_cache.get(tk) or {}).get("_contract_symbols") or ())
+
+
+def _contract_ticker(sym: str) -> "str | None":
+    """The ticker whose chain Schwab listed `sym` in, or None."""
+    with _terrain_cache_lock:
+        return next((tk for tk, p in _terrain_cache.items() if sym in (p.get("_contract_symbols") or ())), None)
+
+
+def _ensure_default_option_contract(tk: str) -> None:
+    """The option contract whose OPTIONS_BOOK streams follows the page's ticker: the one already
+    desired or held by the daemon when it is this ticker's, else the at-the-money call of the
+    ticker's front expiry; cleared when the ticker has none. The operator's POST
+    /api/streaming/active-option-contract still wins until the ticker changes."""
+    from app.options.order_flow.streaming import (
+        clear_active_option_contract, get_active_option_contract, set_active_option_contract)
+    if _contract_is_for(get_active_option_contract(), tk):
+        return
+    held = ((lmp.daemon_status() or {}).get("held") or {}).get("OPTIONS_BOOK") or []
+    with _terrain_cache_lock:
+        default = (_terrain_cache.get(tk) or {}).get("_default_contract")
+    sym = held[0] if held and _contract_is_for(held[0], tk) else default
+    if sym:
+        set_active_option_contract(sym)
+    elif get_active_option_contract():
+        clear_active_option_contract(reason="no_contract_for_ticker")
 
 
 def _levels_lock(tk: str) -> threading.Lock:
@@ -2223,7 +2139,11 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         else:
             spot, spot_source, spot_ts = resolve_spot(tk)
         prev_spot = payload.get("spot")
-        streamed = _desired_stream_greeks_for_ticker(tk)
+        if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
+            payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")),
+                           _default_contract=front_atm_call(chain, spot))
+        listed = payload.get("_contract_symbols") or frozenset()
+        streamed = _desired_stream_greeks_for_ticker(tk, listed)
         priced, n_live = overlay_streamed_contract_fields(chain, _live_stream_greeks(streamed))
         live_syms = _overlaid_symbols(chain, priced)
         snap = compute_terrain(tk, priced, spot, now=(
@@ -2258,7 +2178,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                            stream_overlay_computed_ts_utc=time.time())
             _stamp_gamma_surface_cell_stream_state(
                 surface, streamed, set(live_syms), read_producer_rejected_option_contracts(),
-                set(_desired_option_symbols_for_ticker(tk)),
+                set(_desired_option_symbols_for_ticker(tk, listed)),
                 daemon_available=is_option_producer_daemon_available())
             payload["_gamma_surface"] = surface
         with _terrain_cache_lock:
@@ -2314,15 +2234,7 @@ def _tick_ticker(sym: str) -> "str | None":
     from instrument_identity import vendor_option_root
     if not vendor_option_root(sym):
         return ticker_storage_key(sym)
-    tk = _option_ticker.get(sym)
-    if tk is None:
-        from app.options.order_flow.streaming import contract_matches_underlying
-        with _terrain_cache_lock:
-            keys = list(_terrain_cache)
-        tk = next((k for k in keys if contract_matches_underlying(sym, k)), None)
-        if tk is not None:
-            _option_ticker[sym] = tk
-    return tk
+    return _contract_ticker(sym)
 
 
 def _on_stream_tick(sym: str) -> None:
@@ -2498,7 +2410,9 @@ def _next_refresh_ct() -> str:
 def _status_line() -> str:
     """One line for the console window: is each part working right now, from its own check."""
     st = lmp.daemon_status()
-    spot, _src, _ts = resolve_spot("SPY")
+    with _logger_lock:
+        board = list(_logger_tickers)
+    priced = sum(1 for tk in board if resolve_spot(tk)[0] is not None)
     with _terrain_cache_lock:
         as_of = [p.get("computed_ts_utc") for p in _terrain_cache.values() if p.get("computed_ts_utc")]
     newest = ct_label(max(as_of)) if as_of else "none"
@@ -2507,7 +2421,7 @@ def _status_line() -> str:
         f"session {session_label(now_et())}",
         "daemon link: " + ("connected" if st is not None else "NOT CONNECTED"),
         "Schwab socket: " + ("open" if st and st.get("schwab_socket_open") is True else "NOT OPEN"),
-        f"SPY {spot:.2f}" if spot is not None else "SPY: no live price",
+        f"live prices: {priced} of {len(board)} board tickers",
         f"levels: {len(as_of)} tickers, newest as of {newest}",
         _feed_record_state(),
         (("chain refresh: last sweep of the board took "
@@ -2942,7 +2856,6 @@ def get_vanna_by_strike(ticker: str = Query(...)):
     """Per-strike dealer VANNA exposure from the published levels (net_vanna = call_vanna -
     put_vanna, aggregated across every expiry; no per-expiry surface yet)."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    _touch_tracked_ticker_view(tk)
     payload = terrain_cache_get(tk) or {}
     if "_vanna_rows" not in payload:
         return JSONResponse({"ticker": tk, "available": False,
@@ -2960,7 +2873,6 @@ def get_charm_by_strike(ticker: str = Query(...)):
     """Per-strike dealer CHARM exposure from the published levels' charm map (the charm walls'
     own): net_charm = call_charm - put_charm per strike, delta-shares/day."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    _touch_tracked_ticker_view(tk)
     payload = terrain_cache_get(tk) or {}
     if "_charm_rows" not in payload:
         return JSONResponse({"ticker": tk, "available": False,
@@ -2992,7 +2904,7 @@ def get_options_tape(ticker: str = Query(...),
     already resolves for the gamma-surface overlay), merged newest-first and capped at
     `limit` across the whole merge, not per-contract."""
     from app.options.order_flow.streaming import (
-        get_active_option_contract, get_active_option_contracts, contract_matches_underlying)
+        get_active_option_contract, get_active_option_contracts)
     from app.options.order_flow.history import tape_rows_for_symbol
 
     tk = ticker_storage_key(_required_ticker(ticker))
@@ -3011,7 +2923,7 @@ def get_options_tape(ticker: str = Query(...),
         seen: set[str] = set()
         symbols = []
         for sym in candidates:
-            if sym and sym not in seen and contract_matches_underlying(sym, tk):
+            if sym and sym not in seen and _contract_is_for(sym, tk):
                 seen.add(sym)
                 symbols.append(sym)
 
@@ -3639,8 +3551,7 @@ async def get_changes(ticker: str = Query(...)):
     from app.options.order_flow.streaming import set_streaming_active_ticker
 
     t = ticker_storage_key(_required_ticker(ticker))
-    _get_route_offload_executor().submit(_touch_tracked_ticker_view, t)
-    _get_route_offload_executor().submit(set_streaming_active_ticker, t)
+    _get_route_offload_executor().submit(lambda: (set_streaming_active_ticker(t), _ensure_default_option_contract(t)))
     client = push_changes.subscribe(t)
 
     async def event_generator():
@@ -3680,8 +3591,6 @@ def api_order_flow_microstructure(ticker: str = Query(...),
     renders, never recomputes. `venue` is the one Schwab book shown: NYSE_BOOK (exchanges) or
     NASDAQ_BOOK (market makers); the two are never combined."""
     t = ticker_storage_key(_required_ticker(ticker))
-    # VIEW endpoint: touch last-seen only, never enroll (RC-160 ticker-scope discipline).
-    _touch_tracked_ticker_view(t)
     data: dict = {}
     try:
         from app.options.order_flow.state import get_content_for_symbol
@@ -3862,8 +3771,6 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
 # SWITCH-LATENCY FIX: sync def → threadpool (DB write + Schwab expiry fetch, no await).
 def get_expiries(ticker: str = Query(...)):
     ticker = ticker_storage_key(_required_ticker(ticker))   # SPX -> $SPX: the cache's own key
-    # TICKER-PREVIEW-NO-ENROLL: listing expiries is a VIEW — touch last-seen only.
-    _touch_tracked_ticker_view(ticker)
     t = terrain_cache_get(ticker) or {}
     return JSONResponse({"expiries": t.get("expiries") or [],
                          "dte": t.get("expiry_dte") or {},   # Schwab's daysToExpiration, as sent
@@ -3880,9 +3787,7 @@ def get_chain(ticker: str = Query(...),
     (/api/terrain and this route mark it). Answers `status: unavailable` with a reason when no
     chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
-    _touch_tracked_ticker_view(t)
-
-    _note_gamma_surface_demand(t)          # a viewed ticker's full chain is kept by the levels loop
+    _note_gamma_surface_demand(t)         # a viewed ticker's full chain is kept by the levels loop
     _price_stored_chain_when_closed(t)
     held = terrain_cache_get(t) or {}
     resolved_expiry = (expiry or "").strip()[:10] or (held.get("expiries") or [None])[0]
@@ -4410,8 +4315,6 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
         from liquidity_models import PlaybookConfig
 
         ticker_upper = ticker_storage_key(ticker)
-        # TICKER-PREVIEW-NO-ENROLL: liquidity snapshot is a VIEW — touch last-seen only.
-        _touch_tracked_ticker_view(ticker_upper)
         config = PlaybookConfig(max_zone_width=2.0)
         extra, fusion_status = _liquidity_option_levels(ticker_upper)
         # the one spot (resolve_spot); a stale side-cache served 759.725 beside a 760.13 header

@@ -169,6 +169,7 @@ def test_admission_summary_reports_over_budget_contracts_as_not_admitted(monkeyp
     sym = _sym("SPY", "260924", "C", 900)
     monkeypatch.setattr(st, "_option_contracts_not_admitted",
                         {sym: "not admitted: outside the live-stream budget (200)"})
+    monkeypatch.setitem(server._terrain_cache, "SPY", {"_contract_symbols": frozenset({sym})})  # SPY's chain lists it
     out = server._option_contract_admission_summary("SPY")
     assert out["not_admitted"] == [sym], "the heatmap must be able to say why the cell has no stream"
     assert sym not in out["pending"] and sym not in out["rejected"]
