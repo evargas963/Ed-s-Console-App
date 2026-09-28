@@ -10,7 +10,7 @@ import logging
 import threading
 from collections import deque
 from typing import Optional
-from time_et import now_et, RTH_END_MINS, RTH_OPEN_MINS
+from time_et import now_et, session_label
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
 from l1_trade_observation import (
@@ -24,18 +24,6 @@ MAX_BOOK_SNAPSHOTS = 20
 MAX_TAPE_PRINTS = 500
 
 log = logging.getLogger(__name__)
-
-def is_rth_open() -> bool:
-    """Return True if current ET time is between 09:30:00 and 16:00:00 Monday-Friday."""
-    try:
-        now = now_et()
-        if now.weekday() >= 5:  # Saturday=5, Sunday=6
-            return False
-        hour, minute = now.hour, now.minute
-        mins = hour * 60 + minute
-        return RTH_OPEN_MINS <= mins < RTH_END_MINS
-    except Exception:
-        return False
 
 
 _OPTION_TOP_FIELDS = (("BID_PRICE", "bid", schwab_number), ("ASK_PRICE", "ask", schwab_number),
@@ -62,9 +50,8 @@ class OrderFlowState:
         # same replay. A long-lived premarket live singleton still resets once at
         # the next RTH boundary.
         try:
-            self._last_rth_date = (
-                now_et().strftime("%Y-%m-%d") if is_rth_open() else ""
-            )
+            now = now_et()
+            self._last_rth_date = now.strftime("%Y-%m-%d") if session_label(now) == "RTH" else ""
         except Exception:
             self._last_rth_date = ""
 
@@ -132,7 +119,7 @@ class OrderFlowState:
         try:
             now_et_dt = now_et()
             current_date = now_et_dt.strftime("%Y-%m-%d")
-            if is_rth_open() and current_date != self._last_rth_date:
+            if session_label(now_et_dt) == "RTH" and current_date != self._last_rth_date:
                 with self._lock:
                     self._clear_all_session_state_unlocked()
                     self._last_rth_date = current_date

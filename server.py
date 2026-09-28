@@ -4364,12 +4364,14 @@ def _session_bars(tk: str, session_date) -> list[dict]:
     liquidity engine's window): the completed Schwab bars in price_bars_1m, in the engine's
     shape."""
     from datetime import datetime as _dt, time as _time, timedelta as _td
-    from time_et import ET, RTH_END_MINS, is_trading_day_et
-    prior = session_date - _td(days=1)
-    while not is_trading_day_et(prior.isoformat()):
-        prior -= _td(days=1)
+    from time_et import ET, is_trading_day_et, session_close_mins_for_et_date
+    close = session_close_mins_for_et_date(session_date.isoformat())
+    prior = next((d for d in (session_date - _td(days=n) for n in range(1, 15))
+                  if is_trading_day_et(d.isoformat())), None)
+    if close is None or prior is None:
+        return []                       # no session that day, or none before it in the calendar
     lo = _dt.combine(prior, _time(0, 0), tzinfo=ET).timestamp()
-    hi = _dt.combine(session_date, _time(RTH_END_MINS // 60, RTH_END_MINS % 60), tzinfo=ET).timestamp()
+    hi = _dt.combine(session_date, _time(close // 60, close % 60), tzinfo=ET).timestamp()
     bars = [b for b in _liquidity_1m_bars(tk) if lo <= b["timestamp"] / 1000.0 < hi]
     return bars
 

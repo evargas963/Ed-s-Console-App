@@ -11,16 +11,18 @@ from typing import Any
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_number
-from time_et import RTH_END_MINS, now_et
+from time_et import now_et, session_close_mins_for_et_date
 
 from calibration.complete_chain_capture import nearest_complete_chain_capture
 
 
 def _expiry_cutoff_et() -> str:
+    """The earliest expiry still trading: today's until today's close (the market calendar's,
+    early closes included), else tomorrow's."""
     et = now_et()
-    mins = et.hour * 60 + et.minute
-    day = et.date() if mins < RTH_END_MINS else (et + timedelta(days=1)).date()
-    return day.isoformat()
+    close = session_close_mins_for_et_date(et.date().isoformat())
+    open_today = close is not None and et.hour * 60 + et.minute < close
+    return (et.date() if open_today else (et + timedelta(days=1)).date()).isoformat()
 
 
 def pick_atm_call_symbol(contracts: list[Any], spot: float | None) -> str | None:

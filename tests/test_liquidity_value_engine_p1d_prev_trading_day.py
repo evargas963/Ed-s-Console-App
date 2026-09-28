@@ -26,9 +26,9 @@ def _cfg() -> PlaybookConfig:
 
 def test_monday_uses_friday_not_weekend_calendar_walk():
     """Monday session: prior trading day is Friday; Thursday bars must not leak."""
-    friday = date(2026, 7, 3)      # weekday before the 2026-07-06 Monday
-    thursday = date(2026, 7, 2)
-    monday = date(2026, 7, 6)
+    friday = date(2026, 7, 10)     # the trading day before the 2026-07-13 Monday
+    thursday = date(2026, 7, 9)    # (2026-07-03 was used here until ONE-10: a market holiday)
+    monday = date(2026, 7, 13)
     bars = [
         _bar(thursday, 10, 0, 100, 120, 90, 110),   # decoy older day
         _bar(friday, 10, 0, 100, 105, 95, 101),
@@ -79,3 +79,43 @@ def test_no_prior_rth_bars_fails_closed_empty():
 
 def test_empty_bars_returns_empty():
     assert get_previous_day_levels([], date(2026, 7, 10), _cfg()) == {}
+
+
+def _real_spy_bars():
+    """Schwab's SPY 1-minute bars, 2026-09-24 and -25 (tests/fixtures)."""
+    import json
+    from pathlib import Path
+    fx = Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json"
+    return json.loads(fx.read_text(encoding="utf-8"))["bars"]
+
+
+def _et(b):
+    return datetime.fromtimestamp(b["timestamp"] / 1000.0, ET)
+
+
+def test_the_prior_session_ends_at_the_calendars_close_on_an_early_close_day(monkeypatch):
+    """ONE-10: the levels engine fixed the regular session at 09:30-16:00, so on an early close
+    (13:00) its prior-day high, low and close took in three hours of after-hours trading. The
+    close is the market calendar's (time_et). Real SPY bars; stand-in: 2026-09-24 declared a
+    13:00 early close in the calendar (no early close is in the stored bars yet)."""
+    import time_et
+    bars = _real_spy_bars()
+    prior, today = date(2026, 9, 24), date(2026, 9, 25)
+    session = [b for b in bars if _et(b).date() == prior and dtime(9, 30) <= _et(b).time() < dtime(13, 0)]
+    full = [b for b in bars if _et(b).date() == prior and dtime(9, 30) <= _et(b).time() < dtime(16, 0)]
+    assert max(b["high"] for b in full) != max(b["high"] for b in session) or \
+        full[-1]["close"] != session[-1]["close"], "the stand-in day must differ after 13:00"
+    monkeypatch.setitem(time_et.US_EQUITY_EARLY_CLOSE_MINS_ET, prior.isoformat(), time_et.EARLY_CLOSE_MINS)
+    out = get_previous_day_levels(bars, today, _cfg())
+    assert out["pdh"] == max(b["high"] for b in session)
+    assert out["pdl"] == min(b["low"] for b in session)
+    assert out["pdc"] == session[-1]["close"]
+
+
+def test_a_holiday_has_no_session_whatever_bars_it_carries(monkeypatch):
+    """A day the calendar closes is never the prior session. Real SPY bars; stand-in: 2026-09-24
+    declared a full holiday, so the prior session of 2026-09-25 is not in the buffer: absent."""
+    import time_et
+    monkeypatch.setattr(time_et, "US_EQUITY_FULL_HOLIDAYS_ET",
+                        time_et.US_EQUITY_FULL_HOLIDAYS_ET | {"2026-09-24"})
+    assert get_previous_day_levels(_real_spy_bars(), date(2026, 9, 25), _cfg()) == {}
