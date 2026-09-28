@@ -31,18 +31,17 @@ spot (Key Levels = header, #372).
 | ONE-02 | QUEUED | Equity last price and size kept a second time in the console's order-flow tape (`state.py` tape and receive log). |
 | ONE-03 | QUEUED | Feed liveness judged in both processes: the daemon applies its own heartbeat to its price rows (`live_ui.beat`), and the console applies the pushed copy again (`feed_live_for`); one rule since ONE-15, two places it runs. |
 | ONE-04 | QUEUED | Equity books: the console's order-flow copy and the database copy read by the Book Heatmap (`history.book_heatmap_for_ticker`, a live screen reading the DB). |
-| ONE-05 | QUEUED | Option quotes and greeks: the order-flow copy, the REST chain in the levels state merged field by field by time (`overlay_streamed_contract_fields`), and the DB copy read by the options tape. |
+| ONE-05 | QUEUED | Option quotes and greeks: the order-flow copy, the REST chain in the levels state merged field by field by time (`overlay_streamed_contract_fields`), and the DB copy read by the options tape. Seen live 2026-09-28 (SNDK): 41 heatmap legs read "stale" while their contract was live, only because the streamed value was not newer than the chain's own quote. |
 | ONE-06 | QUEUED | 1-minute bars in two databases, and live charts and levels reading `price_bars_1m` (with P2-DB4). |
 | ONE-07 | QUEUED | Option chains fetched by two processes with two writers to `ed_console.db` (with P2-1). |
-| ONE-09 | QUEUED | VWAP, prior day and value area recomputed by `/api/liquidity-snapshot`'s own path (`liquidity_value_engine` checkpoint builders) instead of the one price-level snapshot. |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
 | ONE-13 | QUEUED | Ticker roster built twice (console `CORE_TICKERS` + filtered board; daemon's full board). |
-| ONE-14 | QUEUED | Ticker identity re-derived in page code (`$` stripping in `ed-gamma-chart.js`, `ed-core.js`, `ed-trade-desk-map.js`); the server serves the display form. |
+| ONE-16 | QUEUED | Page code compares served values for colour and sign (`chg_pct >= 0` in ed-core and ed-trade-desk-map, and others): rule 4 -- the direction is served. Found 2026-09-28. |
 | TICK-01 | QUEUED | Index symbol form from a hand-kept list of 11 roots (`instrument_identity.BROKER_INDEX_BARE_ROOTS`); Schwab's own instrument answer decides. |
 | TICK-02 | QUEUED | Option contract → ticker matched by root name, with weekly/adjusted roots (SPXW, NDXP) through a second path that needs a stored capture; Schwab's underlying field on the contract decides. |
 | TICK-03 | QUEUED | "Adjusted deliverable" defined as 100 shares of stock, so cash-settled index options are all flagged; needs a captured index deliverable first. |
 | TICK-05 | QUEUED | Time to expiry always to 16:00; Schwab's `settlementType` (AM-settled index monthlies) not read. |
-| TICK-06 | QUEUED | The market-context list ($SPX, $NDX, $VIX) kept twice (server and page). |
+| TICK-07 | QUEUED | `schwab_field_dictionary_builder.is_ticker` (board symbol form) also passes a hand-kept `KNOWN_TICKERS` list. Found 2026-09-28. |
 
 ## Phase 2 — the rest of the design, then decomposition
 

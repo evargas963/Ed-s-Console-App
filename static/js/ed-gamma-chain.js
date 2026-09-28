@@ -50,7 +50,6 @@
     if (!host || !stillChain(tk, exp)) return;
     var mySeq = ++_reqSeq;
     function current() { return mySeq === _reqSeq && stillChain(tk, exp); }
-    var tkEl = document.getElementById('chTicker'); if (tkEl) tkEl.textContent = tk.replace('$', '');
     host.setAttribute('aria-busy', 'true');
     return fetch('/api/chain?ticker=' + encodeURIComponent(tk) + (exp ? '&expiry=' + encodeURIComponent(exp) : ''), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })

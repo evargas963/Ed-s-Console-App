@@ -21,105 +21,84 @@ class _FakeSnapshotOutput:
         self.raw_levels = raw_levels
 
 
-_BAR = {"timestamp": 1_577_975_400_000, "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}
+class _FakeCanon:
+    generation, as_of_ts_utc, bar_source = 1, 0.0, "test"
 
 
 def _wire_common(monkeypatch, *, raw_levels, zones=None, resolved_spot=None):
     monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
-    monkeypatch.setattr(srv, "_liquidity_option_levels", lambda *a, **k: ([], "disabled"))
+    monkeypatch.setattr(srv, "_liquidity_option_levels", lambda *a, **k: ([], "n/a"))
     monkeypatch.setattr(srv, "resolve_spot", lambda *a, **k: (resolved_spot, None, None))
-    # the route's one bar input: the session window of price_bars_1m
-    monkeypatch.setattr(srv, "_session_bars", lambda *a, **k: [_BAR])
-
+    # the route's one level input: the materialized price-level snapshot
+    monkeypatch.setattr(srv, "canonical_price_level_snapshot", lambda t: _FakeCanon())
+    monkeypatch.setattr(lve, "carry_snapshot_levels", lambda *a, **k: None)
     fake_out = _FakeSnapshotOutput("SPY", "2020-01-02", raw_levels, zones=zones)
     monkeypatch.setattr(lve, "build_live_snapshot", lambda *a, **k: fake_out)
     return fake_out
 
 
+def _body(resp):
+    return json.loads(resp.body) if hasattr(resp, "body") else resp
+
+
 def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(monkeypatch):
-    """MEASURED 2026-09-11: with no live spot in cache, build_live_snapshot is called with
-    spot=None (proven -- no real spot ever reached it), yet spot_used_for_scoring used to be
-    silently backfilled with the VWAP number afterward and reported under the "spot" name. It
-    must now report null -- absence stays absence -- with the VWAP estimate, if any, reported
-    under its own honestly-named field instead."""
+    """MEASURED 2026-09-11: with no live spot, spot_used_for_scoring used to be silently
+    backfilled with the VWAP number and reported under the "spot" name. It must report null --
+    absence stays absence."""
     _wire_common(monkeypatch, raw_levels={"vwap": 123.45, "cutoff_et": "2020-01-02T10:00:00"})
-    # a date far from "today" so the canonical-carry branch (which needs a live DB row) is skipped
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", fusion=False)
-    body = json.loads(resp.body) if hasattr(resp, "body") else resp
+    body = _body(srv.get_liquidity_snapshot(ticker="SPY"))
     assert body["spot_used_for_scoring"] is None
     assert "spot_estimate_vwap_fallback" not in body, "VWAP is never a stand-in for spot"
 
 
 def test_missing_spot_produces_honest_null_distance_and_neutral_score_through_the_real_zone_path(monkeypatch):
-    """MEASURED 2026-09-11 (independent review, correcting this fix's own prior explanation):
-    the VWAP-as-spot value did not only mislabel a reported field -- under the pre-fix code it
-    was ALSO fed into _liquidity_zone_tradeable_fields() and the zone sort, which compute
-    distance_to_spot/spot_inside_zone/tradeable_score and order zones by them. This drives a
-    REAL Zone object through the actual route code (not a zones=[] stub that skips that path
-    entirely) and proves the None now reaching it produces the honest absence values
-    _liquidity_zone_tradeable_fields already defines for spot=None -- not a crash, not a
-    fabricated distance, and not the old VWAP-influenced number."""
+    """MEASURED 2026-09-11: the VWAP-as-spot value was also fed into the zone distance and sort.
+    A REAL Zone through the actual route: with no spot, distance and inside-zone are absent and
+    the score is neutral -- not a crash, not a fabricated distance."""
     zone = Zone(
         zone_type=ZoneType.PIVOT_VALUE, zone_low=100.0, zone_high=102.0, zone_mid=101.0,
         source_tags=["GAMMA_WALL"],
     )
     _wire_common(monkeypatch, raw_levels={"vwap": 123.45}, zones=[zone])
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", fusion=False)
-    body = json.loads(resp.body) if hasattr(resp, "body") else resp
+    body = _body(srv.get_liquidity_snapshot(ticker="SPY"))
     assert len(body["zones"]) == 1
     z = body["zones"][0]
-    # honest absence -- not None-crashes-to-exception, not a distance computed against VWAP
     assert z["distance_to_spot"] is None
     assert z["spot_inside_zone"] is None
-    assert isinstance(z["tradeable_score"], (int, float))  # neutral score, not a crash
+    assert isinstance(z["tradeable_score"], (int, float))
 
 
-def test_spot_used_for_scoring_reports_the_real_cached_spot_when_available(monkeypatch):
-    """The companion positive control: when a real live spot IS available, it is reported as
-    spot_used_for_scoring exactly as before, and the VWAP-fallback field stays null -- this fix
-    narrows a false claim, it does not remove the real value when one genuinely exists."""
-    monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
-    # RC spot-360-audit (2026-09-14): _liquidity_fusion_from_cache no longer returns a spot at
-    # all (the dead capability was removed, not just unused -- see its docstring); wall levels
-    # still come from the /api/state cache, but spot_for_zones comes from resolve_spot(), the
-    # ONE spot authority every other consumer in this file uses.
-    monkeypatch.setattr(srv, "_liquidity_option_levels", lambda *a, **k: ([], "n/a"))
-    monkeypatch.setattr(srv, "resolve_spot", lambda *a, **k: (456.78, "schwab_streaming_level_one", 0.0))
-    monkeypatch.setattr(srv, "_session_bars", lambda *a, **k: [_BAR])
-    fake_out = _FakeSnapshotOutput("SPY", "2020-01-02", {"vwap": 123.45})
-    monkeypatch.setattr(lve, "build_live_snapshot", lambda *a, **k: fake_out)
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", fusion=True)
-    body = json.loads(resp.body) if hasattr(resp, "body") else resp
+def test_spot_used_for_scoring_reports_the_real_live_spot_when_available(monkeypatch):
+    """The positive control: a real live spot (resolve_spot, the one spot authority) is reported
+    as spot_used_for_scoring."""
+    _wire_common(monkeypatch, raw_levels={"vwap": 123.45}, resolved_spot=456.78)
+    body = _body(srv.get_liquidity_snapshot(ticker="SPY"))
     assert body["spot_used_for_scoring"] == 456.78
     assert "spot_estimate_vwap_fallback" not in body
 
 
 def test_an_http_exception_on_the_route_path_keeps_its_status_not_a_generic_500(monkeypatch):
-    """MEASURED 2026-09-11: an HTTPException(503, ...) on this route's path (then: get_client()
-    with Schwab auth unavailable) was caught by the blanket `except Exception` and re-issued as a
-    bare 500, discarding the real classification. It must propagate as its own status. (The route
-    no longer calls Schwab -- its bars come from price_bars_1m -- so the exception is raised from
-    that bar read here.)"""
+    """MEASURED 2026-09-11: an HTTPException(503, ...) on this route's path was re-issued as a
+    bare 500. It must propagate as its own status (raised here from the snapshot read)."""
     from fastapi import HTTPException
 
-    monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
+    _wire_common(monkeypatch, raw_levels={})
 
     def _raise_auth_unavailable(*a, **k):
         raise HTTPException(status_code=503, detail="Schwab auth failed: token_invalid")
-    monkeypatch.setattr(srv, "_session_bars", _raise_auth_unavailable)
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", fusion=False)
+    monkeypatch.setattr(srv, "canonical_price_level_snapshot", _raise_auth_unavailable)
+    resp = srv.get_liquidity_snapshot(ticker="SPY")
     assert resp.status_code == 503
-    body = json.loads(resp.body)
-    assert "token_invalid" in body["error"] or "Schwab auth failed" in body["error"]
+    assert "token_invalid" in json.loads(resp.body)["error"]
 
 
 def test_an_unrelated_crash_still_reports_500(monkeypatch):
-    """Negative control: the new HTTPException branch must not swallow OTHER exceptions into a
-    misleading 503 -- a genuine unexpected error still reports 500, unchanged."""
+    """Negative control: a genuine unexpected error still reports 500."""
+    _wire_common(monkeypatch, raw_levels={})
+
     def _boom(*a, **k):
         raise RuntimeError("something actually broke")
-    monkeypatch.setattr(srv, "_touch_tracked_ticker_view", lambda *a, **k: None)
-    monkeypatch.setattr(srv, "_session_bars", _boom)
-    resp = srv.get_liquidity_snapshot(ticker="SPY", date="2020-01-02", snapshot="live", fusion=False)
+    monkeypatch.setattr(srv, "canonical_price_level_snapshot", _boom)
+    resp = srv.get_liquidity_snapshot(ticker="SPY")
     assert resp.status_code == 500
     assert "something actually broke" in json.loads(resp.body)["error"]

@@ -50,7 +50,7 @@ Schwab sends is taken as sent (rule 2), never computed.
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
 | daemon → console | local WebSocket 127.0.0.1:8799 | every Schwab message as sent; on connect, the current state first |
 | console → daemon | same socket | the "wanted" list: every symbol per Schwab service |
-| daemon → browser | local WebSocket :8800 | the finished price row per symbol, on every change, plus a heartbeat every second |
+| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
 | daemon → console | the same :8800 push | the same price rows, for the equities the console wants streamed: the console's only live price |
 | Schwab → console | Schwab REST | full option chains; one quote at startup to validate the login |
 | console → browser | HTTP `/api/*` | everything else, on request |
@@ -85,6 +85,10 @@ Schwab sends is taken as sent (rule 2), never computed.
   candle is built from quotes: level-one prices matched Schwab's completed bars on all four of
   open, high, low and close in 36.1% of 12,364 minutes (43 tickers, 2026-09-25 10:00–15:00 ET),
   so a quote-built candle would misstate the high or low (operator 2026-09-28).
+- **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
+  generation from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
+  → `/api/levels`, and the liquidity zones of `/api/liquidity-snapshot` are built from that same
+  snapshot (today only; no checkpoint or past-date path).
 - **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per board or
   viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule (#312).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the

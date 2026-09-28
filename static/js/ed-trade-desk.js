@@ -391,9 +391,7 @@
       fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
-      // snapshot=live -- see ed-liquidity-map.js's identical comment; the endpoint's own
-      // default is a frozen pre-9:30ET snapshot, wrong for an "as of right now" synthesis page.
-      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk) + '&snapshot=live', signal),
+      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
       // same endpoint GEX-by-Strike already reads (ed-gamma-panels.js loadGbsImpl) -- reused
       // here, not recomputed, for the migration/volume section below.
       fetchJson('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), signal),
@@ -443,7 +441,6 @@
   function retrigger() { if (isRightNow()) _loader.trigger(_loadKey()); }
   function load() {
     if (!isRightNow()) return;
-    var tEl = document.getElementById('tdTicker'); if (tEl) tEl.textContent = ticker().replace('$', '');
     _loader.trigger(_loadKey());
   }
 

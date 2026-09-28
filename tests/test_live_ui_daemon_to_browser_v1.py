@@ -121,7 +121,7 @@ def test_an_unsubscribed_symbol_is_never_sent():
         end = time.monotonic() + 0.6
         while time.monotonic() < end:
             msg = json.loads(await asyncio.wait_for(ws.recv(), 1))
-            assert all(r["ticker"] == "SPY" for r in msg["rows"]), msg
+            assert all(r["ticker"] == "SPY" for r in msg.get("rows") or []), msg
     asyncio.run(_run(body))
 
 
@@ -133,6 +133,35 @@ def test_resubscribing_sends_the_new_symbols_current_rows_at_once():
         msg, row = await _next_row(ws, "AAPL", lambda r: r["spot"] == 230.5, timeout=0.15)
         assert msg["type"] == "quotes"
     asyncio.run(_run(body))
+
+
+def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
+    """ONE-14 (2026-09-28 audit): the page stripped "$" in eight places to match a row to what
+    it asked for, and kept its own list of index roots. The daemon answers each subscribe with
+    each asked-for symbol's key (what its rows carry) and display name, from instrument_identity,
+    for an index typed bare or with "$", an ETF and a single name alike."""
+    async def body(bus, ws, feed, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX", "$VIX", "spy", "MU"]}))
+        first = json.loads(await asyncio.wait_for(ws.recv(), 2))
+        assert first == {"type": "symbols", "symbols": [
+            {"requested": "SPX", "key": "$SPX", "display": "SPX"},
+            {"requested": "$VIX", "key": "$VIX", "display": "VIX"},
+            {"requested": "spy", "key": "SPY", "display": "SPY"},
+            {"requested": "MU", "key": "MU", "display": "MU"}]}
+    asyncio.run(_run(body))
+
+
+def test_pages_are_told_the_market_context_with_its_display_names() -> None:
+    """TICK-06: the page kept its own ['SPX','NDX','VIX'] beside streaming.MARKET_CONTEXT_SYMBOLS;
+    the console now serves the one list, each with its display name."""
+    import html as _html
+    import re
+    import server as srv
+    from app.options.order_flow.streaming import MARKET_CONTEXT_SYMBOLS
+    page = srv.root().body.decode("utf-8")
+    served = json.loads(_html.unescape(re.search(r'<meta name="ed-market-context" content="([^"]*)">', page).group(1)))
+    assert [c["key"] for c in served] == list(MARKET_CONTEXT_SYMBOLS)
+    assert [c["display"] for c in served] == [k.lstrip("$") for k in MARKET_CONTEXT_SYMBOLS]
 
 
 def test_an_index_typed_bare_is_served_under_its_storage_key():

@@ -7,6 +7,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const path = require('path');
+const { mockPriceSocket } = require('./fixtures/price_socket');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
 const EVENTS = {
@@ -93,8 +94,10 @@ test.describe('Trade Desk renders served values', () => {
     await intercept(page);
     const barReads = [];
     page.on('request', (r) => { if (r.url().includes('/api/bars1m')) barReads.push(r.url()); });
+    await mockPriceSocket(page, []);            // the daemon answers what SPY is (its served key)
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
     const legend = page.locator('#tdmChart .tvc-legend');
     await expect(legend).toContainText('Last completed bar Fri 09/25 09:21 AM CT');
     const before = barReads.length;

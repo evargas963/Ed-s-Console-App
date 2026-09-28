@@ -39,7 +39,6 @@
   function load() {
     if (!isBook()) return;
     var tk = ticker();
-    var tEl = document.getElementById('obTicker'); if (tEl) tEl.textContent = tk.replace('$', '');
     _loader.trigger(tk);
   }
 
