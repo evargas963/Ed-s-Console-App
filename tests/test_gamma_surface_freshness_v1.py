@@ -4,9 +4,16 @@ second age policy, discloses its coverage (the full chain the levels were priced
 never presents the banked morning snapshot as intraday."""
 import json
 import time
+from datetime import datetime
+from pathlib import Path
+
+import pytest
 
 import server
+from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+from db import EdDB
 from server import get_options_gamma_surface, ticker_storage_key
+from time_et import ET
 
 _SURF = {
     "expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [580.0, 583.0, 586.0],
@@ -110,27 +117,83 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch):
             server._terrain_cache.pop(tk, None)
 
 
-def test_a_viewed_ticker_warms_whether_or_not_it_is_on_the_board(monkeypatch):
-    """2026-09-28 audit: the levels loop refreshes every viewed ticker each cycle (_previewed),
-    but the surface route said a viewed ticker off the board was not collecting. One rule: a
-    viewed ticker the loop can refresh now is warming, on the board or not."""
+# ── any viewed ticker, on the board or not (2026-09-28 audit) ────────────────────────────────
+# Warming read "a snapshot already exists" (true for board tickers, priced at startup) instead of
+# the refresh state; a closed market gave /api/terrain "no capture" without looking for one while
+# the surface route priced the stored capture; ATR absent showed a bare dash. One rule each.
+
+_BOARD, _OFF = "NFLX", "ZZQX"                      # ZZQX: an arbitrary symbol, never on the board
+_CRWD = json.loads((Path(__file__).parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
+                   .read_text(encoding="utf-8"))
+_CAPTURED = datetime(2026, 9, 2, 10, 5, tzinfo=ET).timestamp()   # the CRWD chain's capture
+
+
+@pytest.fixture
+def _fresh(monkeypatch, tmp_path):
+    edb = EdDB(tmp_path / "ed.db")
+    monkeypatch.setattr(server, "get_db", lambda: edb)
+    monkeypatch.setattr(server, "_logger_tickers", [_BOARD])
+    monkeypatch.setattr(server, "_terrain_cache", {})
+    monkeypatch.setattr(server, "_gamma_surface_demand", {})
+    monkeypatch.setattr(server, "_terrain_refresh_last_error", {})
     monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
+    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk, listed=None: {})
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **k: (_CRWD["spot"], "stub", _CAPTURED))
+    return edb
+
+
+@pytest.mark.parametrize("tk", [_BOARD, _OFF])
+def test_first_view_in_session_warms_by_the_refresh_state(_fresh, monkeypatch, tk):
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
-    board, off_board = ticker_storage_key("NFLX"), ticker_storage_key("ZZQX")
-    monkeypatch.setattr(server, "_logger_tickers", [board])
-    try:
-        for tk in (board, off_board):
-            with server._terrain_cache_lock:
-                server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}  # no surface
-            d = _call(tk)
-            assert d["requested"] is True and d["warming"] is True and "on_board" not in d, tk
-    finally:
-        for tk in (board, off_board):
-            with server._terrain_cache_lock:
-                server._terrain_cache.pop(tk, None)
-            server._gamma_surface_demand.pop(tk, None)
+    d = _call(tk)                                   # the first view: no levels published yet
+    assert d["requested"] is True and d["warming"] is True
+    assert d["reason"] == "no terrain snapshot has been computed yet"
+
+
+@pytest.mark.parametrize("tk", [_BOARD, _OFF])
+def test_a_held_ticker_does_not_warm_and_says_why(_fresh, monkeypatch, tk):
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: "held: Schwab refused the chain")
+    d = _call(tk)
+    assert d["warming"] is False and d["reason"] == "held: Schwab refused the chain"
+
+
+@pytest.mark.parametrize("tk", [_BOARD, _OFF])
+def test_closed_market_with_no_capture_gives_one_reason_on_every_route(_fresh, monkeypatch, tk):
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    d = _call(tk)
+    assert d["warming"] is False and server.NO_CAPTURE_REASON in d["reason"]
+    assert server.NO_CAPTURE_REASON in server.get_terrain(ticker=tk)["error"]
+
+
+@pytest.mark.parametrize("tk", [_BOARD, _OFF])
+def test_closed_market_prices_the_stored_capture_on_every_route(_fresh, monkeypatch, tk):
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    by_expiry: dict = {}
+    for ct in _CRWD["chain"]:
+        by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
+    for expiry, cts in by_expiry.items():
+        persist_complete_chain_capture(_fresh.db_path, ticker=tk, expiry=expiry, contracts=cts,
+                                       spot=_CRWD["spot"], completeness_basis=CAPTURE_BASIS,
+                                       ts_utc=_CAPTURED)
+    t = server.get_terrain(ticker=tk)                # the Trade Desk's first load
+    assert not t["error"] and t["chain_basis"] == CAPTURE_BASIS and t["spot"] == _CRWD["spot"]
+    assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
+    assert _call(tk)["available"] is True           # the heatmap from the same publication
+
+
+@pytest.mark.parametrize("tk", [_BOARD, _OFF])
+def test_a_refresh_publishes_the_same_fields_for_any_ticker(_fresh, monkeypatch, pin_clock, tk):
+    pin_clock(2026, 9, 2, 10, 5)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+    server._note_gamma_surface_demand(tk)           # selected on the page
+    server._publish_levels(tk, [dict(c) for c in _CRWD["chain"]], _CAPTURED)
+    t = server.get_terrain(ticker=tk)
+    assert t["chain_basis"] == CAPTURE_BASIS and t["delta_oi_walls"] is None   # no prior banked day
+    assert t["atr_15m"] is None and "0 15-minute periods" in t["atr_15m_reason"]
+    assert _call(tk)["available"] is True
 
 
 def test_surface_session_identity_is_stamped_by_the_server_clock():

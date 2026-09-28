@@ -3,7 +3,6 @@ only for a demanded (viewed) ticker, exactly once, from the books the levels wer
 and a shaping failure is reported, never half-published. Heavy leaf deps are monkeypatched."""
 import json
 import time
-import types
 from pathlib import Path
 
 import pytest
@@ -11,6 +10,7 @@ import pytest
 import live_market_plane as lmp
 import server
 from math_exposure_core import ExposureDiagnostics
+from terrain_atr import AtrPair
 
 
 def _daemon_holds(*symbols):
@@ -53,7 +53,7 @@ def _stub_terrain(monkeypatch, proj):
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (100.0, "stub", 0.0))
     monkeypatch.setattr(server, "compute_terrain", lambda tk, contracts, spot, **k: Snap(contracts))
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
-    monkeypatch.setattr(server, "_atr_pair", lambda t: types.SimpleNamespace(daily=None, m15=None))
+    monkeypatch.setattr(server, "_atr_pair", lambda t: AtrPair(None, None, "stand-in", "stand-in"))
     monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
     monkeypatch.setattr(server, "project_gamma_surface", proj)
 

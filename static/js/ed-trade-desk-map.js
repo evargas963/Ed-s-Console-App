@@ -368,7 +368,8 @@
         c.querySelector('.tdm-hero').innerHTML = '<span>±' + num(im.points, 2) + '</span><small>implied 1-day move (1σ, pts)</small>';
       }
       c.querySelector('.tdm-rows').innerHTML = row('ATM IV (nearest expiry)', im && im.iv_pct_atm != null ? num(im.iv_pct_atm, 2) + '%' : '—') +
-        row('ATR daily', num(t && t.atr_daily)) + row('ATR 15m', num(t && t.atr_15m)) +
+        row('ATR daily', t && t.atr_daily != null ? num(t.atr_daily) : esc((t && t.atr_daily_reason) || '—')) +
+        row('ATR 15m', t && t.atr_15m != null ? num(t.atr_15m) : esc((t && t.atr_15m_reason) || '—')) +
         row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : 'waiting for the VIX stream');
     }
     document.querySelectorAll('#tdmCards .tdm-card').forEach(function (el) {
