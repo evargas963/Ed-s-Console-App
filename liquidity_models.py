@@ -109,11 +109,8 @@ def volume_profile_poc_vah_val(
 
 
 class SnapshotType(str, Enum):
-    """Structural checkpoint when levels are computed (no continuous redraw)."""
+    """The shape of the served zones: before the session's open (premarket) or during it (live)."""
     PREMARKET = "premarket"
-    OPENING = "opening"
-    MIDDAY = "midday"
-    AFTERNOON = "afternoon"
     LIVE = "live"
 
 

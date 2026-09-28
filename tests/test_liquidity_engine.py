@@ -316,10 +316,9 @@ def _step3_bars(session_date: date) -> list:
 
 def _step3_zones(session_date: date):
     from liquidity_models import PlaybookConfig
-    from liquidity_value_engine import build_premarket_snapshot
-    out = build_premarket_snapshot("SPY", _step3_bars(session_date),
-                                   session_date, PlaybookConfig())
-    return out.zones
+    from liquidity_value_engine import build_premarket_snapshot, build_price_level_snapshot
+    snap = build_price_level_snapshot("SPY", session_date, _step3_bars(session_date), bar_source="test")
+    return build_premarket_snapshot("SPY", session_date, PlaybookConfig(), canonical=snap).zones
 
 
 def test_no_liquidity_pool_claim_in_zone_taxonomy():
@@ -376,7 +375,7 @@ def test_cluster_price_levels():
 
 def test_no_lookahead_premarket():
     """Premarket snapshot does not use same-day RTH data."""
-    from liquidity_value_engine import build_premarket_snapshot
+    from liquidity_value_engine import build_premarket_snapshot, build_price_level_snapshot
     from liquidity_models import PlaybookConfig
     session = date(2026, 3, 13)
     # Only previous day bars
@@ -387,7 +386,8 @@ def test_no_lookahead_premarket():
         dt = datetime(prev_date.year, prev_date.month, prev_date.day, 10, 0 + i % 60, tzinfo=ET)
         bars.append(_mk_bar(dt, 500, 501, 499, 500, 1000))
     cfg = PlaybookConfig()
-    out = build_premarket_snapshot("SPY", bars, session, cfg)
+    snap = build_price_level_snapshot("SPY", session, bars, bar_source="test", config=cfg)
+    out = build_premarket_snapshot("SPY", session, cfg, canonical=snap)
     assert out.raw_levels.get("prev_day")
     # No today POC/VAH/VAL in premarket raw: every "poc"-shaped key inside prev_day
     # must be the pd_-prefixed previous-day form, not an unprefixed today value that

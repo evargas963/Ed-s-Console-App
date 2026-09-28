@@ -4,13 +4,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-import pytest
-
 from time_et import ET
-from liquidity_value_engine import (
-    compute_session_vwap,
-    generate_liquidity_value_snapshot,
-)
+from liquidity_value_engine import compute_session_vwap
 
 
 def test_compute_session_vwap_none_when_volume_missing():
@@ -27,8 +22,3 @@ def test_compute_session_vwap_none_when_volume_missing():
         }
     ]
     assert compute_session_vwap(bars, session) is None
-
-
-def test_generate_liquidity_value_snapshot_raises_on_unknown_type():
-    with pytest.raises(ValueError, match=r"not a valid SnapshotType|Unknown snapshot_type"):
-        generate_liquidity_value_snapshot("SPY", [], "2026-03-13", "not_a_checkpoint")
