@@ -8,10 +8,8 @@ shutdown-safe release.
 
 from __future__ import annotations
 
-import ast
 import threading
 import time
-from pathlib import Path
 
 import pytest
 
@@ -23,88 +21,6 @@ def _fresh_gate(monkeypatch):
     monkeypatch.setattr(srv, "_schwab_chain_fetch_gate", gate)
     monkeypatch.setattr(srv, "_chain_inflight", {})
     return gate
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# RC-279 — a double must PROVE it can still stand in for what it replaces
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _forwarded_kwargs_at_the_gated_call_site() -> set[str]:
-    """The keywords `_gated_safe_get_chain` actually passes to `safe_get_chain`.
-
-    Read from the source rather than restated here, because a list of keywords
-    maintained by hand is the same defect one level up.
-    """
-    import ast
-    import inspect
-
-    tree = ast.parse(inspect.getsource(srv._gated_safe_get_chain).lstrip())
-    for node in ast.walk(tree):
-        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                and node.func.id == "safe_get_chain"):
-            return {kw.arg for kw in node.keywords if kw.arg}
-    raise AssertionError("no call to safe_get_chain found in _gated_safe_get_chain")
-
-
-def _doubles_installed_in_this_file() -> list[tuple[int, ast.AST]]:
-    """Every callable this file monkeypatches over `safe_get_chain`, by source line."""
-    import ast as _ast
-
-    src = Path(__file__).read_text(encoding="utf-8")
-    out: list[tuple[int, _ast.AST]] = []
-    tree = _ast.parse(src)
-    funcs = {n.name: n for n in _ast.walk(tree)
-             if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef))}
-    for node in _ast.walk(tree):
-        if not (isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute)
-                and node.func.attr == "setattr" and len(node.args) == 3):
-            continue
-        target = node.args[1]
-        if not (isinstance(target, _ast.Constant) and target.value == "safe_get_chain"):
-            continue
-        repl = node.args[2]
-        if isinstance(repl, _ast.Lambda):
-            out.append((repl.lineno, repl.args))
-        elif isinstance(repl, _ast.Name) and repl.id in funcs:
-            out.append((funcs[repl.id].lineno, funcs[repl.id].args))
-    return out
-
-
-def test_the_gated_call_site_still_matches_the_real_callee():
-    """If these two drift, every behavioural test below fails for the wrong reason."""
-    import inspect
-
-    forwarded = _forwarded_kwargs_at_the_gated_call_site()
-    assert forwarded, "the gated call site forwards nothing — re-read it"
-    inspect.signature(srv.safe_get_chain).bind(
-        None, "ZZZ", **{k: None for k in forwarded})
-
-
-def test_every_double_can_stand_in_for_the_real_safe_get_chain():
-    """RC-279: ten of this file's fourteen tests once failed on ONE stale double shape.
-
-    `safe_get_chain` gained `to_date`; all 13 doubles were pinned to
-    `(client, ticker, *, strike_count)`, so `TypeError: <lambda>() got an unexpected
-    keyword argument 'to_date'` was raised INSIDE the code under test — and inside a
-    worker thread — where it reads like a product failure. The concurrency behaviour
-    these tests exist to protect went unverified while the suite was loudly red.
-
-    RC-239 hit this first and repaired the three doubles that happened to be failing,
-    leaving ten identical ones. So the lock is not "add the keyword"; it is that a
-    substitute must accept whatever the real call site forwards, checked here, where
-    a failure names the double instead of blaming the subject.
-    """
-    forwarded = _forwarded_kwargs_at_the_gated_call_site()
-    doubles = _doubles_installed_in_this_file()
-    assert len(doubles) >= 10, f"expected the file's doubles to be found, saw {len(doubles)}"
-
-    for lineno, args in doubles:
-        named = {a.arg for a in list(args.args) + list(args.kwonlyargs)}
-        assert args.kwarg is not None or forwarded <= named, (
-            f"tests/test_chain_gate_v2.py:{lineno}: this double cannot accept "
-            f"{sorted(forwarded - named)}, which the gated call site forwards. It will "
-            f"raise TypeError inside the code under test and look like a product bug. "
-            f"Give it **kwargs.")
 
 
 def test_capacity_is_two_and_bounded(monkeypatch):

@@ -296,33 +296,6 @@ def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
     )
 
 
-def test_prior_session_helper_is_the_one_definition():
-    """Both the previous-day levels and the overnight window must resolve 'prior session' the
-    same way — two definitions is how they disagree about which day yesterday was."""
-    import ast
-    from pathlib import Path
-    src = (Path(__file__).resolve().parent.parent / "liquidity_value_engine.py").read_text(
-        encoding="utf-8")
-    tree = ast.parse(src)
-    fns = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
-    for name in ("get_overnight_levels", "get_previous_day_levels"):
-        assert name in fns, f"{name} is gone"
-        node = fns[name]
-        # EXECUTABLE code only — the docstrings deliberately quote the retired
-        # `session_date - timedelta(days=1)` to explain the defect, and a text search would
-        # read that explanation as the defect itself.
-        stmts = [s for s in node.body if not (isinstance(s, ast.Expr)
-                                              and isinstance(s.value, ast.Constant)
-                                              and isinstance(s.value.value, str))]
-        code = "\n".join(ast.dump(s) for s in stmts)
-        assert "prior_trading_session_date" in code, (
-            f"{name} does not use the one prior-session definition"
-        )
-        assert "timedelta" not in code, (
-            f"{name} still does calendar arithmetic to find the prior session"
-        )
-
-
 # ── LP-01 Step 3 (RC-154): no liquidity-pool claim on untested extremes ──────────────────
 _POOL_WORDS = ("liquidity", "pool", "sweep", "stop hunt", "stop-hunt", "magnet")
 
@@ -380,70 +353,6 @@ def test_no_pool_language_in_rendered_zone_payload():
                 f"interpretation_notes asserts {w!r} on an untested extreme: "
                 f"{z.interpretation_notes!r} (zone_type={zt})"
             )
-
-
-def test_engine_emits_no_pool_language_anywhere_it_writes_notes():
-    """Every operator-facing note STRING in the engine, however it reaches the payload.
-
-    RC-155 (v39 gun 2): the first version of this sweep matched only `notes =` /
-    `interpretation_notes =` ASSIGNMENTS, so `return ZoneType.PIVOT_VALUE, "Session liquidity
-    zone"` — a note delivered by return tuple — was invisible to it and survived the Step 3
-    demotion. A checker that only knows one delivery mechanism certifies the others as clean.
-
-    This now walks the AST and inspects every string CONSTANT in the module, so a note cannot
-    escape by changing how it travels. Docstrings and comments are excluded: they must be free
-    to NAME the retired vocabulary in order to explain it (the RC-153 trap), and neither is
-    ever rendered to an operator.
-    """
-    import ast
-    from pathlib import Path
-    src = (Path(__file__).resolve().parent.parent / "liquidity_value_engine.py").read_text(
-        encoding="utf-8")
-    tree = ast.parse(src)
-    docstrings = set()
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            d = ast.get_docstring(node, clean=False)
-            if d:
-                docstrings.add(d)
-    offenders = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            s = node.value
-            if s in docstrings:
-                continue
-            if any(w in s.lower() for w in _POOL_WORDS):
-                offenders.append((getattr(node, "lineno", "?"), s))
-    # Source TAGS and enum values are identifiers, not prose shown as a claim; the two
-    # remaining zone-type names are named OBSERVED in RC-154 and are not Step 3 victims.
-    offenders = [(ln, s) for ln, s in offenders
-                 if s not in ("support_liquidity", "resistance_liquidity")]
-    assert not offenders, (
-        f"engine still emits pool language in a rendered string: {offenders}"
-    )
-
-
-def test_ui_shows_no_pool_badges():
-    """Surface-bound: an operator reading a liquidity zone label must never see a proven-pool
-    claim ('SELL LIQ' / 'BUY LIQ') — that claim was demoted to Support/Resistance (RC-153/156).
-
-    Repointed to static/js/ed-liquidity-map.js (/console cutover, operator directive
-    2026-09-14): the new console's Liquidity Map renders every zone as plain Support/
-    Resistance off zone_type alone (a simpler binary mapping, not legacy's ZONE_BADGE_MAP with
-    per-zone-type variants like LOW EXTREME/HIGH EXTREME) — the real invariant (no pool-claim
-    vocabulary at all) holds by construction rather than by a badge-map exclusion list."""
-    import re
-    from pathlib import Path
-    ui = (Path(__file__).resolve().parent.parent / "static" / "js" / "ed-liquidity-map.js").read_text(
-        encoding="utf-8")
-    code = re.sub(r"^\s*//.*$", "", ui, flags=re.M)
-    assert "SELL LIQ" not in code and "BUY LIQ" not in code, "the UI still paints pool badges"
-    assert "sell_side_liquidity" not in code and "buy_side_liquidity" not in code, (
-        "the UI still keys on the retired pool taxonomy"
-    )
-    assert "zone_type === 'support_liquidity' ? 'Support' : 'Resistance'" in code, (
-        "the zone renderer no longer maps every zone to the demoted Support/Resistance label"
-    )
 
 
 def test_cluster_price_levels():

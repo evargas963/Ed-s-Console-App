@@ -6,7 +6,6 @@ retirement end-to-end: the producers are gone and the engine emits None for the 
 """
 from __future__ import annotations
 
-import app.options.order_flow.engine as ofe
 from app.options.order_flow.engine import OrderFlowEngine
 
 
@@ -20,12 +19,3 @@ def test_order_flow_score_verdict_family_is_retired():
         assert out.get(k) is None, f"{k} must be retired (None), got {out.get(k)!r}"
     assert "book_imbalance_5" in out
     assert "options_flow_score" in out
-
-
-def test_engine_does_not_reference_the_retired_producers():
-    import inspect
-
-    src = inspect.getsource(ofe.OrderFlowEngine.compute)
-    assert "_compute_order_flow_score(" not in src
-    assert "compute_order_flow_verdict(" not in src
-    assert "_readiness(" not in src

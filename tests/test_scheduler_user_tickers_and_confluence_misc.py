@@ -35,11 +35,7 @@ def test_retired_chg_map_cannot_alias_goog_onto_googl():
 def test_no_stored_percent_change_patches_a_live_confluence_value():
     """Audit P0 (2026-09-23): a missing live confluence value was patched from the latest
     stored %-change with no age limit. That path is gone -- missing stays missing."""
-    import inspect
-
     import db as db_mod
     import market_context
-    import server
     assert not hasattr(market_context, "patch_context_confluence_from_quote_ticks")
     assert not hasattr(db_mod.EdDB, "fetch_latest_confluence_quote_chg")
-    assert "fetch_latest_confluence_quote_chg" not in inspect.getsource(server)

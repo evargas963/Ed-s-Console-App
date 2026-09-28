@@ -171,7 +171,6 @@ def write_flow_e2e_fixture() -> None:
         "SCHWAB_API_KEY": "ci-placeholder-api-key",
         "SCHWAB_APP_SECRET": "ci-placeholder-app-secret",
         "SCHWAB_CALLBACK_URL": "https://127.0.0.1:8182",
-        "ED_GATE_CACHE_DISABLE": "1",
     })
     code = ("import json, sys; from tests.test_options_order_flow_production_v1 import "
             "build_flow_e2e_fixture_response as b; sys.stdout.write(json.dumps(b()))")

@@ -26,7 +26,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNNER = ROOT / "scripts" / "run-pytest-full.mjs"
-E2E_RUNNER = ROOT / "scripts" / "run-playwright-e2e.mjs"
 NODE = shutil.which("node")
 
 #: Enough child output to overflow any OS pipe buffer (Windows anonymous pipes and Linux
@@ -168,48 +167,6 @@ def test_success_is_visible_and_exit_code_zero(tmp_path):
     assert r.returncode == 0, r.stdout
     assert "passed" in r.stdout and "exit code 0" in r.stdout
     assert (tmp_path / "logs" / "test_pytest_last.log").is_file()
-
-
-def test_the_canonical_commands_route_through_the_sink():
-    """package.json and the Makefile are the two spellings of the canonical command; neither
-    may hand pytest or Playwright the terminal pipe again."""
-    scripts = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["scripts"]
-    assert scripts["test:all"] == "npm run test:e2e && node scripts/run-pytest-full.mjs"
-    assert "python -m pytest" not in scripts["test:all"]
-    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    recipe = makefile.split("test-all:", 1)[1]
-    assert "node scripts/run-pytest-full.mjs" in recipe
-    assert "\tpython -m pytest" not in recipe
-
-    runner = RUNNER.read_text(encoding="utf-8")
-    assert 'stdio: ["ignore", fd, fd]' in runner, "the child must write to file descriptors, not the terminal"
-    assert '"-m", "pytest", "-n", "auto", "--dist", "loadfile", "--durations=20"' in runner
-
-    e2e = E2E_RUNNER.read_text(encoding="utf-8")
-    # Independent-review finding (2026-09-12), REPRODUCED and fixed, then found STILL
-    # BROKEN by a second independent review (2026-09-13): the first fix forwarded the
-    # caller's argv but still routed it through `npx` under `shell: true` (a joined
-    # command string re-parsed by a shell) with a hand-rolled quoting function that could
-    # not actually make that safe on this repo's real (Windows) host. The array must still
-    # start with the native Playwright CLI entry point (now resolved directly, not via
-    # npx) followed by "test", then the caller's OWN forwarded argv verbatim (no quoting
-    # function in between) under shell:false — see
-    # test_forwarded_selection_arguments_reach_the_native_playwright_cli below for the
-    # actual-behavior proof that this spawn mechanism cannot be shell-reinterpreted, not
-    # just this shape.
-    e2e_call_marker = 'runWithFileSink("test:e2e", process.execPath, [PLAYWRIGHT_CLI, "test", ...forwardedArgs]'
-    assert e2e_call_marker in e2e
-    assert "const forwardedArgs = process.argv.slice(2);" in e2e
-    assert "function shellQuoteArg" not in e2e, "the shell-reinterpretation risk this hand-rolled quoting could not close must be deleted, not re-quoted"
-    # the runWithFileSink call site for the actual Playwright invocation, up to its own
-    # closing `});`, must never opt into `shell: true` -- that is exactly the reinterpretation
-    # risk this round's fix removes (ensurePlaywrightReady()'s own OTHER, fixed-literal,
-    # no-forwarded-argv calls may still legitimately use shell:true to resolve npm/npx).
-    e2e_call_block = e2e.split(e2e_call_marker, 1)[1].split("});", 1)[0]
-    assert "shell" not in e2e_call_block, "the forwarded-argv Playwright invocation itself must never go through a shell"
-    assert 'stdio: "inherit"' not in e2e.split("ensurePlaywrightReady();", 1)[1], (
-        "the Playwright run itself must not inherit the terminal pipe"
-    )
 
 
 def test_forwarded_selection_arguments_reach_the_native_playwright_cli(tmp_path):

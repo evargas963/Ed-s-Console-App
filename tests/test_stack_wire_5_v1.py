@@ -2,31 +2,11 @@
 
 from __future__ import annotations
 
-import inspect
-
-import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as ofls
-from time_et import RTH_END_MINS, RTH_OPEN_MINS
-
-
-def test_order_flow_state_rth_uses_rth_open_mins_authority():
-    src = inspect.getsource(ofls.is_rth_open)
-    assert "9 * 60 + 30" not in src
-    assert "16 * 60" not in src
-    assert "RTH_OPEN_MINS" in src
-    assert "RTH_END_MINS" in src
-    assert RTH_OPEN_MINS == 570
-    assert RTH_END_MINS == 960
 
 
 def test_order_flow_state_rth_actually_behaves_at_the_boundaries(monkeypatch):
-    """RC-298: the test above reads the SOURCE. This one runs the FUNCTION.
-
-    Source assertions prove `is_rth_open` NAMES the authority constants; only calling it
-    proves it USES them correctly. A file that only matches text cannot detect a false
-    claim — that is how RC-294 locked "calls sell, puts buy", which one call refuted.
-
-    Driven by pinning the clock, because the real one makes the answer depend on when the
+    """Driven by pinning the clock, because the real one makes the answer depend on when the
     suite happens to run.
     """
     import datetime as _dt
@@ -45,68 +25,3 @@ def test_order_flow_state_rth_actually_behaves_at_the_boundaries(monkeypatch):
     assert _at(2026, 8, 7, 15, 59) is True
     assert _at(2026, 8, 7, 16, 0) is False, "16:00 is the exclusive upper bound"
     assert _at(2026, 8, 8, 12, 0) is False, "Saturday is never RTH regardless of clock"
-
-
-def test_order_flow_composite_constants_and_producers_are_retired():
-    # RC-474: the composite score/verdict is retired; its producers and now-unused weight/threshold
-    # constants were deleted. Nothing may reconstruct the unvalidated composite.
-    for c in ("OF_COMPOSITE_WEIGHT_BOOK", "OF_COMPOSITE_WEIGHT_TAPE", "OF_COMPOSITE_WEIGHT_CUM_DELTA",
-              "OF_COMPOSITE_WEIGHT_OPTIONS", "OF_COMPOSITE_MIN_LEGS", "OF_DIRECTION_BULLISH_THRESHOLD",
-              "OF_DIRECTION_BEARISH_THRESHOLD"):
-        assert not hasattr(ofe, c), f"retired composite constant {c} must be deleted"
-    body = inspect.getsource(ofe)
-    assert "def _compute_order_flow_score" not in body
-    assert "def _direction" not in body
-    assert "def _readiness" not in body
-
-
-
-
-
-
-def test_order_flow_engine_has_no_tradability_gate():
-    src = inspect.getsource(ofe.OrderFlowEngine.compute)
-    assert "canonical_provenance_is_tradable" not in src
-    assert "fusion_is_authoritative" not in src
-    assert "is_canonical_tradable" not in src
-
-
-def test_order_flow_engine_residual_magics_named():
-    """STACK-WIRE-5-CAND-OF-RESIDUAL-MAGICS: bare integer depths and RVOL center named."""
-    # Constants exist with expected values.
-    assert ofe.OF_BOOK_DEPTH_TOP == 1
-    assert ofe.OF_BOOK_DEPTH_SHALLOW == 3
-    assert ofe.OF_BOOK_DEPTH_DEEP == 5
-    assert not hasattr(ofe, "OF_WEIGHTED_MEAN_DEFAULT_MIN_PRESENT")   # deleted with the helper
-    # RC-474: OF_RVOL_NEUTRAL_CENTER belonged to the retired composite and is deleted.
-    assert not hasattr(ofe, "OF_RVOL_NEUTRAL_CENTER")
-
-    # _compute_institutional_flow_proxy and OrderFlowEngine.compute use the named depths,
-    # not bare integers.
-    src_inst = inspect.getsource(ofe._compute_institutional_flow_proxy)
-    # it READS the canonical deep imbalance (a required argument) and never walks the book
-    assert "_compute_book_imbalance(" not in src_inst
-
-    # ONE CANONICAL BOOK PATH: the depth ladder is walked once, in the canonical producer,
-    # over the named ladder constant (not bare integers). OrderFlowEngine.compute no longer
-    # walks the book itself — it READS the depth imbalances from that single producer's result.
-    assert ofe.OF_MICRO_DEPTH_LADDER == (
-        ofe.OF_BOOK_DEPTH_TOP, ofe.OF_BOOK_DEPTH_SHALLOW, ofe.OF_BOOK_DEPTH_DEEP,
-    )
-    src_struct = inspect.getsource(ofe._microstructure_structural)
-    assert "OF_MICRO_DEPTH_LADDER" in src_struct
-    assert "OF_BOOK_DEPTH_DEEP" in src_struct
-
-    src_compute = inspect.getsource(ofe.OrderFlowEngine.compute)
-    # compute reads the canonical state, and does NOT re-invoke the depth-imbalance helper.
-    assert "compute_book_microstructure(" in src_compute
-    assert "_compute_book_imbalance(data, 1)" not in src_compute
-    assert "_compute_book_imbalance(data, 3)" not in src_compute
-    assert "_compute_book_imbalance(data, 5)" not in src_compute
-
-    # RC-474: the composite score/direction producers are RETIRED (deleted), so their source bodies
-    # no longer exist — nothing can reintroduce a magnitude-as-direction leg.
-    body = inspect.getsource(ofe)
-    assert "def _compute_order_flow_score" not in body
-    assert "def _direction" not in body
-

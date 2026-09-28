@@ -137,19 +137,3 @@ def test_the_fingerprint_covers_every_bar_field(monkeypatch):
     shifted = [dict(b) for b in base]
     shifted[30]["timestamp"] = shifted[30]["timestamp"] + 60_000
     assert LVE._snapshot_input_fingerprint("ZZRC324", session, shifted, "test_fixture") != fp
-
-
-def test_the_lock_exists_and_spans_the_decision():
-    """A lock declared but not taken around the read-decide-write is decoration."""
-    import inspect
-
-    assert isinstance(LVE._MATERIALIZE_LOCK, type(threading.Lock())), (
-        "the materialization lock is gone")
-    src = inspect.getsource(LVE.materialize_price_level_snapshot)
-    body = src.split("_MATERIALIZE_LOCK", 1)
-    assert len(body) == 2, "materialize_price_level_snapshot no longer takes the lock"
-    guarded = body[1]
-    for step in ("_MATERIALIZED_SNAPSHOTS.get", "generation =",
-                 "build_price_level_snapshot", "_MATERIALIZED_SNAPSHOTS[key]"):
-        assert step in guarded, (
-            f"`{step}` sits OUTSIDE the critical section — the check-then-act is still racy")

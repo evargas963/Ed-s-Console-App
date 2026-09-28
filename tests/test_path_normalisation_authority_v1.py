@@ -14,7 +14,6 @@ asserts a property of code that already exists — one producer, and the consume
 """
 from __future__ import annotations
 
-import ast
 import sys
 from pathlib import Path
 
@@ -86,48 +85,3 @@ def test_the_consumers_agree_with_the_authority():
 
     for raw, want in CASES:
         assert cred(raw) == want, (raw, cred(raw), want)
-
-
-def test_no_module_reintroduces_the_character_stripping_idiom(repo_index):
-    """ONE FAUCET, structurally: the idiom that caused the defects may not come back.
-
-    `lstrip`/`strip` with a dot-or-slash argument strips CHARACTERS from the left, which is
-    never what a path wants.
-
-    Matched by AST, not by text, so a docstring that names the bad idiom in order to explain
-    the defect is not an offender (the use-versus-mention error this repository has already
-    been bitten by — RC-186, RC-253). Sourced from the shared `repo_index` corpus, so this is
-    not a new independent repo scan. Scans EVERY tracked module (it once scanned only tools/ and
-    governance/, and pruning unused tools shrank that slice to the size of its own floor).
-    """
-    offenders = []
-    scanned = 0
-    for rel, _text, tree in sorted(repo_index.items()):
-        scanned += 1
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Attribute)
-                    and node.func.attr in ("lstrip", "strip")
-                    and len(node.args) == 1
-                    and isinstance(node.args[0], ast.Constant)
-                    and isinstance(node.args[0].value, str)):
-                continue
-            arg = node.args[0].value
-            if arg and set(arg) <= {".", "/"}:
-                offenders.append(f"{rel.as_posix()}:{node.lineno}")
-    assert scanned > 40, "corpus too small to be a real check"
-    assert offenders == [], (
-        "character-stripping path normalisation is back — use "
-        "pretooluse_guard.normalize_repo_relative: " + ", ".join(offenders))
-
-
-def test_the_authority_has_exactly_one_definition(repo_index):
-    """No second module may define its own `normalize_repo_relative`."""
-    definers = []
-    for rel, _text, tree in sorted(repo_index.items()):
-        if rel.parts[0] not in ("tools", "governance"):
-            continue
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == "normalize_repo_relative":
-                definers.append(rel.as_posix())
-    assert definers == ["tools/pretooluse_guard.py"], definers

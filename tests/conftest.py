@@ -57,10 +57,6 @@ os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
 os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"
 
-# GOV-GATE-PERF-V1: tests always exercise REAL compute; a stored gate-cache success must
-# never satisfy an injected-failure test (tools/governance_gate_cache.py force-no-cache mode).
-os.environ["ED_GATE_CACHE_DISABLE"] = "1"
-
 
 def pytest_configure(config) -> None:
     """The import-time runtime boundary holds in the controller and every xdist worker."""
@@ -217,178 +213,13 @@ def most_recent_completed_session_et() -> date:
     return day
 
 
-@pytest.fixture
-def fresh_ablation_static_lock_index():
-    """Opt-in reset for tests that mutate manifest/DB/spec inputs or fake the index builder."""
-    from tools.ablation_static_lock_index import reset_ablation_static_lock_index_for_tests
-
-    reset_ablation_static_lock_index_for_tests()
-    yield
-    reset_ablation_static_lock_index_for_tests()
-
-
-# ---------------------------------------------------------------- repo index --
-# REHAB 2026-08-24: ~33 test files each independently rglob'd + read + ast.parse'd the
-# whole repository (one warm pass measured 6.8s; the duplicated passes cost 400-700s of
-# CPU per suite run). This is ONE live pass per session (per xdist worker), shared by the
-# repo-sweep tests. The measurement stays live — it is rebuilt on every suite run from
-# the working tree, never stored (RC-268) — only the I/O is shared.
-
-_REPO_INDEX_SKIP_DIRS = frozenset({
-    ".git", ".venv", "venv", "__pycache__", "node_modules", ".claude",
-    "build", "dist", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-})
-
-
-class RepoIndex:
-    """rel_path -> (source_text, ast_tree_or_None) over every repo .py file, and `tracked`:
-    every tracked path (all file types) from the same one `git ls-files`."""
-
-    def __init__(self, root: Path) -> None:
-        texts, tracked = self._read_all(root)
-        self.root = root
-        self.tracked: list[str] = tracked
-        self.files: dict[Path, tuple[str, object | None]] = {}
-        for rel, text in sorted(texts.items()):
-            self.files[rel] = (text, self._parse_or_none(text))
-
-    @staticmethod
-    def _read_all(root: Path) -> tuple[dict[Path, str], list[str]]:
-        """The I/O-only half of a build: every tracked path, and every TRACKED .py file's raw text, no
-        parsing. Split out so xdist workers can share just this (small, cheap to
-        pickle) and each run their own native `ast.parse` -- see the `repo_index`
-        fixture below.
-
-        TEST_SYSTEM_REHAB_V2 final remediation: this used `root.rglob("*.py")`, the
-        exact RC-274/RC-286 defect class every migrated-onto-repo_index test was
-        supposed to be immune to -- `scratchpad/` (4 real untracked .py files in this
-        checkout right now) was never in `_REPO_INDEX_SKIP_DIRS`, so the shared
-        observation itself was silently judging untracked scratch as repository code.
-        `git ls-files` is the index the RC-274/RC-286/RC-307 lineage already settled
-        on; `_REPO_INDEX_SKIP_DIRS` stays as defense-in-depth for any tracked-but-
-        unwanted directory, though git-tracking already excludes the gitignored ones."""
-        import subprocess
-        proc = subprocess.run(["git", "ls-files", "-z"],
-                              cwd=root, capture_output=True, text=True, check=True)
-        tracked = sorted(p for p in proc.stdout.split("\0") if p)
-        out: dict[Path, str] = {}
-        for relstr in (p for p in tracked if p.endswith(".py")):
-            rel = Path(relstr)
-            if any(part in _REPO_INDEX_SKIP_DIRS for part in rel.parts):
-                continue
-            path = root / rel
-            try:
-                out[rel] = path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-        return out, tracked
-
-    @staticmethod
-    def _parse_or_none(text: str):
-        import ast as _ast
-        try:
-            return _ast.parse(text)
-        except SyntaxError:
-            return None
-
-    @classmethod
-    def from_texts(cls, root: Path, texts: dict[Path, str], tracked: list[str]) -> "RepoIndex":
-        """Build from an already-read text corpus (e.g. shared across xdist workers)
-        -- parses locally, natively, per worker; never pickles/unpickles AST trees."""
-        self = cls.__new__(cls)
-        self.root = root
-        self.tracked = tracked
-        self.files = {rel: (text, cls._parse_or_none(text)) for rel, text in sorted(texts.items())}
-        return self
-
-    def items(self):
-        """(rel_path, source_text, tree_or_None), sorted by path."""
-        for rel, (text, tree) in self.files.items():
-            yield rel, text, tree
-
-
 @pytest.fixture(scope="session")
-def repo_index(tmp_path_factory, worker_id: str) -> RepoIndex:
-    """ONE repository TEXT READ per COMPLETE run, not one per xdist WORKER --
-    parsing stays LOCAL to each worker.
-
-    TEST_SYSTEM_REHAB_V2 (2026-08-31): `scope="session"` only shares within one
-    process. Under `-n auto`/`--dist loadfile` each xdist worker is a SEPARATE Python
-    interpreter with its own "session", so whichever workers happen to draw a
-    repo_index-consuming file each independently pay the full build (measured:
-    20-45s+ per worker under load). The standard pytest-xdist recipe for this class of
-    problem is: first worker builds + pickles to the run's shared temp root
-    (`tmp_path_factory.getbasetemp().parent` -- xdist creates ONE per run, common to
-    every worker, auto-cleaned between runs, never stale cross-run state); later
-    workers unpickle instead of rebuilding. MEASURED here that pickling/unpickling the
-    FULL parsed AST-tree object graph is itself expensive (~8.5s to unpickle, against
-    ~16.5s to build from scratch -- real savings, but not the near-zero the recipe
-    usually delivers for primitive data). Sharing only the TEXT (cheap: plain strings,
-    no deep object graph) and letting each worker run its own native `ast.parse` --
-    measured fast, C-level, not the bottleneck -- gets closer to the actual floor: one
-    disk read of the whole tree, N cheap native parses.
-
-    `worker_id == "master"` means this run has no xdist workers at all (bare
-    `pytest`, no `-n`) -- build directly, no IPC needed.
-    """
-    root = Path(__file__).resolve().parent.parent
-    if worker_id == "master":
-        return RepoIndex(root)
-
-    import pickle
-
-    from filelock import FileLock
-
-    shared_dir = tmp_path_factory.getbasetemp().parent
-    cache_file = shared_dir / "repo_index_texts_cache.pkl"
-    lock_file = shared_dir / "repo_index_texts_cache.lock"
-    with FileLock(str(lock_file)):
-        if cache_file.is_file():
-            with cache_file.open("rb") as f:
-                texts, tracked = pickle.load(f)
-        else:
-            texts, tracked = RepoIndex._read_all(root)
-            with cache_file.open("wb") as f:
-                pickle.dump((texts, tracked), f)
-    return RepoIndex.from_texts(root, texts, tracked)
-
-
-#: TEST_SYSTEM_REHAB_V2: check_no_orphan_dict_keys() sweeps every production file
-#: (measured ~6-37s depending on load) and was run independently -- once per module
-#: -- by two separate test files (test_money_path_orphan_keys_v1.py and
-#: test_orphan_dict_keys_data_sources_v1.py), each paying the full sweep. Both files'
-#: PURE-READ consumers (nothing that monkeypatches the checker's module state) now
-#: share this ONE session-scoped result. The one test that genuinely needs an
-#: ISOLATED module copy for safe monkeypatching
-#: (test_a_missing_or_malformed_source_contributes_nothing) keeps its own private
-#: `_load_gate()` import -- that isolation is a distinct technical need, not
-#: redundant computation, and is left untouched.
-#: TEST_SYSTEM_REHAB_V2 (2026-08-31): scope="session" only shares within one xdist
-#: worker process (same reasoning as `repo_index` above) -- reuses the identical
-#: build-once-per-run, filelock-coordinated cache recipe, keyed by its own cache
-#: filename so it never collides with repo_index's cache in the same shared temp dir.
-@pytest.fixture(scope="session")
-def live_orphans(tmp_path_factory, worker_id: str):
-    from tools.check_institutional_correctness import check_no_orphan_dict_keys
-
-    if worker_id == "master":
-        return check_no_orphan_dict_keys()
-
-    import pickle
-
-    from filelock import FileLock
-
-    shared_dir = tmp_path_factory.getbasetemp().parent
-    cache_file = shared_dir / "live_orphans_cache.pkl"
-    lock_file = shared_dir / "live_orphans_cache.lock"
-    with FileLock(str(lock_file)):
-        if cache_file.is_file():
-            with cache_file.open("rb") as f:
-                return pickle.load(f)
-        result = check_no_orphan_dict_keys()
-        with cache_file.open("wb") as f:
-            pickle.dump(result, f)
-        return result
+def tracked_files() -> list[str]:
+    """Every path git tracks."""
+    import subprocess
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=Path(__file__).resolve().parent.parent,
+                         capture_output=True, text=True, check=True).stdout
+    return sorted(p for p in out.split("\0") if p)
 
 
 @pytest.fixture

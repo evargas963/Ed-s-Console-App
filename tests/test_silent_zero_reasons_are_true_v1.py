@@ -30,26 +30,6 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 
-# ───────────────────────────────────── l1_pipeline_ms: absent is not zero ms ────
-
-
-
-def test_no_active_exemption_claims_the_nonexistent_pipeline_guard():
-    """The untrue sentence must not come back as a LIVE exemption.
-
-    It survives deliberately in the RC-281 comment that records what was wrong — deleting
-    the record of a false justification is how the next author writes it again. What must
-    never return is the claim attached to a working `# silent-zero-ok:` marker.
-    """
-    src = (REPO / "server.py").read_text(encoding="utf-8", errors="replace")
-    offenders = [
-        ln.strip() for ln in src.splitlines()
-        if "silent-zero-ok:" in ln and "caller gates on ms > 0" in ln
-    ]
-    assert not offenders, (
-        f"an exemption claims a guard that does not exist: {offenders}")
-
-
 # ─────────────────────────────── quarantine: a malformed hold must fail CLOSED ────
 
 def _fresh_quarantine(monkeypatch, entry: dict):

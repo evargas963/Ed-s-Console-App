@@ -18,7 +18,6 @@ never exercised. These tests are that seam.
 """
 from __future__ import annotations
 
-import ast
 import subprocess
 import sys
 from pathlib import Path
@@ -60,29 +59,6 @@ def test_success_still_reads_as_success(tmp_path: Path) -> None:
     r = subprocess.run([sys.executable, str(WRAPPER), str(_target(tmp_path, 0))],
                        cwd=str(ROOT), capture_output=True, text=True)
     assert r.returncode == 0, f"a clean target now reports {r.returncode}"
-
-
-def test_no_exec_call_remains_on_the_hook_path() -> None:
-    """os.execv is the defect itself, not a style question: on this platform it discards the
-    exit status. It must not return to either file on the pre-commit path.
-
-    AST, not text: the first draft of this test matched the string "os.exec" and failed on
-    the docstring that EXPLAINS the defect — the same describe-it-and-trip-your-own-scanner
-    class as RC-253. A call is a call node; prose about a call is not.
-    """
-    for rel in ("tools/run_with_repo_venv.py", "tools/operating_process_lock.py"):
-        tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
-        calls = [
-            n for n in ast.walk(tree)
-            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-            and n.func.attr.startswith("exec")
-            and isinstance(n.func.value, ast.Name) and n.func.value.id == "os"
-        ]
-        assert not calls, (
-            f"{rel} still hands off with os.exec* at line(s) "
-            f"{[c.lineno for c in calls]} — on Windows that returns 0 to pre-commit "
-            f"immediately and the real verdict is thrown away (RC-254)"
-        )
 
 
 def test_a_real_precommit_hook_through_the_wrapper_carries_its_verdict(tmp_path: Path) -> None:

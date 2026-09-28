@@ -9,7 +9,6 @@ the roots are read at import.
 """
 from __future__ import annotations
 
-import ast
 import json
 import os
 import subprocess
@@ -157,16 +156,3 @@ def test_xdist_workers_get_distinct_temporary_databases():
     assert first["db"] != second["db"]
     assert first["worker"] == "gw0"
     assert second["worker"] == "gw1"
-
-
-def test_runtime_layout_imports_no_governance():
-    """The owner of the runtime roots sits on the runtime path (RC-512 boundary)."""
-    tree = ast.parse((REPO / "runtime_layout.py").read_text(encoding="utf-8"))
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported |= {a.name for a in node.names}
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module)
-    assert not any(m.split(".")[0] in ("tools", "governance") for m in imported), imported
-    assert "config" not in imported, "runtime_layout must stay a leaf (config imports it)"

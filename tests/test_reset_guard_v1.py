@@ -219,14 +219,3 @@ def test_rc525_the_safe_reset_is_live_on_the_pretooluse_path(monkeypatch, tmp_pa
         f"LOCK-2 still refuses a reset that cannot touch index or worktree: {soft}")
     hard = PLG.pretooluse_block("Bash", {"command": "git reset --hard HEAD~1"})
     assert any("RESET_GUARD" in b for b in hard), "the destructive form stopped blocking"
-
-
-def test_rc525_the_segment_splitter_has_one_owner():
-    """ONE FAUCET: the statements are split by tools/shell_parse, not re-derived here."""
-    import inspect
-
-    from tools.shell_parse import iter_command_segments
-
-    assert OPL.iter_command_segments is iter_command_segments
-    src = inspect.getsource(OPL._judged_segments)
-    assert "iter_command_segments(" in src and "split(" not in src

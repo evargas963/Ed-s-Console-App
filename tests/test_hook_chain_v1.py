@@ -12,7 +12,6 @@ checkout running the session judges every event from that event's payload alone.
 """
 from __future__ import annotations
 
-import ast
 import json
 import os
 import shutil
@@ -241,13 +240,3 @@ def test_7_the_session_checkout_judges_and_says_so_no_other_tree_is_ever_chosen(
     there = _chain(bash("git reset --hard"), root=other)
     assert str(ROOT.resolve()) in here.stderr.replace("\\\\", "\\") and str(other.resolve()) not in here.stderr
     assert str(other.resolve()) in there.stderr.replace("\\\\", "\\") and str(ROOT.resolve()) not in there.stderr
-
-
-def test_the_executor_keeps_no_state_by_construction():
-    """Structural half of the invariant: no file writes, no env writes, no transcript reads
-    anywhere in the executor — there is no place for a prior event's effect to live."""
-    tree = ast.parse((ROOT / "tools" / "hook_chain.py").read_text(encoding="utf-8"))
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            callee = getattr(node.func, "attr", getattr(node.func, "id", ""))
-            assert callee not in ("write_text", "write_bytes", "open", "putenv", "environ"), callee

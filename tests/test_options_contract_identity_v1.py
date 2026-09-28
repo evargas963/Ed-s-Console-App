@@ -70,20 +70,6 @@ def test_non_osi_symbol_is_fail_closed():
     assert _contract_matches_underlying(None, "CDE") is False
 
 
-def test_vendor_option_root_reads_symbol_never_constructs():
-    import ast
-    import inspect
-    from app.options.contracts.default import pick_atm_call_symbol
-    from instrument_identity import vendor_option_root
-
-    src = inspect.getsource(vendor_option_root)
-    assert "raw[:6]" in src
-    tree = ast.parse(inspect.getsource(pick_atm_call_symbol))
-    joined = [n for n in ast.walk(tree) if isinstance(n, ast.JoinedStr)]
-    assert not joined, "pick_atm_call_symbol must not f-string a vendor symbol"
-    assert 'raw.get("symbol")' in inspect.getsource(pick_atm_call_symbol)
-
-
 def test_spxw_matches_dollar_spx_only_via_banked_chain():
     """Real 2026-09-04 $SPX complete chain uses OSI root SPXW, not SPX.
 

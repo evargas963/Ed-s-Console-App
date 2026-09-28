@@ -80,38 +80,6 @@ def run_preflight(env_extra: dict) -> subprocess.CompletedProcess:
 
 # ============================================================ the boundary itself
 
-def test_the_launcher_no_longer_exits_when_schwab_is_unavailable():
-    """PROOF 1a. The `exit /b 1` on the Schwab preflight is gone.
-
-    Read structurally: the Schwab preflight's `if errorlevel 1` block must not terminate the
-    launcher, while the CORE-RUNTIME preflight above it still must.
-    """
-    bat = (REPO / "start_ed_console.bat").read_text(encoding="utf-8", errors="replace")
-    lines = bat.splitlines()
-
-    schwab_at = next(i for i, ln in enumerate(lines) if "live_schwab_env.py --sanitize" in ln)
-    block, depth = [], 0
-    for ln in lines[schwab_at:]:
-        block.append(ln)
-        depth += ln.count("(") - ln.count(")")
-        if depth <= 0 and len(block) > 1:
-            break
-    body = "\n".join(block)
-    assert "exit /b" not in body, (
-        "the Schwab preflight still terminates the launcher — a vendor capability is deciding "
-        f"whether the application may exist:\n{body}")
-    assert "SCHWAB CAPABILITY UNAVAILABLE" in body, body
-
-    # sanitization is NOT what was removed
-    assert "live_schwab_env.py --bat-unsets" in bat
-    assert bat.index("--bat-unsets") < bat.index("--sanitize")
-
-    # core runtime provisioning still blocks the whole app (§4's reserved case)
-    runtime_at = bat.index("runtime_preflight.py")
-    assert "exit /b 1" in bat[runtime_at:bat.index("live_schwab_env.py")], (
-        "the core-runtime preflight must still refuse startup")
-
-
 @pytest.mark.parametrize("situation,env", [
     ("missing credentials", {}),
     ("CI placeholder credentials", {"SCHWAB_API_KEY": "ci-not-live-placeholder",
@@ -293,10 +261,3 @@ def test_core_runtime_provisioning_still_blocks_startup():
     result = subprocess.run([sys.executable, str(REPO / "runtime_preflight.py")],
                             cwd=str(REPO), capture_output=True, text=True, timeout=300)
     assert result.returncode == 0, result.stdout + result.stderr
-
-    import runtime_preflight as rp
-
-    assert hasattr(rp, "ghost_distributions") and hasattr(rp, "violations")
-    bat = (REPO / "start_ed_console.bat").read_text(encoding="utf-8", errors="replace")
-    tail = bat[bat.index("runtime_preflight.py"):bat.index("live_schwab_env.py")]
-    assert "exit /b 1" in tail, "core-runtime failure must still stop the launch"

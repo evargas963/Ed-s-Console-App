@@ -177,34 +177,23 @@ def test_multiple_levels_in_one_tick(tmp_path: Path) -> None:
     assert names == ["Call g-Wall", "PDH", "VWAP"]
 
 
-def test_coincident_crossings_collapse_to_one_event(tmp_path):
-    """Eight names on one strike is ONE crossing, and the endpoint must say so."""
-    import ast
-    from pathlib import Path
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    # the one merge and its consumer (/api/desk/events)
-    seg = "".join(ast.get_source_segment(src, node) or "" for node in ast.walk(ast.parse(src))
-                  if isinstance(node, ast.FunctionDef) and node.name in ("get_desk_events", "_merged_recent_crosses"))
-    assert "_merged_recent_crosses(get_db()" in seg, "get_desk_events not found or not using the one merge"
-    assert "coincident_levels" in seg, (
-        "RC-88 regression: the endpoint no longer reports how many levels shared the crossing, so "
-        "a collapsed event is indistinguishable from a lone one"
-    )
-    assert "level_names" in seg, (
-        "collapsing without naming WHICH levels coincided destroys the information the extra rows "
-        "carried — the fix must not be a plain de-duplication"
-    )
+def test_levels_crossed_together_are_one_event_naming_every_level():
+    """RC-88: one price crossing a strike where several levels sit is stored as one row per level.
+    The one reader (server._merged_recent_crosses) serves one event per (time, value, direction)
+    that names every level. Real SPY rows, tests/fixtures/real_spy_level_crosses.json: 400 rows,
+    243 events, up to 6 levels on one event."""
+    import json
 
+    import server
 
-def test_collapse_keys_on_price_event_not_level_name():
-    """The merge key must be the market event (ts, value, direction). Keying on level_name would
-    reproduce exactly the producer-side bug this fixes."""
-    import ast
-    from pathlib import Path
-    src = (Path(__file__).resolve().parent.parent / "server.py").read_text(encoding="utf-8")
-    seg = next(ast.get_source_segment(src, n) for n in ast.walk(ast.parse(src))
-               if isinstance(n, ast.FunctionDef) and n.name == "_merged_recent_crosses")
-    assert 'r.get("ts_utc"), r.get("level_value"), r.get("direction")' in seg, (
-        "the collapse key is no longer the price event; a level_name-keyed merge cannot see two "
-        "names sharing one strike, which is the whole defect"
-    )
+    rows = json.loads((Path(__file__).parent / "fixtures" / "real_spy_level_crosses.json")
+                      .read_text(encoding="utf-8"))["rows"]
+
+    class _Stored:                                   # stand-in: the stored rows, as the DB returns them
+        def get_recent_crosses(self, ticker, n):
+            return rows[:n]
+
+    events, n_rows = server._merged_recent_crosses(_Stored(), "SPY", 400)
+    assert (len(events), n_rows) == (243, 400)
+    widest = max(events, key=lambda e: e["coincident_levels"])
+    assert widest["coincident_levels"] == len(widest["level_names"]) == 6

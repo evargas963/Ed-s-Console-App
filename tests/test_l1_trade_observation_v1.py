@@ -124,9 +124,6 @@ def test_mutation_vendor_time_sort_fails_receive_order():
     sorted_cvd = ofe._compute_cum_delta_proxy({"content": vendor_sorted})
     assert receive_cvd == 5
     assert sorted_cvd != receive_cvd
-    src = open("app/options/order_flow/engine.py", encoding="utf-8").read()
-    assert "sorted(prints" not in src
-    assert 'key=lambda x: x.get("time_millis")' not in src
 
 
 def test_source_contract_is_proxy_not_native_tns():

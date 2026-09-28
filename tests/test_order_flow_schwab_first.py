@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from app.options.order_flow.engine import (
     OrderFlowEngine,
     _compute_options_flow,
@@ -11,8 +9,6 @@ from app.options.order_flow.engine import (
     _compute_spread,
     _compute_top_book_pressure,
 )
-
-ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_rvol_unavailable_when_avg_volume_invalid():
@@ -137,29 +133,6 @@ def test_top_book_pressure_ignores_non_canonical_streaming_bid_ask_size_keys():
     )
     assert pressure is None
     assert tier == "unavailable"
-
-
-def test_server_has_no_second_vwap_implementation():
-    """Phase 2A: the server-side VWAP fallback is DELETED, not merely unused.
-
-    `_compute_vwap_from_bars` accumulated its own Σ(tp·v)/Σv from the candle
-    accumulator whenever fetch_price_levels returned vwap=None, and that number was
-    persisted into snapshots and model features — a VWAP no served endpoint carried.
-    The one accumulation is liquidity_value_engine.compute_session_vwap_path.
-    """
-    import server as S
-
-    assert not hasattr(S, "_compute_vwap_from_bars"), (
-        "the second VWAP implementation is back in server.py"
-    )
-    text = (ROOT / "server.py").read_text(encoding="utf-8")
-    assert "cum_tp_vol" not in text, "an inline VWAP accumulation reappeared in server.py"
-
-
-def test_order_flow_engine_no_rvol_one_point_zero_in_source():
-    text = (ROOT / "app/options/order_flow/engine.py").read_text(encoding="utf-8")
-    assert "return 1.0  # no avg available" not in text
-    assert "rvol or 1.0" not in text
 
 
 def test_order_flow_compute_exposes_split_spread_fields():

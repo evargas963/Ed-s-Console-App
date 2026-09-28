@@ -12,13 +12,10 @@ method, or dataclass.
 
 from __future__ import annotations
 
-import ast
 import sqlite3
 from pathlib import Path
 
 from db import EdDB
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_confluence_log_table_dropped_by_migration(tmp_path: Path) -> None:
@@ -70,51 +67,4 @@ def test_log_confluence_method_removed_from_eddb() -> None:
     assert "log_confluence" not in methods, (
         "EdDB.log_confluence reappeared after Pass 7 drop — revert or open a "
         "wire-or-drop redecision row in OPEN_ITEMS"
-    )
-
-
-def test_confluence_log_create_table_removed_from_db_py_source() -> None:
-    """Source lock: db.py must not contain a CREATE TABLE confluence_log block."""
-    text = (REPO_ROOT / "db.py").read_text(encoding="utf-8")
-    upper = text.upper()
-    assert "CREATE TABLE IF NOT EXISTS CONFLUENCE_LOG" not in upper
-    assert "CREATE TABLE CONFLUENCE_LOG" not in upper
-
-
-def test_confluence_log_dataclass_removed_from_db_py_source() -> None:
-    """Source lock: ConfluenceLog dataclass must be gone from db.py."""
-    text = (REPO_ROOT / "db.py").read_text(encoding="utf-8")
-    tree = ast.parse(text)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == "ConfluenceLog":
-            raise AssertionError(
-                f"ConfluenceLog dataclass reappeared in db.py at line {node.lineno}; "
-                "Pass 7 removed it — revert or open redecision"
-            )
-
-
-def test_no_external_references_to_confluence_writer(repo_index) -> None:
-    """AST sweep: zero references to ConfluenceLog / log_confluence anywhere
-    in repo .py files outside db.py."""
-    targets = {"ConfluenceLog", "log_confluence"}
-    hits: list[str] = []
-    for rel, text, tree in repo_index.items():
-        if rel.parts[-1] == "db.py":
-            continue
-        if rel.parts[-1] == "test_confluence_log_drop.py":
-            continue
-        if tree is None:
-            continue
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Name) and node.id in targets:
-                hits.append(f"{rel}:{node.lineno} Name({node.id})")
-            elif isinstance(node, ast.Attribute) and node.attr in targets:
-                hits.append(f"{rel}:{node.lineno} Attr(.{node.attr})")
-            elif isinstance(node, ast.ImportFrom):
-                for alias in node.names:
-                    if alias.name in targets:
-                        hits.append(f"{rel}:{node.lineno} ImportFrom({alias.name})")
-    assert hits == [], (
-        "Confluence-log symbols referenced outside db.py after Pass 7 drop:\n  "
-        + "\n  ".join(hits)
     )

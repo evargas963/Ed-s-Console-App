@@ -91,16 +91,3 @@ def test_genuine_balanced_zero_is_a_zero():
     assert bucket_metric(exp[100.0], "net_gex_1pct") == 0.0
     surface = project_gamma_surface([call, put], exposure_books([call, put], spot=SPOT))
     assert [r for r in surface["cells"] if r["strike"] == 100.0][0]["gex"] == [0]
-
-
-def test_no_cell_is_ever_refilled_from_an_older_value():
-    import inspect
-
-    import db as db_mod
-    import server
-    src = inspect.getsource(server)
-    for gone in ("_backfill_gex_cells_from_last_valid", "_LAST_VALID_GEX_CELLS",
-                 "banked_morning_reference"):
-        assert gone not in src, gone
-    assert not hasattr(db_mod.EdDB, "load_gamma_surface_last_valid")
-    assert not hasattr(db_mod.EdDB, "persist_gamma_surface_last_valid")

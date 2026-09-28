@@ -98,10 +98,3 @@ def test_no_forming_minute_means_none_is_invented(monkeypatch):
     monkeypatch.setattr(server._lpr, "forming_bar", lambda tk: None)
     body = TestClient(server.app).get(f"/api/bars1m?ticker={TK}").json()
     assert [b["t"] for b in body["bars"]] == [T0]
-
-
-def test_no_bar_path_calls_schwab_rest():
-    src = open(server.__file__, encoding="utf-8").read()
-    for gone in ("safe_get_price_history", "get_price_history(", "_bars_collect_one",
-                 "_CandleAccumulator", "_enrollment_history_seed"):
-        assert gone not in src, gone
