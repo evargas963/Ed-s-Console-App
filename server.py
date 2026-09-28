@@ -3410,6 +3410,7 @@ def get_terrain(ticker: str = Query(...)):
     _why = _terrain_refresh_last_error.get(tk)
     return compute_terrain(tk, None, spot).to_dict() | {
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
+        **_atr_fields(tk),              # from the bars, which do not wait for a chain
         # RC-126: not_ready carries its REASON when the producer has one — an eternal
         # unexplained shrug is how $SPX stayed dark for a session.
         "error": ("terrain_not_ready: no wide-chain snapshot yet for this ticker"

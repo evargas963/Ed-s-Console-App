@@ -165,7 +165,10 @@ def test_closed_market_with_no_capture_gives_one_reason_on_every_route(_fresh, m
     monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
     d = _call(tk)
     assert d["warming"] is False and server.NO_CAPTURE_REASON in d["reason"]
-    assert server.NO_CAPTURE_REASON in server.get_terrain(ticker=tk)["error"]
+    t = server.get_terrain(ticker=tk)
+    assert server.NO_CAPTURE_REASON in t["error"]
+    # ATR is from the bars, not the chain: served (here absent, with its reason) with no levels
+    assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
