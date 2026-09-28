@@ -53,9 +53,8 @@ suite and the browser suite, check the running app. Nothing is copied.
 
 **db.py (1,343 lines after P2-5 part 1).** The snapshot writer, `SnapshotRow`, the ML outcome
 labels, the snapshot column migrations, `market_session` and `get_db_stats` are deleted.
-- Left to delete: the one-time JSON migration once its flag shows it ran; the `snapshots` table's
-  DDL once nothing reads the table (no writer; `tools/console_liveness_check.py` and
-  `tools/data_faucet_audit.py` still read it).
+- Left to delete: the one-time JSON migration once its flag shows it ran. The `snapshots` and
+  `iv_daily` DDL is gone (no writer, no reader); their tables leave the database in P2-DB3.
 - Keep, and move to `daemon/`: bars, level history (crosses, daily OI and IV), enrollment (the
   ticker board), the connection.
 - The console stops writing (DATA_FLOW decision 5); its writes go to the daemon's writer, into `ed_console.db`.

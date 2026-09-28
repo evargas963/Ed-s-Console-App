@@ -392,32 +392,6 @@ def test_the_agent_seam_still_refuses_to_move_the_production_checkout():
 # judges every event from its own payload; tests/test_hook_chain_v1.py holds the proofs.
 
 
-def test_the_repository_lineage_check_is_no_longer_wired_to_anything_runtime():
-    """Its own docstring claimed launch + pre-push + CI. Two never existed; one is removed.
-
-    Pinned because a stale wiring claim is how the redundancy went unnoticed: the file read
-    as a defence-in-depth control with three fail-closed seams while carrying exactly one,
-    on the app's startup path.
-    """
-    precommit = (REPO / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    assert "default_stages: [pre-commit]" in precommit
-    assert "check_live_path_is_main" not in precommit
-
-    for wf in ("hardening.yml", "pytest.yml"):
-        text = (REPO / ".github" / "workflows" / wf).read_text(encoding="utf-8")
-        assert "check_live_path_is_main" not in text, f"{wf} invokes it after all"
-
-    launcher = LAUNCHER.read_text(encoding="utf-8")
-    executed = "\n".join(line for _n, line in _executed_batch_lines(launcher))
-    assert "check_live_path_is_main" not in executed
-
-    # still runnable on demand for an operator or an agent — removed from the runtime path,
-    # not deleted, and its report is still meaningful
-    from tools.check_live_path_is_main import violations
-
-    assert isinstance(violations(), list)
-
-
 @pytest.mark.parametrize("entry", RUNTIME_ENTRY_POINTS)
 def test_runtime_entry_points_import_no_governance_module_at_module_level(repo_index, entry):
     """A module-level `import tools.x` in an entry point would break a governance-free tree.

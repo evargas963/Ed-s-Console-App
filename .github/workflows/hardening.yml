@@ -1,33 +1,16 @@
 name: Hardening Gates
 
-# Code-quality / security / supply-chain gates (hardening program 2026-06-03).
-# Separate from pytest.yml (full suite) and the schwab-*.yml gates.
-# BLOCKING steps fail the build. The F841 lint-debt step is a visible RATCHET: it reports the
-# remaining unused-variable count (56 → 0 target) without blocking, because those sites are
-# money-path and reviewed individually, not blind-swept. It flips to blocking when the count hits 0.
-
 on:
   pull_request:
-  # RC-405 (engineering-cycle latency): `pull_request` runs this job before merge (branch
-  # protection's required check), so a `push` event on a FEATURE branch only duplicates it.
-  # Restrict the push trigger to `main` for post-merge trunk validation. No check weakened.
   push:
     branches: [main]
 
 jobs:
   hardening:
     runs-on: ubuntu-latest
-    # 20 -> 35 (2026-09-10): the delta step now also executes each closing row's cited proof.
-    timeout-minutes: 35
-    # RC-396: this job once exported a fabricated `ED_AGENT_ROLE: cursor` and the required
-    # run read a whole PR as the wrong agent's drift (`writer_no_drift: 0 -> 27`). The role
-    # machinery was removed entirely in the 2026-08-24 Architecture A teardown; CI carries
-    # no agent identity because there is none to carry.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
-        with:
-          # FULL_FIXES_ONLY_V2: FINAL_SHA verification needs full history
-          fetch-depth: 0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.13"
@@ -35,146 +18,8 @@ jobs:
       - name: Install tools
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ruff bandit pip-audit
-          python -m pip install -r requirements.txt
-          python -m pip install -r requirements-dev.txt
-
-      # RC-538 finding (2026-09-12): the delta/closure step below can cite a `npx playwright`
-      # command as a ledger row's proof of closure (root_cause_log.md already declares
-      # node/npm/npx as CI-executable alongside python/pytest), but this job never installed
-      # Node at all -- the FIRST such row to cite one (RC-538) exited 1 with ERR_MODULE_NOT_FOUND,
-      # not because the fix was wrong (it passes locally and under pytest-full's own e2e run),
-      # but because npx had no @playwright/test to resolve. Mirrors pytest.yml's already-proven
-      # Node/Playwright provisioning (including its apt-mirror timeout fix -- MEASURED there:
-      # unbounded `playwright install-deps` twice sat ~43m on a dead azure.archive.ubuntu.com
-      # mirror and got the job cancelled by its own timeout) so a node-based closure citation is
-      # genuinely executable here, the same way a python one already was via sys.executable reuse.
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
-        with:
-          node-version: "22"
-          cache: npm
-      - name: Install Node dependencies
-        run: npm ci
-      - name: Cache Playwright browsers
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - name: Install Playwright system deps (Linux)
-        timeout-minutes: 8
-        run: |
-          sudo tee /etc/apt/apt.conf.d/99ci-acquire-timeout >/dev/null <<'EOF'
-          Acquire::http::Timeout "20";
-          Acquire::https::Timeout "20";
-          Acquire::Retries "2";
-          EOF
-          sudo python3 - <<'PY'
-          from pathlib import Path
-          old = "azure.archive.ubuntu.com"
-          new = "archive.ubuntu.com"
-          apt = Path("/etc/apt")
-          files = [apt] if apt.is_file() else []
-          if apt.is_dir():
-              files.extend(p for p in apt.rglob("*") if p.is_file())
-          n = 0
-          for path in files:
-              try:
-                  text = path.read_text(encoding="utf-8")
-              except (OSError, UnicodeDecodeError):
-                  continue
-              if old in text:
-                  path.write_text(text.replace(old, new), encoding="utf-8")
-                  print(f"rewrote {path}")
-                  n += 1
-          print(f"rewrote {n} apt file(s) off azure.archive.ubuntu.com")
-          PY
-          ok=0
-          for attempt in 1 2 3; do
-            if timeout 90 npx playwright install-deps chromium; then
-              ok=1
-              break
-            fi
-            echo "install-deps attempt ${attempt} failed"
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo "install-deps failed after retries; ubuntu-24.04 already ships Chromium libs via the runner image"
-            npx playwright install chromium
-          fi
-
-      # --- BLOCKING: correctness lint (undefined names, unused imports, syntax) — all at 0 today ---
-      - name: ruff (correctness rules — blocking)
+          python -m pip install ruff
+      - name: ruff (correctness)
         run: python -m ruff check . --select F401,F821,E9
-
-      - name: compileall (no unparseable files — blocking)
+      - name: compileall
         run: python -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .
-
-      # --- BLOCKING: money-path correctness gate. Replaces the retired enforcement
-      #     stack (no-deferral / fix-everything-we-touch / enforce-static, all
-      #     deleted in the ED CONSOLE SLIMMING wave). Enforcement is now operator
-      #     review + this gate + the required pytest-full suite. ---
-      - name: market correctness (money-path static gate + self-test)
-        run: |
-          python tools/check_market_correctness.py --self-test
-          python tools/check_market_correctness.py
-
-      # BLOCKING: the SAME institutional debt owner the local pre-commit hook runs.
-      #
-      # RC-395: this step used to invoke check_institutional_correctness.py directly, and
-      # its own comment claimed "pre-commit parity" — which stopped being true the moment
-      # RC-391 moved the local hook to the delta owner. Parity was asserted in PROSE while
-      # the two paths diverged in FACT, and the divergence was not theoretical: this
-      # required check has been RED on origin/main itself for every recent commit
-      # (MEASURED via `gh run list --branch main`: Hardening Gates failure at 4983eb57,
-      # 573b96e8, b6bde57e, ca6d7b27), because absolute zero is unreachable on a trunk
-      # carrying ~57 inherited violations. A required check no honest change can turn
-      # green teaches people to route around it — the exact --no-verify habit RC-389 exists
-      # to stop — and it cannot distinguish a commit that ADDS debt from one that PAYS it.
-      #
-      # The delta owner enforces MORE than the old step did, not less:
-      #   NEW violation                  -> BLOCK
-      #   WORSENED count                 -> BLOCK
-      #   REMOVED/DEMOTED enforced check -> BLOCK unless declared in the checker's
-      #                                     RETIRED_CHECKS (visible in the same diff)
-      #   crash / unreadable output      -> BLOCK  (silence is not cleanliness)
-      #   a ledger row this delta CLOSES whose first cited interpreter-led command
-      #   does not exit 0 in the candidate tree -> BLOCK (RC-540/RC-545: closure executes
-      #   its proof here, in ordinary CI, on the delta that introduces it)
-      #   unchanged inherited debt       -> PASS
-      #   improvement                    -> PASS
-      # When the checker itself changed, the step prints VALIDATOR CHANGED: the counts come
-      # from each tree's own predicates and the checker diff is what review must read. The
-      # "trusted" lane that tried to judge the candidate with the base checker was deleted
-      # 2026-09-10 (RC-546): it executed candidate root modules under a trusted label.
-      #
-      # WHAT THIS STEP IS NOT (attack matrix 2026-09-11, RC-539): a non-bypass boundary. It
-      # runs the candidate's own gate, from the candidate's own copy of this file, and the
-      # required status is matched by NAME from the GitHub Actions app. MEASURED on scratch
-      # PRs #240/#241 from 1a2eaafe: a weakened predicate (name kept) turned both required
-      # checks green; this step replaced by `true` turned `hardening` green. Everything here
-      # is regression detection for an honest candidate; the boundary that would stop a
-      # candidate from changing its judge is an identity the coding agent does not hold
-      # (OPEN_ITEMS.md, GOV-REMOTE-ENFORCEMENT), which no file in this repository can create.
-      - name: institutional debt delta + closure execution
-        run: |
-          git fetch --no-tags origin main
-          python tools/check_delta_adds_no_debt.py --base origin/main
-
-      # The "institutional closure gate" step (tools/check_institutional_closure_gate.py) was
-      # removed 2026-09-06 (bedrock): it validated a parallel closure register that nothing
-      # had updated since 2026-07-13. Its lanes are OPEN_ITEMS.md acceptance rows now.
-      # The "no-grep subprocess" step left the same day with its tool: a code-style rule
-      # with no ledger row citing a catch; the agent-side no-grep law lives in
-      # tools/operator_law_guard.py.
-
-      # --- RATCHET (visible, NON-blocking until HIGH findings are triaged) ---
-      # These end in `|| true`, so they report but cannot fail the job. The name says so —
-      # a step called "blocking" that cannot block is the security theater this repo audits for.
-      - name: bandit (high severity — non-blocking ratchet)
-        run: python -m bandit -r . -ll -q -c pyproject.toml || true   # RATCHET: triage HIGH then drop the `|| true` to make it block
-
-      # --- RATCHET (visible, non-blocking until cleared) ---
-      - name: lint debt — unused vars + redefs (F841/F811 ratchet, target 0 this week)
-        run: python -m ruff check . --select F841,F811 --statistics || true
-      - name: dependency vulnerabilities (pip-audit — ratchet until requirements pinned)
-        run: python -m pip_audit || true

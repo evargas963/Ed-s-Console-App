@@ -88,9 +88,3 @@ def test_reprice_and_api_spot_do_not_use_bar_close_or_snapshot(monkeypatch) -> N
     spot, source, _ts = server.resolve_spot("SPY")
     assert spot is None
     assert source == "none"
-
-
-def test_institutional_check_bans_mark_or_stored_current_spot() -> None:
-    from tools.check_institutional_correctness import check_single_spot_authority
-
-    assert check_single_spot_authority() == []

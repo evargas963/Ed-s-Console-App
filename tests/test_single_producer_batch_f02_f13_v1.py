@@ -154,27 +154,6 @@ def test_rc345_gamma_profile_has_one_formula_authority() -> None:
 # ever split; reinstate the frontend half only when a new module renders a final trade verdict.
 
 
-# ------------------------------------------------------------- F42 dollar GEX registry field
-# BOARD IDENTITY: gex_dollars is F42 (a newly tracked registry concept), NOT F14. F14 is
-# VWAP bands. This id was corrected after an earlier mislabel; F01-F40 ids are immutable.
-def test_rc345_gex_dollars_field_is_single_producer() -> None:
-    """F42: the registry field gex_dollars_per_1pct_at_strike has exactly ONE producer,
-    compute_exposures_by_strike. math_probabilities.score_option_expression was a coarse-AST
-    false positive (its `base += abs(gamma)*10` scoring accumulation mentions gamma but does
-    not reprice it into dollars — no OI, no spot^2). The registry now pins the distinguishing
-    signature (gamma, oi, spt) so the gate is accurate, not merely green."""
-    import tools.check_one_producer as cop
-
-    reg = cop.load_registry()
-    field = "gex_dollars_per_1pct_at_strike"
-    sites = cop.computing_sites(field, reg["fields"][field])
-    assert sites == ["math_exposure_core.py:compute_exposures_by_strike"], (
-        f"gex_dollars must have one producer; got {sites} (F42/RC-345)")
-    failures, _np, _n = cop.evaluate()
-    assert not [f for f in failures if field in f], (
-        "the one-producer gate must pass for gex_dollars")
-
-
 # ------------------------------------------------------------------------------- F14 VWAP bands
 
 

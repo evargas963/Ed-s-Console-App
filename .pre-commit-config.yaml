@@ -1,88 +1,29 @@
-# RC-465: hooks run at the pre-commit stage ONLY. This worktree (and any clone that ran
-# `pre-commit install` with extra hook types) had pre-commit + commit-msg + pre-push all
-# installed, and stage-less hooks run at EVERY installed type - the same 9-check battery
-# executed three times per commit+push cycle (~2 min of pure duplication per landing).
-# The header below already declared "the pre-push stage has no hooks"; this line makes
-# the config enforce it. CI (pytest-full + hardening) remains the authority before merge.
 default_stages: [pre-commit]
 
 repos:
   - repo: local
     hooks:
-      # ED CONSOLE SLIMMING: the pre-push stage has no hooks. Every pre-push
-      # governance-meta gate was retired as the charter's "enforcement is operator
-      # review" superseded it: the mission-authorization hooks (2a), the prepush-parity
-      # gate (1C), and — final — the prepush-fast-gate (meta-governance about the hook
-      # stack) + generated-artifacts-clean-check (freshness of generated governance-
-      # hygiene JSON) subsystems (2b). Required CI (pytest-full + the Hardening quality
-      # job) is the authority; the pre-commit hooks below carry the mission-critical
-      # fast checks (ruff, money-path gate, secrets-and-paths).
-      # BEDROCK 2026-09-06 (commit seam, dual-signoff): the no-grep-subprocess hook left with
-      # its tool — a code-style rule with no ledger row citing a catch since adoption. The
-      # agent-side no-grep law itself was later fully retired too (RC-93, 2026-09-11,
-      # universal-quantitative-closure-v1): it blocked read-only stdout filters three times in
-      # one session — governance obstructing inspection, not a protection — and operator_law_guard
-      # now bans only unrecoverable-tree destruction, blind staging and lock-disable; no no-grep
-      # rule survives anywhere in the hook chain. The db-health hook left the
-      # commit path for the same measurement (zero product catches; one false block, RC-407)
-      # — `python tools/check_db_health.py` is run by hand. Two staged-content scanners
-      # (private paths in tracked evidence; secrets in the staged diff) are ONE hook below.
       - id: secrets-and-paths
-        name: secrets and operator-home paths (staged diff + tracked evidence)
+        name: secrets and operator-home paths
         entry: python tools/check_credential_leak.py --and-private-paths
         language: system
         pass_filenames: false
         always_run: true
-      # RC-382: a file's line-ending style must survive an edit. The checker existed
-      # with its test suite but NOTHING ran it — its own docstring says a human
-      # choosing to look is not a control, and on 2026-08-24 a sed pass flipped
-      # 9 files CRLF->LF and only a diff-stat read caught it. Wired here (2026-08-24)
-      # so the flip blocks at commit; milliseconds on staged paths.
       - id: eol-style-invariant
-        name: line-ending style survives the edit (RC-382)
+        name: line-ending style survives the edit
         entry: python tools/check_eol_style_invariant.py
         language: system
         pass_filenames: false
         always_run: true
       - id: venv-parity
-        name: virtualenv parity (interpreter must be repo .venv; CI exempt)
+        name: virtualenv parity (repo .venv)
         entry: python tools/run_with_repo_venv.py tools/check_venv_parity.py
         language: system
         pass_filenames: false
         always_run: true
-      # SLIMMING 1C: fast local ruff correctness, parity with the Hardening CI
-      # quality job (F401 unused import, F821 undefined name, E9 syntax). Replaces
-      # the ruff stage of the retired pre-push parity gate.
       - id: ruff-correctness
-        name: ruff (correctness — F401,F821,E9)
+        name: ruff (F401, F821, E9)
         entry: python -m ruff check . --select F401,F821,E9
         language: system
         pass_filenames: false
         always_run: true
-      # SLIMMING Phase 1 (Commit 1A): the single fast money-path correctness gate
-      # that replaces the retired enforcement stack. Installed alongside the old
-      # hooks here; Commit 1B removes the old machine and this becomes the gate.
-      - id: market-correctness
-        name: market correctness (money-path static gate)
-        entry: python tools/run_with_repo_venv.py tools/check_market_correctness.py
-        language: system
-        pass_filenames: false
-        always_run: true
-      # The Institutional Correctness gate (tools/check_institutional_correctness.py, the ONE
-      # roster of correctness CHECKS) is enforced at MERGE by the required `hardening` check
-      # (tools/check_delta_adds_no_debt.py --base origin/main: no new enforced violation, no
-      # undeclared check removal, every closing ledger row's cited command executed). The
-      # commit-time roster diff that ran here duplicated that CI decision and was deleted
-      # 2026-09-10; the whole-tree delta left the commit path under RC-406 (~250s/commit).
-      # RC-217: index=WT parity on the enforcement paths before a commit lands.
-      - id: operating-process
-        name: operating process (index parity on enforcement paths)
-        entry: python tools/run_with_repo_venv.py tools/operating_process_lock.py --pre-commit
-        language: system
-        pass_filenames: false
-        always_run: true
-      # duplication_audit, check_one_faucet_live and (since bedrock 2026-09-06) check_db_health
-      # are deliberately NOT wired: hand-run tools —
-      #     python tools/duplication_audit.py
-      #     python tools/check_one_faucet_live.py
-      #     python tools/check_db_health.py

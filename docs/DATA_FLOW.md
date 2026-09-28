@@ -118,24 +118,11 @@ operator.
 
 ## 5. Checks (measured 2026-09-27)
 
-What each existing check covers and what it cannot. `hardening` fails a PR only on NEW violations of
-`tools/check_institutional_correctness.py` (62 stand on main). A scan that finds one named producer
-does not prove no second one exists under another name. A passing check proves only its "Covers"
-column; everything else stays NOT_PROVEN.
-
-| Rule | Check | Covers | Does not cover |
-|---|---|---|---|
-| Schwab as sent | `vendor_field_coercion` (`tools/check_vendor_field_coercion.py`) | every chain, quote and stream numeric field read only through `schwab_number` / `schwab_count`: any other converter or local delegate on one fails | bar fields (`open`/`high`/`low`/`close`/`volume` share names with internal rows); a bound applied after the reader |
-| One authority | `one_producer` (`governance/computation_registry.json`) | 9 registered fields (net GEX, DEX, delta, gamma, vanna, charm at a strike; strike OI and volume totals; the price levels), each found at exactly its producer (measured 2026-09-27) | a duplicate under other names (the 2026-09-27 heatmap `c + p`); a semantic duplicate such as two gamma sources; the 338 fields `server.py` serves that are not registered |
-| One authority: spot | `single_spot_authority` | spot read only through `resolve_spot` in `server.py`, `terrain_engine.py` | page scripts |
-| One authority: levels | `domain_faucet_registry`, `phase2a_single_level_computation`, `chain_width_single_faucet` | level routes registered; price levels computed once; the chain not narrowed | exposure values outside the levels list |
-| UI computes nothing | `single_faucet_provenance` (`tools/data_faucet_audit.py`, `PAGE_CALCULATIONS`) | sums, weighted sums, distance to spot, sort by distance, sort by strike, calendar arithmetic, first-key picks in every `static/js/` script | a threshold or comparison that picks a label |
-| No substitute paths | `no_fake_defaults`, `absence_has_a_type`, `no_silent_swallow` | default literals, absent-as-value return types, swallowed exceptions | a branch that picks a second source; carry-forward; a second authority under another name (the console's terrain cache and pushed chains stand until P2-6); a past observation shown without its source, time and label, or feeding current logic |
-| One path, no polling | none | | page timers that read `/api` |
-| One writer | `single_stream_authority`, `collect_window_single_law` | one Schwab stream; the 1-minute bar write seam | other writes outside the one writer |
-| Nothing without a job | `level_producers_have_consumers` (reported, not blocking) | a level route has a page consumer | unused code, routes, tables, timers |
-| Real data | `test_hygiene` | inline synthetic option contracts in tests | other hand-built test inputs |
-| Documents match the tree | `tests/test_governing_docs_v1.py` | every path the four governing documents name exists; `AGENTS.md` under 200 lines | whether a statement is true |
+The checks (2026-09-27): ruff (F401, F821, E9) and a compile pass in CI and at commit; the behavior
+tests (`pytest`, `tests/`) and the browser tests (Playwright, `tests/e2e/`) in CI; at commit, the
+secrets and private-path scan and the line-ending check; for agents, the hooks that block
+destructive git. The static scanners of the rules were deleted with the governance cut (P1-7).
+A passing check proves only what its tests exercise; every rule beyond them stays NOT_PROVEN.
 
 A gap gets a check only when a failure it would have caught has happened; the check is a test of
 behavior (AGENTS.md).
