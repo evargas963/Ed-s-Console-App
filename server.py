@@ -2212,23 +2212,25 @@ def _levels_lock(tk: str) -> threading.Lock:
 
 
 def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
-                    *, capture: "dict | None" = None) -> "TerrainSnapshot | None":
+                    *, captures: "list | None" = None) -> "TerrainSnapshot | None":
     """THE producer of a ticker's levels, per-strike rows and gamma-surface grid.
 
     Prices the ticker's chain once -- overlaid with any fresher streamed option greeks, at the
     current spot -- and publishes all three together, so the heatmap, Strike Detail and Key
     Levels always show one computation. The terrain loop passes a newly fetched chain; a tick on
     a viewed ticker passes none and the kept chain is repriced. One call at a time per ticker:
-    each publication is computed from inputs read after the one it replaces. A stored
-    `capture` (startup, DATA_FLOW decision 7) is priced with Schwab's underlying price from that
-    capture, valued and dated at its own time. Returns the snapshot, or None when there is no
-    chain to price."""
+    each publication is computed from inputs read after the one it replaces. `captures` (startup
+    and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
+    read once: the newest is priced with Schwab's underlying price from that capture, valued and
+    dated at its own time, and both feed the forces and prior-day rows. Returns the snapshot, or
+    None when there is no chain to price."""
     from math_exposure_core import overlay_streamed_contract_fields
     from app.options.order_flow.streaming import (
         read_producer_rejected_option_contracts, is_option_producer_daemon_available)
     with _levels_lock(tk):
         with _terrain_cache_lock:
             payload = dict(_terrain_cache.get(tk) or {})
+        capture = captures[0] if captures else None
         if capture is not None:
             chain, fetched_ts = capture["contracts"], capture["ts_utc"]
         new_chain = chain is not None
@@ -2266,8 +2268,9 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         if new_chain:
             captures_key = (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(float(fetched_ts)))
             if payload.get("_captures_key") != captures_key:
-                payload.update(_forces=_forces_from_captures(tk),
-                               _prior_strikes=_prior_strikes(tk, fetched_ts),
+                stored = captures if captures is not None else last_capture_per_day(get_db().db_path, tk, 2)
+                payload.update(_forces=_forces_from_captures(tk, stored),
+                               _prior_strikes=_prior_strikes(stored, fetched_ts),
                                _captures_key=captures_key)
         if viewed and spot is not None and snap.books:
             surface = project_gamma_surface(priced, snap.books)
@@ -2360,7 +2363,9 @@ def _on_stream_tick(sym: str) -> None:
 
 def _reprice_worker(tk: str) -> None:
     """Reprice `tk` while ticks keep arriving, at most once per LEVELS_REPRICE_MIN_INTERVAL_SEC;
-    the last tick of a burst is always priced."""
+    the last tick of a burst is always priced. A ticker just put on screen has no kept chain
+    (only a viewed ticker's is kept): its chain is fetched now, by the one producer, rather than
+    when the levels loop next comes round to it."""
     last = float("-inf")
     while True:
         time.sleep(max(0.0, last + LEVELS_REPRICE_MIN_INTERVAL_SEC - time.monotonic()))
@@ -2371,7 +2376,8 @@ def _reprice_worker(tk: str) -> None:
             _reprice_dirty.discard(tk)
         last = time.monotonic()
         try:
-            _publish_levels(tk)
+            if _publish_levels(tk) is None:
+                _terrain_refresh_one(tk, priority=True)
         except Exception as e:  # noqa: BLE001 -- logged; the next tick or chain fetch reprices
             log.warning("levels reprice failed for %s: %s", tk, e)
 
@@ -2534,7 +2540,16 @@ def _status_line() -> str:
 
 
 def _terrain_loop() -> None:
-    log.info("Terrain loop started (levels only, no model stack)")
+    # the stored levels load here, on this thread: the console serves the page meanwhile, and
+    # each ticker's levels appear as they are priced (it took about a minute before serving)
+    loaded = _load_stored_levels()
+    with _logger_lock:
+        board = len(_logger_tickers)
+    log.info("Ready: levels for %d of %d board tickers loaded (session: %s). %s", loaded, board,
+             session_label(now_et()),
+             "Levels refresh every 5 s." if _is_loggable_session() else
+             "Levels refresh (a full-chain sweep of the board, 1-2 min each) "
+             + _next_refresh_ct() + ".")
     _terrain_cycle_n = 0        # RC-161: drives the morning rotation; monotonic per loop
     next_status = time.monotonic() + STATUS_EVERY_SEC   # the ready line covers the start
     while _terrain_loop_running:
@@ -2660,8 +2675,8 @@ def _load_stored_levels() -> int:
         board = list(_logger_tickers)
     n = 0
     for tk in board:
-        caps = last_capture_per_day(get_db().db_path, tk, 1)
-        if caps and _publish_levels(tk, capture=caps[0]) is not None:
+        caps = last_capture_per_day(get_db().db_path, tk, 2)
+        if caps and _publish_levels(tk, captures=caps) is not None:
             n += 1
     return n
 
@@ -2673,9 +2688,9 @@ def _price_stored_chain_when_closed(tk: str) -> None:
     source. The startup load keeps no chains: nobody is viewing anything then."""
     if _is_loggable_session() or (terrain_cache_get(tk) or {}).get("_chain"):
         return
-    caps = last_capture_per_day(get_db().db_path, tk, 1)
+    caps = last_capture_per_day(get_db().db_path, tk, 2)
     if caps:
-        _publish_levels(tk, capture=caps[0])
+        _publish_levels(tk, captures=caps)
 
 
 def start_terrain_loop() -> None:
@@ -2693,15 +2708,6 @@ def start_terrain_loop() -> None:
         return
     if _terrain_loop_running:
         return
-    loaded = _load_stored_levels()
-    with _logger_lock:
-        board = len(_logger_tickers)
-    # the window's last startup line: the app is up, and why it may be quiet
-    log.info("Ready: levels for %d of %d board tickers loaded (session: %s). %s", loaded, board,
-             session_label(now_et()),
-             "Levels refresh every 5 s." if _is_loggable_session() else
-             "Levels refresh (a full-chain sweep of the board, 1-2 min each) "
-             + _next_refresh_ct() + ".")
     _terrain_loop_running = True
     _terrain_loop_thread = threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True)
     _terrain_loop_thread.start()
@@ -2743,12 +2749,14 @@ LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _terrain_refresh_one, the si
 # the previous market day's last chain capture (the day-over-day migration ghosts), each in
 # three expiry scopes (all / near<=7DTE / far). Read-only, no Schwab call. Bar heights use the
 # same exposure math as terrain.
-def _prior_strikes(tk: str, chain_ts: float) -> "tuple[dict | None, str | None]":
+def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str | None]":
     """The previous market day's close before the day of the chain the ticker's rows came from,
     as per-strike rows ({all, near, far}), with its source. On a closed market today's rows ARE
     the newest capture; the wall clock's date picked that same capture and compared it with
     itself (every change 0, `compared` true -- 2026-09-27). Run by _publish_levels when the
-    ticker's newest capture or its chain's day changes."""
+    ticker's newest capture or its chain's day changes, on the same two newest market days'
+    captures the forces read: the chain's day is today or the newest capture's, so the day
+    before it is one of those two."""
     from math_exposure_core import compute_exposures_by_strike as _cebs
 
     def _per_strike(contracts: list, spot: float) -> dict:
@@ -2772,10 +2780,10 @@ def _prior_strikes(tk: str, chain_ts: float) -> "tuple[dict | None, str | None]"
         far = [c for c in contracts if (d := _dte_of(c)) is not None and d > 7]
         return {"all": _scope(contracts), "near": _scope(near), "far": _scope(far)}
 
-    caps = last_capture_per_day(get_db().db_path, tk, 1,
-                                before_et_date=et_date_str_from_ts_utc(float(chain_ts)))
-    if caps and caps[0]["spot"] is not None:
-        return _per_strike(caps[0]["contracts"], float(caps[0]["spot"])), f"chain_capture:{caps[0]['et_date']}"
+    chain_day = et_date_str_from_ts_utc(float(chain_ts))
+    prior = next((c for c in captures if c["et_date"] < chain_day), None)
+    if prior is not None and prior["spot"] is not None:
+        return _per_strike(prior["contracts"], float(prior["spot"])), f"chain_capture:{prior['et_date']}"
     return None, None
 
 
@@ -3090,14 +3098,15 @@ def get_forces(ticker: str = Query(...)):
         "ticker": tk, "available": False, "reason": "no levels published for this ticker yet"})
 
 
-def _forces_from_captures(tk: str) -> dict:
+def _forces_from_captures(tk: str, captures: list) -> dict:
     """Forces rows from banked chains (RC-192/RC-199): per-strike OI delta FIRST, then
     bucketed by the NEWER capture's spot — bucketing each day by its own spot lets the moving
     boundary masquerade as OI change (measured inversion, OPEN_ITEMS DIR-01 method note).
     DEX is the newer capture's net_dex_dollars side sums. CHARM side sums (RC-199): operator
     2026-08-02 revoked the DIR-01(i) vote-lock — serve dealer-signed net_charm below/above
     spot from the newer banked chain via compute_charm_by_strike (same book as terrain walls).
-    Run by _publish_levels when the ticker's newest capture changes.
+    Run by _publish_levels when the ticker's newest capture changes, on `captures`: the two
+    newest market days' captures (last_capture_per_day, newest first), read once for it.
     """
     from math_exposure_core import compute_exposures_by_strike as _cebs
     from math_levels import compute_charm_by_strike as _ccs
@@ -3106,7 +3115,7 @@ def _forces_from_captures(tk: str) -> dict:
                      "reason": "fewer than 2 market days of chain captures for this ticker"}
     try:
         rows = [(c["et_date"], c["spot"], c["contracts"], c["ts_utc"])
-                for c in last_capture_per_day(get_db().db_path, tk, 2) if c["spot"] is not None]
+                for c in captures if c["spot"] is not None]
         if len(rows) >= 2:
             (d1, s1, c1, t1), (d0, s0, c0, _t0) = rows[0], rows[1]
             per1 = _cebs(c1, spot=float(s1))[0]
@@ -4364,12 +4373,14 @@ def _session_bars(tk: str, session_date) -> list[dict]:
     liquidity engine's window): the completed Schwab bars in price_bars_1m, in the engine's
     shape."""
     from datetime import datetime as _dt, time as _time, timedelta as _td
-    from time_et import ET, RTH_END_MINS, is_trading_day_et
-    prior = session_date - _td(days=1)
-    while not is_trading_day_et(prior.isoformat()):
-        prior -= _td(days=1)
+    from time_et import ET, is_trading_day_et, session_close_mins_for_et_date
+    close = session_close_mins_for_et_date(session_date.isoformat())
+    prior = next((d for d in (session_date - _td(days=n) for n in range(1, 15))
+                  if is_trading_day_et(d.isoformat())), None)
+    if close is None or prior is None:
+        return []                       # no session that day, or none before it in the calendar
     lo = _dt.combine(prior, _time(0, 0), tzinfo=ET).timestamp()
-    hi = _dt.combine(session_date, _time(RTH_END_MINS // 60, RTH_END_MINS % 60), tzinfo=ET).timestamp()
+    hi = _dt.combine(session_date, _time(close // 60, close % 60), tzinfo=ET).timestamp()
     bars = [b for b in _liquidity_1m_bars(tk) if lo <= b["timestamp"] / 1000.0 < hi]
     return bars
 

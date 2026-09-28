@@ -1,27 +1,48 @@
-"""STACK-WIRE-5 — order_flow_engine → stack vote (FIND-WIRE5-1..3)."""
+"""The order-flow state's session reset follows the one market calendar (time_et.session_label).
 
+ONE-10 (2026-09-28 audit): the state kept its own 09:30-16:00 weekday rule (is_rth_open), blind to
+holidays and early closes, so a holiday's first quote at 10:00 wiped the books and tape as if a
+session had opened. Real SPY NASDAQ_BOOK (tests/fixtures/real_spy_nyse_nasdaq_books.json); the
+clock is pinned; stand-in: 2026-09-24 declared a full holiday or a 13:00 early close."""
 from __future__ import annotations
 
+import datetime as _dt
+import json
+from pathlib import Path
+
+import pytest
+
 import app.options.order_flow.state as ofls
+import time_et
+from time_et import ET
+
+_BOOK = json.loads((Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json")
+                   .read_text(encoding="utf-8"))["books"]["NASDAQ_BOOK"]["content"]
 
 
-def test_order_flow_state_rth_actually_behaves_at_the_boundaries(monkeypatch):
-    """Driven by pinning the clock, because the real one makes the answer depend on when the
-    suite happens to run.
-    """
-    import datetime as _dt
+def _book_kept_after_a_quote_at(monkeypatch, hh, mm):
+    """A book arrives before the open; one quote arrives at hh:mm on 2026-09-24. Is the book
+    still there (no session reset)?"""
+    monkeypatch.setattr(ofls, "now_et", lambda: _dt.datetime(2026, 9, 24, 8, 0, tzinfo=ET))
+    st = ofls.OrderFlowState()
+    st.push_book("SPY", _BOOK, "NASDAQ_BOOK")
+    monkeypatch.setattr(ofls, "now_et", lambda: _dt.datetime(2026, 9, 24, hh, mm, tzinfo=ET))
+    st.push_level_one("SPY", {"key": "SPY", "LAST_PRICE": 660.0}, ts_recv=1.0)
+    return any(i.get("BIDS") for i in st.get_content_for_symbol("SPY", "NASDAQ_BOOK"))
 
-    from time_et import ET
 
-    def _at(y, m, d, hh, mm):
-        monkeypatch.setattr(ofls, "now_et",
-                            lambda: _dt.datetime(y, m, d, hh, mm, tzinfo=ET), raising=True)
-        return ofls.is_rth_open()
+def test_the_session_opens_at_0930_on_a_trading_day(monkeypatch):
+    assert _book_kept_after_a_quote_at(monkeypatch, 9, 29) is True
+    assert _book_kept_after_a_quote_at(monkeypatch, 9, 30) is False     # the session reset
 
-    # 2026-08-07 is a Friday; 2026-08-08 a Saturday.
-    assert _at(2026, 8, 7, 9, 29) is False, "one minute before the open must not be RTH"
-    assert _at(2026, 8, 7, 9, 30) is True, "the open itself is RTH (inclusive lower bound)"
-    assert _at(2026, 8, 7, 12, 0) is True
-    assert _at(2026, 8, 7, 15, 59) is True
-    assert _at(2026, 8, 7, 16, 0) is False, "16:00 is the exclusive upper bound"
-    assert _at(2026, 8, 8, 12, 0) is False, "Saturday is never RTH regardless of clock"
+
+def test_a_holiday_never_opens_a_session(monkeypatch):
+    monkeypatch.setattr(time_et, "US_EQUITY_FULL_HOLIDAYS_ET",
+                        time_et.US_EQUITY_FULL_HOLIDAYS_ET | {"2026-09-24"})
+    assert _book_kept_after_a_quote_at(monkeypatch, 10, 0) is True
+
+
+@pytest.mark.parametrize("hh,mm,kept", [(12, 59, False), (13, 30, True)])
+def test_an_early_close_ends_the_session_at_the_calendars_close(monkeypatch, hh, mm, kept):
+    monkeypatch.setitem(time_et.US_EQUITY_EARLY_CLOSE_MINS_ET, "2026-09-24", time_et.EARLY_CLOSE_MINS)
+    assert _book_kept_after_a_quote_at(monkeypatch, hh, mm) is kept

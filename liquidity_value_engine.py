@@ -37,18 +37,24 @@ log = logging.getLogger(__name__)
 
 from time_et import (
     ET,
-    RTH_END_MINS,
     RTH_OPEN_MINS,
+    session_close_mins_for_et_date,
 )
 
-# RC-324: DERIVED from the time_et minute-of-day authority, not inlined. These were
-# `time(9, 30)` and `time(16, 0)` written here, and FIND-MC-1 had already removed exactly
-# that shape from market_context.fetch_price_levels — which then delegated to the
-# authority. Phase 2A moved the level computation INTO this module and the inline window
-# came with it, so the dual authority the earlier fix closed had quietly reopened one file
-# over. One place decides the session; every producer reads it.
+# The session comes from time_et, the one market calendar: the open, and each day's close
+# (13:00 on an early close, none on a holiday).
 RTH_OPEN = time(RTH_OPEN_MINS // 60, RTH_OPEN_MINS % 60)
-RTH_CLOSE = time(RTH_END_MINS // 60, RTH_END_MINS % 60)
+
+
+def rth_close(d: date) -> Optional[time]:
+    """The regular session's close on `d` (the market calendar's); None: no session that day."""
+    m = session_close_mins_for_et_date(d.isoformat())
+    return None if m is None else time(m // 60, m % 60)
+
+
+def _in_rth(dt: datetime) -> bool:
+    close = rth_close(dt.date())
+    return close is not None and RTH_OPEN <= dt.time() < close
 
 
 #: each price level's name, spelled out and as the chart's short tag -- the one home for both
@@ -208,9 +214,9 @@ def prior_trading_session_date(bars_norm: list, session_date: date) -> Optional[
     `session_date - 1 day` is Sunday on a Monday and a closed holiday after one, and a market
     that was shut has no close for an overnight range to start from.
 
-    Presence of RTH bars is the evidence a session happened — we do not consult a holiday table,
-    because the bars ARE the record and a table can disagree with the tape (half-days, ad-hoc
-    closures). Fail-closed: no prior RTH date in the buffer returns None, never a guessed date.
+    Presence of bars inside a day's regular session (the market calendar's hours, early closes
+    included) is the evidence a session happened, so an ad-hoc closure with no bars is skipped.
+    Fail-closed: no prior RTH date in the buffer returns None, never a guessed date.
     """
     prior: Optional[date] = None
     for b in bars_norm:
@@ -218,7 +224,7 @@ def prior_trading_session_date(bars_norm: list, session_date: date) -> Optional[
         if dt is None:
             continue
         d = dt.date()
-        if d < session_date and RTH_OPEN <= dt.time() < RTH_CLOSE:
+        if d < session_date and _in_rth(dt):
             if prior is None or d > prior:
                 prior = d
     return prior
@@ -263,7 +269,7 @@ def get_previous_day_levels(
             dt = _bar_dt_et(b)
             if dt is None:
                 continue
-            if dt.date() == prev_trading_day and RTH_OPEN <= dt.time() < RTH_CLOSE:
+            if dt.date() == prev_trading_day and _in_rth(dt):
                 prev_bars.append(b)
 
     out = {}
@@ -305,8 +311,8 @@ def get_overnight_levels(
     bars_norm = _bars_to_list(bars)
     session_open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
     prev_session = prior_trading_session_date(bars_norm, session_date)
-    prev_close_dt = (datetime.combine(prev_session, RTH_CLOSE, tzinfo=ET)
-                     if prev_session is not None else None)
+    prev_close_dt = (datetime.combine(prev_session, rth_close(prev_session), tzinfo=ET)
+                     if prev_session is not None else None)       # a session day: it has a close
 
     overnight = []
     for b in bars_norm:
@@ -452,7 +458,7 @@ def _filter_rth_bars(bars: list, session_date: date, cutoff_dt: Optional[datetim
         dt = _bar_dt_et(b)
         if dt is None or dt.date() != session_date:
             continue
-        if not (RTH_OPEN <= dt.time() < RTH_CLOSE):
+        if not _in_rth(dt):
             continue
         if cutoff_dt and dt > cutoff_dt:
             continue
@@ -1079,8 +1085,9 @@ def build_live_snapshot(
     canonical: Optional["PriceLevelSnapshot"] = None,
 ) -> SnapshotOutput:
     """
-    Rolling intraday snapshot: RTH cutoff is min(now ET, 16:00) on the session date;
-    historical session_date (prior calendar days) uses full RTH through 16:00.
+    Rolling intraday snapshot: RTH cutoff is min(now ET, the day's close) on the session date;
+    historical session_date (prior calendar days) uses full RTH through its close (the market
+    calendar's, early closes included; a day with no session has an empty window).
     Before today's RTH open → same as premarket snapshot.
 
     Merges optional ``extra_levels`` (e.g. options walls from cache) with VWAP / profile / ORB context.
@@ -1093,7 +1100,8 @@ def build_live_snapshot(
     today_et = datetime.now(ET).date()
     now = datetime.now(ET)
     open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
-    close_dt = datetime.combine(session_date, RTH_CLOSE, tzinfo=ET)
+    close = rth_close(session_date)
+    close_dt = datetime.combine(session_date, close, tzinfo=ET) if close is not None else open_dt
 
     # RC-322: both exits carry `canonical` through. They used to drop it, so the pre-open
     # and future-date paths recomputed the Phase 2A families beside the materialized ones.
