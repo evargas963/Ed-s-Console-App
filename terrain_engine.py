@@ -146,11 +146,6 @@ class TerrainSnapshot:
     #: building (the same-session GSF-breach confirm). Fail-closed None, never fabricated.
     rr_25d: dict | None = None
 
-    #: RC-359: per-strike OI from the SAME exposures book — {strike: (call_oi, put_oi)}.
-    #: HEAVY: popped from to_dict like per_strike; the server banks it daily at refresh
-    #: time and computes the ΔOI walls vs the prior banked session.
-    oi_by_strike: dict | None = None
-
     #: RC-362: aggregate dealer vanna — {net_vanna_dollars_per_volpt, net_vanna_shares_per_volpt}
     #: or None. Sizes the IV-driven hedge flow (vol-crush tailwind / vol-spike selling).
     vanna_agg: dict | None = None
@@ -230,12 +225,12 @@ class TerrainSnapshot:
 
     def to_dict(self) -> dict[str, Any]:
         """The per-poll payload: every field except the heavy maps (profile, per_strike,
-        oi_by_strike, books, charm_by_strike), which the server reads off the snapshot."""
+        books, charm_by_strike), which the server reads off the snapshot."""
         light = replace(self, **{n: None for n in _HEAVY_FIELDS})
         return {k: v for k, v in asdict(light).items() if k not in _HEAVY_FIELDS}
 
 
-_HEAVY_FIELDS = ("profile", "per_strike", "oi_by_strike", "books", "charm_by_strike")
+_HEAVY_FIELDS = ("profile", "per_strike", "books", "charm_by_strike")
 
 
 def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapshot:
@@ -813,9 +808,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         gsf_state=_gsl["state"],
         zero_dte_gamma_share_pct=_zero_dte_share,
         rr_25d=_rr25,
-        # RC-359: per-strike OI exported from the SAME exposures book (no second parse)
-        oi_by_strike={float(k): (b.get("call_oi"), b.get("put_oi"))
-                      for k, b in exposures.items() if isinstance(b, dict)},
         vanna_agg=compute_net_vanna(exposures, spot),     # RC-362: same book, one sum
         implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113
         call_wall_range=compute_wall_value_area(exposures, call_wall, "call"),   # RC-115

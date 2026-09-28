@@ -648,52 +648,6 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
             "net_vanna_shares_per_volpt": round(net_shares_per_volpt, 2)}
 
 
-def compute_delta_oi_walls(
-    today: dict[float, tuple[float | None, float | None]],
-    prev: dict[float, tuple[float | None, float | None]],
-) -> dict | None:
-    """RC-359: overnight ΔOI walls — where positioning BUILT (defend) vs UNWOUND (fade).
-
-    today/prev = {strike: (call_oi, put_oi)} from the SAME exposures book, banked daily. Only a
-    strike present in BOTH days has a change: a strike missing from yesterday's bank is not
-    known to have had zero (the bank before 2026-09-25 held only a strike window).
-    FAIL-CLOSED: None when no prior session is banked or today is empty.
-    Returns {call_build_strike, call_build_doi, put_build_strike, put_build_doi,
-             unwind_strike, unwind_doi} — build fields None when nothing grew.
-    """
-    if not prev or not today:
-        return None
-    d_call: dict[float, float] = {}
-    d_put: dict[float, float] = {}
-    for k, (c, p) in today.items():
-        if k not in prev:
-            continue
-        pc, pp = prev[k]
-        if c is not None and pc is not None:
-            d_call[k] = float(c) - float(pc)
-        if p is not None and pp is not None:
-            d_put[k] = float(p) - float(pp)
-    out: dict[str, float | None] = {
-        "call_build_strike": None, "call_build_doi": None,
-        "put_build_strike": None, "put_build_doi": None,
-        "unwind_strike": None, "unwind_doi": None,
-    }
-    grew_c = {k: v for k, v in d_call.items() if v > 0}
-    grew_p = {k: v for k, v in d_put.items() if v > 0}
-    if grew_c:
-        k = max(grew_c, key=lambda s: grew_c[s])
-        out["call_build_strike"], out["call_build_doi"] = k, round(grew_c[k])
-    if grew_p:
-        k = max(grew_p, key=lambda s: grew_p[s])
-        out["put_build_strike"], out["put_build_doi"] = k, round(grew_p[k])
-    total = {k: d_call.get(k, 0.0) + d_put.get(k, 0.0) for k in set(d_call) | set(d_put)}
-    shrank = {k: v for k, v in total.items() if v < 0}
-    if shrank:
-        k = min(shrank, key=lambda s: shrank[s])
-        out["unwind_strike"], out["unwind_doi"] = k, round(shrank[k])
-    return out
-
-
 def compute_zero_dte_gamma_share(
     exposures_all: dict, exposures_0dte: dict
 ) -> float | None:

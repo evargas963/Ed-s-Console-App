@@ -658,24 +658,6 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_rang
             holder["event"].set()
 
 
-# ── Server-side state cache (avoids re-fetching everything on each poll) ─────
-# UI-MAXIMIZE — panel warm list + binding SLA budgets (mirrored on /api/build + static ED_UI_MAXIMIZE_SLA_MS).
-def panel_warm_tickers() -> tuple[str, ...]:
-    """The tickers to pre-warm: whatever the operator is viewing (active ticker + watchlist,
-    in that order). Universal -- no ticker is warmed because of its name (operator
-    2026-09-23); a ticker nobody is viewing pays its first compute on first view, like any."""
-    try:
-        from app.options.order_flow.streaming import viewed_equity_symbols
-        return tuple(viewed_equity_symbols())
-    except Exception as e:  # noqa: BLE001 -- warming is best-effort; nothing is substituted
-        log.warning("panel warm roster unavailable: %s", e)
-        return ()
-UI_MAXIMIZE_SLA_MS: dict[str, int] = {
-    "first_quote": int(os.environ.get("ED_UI_SLA_FIRST_QUOTE_MS", "500")),
-    "fusion_cards_panel_warm": int(os.environ.get("ED_UI_SLA_FUSION_PANEL_MS", "2000")),
-    "fusion_cards_guest_cold": int(os.environ.get("ED_UI_SLA_FUSION_GUEST_MS", "15000")),
-}
-
 
 _route_offload_executor: Optional[ThreadPoolExecutor] = None
 
@@ -755,7 +737,6 @@ from micro_structure import Candle
 from app.options.contracts.default import front_atm_call
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
-    COMPLETENESS_BASIS_STRIKE_RANGE_ALL,
     board_tickers,
     last_capture_per_day,
     newest_capture_ts,
@@ -1609,8 +1590,8 @@ def terrain_cycle_tickers(
     scheduled later within the window.
 
     Priority inside the window is by VIEWING DEMAND, never by symbol name (universality,
-    operator 2026-09-23): the tickers the operator is looking at (`viewed` -- active ticker +
-    watchlist) refresh every cycle; every other enrolled ticker rotates so it still refreshes
+    operator 2026-09-23): the tickers a page has open (`viewed`, _viewed_tickers) refresh every
+    cycle; every other enrolled ticker rotates so it still refreshes
     at least once per CONTENTION_ROTATION_SEC (RC-146: spread the open's vendor budget, never
     starve a ticker).
 
@@ -1635,35 +1616,16 @@ def terrain_cycle_tickers(
     return sentinels + slice_now, deferred
 
 
-# RC-UI-1 #1: gamma-surface demand registry — the /api/options/gamma-surface endpoint marks a
-# ticker "wanted" on each request; _terrain_refresh_one projects the (measurable) strike x expiry
-# surface only for tickers wanted within the TTL, so unviewed tickers pay no surface cost.
-_gamma_surface_demand: dict = {}
-GAMMA_SURFACE_DEMAND_TTL = 300.0
-
-
-def _note_gamma_surface_demand(tk: str) -> None:
-    now = time.time()
-    _gamma_surface_demand[tk] = now
-    # opportunistic hygiene (no background thread): drop expired keys so the registry can't grow
-    # unbounded from arbitrary/expired tickers.
-    if len(_gamma_surface_demand) > 64:
-        for _k in [k for k, ts in list(_gamma_surface_demand.items()) if now - ts >= GAMMA_SURFACE_DEMAND_TTL]:
-            _gamma_surface_demand.pop(_k, None)
-
-
 def _gamma_surface_wanted(tk: str) -> bool:
-    """Viewed: a page has the ticker open (whatever its workspace), or a route read it within
-    GAMMA_SURFACE_DEMAND_TTL. The same for every ticker, on the board or not."""
-    return tk in push_changes.watched() or (
-        time.time() - _gamma_surface_demand.get(tk, 0.0)) < GAMMA_SURFACE_DEMAND_TTL
+    """Viewed: a page has the ticker open (its /api/changes connection), on any workspace, for
+    as long as it stays open. The one viewing signal, the same for every ticker."""
+    return tk in push_changes.watched()
 
 
 def _viewed_tickers() -> list[str]:
-    """Every viewed ticker (_gamma_surface_wanted): the levels loop refreshes each one every
-    cycle, on the board or not."""
-    return sorted({tk for tk in list(_gamma_surface_demand) if _gamma_surface_wanted(tk)}
-                  | set(push_changes.watched()))
+    """Every viewed ticker: the levels loop refreshes each one every cycle, on the board or not,
+    keeps its chain and projects its heatmap."""
+    return sorted(push_changes.watched())
 
 
 def _live_stream_greeks(streamed: dict) -> dict:
@@ -2178,7 +2140,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         # the values read from the stored chain captures (forces, the prior day's per-strike rows)
         # change only with a new capture or a new chain day: computed then, once, for all readers
         if new_chain:
-            payload["delta_oi_walls"] = _delta_oi_walls(tk, snap, fetched_ts)
             captures_key = (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(float(fetched_ts)))
             if payload.get("_captures_key") != captures_key:
                 stored = captures if captures is not None else last_capture_per_day(get_db().db_path, tk, 2)
@@ -2447,9 +2408,7 @@ def _terrain_loop() -> None:
         # (_gamma_surface_wanted -- the SAME signal /api/options/gamma-surface already
         # records on every request) is folded into this cycle so viewing ANY supported
         # ticker keeps it refreshing for as long as it is actually being viewed, not only
-        # the pre-enrolled board. A snapshot of the keys, never the live dict, since
-        # another thread's concurrent _note_gamma_surface_demand write must not raise
-        # "dictionary changed size during iteration" here.
+        # the pre-enrolled board.
         _viewed_now = _viewed_tickers()
         _previewed = [tk for tk in _viewed_now if tk not in tickers]
         # Every board ticker's spot is the streamed LAST_PRICE only, so the daemon must
@@ -2482,14 +2441,10 @@ def _terrain_loop() -> None:
             # runtime — a missing module stops the server at boot instead.
             _mins = et_minute_total_from_ts_utc(time.time())
             _terrain_cycle_n += 1
-            _all_this_cycle = list(tickers)
-            try:
-                from app.options.order_flow.streaming import viewed_equity_symbols as _viewed_fn
-                _viewed_syms = _viewed_fn()
-            except Exception:  # noqa: BLE001 -- no viewing signal: every ticker rotates alike
-                _viewed_syms = []
-            tickers, _dropped = terrain_cycle_tickers(_all_this_cycle, _mins, _terrain_cycle_n,
-                                                      viewed=_viewed_syms)
+            # every viewed ticker (on the board or not) refreshes every cycle; the rest of the
+            # board rotates inside the contention window
+            tickers, _dropped = terrain_cycle_tickers(list(tickers) + _previewed, _mins,
+                                                      _terrain_cycle_n, viewed=_viewed_now)
             if _dropped:
                 # RC-146: SAY SO. This pause is deliberate and budget-justified, but it was a
                 # silent list filter — nothing anywhere recorded that these tickers were skipped
@@ -2513,13 +2468,6 @@ def _terrain_loop() -> None:
                     f"the rotation cadence ({CONTENTION_ROTATION_SEC:.0f}s) instead of "
                     f"being held out, so this ticker still accrues inside the window",
                 )
-            if _previewed:
-                # Previewed tickers are a deliberate, ad-hoc operator action (someone typed
-                # or clicked a ticker outside the enrolled board) -- they bypass
-                # terrain_cycle_tickers' morning-contention throttle (built for the
-                # enrolled board's own chain-slot budget) rather than being silently
-                # dropped by a mechanism that was never about them.
-                tickers = tickers + [tk for tk in _previewed if tk not in tickers]
             with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
                 list(pool.map(_terrain_refresh_one, tickers))
         else:
@@ -2624,24 +2572,6 @@ def _atr_fields(tk: str) -> dict:
             "atr_daily_reason": pair.daily_reason, "atr_15m_reason": pair.m15_reason}
 
 
-def _delta_oi_walls(tk: str, snap: "TerrainSnapshot", chain_ts: float) -> "dict | None":
-    """Banks the chain's per-strike open interest under the chain's ET date (last write wins)
-    and returns the change against the previous banked session (compute_delta_oi_walls); None
-    with no prior session or when the bank cannot be written (logged)."""
-    from math_exposure_core import compute_delta_oi_walls
-    oi = snap.oi_by_strike or {}
-    if not oi:
-        return None
-    day = et_date_str_from_ts_utc(float(chain_ts))
-    try:
-        db = get_db()
-        db.bank_daily_strike_oi(tk, day, [(k, c, p) for k, (c, p) in oi.items()], time.time())
-        return compute_delta_oi_walls(oi, db.prev_session_strike_oi(tk, day))
-    except sqlite3.Error as e:
-        log.warning("oi_daily banking failed for %s: %s", tk, e)
-        return None
-
-
 #: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
 #: unlabelled merge is how systematically-different numbers get ranked as peers (RC-82).
 LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _terrain_refresh_one, the single producer
@@ -2693,15 +2623,6 @@ def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str |
 @app.get("/api/terrain/strikes")
 def get_terrain_strikes(ticker: str = Query(...)):
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
-    # Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
-    # viewing"): _note_gamma_surface_demand was only ever called from
-    # get_options_gamma_surface (the Heatmap grid's own route) -- GEX-by-Strike, the
-    # Positioning Migration panel, and the Chart view all read THIS route instead and never
-    # registered that anyone was watching. A ticker viewed only through one of those three
-    # screens could never reach _terrain_loop's `_previewed` set, so it never got a live
-    # refresh attempt regardless of enrollment. Every screen that shows this ticker's live
-    # terrain-derived data must register the same demand signal, not just one of them.
-    _note_gamma_surface_demand(tk)
 
     today_src, prior_src = None, None
     today, prior = None, None
@@ -3268,7 +3189,6 @@ def get_options_gamma_surface(ticker: str = Query(...)):
     Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale visibly."""
 
     tk = ticker_storage_key(_required_ticker(ticker))
-    _note_gamma_surface_demand(tk)   # mark viewed -> the terrain loop will project this ticker's surface
     _price_stored_chain_when_closed(tk)
 
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
@@ -3390,7 +3310,6 @@ def get_terrain(ticker: str = Query(...)):
     math on the same chain, so it never needs to compete for that budget.
     """
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
-    _note_gamma_surface_demand(tk)          # a viewed ticker's full chain is kept by the levels loop
     cached = terrain_cache_get(tk)
     if cached is None:
         # RC-80 — ONE PRODUCER OF LEVELS. This branch used to compute its own terrain from
@@ -3790,11 +3709,10 @@ def get_chain(ticker: str = Query(...),
               expiry: Optional[str] = Query(default=None)):
     """One expiry of the ticker's full chain -- every contract Schwab listed, every field as sent
     -- from the chain the levels loop downloads (strike_range=ALL), with each live streamed
-    contract's streamed fields as its values (the stream owns them). The loop keeps a ticker's chain while it is viewed
-    (/api/terrain and this route mark it). Answers `status: unavailable` with a reason when no
+    contract's streamed fields as its values (the stream owns them). The loop keeps a ticker's chain while a page has it
+    open. Answers `status: unavailable` with a reason when no
     chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
-    _note_gamma_surface_demand(t)         # a viewed ticker's full chain is kept by the levels loop
     _price_stored_chain_when_closed(t)
     held = terrain_cache_get(t) or {}
     resolved_expiry = (expiry or "").strip()[:10] or (held.get("expiries") or [None])[0]
@@ -3841,7 +3759,7 @@ def get_chain(ticker: str = Query(...),
         "ladder": ladder, "n_strikes": len({r["strike"] for r in ladder}),
         "stream_overlay_contracts": overlay_n,
         "scope": {"kind": "complete_single_expiry", "requested_expiry": resolved_expiry,
-                  "completeness_basis": COMPLETENESS_BASIS_STRIKE_RANGE_ALL},
+                  "completeness_basis": held.get("chain_basis")},   # the publication's own label
     })
 
 @app.get("/api/health")
@@ -4035,8 +3953,6 @@ def api_build():
     return {
         "git_sha": startup_sha,  # PROCESS IDENTITY (startup capture) — never request-time git
         "contract": "meet_or_exceed_v1",
-        "ui_maximize_sla_ms": dict(UI_MAXIMIZE_SLA_MS),
-        "ui_maximize_panel_warm_tickers": list(panel_warm_tickers()),
         "process_identity": identity,
         "repository_state_now": {"repo_head_now": repo_head_now},
         "code_drift": {

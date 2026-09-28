@@ -114,10 +114,9 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar(monkeypatch):
     assert held_no_trade["spot"] is None
 
 
-def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch):
+def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch, view):
     monkeypatch.setattr("server._is_loggable_session", lambda: True)   # an open-market test
     import threading
-    import time
     import server as srv
     ran, done = [], threading.Event()
 
@@ -128,7 +127,7 @@ def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch):
             srv._reprice_running.discard(tk)
         done.set()
     monkeypatch.setattr(srv, "_reprice_worker", worker)
-    monkeypatch.setattr(srv, "_gamma_surface_demand", {"ZZVIEW": time.time()})
+    view("ZZVIEW")
     srv._on_stream_tick("ZZNOTVIEWED")
     srv._on_stream_tick("ZZVIEW")
     assert done.wait(5)

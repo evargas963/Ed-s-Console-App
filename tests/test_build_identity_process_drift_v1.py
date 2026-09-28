@@ -240,10 +240,7 @@ def test_t8_t9_pid_and_timestamps_stable(tmp_path, monkeypatch):
 def test_t10_response_contract_compatibility():
     with TestClient(srv.app) as client:
         body = client.get("/api/build").json()
-    for legacy_key in (
-        "git_sha", "contract",
-        "ui_maximize_sla_ms", "ui_maximize_panel_warm_tickers",
-    ):
+    for legacy_key in ("git_sha", "contract"):
         assert legacy_key in body, f"legacy /api/build key missing: {legacy_key}"
     assert body["contract"] == "meet_or_exceed_v1"
     pi = body["process_identity"]

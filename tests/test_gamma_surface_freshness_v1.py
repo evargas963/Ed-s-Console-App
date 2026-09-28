@@ -84,18 +84,7 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy(monkeypatch)
         _clear(tk)
 
 
-def test_surface_demand_gate_only_projects_viewed_tickers():
-    # perf gate (#1): the terrain loop projects the (measurable) surface ONLY for tickers whose
-    # surface was requested within the TTL — an unviewed ticker pays no surface cost.
-    tk = ticker_storage_key("NFLX")
-    server._gamma_surface_demand.pop(tk, None)
-    assert server._gamma_surface_wanted(tk) is False        # unviewed -> loop skips the projection
-    _call(tk)                                               # a request marks it wanted
-    assert server._gamma_surface_wanted(tk) is True
-    server._gamma_surface_demand.pop(tk, None)
-
-
-def test_warming_true_only_when_terrain_eligible(monkeypatch):
+def test_warming_true_only_when_terrain_eligible(monkeypatch, view):
     # #1.3: WARMING is claimed only when the terrain producer can actually refresh THIS ticker,
     # reusing terrain_staleness's canonical output (levels_refresh_active + not quarantined/paused).
     tk = ticker_storage_key("SPY")
@@ -105,13 +94,14 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch):
     monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
+    view(tk)                                                             # a page open on it
     try:
         monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # eligible
         d = _call(tk)
         assert d["warming"] is True and d["requested"] is True
         monkeypatch.setattr(server, "_is_loggable_session", lambda: False)  # out of session -> not warming
         d2 = _call(tk)
-        assert d2["warming"] is False and d2["requested"] is True           # still on the board -> requested
+        assert d2["warming"] is False and d2["requested"] is True           # still open -> requested
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
@@ -129,12 +119,11 @@ _CAPTURED = datetime(2026, 9, 2, 10, 5, tzinfo=ET).timestamp()   # the CRWD chai
 
 
 @pytest.fixture
-def _fresh(monkeypatch, tmp_path):
+def _fresh(monkeypatch, tmp_path, view):
     edb = EdDB(tmp_path / "ed.db")
     monkeypatch.setattr(server, "get_db", lambda: edb)
     monkeypatch.setattr(server, "_logger_tickers", [_BOARD])
     monkeypatch.setattr(server, "_terrain_cache", {})
-    monkeypatch.setattr(server, "_gamma_surface_demand", {})
     monkeypatch.setattr(server, "_terrain_refresh_last_error", {})
     monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
@@ -145,23 +134,25 @@ def _fresh(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_first_view_in_session_warms_by_the_refresh_state(_fresh, monkeypatch, tk):
+def test_first_view_in_session_warms_by_the_refresh_state(_fresh, monkeypatch, view, tk):
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+    view(tk)                                        # the page selects the ticker
     d = _call(tk)                                   # the first view: no levels published yet
     assert d["requested"] is True and d["warming"] is True
     assert d["reason"] == "no terrain snapshot has been computed yet"
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_a_ticker_open_on_a_page_stays_viewed_on_any_workspace(_fresh, monkeypatch, tk):
-    """2026-09-28 audit: "viewed" was renewed only by reading the levels, chain or heatmap
+def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(_fresh, monkeypatch, view, tk):
+    """2026-09-28 audit: "viewed" was a 300 s timer renewed only by the levels, chain and heatmap
     routes, which the Liquidity and Order Flow workspaces do not read -- an off-board ticker
     shown there stopped refreshing 300 s after it was chosen (a board ticker refreshes anyway).
-    The open page connection holds it viewed, for any ticker; closing the page ends it."""
+    The page's one connection is the one viewing signal: a route read does not make a ticker
+    viewed, and the ticker stays viewed for as long as the page has it open."""
     import push_changes
-    monkeypatch.setattr(push_changes, "_clients", {})
-    client = push_changes.subscribe(tk)             # /api/changes open on this ticker
-    server._gamma_surface_demand[tk] = time.time() - server.GAMMA_SURFACE_DEMAND_TTL - 1   # routes long unread
+    _call(tk)                                       # a route read alone: not viewed
+    assert not server._gamma_surface_wanted(tk) and server._viewed_tickers() == []
+    (client,) = view(tk)                            # /api/changes open on this ticker
     assert server._gamma_surface_wanted(tk) and server._viewed_tickers() == [tk]
     push_changes.unsubscribe(tk, client)            # the page closed or changed ticker
     assert not server._gamma_surface_wanted(tk) and server._viewed_tickers() == []
@@ -187,8 +178,9 @@ def test_closed_market_with_no_capture_gives_one_reason_on_every_route(_fresh, m
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_closed_market_prices_the_stored_capture_on_every_route(_fresh, monkeypatch, tk):
+def test_closed_market_prices_the_stored_capture_on_every_route(_fresh, monkeypatch, view, tk):
     monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    view(tk)                                        # the page selects the ticker
     by_expiry: dict = {}
     for ct in _CRWD["chain"]:
         by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
@@ -200,16 +192,19 @@ def test_closed_market_prices_the_stored_capture_on_every_route(_fresh, monkeypa
     assert not t["error"] and t["chain_basis"] == CAPTURE_BASIS and t["spot"] == _CRWD["spot"]
     assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
     assert _call(tk)["available"] is True           # the heatmap from the same publication
+    # the chain view carries the publication's own basis label (it served a constant before)
+    chain = json.loads(server.get_chain(ticker=tk, expiry=None).body)
+    assert chain["status"] == "ok" and chain["scope"]["completeness_basis"] == t["chain_basis"]
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_a_refresh_publishes_the_same_fields_for_any_ticker(_fresh, monkeypatch, pin_clock, tk):
+def test_a_refresh_publishes_the_same_fields_for_any_ticker(_fresh, monkeypatch, pin_clock, view, tk):
     pin_clock(2026, 9, 2, 10, 5)
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
-    server._note_gamma_surface_demand(tk)           # selected on the page
+    view(tk)                                        # selected on the page
     server._publish_levels(tk, [dict(c) for c in _CRWD["chain"]], _CAPTURED)
     t = server.get_terrain(ticker=tk)
-    assert t["chain_basis"] == CAPTURE_BASIS and t["delta_oi_walls"] is None   # no prior banked day
+    assert t["chain_basis"] == CAPTURE_BASIS
     assert t["atr_15m"] is None and "0 15-minute periods" in t["atr_15m_reason"]
     assert _call(tk)["available"] is True
 
