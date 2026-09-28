@@ -153,6 +153,21 @@ def test_first_view_in_session_warms_by_the_refresh_state(_fresh, monkeypatch, t
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
+def test_a_ticker_open_on_a_page_stays_viewed_on_any_workspace(_fresh, monkeypatch, tk):
+    """2026-09-28 audit: "viewed" was renewed only by reading the levels, chain or heatmap
+    routes, which the Liquidity and Order Flow workspaces do not read -- an off-board ticker
+    shown there stopped refreshing 300 s after it was chosen (a board ticker refreshes anyway).
+    The open page connection holds it viewed, for any ticker; closing the page ends it."""
+    import push_changes
+    monkeypatch.setattr(push_changes, "_clients", {})
+    client = push_changes.subscribe(tk)             # /api/changes open on this ticker
+    server._gamma_surface_demand[tk] = time.time() - server.GAMMA_SURFACE_DEMAND_TTL - 1   # routes long unread
+    assert server._gamma_surface_wanted(tk) and server._viewed_tickers() == [tk]
+    push_changes.unsubscribe(tk, client)            # the page closed or changed ticker
+    assert not server._gamma_surface_wanted(tk) and server._viewed_tickers() == []
+
+
+@pytest.mark.parametrize("tk", [_BOARD, _OFF])
 def test_a_held_ticker_does_not_warm_and_says_why(_fresh, monkeypatch, tk):
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
     monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: "held: Schwab refused the chain")
