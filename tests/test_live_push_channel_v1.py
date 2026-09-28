@@ -107,7 +107,7 @@ def test_a_schwab_trade_reaches_the_console_with_its_own_receive_time(feed):
         ts = time.time() - 0.5          # received by the daemon half a second ago
         bus.publish("quote.SPY", _spy_trade(501.25, ts))
         assert await _until(_received(ts)), "freshness must judge the daemon's receive time"
-        assert await _until(lambda: lmp.feed_live_for("SPY"))
+        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES"))
         assert lmp.get_quote("SPY") is None      # the console keeps no price of its own
     asyncio.run(_run(feed, body))
 
@@ -121,10 +121,13 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
         ts = time.time()
         bus.publish("quote.SPY", _spy_trade(501.0, ts))
         assert await _until(_received(ts))
-        assert await _until(lambda: lmp.feed_live_for("SPY"))
-        assert not lmp.feed_live_for("QQQ")                 # not held by the daemon
+        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES"))
+        assert not lmp.feed_live_for("QQQ", "LEVELONE_EQUITIES")   # not held by the daemon
+        assert not lmp.feed_live_for("SPY", "NYSE_BOOK")           # held on another service only
+        assert lmp.daemon_status() is not None
     asyncio.run(_run(feed, body))
-    assert not lmp.feed_live_for("SPY")                     # push ended -> feed down
+    assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES")       # push ended -> feed down
+    assert lmp.daemon_status() is None
 
 
 def test_a_closed_schwab_socket_is_not_live(feed):
@@ -134,7 +137,7 @@ def test_a_closed_schwab_socket_is_not_live(feed):
         bus.publish("quote.SPY", _spy_trade(501.0, ts))
         assert await _until(_received(ts))
         await asyncio.sleep(1.3)                            # at least one heartbeat arrived
-        assert not lmp.feed_live_for("SPY")
+        assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES")
     asyncio.run(_run(feed, body, heartbeat_fn=_daemon_heartbeat(socket_open=False)))
 
 

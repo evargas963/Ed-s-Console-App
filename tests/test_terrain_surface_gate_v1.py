@@ -8,8 +8,16 @@ from pathlib import Path
 
 import pytest
 
+import live_market_plane as lmp
 import server
 from math_exposure_core import ExposureDiagnostics
+
+
+def _daemon_holds(*symbols):
+    """The daemon's heartbeat: Schwab socket open, these contracts held on LEVELONE_OPTIONS."""
+    lmp.record_feed_heartbeat({"schwab_socket_open": True,
+                               "held": {"LEVELONE_OPTIONS": list(symbols)}}, time.time())
+
 
 #: A REAL complete Schwab capture (native rows verbatim) stands in for the cycle's flattened
 #: chain — the producer hands project_gamma_surface whatever flatten_chain_contracts returns.
@@ -157,6 +165,7 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: streamed if sym == contract_symbol else None)
+    _daemon_holds(contract_symbol)
 
     server._note_gamma_surface_demand(tk)
     server._terrain_refresh_one(tk)
@@ -359,6 +368,7 @@ def test_a_stream_observation_after_the_chain_fetch_is_admitted(monkeypatch):
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
         lambda sym: {"gamma": 0.777, "gamma_ts_recv": captured["after_fetch_ts"] + 0.001})
+    _daemon_holds(contract_symbol)
 
     server._gamma_surface_seq.pop(tk, None)
     server._note_gamma_surface_demand(tk)

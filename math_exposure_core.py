@@ -434,8 +434,6 @@ def overlay_streamed_contract_fields(
     streamed_by_symbol: Dict[str, dict],
     *,
     newer_than_ts: float | None = None,
-    max_staleness_sec: float | None = None,
-    now: float | None = None,
 ) -> tuple[List[dict], int]:
     """Merge freshly-streamed GAMMA/DELTA/OPEN_INTEREST onto a base REST chain contract list,
     matched by each contract's own `symbol` field (the same OSI-style option symbol the
@@ -470,11 +468,8 @@ def overlay_streamed_contract_fields(
     baseline (never the shared fetch-completion instant); `newer_than_ts` only fills in for
     a contract that has no native observation time to compare against.
 
-    `max_staleness_sec`, when given, is a SEPARATE, secondary absolute-age guard (relative
-    to `now`, defaulting to the real clock) -- a streamed value can be newer than a
-    long-stale baseline while still being, in absolute terms, too old for any consumer to
-    trust (e.g. the REST cycle itself has been down for an hour). Composable with
-    `newer_than_ts`; either, both, or neither may be supplied.
+    `streamed_by_symbol` holds only contracts that are live now (the caller applies
+    live_market_plane.feed_live_for); a value's age is not a liveness test.
 
     Returns (new_contracts, overlaid_count) -- the count is for tests and latency/coverage
     diagnostics, never load-bearing for the projection itself.
@@ -483,9 +478,6 @@ def overlay_streamed_contract_fields(
         return [], 0
     if not streamed_by_symbol:
         return list(contracts), 0
-    if max_staleness_sec is not None and now is None:
-        import time as _time
-        now = _time.time()
     out: List[dict] = []
     overlaid = 0
     for ct in contracts:
@@ -510,8 +502,6 @@ def overlay_streamed_contract_fields(
                 continue
             ts = streamed.get(ts_key)
             if baseline is not None and (ts is None or ts <= baseline):
-                continue
-            if max_staleness_sec is not None and (ts is None or (now - ts) > max_staleness_sec):
                 continue
             if new_ct is None:
                 new_ct = dict(ct)

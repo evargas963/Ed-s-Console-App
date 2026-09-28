@@ -186,52 +186,56 @@ def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
     return qsd.get("spot") == "LAST_PRICE"
 
 
-#: The daemon pushes a heartbeat every second over the live push connection; the console
-#: treats the feed as live only while the latest one is younger than this (console clock).
+#: The daemon sends its status every second; the daemon, and everything it streams, is live
+#: only while the latest one is younger than this (console clock). The one liveness limit.
 FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 
-#: The daemon's own report of its feed, from its latest heartbeat: when the console received
-#: it, whether the Schwab socket was open, and which equities the daemon holds on
-#: LEVELONE_EQUITIES. Written by the push feed loop only.
-_feed: dict[str, Any] = {"rx": None, "socket_open": False, "held": frozenset()}
+#: The daemon's latest status (its heartbeat), when it was received, and the symbols it
+#: holds per Schwab service. Written by record_feed_heartbeat / record_feed_down only.
+_feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
 
 
 def record_feed_heartbeat(msg: dict[str, Any], received_at: float) -> None:
     """Apply one daemon heartbeat (topic ``daemon.heartbeat``)."""
-    held_by = (msg.get("held") or {}) if isinstance(msg, dict) else {}
-    held = [s for svc in ("LEVELONE_EQUITIES", "LEVELONE_OPTIONS")
-            if isinstance(held_by.get(svc), list) for s in held_by[svc]]
+    if not isinstance(msg, dict):
+        return
+    held = {svc: frozenset(ticker_storage_key(s) for s in syms)
+            for svc, syms in (msg.get("held") or {}).items() if isinstance(syms, list)}
     with _lock:
-        _feed["rx"] = float(received_at)
-        _feed["socket_open"] = bool(isinstance(msg, dict) and msg.get("schwab_socket_open") is True)
-        _feed["held"] = frozenset(ticker_storage_key(s) for s in held)
+        _feed.update(rx=float(received_at), status=msg, held=held)
 
 
 def record_feed_down() -> None:
-    """The push connection to the daemon ended: nothing is live until a heartbeat arrives."""
+    """The connection to the daemon ended: nothing is live until a heartbeat arrives."""
     with _lock:
-        _feed["rx"] = None
-        _feed["socket_open"] = False
-        _feed["held"] = frozenset()
+        _feed.update(rx=None, status=None, held={})
 
 
-def feed_live_for(ticker: str | None) -> bool:
-    """Is the Schwab LEVELONE_EQUITIES feed delivering THIS symbol right now: a daemon
-    heartbeat arrived within FEED_HEARTBEAT_MAX_AGE_SEC, it reported the Schwab socket open,
-    and it holds the symbol's subscription.
-
-    This is the liveness question -- not "did a field arrive recently". Schwab sends a field
-    only when it CHANGES (measured: 11% of 4,039 messages carried bid+ask+last together), so
-    a quiet symbol's unchanged LAST_PRICE is its current last trade, not an old value; judging
-    by the field's arrival age blanked quiet names on a healthy feed (2026-09-24 08:44 CT,
-    DELL) and kept a dead feed's prices "live" for 30 s."""
-    t = ticker_storage_key(ticker or "")
+def daemon_status() -> dict[str, Any] | None:
+    """The daemon's latest status while its heartbeat is live (FEED_HEARTBEAT_MAX_AGE_SEC),
+    else None: a daemon that stopped reporting holds nothing and streams nothing."""
     with _lock:
-        rx, open_, held = _feed["rx"], _feed["socket_open"], _feed["held"]
-    if rx is None or not open_ or not t or t not in held:
+        rx, status = _feed["rx"], _feed["status"]
+    if rx is None or not 0.0 <= time.time() - rx < FEED_HEARTBEAT_MAX_AGE_SEC:
+        return None
+    return status
+
+
+def feed_live_for(symbol: str | None, service: str) -> bool:
+    """THE live rule, for every streamed value: is Schwab `service` delivering `symbol` right
+    now -- the daemon's heartbeat is live (daemon_status), it reports the Schwab socket open,
+    and it holds the symbol on that service.
+
+    Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
+    of 4,039 messages carried bid+ask+last together), so a quiet symbol's unchanged value is its
+    current value; judging by arrival age blanked quiet names on a healthy feed (2026-09-24
+    08:44 CT, DELL) and kept a dead feed's prices "live" for 30 s."""
+    t = ticker_storage_key(symbol or "")
+    status = daemon_status()
+    if not t or status is None or status.get("schwab_socket_open") is not True:
         return False
-    age = time.time() - rx
-    return 0.0 <= age < FEED_HEARTBEAT_MAX_AGE_SEC
+    with _lock:
+        return t in _feed["held"].get(service, ())
 
 
 def spot_is_fresh(q: dict[str, Any]) -> bool:
@@ -243,7 +247,7 @@ def spot_is_fresh(q: dict[str, Any]) -> bool:
         return False
     if float_finite_or_none((q or {}).get("spot_received_ts")) is None:  # caps-ok: fail-closed -- no LAST_PRICE this session is not live
         return False
-    return feed_live_for((q or {}).get("ticker"))
+    return feed_live_for((q or {}).get("ticker"), "LEVELONE_EQUITIES")
 
 
 def streamed_chg_pct(row: dict[str, Any] | None, key: str = "chg_pct") -> Optional[float]:
@@ -266,4 +270,4 @@ def quote_is_fresh(q: dict[str, Any]) -> bool:
         return False
     if float_finite_or_none(q.get("server_received_ts")) is None:
         return False
-    return feed_live_for(q.get("ticker"))
+    return feed_live_for(q.get("ticker"), "LEVELONE_EQUITIES")

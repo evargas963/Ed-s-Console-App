@@ -13,7 +13,6 @@ from stream_spine import (
     COALESCE,
     COUNT_DROPS,
     CaptureWriter,
-    HealthRegistry,
     MessageBus,
     bar_msg,
     book_msg,
@@ -198,17 +197,6 @@ def test_options_book_reuses_the_generic_book_table_by_service(tmp_path):
         "SELECT symbol, service, native_json FROM stream_book_raw").fetchone()
     assert row[1] == "OPTIONS_BOOK"
     assert json.loads(row[2]) == _REAL_OPTIONS_BOOK_CONTENT
-
-
-def test_health_states_progress_running_degraded_stale():
-    h = HealthRegistry()
-    assert h.state("schwab_l1") == "DOWN"          # never seen != quiet market
-    h.beat("schwab_l1", ts=1000.0)
-    assert h.state("schwab_l1", now=1002.0) == "RUNNING"
-    assert h.state("schwab_l1", now=1010.0) == "DEGRADED"
-    assert h.state("schwab_l1", now=1031.0) == "STALE"
-    rep = h.report(now=1010.0)
-    assert rep["schwab_l1"]["state"] == "DEGRADED" and rep["schwab_l1"]["age_sec"] == 10.0
 
 
 def test_writer_drains_full_queue_on_stop(tmp_path):

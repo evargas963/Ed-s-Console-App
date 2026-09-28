@@ -2,15 +2,16 @@
 observed/pending/rejected accounting the operator's mandate names explicitly ("expose the
 exact admitted, active, pending and rejected contracts"), and the corrected version after
 an independent review found `active` conflated "has ticked at some point" with "is
-currently fresh" -- a stale historical observation must read `observed`, never `active`,
-using the SAME canonical staleness authority (GAMMA_SURFACE_STREAM_STALENESS_SEC) the
-per-cell live/stale distinction already uses. Also proves rejected is mutually exclusive
+currently live" -- a past observation must read `observed`, never `active`, by the one live
+rule (live_market_plane.feed_live_for) the per-cell live/stale distinction uses. Also proves
+rejected is mutually exclusive
 with every other bucket -- a caller unioning buckets carelessly must never be able to
 mistake a vendor refusal for any flavor of success."""
 from __future__ import annotations
 
 import time
 
+import live_market_plane as lmp
 import server
 from server import _option_contract_admission_summary, ticker_storage_key
 
@@ -36,19 +37,24 @@ def _wire(monkeypatch, *, desired, streamed, admitted_l1, rejected, daemon_avail
         lambda: daemon_available)
 
 
-def test_active_requires_a_tick_within_the_staleness_window_not_merely_ever(monkeypatch):
+def _live(*symbols):
+    """The daemon's heartbeat: Schwab socket open, these contracts held on LEVELONE_OPTIONS."""
+    lmp.record_feed_heartbeat({"schwab_socket_open": True,
+                               "held": {"LEVELONE_OPTIONS": list(symbols)}}, time.time())
+
+
+def test_active_is_the_live_rule_not_the_age_of_the_last_tick(monkeypatch):
+    """A held contract quiet for a minute is live (Schwab sends changes); a contract that
+    ticked a second ago but is no longer held is a past observation."""
     now = time.time()
-    fresh = {"gamma_ts_recv": now}
-    stale = {"gamma_ts_recv": now - (server.GAMMA_SURFACE_STREAM_STALENESS_SEC + 5.0)}
+    _live(_SYM_ACTIVE)
     _wire(monkeypatch,
           desired=[_SYM_ACTIVE, _SYM_OBSERVED_STALE],
-          streamed={_SYM_ACTIVE: fresh, _SYM_OBSERVED_STALE: stale},
+          streamed={_SYM_ACTIVE: {"gamma_ts_recv": now - 60.0}, _SYM_OBSERVED_STALE: {"gamma_ts_recv": now}},
           admitted_l1=[], rejected={}, daemon_available=True)
     d = _option_contract_admission_summary(TK)
     assert d["active"] == [_SYM_ACTIVE]
-    assert d["observed"] == [_SYM_OBSERVED_STALE], (
-        "a tick older than the canonical staleness window must report 'observed', "
-        "never the same 'active' claim as a genuinely fresh tick")
+    assert d["observed"] == [_SYM_OBSERVED_STALE]
 
 
 def test_admitted_means_vendor_confirmed_subscription_with_no_tick_ever(monkeypatch):
@@ -103,12 +109,10 @@ def test_rejected_is_mutually_exclusive_with_every_other_bucket(monkeypatch):
 
 def test_every_bucket_together_partitions_the_desired_set_exactly_once(monkeypatch):
     now = time.time()
+    _live(_SYM_ACTIVE)
     _wire(monkeypatch,
           desired=[_SYM_ACTIVE, _SYM_OBSERVED_STALE, _SYM_ADMITTED_NO_TICK, _SYM_PENDING, _SYM_REJECTED],
-          streamed={
-              _SYM_ACTIVE: {"gamma_ts_recv": now},
-              _SYM_OBSERVED_STALE: {"gamma_ts_recv": now - (server.GAMMA_SURFACE_STREAM_STALENESS_SEC + 5.0)},
-          },
+          streamed={_SYM_ACTIVE: {"gamma_ts_recv": now}, _SYM_OBSERVED_STALE: {"gamma_ts_recv": now}},
           admitted_l1=[_SYM_ADMITTED_NO_TICK],
           rejected={_SYM_REJECTED: "RuntimeError: refused"},
           daemon_available=True)
