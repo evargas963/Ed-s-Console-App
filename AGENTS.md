@@ -5,8 +5,9 @@ Read the parts a change touches before writing it.
 
 ## Rules (operator; a change that cannot meet one stops and goes to the operator)
 
-1. **Simple.** Fewest files, functions and hops that do the job. No prose in code. No patches: a
-   defect is fixed where it is produced, by changing or deleting that code, never by a guard,
+1. **Simple.** Fewest files, functions and hops that do the job. No prose in code: history,
+   incidents and dates go in the commit message. No patches: a defect is fixed where it is
+   produced, by changing or deleting that code, never by a guard,
    wrapper, flag, special case or check around it. If that takes a restructure, the restructure
    is the fix.
 2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value
@@ -40,6 +41,14 @@ Read the parts a change touches before writing it.
 - Page code: no arithmetic, sum, min/max, sort by value or date math on served data.
 - A new check is a test of behavior, for a failure that happened; it fails on the old code; it
   starts with no exceptions. No new tool, register or gate.
+- Time is an input: a function that depends on the clock takes `now`; only an entry point (a
+  route, a loop, a stream handler) reads the clock.
+- A value that crosses a module boundary is a typed record (dataclass), not a dict of string keys;
+  its states are named constants, not free strings.
+- Imports at the top of the module. One formatter per format (price, Central Time, dollars), on
+  the server.
+- A test exercises behavior through the real code. It never reads source text or pins a private
+  helper; a test whose subject is deleted is deleted with it.
 
 ## Before saying done
 
@@ -48,6 +57,11 @@ Read the parts a change touches before writing it.
   push; CI runs them.
 - Never kill a commit hook mid-run; a long one runs in the background.
 - Every factual claim cites same-turn output, or is marked `[UNVERIFIED]`.
+- Proof is reproducible: a committed test or a command anyone can re-run. A scratch script is
+  not proof.
+- No hand-maintained counts, floors or lists that a check compares against; the check computes
+  them.
+- Work another agent wrote is read in full by whoever merges it, as their own work.
 - A runtime change is on disk only until the process restarts after it; say which.
 - Merged is not deployed; deployed is production at the merge commit, both processes restarted,
   the real screen checked.
@@ -82,7 +96,11 @@ Same session, at its source (rule 1), or name the exact blocker. "Pre-existing",
 - Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.
   Work in a worktree.
 - Never: `git reset`, `git checkout --`, `git stash`, force push, `--no-verify`, `git add -A` / `.`,
-  deleting anything under `data/`, `backups/`, `models/`.
+  deleting anything under `data/`, `backups/`, `models/`; editing source through generated
+  find-and-replace scripts (edits are made one at a time, as written); changing a file's line
+  endings (every file is LF, set by `.gitattributes`).
+- Every rule above is enforced by ruff settings, `.gitattributes`, or a behavior test once the
+  code meets it; until then its enforcement is a work item in `ACTIVE_PROGRAM.md`.
 - May restart the console and the capture daemon; confirm both came back.
 
 ## Running it
