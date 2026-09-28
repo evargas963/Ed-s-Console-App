@@ -19,9 +19,10 @@ from pathlib import Path
 from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
-from time_et import (ET, now_et, RTH_OPEN_MINS, is_capturable_session, et_date_str_from_ts_utc,
+from time_et import (ET, now_et, RTH_OPEN_MINS, ct_label, is_capturable_session, et_date_str_from_ts_utc,
                      et_minute_total_from_ts_utc,
                      is_trading_day_et, session_close_mins_for_et_date, session_label)
+from math_exposure_core import bucket_metric, merge_exposure_books
 
 import json
 import queue
@@ -1887,10 +1888,9 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
         ticker_storage_key(ticker) if ticker else "", "") or "")
     hard_quarantine = bool(q_entry.get("hard"))
     if not refreshing and computed_ts_utc is not None:
-        as_of = datetime.fromtimestamp(float(computed_ts_utc), tz=ZoneInfo("America/Chicago"))
         return {"levels_stale": False, "levels_age_sec": round(time.time() - float(computed_ts_utc), 1),
                 "levels_refresh_active": False, "levels_market_closed": True,
-                "levels_as_of": as_of.strftime("%a %m/%d %I:%M %p CT"),
+                "levels_as_of": ct_label(computed_ts_utc),
                 "levels_stale_reason": "", "levels_paused_on_purpose": False,
                 "levels_quarantined": False, "levels_failing": False, **token}
     if computed_ts_utc is None:
@@ -2599,7 +2599,6 @@ def _log_level_crosses(tk: str, prev_spot: "float | None", snap: "TerrainSnapsho
 def _vanna_rows(snap: "TerrainSnapshot") -> list:
     """[strike, net dealer vanna] for every strike with open interest, from the published book:
     each strike's net_vanna as compute_exposures_by_strike computed it (+call/-put)."""
-    from math_exposure_core import bucket_metric, merge_exposure_books
     exposures, _diag = merge_exposure_books(snap.books.values())
     rows = []
     for k, b in exposures.items():
@@ -2809,8 +2808,7 @@ def _status_line() -> str:
     spot, _src, _ts = resolve_spot("SPY")
     with _terrain_cache_lock:
         as_of = [p.get("computed_ts_utc") for p in _terrain_cache.values() if p.get("computed_ts_utc")]
-    newest = (datetime.fromtimestamp(max(as_of), ZoneInfo("America/Chicago")).strftime("%a %m/%d %I:%M %p CT")
-              if as_of else "none")
+    newest = ct_label(max(as_of)) if as_of else "none"
     return " | ".join([
         "alive",
         f"session {session_label(now_et())}",
@@ -3600,7 +3598,6 @@ def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
     _has_oi = bool(bucket is not None and bucket.get("has_oi"))
     _has_gex_data = bool(_has_oi and bucket.get("has_valid_gamma"))
     gex = _bf(bucket.get("net_gex_1pct")) if _has_gex_data else None
-    from math_exposure_core import bucket_metric
     dex = _bf(bucket_metric(bucket, "net_dex_dollars")) if _has_oi else None
     _vn = bucket_metric(bucket, "net_vanna") if _has_oi else None   # the book's own net vanna
     vanna = round(_vn, 2) if _vn is not None else None
