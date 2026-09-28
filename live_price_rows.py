@@ -14,16 +14,13 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import datetime
 from typing import Any, Optional
-from zoneinfo import ZoneInfo
 
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
-from time_et import is_capturable_session
+from time_et import ct_label, is_capturable_session
 
 SPOT_SOURCE = "streaming_plane"
-CT = ZoneInfo("America/Chicago")
 
 _forming_lock = threading.Lock()
 #: ticker -> the forming 1m candle {t, o, h, l, c} from streamed LAST_PRICE / TRADE_TIME
@@ -118,8 +115,7 @@ def price_row(ticker: str) -> dict[str, Any]:
         # has traded this session": live feed + no trade yet reads NO TRADE YET, not no feed
         "feed_live": lmp.feed_live_for(tk),
         # market closed: the last streamed trade, a past observation labelled with its time
-        "closed_last": {"spot_disp": f"{float(last['spot']):.2f}",
-                        "as_of": datetime.fromtimestamp(float(last["trade_ts"]), CT).strftime("%a %m/%d %I:%M %p CT")}
+        "closed_last": {"spot_disp": f"{float(last['spot']):.2f}", "as_of": ct_label(last["trade_ts"])}
                        if last else None,
         "bid": field("bid"),
         "ask": field("ask"),
