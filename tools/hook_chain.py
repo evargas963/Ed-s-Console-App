@@ -2,7 +2,7 @@
 
 Wired by `.claude/settings.json` / `.cursor/hooks.json` as
     python tools/hook_chain.py tools/<guard>.py [tools/<guard>.py ...]
-for PreToolUse (operator_law_guard + process_lock_guard) and Stop (stop_guard). One process
+for PreToolUse (operator_law_guard + process_lock_guard). One process
 instead of one interpreter per guard (SIMPLICITY REHAB, 2026-08-24: ~300ms vs 2.8-6s).
 
 What it does, entirely: read the payload; refuse one that is not a JSON object (RC-541 —
@@ -45,9 +45,6 @@ BASH_TOOLS = frozenset({"Bash", "PowerShell", "Shell", "Monitor"})
 #: the class; the four private copies that existed until 2026-09-10 were the RC-520 shape.
 MUTATING_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit", "StrReplace", "Delete"})
 
-#: Default Stop roster when no argv is given; the hook files pass the roster explicitly.
-STOP_CHAIN = ("tools.stop_guard",)
-
 
 def _git(*args: str) -> str:
     try:
@@ -65,7 +62,7 @@ def judge_banner() -> str:
     return f"JUDGED BY: {REPO} @ {branch} {head}"
 
 
-def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
+def run_chain(raw_payload: str, members: tuple[str, ...]) -> int:
     """Run every member on the same payload; the worst exit code wins (2 = block)."""
     try:
         parsed = json.loads(raw_payload)
@@ -93,7 +90,7 @@ def run_chain(raw_payload: str, members: tuple[str, ...] = STOP_CHAIN) -> int:
 
 
 def _argv_members(argv: list[str]) -> tuple[str, ...]:
-    """Roster from the command line: 'tools/stop_guard.py' -> 'tools.stop_guard'."""
+    """Roster from the command line: 'tools/operator_law_guard.py' -> 'tools.operator_law_guard'."""
     out = []
     for a in argv:
         a = a.replace("\\", "/").removeprefix("tools/").removesuffix(".py")
@@ -103,7 +100,10 @@ def _argv_members(argv: list[str]) -> tuple[str, ...]:
 
 
 def main() -> int:
-    members = _argv_members(sys.argv[1:]) or STOP_CHAIN
+    members = _argv_members(sys.argv[1:])
+    if not members:
+        sys.stderr.write("HOOK CHAIN: no guard named; the event cannot be judged and is refused.\n")
+        return 2
     return run_chain(sys.stdin.read(), members)
 
 

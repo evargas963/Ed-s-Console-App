@@ -20,11 +20,6 @@ def _init_repo(tmp_path: Path) -> Path:
     subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
     (tmp_path / "governance").mkdir(parents=True, exist_ok=True)
     (tmp_path / "tools").mkdir(parents=True, exist_ok=True)
-    checker = tmp_path / "tools" / "check_institutional_correctness.py"
-    checker.write_text(
-        'CHECKS = [\n    ("old_check", None, True),\n]\n',
-        encoding="utf-8",
-    )
     (tmp_path / "db.py").write_text("# RC-183\nis_collect_window_bar_end_ts_utc\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=tmp_path, check=True, capture_output=True)
@@ -109,8 +104,8 @@ def test_rail_fails_open_on_unreadable_topology(tmp_path):
 
 def test_index_worktree_mismatch_detected(tmp_path, monkeypatch):
     repo = _init_repo(tmp_path)
-    checker = repo / "tools" / "check_institutional_correctness.py"
-    checker.write_text(checker.read_text(encoding="utf-8") + "\n# wt delta\n", encoding="utf-8")
+    db = repo / "db.py"
+    db.write_text(db.read_text(encoding="utf-8") + "\n# wt delta\n", encoding="utf-8")
     monkeypatch.chdir(repo)
     mism = OPL.index_worktree_mismatches(repo)
     assert any("index≠WT" in m or "worktree=" in m for m in mism)

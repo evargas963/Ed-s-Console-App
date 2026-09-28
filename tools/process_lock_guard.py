@@ -463,9 +463,6 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
-        # UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-541): an unreadable payload used to return 0 —
-        # a guard that cannot read the event waved it through. stop_guard already refuses
-        # its unreadable input; this guard now does the same. Exit 2 is the hosts' block code.
         sys.stderr.write("BLOCKED by operating process lock: the hook payload is not readable "
                          "JSON, so the tool call cannot be judged. Unreadable is not clean.\n")
         return 2
