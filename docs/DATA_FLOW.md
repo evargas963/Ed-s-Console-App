@@ -110,6 +110,12 @@ Schwab sends is taken as sent (rule 2), never computed.
   A publication carries the same fields whatever its chain's source (a live download or a stored
   capture): the ATR pair (from the 1-minute bars) and the delta-OI walls (the chain's per-strike
   open interest, banked under the chain's ET date, against the previous banked session) included.
+  An ATR leg that cannot be computed is served absent with its reason (how many trading days or
+  15-minute periods of bars exist; ATR(14) needs 15). Every rule here is the same for any ticker,
+  on the board or not: a viewed ticker is refreshed each cycle, and its heatmap reads "warming"
+  from that refresh state (the session, a hold, a deliberate skip), whether or not levels exist
+  yet. On a closed market every route prices the ticker's newest stored capture; a ticker with
+  none shows "market closed; no chain capture of this ticker yet" on every route.
   Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`), never
   called live; the live price is the daemon's price row. With no live price the next publication
   has no levels, with its reason.

@@ -2296,10 +2296,9 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     # continues has not fixed anything. A `priority` request (an operator is on the endpoint,
     # waiting) still honours the hold — the answer would be the same HTTP 400, just slower.
     if not _is_loggable_session():
-        # market closed: the levels loaded from the newest chain capture stand (weekend chains
+        # market closed: the newest chain capture is priced, not a download (weekend chains
         # blank open interest -- measured 2026-09-26: every $SPX contract, 18% of SPY's OI)
-        if terrain_cache_get(tk) is None:
-            _terrain_refresh_last_error[tk] = "market closed; no chain capture of this ticker yet"
+        _price_stored_chain_when_closed(tk)
         return "skip:market_closed"
     if _terrain_quarantine_blocks(tk):
         return "skip:quarantined"
@@ -2542,16 +2541,22 @@ def _load_stored_levels() -> int:
     return n
 
 
+NO_CAPTURE_REASON = "market closed; no chain capture of this ticker yet"
+
+
 def _price_stored_chain_when_closed(tk: str) -> None:
     """A viewed ticker keeps its chain and its heatmap. While the market is closed nothing
     downloads a chain, so the first view prices the ticker's newest chain capture with the chain
     kept -- the same capture the startup load priced (DATA_FLOW decision 7), not a second
-    source. The startup load keeps no chains: nobody is viewing anything then."""
+    source. The startup load keeps no chains: nobody is viewing anything then. The same rule for
+    every ticker, on the board or not: a ticker with no capture has that as its levels' reason."""
     if _is_loggable_session() or (terrain_cache_get(tk) or {}).get("_chain"):
         return
     caps = last_capture_per_day(get_db().db_path, tk, 2)
     if caps:
         _publish_levels(tk, captures=caps)
+    elif terrain_cache_get(tk) is None:
+        _terrain_refresh_last_error[tk] = NO_CAPTURE_REASON
 
 
 def start_terrain_loop() -> None:
@@ -2605,7 +2610,8 @@ def _atr_fields(tk: str) -> dict:
     source (a live download or a stored capture)."""
     pair = _atr_pair(tk)
     return {"atr_daily": round(pair.daily, 3) if pair.daily is not None else None,
-            "atr_15m": round(pair.m15, 3) if pair.m15 is not None else None}
+            "atr_15m": round(pair.m15, 3) if pair.m15 is not None else None,
+            "atr_daily_reason": pair.daily_reason, "atr_15m_reason": pair.m15_reason}
 
 
 def _delta_oi_walls(tk: str, snap: "TerrainSnapshot", chain_ts: float) -> "dict | None":
@@ -3342,16 +3348,19 @@ def get_options_gamma_surface(ticker: str = Query(...)):
         })
 
     # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----
-    # REQUESTED: this ticker is viewed. WARMING: viewed and the levels loop can refresh it now
-    # (terrain_staleness's output on `live`: refresh active, not quarantined, not paused). The loop
-    # refreshes every viewed ticker each cycle, on the board or not.
+    # REQUESTED: this ticker is viewed. WARMING: viewed and the levels loop refreshes it now --
+    # the refresh state itself (terrain_staleness: the session, a quarantine, a deliberate skip),
+    # which is the same with or without published levels and on the board or not (the loop
+    # refreshes every viewed ticker each cycle). The reason is that state's own.
     _requested = _gamma_surface_wanted(tk)
-    _warming = (_requested and bool(live) and bool(live.get("levels_refresh_active"))
-                and not live.get("levels_quarantined") and not live.get("levels_paused_on_purpose"))
+    _state = terrain_staleness((live or {}).get("computed_ts_utc"), tk)
+    _warming = (_requested and _state["levels_refresh_active"] and not _state["levels_quarantined"]
+                and not _state["levels_paused_on_purpose"])
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
                      "live": False, "stale": True, "warming": _warming, "requested": _requested,
-                     "reason": ("no live gamma surface for this ticker yet -- the levels loop "
-                                "projects it while the ticker is viewed")}
+                     "reason": _state["levels_stale_reason"] or (
+                         "the levels loop projects the surface at its next refresh of this ticker"
+                         if _warming else "no gamma surface for this ticker's published levels")}
     return JSONResponse(payload)
 
 

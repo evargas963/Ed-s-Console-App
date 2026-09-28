@@ -36,10 +36,12 @@ _MAX_1M_BARS = 24_000
 
 @dataclass(frozen=True)
 class AtrPair:
-    """Daily and 15-minute ATR in price points. Either may be None."""
+    """Daily and 15-minute ATR in price points. Either may be None, with its reason."""
 
     daily: float | None
     m15: float | None
+    daily_reason: str | None = None
+    m15_reason: str | None = None
 
 
 def _aggregate(rows: list, bucket_key) -> list[dict]:
@@ -63,16 +65,27 @@ def _et():
     return ET
 
 
+def _leg(candles: list, unit: str) -> tuple[float | None, str | None]:
+    """ATR(ATR_PERIOD) of `candles`, or None with why: it needs ATR_PERIOD + 1 of them."""
+    atr = compute_atr(candles, period=ATR_PERIOD)
+    if atr is not None:
+        return atr, None
+    if len(candles) < ATR_PERIOD + 1:
+        return None, f"{len(candles)} {unit} of 1-minute bars; ATR({ATR_PERIOD}) needs {ATR_PERIOD + 1}"
+    return None, f"the {unit}' prices do not give a true range"
+
+
 def compute_atr_pair(db_path: str, ticker: str) -> AtrPair:
-    """Daily and 15-minute ATR for one ticker. Never raises; returns None legs on failure."""
+    """Daily and 15-minute ATR for one ticker, each None with its reason when it cannot be
+    computed. The same rule for every ticker. Never raises."""
     from instrument_identity import ticker_storage_key
     tk = ticker_storage_key(ticker)  # RC-345/F25: ATR DB query owner consumes canonical identity (callee, not caller-masked)
     if not tk:
-        return AtrPair(None, None)
+        return AtrPair(None, None, "no ticker", "no ticker")
     try:
         con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
-    except sqlite3.Error:
-        return AtrPair(None, None)
+    except sqlite3.Error as e:
+        return AtrPair(None, None, f"bars unreadable: {e}", f"bars unreadable: {e}")
     try:
         con.row_factory = sqlite3.Row
         rows = con.execute(
@@ -80,19 +93,15 @@ def compute_atr_pair(db_path: str, ticker: str) -> AtrPair:
             "FROM price_bars_1m WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?",
             (tk, _MAX_1M_BARS),
         ).fetchall()
-    except sqlite3.Error:
-        return AtrPair(None, None)
+    except sqlite3.Error as e:
+        return AtrPair(None, None, f"bars unreadable: {e}", f"bars unreadable: {e}")
     finally:
         con.close()
 
-    if not rows:
-        return AtrPair(None, None)
-    daily = _aggregate(rows, lambda d: d.date())
-    m15 = _aggregate(rows, lambda d: (d.date(), d.hour, d.minute // 15))
-    return AtrPair(
-        daily=compute_atr(daily, period=ATR_PERIOD),
-        m15=compute_atr(m15[-200:], period=ATR_PERIOD),
-    )
+    daily, daily_reason = _leg(_aggregate(rows, lambda d: d.date()), "trading days")
+    m15, m15_reason = _leg(_aggregate(rows, lambda d: (d.date(), d.hour, d.minute // 15))[-200:],
+                           "15-minute periods")
+    return AtrPair(daily, m15, daily_reason, m15_reason)
 
 
 
