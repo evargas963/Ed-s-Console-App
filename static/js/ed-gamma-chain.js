@@ -26,21 +26,10 @@
           live: !!m.live, ref: !!m.ref, stale: !!m.stale, title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') }) : '';
   }
 
-  // Independent-review finding (2026-09-13), REPRODUCED: render()'s scrollIntoView ran
-  // UNCONDITIONALLY on every resolved load() -- including every routine ~12s ed:refresh{slow}
-  // tick and every streamed gamma_surface_seq push, not just a genuine new ticker/expiry
-  // context -- forcibly recentering on the spot row and discarding any manual scroll position
-  // the operator had set in a long chain ladder. Fixed by only auto-scrolling the first time a
-  // given ticker+expiry context is rendered; a routine data refresh of an already-rendered
-  // context leaves the operator's own scroll position alone.
+  // auto-scroll to spot only the first time a ticker+expiry is rendered
   var _lastScrollContext = null;
 
   function curExpiry() { return (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()) || null; }
-  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
-  // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
-  // per-call generation counter live-locks once pushes outrun the round trip. Context
-  // invalidation (ticker or expiry filter changed mid-flight) is `stillChain()`, checked at
-  // resolution time.
   function stillChain(tk, exp) { return isChain() && (st().ticker || '') === tk && curExpiry() === exp; }
   // Independent-review finding (2026-09-13), REPRODUCED: A -> B -> A can still let the FIRST
   // A request's response paint over the THIRD (fresh) A request's response. `stillChain`
@@ -184,23 +173,6 @@
     document.addEventListener('ed:view', load);       // fires on subview change too
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:expiry', load);
-    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
-    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
-    //
-    // Audit finding #5 (2026-09-16), FIXED: this used to also listen to the generic
-    // `ed:refresh{slow}` broadcast, refetching the COMPLETE vendor chain (every strike,
-    // both sides, strike_range=ALL) unconditionally every ~12s regardless of whether the
-    // Chain view was even the active view, and regardless of whether anything in the chain
-    // had actually changed. Replaced with an explicit, Chain-view-scoped, much slower
-    // cadence: this ladder shows EVERY contract's OI/Volume/IV/Delta, not just the handful
-    // the gamma heatmap's per-cell stream state already tracks, so there is no existing
-    // canonical per-cell live path for it to update through incrementally -- a full re-fetch
-    // is genuinely the only mechanism available today. The interval below is set to the
-    // wide-chain REST cycle's OWN real cadence (TERRAIN_REFRESH_SEC, ~60s server-side,
-    // documented at _publish_levels's own docstring) rather than an
-    // arbitrary guess: refreshing faster than the producer itself recomputes would only
-    // ever re-serve the same response.
-    var CHAIN_REFRESH_MS = 60000;
-    setInterval(function () { if (isChain()) load(); }, CHAIN_REFRESH_MS);
+    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'chain' && isChain()) load(); });
   }
 })();

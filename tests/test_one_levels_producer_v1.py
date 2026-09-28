@@ -61,8 +61,6 @@ def _clean(monkeypatch):
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
     server._gamma_surface_demand.pop(TK, None)
-    while not server._l1_sse_thread_queue.empty():
-        server._l1_sse_thread_queue.get_nowait()
     ofs._active_option_contract = None
     ofs._active_option_contracts = []
 

@@ -39,9 +39,7 @@
 
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:ticker', load);
-    // Same "slow" (~12s) cadence every other periodic-poll panel uses off ed-core.js's one
-    // scheduler (see ed-liquidity-map.js) -- not the legacy page's unrelated 5s interval.
-    document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels') load(); });
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker dispatch -- see that file's init() comment.
   }

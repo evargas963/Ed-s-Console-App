@@ -26,10 +26,3 @@ def test_l1_sse_guards_node_script():
         timeout=60,
     )
     assert r.returncode == 0, r.stdout + "\n" + r.stderr
-
-
-def test_l1_light_stream_still_registered():
-    import server as srv
-
-    paths = [getattr(route, "path", "") for route in srv.app.routes if hasattr(route, "path")]
-    assert "/api/analytics/light/stream" in paths

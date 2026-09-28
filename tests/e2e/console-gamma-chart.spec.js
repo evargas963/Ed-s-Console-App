@@ -64,7 +64,6 @@ async function intercept(page) {
       const u = new URL(url); chainRequests.push(u.searchParams.get('expiry'));
       body = CHAIN;
     }
-    else if (url.includes('/api/session')) body = { session_label: 'RTH' };
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });

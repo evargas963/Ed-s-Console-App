@@ -217,17 +217,8 @@ def _published_surface():
         return server._terrain_cache[TK]["_gamma_surface"]
 
 
-def _drain_l1_sse_thread_queue():
-    while not server._l1_sse_thread_queue.empty():
-        try:
-            server._l1_sse_thread_queue.get_nowait()
-        except Exception:
-            break
-
-
 def setup_function(_fn):
     _clear_cache()
-    _drain_l1_sse_thread_queue()
     import app.options.order_flow.streaming as _ofs
     _ofs._active_option_contract = _CONTRACT_SYMBOL
     _ofs._active_option_contracts = []
@@ -235,7 +226,6 @@ def setup_function(_fn):
 
 def teardown_function(_fn):
     _clear_cache()
-    _drain_l1_sse_thread_queue()
     import app.options.order_flow.streaming as _ofs
     _ofs._active_option_contract = None
     _ofs._active_option_contracts = []

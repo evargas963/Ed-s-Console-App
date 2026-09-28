@@ -45,7 +45,6 @@ async function intercept(page) {
     else if (url.includes('/api/terrain/strikes')) body = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false, today: { all: [[100, 1, 1]] } };
     else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_stale: false };
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11'] };
-    else if (url.includes('/api/session')) body = { session_label: 'RTH' };
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -122,13 +121,6 @@ test.describe('D — Gamma Chain subview', () => {
   // math), including through a real mouse-wheel scroll (not just programmatic scrollTop) and
   // a concurrent data refresh.
   test('the header table never moves regardless of scrolling the body, including real wheel scroll during a refresh (state-authority review)', async ({ page }) => {
-    // 2026-09-16 (audit finding #5): the Chain view no longer refetches on the generic
-    // ed:refresh{slow} broadcast (the former unconditional 12s poll) -- it hydrates on
-    // entry and otherwise refreshes on its own explicit, Chain-view-scoped ~60s cadence
-    // (see ed-gamma-chain.js's own CHAIN_REFRESH_MS comment). A "routine background
-    // refresh" is now genuinely simulated by fast-forwarding a virtual clock past that
-    // interval while the Chain view is active, not by dispatching the old event.
-    await page.clock.install();
     let vol = 10;
     const BIG = () => ({ ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
       scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
@@ -152,7 +144,7 @@ test.describe('D — Gamma Chain subview', () => {
     // Fire a background refresh (same context) WHILE scrolled, with genuinely changed data,
     // and confirm both the new value lands AND the header still has not moved at all.
     vol = 25;
-    await page.clock.fastForward(61000);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } })));
     await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('25');
     const afterRefresh = await headBox();
 
@@ -192,10 +184,6 @@ test.describe('D — Gamma Chain subview', () => {
   // DIFFERENT value (volume), and the test asserts that value actually reached the DOM before
   // checking the scroll position was preserved.
   test('a routine background refresh with changed data completes, and preserves a manually-scrolled position', async ({ page }) => {
-    // 2026-09-16 (audit finding #5): see the identical clock-based rationale in the test
-    // above -- the Chain view's own routine refresh is now a Chain-scoped ~60s interval,
-    // not a reaction to the generic ed:refresh{slow} broadcast.
-    await page.clock.install();
     let vol = 10;
     const BIG = () => ({ ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
       scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
@@ -211,7 +199,7 @@ test.describe('D — Gamma Chain subview', () => {
     // The NEXT chain fetch carries a genuinely different value -- proof a refresh actually
     // completed comes from the DOM showing THIS new value, not merely from time having passed.
     vol = 25;
-    await page.clock.fastForward(61000);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'chain' } })));
     await expect(page.locator('#chainBody tbody tr').first().locator('td').nth(1)).toHaveText('25');
 
     // A routine background refresh (same ticker/expiry context) must not recentre the ladder,

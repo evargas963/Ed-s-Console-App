@@ -44,6 +44,7 @@ from instrument_identity import (
     ticker_storage_key,
     vendor_option_root,
 )
+import push_changes
 from stream_spine import (
     EQUITY_SYMBOLS_MAX_HELD,
     OPTION_CONTRACTS_MAX_HELD,
@@ -251,6 +252,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         _push_messages_applied += 1
         if sym == _active_ticker:
             _streaming_last_update_ts = ts
+        push_changes.changed(sym, push_changes.FLOW)
         _tick(sym)
         return None
     if kind == "book":
@@ -262,8 +264,10 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if msg.get("service") == "OPTIONS_BOOK":
             _option_streaming_last_update_ts = ts
             _option_contract_last_update_ts[sym] = ts
-        elif sym == _active_ticker:
-            _streaming_last_update_ts = ts
+        else:
+            push_changes.changed(sym, push_changes.FLOW)
+            if sym == _active_ticker:
+                _streaming_last_update_ts = ts
         return None
     if kind == "optquote":
         content = msg.get("content")

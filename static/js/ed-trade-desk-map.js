@@ -446,11 +446,12 @@
     if (!$('tdmMap')) return;
     document.addEventListener('ed:view', start);
     document.addEventListener('ed:ticker', start);
-    document.addEventListener('ed:refresh', function (e) {
+    document.addEventListener('ed:changed', function (e) {
       if (!onDesk() || !S.ticker) return;
-      loadFast();
-      if (e.detail && e.detail.slow) loadSlow();
-      if (Date.now() - S.lastTail > 2500) { S.lastTail = Date.now(); loadBars(false); }
+      var k = e.detail.kind;
+      if (k === 'flow') loadFast();
+      if (k === 'levels' || k === 'liquidity') loadSlow();
+      if (k === 'liquidity') { S.lastTail = Date.now(); loadBars(false); }
     });
     // Every streamed price row: header + indices; the active symbol also re-reads the chart's
     // tail (the server's forming bar) at most once a second.

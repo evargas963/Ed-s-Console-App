@@ -718,15 +718,8 @@
     // ticker + expiry filter are part of WHICH cells are shown: a symbol change or an expiry-column
     // change must always rebuild the grid, never reuse a prior symbol's/expiry's table.
     var expFilter = (window.EdShell && window.EdShell.getExpiry) ? window.EdShell.getExpiry() : null;
-    // Independent-review finding (2026-09-12), REPRODUCED: a streamed update can change cell
-    // VALUES (server.py's eager _publish_levels) without touching
-    // chain_as_of_ts_utc/spot_as_of_ts_utc at all — those are stamped only by the ~60s REST
-    // cycle. With only REST-only fields in this key, a genuinely new surface hashed identical
-    // to the old one and the table silently kept showing stale cells. surface_seq is a
-    // server-owned counter bumped on EVERY publication, REST or streamed (server.py's
-    // _next_gamma_surface_seq) — its inclusion is what makes a streamed-only change visible.
-    // priced_at_spot_as_of_ts_utc is the cells' own stamp; spot_as_of_ts_utc is the live price's
-    // time (2026-09-27, one spot on every screen) and moves every poll -- it must not rebuild the grid.
+    // surface_seq changes on every publication; spot_as_of_ts_utc is the live price's time and
+    // must not rebuild the grid
     return [s.ticker || s.symbol, s.source, s.chain_as_of_ts_utc, s.priced_at_spot_as_of_ts_utc, s.chain_basis, s.et_date, expFilter, s.surface_seq].join('|');
   }
   // lightweight STATUS: banner (warming/requested/stale/reference/degraded) + recede dimming + scope
@@ -853,29 +846,7 @@
         : ((surface.coverage && surface.coverage.note) || '');
     }
   }
-  // ROOT-CAUSE FIX (2026-09-13, controlled reproduction confirmed): server.py pushes a
-  // `gamma_surface_seq` SSE event on EVERY streamed publish (ed-core.js dispatches it as
-  // `ed:refresh{slow:true, pushed:true}`) -- unboundedly frequent, not the 12s slow-poll
-  // cadence this handler was written against. The old guard bumped `_gen` on every call and
-  // only applied a response whose generation still matched on arrival: correct for
-  // invalidating a stale ticker/view, but fatal once pushes arrive faster than the ~fetch
-  // round trip -- a newer call always bumps `_gen` before the older fetch can land, so NO
-  // response's generation ever survives, and the heatmap freezes until pushes stop (measured:
-  // 500ms triggers vs a 750ms round trip left cells at their starting value while incoming
-  // values advanced far past it). Fixed with EdL1SseGuards.makeCoalescedLoader: at most one
-  // fetch in flight, a trigger that arrives mid-flight coalesces into exactly one trailing
-  // re-run (never dropped, never piled up) -- so the table converges to the latest surface as
-  // fast as the round trip allows, continuously, not only once traffic goes quiet. Context
-  // invalidation (ticker/view changed while the fetch was in flight) is now `stillCurrent()`,
-  // checked at resolution time instead of inferred from a counter.
-  // Operator field-inventory audit (2026-09-13): dex/oi are the SAME heatmap pane gamma
-  // renders (see state.measure / MEASURE_BY_SUBVIEW in ed-core.js), reached via a
-  // DIFFERENT subview id -- every "am I still looking at the heatmap" check in this file
-  // must recognize all three, or switching to Delta/DEX or Open Interest looks like
-  // "left the heatmap" to this module: `load()`'s own guard bailed out treating it as a
-  // navigate-away (clearing streamed-contract demand and never calling renderSurface at
-  // all), leaving the OLD measure's numbers on screen under the NEW measure's title --
-  // reproduced live: the Open Interest tab showed DEX's own dollar values unchanged.
+  // gamma, dex and oi are the same heatmap pane under three subview ids
   function _isGammaFamilySubview(sv) { return sv === 'gamma' || sv === 'dex' || sv === 'oi'; }
   function stillCurrent(ticker) {
     var s = (window.EdShell && window.EdShell.getState()) || {};
@@ -939,11 +910,7 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:view', load);
-    document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
-    // Audit finding #3 (2026-09-16): the heatmap's own timely-update path -- a streamed
-    // gamma-surface change now arrives on its own narrow event (see ed-core.js), not the
-    // generic ed:refresh broadcast every other module also listens to.
-    document.addEventListener('ed:gamma-push', function () { load(); });
+    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels') load(); });
     document.addEventListener('ed:strike', function () { applyStrikeHighlight(); });   // A: cross-panel sync
     document.addEventListener('ed:theme', function () {   // recolour: force a rebuild (revision is unchanged but the palette changed)
       var h = document.getElementById('heatBody'); if (h && _lastSurface) { _lastRevision = null; renderSurface(h, _lastSurface); }

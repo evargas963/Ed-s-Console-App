@@ -36,7 +36,6 @@ function intercept(page, tapeBody) {
     else if (url.includes('/api/terrain/strikes')) body = { ticker: 'SPY', spot: 100, today: { all: [] } };
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/session')) body = { session_label: 'RTH' };
     else if (url.includes('/api/chain')) body = { ticker: 'SPY', spot: 100, expiry: null, contracts: [], status: 'unavailable', scope: { kind: 'unavailable', requested_expiry: null, reason: 'no listed expiry for this ticker' } };
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-18'] };
     else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };

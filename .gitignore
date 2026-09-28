@@ -31,6 +31,7 @@ calibration/trading_data.db
 
 # Test artifacts
 test-results/
+.coverage
 
 # OS
 .DS_Store

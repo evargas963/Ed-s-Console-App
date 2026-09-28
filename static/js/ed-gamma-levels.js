@@ -20,10 +20,6 @@
   }
   function ticker() { return ((window.EdShell && window.EdShell.getState()) || {}).ticker || ''; }
 
-  // Coalesced load (see l1_sse_guards.js:makeCoalescedLoader) -- `ed:refresh{slow}` also
-  // fires on every streamed gamma_surface_seq push, not just the 12s poll tick; a naive
-  // per-call generation counter live-locks once pushes outrun the round trip. Context
-  // invalidation is `stillLevels()`, checked at resolution time.
   function stillLevels(tk) { return !!activeHostId() && ticker() === tk; }
   // ROUND 8 (2026-09-13): keyed on ticker so a held/slow fetch for an ABANDONED ticker is
   // aborted immediately once a different ticker is selected, instead of blocking it.
@@ -98,7 +94,7 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:refresh', function (e) { if (e.detail && e.detail.slow) load(); });
+    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels') load(); });
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }

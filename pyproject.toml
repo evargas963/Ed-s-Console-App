@@ -1,44 +1,18 @@
-# Tooling config for the hardening program (2026-06-03). Tool sections only — no [build-system]
-# so pip/packaging behavior is unchanged. Each tool is wired into .github/workflows/hardening.yml.
-
 [tool.ruff]
 line-length = 100
 target-version = "py313"
 extend-exclude = [".venv", "venv", "node_modules", "__pycache__"]
 
 [tool.ruff.lint]
-# Start enforcing the high-signal correctness rules (the ones that caught the real bugs this
-# session); style/complexity rules are added as the baseline is cleaned (ratchet, not big-bang).
-select = ["F", "E9"]   # pyflakes (unused/undefined/redefine) + syntax errors
-# F-rules that are intentional in this repo (documented re-exports already carry # noqa: F401).
+select = ["F", "E9"]
 
 [tool.ruff.format]
 quote-style = "double"
 
-[tool.mypy]
-# Lenient first pass — money-path modules get tightened incrementally; ignore third-party stubs
-# so CI isn't drowned in import-stub noise on day one.
-python_version = "3.13"
-ignore_missing_imports = true
-warn_unused_ignores = false
-warn_redundant_casts = true
-# Hard errors only at first (undefined names, bad calls); widen `disallow_untyped_defs` per-module later.
-exclude = "(^|/)(node_modules|\\.venv|venv|models/)"
-
-[tool.bandit]
-# Security scan. The known surface (pickle.load on model files, sqlite f-string SQL on internal
-# tooling) is triaged in the hardening tracker; exclude tests + vendored/archive trees.
-exclude_dirs = ["tests", "node_modules", ".venv", "venv", "models"]
-
 [tool.coverage.run]
 branch = true
-omit = ["tests/*", "*/node_modules/*", "models/*"]
+omit = ["tests/*", "*/node_modules/*"]
 
 [tool.pytest.ini_options]
-# Collection stops sweeping the 1,278-file repo root for tests (measured: part of the
-# 43-68s collection cost). Parallelism stays a per-invocation choice (-n auto for full
-# runs): hardwiring workers into addopts would make every 2s single-file run pay the
-# multi-second per-worker import chain (sklearn 15.8s / xgboost 15.5s / torch 12.9s).
-# tests/archive/ no longer exists (bedrock step 3, 498897ce; RC-524).
 testpaths = ["tests"]
-norecursedirs = ["node_modules", ".venv", "models"]
+norecursedirs = ["node_modules", ".venv"]
