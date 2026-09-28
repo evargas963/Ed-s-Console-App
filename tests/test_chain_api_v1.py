@@ -119,28 +119,21 @@ def test_a_streamed_volume_newer_than_the_contracts_quote_is_overlaid():
     assert next(c for c in body["contracts"] if c["symbol"] == other["symbol"]) == other
 
 
-def test_an_older_streamed_volume_never_replaces_the_chains_value():
+def test_a_live_contracts_streamed_fields_are_its_values_whatever_the_chains_quote_time():
+    """ONE-05: the stream owns a live contract's fields. A volume streamed before the chain's own
+    quote time is still the contract's current volume (Schwab sends a field only on change);
+    each streamed field is applied as sent, and a field the stream never sent keeps the chain's."""
     now = time.time()
     contracts, target = _with_quote_time(now)
-    stale = (target["totalVolume"] or 0) + 4321
-    with _held_chain("TSLA", contracts, now), \
-            _streamed(target["symbol"], [(now - 1.0, {"TOTAL_VOLUME": stale})]):
+    streamed_volume = (target["totalVolume"] or 0) + 4321
+    streamed_gamma = round((target["gamma"] or 0) + 0.05, 4)
+    with _held_chain("TSLA", contracts, now), _streamed(
+            target["symbol"], [(now - 8, {"TOTAL_VOLUME": streamed_volume}), (now - 1, {"GAMMA": streamed_gamma})]):
         body = _get(ticker="TSLA")
     overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
-    assert overlaid["totalVolume"] == target["totalVolume"] and body["stream_overlay_contracts"] == 0
-
-
-def test_one_fresh_field_does_not_lend_its_freshness_to_another():
-    now = time.time()
-    contracts, target = _with_quote_time(now - 5.0)
-    fresh_gamma = round((target["gamma"] or 0) + 0.05, 4)
-    stale_volume = (target["totalVolume"] or 0) + 4321
-    with _held_chain("TSLA", contracts, now - 5.0), _streamed(
-            target["symbol"], [(now - 8, {"TOTAL_VOLUME": stale_volume}), (now, {"GAMMA": fresh_gamma})]):
-        body = _get(ticker="TSLA")
-    overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
-    assert overlaid["gamma"] == fresh_gamma
-    assert overlaid["totalVolume"] == target["totalVolume"]
+    assert overlaid["totalVolume"] == streamed_volume and overlaid["gamma"] == streamed_gamma
+    assert overlaid["openInterest"] == target["openInterest"]          # never streamed: the chain's
+    assert body["stream_overlay_contracts"] == 1
 
 
 def test_the_route_answers_over_real_http():
