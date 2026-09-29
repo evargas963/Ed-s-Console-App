@@ -214,18 +214,21 @@
     });
   }
   function loadSlow() { return Promise.all([loadPerTf(), loadPerTicker()]); }
-  // the timeframe's levels (VWAP per chart bar) and event window
+  // the timeframe's levels (VWAP per chart bar) and event window, each drawn as it arrives
   function loadPerTf() {
     var gen = S.gen, tf = S.tf, q = encodeURIComponent(S.ticker);
+    function take(key) {
+      return function (d) {
+        if (gen !== S.gen || tf !== S.tf) return;
+        S[key] = d;
+        paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
+        openView();
+      };
+    }
     return Promise.all([
-      fetchJson('/api/levels?ticker=' + q + '&tf=' + encodeURIComponent(tf)),
-      fetchJson('/api/desk/events?ticker=' + q + '&venue=' + st().bookVenue + '&tf=' + encodeURIComponent(tf))
-    ]).then(function (r) {
-      if (gen !== S.gen || tf !== S.tf) return;
-      S.levels = r[0]; S.events = r[1];
-      paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
-      openView();
-    });
+      fetchJson('/api/levels?ticker=' + q + '&tf=' + encodeURIComponent(tf)).then(take('levels')),
+      fetchJson('/api/desk/events?ticker=' + q + '&venue=' + st().bookVenue + '&tf=' + encodeURIComponent(tf)).then(take('events'))
+    ]);
   }
   // the symbol's option terrain, zones, strikes, forces and the Order Flow card's hour of bars
   function loadPerTicker() {
