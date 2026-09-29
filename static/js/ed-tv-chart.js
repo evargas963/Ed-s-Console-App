@@ -171,7 +171,9 @@
           var top = Math.min(y1, y2) * vr, h = Math.max(1, Math.abs(y2 - y1) * vr);
           c.fillStyle = alpha(z.color, 0.13); c.fillRect(0, top, W, h);
           c.fillStyle = alpha(z.color, 0.6); c.fillRect(0, top, W, Math.max(1, vr)); c.fillRect(0, top + h - Math.max(1, vr), W, Math.max(1, vr));
-          if (z.label) { c.fillStyle = z.color; c.font = Math.round(11 * vr) + 'px ' + tok('--ed-sans', 'sans-serif'); c.fillText(z.label, 6 * hr, top + 12 * vr); }
+          // the label sits inside its band, below the legend line (28px) when the band's top is above it
+          if (z.label) { c.fillStyle = z.color; c.font = Math.round(11 * vr) + 'px ' + tok('--ed-sans', 'sans-serif');
+            c.fillText(z.label, 6 * hr, Math.min(Math.max(top, 28 * vr) + 12 * vr, top + h - 3 * vr)); }
         });
       });
     } };
@@ -552,8 +554,9 @@
       S.tool = t; draw.preview = null; draw.redraw();
       host.classList.toggle('tvc-drawing', t !== 'cursor');
       chart.applyOptions({ handleScroll: { pressedMouseMove: t === 'cursor' } });
-      if (opts.onTool) opts.onTool(t);
+      toolListeners.forEach(function (fn) { fn(t); });
     }
+    var toolListeners = [];   // the toolbar's tool buttons follow the tool, keyboard included
 
     // Drawing tools read the pointer directly. The library reports no click for a second click
     // at a different spot inside its double-click window (measured: two quick trend-line clicks
@@ -768,7 +771,7 @@
         var to = Math.min(lg + w / 2, S.bars.length + 8);   // never scroll past the latest bar
         chart.timeScale().setVisibleLogicalRange({ from: to - w, to: to });
       },
-      setTool: setTool, undo: undo,
+      setTool: setTool, undo: undo, onTool: function (fn) { toolListeners.push(fn); fn(S.tool); },
       clearDrawings: function () { clearDrawingObjects(); S.undo = []; saveDrawings(); },
       resetAll: resetAll,
       screenshot: function () {
@@ -834,5 +837,54 @@
     return api;
   }
 
-  window.EdTvChart = { create: create, alpha: alpha };
+  // The timeframes every chart offers, and the 1-minute bars each asks /api/bars1m for (the server
+  // rolls them up to the timeframe).
+  var TFS = [{ id: '1', lbl: '1m' }, { id: '3', lbl: '3m' }, { id: '5', lbl: '5m' }, { id: '15', lbl: '15m' },
+    { id: '30', lbl: '30m' }, { id: '60', lbl: '1h' }, { id: 'D', lbl: 'D' }];
+  var BARS_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
+
+  function lsGet(k, d) { try { var v = window.localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
+  function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }
+
+  // The one chart toolbar, TradingView's: the timeframes (when the page passes onTf), candles or
+  // line, the crosshair / horizontal-line / trend-line tools, undo, clear, reset, screenshot and
+  // full screen. o: {tf, onTf(tf), styleKey (the viewer's candles/line choice, kept per chart)}.
+  // Returns {setTf(tf), slot}: `slot` is where a page adds its own controls.
+  function toolbar(el, api, o) {
+    o = o || {};
+    var style = o.styleKey ? lsGet(o.styleKey, 'candles') : 'candles';
+    var btn = function (attr, title, html, cls) {
+      return '<button type="button" class="tvc-tb' + (cls ? ' ' + cls : '') + '" ' + attr + ' title="' + title + '">' + html + '</button>'; };
+    el.classList.add('tvc-toolbar');
+    el.innerHTML = (o.onTf ? '<div class="tvc-tfs">' + TFS.map(function (t) {
+        return btn('data-tf="' + t.id + '"', t.lbl, t.lbl); }).join('') + '</div><span class="tvc-sep"></span>' : '') +
+      btn('data-act="style"', 'Candles or line', 'Line') + '<span class="tvc-sep"></span>' +
+      btn('data-tool="cursor"', 'Crosshair (Esc)', '&#10010;', 'tvc-tool') +
+      btn('data-tool="hline"', 'Horizontal line (Alt+H)', '&#8212;', 'tvc-tool') +
+      btn('data-tool="trend"', 'Trend line (Alt+T)', '&#8725;', 'tvc-tool') +
+      btn('data-act="undo"', 'Undo drawing (Ctrl+Z)', '&#8630;') + btn('data-act="clear"', 'Remove all drawings', '&#10005;') +
+      '<span class="tvc-slot"></span><span class="tvc-grow"></span>' +
+      btn('data-act="reset"', 'Reset chart (Alt+R)', '&#10227;') + btn('data-act="shot"', 'Save a PNG of the chart', '&#128247;') +
+      btn('data-act="full"', 'Full screen', '&#9974;');
+    function setTf(tf) { el.querySelectorAll('[data-tf]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tf') === tf); }); }
+    function paintStyle() { api.setStyle(style); el.querySelector('[data-act="style"]').classList.toggle('on', style === 'line'); }
+    el.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.hasAttribute('data-tf')) { setTf(b.getAttribute('data-tf')); o.onTf(b.getAttribute('data-tf')); return; }
+      if (b.hasAttribute('data-tool')) { api.setTool(b.getAttribute('data-tool')); return; }
+      var a = b.getAttribute('data-act');
+      if (a === 'style') { style = style === 'line' ? 'candles' : 'line'; if (o.styleKey) lsSet(o.styleKey, style); paintStyle(); }
+      else if (a === 'undo') api.undo();
+      else if (a === 'clear') api.clearDrawings();
+      else if (a === 'reset') api.resetAll();
+      else if (a === 'shot') api.screenshot();
+      else if (a === 'full') api.fullscreen();
+    });
+    api.onTool(function (t) { el.querySelectorAll('[data-tool]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tool') === t); }); });
+    if (o.onTf) setTf(o.tf);
+    paintStyle();
+    return { setTf: setTf, slot: el.querySelector('.tvc-slot') };
+  }
+
+  window.EdTvChart = { create: create, toolbar: toolbar, TFS: TFS, BARS_LIMIT: BARS_LIMIT, alpha: alpha };
 })();
