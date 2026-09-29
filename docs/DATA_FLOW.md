@@ -126,7 +126,9 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Live.** One rule for every streamed value (price, quote, option quote and greeks, each book):
   it is live while the daemon's heartbeat, sent every second, is under 3 s old
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
-  symbol on that Schwab service (`live_market_plane.feed_live_for`). A value's age is never the
+  symbol on that Schwab service (`live_market_plane.feed_live_for`). The price and each book are
+  live only in session as well (trading day, 04:00–20:00 ET: `spot_is_fresh`, `book_is_live`);
+  outside it the last one is a past observation. A value's age is never the
   test: Schwab sends a field only when it changes. The daemon's status is read from the same
   heartbeat (`live_market_plane.daemon_status`). Owner: the console's feed loop records each
   heartbeat; when the daemon stops or the socket to it drops, every streamed value reads not live

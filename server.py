@@ -3535,7 +3535,7 @@ def api_order_flow_microstructure(ticker: str = Query(...),
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
                    if _row and (_row.get("bid") is not None or _row.get("ask") is not None) else None)
-    data["book_live"] = lmp.feed_live_for(t, venue)
+    data["book_live"] = lmp.book_is_live(t, venue)
     from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
     payload = compute_book_microstructure(data, ticker=t)
