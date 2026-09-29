@@ -63,7 +63,8 @@ async function intercept(page) {
     else if (url.includes('/api/chain')) {
       const u = new URL(url); chainRequests.push(u.searchParams.get('expiry'));
       body = CHAIN;
-    }    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   return { chainRequests, demandCalls };
 }
@@ -92,8 +93,9 @@ test.describe('Options/Gamma Chart subview', () => {
     // A genuine pointer click on strike 102's profile row on the shared chart
     await clickStrike(page, 102);
 
+    // the page applies a click on its own schedule: wait for the selection, never read it at once
+    await expect.poll(() => page.evaluate(() => window.EdShell.getState().selStrike)).toBe(102);
     const state = await page.evaluate(() => window.EdShell.getState());
-    expect(state.selStrike).toBe(102);
     expect(state.selExpiry).toBe('2026-09-18');   // NOT null -- the workspace filter, carried through
     await expect.poll(() => chainRequests.length).toBeGreaterThan(0);
     expect(chainRequests.every((e) => e === '2026-09-18')).toBeTruthy();
@@ -120,8 +122,7 @@ test.describe('Options/Gamma Chart subview', () => {
     await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBeGreaterThan(0);
 
     await clickStrike(page, 102);
-    const state = await page.evaluate(() => window.EdShell.getState());
-    expect(state.selStrike).toBe(102);
-    expect(state.selExpiry).toBeNull();
+    await expect.poll(() => page.evaluate(() => window.EdShell.getState().selStrike)).toBe(102);
+    expect(await page.evaluate(() => window.EdShell.getState().selExpiry)).toBeNull();
   });
 });

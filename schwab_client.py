@@ -16,7 +16,6 @@ from urllib.parse import urlparse
 from authlib.common.errors import AuthlibBaseError
 from schwab import auth
 
-from api_pressure import record_schwab_http_response
 from time_et import now_et
 import logging
 
@@ -465,7 +464,6 @@ def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
         if _is_token_error(e):
             _raise_schwab_auth_error(e)
         raise
-    record_schwab_http_response(resp, f"option_chain:{ticker}")
     return resp
 
 
