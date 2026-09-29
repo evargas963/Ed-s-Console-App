@@ -66,8 +66,9 @@ def _bars(session: date, n: int = 120) -> list:
 
 
 def _canonical(session: date, bars: list):
+    from liquidity_value_engine import _bars_to_list
     return build_price_level_snapshot(
-        "SPY", session, bars, bar_source="test_fixture", config=PlaybookConfig(),
+        "SPY", session, _bars_to_list(bars), bar_source="test_fixture", config=PlaybookConfig(),
         generation=1)
 
 

@@ -45,38 +45,33 @@ def _seed_thin_prior_db(tmp_path: Path, ticker: str, prior_day: datetime,
     return dbp
 
 
-def test_thin_banked_prior_session_is_stamped_degraded(tmp_path, monkeypatch):
+def _published(tmp_path, monkeypatch, ticker: str, n_bars: int):
+    """The price levels the producer publishes for Monday 2026-08-24 from a Friday tape of
+    `n_bars` RTH minutes in price_bars_1m."""
     import server
+    import time_et
 
-    prior = datetime(2026, 8, 21, tzinfo=ET)          # Friday
-    session_date = datetime(2026, 8, 24, tzinfo=ET).date()  # Monday
-    dbp = _seed_thin_prior_db(tmp_path, "THIN", prior, n_bars=180)
+    dbp = _seed_thin_prior_db(tmp_path, ticker, datetime(2026, 8, 21, tzinfo=ET), n_bars=n_bars)
 
     class _StubDB:
         db_path = str(dbp)
 
     monkeypatch.setattr(server, "get_db", lambda: _StubDB())
-    bars, source, degraded = server._canonical_price_level_bars("THIN", session_date)
-    assert source == "price_bars_1m"
-    assert bars, "the thin tape still serves — the defect was silence, not existence"
-    stamps = [d for d in degraded if d.get("family") == "prior_day"]
-    assert stamps and "prior session 2026-08-21" in stamps[0]["reason"], degraded
+    monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 8, 24, 12, 0, tzinfo=ET))
+    server._publish_price_levels(ticker)
+    return server.canonical_price_level_snapshot(ticker)
+
+
+def test_thin_banked_prior_session_is_stamped_degraded(tmp_path, monkeypatch):
+    snap = _published(tmp_path, monkeypatch, "THIN", 180)
+    assert snap.price("PDH") is not None, "the thin tape still serves — the defect was silence, not existence"
+    stamps = [d for d in snap.degraded if d.get("family") == "prior_day"]
+    assert stamps and "prior session 2026-08-21" in stamps[0]["reason"], snap.degraded
     assert "partial tape" in stamps[0]["reason"], stamps
     assert "180" in stamps[0]["reason"], stamps
 
 
 def test_full_banked_prior_session_carries_no_stamp(tmp_path, monkeypatch):
-    import server
-
-    prior = datetime(2026, 8, 21, tzinfo=ET)
-    session_date = datetime(2026, 8, 24, tzinfo=ET).date()
-    dbp = _seed_thin_prior_db(tmp_path, "FULL", prior, n_bars=390)
-
-    class _StubDB:
-        db_path = str(dbp)
-
-    monkeypatch.setattr(server, "get_db", lambda: _StubDB())
-    _bars, source, degraded = server._canonical_price_level_bars("FULL", session_date)
-    assert source == "price_bars_1m"
-    assert len(_bars) == 390
-    assert [d for d in degraded if d.get("family") == "prior_day"] == []
+    snap = _published(tmp_path, monkeypatch, "FULL", 390)
+    assert snap.bars_used == 390
+    assert [d for d in snap.degraded if d.get("family") == "prior_day"] == []

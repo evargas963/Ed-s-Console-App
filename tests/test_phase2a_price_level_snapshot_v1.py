@@ -33,9 +33,9 @@ from liquidity_value_engine import (
     PHASE2A_LEVEL_IDS,
     LevelCarrierConflict,
     PriceLevelValue,
+    _bars_to_list,
     build_price_level_snapshot,
     carry_snapshot_levels,
-    compute_session_vwap,
     compute_session_vwap_series,
     materialize_price_level_snapshot,
     register_level_carrier,
@@ -83,7 +83,7 @@ def _clean_ledgers():
 
 def test_snapshot_carries_value_scope_generation_provenance_and_as_of():
     snap = build_price_level_snapshot(
-        "SPY", SESSION, _tape(), bar_source="unit_tape", generation=7)
+        "SPY", SESSION, _bars_to_list(_tape()), bar_source="unit_tape", generation=7)
     for lid, value in snap.levels.items():
         assert lid in PHASE2A_LEVEL_IDS, f"{lid} is not a declared Phase 2A id"
         assert value.generation == 7
@@ -100,13 +100,13 @@ def test_snapshot_carries_value_scope_generation_provenance_and_as_of():
 
 def test_one_materialization_per_generation_returns_the_same_object():
     """A new generation may invoke the producer once; re-asking is a READ."""
-    tape = _tape()
+    tape = _bars_to_list(_tape())
     a = materialize_price_level_snapshot("SPY", SESSION, tape, bar_source="unit_tape")
     b = materialize_price_level_snapshot("SPY", SESSION, tape, bar_source="unit_tape")
     assert a is b, "the same generation re-materialized — that is a second result"
     assert a.generation == 1
 
-    moved = tape + [_bar(2026, 8, 4, 11, 1, 107, 112, 106, 111)]
+    moved = _bars_to_list(_tape() + [_bar(2026, 8, 4, 11, 1, 107, 112, 106, 111)])
     c = materialize_price_level_snapshot("SPY", SESSION, moved, bar_source="unit_tape")
     assert c is not a and c.generation == 2, "a new bar input must bump the generation"
     assert all(v.generation == 2 for v in c.levels.values())
@@ -124,7 +124,7 @@ def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them(pin_clock):
             ("real_spy_1m_bars_2026_09_24_25.json", "SPY", (2026, 9, 25), True)):
         pin_clock(*session, 16, 30)
         bars = json.loads((fx / name).read_text(encoding="utf-8"))["bars"]
-        snap = build_price_level_snapshot(tk, datetime(*session, tzinfo=ET).date(), bars, bar_source=name)
+        snap = build_price_level_snapshot(tk, datetime(*session, tzinfo=ET).date(), _bars_to_list(bars), bar_source=name)
         absent = {f["family"]: f["reason"] for f in snap.families_absent}
         assert snap.price("PDH") is not None and "prior_day" not in absent, tk
         if has_volume:
@@ -147,10 +147,8 @@ def test_absent_input_stays_absent_and_is_declared():
 
 def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
     """The drawn line must END on the served level — one accumulation, one number."""
-    tape = _tape()
-    series = compute_session_vwap_series(tape, SESSION)
-    assert series, "no VWAP series for a session with RTH volume"
-    assert compute_session_vwap(tape, SESSION) == series[-1][1]
+    tape = _bars_to_list(_tape())
+    assert compute_session_vwap_series(tape, SESSION), "no VWAP series for a session with RTH volume"
 
     snap = build_price_level_snapshot("SPY", SESSION, tape, bar_source="unit_tape")
     assert snap.price("VWAP") == snap.vwap_series[-1][1]
@@ -165,7 +163,7 @@ def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
 
 def test_two_carriers_of_the_same_generation_agree():
     snap = build_price_level_snapshot(
-        "SPY", SESSION, _tape(), bar_source="unit_tape", generation=3)
+        "SPY", SESSION, _bars_to_list(_tape()), bar_source="unit_tape", generation=3)
     a = carry_snapshot_levels(snap, "api.levels")
     b = carry_snapshot_levels(snap, "api.liquidity_snapshot")
     assert a == b and a["OVERNIGHT_HIGH"] is not None
@@ -184,7 +182,7 @@ def test_negative_control_disagreeing_carrier_raises(field, mutation):
     served 773.3975 — the disagreement that used to reach two screens silently.
     """
     snap = build_price_level_snapshot(
-        "SPY", SESSION, _tape(), bar_source="unit_tape", generation=3)
+        "SPY", SESSION, _bars_to_list(_tape()), bar_source="unit_tape", generation=3)
     carry_snapshot_levels(snap, "api.levels")
 
     good = snap.levels["OVERNIGHT_HIGH"]
@@ -224,9 +222,11 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
     import server as srv
     import time_et as te
 
+    import liquidity_value_engine as lve
+
     tape = _tape()
     monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda t: tape)
-    monkeypatch.setattr(srv, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
+    monkeypatch.setattr(lve, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (106.0, "schwab_quote_last", 1.0))
     monkeypatch.setattr(te, "now_et", lambda: datetime(2026, 8, 4, 12, 0, tzinfo=ET))
 
@@ -256,10 +256,12 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
     import server as srv
     import time_et as te
 
+    import liquidity_value_engine as lve
+
     tape = _tape()
     noon = datetime(2026, 8, 4, 12, 0, tzinfo=ET)
     monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda t: tape)
-    monkeypatch.setattr(srv, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
+    monkeypatch.setattr(lve, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (106.0, "schwab_quote_last", 1.0))
     monkeypatch.setattr(srv, "_liquidity_option_levels", lambda t: ([], "n/a"))
     monkeypatch.setattr(te, "now_et", lambda: noon)
