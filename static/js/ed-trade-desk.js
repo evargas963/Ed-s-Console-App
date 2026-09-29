@@ -139,12 +139,12 @@
                      above: sl.above != null ? zones[sl.above] : null, below: sl.below != null ? zones[sl.below] : null } : null;
     if (loc && loc.inside) {
       var z = loc.inside;
-      lines.push(['Location', 'Inside a ' + (z.zone_type === 'support_liquidity' ? 'support' : 'resistance') +
+      lines.push(['Location', 'Inside a ' + esc(z.zone_label) +
         ' zone (' + num(z.zone_low) + '–' + num(z.zone_high) + ', confluence ' + z.confluence_score + ')']);
     } else if (loc) {
       var parts = [];
-      if (loc.above) parts.push('resistance near ' + num(loc.above.zone_low) + ' (confluence ' + loc.above.confluence_score + ')');
-      if (loc.below) parts.push('support near ' + num(loc.below.zone_high) + ' (confluence ' + loc.below.confluence_score + ')');
+      if (loc.above) parts.push(esc(loc.above.zone_label) + ' zone above at ' + num(loc.above.zone_low) + ' (confluence ' + loc.above.confluence_score + ')');
+      if (loc.below) parts.push(esc(loc.below.zone_label) + ' zone below at ' + num(loc.below.zone_high) + ' (confluence ' + loc.below.confluence_score + ')');
       lines.push(['Location', parts.length ? 'Between zones — ' + parts.join(', ') : 'No scored zone nearby']);
     }
     if (terrain && terrain.dist_to_put_wall != null && terrain.dist_to_call_wall != null) {   // served

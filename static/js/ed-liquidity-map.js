@@ -24,7 +24,7 @@
 
   function zoneRow(z) {
     var tags = (z.source_levels || []).map(function (l) { return esc(l.label) + ' ' + num(l.value); }).join(' · ');
-    return '<div class="fl-row"><span class="k">' + esc(z.zone_type === 'support_liquidity' ? 'Support' : 'Resistance') +
+    return '<div class="fl-row"><span class="k">' + esc(z.zone_label) +
       ' ' + num(z.zone_low) + '–' + num(z.zone_high) + '</span>' +
       '<span class="v">confluence ' + esc(z.confluence_score) + '</span></div>' +
       '<div class="sm" style="padding:0 0 6px;color:var(--ed-ink-3);">' + (tags || '—') +
@@ -145,11 +145,10 @@
     function yPct(v) { return (1 - (v - lo) / span) * 100; }
 
     var mapH = 460;
-    var zonesHtml = zones.filter(function (z) { return isFinite(z.zone_low) && isFinite(z.zone_high); }).map(function (z) {
+    var zonesHtml = zones.map(function (z) {
       var top = yPct(z.zone_high), bottom = yPct(z.zone_low);
-      var cls = z.zone_type === 'support_liquidity' ? 'support' : 'resistance';
-      return '<div class="liqmap-zone ' + cls + '" style="top:' + top.toFixed(2) + '%;height:' + Math.max(0.6, bottom - top).toFixed(2) + '%;" ' +
-        'title="' + esc(z.zone_type) + ' ' + num(z.zone_low) + '–' + num(z.zone_high) + ', confluence ' + esc(z.confluence_score) + '">' +
+      return '<div class="liqmap-zone ' + esc(z.zone_side) + '" style="top:' + top.toFixed(2) + '%;height:' + Math.max(0.6, bottom - top).toFixed(2) + '%;" ' +
+        'title="' + esc(z.zone_label) + ' ' + num(z.zone_low) + '–' + num(z.zone_high) + ', confluence ' + esc(z.confluence_score) + '">' +
         '<span class="liqmap-zone-tag">' + esc(z.confluence_score) + '×</span></div>';
     }).join('');
     var linesHtml = refLines.filter(function (l) { return isFinite(l.value); }).map(function (l) {

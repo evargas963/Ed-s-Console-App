@@ -4243,7 +4243,7 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
     option levels and the live price fused in. It computes no level of its own."""
     try:
         from liquidity_value_engine import build_live_snapshot, carry_snapshot_levels
-        from liquidity_models import PlaybookConfig
+        from liquidity_models import ZONE_DISPLAY, PlaybookConfig
 
         ticker_upper = ticker_storage_key(ticker)
         config = PlaybookConfig(max_zone_width=2.0)
@@ -4264,6 +4264,8 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
             merged = len(z.source_tags)
             zp = {
                 "zone_type": z.zone_type.value,
+                "zone_label": ZONE_DISPLAY[z.zone_type][0],
+                "zone_side": ZONE_DISPLAY[z.zone_type][1],
                 "zone_class": z.zone_class,
                 "zone_low": z.zone_low,
                 "zone_high": z.zone_high,

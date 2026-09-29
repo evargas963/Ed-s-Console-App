@@ -65,6 +65,9 @@ def test_missing_spot_produces_honest_null_distance_and_neutral_score_through_th
     assert z["distance_to_spot"] is None
     assert z["spot_inside_zone"] is None
     assert isinstance(z["tradeable_score"], (int, float))
+    # the pages named every zone that was not support_liquidity "Resistance" (a pivot zone here):
+    # each zone's name and side are served from its type
+    assert (z["zone_label"], z["zone_side"]) == ("Pivot / value", "value")
 
 
 def test_spot_used_for_scoring_reports_the_real_live_spot_when_available(monkeypatch):

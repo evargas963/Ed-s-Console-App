@@ -222,7 +222,7 @@
       var lean = S.terrain && S.terrain[l.id + '_lean'];   // served: call_wall_lean / put_wall_lean
       if (g) { out.push({ id: l.id, price: Number(l.price), label: g[0] + (lean ? ' · ' + lean : ''), color: g[1], style: g[2], width: g[3] }); return; }
       var s = style[l.family]; if (!s) return;
-      out.push({ id: l.id, price: Number(l.price), label: l.short || l.label || l.id, color: s[0], style: s[1], width: s[2] });
+      out.push({ id: l.id, price: Number(l.price), label: l.short, color: s[0], style: s[1], width: s[2] });
     });
     return out;
   }
@@ -384,8 +384,8 @@
       ['LIQUIDITY', d5 && d5.side ? (d5.side === 'BID' ? 'Bid heavy' : d5.side === 'ASK' ? 'Offer heavy' : 'Balanced') : 'No book', d5 && d5.side === 'BID' ? 'up' : d5 && d5.side === 'ASK' ? 'dn' : ''],
       ['VALUE', l && l.summary ? String(l.summary.value_state || '—').replace(/_/g, ' ') : '—', ''],
       ['VWAP', l && l.summary ? String(l.summary.vwap_relation || '—').replace(/_/g, ' ') : '—', ''],
-      ['OPTIONS', t && !t.error ? String(t.posture || t.regime || '—').replace(/_/g, ' ') : '—', ''],
-      ['GAMMA', t && t.flip_relation ? (t.flip_relation === 'ABOVE' ? 'Above flip' : 'Below flip') : '—', t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
+      ['OPTIONS', t && !t.error && t.posture ? String(t.posture).replace(/_/g, ' ') : '—', ''],
+      ['GAMMA', ({ ABOVE: 'Above flip', BELOW: 'Below flip' })[t && t.flip_relation] || '—', t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
     ];
     host.innerHTML = cells.map(function (c) {
       return '<div class="tdm-ag"><span>' + c[0] + '</span><b class="' + c[2] + '">' + esc(c[1]) + '</b></div>'; }).join('') +
@@ -412,10 +412,10 @@
     var host = $('tdmFoot'); if (!host) return;
     var t = S.terrain, m = S.micro, L = S.levels;
     host.innerHTML = [
-      'Bars: <b id="tdmBarsSrc">' + esc(($('tdmBarsSrc') || {}).textContent || 'banked 1m bars') + '</b>',
+      'Bars: <b id="tdmBarsSrc">' + esc(($('tdmBarsSrc') || {}).textContent || '—') + '</b>',
       'Book: <b>' + esc((m && m.provenance && m.provenance.book_source) || '—') + '</b>',
       'Levels: <b>' + esc((L && L.bar_source) || '—') + '</b>',
-      'Options: <b>' + esc(t && !t.error ? (t.chain_basis || '—') + ' chain · ' + (t.strikes_used || '—') + ' strikes · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + ' contracts' : '—') + '</b>',
+      'Options: <b>' + esc(t && !t.error ? (t.chain_basis || '—') + ' chain · ' + (t.strikes_used == null ? '—' : t.strikes_used) + ' strikes · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + ' contracts' : '—') + '</b>',
       'Clock: <b>Central</b>'
     ].map(function (x) { return '<span>' + x + '</span>'; }).join('');
   }
