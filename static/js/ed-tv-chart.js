@@ -7,10 +7,11 @@
    The operator's chart standard (feedback_chart_interactions_mirror_tradingview), measured
    against the library on real SPY bars before use:
      - plot drag pans BOTH ways. The library pans price vertically only once the price scale is
-       out of auto-fit; TradingView turns auto-fit off the moment you drag vertically. The one
-       gap is closed below (installVerticalPan) -- everything else is the library's own.
-     - price-axis drag rescales price, time-axis drag rescales time, double-click an axis
-       resets it, Alt+R resets everything, the wheel zooms time.
+       out of auto-fit; TradingView turns auto-fit off the moment you drag vertically. The two
+       gaps are closed below (installVerticalPan, installPriceAxisWheel) -- everything else is
+       the library's own.
+     - price-axis drag or wheel rescales price, time-axis drag rescales time, double-click an
+       axis resets it, Alt+R resets everything, the wheel over the plot zooms time.
      - the crosshair follows the mouse; the readout BOX appears only on click (pinned, with a
        close control) -- never a hover tooltip.
    Every number drawn here is the server's (bars from /api/bars1m, levels from /api/levels +
@@ -432,7 +433,23 @@
     draw.color = P.accent2;
     candles.attachPrimitive(draw);
 
-    // ---- the one gap vs TradingView: vertical plot drag must pan price even in auto-fit ----
+    // ---- the wheel over the price axis rescales price about the middle of the visible range, as
+    // TradingView does (the library's wheel zooms time only); auto-fit turns off ----
+    (function installPriceAxisWheel() {
+      plot.addEventListener('wheel', function (e) {
+        if (e.clientX - plot.getBoundingClientRect().left <= chart.timeScale().width()) return;   // the plot: time
+        e.preventDefault(); e.stopPropagation();
+        var ps = chart.priceScale('right'), r = ps.getVisibleRange(); if (!r) return;
+        var log = ps.options().mode === LWC.PriceScaleMode.Logarithmic && r.from > 0;
+        var lo = log ? Math.log(r.from) : r.from, hi = log ? Math.log(r.to) : r.to;
+        var mid = (lo + hi) / 2, half = (hi - lo) / 2 * Math.exp(e.deltaY * 0.002);   // down: wider range
+        setAuto(false);
+        ps.setVisibleRange(log ? { from: Math.exp(mid - half), to: Math.exp(mid + half) } : { from: mid - half, to: mid + half });
+        scheduleLevels();
+      }, { passive: false, capture: true });
+    })();
+
+    // ---- vertical plot drag must pan price even in auto-fit ----
     (function installVerticalPan() {
       var start = null;
       plot.addEventListener('pointerdown', function (e) { start = { x: e.clientX, y: e.clientY }; }, true);
