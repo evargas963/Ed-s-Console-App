@@ -166,6 +166,7 @@ def spy_levels(monkeypatch, pin_clock):
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
     monkeypatch.setattr(server, "terrain_cache_get", lambda t: terrain)
     pin_clock(2026, 9, 25, 16, 5)
+    server._publish_price_levels("SPY")                              # as the bar writer does
     return spot, terrain
 
 

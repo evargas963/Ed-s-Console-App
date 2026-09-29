@@ -230,6 +230,7 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (106.0, "schwab_quote_last", 1.0))
     monkeypatch.setattr(te, "now_et", lambda: datetime(2026, 8, 4, 12, 0, tzinfo=ET))
 
+    srv._publish_price_levels("SPY")                  # as the bar writer does
     payload = json.loads(bytes(srv.get_levels(ticker="SPY").body))
     by_id = {lv["id"]: lv for lv in payload["levels"]}
     ids = [lv["id"] for lv in payload["levels"]]
@@ -264,6 +265,7 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
     monkeypatch.setattr(te, "now_et", lambda: noon)
     monkeypatch.setattr(srv, "now_et", lambda: noon)
 
+    srv._publish_price_levels("SPY")                  # as the bar writer does
     levels = {lv["id"]: lv["price"] for lv in json.loads(bytes(srv.get_levels(ticker="SPY").body))["levels"]}
     liq = srv.get_liquidity_snapshot(ticker="SPY")
     used = {i["tag"]: i["value"] for i in liq["raw_levels_used"]}
