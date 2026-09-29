@@ -111,9 +111,12 @@ Schwab sends is taken as sent (rule 2), never computed.
   capture), the ATR pair (from the 1-minute bars) included. The day-over-day open-interest change
   has one producer: the forces, from the stored captures (`/api/forces`, shown on the Trade Desk).
   An ATR leg that cannot be computed is served absent with its reason (how many trading days or
-  15-minute periods of bars exist; ATR(14) needs 15). Every rule here is the same for any ticker,
-  on the board or not: a viewed ticker (a page has it open: its `/api/changes` connection, on any
-  workspace; the one viewing signal) is refreshed each cycle, and its heatmap reads "warming"
+  15-minute periods of bars exist; ATR(14) needs 15). None of these rules names a ticker; board
+  membership decides only which tickers the daemon captures, which the loop refreshes unviewed,
+  and which are priced at startup (tested for a board and an off-board ticker in
+  `tests/test_gamma_surface_freshness_v1.py`; other values are not tested that way). A viewed
+  ticker (a page has it open: its `/api/changes` connection, on any workspace; the one viewing
+  signal) is refreshed each cycle, and its heatmap reads "warming"
   from that refresh state (the session, a hold, a deliberate skip), whether or not levels exist
   yet. On a closed market every route prices the ticker's newest stored capture; a ticker with
   none shows "market closed; no chain capture of this ticker yet" on every route.
