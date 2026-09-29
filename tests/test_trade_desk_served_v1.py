@@ -257,7 +257,10 @@ def test_the_desk_window_is_the_calendars_last_session_open_and_its_words_are_se
     mon = datetime(2026, 9, 28, 10, 0, tzinfo=ET)
     assert server._desk_window_start("30", mon) == datetime(2026, 9, 28, 9, 30, tzinfo=ET).timestamp()
     assert server._desk_window_start("1", mon) == mon.timestamp() - 900
-    assert {tf: words for tf, (_lb, words) in server.DESK_LOOKBACK.items()}["30"] == "this session"
+    # the reference's 5-minute Market Map lists the session's events (its queue: "since open")
+    assert server._desk_window_start("5", mon) == datetime(2026, 9, 28, 9, 30, tzinfo=ET).timestamp()
+    words = {tf: words for tf, (_lb, words) in server.DESK_LOOKBACK.items()}
+    assert words["30"] == words["5"] == "this session"
 
 
 def test_every_bar_carries_its_change():

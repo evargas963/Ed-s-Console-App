@@ -60,6 +60,7 @@
   function storageSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }
 
   var TF_SECONDS = { '1': 60, '3': 180, '5': 300, '15': 900, '30': 1800, '60': 3600, 'D': 86400 };
+  var LEVEL_TITLE_W = 150;   // px along the pane's right edge where the level lines' titles are drawn
 
   // ---- series primitives (drawn inside the pane, under/over the candles) ----
   // A horizontal band between two prices across the whole pane (value area).
@@ -170,6 +171,59 @@
         maxValue: Math.max.apply(null, self.zones.map(function (z) { return z.hi; })) } };
     };
     this.set = function (zones) { self.zones = (zones || []).filter(function (z) { return isFinite(z.lo) && isFinite(z.hi); }); if (self._req) self._req(); };
+  }
+  // Numbered event callouts, as the reference draws them: a dashed line at the event's bar, its
+  // number in a circle below the legend (callouts closer than 30px step down a row), a dot
+  // at its price and a boxed label beside it (turned left before the level titles drawn along the
+  // pane's right edge, LEVEL_TITLE_W wide). list: [{id, time, price, num, text, color}]; sel: the
+  // selected id, drawn heavier. hitAt(x, y) -> id; centers: each number's {id, x, y} in pane px.
+  function CalloutPrimitive(chartRef, P) {
+    var self = this;
+    this._series = null; this._req = null; this.list = []; this.sel = null; this.hits = []; this.centers = [];
+    var renderer = { draw: function (target) {
+      self.hits = []; self.centers = [];
+      if (!self._series || !self.list.length) return;
+      var ts = chartRef().timeScale();
+      target.useMediaCoordinateSpace(function (s) {
+        var c = s.context, W = s.mediaSize.width, H = s.mediaSize.height, prevX = null, row = 0;
+        c.font = '600 12px ' + tok('--ed-sans', 'sans-serif');
+        self.list.forEach(function (m) {
+          var x = ts.timeToCoordinate(m.time), y = self._series.priceToCoordinate(m.price);
+          if (x == null || y == null) return;
+          row = prevX != null && x - prevX < 30 ? (row + 1) % 3 : 0; prevX = x;
+          var on = m.id === self.sel, r = on ? 13 : 11, cy = 58 + row * 28;
+          c.save();
+          c.strokeStyle = alpha(m.color, on ? 0.95 : 0.7); c.lineWidth = on ? 2 : 1; c.setLineDash([4, 4]);
+          c.beginPath(); c.moveTo(x, cy + r); c.lineTo(x, H); c.stroke();
+          c.setLineDash([]);
+          c.fillStyle = P.bg; c.lineWidth = 2; c.strokeStyle = m.color;
+          c.beginPath(); c.arc(x, cy, r, 0, 2 * Math.PI); c.fill(); c.stroke();
+          c.fillStyle = P.ink; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.fillText(String(m.num), x, cy + 0.5);
+          c.fillStyle = m.color; c.beginPath(); c.arc(x, y, on ? 5 : 4, 0, 2 * Math.PI); c.fill();
+          if (m.text) {
+            var w = c.measureText(m.text).width + 14, h = 22, bx = x + 12 + w > W - LEVEL_TITLE_W ? x - 12 - w : x + 12, by = y - h - 6;
+            c.fillStyle = alpha(P.bg, 0.94); c.strokeStyle = alpha(m.color, on ? 1 : 0.8); c.lineWidth = on ? 2 : 1;
+            c.fillRect(bx, by, w, h); c.strokeRect(bx, by, w, h);
+            c.fillStyle = P.ink; c.textAlign = 'left'; c.fillText(m.text, bx + 7, by + h / 2 + 0.5);
+            self.hits.push({ id: m.id, x0: bx, x1: bx + w, y0: by, y1: by + h });
+          }
+          self.hits.push({ id: m.id, x0: x - r, x1: x + r, y0: cy - r, y1: cy + r });
+          self.centers.push({ id: m.id, x: x, y: cy });
+          c.restore();
+        });
+      });
+    } };
+    var view = { renderer: function () { return renderer; }, zOrder: function () { return 'top'; } };
+    this.attached = function (p) { self._series = p.series; self._req = p.requestUpdate; };
+    this.detached = function () { self._series = null; };
+    this.updateAllViews = function () {};
+    this.paneViews = function () { return [view]; };
+    this.set = function (list, sel) { self.list = list; self.sel = sel; if (self._req) self._req(); };
+    this.hitAt = function (x, y) {
+      var h = self.hits.filter(function (b) { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; })[0];
+      return h ? h.id : null;
+    };
   }
   // A time x price grid of served cells (the book heatmap): each cell {t: bucket index, price,
   // bid, ask, side} is drawn at its own bucket and price, coloured by its served side, brightness
@@ -313,7 +367,7 @@
     var band = new BandPrimitive(); candles.attachPrimitive(band);
     var callBand = new BandPrimitive(); candles.attachPrimitive(callBand);
     var putBand = new BandPrimitive(); candles.attachPrimitive(putBand);
-    var markers = LWC.createSeriesMarkers(candles, []);
+    var callouts = new CalloutPrimitive(function () { return chart; }, P); candles.attachPrimitive(callouts);
     var profile = new ProfilePrimitive('right', 0.32, true); candles.attachPrimitive(profile);
     // the session volume profile on the left edge, as the reference draws it (the candles set
     // the price range; the profile does not widen it)
@@ -493,11 +547,10 @@
       // a click on a profile row selects it (the row's own gesture, e.g. a strike for every panel)
       var row = opts.onProfileClick ? profile.rowAt(p.point.x, p.point.y, chart.timeScale().width()) : null;
       if (row) { opts.onProfileClick(row); return; }
+      var hit = callouts.hitAt(p.point.x, p.point.y);
+      if (hit != null && S.onMarkerClick) { S.onMarkerClick(S.markerMeta[hit]); return; }
       if (p.time == null) return;
       var price = (heat.h ? timeline : candles).coordinateToPrice(p.point.y);   // the series carrying the price axis
-      if (p.hoveredObjectId != null && S.markerMeta[p.hoveredObjectId] && S.onMarkerClick) {
-        S.onMarkerClick(S.markerMeta[p.hoveredObjectId]); return;
-      }
       S.pinned = { time: p.time, price: price }; paintPin(); paintLegend();
     });
     chart.subscribeCrosshairMove(function (p) {
@@ -645,9 +698,9 @@
       // levels: [{id, price, label, color, style, width}]
       setLevels: function (levels) { S.levels = (levels || []).filter(function (l) { return l && isFinite(l.price); }); paintLevels(true); },
       setNearestN: function (n) { S.nearestN = n; paintLevels(true); },
-      // markers: [{id, time, text, color, position, shape, meta}]
-      // markers: [{id, time, price (for an atPrice position), text, color, position, shape, meta}];
-      // the selected one (selectMarker) is drawn larger
+      // markers: [{id, time, price, num, text, color, meta}], drawn as numbered callouts at their
+      // bar and price; one with no price or no bar is not drawn; the selected one (selectMarker)
+      // is drawn heavier; a click on one calls onClick(meta)
       setMarkers: function (list, onClick) {
         S.markerList = list || []; S.onMarkerClick = onClick || null;
         api.selectMarker(S.markerSel);
@@ -656,17 +709,12 @@
         S.markerSel = id; S.markerMeta = {};
         var m = [];
         (S.markerList || []).forEach(function (x) {
-          var i = barIndexAt(Number(x.time)); if (i < 0) return;
-          var atPrice = /^atPrice/.test(x.position || '');
-          if (atPrice && x.price == null) return;          // a price marker with no price is not drawn
+          var i = barIndexAt(Number(x.time)); if (i < 0 || x.price == null) return;
           S.markerMeta[x.id] = x.meta;
-          var mk = { id: x.id, time: S.bars[i].t, position: x.position || 'aboveBar', color: x.color || P.accent2,
-            shape: x.shape || 'circle', text: x.text || '', size: x.id === id ? 2 : 1 };
-          if (atPrice) mk.price = x.price;
-          m.push(mk);
+          m.push({ id: x.id, time: S.bars[i].t, price: x.price, num: x.num, text: x.text || '', color: x.color || P.accent2 });
         });
         m.sort(function (a, b) { return a.time - b.time; });
-        markers.setMarkers(m);
+        callouts.set(m, id);
         S.markersShown = m.map(function (x) { return x.id; });
       },
       scrollToTime: function (t) {
@@ -705,7 +753,7 @@
           profile: { rows: profile.rows.length, style: profile.style, selected: profile.sel },
           heatCells: heat.h ? heat.h.cells.length : 0, zones: zones.zones.length, volumeProfileBins: vprofile.rows.length,
           levels: S.priceLines.map(function (l) { return l.options().title; }),
-          markers: S.markersShown || [], markerSelected: S.markerSel || null };
+          markers: S.markersShown || [], markerSelected: S.markerSel || null, callouts: callouts.centers };
       },
       // where a price's profile row is drawn, in page coordinates (tests click it as a user would)
       profilePoint: function (price) {

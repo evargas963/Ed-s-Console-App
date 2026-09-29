@@ -142,12 +142,19 @@ Schwab sends is taken as sent (rule 2), never computed.
   publish (the live price moved through a served level); written to `ed_console.db` → the
   `levels` push → `/api/desk/events`, which judges each by the completed Schwab 1-minute bar of
   its minute (confirmed: closed beyond the level; rejected: closed back) and flags the newest
-  judged cross at each level, for the newest six levels, as the chart's markers. One served item
-  is both a chart marker and its queue entry. There are no proximity alerts (removed 2026-09-29).
-  No book-based event (pull, replenishment, absorption) is produced: Schwab's L1 bundles trades
-  and sends no trade side, and on its displayed books a size wall lasts about a second (SPY
-  NYSE_BOOK and NASDAQ_BOOK, 2026-09-25: median 1 s, longest 8.5 s), so no wall stands long
-  enough for a completed bar to judge it.
+  judged cross at each level, for the newest six levels, as the chart's numbered callouts. One
+  served item is both a callout and its queue entry. The window is the timeframe's
+  (`server.DESK_LOOKBACK`; 5m and 30m: this session). There are no proximity alerts (removed
+  2026-09-29).
+  No book-based event (absorption, liquidity pull, replenishment) is produced. Schwab's
+  NYSE_BOOK and NASDAQ_BOOK list the 15 best venue top quotes per side (one entry per venue),
+  about once a second; LEVELONE's last trade is conflated about once a second and no Schwab
+  service sends a trade's side. What each label needs and does not receive: absorption, trades
+  executed at a price while its displayed size holds (per-trade prints at price: TIMESALE, not
+  available pre-market 2026-09-29, market hours not yet asked); liquidity pull, displayed size
+  removed without trading (which trades hit which venue at which price); replenishment, size
+  restored at a price after trades took it (the same). A venue's size falling or returning at an
+  unchanged price is observed; which of those are events is the operator's decision (open).
 - **Market session.** From the market calendar → pushed on `/api/changes` when the page connects
   and every 5 s with no other change. One calendar (`time_et`: holidays, 13:00 early closes,
   `session_label`, `session_close_mins_for_et_date`) decides every session window: the order-flow

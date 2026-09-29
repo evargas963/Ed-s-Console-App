@@ -279,9 +279,8 @@
     // served kind; the queue lists every event, and a marker and its entry are one served item
     var word = { confirmed: 'Confirmed', rejected: 'Rejected' };
     S.chart.setMarkers(queueItems().filter(function (q) { return q.marker; }).map(function (q) {
-      return { id: q.key, time: q.ts, price: q.price, text: q.n + ' ' + (word[q.kind] || ''),
-        color: q.kind === 'rejected' ? P.warn : q.dir === 'up' ? P.up : P.down,
-        position: 'atPriceMiddle', shape: 'circle', meta: q.key };
+      return { id: q.key, time: q.ts, price: q.price, num: q.n, text: word[q.kind] || '',
+        color: q.kind === 'rejected' ? P.warn : q.dir === 'up' ? P.up : P.down, meta: q.key };
     }), function (key) { selectItem(key, false); });
   }
 

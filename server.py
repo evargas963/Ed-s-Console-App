@@ -3356,7 +3356,7 @@ def get_terrain(ticker: str = Query(...)):
 
 #: The Trade Desk's lookback per chart timeframe: seconds, or "session" (the latest regular
 #: session), with the words the page shows for it.
-DESK_LOOKBACK = {"1": (900, "last 15 min"), "3": (1800, "last 30 min"), "5": (3600, "last 1 h"),
+DESK_LOOKBACK = {"1": (900, "last 15 min"), "3": (1800, "last 30 min"), "5": ("session", "this session"),
                  "15": (14400, "last 4 h"), "30": ("session", "this session"),
                  "60": (172800, "last 2 days"), "D": (1728000, "last 20 days")}
 

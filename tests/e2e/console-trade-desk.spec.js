@@ -159,6 +159,14 @@ test.describe('Trade Desk renders served values', () => {
     await page.locator('#tdmQueue [data-q="' + key + '"]').click();
     await expect(page.locator('#tdmQueue [data-q="' + key + '"]')).toHaveClass(/sel/);
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected)).toBe(key);
+    // and the other way: a click on a callout's number on the chart selects its queue entry
+    const other = EVENTS.items[2].key;
+    const c = ((await page.evaluate(() => window.EdTradeDeskMap.state().chart.callouts)) || []).filter((x) => x.id === other)[0];
+    expect(c).toBeTruthy();
+    const box = await page.locator('#tdmChart .tvc-plot').boundingBox();
+    await page.mouse.click(box.x + c.x, box.y + c.y);
+    await expect(page.locator('#tdmQueue [data-q="' + other + '"]')).toHaveClass(/sel/);
+    expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected)).toBe(other);
     expect(errs).toEqual([]);
   });
 
