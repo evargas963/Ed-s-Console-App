@@ -780,8 +780,11 @@ def _write_streamed_bar(msg: dict) -> bool:
         # not a number (AGENTS.md rule 2): absent, -999, text, NaN or infinity
         log.warning("streamed bar for %s lacks a valid field, not written: %s", msg.get("symbol"), msg)
         return False
-    get_db().upsert_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo,
-                                                   close=c, volume=schwab_count(msg.get("volume")))])
+    if get_db().upsert_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo,
+                                                      close=c, volume=schwab_count(msg.get("volume")))]):
+        # the price levels are built from the bars: rebuilt now, off this writer's thread
+        _get_route_offload_executor().submit(_publish_price_levels, msg["symbol"]).add_done_callback(
+            lambda f: f.exception() and log.warning("price levels for %s not built: %s", msg["symbol"], f.exception()))
     push_changes.changed(msg["symbol"], push_changes.LIQUIDITY)
     return True
 
@@ -2374,8 +2377,11 @@ def _status_line() -> str:
 
 
 def _terrain_loop() -> None:
-    # the stored levels load here, on this thread: the console serves the page meanwhile, and
-    # each ticker's levels appear as they are priced (it took about a minute before serving)
+    # the price levels first (seconds), then the stored option levels, on this thread: the console
+    # serves the page meanwhile, and each ticker's levels appear as they are priced
+    with _logger_lock:
+        board_now = list(_logger_tickers)
+    _publish_missing_price_levels(board_now)
     loaded = _load_stored_levels()
     with _logger_lock:
         board = len(_logger_tickers)
@@ -2410,6 +2416,7 @@ def _terrain_loop() -> None:
         # the pre-enrolled board.
         _viewed_now = _viewed_tickers()
         _previewed = [tk for tk in _viewed_now if tk not in tickers]
+        _publish_missing_price_levels(tickers + _previewed)     # a new session date, a new ticker
         # Every board ticker's spot is the streamed LAST_PRICE only, so the daemon must
         # stream each one (its fixed roster is just --symbols).
         try:
@@ -3463,7 +3470,8 @@ async def get_changes(ticker: str = Query(...)):
     from app.options.order_flow.streaming import set_streaming_active_ticker
 
     t = ticker_storage_key(_required_ticker(ticker))
-    _get_route_offload_executor().submit(lambda: (set_streaming_active_ticker(t), _ensure_default_option_contract(t)))
+    _get_route_offload_executor().submit(lambda: (set_streaming_active_ticker(t), _ensure_default_option_contract(t),
+                                                  _publish_missing_price_levels([t])))
     client = push_changes.subscribe(t)
 
     async def event_generator():
@@ -3976,38 +3984,47 @@ def _canonical_price_level_bars(tk: str, session_date) -> tuple[list, str, list]
     return bars_norm, "price_bars_1m", degraded
 
 
-def canonical_price_level_snapshot(ticker: str):
-    """THE Phase 2A entry point for every server surface.
-
-    Materializes once per generation and returns the SAME object for the rest of that
-    generation. No endpoint may call the engine's level helpers directly — the static
-    guard `check_phase2a_single_level_computation` fails the build if one does, alias
-    or not. The generation's input is the ticker's bars: while the bar writer
-    (EdDB.upsert_1m_bars) has written none since the snapshot was built, the snapshot is
-    returned as produced -- no bar read, no re-fingerprint per request.
-    """
-    from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, PlaybookConfig, materialize_price_level_snapshot
+def _publish_price_levels(ticker: str) -> None:
+    """THE producer of a ticker's price-level snapshot (Phase 2A): materialized from its bars
+    for today's session when its input changes -- the bar writer after each bar it writes, and
+    the levels loop for a ticker with none yet today (a restart, a new session date, a newly
+    viewed ticker). The routes read what it published (canonical_price_level_snapshot)."""
+    from liquidity_value_engine import PlaybookConfig, materialize_price_level_snapshot
     from time_et import now_et
 
     tk = ticker_storage_key(_required_ticker(ticker))
     session_date = now_et().date()
-    db = get_db()
-    key = (tk, session_date.isoformat())
-    written = (db.db_path, db.bars_written.get(tk, 0))
-    snap = _MATERIALIZED_SNAPSHOTS.get(key)
-    if snap is not None and _level_snapshot_input.get(key) == written:
-        return snap
     bars_norm, bar_source, degraded = _canonical_price_level_bars(tk, session_date)
-    snap = materialize_price_level_snapshot(
-        tk, session_date, bars_norm, bar_source=bar_source,
-        config=PlaybookConfig(), degraded=degraded,
-    )
-    _level_snapshot_input[key] = written
-    return snap
+    materialize_price_level_snapshot(tk, session_date, bars_norm, bar_source=bar_source,
+                                     config=PlaybookConfig(), degraded=degraded)
+    push_changes.changed(tk, push_changes.LEVELS)
 
 
-#: (ticker, session date) -> (database, the writer's bar-write count) the snapshot was built from
-_level_snapshot_input: "dict[tuple[str, str], tuple]" = {}
+def _publish_missing_price_levels(tickers) -> None:
+    """Build the price levels of each ticker with none published for today: at the console's
+    start, on a new session date and when a page opens a ticker (the bar writer keeps them
+    current after that). A failed build is logged; the route says the levels are absent."""
+    for tk in tickers:
+        if canonical_price_level_snapshot(tk) is None:
+            try:
+                _publish_price_levels(tk)
+            except Exception as e:  # noqa: BLE001 -- logged; the next bar or cycle builds them
+                log.warning("price levels for %s not built: %s", tk, e)
+
+
+def canonical_price_level_snapshot(ticker: str):
+    """The ticker's price-level snapshot for today as its producer published it
+    (_publish_price_levels), or None when none is published yet. Every server surface reads
+    this; none computes a level."""
+    from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
+    from time_et import now_et
+
+    return _MATERIALIZED_SNAPSHOTS.get((ticker_storage_key(_required_ticker(ticker)), now_et().date().isoformat()))
+
+
+#: why a route serves no price levels for a ticker
+NO_PRICE_LEVELS_REASON = ("no price levels published for this ticker today yet (they are built from its "
+                          "1-minute bars when a bar is written and when the ticker is first viewed)")
 
 
 
@@ -4038,10 +4055,11 @@ def get_levels(ticker: str = Query(...),
     # Register this surface against the runtime carrier contract: if any other carrier
     # already shipped a different value/generation/provenance for this generation, the
     # disagreement raises here instead of reaching two screens (RC-262 pattern).
-    carry_snapshot_levels(snap, "api.levels")
+    if snap is not None:
+        carry_snapshot_levels(snap, "api.levels")
 
     levels: list[dict] = []
-    for lid, value in snap.levels.items():
+    for lid, value in (snap.levels.items() if snap is not None else ()):
         row = value.to_contract_dict()
         as_of = value.as_of_ts_utc
         row["staleness"] = {
@@ -4089,7 +4107,9 @@ def get_levels(ticker: str = Query(...),
     by_distance = [] if ref is None else [r["id"] for r in sorted((r for r in levels if r.get("price") is not None),
                                                                   key=lambda r: abs(r["price"] - ref))]
 
-    families_absent = list(snap.families_absent)
+    families_absent = (list(snap.families_absent) if snap is not None
+                       else [{"family": "price_levels", "reason": NO_PRICE_LEVELS_REASON}])
+    vp = snap.volume_profile if snap is not None else None
     if em is None or spot is None:
         families_absent.append({"family": "expected_move", "reason": "no live price" if spot is None
                                 else "the terrain has no implied 1-day move"})
@@ -4101,9 +4121,9 @@ def get_levels(ticker: str = Query(...),
         "spot": spot,
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
-        "generation": snap.generation,
-        "snapshot_as_of_ts_utc": snap.as_of_ts_utc,
-        "bar_source": snap.bar_source,
+        "generation": snap.generation if snap is not None else None,
+        "snapshot_as_of_ts_utc": snap.as_of_ts_utc if snap is not None else None,
+        "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,
         "by_distance_ref": None if ref is None else
@@ -4113,20 +4133,19 @@ def get_levels(ticker: str = Query(...),
         # used to accumulate their own from /api/bars1m — two more VWAPs for one
         # session, drawn beside a level neither of them agreed with.
         # [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
-        "vwap_series": aggregate_vwap(snap.vwap_series, tf),   # one point per chart bar of `tf`
+        "vwap_series": aggregate_vwap(snap.vwap_series, tf) if snap is not None else [],   # one point per chart bar of `tf`
         # the session's volume profile the value area is read from (absent: families_absent
         # names the value_area reason)
-        "volume_profile": None if snap.volume_profile is None else {
+        "volume_profile": None if vp is None else {
             "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its "
                      "range (not trades observed at a price)",
-            "bars": snap.volume_profile.bars, "bars_without_volume": snap.volume_profile.bars_without_volume,
-            "tick_size": snap.volume_profile.tick_size,
+            "bars": vp.bars, "bars_without_volume": vp.bars_without_volume, "tick_size": vp.tick_size,
             # [price, volume, inside the value area]
-            "bins": [[p, v, snap.volume_profile.val <= p <= snap.volume_profile.vah] for p, v in snap.volume_profile.bins],
-            "poc": snap.volume_profile.poc, "vah": snap.volume_profile.vah, "val": snap.volume_profile.val},
+            "bins": [[p, v, vp.val <= p <= vp.vah] for p, v in vp.bins],
+            "poc": vp.poc, "vah": vp.vah, "val": vp.val},
         "tf": tf,
         "families_absent": families_absent,
-        "degraded": list(snap.degraded),
+        "degraded": list(snap.degraded) if snap is not None else [],
     })
 
 
@@ -4264,6 +4283,8 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
         if spot_for_zones is not None:
             extra = list(extra) + [(spot_for_zones, "SPOT_LIVE")]
         _canon = canonical_price_level_snapshot(ticker_upper)
+        if _canon is None:
+            return {"ticker": ticker_upper, "zones": [], "reason": NO_PRICE_LEVELS_REASON}
         carry_snapshot_levels(_canon, "api.liquidity_snapshot")
         out = build_live_snapshot(ticker_upper, config, canonical=_canon, now=now_et(),
                                   extra_levels=extra)

@@ -34,6 +34,7 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     import time_et as te
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 3, 10, 0, tzinfo=ET))
 
+    srv._publish_price_levels("SPY")                  # as the bar writer does
     resp = srv.get_levels(ticker="SPY")
     payload = json.loads(bytes(resp.body))
 
@@ -131,9 +132,9 @@ def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monke
 
     class _Db:
         db_path = str(dbf)
-        bars_written: dict = {}
     monkeypatch.setattr(srv, "get_db", lambda: _Db())
 
+    srv._publish_price_levels("SPY")                  # as the bar writer does
     payload = json.loads(bytes(srv.get_levels(ticker="SPY").body))
     by_id = {lv["id"]: lv for lv in payload["levels"]}
     assert by_id["PDL"]["price"] == 749.59, "PDL is not the full prior session's min"
@@ -144,50 +145,64 @@ def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monke
     )
 
 
-def test_levels_are_served_as_produced_until_the_bar_writer_writes_a_bar(monkeypatch, tmp_path):
-    """2026-09-29 RTH: every /api/levels request re-read 2,500 bars and re-fingerprinted them
-    (1-3 s each inside the live console; a timeframe switch took 6.8 s). The price-level snapshot
-    is rebuilt only when the bar writer (EdDB.upsert_1m_bars) has written the ticker's bars since
-    it was built; otherwise it is served as produced. Real Schwab SPY bars, 2026-09-24/25."""
+def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monkeypatch, tmp_path):
+    """2026-09-29 RTH: the first /api/levels after each bar write built the price levels inside
+    the request (3.4 s for XLE in the live console). The bar writer now publishes them when it
+    writes the bar, a new session date is built by the levels loop, and the route reads what was
+    published -- it reads no bar. Real Schwab SPY bars, 2026-09-24/25."""
     import json
+    import time
     from datetime import datetime as _dt
     from pathlib import Path
 
     import server as srv
     import time_et as te
     from db import EdDB
+    from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
     from micro_structure import Candle
     from time_et import ET
 
     fx = Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json"
     now = _dt(2026, 9, 25, 15, 0, tzinfo=ET)
-    bars = [Candle(ts=b["timestamp"] / 1000.0, open=b["open"], high=b["high"], low=b["low"], close=b["close"],
-                   volume=b["volume"]) for b in json.loads(fx.read_text(encoding="utf-8"))["bars"]
-            if b["timestamp"] / 1000.0 < now.timestamp() - 120]
+    raw = [b for b in json.loads(fx.read_text(encoding="utf-8"))["bars"] if b["timestamp"] / 1000.0 < now.timestamp() - 120]
     db = EdDB(tmp_path / "bars.db", allow_noncanonical=True)
     monkeypatch.setattr(srv, "get_db", lambda: db)
     monkeypatch.setattr(te, "now_et", lambda: now)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (None, "none", None))
-    assert db.upsert_1m_bars("SPY", bars[:-1]) == len(bars) - 1
+    monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {})
+    monkeypatch.delitem(_MATERIALIZED_SNAPSHOTS, ("SPY", "2026-09-25"), raising=False)
+    db.upsert_1m_bars("SPY", [Candle(ts=b["timestamp"] / 1000.0, open=b["open"], high=b["high"], low=b["low"],
+                                     close=b["close"], volume=b["volume"]) for b in raw[:-1]])
     reads = []
     real_read = srv._read_bars_1m
     monkeypatch.setattr(srv, "_read_bars_1m", lambda tk, limit: reads.append(tk) or real_read(tk, limit))
 
-    first = json.loads(srv.get_levels(ticker="SPY").body)
+    # nothing published yet: the levels are absent with their reason, and the route read no bar
+    none_yet = json.loads(srv.get_levels(ticker="SPY").body)
+    assert none_yet["generation"] is None and not reads
+    assert {"family": "price_levels", "reason": srv.NO_PRICE_LEVELS_REASON} in none_yet["families_absent"]
+
+    # the bar writer writes the next bar and publishes the levels from it
+    last = raw[-1]
+    assert srv._write_streamed_bar({"symbol": "SPY", "bar_start_ms": last["timestamp"], "open": last["open"],
+                                    "high": last["high"], "low": last["low"], "close": last["close"],
+                                    "volume": last["volume"]})
+    deadline = time.time() + 20
+    while srv.canonical_price_level_snapshot("SPY") is None and time.time() < deadline:
+        time.sleep(0.05)
+    built = len(reads)
+    served = json.loads(srv.get_levels(ticker="SPY").body)
     again = json.loads(srv.get_levels(ticker="SPY", tf="15").body)
-    assert len(reads) == 1, "a request with no new bar re-read the bars"
-    assert again["generation"] == first["generation"]
+    assert built >= 1 and len(reads) == built, "the route read bars"
+    assert served["generation"] == again["generation"] is not None
+    assert served["snapshot_as_of_ts_utc"] == last["timestamp"] / 1000.0
 
-    assert db.upsert_1m_bars("SPY", bars[-1:]) == 1        # the bar writer writes the next bar
-    after = json.loads(srv.get_levels(ticker="SPY").body)
-    assert len(reads) == 2 and after["generation"] == first["generation"] + 1
-    assert after["snapshot_as_of_ts_utc"] > first["snapshot_as_of_ts_utc"]
-
-    # a new session date is a new snapshot with no bar written: 09-25's bars are its prior day
+    # a new session date: the levels loop builds that date's levels (09-25's bars are its prior day)
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 26, 9, 0, tzinfo=ET))
+    srv._publish_missing_price_levels(["SPY"])
     nextday = json.loads(srv.get_levels(ticker="SPY").body)
-    assert len(reads) == 3
     pdh = {lv["id"]: lv["price"] for lv in nextday["levels"]}["PDH"]
-    assert pdh == max(b.high for b in bars if _dt.fromtimestamp(b.ts, ET).date().isoformat() == "2026-09-25"
-                      and 570 <= _dt.fromtimestamp(b.ts, ET).hour * 60 + _dt.fromtimestamp(b.ts, ET).minute < 960)
+    assert pdh == max(b["high"] for b in raw if _dt.fromtimestamp(b["timestamp"] / 1000.0, ET).date().isoformat() == "2026-09-25"
+                      and 570 <= _dt.fromtimestamp(b["timestamp"] / 1000.0, ET).hour * 60
+                      + _dt.fromtimestamp(b["timestamp"] / 1000.0, ET).minute < 960)
 

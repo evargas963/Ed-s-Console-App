@@ -163,6 +163,7 @@ def test_levels_are_served_in_ladder_order_with_distance(monkeypatch):
     monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
+    server._publish_price_levels("SPY")                          # as the bar writer does
     body = json.loads(server.get_levels(ticker="SPY").body)
     lv = body["levels"]
     priced = [r for r in lv if r["price"] is not None]
@@ -186,6 +187,7 @@ def test_the_volume_profile_the_value_area_is_read_from_is_served(monkeypatch):
     monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (fx["bars"][-1]["close"], "live_quote", time.time()))
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
+    server._publish_price_levels("SPY")                          # as the bar writer does
     body = json.loads(server.get_levels(ticker="SPY").body)
     vp = body["volume_profile"]
     by_id = {r["id"]: r["price"] for r in body["levels"]}
@@ -296,6 +298,7 @@ def test_on_a_closed_market_the_levels_are_ordered_from_the_last_trade(monkeypat
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
                                      received_ts=time.time())
     monkeypatch.setitem(streaming._price_rows, "SPY", live_price_rows.price_row("SPY"))
+    server._publish_price_levels("SPY")                          # as the bar writer does
     body = json.loads(server.get_levels(ticker="SPY").body)
     priced = [r for r in body["levels"] if r["price"] is not None]
     assert len(priced) > 5 and body["spot"] is None
