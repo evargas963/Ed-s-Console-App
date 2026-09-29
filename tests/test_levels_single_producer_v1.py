@@ -131,6 +131,7 @@ def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monke
 
     class _Db:
         db_path = str(dbf)
+        bars_written: dict = {}
     monkeypatch.setattr(srv, "get_db", lambda: _Db())
 
     payload = json.loads(bytes(srv.get_levels(ticker="SPY").body))
@@ -141,4 +142,43 @@ def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monke
     assert "price_bars_1m" in by_id["PDL"]["provenance"]["vendor_basis"], (
         "provenance must name the one bar source"
     )
+
+
+def test_levels_are_served_as_produced_until_the_bar_writer_writes_a_bar(monkeypatch, tmp_path):
+    """2026-09-29 RTH: every /api/levels request re-read 2,500 bars and re-fingerprinted them
+    (1-3 s each inside the live console; a timeframe switch took 6.8 s). The price-level snapshot
+    is rebuilt only when the bar writer (EdDB.upsert_1m_bars) has written the ticker's bars since
+    it was built; otherwise it is served as produced. Real Schwab SPY bars, 2026-09-24/25."""
+    import json
+    from datetime import datetime as _dt
+    from pathlib import Path
+
+    import server as srv
+    import time_et as te
+    from db import EdDB
+    from micro_structure import Candle
+    from time_et import ET
+
+    fx = Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json"
+    now = _dt(2026, 9, 25, 15, 0, tzinfo=ET)
+    bars = [Candle(ts=b["timestamp"] / 1000.0, open=b["open"], high=b["high"], low=b["low"], close=b["close"],
+                   volume=b["volume"]) for b in json.loads(fx.read_text(encoding="utf-8"))["bars"]
+            if b["timestamp"] / 1000.0 < now.timestamp() - 120]
+    db = EdDB(tmp_path / "bars.db", allow_noncanonical=True)
+    monkeypatch.setattr(srv, "get_db", lambda: db)
+    monkeypatch.setattr(te, "now_et", lambda: now)
+    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (None, "none", None))
+    assert db.upsert_1m_bars("SPY", bars[:-1]) == len(bars) - 1
+    reads = []
+    real_read = srv._read_bars_1m
+    monkeypatch.setattr(srv, "_read_bars_1m", lambda tk, limit: reads.append(tk) or real_read(tk, limit))
+
+    first = json.loads(srv.get_levels(ticker="SPY").body)
+    again = json.loads(srv.get_levels(ticker="SPY", tf="15").body)
+    assert len(reads) == 1, "a request with no new bar re-read the bars"
+    assert again["generation"] == first["generation"]
+
+    assert db.upsert_1m_bars("SPY", bars[-1:]) == 1        # the bar writer writes the next bar
+    after = json.loads(srv.get_levels(ticker="SPY").body)
+    assert len(reads) == 2 and after["generation"] == first["generation"] + 1
 

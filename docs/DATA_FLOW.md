@@ -94,7 +94,12 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
   generation from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
   → `/api/levels`, and the liquidity zones of `/api/liquidity-snapshot` are built from that same
-  snapshot (today only; no checkpoint or past-date path). `/api/levels` also serves the order the
+  snapshot (today only; no checkpoint or past-date path). A generation is the bars the bar
+  writer has written: the snapshot is rebuilt when `EdDB.upsert_1m_bars` has written the
+  ticker's bars since it was built (or a new session date begins), and every other request
+  serves it as produced -- no bar read, no re-fingerprint (each request re-reading 2,500 bars
+  took 1-3 s in the live console, 2026-09-29). Owner: the bar writer; when it stops, the
+  snapshot stays the one produced from the last bar written, with its `snapshot_as_of_ts_utc`. `/api/levels` also serves the order the
   chart draws them in (`by_distance`): nearest the live price, or on a closed market nearest the
   last streamed trade, named in `by_distance_ref`; distance, near-spot and side stay live-only.
   It serves the session's volume profile the value area is read from (`volume_profile`: each
@@ -163,7 +168,12 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the stream
   handler (equity quote and book) and the bar writer mark a ticker's kind changed; each page
   connection gets at most one push a second. The console down: the page's session label reads
-  `—` and no panel reloads until the browser's EventSource reconnects.
+  `—` and no panel reloads until the browser's EventSource reconnects. A page asks for a value
+  once per load and once per change: a Trade Desk load asks each route once; a timeframe switch
+  asks only for that timeframe's bars, levels and event window; a symbol's terrain, zones,
+  strikes and forces are asked when the symbol changes or its push arrives. While a new symbol
+  or timeframe loads, the chart and queue are cleared and say what is loading -- the old view is
+  never shown under the new selection (`tests/e2e/console-trade-desk.spec.js`).
 
 ### 3.5 Where today breaks the design
 
@@ -172,7 +182,10 @@ Schwab sends is taken as sent (rule 2), never computed.
    computation is a row in `ACTIVE_PROGRAM.md` (ONE-*), with its behavior test when fixed.
 2. **Two writers and two databases** (the daemon's and the console's).
 3. **The console talks to Schwab** (REST chains) — the daemon should own every Schwab call.
-4. **The console computes the levels** in the same process that serves the page.
+4. **The console computes the levels** in the same process that serves the page: a request
+   waits behind that work (2026-09-29 RTH: `/api/bars1m` for 6,000 SPY rows took 0.26-5.8 s
+   while the same SQL took 29-95 ms from another process), so every request-time computation
+   costs the operator seconds. None is allowed on a page's path.
 5. **The browser reads a route after each push** for bars, order flow, liquidity and the levels,
    instead of receiving the values; bars are not yet on the daemon's push.
 6. **No standalone page remains**, and the console's page scripts compute none (the 64 sites

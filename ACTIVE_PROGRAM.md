@@ -32,7 +32,7 @@ spot (Key Levels = header, #372).
 | ONE-03 | QUEUED | Feed liveness judged in both processes: the daemon applies its own heartbeat to its price rows (`live_ui.beat`), and the console applies the pushed copy again (`feed_live_for`); one rule since ONE-15, two places it runs. |
 | ONE-04 | QUEUED | Equity books: the console's order-flow copy and the database copy read by the Book Heatmap (`history.book_heatmap_for_ticker`, a live screen reading the DB). |
 | ONE-05 | QUEUED | Option quotes: the options tape reads the database copy (`history.tape_rows_for_symbol`, a live screen reading the DB) beside the order-flow copy. (The merge-by-time of streamed fields into the chain, which flipped the heatmap to stale, is fixed: the stream owns a live contract's fields.) The MU heatmap route took 10-21 s under load (3.7 MB). |
-| ONE-06 | QUEUED | 1-minute bars in two databases, and live charts and levels reading `price_bars_1m` (with P2-DB4). |
+| ONE-06 | QUEUED | 1-minute bars in two databases (with P2-DB4). The price levels no longer read `price_bars_1m` per request (served as produced until the bar writer writes; 2026-09-29). A chart's bar history (`/api/bars1m`) and the event window's closes (`/api/desk/events`) still read it per request: the history read is needed (SQL 29-95 ms for 6,000 SPY rows), and the seconds it cost in RTH came from waiting behind the console's other work (DATA_FLOW §3.5.4). |
 | ONE-07 | QUEUED | Option chains fetched by two processes with two writers to `ed_console.db` (with P2-1). |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
 

@@ -43,6 +43,10 @@ Read the parts a change touches before writing it.
   refreshes, retries and expires it) and what fails when that owner fails, in the affected
   section of `docs/DATA_FLOW.md` and in the code, never in a register.
 - Page code: no arithmetic, sum, min/max, sort by value or date math on served data.
+- A page action asks once for what it changes: a load asks each route once, a timeframe or
+  symbol change asks only for what depends on it, and the old view is cleared, never left under
+  the new selection. A route on a page's path computes nothing at request time; it serves what
+  its producer already produced.
 - A new check is a test of behavior, for a failure that happened; it fails on the old code; it
   starts with no exceptions. No new tool, register or gate.
 - Time is an input: a function that depends on the clock takes `now`; only an entry point (a
@@ -60,6 +64,10 @@ Read the parts a change touches before writing it.
   (Playwright, then pytest) and `python -m ruff check . --select F401,F821,E9` on its final
   commit; after any later change to it (a fix, a merge, a conflict resolution) the affected tests
   run again, and CI tests that commit. Market hours: push; CI runs them.
+- A page change is proven in the operator's own browser: for load, symbol change, timeframe
+  change and a live tick, the requests made, the time from the action to the data on screen and
+  the data's age. The agent's own browser (its storage seeded, its requests mocked) proves only
+  that browser; a page's e2e test counts the requests each action makes.
 - Never kill a commit hook mid-run; a long one runs in the background.
 - Every factual claim cites same-turn output, or is marked `[UNVERIFIED]`.
 - Proof is reproducible: a committed test or a command anyone can re-run. A scratch script is

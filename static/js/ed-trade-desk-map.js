@@ -175,10 +175,22 @@
     });
     return S.chart;
   }
+  // A new timeframe asks only for what depends on it: its bars, its levels (VWAP per bar) and its
+  // event window. Until they arrive the chart and queue say what is loading, never the old view.
   function setTf(tf) {
     if (tf === S.tf) return;
     S.tf = tf; sset('ed.desk.tf', tf); paintTfButtons();
-    loadBars(true); loadSlow();   // levels (VWAP per bar) and events are per timeframe
+    S.bars = []; S.levels = S.events = undefined;   // answers for another timeframe are dropped (tf check)
+    clearChart(); paintQueue(); paintCards();
+    loadBars(true); loadPerTf();
+  }
+  function clearChart() {
+    if (!S.chart) return;
+    S.chart.setBars([], S.tf, shown(), null);
+    S.chart.setLevels([]); S.chart.setMarkers([]); S.chart.setVolumeProfile([]); S.chart.setVwap([]);
+    S.chart.setValueArea(null, null); S.chart.setWallBands(null, null);
+    $('tdmChartEmpty').hidden = false;
+    $('tdmChartEmpty').textContent = 'Loading ' + shown() + ' · ' + (TFS.filter(function (x) { return x.id === S.tf; })[0] || {}).lbl + '…';
   }
 
   // ------------------------------------------------------------------ data
@@ -189,7 +201,7 @@
       if (gen !== S.gen || tf !== S.tf || !S.chart) return;
       var bars = (d && d.bars) || [];
       if (full) {
-        S.bars = bars;
+        S.bars = bars; S.barsAnswered = gen;
         S.chart.setBars(bars, tf, shown(), d.last_bar && d.last_bar.label);
         $('tdmChartEmpty').hidden = bars.length > 0;
         $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
@@ -201,22 +213,34 @@
       }
     });
   }
-  function loadSlow() {
-    var tk = S.ticker, gen = S.gen, q = encodeURIComponent(tk);
+  function loadSlow() { return Promise.all([loadPerTf(), loadPerTicker()]); }
+  // the timeframe's levels (VWAP per chart bar) and event window
+  function loadPerTf() {
+    var gen = S.gen, tf = S.tf, q = encodeURIComponent(S.ticker);
     return Promise.all([
-      fetchJson('/api/levels?ticker=' + q + '&tf=' + encodeURIComponent(S.tf)),
+      fetchJson('/api/levels?ticker=' + q + '&tf=' + encodeURIComponent(tf)),
+      fetchJson('/api/desk/events?ticker=' + q + '&venue=' + st().bookVenue + '&tf=' + encodeURIComponent(tf))
+    ]).then(function (r) {
+      if (gen !== S.gen || tf !== S.tf) return;
+      S.levels = r[0]; S.events = r[1];
+      paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
+      openView();
+    });
+  }
+  // the symbol's option terrain, zones, strikes, forces and the Order Flow card's hour of bars
+  function loadPerTicker() {
+    var gen = S.gen, q = encodeURIComponent(S.ticker);
+    return Promise.all([
       fetchJson('/api/terrain?ticker=' + q),
-      fetchJson('/api/desk/events?ticker=' + q + '&venue=' + st().bookVenue + '&tf=' + encodeURIComponent(S.tf)),
       fetchJson('/api/liquidity-snapshot?ticker=' + q),
       fetchJson('/api/terrain/strikes?ticker=' + q),
       fetchJson('/api/forces?ticker=' + q),
       fetchJson('/api/bars1m?ticker=' + q + '&tf=1&limit=' + FLOW_BARS)
     ]).then(function (r) {
       if (gen !== S.gen) return;
-      S.levels = r[0]; S.terrain = r[1]; S.events = r[2]; S.liq = r[3]; S.strikes = r[4]; S.forces = r[5];
-      S.flowBars = r[6] ? r[6].bars || [] : null;
-      paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
-      openView();
+      S.terrain = r[0]; S.liq = r[1]; S.strikes = r[2]; S.forces = r[3];
+      S.flowBars = r[4] ? r[4].bars || [] : null;
+      paintChartOverlays(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
     });
   }
   // the chart opens on the served event window (5m/30m: the session), once per symbol and timeframe
@@ -300,6 +324,7 @@
     var host = $('tdmQueue'); if (!host) return;
     var items = queueItems(); S.queue = items;
     $('tdmQueueCount').textContent = items.length ? String(items.length) : '';
+    if (S.events === undefined) { host.innerHTML = '<div class="tdm-empty">Loading ' + esc(shown()) + ' events…</div>'; return; }
     if (!items.length) {
       host.innerHTML = '<div class="tdm-empty">Nothing in the ' + esc(windowLabel()) + '. Level crosses (confirmed or rejected by their minute\'s bar), wall breaches and book size walls land here.</div>';
       return;
@@ -553,9 +578,12 @@
     if (tk !== S.ticker) {
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed
       S.levels = S.terrain = S.micro = S.events = S.liq = S.strikes = S.forces = S.flowBars = undefined; S.sel = null;
-      paintHeader(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
+      clearChart(); paintHeader(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
       loadBars(true); loadSlow(); loadFast();
-    } else if (!S.bars.length) { loadBars(true); loadSlow(); loadFast(); }
+    } else if (!S.bars.length && S.barsAnswered === S.gen) {
+      // back on the desk after an answer with no bars: ask again (never while the first ask is in flight)
+      loadBars(true); loadSlow(); loadFast();
+    }
   }
   function init() {
     if (!$('tdmMap')) return;

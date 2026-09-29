@@ -157,6 +157,9 @@ class EdDB:
 
     def __init__(self, db_path: Path = DB_PATH, *, allow_noncanonical: bool | None = None):
         self.db_path = Path(db_path).resolve()
+        #: per ticker, how many times upsert_1m_bars wrote its bars: the price-level snapshot is
+        #: rebuilt when this moves, and read as produced otherwise
+        self.bars_written: "dict[str, int]" = {}
         if not is_canonical_db_path(self.db_path) and not eddb_allow_noncanonical_path(
             allow_noncanonical
         ):
@@ -481,7 +484,10 @@ class EdDB:
                 )
             return len(rows)
 
-        return self._tier1_snapshot_write("upsert_1m_bars", tkr, _do)
+        n = self._tier1_snapshot_write("upsert_1m_bars", tkr, _do)
+        if n:
+            self.bars_written[tkr] = self.bars_written.get(tkr, 0) + 1
+        return n
 
 
     # ════════════════════════════════════════════════════════════════════════

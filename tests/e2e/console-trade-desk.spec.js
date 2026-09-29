@@ -89,6 +89,42 @@ test('every chart is the one TradingView-style chart, with its controls', async 
   expect(errs).toEqual([]);
 });
 
+// 2026-09-29 RTH, measured in the operator's browser: a fresh desk load asked for every value twice
+// (start() ran on ed:view and ed:ticker; the second saw no bars yet and loaded again), and a
+// timeframe switch re-asked for the terrain, zones, strikes, forces and flow bars, none of which
+// depend on the timeframe -- 6.8 s to redraw.
+test('a desk load asks for each value once; a timeframe switch asks only for that timeframe and says it is loading', async ({ page }) => {
+  const errs = watchErrors(page);
+  await intercept(page);
+  const asked = [];
+  page.on('request', (r) => { const u = r.url(); if (u.includes('/api/')) asked.push(u.split('/api/')[1]); });
+  let releaseBars;
+  const barsHeld = new Promise((r) => { releaseBars = r; });
+  await page.route(/\/api\/bars1m\?.*tf=15/, async (route) => { await barsHeld;
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, BARS, { tf: '15' })) }); });
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '5'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars)).toBeGreaterThan(0);
+  await page.waitForTimeout(500);
+  const count = (re) => asked.filter((u) => re.test(u)).length;
+  for (const re of [/^levels\?/, /^desk\/events\?/, /^terrain\?/, /^liquidity-snapshot\?/, /^terrain\/strikes\?/, /^forces\?/,
+    /^order-flow\/microstructure\?/, /^bars1m\?.*tf=5/, /^bars1m\?.*tf=1&/]) expect(count(re), String(re)).toBe(1);
+
+  asked.length = 0;
+  await page.locator('#tdmToolbar [data-tf="15"]').click();
+  // while the 15m bars are on their way the 5m view is gone and the chart says what is loading
+  await expect(page.locator('#tdmChartEmpty')).toHaveText(/Loading SPY · 15m/);
+  expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(0);
+  expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markers.length)).toBe(0);
+  releaseBars();
+  await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.tf)).toBe('15');
+  await page.waitForTimeout(500);
+  expect(asked.filter((u) => !/^(changes|streaming\/)/.test(u)).map((u) => u.split('?')[0]).sort())
+    .toEqual(['bars1m', 'desk/events', 'levels']);
+  expect(errs).toEqual([]);
+});
+
 test('the liquidity map fits its price scale to the candles; a far zone does not flatten them', async ({ page }) => {
   // 2026-09-29 RTH: SPY's served zones at 750 and 800 joined the auto-fit, the scale ran 735-805
   // and the candles (765) were a flat line

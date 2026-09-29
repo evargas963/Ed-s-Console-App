@@ -4013,18 +4013,32 @@ def canonical_price_level_snapshot(ticker: str):
     Materializes once per generation and returns the SAME object for the rest of that
     generation. No endpoint may call the engine's level helpers directly — the static
     guard `check_phase2a_single_level_computation` fails the build if one does, alias
-    or not.
+    or not. The generation's input is the ticker's bars: while the bar writer
+    (EdDB.upsert_1m_bars) has written none since the snapshot was built, the snapshot is
+    returned as produced -- no bar read, no re-fingerprint per request.
     """
-    from liquidity_value_engine import PlaybookConfig, materialize_price_level_snapshot
+    from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS, PlaybookConfig, materialize_price_level_snapshot
     from time_et import now_et
 
     tk = ticker_storage_key(_required_ticker(ticker))
     session_date = now_et().date()
+    db = get_db()
+    key = (tk, session_date.isoformat())
+    written = (db.db_path, db.bars_written.get(tk, 0))
+    snap = _MATERIALIZED_SNAPSHOTS.get(key)
+    if snap is not None and _level_snapshot_input.get(key) == written:
+        return snap
     bars_norm, bar_source, degraded = _canonical_price_level_bars(tk, session_date)
-    return materialize_price_level_snapshot(
+    snap = materialize_price_level_snapshot(
         tk, session_date, bars_norm, bar_source=bar_source,
         config=PlaybookConfig(), degraded=degraded,
     )
+    _level_snapshot_input[key] = written
+    return snap
+
+
+#: (ticker, session date) -> (database, the writer's bar-write count) the snapshot was built from
+_level_snapshot_input: "dict[tuple[str, str], tuple]" = {}
 
 
 
