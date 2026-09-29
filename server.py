@@ -738,9 +738,8 @@ from calibration.complete_chain_capture import (
 )
 
 
-#: one bar as text: each stored double to 17 significant digits (exact), '-' for a NULL
-_BAR_TEXT = " || ' ' || ".join(f"iif({f} IS NULL, '-', printf('%!.17g', {f}))"
-                               for f in ("bar_start_ts_utc", "open", "high", "low", "close", "volume"))
+#: one bar as SQLite writes values in SQL (quote: every stored double exactly, NULL as NULL)
+_BAR_TEXT = " || ' ' || ".join(f"quote({f})" for f in ("bar_start_ts_utc", "open", "high", "low", "close", "volume"))
 
 
 def _read_bars_1m(tk: str, limit: int) -> list:
@@ -756,7 +755,7 @@ def _read_bars_1m(tk: str, limit: int) -> list:
             (ticker_storage_key(tk), int(limit))).fetchone()
     finally:
         con.close()
-    return [tuple(None if v == "-" else float(v) for v in row.split(" ")) for row in text.split(";")] if text else []
+    return [tuple(None if v == "NULL" else float(v) for v in row.split(" ")) for row in text.split(";")] if text else []
 
 
 def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> "list[Candle]":
@@ -3988,9 +3987,7 @@ def _publish_price_levels(ticker: str) -> None:
     except Exception as e:  # noqa: BLE001 -- logged; the ticker's next bar builds them
         log.warning("price levels for %s not built: %s", tk, e)
         return
-    # a published snapshot that changed is pushed (the same object when its bars did not change);
-    # a first build is not: a page that found none reloads on the ticker's next bar
-    if before is not None and snap is not before:
+    if snap is not before:   # the same object when its bars did not change
         push_changes.changed(tk, push_changes.LEVELS)
 
 
