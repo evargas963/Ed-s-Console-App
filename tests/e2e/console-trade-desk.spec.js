@@ -25,7 +25,9 @@ const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series
     { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', near_spot: false },
     { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', near_spot: false },
   ],
-  by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [] };
+  by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [],
+  volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
+    bins: [[769.99, 1200, false], [770.0, 5000, true], [770.01, 3000, true]], poc: 770.0, vah: 770.01, val: 770.0 } };
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
   spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2, side: 'BID' } },
   depth_pressure: { bid: [{ price: 771.29, volume: 300, cum: 300 }, { price: 771.28, volume: 900, cum: 1200 }], ask: [{ price: 771.31, volume: 200, cum: 200 }] },
@@ -109,8 +111,8 @@ test.describe('Trade Desk renders served values', () => {
     // max pain (770) is inside the one bar's price range; PDH (773.50) is above it, pinned at the edge
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBe(1);
     await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('PDH 773.50');
-    // the profile's place in the key says why it is not drawn
-    await expect(page.locator('#tdmFamilies')).toContainText('Volume profile (RTH): not drawn');
+    // the profile is drawn after the close too (the session's served profile) and names its basis
+    await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
     expect(errs).toEqual([]);
   });
 
@@ -128,6 +130,9 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmCardFlow')).toContainText('Level crosses (this session (served))');
     await expect(page.locator('#tdmLookback')).toHaveText('this session (served)');
     await expect(page.locator('#tdmAgree')).toContainText('Above flip');
+    // the served session volume profile, every bin drawn at the chart's left edge, with its basis
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileBins)).toBe(LEVELS.volume_profile.bins.length);
+    await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
     // each card draws its served series in the reference's chart type (2026-09-28): depth areas,
     // volume bars, and lines for put/call OI and ATM IV by expiry (a null expiry breaks the line)
     await expect(page.locator('#tdmCardLiq .tdm-plot svg path')).toHaveCount(4);

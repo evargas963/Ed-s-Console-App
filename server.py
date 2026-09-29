@@ -4123,6 +4123,14 @@ def get_levels(ticker: str = Query(...),
         # session, drawn beside a level neither of them agreed with.
         # [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
         "vwap_series": aggregate_vwap(snap.vwap_series, tf),   # one point per chart bar of `tf`
+        # the session's volume profile the value area is read from (absent: families_absent
+        # names the value_area reason)
+        "volume_profile": None if snap.volume_profile is None else {
+            "basis": "RTH 1-minute bars, each bar's volume spread evenly over its range (not trade prints)",
+            "tick_size": snap.volume_profile.tick_size,
+            # [price, volume, inside the value area]
+            "bins": [[p, v, snap.volume_profile.val <= p <= snap.volume_profile.vah] for p, v in snap.volume_profile.bins],
+            "poc": snap.volume_profile.poc, "vah": snap.volume_profile.vah, "val": snap.volume_profile.val},
         "tf": tf,
         "families_absent": families_absent,
         "degraded": list(snap.degraded),

@@ -83,12 +83,13 @@
     this.paneViews = function () { return [view]; };
     this.set = function (lo, hi, fill) { self._lo = lo; self._hi = hi; if (fill) self._fill = fill; if (self._req) self._req(); };
   }
-  // Values at prices on the price axis, drawn from the pane's right edge: signed bars (a GEX
-  // profile) or dots sized by magnitude. rows: [{price, value, color}]; the rows' prices join the
-  // auto-fit so every row is on screen. Scaling to the pane is drawing; the values are served.
-  function ProfilePrimitive() {
+  // Values at prices on the price axis, drawn from the pane's right edge (a GEX profile: signed
+  // bars, or dots sized by magnitude) or its left edge (the volume profile). rows: [{price,
+  // value, color}]; with `fit` the rows' prices join the auto-fit so every row is on screen.
+  // Scaling to the pane is drawing; the values are served.
+  function ProfilePrimitive(side, frac, fit) {
     var self = this;
-    this._series = null; this._req = null; this.rows = []; this.style = 'bars'; this.frac = 0.32; this.sel = null;
+    this._series = null; this._req = null; this.rows = []; this.style = 'bars'; this.frac = frac; this.sel = null;
     function maxAbs() { return self.rows.reduce(function (m, r) { return Math.max(m, Math.abs(r.value)); }, 0) || 1; }
     var renderer = { draw: function (target) {
       if (!self._series || !self.rows.length) return;
@@ -108,7 +109,7 @@
             var rad = (3 + Math.sqrt(f) * 16) * hr;
             c.beginPath(); c.arc(W - band / 2, y, rad, 0, 2 * Math.PI); c.globalAlpha = 0.55; c.fill();
           } else {
-            c.fillRect(W - f * band, y - th / 2, f * band, th);
+            c.fillRect(side === 'left' ? 0 : W - f * band, y - th / 2, f * band, th);
           }
           if (self.sel != null && r.price === self.sel) {
             c.globalAlpha = 1; c.strokeStyle = r.color; c.lineWidth = Math.max(1, hr);
@@ -124,7 +125,7 @@
     this.updateAllViews = function () {};
     this.paneViews = function () { return [view]; };
     this.autoscaleInfo = function () {
-      if (!self.rows.length) return null;
+      if (!fit || !self.rows.length) return null;
       var ps = self.rows.map(function (r) { return r.price; });
       return { priceRange: { minValue: Math.min.apply(null, ps), maxValue: Math.max.apply(null, ps) } };
     };
@@ -313,7 +314,10 @@
     var callBand = new BandPrimitive(); candles.attachPrimitive(callBand);
     var putBand = new BandPrimitive(); candles.attachPrimitive(putBand);
     var markers = LWC.createSeriesMarkers(candles, []);
-    var profile = new ProfilePrimitive(); candles.attachPrimitive(profile);
+    var profile = new ProfilePrimitive('right', 0.32, true); candles.attachPrimitive(profile);
+    // the session volume profile on the left edge, as the reference draws it (the candles set
+    // the price range; the profile does not widen it)
+    var vprofile = new ProfilePrimitive('left', 0.2, false); candles.attachPrimitive(vprofile);
     var zones = new ZonesPrimitive(); candles.attachPrimitive(zones);
     // the heatmap's buckets on the time axis (no values: whitespace points), carrying its cells
     var timeline = chart.addSeries(LWC.LineSeries, { color: 'rgba(0,0,0,0)', lastValueVisible: false, priceLineVisible: false,
@@ -524,9 +528,15 @@
       }
       edge('.tvc-edge-top', S.levels.filter(function (l) { return l.price > hi; }), '&#9650;');
       edge('.tvc-edge-bot', S.levels.filter(function (l) { return l.price < lo; }), '&#9660;');
+      // levels at one served price draw once, with one label naming them all (five labels
+      // stacked on 765.00 hid each other, 2026-09-28)
+      var at = {};
       pick.forEach(function (l) {
-        S.priceLines.push(candles.createPriceLine({ price: l.price, color: l.color || P.ink3, lineWidth: l.width || 1,
-          lineStyle: l.style == null ? 2 : l.style, axisLabelVisible: true, title: l.label || '' }));
+        var k = l.price.toFixed(2);
+        if (at[k]) { at[k].applyOptions({ title: at[k].options().title + ' · ' + (l.label || '') }); return; }
+        at[k] = candles.createPriceLine({ price: l.price, color: l.color || P.ink3, lineWidth: l.width || 1,
+          lineStyle: l.style == null ? 2 : l.style, axisLabelVisible: true, title: l.label || '' });
+        S.priceLines.push(at[k]);
       });
       if (opts.onLevelsShown) opts.onLevelsShown(pick);
     }
@@ -677,7 +687,7 @@
           autoScale: chart.priceScale('right').options().autoScale, levelsShown: S.priceLines.length,
           pinned: S.pinned, tool: S.tool, drawings: draw.lines.length + S.hlines.length,
           profile: { rows: profile.rows.length, style: profile.style, selected: profile.sel },
-          heatCells: heat.h ? heat.h.cells.length : 0, zones: zones.zones.length,
+          heatCells: heat.h ? heat.h.cells.length : 0, zones: zones.zones.length, volumeProfileBins: vprofile.rows.length,
           levels: S.priceLines.map(function (l) { return l.options().title; }) };
       },
       // where a price's profile row is drawn, in page coordinates (tests click it as a user would)
@@ -686,6 +696,7 @@
         return y == null ? null : { x: r.left + chart.timeScale().width() - 4, y: r.top + y };
       },
       setProfile: function (rows, style) { profile.set(rows, style); },
+      setVolumeProfile: function (rows) { vprofile.set(rows, 'bars'); },
       setZones: function (list) { zones.set(list); },
       // the book heatmap ({cells, since_ts, bucket_sec, n_buckets, max_size, display_lo, display_hi}
       // as served) or null: its buckets become the time axis
@@ -708,5 +719,5 @@
     return api;
   }
 
-  window.EdTvChart = { create: create, TF_SECONDS: TF_SECONDS };
+  window.EdTvChart = { create: create, TF_SECONDS: TF_SECONDS, alpha: alpha };
 })();

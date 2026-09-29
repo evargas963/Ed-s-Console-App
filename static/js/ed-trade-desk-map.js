@@ -26,6 +26,7 @@
   // the event window and its words are the server's (/api/desk/events window_label), for this timeframe
   function windowLabel() { return S.events && S.events.tf === S.tf ? S.events.window_label : '—'; }
   var FAMILIES = [
+    { id: 'volume_profile', lbl: 'Volume profile (RTH)' },
     { id: 'value_area', lbl: 'Value area' }, { id: 'vwap', lbl: 'VWAP' }, { id: 'gamma', lbl: 'Gamma' },
     { id: 'expected_move', lbl: '±1σ move' }, { id: 'prior_day', lbl: 'Prior day' }, { id: 'opening_range', lbl: 'Opening range' },
     { id: 'overnight', lbl: 'Overnight' }];
@@ -128,7 +129,7 @@
     var fam = $('tdmFamilies');
     fam.innerHTML = FAMILIES.map(function (f) {
       return '<button type="button" class="tdm-fam fam-' + f.id + '" data-fam="' + f.id + '"><i></i>' + f.lbl + '<b data-famv="' + f.id + '"></b></button>'; }).join('') +
-      '<span class="tdm-fam-note"><i class="tdm-prof"></i>Volume profile (RTH): not drawn — its price bins are not served</span>' +
+      '<span class="tdm-fam-note" id="tdmProfNote"></span>' +
       '<span class="tdm-fam-note" id="tdmLevelsRef"></span>';
     fam.addEventListener('click', function (e) {
       var b = e.target.closest('[data-fam]'); if (!b) return;
@@ -146,6 +147,10 @@
     // after the close the levels are ordered from the last trade, a past observation: say so
     var ref = S.levels && S.levels.by_distance_ref, el = $('tdmLevelsRef');
     if (el) el.textContent = ref && ref.source === 'last trade' ? 'Levels nearest the last trade ' + num(ref.price) + ' (' + ref.as_of + ')' : '';
+    // the profile's basis, or why there is none (the value area's served reason)
+    var vp = S.levels && S.levels.volume_profile, pn = $('tdmProfNote');
+    var why = ((S.levels && S.levels.families_absent) || []).filter(function (a) { return a.family === 'value_area'; })[0];
+    if (pn) pn.textContent = vp ? vp.basis : why ? 'Volume profile (RTH) not drawn: ' + why.reason : '';
   }
   function paintTfButtons() {
     document.querySelectorAll('#tdmToolbar [data-tf]').forEach(function (b) {
@@ -255,6 +260,11 @@
     // the band is yesterday's value area, as the reference draws it; today's are level lines
     var pd = pdValueArea(), on = S.fam.prior_day !== 0;
     S.chart.setValueArea(on ? pd.val : null, on ? pd.vah : null);
+    // the session volume profile on the left edge: value-area bins brighter (the served flag)
+    var vp = S.fam.volume_profile !== 0 && S.levels && S.levels.volume_profile;
+    var P = S.chart.palette(), alpha = window.EdTvChart.alpha;
+    S.chart.setVolumeProfile(vp ? vp.bins.map(function (b) {
+      return { price: b[0], value: b[1], color: b[2] ? alpha(P.accent, 0.55) : alpha(P.ink3, 0.28) }; }) : []);
     S.chart.setVwap(S.fam.vwap && S.levels ? S.levels.vwap_series : []);
     var T = S.fam.gamma !== 0 && S.terrain;
     S.chart.setWallBands(T ? T.call_wall_range : null, T ? T.put_wall_range : null);

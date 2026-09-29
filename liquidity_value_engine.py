@@ -27,7 +27,9 @@ from liquidity_models import (
     SnapshotSummary,
     SnapshotType,
     Zone,
+    VolumeProfile,
     ZoneType,
+    volume_profile,
     volume_profile_poc_vah_val,
 )
 
@@ -489,11 +491,11 @@ def compute_volume_profile_levels(
     session_date: date,
     config: PlaybookConfig,
     cutoff_dt: Optional[datetime] = None,
-) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """Current day POC, VAH, VAL. RTH only, no lookahead."""
+) -> Optional[VolumeProfile]:
+    """The current day's volume profile with its POC, VAH, VAL. RTH only, no lookahead."""
     bars_norm = _bars_to_list(bars)
     rth_bars = _filter_rth_bars(bars_norm, session_date, cutoff_dt)
-    return _volume_profile_poc_vah_val(rth_bars, config.value_area_percent, config.tick_size)
+    return volume_profile(rth_bars, config.value_area_percent, config.tick_size, ndigits=4)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1020,14 +1022,15 @@ class PriceLevelSnapshot:
     __slots__ = ("ticker", "session_date", "generation", "bar_source", "as_of_ts_utc",
                  "produced_ts_utc", "levels", "vwap_path", "vwap_series",
                  "families_absent", "degraded", "input_fingerprint", "bars_used",
-                 "session_rth_positive_volume_bars")
+                 "session_rth_positive_volume_bars", "volume_profile")
 
     def __init__(self, *, ticker: str, session_date: date, generation: int,
                  bar_source: str, as_of_ts_utc: Optional[float], produced_ts_utc: float,
                  levels: dict, vwap_path: list, families_absent: list,
                  degraded: list, input_fingerprint: tuple, bars_used: int,
                  vwap_series: Optional[list] = None,
-                 session_rth_positive_volume_bars: int = 0) -> None:
+                 session_rth_positive_volume_bars: int = 0,
+                 volume_profile: Optional[VolumeProfile] = None) -> None:
         self.ticker = ticker
         self.session_date = session_date
         self.generation = generation
@@ -1042,6 +1045,7 @@ class PriceLevelSnapshot:
         self.input_fingerprint = input_fingerprint
         self.bars_used = bars_used
         self.session_rth_positive_volume_bars = int(session_rth_positive_volume_bars)
+        self.volume_profile = volume_profile    # the session's profile the value area is read from
 
     def price(self, level_id: str) -> Optional[float]:
         """The canonical value, or None. Absence is absence — never spot, zero or a sibling."""
@@ -1200,8 +1204,9 @@ def build_price_level_snapshot(
                  window="prior RTH close -> session RTH open (RC-153)")
 
     # ── current-session value area ───────────────────────────────────────────
-    poc, vah, val = compute_volume_profile_levels(bars_norm, session_date, cfg)
-    if poc is None and vah is None and val is None:
+    profile = compute_volume_profile_levels(bars_norm, session_date, cfg)
+    poc, vah, val = (None, None, None) if profile is None else (profile.poc, profile.vah, profile.val)
+    if profile is None:
         families_absent.append({"family": "value_area", "reason": (
             "no RTH volume for the volume profile in available bars" if session_rth_vol_n == 0
             else "RTH volume bars present but the volume profile did not materialize")})
@@ -1219,6 +1224,7 @@ def build_price_level_snapshot(
         input_fingerprint=_snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source),
         bars_used=len(bars_norm),
         session_rth_positive_volume_bars=session_rth_vol_n,
+        volume_profile=profile,
     )
 
 

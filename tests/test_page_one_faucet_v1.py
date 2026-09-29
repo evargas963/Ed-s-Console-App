@@ -194,6 +194,32 @@ def test_levels_are_served_in_ladder_order_with_distance_and_near_spot(monkeypat
     assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - spot))]
 
 
+def test_the_volume_profile_the_value_area_is_read_from_is_served(monkeypatch):
+    """The Trade Desk reference draws the session's volume profile at the chart's left edge
+    (2026-09-28). The profile was built for the value area and dropped; /api/levels serves that
+    same profile: its POC/VAH/VAL are the served TODAY_ levels, its bins hold every RTH bar's
+    volume, and each bin says whether it is inside the value area. Real SPY 1-minute bars."""
+    from datetime import datetime as _dt
+    import time_et as te
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
+                    .read_text(encoding="utf-8"))
+    monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (fx["bars"][-1]["close"], "live_quote", time.time()))
+    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
+    body = json.loads(server.get_levels(ticker="SPY").body)
+    vp = body["volume_profile"]
+    by_id = {r["id"]: r["price"] for r in body["levels"]}
+    assert (vp["poc"], vp["vah"], vp["val"]) == (by_id["TODAY_POC"], by_id["TODAY_VAH"], by_id["TODAY_VAL"])
+    prices = [b[0] for b in vp["bins"]]
+    assert prices == sorted(prices) and len(prices) > 100
+    assert all(b[2] == (vp["val"] <= b[0] <= vp["vah"]) for b in vp["bins"])
+    at = [(_dt.fromtimestamp(b["timestamp"] / 1000, te.ET), b) for b in fx["bars"]]
+    rth = [b for d, b in at if d.date().isoformat() == "2026-09-25" and te.session_label(d) == "RTH"]
+    # every RTH bar's volume is in the profile; the 15:59 bar sent no volume and is left out
+    # uncounted (register M-02, open)
+    assert sum(b[1] for b in vp["bins"]) == pytest.approx(sum(b["volume"] for b in rth if b["volume"] is not None), rel=1e-9)
+
+
 def test_heatmap_column_state_cell_age_and_front_expiry_are_served(held, monkeypatch):
     """Column streaming status and a cell's age come from the server's own stream states; the
     front column is the nearest unexpired expiry."""

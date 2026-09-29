@@ -97,6 +97,9 @@ Schwab sends is taken as sent (rule 2), never computed.
   snapshot (today only; no checkpoint or past-date path). `/api/levels` also serves the order the
   chart draws them in (`by_distance`): nearest the live price, or on a closed market nearest the
   last streamed trade, named in `by_distance_ref`; distance, near-spot and side stay live-only.
+  It serves the session's volume profile the value area is read from (`volume_profile`: each
+  RTH 1-minute bar's volume spread evenly over its range, one bin per tick, each flagged inside
+  or outside the value area).
 - **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per board or
   viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule (#312).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
