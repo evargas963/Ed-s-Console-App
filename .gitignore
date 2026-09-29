@@ -23,8 +23,6 @@ logs/
 .runtime/
 reports/
 data/*
-!data/trading_calendar/
-!data/trading_calendar/us_equities.json
 backups/db/*
 !backups/db/.gitkeep
 calibration/trading_data.db

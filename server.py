@@ -1405,9 +1405,8 @@ def _log_flip_drift(tk: str, payload: dict) -> None:
         log.warning("flip drift log append failed: %s", e)
 
 
-#: How old the terrain snapshot may be before it must stop calling itself current. DERIVED from
-#: the loop's own cadence: TERRAIN_REFRESH_SEC=60 plus one full cycle's slack for fetch time, so a
-#: healthy loop never trips it and a stopped one trips within two cycles.
+#: The least age at which a terrain snapshot stops calling itself current (terrain_staleness also
+#: allows two of the loop's delivered cycles).
 TERRAIN_STALE_AFTER_SEC: float = 180.0
 
 
@@ -1504,14 +1503,8 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
                 "levels_quarantined": bool(quarantined),
                 "levels_failing": bool(failure or hard_quarantine), **token}
     age = round(time.time() - float(computed_ts_utc), 1)
-    # RC-165: judge age against the cycle the loop ACTUALLY delivers, not the nominal floor.
-    # `TERRAIN_REFRESH_SEC` (60s) is a sleep floor between cycles; the delivered spacing is
-    # whatever a full sweep costs, and MEASURED 2026-07-31 12:57 ET that was a 156s median on
-    # SPY. With a fixed 180s threshold and a 60s sentence, a ticker 234s old — barely 1.5
-    # cycles, entirely healthy — was reported to the operator as "the loop is inside its window
-    # but not producing". That is RC-146's defect returning through a different door: a
-    # correctly-working scheduler described as broken, this time because the yardstick was a
-    # number the loop cannot reach rather than a silence nobody recorded.
+    # age is judged against the cycle the loop delivers (a full sweep), not its sleep floor
+    # (TERRAIN_REFRESH_SEC)
     observed = _terrain_last_cycle_sec if _terrain_last_cycle_sec > 0 else TERRAIN_REFRESH_SEC
     expected = max(float(TERRAIN_REFRESH_SEC), float(observed))
     # Stale only past the FLOOR *and* past two delivered cycles — one missed sweep is normal
@@ -2516,11 +2509,9 @@ def _price_stored_chain_when_closed(tk: str) -> None:
 def start_terrain_loop() -> None:
     """Start the terrain collection thread.
 
-    Refuses to start under pytest. A production background thread inside the test
-    process fetches chains and consumes the shared 2-slot chain gate for the rest of
-    the session, which silently breaks any test asserting on gate concurrency -- the
-    same shared-mutable-state failure class as RC-5 in governance/root_cause_log.md.
-    Tests that need the loop call _terrain_loop / _terrain_refresh_one directly.
+    Refuses to start under pytest: a background thread inside the test process would fetch
+    chains and hold the shared 2-slot chain gate for the rest of the session. Tests that need
+    the loop call _terrain_loop / _terrain_refresh_one directly.
     """
     global _terrain_loop_running, _terrain_loop_thread
     if os.environ.get("PYTEST_CURRENT_TEST"):
