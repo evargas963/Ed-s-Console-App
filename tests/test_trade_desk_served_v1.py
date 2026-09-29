@@ -38,13 +38,61 @@ def test_the_tape_side_is_served():
         ["BUY", "SELL", "EVEN", None]
 
 
+def _desk_events(monkeypatch, ticker, crosses, now, tf):
+    """/api/desk/events on real crosses, at `now`."""
+    newest_first = sorted(crosses, key=lambda r: r["ts_utc"], reverse=True)       # as db.get_recent_crosses reads
+    monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda ticker, n=20: newest_first[:n])
+    monkeypatch.setattr(time_et, "now_et", lambda: now)
+    monkeypatch.setattr(server, "now_et", lambda: now)
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (None, "none", None))
+    return json.loads(server.get_desk_events(ticker=ticker, venue="NYSE_BOOK", tf=tf).body)
+
+
+@pytest.mark.parametrize("ticker,crosses,now", [
+    ("SPY", "real_spy_level_crosses.json", datetime(2026, 9, 25, 18, 0, tzinfo=time_et.ET)),
+    ("$SPX", "real_spx_level_crosses_2026_09_25_28.json", datetime(2026, 9, 28, 12, 0, tzinfo=time_et.ET)),
+])
+def test_each_cross_is_served_as_recorded_and_the_chart_draws_the_newest_at_each_level(monkeypatch, ticker, crosses, now):
+    """Each level cross is the queue's entry as recorded -- its level's price, direction and
+    time -- and the chart's few are the newest cross at each level, for the newest DESK_MARKERS
+    levels; a marker and its queue entry are one served item (real SPY and $SPX crosses)."""
+    rows = _load(crosses)["rows"]
+    body = _desk_events(monkeypatch, ticker, rows, now, "D")
+    items = [it for it in body["items"] if it["dom"] == "LEVELS"]
+    assert items
+    by_key = {f"x{r['cross_id']}": r for r in rows}
+    for it in items:
+        r = by_key[it["key"]]
+        assert (it["price"], it["dir"], it["ts"]) == (r["level_value"], r["direction"], r["ts_utc"])
+    newest_at = {}
+    for it in sorted(items, key=lambda it: it["ts"]):
+        newest_at[it["price"]] = it
+    want = {it["key"] for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-server.DESK_MARKERS:]}
+    assert {it["key"] for it in items if it["marker"]} == want
+
+
+def test_a_book_wall_carries_its_books_time_and_says_when_the_book_is_not_live(monkeypatch):
+    """Operator 2026-09-29: a stale or premarket book item shows its actual observation time and
+    never appears live. The queue's size walls were stamped with the console's receive time and
+    read the same whether or not the book was live. Real TSLA NASDAQ book (its own BOOK_TIME)."""
+    from fastapi.responses import JSONResponse
+    from app.options.order_flow.engine import compute_book_microstructure
+    fx = _load("real_equity_book.json")
+    nat = fx["book"]["native"]
+    micro = compute_book_microstructure({"content": [nat], "book_live": False}, now_ts=fx["book"]["ts_recv"])
+    assert micro["wall_candidates"] and micro["ages"]["book_stale"] is True
+    monkeypatch.setattr(server, "api_order_flow_microstructure", lambda ticker, venue: JSONResponse(micro))
+    body = _desk_events(monkeypatch, "SPY", [], datetime(2026, 9, 25, 18, 0, tzinfo=time_et.ET), "30")
+    walls = [it for it in body["items"] if it["key"].startswith("wall")]
+    assert walls
+    for it in walls:
+        assert it["ts"] == nat["BOOK_TIME"] / 1000.0
+        assert it["title"].endswith("(not live)") and it["warn"] is True
+
+
 def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses(monkeypatch):
     fx = _load("real_spy_level_crosses.json")["rows"]
-    monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda ticker, n=20: fx[:n])
-    monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 9, 25, 16, 30, tzinfo=time_et.ET))
-    monkeypatch.setattr(server, "now_et", lambda: datetime(2026, 9, 25, 16, 30, tzinfo=time_et.ET))
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (None, "none", None))
-    body = json.loads(server.get_desk_events(ticker="SPY", venue="NYSE_BOOK", tf="30").body)
+    body = _desk_events(monkeypatch, "SPY", fx, datetime(2026, 9, 25, 18, 0, tzinfo=time_et.ET), "30")
     start = datetime(2026, 9, 25, 9, 30, tzinfo=time_et.ET).timestamp()
     assert body["window_start_ts_utc"] == start
     # the events: the window's crosses, one per (time, value, direction)
@@ -59,7 +107,6 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses(monkeypa
     assert next(it for it in crosses if it["n"] == 1)["ts"] == oldest
     ts = [it["ts"] for it in body["items"] if it["ts"] is not None]
     assert ts == sorted(ts, reverse=True)                             # newest first
-    assert sum(it.get("marker", False) for it in crosses) == min(40, len(crosses))
     up = sum(1 for k in events if k[2] == "up")
     assert body["cross_counts"] == {"up": up, "down": len(events) - up}
 
@@ -196,7 +243,10 @@ def test_the_desk_window_is_the_calendars_last_session_open_and_its_words_are_se
     mon = datetime(2026, 9, 28, 10, 0, tzinfo=ET)
     assert server._desk_window_start("30", mon) == datetime(2026, 9, 28, 9, 30, tzinfo=ET).timestamp()
     assert server._desk_window_start("1", mon) == mon.timestamp() - 900
-    assert {tf: words for tf, (_lb, words) in server.DESK_LOOKBACK.items()}["30"] == "this session"
+    # the reference's 5-minute Market Map lists the session's events (its queue: "since open")
+    assert server._desk_window_start("5", mon) == datetime(2026, 9, 28, 9, 30, tzinfo=ET).timestamp()
+    words = {tf: words for tf, (_lb, words) in server.DESK_LOOKBACK.items()}
+    assert words["30"] == words["5"] == "this session"
 
 
 def test_every_bar_carries_its_change():

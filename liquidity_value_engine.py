@@ -27,8 +27,9 @@ from liquidity_models import (
     SnapshotSummary,
     SnapshotType,
     Zone,
+    VolumeProfile,
     ZoneType,
-    volume_profile_poc_vah_val,
+    volume_profile,
 )
 
 log = logging.getLogger(__name__)
@@ -55,12 +56,17 @@ def _in_rth(dt: datetime) -> bool:
     return close is not None and RTH_OPEN <= dt.time() < close
 
 
-#: each price level's name, spelled out and as the chart's short tag -- the one home for both
+#: each price level's name, spelled out and as the chart's short tag -- the one home for both.
+#: POC and value area come from the estimated profile (each 1-minute bar's volume spread evenly
+#: over its range, not trades at a price): their names say so.
 LEVEL_NAMES = {
-    "TODAY_VAH": ("Value area high", "VAH"), "TODAY_VAL": ("Value area low", "VAL"),
-    "TODAY_POC": ("Point of control", "POC"),
+    "TODAY_VAH": ("Value area high (est. from 1-min bars)", "VAH est"),
+    "TODAY_VAL": ("Value area low (est. from 1-min bars)", "VAL est"),
+    "TODAY_POC": ("Point of control (est. from 1-min bars)", "POC est"),
     "PDH": ("Prior day high", "PDH"), "PDL": ("Prior day low", "PDL"), "PDC": ("Prior day close", "PDC"),
-    "PD_POC": ("Prior day POC", "pPOC"), "PD_VAH": ("Prior day VAH", "pVAH"), "PD_VAL": ("Prior day VAL", "pVAL"),
+    "PD_POC": ("Prior day POC (est. from 1-min bars)", "pPOC est"),
+    "PD_VAH": ("Prior day VAH (est. from 1-min bars)", "pVAH est"),
+    "PD_VAL": ("Prior day VAL (est. from 1-min bars)", "pVAL est"),
     "ORB_HIGH": ("Opening range high", "ORH"), "ORB_LOW": ("Opening range low", "ORL"),
     "ORB_MID": ("Opening range mid", "ORM"),
     "OVERNIGHT_HIGH": ("Overnight high", "ONH"), "OVERNIGHT_LOW": ("Overnight low", "ONL"),
@@ -275,8 +281,8 @@ def get_previous_day_levels(
         out["pdh"] = max(b["high"] for b in prev_bars)
         out["pdl"] = min(b["low"] for b in prev_bars)
         out["pdc"] = prev_bars[-1]["close"]
-        poc, vah, val = _volume_profile_poc_vah_val(prev_bars, config.value_area_percent, config.tick_size)
-        out["pd_poc"], out["pd_vah"], out["pd_val"] = poc, vah, val
+        p = volume_profile(prev_bars, config.value_area_percent, config.tick_size, ndigits=4)
+        out["pd_poc"], out["pd_vah"], out["pd_val"] = (None, None, None) if p is None else (p.poc, p.vah, p.val)
     return out
 
 
@@ -469,31 +475,16 @@ def _filter_rth_bars(bars: list, session_date: date, cutoff_dt: Optional[datetim
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _volume_profile_poc_vah_val(
-    bars: list[dict],
-    value_area_pct: float = 0.70,
-    tick_size: float = 0.01,
-) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """POC / VAH / VAL from the ONE volume-profile construction (LP-01 Step 1, RC-152).
-
-    This used to dump each bar's ENTIRE volume into a single bin at the typical price
-    (H+L+C)/3 — a typical-price histogram, not a volume profile. `liquidity_models`
-    now owns the construction and distributes each bar's volume across [low, high];
-    this stays as the engine's private entry point so no caller changes.
-    """
-    return volume_profile_poc_vah_val(bars, value_area_pct, tick_size, ndigits=4)
-
-
 def compute_volume_profile_levels(
     bars: list,
     session_date: date,
     config: PlaybookConfig,
     cutoff_dt: Optional[datetime] = None,
-) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """Current day POC, VAH, VAL. RTH only, no lookahead."""
+) -> Optional[VolumeProfile]:
+    """The current day's volume profile with its POC, VAH, VAL. RTH only, no lookahead."""
     bars_norm = _bars_to_list(bars)
     rth_bars = _filter_rth_bars(bars_norm, session_date, cutoff_dt)
-    return _volume_profile_poc_vah_val(rth_bars, config.value_area_percent, config.tick_size)
+    return volume_profile(rth_bars, config.value_area_percent, config.tick_size, ndigits=4)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1020,14 +1011,15 @@ class PriceLevelSnapshot:
     __slots__ = ("ticker", "session_date", "generation", "bar_source", "as_of_ts_utc",
                  "produced_ts_utc", "levels", "vwap_path", "vwap_series",
                  "families_absent", "degraded", "input_fingerprint", "bars_used",
-                 "session_rth_positive_volume_bars")
+                 "session_rth_positive_volume_bars", "volume_profile")
 
     def __init__(self, *, ticker: str, session_date: date, generation: int,
                  bar_source: str, as_of_ts_utc: Optional[float], produced_ts_utc: float,
                  levels: dict, vwap_path: list, families_absent: list,
                  degraded: list, input_fingerprint: tuple, bars_used: int,
                  vwap_series: Optional[list] = None,
-                 session_rth_positive_volume_bars: int = 0) -> None:
+                 session_rth_positive_volume_bars: int = 0,
+                 volume_profile: Optional[VolumeProfile] = None) -> None:
         self.ticker = ticker
         self.session_date = session_date
         self.generation = generation
@@ -1042,6 +1034,7 @@ class PriceLevelSnapshot:
         self.input_fingerprint = input_fingerprint
         self.bars_used = bars_used
         self.session_rth_positive_volume_bars = int(session_rth_positive_volume_bars)
+        self.volume_profile = volume_profile    # the session's profile the value area is read from
 
     def price(self, level_id: str) -> Optional[float]:
         """The canonical value, or None. Absence is absence — never spot, zero or a sibling."""
@@ -1200,8 +1193,9 @@ def build_price_level_snapshot(
                  window="prior RTH close -> session RTH open (RC-153)")
 
     # ── current-session value area ───────────────────────────────────────────
-    poc, vah, val = compute_volume_profile_levels(bars_norm, session_date, cfg)
-    if poc is None and vah is None and val is None:
+    profile = compute_volume_profile_levels(bars_norm, session_date, cfg)
+    poc, vah, val = (None, None, None) if profile is None else (profile.poc, profile.vah, profile.val)
+    if profile is None:
         families_absent.append({"family": "value_area", "reason": (
             "no RTH volume for the volume profile in available bars" if session_rth_vol_n == 0
             else "RTH volume bars present but the volume profile did not materialize")})
@@ -1219,6 +1213,7 @@ def build_price_level_snapshot(
         input_fingerprint=_snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source),
         bars_used=len(bars_norm),
         session_rth_positive_volume_bars=session_rth_vol_n,
+        volume_profile=profile,
     )
 
 

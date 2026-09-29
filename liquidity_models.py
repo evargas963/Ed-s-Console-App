@@ -36,29 +36,46 @@ from numeric_contract import schwab_count, schwab_number
 MAX_BINS_PER_BAR: int = 5000
 
 
-def volume_profile_poc_vah_val(
+@dataclass(frozen=True)
+class VolumeProfile:
+    """Volume by price from bars, each bar's volume spread evenly over its [low, high] in tick
+    bins -- a derived distribution, not traded volume at a price (Schwab sends no trade prints)
+    -- and the value area read from it. `bins`: ((price, volume), ...) in price order. `bars`:
+    the bars given; `bars_without_volume`: those Schwab sent with no volume, which the profile
+    cannot place and does not contain."""
+    tick_size: float
+    bins: tuple
+    poc: float
+    vah: float
+    val: float
+    bars: int
+    bars_without_volume: int
+
+
+def volume_profile(
     bars: list,
     value_area_pct: float = 0.70,
     tick_size: float = 0.01,
     ndigits: int = 4,
-) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """POC / VAH / VAL from a volume profile built by DISTRIBUTING each bar across [low, high].
-
-    Returns (poc, vah, val), or (None, None, None) when no usable volume exists — absence reads
-    as absence, never a fabricated level.
+) -> Optional[VolumeProfile]:
+    """The volume profile built by DISTRIBUTING each bar across [low, high], with its POC and
+    value area; None when no usable volume exists -- absence reads as absence, never a
+    fabricated level.
 
     Bins are addressed by INTEGER index (round(price / tick_size)) so that binning is exact:
     accumulating float bin prices as dict keys lets 724.9999999 and 725.0 become two bins for
     one price, which silently fragments the profile and can move the POC.
     """
     if not bars or tick_size <= 0:
-        return None, None, None
+        return None
 
     vol_by_idx: dict[int, float] = defaultdict(float)
+    no_volume = 0
     for b in bars:
         if not isinstance(b, dict):
             continue
         hi, lo, vol = schwab_number(b.get("high")), schwab_number(b.get("low")), schwab_count(b.get("volume"))
+        no_volume += vol is None
         # high < low has no range to spread over (measured 2026-09-27: 0 of 2,166,115 bars)
         if hi is None or lo is None or vol is None or vol == 0 or hi < lo:
             continue
@@ -79,10 +96,10 @@ def volume_profile_poc_vah_val(
                 vol_by_idx[int(round(lo_i + k * step))] += share
 
     if not vol_by_idx:
-        return None, None, None
+        return None
     total_vol = sum(vol_by_idx.values())
     if total_vol <= 0:
-        return None, None, None
+        return None
 
     idx_sorted = sorted(vol_by_idx)
     poc_idx = max(idx_sorted, key=lambda i: (vol_by_idx[i], -i))
@@ -103,9 +120,13 @@ def volume_profile_poc_vah_val(
             acc += v_hi
         else:
             break
-    return (round(poc_idx * tick_size, ndigits),
-            round(idx_sorted[hi_pos] * tick_size, ndigits),
-            round(idx_sorted[lo_pos] * tick_size, ndigits))
+    return VolumeProfile(
+        tick_size=tick_size,
+        bins=tuple((round(i * tick_size, ndigits), vol_by_idx[i]) for i in idx_sorted),
+        poc=round(poc_idx * tick_size, ndigits),
+        vah=round(idx_sorted[hi_pos] * tick_size, ndigits),
+        val=round(idx_sorted[lo_pos] * tick_size, ndigits),
+        bars=len(bars), bars_without_volume=no_volume)
 
 
 class SnapshotType(str, Enum):

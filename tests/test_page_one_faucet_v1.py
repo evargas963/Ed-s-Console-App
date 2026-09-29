@@ -101,32 +101,12 @@ def test_oi_and_volume_cells_carry_the_served_total(held):
     assert checked > 50
 
 
-def test_every_alert_carries_the_time_it_was_observed(held, monkeypatch):
-    """The Trade Desk stamped alerts with the browser's clock; each now carries its own time."""
-    wall = held["call_wall"]
-    near = wall * (1 - server.LEVEL_NEAR_SPOT_FRACTION / 2)   # inside the one near-spot rule
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (near, server.SPOT_SOURCE_PLANE, 1_788_000_000.0))
-    from app.options.order_flow import streaming as ofs          # stand-in: the daemon's live row
-    monkeypatch.setattr(ofs, "_price_rows", {TK: {"ticker": TK, "spot": near, "spot_state": "live"}})
-    cross_ts = time.time() - 5
-    monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda ticker, n=10: [
-        {"ts_utc": cross_ts, "direction": "up", "level_name": "gamma_flip"}])
-    alerts = json.loads(server.get_alerts(ticker=TK).body)["alerts"]
-    (at_wall,) = [a for a in alerts if a["text"].startswith(f"At Call wall {wall:.2f}")]
-    assert at_wall["text"].endswith("above spot)") and at_wall["ts_utc"] == 1_788_000_000.0
-    assert alerts[-1]["ts_utc"] == cross_ts
-
-
-def test_no_near_level_alert_without_a_live_price(held, monkeypatch):
-    """Rule 5: on a closed market the price is a stored capture's -- a past observation -- and
-    raises no near-level alert, with the reason served (2026-09-27: Friday's levels against
-    Friday's last price fired as current alerts on Sunday)."""
-    wall = held["call_wall"]
-    near = wall * (1 - server.LEVEL_NEAR_SPOT_FRACTION / 2)
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (near, server.SPOT_SOURCE_CAPTURE, 1_788_000_000.0))
-    monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda ticker, n=10: [])
-    body = json.loads(server.get_alerts(ticker=TK).body)
-    assert body["alerts"] == [] and body["withheld"].startswith("no live price")
+def test_no_proximity_alerts_are_served():
+    """Operator 2026-09-29: proximity alerts are removed everywhere -- no alert route, no
+    near-spot flag on the levels, no alert items in the Trade Desk queue."""
+    from fastapi.testclient import TestClient
+    assert TestClient(server.app).get("/api/alerts?ticker=SPY").status_code == 404
+    assert not hasattr(server, "get_alerts") and not hasattr(server, "LEVEL_NEAR_SPOT_FRACTION")
 
 
 def test_a_book_with_no_age_is_not_reported_fresh():
@@ -172,7 +152,7 @@ def test_put_call_ratios_over_every_expiry_are_served(held):
     assert held["pcr_all"] == held["pcr_by_expiry"][EXPIRY]      # one expiry: the same book
 
 
-def test_levels_are_served_in_ladder_order_with_distance_and_near_spot(monkeypatch):
+def test_levels_are_served_in_ladder_order_with_distance(monkeypatch):
     """The levels panel and the Trade Desk used to sort levels, measure distance to spot and apply
     the 0.15% near-spot rule in the page. Real SPY 1-minute bars (2026-09-24 and 25)."""
     from datetime import datetime as _dt
@@ -190,8 +170,36 @@ def test_levels_are_served_in_ladder_order_with_distance_and_near_spot(monkeypat
     assert [r["price"] for r in priced] == sorted((r["price"] for r in priced), reverse=True)
     for r in priced:
         assert r["distance"] == pytest.approx(r["price"] - spot)
-        assert r["near_spot"] == (abs(r["price"] - spot) / spot < server.LEVEL_NEAR_SPOT_FRACTION)
+        assert "near_spot" not in r          # no proximity flag (operator 2026-09-29)
     assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - spot))]
+
+
+def test_the_volume_profile_the_value_area_is_read_from_is_served(monkeypatch):
+    """The Trade Desk reference draws the session's volume profile at the chart's left edge
+    (2026-09-28). The profile was built for the value area and dropped; /api/levels serves that
+    same profile: its POC/VAH/VAL are the served TODAY_ levels, its bins hold every RTH bar's
+    volume, and each bin says whether it is inside the value area. Real SPY 1-minute bars."""
+    from datetime import datetime as _dt
+    import time_et as te
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
+                    .read_text(encoding="utf-8"))
+    monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (fx["bars"][-1]["close"], "live_quote", time.time()))
+    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
+    body = json.loads(server.get_levels(ticker="SPY").body)
+    vp = body["volume_profile"]
+    by_id = {r["id"]: r["price"] for r in body["levels"]}
+    assert (vp["poc"], vp["vah"], vp["val"]) == (by_id["TODAY_POC"], by_id["TODAY_VAH"], by_id["TODAY_VAL"])
+    prices = [b[0] for b in vp["bins"]]
+    assert prices == sorted(prices) and len(prices) > 100
+    assert all(b[2] == (vp["val"] <= b[0] <= vp["vah"]) for b in vp["bins"])
+    at = [(_dt.fromtimestamp(b["timestamp"] / 1000, te.ET), b) for b in fx["bars"]]
+    rth = [b for d, b in at if d.date().isoformat() == "2026-09-25" and te.session_label(d) == "RTH"]
+    # every RTH bar's volume is in the profile; the 15:59 bar sent no volume, cannot be placed, and
+    # is counted and served (operator 2026-09-29: accounted for, not silently dropped)
+    assert sum(b[1] for b in vp["bins"]) == pytest.approx(sum(b["volume"] for b in rth if b["volume"] is not None), rel=1e-9)
+    assert (vp["bars"], vp["bars_without_volume"]) == (len(rth), sum(1 for b in rth if b["volume"] is None)) == (390, 1)
+    assert vp["basis"].startswith("Estimated volume by price")
 
 
 def test_heatmap_column_state_cell_age_and_front_expiry_are_served(held, monkeypatch):
@@ -293,4 +301,4 @@ def test_on_a_closed_market_the_levels_are_ordered_from_the_last_trade(monkeypat
     assert len(priced) > 5 and body["spot"] is None
     assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - 772.04))]
     assert body["by_distance_ref"] == {"price": 772.04, "source": "last trade", "as_of": "Fri 09/25 06:59 PM CT"}
-    assert all(r["distance"] is None and r["near_spot"] is False for r in priced)
+    assert all(r["distance"] is None for r in priced)

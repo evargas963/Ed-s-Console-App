@@ -8,7 +8,7 @@
 .tvc-edge{position:absolute;left:8px;z-index:3;display:flex;gap:10px;font-size:11px;font-weight:600;
   font-variant-numeric:tabular-nums;pointer-events:none}
 .tvc-edge-top{top:26px}
-.tvc-edge-bot{bottom:34px}
+.tvc-edge-bot{bottom:34px;left:64px}
 .tvc-legend{position:absolute;left:8px;top:6px;z-index:3;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;
   font:12px/1.3 var(--ed-sans);color:var(--ed-ink-2);pointer-events:none;max-width:calc(100% - 80px)}
 .tvc-legend b{font-weight:600;font-variant-numeric:tabular-nums}
@@ -53,14 +53,8 @@
 .liqm-tags{padding:0 0 6px;color:var(--ed-ink-3)}
 
 /* ---------- desk page ---------- */
-.tdm{height:100%;display:grid;grid-template-rows:auto minmax(360px,1fr) 250px auto auto;gap:8px;min-height:0;overflow:auto;padding-bottom:4px}
+.tdm{height:100%;display:grid;grid-template-rows:minmax(420px,1fr) 196px auto auto;gap:8px;min-height:0;overflow:auto;padding-bottom:4px}
 .tdm .up{color:var(--ed-pos-ink)} .tdm .dn{color:var(--ed-neg-ink)} .tdm .warn{color:var(--ed-warn)}
-.tdm-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;padding:5px 12px;background:var(--ed-panel);
-  border:1px solid var(--ed-edge);border-radius:var(--ed-r-lg,8px)}
-.tdm-sym{font-size:18px;font-weight:700;letter-spacing:.03em;color:var(--ed-ink)}
-.tdm-px{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ed-ink)}
-.tdm-px.dim{color:var(--ed-warn);font-size:13px}
-.tdm-chg{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
 .tdm-idx{display:inline-flex;gap:5px;align-items:baseline;font-size:12px;color:var(--ed-ink-2)}
 .tdm-idx span{color:var(--ed-ink-3);font-weight:600;letter-spacing:.04em}
 .tdm-idx b{font-weight:600;font-variant-numeric:tabular-nums;color:var(--ed-ink)}
@@ -73,7 +67,6 @@
 .tdm-pill b{color:var(--ed-ink);font-weight:600}
 .tdm-pill i{width:7px;height:7px;border-radius:50%;background:var(--ed-quiet)}
 .tdm-pill.ok i{background:var(--ed-live)} .tdm-pill.warn i{background:var(--ed-warn)} .tdm-pill.bad i{background:var(--ed-alert)}
-.tdm-clock{font-size:12.5px;font-weight:600;color:var(--ed-ink-2);font-variant-numeric:tabular-nums}
 
 /* the reference's proportions: the map about 72% of the width, the queue beside it */
 .tdm-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,28%);gap:10px;min-height:0}
@@ -135,28 +128,35 @@
 .tdm-dom{font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ed-ink-2)}
 
 .tdm-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.tdm-card{padding:10px 14px;display:flex;flex-direction:column;gap:5px;min-height:0;overflow:hidden}
-.tdm-card .tdm-rows{overflow:auto;min-height:0}
+/* a card, as the reference sets it: title and Open tab; source and age; Current state beside
+   Change (1h); the chart and its caption; one line of facts, the most useful first */
+.tdm-card{padding:9px 14px;display:flex;flex-direction:column;gap:4px;min-height:0;overflow:hidden}
+.tdm-card>*{flex:none}
 .tdm-card-h{display:flex;align-items:center;gap:8px}
 .tdm-card-h .t{font-size:19px;white-space:nowrap}
-.tdm-eye{background:none;border:1px solid transparent;border-radius:4px;padding:1px 3px;cursor:pointer;color:var(--ed-ink-2);display:inline-flex}
-.tdm-eye:hover{color:var(--ed-accent-2);border-color:var(--ed-accent-edge)}
-.tdm-eye svg{width:16px;height:16px}
-.tdm-state{margin-left:auto;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--ed-ink-2);text-align:right;min-width:0}
-.tdm-hero{font-size:22px;font-weight:700;color:var(--ed-ink);font-variant-numeric:tabular-nums;display:flex;flex-direction:column;line-height:1.15}
-.tdm-hero small{font-size:12px;font-weight:500;color:var(--ed-ink-3)}
-.tdm-hero em{font-style:normal;color:var(--ed-ink-3);font-weight:500}
-.tdm-rows{display:flex;flex-direction:column;gap:1px}
-.tdm-r{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--ed-ink-3)}
-.tdm-r b{color:var(--ed-ink);font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
-.tdm-src{font-size:10.5px;color:var(--ed-ink-3);border-top:1px solid var(--ed-edge-soft);padding-top:4px;margin-top:auto}
-.tdm-series{font-size:11px;color:var(--ed-ink-3)}
+.tdm-card-h .bookvenue{display:inline-flex;gap:3px}
+.tdm-open{margin-left:auto;font:600 11.5px var(--ed-sans);letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-2);
+  border:1px solid var(--ed-edge-strong);border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap}
+.tdm-open:hover{color:var(--ed-accent-2);border-color:var(--ed-accent-edge)}
+.tdm-src{font-size:12px;color:var(--ed-ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tdm-cs{display:flex;justify-content:space-between;gap:10px}
+.tdm-cs small{display:block;font-size:11.5px;color:var(--ed-ink-3)}
+.tdm-state{font-size:17px;font-weight:700;letter-spacing:.03em;color:var(--ed-ink);text-transform:uppercase}
+.tdm-hero{margin-left:8px;font-size:17px;font-weight:700;color:var(--ed-ink);font-variant-numeric:tabular-nums}
+.tdm-hero small{font-size:11.5px;font-weight:500;color:var(--ed-ink-3)}
+.tdm-chg{font-size:13px;color:var(--ed-ink-3)}
+.tdm-cs>div:first-child{min-width:0}
+.tdm-cs>div:last-child{text-align:right;flex:none;white-space:nowrap}
+.tdm-rows{display:flex;flex-wrap:nowrap;gap:0 12px;font-size:11.5px;color:var(--ed-ink-3);overflow:hidden;
+  -webkit-mask-image:linear-gradient(to right,#000 88%,transparent);mask-image:linear-gradient(to right,#000 88%,transparent)}
+.tdm-r{white-space:nowrap}
+.tdm-r b{color:var(--ed-ink-2);font-weight:600;font-variant-numeric:tabular-nums}
 /* each card's chart, as the reference draws them: the plot, then its caption */
 .tdm-chartbox{margin:2px 0 0;display:flex;flex-direction:column;gap:3px;flex:none}
-.tdm-plot{height:58px;border-bottom:1px solid var(--ed-edge-soft);position:relative}
+.tdm-plot{height:46px;border-bottom:1px solid var(--ed-edge-soft);position:relative}
 .tdm-plot svg{width:100%;height:100%;display:block;overflow:visible}
 .tdm-plot-none{height:100%;display:flex;align-items:center;color:var(--ed-ink-3);font-size:12px}
-.tdm-chartbox figcaption{font-size:11.5px;color:var(--ed-ink-3)}
+.tdm-chartbox figcaption{font-size:11.5px;color:var(--ed-ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 .tdm-agree.panel{display:flex;flex-direction:row;align-items:center;gap:12px;padding:7px 12px;flex-wrap:wrap}
 .tdm-agree-t{font-size:17px}
@@ -167,9 +167,11 @@
 .tdm-ag-note{font-size:11px;color:var(--ed-ink-3);margin-left:auto}
 .tdm-foot{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ed-ink-3);
   padding:6px 12px;background:var(--ed-panel);border:1px solid var(--ed-edge);border-radius:var(--ed-r-lg)}
-.tdm-foot>span+span{border-left:1px solid var(--ed-edge);padding-left:18px}
+.tdm-foot{align-items:center}
+.tdm-foot-src{display:flex;flex-wrap:wrap;gap:4px 18px;margin-left:auto}
+.tdm-foot-src>span+span{border-left:1px solid var(--ed-edge);padding-left:18px}
 .tdm-foot b{color:var(--ed-ink);font-weight:600;text-transform:none;letter-spacing:0}
 
-@media (max-width:1100px){.tdm-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.tdm{grid-template-rows:auto minmax(360px,1fr) auto auto auto}.tdm-card{height:250px}}
-@media (max-width:900px){.tdm-main{grid-template-columns:1fr}.tdm-queue{max-height:320px}.tdm{grid-template-rows:auto auto auto auto auto}.tdm-map{height:460px}}
+@media (max-width:1100px){.tdm-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.tdm{grid-template-rows:minmax(420px,1fr) auto auto auto}.tdm-card{height:196px}}
+@media (max-width:900px){.tdm-main{grid-template-columns:1fr}.tdm-queue{max-height:320px}.tdm{grid-template-rows:auto auto auto auto}.tdm-map{height:460px}}
 @media (max-width:560px){.tdm-cards{grid-template-columns:1fr}}

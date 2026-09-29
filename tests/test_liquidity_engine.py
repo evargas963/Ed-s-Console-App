@@ -104,9 +104,10 @@ def _typical_price_dump(bars, value_area_pct=0.70, tick_size=0.01):
 
 def test_volume_profile_flat_bar_puts_all_volume_at_one_price():
     """A bar with high == low DID trade at exactly one price — distribution must not smear it."""
-    from liquidity_models import volume_profile_poc_vah_val
+    from liquidity_models import volume_profile
     bars = [{"high": 100.0, "low": 100.0, "close": 100.0, "volume": 5000.0}]
-    poc, vah, val = volume_profile_poc_vah_val(bars)
+    p = volume_profile(bars)
+    poc, vah, val = p.poc, p.vah, p.val
     assert poc == 100.0, f"flat bar POC moved off its only traded price: {poc}"
     assert vah == 100.0 and val == 100.0, f"flat bar produced a width: {val}..{vah}"
 
@@ -115,9 +116,10 @@ def test_volume_profile_distributes_a_wide_bar_across_its_range():
     """The defect in one line: one wide bar's volume belongs across [low, high], not at
     (H+L+C)/3. With a single bar the distributed profile is FLAT, so every spanned price ties —
     while the dump puts 100% of it in one bin at the typical price."""
-    from liquidity_models import volume_profile_poc_vah_val
+    from liquidity_models import volume_profile
     bars = [{"high": 101.0, "low": 100.0, "close": 100.9, "volume": 10100.0}]
-    poc, vah, val = volume_profile_poc_vah_val(bars, value_area_pct=0.70)
+    p = volume_profile(bars, value_area_pct=0.70)
+    vah, val = p.vah, p.val
     assert val >= 100.0 and vah <= 101.0, f"value area escaped the bar's range: {val}..{vah}"
     assert (vah - val) > 0.5, (
         f"a 70% value area over a uniformly-distributed 1.00-wide bar must span ~0.70, got "
@@ -135,14 +137,15 @@ def test_volume_profile_poc_is_the_price_most_bars_traded_through():
     """Hand-worked: three bars all span 100.00-100.04; a fourth spans 100.03-100.07. Every bar
     covers 100.03-100.04, so those two bins carry the most volume and the POC must land there.
     The typical-price dump cannot find it — no bar's (H+L+C)/3 lands on 100.03/100.04."""
-    from liquidity_models import volume_profile_poc_vah_val
+    from liquidity_models import volume_profile
     bars = [
         {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
         {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
         {"high": 100.04, "low": 100.00, "close": 100.00, "volume": 500.0},
         {"high": 100.07, "low": 100.03, "close": 100.07, "volume": 500.0},
     ]
-    poc, vah, val = volume_profile_poc_vah_val(bars, value_area_pct=0.70)
+    p = volume_profile(bars, value_area_pct=0.70)
+    poc, vah, val = p.poc, p.vah, p.val
     assert poc in (100.03, 100.04), (
         f"POC {poc} is not in the band every bar traded through (100.03-100.04)"
     )
@@ -156,45 +159,27 @@ def test_volume_profile_poc_is_the_price_most_bars_traded_through():
 def test_volume_profile_rejects_nan_and_nonpositive_volume():
     """A NaN bin key poisons every comparison after it, and a zero-volume bar contributes
     nothing — absence must read as absence rather than a fabricated level."""
-    from liquidity_models import volume_profile_poc_vah_val
+    from liquidity_models import volume_profile
     nan = float("nan")
     bars = [
         {"high": nan, "low": 100.0, "close": 100.0, "volume": 900.0},
         {"high": 100.0, "low": 100.0, "close": 100.0, "volume": 0.0},
         {"high": float("inf"), "low": 100.0, "close": 100.0, "volume": 900.0},
     ]
-    assert volume_profile_poc_vah_val(bars) == (None, None, None)
-    assert volume_profile_poc_vah_val([]) == (None, None, None)
-    assert volume_profile_poc_vah_val([{"high": 1.0, "low": 1.0, "close": 1.0,
-                                        "volume": 1.0}], tick_size=0.0) == (None, None, None)
+    assert volume_profile(bars) is None
+    assert volume_profile([]) is None
+    assert volume_profile([{"high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0}], tick_size=0.0) is None
 
 
 def test_volume_profile_wide_bar_stays_bounded_and_still_distributed():
     """A pathological range against a 0.01 tick must not allocate unbounded bins, and must
     still SPREAD — the bound is a work cap, never a licence to dump."""
-    from liquidity_models import MAX_BINS_PER_BAR, volume_profile_poc_vah_val
+    from liquidity_models import MAX_BINS_PER_BAR, volume_profile
     bars = [{"high": 10000.0, "low": 0.01, "close": 5000.0, "volume": 1e6}]
-    poc, vah, val = volume_profile_poc_vah_val(bars, value_area_pct=0.70)
-    assert poc is not None and vah is not None and val is not None
-    assert (vah - val) > 1000.0, "a 10,000-wide bar collapsed to a point — that is a dump"
+    p = volume_profile(bars, value_area_pct=0.70)
+    assert p is not None
+    assert (p.vah - p.val) > 1000.0, "a 10,000-wide bar collapsed to a point — that is a dump"
     assert MAX_BINS_PER_BAR > 0
-
-
-
-
-def test_engine_and_context_agree_on_one_profile():
-    """Same bars, same tick, same value-area pct -> the two entry points must agree (they now
-    share an implementation; rounding differs by design, 4dp vs 2dp)."""
-    from liquidity_value_engine import _volume_profile_poc_vah_val as eng
-    from liquidity_value_engine import _volume_profile_poc_vah_val as ctx
-    bars = [
-        {"high": 100.04, "low": 100.00, "close": 100.02, "volume": 500.0},
-        {"high": 100.06, "low": 100.02, "close": 100.05, "volume": 800.0},
-    ]
-    e_poc, e_vah, e_val = eng(bars, 0.70, 0.01)
-    c_poc, c_vah, c_val = ctx(bars, 0.70, 0.01)
-    assert abs(e_poc - c_poc) < 0.01, f"two faucets disagree on POC: {e_poc} vs {c_poc}"
-    assert abs(e_vah - c_vah) < 0.01 and abs(e_val - c_val) < 0.01
 
 
 def _bar(d: date, hh: int, mm: int, high: float, low: float, close: float = None,

@@ -94,9 +94,13 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
   generation from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
   → `/api/levels`, and the liquidity zones of `/api/liquidity-snapshot` are built from that same
-  snapshot (today only; no checkpoint or past-date path). `/api/levels` also serves the order the
+  snapshot (today only; no checkpoint or past-date path). It is rebuilt when the bar writer
+  (`EdDB.upsert_1m_bars`) has written the ticker's bars since it was built, or on a new session
+  date; otherwise it is served as produced. `/api/levels` also serves the order the
   chart draws them in (`by_distance`): nearest the live price, or on a closed market nearest the
-  last streamed trade, named in `by_distance_ref`; distance, near-spot and side stay live-only.
+  last streamed trade, named in `by_distance_ref`; distance, near-spot and side stay live-only,
+  and the session's volume profile (`volume_profile`: each RTH 1-minute bar's volume spread
+  evenly over its range, one bin per tick, flagged inside or outside the value area).
 - **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per board or
   viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule (#312).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
@@ -135,8 +139,12 @@ Schwab sends is taken as sent (rule 2), never computed.
   heartbeat (`live_market_plane.daemon_status`). Owner: the console's feed loop records each
   heartbeat; when the daemon stops or the socket to it drops, every streamed value reads not live
   within 3 s.
-- **Alerts and level crosses.** Computed by the console at each levels publish; crosses written to
-  `ed_console.db` → the `levels` push → `/api/alerts` → browser.
+- **Level crosses.** Computed by the console at each levels publish; written to `ed_console.db`
+  → the `levels` push → `/api/desk/events`, which serves each cross as recorded and flags the
+  newest cross at each level, for the newest six levels, as the chart's numbered callouts (one
+  served item is both a callout and its queue entry). The window is the timeframe's
+  (`server.DESK_LOOKBACK`; 5m and 30m: this session). No proximity alerts. Absorption,
+  liquidity pull and replenishment are not produced (open; `ACTIVE_PROGRAM.md` DESK-GAPS).
 - **Market session.** From the market calendar → pushed on `/api/changes` when the page connects
   and every 5 s with no other change. One calendar (`time_et`: holidays, 13:00 early closes,
   `session_label`, `session_close_mins_for_et_date`) decides every session window: the order-flow
@@ -145,7 +153,8 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the stream
   handler (equity quote and book) and the bar writer mark a ticker's kind changed; each page
   connection gets at most one push a second. The console down: the page's session label reads
-  `—` and no panel reloads until the browser's EventSource reconnects.
+  `—` and no panel reloads until the browser's EventSource reconnects. A Trade Desk timeframe
+  switch asks only for that timeframe's bars, levels and event window.
 
 ### 3.5 Where today breaks the design
 
@@ -154,7 +163,8 @@ Schwab sends is taken as sent (rule 2), never computed.
    computation is a row in `ACTIVE_PROGRAM.md` (ONE-*), with its behavior test when fixed.
 2. **Two writers and two databases** (the daemon's and the console's).
 3. **The console talks to Schwab** (REST chains) — the daemon should own every Schwab call.
-4. **The console computes the levels** in the same process that serves the page.
+4. **The console computes the levels** in the same process that serves the page, so a request
+   waits behind that work.
 5. **The browser reads a route after each push** for bars, order flow, liquidity and the levels,
    instead of receiving the values; bars are not yet on the daemon's push.
 6. **No standalone page remains**, and the console's page scripts compute none (the 64 sites

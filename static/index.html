@@ -81,14 +81,6 @@
   .live .dot.warn{background:var(--ed-warn)} .live .dot.stale{background:var(--ed-stale)}
   .sess{font-family:var(--ed-mono);font-size:11px;font-weight:600;letter-spacing:.06em}
   .sess.rth{color:var(--ed-live)} .sess.pre{color:var(--ed-warn)} .sess.ah{color:var(--ed-accent-2)} .sess.closed{color:var(--ed-ink-3)}
-  /* Proximity Alerts -- backend-driven (/api/alerts),
-     never fabricated client-side. Persistent across every workspace, matching the legacy
-     card's own always-visible placement; hidden entirely when there is nothing to show. */
-  #alertsStrip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 20px;
-    background:var(--ed-warn-bg,var(--ed-panel-2));border-bottom:1px solid var(--ed-edge)}
-  #alertsStrip[hidden]{display:none}
-  .alert-pill{font-family:var(--ed-mono);font-size:11px;font-weight:600;letter-spacing:.02em;
-    color:var(--ed-warn);border:1px solid var(--ed-warn);border-radius:999px;padding:3px 10px}
   .search{margin-left:auto;display:flex;align-items:center;gap:7px;background:var(--ed-panel);
     border:1px solid var(--ed-edge);border-radius:var(--ed-r);padding:6px 11px;width:280px;color:var(--ed-ink-3)}
   .search input{flex:1;background:none;border:none;outline:none;color:var(--ed-ink);font-family:var(--ed-sans);font-size:12px}
@@ -168,6 +160,7 @@
   .wl-add{display:flex;align-items:center;gap:10px;height:32px;padding:0 15px;color:var(--ed-ink-3);
     font-size:12.5px;white-space:nowrap}
   .wl-add:hover{color:var(--ed-accent-2)}
+  #app:not(.rail-open) .wl-add .lbl-add{display:none}
 
   /* ===== main ===== */
   main{grid-area:main;display:flex;flex-direction:column;overflow:hidden;min-width:0}
@@ -664,7 +657,6 @@
   .lv .lv-ev,.lv .lv-src{color:var(--ed-ink-3);font-size:12px}
   .lv .lv-age{color:var(--ed-ink-3);text-align:right}.lv .lv-age.stale{color:var(--ed-stale)}
   .lv-row{cursor:pointer}.lv-row:hover{background:var(--ed-panel-2)}
-  .lv-row.near-spot{background:var(--ed-panel-3);box-shadow:inset 2px 0 0 var(--ed-accent)}
   .lv-row.lv-sel{outline:1px solid var(--ed-accent);outline-offset:-1px;background:var(--ed-accent-bg)}
   .lv-foot{display:flex;flex-wrap:wrap;gap:12px;font-family:var(--ed-sans);font-size:10.5px;color:var(--ed-ink-4);padding:10px 2px 0}
   .lv-foot .lv-absent{color:var(--ed-stale)}
@@ -760,17 +752,6 @@
 
   <!-- ===== MAIN ===== -->
   <main>
-    <!-- Proximity Alerts -- /api/alerts (ed-alerts.js); hidden
-         when there is nothing to disclose. First child of <main> (not a sibling of it) so it
-         stays in the "main" grid area and persists across every workspace tab's own DOM
-         swaps -- #app's own grid-template-areas has exactly "rail header"/"rail main" with no
-         third slot, so a direct #app child here would auto-place into an implicit grid cell
-         with no defined position (independent-review finding, REPRODUCED live: rendered at
-         left:-211px, fully off-screen). -->
-    <div id="alertsStrip" hidden>
-      <span class="hkv"><span class="k">⚡ Proximity Alerts</span></span>
-      <div id="alertsList" style="display:flex;gap:8px;flex-wrap:wrap"></div>
-    </div>
     <!-- tier 2: workspace subnav -->
     <div class="subnav" id="subnav">
       <span class="wtitle" id="wsTitle">OPTIONS</span>
@@ -968,11 +949,6 @@
              the shared TradingView-style chart (ed-tv-chart.js on Lightweight Charts). -->
         <div class="sub-pane" data-sub-pane="desk">
           <div class="tdm" id="tdmRoot">
-            <div class="tdm-head">
-              <span class="tdm-idx" id="tdmIdxSPX"></span><span class="tdm-idx" id="tdmIdxNDX"></span><span class="tdm-idx" id="tdmIdxVIX"></span>
-              <span class="tdm-grow"></span>
-              <span class="tdm-trust-l">DATA TRUST</span><span class="tdm-trust" id="tdmTrust"></span>
-            </div>
             <div class="tdm-main">
               <section class="tdm-map panel" id="tdmMap">
                 <div class="tdm-map-h"><span class="t">Market Map</span><div class="tdm-toolbar" id="tdmToolbar"></div></div>
@@ -985,13 +961,13 @@
               </aside>
             </div>
             <div class="tdm-cards" id="tdmCards">
-              <div class="tdm-card panel" id="tdmCardLiq"><div class="tdm-card-h"><span class="t">Liquidity</span><button type="button" class="tdm-eye" data-drill="liquidity" title="Drill down: book heatmap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="bookvenue"><button type="button" class="scbtn" data-venue="NYSE_BOOK">NYSE book</button><button type="button" class="scbtn" data-venue="NASDAQ_BOOK">NASDAQ book</button></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">displayed book · /api/order-flow/microstructure</div></div>
-              <div class="tdm-card panel" id="tdmCardFlow"><div class="tdm-card-h"><span class="t">Order Flow</span><button type="button" class="tdm-eye" data-drill="flow" title="Drill down: Book / DOM"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Tick-rule tape (PROXY) + level crosses · microstructure, /api/desk/events</div></div>
-              <div class="tdm-card panel" id="tdmCardOpt"><div class="tdm-card-h"><span class="t">Options Positioning</span><button type="button" class="tdm-eye" data-drill="options" title="Drill down: Gamma"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Full option chain · /api/terrain</div></div>
-              <div class="tdm-card panel" id="tdmCardVol"><div class="tdm-card-h"><span class="t">Volatility</span><button type="button" class="tdm-eye" data-drill="vol" title="Drill down: option chain"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="tdm-state"></span></div><div class="tdm-hero">—</div><div class="tdm-rows"></div><div class="tdm-src">Nearest-expiry ATM IV · /api/terrain, price socket</div></div>
+              <div class="tdm-card panel" id="tdmCardLiq"><div class="tdm-card-h"><span class="t">Liquidity</span><span class="bookvenue"><button type="button" class="scbtn" data-venue="NYSE_BOOK">NYSE</button><button type="button" class="scbtn" data-venue="NASDAQ_BOOK">NASDAQ</button></span><button type="button" class="tdm-open" data-drill="liquidity" title="Order Flow · Heatmap">Open tab ›</button></div><div class="tdm-src"></div><div class="tdm-cs"><div><small>Current state</small><span class="tdm-state"></span><span class="tdm-hero"></span></div><div><small>Change (1h)</small><span class="tdm-chg" title="No one-hour change is produced for this card">—</span></div></div><figure class="tdm-chartbox"><div class="tdm-plot"></div><figcaption></figcaption></figure><div class="tdm-rows"></div></div>
+              <div class="tdm-card panel" id="tdmCardFlow"><div class="tdm-card-h"><span class="t">Order Flow</span><button type="button" class="tdm-open" data-drill="flow" title="Order Flow · Book / DOM">Open tab ›</button></div><div class="tdm-src"></div><div class="tdm-cs"><div><small>Current state</small><span class="tdm-state"></span><span class="tdm-hero"></span></div><div><small>Change (1h)</small><span class="tdm-chg" title="No one-hour change is produced for this card">—</span></div></div><figure class="tdm-chartbox"><div class="tdm-plot"></div><figcaption></figcaption></figure><div class="tdm-rows"></div></div>
+              <div class="tdm-card panel" id="tdmCardOpt"><div class="tdm-card-h"><span class="t">Options Positioning</span><button type="button" class="tdm-open" data-drill="options" title="Options · Gamma">Open tab ›</button></div><div class="tdm-src"></div><div class="tdm-cs"><div><small>Current state</small><span class="tdm-state"></span><span class="tdm-hero"></span></div><div><small>Change (1h)</small><span class="tdm-chg" title="No one-hour change is produced for this card">—</span></div></div><figure class="tdm-chartbox"><div class="tdm-plot"></div><figcaption></figcaption></figure><div class="tdm-rows"></div></div>
+              <div class="tdm-card panel" id="tdmCardVol"><div class="tdm-card-h"><span class="t">Volatility</span><button type="button" class="tdm-open" data-drill="vol" title="Options · Chain">Open tab ›</button></div><div class="tdm-src"></div><div class="tdm-cs"><div><small>Current state</small><span class="tdm-state"></span><span class="tdm-hero"></span></div><div><small>Change (1h)</small><span class="tdm-chg" title="No one-hour change is produced for this card">—</span></div></div><figure class="tdm-chartbox"><div class="tdm-plot"></div><figcaption></figcaption></figure><div class="tdm-rows"></div></div>
             </div>
             <div class="tdm-agree panel"><span class="tdm-agree-t">Cross-Domain Read</span><div class="tdm-agree-row" id="tdmAgree"></div></div>
-            <div class="tdm-foot" id="tdmFoot"></div>
+            <div class="tdm-foot"><span class="tdm-idx" id="tdmIdxSPX"></span><span class="tdm-idx" id="tdmIdxNDX"></span><span class="tdm-idx" id="tdmIdxVIX"></span><span class="tdm-trust-l">Data trust</span><span class="tdm-trust" id="tdmTrust"></span><span class="tdm-foot-src" id="tdmFoot"></span></div>
           </div>
         </div>
         <div class="sub-pane" data-sub-pane="right-now">
@@ -1101,6 +1077,5 @@
 <script src="/static/vendor/lightweight-charts/lightweight-charts.standalone.production.js" defer></script>
 <script src="/static/js/ed-tv-chart.js" defer></script>
 <script src="/static/js/ed-trade-desk-map.js" defer></script>
-<script src="/static/js/ed-alerts.js" defer></script>
 </body>
 </html>

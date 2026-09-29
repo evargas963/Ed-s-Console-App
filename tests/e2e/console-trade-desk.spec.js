@@ -12,8 +12,10 @@ const { mockPriceSocket } = require('./fixtures/price_socket');
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
 const EVENTS = {
   ticker: 'SPY', tf: '30', window_start_ts_utc: CROSSES[2].ts_utc - 60, window_label: 'this session (served)',
+  // the served shape (server.get_desk_events): each cross as recorded, at its level's price
   items: CROSSES.map((c, i) => ({ key: 'x' + c.cross_id, n: 3 - i, ts: c.ts_utc, dom: 'LEVELS', dir: c.direction, marker: true,
-    title: 'Crossed ' + (c.direction === 'up' ? 'above ' : 'below ') + c.level_name, detail: c.level_value.toFixed(2), src: 'level_crosses' })),
+    price: c.level_value, title: 'Crossed ' + (c.direction === 'up' ? 'above ' : 'below ') + c.level_name,
+    detail: c.level_value.toFixed(2), src: 'level_crosses' })),
   cross_counts: { up: CROSSES.filter((c) => c.direction === 'up').length, down: CROSSES.filter((c) => c.direction !== 'up').length },
 };
 const SPOT = 771.3;
@@ -22,10 +24,12 @@ const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, pu
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
   levels: [
-    { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', near_spot: false },
-    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', near_spot: false },
+    { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', },
+    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', },
   ],
-  by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [] };
+  by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [],
+  volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
+    bins: [[769.99, 1200, false], [770.0, 5000, true], [770.01, 3000, true]], poc: 770.0, vah: 770.01, val: 770.0 } };
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
   spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2, side: 'BID' } },
   depth_pressure: { bid: [{ price: 771.29, volume: 300, cum: 300 }, { price: 771.28, volume: 900, cum: 1200 }], ask: [{ price: 771.31, volume: 200, cum: 200 }] },
@@ -75,9 +79,64 @@ test('every chart is the one TradingView-style chart, with its controls', async 
     await expect(page.locator(host + ' .tvc-auto'), ws + '/' + sub).toBeVisible();
     await expect(page.locator(host + ' .tvc-log'), ws + '/' + sub).toBeVisible();
   }
-  // the liquidity map draws the served zones and the prior-day level from /api/levels
+  // the liquidity map draws the served zones and shows the prior-day level from /api/levels: a line
+  // when it is inside the candles' price range, else named at the pane's edge (PDH 773.50 is above
+  // this fixture's one bar, 769-772; the scale fits the candles, 2026-09-29)
   await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).zones)).toBe(LIQ.zones.length);
-  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || { levels: [] }).levels)).toContain('PDH');
+  await expect.poll(() => page.evaluate(() => ((window.EdLiquidityMap.state() || { levels: [] }).levels.join(' ') + ' ' +
+    document.querySelector('#liqmBody .tvc-edge-top').textContent))).toContain('PDH');
+  expect(errs).toEqual([]);
+});
+
+// 2026-09-29 RTH, measured in the operator's browser: a fresh desk load asked for every value twice
+// (start() ran on ed:view and ed:ticker; the second saw no bars yet and loaded again), and a
+// timeframe switch re-asked for the terrain, zones, strikes, forces and flow bars, none of which
+// depend on the timeframe -- 6.8 s to redraw.
+test('a desk load asks for each value once; a timeframe switch asks only for that timeframe and says it is loading', async ({ page }) => {
+  const errs = watchErrors(page);
+  await intercept(page);
+  const asked = [];
+  page.on('request', (r) => { const u = r.url(); if (u.includes('/api/')) asked.push(u.split('/api/')[1]); });
+  let releaseBars;
+  const barsHeld = new Promise((r) => { releaseBars = r; });
+  await page.route(/\/api\/bars1m\?.*tf=15/, async (route) => { await barsHeld;
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, BARS, { tf: '15' })) }); });
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+    localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed.desk.tf', '5'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars)).toBeGreaterThan(0);
+  await page.waitForTimeout(500);
+  const count = (re) => asked.filter((u) => re.test(u)).length;
+  for (const re of [/^levels\?/, /^desk\/events\?/, /^terrain\?/, /^liquidity-snapshot\?/, /^terrain\/strikes\?/, /^forces\?/,
+    /^order-flow\/microstructure\?/, /^bars1m\?.*tf=5/, /^bars1m\?.*tf=1&/]) expect(count(re), String(re)).toBe(1);
+
+  asked.length = 0;
+  await page.locator('#tdmToolbar [data-tf="15"]').click();
+  // while the 15m bars are on their way the 5m view is gone and the chart says what is loading
+  await expect(page.locator('#tdmChartEmpty')).toHaveText(/Loading SPY · 15m/);
+  expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(0);
+  expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markers.length)).toBe(0);
+  releaseBars();
+  await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.tf)).toBe('15');
+  await page.waitForTimeout(500);
+  expect(asked.filter((u) => !/^(changes|streaming\/)/.test(u)).map((u) => u.split('?')[0]).sort())
+    .toEqual(['bars1m', 'desk/events', 'levels']);
+  expect(errs).toEqual([]);
+});
+
+test('the liquidity map fits its price scale to the candles; a far zone does not flatten them', async ({ page }) => {
+  // 2026-09-29 RTH: SPY's served zones at 750 and 800 joined the auto-fit, the scale ran 735-805
+  // and the candles (765) were a flat line
+  const errs = watchErrors(page);
+  await intercept(page);
+  const far = { zone_low: 800, zone_high: 801, zone_type: 'resistance_liquidity', zone_label: 'Resistance', zone_side: 'resistance', confluence_score: 1 };
+  await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, LIQ, { zones: LIQ.zones.concat([far]) })) }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).zones)).toBe(LIQ.zones.length + 1);
+  const st = await page.evaluate(() => window.EdLiquidityMap.state());
+  expect(st.priceTop).toBeLessThan(far.zone_low);          // the bar's range (769-772) sets the scale
   expect(errs).toEqual([]);
 });
 
@@ -109,8 +168,8 @@ test.describe('Trade Desk renders served values', () => {
     // max pain (770) is inside the one bar's price range; PDH (773.50) is above it, pinned at the edge
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBe(1);
     await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('PDH 773.50');
-    // the profile's place in the key says why it is not drawn
-    await expect(page.locator('#tdmFamilies')).toContainText('Volume profile (RTH): not drawn');
+    // the profile is drawn after the close too (the session's served profile) and names its basis
+    await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
     expect(errs).toEqual([]);
   });
 
@@ -122,12 +181,15 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmQueue .tdm-q')).toHaveCount(3);
     await expect(page.locator('#tdmQueueCount')).toHaveText('3');
     await expect(page.locator('#tdmCardLiq')).toContainText('BID HEAVY');
-    await expect(page.locator('#tdmCardFlow')).toContainText('NET BUYING');
+    // Schwab sends no trade side: the Order Flow card claims none (operator 2026-09-29)
+    await expect(page.locator('#tdmCardFlow')).not.toContainText(/NET BUYING|NET SELLING|tick rule|PROXY|delta/i);
     await expect(page.locator('#tdmCardFlow')).toContainText(EVENTS.cross_counts.up + ' up · ' + EVENTS.cross_counts.down + ' down');
     // the window's words are the server's (a page copy of the lookback table: register P-15)
-    await expect(page.locator('#tdmCardFlow')).toContainText('Level crosses (this session (served))');
+    await expect(page.locator('#tdmCardFlow')).toContainText('Crosses (this session (served))');
     await expect(page.locator('#tdmLookback')).toHaveText('this session (served)');
     await expect(page.locator('#tdmAgree')).toContainText('Above flip');
+    // the served session volume profile, every bin drawn at the chart's left edge, with its basis
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileBins)).toBe(LEVELS.volume_profile.bins.length);    await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
     // each card draws its served series in the reference's chart type (2026-09-28): depth areas,
     // volume bars, and lines for put/call OI and ATM IV by expiry (a null expiry breaks the line)
     await expect(page.locator('#tdmCardLiq .tdm-plot svg path')).toHaveCount(4);
@@ -137,6 +199,52 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmCardVol figcaption')).toHaveText('ATM implied vol by expiry, nearest first');
     await expect(page.locator('#tdmAgree')).toContainText('Bid heavy');
     expect(errs).toEqual([]);
+  });
+
+  test('Desk: each chart marker is its queue entry, and selecting the entry selects that marker', async ({ page }) => {
+    const errs = watchErrors(page);
+    await intercept(page);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const want = EVENTS.items.filter((it) => it.marker).map((it) => it.key).sort();
+    await expect.poll(async () => ((await page.evaluate(() => window.EdTradeDeskMap.state().chart.markers)) || []).slice().sort()).toEqual(want);
+    const key = EVENTS.items[1].key;
+    await page.locator('#tdmQueue [data-q="' + key + '"]').click();
+    await expect(page.locator('#tdmQueue [data-q="' + key + '"]')).toHaveClass(/sel/);
+    expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected)).toBe(key);
+    // and the other way: a click on a callout's number on the chart selects its queue entry
+    const other = EVENTS.items[2].key;
+    const all = (await page.evaluate(() => window.EdTradeDeskMap.state().chart.callouts)) || [];
+    const c = all.filter((x) => x.id === other)[0];
+    expect(c).toBeTruthy();
+    // the three crosses share one bar here; no callout's number covers another's
+    for (const a of all) for (const b of all) if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(22);
+    // the chart may still be settling its opening view: read the number where it is drawn now, click it
+    const box = await page.locator('#tdmChart .tvc-plot').boundingBox();
+    await expect.poll(async () => {
+      const now = ((await page.evaluate(() => window.EdTradeDeskMap.state().chart.callouts)) || []).filter((x) => x.id === other)[0];
+      await page.mouse.click(box.x + now.x, box.y + now.y);
+      return page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected);
+    }).toBe(other);
+    await expect(page.locator('#tdmQueue [data-q="' + other + '"]')).toHaveClass(/sel/);
+    expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected)).toBe(other);
+    expect(errs).toEqual([]);
+  });
+
+  test('no proximity alerts anywhere: no strip, no request for them', async ({ page }) => {
+    // operator 2026-09-29: remove the alert strip, the queue's alert items and every other
+    // presentation of proximity alerts
+    const asked = [];
+    page.on('request', (r) => { if (r.url().includes('/api/alerts')) asked.push(r.url()); });
+    await intercept(page);
+    for (const [ws, sub] of [['trade-desk', 'desk'], ['options', 'gamma'], ['liquidity', 'map'], ['order-flow', 'book']]) {
+      await page.addInitScript(([w, s]) => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', w); localStorage.setItem('ed_sub', s); } catch (e) {} }, [ws, sub]);
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(400);
+      await expect(page.locator('#alertsStrip')).toHaveCount(0);
+      await expect(page.locator('body')).not.toContainText(/Proximity Alerts/i);
+    }
+    expect(asked).toEqual([]);
   });
 
   test('Desk: selecting a ticker opens its /api/changes connection (the book request)', async ({ page }) => {
@@ -240,8 +348,8 @@ test.describe('Trade Desk renders served values', () => {
 
   test('Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split', async ({ page }) => {
     const errs = watchErrors(page);
-    const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', near_spot: false };
-    const wall = { id: 'call_wall', price: 772, family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, side: 'ABOVE', near_spot: false };
+    const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', };
+    const wall = { id: 'call_wall', price: 772, family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, side: 'ABOVE', };
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
       let body = { available: false };
