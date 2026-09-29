@@ -7,10 +7,9 @@ def test_board_validity_is_the_symbols_form_never_a_list_of_names():
     """TICK-04 (2026-09-28 audit): SP, IW and NV were refused by name (and pruned from the board
     at every start), whatever Schwab says about them. A well-formed symbol is valid for any
     instrument type; whether it is real is Schwab's answer to its chain request."""
-    from production_universe import filter_valid_tickers, is_valid_production_ticker
+    from production_universe import is_valid_production_ticker
     assert all(is_valid_production_ticker(s) for s in ("SP", "IW", "NV", "SPY", "MU", "SPX", "$VIX", "$SP"))
     assert not any(is_valid_production_ticker(s) for s in ("", "$", "TOOLONGX"))
-    assert filter_valid_tickers(["nv", "NV", "spx", None]) == ["NV", "$SPX"]
 
 
 def test_the_console_and_the_daemon_hold_one_board(tmp_path, monkeypatch):

@@ -759,17 +759,11 @@ class PriceLevelValue:
     """One materialized level: its value AND the identity that makes it comparable."""
 
     __slots__ = ("level_id", "price", "family", "semantic_scope", "evidence_tier",
-                 "producer", "window", "vendor_basis", "as_of_ts_utc", "generation",
-                 "session_date")
+                 "producer", "window", "vendor_basis", "as_of_ts_utc", "generation")
 
     def __init__(self, *, level_id: str, price: float, family: str, semantic_scope: str,
                  evidence_tier: str, producer: str, window: str, vendor_basis: str,
-                 as_of_ts_utc: Optional[float], generation: int,
-                 session_date: str) -> None:
-        # session_date is REQUIRED, not defaulted: it is part of the carrier ledger key,
-        # so a value built without one would land under a key no real carrier uses and
-        # would silently never collide with anything — a conflict detector that cannot
-        # detect. Failing to construct is the loud version of that.
+                 as_of_ts_utc: Optional[float], generation: int) -> None:
         self.level_id = level_id
         self.price = float(price)
         self.family = family
@@ -780,16 +774,10 @@ class PriceLevelValue:
         self.vendor_basis = vendor_basis
         self.as_of_ts_utc = as_of_ts_utc
         self.generation = generation
-        self.session_date = session_date
 
     @property
     def session_scope(self) -> str:
         return _SESSION_SCOPE_OF.get(self.semantic_scope, self.semantic_scope)
-
-    def identity(self) -> tuple:
-        """The identity a second carrier must reproduce EXACTLY."""
-        return (self.level_id, self.semantic_scope, self.generation,
-                self.price, self.producer, self.as_of_ts_utc)
 
     def to_contract_dict(self) -> dict:
         label, short = LEVEL_NAMES.get(self.level_id, (self.level_id, self.level_id))
@@ -918,7 +906,6 @@ def build_price_level_snapshot(
             level_id=level_id, price=v, family=family, semantic_scope=scope,
             evidence_tier=tier, producer=producer, window=window, vendor_basis=basis,
             as_of_ts_utc=as_of, generation=generation,
-            session_date=session_date.isoformat(),
         )
 
     # ── prior day ────────────────────────────────────────────────────────────
@@ -1060,7 +1047,6 @@ def materialize_price_level_snapshot(
         )
         snap.input_fingerprint = fingerprint
         _MATERIALIZED_SNAPSHOTS[key] = snap
-        _prune_carrier_ledger(tk, session_date.isoformat(), generation)
         return snap
 
 
@@ -1068,83 +1054,3 @@ def materialize_price_level_snapshot(
 
 
 
-# ── runtime carrier contract ─────────────────────────────────────────────────
-
-
-class LevelCarrierConflict(RuntimeError):
-    """Two carriers disagree for one (ticker, level_id, semantic_scope, generation).
-
-    This is the failure the static guard cannot see: the source may contain exactly
-    one computation and still ship two different numbers, because a carrier rounded,
-    re-derived, cached across a generation boundary, or relabelled provenance.
-    """
-
-
-#: (ticker, session_date, level_id, semantic_scope, generation) -> (identity, carrier).
-#: session_date is part of the KEY, not just the value: yesterday's generation 1 and
-#: today's generation 1 are different subjects, and colliding them would report a
-#: disagreement that is only a change of day.
-_CARRIER_LEDGER: dict[tuple[str, str, str, str, int], tuple[tuple, str]] = {}
-
-
-
-
-def _prune_carrier_ledger(ticker: str, session_date_iso: str, generation: int) -> None:
-    """Drop every ledger row for this ticker that is not the current generation.
-
-    Superseded generations are not disagreements — they are history, and keeping them
-    would both grow without bound in a multi-day process and let a stale row accuse a
-    correct carrier.
-    """
-    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
-    for k in [k for k in _CARRIER_LEDGER
-              if k[0] == tk and (k[1] != session_date_iso or k[4] != generation)]:
-        _CARRIER_LEDGER.pop(k, None)
-
-
-def register_level_carrier(
-    carrier: str,
-    ticker: str,
-    value: PriceLevelValue,
-) -> None:
-    """Record what a carrier is about to ship; raise if it contradicts an earlier carrier."""
-    tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
-    key = (tk, value.session_date, value.level_id, value.semantic_scope, value.generation)
-    identity = value.identity()
-    prior = _CARRIER_LEDGER.get(key)
-    if prior is None:
-        _CARRIER_LEDGER[key] = (identity, carrier)
-        return
-    prior_identity, prior_carrier = prior
-    if prior_identity != identity:
-        fields = ("level_id", "semantic_scope", "generation", "price", "producer",
-                  "as_of_ts_utc")
-        diff = [f"{f}: {a!r} != {b!r}"
-                for f, a, b in zip(fields, prior_identity, identity) if a != b]
-        raise LevelCarrierConflict(
-            f"{tk} {value.level_id} scope={value.semantic_scope} "
-            f"generation={value.generation}: carrier {carrier!r} disagrees with "
-            f"{prior_carrier!r} — " + "; ".join(diff)
-        )
-
-
-def carry_snapshot_levels(
-    snapshot: PriceLevelSnapshot,
-    carrier: str,
-    level_ids: Optional[tuple] = None,
-) -> dict:
-    """Carry canonical values to a consumer, registering each against the contract.
-
-    Returns {level_id: price-or-None}. A consumer calls this INSTEAD of computing;
-    the returned mapping is the only legal source for a Phase 2A id on that surface.
-    """
-    ids = tuple(level_ids) if level_ids else tuple(PHASE2A_LEVEL_IDS)
-    out: dict[str, Optional[float]] = {}
-    for lid in ids:
-        v = snapshot.levels.get(lid)
-        if v is None:
-            out[lid] = None
-            continue
-        register_level_carrier(carrier, snapshot.ticker, v)
-        out[lid] = v.price
-    return out

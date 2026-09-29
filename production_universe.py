@@ -17,8 +17,6 @@ This module is intentionally strict: invalid symbols must not enter logging_univ
 
 from __future__ import annotations
 
-from typing import Iterable
-
 from instrument_identity import ticker_storage_key
 
 
@@ -39,17 +37,3 @@ def is_symbol_form(seg: str) -> bool:
 
 def is_valid_production_ticker(raw: str | None) -> bool:
     return is_symbol_form(normalize_production_ticker(raw))
-
-
-def filter_valid_tickers(tickers: Iterable[str | None]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for x in tickers:
-        t = normalize_production_ticker(x or "")
-        if not is_valid_production_ticker(t):
-            continue
-        if t in seen:
-            continue
-        seen.add(t)
-        out.append(t)
-    return out
