@@ -3694,13 +3694,17 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
 
 
 @app.get("/api/expiries")
-# SWITCH-LATENCY FIX: sync def → threadpool (DB write + Schwab expiry fetch, no await).
 def get_expiries(ticker: str = Query(...)):
+    """The ticker's listed expiries with each one's dropdown label (MM/DD/YYYY and Schwab's
+    daysToExpiration, as sent); with none, the levels' own reason."""
     ticker = ticker_storage_key(_required_ticker(ticker))   # SPX -> $SPX: the cache's own key
     t = terrain_cache_get(ticker) or {}
-    return JSONResponse({"expiries": t.get("expiries") or [],
-                         "dte": t.get("expiry_dte") or {},   # Schwab's daysToExpiration, as sent
-                         "reason": None if t.get("expiries") else "levels not computed yet"})
+    exps, dte = t.get("expiries") or [], t.get("expiry_dte") or {}
+    labels = {e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" + (f" · {dte[e]:g}DTE" if dte.get(e) is not None else "")
+              for e in exps}
+    return JSONResponse({"expiries": exps, "dte": dte, "labels": labels,
+                         "reason": None if exps else (terrain_staleness(None, ticker)["levels_stale_reason"]
+                                                      if not t else "no expiry listed in the published chain")})
 
 
 

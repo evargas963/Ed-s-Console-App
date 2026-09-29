@@ -308,3 +308,30 @@ test.describe('D — Gamma Chain subview', () => {
     expect(aCallCount).toBeGreaterThanOrEqual(2);   // at least the two A requests under test
   });
 });
+
+test.describe('expiry dropdown (register P-03)', () => {
+  // it formatted each date on the page, kept "All Expirations" silently on a failed request and
+  // ignored the served reason when none is listed
+  async function withExpiries(page, fulfil) {
+    await page.route('**/api/**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+    await page.route('**/api/expiries*', fulfil);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+  }
+
+  test('each option shows its served label', async ({ page }) => {
+    await withExpiries(page, (r) => r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ expiries: ['2026-10-16'], labels: { '2026-10-16': '10/16/2026 · 18DTE' } }) }));
+    await expect(page.locator('#expSel option[value="2026-10-16"]')).toHaveText('10/16/2026 · 18DTE');
+  });
+
+  test('with none listed, the served reason is shown', async ({ page }) => {
+    await withExpiries(page, (r) => r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ expiries: [], labels: {}, reason: 'market closed; no chain capture of this ticker yet' }) }));
+    await expect(page.locator('#expSel option[disabled]')).toHaveText('market closed; no chain capture of this ticker yet');
+  });
+
+  test('a failed request is shown, not hidden', async ({ page }) => {
+    await withExpiries(page, (r) => r.fulfill({ status: 500, body: 'x' }));
+    await expect(page.locator('#expSel option[disabled]')).toHaveText('expiries unavailable: HTTP 500');
+  });
+});
