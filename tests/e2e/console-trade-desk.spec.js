@@ -173,6 +173,25 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Desk: the levels are drawn when they arrive, not held for the event queue', async ({ page }) => {
+    // 2026-09-29 14:52 CT, deployed: QQQ's levels answered in 28 ms and were drawn after 1.34 s,
+    // when /api/desk/events answered
+    const errs = watchErrors(page);
+    await page.route('**/api/**', (route) => {
+      const url = route.request().url();
+      if (url.includes('/api/desk/events')) return;               // the event queue has not answered
+      let body = { available: false };
+      if (url.includes('/api/levels')) body = LEVELS;
+      else if (url.includes('/api/bars1m')) body = BARS;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBeGreaterThan(0);
+    await expect(page.locator('#tdmQueue')).toContainText('Loading');
+    expect(errs).toEqual([]);
+  });
+
   test('Desk: the served queue, counts, book side, tape side and flip relation', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
