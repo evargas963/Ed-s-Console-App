@@ -80,9 +80,28 @@ test('every chart is the one TradingView-style chart, with its controls', async 
     await expect(page.locator(host + ' .tvc-auto'), ws + '/' + sub).toBeVisible();
     await expect(page.locator(host + ' .tvc-log'), ws + '/' + sub).toBeVisible();
   }
-  // the liquidity map draws the served zones and the prior-day level from /api/levels
+  // the liquidity map draws the served zones and shows the prior-day level from /api/levels: a line
+  // when it is inside the candles' price range, else named at the pane's edge (PDH 773.50 is above
+  // this fixture's one bar, 769-772; the scale fits the candles, 2026-09-29)
   await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).zones)).toBe(LIQ.zones.length);
-  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || { levels: [] }).levels)).toContain('PDH');
+  await expect.poll(() => page.evaluate(() => ((window.EdLiquidityMap.state() || { levels: [] }).levels.join(' ') + ' ' +
+    document.querySelector('#liqmBody .tvc-edge-top').textContent))).toContain('PDH');
+  expect(errs).toEqual([]);
+});
+
+test('the liquidity map fits its price scale to the candles; a far zone does not flatten them', async ({ page }) => {
+  // 2026-09-29 RTH: SPY's served zones at 750 and 800 joined the auto-fit, the scale ran 735-805
+  // and the candles (765) were a flat line
+  const errs = watchErrors(page);
+  await intercept(page);
+  const far = { zone_low: 800, zone_high: 801, zone_type: 'resistance_liquidity', zone_label: 'Resistance', zone_side: 'resistance', confluence_score: 1 };
+  await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, LIQ, { zones: LIQ.zones.concat([far]) })) }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).zones)).toBe(LIQ.zones.length + 1);
+  const st = await page.evaluate(() => window.EdLiquidityMap.state());
+  expect(st.priceTop).toBeLessThan(far.zone_low);          // the bar's range (769-772) sets the scale
   expect(errs).toEqual([]);
 });
 

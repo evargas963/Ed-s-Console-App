@@ -157,7 +157,8 @@
     };
   }
   // Served price zones across the pane: [{lo, hi, color, label}], each a shaded band with its
-  // edges and label; their prices join the auto-fit so every zone is on screen.
+  // edges and label, where it falls in the price range the candles set (a zone far from price does
+  // not widen the scale: SPY's zones at 750 and 800 flattened its candles, 2026-09-29).
   function ZonesPrimitive() {
     var self = this;
     this._series = null; this._req = null; this.zones = [];
@@ -180,11 +181,6 @@
     this.detached = function () { self._series = null; };
     this.updateAllViews = function () {};
     this.paneViews = function () { return [view]; };
-    this.autoscaleInfo = function () {
-      if (!self.zones.length) return null;
-      return { priceRange: { minValue: Math.min.apply(null, self.zones.map(function (z) { return z.lo; })),
-        maxValue: Math.max.apply(null, self.zones.map(function (z) { return z.hi; })) } };
-    };
     this.set = function (zones) { self.zones = (zones || []).filter(function (z) { return isFinite(z.lo) && isFinite(z.hi); }); if (self._req) self._req(); };
   }
   // Numbered event callouts, as the reference draws them: in the strip above the candles each
@@ -807,7 +803,8 @@
           profile: { rows: profile.rows.length, style: profile.style, selected: profile.sel },
           heatCells: heat.h ? heat.h.cells.length : 0, zones: zones.zones.length, volumeProfileBins: vprofile.rows.length, volumeProfileMark: vprofile.mark ? vprofile.mark.label : null,
           levels: S.priceLines.map(function (l) { return l.options().title; }),
-          markers: S.markersShown || [], markerSelected: S.markerSel || null, callouts: callouts.centers };
+          markers: S.markersShown || [], markerSelected: S.markerSel || null, callouts: callouts.centers,
+          priceTop: candles.coordinateToPrice(0), priceBottom: candles.coordinateToPrice(Math.max(1, plot.clientHeight - 30)) };
       },
       // where a price's profile row is drawn, in page coordinates (tests click it as a user would)
       profilePoint: function (price) {
