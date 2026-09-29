@@ -110,11 +110,12 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
     await page.locator('.vtab', { hasText: 'Chart' }).click();
     const chart = page.locator('#chartBody');
     await expect(chart.locator('.scope-note')).toContainText('of 41 strikes');
-    const autoMarks = await chart.locator('.gmark').count();
-    expect(autoMarks).toBeGreaterThan(0);
+    const rows = () => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows);
+    await expect.poll(rows).toBeGreaterThan(0);
+    const autoMarks = await rows();
     await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
     await expect(chart.locator('.scope-note')).toContainText('41 of 41 strikes');
-    expect(await chart.locator('.gmark').count()).toBeGreaterThan(autoMarks);
+    await expect.poll(rows).toBeGreaterThan(autoMarks);
   });
 
   test('the scope choice persists across reloads (ed_scope)', async ({ page }) => {

@@ -83,6 +83,143 @@
     this.paneViews = function () { return [view]; };
     this.set = function (lo, hi, fill) { self._lo = lo; self._hi = hi; if (fill) self._fill = fill; if (self._req) self._req(); };
   }
+  // Values at prices on the price axis, drawn from the pane's right edge: signed bars (a GEX
+  // profile) or dots sized by magnitude. rows: [{price, value, color}]; the rows' prices join the
+  // auto-fit so every row is on screen. Scaling to the pane is drawing; the values are served.
+  function ProfilePrimitive() {
+    var self = this;
+    this._series = null; this._req = null; this.rows = []; this.style = 'bars'; this.frac = 0.32; this.sel = null;
+    function maxAbs() { return self.rows.reduce(function (m, r) { return Math.max(m, Math.abs(r.value)); }, 0) || 1; }
+    var renderer = { draw: function (target) {
+      if (!self._series || !self.rows.length) return;
+      var mx = maxAbs();
+      target.useBitmapCoordinateSpace(function (s) {
+        var c = s.context, hr = s.horizontalPixelRatio, vr = s.verticalPixelRatio, W = s.bitmapSize.width, band = W * self.frac;
+        var ys = self.rows.map(function (r) { return self._series.priceToCoordinate(r.price); });
+        var gap = Infinity;
+        ys.filter(function (y) { return y != null; }).sort(function (a, b) { return a - b; })
+          .forEach(function (y, i, a) { if (i && a[i] - a[i - 1] > 0) gap = Math.min(gap, a[i] - a[i - 1]); });
+        var th = Math.max(1, Math.min(8, isFinite(gap) ? gap * 0.7 : 8)) * vr;
+        self.rows.forEach(function (r, i) {
+          if (ys[i] == null) return;
+          var y = ys[i] * vr, f = Math.abs(r.value) / mx;
+          c.fillStyle = r.color; c.globalAlpha = 0.85;
+          if (self.style === 'dots') {
+            var rad = (3 + Math.sqrt(f) * 16) * hr;
+            c.beginPath(); c.arc(W - band / 2, y, rad, 0, 2 * Math.PI); c.globalAlpha = 0.55; c.fill();
+          } else {
+            c.fillRect(W - f * band, y - th / 2, f * band, th);
+          }
+          if (self.sel != null && r.price === self.sel) {
+            c.globalAlpha = 1; c.strokeStyle = r.color; c.lineWidth = Math.max(1, hr);
+            c.strokeRect(W - band, y - th / 2 - 2 * vr, band, th + 4 * vr);
+          }
+          c.globalAlpha = 1;
+        });
+      });
+    } };
+    var view = { renderer: function () { return renderer; }, zOrder: function () { return 'normal'; } };
+    this.attached = function (p) { self._series = p.series; self._req = p.requestUpdate; };
+    this.detached = function () { self._series = null; };
+    this.updateAllViews = function () {};
+    this.paneViews = function () { return [view]; };
+    this.autoscaleInfo = function () {
+      if (!self.rows.length) return null;
+      var ps = self.rows.map(function (r) { return r.price; });
+      return { priceRange: { minValue: Math.min.apply(null, ps), maxValue: Math.max.apply(null, ps) } };
+    };
+    this.set = function (rows, style) { self.rows = rows || []; if (style) self.style = style; if (self._req) self._req(); };
+    this.select = function (price) { self.sel = price; if (self._req) self._req(); };
+    // the row nearest a pane point, when the point is inside the profile band
+    this.rowAt = function (x, y, paneWidth) {
+      if (!self._series || !self.rows.length || x < paneWidth * (1 - self.frac)) return null;
+      var best = null, bd = Infinity;
+      self.rows.forEach(function (r) { var ry = self._series.priceToCoordinate(r.price); if (ry == null) return;
+        var d = Math.abs(ry - y); if (d < bd) { bd = d; best = r; } });
+      return bd <= 12 ? best : null;
+    };
+  }
+  // Served price zones across the pane: [{lo, hi, color, label}], each a shaded band with its
+  // edges and label; their prices join the auto-fit so every zone is on screen.
+  function ZonesPrimitive() {
+    var self = this;
+    this._series = null; this._req = null; this.zones = [];
+    var renderer = { draw: function (target) {
+      if (!self._series || !self.zones.length) return;
+      target.useBitmapCoordinateSpace(function (s) {
+        var c = s.context, vr = s.verticalPixelRatio, hr = s.horizontalPixelRatio, W = s.bitmapSize.width;
+        self.zones.forEach(function (z) {
+          var y1 = self._series.priceToCoordinate(z.hi), y2 = self._series.priceToCoordinate(z.lo);
+          if (y1 == null || y2 == null) return;
+          var top = Math.min(y1, y2) * vr, h = Math.max(1, Math.abs(y2 - y1) * vr);
+          c.fillStyle = alpha(z.color, 0.13); c.fillRect(0, top, W, h);
+          c.fillStyle = alpha(z.color, 0.6); c.fillRect(0, top, W, Math.max(1, vr)); c.fillRect(0, top + h - Math.max(1, vr), W, Math.max(1, vr));
+          if (z.label) { c.fillStyle = z.color; c.font = Math.round(11 * vr) + 'px ' + tok('--ed-sans', 'sans-serif'); c.fillText(z.label, 6 * hr, top + 12 * vr); }
+        });
+      });
+    } };
+    var view = { renderer: function () { return renderer; }, zOrder: function () { return 'bottom'; } };
+    this.attached = function (p) { self._series = p.series; self._req = p.requestUpdate; };
+    this.detached = function () { self._series = null; };
+    this.updateAllViews = function () {};
+    this.paneViews = function () { return [view]; };
+    this.autoscaleInfo = function () {
+      if (!self.zones.length) return null;
+      return { priceRange: { minValue: Math.min.apply(null, self.zones.map(function (z) { return z.lo; })),
+        maxValue: Math.max.apply(null, self.zones.map(function (z) { return z.hi; })) } };
+    };
+    this.set = function (zones) { self.zones = (zones || []).filter(function (z) { return isFinite(z.lo) && isFinite(z.hi); }); if (self._req) self._req(); };
+  }
+  // A time x price grid of served cells (the book heatmap): each cell {t: bucket index, price,
+  // bid, ask, side} is drawn at its own bucket and price, coloured by its served side, brightness
+  // its size against the served max_size. Nothing is summed, re-binned or interpolated.
+  function HeatPrimitive(chartRef) {
+    var self = this;
+    this._series = null; this._req = null; this.h = null; this.step = 0.01; this.up = '#22c55e'; this.down = '#ef4444';
+    var renderer = { draw: function (target) {
+      var h = self.h; if (!self._series || !h || !h.cells.length) return;
+      var ts = chartRef().timeScale();
+      target.useBitmapCoordinateSpace(function (s) {
+        var c = s.context, hr = s.horizontalPixelRatio, vr = s.verticalPixelRatio;
+        var bw = Math.max(1, ts.options().barSpacing);
+        h.cells.forEach(function (cell) {
+          var x = ts.timeToCoordinate(h.since_ts + cell.t * h.bucket_sec);
+          var y1 = self._series.priceToCoordinate(cell.price + self.step / 2), y2 = self._series.priceToCoordinate(cell.price - self.step / 2);
+          if (x == null || y1 == null || y2 == null) return;
+          // the served side: BID green, ASK red, EVEN (equal sizes) neutral
+          var dom = cell.side === 'ASK' ? cell.ask : cell.bid;
+          if (!dom) return;
+          c.fillStyle = cell.side === 'BID' ? self.up : cell.side === 'ASK' ? self.down : self.even;
+          c.globalAlpha = 0.15 + 0.85 * Math.min(1, dom / (h.max_size || 1));
+          c.fillRect((x - bw / 2) * hr, Math.min(y1, y2) * vr, bw * hr, Math.max(1, Math.abs(y2 - y1)) * vr);
+        });
+        c.globalAlpha = 1;
+      });
+    } };
+    var view = { renderer: function () { return renderer; }, zOrder: function () { return 'bottom'; } };
+    this.attached = function (p) { self._series = p.series; self._req = p.requestUpdate; };
+    this.detached = function () { self._series = null; };
+    this.updateAllViews = function () {};
+    this.paneViews = function () { return [view]; };
+    this.autoscaleInfo = function () {
+      var h = self.h; if (!h || h.display_lo == null) return null;
+      return { priceRange: { minValue: h.display_lo, maxValue: h.display_hi } };   // the served default window
+    };
+    this.set = function (h, up, down, even) {
+      self.h = h; self.up = up; self.down = down; self.even = even;
+      // a cell's height: the smallest gap between two served prices (drawing only)
+      var ps = h ? h.cells.map(function (c) { return c.price; }).sort(function (a, b) { return a - b; }) : [];
+      var gap = Infinity; for (var i = 1; i < ps.length; i++) if (ps[i] > ps[i - 1]) gap = Math.min(gap, ps[i] - ps[i - 1]);
+      self.step = isFinite(gap) ? gap : 0.01;
+      if (self._req) self._req();
+    };
+    // the served cell drawn under a time and price (hit-testing the drawing)
+    this.cellAt = function (time, price) {
+      var h = self.h; if (!h) return null;
+      var t = Math.round((time - h.since_ts) / h.bucket_sec);
+      return h.cells.filter(function (c) { return c.t === t && Math.abs(c.price - price) <= self.step / 2; })[0] || null;
+    };
+  }
   // User trend lines (and the one being placed). Points are {time, price}; x comes from the
   // chart's own time->logical mapping so a line survives a timeframe change.
   function DrawingPrimitive(ctx) {
@@ -176,6 +313,12 @@
     var callBand = new BandPrimitive(); candles.attachPrimitive(callBand);
     var putBand = new BandPrimitive(); candles.attachPrimitive(putBand);
     var markers = LWC.createSeriesMarkers(candles, []);
+    var profile = new ProfilePrimitive(); candles.attachPrimitive(profile);
+    var zones = new ZonesPrimitive(); candles.attachPrimitive(zones);
+    // the heatmap's buckets on the time axis (no values: whitespace points), carrying its cells
+    var timeline = chart.addSeries(LWC.LineSeries, { color: 'rgba(0,0,0,0)', lastValueVisible: false, priceLineVisible: false,
+      crosshairMarkerVisible: false, lineVisible: false, pointMarkersVisible: false });
+    var heat = new HeatPrimitive(function () { return chart; }); timeline.attachPrimitive(heat);
 
     var S = { bars: [], tf: '5', symbol: '', levels: [], priceLines: [], nearestN: opts.nearestN || 6,
       pinned: null, tool: 'cursor', style: 'candles', hlines: [], drawKey: null, markerMeta: {}, onMarkerClick: null };
@@ -252,6 +395,16 @@
     function paintPin() {
       if (!S.pinned) { pinBox.hidden = true; return; }
       var b = barAt(S.pinned.time);
+      var cell = !b && heat.h ? heat.cellAt(S.pinned.time, S.pinned.price) : null;
+      if (!b && heat.h) {   // the heatmap's readout: the served cell under the pin, its own bid and ask
+        pinBox.hidden = false;
+        pinBox.innerHTML = '<div class="tvc-pin-h"><span>' + esc(CT_FULL.format(new Date(S.pinned.time * 1000))) + ' CT</span>' +
+          '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
+          '<div class="tvc-pin-g"><span>Price</span><b>' + S.pinned.price.toFixed(2) + '</b><span>Bid size</span><b>' +
+          (cell && cell.bid != null ? fmtVol(cell.bid) : '—') + '</b><span>Ask size</span><b>' + (cell && cell.ask != null ? fmtVol(cell.ask) : '—') + '</b></div>';
+        pinBox.querySelector('.tvc-pin-x').addEventListener('click', function () { unpin(); });
+        return;
+      }
       if (!b) { S.pinned = null; pinBox.hidden = true; return; }
       pinBox.hidden = false;
       var chg = b.chg, pct = b.chg_pct;   // served per bar
@@ -332,8 +485,12 @@
       }, true);
     })();
     chart.subscribeClick(function (p) {
-      if (!p.point || p.time == null || S.tool !== 'cursor' || Date.now() - (S.drewAt || 0) < 400) return;
-      var price = candles.coordinateToPrice(p.point.y);
+      if (!p.point || S.tool !== 'cursor' || Date.now() - (S.drewAt || 0) < 400) return;
+      // a click on a profile row selects it (the row's own gesture, e.g. a strike for every panel)
+      var row = opts.onProfileClick ? profile.rowAt(p.point.x, p.point.y, chart.timeScale().width()) : null;
+      if (row) { opts.onProfileClick(row); return; }
+      if (p.time == null) return;
+      var price = (heat.h ? timeline : candles).coordinateToPrice(p.point.y);   // the series carrying the price axis
       if (p.hoveredObjectId != null && S.markerMeta[p.hoveredObjectId] && S.onMarkerClick) {
         S.onMarkerClick(S.markerMeta[p.hoveredObjectId]); return;
       }
@@ -518,8 +675,35 @@
         return { bars: S.bars.length, tf: S.tf, symbol: S.symbol, from: r && r.from, to: r && r.to,
           livePrice: liveLine ? liveLine.options().price : null, liveTitle: liveLine ? liveLine.options().title : null,
           autoScale: chart.priceScale('right').options().autoScale, levelsShown: S.priceLines.length,
-          pinned: S.pinned, tool: S.tool, drawings: draw.lines.length + S.hlines.length };
-      }
+          pinned: S.pinned, tool: S.tool, drawings: draw.lines.length + S.hlines.length,
+          profile: { rows: profile.rows.length, style: profile.style, selected: profile.sel },
+          heatCells: heat.h ? heat.h.cells.length : 0, zones: zones.zones.length,
+          levels: S.priceLines.map(function (l) { return l.options().title; }) };
+      },
+      // where a price's profile row is drawn, in page coordinates (tests click it as a user would)
+      profilePoint: function (price) {
+        var y = candles.priceToCoordinate(price), r = plot.getBoundingClientRect();
+        return y == null ? null : { x: r.left + chart.timeScale().width() - 4, y: r.top + y };
+      },
+      setProfile: function (rows, style) { profile.set(rows, style); },
+      setZones: function (list) { zones.set(list); },
+      // the book heatmap ({cells, since_ts, bucket_sec, n_buckets, max_size, display_lo, display_hi}
+      // as served) or null: its buckets become the time axis
+      setHeatmap: function (h) {
+        heat.set(h, P.up, P.down, P.ink3);
+        // the axes need series values to exist: the first bucket carries the served window's low,
+        // the last its high, on an invisible line (sizing only; never drawn, labelled or read)
+        var pts = [];
+        if (h) for (var i = 0; i < h.n_buckets; i++) {
+          var pt = { time: h.since_ts + i * h.bucket_sec };
+          if (i === 0) pt.value = h.display_lo; else if (i === h.n_buckets - 1) pt.value = h.display_hi;
+          pts.push(pt);
+        }
+        timeline.setData(pts);
+        chart.priceScale('right').applyOptions({ autoScale: true });
+        chart.timeScale().fitContent();
+      },
+      selectProfile: function (price) { profile.select(price); }
     };
     return api;
   }

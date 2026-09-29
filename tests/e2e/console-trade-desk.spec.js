@@ -54,9 +54,32 @@ async function intercept(page) {
     else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
     else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
     else if (url.includes('/api/bars1m')) body = BARS;
+    else if (url.includes('/api/order-flow/book-heatmap')) body = HEAT;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
 }
+const HEAT = require(path.join(__dirname, 'fixtures', 'book_heatmap_payload.json'));
+
+test('every chart is the one TradingView-style chart, with its controls', async ({ page }) => {
+  // operator 2026-09-28: "each and every chart in the app needs to use the same TV controls" --
+  // the Gamma chart (SVG), the book heatmap (canvas) and the liquidity map (DOM) each had their
+  // own pan/zoom code; each now draws on ed-tv-chart.js (.tvc, its A / L controls, click-to-pin)
+  const errs = watchErrors(page);
+  await intercept(page);
+  const views = [['trade-desk', 'desk', '', '#tdmChart'], ['options', 'gamma', 'chart', '#chartBody'],
+    ['order-flow', 'heatmap', '', '#ofhBody'], ['liquidity', 'map', '', '#liqmBody']];
+  for (const [ws, sub, view, host] of views) {
+    await page.addInitScript(([w, s, v]) => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', w);
+      localStorage.setItem('ed_sub', s); if (v) localStorage.setItem('ed_view', v); } catch (e) {} }, [ws, sub, view]);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator(host + ' .tvc-auto'), ws + '/' + sub).toBeVisible();
+    await expect(page.locator(host + ' .tvc-log'), ws + '/' + sub).toBeVisible();
+  }
+  // the liquidity map draws the served zones and the prior-day level from /api/levels
+  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).zones)).toBe(LIQ.zones.length);
+  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || { levels: [] }).levels)).toContain('PDH');
+  expect(errs).toEqual([]);
+});
 
 function watchErrors(page) {
   const errs = [];

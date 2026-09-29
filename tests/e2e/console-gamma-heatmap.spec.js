@@ -888,18 +888,21 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#view-chart')).toHaveClass(/on/);
-    // profile mode (default): price line + signed profile bars + flip level line + spot
-    const svg = page.locator('#chartBody svg');
-    await expect(svg).toBeVisible();
-    await expect(page.locator('#chartBody svg polyline')).toHaveCount(1);      // price line
-    await expect(page.locator('#chartBody svg rect').first()).toBeVisible();   // profile bars (retrying)
-    await expect(page.locator('#chartBody svg')).toContainText('spot 583.41');
-    await expect(page.locator('#chartBody svg')).toContainText('flip');
+    // profile mode (default), on the shared chart: the bars, the signed profile, the flip level
+    // line and the live price line
+    const cs = async () => (await page.evaluate(() => window.EdGammaChart.state())) || { profile: {}, levels: [] };
+    await expect(page.locator('#chartBody .gchart-plot canvas').first()).toBeVisible();
+    await expect.poll(async () => (await cs()).bars).toBeGreaterThan(0);
+    await expect.poll(async () => (await cs()).profile.rows).toBeGreaterThan(0);
+    await expect.poll(async () => (await cs()).profile.style).toBe('bars');
+    await expect.poll(async () => (await cs()).livePrice).toBe(583.41);
+    await expect(page.locator('#chartBody .gchart-head')).toContainText('spot 583.41');
+    await expect.poll(async () => (await cs()).levels).toContain('flip');
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.screenshot({ path: require('path').join('test-results', 'console-gamma-chart-2560x1440.png') });
     // dot map mode: per-strike dots
     await page.locator('.cmode[data-cmode="dotmap"]').click();
-    await expect(page.locator('#chartBody svg circle').first()).toBeVisible();   // retrying
+    await expect.poll(async () => (await cs()).profile.style).toBe('dots');
     await expect(page.locator('#chartModes .cmode[data-cmode="dotmap"]')).toHaveClass(/on/);
   });
 
@@ -1921,7 +1924,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
     await page.locator('.vtab[data-view="chart"]').click();
-    await expect(page.locator('#chartBody svg')).toBeVisible();
+    await expect(page.locator('#chartBody .gchart-plot canvas').first()).toBeVisible();
     await page.waitForTimeout(200);   // let the view-switch's own hydration settle
     const before = strikesCalls;
     await page.waitForTimeout(1100);   // past the push
@@ -1959,9 +1962,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await mockPriceSocket(page, rows);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
-    await expect(page.locator('#chartBody svg')).toContainText(/spot (583\.41|601\.23)/);
-    // the next tick moves the chart, and the chart and header show the same number
-    await expect(page.locator('#chartBody svg')).toContainText('spot 601.23', { timeout: 8000 });
+    await expect(page.locator('#chartBody .gchart-head')).toContainText(/spot (583\.41|601\.23)/);
+    // the next tick moves the chart's live price line, and the chart and header show the same number
+    await expect(page.locator('#chartBody .gchart-head')).toContainText('spot 601.23', { timeout: 8000 });
+    await expect.poll(() => page.evaluate(() => window.EdGammaChart.state().livePrice)).toBe(601.23);
     await expect(page.locator('#hPx')).toHaveText('601.23');
   });
 

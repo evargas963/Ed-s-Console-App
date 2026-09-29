@@ -21,18 +21,23 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
   });
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'heatmap'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  const canvas = page.locator('#ofhCanvas');
-  await expect(canvas).toBeVisible();
-  const painted = await canvas.evaluate((c) => {
-    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  // drawn on the one shared chart (ed-tv-chart.js), every served cell handed to it
+  const plot = page.locator('#ofhBody .ofh-plot');
+  await expect(plot.locator('canvas').first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window.EdBookHeatmap.state() || {}).heatCells)).toBe(HEAT.cells.length);
+  await expect.poll(() => plot.evaluate((p) => {
     let green = 0, red = 0;
-    for (let i = 0; i < d.length; i += 4) { if (d[i + 1] > 120 && d[i + 1] > d[i] + 40) green++; if (d[i] > 150 && d[i] > d[i + 1] + 60) red++; }
-    return { green, red };
-  });
-  expect(painted.green + painted.red).toBeGreaterThan(0);          // served cells drawn in their side's colour
-  const box = await canvas.boundingBox();
-  await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.4);
-  await expect(canvas).toBeVisible();
+    p.querySelectorAll('canvas').forEach((c) => {
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      for (let i = 0; i < d.length; i += 4) { if (d[i + 1] > 120 && d[i + 1] > d[i] + 40) green++; if (d[i] > 150 && d[i] > d[i + 1] + 60) red++; }
+    });
+    return green + red;
+  })).toBeGreaterThan(0);                                            // served cells drawn in their side's colour
+  // a click pins the chart's readout (the TradingView standard every chart shares): price, bid, ask
+  const box = await plot.boundingBox();
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+  await expect(plot.locator('.tvc-pin')).toBeVisible();
+  await expect(plot.locator('.tvc-pin')).toContainText('Bid size');
   expect(errs).toEqual([]);
 });
 

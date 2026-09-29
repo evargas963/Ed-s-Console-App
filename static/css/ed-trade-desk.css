@@ -31,6 +31,27 @@
 .tvc-btn.on{background:var(--ed-accent-bg);border-color:var(--ed-accent-edge);color:var(--ed-accent-2)}
 .tvc-latest{position:absolute;right:62px;bottom:34px;font-size:15px}
 
+/* ---------- Options > Gamma > Chart on the shared chart ---------- */
+#chartBody{display:flex;flex-direction:column;min-height:0}
+.gchart-head{flex:none;padding:4px 10px}
+.gchart-plot{position:relative;flex:1;min-height:320px}
+.gchart-empty{position:absolute;inset:40% 0 auto;text-align:center;color:var(--ed-warn);font-size:13px;z-index:5}
+.gchart-empty[hidden]{display:none}
+
+/* ---------- Order Flow > Heatmap on the shared chart ---------- */
+#ofhBody{display:flex;flex-direction:column;min-height:0}
+.ofh-plot{position:relative;flex:1;min-height:420px}
+.ofh-empty{padding:30px 12px;text-align:center;color:var(--ed-warn);font-size:13px}
+.ofh-empty[hidden]{display:none}
+
+/* ---------- Liquidity > Map on the shared chart ---------- */
+#liqmBody{display:flex;flex-direction:column;min-height:0;overflow:auto}
+.liqm-plot{position:relative;flex:none;height:520px}
+.liqm-empty{padding:12px;color:var(--ed-warn);font-size:13px}
+.liqm-empty[hidden]{display:none}
+.liqm-zones{padding:6px 2px}
+.liqm-tags{padding:0 0 6px;color:var(--ed-ink-3)}
+
 /* ---------- desk page ---------- */
 .tdm{height:100%;display:grid;grid-template-rows:auto minmax(360px,1fr) 250px auto auto;gap:8px;min-height:0;overflow:auto;padding-bottom:4px}
 .tdm .up{color:var(--ed-pos-ink)} .tdm .dn{color:var(--ed-neg-ink)} .tdm .warn{color:var(--ed-warn)}
