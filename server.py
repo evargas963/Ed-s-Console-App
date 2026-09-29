@@ -3734,7 +3734,7 @@ def get_chain(ticker: str = Query(...),
     fetched_ts = held.get("_chain_fetched_ts")
     response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(t, contracts)
     live_spot, _src, _ts = resolve_spot(t)       # the one spot on every screen
-    ladder = chain_ladder(response_contracts, live_spot)
+    ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
     # Strike Detail shows it beside this expiry's contracts -- one value, one producer
     surf = held.get("_gamma_surface") or {}
@@ -3757,6 +3757,7 @@ def get_chain(ticker: str = Query(...),
         "chain_as_of_ts_utc": fetched_ts,
         "contracts": response_contracts, "status": "ok",
         "ladder": ladder, "n_strikes": len({r["strike"] for r in ladder}),
+        "contracts_not_on_ladder": not_on_ladder,   # no strike, or a putCall other than CALL/PUT
         "stream_overlay_contracts": overlay_n,
         "scope": {"kind": "complete_single_expiry", "requested_expiry": resolved_expiry,
                   "completeness_basis": held.get("chain_basis")},   # the publication's own label
