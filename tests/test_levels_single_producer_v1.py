@@ -181,4 +181,13 @@ def test_levels_are_served_as_produced_until_the_bar_writer_writes_a_bar(monkeyp
     assert db.upsert_1m_bars("SPY", bars[-1:]) == 1        # the bar writer writes the next bar
     after = json.loads(srv.get_levels(ticker="SPY").body)
     assert len(reads) == 2 and after["generation"] == first["generation"] + 1
+    assert after["snapshot_as_of_ts_utc"] > first["snapshot_as_of_ts_utc"]
+
+    # a new session date is a new snapshot with no bar written: 09-25's bars are its prior day
+    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 26, 9, 0, tzinfo=ET))
+    nextday = json.loads(srv.get_levels(ticker="SPY").body)
+    assert len(reads) == 3
+    pdh = {lv["id"]: lv["price"] for lv in nextday["levels"]}["PDH"]
+    assert pdh == max(b.high for b in bars if _dt.fromtimestamp(b.ts, ET).date().isoformat() == "2026-09-25"
+                      and 570 <= _dt.fromtimestamp(b.ts, ET).hour * 60 + _dt.fromtimestamp(b.ts, ET).minute < 960)
 
