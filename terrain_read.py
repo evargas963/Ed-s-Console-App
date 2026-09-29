@@ -46,11 +46,8 @@ from math_levels import GAMMA_FLIP_LEVEL_APPROX, GAMMA_FLIP_TRUSTED
 REGIME_LONG_GAMMA = "LONG_GAMMA_CHOP"
 REGIME_SHORT_GAMMA = "SHORT_GAMMA_TREND"
 REGIME_UNAVAILABLE = "UNAVAILABLE"
-#: UNIVERSALITY (operator 2026-09-23: "show for all tickers"): the regime and posture are
-#: read the same way for every ticker. They used to be withheld (SIGN_UNPROVEN) for every
-#: ticker but SPY/QQQ/IWM because the +call/-put dealer-sign convention was only evidenced on
-#: those three. The convention is still MODELLED, not observed -- the mechanism line below
-#: says so on every ticker (governance/unproven_register.md keeps the open evidence row).
+#: The regime and posture are read the same way for every ticker. The +call/-put dealer-sign
+#: convention is MODELLED, not observed -- the mechanism line below says so on every ticker.
 
 POSTURE_FADE = "FADE_EDGES"
 POSTURE_FOLLOW = "FOLLOW_BREAKS"

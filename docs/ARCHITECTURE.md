@@ -1,10 +1,12 @@
 # Ed Console — Architecture
 
-Where the code lives. The structure follows the data flow (`docs/DATA_FLOW.md`): one folder per
-process, plus what they share and the page. Nothing else. A file belongs to the process that runs
-it; a function exists in one place. This document is updated in the same change as every move.
+Where the code lives. The structure it moves to follows the data flow (`docs/DATA_FLOW.md`): one
+folder per process, plus what they share and the page. Nothing else. A file belongs to the process
+that runs it; a function exists in one place. §1 is the target (none of its process folders exists
+yet); §2 is today's files and where each goes. This document is updated in the same change as
+every move.
 
-## 1. The structure
+## 1. The target structure
 
 ```
 EdWebConsole/
@@ -38,36 +40,33 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 | `db.py` (the parts that stay: bars, level history, enrollment, connection), `db_authority.py`, `db_safety.py`, `json_blob_codec.py` | `daemon/` (writes) — the console opens the database read-only |
 | `terrain_engine.py`, `terrain_read.py`, `terrain_atr.py`, `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `math_volatility.py` | `producer/` |
 | `liquidity_value_engine.py`, `liquidity_models.py` | `producer/` |
-| `app/options/order_flow/`, `l1_trade_observation.py`, `micro_structure.py` | `producer/` |
-| From `server.py`: the levels loop, `_publish_levels`, the gamma-surface projection | `producer/` |
-| From `server.py`: the routes, startup | `console/` |
+| `app/options/order_flow/`, `app/options/contracts/`, `l1_trade_observation.py`, `micro_structure.py` | `producer/` |
+| From `server.py`: the levels loop, `_publish_levels`, `_publish_price_levels`, the gamma-surface projection | `producer/` |
+| From `server.py`: the routes, startup; `push_changes.py` (the `/api/changes` push) | `console/` |
 | `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `production_universe.py`, `numeric_contract.py` | `shared/` |
-| `static/index.html`, `static/js/`, `static/css/` | `static/` |
+| `static/` (the page, its icons, manifest and the vendored chart library) | `static/` |
 | `start_*.bat`, `runtime_preflight.py`, `live_schwab_env.py`, `launcher_port_guard.py`, `wait_for_ready_then_open.py`, `reauth_schwab.py` | stay at the root |
+| `tools/` (the git hooks and checks), `scripts/` (the test runners), `tests/`, `docs/`, the config files | stay |
 
-## 3. Taking apart the two big files (measured 2026-09-26)
+## 3. Taking apart the big files
 
 Each step is one change: delete what has no job, move what remains, update §2, pass the full test
 suite and the browser suite, check the running app. Nothing is copied.
 
-**db.py (1,343 lines after P2-5 part 1).** The snapshot writer, `SnapshotRow`, the ML outcome
-labels, the snapshot column migrations, `market_session` and `get_db_stats` are deleted.
-- Left to delete: the one-time JSON migration once its flag shows it ran. The `snapshots` and
-  `iv_daily` DDL is gone (no writer, no reader); their tables leave the database in P2-DB3.
-- Keep, and move to `daemon/`: bars, level history (crosses, daily OI and IV), enrollment (the
-  ticker board), the connection.
-- The console stops writing (DATA_FLOW decision 5); its writes go to the daemon's writer, into `ed_console.db`.
+**db.py.** Keep, and move to `daemon/`: bars, level crosses, enrollment (the ticker board), the
+connection. The console stops writing (DATA_FLOW decision 5); its writes go to the daemon's
+writer, into `ed_console.db`.
 
-**server.py (6,130 lines: 40 routes, 112 functions).**
+**server.py.**
 - To `daemon/`: the chain fetch and chain captures.
-- To `producer/`: the levels loop, `_publish_levels`, the gamma-surface projection and its
-  stream-state stamping.
+- To `producer/`: the levels loop, `_publish_levels`, `_publish_price_levels`, the gamma-surface
+  projection and its stream-state stamping.
 - To `console/`: the routes (grouped by what they serve) and startup.
 - What remains is the app assembly: create the app, include the routes, start.
 
-**The other large files** (`liquidity_value_engine.py` 1,947; order-flow `streaming.py` 1,124 and
-`engine.py` 1,093; `math_exposure_core.py` 1,018; `ed-core.js` 1,063; `ed-gamma.js` 1,039): each is
-measured the same way (part, lines, used or not) and the plan written here before its step starts.
+**The other large files** (`liquidity_value_engine.py`; order-flow `streaming.py` and `engine.py`;
+`math_exposure_core.py`; `ed-core.js`; `ed-gamma.js`): each is measured the same way (part, used
+or not) and the plan written here before its step starts.
 
 ## 4. Failure domains
 
