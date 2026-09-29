@@ -32,7 +32,7 @@
 .tvc-latest{position:absolute;right:62px;bottom:34px;font-size:15px}
 
 /* ---------- desk page ---------- */
-.tdm{height:100%;display:grid;grid-template-rows:auto minmax(400px,1fr) 184px auto auto;gap:8px;min-height:0;overflow:auto;padding-bottom:4px}
+.tdm{height:100%;display:grid;grid-template-rows:auto minmax(360px,1fr) 250px auto auto;gap:8px;min-height:0;overflow:auto;padding-bottom:4px}
 .tdm .up{color:var(--ed-pos-ink)} .tdm .dn{color:var(--ed-neg-ink)} .tdm .warn{color:var(--ed-warn)}
 .tdm-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;padding:5px 12px;background:var(--ed-panel);
   border:1px solid var(--ed-edge);border-radius:var(--ed-r-lg,8px)}
@@ -129,7 +129,13 @@
 .tdm-r{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--ed-ink-3)}
 .tdm-r b{color:var(--ed-ink);font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
 .tdm-src{font-size:10.5px;color:var(--ed-ink-3);border-top:1px solid var(--ed-edge-soft);padding-top:4px;margin-top:auto}
-.tdm-series{font-size:10.5px;color:var(--ed-ink-3)}
+.tdm-series{font-size:11px;color:var(--ed-ink-3)}
+/* each card's chart, as the reference draws them: the plot, then its caption */
+.tdm-chartbox{margin:2px 0 0;display:flex;flex-direction:column;gap:3px;flex:none}
+.tdm-plot{height:58px;border-bottom:1px solid var(--ed-edge-soft);position:relative}
+.tdm-plot svg{width:100%;height:100%;display:block;overflow:visible}
+.tdm-plot-none{height:100%;display:flex;align-items:center;color:var(--ed-ink-3);font-size:12px}
+.tdm-chartbox figcaption{font-size:11.5px;color:var(--ed-ink-3)}
 
 .tdm-agree.panel{display:flex;flex-direction:row;align-items:center;gap:12px;padding:7px 12px;flex-wrap:wrap}
 .tdm-agree-t{font-size:17px}
@@ -143,6 +149,6 @@
 .tdm-foot>span+span{border-left:1px solid var(--ed-edge);padding-left:18px}
 .tdm-foot b{color:var(--ed-ink);font-weight:600;text-transform:none;letter-spacing:0}
 
-@media (max-width:1100px){.tdm-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.tdm{grid-template-rows:auto minmax(400px,1fr) auto auto auto}.tdm-card{height:184px}}
+@media (max-width:1100px){.tdm-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.tdm{grid-template-rows:auto minmax(360px,1fr) auto auto auto}.tdm-card{height:250px}}
 @media (max-width:900px){.tdm-main{grid-template-columns:1fr}.tdm-queue{max-height:320px}.tdm{grid-template-rows:auto auto auto auto auto}.tdm-map{height:460px}}
 @media (max-width:560px){.tdm-cards{grid-template-columns:1fr}}

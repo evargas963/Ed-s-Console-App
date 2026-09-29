@@ -206,6 +206,30 @@ def test_real_chain_carries_the_sigma_band(pin_clock) -> None:
     assert "implied_1d_move" in snap.to_dict(), "the payload must carry the band to the chart"
 
 
+def test_every_expiry_carries_its_atm_iv_by_the_one_rule(pin_clock) -> None:
+    """The Trade Desk's Volatility card draws ATM IV by expiry (2026-09-28). The ATM rule was
+    applied to the front expiry only (the implied move); it is one function for every expiry, and
+    the implied move reads its front entry. Real MRVL full chain, 21 expiries, valued at its
+    capture (tests/fixtures/real_mrvl_full_chain_vs_strike_window.json)."""
+    import server
+    import time_et
+    from datetime import datetime
+    fx = json.loads((Path(__file__).parent / "fixtures" / "real_mrvl_full_chain_vs_strike_window.json")
+                    .read_text(encoding="utf-8"))
+    at = datetime.fromtimestamp(fx["captured_utc"], time_et.ET)
+    pin_clock(at.year, at.month, at.day, at.hour, at.minute)
+    chain, spot = server.flatten_chain_contracts(fx["full"]), float(fx["full"]["underlying"]["last"])
+    snap = compute_terrain("MRVL", chain, spot)
+    by_exp = snap.atm_iv_pct_by_expiry
+    assert list(by_exp) == sorted({c["expirationDate"][:10] for c in chain})
+    assert list(snap.pcr_by_expiry) == list(by_exp), "both card lines run nearest expiry first"
+    assert all(v is None or 0 < v < 1000 for v in by_exp.values())
+    em = snap.implied_1d_move
+    front = min(c["daysToExpiration"] for c in chain if c["daysToExpiration"] >= 1)
+    front_exp = {c["expirationDate"][:10] for c in chain if c["daysToExpiration"] == front}.pop()
+    assert em is not None and by_exp[front_exp] == em["iv_pct_atm"]
+
+
 # ── RC-115: per-side wall ranges — gamma value area (Market-Profile POC expansion) ───────────
 
 def test_wall_value_area_expands_toward_the_heavier_neighbor() -> None:

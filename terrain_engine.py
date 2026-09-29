@@ -211,6 +211,8 @@ class TerrainSnapshot:
     charm_by_strike: dict = field(default_factory=dict, repr=False)
     #: {expiry: put OI / call OI} for each listed expiry
     pcr_by_expiry: dict = field(default_factory=dict)          # put/call OI (positions held)
+    #: each expiry's ATM implied vol, percent (atm_sigma_by_expiry); None when a leg has no IV
+    atm_iv_pct_by_expiry: dict = field(default_factory=dict)
     pcr_volume_by_expiry: dict = field(default_factory=dict)   # put/call volume (today's trading)
     #: the same two ratios over the whole book (every expiry)
     pcr_all: float | None = None
@@ -446,6 +448,32 @@ def compute_wall_value_area(
     }
 
 
+def atm_sigma_by_expiry(contracts: list[dict], spot: float) -> dict[tuple[str, float | None], float | None]:
+    """Each expiry's ATM implied vol as a fraction, keyed like exposure_books ((expirationDate,
+    daysToExpiration)): the mean of the call and the put IV, each at its side's strike nearest
+    spot. Both legs or None: one side's IV never stands in for the mean (audit T-06, 2026-09-24).
+    Schwab `volatility` is a percent, converted by schwab_iv_to_sigma."""
+    from math_exposure_core import schwab_iv_to_sigma
+    from numeric_contract import schwab_number
+
+    legs: dict[tuple[str, float | None], dict[str, tuple[float, float]]] = {}
+    for c in contracts:
+        if not isinstance(c, dict):
+            continue
+        key = (str(c.get("expirationDate") or "")[:10], _dte_of(c))
+        sides = legs.setdefault(key, {})
+        strike = schwab_number(c.get("strikePrice"))
+        sigma = schwab_iv_to_sigma(schwab_number(c.get("volatility")))
+        side = str(c.get("putCall") or "").upper()
+        if strike is None or sigma is None or side not in ("CALL", "PUT"):
+            continue
+        d = abs(strike - float(spot))
+        if side not in sides or d < sides[side][0]:
+            sides[side] = (d, sigma)
+    return {k: (s["CALL"][1] + s["PUT"][1]) / 2.0 if set(s) == {"CALL", "PUT"} else None
+            for k, s in sorted(legs.items(), key=lambda kv: kv[0][0])}
+
+
 def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> dict | None:
     """The institutional sigma band (RC-113): EM_1d = S x sigma_ATM x sqrt(1/252).
 
@@ -464,8 +492,6 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     in price points; the client centers it on the LIVE spot so the band can never disagree
     with the price beside it (the RC-28/RC-77 one-spot discipline).
     """
-    from numeric_contract import schwab_number
-
     if spot is None or spot <= 0 or not contracts:
         return None
     # RC-290: nearest expiry present in the chain. `_dte_of` now returns None for a contract
@@ -479,29 +505,10 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     front = min(_dtes, default=None)
     if front is None:
         return None
-    ivs: dict[str, tuple[float, float]] = {}   # side -> (|strike-spot|, iv_frac)
-    for c in contracts:
-        if not isinstance(c, dict) or _dte_of(c) != front:
-            continue
-        strike = schwab_number(c.get("strikePrice"))
-        iv_pct = schwab_number(c.get("volatility"))
-        side = str(c.get("putCall") or "").upper()
-        if strike is None or iv_pct is None or side not in ("CALL", "PUT"):
-            continue
-        # Cursor-audit A3: single IV-conversion authority (was an unguarded inline /100 that would
-        # mis-scale on a silent Schwab units flip, unlike the guarded charm/levels/vanna paths).
-        from math_exposure_core import schwab_iv_to_sigma
-        _sig = schwab_iv_to_sigma(iv_pct)
-        if _sig is None:
-            continue
-        d = abs(strike - float(spot))
-        if side not in ivs or d < ivs[side][0]:
-            ivs[side] = (d, _sig)
-    # Both legs or no implied move: one side's IV used to stand in for the call/put mean
-    # (audit T-06, 2026-09-24: no fallbacks).
-    if set(ivs) != {"CALL", "PUT"}:
+    at_front = [s for (_e, d), s in atm_sigma_by_expiry(contracts, spot).items() if d == front]
+    if len(at_front) != 1 or at_front[0] is None:
         return None
-    sigma = (ivs["CALL"][1] + ivs["PUT"][1]) / 2.0   # ATM call/put mean (straddle IV)
+    sigma = at_front[0]
     em = float(spot) * sigma * (1.0 / 252.0) ** 0.5
     return {
         "points": round(em, 4),
@@ -848,7 +855,9 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         per_strike=per_strike_view(books, exposures),
         books=books,
         charm_by_strike=charm_by_strike,
-        pcr_by_expiry={e: put_call_oi_ratio(book) for (e, _d), (book, _diag) in books.items()},
+        pcr_by_expiry={e: put_call_oi_ratio(book) for (e, _d), (book, _diag) in sorted(books.items(), key=lambda kv: kv[0][0])},
+        atm_iv_pct_by_expiry={e: None if s is None else round(s * 100.0, 4)
+                              for (e, _d), s in atm_sigma_by_expiry(contracts, spot).items() if e},
         pcr_volume_by_expiry={e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in books.items()},
         pcr_all=put_call_oi_ratio(exposures),
         pcr_volume_all=put_call_volume_ratio(exposures),
