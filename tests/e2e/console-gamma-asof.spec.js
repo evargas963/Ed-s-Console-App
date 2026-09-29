@@ -35,9 +35,7 @@ function routes(over) {
       else if (url.includes('/api/terrain/strikes')) body = over.strikes || STRIKES;
       else if (url.includes('/api/terrain')) body = over.terrain || TERRAIN;
       else if (url.includes('/api/bars1m')) body = BARS;
-      else if (url.includes('/api/chain')) body = over.chain || CHAIN;
-      else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      else if (url.includes('/api/chain')) body = over.chain || CHAIN;      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
   };
 }

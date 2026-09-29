@@ -818,7 +818,6 @@
       if (s.requested === state.ticker && state.key !== s.key) {
         state.key = s.key; state.display = s.display;
         paintIdentity(s.display);
-        emit('ed:identity', { key: s.key, display: s.display });
       }
     });
   }
@@ -1017,12 +1016,12 @@
 
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
-    addSymbol: addSymbol, removeSymbol: removeSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
+    addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
-    scopeRows: scopeRows, scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
+    scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
-    setMeasure: setMeasure, getMeasure: function () { return state.measure; },
-    setMaximize: applyMaximize, toggleMaximize: toggleMaximize, setSubview: setSubview };
+    getMeasure: function () { return state.measure; },
+    setSubview: setSubview };
 })();

@@ -35,9 +35,7 @@ async function intercept(page) {
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/expiries')) body = { expiries: EXPS };
     else if (url.includes('/api/chain')) body = { ticker: dec, spot: spot, expiry: EXPS[0], status: 'ok',
-      scope: { kind: 'complete_single_expiry' }, contracts: [] };
-    else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      scope: { kind: 'complete_single_expiry' }, contracts: [] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
 }
 
