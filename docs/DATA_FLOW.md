@@ -94,8 +94,8 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
   generation from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
   → `/api/levels`, and the liquidity zones of `/api/liquidity-snapshot` are built from that same
-  snapshot (today only; no checkpoint or past-date path). Producer `_publish_price_levels`: the
-  bar writer runs it after each bar it writes, and the levels loop (and a page opening a ticker)
+  snapshot (today only; no checkpoint or past-date path). Producer `_publish_price_levels`: a
+  page opening a ticker, the bar writer after each bar of a viewed ticker, and the levels loop
   for a ticker with none yet today; the routes serve what it published and build nothing. `/api/levels` also serves the order the
   chart draws them in (`by_distance`): nearest the live price, or on a closed market nearest the
   last streamed trade, named in `by_distance_ref`; distance, near-spot and side stay live-only,

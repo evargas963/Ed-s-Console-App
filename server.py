@@ -780,11 +780,11 @@ def _write_streamed_bar(msg: dict) -> bool:
         # not a number (AGENTS.md rule 2): absent, -999, text, NaN or infinity
         log.warning("streamed bar for %s lacks a valid field, not written: %s", msg.get("symbol"), msg)
         return False
-    if get_db().upsert_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo,
-                                                      close=c, volume=schwab_count(msg.get("volume")))]):
-        # the price levels are built from the bars: rebuilt now, off this writer's thread
-        _get_route_offload_executor().submit(_publish_price_levels, msg["symbol"]).add_done_callback(
-            lambda f: f.exception() and log.warning("price levels for %s not built: %s", msg["symbol"], f.exception()))
+    if (get_db().upsert_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo,
+                                                       close=c, volume=schwab_count(msg.get("volume")))])
+            and _gamma_surface_wanted(ticker_storage_key(msg["symbol"]))):
+        # a viewed ticker's price levels are built from its bars: rebuilt now, off this thread
+        _get_route_offload_executor().submit(_publish_price_levels, msg["symbol"])
     push_changes.changed(msg["symbol"], push_changes.LIQUIDITY)
     return True
 
@@ -2377,10 +2377,14 @@ def _status_line() -> str:
 
 
 def _terrain_loop() -> None:
-    # the price levels first (seconds), then the stored option levels, on this thread: the console
-    # serves the page meanwhile, and each ticker's levels appear as they are priced
+    # the board's streams first: the daemon drops a console's streams when it disconnects and
+    # streams only what the console declares, so a restarted console re-declares them before the
+    # start-up work. Then the price levels and the stored option levels, on this thread: the
+    # console serves the page meanwhile, and each ticker's levels appear as they are priced
+    from app.options.order_flow.streaming import declare_equity_symbols
     with _logger_lock:
         board_now = list(_logger_tickers)
+    declare_equity_symbols("board", board_now)
     _publish_missing_price_levels(board_now)
     loaded = _load_stored_levels()
     with _logger_lock:
@@ -3471,7 +3475,7 @@ async def get_changes(ticker: str = Query(...)):
 
     t = ticker_storage_key(_required_ticker(ticker))
     _get_route_offload_executor().submit(lambda: (set_streaming_active_ticker(t), _ensure_default_option_contract(t),
-                                                  _publish_missing_price_levels([t])))
+                                                  _publish_price_levels(t)))
     client = push_changes.subscribe(t)
 
     async def event_generator():
@@ -3986,30 +3990,36 @@ def _canonical_price_level_bars(tk: str, session_date) -> tuple[list, str, list]
 
 def _publish_price_levels(ticker: str) -> None:
     """THE producer of a ticker's price-level snapshot (Phase 2A): materialized from its bars
-    for today's session when its input changes -- the bar writer after each bar it writes, and
-    the levels loop for a ticker with none yet today (a restart, a new session date, a newly
-    viewed ticker). The routes read what it published (canonical_price_level_snapshot)."""
+    for today's session when its input changes -- the bar writer after each bar of a viewed
+    ticker, a page opening a ticker, and the levels loop for a ticker with none yet today (a
+    restart, a new session date). The routes read what it published
+    (canonical_price_level_snapshot). A failed build is logged; the routes say the levels are
+    absent, or serve the last published snapshot with its as-of time."""
     from liquidity_value_engine import PlaybookConfig, materialize_price_level_snapshot
     from time_et import now_et
 
     tk = ticker_storage_key(_required_ticker(ticker))
-    session_date = now_et().date()
-    bars_norm, bar_source, degraded = _canonical_price_level_bars(tk, session_date)
-    materialize_price_level_snapshot(tk, session_date, bars_norm, bar_source=bar_source,
-                                     config=PlaybookConfig(), degraded=degraded)
-    push_changes.changed(tk, push_changes.LEVELS)
+    before = canonical_price_level_snapshot(tk)
+    try:
+        session_date = now_et().date()
+        bars_norm, bar_source, degraded = _canonical_price_level_bars(tk, session_date)
+        snap = materialize_price_level_snapshot(tk, session_date, bars_norm, bar_source=bar_source,
+                                                config=PlaybookConfig(), degraded=degraded)
+    except Exception as e:  # noqa: BLE001 -- logged; the next bar or view builds them
+        log.warning("price levels for %s not built: %s", tk, e)
+        return
+    # a published snapshot that changed is pushed (the same object when its bars did not change);
+    # a first build is not: a page that found none reloads on the ticker's next bar
+    if before is not None and snap is not before:
+        push_changes.changed(tk, push_changes.LEVELS)
 
 
 def _publish_missing_price_levels(tickers) -> None:
-    """Build the price levels of each ticker with none published for today: at the console's
-    start, on a new session date and when a page opens a ticker (the bar writer keeps them
-    current after that). A failed build is logged; the route says the levels are absent."""
+    """Build the price levels of each ticker with none published for today (the console's
+    start, a new session date)."""
     for tk in tickers:
         if canonical_price_level_snapshot(tk) is None:
-            try:
-                _publish_price_levels(tk)
-            except Exception as e:  # noqa: BLE001 -- logged; the next bar or cycle builds them
-                log.warning("price levels for %s not built: %s", tk, e)
+            _publish_price_levels(tk)
 
 
 def canonical_price_level_snapshot(ticker: str):
@@ -4024,7 +4034,7 @@ def canonical_price_level_snapshot(ticker: str):
 
 #: why a route serves no price levels for a ticker
 NO_PRICE_LEVELS_REASON = ("no price levels published for this ticker today yet (they are built from its "
-                          "1-minute bars when a bar is written and when the ticker is first viewed)")
+                          "1-minute bars when a page opens the ticker and on each bar while it is viewed)")
 
 
 

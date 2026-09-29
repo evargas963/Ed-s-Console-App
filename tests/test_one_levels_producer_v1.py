@@ -510,3 +510,24 @@ def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
                            gamma_at_spot=None)
     assert r.regime == "UNAVAILABLE" and "gamma" not in r.headline.lower().split("—")[0]
     assert "Short gamma" not in r.headline and "Long gamma" not in r.headline
+
+
+def test_a_restarted_console_declares_the_boards_streams_before_its_start_up_work(monkeypatch):
+    """The daemon drops a console's streams when it disconnects and streams only what the
+    console declares. The board was re-declared only in the levels loop's first cycle, after
+    the start-up builds (2026-09-29: 30 tickers' 11:19 CT bar was never streamed). The loop
+    declares the board before any start-up work."""
+    class _Stop(Exception):
+        pass
+    seen = []
+
+    def first_start_up_work(tickers):
+        seen.append(list(ofs._equity_demand["board"]))
+        raise _Stop
+
+    monkeypatch.setattr(server, "_logger_tickers", ["SPY", "XLE", "QQQ"])
+    monkeypatch.setitem(ofs._equity_demand, "board", [])
+    monkeypatch.setattr(server, "_publish_missing_price_levels", first_start_up_work)
+    with pytest.raises(_Stop):
+        server._terrain_loop()
+    assert seen == [["SPY", "XLE", "QQQ"]]
