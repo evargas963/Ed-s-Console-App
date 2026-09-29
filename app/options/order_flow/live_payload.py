@@ -49,7 +49,7 @@ def options_live_payload(contract: str) -> dict[str, Any]:
     items = get_content_for_symbol(contract)
     top = option_top(contract) if lmp.feed_live_for(contract, "LEVELONE_OPTIONS") else None
     of = OrderFlowEngine().compute({"content": items or [], "top": top,
-                                    "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK")},
+                                    "book_live": lmp.book_is_live(contract, "OPTIONS_BOOK")},
                                    ticker=contract)
     book = dict(of.get("book_microstructure") or {})
     book["flow"] = flow_block(of)

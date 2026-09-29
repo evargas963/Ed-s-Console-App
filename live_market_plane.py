@@ -238,6 +238,13 @@ def feed_live_for(symbol: str | None, service: str) -> bool:
         return t in _feed["held"].get(service, ())
 
 
+def book_is_live(symbol: str | None, service: str) -> bool:
+    """Is `symbol`'s book on `service` live right now: the market is in session (trading day,
+    04:00-20:00 ET) and the feed holds it (feed_live_for). Outside the session its last book is a
+    past observation, as the price is (spot_is_fresh)."""
+    return is_capturable_session() and feed_live_for(symbol, service)
+
+
 def spot_is_fresh(q: dict[str, Any]) -> bool:
     """Is this row's LAST_PRICE live right now: the market is in session (trading day,
     04:00-20:00 ET), the stream delivered a LAST_PRICE for it (`spot_received_ts`) and the feed
