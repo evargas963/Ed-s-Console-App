@@ -44,7 +44,6 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
     row = ofs.price_row(tk)
     assert row["spot"] == native["LAST_PRICE"]
     assert srv.resolve_spot(tk) == (row["spot"], srv.SPOT_SOURCE_PLANE, row["trade_ts"])
-    assert srv.current_spot_state(srv.SPOT_SOURCE_PLANE, tk) == "live"
 
 
 def test_pages_are_told_the_daemon_price_port(monkeypatch) -> None:

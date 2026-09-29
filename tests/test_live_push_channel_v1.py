@@ -45,7 +45,6 @@ def feed(monkeypatch):
     monkeypatch.setattr(ofs, "PUSH_RECONNECT_SEC", 0.05)
     ofs._feed_running = False
     ofs._active_ticker = "SPY"
-    ofs._streaming_last_update_ts = None
     ofs._option_streaming_last_update_ts = None
     ofs._option_contract_last_update_ts.clear()
     ofls.clear_all_live_state()
@@ -97,8 +96,9 @@ async def _run(port, body, heartbeat_fn=None):
 
 
 def _received(ts):
-    """The console applied the active ticker's message that the daemon received at `ts`."""
-    return lambda: ofs._streaming_last_update_ts == ts
+    """The console applied SPY's trade that the daemon received at `ts`: it is on SPY's tape
+    with that receive time."""
+    return lambda: any(r.get("server_received_ts") == ts for r in ofls.get_content_for_symbol("SPY"))
 
 
 def test_a_schwab_trade_reaches_the_console_with_its_own_receive_time(feed):
@@ -218,8 +218,7 @@ def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
         ofs._feed_running = True
         client = asyncio.create_task(ofs._feed_loop())
         await asyncio.sleep(0.3)                    # no server: several failed connects
-        assert ofs._streaming_last_update_ts is None
-        assert ofs._push_connected_ts is None
+        assert ofls.get_content_for_symbol("SPY") == []
         bus = MessageBus()
         stop = asyncio.Event()
         stats: dict = {}
@@ -238,13 +237,12 @@ def test_push_down_serves_nothing_and_the_feed_recovers_when_it_returns(feed):
 
 
 def test_a_message_missing_its_receive_time_is_dropped_whole(monkeypatch):
-    applied = ofs._push_messages_applied
-    assert ofs._ingest_pushed("quote.SPY", {"symbol": "SPY", "native": {"LAST_PRICE": 1.0}}) is None
+    ofs._ingest_pushed("quote.ZZZNOTS", {"symbol": "ZZZNOTS", "native": {"LAST_PRICE": 1.0}})
     msg = _spy_trade(1.0, time.time())
     msg["symbol"] = "ZZZNOPE"
     del msg["ts_recv"]
     ofs._ingest_pushed("quote.ZZZNOPE", msg)
-    assert ofs._push_messages_applied == applied
+    assert ofls.get_content_for_symbol("ZZZNOTS") == [] and ofls.get_content_for_symbol("ZZZNOPE") == []
 
 
 def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
@@ -291,12 +289,10 @@ def test_a_late_console_gets_every_message_with_the_time_it_really_arrived(feed)
                                            native={"key": "SPY", "BID_PRICE": 504.9,
                                                    "ASK_PRICE": 505.1}))
         await asyncio.sleep(0.05)
-        applied = ofs._push_messages_applied
         ofs._feed_running = True
         client = asyncio.create_task(ofs._feed_loop())
         try:
-            assert await _until(_received(t_quote))           # the later one applied last
-            assert ofs._push_messages_applied == applied + 2  # and the trade before it
+            assert await _until(_received(t_trade))    # the trade, not only the later bid/ask tick
         finally:
             ofs._feed_running = False
             client.cancel()

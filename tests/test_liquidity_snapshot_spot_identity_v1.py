@@ -30,7 +30,6 @@ def _wire_common(monkeypatch, *, raw_levels, zones=None, resolved_spot=None):
     monkeypatch.setattr(srv, "resolve_spot", lambda *a, **k: (resolved_spot, None, None))
     # the route's one level input: the materialized price-level snapshot
     monkeypatch.setattr(srv, "canonical_price_level_snapshot", lambda t: _FakeCanon())
-    monkeypatch.setattr(lve, "carry_snapshot_levels", lambda *a, **k: None)
     fake_out = _FakeSnapshotOutput("SPY", "2020-01-02", raw_levels, zones=zones)
     monkeypatch.setattr(lve, "build_live_snapshot", lambda *a, **k: fake_out)
     return fake_out

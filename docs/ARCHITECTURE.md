@@ -44,7 +44,6 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 | `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `production_universe.py`, `numeric_contract.py` | `shared/` |
 | `static/index.html`, `static/js/`, `static/css/` | `static/` |
 | `start_*.bat`, `runtime_preflight.py`, `live_schwab_env.py`, `launcher_port_guard.py`, `wait_for_ready_then_open.py`, `reauth_schwab.py` | stay at the root |
-| `schwab_field_dictionary_builder.py` | checked at its step: delete if nothing needs it |
 
 ## 3. Taking apart the two big files (measured 2026-09-26)
 

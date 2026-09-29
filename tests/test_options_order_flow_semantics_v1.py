@@ -397,7 +397,6 @@ def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
     _reset_option_feed_globals()
     _daemon_heartbeat(_SPY_CONTRACT)
     ofs._active_ticker = "SPY"
-    ofs._streaming_last_update_ts = time.time() - 60.0
     ofs._feed_running = True
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()

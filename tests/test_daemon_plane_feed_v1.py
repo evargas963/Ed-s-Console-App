@@ -28,7 +28,6 @@ def _isolate_stream_capture_env(monkeypatch):
 def _reset(tmp_path):
     ofs._feed_running = False
     ofs._active_ticker = None
-    ofs._streaming_last_update_ts = None
     ofls.clear_all_live_state()
     return tmp_path / "stream_capture.db"
 
@@ -130,8 +129,6 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
 
     assert not any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("SPY"))
     assert any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("QQQ"))
-    # the ACTIVE ticker's feed-health clock is not advanced by another symbol's tick
-    assert ofs._streaming_last_update_ts is None
 
 
 def test_the_selected_ticker_gets_its_books_a_change_replaces_them_and_a_restart_restores_them(monkeypatch):

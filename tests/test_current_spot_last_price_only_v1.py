@@ -28,7 +28,6 @@ def test_resolve_spot_rejects_mark_close_chain_and_snapshot(monkeypatch) -> None
     spot, source, _ts = server.resolve_spot("SPY")
     assert spot is None
     assert source == "none"
-    assert server.current_spot_state(source, "SPY") == "unavailable"
 
 
 def test_plane_mark_only_tick_never_creates_current_spot() -> None:

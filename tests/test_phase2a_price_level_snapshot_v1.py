@@ -1,25 +1,5 @@
-"""Phase 2A: one computation, one materialization, carried everywhere.
-
-THE DEFECT THIS LOCKS (operator, 2026-08-08 — measured on the live console, one ticker,
-one instant):
-
-    /api/levels             OVERNIGHT_HIGH 773.3975   OVERNIGHT_LOW 773.3975
-    /api/liquidity-snapshot overnight_high 773.40     overnight_low  772.55
-
-and the prior-day value area (PD_POC/PD_VAH/PD_VAL) disagreed between the two
-intermittently. Neither endpoint's arithmetic was wrong. They ran the SAME engine
-helpers over DIFFERENT bar inputs — the levels endpoint over the live accumulator (or
-banked 1m bars), the liquidity endpoint over a synchronous Schwab fetch — so the
-duplication was in the MATERIALIZATION, not the formula. Collapsing formulas, which
-earlier missions did, could never have fixed it.
-
-`tests/test_levels_single_producer_v1.py` was green the whole time: it enforces one
-WRITER per payload key, and no forbidden key was written. That is the blind spot these
-tests close — they read the call graph and the carried identity, not the field names.
-
-Every guard here ships with a NEGATIVE CONTROL that injects the failure and proves the
-guard screams; a guard that has never failed has never been tested.
-"""
+"""The price levels: one snapshot per bar generation, and /api/levels and
+/api/liquidity-snapshot serve its values under the same ids."""
 
 from __future__ import annotations
 
@@ -31,14 +11,10 @@ import pytest
 
 from liquidity_value_engine import (
     PHASE2A_LEVEL_IDS,
-    LevelCarrierConflict,
-    PriceLevelValue,
     _bars_to_list,
     build_price_level_snapshot,
-    carry_snapshot_levels,
     compute_session_vwap_series,
     materialize_price_level_snapshot,
-    register_level_carrier,
 )
 from time_et import ET
 
@@ -67,13 +43,11 @@ def _tape():
 
 
 @pytest.fixture(autouse=True)
-def _clean_ledgers():
+def _clean_snapshots():
     import liquidity_value_engine as lve
     lve._MATERIALIZED_SNAPSHOTS.clear()
-    lve._CARRIER_LEDGER.clear()
     yield
     lve._MATERIALIZED_SNAPSHOTS.clear()
-    lve._CARRIER_LEDGER.clear()
 
 
 
@@ -158,59 +132,6 @@ def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
         )
 
 
-# ── the runtime carrier contract ─────────────────────────────────────────────
-
-
-def test_two_carriers_of_the_same_generation_agree():
-    snap = build_price_level_snapshot(
-        "SPY", SESSION, _bars_to_list(_tape()), bar_source="unit_tape", generation=3)
-    a = carry_snapshot_levels(snap, "api.levels")
-    b = carry_snapshot_levels(snap, "api.liquidity_snapshot")
-    assert a == b and a["OVERNIGHT_HIGH"] is not None
-
-
-@pytest.mark.parametrize("field,mutation", [
-    ("price", 773.40),
-    ("generation", 99),
-    ("producer", "some.other.producer"),
-    ("as_of_ts_utc", 1.0),
-])
-def test_negative_control_disagreeing_carrier_raises(field, mutation):
-    """NEGATIVE CONTROL: value, generation, provenance and as-of identity each fire.
-
-    773.40 is the literal number /api/liquidity-snapshot served while /api/levels
-    served 773.3975 — the disagreement that used to reach two screens silently.
-    """
-    snap = build_price_level_snapshot(
-        "SPY", SESSION, _bars_to_list(_tape()), bar_source="unit_tape", generation=3)
-    carry_snapshot_levels(snap, "api.levels")
-
-    good = snap.levels["OVERNIGHT_HIGH"]
-    kwargs = {
-        "level_id": good.level_id, "price": good.price, "family": good.family,
-        "semantic_scope": good.semantic_scope, "evidence_tier": good.evidence_tier,
-        "producer": good.producer, "window": good.window,
-        "vendor_basis": good.vendor_basis, "as_of_ts_utc": good.as_of_ts_utc,
-        "generation": good.generation, "session_date": good.session_date,
-    }
-    kwargs[field] = mutation
-    rogue = PriceLevelValue(**kwargs)
-
-    if field == "generation":
-        # a different generation is a different key, so it must NOT collide...
-        register_level_carrier("api.liquidity_snapshot", "SPY", rogue)
-        # ...but the SAME generation carrying a different value must.
-        kwargs["generation"] = good.generation
-        kwargs["price"] = 773.40
-        with pytest.raises(LevelCarrierConflict):
-            register_level_carrier("api.liquidity_snapshot", "SPY",
-                                   PriceLevelValue(**kwargs))
-        return
-
-    with pytest.raises(LevelCarrierConflict) as excinfo:
-        register_level_carrier("api.liquidity_snapshot", "SPY", rogue)
-    assert "OVERNIGHT_HIGH" in str(excinfo.value)
-    assert "api.liquidity_snapshot" in str(excinfo.value)
 
 
 # ── the surfaces ─────────────────────────────────────────────────────────────
