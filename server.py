@@ -2377,10 +2377,14 @@ def _status_line() -> str:
 
 
 def _terrain_loop() -> None:
-    # the price levels first (seconds), then the stored option levels, on this thread: the console
-    # serves the page meanwhile, and each ticker's levels appear as they are priced
+    # the board's streams first: the daemon drops a console's streams when it disconnects and
+    # streams only what the console declares, so a restarted console re-declares them before the
+    # start-up work. Then the price levels and the stored option levels, on this thread: the
+    # console serves the page meanwhile, and each ticker's levels appear as they are priced
+    from app.options.order_flow.streaming import declare_equity_symbols
     with _logger_lock:
         board_now = list(_logger_tickers)
+    declare_equity_symbols("board", board_now)
     _publish_missing_price_levels(board_now)
     loaded = _load_stored_levels()
     with _logger_lock:
