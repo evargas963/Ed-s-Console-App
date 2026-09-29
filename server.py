@@ -3999,15 +3999,19 @@ def _publish_price_levels(ticker: str) -> None:
     from time_et import now_et
 
     tk = ticker_storage_key(_required_ticker(ticker))
+    before = canonical_price_level_snapshot(tk)
     try:
         session_date = now_et().date()
         bars_norm, bar_source, degraded = _canonical_price_level_bars(tk, session_date)
-        materialize_price_level_snapshot(tk, session_date, bars_norm, bar_source=bar_source,
-                                         config=PlaybookConfig(), degraded=degraded)
+        snap = materialize_price_level_snapshot(tk, session_date, bars_norm, bar_source=bar_source,
+                                                config=PlaybookConfig(), degraded=degraded)
     except Exception as e:  # noqa: BLE001 -- logged; the next bar or view builds them
         log.warning("price levels for %s not built: %s", tk, e)
         return
-    push_changes.changed(tk, push_changes.LEVELS)
+    # a published snapshot that changed is pushed (the same object when its bars did not change);
+    # a first build is not: a page that found none reloads on the ticker's next bar
+    if before is not None and snap is not before:
+        push_changes.changed(tk, push_changes.LEVELS)
 
 
 def _publish_missing_price_levels(tickers) -> None:
