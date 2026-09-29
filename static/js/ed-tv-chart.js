@@ -61,6 +61,12 @@
 
   var TF_SECONDS = { '1': 60, '3': 180, '5': 300, '15': 900, '30': 1800, '60': 3600, 'D': 86400 };
   var LEVEL_TITLE_W = 150;   // px along the pane's right edge where the level lines' titles are drawn
+  var LEVEL_LABEL_GAP = 18;  // px: a level label's height; closer labels would overlap
+  var PROFILE_FRAC = 0.16;   // the volume profile's share of the pane's width, from the left edge
+  var MIN_VIEW_BARS = 60;    // the default view shows at least this many bars
+  // event callouts sit in a strip above the candles: rows of numbers (and their labels) from
+  // CALLOUT_TOP, CALLOUT_ROW apart, CALLOUT_ROWS rows; the price scale keeps the strip clear
+  var CALLOUT_TOP = 50, CALLOUT_ROW = 28, CALLOUT_ROWS = 2, CALLOUT_R = 11;
 
   // ---- series primitives (drawn inside the pane, under/over the candles) ----
   // A horizontal band between two prices across the whole pane (value area).
@@ -90,7 +96,7 @@
   // Scaling to the pane is drawing; the values are served.
   function ProfilePrimitive(side, frac, fit, z) {
     var self = this;
-    this._series = null; this._req = null; this.rows = []; this.style = 'bars'; this.frac = frac; this.sel = null;
+    this._series = null; this._req = null; this.rows = []; this.style = 'bars'; this.frac = frac; this.sel = null; this.mark = null;
     function maxAbs() { return self.rows.reduce(function (m, r) { return Math.max(m, Math.abs(r.value)); }, 0) || 1; }
     var renderer = { draw: function (target) {
       if (!self._series || !self.rows.length) return;
@@ -118,6 +124,15 @@
           }
           c.globalAlpha = 1;
         });
+        // one marked price across the band, named (the volume profile's served POC)
+        var mk = self.mark, my = mk && self._series.priceToCoordinate(mk.price);
+        if (my != null) {
+          var x0 = side === 'left' ? 0 : W - band;
+          c.fillStyle = mk.color; c.fillRect(x0, my * vr - hr, band, 2 * vr);
+          c.font = '600 ' + Math.round(11 * vr) + 'px ' + tok('--ed-sans', 'sans-serif'); c.textBaseline = 'bottom';
+          c.textAlign = side === 'left' ? 'left' : 'right';
+          c.fillText(mk.label, side === 'left' ? x0 + 4 * hr : W - 4 * hr, my * vr - 3 * vr);
+        }
       });
     } };
     var view = { renderer: function () { return renderer; }, zOrder: function () { return z || 'normal'; } };
@@ -130,7 +145,7 @@
       var ps = self.rows.map(function (r) { return r.price; });
       return { priceRange: { minValue: Math.min.apply(null, ps), maxValue: Math.max.apply(null, ps) } };
     };
-    this.set = function (rows, style) { self.rows = rows || []; if (style) self.style = style; if (self._req) self._req(); };
+    this.set = function (rows, style, mark) { self.rows = rows || []; if (style) self.style = style; self.mark = mark || null; if (self._req) self._req(); };
     this.select = function (price) { self.sel = price; if (self._req) self._req(); };
     // the row nearest a pane point, when the point is inside the profile band
     this.rowAt = function (x, y, paneWidth) {
@@ -172,11 +187,13 @@
     };
     this.set = function (zones) { self.zones = (zones || []).filter(function (z) { return isFinite(z.lo) && isFinite(z.hi); }); if (self._req) self._req(); };
   }
-  // Numbered event callouts, as the reference draws them: a dashed line at the event's bar, its
-  // number in a circle below the legend (callouts closer than 30px step down a row), a dot
-  // at its price and a boxed label beside it (turned left before the level titles drawn along the
-  // pane's right edge, LEVEL_TITLE_W wide). list: [{id, time, price, num, text, color}]; sel: the
-  // selected id, drawn heavier. hitAt(x, y) -> id; centers: each number's {id, x, y} in pane px.
+  // Numbered event callouts, as the reference draws them: in the strip above the candles each
+  // event's number in a circle with its boxed label beside it (turned left before the level titles
+  // along the pane's right edge, LEVEL_TITLE_W wide), at its bar in the first of CALLOUT_ROWS rows
+  // where it overlaps no other callout, else beside the callouts in a row; a dashed line to its bar
+  // and down it, and a dot at its price. list: [{id, time,
+  // price, num, text, color}]; sel: the selected id, drawn heavier. hitAt(x, y) -> id; centers:
+  // each number's {id, x, y} in pane px.
   function CalloutPrimitive(chartRef, P) {
     var self = this;
     this._series = null; this._req = null; this.list = []; this.sel = null; this.hits = []; this.centers = [];
@@ -185,31 +202,53 @@
       if (!self._series || !self.list.length) return;
       var ts = chartRef().timeScale();
       target.useMediaCoordinateSpace(function (s) {
-        var c = s.context, W = s.mediaSize.width, H = s.mediaSize.height, prevX = null, row = 0;
+        var c = s.context, W = s.mediaSize.width, H = s.mediaSize.height, rows = [], R = CALLOUT_R;
+        for (var k = 0; k < CALLOUT_ROWS; k++) rows.push([]);
         c.font = '600 12px ' + tok('--ed-sans', 'sans-serif');
         self.list.forEach(function (m) {
           var x = ts.timeToCoordinate(m.time), y = self._series.priceToCoordinate(m.price);
           if (x == null || y == null) return;
-          row = prevX != null && x - prevX < 30 ? (row + 1) % 3 : 0; prevX = x;
-          var on = m.id === self.sel, r = on ? 13 : 11, cy = 58 + row * 28;
+          var w = m.text ? c.measureText(m.text).width + 14 : 0;
+          // the callout's extent with its number at cx: label to the right, or left near the edge
+          var ext = function (cx) {
+            var left = w && cx + R + 6 + w > W - LEVEL_TITLE_W;
+            return { cx: cx, left: left, x0: left ? cx - R - 6 - w : cx - R, x1: left ? cx + R : cx + R + (w ? 6 + w : 0) };
+          };
+          var clashes = function (row, e) { return row.filter(function (b) { return e.x0 < b[1] + 6 && e.x1 > b[0] - 6; }); };
+          // at its own bar in the first free row; else beside the callouts already in a row
+          var pick = null, row = 0;
+          rows.forEach(function (rw, i) { if (!pick && !clashes(rw, ext(x)).length) { pick = ext(x); row = i; } });
+          rows.forEach(function (rw, i) {
+            if (pick) return;
+            var cl = clashes(rw, ext(x));
+            var right = ext(Math.max.apply(null, cl.map(function (b) { return b[1]; })) + 6 + R);
+            var leftOf = ext(Math.min.apply(null, cl.map(function (b) { return b[0]; })) - 6 - R - (w ? 6 + w : 0));
+            [right, leftOf].forEach(function (e) {
+              if (!pick && e.x0 >= 0 && e.x1 <= W && !clashes(rw, e).length) { pick = e; row = i; }
+            });
+          });
+          pick = pick || ext(x);
+          rows[row].push([pick.x0, pick.x1]);
+          var on = m.id === self.sel, cy = CALLOUT_TOP + row * CALLOUT_ROW, cx = pick.cx;
+          var stripBottom = CALLOUT_TOP + (CALLOUT_ROWS - 1) * CALLOUT_ROW + R + 4;
           c.save();
-          c.strokeStyle = alpha(m.color, on ? 0.95 : 0.7); c.lineWidth = on ? 2 : 1; c.setLineDash([4, 4]);
-          c.beginPath(); c.moveTo(x, cy + r); c.lineTo(x, H); c.stroke();
+          c.strokeStyle = alpha(m.color, on ? 0.95 : 0.6); c.lineWidth = on ? 2 : 1; c.setLineDash([4, 4]);
+          c.beginPath(); c.moveTo(cx, cy + R); c.lineTo(cx, stripBottom); c.lineTo(x, stripBottom + 8); c.lineTo(x, H); c.stroke();
           c.setLineDash([]);
-          c.fillStyle = P.bg; c.lineWidth = 2; c.strokeStyle = m.color;
-          c.beginPath(); c.arc(x, cy, r, 0, 2 * Math.PI); c.fill(); c.stroke();
-          c.fillStyle = P.ink; c.textAlign = 'center'; c.textBaseline = 'middle';
-          c.fillText(String(m.num), x, cy + 0.5);
           c.fillStyle = m.color; c.beginPath(); c.arc(x, y, on ? 5 : 4, 0, 2 * Math.PI); c.fill();
-          if (m.text) {
-            var w = c.measureText(m.text).width + 14, h = 22, bx = x + 12 + w > W - LEVEL_TITLE_W ? x - 12 - w : x + 12, by = y - h - 6;
+          c.fillStyle = P.bg; c.lineWidth = on ? 3 : 2; c.strokeStyle = m.color;
+          c.beginPath(); c.arc(cx, cy, R, 0, 2 * Math.PI); c.fill(); c.stroke();
+          c.fillStyle = P.ink; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.fillText(String(m.num), cx, cy + 0.5);
+          if (w) {
+            var bx = pick.left ? cx - R - 6 - w : cx + R + 6, by = cy - 11;
             c.fillStyle = alpha(P.bg, 0.94); c.strokeStyle = alpha(m.color, on ? 1 : 0.8); c.lineWidth = on ? 2 : 1;
-            c.fillRect(bx, by, w, h); c.strokeRect(bx, by, w, h);
-            c.fillStyle = P.ink; c.textAlign = 'left'; c.fillText(m.text, bx + 7, by + h / 2 + 0.5);
-            self.hits.push({ id: m.id, x0: bx, x1: bx + w, y0: by, y1: by + h });
+            c.fillRect(bx, by, w, 22); c.strokeRect(bx, by, w, 22);
+            c.fillStyle = P.ink; c.textAlign = 'left'; c.fillText(m.text, bx + 7, cy + 0.5);
+            self.hits.push({ id: m.id, x0: bx, x1: bx + w, y0: by, y1: by + 22 });
           }
-          self.hits.push({ id: m.id, x0: x - r, x1: x + r, y0: cy - r, y1: cy + r });
-          self.centers.push({ id: m.id, x: x, y: cy });
+          self.hits.push({ id: m.id, x0: cx - R, x1: cx + R, y0: cy - R, y1: cy + R });
+          self.centers.push({ id: m.id, x: cx, y: cy });
           c.restore();
         });
       });
@@ -371,14 +410,14 @@
     var profile = new ProfilePrimitive('right', 0.32, true); candles.attachPrimitive(profile);
     // the session volume profile on the left edge, as the reference draws it (the candles set
     // the price range; the profile does not widen it)
-    var vprofile = new ProfilePrimitive('left', 0.16, false, 'bottom'); candles.attachPrimitive(vprofile);   // behind the candles
+    var vprofile = new ProfilePrimitive('left', PROFILE_FRAC, false, 'bottom'); candles.attachPrimitive(vprofile);   // behind the candles
     var zones = new ZonesPrimitive(); candles.attachPrimitive(zones);
     // the heatmap's buckets on the time axis (no values: whitespace points), carrying its cells
     var timeline = chart.addSeries(LWC.LineSeries, { color: 'rgba(0,0,0,0)', lastValueVisible: false, priceLineVisible: false,
       crosshairMarkerVisible: false, lineVisible: false, pointMarkersVisible: false });
     var heat = new HeatPrimitive(function () { return chart; }); timeline.attachPrimitive(heat);
 
-    var S = { bars: [], tf: '5', symbol: '', levels: [], priceLines: [], nearestN: opts.nearestN || 6,
+    var S = { bars: [], tf: '5', symbol: '', levels: [], priceLines: [], unlabelled: [], nearestN: opts.nearestN || 6,
       pinned: null, tool: 'cursor', style: 'candles', hlines: [], drawKey: null, markerMeta: {}, onMarkerClick: null };
 
     // ---- time <-> logical (bars are sorted, time = bar start in epoch seconds) ----
@@ -425,10 +464,19 @@
     });
     btnLatest.addEventListener('click', function () { chart.timeScale().scrollToRealTime(); });
 
+    // the default view: from the bar at S.viewFrom (a served time, e.g. the session's open) to the
+    // latest, at least MIN_VIEW_BARS; else the newest 140 (60 daily); the volume profile's share of
+    // the pane on the left is left empty so the profile is not drawn under the candles
     function showRecent() {
       var n = S.bars.length; if (!n) return;
-      var span = S.tf === 'D' ? 60 : 140;
-      chart.timeScale().setVisibleLogicalRange({ from: Math.max(-2, n - span), to: n + 8 });
+      var from = n - (S.tf === 'D' ? 60 : 140);
+      if (S.viewFrom != null) {
+        var i = barIndexAt(S.viewFrom); if (i < 0 || S.bars[i].t < S.viewFrom) i += 1;   // the first bar at or after it
+        from = Math.min(i, n - MIN_VIEW_BARS);
+      }
+      from = Math.max(-2, from);
+      var pad = vprofile.rows.length ? (n + 8 - from) * PROFILE_FRAC / (1 - PROFILE_FRAC) : 0;
+      chart.timeScale().setVisibleLogicalRange({ from: from - pad, to: n + 8 });
     }
     function resetAll() {
       chart.priceScale('right').applyOptions({ autoScale: true, mode: LWC.PriceScaleMode.Normal });
@@ -569,7 +617,7 @@
       var key = [top, bot, ref, S.levels.length, S.nearestN].join('|');
       if (!force && key === _lastRange) return;
       _lastRange = key;
-      S.priceLines.forEach(function (l) { candles.removePriceLine(l); }); S.priceLines = [];
+      S.priceLines.concat(S.unlabelled).forEach(function (l) { candles.removePriceLine(l); }); S.priceLines = []; S.unlabelled = [];
       if (top == null || bot == null || ref == null) return;
       var lo = Math.min(top, bot), hi = Math.max(top, bot);
       // the levels arrive nearest-first (served); keep the first N inside the visible range
@@ -581,20 +629,23 @@
       }
       edge('.tvc-edge-top', S.levels.filter(function (l) { return l.price > hi; }), '&#9650;');
       edge('.tvc-edge-bot', S.levels.filter(function (l) { return l.price < lo; }), '&#9660;');
-      // levels at one served price draw once, with one label naming them all (five labels
-      // stacked on 765.00 hid each other, 2026-09-28)
-      var at = {};
+      // one label per LEVEL_LABEL_GAP of height: a level whose label would overlap a nearer
+      // level's keeps its line, and the nearer label counts it (+N; all are in the levels list)
+      var labelled = [];
       pick.forEach(function (l) {
-        var k = l.price.toFixed(2);
-        if (at[k]) {    // one name and how many more share the price (all named in the levels list)
-          at[k].n = (at[k].n || 1) + 1;
-          at[k].applyOptions({ title: at[k].first + ' +' + (at[k].n - 1) });
+        var y = candles.priceToCoordinate(l.price);
+        var near = y == null ? null : labelled.filter(function (x) { return Math.abs(x.y - y) < LEVEL_LABEL_GAP; })[0];
+        if (near) {
+          near.n += 1;
+          near.line.applyOptions({ title: near.first + ' +' + (near.n - 1) });
+          if (Math.abs(near.y - y) >= 0.5) S.unlabelled.push(candles.createPriceLine({ price: l.price, color: l.color || P.ink3,
+            lineWidth: l.width || 1, lineStyle: l.style == null ? 2 : l.style, axisLabelVisible: false, title: '' }));
           return;
         }
-        at[k] = candles.createPriceLine({ price: l.price, color: l.color || P.ink3, lineWidth: l.width || 1,
+        var line = candles.createPriceLine({ price: l.price, color: l.color || P.ink3, lineWidth: l.width || 1,
           lineStyle: l.style == null ? 2 : l.style, axisLabelVisible: true, title: l.label || '' });
-        at[k].first = l.label || '';
-        S.priceLines.push(at[k]);
+        labelled.push({ line: line, first: l.label || '', n: 1, y: y });
+        S.priceLines.push(line);
       });
       if (opts.onLevelsShown) opts.onLevelsShown(pick);
     }
@@ -716,6 +767,9 @@
         m.sort(function (a, b) { return a.time - b.time; });
         callouts.set(m, id);
         S.markersShown = m.map(function (x) { return x.id; });
+        var strip = CALLOUT_TOP + (CALLOUT_ROWS - 1) * CALLOUT_ROW + CALLOUT_R + 10;   // px the callouts take
+        chart.priceScale('right').applyOptions({ scaleMargins: { top: m.length ? Math.min(0.4, strip / Math.max(1, plot.clientHeight)) : 0.08, bottom: 0.22 } });
+        scheduleLevels();
       },
       scrollToTime: function (t) {
         var lg = logicalOf(Number(t)); if (lg == null) return;
@@ -751,7 +805,7 @@
           autoScale: chart.priceScale('right').options().autoScale, levelsShown: S.priceLines.length,
           pinned: S.pinned, tool: S.tool, drawings: draw.lines.length + S.hlines.length,
           profile: { rows: profile.rows.length, style: profile.style, selected: profile.sel },
-          heatCells: heat.h ? heat.h.cells.length : 0, zones: zones.zones.length, volumeProfileBins: vprofile.rows.length,
+          heatCells: heat.h ? heat.h.cells.length : 0, zones: zones.zones.length, volumeProfileBins: vprofile.rows.length, volumeProfileMark: vprofile.mark ? vprofile.mark.label : null,
           levels: S.priceLines.map(function (l) { return l.options().title; }),
           markers: S.markersShown || [], markerSelected: S.markerSel || null, callouts: callouts.centers };
       },
@@ -761,7 +815,10 @@
         return y == null ? null : { x: r.left + chart.timeScale().width() - 4, y: r.top + y };
       },
       setProfile: function (rows, style) { profile.set(rows, style); },
-      setVolumeProfile: function (rows) { vprofile.set(rows, 'bars'); },
+      // the volume profile's rows, and optionally one marked price {price, label, color} (its POC)
+      setVolumeProfile: function (rows, mark) { vprofile.set(rows, 'bars', mark); },
+      // the default view starts at this served time (e.g. the session's open); null: the newest bars
+      setViewFrom: function (ts) { S.viewFrom = ts == null ? null : Number(ts); showRecent(); },
       setZones: function (list) { zones.set(list); },
       // the book heatmap ({cells, since_ts, bucket_sec, n_buckets, max_size, display_lo, display_hi}
       // as served) or null: its buckets become the time axis

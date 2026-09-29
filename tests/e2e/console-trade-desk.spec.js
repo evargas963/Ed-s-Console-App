@@ -136,6 +136,8 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmAgree')).toContainText('Above flip');
     // the served session volume profile, every bin drawn at the chart's left edge, with its basis
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileBins)).toBe(LEVELS.volume_profile.bins.length);
+    // its served POC is marked across the profile, named an estimate
+    expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileMark)).toBe('POC est ' + LEVELS.volume_profile.poc.toFixed(2));
     await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
     // each card draws its served series in the reference's chart type (2026-09-28): depth areas,
     // volume bars, and lines for put/call OI and ATM IV by expiry (a null expiry breaks the line)
@@ -161,8 +163,11 @@ test.describe('Trade Desk renders served values', () => {
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected)).toBe(key);
     // and the other way: a click on a callout's number on the chart selects its queue entry
     const other = EVENTS.items[2].key;
-    const c = ((await page.evaluate(() => window.EdTradeDeskMap.state().chart.callouts)) || []).filter((x) => x.id === other)[0];
+    const all = (await page.evaluate(() => window.EdTradeDeskMap.state().chart.callouts)) || [];
+    const c = all.filter((x) => x.id === other)[0];
     expect(c).toBeTruthy();
+    // the three crosses share one bar here; no callout's number covers another's
+    for (const a of all) for (const b of all) if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(22);
     const box = await page.locator('#tdmChart .tvc-plot').boundingBox();
     await page.mouse.click(box.x + c.x, box.y + c.y);
     await expect(page.locator('#tdmQueue [data-q="' + other + '"]')).toHaveClass(/sel/);

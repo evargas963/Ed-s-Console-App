@@ -194,7 +194,7 @@
         $('tdmChartEmpty').hidden = bars.length > 0;
         $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
           : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
-        paintChartOverlays(); paintQueue();
+        paintChartOverlays(); paintQueue(); openView();
         var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
       } else if (bars.length) {
         S.chart.updateTail(bars.slice(-2), d.last_bar && d.last_bar.label);
@@ -216,7 +216,15 @@
       S.levels = r[0]; S.terrain = r[1]; S.events = r[2]; S.liq = r[3]; S.strikes = r[4]; S.forces = r[5];
       S.flowBars = r[6] ? r[6].bars || [] : null;
       paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
+      openView();
     });
+  }
+  // the chart opens on the served event window (5m/30m: the session), once per symbol and timeframe
+  function openView() {
+    var vk = S.ticker + '|' + S.tf;
+    if (S.chart && S.bars.length && S.events && S.events.tf === S.tf && S.viewKey !== vk) {
+      S.viewKey = vk; S.chart.setViewFrom(S.events.window_start_ts_utc);
+    }
   }
   function loadFast() {
     var tk = S.ticker, gen = S.gen;
@@ -262,11 +270,13 @@
     // the band is yesterday's value area, as the reference draws it; today's are level lines
     var pd = pdValueArea(), on = S.fam.prior_day !== 0;
     S.chart.setValueArea(on ? pd.val : null, on ? pd.vah : null);
-    // the session volume profile on the left edge: value-area bins brighter (the served flag)
+    // the session volume profile on the left edge: value-area bins brighter (the served flag), its
+    // served POC marked across it
     var vp = S.fam.volume_profile !== 0 && S.levels && S.levels.volume_profile;
     var P = S.chart.palette(), alpha = window.EdTvChart.alpha;
     S.chart.setVolumeProfile(vp ? vp.bins.map(function (b) {
-      return { price: b[0], value: b[1], color: b[2] ? alpha(P.accent, 0.38) : alpha(P.ink3, 0.2) }; }) : []);
+      return { price: b[0], value: b[1], color: b[2] ? alpha(P.accent, 0.38) : alpha(P.ink3, 0.2) }; }) : [],
+      vp && vp.poc != null ? { price: vp.poc, label: 'POC est ' + num(vp.poc), color: P.warn } : null);
     S.chart.setVwap(S.fam.vwap && S.levels ? S.levels.vwap_series : []);
     var T = S.fam.gamma !== 0 && S.terrain;
     S.chart.setWallBands(T ? T.call_wall_range : null, T ? T.put_wall_range : null);
@@ -421,10 +431,10 @@
         state(c, reg || '—', t.levels_stale ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
         var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
-        src(c, 'Schwab option chain · ' + (t.levels_market_closed ? 'as of ' + esc(t.levels_as_of) : t.levels_stale ? 'stale ' + age(t.levels_age_sec) : age(t.levels_age_sec) + ' old') +
-          ' · ' + (t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + ' contracts');
+        src(c, 'Schwab option chain · ' + (t.levels_market_closed ? 'as of ' + esc(t.levels_as_of) : t.levels_stale ? 'stale ' + age(t.levels_age_sec) : age(t.levels_age_sec) + ' old'));
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall), 'up') + row('Put wall', num(t.put_wall), 'dn') +
-          row('Flip', num(t.gamma_flip)) + row('Max pain', num(t.max_pain)) + row('P/C OI', num(t.pcr_all, 2)) + forcesRows();
+          row('Flip', num(t.gamma_flip)) + row('P/C OI', num(t.pcr_all, 2)) + row('Max pain', num(t.max_pain)) +
+          row('Contracts', t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + forcesRows();
       }
     }
     // VOLATILITY
@@ -438,9 +448,9 @@
         state(c, 'ATM IV ' + num(im.iv_pct_atm, 1) + '%', '');
         c.querySelector('.tdm-hero').innerHTML = '±' + num(im.points, 2) + ' <small>implied 1-day move, 1σ</small>';
       }
-      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : t.levels_market_closed ? 'as of ' + esc(t.levels_as_of) : age(t.levels_age_sec) + ' old') +
-        (im && im.dte_used != null ? ' · first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)' : ''));
+      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : t.levels_market_closed ? 'as of ' + esc(t.levels_as_of) : age(t.levels_age_sec) + ' old'));
       c.querySelector('.tdm-rows').innerHTML =
+        (im && im.dte_used != null ? row('Move from', 'first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)') : '') +
         row('ATR daily', t && t.atr_daily != null ? num(t.atr_daily) : esc((t && t.atr_daily_reason) || '—')) +
         row('ATR 15m', t && t.atr_15m != null ? num(t.atr_15m) : esc((t && t.atr_15m_reason) || '—')) +
         row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : 'waiting for the VIX stream');
@@ -454,14 +464,14 @@
       var dp = (m && m.depth_pressure) || {}, bid = (dp.bid || []).slice().reverse(), ask = dp.ask || [];
       spark(c, [{ xs: bid.map(function (r) { return r.price; }), ys: bid.map(function (r) { return r.cum; }), color: P.up, kind: 'area' },
         { xs: ask.map(function (r) { return r.price; }), ys: ask.map(function (r) { return r.cum; }), color: P.down, kind: 'area' }],
-        'Displayed depth by price, cumulative from the top of book · ' + ((m && m.venue) || st().bookVenue),
+        'Cumulative displayed depth by price · ' + ((m && m.venue) || st().bookVenue),
         m && m.status === 'no_book' ? 'no ' + m.venue + ' for this symbol right now' : m === undefined ? 'loading…' : 'no book levels served');
     }
     if ((c = $('tdmCardFlow'))) {
       var fb = S.flowBars || [];
       spark(c, [{ ys: fb.map(function (b) { return b.v; }), kind: 'bars', color: P.ink3,
         colors: fb.map(function (b) { return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down; }) }],
-        'Schwab volume per 1-minute bar, the newest hour · green: bar closed up, red: down',
+        'Volume per 1-minute bar, last hour · green up, red down',
         S.flowBars === undefined ? 'loading…' : 'no 1-minute bars for this symbol');
     }
     if ((c = $('tdmCardOpt'))) {
