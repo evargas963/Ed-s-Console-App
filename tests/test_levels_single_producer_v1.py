@@ -148,13 +148,15 @@ def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monke
 def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monkeypatch, tmp_path):
     """2026-09-29 RTH: the first /api/levels after each bar write built the price levels inside
     the request (3.4 s for XLE in the live console). The bar writer now publishes them when it
-    writes the bar, a new session date is built by the levels loop, and the route reads what was
-    published -- it reads no bar. Real Schwab SPY bars, 2026-09-24/25."""
+    writes a bar of a viewed ticker (for all 44 tickers every minute it slowed the option-level
+    loop from about 85 s a cycle to 135 s), a new session date is built by the levels loop, and
+    the route reads what was published -- it reads no bar. Real Schwab SPY bars, 2026-09-24/25."""
     import json
     import time
     from datetime import datetime as _dt
     from pathlib import Path
 
+    import push_changes
     import server as srv
     import time_et as te
     from db import EdDB
@@ -170,7 +172,9 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monk
     monkeypatch.setattr(te, "now_et", lambda: now)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (None, "none", None))
     monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {})
+    monkeypatch.setattr(push_changes, "watched", lambda: {"SPY"})          # a page has SPY open
     monkeypatch.delitem(_MATERIALIZED_SNAPSHOTS, ("SPY", "2026-09-25"), raising=False)
+    monkeypatch.delitem(_MATERIALIZED_SNAPSHOTS, ("QQQ", "2026-09-25"), raising=False)
     db.upsert_1m_bars("SPY", [Candle(ts=b["timestamp"] / 1000.0, open=b["open"], high=b["high"], low=b["low"],
                                      close=b["close"], volume=b["volume"]) for b in raw[:-1]])
     reads = []
@@ -196,6 +200,14 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monk
     assert built >= 1 and len(reads) == built, "the route read bars"
     assert served["generation"] == again["generation"] is not None
     assert served["snapshot_as_of_ts_utc"] == last["timestamp"] / 1000.0
+
+    # a bar of a ticker no page is viewing is written, and its levels are not built for it
+    built_for, producer = [], srv._publish_price_levels
+    monkeypatch.setattr(srv, "_publish_price_levels", lambda tk: built_for.append(tk))
+    assert srv._write_streamed_bar({"symbol": "QQQ", "bar_start_ms": last["timestamp"], "open": 600.0,
+                                    "high": 601.0, "low": 599.0, "close": 600.5, "volume": 1000})
+    assert built_for == []
+    monkeypatch.setattr(srv, "_publish_price_levels", producer)
 
     # a new session date: the levels loop builds that date's levels (09-25's bars are its prior day)
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 26, 9, 0, tzinfo=ET))
