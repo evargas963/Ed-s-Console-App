@@ -3358,25 +3358,27 @@ def get_terrain(ticker: str = Query(...)):
 RECENT_CROSS_SEC: float = 120.0
 
 
-#: The Trade Desk's lookback per chart timeframe, seconds ("session": the latest regular session).
-DESK_LOOKBACK_SEC = {"1": 900, "3": 1800, "5": 3600, "15": 14400, "30": "session", "60": 172800, "D": 1728000}
+#: The Trade Desk's lookback per chart timeframe: seconds, or "session" (the latest regular
+#: session), with the words the page shows for it.
+DESK_LOOKBACK = {"1": (900, "last 15 min"), "3": (1800, "last 30 min"), "5": (3600, "last 1 h"),
+                 "15": (14400, "last 4 h"), "30": ("session", "this session"),
+                 "60": (172800, "last 2 days"), "D": (1728000, "last 20 days")}
 
 
-def _desk_window_start(tf: str) -> float:
-    """Start of the Trade Desk's event window for chart timeframe `tf`: now minus its lookback,
-    or the 9:30 ET open of the latest regular session that has begun."""
-    now = now_et()
-    lb = DESK_LOOKBACK_SEC.get(tf, DESK_LOOKBACK_SEC["30"])
+def _desk_window_start(tf: str, now: datetime) -> float:
+    """Start of the Trade Desk's event window for chart timeframe `tf`: `now` minus its lookback,
+    or the open of the latest regular session that has begun."""
+    from time_et import is_trading_day_et
+    lb = DESK_LOOKBACK[tf][0]
     if lb != "session":
         return now.timestamp() - lb
-    from time_et import is_trading_day_et
     day = now.date()
     for _ in range(10):
-        start = datetime(day.year, day.month, day.day, 9, 30, tzinfo=ET)
+        start = datetime(day.year, day.month, day.day, RTH_OPEN_MINS // 60, RTH_OPEN_MINS % 60, tzinfo=ET)
         if is_trading_day_et(day.isoformat()) and start <= now:
             return start.timestamp()
         day -= timedelta(days=1)
-    return now.timestamp() - 86400
+    raise ValueError(f"no regular session began in the 10 days to {now.date()} (market calendar)")
 
 
 def _f2(v) -> str:
@@ -3393,7 +3395,7 @@ def get_desk_events(ticker: str = Query(...),
     -- plus the window's up/down cross counts. The page draws it; it selects, numbers and orders
     nothing."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    start = _desk_window_start(tf)
+    start = _desk_window_start(tf, now_et())
     crosses, _raw = _merged_recent_crosses(get_db(), tk, 200)
     in_window = sorted((c for c in crosses if c.get("ts_utc") is not None and c["ts_utc"] >= start),
                        key=lambda c: c["ts_utc"])
@@ -3433,7 +3435,8 @@ def get_desk_events(ticker: str = Query(...),
         items.append({"key": f"ra{i}", "ts": a["ts_utc"], "dom": "ALERT", "dir": None,
                       "title": a["text"], "detail": "", "src": "/api/alerts"})
     items.sort(key=lambda it: (it["ts"] is None, -(it["ts"] if it["ts"] is not None else 0.0)))
-    return JSONResponse({"ticker": tk, "tf": tf, "window_start_ts_utc": start, "items": items,
+    return JSONResponse({"ticker": tk, "tf": tf, "window_start_ts_utc": start,
+                         "window_label": DESK_LOOKBACK[tf][1], "items": items,
                          "cross_counts": {d: sum(1 for c in in_window if c.get("direction") == d)
                                           for d in ("up", "down")}})
 

@@ -11,7 +11,7 @@ const { mockPriceSocket } = require('./fixtures/price_socket');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
 const EVENTS = {
-  ticker: 'SPY', tf: '30', window_start_ts_utc: CROSSES[2].ts_utc - 60,
+  ticker: 'SPY', tf: '30', window_start_ts_utc: CROSSES[2].ts_utc - 60, window_label: 'this session (served)',
   items: CROSSES.map((c, i) => ({ key: 'x' + c.cross_id, n: 3 - i, ts: c.ts_utc, dom: 'LEVELS', dir: c.direction, marker: true,
     title: 'Crossed ' + (c.direction === 'up' ? 'above ' : 'below ') + c.level_name, detail: c.level_value.toFixed(2), src: 'level_crosses' })),
   cross_counts: { up: CROSSES.filter((c) => c.direction === 'up').length, down: CROSSES.filter((c) => c.direction !== 'up').length },
@@ -43,7 +43,7 @@ async function intercept(page) {
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
     let body = { available: false };
-    if (url.includes('/api/desk/events')) body = EVENTS;
+    if (url.includes('/api/desk/events')) body = Object.assign({}, EVENTS, { tf: new URL(url).searchParams.get('tf') });
     else if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/levels')) body = LEVELS;
@@ -72,6 +72,9 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmCardLiq')).toContainText('BID HEAVY');
     await expect(page.locator('#tdmCardFlow')).toContainText('NET BUYING');
     await expect(page.locator('#tdmCardFlow')).toContainText(EVENTS.cross_counts.up + ' up · ' + EVENTS.cross_counts.down + ' down');
+    // the window's words are the server's (a page copy of the lookback table: register P-15)
+    await expect(page.locator('#tdmCardFlow')).toContainText('Level crosses (this session (served))');
+    await expect(page.locator('#tdmLookback')).toHaveText('this session (served)');
     await expect(page.locator('#tdmAgree')).toContainText('Above flip');
     await expect(page.locator('#tdmAgree')).toContainText('Bid heavy');
     expect(errs).toEqual([]);

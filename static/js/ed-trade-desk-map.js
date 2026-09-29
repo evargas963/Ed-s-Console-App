@@ -21,9 +21,8 @@
   var FULL_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
   var TAIL_LIMIT = { '1': 5, '3': 9, '5': 15, '15': 35, '30': 65, '60': 125, 'D': 2000 };
   // The ONE global timeframe also sets how far back the queue and the event markers reach.
-  // the event window per timeframe is the server's (DESK_LOOKBACK_SEC); these are its words only
-  var LOOKBACK = { '1': { lbl: 'last 15 min' }, '3': { lbl: 'last 30 min' }, '5': { lbl: 'last 1 h' }, '15': { lbl: 'last 4 h' },
-    '30': { lbl: 'this session' }, '60': { lbl: 'last 2 days' }, 'D': { lbl: 'last 20 days' } };
+  // the event window and its words are the server's (/api/desk/events window_label), for this timeframe
+  function windowLabel() { return S.events && S.events.tf === S.tf ? S.events.window_label : '—'; }
   var FAMILIES = [
     { id: 'value_area', lbl: 'Value area' }, { id: 'vwap', lbl: 'VWAP' }, { id: 'gamma', lbl: 'Gamma' },
     { id: 'expected_move', lbl: '±1σ move' }, { id: 'prior_day', lbl: 'Prior day' }, { id: 'opening_range', lbl: 'Opening range' },
@@ -141,7 +140,7 @@
   function paintTfButtons() {
     document.querySelectorAll('#tdmToolbar [data-tf]').forEach(function (b) {
       b.classList.toggle('on', b.getAttribute('data-tf') === S.tf); });
-    var lb = $('tdmLookback'); if (lb) lb.textContent = LOOKBACK[S.tf].lbl;
+    var lb = $('tdmLookback'); if (lb) lb.textContent = windowLabel();
   }
   function ensureChart() {
     if (S.chart) return S.chart;
@@ -197,7 +196,7 @@
     ]).then(function (r) {
       if (gen !== S.gen) return;
       S.levels = r[0]; S.terrain = r[1]; S.events = r[2]; S.liq = r[3]; S.strikes = r[4]; S.forces = r[5];
-      paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
+      paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
     });
   }
   function loadFast() {
@@ -260,7 +259,7 @@
     var items = queueItems(); S.queue = items;
     $('tdmQueueCount').textContent = items.length ? String(items.length) : '';
     if (!items.length) {
-      host.innerHTML = '<div class="tdm-empty">Nothing in the ' + esc(LOOKBACK[S.tf].lbl) + '. Level crosses, wall breaches, book size walls and rule alerts land here.</div>';
+      host.innerHTML = '<div class="tdm-empty">Nothing in the ' + esc(windowLabel()) + '. Level crosses, wall breaches, book size walls and rule alerts land here.</div>';
       return;
     }
     host.innerHTML = items.map(function (q) {
@@ -333,7 +332,7 @@
         row('Last 30 s · 2 min', (fl ? pct(fl.tape_pressure_30s) : '—') + ' · ' + (fl ? pct(fl.tape_pressure_2m) : '—')) +
         row('Cum. delta (tape buffer)', fl && fl.cum_delta_proxy != null ? (fl.cum_delta_proxy >= 0 ? '+' : '−') + fmtVol(Math.abs(fl.cum_delta_proxy)) + ' sh' : '—') +
         row('Top of book', tob && tob.bid_size != null ? fmtVol(tob.bid_size) + ' × ' + fmtVol(tob.ask_size) : '—') +
-        row('Level crosses (' + LOOKBACK[S.tf].lbl + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '—');
+        row('Level crosses (' + esc(windowLabel()) + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '—');
     }
     // OPTIONS POSITIONING — full-chain terrain
     c = $('tdmCardOpt');

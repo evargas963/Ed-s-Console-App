@@ -187,6 +187,18 @@ def test_vwap_is_served_per_chart_bar(spy_levels):
     assert len(one) > 100 and fifteen == [buckets[k] for k in sorted(buckets)]
 
 
+def test_the_desk_window_is_the_calendars_last_session_open_and_its_words_are_served():
+    """Register P-15: the page kept its own copy of the lookback words; the window's session start
+    was a hard-coded 9:30 with a 24-hour stand-in when no session was found."""
+    from time_et import ET
+    sat = datetime(2026, 9, 26, 11, 0, tzinfo=ET)                    # Saturday: Friday's open
+    assert server._desk_window_start("30", sat) == datetime(2026, 9, 25, 9, 30, tzinfo=ET).timestamp()
+    mon = datetime(2026, 9, 28, 10, 0, tzinfo=ET)
+    assert server._desk_window_start("30", mon) == datetime(2026, 9, 28, 9, 30, tzinfo=ET).timestamp()
+    assert server._desk_window_start("1", mon) == mon.timestamp() - 900
+    assert {tf: words for tf, (_lb, words) in server.DESK_LOOKBACK.items()}["30"] == "this session"
+
+
 def test_every_bar_carries_its_change():
     import live_price_rows
     for b in _load("real_spy_1m_bars_2026_09_24_25.json")["bars"][:50]:

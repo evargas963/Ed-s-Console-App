@@ -306,10 +306,9 @@
       ? window.EdShell.scopeNote({ total: todayAll.length, shown: win.length }) : '';
     if (_migPanAnchor != null) note += '<div class="gbs-allexp">PANNED to ' + num(_migPanAnchor, _migPanAnchor % 1 ? 2 : 0) +
       ' — not following spot; double-click a strike label to resume</div>';
-    var maxAbs = 1, maxVol = 1;
+    var maxAbs = 1;
     win.forEach(function (r) {
       maxAbs = Math.max(maxAbs, Math.abs(r[1]), Math.abs(prior(r[0]) == null ? 0 : prior(r[0])));   // bar scale (drawing)
-      maxVol = Math.max(maxVol, r[2] || 0);
     });
     var spotStrike = strikesD.spot_strike;   // served: the listed strike nearest the live price
     var cw = terrain && terrain.call_wall, pw = terrain && terrain.put_wall;
@@ -362,7 +361,7 @@
       '<i class="sw ghostsw"></i>yesterday (ghost)</span></h4>' +
       scopeChips + '<div class="mig-top">' + note + volNote + '</div>' +
       '<div class="gbs-scroll"><div class="gbs">' + rows + '</div></div>' +
-      '<div class="gbs-scale"><span class="neg">−' + usd(maxAbs) + '</span><span>0</span><span class="pos">+' + usd(maxAbs) + '</span></div>' +
+      '<div class="gbs-scale"><span class="neg">−</span><span>0</span><span class="pos">+</span></div>' +
       migrationCoach(mig) +
       '</div>';
   }
