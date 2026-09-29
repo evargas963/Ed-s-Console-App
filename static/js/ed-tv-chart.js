@@ -679,7 +679,6 @@
 
     var api = {
       chart: chart, candles: candles, palette: function () { return P; },
-      TF_SECONDS: TF_SECONDS,
       // Replace the whole series (ticker or timeframe change).
       setBars: function (bars, tf, symbol, lastBarLabel) {
         var changed = tf !== S.tf || symbol !== S.symbol;
@@ -835,5 +834,5 @@
     return api;
   }
 
-  window.EdTvChart = { create: create, TF_SECONDS: TF_SECONDS, alpha: alpha };
+  window.EdTvChart = { create: create, alpha: alpha };
 })();

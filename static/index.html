@@ -30,7 +30,7 @@
   function apply(pref){var eff=resolve(pref);try{document.documentElement.setAttribute('data-theme',eff);}catch(e){}return eff;}
   function notify(pref,eff){try{document.dispatchEvent(new CustomEvent('ed:theme',{detail:{pref:pref,theme:eff}}));}catch(e){}}
   function setPref(p){if(p!=='light'&&p!=='dark')p='system';try{localStorage.setItem(KEY,p);}catch(e){}var eff=apply(p);notify(p,eff);return eff;}
-  window.EdTheme={KEY:KEY,getPref:getPref,resolve:resolve,apply:apply,setPref:setPref};
+  window.EdTheme={getPref:getPref,resolve:resolve,setPref:setPref};
   apply(getPref());   // first paint: concrete data-theme before CSS -> no flash, never unset
   var mq=mqDark();
   if(mq){var onOs=function(){if(getPref()==='system'){var eff=apply('system');notify('system',eff);}};
@@ -117,7 +117,6 @@
   .rail-child:hover{color:var(--ed-ink);background:var(--ed-panel-2)}
   .rail-child.on{color:#fff;font-weight:600;background:var(--ed-accent)}
   .rail-child.na{color:var(--ed-ink-4);cursor:not-allowed}.rail-child.na:hover{background:none;color:var(--ed-ink-4)}
-  .rail-sep{height:1px;background:var(--ed-edge-soft);margin:8px 12px}
 
   /* watchlist (rail bottom) */
   .wl{flex:none;border-top:1px solid var(--ed-edge);padding:8px 0;max-height:44%;overflow-y:auto}
@@ -167,7 +166,6 @@
   .subnav{height:var(--ed-subnav-h);display:flex;align-items:center;gap:2px;padding:0 12px;
     background:var(--ed-header);border-bottom:1px solid var(--ed-edge);flex:none;overflow-x:auto}
   .subnav .wtitle{font-weight:700;letter-spacing:.09em;text-transform:uppercase;font-size:14px;color:var(--ed-ink);margin-right:14px;white-space:nowrap}
-  .subnav .wtitle .chev{color:var(--ed-ink-3);margin:0 8px}
   .tab{padding:7px 14px;font-size:14.5px;letter-spacing:.02em;color:var(--ed-ink-2);border-radius:var(--ed-r);white-space:nowrap}
   .tab:hover{color:var(--ed-ink);background:var(--ed-panel-2)}
   .tab.on{color:var(--ed-accent-2);background:var(--ed-accent-bg)}
@@ -375,10 +373,6 @@
   .placeholder .sm{font-size:11px;font-family:var(--ed-mono);max-width:52ch;line-height:1.5}
   .notproven{border:1px dashed var(--ed-proxy);color:var(--ed-proxy);border-radius:5px;
     padding:3px 9px;font-family:var(--ed-mono);font-size:10px;letter-spacing:.04em}
-  /* Order Flow: reserved-space notice, top-aligned + compact (never a fabricated blotter) */
-  .of-await{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
-  .of-await .ln{font-family:var(--ed-mono);font-size:11px;color:var(--ed-ink-2);line-height:1.45}
-  .of-await .ln.dim{color:var(--ed-ink-3);max-width:46ch}
 
   /* key levels rail rows — operator rail; roomy rows fill the rail, strong numeric alignment */
   .kl-row{display:flex;align-items:baseline;justify-content:space-between;padding:3.5px 0;border-bottom:1px solid var(--ed-edge-soft)}
@@ -459,8 +453,6 @@
   .heat-banner.ref{background:var(--ed-proxy-bg);color:var(--ed-proxy);border:1px dashed var(--ed-proxy)}
   .heat-banner.degraded{background:var(--ed-proxy-bg);color:var(--ed-warn);border:1px solid var(--ed-warn)}
   .heat-banner.warming{background:var(--ed-accent-bg);color:var(--ed-accent-2);border:1px solid var(--ed-accent-edge)}
-  .heat-legend{display:flex;align-items:center;gap:8px;font-family:var(--ed-mono);font-size:9px;color:var(--ed-ink-3);padding:0 0 6px}
-  .heat-legend .grad{width:130px;height:9px;border-radius:2px;background:linear-gradient(90deg,var(--ed-neg),var(--ed-heat-zero) 50%,var(--ed-pos))}
   /* B: freshness-coupled dimming — stale/reference content recedes */
   /* Operator finding (2026-09-11): opacity:.5 + saturate(.6) here blanket-dimmed every
      cell's TEXT and COLOR, making the actual numbers hard to read whenever a surface was
@@ -473,7 +465,6 @@
   /* A: shared selected-strike highlight across panels */
   .heat .hcell.sel-strike{outline:2px solid var(--ed-accent);outline-offset:-2px}
   .gbs-row.gbs-sel{outline:1px solid var(--ed-accent);outline-offset:-1px;background:var(--ed-accent-bg)}
-  .chart-svg .gmark.csel{stroke:var(--ed-accent);stroke-width:2.5}
   /* C: nearest-expiry (front) column emphasis — presentation only */
   .heat .hexp.col-front{background:var(--ed-panel-3);box-shadow:inset 0 -2px 0 var(--ed-accent-edge)}
   .heat .hcell.col-front{box-shadow:inset 1px 0 0 var(--ed-edge-strong),inset -1px 0 0 var(--ed-edge-strong)}
@@ -517,13 +508,9 @@
     font-size:10px;color:var(--ed-ink-3);padding:4px 0 6px;margin:-2px 0 2px;display:flex;gap:8px;
     align-items:baseline;flex-wrap:wrap;border-bottom:1px solid var(--ed-edge);pointer-events:none}
   .scope-note .clip{color:var(--ed-warn)}
-  .chart-svg{width:100%;height:100%;display:block}
-  .chart-svg text{font-family:var(--ed-mono);fill:var(--ed-ink-2)}
   .chart-legend{display:flex;gap:14px;font-family:var(--ed-mono);font-size:10px;color:var(--ed-ink-3);padding:2px 0 6px}
   .chart-asof{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:0 0 6px}
   .chart-legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:4px}
-  .chart-hint{margin-left:auto;color:var(--ed-ink-3)}
-  .chart-spot-src{color:var(--ed-ink-3);font-size:9px}
 
   /* levels view (detailed canonical levels contract) */
   .lv{width:100%;border-collapse:collapse;font-family:var(--ed-mono);font-size:11px}
@@ -661,16 +648,11 @@
   .lv-foot{display:flex;flex-wrap:wrap;gap:12px;font-family:var(--ed-sans);font-size:10.5px;color:var(--ed-ink-4);padding:10px 2px 0}
   .lv-foot .lv-absent{color:var(--ed-stale)}
   /* Options Flow — reference card structure; truthful empty state inside the table */
-  .of-tabs{display:inline-flex;gap:2px;margin-right:6px}
-  .of-tab{font-size:11.5px;color:var(--ed-ink-2);padding:3px 10px;border:1px solid var(--ed-edge);border-radius:var(--ed-r)}
-  .of-tab.on{color:var(--ed-accent-2);background:var(--ed-accent-bg);border-color:var(--ed-accent-edge)}
-  .of-tab.na{color:var(--ed-ink-4);cursor:not-allowed}
   .of{width:100%;height:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:12px;font-variant-numeric:tabular-nums}
   .of th{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-3);text-align:right;
     padding:8px 9px;border-bottom:1px solid var(--ed-edge)}
   .of th:first-child{text-align:left}
   .of .of-empty td{text-align:center;padding:26px 12px;vertical-align:middle}
-  .of .oe-lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ed-ink-3);margin-bottom:8px}
   .of .oe-sub{font-size:11px;color:var(--ed-ink-4);margin-top:10px;max-width:44ch;margin-left:auto;margin-right:auto;line-height:1.5}
   .of .notproven{display:inline-block}
   /* Options Flow tape rows (operator field-inventory audit, 2026-09-13) — native trade
@@ -898,8 +880,7 @@
         <!-- OPTIONS / FLOW subview -->
         <div class="sub-pane" data-sub-pane="flow">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="flTicker">—</span><span class="t">Options Flow</span>
-              <div class="r"><span id="flSrc"></span></div></div>
+            <div class="panel-h"><span class="hticker" id="flTicker">—</span><span class="t">Options Flow</span></div>
             <div class="panel-b" id="flowBody"><div class="placeholder"><div class="sm">Options microstructure from /api/order-flow/options-microstructure (real book / depth / imbalance / tape-PROXY / freshness; no fabricated signed flow).</div></div></div>
           </div>
         </div>
