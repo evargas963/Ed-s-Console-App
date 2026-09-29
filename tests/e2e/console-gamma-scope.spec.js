@@ -42,9 +42,7 @@ async function intercept(page) {
     if (url.includes('/api/options/gamma-surface')) body = SURFACE;
     else if (url.includes('/api/terrain/strikes')) body = STRIKES_WIDE;
     else if (url.includes('/api/terrain')) body = TERRAIN;
-    else if (url.includes('/api/bars1m')) body = BARS;
-    else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    else if (url.includes('/api/bars1m')) body = BARS;    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
 }
 

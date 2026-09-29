@@ -51,7 +51,7 @@ const SURFACE = {
 };
 // A surface WITH real per-cell vendor contract identity (server.py's project_gamma_surface
 // always carries this in production; the plain SURFACE fixture above never needed it before
-// the demand-declaration tests below, which specifically exercise _heatmapVisibleContracts —
+// the demand-declaration tests below, which specifically exercise _heatmapVisibleContractsByColumn —
 // an empty `contracts` field on every cell would make ANY scope's demand list empty,
 // masking exactly the coverage difference these tests exist to prove).
 function surfaceWithContracts(nExps, nStrikes) {
@@ -155,9 +155,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
-    else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };
-    else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
 }
 
