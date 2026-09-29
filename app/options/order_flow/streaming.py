@@ -118,11 +118,6 @@ async def _send_wanted(ws) -> None:
 _feed_task: Optional[asyncio.Task] = None
 _feed_running = False
 _active_ticker: Optional[str] = None
-_streaming_last_update_ts: Optional[float] = None
-#: Push connection state for diagnostics: when the current connection opened (None while
-#: disconnected) and how many messages it has applied.
-_push_connected_ts: Optional[float] = None
-_push_messages_applied = 0
 
 #: The one option CONTRACT (OSI symbol) whose LEVELONE_OPTIONS/OPTIONS_BOOK rows this feed
 #: replays — a SEPARATE slot from _active_ticker (an equity ticker and an option contract
@@ -197,7 +192,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     tick callback (an equity's tick is its price row's arrival). A message missing its symbol, its
     receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
     part."""
-    global _streaming_last_update_ts, _option_streaming_last_update_ts, _push_messages_applied
+    global _option_streaming_last_update_ts
     if not isinstance(msg, dict):
         return None
     sym = msg.get("symbol")
@@ -214,9 +209,6 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if not isinstance(item, dict):
             return None
         push_level_one(sym, item, ts_recv=ts)
-        _push_messages_applied += 1
-        if sym == _active_ticker:
-            _streaming_last_update_ts = ts
         push_changes.changed(sym, push_changes.FLOW)
         return None
     if kind == "book":
@@ -224,14 +216,11 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         if not isinstance(content, dict):
             return None
         push_book(sym, content, msg["service"])
-        _push_messages_applied += 1
         if msg.get("service") == "OPTIONS_BOOK":
             _option_streaming_last_update_ts = ts
             _option_contract_last_update_ts[sym] = ts
         else:
             push_changes.changed(sym, push_changes.FLOW)
-            if sym == _active_ticker:
-                _streaming_last_update_ts = ts
         return None
     if kind == "optquote":
         content = msg.get("content")
@@ -239,7 +228,6 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
             return None
         push_level_one(sym, content, ts_recv=ts)
         push_option_top(sym, content)
-        _push_messages_applied += 1
         _option_streaming_last_update_ts = ts
         _option_contract_last_update_ts[sym] = ts
         if ("GAMMA" in content or "DELTA" in content or "OPEN_INTEREST" in content
@@ -290,7 +278,6 @@ async def _feed_loop() -> None:
     every PUSH_RECONNECT_SEC; while it is down, the live values age out through their own
     freshness checks and the screen shows them stale. There is no second source."""
     global _feed_running
-    global _push_connected_ts
     from websockets.asyncio.client import connect
 
     async def _consume(ws) -> None:
@@ -313,7 +300,6 @@ async def _feed_loop() -> None:
             try:
                 async with connect(LIVE_PUSH_URL, max_size=None, open_timeout=5,
                                    ping_interval=20, ping_timeout=20) as ws:
-                    _push_connected_ts = time.time()
                     _log_stream("PUSH_CONNECTED", url=LIVE_PUSH_URL)
                     sender = asyncio.create_task(_send_wanted(ws))
                     try:
@@ -326,7 +312,6 @@ async def _feed_loop() -> None:
             except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
                 log.info("live push unavailable (%s: %s); retrying in %.1fs",
                          type(e).__name__, e, PUSH_RECONNECT_SEC)
-            _push_connected_ts = None
             _lmp.record_feed_down()        # no daemon, no live price -- visible at once
             if _feed_running:
                 await asyncio.sleep(PUSH_RECONNECT_SEC)
@@ -334,7 +319,6 @@ async def _feed_loop() -> None:
         rows.cancel()
         await asyncio.gather(rows, return_exceptions=True)
         _price_rows.clear()
-        _push_connected_ts = None
         _lmp.record_feed_down()
         _log_stream("FEED_LOOP_STOP_DONE")
 
@@ -433,7 +417,7 @@ def set_streaming_active_ticker(ticker: str) -> bool:
     """Make `ticker` the active symbol: the daemon adds its NASDAQ_BOOK/NYSE_BOOK depth
     (stream_active_ticker.json) and, when it is outside the daemon's roster, its
     LEVELONE_EQUITIES stream (stream_equity_symbols.json, ranked first)."""
-    global _active_ticker, _streaming_last_update_ts
+    global _active_ticker
     t = ticker_storage_key(ticker)
     if not t:
         return False
@@ -444,7 +428,6 @@ def set_streaming_active_ticker(ticker: str) -> bool:
     forget_unsubscribed_symbols(old, [t])
     _active_ticker = t
     _publish_equity_symbols()
-    _streaming_last_update_ts = None
     log.info("Live-plane feed active ticker -> %s", t)
     _log_stream("STREAM_RESUBSCRIBE_DONE", ticker=t)
     return True
@@ -891,11 +874,10 @@ STREAM_THREAD_JOIN_TIMEOUT_SEC = 35.0
 
 
 def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_SEC) -> None:
-    global _feed_running, _feed_task, _streaming_last_update_ts, _active_ticker
+    global _feed_running, _feed_task, _active_ticker
     global _active_option_contract, _option_streaming_last_update_ts
     _log_stream("STREAM_THREAD_JOIN_START", join_timeout_sec=join_timeout)
     _feed_running = False
-    _streaming_last_update_ts = None
     _active_ticker = None
     _active_option_contract = None
     _option_streaming_last_update_ts = None

@@ -14,10 +14,9 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_db_write_path_d_import_does_not_trigger_db_universe_load():
     """`import server` does not read the board from the database; the FastAPI lifespan does
     (start_logger -> _hydrate_logger_tickers_from_db). Run in a clean subprocess so earlier
-    in-process reads cannot move the counter."""
+    in-process reads cannot fill the board."""
     code = (
         "import server;"
-        "assert server._LOGGING_UNIVERSE_DB_LOAD_COUNT == 0, server._LOGGING_UNIVERSE_DB_LOAD_COUNT;"
         "assert server._logger_tickers == [], server._logger_tickers;"
         "print('IMPORT_DEFER_OK')"
     )

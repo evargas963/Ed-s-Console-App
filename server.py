@@ -540,17 +540,6 @@ def resolve_spot(ticker: str) -> tuple[float | None, str, float | None]:
     return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
 
 
-def current_spot_state(source: str, ticker: str) -> str:
-    """Label a spot resolve_spot gave: live while the daemon's row still says live, stale once
-    it no longer does, unavailable for any other source."""
-    from app.options.order_flow.streaming import price_row
-
-    if source != SPOT_SOURCE_PLANE:
-        return "unavailable"
-    row = price_row(ticker)
-    return "live" if row and row.get("spot_state") == "live" else "stale"
-
-
 def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_range=None,
                           priority: bool = False, to_date=None, from_date=None):
     """safe_get_chain behind the bounded two-slot gate -> (resp, gate_wait_sec, fetch_sec).
@@ -821,16 +810,12 @@ def start_bar_writer() -> None:
 # processed alike, whatever its category.
 RTH_ONLY:       bool      = True  # only log during RTH + 30min pre/post buffer
 
-# Times the board was read from the database; `import server` leaves it 0 (read in the lifespan).
-_LOGGING_UNIVERSE_DB_LOAD_COUNT = 0
-
 
 def _hydrate_logger_tickers_from_db() -> None:
     """The board, read from the logging_universe table by board_tickers -- the same reader the
     capture daemon uses, so both processes hold one roster (startup / heal drift)."""
-    global _logger_tickers, _LOGGING_UNIVERSE_DB_LOAD_COUNT
+    global _logger_tickers
     try:
-        _LOGGING_UNIVERSE_DB_LOAD_COUNT += 1
         db = get_db()
         try:
             removed = db.logging_universe_prune_invalid_enrollments()
@@ -4033,17 +4018,10 @@ def get_levels(ticker: str = Query(...),
     """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
     import time as _time
 
-    from liquidity_value_engine import carry_snapshot_levels
-
     tk = ticker_storage_key(_required_ticker(ticker))
     served_ts = _time.time()
     spot, spot_source, spot_ts = resolve_spot(tk)
     snap = canonical_price_level_snapshot(tk)
-    # Register this surface against the runtime carrier contract: if any other carrier
-    # already shipped a different value/generation/provenance for this generation, the
-    # disagreement raises here instead of reaching two screens (RC-262 pattern).
-    if snap is not None:
-        carry_snapshot_levels(snap, "api.levels")
 
     levels: list[dict] = []
     for lid, value in (snap.levels.items() if snap is not None else ()):
@@ -4258,7 +4236,7 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
     (canonical_price_level_snapshot, the same values /api/levels serves) with the terrain's
     option levels and the live price fused in. It computes no level of its own."""
     try:
-        from liquidity_value_engine import build_live_snapshot, carry_snapshot_levels
+        from liquidity_value_engine import build_live_snapshot
         from liquidity_models import ZONE_DISPLAY, PlaybookConfig
 
         ticker_upper = ticker_storage_key(ticker)
@@ -4272,7 +4250,6 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
         _canon = canonical_price_level_snapshot(ticker_upper)
         if _canon is None:
             return {"ticker": ticker_upper, "zones": [], "reason": NO_PRICE_LEVELS_REASON}
-        carry_snapshot_levels(_canon, "api.liquidity_snapshot")
         out = build_live_snapshot(ticker_upper, config, canonical=_canon, now=now_et(),
                                   extra_levels=extra)
         snapshot_val = out.snapshot_type.value

@@ -258,9 +258,9 @@ def test_the_largest_gex_strike_is_served(held):
 
 def test_on_a_closed_market_the_last_trade_is_a_labelled_past_observation(monkeypatch):
     """Sunday 2026-09-27: the daemon streamed SPY's last trade (Friday 18:59:59 CT) on a live
-    feed, and the page called it LIVE and raised near-level alerts from it. Replayed here as the
-    daemon captured it (stream_quotes_raw): outside the session it is not live; the row serves
-    it as the closed market's last trade with its time, and alerts are withheld."""
+    feed, and the page called it LIVE. Replayed here as the daemon captured it
+    (stream_quotes_raw): outside the session it is not live; the row serves it as the closed
+    market's last trade with its time, and it is no spot."""
     import live_market_plane as lmp
     import live_price_rows
     from tests.feed_live_helper import mark_feed_live
@@ -273,7 +273,6 @@ def test_on_a_closed_market_the_last_trade_is_a_labelled_past_observation(monkey
     assert (row["spot"], row["spot_state"]) == (None, "closed")
     assert row["closed_last"] == {"price": 772.04, "spot_disp": "772.04", "as_of": "Fri 09/25 06:59 PM CT"}
     assert server.resolve_spot("SPY")[0] is None
-    assert server.current_spot_state(server.SPOT_SOURCE_PLANE, "SPY") == "stale"
 
 
 def test_on_a_closed_market_the_levels_are_ordered_from_the_last_trade(monkeypatch):
