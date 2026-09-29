@@ -13,6 +13,9 @@ test('first run: no ticker is assumed, no ticker data is requested', async ({ pa
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#hPx')).toHaveText('CHOOSE A SYMBOL');
   await expect(page.locator('#hFeed')).toHaveText('NO SYMBOL');
+  // no panel header names a ticker nobody chose (eleven read "SPX": register P-05)
+  expect(await page.locator('.hticker').allTextContents()).toEqual(
+    Array(await page.locator('.hticker').count()).fill('—'));
   await page.waitForTimeout(3500);                     // a full scheduler tick
   expect(tickerCalls, 'nothing may be fetched for an unchosen ticker').toEqual([]);
   expect(await page.evaluate(() => window.EdShell.getState().ticker)).toBe('');

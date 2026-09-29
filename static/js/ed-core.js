@@ -554,6 +554,7 @@
   function paintNoTicker() {
     var px = document.getElementById('hPx'); if (px) px.textContent = 'CHOOSE A SYMBOL';
     setFeed('stale', 'NO SYMBOL', '—');
+    paintIdentity('—');
   }
 
   // ================= ticker store (ONE selected-symbol state across every surface) =================
@@ -642,6 +643,8 @@
     if (nv === state.expiryFilter) return;
     state.expiryFilter = nv;
     var sel = document.getElementById('expSel'); if (sel) sel.value = nv || '';
+    var ctx = document.getElementById('aiCtxExp');     // the selected option's served label
+    if (ctx) ctx.textContent = (sel && nv && sel.selectedIndex >= 0) ? sel.options[sel.selectedIndex].text : 'All';
     emit('ed:expiry', { expiry: nv });
   }
   // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface, so the null option must NOT read
