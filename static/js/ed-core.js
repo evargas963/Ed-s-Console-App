@@ -223,7 +223,10 @@
   // measure is actually selected, not always say "Gamma Exposure Heatmap" while showing DEX.
   var MEASURE_TITLE = { gex: 'Gamma Exposure Heatmap', dex: 'Delta Exposure (DEX) Heatmap',
     oi: 'Open Interest Heatmap', volume: 'Volume Heatmap' };
-  var MV_TITLE = { chart: 'Price + GEX Profile', levels: 'Levels', multimap: 'Multi-Map' };
+  var MV_TITLE = { levels: 'Levels', multimap: 'Multi-Map' };
+  // the Chart view draws the selected measure's per-strike profile (ed-gamma-chart.js); volume has none
+  var CHART_TITLE = { gex: 'Price + GEX Profile', dex: 'Price + DEX Profile', oi: 'Price + Open Interest Profile',
+    volume: 'Price + GEX Profile' };
   function showMainView() {
     // dex/oi are the SAME gamma pane (see NAV/MEASURE_BY_SUBVIEW) under a different subview
     // id -- the view-switching/title logic below applies to all three, not gamma alone.
@@ -233,8 +236,8 @@
       if (el) el.classList.toggle('on', v === state.view);
     });
     var t = document.getElementById('mvTitle');
-    if (t) t.textContent = (state.view === 'heatmap')
-      ? (MEASURE_TITLE[state.measure] || MEASURE_TITLE.gex) : (MV_TITLE[state.view] || '');
+    if (t) t.textContent = state.view === 'heatmap' ? (MEASURE_TITLE[state.measure] || MEASURE_TITLE.gex)
+      : state.view === 'chart' ? (CHART_TITLE[state.measure] || CHART_TITLE.gex) : (MV_TITLE[state.view] || '');
     var cm = document.getElementById('chartModes'); if (cm) cm.hidden = state.view !== 'chart';
     var sc = document.getElementById('heatScope'); if (sc) sc.style.display = state.view === 'heatmap' ? '' : 'none';
   }

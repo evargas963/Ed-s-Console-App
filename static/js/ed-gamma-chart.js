@@ -1,10 +1,11 @@
 /* Ed Console — Options/Gamma Chart view. PRESENTATION ONLY.
    On the one TradingView-style chart every chart in the console uses (ed-tv-chart.js): the price
    (/api/bars1m, completed Schwab 1-minute bars), the flip and the walls (/api/terrain) as level
-   lines, the live price (the header's price row), and the signed per-strike GEX
-   (/api/terrain/strikes) as a profile on the price axis -- bars, or dots sized by magnitude (Dot
-   Map). The strikes shown are the one Gamma scope (EdShell.scopeSelect). A click on a strike
-   selects it for every panel. The page computes no exposure or level. */
+   lines, the live price (the header's price row), and the selected measure's per-strike rows
+   (/api/terrain/strikes: GEX `today.all`, DEX and OI `measures`) as a profile on the price axis --
+   bars, or dots sized by magnitude (Dot Map). The same view serves the Gamma, Delta / DEX and Open
+   Interest subviews. The strikes shown are the one Gamma scope (EdShell.scopeSelect). A click on a
+   strike selects it for every panel. The page computes no exposure or level. */
 (function () {
   'use strict';
 
@@ -17,7 +18,16 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function ctTime(sec) { try { return new Date(sec * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'America/Chicago' }); } catch (e) { return ''; } }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
-  function isChart() { var s = st(); return s.workspace === 'options' && s.subview === 'gamma' && s.view === 'chart'; }
+  function isChart() {
+    var s = st();
+    return s.workspace === 'options' && ['gamma', 'dex', 'oi'].indexOf(s.subview) !== -1 && s.view === 'chart';
+  }
+  // the served profile for the selected measure: {rows [[strike, value, ...]], spot_strike, max_abs_strike, name}
+  function served(sd) {
+    var m = st().measure, x = sd && sd.measures && sd.measures[m];
+    if (x) return { rows: x.rows || [], spot_strike: x.spot_strike, max_abs_strike: x.max_abs_strike, name: m === 'oi' ? 'OI' : 'DEX', signed: m !== 'oi' };
+    return { rows: (sd && sd.today && sd.today.all) || [], spot_strike: sd && sd.spot_strike, max_abs_strike: sd && sd.max_abs_strike, name: 'GEX', signed: true };
+  }
   function ticker() { return st().ticker || ''; }
 
   var _mode = 'profile';          // 'profile' (bars) | 'dotmap' (dots)
@@ -82,14 +92,15 @@
     var host = document.getElementById('chartBody');
     var P = c.palette(), barsD = _last.bars, sd = _last.strikes, t = _last.terrain;
     var bars = (barsD && barsD.bars) || [];
-    var srows = (sd && sd.today && sd.today.all) || [];   // served in strike order
+    var prof = served(sd), srows = prof.rows;   // served in strike order
     // the strikes shown: the one Gamma scope (Auto / Wider / All available), shared with the heatmap
     var sel = window.EdShell && window.EdShell.scopeSelect
-      ? window.EdShell.scopeSelect(srows.map(function (r) { return r[0]; }), sd && sd.spot_strike)
+      ? window.EdShell.scopeSelect(srows.map(function (r) { return r[0]; }), prof.spot_strike)
       : { idx: srows.map(function (_r, i) { return i; }) };
     var win = sel.idx.map(function (i) { return srows[i]; }).filter(function (r) { return r[1] != null; });   // unknown: nothing drawn
     c.setBars(bars, '1', st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
-    c.setProfile(win.map(function (r) { return { price: Number(r[0]), value: Number(r[1]), color: r[1] >= 0 ? P.up : P.down }; }),
+    c.setProfile(win.map(function (r) {
+      return { price: Number(r[0]), value: Number(r[1]), color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down }; }),
       _mode === 'dotmap' ? 'dots' : 'bars');
     c.selectProfile(st().selStrike == null ? null : Number(st().selStrike));
     var lv = [];
@@ -103,24 +114,29 @@
     c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_sec : null);
     var empty = host.querySelector('.gchart-empty');
     empty.hidden = !!(bars.length || win.length);
-    empty.textContent = empty.hidden ? '' : (barsD || sd ? 'no bars / per-strike gamma for this symbol' : 'the bars and per-strike gamma requests failed');
-    paintHead(host.querySelector('.gchart-head'), bars, win, srows, sd, spot);
+    empty.textContent = empty.hidden ? '' : (barsD || sd ? 'no bars / per-strike ' + prof.name + ' for this symbol'
+      : 'the bars and per-strike ' + prof.name + ' requests failed');
+    paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot);
   }
-  function paintHead(el, bars, win, srows, sd, spot) {
+  function paintHead(el, bars, win, prof, sd, spot) {
+    var srows = prof.rows, n = prof.name;
     var note = window.EdShell && window.EdShell.scopeNote ? window.EdShell.scopeNote({ total: srows.length, shown: win.length }) : '';
     var ab = (window.EdShell && window.EdShell.asOfBadge) || function () { return ''; };
     var lastT = bars.length ? bars[bars.length - 1].t : null;
     var src = sd && sd.today_source;
     var asof = (lastT ? '<span class="asof">price 1m · ' + ctTime(lastT) + ' CT</span>' : '') +
-      (src ? ab({ label: 'GEX ' + (src === 'terrain_live_cache' ? 'terrain live' : src), ageSec: sd.today_age_sec,
+      (src ? ab({ label: n + ' ' + (src === 'terrain_live_cache' ? 'terrain live' : src), ageSec: sd.today_age_sec,
         stale: !!sd.levels_stale, reason: sd.levels_stale_reason, live: src === 'terrain_live_cache' && sd.levels_stale === false }) : '');
-    var top = sd && srows.filter(function (r) { return r[0] === sd.max_abs_strike; })[0];   // served: the largest |GEX| strike
+    var top = srows.filter(function (r) { return r[0] === prof.max_abs_strike; })[0];   // served: the largest-magnitude strike
+    var shown = top ? (prof.signed ? usd(top[1]) : Number(top[1]).toLocaleString('en-US') + ' contracts') : '';
     el.innerHTML = note + (asof ? '<div class="chart-asof">' + asof + '</div>' : '') +
-      '<div class="chart-legend"><span><span class="sw" style="background:var(--ed-pos)"></span>+GEX</span>' +
-      '<span><span class="sw" style="background:var(--ed-neg)"></span>−GEX</span>' +
+      '<div class="chart-legend">' + (prof.signed
+        ? '<span><span class="sw" style="background:var(--ed-pos)"></span>+' + n + '</span>' +
+          '<span><span class="sw" style="background:var(--ed-neg)"></span>−' + n + '</span>'
+        : '<span><span class="sw" style="background:var(--ed-accent)"></span>' + n + '</span>') +
       '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
       '<span>spot ' + (spot == null ? '—' : spot.toFixed(2)) + '</span>' +
-      (top ? '<span>largest |GEX| ' + esc(top[0]) + ' · ' + esc(usd(top[1])) + '</span>' : '') + '</div>';
+      (top ? '<span>largest |' + n + '| ' + esc(top[0]) + ' · ' + esc(shown) + '</span>' : '') + '</div>';
   }
 
   function bindModes() {
@@ -144,6 +160,7 @@
   document.addEventListener('ed:view', load);
   document.addEventListener('ed:ticker', function () { _last = { bars: undefined, strikes: undefined, terrain: undefined }; load(); });
   document.addEventListener('ed:scope', function () { if (_chart && isChart()) render(); });
+  document.addEventListener('ed:measure', function () { if (_chart && isChart() && _last.strikes !== undefined) render(); });
   document.addEventListener('ed:changed', function (e) {   // a new bar reloads all; new levels reload the levels
     if (e.detail.kind === 'liquidity') load(); else if (e.detail.kind === 'levels') _levelsLoader.trigger(ticker());
   });
