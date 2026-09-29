@@ -70,6 +70,13 @@ async function intercept(page) {
   return { chainRequests, demandCalls };
 }
 
+// a real mouse click where the chart draws the strike's profile row
+async function clickStrike(page, strike) {
+  const pt = await page.evaluate((k) => window.EdGammaChart.profilePoint(k), strike);
+  expect(pt).not.toBeNull();
+  await page.mouse.click(pt.x, pt.y);
+}
+
 test.describe('Options/Gamma Chart subview', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
@@ -80,13 +87,12 @@ test.describe('Options/Gamma Chart subview', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await page.locator('#expSel').selectOption('2026-09-18');
-    await expect(page.locator('#chartBody .gmark').first()).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBeGreaterThan(0);
 
     chainRequests.length = 0;
     demandCalls.length = 0;
-    // A genuine pointer click -- no force, no dispatchEvent -- relying on the widened
-    // invisible hit target ed-gamma-chart.js now draws alongside the thin visible bar.
-    await page.locator('#chartBody .gmark-hit[data-strike="102"]').first().click();
+    // A genuine pointer click on strike 102's profile row on the shared chart
+    await clickStrike(page, 102);
 
     const state = await page.evaluate(() => window.EdShell.getState());
     expect(state.selStrike).toBe(102);
@@ -113,9 +119,9 @@ test.describe('Options/Gamma Chart subview', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await expect(page.locator('#expSel')).toHaveValue('');
-    await expect(page.locator('#chartBody .gmark').first()).toBeVisible();
+    await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBeGreaterThan(0);
 
-    await page.locator('#chartBody .gmark-hit[data-strike="102"]').first().click();
+    await clickStrike(page, 102);
     const state = await page.evaluate(() => window.EdShell.getState());
     expect(state.selStrike).toBe(102);
     expect(state.selExpiry).toBeNull();

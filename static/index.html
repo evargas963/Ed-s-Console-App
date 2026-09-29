@@ -301,20 +301,6 @@
   .dom-mid{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;margin-top:2px;border-top:1px solid var(--ed-edge);background:var(--ed-panel-3);font-size:11.5px;color:var(--ed-ink-2);font-variant-numeric:tabular-nums}
   .dom-stats{flex:1 1 320px;min-width:280px;display:flex;flex-direction:column;gap:14px}
 
-  /* Liquidity Map — a real vertical price map of /api/liquidity-snapshot's own confluence
-     zones + reference levels, spot marked from the SAME /api/levels spot every panel uses.
-     The console.html placeholder for this workspace named this exact shape: "a visual
-     liquidity map, not a table" (the table already exists at Liquidity > Levels). */
-  .liqmap-wrap-outer{display:flex;justify-content:center;padding:6px 0 4px}
-  .liqmap-wrap{position:relative;width:100%;max-width:360px;border-left:2px solid var(--ed-edge-strong);overflow:hidden}
-  .liqmap-zone{position:absolute;left:0;right:0;background:rgba(35,192,107,.14);border-top:1px solid rgba(35,192,107,.55);border-bottom:1px solid rgba(35,192,107,.55)}
-  .liqmap-zone.resistance{background:rgba(229,72,77,.14);border-top-color:rgba(229,72,77,.55);border-bottom-color:rgba(229,72,77,.55)}
-  .liqmap-zone.value{background:rgba(140,150,170,.14);border-top-color:rgba(140,150,170,.55);border-bottom-color:rgba(140,150,170,.55)}
-  .liqmap-zone-tag{position:absolute;right:6px;top:1px;font-size:9.5px;font-weight:700;color:var(--ed-ink-2);background:var(--ed-panel-3);padding:0 4px;border-radius:2px}
-  .liqmap-line{position:absolute;left:-2px;right:0;border-top:1px dashed var(--ed-ink-4)}
-  .liqmap-line-label{position:absolute;left:8px;top:-8px;font-size:10px;color:var(--ed-ink-2);background:var(--ed-panel-2);padding:0 4px}
-  .liqmap-spot{position:absolute;left:-2px;right:0;border-top:2px solid var(--ed-warn)}
-  .liqmap-spot-label{position:absolute;right:8px;top:-9px;font-size:10.5px;font-weight:700;color:var(--ed-warn);background:var(--ed-panel-2);padding:0 4px}
 
   /* Trade Desk / Right Now — numbered Detect/Frame/Confirm stage cards + a plain-English
      Context Summary underneath. Each stage gets one HERO stat (the single number worth
