@@ -111,7 +111,10 @@ Schwab sends is taken as sent (rule 2), never computed.
   page (each ticker's levels appear as they are priced). The values read from the stored captures (forces: ΔOI, DEX and
   charm by side; the prior day's per-strike rows) are computed by the same producer only when the
   ticker's newest capture or its chain's day changes; `/api/forces` and `/api/terrain/strikes`
-  serve that result and read no stored chain. Everything computed from spot (gamma at spot, regime,
+  serve that result and read no stored chain. The same publication carries each strike's net
+  DEX $ and total OI (`terrain_engine._per_strike_measure_rows`, by the heatmap cell's readers),
+  served as `/api/terrain/strikes` `measures` for the Chart view of Delta / DEX and Open
+  Interest. Everything computed from spot (gamma at spot, regime,
   wall states and leans, wall distances, flip side, headline) is computed in that one publication
   at that publication's price; `/api/terrain` serves it as published and recomputes nothing.
   A publication carries the same fields whatever its chain's source (a live download or a stored

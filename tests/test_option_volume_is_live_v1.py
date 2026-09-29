@@ -60,13 +60,15 @@ def test_rows_are_the_shape_the_panel_renders():
     rows, because it rebuilt synthetic contracts from these numbers and re-ran the exposure
     engine, which rejected them for having no open interest."""
     ps = compute_terrain(FIXTURE["ticker"], CHAIN, SPOT).per_strike
-    assert set(ps) == {"all", "near", "far"}, (
+    # the three GEX scopes, and the Chart view's DEX and OI rows (operator 2026-09-29: those views
+    # were blank)
+    assert set(ps) == {"all", "near", "far", "dex", "oi"}, (
         "the ALL / <=7DTE / MONTHLY+ chips each need their own rows; a missing scope is an "
         f"empty panel on that chip. got {sorted(ps)}"
     )
     for scope, rows in ps.items():
         for r in rows:
-            assert len(r) == 3, f"{scope}: row {r} is not [strike, net_gex_1pct, volume]"
+            assert len(r) == (2 if scope in ("dex", "oi") else 3), f"{scope}: row {r} has the wrong shape"
             assert all(isinstance(x, (int, float)) for x in r), f"{scope}: non-numeric row {r}"
     assert ps["all"], "the ALL scope is empty on a real 40-contract chain"
     assert any(r[1] != 0 for r in ps["all"]), "every gamma bar is zero — nothing would render"

@@ -34,7 +34,9 @@
 const { test, expect } = require('@playwright/test');
 
 const STRIKES = { spot: 100, spot_strike: 100, max_abs_strike: 100, today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false,
-  today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] } };
+  today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
+  measures: { dex: { rows: [[97, -41000], [98, -12000], [100, 88000], [102, 23000]], spot_strike: 100, max_abs_strike: 100 },
+    oi: { rows: [[97, 300], [98, 1500], [100, 5200], [102, 2180], [104, 90]], spot_strike: 100, max_abs_strike: 100 } } };
 const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, regime: 'LONG_GAMMA_CHOP', levels_stale: false };
 const BARS = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1 }] };
 const CALL_SYM = 'SPY   260918C00102000';
@@ -124,5 +126,19 @@ test.describe('Options/Gamma Chart subview', () => {
     await clickStrike(page, 102);
     await expect.poll(() => page.evaluate(() => window.EdShell.getState().selStrike)).toBe(102);
     expect(await page.evaluate(() => window.EdShell.getState().selExpiry)).toBeNull();
+  });
+
+  test('the Delta / DEX and Open Interest Chart views draw the served profile of their measure', async ({ page }) => {
+    // operator 2026-09-29: "dex has a chart, oi has a chart" -- both views were blank
+    await intercept(page);
+    for (const [sub, rows, title] of [['dex', STRIKES.measures.dex.rows.length, 'Price + DEX Profile'],
+      ['oi', STRIKES.measures.oi.rows.length, 'Price + Open Interest Profile']]) {
+      await page.addInitScript((s) => { try { localStorage.setItem('ed_ws', 'options'); localStorage.setItem('ed_sub', s);
+        localStorage.setItem('ed_view', 'chart'); localStorage.setItem('ed_scope', 'all'); } catch (e) {} }, sub);
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await expect(page.locator('#mvTitle')).toHaveText(title);
+      await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBe(rows);
+      await expect(page.locator('#chartBody .chart-legend')).toContainText('largest |' + (sub === 'oi' ? 'OI' : 'DEX') + '| 100');
+    }
   });
 });
