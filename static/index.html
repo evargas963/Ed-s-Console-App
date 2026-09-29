@@ -309,6 +309,7 @@
   .liqmap-wrap{position:relative;width:100%;max-width:360px;border-left:2px solid var(--ed-edge-strong);overflow:hidden}
   .liqmap-zone{position:absolute;left:0;right:0;background:rgba(35,192,107,.14);border-top:1px solid rgba(35,192,107,.55);border-bottom:1px solid rgba(35,192,107,.55)}
   .liqmap-zone.resistance{background:rgba(229,72,77,.14);border-top-color:rgba(229,72,77,.55);border-bottom-color:rgba(229,72,77,.55)}
+  .liqmap-zone.value{background:rgba(140,150,170,.14);border-top-color:rgba(140,150,170,.55);border-bottom-color:rgba(140,150,170,.55)}
   .liqmap-zone-tag{position:absolute;right:6px;top:1px;font-size:9.5px;font-weight:700;color:var(--ed-ink-2);background:var(--ed-panel-3);padding:0 4px;border-radius:2px}
   .liqmap-line{position:absolute;left:-2px;right:0;border-top:1px dashed var(--ed-ink-4)}
   .liqmap-line-label{position:absolute;left:8px;top:-8px;font-size:10px;color:var(--ed-ink-2);background:var(--ed-panel-2);padding:0 4px}
@@ -829,7 +830,7 @@
           <!-- main working panel — view tabs (Heatmap/Chart/Levels/Multi-Map) swap this -->
           <div class="panel p-heat">
             <div class="panel-h">
-              <span class="hticker" id="mvTicker">SPX</span>
+              <span class="hticker" id="mvTicker">—</span>
               <span class="t" id="mvTitle">Gamma Exposure Heatmap</span>
               <div class="r">
                 <span class="sub" id="heatScope">strike × expiration</span>
@@ -850,8 +851,8 @@
               <div class="mv" id="view-levels"><div id="levelsBody" class="mvbody"></div></div>
               <div class="mv" id="view-multimap"><div id="multimapBody" class="mvbody">
                 <div class="placeholder"><div class="big">Multi-Map</div>
-                  <div class="sm">A strike × expiry surface across measures (GEX / DEX / Vanna / Charm) reuses the heatmap grammar — but only GEX has a canonical strike×expiry projection today. DEX/Vanna/Charm strike×expiry surfaces are not yet canonical.</div>
-                  <div class="notproven">NOT YET — needs canonical DEX/Vanna/Charm strike×expiry surfaces</div></div>
+                  <div class="sm">A strike × expiry view across measures. The heatmap's surface serves GEX, DEX and vanna per strike × expiry; charm is served per strike only.</div>
+                  <div class="notproven">NOT BUILT</div></div>
               </div></div>
             </div>
           </div>
@@ -920,7 +921,7 @@
         <!-- OPTIONS / CHAIN subview — the full vendor chain ladder (/api/chain + /api/expiries) -->
         <div class="sub-pane" data-sub-pane="chain">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="chTicker">SPX</span><span class="t">Option Chain</span>
+            <div class="panel-h"><span class="hticker" id="chTicker">—</span><span class="t">Option Chain</span>
               <div class="r"><span id="chSrc"></span><span class="prov native">CHAIN</span></div></div>
             <div class="panel-b" id="chainBody"><div class="placeholder"><div class="sm">Full vendor chain ladder from /api/chain (strike_range=ALL, one expiry).</div></div></div>
           </div>
@@ -929,7 +930,7 @@
         <!-- OPTIONS / FLOW subview -->
         <div class="sub-pane" data-sub-pane="flow">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="flTicker">SPX</span><span class="t">Options Flow</span>
+            <div class="panel-h"><span class="hticker" id="flTicker">—</span><span class="t">Options Flow</span>
               <div class="r"><span id="flSrc"></span></div></div>
             <div class="panel-b" id="flowBody"><div class="placeholder"><div class="sm">Options microstructure from /api/order-flow/options-microstructure (real book / depth / imbalance / tape-PROXY / freshness; no fabricated signed flow).</div></div></div>
           </div>
@@ -942,7 +943,7 @@
              already-canonical call_vanna/put_vanna (RC-211's exact BS-vanna faucet). -->
         <div class="sub-pane" data-sub-pane="vanna">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="vnTicker">SPX</span><span class="t">Vanna by Strike</span><span class="sub">dealer net vanna · delta-shares per vol point · agg all expiries</span>
+            <div class="panel-h"><span class="hticker" id="vnTicker">—</span><span class="t">Vanna by Strike</span><span class="sub">dealer net vanna · delta-shares per vol point · agg all expiries</span>
               <div class="r"><span id="vnSrc"></span><span class="prov derived">DERIVED</span></div></div>
             <div class="panel-b" id="vnBody"><div class="placeholder"><div class="sm">Net dealer vanna (call_vanna − put_vanna) per strike from /api/options/vanna-by-strike.</div></div></div>
           </div>
@@ -952,7 +953,7 @@
              /api/forces's charm_below/charm_above already sum (math_levels.compute_charm_by_strike). -->
         <div class="sub-pane" data-sub-pane="charm">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="chmTicker">SPX</span><span class="t">Charm by Strike</span><span class="sub">dealer net charm · Δ-shares/day · agg all expiries</span>
+            <div class="panel-h"><span class="hticker" id="chmTicker">—</span><span class="t">Charm by Strike</span><span class="sub">dealer net charm · Δ-shares/day · agg all expiries</span>
               <div class="r"><span id="chmSrc"></span><span class="prov derived">DERIVED</span></div></div>
             <div class="panel-b" id="chmBody"><div class="placeholder"><div class="sm">Net dealer charm (call_charm − put_charm) per strike from /api/options/charm-by-strike.</div></div></div>
           </div>
@@ -965,7 +966,7 @@
              settled contract from silently being treated like an ordinary 100-share monthly. -->
         <div class="sub-pane" data-sub-pane="structures">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="stTicker">SPX</span><span class="t">Contract Structures</span><span class="sub">non-standard · settlement · exercise · deliverables</span>
+            <div class="panel-h"><span class="hticker" id="stTicker">—</span><span class="t">Contract Structures</span><span class="sub">non-standard · settlement · exercise · deliverables</span>
               <div class="r"><span id="stSrc"></span><span class="prov native">CHAIN</span></div></div>
             <div class="panel-b" id="stBody"><div class="placeholder"><div class="sm">Contract-safety metadata (multiplier, non-standard, deliverables, settlement/exercise/expiration type, last trading day, penny pilot) from /api/chain — vendor-native, never inferred.</div></div></div>
           </div>
@@ -1008,7 +1009,7 @@
         </div>
         <div class="sub-pane" data-sub-pane="right-now">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="tdTicker">SPX</span><span class="t">Right Now</span><span class="sub">detect · frame · confirm — one page, zero new math</span>
+            <div class="panel-h"><span class="hticker" id="tdTicker">—</span><span class="t">Right Now</span><span class="sub">detect · frame · confirm — one page, zero new math</span>
               <div class="r"><span class="prov derived">SYNTHESIS</span></div></div>
             <div class="panel-b" id="tdBody"><div class="placeholder"><div class="sm">Assembles /api/order-flow/microstructure, /api/levels and /api/terrain — the same canonical endpoints Order Flow, Liquidity and Options already read. Computes nothing new.</div></div></div>
           </div>
@@ -1027,14 +1028,14 @@
       <section class="workspace" data-ws-pane="order-flow">
         <div class="sub-pane" data-sub-pane="book">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="obTicker">SPX</span><span class="t">Book / DOM</span><span class="sub">top-of-book · depth · imbalance</span>
+            <div class="panel-h"><span class="hticker" id="obTicker">—</span><span class="t">Book / DOM</span><span class="sub">top-of-book · depth · imbalance</span>
               <div class="r"><span class="bookvenue"><button type="button" class="scbtn" data-venue="NYSE_BOOK">NYSE book</button><button type="button" class="scbtn" data-venue="NASDAQ_BOOK">NASDAQ book</button></span></div></div>
             <div class="panel-b" id="obBody"><div class="placeholder"><div class="sm">Real L2 book microstructure from /api/order-flow/microstructure — top-of-book/spread/depth/imbalance NATIVE/DERIVED; aggressor side deferred (Schwab exposes no native field).</div></div></div>
           </div>
         </div>
         <div class="sub-pane" data-sub-pane="heatmap">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="ofhTicker">SPX</span><span class="t">Book Heatmap</span><span class="sub">displayed depth over time</span>
+            <div class="panel-h"><span class="hticker" id="ofhTicker">—</span><span class="t">Book Heatmap</span><span class="sub">displayed depth over time</span>
               <div class="r"><span class="bookvenue"><button type="button" class="scbtn" data-venue="NYSE_BOOK">NYSE book</button><button type="button" class="scbtn" data-venue="NASDAQ_BOOK">NASDAQ book</button></span>
                 <div class="chart-modes">
                   <button type="button" class="cmode" data-ofh-minutes="15">15m</button>
@@ -1055,14 +1056,14 @@
       <section class="workspace" data-ws-pane="liquidity">
         <div class="sub-pane" data-sub-pane="map">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="liqmTicker">SPX</span><span class="t">Liquidity Map</span><span class="sub">confluence-scored zones · reference levels · spot</span>
+            <div class="panel-h"><span class="hticker" id="liqmTicker">—</span><span class="t">Liquidity Map</span><span class="sub">confluence-scored zones · reference levels · spot</span>
               <div class="r"><span class="prov derived">LIQUIDITY SNAPSHOT</span></div></div>
             <div class="panel-b" id="liqmBody"><div class="placeholder"><div class="sm">A visual price map from /api/liquidity-snapshot's own confluence-scored support/resistance zones, plus prior-day/overnight reference levels and spot — never a fabricated line.</div></div></div>
           </div>
         </div>
         <div class="sub-pane" data-sub-pane="levels">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="lvlTicker">SPX</span><span class="t">Liquidity Levels</span><span class="sub">prior day · overnight · session</span>
+            <div class="panel-h"><span class="hticker" id="lvlTicker">—</span><span class="t">Liquidity Levels</span><span class="sub">prior day · overnight · session</span>
               <div class="r"><span class="prov native">LEVELS</span></div></div>
             <div class="panel-b" id="lvlBody"><div class="placeholder"><div class="sm">Canonical price levels from /api/levels (PDH/PDL/PDC, POC/VAH/VAL, overnight, VWAP±σ) — vendor-derived, never a fabricated line.</div></div></div>
           </div>

@@ -35,3 +35,19 @@ test('the heatmap paints the served cells, and a click pins a readout, without a
   await expect(canvas).toBeVisible();
   expect(errs).toEqual([]);
 });
+
+test('the Book panel shows each served wall candidate size', async ({ page }) => {
+  // stand-in wall in the engine's own shape (engine._book_wall_candidates: side, price, volume,
+  // median_mult); the page printed w.size, which the engine never serves, so every wall read "—"
+  const BOOK = { status: 'ok', top_of_book: {}, depth: {}, ages: {}, classification: {}, depth_pressure: {},
+    wall_candidates: [{ side: 'bid', price: 440.5, volume: 12500, median_mult: 6.2 }] };
+  await page.route('**/api/**', (route) => {
+    const url = route.request().url();
+    const body = url.includes('/api/order-flow/microstructure') ? BOOK : { available: false };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#obBody')).toContainText('bid @ 440.50');
+  await expect(page.locator('#obBody')).toContainText('12500');
+});

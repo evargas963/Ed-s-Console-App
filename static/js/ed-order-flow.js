@@ -114,7 +114,7 @@
     ];
     var wallsHtml = walls.length
       ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '—') + ' @ ' + num(w.price) +
-          '</span><span class="v">' + int(w.size) + ' <span class="sm">(' + num(w.median_mult, 1) + '× median)</span></span></div>'; }).join('')
+          '</span><span class="v">' + int(w.volume) + ' <span class="sm">(' + num(w.median_mult, 1) + '× median)</span></span></div>'; }).join('')
       : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
     var deferred = (d.deferred || []).join(' · ');
 

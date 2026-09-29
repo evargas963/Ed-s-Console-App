@@ -342,19 +342,24 @@ def nearest_strike(strikes, spot) -> float | None:
     return min(ks, key=lambda k: abs(k - float(spot)))
 
 
-def chain_ladder(contracts, spot) -> list[dict]:
-    """One expiry's chain as the ladder draws it: strikes high to low; per strike one row per
-    listed contract index (a second contract at one strike and side gets its own row);
-    `call_itm` / `put_itm` against `spot` (None without one); `spot` marks the first row of the
-    strike nearest spot."""
+def chain_ladder(contracts, spot) -> tuple[list[dict], int]:
+    """One expiry's chain as the ladder draws it, and how many contracts it could not place (no
+    strike, or a putCall other than CALL/PUT). Strikes high to low; per strike one row per listed
+    contract index (a second contract at one strike and side gets its own row); each contract's
+    numbers read by rule 2 (-999, text, NaN absent); `call_itm` / `put_itm` against `spot` (None
+    without one); `spot` marks the first row of the strike nearest spot."""
     from numeric_contract import schwab_number
     by_k: dict[float, dict[str, list]] = {}
+    unplaced = 0
     for c in contracts or []:
         k = schwab_number(c.get("strikePrice"))
-        if k is None:
+        side = {"CALL": "call", "PUT": "put"}.get(str(c.get("putCall") or "").upper())
+        if k is None or side is None:
+            unplaced += 1
             continue
-        side = "put" if str(c.get("putCall") or "").upper() == "PUT" else "call"
-        by_k.setdefault(k, {"call": [], "put": []})[side].append(c)
+        shown = {f: (schwab_number(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v)
+                 for f, v in c.items()}
+        by_k.setdefault(k, {"call": [], "put": []})[side].append(shown)
     spot_k = nearest_strike(by_k, spot)
     rows = []
     for k in sorted(by_k, reverse=True):
@@ -367,7 +372,7 @@ def chain_ladder(contracts, spot) -> list[dict]:
                 "call_itm": None if spot is None else k < spot,
                 "put_itm": None if spot is None else k > spot,
             })
-    return rows
+    return rows, unplaced
 
 
 def _dte_of(ct: object) -> float | None:

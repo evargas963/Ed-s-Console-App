@@ -139,12 +139,12 @@
                      above: sl.above != null ? zones[sl.above] : null, below: sl.below != null ? zones[sl.below] : null } : null;
     if (loc && loc.inside) {
       var z = loc.inside;
-      lines.push(['Location', 'Inside a ' + (z.zone_type === 'support_liquidity' ? 'support' : 'resistance') +
+      lines.push(['Location', 'Inside a ' + esc(z.zone_label) +
         ' zone (' + num(z.zone_low) + '–' + num(z.zone_high) + ', confluence ' + z.confluence_score + ')']);
     } else if (loc) {
       var parts = [];
-      if (loc.above) parts.push('resistance near ' + num(loc.above.zone_low) + ' (confluence ' + loc.above.confluence_score + ')');
-      if (loc.below) parts.push('support near ' + num(loc.below.zone_high) + ' (confluence ' + loc.below.confluence_score + ')');
+      if (loc.above) parts.push(esc(loc.above.zone_label) + ' zone above at ' + num(loc.above.zone_low) + ' (confluence ' + loc.above.confluence_score + ')');
+      if (loc.below) parts.push(esc(loc.below.zone_label) + ' zone below at ' + num(loc.below.zone_high) + ' (confluence ' + loc.below.confluence_score + ')');
       lines.push(['Location', parts.length ? 'Between zones — ' + parts.join(', ') : 'No scored zone nearby']);
     }
     if (terrain && terrain.dist_to_put_wall != null && terrain.dist_to_call_wall != null) {   // served
@@ -306,10 +306,9 @@
       ? window.EdShell.scopeNote({ total: todayAll.length, shown: win.length }) : '';
     if (_migPanAnchor != null) note += '<div class="gbs-allexp">PANNED to ' + num(_migPanAnchor, _migPanAnchor % 1 ? 2 : 0) +
       ' — not following spot; double-click a strike label to resume</div>';
-    var maxAbs = 1, maxVol = 1;
+    var maxAbs = 1;
     win.forEach(function (r) {
       maxAbs = Math.max(maxAbs, Math.abs(r[1]), Math.abs(prior(r[0]) == null ? 0 : prior(r[0])));   // bar scale (drawing)
-      maxVol = Math.max(maxVol, r[2] || 0);
     });
     var spotStrike = strikesD.spot_strike;   // served: the listed strike nearest the live price
     var cw = terrain && terrain.call_wall, pw = terrain && terrain.put_wall;
@@ -362,7 +361,7 @@
       '<i class="sw ghostsw"></i>yesterday (ghost)</span></h4>' +
       scopeChips + '<div class="mig-top">' + note + volNote + '</div>' +
       '<div class="gbs-scroll"><div class="gbs">' + rows + '</div></div>' +
-      '<div class="gbs-scale"><span class="neg">−' + usd(maxAbs) + '</span><span>0</span><span class="pos">+' + usd(maxAbs) + '</span></div>' +
+      '<div class="gbs-scale"><span class="neg">−</span><span>0</span><span class="pos">+</span></div>' +
       migrationCoach(mig) +
       '</div>';
   }

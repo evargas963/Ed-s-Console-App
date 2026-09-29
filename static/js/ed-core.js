@@ -554,6 +554,7 @@
   function paintNoTicker() {
     var px = document.getElementById('hPx'); if (px) px.textContent = 'CHOOSE A SYMBOL';
     setFeed('stale', 'NO SYMBOL', '—');
+    paintIdentity('—');
   }
 
   // ================= ticker store (ONE selected-symbol state across every surface) =================
@@ -600,12 +601,7 @@
   }
 
   // ---- expiry dropdown: populated ONLY from the canonical /api/expiries (never hard-coded) ----
-  // dte: Schwab's daysToExpiration, served by /api/expiries -- never the browser's clock
-  function _fmtExpOpt(iso, dte) {
-    var parts = String(iso).split('-');
-    var md = parts.length === 3 ? (parts[1] + '/' + parts[2] + '/' + parts[0]) : iso;
-    return md + (dte != null ? (' · ' + dte + 'DTE') : '');
-  }
+  // each option's label is served (MM/DD/YYYY and Schwab's daysToExpiration)
   // Independent-review finding (2026-09-13), REPRODUCED ("revert the selected expiry on a
   // pushed refresh"): `prev` was captured ONCE at call time and used, unchanged, when the
   // response finally resolved -- if the operator picked a different expiry WHILE this fetch
@@ -621,27 +617,34 @@
   function loadExpiries(tk) {
     var sel = document.getElementById('expSel'); if (!sel) return;
     fetch('/api/expiries?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
-      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (r) { if (!r.ok) throw new Error('expiries unavailable: HTTP ' + r.status); return r.json(); })
       .then(function (d) {
         if (state.ticker !== tk) return;   // a newer ticker switch superseded this request
-        var exps = (d && d.expiries) || [];
+        var exps = d.expiries || [], labels = d.labels || {};
         _expiriesPending = !exps.length;   // levels not computed yet: asked again when they change
         var opts = '<option value="">All Expirations</option>';
-        var dte = (d && d.dte) || {};
-        exps.forEach(function (e) { opts += '<option value="' + e + '">' + _fmtExpOpt(e, dte[e]) + '</option>'; });
+        exps.forEach(function (e) { opts += '<option value="' + e + '">' + _escBadge(labels[e]) + '</option>'; });
+        if (!exps.length && d.reason) opts += '<option value="" disabled>' + _escBadge(d.reason) + '</option>';
         sel.innerHTML = opts;
         var cur = state.expiryFilter;   // CURRENT selection, not one captured before this fetch started
         if (cur && exps.indexOf(cur) !== -1) { sel.value = cur; }   // keep a still-valid selection
         else { sel.value = ''; if (state.expiryFilter !== null) setExpiry(''); }   // invalid current expiry -> All (honest)
         relabelExpiryDefault();
       })
-      .catch(function () { /* keep the All Expirations default; a cold console just shows All */ });
+      .catch(function (e) {
+        if (state.ticker !== tk) return;
+        _expiriesPending = true;
+        sel.innerHTML = '<option value="">All Expirations</option><option value="" disabled>' +
+          _escBadge((e && e.message) || 'expiries unavailable') + '</option>';
+      });
   }
   function setExpiry(v) {
     var nv = v || null;
     if (nv === state.expiryFilter) return;
     state.expiryFilter = nv;
     var sel = document.getElementById('expSel'); if (sel) sel.value = nv || '';
+    var ctx = document.getElementById('aiCtxExp');     // the selected option's served label
+    if (ctx) ctx.textContent = (sel && nv && sel.selectedIndex >= 0) ? sel.options[sel.selectedIndex].text : 'All';
     emit('ed:expiry', { expiry: nv });
   }
   // B: /api/chain is a COMPLETE SINGLE-EXPIRY surface, so the null option must NOT read
@@ -867,7 +870,7 @@
     try { _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk)); }
     catch (e) { return; }
     _changes.onopen = function () { _wlDeclared = null; declareWatchlistStream(loadWL()); };
-    _changes.onerror = function () { paintSession(null); };
+    _changes.onerror = function () { paintSession(null, 'session unknown: the console push is down'); };
     _changes.addEventListener('session', function (ev) { paintSession(ev.data); });
     ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
       _changes.addEventListener(kind, function () {
@@ -878,11 +881,11 @@
   }
 
   // market session (RTH / Pre-Market / After-Hours / Closed), pushed with the changes
-  function paintSession(label) {
+  function paintSession(label, why) {
     var el = document.getElementById('hSession'); if (!el) return;
     var m = { 'RTH': ['RTH', 'rth'], 'Pre-Market': ['PRE', 'pre'], 'After-Hours': ['AH', 'ah'], 'Closed': ['CLOSED', 'closed'] };
     var v = m[label] || [(label || '—'), ''];
-    el.textContent = v[0]; el.className = 'sess ' + v[1];
+    el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why || '';
   }
 
   // The push is not delivering: withdraw the quote instead of leaving the last one on screen

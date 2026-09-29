@@ -3358,25 +3358,27 @@ def get_terrain(ticker: str = Query(...)):
 RECENT_CROSS_SEC: float = 120.0
 
 
-#: The Trade Desk's lookback per chart timeframe, seconds ("session": the latest regular session).
-DESK_LOOKBACK_SEC = {"1": 900, "3": 1800, "5": 3600, "15": 14400, "30": "session", "60": 172800, "D": 1728000}
+#: The Trade Desk's lookback per chart timeframe: seconds, or "session" (the latest regular
+#: session), with the words the page shows for it.
+DESK_LOOKBACK = {"1": (900, "last 15 min"), "3": (1800, "last 30 min"), "5": (3600, "last 1 h"),
+                 "15": (14400, "last 4 h"), "30": ("session", "this session"),
+                 "60": (172800, "last 2 days"), "D": (1728000, "last 20 days")}
 
 
-def _desk_window_start(tf: str) -> float:
-    """Start of the Trade Desk's event window for chart timeframe `tf`: now minus its lookback,
-    or the 9:30 ET open of the latest regular session that has begun."""
-    now = now_et()
-    lb = DESK_LOOKBACK_SEC.get(tf, DESK_LOOKBACK_SEC["30"])
+def _desk_window_start(tf: str, now: datetime) -> float:
+    """Start of the Trade Desk's event window for chart timeframe `tf`: `now` minus its lookback,
+    or the open of the latest regular session that has begun."""
+    from time_et import is_trading_day_et
+    lb = DESK_LOOKBACK[tf][0]
     if lb != "session":
         return now.timestamp() - lb
-    from time_et import is_trading_day_et
     day = now.date()
     for _ in range(10):
-        start = datetime(day.year, day.month, day.day, 9, 30, tzinfo=ET)
+        start = datetime(day.year, day.month, day.day, RTH_OPEN_MINS // 60, RTH_OPEN_MINS % 60, tzinfo=ET)
         if is_trading_day_et(day.isoformat()) and start <= now:
             return start.timestamp()
         day -= timedelta(days=1)
-    return now.timestamp() - 86400
+    raise ValueError(f"no regular session began in the 10 days to {now.date()} (market calendar)")
 
 
 def _f2(v) -> str:
@@ -3393,7 +3395,7 @@ def get_desk_events(ticker: str = Query(...),
     -- plus the window's up/down cross counts. The page draws it; it selects, numbers and orders
     nothing."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    start = _desk_window_start(tf)
+    start = _desk_window_start(tf, now_et())
     crosses, _raw = _merged_recent_crosses(get_db(), tk, 200)
     in_window = sorted((c for c in crosses if c.get("ts_utc") is not None and c["ts_utc"] >= start),
                        key=lambda c: c["ts_utc"])
@@ -3433,7 +3435,8 @@ def get_desk_events(ticker: str = Query(...),
         items.append({"key": f"ra{i}", "ts": a["ts_utc"], "dom": "ALERT", "dir": None,
                       "title": a["text"], "detail": "", "src": "/api/alerts"})
     items.sort(key=lambda it: (it["ts"] is None, -(it["ts"] if it["ts"] is not None else 0.0)))
-    return JSONResponse({"ticker": tk, "tf": tf, "window_start_ts_utc": start, "items": items,
+    return JSONResponse({"ticker": tk, "tf": tf, "window_start_ts_utc": start,
+                         "window_label": DESK_LOOKBACK[tf][1], "items": items,
                          "cross_counts": {d: sum(1 for c in in_window if c.get("direction") == d)
                                           for d in ("up", "down")}})
 
@@ -3694,13 +3697,17 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
 
 
 @app.get("/api/expiries")
-# SWITCH-LATENCY FIX: sync def → threadpool (DB write + Schwab expiry fetch, no await).
 def get_expiries(ticker: str = Query(...)):
+    """The ticker's listed expiries with each one's dropdown label (MM/DD/YYYY and Schwab's
+    daysToExpiration, as sent); with none, the levels' own reason."""
     ticker = ticker_storage_key(_required_ticker(ticker))   # SPX -> $SPX: the cache's own key
     t = terrain_cache_get(ticker) or {}
-    return JSONResponse({"expiries": t.get("expiries") or [],
-                         "dte": t.get("expiry_dte") or {},   # Schwab's daysToExpiration, as sent
-                         "reason": None if t.get("expiries") else "levels not computed yet"})
+    exps, dte = t.get("expiries") or [], t.get("expiry_dte") or {}
+    labels = {e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" + (f" · {dte[e]:g}DTE" if dte.get(e) is not None else "")
+              for e in exps}
+    return JSONResponse({"expiries": exps, "dte": dte, "labels": labels,
+                         "reason": None if exps else (terrain_staleness(None, ticker)["levels_stale_reason"]
+                                                      if not t else "no expiry listed in the published chain")})
 
 
 
@@ -3734,7 +3741,7 @@ def get_chain(ticker: str = Query(...),
     fetched_ts = held.get("_chain_fetched_ts")
     response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(t, contracts)
     live_spot, _src, _ts = resolve_spot(t)       # the one spot on every screen
-    ladder = chain_ladder(response_contracts, live_spot)
+    ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
     # Strike Detail shows it beside this expiry's contracts -- one value, one producer
     surf = held.get("_gamma_surface") or {}
@@ -3757,6 +3764,7 @@ def get_chain(ticker: str = Query(...),
         "chain_as_of_ts_utc": fetched_ts,
         "contracts": response_contracts, "status": "ok",
         "ladder": ladder, "n_strikes": len({r["strike"] for r in ladder}),
+        "contracts_not_on_ladder": not_on_ladder,   # no strike, or a putCall other than CALL/PUT
         "stream_overlay_contracts": overlay_n,
         "scope": {"kind": "complete_single_expiry", "requested_expiry": resolved_expiry,
                   "completeness_basis": held.get("chain_basis")},   # the publication's own label
@@ -4235,7 +4243,7 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
     option levels and the live price fused in. It computes no level of its own."""
     try:
         from liquidity_value_engine import build_live_snapshot, carry_snapshot_levels
-        from liquidity_models import PlaybookConfig
+        from liquidity_models import ZONE_DISPLAY, PlaybookConfig
 
         ticker_upper = ticker_storage_key(ticker)
         config = PlaybookConfig(max_zone_width=2.0)
@@ -4256,6 +4264,8 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
             merged = len(z.source_tags)
             zp = {
                 "zone_type": z.zone_type.value,
+                "zone_label": ZONE_DISPLAY[z.zone_type][0],
+                "zone_side": ZONE_DISPLAY[z.zone_type][1],
                 "zone_class": z.zone_class,
                 "zone_low": z.zone_low,
                 "zone_high": z.zone_high,

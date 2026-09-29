@@ -321,7 +321,7 @@
     // always visible without scrolling (reference behaviour).
     host.innerHTML = '<div class="gbs-top">' + note + '</div>' +
       '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
-      '<div class="gbs-scale"><span class="neg">−' + usd(maxAbs) + '</span><span>0</span><span class="pos">+' + usd(maxAbs) + '</span></div>';
+      '<div class="gbs-scale"><span class="neg">−</span><span>0</span><span class="pos">+</span></div>';
     host.querySelectorAll('.gbs-row').forEach(function (rr) {   // A: click a strike -> sync all panels
       rr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
     });
@@ -592,7 +592,7 @@
       });
       host.innerHTML = '<div class="gbs-top">' + note + '</div>' +
         '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
-        '<div class="gbs-scale"><span class="neg">−' + usd(maxAbs) + '</span><span>0</span><span class="pos">+' + usd(maxAbs) + '</span></div>';
+        '<div class="gbs-scale"><span class="neg">−</span><span>0</span><span class="pos">+</span></div>';
       host.querySelectorAll('.gbs-row').forEach(function (rr) {
         rr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
       });

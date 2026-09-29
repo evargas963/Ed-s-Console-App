@@ -10,25 +10,29 @@
   function listEl() { return document.getElementById('alertsList'); }
 
   function fetchJson(url, signal) {
-    return fetch(url, { cache: 'no-store', signal: signal }).then(function (r) { return r.ok ? r.json() : null; });
+    return fetch(url, { cache: 'no-store', signal: signal }).then(function (r) {
+      if (!r.ok) throw new Error('alerts unavailable: HTTP ' + r.status);
+      return r.json();
+    });
   }
 
-  function render(d, tk) {
+  // the server's alerts as sent; with none, the reason it gives (or the request's failure)
+  function render(tk, alerts, reason) {
     if (ticker() !== tk) return;   // a since-abandoned ticker's response arrived late
     var s = strip(), list = listEl();
     if (!s || !list) return;
-    var alerts = (d && d.alerts) || [];
-    if (!alerts.length) { s.hidden = true; list.innerHTML = ''; return; }
-    s.hidden = false;
-    list.innerHTML = alerts.map(function (a) { return '<span class="alert-pill">' + esc(a.text) + '</span>'; }).join('');
+    s.hidden = !alerts.length && !reason;
+    list.innerHTML = alerts.length
+      ? alerts.map(function (a) { return '<span class="alert-pill">' + esc(a.text) + '</span>'; }).join('')
+      : (reason ? '<span class="alert-pill alert-reason">' + esc(reason) + '</span>' : '');
   }
 
   function loadImpl(tk, signal) {
     return fetchJson('/api/alerts?ticker=' + encodeURIComponent(tk), signal).then(function (d) {
-      render(d, tk);
+      render(tk, d.alerts || [], d.withheld);
     }).catch(function (e) {
       if (e && e.name === 'AbortError') return;
-      if (ticker() === tk) { var s = strip(); if (s) s.hidden = true; }
+      render(tk, [], (e && e.message) || 'alerts unavailable');
     });
   }
 

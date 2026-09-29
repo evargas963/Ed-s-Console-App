@@ -157,7 +157,20 @@ def zone_class_for_type(zone_type: ZoneType) -> str:
         ZoneType.BREAKOUT_TRIGGER: "trigger",
         ZoneType.PIVOT_VALUE: "value",
     }
-    return _class_map.get(zone_type, "value")
+    return _class_map[zone_type]
+
+
+#: each zone type's name on screen and the side of price it is drawn as: support, resistance or
+#: value (neither)
+ZONE_DISPLAY: dict[ZoneType, tuple[str, str]] = {
+    ZoneType.LOW_EXTREME: ("Low extreme", "support"),
+    ZoneType.SUPPORT_LIQUIDITY: ("Support", "support"),
+    ZoneType.BREAKDOWN_TRIGGER: ("Breakdown trigger", "support"),
+    ZoneType.PIVOT_VALUE: ("Pivot / value", "value"),
+    ZoneType.BREAKOUT_TRIGGER: ("Breakout trigger", "resistance"),
+    ZoneType.RESISTANCE_LIQUIDITY: ("Resistance", "resistance"),
+    ZoneType.HIGH_EXTREME: ("High extreme", "resistance"),
+}
 
 
 @dataclass
