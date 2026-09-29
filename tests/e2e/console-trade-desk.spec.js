@@ -168,8 +168,13 @@ test.describe('Trade Desk renders served values', () => {
     expect(c).toBeTruthy();
     // the three crosses share one bar here; no callout's number covers another's
     for (const a of all) for (const b of all) if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(22);
+    // the chart may still be settling its opening view: read the number where it is drawn now, click it
     const box = await page.locator('#tdmChart .tvc-plot').boundingBox();
-    await page.mouse.click(box.x + c.x, box.y + c.y);
+    await expect.poll(async () => {
+      const now = ((await page.evaluate(() => window.EdTradeDeskMap.state().chart.callouts)) || []).filter((x) => x.id === other)[0];
+      await page.mouse.click(box.x + now.x, box.y + now.y);
+      return page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected);
+    }).toBe(other);
     await expect(page.locator('#tdmQueue [data-q="' + other + '"]')).toHaveClass(/sel/);
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected)).toBe(other);
     expect(errs).toEqual([]);
