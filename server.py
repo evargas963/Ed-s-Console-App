@@ -743,19 +743,25 @@ from calibration.complete_chain_capture import (
 )
 
 
+#: one bar as text: each stored double to 17 significant digits (exact), '-' for a NULL
+_BAR_TEXT = " || ' ' || ".join(f"iif({f} IS NULL, '-', printf('%!.17g', {f}))"
+                               for f in ("bar_start_ts_utc", "open", "high", "low", "close", "volume"))
+
+
 def _read_bars_1m(tk: str, limit: int) -> list:
     """The newest `limit` rows of price_bars_1m for `tk`, oldest first:
-    (bar_start_ts_utc, open, high, low, close, volume)."""
+    (bar_start_ts_utc, open, high, low, close, volume). Read in one SQLite step: a row-by-row read
+    hands the interpreter lock back at every row and waits for it behind the option pricing."""
     import sqlite3 as _sq
     con = _sq.connect(f"file:{get_db().db_path}?mode=ro", uri=True, timeout=10.0)
     try:
-        rows = con.execute(
-            "SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
-            "WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?",
-            (ticker_storage_key(tk), int(limit))).fetchall()
+        (text,) = con.execute(
+            f"SELECT group_concat({_BAR_TEXT}, ';' ORDER BY bar_start_ts_utc) FROM (SELECT * FROM "
+            "price_bars_1m WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?)",
+            (ticker_storage_key(tk), int(limit))).fetchone()
     finally:
         con.close()
-    return list(reversed(rows))
+    return [tuple(None if v == "-" else float(v) for v in row.split(" ")) for row in text.split(";")] if text else []
 
 
 def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> "list[Candle]":
