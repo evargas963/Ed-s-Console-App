@@ -1,7 +1,7 @@
 # Backup and mirror — what Git holds vs the launch host
 
-Git holds the source, tests, docs and the trading calendar. Everything the app writes at runtime
-is on the host only.
+Git holds the source, tests and docs (the trading calendar is code: `time_et.py`). Everything the
+app writes at runtime is on the host only.
 
 ## Never in Git (`.gitignore`)
 
@@ -9,7 +9,7 @@ is on the host only.
 |----------|-------|--------|
 | Secrets | `.env`, `schwab_token.json`, `*.key`, `*.pem` | Secure store only |
 | Databases | `data/ed_console.db`, `data/stream_capture.db` | Copies under `backups/db/`; no scheduled backup job exists |
-| Runtime output | `data/*` (except `data/trading_calendar/`), `*.log`, `logs/`, `.runtime/`, `reports/` | None |
+| Runtime output | `data/*`, `*.log`, `logs/`, `.runtime/`, `reports/` | None |
 | Local agent state | `.claude/settings.local.json`, `.claude/scheduled_tasks.lock` | Machine-specific |
 
 ## After clone on a new machine
