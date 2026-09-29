@@ -129,13 +129,6 @@ def volume_profile(
         bars=len(bars), bars_without_volume=no_volume)
 
 
-def volume_profile_poc_vah_val(bars: list, value_area_pct: float = 0.70, tick_size: float = 0.01,
-                               ndigits: int = 4) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """(poc, vah, val) of volume_profile, or (None, None, None)."""
-    p = volume_profile(bars, value_area_pct, tick_size, ndigits)
-    return (None, None, None) if p is None else (p.poc, p.vah, p.val)
-
-
 class SnapshotType(str, Enum):
     """The shape of the served zones: before the session's open (premarket) or during it (live)."""
     PREMARKET = "premarket"

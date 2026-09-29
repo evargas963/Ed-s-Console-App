@@ -30,7 +30,6 @@ from liquidity_models import (
     VolumeProfile,
     ZoneType,
     volume_profile,
-    volume_profile_poc_vah_val,
 )
 
 log = logging.getLogger(__name__)
@@ -282,8 +281,8 @@ def get_previous_day_levels(
         out["pdh"] = max(b["high"] for b in prev_bars)
         out["pdl"] = min(b["low"] for b in prev_bars)
         out["pdc"] = prev_bars[-1]["close"]
-        poc, vah, val = _volume_profile_poc_vah_val(prev_bars, config.value_area_percent, config.tick_size)
-        out["pd_poc"], out["pd_vah"], out["pd_val"] = poc, vah, val
+        p = volume_profile(prev_bars, config.value_area_percent, config.tick_size, ndigits=4)
+        out["pd_poc"], out["pd_vah"], out["pd_val"] = (None, None, None) if p is None else (p.poc, p.vah, p.val)
     return out
 
 
@@ -474,21 +473,6 @@ def _filter_rth_bars(bars: list, session_date: date, cutoff_dt: Optional[datetim
 # ─────────────────────────────────────────────────────────────────────────────
 # VOLUME PROFILE (POC, VAH, VAL)
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def _volume_profile_poc_vah_val(
-    bars: list[dict],
-    value_area_pct: float = 0.70,
-    tick_size: float = 0.01,
-) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """POC / VAH / VAL from the ONE volume-profile construction (LP-01 Step 1, RC-152).
-
-    This used to dump each bar's ENTIRE volume into a single bin at the typical price
-    (H+L+C)/3 — a typical-price histogram, not a volume profile. `liquidity_models`
-    now owns the construction and distributes each bar's volume across [low, high];
-    this stays as the engine's private entry point so no caller changes.
-    """
-    return volume_profile_poc_vah_val(bars, value_area_pct, tick_size, ndigits=4)
 
 
 def compute_volume_profile_levels(

@@ -3384,26 +3384,29 @@ def _f2(v) -> str:
 def get_desk_events(ticker: str = Query(...),
                     venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
                     tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "30"):
-    """The Trade Desk's attention queue, served: level crosses in the timeframe's window, each
-    judged by the completed Schwab 1-minute bar of its minute (see _cross_event), numbered oldest
-    first, the newest DESK_MARKERS confirmed or rejected crosses flagged for the chart; wall
-    breaches and stale levels from the terrain; the book's size walls at the book's own time --
-    newest first, an item with no time last -- plus the window's up/down cross counts. One item
-    is one event: the chart's marker and the queue's entry are the same item. The page draws it;
-    it selects, numbers and orders nothing."""
+    """The Trade Desk's attention queue, served: level crosses in the timeframe's window as
+    recorded (level, direction, price, spot, time), numbered oldest first, the newest cross at
+    each level for the newest DESK_MARKERS levels flagged for the chart; wall breaches and stale
+    levels from the terrain; the book's size walls at the book's own time -- newest first, an
+    item with no time last -- plus the window's up/down cross counts. One item is one event: the
+    chart's marker and the queue's entry are the same item. The page draws it; it selects,
+    numbers and orders nothing."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    now = now_et()
-    start = _desk_window_start(tf, now)
+    start = _desk_window_start(tf, now_et())
     crosses, _raw = _merged_recent_crosses(get_db(), tk, 200)
     in_window = sorted((c for c in crosses if c.get("ts_utc") is not None and c["ts_utc"] >= start),
                        key=lambda c: c["ts_utc"])
-    closes = {c.ts: c.close for c in _bars_1m(tk, int((now.timestamp() - start) // 60) + 5)}
-    items = [_cross_event(c, i + 1, closes, now.timestamp()) for i, c in enumerate(in_window)]
-    # the chart's few: the newest judged cross at each level, the newest DESK_MARKERS levels
-    newest_at = {}
-    for it in items:
-        if it["kind"] in (CROSS_CONFIRMED, CROSS_REJECTED):
-            newest_at[it["price"]] = it
+    items = []
+    for i, c in enumerate(in_window):
+        names = " + ".join(c.get("level_names") or [c.get("level_name")])
+        cid = c.get("cross_id")                      # external-key-ok: ed_console.db level_crosses column
+        items.append({"key": f"x{cid}", "n": i + 1, "ts": c["ts_utc"], "dom": "LEVELS",
+                      "price": c.get("level_value"), "dir": c.get("direction"), "marker": False,
+                      "title": f"Crossed {_CROSS_WORD.get(c.get('direction'), 'through')} {names}",
+                      "detail": f"{_f2(c.get('level_value'))} · spot {_f2(c.get('spot_at_cross'))} at the cross",
+                      "src": "level_crosses"})
+    # the chart's few: the newest cross at each level, for the newest DESK_MARKERS levels
+    newest_at = {it["price"]: it for it in items}
     for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-DESK_MARKERS:]:
         it["marker"] = True
     t = get_terrain(ticker=tk)                       # the same payload the terrain route serves
@@ -3439,43 +3442,9 @@ def get_desk_events(ticker: str = Query(...),
                                           for d in ("up", "down")}})
 
 
-#: A level cross, judged by the completed Schwab 1-minute bar of its minute (every one of 77,802
-#: L1 last-trade prices fell inside its minute's bar, 2026-09-28): CONFIRMED when the bar closed
-#: beyond the level on the cross's side, REJECTED when it closed back (or at the level); PENDING
-#: while that bar is not complete; NO_BAR when no completed bar was stored for the minute.
-#: Measured 2026-09-14..28, 34 tickers: 1,279 of 1,792 judged crosses confirmed, 513 rejected.
-CROSS_CONFIRMED, CROSS_REJECTED, CROSS_PENDING, CROSS_NO_BAR = "confirmed", "rejected", "pending", "no_bar"
-#: the chart draws the newest confirmed or rejected cross at each level, for the newest this-many
-#: levels (the queue lists every cross)
+#: the chart draws the newest cross at each level, for the newest this-many levels (the queue
+#: lists every cross)
 DESK_MARKERS = 6
-#: a minute's completed bar arrives just after the minute ends; until this long after the
-#: minute began, a missing bar is still coming
-CROSS_BAR_DUE_SEC = 120
-
-
-def _cross_event(c: dict, n: int, closes: dict, now_ts: float) -> dict:
-    """One level cross as the Trade Desk's event (chart marker and queue entry alike)."""
-    names = " + ".join(c.get("level_names") or [c.get("level_name")])
-    lv, d = c.get("level_value"), c.get("direction")
-    minute = float(int(c["ts_utc"] // 60) * 60)
-    close = closes.get(minute)
-    if close is None:
-        kind = CROSS_PENDING if now_ts - minute < CROSS_BAR_DUE_SEC else CROSS_NO_BAR
-    elif lv is not None and (close > lv if d == "up" else close < lv):
-        kind = CROSS_CONFIRMED
-    else:
-        kind = CROSS_REJECTED
-    word = _CROSS_WORD.get(d, "through")
-    title = {CROSS_CONFIRMED: f"Confirmed cross {word} {names}", CROSS_REJECTED: f"Rejected at {names}",
-             CROSS_PENDING: f"Crossed {word} {names}", CROSS_NO_BAR: f"Crossed {word} {names}"}[kind]
-    detail = f"{_f2(lv)} · spot {_f2(c.get('spot_at_cross'))} at the cross · " + {
-        CROSS_CONFIRMED: f"the minute's bar closed {_f2(close)}, beyond the level",
-        CROSS_REJECTED: f"the minute's bar closed {_f2(close)}, back {'below' if d == 'up' else 'above'} the level",
-        CROSS_PENDING: "its minute's bar is not complete yet",
-        CROSS_NO_BAR: "no completed bar was stored for its minute"}[kind]
-    cid = c.get("cross_id")                          # external-key-ok: ed_console.db level_crosses column
-    return {"key": f"x{cid}", "n": n, "ts": c["ts_utc"], "dom": "LEVELS", "kind": kind, "price": lv,
-            "dir": d, "marker": False, "title": title, "detail": detail, "src": "level_crosses + completed 1m bar"}
 
 
 #: At most one push per this many seconds per page; changes in between arrive together.

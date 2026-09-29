@@ -63,7 +63,6 @@
   var LEVEL_TITLE_W = 150;   // px along the pane's right edge where the level lines' titles are drawn
   var LEVEL_LABEL_GAP = 18;  // px: a level label's height; closer labels would overlap
   var PROFILE_FRAC = 0.16;   // the volume profile's share of the pane's width, from the left edge
-  var MIN_VIEW_BARS = 60;    // the default view shows at least this many bars
   // event callouts sit in a strip above the candles: rows of numbers (and their labels) from
   // CALLOUT_TOP, CALLOUT_ROW apart, CALLOUT_ROWS rows; the price scale keeps the strip clear
   var CALLOUT_TOP = 50, CALLOUT_ROW = 28, CALLOUT_ROWS = 2, CALLOUT_R = 11;
@@ -460,19 +459,16 @@
     });
     btnLatest.addEventListener('click', function () { chart.timeScale().scrollToRealTime(); });
 
-    // the default view: from the bar at S.viewFrom (a served time, e.g. the session's open) to the
-    // latest, at least MIN_VIEW_BARS; else the newest 140 (60 daily); the volume profile's share of
-    // the pane on the left is left empty so the profile is not drawn under the candles
+    // the default view: from the first bar at or after S.viewFrom (a served time, e.g. the
+    // session's open) to the latest; with no bar there yet, the newest 140 (60 daily)
     function showRecent() {
       var n = S.bars.length; if (!n) return;
       var from = n - (S.tf === 'D' ? 60 : 140);
       if (S.viewFrom != null) {
-        var i = barIndexAt(S.viewFrom); if (i < 0 || S.bars[i].t < S.viewFrom) i += 1;   // the first bar at or after it
-        from = Math.min(i, n - MIN_VIEW_BARS);
+        var i = barIndexAt(S.viewFrom); if (i < 0 || S.bars[i].t < S.viewFrom) i += 1;
+        if (i < n) from = i;
       }
-      from = Math.max(-2, from);
-      var pad = vprofile.rows.length ? (n + 8 - from) * PROFILE_FRAC / (1 - PROFILE_FRAC) : 0;
-      chart.timeScale().setVisibleLogicalRange({ from: from - pad, to: n + 8 });
+      chart.timeScale().setVisibleLogicalRange({ from: Math.max(-2, from - 1), to: n + 8 });
     }
     function resetAll() {
       chart.priceScale('right').applyOptions({ autoScale: true, mode: LWC.PriceScaleMode.Normal });
@@ -801,7 +797,7 @@
           autoScale: chart.priceScale('right').options().autoScale, levelsShown: S.priceLines.length,
           pinned: S.pinned, tool: S.tool, drawings: draw.lines.length + S.hlines.length,
           profile: { rows: profile.rows.length, style: profile.style, selected: profile.sel },
-          heatCells: heat.h ? heat.h.cells.length : 0, zones: zones.zones.length, volumeProfileBins: vprofile.rows.length, volumeProfileMark: vprofile.mark ? vprofile.mark.label : null,
+          heatCells: heat.h ? heat.h.cells.length : 0, zones: zones.zones.length, volumeProfileBins: vprofile.rows.length,
           levels: S.priceLines.map(function (l) { return l.options().title; }),
           markers: S.markersShown || [], markerSelected: S.markerSel || null, callouts: callouts.centers,
           priceTop: candles.coordinateToPrice(0), priceBottom: candles.coordinateToPrice(Math.max(1, plot.clientHeight - 30)) };

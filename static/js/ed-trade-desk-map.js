@@ -310,11 +310,11 @@
     paintChartLevels();
     var P = S.chart.palette();
     // the served few (marker flag): each at its level's price and its time, numbered, named by its
-    // served kind; the queue lists every event, and a marker and its entry are one served item
-    var word = { confirmed: 'Confirmed', rejected: 'Rejected' };
+    // served direction; the queue lists every event, and a marker and its entry are one served item
+    var word = { up: 'Crossed above', down: 'Crossed below' };
     S.chart.setMarkers(queueItems().filter(function (q) { return q.marker; }).map(function (q) {
-      return { id: q.key, time: q.ts, price: q.price, num: q.n, text: word[q.kind] || '',
-        color: q.kind === 'rejected' ? P.warn : q.dir === 'up' ? P.up : P.down, meta: q.key };
+      return { id: q.key, time: q.ts, price: q.price, num: q.n, text: word[q.dir] || '',
+        color: q.dir === 'up' ? P.up : P.down, meta: q.key };
     }), function (key) { selectItem(key, false); });
   }
 
@@ -326,7 +326,7 @@
     $('tdmQueueCount').textContent = items.length ? String(items.length) : '';
     if (S.events === undefined) { host.innerHTML = '<div class="tdm-empty">Loading ' + esc(shown()) + ' events…</div>'; return; }
     if (!items.length) {
-      host.innerHTML = '<div class="tdm-empty">Nothing in the ' + esc(windowLabel()) + '. Level crosses (confirmed or rejected by their minute\'s bar), wall breaches and book size walls land here.</div>';
+      host.innerHTML = '<div class="tdm-empty">Nothing in the ' + esc(windowLabel()) + '. Level crosses, wall breaches and book size walls land here.</div>';
       return;
     }
     host.innerHTML = items.map(function (q) {

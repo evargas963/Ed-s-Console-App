@@ -12,11 +12,10 @@ const { mockPriceSocket } = require('./fixtures/price_socket');
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
 const EVENTS = {
   ticker: 'SPY', tf: '30', window_start_ts_utc: CROSSES[2].ts_utc - 60, window_label: 'this session (served)',
-  // the served shape (server._cross_event): each cross judged by its minute's bar, at its level's price
+  // the served shape (server.get_desk_events): each cross as recorded, at its level's price
   items: CROSSES.map((c, i) => ({ key: 'x' + c.cross_id, n: 3 - i, ts: c.ts_utc, dom: 'LEVELS', dir: c.direction, marker: true,
-    kind: i === 1 ? 'rejected' : 'confirmed', price: c.level_value,
-    title: (i === 1 ? 'Rejected at ' : 'Confirmed cross ' + (c.direction === 'up' ? 'above ' : 'below ')) + c.level_name,
-    detail: c.level_value.toFixed(2), src: 'level_crosses + completed 1m bar' })),
+    price: c.level_value, title: 'Crossed ' + (c.direction === 'up' ? 'above ' : 'below ') + c.level_name,
+    detail: c.level_value.toFixed(2), src: 'level_crosses' })),
   cross_counts: { up: CROSSES.filter((c) => c.direction === 'up').length, down: CROSSES.filter((c) => c.direction !== 'up').length },
 };
 const SPOT = 771.3;
@@ -190,10 +189,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmLookback')).toHaveText('this session (served)');
     await expect(page.locator('#tdmAgree')).toContainText('Above flip');
     // the served session volume profile, every bin drawn at the chart's left edge, with its basis
-    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileBins)).toBe(LEVELS.volume_profile.bins.length);
-    // its served POC is marked across the profile, named an estimate
-    expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileMark)).toBe('POC est ' + LEVELS.volume_profile.poc.toFixed(2));
-    await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileBins)).toBe(LEVELS.volume_profile.bins.length);    await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
     // each card draws its served series in the reference's chart type (2026-09-28): depth areas,
     // volume bars, and lines for put/call OI and ATM IV by expiry (a null expiry breaks the line)
     await expect(page.locator('#tdmCardLiq .tdm-plot svg path')).toHaveCount(4);
