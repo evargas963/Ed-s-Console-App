@@ -7,11 +7,12 @@
    are RED in BOTH themes; blue is interaction; amber is warning/stale. */
 :root {
   /* ---- shared, theme-independent ---- */
-  /* the approved reference uses ONE clean humanist sans (Inter) everywhere, with tabular figures
-     for numeric columns - there is no monospace in the design. Both roles resolve to Inter; numeric
-     alignment comes from font-variant-numeric: tabular-nums on the number-bearing elements. */
-  --ed-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --ed-mono: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  /* the Trade Desk reference (2026-09-28) is set in one DIN-style face everywhere, with tabular
+     figures for numeric columns; Bahnschrift is Windows' own DIN, so no font is fetched. Panel and
+     card titles are the same face condensed, in capitals. */
+  --ed-sans: 'Bahnschrift', 'DIN Alternate', 'Barlow', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --ed-mono: var(--ed-sans);
+  --ed-title-stretch: 87.5%; --ed-title-spacing: .06em;
   --ed-r: 4px; --ed-r-lg: 6px;
   --ed-rail-w: 56px; --ed-rail-w-open: 234px;
   --ed-header-h: 58px; --ed-subnav-h: 44px; --ed-viewbar-h: 42px;
@@ -20,16 +21,16 @@
 
 /* ================= DARK (approved primary) ================= */
 :root[data-theme="dark"] {
-  --ed-bg:#060a11; --ed-rail:#0a101a; --ed-header:#0c131d;
-  --ed-panel:#0f1622; --ed-panel-2:#17202e; --ed-panel-3:#202c3e;
-  --ed-edge:#324055; --ed-edge-soft:#212d3d; --ed-edge-strong:#465873;
-  --ed-ink:#f6f9fd; --ed-ink-2:#d3ddeb; --ed-ink-3:#a7b6c9; --ed-ink-4:#6a7b91;
-  --ed-accent:#3d8bfd; --ed-accent-2:#61a5ff; --ed-accent-bg:#12243d; --ed-accent-edge:#28517f;
-  --ed-pos:#23c06b; --ed-pos-ink:#3ddc84; --ed-neg:#e5484d; --ed-neg-ink:#ff6b6b;
-  --ed-live:#2ecc71; --ed-warn:#e9b949; --ed-stale:#d9822b; --ed-alert:#ff5d5d; --ed-quiet:#5f6f84;
-  --ed-native:#2ecc71; --ed-derived:#3d8bfd; --ed-proxy:#e9b949; --ed-research:#a86fe3;
+  --ed-bg:#060a11; --ed-rail:#080d15; --ed-header:#0a1019;
+  --ed-panel:#0b121c; --ed-panel-2:#111a27; --ed-panel-3:#18243a;
+  --ed-edge:#1f2b3c; --ed-edge-soft:#172231; --ed-edge-strong:#2d3d55;
+  --ed-ink:#eef3f9; --ed-ink-2:#c9d4e2; --ed-ink-3:#9eaec2; --ed-ink-4:#6a7b91;
+  --ed-accent:#2f8cff; --ed-accent-2:#5aa7ff; --ed-accent-bg:#0c2544; --ed-accent-edge:#2466c2;
+  --ed-pos:#22c55e; --ed-pos-ink:#35d977; --ed-neg:#ef4444; --ed-neg-ink:#ff5d5d;
+  --ed-live:#22c55e; --ed-warn:#f2c230; --ed-stale:#f08c21; --ed-alert:#ff4d4f; --ed-quiet:#5f6f84;
+  --ed-native:#22c55e; --ed-derived:#2f8cff; --ed-proxy:#f2c230; --ed-research:#b44dff;
   --ed-native-bg:#10281b; --ed-derived-bg:#0f2338; --ed-proxy-bg:#2c2410; --ed-research-bg:#241635;
-  --ed-heat-pos:#23c06b; --ed-heat-neg:#e5484d; --ed-heat-zero:#121a25;
+  --ed-heat-pos:#22c55e; --ed-heat-neg:#ef4444; --ed-heat-zero:#0f1723;
   color-scheme: dark;
 }
 

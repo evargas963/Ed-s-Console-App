@@ -72,7 +72,8 @@ def price_row(ticker: str) -> dict[str, Any]:
         # has traded this session": live feed + no trade yet reads NO TRADE YET, not no feed
         "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES"),
         # market closed: the last streamed trade, a past observation labelled with its time
-        "closed_last": {"spot_disp": f"{float(last['spot']):.2f}", "as_of": ct_label(last["trade_ts"])}
+        "closed_last": {"price": float(last["spot"]), "spot_disp": f"{float(last['spot']):.2f}",
+                        "as_of": ct_label(last["trade_ts"])}
                        if last else None,
         "bid": field("bid"),
         "ask": field("ask"),

@@ -4089,8 +4089,14 @@ def get_levels(ticker: str = Query(...),
     # the ladder in price order (highest first, unpriced last), and the order by distance to spot
     levels = (sorted((r for r in levels if r.get("price") is not None), key=lambda r: r["price"], reverse=True)
               + [r for r in levels if r.get("price") is None])
-    by_distance = [r["id"] for r in sorted((r for r in levels if r["distance"] is not None),
-                                           key=lambda r: abs(r["distance"]))]
+    # the order the chart draws them in: nearest the live price, or on a closed market nearest the
+    # last streamed trade, a past observation named in by_distance_ref (display order only:
+    # distance, near_spot and side stay live-price values)
+    from app.options.order_flow.streaming import price_row
+    last = None if spot is not None else (price_row(tk) or {}).get("closed_last")
+    ref = spot if spot is not None else last["price"] if last else None
+    by_distance = [] if ref is None else [r["id"] for r in sorted((r for r in levels if r.get("price") is not None),
+                                                                  key=lambda r: abs(r["price"] - ref))]
 
     families_absent = list(snap.families_absent)
     if em is None or spot is None:
@@ -4109,6 +4115,9 @@ def get_levels(ticker: str = Query(...),
         "bar_source": snap.bar_source,
         "levels": levels,
         "by_distance": by_distance,
+        "by_distance_ref": None if ref is None else
+        {"price": ref, "source": "live price"} if spot is not None else
+        {"price": ref, "source": "last trade", "as_of": last["as_of"]},
         # The VWAP curve and its σ bands, CARRIED. The standalone pages each
         # used to accumulate their own from /api/bars1m — two more VWAPs for one
         # session, drawn beside a level neither of them agreed with.

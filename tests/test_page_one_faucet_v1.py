@@ -261,6 +261,36 @@ def test_on_a_closed_market_the_last_trade_is_a_labelled_past_observation(monkey
                                      received_ts=time.time())
     row = live_price_rows.price_row("SPY")
     assert (row["spot"], row["spot_state"]) == (None, "closed")
-    assert row["closed_last"] == {"spot_disp": "772.04", "as_of": "Fri 09/25 06:59 PM CT"}
+    assert row["closed_last"] == {"price": 772.04, "spot_disp": "772.04", "as_of": "Fri 09/25 06:59 PM CT"}
     assert server.resolve_spot("SPY")[0] is None
     assert server.current_spot_state(server.SPOT_SOURCE_PLANE, "SPY") == "stale"
+
+
+def test_on_a_closed_market_the_levels_are_ordered_from_the_last_trade(monkeypatch):
+    """Monday 2026-09-28 21:40 ET: the Trade Desk chart drew no key level at all after the close --
+    /api/levels served 30 SPY levels and an empty by_distance, the order the chart draws them in,
+    because it was measured only from a live price. Closed, it is measured from the last streamed
+    trade and names it; distance and near-spot stay live-only. Real SPY 1-minute bars
+    (2026-09-24 and 25); the last trade is the one the daemon captured."""
+    from datetime import datetime as _dt
+    import live_market_plane as lmp
+    import live_price_rows
+    import time_et as te
+    from app.options.order_flow import streaming
+    from tests.feed_live_helper import mark_feed_live
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
+                    .read_text(encoding="utf-8"))
+    monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
+    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
+    monkeypatch.setattr(lmp, "is_capturable_session", lambda: False)
+    monkeypatch.setattr(live_price_rows, "is_capturable_session", lambda: False)
+    mark_feed_live("SPY")
+    lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
+                                     received_ts=time.time())
+    monkeypatch.setitem(streaming._price_rows, "SPY", live_price_rows.price_row("SPY"))
+    body = json.loads(server.get_levels(ticker="SPY").body)
+    priced = [r for r in body["levels"] if r["price"] is not None]
+    assert len(priced) > 5 and body["spot"] is None
+    assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - 772.04))]
+    assert body["by_distance_ref"] == {"price": 772.04, "source": "last trade", "as_of": "Fri 09/25 06:59 PM CT"}
+    assert all(r["distance"] is None and r["near_spot"] is False for r in priced)

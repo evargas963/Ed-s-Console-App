@@ -94,7 +94,9 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
   generation from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
   → `/api/levels`, and the liquidity zones of `/api/liquidity-snapshot` are built from that same
-  snapshot (today only; no checkpoint or past-date path).
+  snapshot (today only; no checkpoint or past-date path). `/api/levels` also serves the order the
+  chart draws them in (`by_distance`): nearest the live price, or on a closed market nearest the
+  last streamed trade, named in `by_distance_ref`; distance, near-spot and side stay live-only.
 - **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per board or
   viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule (#312).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the

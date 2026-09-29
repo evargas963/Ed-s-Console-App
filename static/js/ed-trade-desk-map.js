@@ -125,17 +125,25 @@
     });
     var fam = $('tdmFamilies');
     fam.innerHTML = FAMILIES.map(function (f) {
-      return '<button type="button" class="tdm-fam fam-' + f.id + '" data-fam="' + f.id + '"><i></i>' + f.lbl + '</button>'; }).join('');
+      return '<button type="button" class="tdm-fam fam-' + f.id + '" data-fam="' + f.id + '"><i></i>' + f.lbl + '<b data-famv="' + f.id + '"></b></button>'; }).join('') +
+      '<span class="tdm-fam-note"><i class="tdm-prof"></i>Volume profile (RTH): not drawn — its price bins are not served</span>' +
+      '<span class="tdm-fam-note" id="tdmLevelsRef"></span>';
     fam.addEventListener('click', function (e) {
       var b = e.target.closest('[data-fam]'); if (!b) return;
       var id = b.getAttribute('data-fam'); S.fam[id] = S.fam[id] === 0 ? 1 : 0;   // a family not yet saved is on
-      sset('ed.desk.fam', JSON.stringify(S.fam)); paintFamilies(); paintChartLevels();
+      sset('ed.desk.fam', JSON.stringify(S.fam)); paintChartLevels();
     });
     paintFamilies(); paintTfButtons(); paintStyle();
   }
   function paintFamilies() {
     document.querySelectorAll('#tdmFamilies [data-fam]').forEach(function (b) {
       b.classList.toggle('on', S.fam[b.getAttribute('data-fam')] !== 0); });
+    var pd = pdValueArea(), vw = levelPrice('VWAP');
+    var v = { vwap: vw == null ? '' : num(vw), prior_day: pd.val == null || pd.vah == null ? '' : 'VA ' + num(pd.val) + ' – ' + num(pd.vah) };
+    document.querySelectorAll('#tdmFamilies [data-famv]').forEach(function (b) { b.textContent = v[b.getAttribute('data-famv')] || ''; });
+    // after the close the levels are ordered from the last trade, a past observation: say so
+    var ref = S.levels && S.levels.by_distance_ref, el = $('tdmLevelsRef');
+    if (el) el.textContent = ref && ref.source === 'last trade' ? 'Levels nearest the last trade ' + num(ref.price) + ' (' + ref.as_of + ')' : '';
   }
   function paintTfButtons() {
     document.querySelectorAll('#tdmToolbar [data-tf]').forEach(function (b) {
@@ -210,8 +218,9 @@
   // ------------------------------------------------------------------ chart overlays
   function levelList() {
     var P = S.chart.palette(), out = [];
-    var style = { value_area: [P.accent2, 2, 1], prior_day: [P.ink3, 1, 1], opening_range: [P.stale, 2, 1], overnight: [P.research, 2, 1],
-      expected_move: [P.accent2, 3, 1], gamma: [P.research, 2, 1] };
+    // the reference's key: value-area levels amber, every other key level orange dashed
+    var style = { value_area: [P.warn, 2, 1], prior_day: [P.stale, 2, 1], opening_range: [P.stale, 2, 1], overnight: [P.stale, 2, 1],
+      expected_move: [P.stale, 3, 1], gamma: [P.research, 2, 1] };
     var gamma = { call_wall: ['Call wall', P.up, 0, 2], put_wall: ['Put wall', P.down, 0, 2],
       gamma_flip: ['γ flip', P.accent, 0, 2], max_pain: ['Max pain', P.ink3, 3, 1] };
     var byId = {}; ((S.levels && S.levels.levels) || []).forEach(function (l) { byId[l.id] = l; });
@@ -226,16 +235,22 @@
     });
     return out;
   }
+  function levelPrice(id) {
+    var l = ((S.levels && S.levels.levels) || []).filter(function (x) { return x.id === id; })[0];
+    return l && l.price != null ? Number(l.price) : null;
+  }
+  function pdValueArea() { return { val: levelPrice('PD_VAL'), vah: levelPrice('PD_VAH') }; }
   function paintStyle() {
     if (S.chart) S.chart.setStyle(S.style);
     var b = $('tdmStyle'); if (b) { b.classList.toggle('on', S.style === 'line'); }
   }
   function paintChartLevels() {
     if (!S.chart) return;
+    paintFamilies();
     S.chart.setLevels(levelList());
-    var L = (S.levels && S.levels.levels) || [], vah = null, val = null;
-    L.forEach(function (l) { if (l.id === 'TODAY_VAH') vah = l.price; if (l.id === 'TODAY_VAL') val = l.price; });
-    S.chart.setValueArea(S.fam.value_area ? val : null, S.fam.value_area ? vah : null);
+    // the band is yesterday's value area, as the reference draws it; today's are level lines
+    var pd = pdValueArea(), on = S.fam.prior_day !== 0;
+    S.chart.setValueArea(on ? pd.val : null, on ? pd.vah : null);
     S.chart.setVwap(S.fam.vwap && S.levels ? S.levels.vwap_series : []);
     var T = S.fam.gamma !== 0 && S.terrain;
     S.chart.setWallBands(T ? T.call_wall_range : null, T ? T.put_wall_range : null);
@@ -263,11 +278,11 @@
       return;
     }
     host.innerHTML = items.map(function (q) {
-      return '<button type="button" class="tdm-q' + (q.key === S.sel ? ' sel' : '') + (q.warn ? ' warn' : '') + '" data-q="' + esc(q.key) + '">' +
-        '<span class="tdm-q-n ' + (q.dir === 'up' ? 'up' : q.dir === 'down' ? 'dn' : '') + '">' + (q.n || '•') + '</span>' +
-        '<span class="tdm-q-b"><span class="tdm-q-t">' + esc(q.title) + '</span>' +
+      return '<button type="button" class="tdm-q ' + (q.warn ? 'warn' : q.dir === 'up' ? 'up' : q.dir === 'down' ? 'dn' : '') + (q.key === S.sel ? ' sel' : '') + '" data-q="' + esc(q.key) + '">' +
+        '<span class="tdm-q-n">' + (q.n || '•') + '</span>' +
+        '<span class="tdm-q-b"><span class="tdm-dom">' + esc(q.dom) + '</span><span class="tdm-q-t">' + esc(q.title) + '</span>' +
         '<span class="tdm-q-d">' + esc(q.detail) + '</span>' +
-        '<span class="tdm-q-m"><span class="tdm-dom">' + esc(q.dom) + '</span>' + (q.ts == null ? 'time not reported' : esc(whenCT(q.ts)) + ' CT') + ' · ' + esc(q.src) + '</span></span></button>';
+        '<span class="tdm-q-m">' + esc(q.src) + ' · ' + (q.ts == null ? 'time not reported' : esc(whenCT(q.ts)) + ' CT') + '</span></span></button>';
     }).join('');
   }
   function selectItem(key, scroll) {

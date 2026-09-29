@@ -64,6 +64,31 @@ function watchErrors(page) {
 }
 
 test.describe('Trade Desk renders served values', () => {
+  test('Desk after the close: levels drawn from the served order, named from the last trade; dark by default', async ({ page }) => {
+    // 2026-09-28 21:40 ET: after the close /api/levels served an empty by_distance and the chart drew
+    // no key level; the server now orders them from the last trade and names it (by_distance_ref)
+    const errs = watchErrors(page);
+    await page.route('**/api/**', (route) => {
+      const url = route.request().url();
+      let body = { available: false };
+      if (url.includes('/api/levels')) body = Object.assign({}, LEVELS, { spot: null,
+        levels: LEVELS.levels.map((l) => Object.assign({}, l, { distance: null, side: null })),
+        by_distance_ref: { price: SPOT, source: 'last trade', as_of: 'Fri 09/25 03:59 PM CT' } });
+      else if (url.includes('/api/bars1m')) body = BARS;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
+    await expect(page.locator('#tdmLevelsRef')).toHaveText('Levels nearest the last trade ' + SPOT.toFixed(2) + ' (Fri 09/25 03:59 PM CT)');
+    // max pain (770) is inside the one bar's price range; PDH (773.50) is above it, pinned at the edge
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBe(1);
+    await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('PDH 773.50');
+    // the profile's place in the key says why it is not drawn
+    await expect(page.locator('#tdmFamilies')).toContainText('Volume profile (RTH): not drawn');
+    expect(errs).toEqual([]);
+  });
+
   test('Desk: the served queue, counts, book side, tape side and flip relation', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
