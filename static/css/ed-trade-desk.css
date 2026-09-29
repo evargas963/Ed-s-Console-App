@@ -101,7 +101,6 @@
 .tdm-fam:not(.on) i{opacity:.3}
 .tdm-fam-note{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ed-ink-3)}
 .tdm-fam-note:empty{display:none}
-.tdm-prof{width:14px;height:10px;background:repeating-linear-gradient(180deg,var(--ed-ink-3) 0 2px,transparent 2px 4px);opacity:.6}
 .tdm-chart-wrap{position:relative;flex:1;min-height:300px}
 .tdm-chart{position:absolute;inset:0}
 .tdm-chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ed-warn);font-size:13px;z-index:5;

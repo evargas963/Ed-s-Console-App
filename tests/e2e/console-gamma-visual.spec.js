@@ -60,9 +60,7 @@ async function intercept(page) {
     else if (url.includes('/api/terrain')) body = TERRAIN;
     else if (url.includes('/api/bars1m')) body = BARS;
     else if (url.includes('/api/chain')) body = CHAIN;
-    else if (url.includes('/api/expiries')) body = { expiries: EXPS.map(function (e) { return e.expiry; }) };
-    else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    else if (url.includes('/api/expiries')) body = { expiries: EXPS.map(function (e) { return e.expiry; }) };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
 }
 

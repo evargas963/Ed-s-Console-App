@@ -102,13 +102,6 @@
       return { col: j, symbols: symbols, rows: rows };
     });
   }
-  function _heatmapVisibleContracts(cells, rowSel, cols) {
-    var seen = {}, out = [];
-    _heatmapVisibleContractsByColumn(cells, rowSel, cols).forEach(function (entry) {
-      entry.symbols.forEach(function (sym) { if (!seen[sym]) { seen[sym] = true; out.push(sym); } });
-    });
-    return out;
-  }
 
 
   // Operator field-inventory audit (2026-09-13): the ONE canonical strike x expiry

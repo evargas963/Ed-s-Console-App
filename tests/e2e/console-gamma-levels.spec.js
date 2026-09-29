@@ -35,9 +35,7 @@ async function intercept(page) {
       strikes: [100], cells: [{ strike: 100, gex: [1] }] };
     else if (url.includes('/api/terrain/strikes')) body = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false, today: { all: [[100, 1, 1]] } };
     else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_stale: false };
-    else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11'] };
-    else if (url.includes('/api/health')) body = { status: 'ok', capabilities: { schwab: true } };
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11'] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
 }
 
