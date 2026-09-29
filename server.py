@@ -672,11 +672,6 @@ def _get_route_offload_executor() -> ThreadPoolExecutor:
     return _route_offload_executor
 
 
-#: a prior session with fewer 1-minute bars than this (of ~390 RTH minutes) is disclosed as
-#: partial on the price levels built from it
-LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
-
-
 # (REST fast-quote writer DELETED 2026-09-24, independent-audit finding #3: it wrote REST
 # quotes into live_market_plane by REPLACING the ticker's row -- and streamed LEVELONE deltas
 # merge onto the prior row, so the next streamed delta could inherit REST bid/ask under the
@@ -743,19 +738,24 @@ from calibration.complete_chain_capture import (
 )
 
 
+#: one bar as SQLite writes values in SQL (quote: every stored double exactly, NULL as NULL)
+_BAR_TEXT = " || ' ' || ".join(f"quote({f})" for f in ("bar_start_ts_utc", "open", "high", "low", "close", "volume"))
+
+
 def _read_bars_1m(tk: str, limit: int) -> list:
     """The newest `limit` rows of price_bars_1m for `tk`, oldest first:
-    (bar_start_ts_utc, open, high, low, close, volume)."""
+    (bar_start_ts_utc, open, high, low, close, volume). Read in one SQLite step: a row-by-row read
+    hands the interpreter lock back at every row and waits for it behind the option pricing."""
     import sqlite3 as _sq
     con = _sq.connect(f"file:{get_db().db_path}?mode=ro", uri=True, timeout=10.0)
     try:
-        rows = con.execute(
-            "SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
-            "WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?",
-            (ticker_storage_key(tk), int(limit))).fetchall()
+        (text,) = con.execute(
+            f"SELECT group_concat({_BAR_TEXT}, ';' ORDER BY bar_start_ts_utc) FROM (SELECT * FROM "
+            "price_bars_1m WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?)",
+            (ticker_storage_key(tk), int(limit))).fetchone()
     finally:
         con.close()
-    return list(reversed(rows))
+    return [tuple(None if v == "NULL" else float(v) for v in row.split(" ")) for row in text.split(";")] if text else []
 
 
 def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> "list[Candle]":
@@ -780,24 +780,35 @@ def _write_streamed_bar(msg: dict) -> bool:
         # not a number (AGENTS.md rule 2): absent, -999, text, NaN or infinity
         log.warning("streamed bar for %s lacks a valid field, not written: %s", msg.get("symbol"), msg)
         return False
-    if (get_db().upsert_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo,
-                                                       close=c, volume=schwab_count(msg.get("volume")))])
-            and _gamma_surface_wanted(ticker_storage_key(msg["symbol"]))):
-        # a viewed ticker's price levels are built from its bars: rebuilt now, off this thread
-        _get_route_offload_executor().submit(_publish_price_levels, msg["symbol"])
+    get_db().upsert_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo,
+                                                   close=c, volume=schwab_count(msg.get("volume")))])
     push_changes.changed(msg["symbol"], push_changes.LIQUIDITY)
     return True
 
 
-def _bar_writer() -> None:
-    """The price_bars_1m writer: every streamed bar the capture daemon pushes, as it arrives."""
-    from app.options.order_flow.streaming import streamed_bars
-    while True:
-        msg = streamed_bars.get()
+def _write_streamed_bars(msgs: list) -> None:
+    """Write streamed bars, then build the price levels of each ticker written: every bar is
+    written before any level is built (a minute's bars for the whole board arrive together)."""
+    written = []
+    for msg in msgs:
         try:
-            _write_streamed_bar(msg)
+            if _write_streamed_bar(msg):
+                written.append(msg["symbol"])
         except Exception as e:  # noqa: BLE001 -- logged; the next bar is still written
             log.warning("streamed bar for %s not written: %s", msg.get("symbol"), e)
+    for tk in dict.fromkeys(written):
+        _publish_price_levels(tk)
+
+
+def _bar_writer() -> None:
+    """The price_bars_1m writer: every streamed bar the capture daemon pushes, as it arrives,
+    with the bars already waiting behind it."""
+    from app.options.order_flow.streaming import streamed_bars
+    while True:
+        msgs = [streamed_bars.get()]
+        while not streamed_bars.empty():
+            msgs.append(streamed_bars.get_nowait())
+        _write_streamed_bars(msgs)
 
 
 def start_bar_writer() -> None:
@@ -863,16 +874,6 @@ def _is_loggable_session() -> bool:
     return win is not None and win[0] <= et.hour * 60 + et.minute <= win[1]
 
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Phase 2A (operator 2026-08-08): `_compute_vwap_from_bars` was DELETED here.
-# It was a second, independent VWAP implementation — a fallback for
-# fetch_price_levels returning vwap=None — and it wrote into the snapshot table
-# and from there into model features, so a persisted row could carry a VWAP that
-# /api/levels never served. The one VWAP accumulation is now
-# liquidity_value_engine.compute_session_vwap_path, reached only through the
-# canonical PriceLevelSnapshot. Absent VWAP persists NULL (RC-68).
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3474,8 +3475,7 @@ async def get_changes(ticker: str = Query(...)):
     from app.options.order_flow.streaming import set_streaming_active_ticker
 
     t = ticker_storage_key(_required_ticker(ticker))
-    _get_route_offload_executor().submit(lambda: (set_streaming_active_ticker(t), _ensure_default_option_contract(t),
-                                                  _publish_price_levels(t)))
+    _get_route_offload_executor().submit(lambda: (set_streaming_active_ticker(t), _ensure_default_option_contract(t)))
     client = push_changes.subscribe(t)
 
     async def event_generator():
@@ -3969,48 +3969,25 @@ def api_build():
     }
 
 
-def _canonical_price_level_bars(tk: str, session_date) -> tuple[list, str, list]:
-    """THE bar input for the canonical price-level snapshot: the completed Schwab 1m bars in
-    price_bars_1m. A thin prior session is disclosed, never filled."""
-    from liquidity_value_engine import _bar_dt_et, _bars_to_list, prior_trading_session_date
-
-    bars_norm = _bars_to_list(_liquidity_1m_bars(tk))
-    degraded: list[dict] = []
-    prior = prior_trading_session_date(bars_norm, session_date)
-    if prior is not None:
-        n_prior = sum(1 for b in bars_norm if (lambda d: d is not None and d.date() == prior)(_bar_dt_et(b)))
-        if n_prior < LEVELS_PRIOR_SESSION_MIN_BARS:
-            degraded.append({"family": "prior_day",
-                             "reason": (f"prior session {prior} holds only {n_prior} of >= "
-                                        f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; prior-day "
-                                        f"levels derive from a partial tape"),
-                             "last_good_ts_utc": None})
-    return bars_norm, "price_bars_1m", degraded
-
-
 def _publish_price_levels(ticker: str) -> None:
-    """THE producer of a ticker's price-level snapshot (Phase 2A): materialized from its bars
-    for today's session when its input changes -- the bar writer after each bar of a viewed
-    ticker, a page opening a ticker, and the levels loop for a ticker with none yet today (a
-    restart, a new session date). The routes read what it published
-    (canonical_price_level_snapshot). A failed build is logged; the routes say the levels are
-    absent, or serve the last published snapshot with its as-of time."""
-    from liquidity_value_engine import PlaybookConfig, materialize_price_level_snapshot
+    """THE producer of a ticker's price-level snapshot (Phase 2A): materialized for today's
+    session from its completed Schwab 1m bars in price_bars_1m, by the bar writer after each of
+    the ticker's bars, and by the levels loop for a ticker with none yet today (a restart, a new
+    session date). The routes read what it published (canonical_price_level_snapshot). A failed
+    build is logged; the routes serve the last published snapshot with its as-of time, or say
+    the levels are absent."""
+    from liquidity_value_engine import PlaybookConfig, _bars_to_list, materialize_price_level_snapshot
     from time_et import now_et
 
     tk = ticker_storage_key(_required_ticker(ticker))
     before = canonical_price_level_snapshot(tk)
     try:
-        session_date = now_et().date()
-        bars_norm, bar_source, degraded = _canonical_price_level_bars(tk, session_date)
-        snap = materialize_price_level_snapshot(tk, session_date, bars_norm, bar_source=bar_source,
-                                                config=PlaybookConfig(), degraded=degraded)
-    except Exception as e:  # noqa: BLE001 -- logged; the next bar or view builds them
+        snap = materialize_price_level_snapshot(tk, now_et().date(), _bars_to_list(_liquidity_1m_bars(tk)),
+                                                bar_source="price_bars_1m", config=PlaybookConfig())
+    except Exception as e:  # noqa: BLE001 -- logged; the ticker's next bar builds them
         log.warning("price levels for %s not built: %s", tk, e)
         return
-    # a published snapshot that changed is pushed (the same object when its bars did not change);
-    # a first build is not: a page that found none reloads on the ticker's next bar
-    if before is not None and snap is not before:
+    if snap is not before:   # the same object when its bars did not change
         push_changes.changed(tk, push_changes.LEVELS)
 
 
@@ -4034,7 +4011,7 @@ def canonical_price_level_snapshot(ticker: str):
 
 #: why a route serves no price levels for a ticker
 NO_PRICE_LEVELS_REASON = ("no price levels published for this ticker today yet (they are built from its "
-                          "1-minute bars when a page opens the ticker and on each bar while it is viewed)")
+                          "1-minute bars on each new bar and at the console's start)")
 
 
 

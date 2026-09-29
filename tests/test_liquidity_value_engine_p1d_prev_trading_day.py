@@ -10,7 +10,13 @@ from __future__ import annotations
 from datetime import date, datetime, time as dtime
 from zoneinfo import ZoneInfo
 
-from liquidity_value_engine import PlaybookConfig, get_previous_day_levels
+from liquidity_value_engine import PlaybookConfig, _bars_to_list
+from liquidity_value_engine import get_previous_day_levels as _levels
+
+
+def get_previous_day_levels(bars, session_date, cfg):
+    """The engine's prior-day levels of bars normalized as its producer normalizes them."""
+    return _levels(_bars_to_list(bars), session_date, cfg)
 
 ET = ZoneInfo("America/New_York")
 

@@ -59,7 +59,7 @@ def _fresh(monkeypatch):
 
 def _mat(session, bars):
     return materialize_price_level_snapshot(
-        "ZZRC324", session, bars, bar_source="test_fixture", config=PlaybookConfig())
+        "ZZRC324", session, LVE._bars_to_list(bars), bar_source="test_fixture", config=PlaybookConfig())
 
 
 def test_an_interior_bar_change_is_a_new_generation(monkeypatch):

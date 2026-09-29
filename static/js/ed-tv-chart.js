@@ -802,10 +802,11 @@
           markers: S.markersShown || [], markerSelected: S.markerSel || null, callouts: callouts.centers,
           priceTop: candles.coordinateToPrice(0), priceBottom: candles.coordinateToPrice(Math.max(1, plot.clientHeight - 30)) };
       },
-      // where a price's profile row is drawn, in page coordinates (tests click it as a user would)
+      // where a price's profile row is drawn, in page coordinates (tests click it as a user would):
+      // the middle of the profile's band, clear of the pane edge the price axis moves as it settles
       profilePoint: function (price) {
         var y = candles.priceToCoordinate(price), r = plot.getBoundingClientRect();
-        return y == null ? null : { x: r.left + chart.timeScale().width() - 4, y: r.top + y };
+        return y == null ? null : { x: r.left + chart.timeScale().width() * (1 - profile.frac / 2), y: r.top + y };
       },
       setProfile: function (rows, style) { profile.set(rows, style); },
       // the volume profile's rows, and optionally one marked price {price, label, color} (its POC)

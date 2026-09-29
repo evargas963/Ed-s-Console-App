@@ -3,15 +3,21 @@ forwards them, the console writes them to price_bars_1m (its one writer), every 
 table. Only completed bars are served. A minute the stream did not deliver stays missing."""
 from __future__ import annotations
 
+import json
+import threading
+import time
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
 import server
 from app.market_data.schwab.streaming.live_push import is_forwarded
+from micro_structure import Candle
 from stream_spine import bar_msg
 from time_et import ct_label
 
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json"
 TK = "ZZBARS"
 T0 = 1_790_000_040.0            # a minute boundary
 
@@ -82,6 +88,35 @@ def test_a_minute_the_stream_did_not_deliver_stays_missing():
     assert [b.ts for b in server._bars_1m(TK)] == [T0, T0 + 60, T0 + 180]
 
 
+def test_bars_are_read_promptly_and_exactly_while_options_are_priced_in_the_same_process():
+    """The console prices option chains in the interpreter that serves the bars. Captured SPY bars
+    (one written without a volume) read beside a busy pure-Python thread, standing in for the option
+    pricing: every value comes back as stored, and the read does not wait on that thread per row."""
+    bars = [Candle(ts=b["timestamp"] / 1000.0, open=b["open"], high=b["high"], low=b["low"], close=b["close"],
+                   volume=b["volume"]) for b in json.loads(FIXTURE.read_text())["bars"]]
+    bars[-1] = Candle(ts=bars[-1].ts, open=bars[-1].open, high=bars[-1].high, low=bars[-1].low,
+                      close=bars[-1].close, volume=None)
+    server.get_db().upsert_1m_bars(TK, bars)
+    busy = threading.Event()
+
+    def price_options():
+        x = 0
+        while not busy.is_set():
+            for i in range(1000):
+                x += i * i
+
+    t = threading.Thread(target=price_options, daemon=True)
+    t.start()
+    try:
+        t0 = time.perf_counter()
+        read = server._bars_1m(TK, len(bars))
+        took = time.perf_counter() - t0
+    finally:
+        busy.set()
+        t.join()
+    assert [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in read] == \
+        [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in bars]
+    assert took < 1.0, f"{len(bars)} bars took {took:.2f} s beside a busy thread"
 
 
 def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute():

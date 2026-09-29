@@ -30,7 +30,8 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (103.5, "schwab_quote_last", 1.0))
     # This fixture tests WINDOW SELECTION with tiny sessions; the t12 coverage floor is
     # exercised by its own dedicated test below.
-    monkeypatch.setattr(srv, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
+    import liquidity_value_engine as lve
+    monkeypatch.setattr(lve, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
     import time_et as te
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 3, 10, 0, tzinfo=ET))
 
@@ -146,13 +147,11 @@ def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monke
 
 
 def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monkeypatch, tmp_path):
-    """2026-09-29 RTH: the first /api/levels after each bar write built the price levels inside
-    the request (3.4 s for XLE in the live console). The bar writer now publishes them when it
-    writes a bar of a viewed ticker (for all 44 tickers every minute it slowed the option-level
-    loop from about 85 s a cycle to 135 s), a new session date is built by the levels loop, and
-    the route reads what was published -- it reads no bar. Real Schwab SPY bars, 2026-09-24/25."""
+    """The bar writer publishes a ticker's price levels after each of its bars -- every ticker,
+    viewed or not, so a page switching to it finds them current; a new session date is built by
+    the levels loop; the route reads what was published and reads no bar. Real Schwab SPY bars,
+    2026-09-24/25."""
     import json
-    import time
     from datetime import datetime as _dt
     from pathlib import Path
 
@@ -172,7 +171,7 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monk
     monkeypatch.setattr(te, "now_et", lambda: now)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (None, "none", None))
     monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {})
-    monkeypatch.setattr(push_changes, "watched", lambda: {"SPY"})          # a page has SPY open
+    monkeypatch.setattr(push_changes, "watched", lambda: set())            # no page is open
     monkeypatch.delitem(_MATERIALIZED_SNAPSHOTS, ("SPY", "2026-09-25"), raising=False)
     monkeypatch.delitem(_MATERIALIZED_SNAPSHOTS, ("QQQ", "2026-09-25"), raising=False)
     db.upsert_1m_bars("SPY", [Candle(ts=b["timestamp"] / 1000.0, open=b["open"], high=b["high"], low=b["low"],
@@ -186,28 +185,25 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monk
     assert none_yet["generation"] is None and not reads
     assert {"family": "price_levels", "reason": srv.NO_PRICE_LEVELS_REASON} in none_yet["families_absent"]
 
-    # the bar writer writes the next bar and publishes the levels from it
+    # a minute's bars arrive together (SPY, and QQQ that no page views): every bar is written
+    # first, then each ticker's levels are published from its bars
     last = raw[-1]
-    assert srv._write_streamed_bar({"symbol": "SPY", "bar_start_ms": last["timestamp"], "open": last["open"],
-                                    "high": last["high"], "low": last["low"], "close": last["close"],
-                                    "volume": last["volume"]})
-    deadline = time.time() + 20
-    while srv.canonical_price_level_snapshot("SPY") is None and time.time() < deadline:
-        time.sleep(0.05)
+    order, upsert, publish = [], db.upsert_1m_bars, srv._publish_price_levels
+    monkeypatch.setattr(db, "upsert_1m_bars", lambda tk, bars: order.append(("bar", tk)) or upsert(tk, bars))
+    monkeypatch.setattr(srv, "_publish_price_levels", lambda tk: order.append(("levels", tk)) or publish(tk))
+    srv._write_streamed_bars([
+        {"symbol": "SPY", "bar_start_ms": last["timestamp"], "open": last["open"], "high": last["high"],
+         "low": last["low"], "close": last["close"], "volume": last["volume"]},
+        {"symbol": "QQQ", "bar_start_ms": last["timestamp"], "open": 600.0, "high": 601.0, "low": 599.0,
+         "close": 600.5, "volume": 1000}])
+    assert order == [("bar", "SPY"), ("bar", "QQQ"), ("levels", "SPY"), ("levels", "QQQ")]
     built = len(reads)
     served = json.loads(srv.get_levels(ticker="SPY").body)
     again = json.loads(srv.get_levels(ticker="SPY", tf="15").body)
     assert built >= 1 and len(reads) == built, "the route read bars"
     assert served["generation"] == again["generation"] is not None
     assert served["snapshot_as_of_ts_utc"] == last["timestamp"] / 1000.0
-
-    # a bar of a ticker no page is viewing is written, and its levels are not built for it
-    built_for, producer = [], srv._publish_price_levels
-    monkeypatch.setattr(srv, "_publish_price_levels", lambda tk: built_for.append(tk))
-    assert srv._write_streamed_bar({"symbol": "QQQ", "bar_start_ms": last["timestamp"], "open": 600.0,
-                                    "high": 601.0, "low": 599.0, "close": 600.5, "volume": 1000})
-    assert built_for == []
-    monkeypatch.setattr(srv, "_publish_price_levels", producer)
+    assert srv.canonical_price_level_snapshot("QQQ").as_of_ts_utc == last["timestamp"] / 1000.0
 
     # a new session date: the levels loop builds that date's levels (09-25's bars are its prior day)
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 26, 9, 0, tzinfo=ET))
