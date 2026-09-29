@@ -2,21 +2,21 @@
 /**
  * D — Options/Gamma "Levels" view. Serializes the canonical /api/levels contract (per-level
  * price/family/evidence_tier/provenance/staleness + carried VWAP) verbatim; computes nothing.
- * Proves the table renders the contract, discloses VWAP/absent/degraded honestly, marks near-spot,
- * and a level click drives the shared strike selection. Offline.
+ * Proves the table renders the contract, discloses VWAP/absent/degraded honestly, marks no
+ * proximity, and a level click drives the shared strike selection. Offline.
  */
 const { test, expect } = require('@playwright/test');
 
 const LEVELS = {
   ticker: 'SPY', schema_version: 1, served_ts_utc: 1757000100, spot: 100.0, spot_source: 'schwab_quote_last',
   generation: 7, snapshot_as_of_ts_utc: 1757000000, bar_source: 'price_bars_1m',
-  // served in ladder order (price, highest first) with distance and near_spot (server.py get_levels)
+  // served in ladder order (price, highest first) with distance (server.py get_levels)
   levels: [
-    { id: 'PDH', price: 101.5, family: 'session', label: 'Prior Day High', evidence_tier: 'MEASURED', distance: 1.5, near_spot: false,
+    { id: 'PDH', price: 101.5, family: 'session', label: 'Prior Day High', evidence_tier: 'MEASURED', distance: 1.5,
       provenance: { producer: 'session_levels' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12, stale: false } },
-    { id: 'VWAP', price: 100.02, family: 'vwap', label: 'VWAP', evidence_tier: 'MEASURED', distance: 0.02, near_spot: true,
+    { id: 'VWAP', price: 100.02, family: 'vwap', label: 'VWAP', evidence_tier: 'MEASURED', distance: 0.02,
       provenance: { producer: 'liquidity_value_engine' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12, stale: false } },
-    { id: 'POC', price: 99.4, family: 'value', label: 'Point of Control', evidence_tier: 'DERIVED', distance: -0.6, near_spot: false,
+    { id: 'POC', price: 99.4, family: 'value', label: 'Point of Control', evidence_tier: 'DERIVED', distance: -0.6,
       provenance: { producer: 'value_area' }, staleness: { as_of_ts_utc: 1757000000, age_sec: 12, stale: false } },
   ],
   by_distance: ['VWAP', 'POC', 'PDH'],
@@ -56,8 +56,8 @@ test.describe('D — Gamma Levels view', () => {
     await expect(lv.locator('.lv-row').first()).toContainText('Prior Day High');
     await expect(lv.locator('.lv-row').first().locator('.lv-px')).toHaveText('101.50');
     await expect(lv.locator('.lv-row', { hasText: 'VWAP' }).locator('.lv-src')).toContainText('liquidity_value_engine');
-    // the served near_spot flag (VWAP) is marked; absence disclosed honestly
-    await expect(lv.locator('.lv-row.near-spot')).toHaveCount(1);
+    // no proximity marking (operator 2026-09-29); absence disclosed honestly
+    await expect(lv.locator('.lv-row.near-spot')).toHaveCount(0);
     await expect(lv.locator('.lv-foot')).toContainText('VWAP curve');
     await expect(lv.locator('.lv-foot .lv-absent')).toContainText('gamma');
     await page.setViewportSize({ width: 1672, height: 941 });

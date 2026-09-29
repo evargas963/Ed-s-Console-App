@@ -57,12 +57,17 @@ def _in_rth(dt: datetime) -> bool:
     return close is not None and RTH_OPEN <= dt.time() < close
 
 
-#: each price level's name, spelled out and as the chart's short tag -- the one home for both
+#: each price level's name, spelled out and as the chart's short tag -- the one home for both.
+#: POC and value area come from the estimated profile (each 1-minute bar's volume spread evenly
+#: over its range, not trades at a price): their names say so.
 LEVEL_NAMES = {
-    "TODAY_VAH": ("Value area high", "VAH"), "TODAY_VAL": ("Value area low", "VAL"),
-    "TODAY_POC": ("Point of control", "POC"),
+    "TODAY_VAH": ("Value area high (est. from 1-min bars)", "VAH est"),
+    "TODAY_VAL": ("Value area low (est. from 1-min bars)", "VAL est"),
+    "TODAY_POC": ("Point of control (est. from 1-min bars)", "POC est"),
     "PDH": ("Prior day high", "PDH"), "PDL": ("Prior day low", "PDL"), "PDC": ("Prior day close", "PDC"),
-    "PD_POC": ("Prior day POC", "pPOC"), "PD_VAH": ("Prior day VAH", "pVAH"), "PD_VAL": ("Prior day VAL", "pVAL"),
+    "PD_POC": ("Prior day POC (est. from 1-min bars)", "pPOC est"),
+    "PD_VAH": ("Prior day VAH (est. from 1-min bars)", "pVAH est"),
+    "PD_VAL": ("Prior day VAL (est. from 1-min bars)", "pVAL est"),
     "ORB_HIGH": ("Opening range high", "ORH"), "ORB_LOW": ("Opening range low", "ORL"),
     "ORB_MID": ("Opening range mid", "ORM"),
     "OVERNIGHT_HIGH": ("Overnight high", "ONH"), "OVERNIGHT_LOW": ("Overnight low", "ONL"),

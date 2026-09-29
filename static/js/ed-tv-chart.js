@@ -87,7 +87,7 @@
   // bars, or dots sized by magnitude) or its left edge (the volume profile). rows: [{price,
   // value, color}]; with `fit` the rows' prices join the auto-fit so every row is on screen.
   // Scaling to the pane is drawing; the values are served.
-  function ProfilePrimitive(side, frac, fit) {
+  function ProfilePrimitive(side, frac, fit, z) {
     var self = this;
     this._series = null; this._req = null; this.rows = []; this.style = 'bars'; this.frac = frac; this.sel = null;
     function maxAbs() { return self.rows.reduce(function (m, r) { return Math.max(m, Math.abs(r.value)); }, 0) || 1; }
@@ -119,7 +119,7 @@
         });
       });
     } };
-    var view = { renderer: function () { return renderer; }, zOrder: function () { return 'normal'; } };
+    var view = { renderer: function () { return renderer; }, zOrder: function () { return z || 'normal'; } };
     this.attached = function (p) { self._series = p.series; self._req = p.requestUpdate; };
     this.detached = function () { self._series = null; };
     this.updateAllViews = function () {};
@@ -317,7 +317,7 @@
     var profile = new ProfilePrimitive('right', 0.32, true); candles.attachPrimitive(profile);
     // the session volume profile on the left edge, as the reference draws it (the candles set
     // the price range; the profile does not widen it)
-    var vprofile = new ProfilePrimitive('left', 0.2, false); candles.attachPrimitive(vprofile);
+    var vprofile = new ProfilePrimitive('left', 0.16, false, 'bottom'); candles.attachPrimitive(vprofile);   // behind the candles
     var zones = new ZonesPrimitive(); candles.attachPrimitive(zones);
     // the heatmap's buckets on the time axis (no values: whitespace points), carrying its cells
     var timeline = chart.addSeries(LWC.LineSeries, { color: 'rgba(0,0,0,0)', lastValueVisible: false, priceLineVisible: false,
@@ -523,7 +523,7 @@
       var pick = S.levels.filter(function (l) { return l.price >= lo && l.price <= hi; }).slice(0, S.nearestN);
       // levels beyond the visible range, pinned at the edge (served order: nearest first)
       function edge(sel, list, arrow) {
-        host.querySelector(sel).innerHTML = list.slice(0, 3).map(function (l) {
+        host.querySelector(sel).innerHTML = list.slice(0, 2).map(function (l) {
           return '<span style="color:' + (l.color || P.ink3) + '">' + arrow + ' ' + esc(l.label || '') + ' ' + l.price.toFixed(2) + '</span>'; }).join('');
       }
       edge('.tvc-edge-top', S.levels.filter(function (l) { return l.price > hi; }), '&#9650;');
@@ -533,9 +533,14 @@
       var at = {};
       pick.forEach(function (l) {
         var k = l.price.toFixed(2);
-        if (at[k]) { at[k].applyOptions({ title: at[k].options().title + ' · ' + (l.label || '') }); return; }
+        if (at[k]) {    // one name and how many more share the price (all named in the levels list)
+          at[k].n = (at[k].n || 1) + 1;
+          at[k].applyOptions({ title: at[k].first + ' +' + (at[k].n - 1) });
+          return;
+        }
         at[k] = candles.createPriceLine({ price: l.price, color: l.color || P.ink3, lineWidth: l.width || 1,
           lineStyle: l.style == null ? 2 : l.style, axisLabelVisible: true, title: l.label || '' });
+        at[k].first = l.label || '';
         S.priceLines.push(at[k]);
       });
       if (opts.onLevelsShown) opts.onLevelsShown(pick);
@@ -641,17 +646,28 @@
       setLevels: function (levels) { S.levels = (levels || []).filter(function (l) { return l && isFinite(l.price); }); paintLevels(true); },
       setNearestN: function (n) { S.nearestN = n; paintLevels(true); },
       // markers: [{id, time, text, color, position, shape, meta}]
+      // markers: [{id, time, price (for an atPrice position), text, color, position, shape, meta}];
+      // the selected one (selectMarker) is drawn larger
       setMarkers: function (list, onClick) {
-        S.markerMeta = {}; S.onMarkerClick = onClick || null;
+        S.markerList = list || []; S.onMarkerClick = onClick || null;
+        api.selectMarker(S.markerSel);
+      },
+      selectMarker: function (id) {
+        S.markerSel = id; S.markerMeta = {};
         var m = [];
-        (list || []).forEach(function (x) {
+        (S.markerList || []).forEach(function (x) {
           var i = barIndexAt(Number(x.time)); if (i < 0) return;
+          var atPrice = /^atPrice/.test(x.position || '');
+          if (atPrice && x.price == null) return;          // a price marker with no price is not drawn
           S.markerMeta[x.id] = x.meta;
-          m.push({ id: x.id, time: S.bars[i].t, position: x.position || 'aboveBar', color: x.color || P.accent2,
-            shape: x.shape || 'circle', text: x.text || '', size: 1 });
+          var mk = { id: x.id, time: S.bars[i].t, position: x.position || 'aboveBar', color: x.color || P.accent2,
+            shape: x.shape || 'circle', text: x.text || '', size: x.id === id ? 2 : 1 };
+          if (atPrice) mk.price = x.price;
+          m.push(mk);
         });
         m.sort(function (a, b) { return a.time - b.time; });
         markers.setMarkers(m);
+        S.markersShown = m.map(function (x) { return x.id; });
       },
       scrollToTime: function (t) {
         var lg = logicalOf(Number(t)); if (lg == null) return;
@@ -688,7 +704,8 @@
           pinned: S.pinned, tool: S.tool, drawings: draw.lines.length + S.hlines.length,
           profile: { rows: profile.rows.length, style: profile.style, selected: profile.sel },
           heatCells: heat.h ? heat.h.cells.length : 0, zones: zones.zones.length, volumeProfileBins: vprofile.rows.length,
-          levels: S.priceLines.map(function (l) { return l.options().title; }) };
+          levels: S.priceLines.map(function (l) { return l.options().title; }),
+          markers: S.markersShown || [], markerSelected: S.markerSel || null };
       },
       // where a price's profile row is drawn, in page coordinates (tests click it as a user would)
       profilePoint: function (price) {

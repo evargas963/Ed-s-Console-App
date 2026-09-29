@@ -3354,10 +3354,6 @@ def get_terrain(ticker: str = Query(...)):
     }
 
 
-#: a cross younger than this is shown as an alert
-RECENT_CROSS_SEC: float = 120.0
-
-
 #: The Trade Desk's lookback per chart timeframe: seconds, or "session" (the latest regular
 #: session), with the words the page shows for it.
 DESK_LOOKBACK = {"1": (900, "last 15 min"), "3": (1800, "last 30 min"), "5": (3600, "last 1 h"),
@@ -3389,28 +3385,28 @@ def _f2(v) -> str:
 def get_desk_events(ticker: str = Query(...),
                     venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
                     tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "30"):
-    """The Trade Desk's attention queue, served: level crosses in the timeframe's window (numbered
-    oldest first; the newest 40 flagged for the chart), wall breaches and stale levels from the
-    terrain, the book's size walls, and the rule alerts -- newest first, an item with no time last
-    -- plus the window's up/down cross counts. The page draws it; it selects, numbers and orders
-    nothing."""
+    """The Trade Desk's attention queue, served: level crosses in the timeframe's window, each
+    judged by the completed Schwab 1-minute bar of its minute (see _cross_event), numbered oldest
+    first, the newest DESK_MARKERS confirmed or rejected crosses flagged for the chart; wall
+    breaches and stale levels from the terrain; the book's size walls at the book's own time --
+    newest first, an item with no time last -- plus the window's up/down cross counts. One item
+    is one event: the chart's marker and the queue's entry are the same item. The page draws it;
+    it selects, numbers and orders nothing."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    start = _desk_window_start(tf, now_et())
+    now = now_et()
+    start = _desk_window_start(tf, now)
     crosses, _raw = _merged_recent_crosses(get_db(), tk, 200)
     in_window = sorted((c for c in crosses if c.get("ts_utc") is not None and c["ts_utc"] >= start),
                        key=lambda c: c["ts_utc"])
-    items = []
-    for i, c in enumerate(in_window):
-        names = " + ".join(c.get("level_names") or [c.get("level_name")])
-        cid = c.get("cross_id")                      # external-key-ok: ed_console.db level_crosses column
-        items.append({"key": f"x{cid}", "n": i + 1, "ts": c["ts_utc"], "dom": "LEVELS",
-                      "dir": c.get("direction"), "marker": True,
-                      "title": f"Crossed {_CROSS_WORD.get(c.get('direction'), 'through')} {names}",
-                      "detail": f"{_f2(c.get('level_value'))} · spot {_f2(c.get('spot_at_cross'))}"
-                                + (f" · zone {c['zone_after']}" if c.get("zone_after") else ""),
-                      "src": "level_crosses"})
-    for it in items[:-40]:
-        it["marker"] = False                      # the chart draws the newest 40
+    closes = {c.ts: c.close for c in _bars_1m(tk, int((now.timestamp() - start) // 60) + 5)}
+    items = [_cross_event(c, i + 1, closes, now.timestamp()) for i, c in enumerate(in_window)]
+    # the chart's few: the newest judged cross at each level, the newest DESK_MARKERS levels
+    newest_at = {}
+    for it in items:
+        if it["kind"] in (CROSS_CONFIRMED, CROSS_REJECTED):
+            newest_at[it["price"]] = it
+    for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-DESK_MARKERS:]:
+        it["marker"] = True
     t = get_terrain(ticker=tk)                       # the same payload the terrain route serves
     tts = t.get("computed_ts_utc")
     for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
@@ -3423,17 +3419,20 @@ def get_desk_events(ticker: str = Query(...),
         items.append({"key": "ls", "ts": tts, "dom": "DATA", "dir": None, "warn": True,
                       "title": "Gamma levels are stale", "detail": t.get("levels_stale_reason") or "",
                       "src": "/api/terrain"})
+    # the book's size walls, stamped with the book's own time (BOOK_TIME); a book that is not live
+    # is a past observation and says so
     micro = json.loads(api_order_flow_microstructure(ticker=tk, venue=venue).body)
+    book_ms = (micro.get("provenance") or {}).get("book_time_ms")
+    live_book = (micro.get("ages") or {}).get("book_stale") is False
     for i, w in enumerate((micro.get("wall_candidates") or [])[:3]):
-        items.append({"key": f"wall{i}", "ts": (micro.get("provenance") or {}).get("server_received_ts"),
-                      "dom": "LIQUIDITY", "dir": "up" if w.get("side") == "bid" else "down",
-                      "title": f"{venue} size wall · {w.get('side') or ''} {_f2(w.get('price'))}",
+        items.append({"key": f"wall{i}", "ts": None if book_ms is None else book_ms / 1000.0,
+                      "dom": "LIQUIDITY", "dir": "up" if w.get("side") == "bid" else "down", "warn": not live_book,
+                      "title": f"{venue} size wall · {w.get('side') or ''} {_f2(w.get('price'))}"
+                               + ("" if live_book else " (not live)"),
                       "detail": f"{w.get('volume')} shown · "
-                                + (f"{w['median_mult']:.1f}× the median level" if w.get("median_mult") is not None else "size outlier"),
+                                + (f"{w['median_mult']:.1f}× the median level" if w.get("median_mult") is not None else "size outlier")
+                                + ("" if live_book else " · a past book, not the current one"),
                       "src": "/api/order-flow/microstructure"})
-    for i, a in enumerate(json.loads(get_alerts(ticker=tk).body)["alerts"]):
-        items.append({"key": f"ra{i}", "ts": a["ts_utc"], "dom": "ALERT", "dir": None,
-                      "title": a["text"], "detail": "", "src": "/api/alerts"})
     items.sort(key=lambda it: (it["ts"] is None, -(it["ts"] if it["ts"] is not None else 0.0)))
     return JSONResponse({"ticker": tk, "tf": tf, "window_start_ts_utc": start,
                          "window_label": DESK_LOOKBACK[tf][1], "items": items,
@@ -3441,27 +3440,43 @@ def get_desk_events(ticker: str = Query(...),
                                           for d in ("up", "down")}})
 
 
-@app.get("/api/alerts")
-def get_alerts(ticker: str = Query(...)):
-    """Proximity alerts: every level /api/levels marks near_spot (one rule for every family), and
-    levels crossed in the last RECENT_CROSS_SEC. Each carries the time it was observed -- the
-    price's own time, or the cross's -- so no page stamps an alert with its own clock. Near-level
-    alerts need the live price (current_spot_state): on a closed market the last price and the
-    levels are past observations and raise none (rule 5); `withheld` says why."""
-    tk = ticker_storage_key(_required_ticker(ticker))
-    lv = json.loads(get_levels(ticker=tk).body)
-    live = current_spot_state(lv["spot_source"], tk) == "live"
-    alerts = [{"text": f"At {r.get('label') or r['id']} {r['price']:.2f} "
-                       f"({abs(r['distance']):.2f} {'above' if r['side'] == 'ABOVE' else 'below' if r['side'] == 'BELOW' else 'at'} spot)",
-               "ts_utc": lv["spot_as_of_ts_utc"]}
-              for r in lv["levels"] if live and r.get("near_spot")]
-    for c in _merged_recent_crosses(get_db(), tk, 10)[0]:
-        if c.get("ts_utc") is not None and time.time() - float(c["ts_utc"]) <= RECENT_CROSS_SEC:
-            alerts.append({"text": f"Just crossed {_CROSS_WORD.get(c.get('direction'), 'through')} "
-                                   f"{' + '.join(c['level_names'])}",
-                           "ts_utc": float(c["ts_utc"])})
-    return JSONResponse({"ticker": tk, "alerts": alerts,
-                         "withheld": None if live else "no live price: near-level alerts need the current price"})
+#: A level cross, judged by the completed Schwab 1-minute bar of its minute (every one of 77,802
+#: L1 last-trade prices fell inside its minute's bar, 2026-09-28): CONFIRMED when the bar closed
+#: beyond the level on the cross's side, REJECTED when it closed back (or at the level); PENDING
+#: while that bar is not complete; NO_BAR when no completed bar was stored for the minute.
+#: Measured 2026-09-14..28, 34 tickers: 1,279 of 1,792 judged crosses confirmed, 513 rejected.
+CROSS_CONFIRMED, CROSS_REJECTED, CROSS_PENDING, CROSS_NO_BAR = "confirmed", "rejected", "pending", "no_bar"
+#: the chart draws the newest confirmed or rejected cross at each level, for the newest this-many
+#: levels (the queue lists every cross)
+DESK_MARKERS = 6
+#: a minute's completed bar arrives just after the minute ends; until this long after the
+#: minute began, a missing bar is still coming
+CROSS_BAR_DUE_SEC = 120
+
+
+def _cross_event(c: dict, n: int, closes: dict, now_ts: float) -> dict:
+    """One level cross as the Trade Desk's event (chart marker and queue entry alike)."""
+    names = " + ".join(c.get("level_names") or [c.get("level_name")])
+    lv, d = c.get("level_value"), c.get("direction")
+    minute = float(int(c["ts_utc"] // 60) * 60)
+    close = closes.get(minute)
+    if close is None:
+        kind = CROSS_PENDING if now_ts - minute < CROSS_BAR_DUE_SEC else CROSS_NO_BAR
+    elif lv is not None and (close > lv if d == "up" else close < lv):
+        kind = CROSS_CONFIRMED
+    else:
+        kind = CROSS_REJECTED
+    word = _CROSS_WORD.get(d, "through")
+    title = {CROSS_CONFIRMED: f"Confirmed cross {word} {names}", CROSS_REJECTED: f"Rejected at {names}",
+             CROSS_PENDING: f"Crossed {word} {names}", CROSS_NO_BAR: f"Crossed {word} {names}"}[kind]
+    detail = f"{_f2(lv)} · spot {_f2(c.get('spot_at_cross'))} at the cross · " + {
+        CROSS_CONFIRMED: f"the minute's bar closed {_f2(close)}, beyond the level",
+        CROSS_REJECTED: f"the minute's bar closed {_f2(close)}, back {'below' if d == 'up' else 'above'} the level",
+        CROSS_PENDING: "its minute's bar is not complete yet",
+        CROSS_NO_BAR: "no completed bar was stored for its minute"}[kind]
+    cid = c.get("cross_id")                          # external-key-ok: ed_console.db level_crosses column
+    return {"key": f"x{cid}", "n": n, "ts": c["ts_utc"], "dom": "LEVELS", "kind": kind, "price": lv,
+            "dir": d, "marker": False, "title": title, "detail": detail, "src": "level_crosses + completed 1m bar"}
 
 
 #: At most one push per this many seconds per page; changes in between arrive together.
@@ -4013,10 +4028,6 @@ def canonical_price_level_snapshot(ticker: str):
     )
 
 
-#: A level within this fraction of spot is marked near spot. Carried unchanged from the page's
-#: levels panel (2026-09-27); its origin is not recorded -- NOT_PROVEN.
-LEVEL_NEAR_SPOT_FRACTION = 0.0015
-
 
 #: the terrain's price levels the chart draws (terrain_engine.compute_terrain), in its words
 GAMMA_LEVELS = (("call_wall", "Call wall"), ("put_wall", "Put wall"), ("gamma_flip", "Gamma flip"),
@@ -4081,8 +4092,6 @@ def get_levels(ticker: str = Query(...),
     for row in levels:
         price = row.get("price")
         row["distance"] = (price - spot) if price is not None and spot else None
-        row["near_spot"] = (row["distance"] is not None
-                            and abs(row["distance"]) / spot < LEVEL_NEAR_SPOT_FRACTION)
         # which side of spot, at the price's own two decimals (AT: prints as 0.00 away)
         row["side"] = (None if row["distance"] is None else "AT" if round(row["distance"], 2) == 0
                        else "ABOVE" if row["distance"] > 0 else "BELOW")
@@ -4091,7 +4100,7 @@ def get_levels(ticker: str = Query(...),
               + [r for r in levels if r.get("price") is None])
     # the order the chart draws them in: nearest the live price, or on a closed market nearest the
     # last streamed trade, a past observation named in by_distance_ref (display order only:
-    # distance, near_spot and side stay live-price values)
+    # distance and side stay live-price values)
     from app.options.order_flow.streaming import price_row
     last = None if spot is not None else (price_row(tk) or {}).get("closed_last")
     ref = spot if spot is not None else last["price"] if last else None
@@ -4126,7 +4135,9 @@ def get_levels(ticker: str = Query(...),
         # the session's volume profile the value area is read from (absent: families_absent
         # names the value_area reason)
         "volume_profile": None if snap.volume_profile is None else {
-            "basis": "RTH 1-minute bars, each bar's volume spread evenly over its range (not trade prints)",
+            "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its "
+                     "range (not trades observed at a price)",
+            "bars": snap.volume_profile.bars, "bars_without_volume": snap.volume_profile.bars_without_volume,
             "tick_size": snap.volume_profile.tick_size,
             # [price, volume, inside the value area]
             "bins": [[p, v, snap.volume_profile.val <= p <= snap.volume_profile.vah] for p, v in snap.volume_profile.bins],

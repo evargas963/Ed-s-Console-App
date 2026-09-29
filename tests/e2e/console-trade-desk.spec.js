@@ -12,8 +12,11 @@ const { mockPriceSocket } = require('./fixtures/price_socket');
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
 const EVENTS = {
   ticker: 'SPY', tf: '30', window_start_ts_utc: CROSSES[2].ts_utc - 60, window_label: 'this session (served)',
+  // the served shape (server._cross_event): each cross judged by its minute's bar, at its level's price
   items: CROSSES.map((c, i) => ({ key: 'x' + c.cross_id, n: 3 - i, ts: c.ts_utc, dom: 'LEVELS', dir: c.direction, marker: true,
-    title: 'Crossed ' + (c.direction === 'up' ? 'above ' : 'below ') + c.level_name, detail: c.level_value.toFixed(2), src: 'level_crosses' })),
+    kind: i === 1 ? 'rejected' : 'confirmed', price: c.level_value,
+    title: (i === 1 ? 'Rejected at ' : 'Confirmed cross ' + (c.direction === 'up' ? 'above ' : 'below ')) + c.level_name,
+    detail: c.level_value.toFixed(2), src: 'level_crosses + completed 1m bar' })),
   cross_counts: { up: CROSSES.filter((c) => c.direction === 'up').length, down: CROSSES.filter((c) => c.direction !== 'up').length },
 };
 const SPOT = 771.3;
@@ -22,8 +25,8 @@ const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, pu
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
   levels: [
-    { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', near_spot: false },
-    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', near_spot: false },
+    { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', },
+    { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', },
   ],
   by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [],
   volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
@@ -124,10 +127,11 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmQueue .tdm-q')).toHaveCount(3);
     await expect(page.locator('#tdmQueueCount')).toHaveText('3');
     await expect(page.locator('#tdmCardLiq')).toContainText('BID HEAVY');
-    await expect(page.locator('#tdmCardFlow')).toContainText('NET BUYING');
+    // Schwab sends no trade side: the Order Flow card claims none (operator 2026-09-29)
+    await expect(page.locator('#tdmCardFlow')).not.toContainText(/NET BUYING|NET SELLING|tick rule|PROXY|delta/i);
     await expect(page.locator('#tdmCardFlow')).toContainText(EVENTS.cross_counts.up + ' up · ' + EVENTS.cross_counts.down + ' down');
     // the window's words are the server's (a page copy of the lookback table: register P-15)
-    await expect(page.locator('#tdmCardFlow')).toContainText('Level crosses (this session (served))');
+    await expect(page.locator('#tdmCardFlow')).toContainText('Crosses (this session (served))');
     await expect(page.locator('#tdmLookback')).toHaveText('this session (served)');
     await expect(page.locator('#tdmAgree')).toContainText('Above flip');
     // the served session volume profile, every bin drawn at the chart's left edge, with its basis
@@ -142,6 +146,36 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmCardVol figcaption')).toHaveText('ATM implied vol by expiry, nearest first');
     await expect(page.locator('#tdmAgree')).toContainText('Bid heavy');
     expect(errs).toEqual([]);
+  });
+
+  test('Desk: each chart marker is its queue entry, and selecting the entry selects that marker', async ({ page }) => {
+    const errs = watchErrors(page);
+    await intercept(page);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const want = EVENTS.items.filter((it) => it.marker).map((it) => it.key).sort();
+    await expect.poll(async () => ((await page.evaluate(() => window.EdTradeDeskMap.state().chart.markers)) || []).slice().sort()).toEqual(want);
+    const key = EVENTS.items[1].key;
+    await page.locator('#tdmQueue [data-q="' + key + '"]').click();
+    await expect(page.locator('#tdmQueue [data-q="' + key + '"]')).toHaveClass(/sel/);
+    expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected)).toBe(key);
+    expect(errs).toEqual([]);
+  });
+
+  test('no proximity alerts anywhere: no strip, no request for them', async ({ page }) => {
+    // operator 2026-09-29: remove the alert strip, the queue's alert items and every other
+    // presentation of proximity alerts
+    const asked = [];
+    page.on('request', (r) => { if (r.url().includes('/api/alerts')) asked.push(r.url()); });
+    await intercept(page);
+    for (const [ws, sub] of [['trade-desk', 'desk'], ['options', 'gamma'], ['liquidity', 'map'], ['order-flow', 'book']]) {
+      await page.addInitScript(([w, s]) => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', w); localStorage.setItem('ed_sub', s); } catch (e) {} }, [ws, sub]);
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(400);
+      await expect(page.locator('#alertsStrip')).toHaveCount(0);
+      await expect(page.locator('body')).not.toContainText(/Proximity Alerts/i);
+    }
+    expect(asked).toEqual([]);
   });
 
   test('Desk: selecting a ticker opens its /api/changes connection (the book request)', async ({ page }) => {
@@ -245,8 +279,8 @@ test.describe('Trade Desk renders served values', () => {
 
   test('Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split', async ({ page }) => {
     const errs = watchErrors(page);
-    const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', near_spot: false };
-    const wall = { id: 'call_wall', price: 772, family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, side: 'ABOVE', near_spot: false };
+    const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', };
+    const wall = { id: 'call_wall', price: 772, family: 'gamma', label: 'Call wall', evidence_tier: 'DERIVED', distance: 0.7, side: 'ABOVE', };
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
       let body = { available: false };

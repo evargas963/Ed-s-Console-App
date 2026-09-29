@@ -48,7 +48,7 @@
         '<div class="sm">' + esc((d && (d.degraded || []).join(', ')) || 'the levels snapshot is empty for this symbol') + '</div></div>';
       return;
     }
-    // served in ladder order (price, highest first) with near_spot marked by the server
+    // served in ladder order (price, highest first)
     var rows = levels;
     // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
     var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
@@ -61,8 +61,7 @@
       var prov = r.provenance || {}, st = r.staleness || {};
       var age = st.age_sec != null ? (Math.round(st.age_sec) + 's') : '—';
       var stale = st.stale ? ' stale' : '';
-      var nearSpot = r.near_spot ? ' near-spot' : '';
-      body += '<tr class="lv-row' + nearSpot + '"><td class="lv-fam">' + esc(r.family || '—') + '</td>' +
+      body += '<tr class="lv-row"><td class="lv-fam">' + esc(r.family || '—') + '</td>' +
         '<td>' + esc(r.label || r.id || '—') + '</td>' +
         '<td class="lv-px">' + px(r.price) + '</td>' +
         '<td class="lv-ev">' + esc(r.evidence_tier || '—') + '</td>' +

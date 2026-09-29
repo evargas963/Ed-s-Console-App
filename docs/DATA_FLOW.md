@@ -138,8 +138,16 @@ Schwab sends is taken as sent (rule 2), never computed.
   heartbeat (`live_market_plane.daemon_status`). Owner: the console's feed loop records each
   heartbeat; when the daemon stops or the socket to it drops, every streamed value reads not live
   within 3 s.
-- **Alerts and level crosses.** Computed by the console at each levels publish; crosses written to
-  `ed_console.db` → the `levels` push → `/api/alerts` → browser.
+- **Level crosses (the Trade Desk's structure events).** Computed by the console at each levels
+  publish (the live price moved through a served level); written to `ed_console.db` → the
+  `levels` push → `/api/desk/events`, which judges each by the completed Schwab 1-minute bar of
+  its minute (confirmed: closed beyond the level; rejected: closed back) and flags the newest
+  judged cross at each level, for the newest six levels, as the chart's markers. One served item
+  is both a chart marker and its queue entry. There are no proximity alerts (removed 2026-09-29).
+  No book-based event (pull, replenishment, absorption) is produced: Schwab's L1 bundles trades
+  and sends no trade side, and on its displayed books a size wall lasts about a second (SPY
+  NYSE_BOOK and NASDAQ_BOOK, 2026-09-25: median 1 s, longest 8.5 s), so no wall stands long
+  enough for a completed bar to judge it.
 - **Market session.** From the market calendar → pushed on `/api/changes` when the page connects
   and every 5 s with no other change. One calendar (`time_et`: holidays, 13:00 early closes,
   `session_label`, `session_close_mins_for_et_date`) decides every session window: the order-flow
