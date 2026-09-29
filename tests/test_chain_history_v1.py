@@ -128,15 +128,25 @@ def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
     assert [(c["et_date"], c["spot"]) for c in prior] == [("2026-09-24", 11.0)]
 
 
-def test_the_friday_morning_copy_is_read_and_labelled(tmp_path):
+def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
+    """2026-09-28: the only 09-25 captures were the partial morning chains (expiries to 37 days),
+    so the forces diffed Monday's full chain against them and every later expiry read as new open
+    interest (SPY: +1.4M below and above spot in one day). Only full captures are read: with no
+    full prior day the forces are absent with their reason."""
+    import server
     db = tmp_path / "ed_console.db"
     # institutional-synthetic-ok: the reader returns stored contracts verbatim; none is priced.
     ct = {"symbol": "ZZ 2030-01-04", "expirationDate": "2030-01-04T20:00:00.000+00:00"}
     cch.persist_complete_chain_capture(db, ticker="ZZ", expiry="2030-01-04", contracts=[ct],
-                                       spot=5.0, completeness_basis=cch.MORNING_BASIS,
+                                       spot=5.0, completeness_basis="expiries_to_37_days_morning",
                                        ts_utc=_ts("2026-09-25 10:00"))
-    caps = cch.last_capture_per_day(db, "ZZ", 1)
-    assert [(c["et_date"], c["basis"]) for c in caps] == [("2026-09-25", cch.MORNING_BASIS)]
+    cch.persist_complete_chain_capture(db, ticker="ZZ", expiry="2030-01-04", contracts=[ct],
+                                       spot=5.0, completeness_basis=cch.CAPTURE_BASIS,
+                                       ts_utc=_ts("2026-09-28 16:15"))
+    caps = cch.last_capture_per_day(db, "ZZ", 2)
+    assert [(c["et_date"], c["basis"]) for c in caps] == [("2026-09-28", cch.CAPTURE_BASIS)]
+    forces = server._forces_from_captures("ZZ", caps)
+    assert forces["available"] is False and "fewer than 2 market days" in forces["reason"]
 
 
 def test_the_console_refresh_window_follows_the_days_close_in_central_time():
