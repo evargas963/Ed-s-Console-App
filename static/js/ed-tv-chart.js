@@ -166,10 +166,10 @@
     var volume = chart.addSeries(LWC.HistogramSeries, { priceScaleId: 'vol', priceFormat: { type: 'volume' },
       lastValueVisible: false, priceLineVisible: false });
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-    var vwapLine = chart.addSeries(LWC.LineSeries, { color: P.warn, lineWidth: 2, lastValueVisible: true,
+    var vwapLine = chart.addSeries(LWC.LineSeries, { color: P.accent, lineWidth: 2, lastValueVisible: true,
       priceLineVisible: false, crosshairMarkerVisible: false, title: 'VWAP' });
     var bandLines = [1, 2, 3, 4].map(function () {
-      return chart.addSeries(LWC.LineSeries, { color: alpha(P.warn, 0.45), lineWidth: 1, lineStyle: 2,
+      return chart.addSeries(LWC.LineSeries, { color: alpha(P.accent, 0.4), lineWidth: 1, lineStyle: 2,
         lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
     });
     var band = new BandPrimitive(); candles.attachPrimitive(band);
@@ -395,8 +395,8 @@
         grid: { vertLines: { color: P.grid }, horzLines: { color: P.grid } },
         rightPriceScale: { borderColor: P.edge }, timeScale: { borderColor: P.edge } });
       paintStyle();
-      vwapLine.applyOptions({ color: P.warn });
-      bandLines.forEach(function (s) { s.applyOptions({ color: alpha(P.warn, 0.45) }); });
+      vwapLine.applyOptions({ color: P.accent });
+      bandLines.forEach(function (s) { s.applyOptions({ color: alpha(P.accent, 0.4) }); });
       draw.color = P.accent2; draw.redraw();
       api.setVolume(S.bars);
       paintLevels(true);
@@ -451,7 +451,7 @@
         paintLegend(); if (S.pinned) paintPin(); syncButtons(); scheduleLevels();
       },
       _volPoint: function (b) {
-        return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.45) };
+        return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.7) };
       },
       setVolume: function (bars) { volume.setData((bars || []).map(api._volPoint)); },
       // VWAP + bands, one point per bar, served for the chart's timeframe (/api/levels?tf=:
@@ -464,7 +464,7 @@
         bandLines.forEach(function (s, k) { s.setData(out[k + 1]); });
       },
       setStyle: function (style) { S.style = style === 'line' ? 'line' : 'candles'; paintStyle(); },
-      setValueArea: function (val, vah) { band.set(val, vah, alpha(P.accent, 0.09)); },
+      setValueArea: function (val, vah) { band.set(val, vah, alpha(P.warn, 0.10)); },
       // the walls' served gamma value areas ({lo, hi} or null)
       setWallBands: function (call, put) {
         callBand.set(call ? call.lo : null, call ? call.hi : null, alpha(P.up, 0.08));

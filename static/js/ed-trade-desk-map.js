@@ -19,6 +19,8 @@
   // 1m rows fetched per timeframe (the server rolls them up), and the tail re-read on each new
   // completed bar: two whole buckets.
   var FULL_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
+  // the Order Flow card's bars: the newest hour of 1-minute bars
+  var FLOW_BARS = 60;
   var TAIL_LIMIT = { '1': 5, '3': 9, '5': 15, '15': 35, '30': 65, '60': 125, 'D': 2000 };
   // The ONE global timeframe also sets how far back the queue and the event markers reach.
   // the event window and its words are the server's (/api/desk/events window_label), for this timeframe
@@ -125,17 +127,25 @@
     });
     var fam = $('tdmFamilies');
     fam.innerHTML = FAMILIES.map(function (f) {
-      return '<button type="button" class="tdm-fam fam-' + f.id + '" data-fam="' + f.id + '"><i></i>' + f.lbl + '</button>'; }).join('');
+      return '<button type="button" class="tdm-fam fam-' + f.id + '" data-fam="' + f.id + '"><i></i>' + f.lbl + '<b data-famv="' + f.id + '"></b></button>'; }).join('') +
+      '<span class="tdm-fam-note"><i class="tdm-prof"></i>Volume profile (RTH): not drawn — its price bins are not served</span>' +
+      '<span class="tdm-fam-note" id="tdmLevelsRef"></span>';
     fam.addEventListener('click', function (e) {
       var b = e.target.closest('[data-fam]'); if (!b) return;
       var id = b.getAttribute('data-fam'); S.fam[id] = S.fam[id] === 0 ? 1 : 0;   // a family not yet saved is on
-      sset('ed.desk.fam', JSON.stringify(S.fam)); paintFamilies(); paintChartLevels();
+      sset('ed.desk.fam', JSON.stringify(S.fam)); paintChartLevels();
     });
     paintFamilies(); paintTfButtons(); paintStyle();
   }
   function paintFamilies() {
     document.querySelectorAll('#tdmFamilies [data-fam]').forEach(function (b) {
       b.classList.toggle('on', S.fam[b.getAttribute('data-fam')] !== 0); });
+    var pd = pdValueArea(), vw = levelPrice('VWAP');
+    var v = { vwap: vw == null ? '' : num(vw), prior_day: pd.val == null || pd.vah == null ? '' : 'VA ' + num(pd.val) + ' – ' + num(pd.vah) };
+    document.querySelectorAll('#tdmFamilies [data-famv]').forEach(function (b) { b.textContent = v[b.getAttribute('data-famv')] || ''; });
+    // after the close the levels are ordered from the last trade, a past observation: say so
+    var ref = S.levels && S.levels.by_distance_ref, el = $('tdmLevelsRef');
+    if (el) el.textContent = ref && ref.source === 'last trade' ? 'Levels nearest the last trade ' + num(ref.price) + ' (' + ref.as_of + ')' : '';
   }
   function paintTfButtons() {
     document.querySelectorAll('#tdmToolbar [data-tf]').forEach(function (b) {
@@ -192,10 +202,12 @@
       fetchJson('/api/desk/events?ticker=' + q + '&venue=' + st().bookVenue + '&tf=' + encodeURIComponent(S.tf)),
       fetchJson('/api/liquidity-snapshot?ticker=' + q),
       fetchJson('/api/terrain/strikes?ticker=' + q),
-      fetchJson('/api/forces?ticker=' + q)
+      fetchJson('/api/forces?ticker=' + q),
+      fetchJson('/api/bars1m?ticker=' + q + '&tf=1&limit=' + FLOW_BARS)
     ]).then(function (r) {
       if (gen !== S.gen) return;
       S.levels = r[0]; S.terrain = r[1]; S.events = r[2]; S.liq = r[3]; S.strikes = r[4]; S.forces = r[5];
+      S.flowBars = r[6] ? r[6].bars || [] : null;
       paintTfButtons(); paintChartOverlays(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
     });
   }
@@ -210,8 +222,9 @@
   // ------------------------------------------------------------------ chart overlays
   function levelList() {
     var P = S.chart.palette(), out = [];
-    var style = { value_area: [P.accent2, 2, 1], prior_day: [P.ink3, 1, 1], opening_range: [P.stale, 2, 1], overnight: [P.research, 2, 1],
-      expected_move: [P.accent2, 3, 1], gamma: [P.research, 2, 1] };
+    // the reference's key: value-area levels amber, every other key level orange dashed
+    var style = { value_area: [P.warn, 2, 1], prior_day: [P.stale, 2, 1], opening_range: [P.stale, 2, 1], overnight: [P.stale, 2, 1],
+      expected_move: [P.stale, 3, 1], gamma: [P.research, 2, 1] };
     var gamma = { call_wall: ['Call wall', P.up, 0, 2], put_wall: ['Put wall', P.down, 0, 2],
       gamma_flip: ['γ flip', P.accent, 0, 2], max_pain: ['Max pain', P.ink3, 3, 1] };
     var byId = {}; ((S.levels && S.levels.levels) || []).forEach(function (l) { byId[l.id] = l; });
@@ -226,16 +239,22 @@
     });
     return out;
   }
+  function levelPrice(id) {
+    var l = ((S.levels && S.levels.levels) || []).filter(function (x) { return x.id === id; })[0];
+    return l && l.price != null ? Number(l.price) : null;
+  }
+  function pdValueArea() { return { val: levelPrice('PD_VAL'), vah: levelPrice('PD_VAH') }; }
   function paintStyle() {
     if (S.chart) S.chart.setStyle(S.style);
     var b = $('tdmStyle'); if (b) { b.classList.toggle('on', S.style === 'line'); }
   }
   function paintChartLevels() {
     if (!S.chart) return;
+    paintFamilies();
     S.chart.setLevels(levelList());
-    var L = (S.levels && S.levels.levels) || [], vah = null, val = null;
-    L.forEach(function (l) { if (l.id === 'TODAY_VAH') vah = l.price; if (l.id === 'TODAY_VAL') val = l.price; });
-    S.chart.setValueArea(S.fam.value_area ? val : null, S.fam.value_area ? vah : null);
+    // the band is yesterday's value area, as the reference draws it; today's are level lines
+    var pd = pdValueArea(), on = S.fam.prior_day !== 0;
+    S.chart.setValueArea(on ? pd.val : null, on ? pd.vah : null);
     S.chart.setVwap(S.fam.vwap && S.levels ? S.levels.vwap_series : []);
     var T = S.fam.gamma !== 0 && S.terrain;
     S.chart.setWallBands(T ? T.call_wall_range : null, T ? T.put_wall_range : null);
@@ -263,11 +282,11 @@
       return;
     }
     host.innerHTML = items.map(function (q) {
-      return '<button type="button" class="tdm-q' + (q.key === S.sel ? ' sel' : '') + (q.warn ? ' warn' : '') + '" data-q="' + esc(q.key) + '">' +
-        '<span class="tdm-q-n ' + (q.dir === 'up' ? 'up' : q.dir === 'down' ? 'dn' : '') + '">' + (q.n || '•') + '</span>' +
-        '<span class="tdm-q-b"><span class="tdm-q-t">' + esc(q.title) + '</span>' +
+      return '<button type="button" class="tdm-q ' + (q.warn ? 'warn' : q.dir === 'up' ? 'up' : q.dir === 'down' ? 'dn' : '') + (q.key === S.sel ? ' sel' : '') + '" data-q="' + esc(q.key) + '">' +
+        '<span class="tdm-q-n">' + (q.n || '•') + '</span>' +
+        '<span class="tdm-q-b"><span class="tdm-dom">' + esc(q.dom) + '</span><span class="tdm-q-t">' + esc(q.title) + '</span>' +
         '<span class="tdm-q-d">' + esc(q.detail) + '</span>' +
-        '<span class="tdm-q-m"><span class="tdm-dom">' + esc(q.dom) + '</span>' + (q.ts == null ? 'time not reported' : esc(whenCT(q.ts)) + ' CT') + ' · ' + esc(q.src) + '</span></span></button>';
+        '<span class="tdm-q-m">' + esc(q.src) + ' · ' + (q.ts == null ? 'time not reported' : esc(whenCT(q.ts)) + ' CT') + '</span></span></button>';
     }).join('');
   }
   function selectItem(key, scroll) {
@@ -291,7 +310,55 @@
   }
   function row(k, v, cls) { return '<div class="tdm-r"><span>' + esc(k) + '</span><b class="' + (cls || '') + '">' + v + '</b></div>'; }
   function state(el, txt, cls) { var s = el.querySelector('.tdm-state'); s.textContent = txt; s.className = 'tdm-state ' + (cls || ''); }
-  function seriesNote() { return '<div class="tdm-series">1h change · sparkline: not produced yet</div>'; }
+  // Each card's chart, as the reference draws them (line, area or bars), of one served series.
+  // sets: [{ys, xs (optional: served x values; else evenly spaced), color, kind: 'line'|'area'|'bars',
+  // colors (bars: one per y)}]. Scaling to the box and the axis ticks are drawing; a null y is a gap.
+  function spark(card, sets, caption, reason) {
+    var box = card.querySelector('.tdm-chartbox');
+    if (!box) {
+      card.querySelector('.tdm-hero').insertAdjacentHTML('afterend', '<figure class="tdm-chartbox"><div class="tdm-plot"></div><figcaption></figcaption></figure>');
+      box = card.querySelector('.tdm-chartbox');
+    }
+    box.querySelector('figcaption').textContent = caption;
+    var plot = box.querySelector('.tdm-plot');
+    var pts = [];
+    sets.forEach(function (s) { s.ys.forEach(function (y, i) { if (y != null && isFinite(y)) pts.push([s.xs ? s.xs[i] : i, y]); }); });
+    if (!pts.length) { plot.innerHTML = '<div class="tdm-plot-none">' + esc(reason) + '</div>'; return; }
+    var W = 260, H = 64, xs = pts.map(function (p) { return p[0]; }), ys = pts.map(function (p) { return p[1]; });
+    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+    if (sets.some(function (s) { return s.kind !== 'line'; })) { y0 = Math.min(0, y0); y1 = Math.max(0, y1); }
+    if (x1 === x0) x1 = x0 + 1; if (y1 === y0) y1 = y0 + 1;
+    function X(x) { return (x - x0) / (x1 - x0) * W; }
+    function Y(y) { return H - (y - y0) / (y1 - y0) * H; }
+    var svg = '';
+    sets.forEach(function (s) {
+      var n = s.ys.length;
+      if (s.kind === 'bars') {
+        var bw = Math.max(1, W / Math.max(1, n) * 0.7);
+        s.ys.forEach(function (y, i) {
+          if (y == null) return;
+          var x = X(s.xs ? s.xs[i] : i) - bw / 2, top = Math.min(Y(y), Y(0));
+          svg += '<rect x="' + x.toFixed(1) + '" y="' + top.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(0.5, Math.abs(Y(y) - Y(0))).toFixed(1) + '" fill="' + (s.colors ? s.colors[i] : s.color) + '"/>';
+        });
+        return;
+      }
+      var runs = [[]];   // a null breaks the line
+      s.ys.forEach(function (y, i) {
+        if (y == null || !isFinite(y)) { if (runs[runs.length - 1].length) runs.push([]); return; }
+        runs[runs.length - 1].push([X(s.xs ? s.xs[i] : i), Y(y)]);
+      });
+      runs.forEach(function (r) {
+        if (!r.length) return;
+        var d = r.map(function (p, k) { return (k ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join('');
+        if (s.kind === 'area') svg += '<path d="' + d + 'L' + r[r.length - 1][0].toFixed(1) + ' ' + H + 'L' + r[0][0].toFixed(1) + ' ' + H + 'Z" fill="' + s.color + '" opacity=".18"/>';
+        svg += '<path d="' + d + '" fill="none" stroke="' + s.color + '" stroke-width="1.6" vector-effect="non-scaling-stroke"/>';
+        if (r.length === 1) svg += '<circle cx="' + r[0][0].toFixed(1) + '" cy="' + r[0][1].toFixed(1) + '" r="2" fill="' + s.color + '"/>';
+      });
+    });
+    // no axis numbers: a number the page derives from the series is not printed (register P-11)
+    plot.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + svg + '</svg>';
+  }
+  function seriesNote() { return '<div class="tdm-series">Change (1h): not served</div>'; }
   function paintCards() {
     var m = S.micro, t = S.terrain;
     // LIQUIDITY — displayed book depth
@@ -371,9 +438,40 @@
         row('ATR 15m', t && t.atr_15m != null ? num(t.atr_15m) : esc((t && t.atr_15m_reason) || '—')) +
         row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : 'waiting for the VIX stream');
     }
+    paintCardCharts();
     document.querySelectorAll('#tdmCards .tdm-card').forEach(function (el) {
       if (!el.querySelector('.tdm-series')) el.insertAdjacentHTML('beforeend', seriesNote());
     });
+  }
+  function paintCardCharts() {
+    if (!S.chart) return;
+    var P = S.chart.palette(), m = S.micro, t = S.terrain, c;
+    if ((c = $('tdmCardLiq'))) {
+      var dp = (m && m.depth_pressure) || {}, bid = (dp.bid || []).slice().reverse(), ask = dp.ask || [];
+      spark(c, [{ xs: bid.map(function (r) { return r.price; }), ys: bid.map(function (r) { return r.cum; }), color: P.up, kind: 'area' },
+        { xs: ask.map(function (r) { return r.price; }), ys: ask.map(function (r) { return r.cum; }), color: P.down, kind: 'area' }],
+        'Displayed depth by price, cumulative from the top of book · ' + ((m && m.venue) || st().bookVenue),
+        m && m.status === 'no_book' ? 'no ' + m.venue + ' for this symbol right now' : m === undefined ? 'loading…' : 'no book levels served');
+    }
+    if ((c = $('tdmCardFlow'))) {
+      var fb = S.flowBars || [];
+      spark(c, [{ ys: fb.map(function (b) { return b.v; }), kind: 'bars', color: P.ink3,
+        colors: fb.map(function (b) { return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down; }) }],
+        'Schwab volume per 1-minute bar, the newest hour · green: bar closed up, red: down',
+        S.flowBars === undefined ? 'loading…' : 'no 1-minute bars for this symbol');
+    }
+    if ((c = $('tdmCardOpt'))) {
+      var pcr = (t && t.pcr_by_expiry) || {};
+      spark(c, [{ ys: Object.keys(pcr).map(function (k) { return pcr[k]; }), color: P.research, kind: 'line' }],
+        'Put/call open interest by expiry, nearest first',
+        t === undefined ? 'loading…' : (t && t.error) || 'no expiry carries open interest');
+    }
+    if ((c = $('tdmCardVol'))) {
+      var iv = (t && t.atm_iv_pct_by_expiry) || {};
+      spark(c, [{ ys: Object.keys(iv).map(function (k) { return iv[k]; }), color: P.accent, kind: 'line' }],
+        'ATM implied vol by expiry, nearest first',
+        t === undefined ? 'loading…' : (t && t.error) || 'no expiry has both ATM legs priced');
+    }
   }
 
   // ------------------------------------------------------------------ agreement (server labels only)
@@ -440,7 +538,7 @@
     if (!tk) return;
     if (tk !== S.ticker) {
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed
-      S.levels = S.terrain = S.micro = S.events = S.liq = S.strikes = S.forces = undefined; S.sel = null;
+      S.levels = S.terrain = S.micro = S.events = S.liq = S.strikes = S.forces = S.flowBars = undefined; S.sel = null;
       paintHeader(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
       loadBars(true); loadSlow(); loadFast();
     } else if (!S.bars.length) { loadBars(true); loadSlow(); loadFast(); }

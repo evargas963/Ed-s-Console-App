@@ -32,7 +32,7 @@
 .tvc-latest{position:absolute;right:62px;bottom:34px;font-size:15px}
 
 /* ---------- desk page ---------- */
-.tdm{height:100%;display:grid;grid-template-rows:auto minmax(420px,1fr) auto auto auto;gap:8px;min-height:0;overflow:auto;padding-bottom:4px}
+.tdm{height:100%;display:grid;grid-template-rows:auto minmax(360px,1fr) 250px auto auto;gap:8px;min-height:0;overflow:auto;padding-bottom:4px}
 .tdm .up{color:var(--ed-pos-ink)} .tdm .dn{color:var(--ed-neg-ink)} .tdm .warn{color:var(--ed-warn)}
 .tdm-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;padding:5px 12px;background:var(--ed-panel);
   border:1px solid var(--ed-edge);border-radius:var(--ed-r-lg,8px)}
@@ -54,11 +54,15 @@
 .tdm-pill.ok i{background:var(--ed-live)} .tdm-pill.warn i{background:var(--ed-warn)} .tdm-pill.bad i{background:var(--ed-alert)}
 .tdm-clock{font-size:12.5px;font-weight:600;color:var(--ed-ink-2);font-variant-numeric:tabular-nums}
 
-.tdm-main{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:8px;min-height:0}
+/* the reference's proportions: the map about 72% of the width, the queue beside it */
+.tdm-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,28%);gap:10px;min-height:0}
 .tdm-map{display:flex;flex-direction:column;min-height:0;overflow:hidden;background:var(--ed-panel)}
 .tdm-map:fullscreen{width:100vw;height:100vh;border-radius:0}
-.tdm-map-h{display:flex;align-items:center;gap:10px;padding:6px 8px 6px 12px;border-bottom:1px solid var(--ed-edge);flex-wrap:wrap}
-.tdm-map-h .t{font-size:14.5px;font-weight:600;color:var(--ed-ink)}
+.tdm-map-h{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 14px;border-bottom:1px solid var(--ed-edge);flex-wrap:wrap}
+/* panel and card titles, as the reference sets them */
+.tdm-map-h .t,.tdm-card-h .t,.tdm-agree-t{font-weight:700;text-transform:uppercase;
+  font-stretch:var(--ed-title-stretch);letter-spacing:var(--ed-title-spacing);color:var(--ed-ink)}
+.tdm-map-h .t,.tdm-queue .panel-h .t{font-size:19px}
 .tdm-toolbar{display:flex;align-items:center;gap:3px;flex:1;flex-wrap:wrap;min-width:0}
 .tdm-tfs{display:flex;gap:2px}
 .tdm-tb{min-width:26px;height:24px;padding:0 7px;border-radius:4px;border:1px solid transparent;background:none;color:var(--ed-ink-2);
@@ -68,16 +72,22 @@
 .tdm-sep{width:1px;height:18px;background:var(--ed-edge);margin:0 4px}
 .tdm-nsel{font-size:11.5px;color:var(--ed-ink-3);display:inline-flex;gap:5px;align-items:center}
 .tdm-nsel select{background:var(--ed-panel-2);color:var(--ed-ink);border:1px solid var(--ed-edge);border-radius:4px;font-size:11.5px;padding:1px 3px}
-.tdm-families{display:flex;flex-wrap:wrap;gap:4px;padding:5px 10px;border-bottom:1px solid var(--ed-edge-soft)}
-.tdm-fam{display:inline-flex;align-items:center;gap:5px;font:600 11px var(--ed-sans);color:var(--ed-ink-3);background:none;
-  border:1px solid var(--ed-edge-soft);border-radius:10px;padding:1px 8px;cursor:pointer}
-.tdm-fam.on{color:var(--ed-ink);border-color:var(--ed-edge)}
-.tdm-fam i{width:10px;height:2px;background:currentColor}
-.tdm-fam.fam-value_area i{background:var(--ed-accent-2)} .tdm-fam.fam-vwap i{background:var(--ed-warn)}
+/* the chart key, as the reference sets it: a swatch, the name, the served value; a click hides or shows */
+.tdm-families{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;padding:6px 14px;border-bottom:1px solid var(--ed-edge-soft)}
+.tdm-fam{display:inline-flex;align-items:center;gap:7px;font:500 12.5px var(--ed-sans);color:var(--ed-ink-3);background:none;
+  border:0;padding:1px 0;cursor:pointer}
+.tdm-fam.on{color:var(--ed-ink)}
+.tdm-fam b{font-weight:600;color:var(--ed-warn);font-variant-numeric:tabular-nums}
+.tdm-fam.fam-vwap b{color:var(--ed-accent-2)}
+.tdm-fam i{width:18px;height:2px;background:currentColor}
+.tdm-fam.fam-value_area i{background:var(--ed-warn)} .tdm-fam.fam-vwap i{background:var(--ed-accent)}
 .tdm-fam.fam-gamma i{background:linear-gradient(90deg,var(--ed-pos) 50%,var(--ed-neg) 50%)}
-.tdm-fam.fam-prior_day i{background:var(--ed-ink-3)} .tdm-fam.fam-opening_range i{background:var(--ed-stale)}
-.tdm-fam.fam-overnight i{background:var(--ed-research,#b18cff)}
-.tdm-fam:not(.on) i{opacity:.35}
+.tdm-fam.fam-prior_day i{height:10px;width:12px;background:var(--ed-warn);opacity:.8}
+.tdm-fam.fam-opening_range i,.tdm-fam.fam-overnight i,.tdm-fam.fam-expected_move i{background:repeating-linear-gradient(90deg,var(--ed-stale) 0 4px,transparent 4px 7px)}
+.tdm-fam:not(.on) i{opacity:.3}
+.tdm-fam-note{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ed-ink-3)}
+.tdm-fam-note:empty{display:none}
+.tdm-prof{width:14px;height:10px;background:repeating-linear-gradient(180deg,var(--ed-ink-3) 0 2px,transparent 2px 4px);opacity:.6}
 .tdm-chart-wrap{position:relative;flex:1;min-height:300px}
 .tdm-chart{position:absolute;inset:0}
 .tdm-chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ed-warn);font-size:13px;z-index:5;
@@ -89,47 +99,56 @@
 .tdm-count:empty{display:none}
 .tdm-queue-b{flex:1;overflow:auto;padding:4px}
 .tdm-empty{padding:14px 10px;color:var(--ed-ink-3);font-size:12px;line-height:1.45}
-.tdm-q{display:flex;gap:8px;width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:6px;padding:7px 7px;cursor:pointer;color:var(--ed-ink)}
-.tdm-q+.tdm-q{border-top-color:var(--ed-edge-soft)}
-.tdm-q:hover{background:var(--ed-panel-2)}
-.tdm-q.sel{background:var(--ed-accent-bg);border-color:var(--ed-accent-edge)}
-.tdm-q-n{flex:none;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
-  background:var(--ed-panel-3);color:var(--ed-ink)}
-.tdm-q-n.up{background:var(--ed-pos);color:#04130a} .tdm-q-n.dn{background:var(--ed-neg);color:#fff}
-.tdm-q.warn .tdm-q-n{background:var(--ed-warn);color:#1a1200}
-.tdm-q-b{display:flex;flex-direction:column;gap:2px;min-width:0}
-.tdm-q-t{font-size:12.5px;font-weight:600}
-.tdm-q-d{font-size:11.5px;color:var(--ed-ink-2);font-variant-numeric:tabular-nums}
-.tdm-q-m{font-size:10.5px;color:var(--ed-ink-3)}
-.tdm-dom{font-weight:700;letter-spacing:.06em;margin-right:6px;color:var(--ed-ink-2)}
+/* a queue item: a coloured edge and a large number in the event's colour (up green, down red,
+   warning amber, otherwise blue), the domain above the title, the source and time below */
+.tdm-q{--q:var(--ed-accent);display:flex;gap:12px;width:100%;text-align:left;background:var(--ed-panel-2);border:1px solid var(--ed-edge-soft);
+  border-left:4px solid var(--q);border-radius:6px;padding:10px 12px 10px 10px;cursor:pointer;color:var(--ed-ink);margin-bottom:8px}
+.tdm-q.up{--q:var(--ed-pos)} .tdm-q.dn{--q:var(--ed-neg)} .tdm-q.warn{--q:var(--ed-warn)}
+.tdm-q:hover{border-color:var(--ed-edge-strong);border-left-color:var(--q)}
+.tdm-q.sel{background:var(--ed-accent-bg);border-color:var(--ed-accent-edge);border-left-color:var(--q)}
+.tdm-q-n{flex:none;min-width:22px;font-size:26px;font-weight:700;line-height:1;color:var(--q);font-variant-numeric:tabular-nums}
+.tdm-q-b{display:flex;flex-direction:column;gap:3px;min-width:0}
+.tdm-q-t{font-size:15px;font-weight:600}
+.tdm-q-d{font-size:13px;color:var(--ed-ink-2);font-variant-numeric:tabular-nums}
+.tdm-q-m{font-size:12px;color:var(--ed-ink-3)}
+.tdm-dom{font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ed-ink-2)}
 
-.tdm-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.tdm-card{padding:7px 11px;display:flex;flex-direction:column;gap:4px}
-.tdm-card-h{display:flex;align-items:center;gap:7px}
-.tdm-card-h .t{font-size:13.5px;font-weight:700;color:var(--ed-ink);letter-spacing:.01em}
+.tdm-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.tdm-card{padding:10px 14px;display:flex;flex-direction:column;gap:5px;min-height:0;overflow:hidden}
+.tdm-card .tdm-rows{overflow:auto;min-height:0}
+.tdm-card-h{display:flex;align-items:center;gap:8px}
+.tdm-card-h .t{font-size:19px;white-space:nowrap}
 .tdm-eye{background:none;border:1px solid transparent;border-radius:4px;padding:1px 3px;cursor:pointer;color:var(--ed-ink-2);display:inline-flex}
 .tdm-eye:hover{color:var(--ed-accent-2);border-color:var(--ed-accent-edge)}
 .tdm-eye svg{width:16px;height:16px}
-.tdm-state{margin-left:auto;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--ed-ink-2);text-align:right}
-.tdm-hero{font-size:20px;font-weight:700;color:var(--ed-ink);font-variant-numeric:tabular-nums;display:flex;flex-direction:column;line-height:1.15}
-.tdm-hero small{font-size:11px;font-weight:500;color:var(--ed-ink-3)}
+.tdm-state{margin-left:auto;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--ed-ink-2);text-align:right;min-width:0}
+.tdm-hero{font-size:22px;font-weight:700;color:var(--ed-ink);font-variant-numeric:tabular-nums;display:flex;flex-direction:column;line-height:1.15}
+.tdm-hero small{font-size:12px;font-weight:500;color:var(--ed-ink-3)}
 .tdm-hero em{font-style:normal;color:var(--ed-ink-3);font-weight:500}
 .tdm-rows{display:flex;flex-direction:column;gap:1px}
 .tdm-r{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--ed-ink-3)}
 .tdm-r b{color:var(--ed-ink);font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
 .tdm-src{font-size:10.5px;color:var(--ed-ink-3);border-top:1px solid var(--ed-edge-soft);padding-top:4px;margin-top:auto}
-.tdm-series{font-size:10.5px;color:var(--ed-ink-3)}
+.tdm-series{font-size:11px;color:var(--ed-ink-3)}
+/* each card's chart, as the reference draws them: the plot, then its caption */
+.tdm-chartbox{margin:2px 0 0;display:flex;flex-direction:column;gap:3px;flex:none}
+.tdm-plot{height:58px;border-bottom:1px solid var(--ed-edge-soft);position:relative}
+.tdm-plot svg{width:100%;height:100%;display:block;overflow:visible}
+.tdm-plot-none{height:100%;display:flex;align-items:center;color:var(--ed-ink-3);font-size:12px}
+.tdm-chartbox figcaption{font-size:11.5px;color:var(--ed-ink-3)}
 
-.tdm-agree{display:flex;flex-direction:row;align-items:center;gap:12px;padding:7px 12px;flex-wrap:wrap}
-.tdm-agree-t{font-size:12.5px;font-weight:700;color:var(--ed-ink)}
+.tdm-agree.panel{display:flex;flex-direction:row;align-items:center;gap:12px;padding:7px 12px;flex-wrap:wrap}
+.tdm-agree-t{font-size:17px}
 .tdm-agree-row{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;flex:1}
 .tdm-ag{display:flex;gap:6px;align-items:baseline;font-size:12px}
 .tdm-ag span{color:var(--ed-ink-3);font-weight:700;letter-spacing:.05em;font-size:10.5px}
 .tdm-ag b{color:var(--ed-ink);font-weight:600;text-transform:capitalize}
 .tdm-ag-note{font-size:11px;color:var(--ed-ink-3);margin-left:auto}
-.tdm-foot{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:11px;color:var(--ed-ink-3);padding:2px 4px}
-.tdm-foot b{color:var(--ed-ink-2);font-weight:600}
+.tdm-foot{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ed-ink-3);
+  padding:6px 12px;background:var(--ed-panel);border:1px solid var(--ed-edge);border-radius:var(--ed-r-lg)}
+.tdm-foot>span+span{border-left:1px solid var(--ed-edge);padding-left:18px}
+.tdm-foot b{color:var(--ed-ink);font-weight:600;text-transform:none;letter-spacing:0}
 
-@media (max-width:1100px){.tdm-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1100px){.tdm-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.tdm{grid-template-rows:auto minmax(360px,1fr) auto auto auto}.tdm-card{height:250px}}
 @media (max-width:900px){.tdm-main{grid-template-columns:1fr}.tdm-queue{max-height:320px}.tdm{grid-template-rows:auto auto auto auto auto}.tdm-map{height:460px}}
 @media (max-width:560px){.tdm-cards{grid-template-columns:1fr}}

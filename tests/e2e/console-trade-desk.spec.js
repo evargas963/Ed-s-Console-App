@@ -18,7 +18,8 @@ const EVENTS = {
 };
 const SPOT = 771.3;
 const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA',
-  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3, pcr_all: 1.1 };
+  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3, pcr_all: 1.1,
+  pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
   levels: [
     { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', near_spot: false },
@@ -27,6 +28,7 @@ const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series
   by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [] };
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
   spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2, side: 'BID' } },
+  depth_pressure: { bid: [{ price: 771.29, volume: 300, cum: 300 }, { price: 771.28, volume: 900, cum: 1200 }], ask: [{ price: 771.31, volume: 200, cum: 200 }] },
   ages: { book_age_sec: 1, book_stale: false }, wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
   flow: { tape_pressure_5m: 0.3, tape_side_5m: 'BUY', tape_pressure_30s: 0.1, tape_pressure_2m: 0.2, cum_delta_proxy: 1000 } };
 // the pivot zone below spot was named "support" by type-guessing on the page: each zone's label and
@@ -64,6 +66,31 @@ function watchErrors(page) {
 }
 
 test.describe('Trade Desk renders served values', () => {
+  test('Desk after the close: levels drawn from the served order, named from the last trade; dark by default', async ({ page }) => {
+    // 2026-09-28 21:40 ET: after the close /api/levels served an empty by_distance and the chart drew
+    // no key level; the server now orders them from the last trade and names it (by_distance_ref)
+    const errs = watchErrors(page);
+    await page.route('**/api/**', (route) => {
+      const url = route.request().url();
+      let body = { available: false };
+      if (url.includes('/api/levels')) body = Object.assign({}, LEVELS, { spot: null,
+        levels: LEVELS.levels.map((l) => Object.assign({}, l, { distance: null, side: null })),
+        by_distance_ref: { price: SPOT, source: 'last trade', as_of: 'Fri 09/25 03:59 PM CT' } });
+      else if (url.includes('/api/bars1m')) body = BARS;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
+    await expect(page.locator('#tdmLevelsRef')).toHaveText('Levels nearest the last trade ' + SPOT.toFixed(2) + ' (Fri 09/25 03:59 PM CT)');
+    // max pain (770) is inside the one bar's price range; PDH (773.50) is above it, pinned at the edge
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBe(1);
+    await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('PDH 773.50');
+    // the profile's place in the key says why it is not drawn
+    await expect(page.locator('#tdmFamilies')).toContainText('Volume profile (RTH): not drawn');
+    expect(errs).toEqual([]);
+  });
+
   test('Desk: the served queue, counts, book side, tape side and flip relation', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
@@ -78,6 +105,13 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmCardFlow')).toContainText('Level crosses (this session (served))');
     await expect(page.locator('#tdmLookback')).toHaveText('this session (served)');
     await expect(page.locator('#tdmAgree')).toContainText('Above flip');
+    // each card draws its served series in the reference's chart type (2026-09-28): depth areas,
+    // volume bars, and lines for put/call OI and ATM IV by expiry (a null expiry breaks the line)
+    await expect(page.locator('#tdmCardLiq .tdm-plot svg path')).toHaveCount(4);
+    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(BARS.bars.length);
+    await expect(page.locator('#tdmCardOpt .tdm-plot svg path')).toHaveCount(2);
+    await expect(page.locator('#tdmCardVol .tdm-plot svg path')).toHaveCount(1);
+    await expect(page.locator('#tdmCardVol figcaption')).toHaveText('ATM implied vol by expiry, nearest first');
     await expect(page.locator('#tdmAgree')).toContainText('Bid heavy');
     expect(errs).toEqual([]);
   });
