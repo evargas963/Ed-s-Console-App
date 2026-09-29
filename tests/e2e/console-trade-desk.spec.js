@@ -301,6 +301,27 @@ test.describe('Trade Desk renders served values', () => {
     expect(await page.evaluate(() => window.EdStream.setActiveTicker)).toBeUndefined();   // no separate request
   });
 
+  test('Market Map: the wheel over the price axis rescales price (as TradingView); over the plot it does not', async ({ page }) => {
+    // operator 2026-09-29: "in tv all you do is scroll [on the price legend] and it will expand the
+    // chart vertically; the way you have it you have to click and drag"
+    await intercept(page);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars)).toBeGreaterThan(0);
+    const box = await page.locator('#tdmChart').boundingBox();
+    const span = async () => page.evaluate(() => { const c = window.EdTradeDeskMap.state().chart; return c.priceTop - c.priceBottom; });
+    const before = await span();
+    await page.mouse.move(box.x + box.width - 20, box.y + box.height / 2);   // on the price axis
+    await page.mouse.wheel(0, 400);
+    await expect.poll(span).toBeGreaterThan(before * 1.5);
+    expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.autoScale)).toBe(false);
+    const widened = await span();
+    await page.mouse.move(box.x + box.width / 3, box.y + box.height / 2);    // on the plot: time, not price
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(200);
+    expect(await span()).toBeCloseTo(widened, 6);
+  });
+
   test('Market Map: the served last completed bar; a price tick moves the live LAST line and reads no bars', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
