@@ -1539,9 +1539,8 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
                   f"(outside the refresh window: "
                   f"{_refresh_window_ct(now_et().date().isoformat())})"
                   if not refreshing else
-                  f"levels are {age:.0f}s old — over two full sweeps at the loop's DELIVERED "
-                  f"cycle of {expected:.0f}s (nominal floor {TERRAIN_REFRESH_SEC:.0f}s), so this "
-                  f"ticker is genuinely behind rather than merely between sweeps")
+                  f"levels are {age:.0f}s old; the refresh loop is running but has not reached "
+                  f"this ticker in two of its cycles ({expected:.0f}s each)")
     return {"levels_stale": stale, "levels_age_sec": age,
             "levels_refresh_active": refreshing, "levels_stale_reason": reason,
             # RC-146: a stale panel must be able to distinguish "paused by design, resumes at a
