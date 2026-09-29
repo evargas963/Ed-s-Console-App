@@ -519,9 +519,35 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     }
 
 
+def _per_strike_measure_rows(exposures: dict) -> dict:
+    """`{"dex": [[strike, net DEX $], …], "oi": [[strike, total OI], …]}`: every strike whose value
+    is known, by the heatmap cell's own readers (net_dex_dollars on a strike that cleared the OI
+    gate of a dollarized book; strike_total_oi). A strike whose value is unknown has no row."""
+    from math_exposure_core import bucket_metric, exposures_have_dollar_gex, strike_total_oi
+    from numeric_contract import float_finite_or_none
+
+    dex: list[list] = []
+    oi: list[list] = []
+    dollarized = bool(exposures) and exposures_have_dollar_gex(exposures)
+    for k, b in (exposures or {}).items():
+        sk = float_finite_or_none(k)
+        if sk is None or not isinstance(b, dict):
+            continue
+        d = float_finite_or_none(bucket_metric(b, "net_dex_dollars")) if dollarized and b.get("has_oi") else None
+        if d is not None:
+            dex.append([round(sk, 2), round(d, 1)])
+        o = strike_total_oi(b)
+        if o is not None:
+            oi.append([round(sk, 2), int(o)])
+    dex.sort(key=lambda r: r[0])
+    oi.sort(key=lambda r: r[0])
+    return {"dex": dex, "oi": oi}
+
+
 def per_strike_view(books: dict, exposures: dict) -> dict:
-    """`{all, near, far}` rows -- the ALL / <=7DTE / MONTHLY+ chips -- from the chain's
-    exposure_books and their merged full book `exposures` (one pricing pass). A contract whose
+    """`{all, near, far}` GEX rows -- the ALL / <=7DTE / MONTHLY+ chips -- from the chain's
+    exposure_books and their merged full book `exposures` (one pricing pass), and the full
+    book's DEX and OI rows (`dex`, `oi`: _per_strike_measure_rows). A contract whose
     days-to-expiry cannot be read belongs to `all` only: a maturity split it cannot answer is
     not answered for it (RC-290)."""
     from math_exposure_core import merge_exposure_books
@@ -535,7 +561,8 @@ def per_strike_view(books: dict, exposures: dict) -> dict:
 
     return {"all": _per_strike_rows(exposures),
             "near": rows(lambda d: d is not None and d <= 7),
-            "far": rows(lambda d: d is not None and d > 7)}
+            "far": rows(lambda d: d is not None and d > 7),
+            **_per_strike_measure_rows(exposures)}
 
 
 

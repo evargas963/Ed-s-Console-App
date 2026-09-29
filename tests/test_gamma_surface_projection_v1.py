@@ -386,3 +386,33 @@ def test_per_expiry_exposures_additively_merge_to_the_full_recompute(monkeypatch
         assert merged[strike] == bucket, (
             f"merged per-expiry exposures at strike {strike} must equal the full single-call "
             f"recompute exactly: {merged[strike]} != {bucket}")
+
+
+def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
+    """Operator 2026-09-29: the Delta / DEX and Open Interest Chart views were blank. The chart's
+    DEX and OI profiles (/api/terrain/strikes `measures`, from the terrain publication) are the
+    heatmap's own cells summed across expiries -- one computation, two views."""
+    import time
+
+    import server
+    from terrain_engine import compute_terrain
+
+    chain = _chain()
+    snap = compute_terrain("CRWD", chain, SPOT)
+    surface = project_gamma_surface(chain, snap.books)
+    with server._terrain_cache_lock:
+        server._terrain_cache["CRWD"] = {"ticker": "CRWD", "spot": snap.spot, "computed_ts_utc": time.time(),
+                                         "_per_strike": snap.per_strike}
+    try:
+        measures = json.loads(server.get_terrain_strikes(ticker="CRWD").body)["measures"]
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop("CRWD", None)
+    assert measures["dex"]["rows"] and measures["oi"]["rows"]
+    cols = len(surface["expirations"])
+    for m, cell_value in (("dex", lambda c: c), ("oi", lambda c: c["total"])):
+        for strike, value in measures[m]["rows"]:
+            row = [r for r in surface["cells"] if r["strike"] == strike][0]
+            cells = [cell_value(c) for c in row[m] if c is not None and cell_value(c) is not None]
+            assert cells and abs(sum(cells) - value) <= 0.5 * cols + 0.1, (m, strike, value, cells)
+        assert measures[m]["spot_strike"] is None   # no live price here: no window centre is served

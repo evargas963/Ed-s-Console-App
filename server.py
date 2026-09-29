@@ -2613,6 +2613,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
 
     today_src, prior_src = None, None
     today, prior = None, None
+    measures: dict = {"dex": [], "oi": []}
     spot_used = None
     today_age_sec = None
     # RC-146: bound BEFORE the try. `_snap` was assigned only inside the try body yet read
@@ -2638,6 +2639,8 @@ def get_terrain_strikes(ticker: str = Query(...)):
         # every row was rejected and the panel rendered EMPTY on a live, 7-second-old snapshot.
         # Data that is already computed is never recomputed from a lossy reconstruction of its
         # own inputs.
+        if isinstance(_ps, dict):
+            measures = {m: (_ps.get(m) or []) for m in ("dex", "oi")}
         if isinstance(_ps, dict) and _ps.get("all"):
             today = {k: (_ps.get(k) or []) for k in ("all", "near", "far")}
             spot_used = _snap.get("spot")
@@ -2680,6 +2683,13 @@ def get_terrain_strikes(ticker: str = Query(...)):
         "spot_source": live_src,
         "priced_at_spot": spot_used,
         "today": today or {"all": [], "near": [], "far": []},
+        # the Chart view's DEX and OI profiles: each measure's rows (terrain_engine
+        # _per_strike_measure_rows), its strike nearest the live price (the window's centre) and
+        # its largest-magnitude strike
+        "measures": {m: {"rows": rows,
+                         "spot_strike": nearest_strike([r[0] for r in rows], live_spot),
+                         "max_abs_strike": max(rows, key=lambda r: abs(r[1]), default=[None])[0]}
+                     for m, rows in measures.items()},
         "today_side_sums": _side_sums((today or {}).get("all"), live_spot),
         "spot_strike": nearest_strike([r[0] for r in (today or {}).get("all") or []], live_spot),
         # the strike with the largest net GEX magnitude (the chart labels it)
