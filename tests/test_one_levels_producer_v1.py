@@ -45,7 +45,7 @@ def _put_chain(*, fetched_ts=None, viewed=True):
                                      "_chain_fetched_ts": time.time() if fetched_ts is None else fetched_ts}
     push_changes._clients.pop(TK, None)
     if viewed:
-        push_changes.subscribe(TK)                  # a page open on the ticker
+        push_changes.subscribe(TK, "test-view")     # a page open on the ticker
 
 
 def _cached():
@@ -142,7 +142,7 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale(monkeypatch):
     streamed one."""
     now = time.time()
     chain = [dict(_CONTRACTS[0], quoteTimeInLong=int(now * 1000))] + _CONTRACTS[1:]   # a fresh chain
-    push_changes.subscribe(TK)                                                         # a page open on it
+    push_changes.subscribe(TK, "test-view")                                            # a page open on it
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": now - 60.0}}, monkeypatch)          # last change a minute ago
     server._publish_levels(TK, chain, now)
     surface = _cached()["_gamma_surface"]
@@ -324,7 +324,7 @@ def test_a_ticker_just_put_on_screen_gets_its_chain_on_the_first_tick(monkeypatc
     monkeypatch.setattr(server, "_terrain_refresh_one", lambda tk, priority=False: fetched.append((tk, priority)))
     _stream({}, monkeypatch)
     server._publish_levels(TK, _CONTRACTS, time.time())                 # published while not viewed
-    push_changes.subscribe(TK)                                           # the operator switches to it
+    push_changes.subscribe(TK, "test-view")                              # the operator switches to it
     server._on_stream_tick(TK)
     _wait_idle(TK)
     assert fetched == [(TK, True)]
@@ -366,7 +366,7 @@ def test_a_tick_on_an_unviewed_ticker_reprices_nothing(monkeypatch):
 def test_a_burst_of_ticks_reprices_at_most_once_per_interval_and_prices_the_last(monkeypatch):
     monkeypatch.setattr(server, "LEVELS_REPRICE_MIN_INTERVAL_SEC", 0.2)
     calls = _count_publishes(monkeypatch)
-    push_changes.subscribe("ZZBURST")
+    push_changes.subscribe("ZZBURST", "test-view")
     for _ in range(50):
         server._on_stream_tick("ZZBURST")
         time.sleep(0.002)

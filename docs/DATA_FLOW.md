@@ -94,7 +94,16 @@ Schwab sends is taken as sent (rule 2), never computed.
   field the stream has not sent keeps the chain's); every other contract has the chain's values.
   A contract is a ticker's when Schwab listed it in that ticker's chain (whatever its root:
   SPX and SPXW are both $SPX's). The option contract whose book streams follows the page's
-  ticker: the at-the-money call of its front expiry, from its chain.
+  ticker: the at-the-money call of its front expiry, from its chain. The further contracts a
+  page shows (the heatmap's cells, Strike Detail's strike) are that view's demand, declared
+  under the id its `/api/changes` connection carries (`view`); the stream carries the union of
+  every view's demand, ranked to the socket budget. The connection owns the demand's life
+  (`streaming.declare_option_contract_demand` / `release_option_contract_demand`): it is
+  accepted only while the view has a connection open and released when its last one closes. On
+  a ticker change the page keeps the open connection until the new ticker's opens, so the view
+  is never without one; after it was without one (the first connection, a dropped one, a
+  console restart) the page declares its demand again when the next opens (`ed:push_open`).
+  No timer keeps it alive.
 - **1-minute bar.** Schwab → daemon bus → writer (`stream_capture.db`), and → console → the
   console's own bar writer → `ed_console.db` → a `liquidity` push on `/api/changes` → the browser
   reads `/api/bars1m`. Charts show completed Schwab bars only, exactly as Schwab sent them, with

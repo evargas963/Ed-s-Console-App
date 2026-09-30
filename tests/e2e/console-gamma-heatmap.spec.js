@@ -2102,6 +2102,89 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(reads.slice(settled)).toEqual([]);
   });
 
+  test('option demand rides the push connection: declared under its view id, never re-posted on a timer', async ({ page }) => {
+    // the page re-posted its demand every 30 s to keep a 90 s lease alive; the console now holds
+    // it for as long as the view's /api/changes connection is open
+    await page.clock.install();
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(16, 3)),
+    }));
+    const views = [], posts = [];
+    page.on('request', (r) => {
+      const u = new URL(r.url());
+      if (u.pathname === '/api/changes') views.push(u.searchParams.get('view'));
+    });
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      posts.push(body);
+      route.fulfill({ status: 200, contentType: 'application/json', body: demandAck(body) });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => posts.filter((p) => p.contracts.length).length).toBeGreaterThan(0);
+    await page.waitForTimeout(300);   // hydration settles
+    expect(views[0]).toBeTruthy();
+    expect(posts.map((p) => p.client_id)).toEqual(posts.map(() => views[0]));
+    const settled = posts.length;
+    await page.clock.fastForward(95000);
+    await page.waitForTimeout(300);
+    expect(posts.length).toBe(settled);
+  });
+
+  test('when the push connection opens again, the view declares its option demand again', async ({ page }) => {
+    // the console released the view's demand when the connection closed
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(16, 3)),
+    }));
+    // each connection delivers the session and ends; the page's EventSource opens the next
+    let connections = 0;
+    await page.route('**/api/changes**', (route) => { connections += 1;
+      return route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'event: session\ndata: RTH\n\n' }); });
+    const posts = [];
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      if (body.contracts.length) posts.push(body.contracts.slice().sort().join());
+      route.fulfill({ status: 200, contentType: 'application/json', body: demandAck(body) });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => posts.length).toBeGreaterThan(0);
+    await expect.poll(() => connections, { timeout: 20000 }).toBeGreaterThan(2);
+    await expect.poll(() => posts.length).toBeGreaterThan(1);
+    expect(posts.every((p) => p === posts[0])).toBe(true);   // the same demand, declared again
+  });
+
+  test('closing a page ends its option demand on the console (the real endpoint and connection)', async ({ page, context }) => {
+    // a page showing contracts, whose declarations reach the console; `sink` takes what the
+    // console answered each one: demand_views, how many views hold demand
+    const open = async (p, sink) => {
+      await p.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(16, 3)),
+      }));
+      await p.route('**/api/streaming/active-option-contracts', (route) => route.continue());
+      p.on('response', async (r) => {
+        if (r.request().method() !== 'POST' || !r.url().includes('/api/streaming/active-option-contracts')) return;
+        try { const body = await r.json(); if (body.ok) sink.push(body.demand_views); } catch (e) {}
+      });
+      await p.goto('/', { waitUntil: 'domcontentloaded' });
+    };
+    const a = [], b = [];
+    await open(page, a);
+    await expect.poll(() => a.length).toBeGreaterThan(0);
+    const second = await context.newPage();
+    await intercept(second);
+    await second.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await open(second, b);
+    await expect.poll(() => b.length).toBeGreaterThan(0);
+    const both = b[b.length - 1];
+    expect(both).toBeGreaterThan(1);
+    await page.close();
+    // the second page declares a changed set; the console no longer counts the closed page
+    let n = 0;
+    await expect.poll(async () => {
+      await second.evaluate((i) => window.EdStream.setAdditionalContracts(['PROBE' + i], 'probe'), n++);
+      return b[b.length - 1];
+    }).toBe(both - 1);
+  });
+
   test('a late push on the PREVIOUS ticker\'s connection never paints the new ticker\'s cells', async ({ page }) => {
     let seq = 0;
     await page.route('**/api/options/gamma-surface**', (route) => {

@@ -175,10 +175,13 @@ def test_active_option_contract_post_surfaces_setter_failure(monkeypatch):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def fresh_demand(monkeypatch):
-    """No view demand, nothing held, no remembered rank; the setter records the union."""
+def fresh_demand(monkeypatch, view):
+    """No view demand, nothing held, no remembered rank; the setter records the union. The
+    views these tests declare from have their push connection open."""
     import app.options.order_flow.streaming as ofs
     monkeypatch.setattr(ofs, "_option_demand_by_client", {})
+    for v in ("v1", "heatmap-tab", "ladder-tab"):
+        view("SPY", view=v)
     held = {"now": []}
     calls: list = []
 
@@ -243,16 +246,48 @@ def test_a_views_older_declaration_cannot_overwrite_its_newer_one(fresh_demand):
     assert fresh_demand == [[_QQQ_CONTRACT]], "the stale declaration never reached the stream"
 
 
-def test_an_unrefreshed_views_lease_expires(fresh_demand):
-    import app.options.order_flow.streaming as ofs
-    ofs.declare_option_contract_demand("closed-tab", [_SPY_CONTRACT], seq=1, now=1000.0)
-    ofs.declare_option_contract_demand("live-tab", [_QQQ_CONTRACT], seq=1,
-                                       now=1000.0 + ofs.OPTION_DEMAND_LEASE_SEC - 1)
-    assert fresh_demand[-1] == sorted([_SPY_CONTRACT, _QQQ_CONTRACT]), "still within the lease"
-    out = ofs.declare_option_contract_demand("live-tab", [_QQQ_CONTRACT], seq=2,
-                                             now=1000.0 + ofs.OPTION_DEMAND_LEASE_SEC + 1)
-    assert fresh_demand[-1] == [_QQQ_CONTRACT] and out["demand_views"] == 1
-    assert "closed-tab" not in ofs._option_demand_by_client
+def test_a_views_demand_ends_when_its_last_push_connection_closes(fresh_demand):
+    """The view's /api/changes connection holds its demand, through the real route: declared
+    while it is open, kept while another of its connections is open (a ticker change opens the
+    new one as the old one closes), released when the last one closes."""
+    import asyncio
+    import time
+
+    import server as srv
+
+    async def scenario():
+        loop = asyncio.get_running_loop()
+
+        async def post(seq, contracts):
+            resp = await srv.post_streaming_active_option_contracts(
+                payload={"client_id": "tab", "seq": seq, "contracts": contracts})
+            return resp.status_code
+
+        async def settled(want):
+            end = time.monotonic() + 5
+            while fresh_demand[-1:] != [want] and time.monotonic() < end:
+                await asyncio.sleep(0.02)
+            return fresh_demand[-1]
+
+        spy = (await srv.get_changes(ticker="SPY", view="tab")).body_iterator
+        await spy.__anext__()                              # the connection is open
+        assert await post(1, [_SPY_CONTRACT]) == 200
+        qqq = (await srv.get_changes(ticker="QQQ", view="tab")).body_iterator
+        await qqq.__anext__()                              # the ticker change: a second connection
+        await spy.aclose()                                 # ... and the first one closes
+        await loop.run_in_executor(srv._get_route_offload_executor(), lambda: None)
+        assert fresh_demand[-1] == [_SPY_CONTRACT], "one connection still open: the demand stands"
+        await qqq.aclose()                                 # the page is closed
+        assert await settled([]) == []
+        return await post(2, [_SPY_CONTRACT])              # no connection: nothing would release it
+    assert asyncio.run(scenario()) == 409
+    assert fresh_demand[-1] == [], "a declaration with no connection never reaches the stream"
+
+
+def test_a_declaration_with_no_push_connection_is_refused(fresh_demand):
+    status, body = _post({"client_id": "never-connected", "seq": 1, "contracts": [_SPY_CONTRACT]})
+    assert status == 409 and body["ok"] is False and body["not_connected"] is True
+    assert fresh_demand == []
 
 
 def test_active_option_contracts_post_surfaces_setter_failure(monkeypatch, fresh_demand):

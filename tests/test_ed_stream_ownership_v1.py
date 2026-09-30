@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_ed_stream_declares_demand_per_view():
     """Runs the REAL ed-stream.js (tests/ed_stream_demand_node.mjs): each view declares its own
     option-contract demand with its id and seq, confirms against the demand the server recorded
-    (not the budgeted union), refreshes its lease, and releases it on pagehide."""
+    (not the budgeted union), and declares it again each time its push connection opens."""
     import shutil
     import subprocess
 

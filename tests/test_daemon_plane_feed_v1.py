@@ -125,7 +125,7 @@ def test_the_selected_ticker_gets_its_books_a_change_replaces_them_and_a_restart
     from app.market_data.schwab.streaming.capture import normalize_wanted, plan
 
     def select(tk):
-        asyncio.run(server.get_changes(ticker=tk))       # the page opens its connection
+        asyncio.run(server.get_changes(ticker=tk, view="test-view"))   # the page opens its connection
         end = time.monotonic() + 5
         while time.monotonic() < end and ofs.current_wanted()["NYSE_BOOK"] != [tk.upper()]:
             time.sleep(0.02)

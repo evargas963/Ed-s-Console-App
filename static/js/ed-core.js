@@ -882,18 +882,39 @@
   // ---- the console's push: which of this ticker's values changed, and the session label.
   // Each panel reloads on `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
   var _changes = null;
+  // this page load's id: its push connection carries it, and the console holds the view's
+  // option-contract demand (ed-stream.js) for as long as the view has a connection open
+  var VIEW_ID = (window.crypto && typeof window.crypto.randomUUID === 'function')
+    ? window.crypto.randomUUID()
+    : 'view-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  // On a ticker change the open connection is kept until the new ticker's opens, so the view is
+  // never without one and the console keeps its demand. `_viewLost`: the view was without a
+  // connection (the first one, or one that dropped), so what it declared is gone; the next
+  // connection to open says so (`ed:push_open`) and the demand is declared again.
+  var _kept = null, _viewLost = true;
   function openChangeStream(tk) {
-    if (_changes) { try { _changes.close(); } catch (e) {} }
-    _changes = null;
     if (typeof EventSource === 'undefined') return;
-    try { _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk)); }
-    catch (e) { return; }
-    _changes.onopen = function () { _wlDeclared = null; declareWatchlistStream(loadWL()); };
-    _changes.onerror = function () { paintSession(null, 'session unknown: the console push is down'); };
-    _changes.addEventListener('session', function (ev) { paintSession(ev.data); });
-    _changes.addEventListener('sign_in', function (ev) { paintSignIn(JSON.parse(ev.data)); });
+    if (_changes) {
+      if (_changes.readyState === EventSource.OPEN && !_kept) _kept = _changes; else _changes.close();
+    }
+    if (!_kept) _viewLost = true;
+    var es = _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk) + '&view=' + VIEW_ID);
+    es.onopen = function () {
+      if (_kept) { _kept.close(); _kept = null; }
+      _wlDeclared = null; declareWatchlistStream(loadWL());
+      if (_viewLost) { _viewLost = false; document.dispatchEvent(new CustomEvent('ed:push_open')); }
+    };
+    es.onerror = function () {
+      _viewLost = true;
+      if (es === _kept) { es.close(); _kept = null; }   // never reconnects on the ticker left
+      if (es === _changes) paintSession(null, 'session unknown: the console push is down');
+    };
+    // a kept connection is the ticker left: only the current one paints
+    es.addEventListener('session', function (ev) { if (es === _changes) paintSession(ev.data); });
+    es.addEventListener('sign_in', function (ev) { if (es === _changes) paintSignIn(JSON.parse(ev.data)); });
     ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
-      _changes.addEventListener(kind, function () {
+      es.addEventListener(kind, function () {
+        if (es !== _changes) return;
         if (kind === 'levels' && _expiriesPending) loadExpiries(state.ticker);
         emit('ed:changed', { kind: kind });
       });
@@ -1048,7 +1069,7 @@
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
-    setTheme: applyTheme,
+    setTheme: applyTheme, viewId: VIEW_ID,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
     scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, chainBadge: chainBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,

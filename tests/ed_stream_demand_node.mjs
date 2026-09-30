@@ -19,16 +19,16 @@ function load(respond) {
   const posts = [];
   const listeners = {};
   const intervals = [];
-  const window = {
-    crypto: { randomUUID: () => 'view-under-test' },
-    addEventListener: (ev, fn) => { listeners[ev] = fn; },
-  };
+  // ed-core.js (loaded first) owns the view's id and announces a push connection opening
+  // after the view was without one
+  const window = { EdShell: { viewId: 'view-under-test' } };
   const ctx = {
     window,
+    document: { addEventListener: (ev, fn) => { listeners[ev] = fn; } },
     setInterval: (fn, ms) => { intervals.push({ fn, ms }); return intervals.length; },
     fetch: (url, init) => {
       const body = JSON.parse(init.body);
-      posts.push({ url, body, keepalive: init.keepalive });
+      posts.push({ url, body });
       const { status, json } = respond(body);
       return Promise.resolve({ status, json: () => Promise.resolve(json) });
     },
@@ -74,29 +74,35 @@ for (const tamper of [{ client_id: 'other-view' }, { seq: 99 }, { requested: ['A
   assert.equal(res.accepted, false, 'tampered ack accepted: ' + JSON.stringify(tamper));
 }
 
-// 4. A live view refreshes its lease; an empty or unconfirmed one does not.
+// 4. The push connection holds the demand: no timer re-posts it, and when a connection opens
+//    after the view was without one (`ed:push_open`) the view declares it again (the server
+//    released it when the last one closed).
 {
-  const { S, posts, intervals } = load(serverAck);
-  assert.equal(intervals.length, 1);
-  assert.ok(intervals[0].ms <= 45000, 'refresh well inside the server lease (90 s)');
-  intervals[0].fn();
-  assert.equal(posts.length, 0, 'nothing declared, nothing to refresh');
+  const { S, posts, listeners, intervals } = load(serverAck);
+  assert.equal(intervals.length, 0, 'no timer keeps the demand alive');
+  listeners['ed:push_open']();
+  assert.equal(posts.length, 0, 'nothing declared, nothing to declare again');
   await S.setAdditionalContracts(['A', 'B', 'C'], 'heatmap:SPY');
-  intervals[0].fn();
+  listeners['ed:push_open']();
   assert.equal(posts.length, 2);
   assert.deepEqual(posts[1].body.contracts, ['A', 'B', 'C']);
   assert.ok(posts[1].body.seq > posts[0].body.seq);
 }
 
-// 5. Leaving the page releases this view's demand with a keepalive request.
+// 5. A declaration the server refused because the connection was not open yet is declared
+//    again when it opens, and only then counts as confirmed.
 {
-  const { S, posts, listeners } = load(serverAck);
-  await S.setAdditionalContracts(['A'], 'heatmap:SPY');
-  listeners.pagehide();
-  const last = posts[posts.length - 1];
-  assert.deepEqual(last.body.contracts, []);
-  assert.equal(last.keepalive, true);
-  assert.equal(last.body.client_id, 'view-under-test');
+  let connected = false;
+  const { S, posts, listeners } = load((body) => connected ? serverAck(body)
+    : { status: 409, json: { ok: false, not_connected: true, client_id: body.client_id, seq: body.seq } });
+  const refused = await S.setAdditionalContracts(['A'], 'heatmap:SPY');
+  assert.equal(refused.accepted, false);
+  connected = true;
+  listeners['ed:push_open']();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(posts.map((p) => p.body.contracts), [['A'], ['A']]);
+  const again = await S.setAdditionalContracts(['A'], 'heatmap:SPY');
+  assert.equal(again.unchanged, true, 'confirmed by the declaration made on open');
 }
 
 console.log('ed_stream_demand_node: all assertions passed');
