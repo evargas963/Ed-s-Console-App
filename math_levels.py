@@ -185,7 +185,7 @@ UNPRICED_SETTLED = "settled"                        # at or past its settlement:
 UNPRICED_NO_EXPIRY = "no_expiry"                    # expiry unreadable, or on a market holiday
 UNPRICED_NO_OPEN_INTEREST = "no_open_interest"      # Schwab did not report it
 UNPRICED_INVALID = "invalid"                        # strike, multiplier or side unusable
-UNPRICED_NO_VOLATILITY = "no_volatility"
+UNPRICED_NO_VOLATILITY = "no_volatility"             # Schwab sent none usable: left out of the curve
 _ZERO_OPEN_INTEREST = "zero_open_interest"          # a reported 0 adds nothing: not counted
 
 
@@ -589,7 +589,8 @@ def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | 
 #: GammaFlip.state.
 FLIP_FOUND = "FOUND"                  # the curve changes sign inside the prices evaluated
 FLIP_NO_CROSSING = "NO_CROSSING"      # the curve holds one sign over every price evaluated
-FLIP_INCOMPLETE = "INCOMPLETE"        # contracts in the book could not be priced (`unpriced`)
+FLIP_INCOMPLETE = "INCOMPLETE"        # a contract in the book could not be priced, for a reason
+                                      # other than no usable volatility (`unpriced`)
 FLIP_UNAVAILABLE = "UNAVAILABLE"      # there is no curve; GammaFlip.reason says why
 #: GammaFlip.reason when the state is FLIP_UNAVAILABLE.
 FLIP_NO_INPUT = "no_contracts_or_spot"
@@ -603,13 +604,14 @@ class GammaFlip:
     """The gamma flip and what it was looked for in.
 
     The flip is the price nearest spot at which the modelled total dealer gamma
-    (compute_gamma_profile) changes sign as the underlying price is moved and every contract
-    is repriced. It is not a zero of gamma exposure across strikes at today's price.
+    (compute_gamma_profile) changes sign as the underlying price is moved and every priced
+    contract is repriced. It is not a zero of gamma exposure across strikes at today's price.
     `price` is set only in state FLIP_FOUND. FLIP_NO_CROSSING says one thing: the curve holds
     one sign from `domain_lo` to `domain_hi`, the only prices evaluated; nothing is known
-    about prices outside them. Both are statements about the whole book: when a contract in
-    the book could not be priced the state is FLIP_INCOMPLETE and there is no result, and a
-    curve with a total that is not finite is no curve (FLIP_UNAVAILABLE). `coverage` is the
+    about prices outside them. Both are statements about the contracts the curve priced: a
+    contract Schwab sent with no usable volatility is left out and counted in `unpriced`;
+    one that could not be priced for any other reason makes the state FLIP_INCOMPLETE with no
+    result; a curve with a total that is not finite is no curve (FLIP_UNAVAILABLE). `coverage` is the
     chain-coverage verdict (GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX, GAMMA_FLIP_NARROW,
     GAMMA_FLIP_UNAVAILABLE) on the strikes Schwab listed (`strike_lo` to `strike_hi`), which
     are not the prices evaluated."""
@@ -670,7 +672,7 @@ def compute_gamma_flip(
     coverage = (GAMMA_FLIP_TRUSTED if covers_level
                 else GAMMA_FLIP_LEVEL_APPROX if covers_regime
                 else GAMMA_FLIP_NARROW)
-    if any(n for reason, n in unpriced.items() if reason != UNPRICED_SETTLED):
+    if any(n for reason, n in unpriced.items() if reason not in (UNPRICED_SETTLED, UNPRICED_NO_VOLATILITY)):
         return GammaFlip(state=FLIP_INCOMPLETE, coverage=coverage, **chain)
     changes = profile_sign_changes(profile)
     # several sign changes: the one nearest spot bounds the regime spot is in

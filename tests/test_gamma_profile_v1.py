@@ -15,7 +15,6 @@ from pathlib import Path
 from math_levels import (
     FLIP_CURVE_NOT_FINITE,
     FLIP_FOUND,
-    FLIP_INCOMPLETE,
     FLIP_NO_CROSSING,
     FLIP_UNAVAILABLE,
     GAMMA_FLIP_NARROW,
@@ -352,11 +351,13 @@ def test_rc362_net_vanna_math_and_fail_closed():
     assert compute_net_vanna({700.0: {"other": 1}}, 800.0) is None
 
 
-def test_a_book_with_unpriced_contracts_has_no_flip_and_says_how_many():
+def test_a_contract_with_no_usable_volatility_is_left_out_of_the_flip_and_counted():
     """M-10: Schwab sent volatility 0 on 5 SNDK contracts with open interest (real 09-25
-    capture). The profile cannot price them. Operator 2026-09-30: a curve missing contracts of
-    the book is not a full-book result -- it was served as the flip (1667.10), with the count
-    beside it; now there is no flip, and the reason every screen prints says how many."""
+    capture); the profile cannot price them. Operator 2026-09-30 (second ruling): the flip is
+    the curve of the contracts that can be priced, from Schwab's own inputs, with no volatility
+    made up for the rest; how many were left out stays in the diagnostics. Measured the same
+    day: withholding the flip for them left $SPX, MU, NFLX and SMCI with none, for 1 to 16
+    far-dated contracts holding at most 0.118% of open interest."""
     from datetime import timezone
     from math_levels import contract_inputs
     from terrain_engine import compute_terrain
@@ -365,15 +366,12 @@ def test_a_book_with_unpriced_contracts_has_no_flip_and_says_how_many():
     now = datetime.fromtimestamp(cap["ts_utc"], timezone.utc).astimezone(time_et.ET)
     priced, unpriced = contract_inputs(cap["chain"], now)
     assert (len(priced), unpriced) == (476, {"no_volatility": 5})
-    snap = compute_terrain("SNDK", cap["chain"], cap["spot"], now=now)
-    served = snap.to_dict()
-    assert served["flip_diag"]["unpriced"] == {"no_volatility": 5}
-    assert served["flip_diag"]["state"] == FLIP_INCOMPLETE and served["flip_diag"]["price"] is None
-    assert served["gamma_flip"] is None and served["flip_relation"] is None
-    assert served["gamma_flip_reason"] == "incomplete, 5 unpriced"
-    # nothing else is read off the incomplete curve: the support levels and its value at spot
-    assert (served["gsf"], served["grc"]) == (None, None) and "gsf_state" not in served
-    assert served["level_absent_reasons"]["gsf"] == served["level_absent_reasons"]["grc"] == "no gamma curve"
-    assert served["flip_diag"]["curve_gamma_at_spot"] is None and snap.profile == []
-    # the regime is Schwab's gamma at spot, which does not come from the curve
-    assert served["regime"] != "UNAVAILABLE" and served["net_gex_at_spot"] is not None
+    served = compute_terrain("SNDK", cap["chain"], cap["spot"], now=now).to_dict()
+    assert served["flip_diag"]["unpriced"] == {"no_volatility": 5}, "the count stays in the diagnostics"
+    assert served["flip_diag"]["state"] == FLIP_FOUND and served["gamma_flip_reason"] == ""
+    # the same flip as the chain without those contracts: nothing is filled in for them
+    kept = [c for c in cap["chain"] if not contract_inputs([c], now)[1]]
+    alone = compute_terrain("SNDK", kept, cap["spot"], now=now).to_dict()
+    assert alone["flip_diag"]["unpriced"] == {}
+    assert served["gamma_flip"] == alone["gamma_flip"] is not None
+    assert served["flip_diag"]["curve_gamma_at_spot"] == alone["flip_diag"]["curve_gamma_at_spot"]

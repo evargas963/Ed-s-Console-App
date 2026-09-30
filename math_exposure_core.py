@@ -403,7 +403,8 @@ def overlay_streamed_contract_fields(
     however long ago it arrived -- it is never compared with the chain's quote time (ONE-05,
     2026-09-28: that comparison dropped every streamed value after each chain download, and the
     heatmap flipped to all-stale while the feed was live). A field the stream has not sent keeps
-    the chain's value; every other contract keeps the chain's values.
+    the chain's value; a field it last sent as not a number (held as None) is unavailable, not
+    the chain's older value; every other contract keeps the chain's values.
 
     Pure: `contracts` and its dicts are never mutated; only a contract that gets a field is
     copied. Returns (new_contracts, overlaid_count).
@@ -422,12 +423,11 @@ def overlay_streamed_contract_fields(
             continue
         new_ct = None
         for streamed_key, chain_key in _STREAMED_GREEK_FIELDS:
-            val = streamed.get(streamed_key)
-            if val is None:
+            if streamed_key not in streamed:
                 continue
             if new_ct is None:
                 new_ct = dict(ct)
-            new_ct[chain_key] = val
+            new_ct[chain_key] = streamed[streamed_key]
         if new_ct is not None:
             overlaid += 1
             out.append(new_ct)

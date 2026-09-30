@@ -91,7 +91,10 @@ Schwab sends is taken as sent (rule 2), never computed.
   that ticker the active one); a console restart is recovered when the page reconnects. For an
   option contract the daemon holds live, the stream owns its gamma, delta, open interest, volume
   and IV: its last streamed value is the value, whatever its age, and replaces the chain's (a
-  field the stream has not sent keeps the chain's); every other contract has the chain's values.
+  field the stream has not sent keeps the chain's; a field it sent as not a number, such as
+  -999, is unavailable, never its last value or the chain's, until a number is sent again:
+  `state.push_level_one`, `overlay_streamed_contract_fields`); every other contract has the
+  chain's values.
   A contract is a ticker's when Schwab listed it in that ticker's chain (whatever its root:
   SPX and SPXW are both $SPX's). The option contract whose book streams follows the page's
   ticker: the at-the-money call of its front expiry, from its chain. The further contracts a
@@ -197,7 +200,7 @@ Schwab sends is taken as sent (rule 2), never computed.
   book 15 minutes before they stop trading (`ACTIVE_PROGRAM.md` SETTLE-ETF).
   **The gamma flip** has one producer, `math_levels.compute_gamma_flip`, and one definition: the
   price nearest spot at which the modelled total dealer gamma changes sign as the underlying
-  price is moved, every contract repriced by Black-Scholes at each candidate price from its own
+  price is moved, every priced contract repriced by Black-Scholes at each candidate price from its own
   strike, expiry and Schwab implied volatility (held fixed), +call/−put, r = q = 0. It is not
   a zero of gamma exposure across strikes at today's price. The candidate prices are spot ±15%
   in 240 steps (`GAMMA_PROFILE_SPAN_PCT`), and they are the only prices searched. A flip is an
@@ -206,10 +209,14 @@ Schwab sends is taken as sent (rule 2), never computed.
   zero, has none; with several, the one nearest spot is the flip. The result is a `GammaFlip`
   record, served as `/api/terrain` `flip_diag`, in one of four states: `FOUND`; `NO_CROSSING`
   (the curve holds one sign over the prices searched, which says nothing about any other
-  price); `INCOMPLETE` (a contract in the book could not be priced: open interest not reported,
-  no usable volatility, an unreadable expiry, or an unusable strike, multiplier or side, counted
-  by reason in `unpriced`; a curve missing part of the book is not a result for the book, so
-  there is no flip); or `UNAVAILABLE` with its reason (no chain or price, no strikes, no
+  price); `INCOMPLETE` (a contract in the book could not be priced because its open interest
+  was not reported, its expiry is unreadable, or its strike, multiplier or side is unusable:
+  there is no flip); or `UNAVAILABLE` with its reason. A contract Schwab sends with no usable
+  volatility is left out of the curve, and nothing is filled in for it: the flip is the curve
+  of the contracts that could be priced (operator 2026-09-30; on that day's captures 1 to 16
+  such contracts, all 352 or more days out and at most 0.118% of open interest, had withheld
+  the flip of `$SPX`, MU, NFLX and SMCI). Every contract left out is counted by reason in
+  `flip_diag.unpriced`, which no screen shows (no chain or price, no strikes, no
   contract that could be priced, or a total that is not finite: nothing stands in for a failed
   term). With it: the prices searched, the number of sign changes in them, the chain-coverage
   verdict. Only a `FOUND` or `NO_CROSSING` curve feeds anything else (GSF/GRC, the curve's
