@@ -20,17 +20,14 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 ### P1-6 — what is still open, by file
 
 **server.py**
-- S-02 `_write_streamed_bar` reads `bar_start_ms` raw (not `schwab_number`): text, -999 or NaN passes the None check.
 - S-03 `_hydrate_logger_tickers_from_db` keeps the unpruned roster when the prune fails; the daemon's `board_tickers` never prunes.
 - S-08 `terrain_staleness` calls a snapshot of any age not stale when not refreshing (closed market): label it a past observation with its time.
 - S-09 `terrain_staleness` uses `TERRAIN_REFRESH_SEC` when no cycle time has been measured.
 - S-10 `_gamma_surface_coverage_summary` serves `live_pct` 0.0 when no cell is relevant (absent with a reason instead).
-- S-12 `get_levels` treats a spot of 0 as missing (`and spot`).
 - S-22 `_prior_strikes` and `terrain_engine.per_strike_view` each define the 7-DTE near/far split.
 - S-24 live screens read the database: `/api/bars1m` and the price levels (`_read_bars_1m`), `/api/options/tape` (`tape_rows_for_symbol`), the book heatmap, `/api/desk/events` (level crosses), the ATR (with ONE-04/05/06).
 - S-30 the options microstructure route (`streaming_plane`) and `_contract_admission` return None/{} after an exception with no reason.
 - S-35 `get_levels` expected-move levels: live spot ± the chain-time move, stamped with the terrain's time and stale flag, computed in the route.
-- S-37 `/api/options/tape` turns an invalid `limit` into 100.
 - S-38 `_forces_from_captures` ΔOI is the change in each strike's total between two days' books: an expiry open in the older capture and settled in the newer reads as an open-interest change (2026-09-28 → 09-29: SPY 173,365 and QQQ 213,310 contracts of open interest on such contracts), and opposite changes on two contracts at one strike cancel.
 
 **liquidity_value_engine.py, liquidity_models.py**

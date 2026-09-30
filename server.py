@@ -2746,7 +2746,7 @@ def get_charm_by_strike(ticker: str = Query(...)):
 @app.get("/api/options/tape")
 def get_options_tape(ticker: str = Query(...),
                      contract: Optional[str] = Query(default=None),
-                     limit: int = Query(default=100)):
+                     limit: int = Query(default=100, ge=1, le=500)):
     """The Options Flow tape: each change of a contract's last trade as Schwab streamed it
     (app.options.order_flow.history.tape_rows_for_symbol, from the stored LEVELONE_OPTIONS
     messages), at the trade's own time. Not every trade, and no side.
@@ -2761,11 +2761,6 @@ def get_options_tape(ticker: str = Query(...),
     from app.options.order_flow.history import tape_rows_for_symbol
 
     tk = ticker_storage_key(_required_ticker(ticker))
-    try:
-        bounded_limit = max(1, min(500, int(limit)))
-    except (TypeError, ValueError):
-        bounded_limit = 100
-
     if contract:
         symbols = [contract]
     else:
@@ -2786,9 +2781,9 @@ def get_options_tape(ticker: str = Query(...),
 
     rows: list[dict] = []
     for sym in symbols:
-        rows.extend(tape_rows_for_symbol(sym, since_ts=0.0, limit=bounded_limit))
+        rows.extend(tape_rows_for_symbol(sym, since_ts=0.0, limit=limit))
     rows.sort(key=lambda r: r["ts_recv"], reverse=True)
-    rows = rows[:bounded_limit]
+    rows = rows[:limit]
     return JSONResponse({
         "ticker": tk, "available": bool(rows), "symbols": symbols, "rows": rows,
         "reason": None if rows else "no trade streamed yet for the selected contract(s)",
@@ -4011,7 +4006,7 @@ def get_levels(ticker: str = Query(...),
                                          "reason": "carried from the terrain"}})
     for row in levels:
         price = row.get("price")
-        row["distance"] = (price - spot) if price is not None and spot else None
+        row["distance"] = (price - spot) if price is not None and spot is not None else None
         # which side of spot, at the price's own two decimals (AT: prints as 0.00 away)
         row["side"] = (None if row["distance"] is None else "AT" if round(row["distance"], 2) == 0
                        else "ABOVE" if row["distance"] > 0 else "BELOW")
