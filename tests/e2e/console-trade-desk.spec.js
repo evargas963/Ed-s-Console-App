@@ -20,7 +20,8 @@ const EVENTS = {
 };
 const SPOT = 771.3;
 const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA',
-  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3, pcr_all: 1.1,
+  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3,
+  call_wall_relation: 'BELOW', put_wall_relation: 'ABOVE', pcr_all: 1.1,
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [], snapshot_age_sec: 45,
   levels: [
@@ -464,6 +465,32 @@ test.describe('Trade Desk renders served values', () => {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(confirm).toContainText('Levels' + 'as of Fri 09/25 03:15 PM CT');
     await expect(confirm.locator('.fl-badge')).toHaveText('TRUSTED');
+    expect(errs).toEqual([]);
+  });
+
+  test('a flip caveat and the regime basis are printed as served on Right Now and the Desk card', async ({ page }) => {
+    const errs = watchErrors(page);
+    await intercept(page);
+    let t = Object.assign({}, TERRAIN, { regime_basis: 'side of the gamma flip', regime_reason: '',
+      gamma_flip_caveat: 'flip level approximate' });
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(t) }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const confirm = page.locator('#tdBody .td-stage.td-accent-amber');
+    await expect(confirm).toContainText('Flip note' + 'flip level approximate');
+    await expect(confirm).toContainText('Basis' + 'side of the gamma flip');
+    t = Object.assign({}, TERRAIN, { regime_basis: 'side of the gamma flip', regime_reason: 'no gamma flip in the prices searched', gamma_flip_caveat: '' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(confirm).toContainText('No regime' + 'no gamma flip in the prices searched');
+    await expect(confirm).not.toContainText('Flip note');
+    // a put wall spot has fallen through: the served side, never "above put wall" on a negative
+    t = Object.assign({}, TERRAIN, { put_wall: 773, dist_to_put_wall: 1.7, put_wall_relation: 'BELOW' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdBody')).toContainText('1.70 below put wall, 3.70 below call wall');
+    t = Object.assign({}, TERRAIN, { gamma_flip_caveat: 'flip level approximate' });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmCardOpt .tdm-rows')).toContainText('* Flip flip level approximate');
     expect(errs).toEqual([]);
   });
 

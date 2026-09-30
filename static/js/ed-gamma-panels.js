@@ -60,12 +60,20 @@
   function renderLevels(d) {
     var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime'];
     paintPcr(d && !d.error ? d : null);
+    var note = document.getElementById('klFlipNote'), sub = document.getElementById('klRegimeSub');
     if (!d || d.error) {
       ids.forEach(function (id) { txt(id, '—'); });
       txt('klSrc', d && d.error ? 'terrain not ready' : 'offline');
+      if (note) note.hidden = true;
+      if (sub) sub.textContent = '';
       return;
     }
     txt('klFlip', d.gamma_flip != null ? px(d.gamma_flip) : (d.gamma_flip_reason || '—'));   // served reason
+    // what qualifies the flip shown, served (an approximate level, a curve that disagrees with
+    // Schwab's gamma at this price): printed under it
+    if (note) { note.hidden = !d.gamma_flip_caveat; note.textContent = d.gamma_flip_caveat || ''; }
+    // under the regime: why there is none, or what every regime rests on (both served)
+    if (sub) sub.textContent = d.regime_reason || d.regime_basis || '';
     txt('klCall', px(d.call_wall));
     txt('klPut', px(d.put_wall));
     txt('klAbs', px(d.absolute_gamma_strike));

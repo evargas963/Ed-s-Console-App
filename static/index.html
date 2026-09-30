@@ -380,6 +380,8 @@
   /* key levels rail rows — operator rail; roomy rows fill the rail, strong numeric alignment */
   .kl-row{display:flex;align-items:baseline;justify-content:space-between;padding:3.5px 0;border-bottom:1px solid var(--ed-edge-soft)}
   .kl-row:last-child{border-bottom:none}
+  .kl-note{font-size:11.5px;line-height:1.4;color:var(--ed-warn);padding:2px 0 5px;border-bottom:1px solid var(--ed-edge-soft)}
+  .kl-note[hidden]{display:none}
   .kl-row .k{font-size:13px;color:var(--ed-ink-2);letter-spacing:.01em}
   .kl-row .k .kl-scope{font-size:10px;color:var(--ed-ink-4);margin-left:6px;letter-spacing:.02em}   /* per-row scope disclosure (e.g. the expiry a ratio is scoped to) */
   .kl-row .v{font-family:var(--ed-sans);font-size:15.5px;font-weight:700;color:var(--ed-ink);font-variant-numeric:tabular-nums}
@@ -821,6 +823,7 @@
               <div class="kl-sec">Levels</div>
               <div class="kl-row"><span class="k">Spot</span><span class="v" id="klSpot">—</span></div>
               <div class="kl-row"><span class="k">Gamma Flip</span><span class="v" id="klFlip">—</span></div>
+              <div class="kl-note" id="klFlipNote" hidden></div>
               <div class="kl-row"><span class="k">Call Wall</span><span class="v" id="klCall">—</span></div>
               <div class="kl-row"><span class="k">Put Wall</span><span class="v" id="klPut">—</span></div>
               <div class="kl-row"><span class="k">Absolute γ</span><span class="v" id="klAbs">—</span></div>
@@ -836,7 +839,7 @@
               <div class="kl-regime-box">
                 <span class="rlab">Dealer Regime</span>
                 <span class="rval" id="klRegime">—</span>
-                <span class="rsub" id="klRegimeSub">dealer-sign gated per ticker</span>
+                <span class="rsub" id="klRegimeSub"></span>
               </div>
             </div>
           </div>

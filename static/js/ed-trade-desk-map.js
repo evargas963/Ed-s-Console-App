@@ -436,9 +436,11 @@
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
         src(c, 'Schwab option chain · ' + (t.levels_market_closed ? 'as of ' + esc(t.levels_as_of) : t.levels_stale ? 'stale ' + age(t.levels_age_sec) : age(t.levels_age_sec) + ' old'));
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall), 'up') + row('Put wall', num(t.put_wall), 'dn') +
-          row('Flip', t.gamma_flip != null ? num(t.gamma_flip) : esc(t.gamma_flip_reason || '—')) +
+          // a served caveat on the flip marks it here (*) and is spelled out at the end of the line
+          row('Flip', (t.gamma_flip != null ? num(t.gamma_flip) : esc(t.gamma_flip_reason || '—')) + (t.gamma_flip_caveat ? ' *' : '')) +
           row('P/C OI', num(t.pcr_all, 2)) + row('Max pain', num(t.max_pain)) +
-          row('Contracts', t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + forcesRows();
+          row('Contracts', t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + forcesRows() +
+          (t.gamma_flip_caveat ? row('* Flip', esc(t.gamma_flip_caveat)) : '');
       }
     }
     // VOLATILITY

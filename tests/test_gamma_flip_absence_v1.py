@@ -71,9 +71,9 @@ def test_no_crossing_names_the_prices_searched_and_claims_nothing_beyond_them():
     assert snap.gamma_flip_reason == f"none in {d['domain_lo']:.2f}–{d['domain_hi']:.2f}" == "none in 8.18–11.06"
     # no flip is not no regime: Schwab's gamma at spot still reads
     assert snap.regime == REGIME_LONG_GAMMA and snap.flip_relation is None
-    # the read carries the same reason, word for word, and no claim about the whole chain
-    read = " ".join(snap.lines)
-    assert f"gamma flip: {snap.gamma_flip_reason}." in read and "whole chain" not in read
+    # the reason is served once, under the flip's id, and claims nothing about the whole chain
+    assert snap.level_absent_reasons["gamma_flip"] == snap.gamma_flip_reason
+    assert "whole chain" not in snap.gamma_flip_reason
     # the same chain's curve does change sign, at a price the flip was never looked for at: the
     # absence is a statement about the prices searched, not about the chain
     beyond = profile_sign_changes(compute_gamma_profile(cap["chain"], 5.0, now=now))
@@ -198,7 +198,8 @@ def test_the_stored_capture_the_endpoints_and_the_producer_agree_on_the_missing_
     for k in ("state", "domain_lo", "domain_hi", "crossings", "coverage", "curve_gamma_at_spot"):
         assert body["flip_diag"][k] == expected.flip_diag[k], k
     assert body["flip_diag"]["state"] == FLIP_NO_CROSSING
-    assert f"gamma flip: {expected.gamma_flip_reason}." in " ".join(body["lines"])
+    assert "lines" not in body                       # no second rendering of the reason in prose
+    assert body["gamma_flip_caveat"] == expected.gamma_flip_caveat
     # no surface gets a flip from anywhere else, and the chart's levels carry the same reason
     levels = client.get(f"/api/levels?ticker={tk}").json()
     assert "gamma_flip" not in {r["id"] for r in levels["levels"]}
@@ -222,14 +223,11 @@ def test_a_ticker_with_no_chain_carries_the_flips_own_reason():
 
 
 def test_the_side_of_the_flip_has_one_rule():
-    """flip_relation and the read's wording come from terrain_read.flip_side; at the flip itself
-    spot is on neither side (the served relation said ABOVE there and the read said below)."""
-    from terrain_read import FLIP_SIDE_ABOVE, FLIP_SIDE_AT, FLIP_SIDE_BELOW, build_terrain_read, flip_side
+    """The served flip_relation comes from terrain_read.flip_side; at the flip itself spot is on
+    neither side (the served relation said ABOVE there)."""
+    from terrain_read import FLIP_SIDE_ABOVE, FLIP_SIDE_AT, FLIP_SIDE_BELOW, flip_side
     assert [flip_side(s, 100.0) for s in (101.0, 100.0, 99.0)] == [FLIP_SIDE_ABOVE, FLIP_SIDE_AT, FLIP_SIDE_BELOW]
     assert flip_side(100.0, None) is None and flip_side(None, 100.0) is None
     cap, now = _capture("real_iwm_close_capture_2026_09_29_two_expiries.json")
     snap = compute_terrain("IWM", cap["chain"], cap["spot"], now=now)
     assert snap.flip_relation == flip_side(cap["spot"], snap.gamma_flip) == FLIP_SIDE_BELOW
-    assert "below the regime line" in " ".join(snap.lines)
-    at = build_terrain_read(spot=100.0, flip=100.0, flip_confidence=snap.confidence, gamma_at_spot=1.0)
-    assert "at the regime line" in " ".join(at.lines)

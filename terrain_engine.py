@@ -44,7 +44,7 @@ from math_exposure_core import (
 )
 from math_levels import FLIP_FOUND, FLIP_NO_CROSSING, GAMMA_FLIP_TRUSTED, GSF_STATE_BELOW_SUPPORT, GSF_STATE_OK, GSF_STATE_UNAVAILABLE, compute_charm_by_strike, contract_inputs, compute_gamma_flip, compute_gamma_profile, compute_gamma_support_levels, compute_max_pain, pick_charm_wall_strikes
 from math_exposure_core import key_level_strikes_with_gamma
-from terrain_read import REGIME_LONG_GAMMA, build_terrain_read, flip_absent_reason, flip_side
+from terrain_read import REGIME_BASIS, REGIME_LONG_GAMMA, build_terrain_read, flip_absent_reason, flip_side
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
 #: v2 (2026-07-21): + net_gex_at_spot, key_delta_strike, hvp, lvp.
@@ -67,7 +67,9 @@ class TerrainSnapshot:
     posture: str = "STAND_ASIDE"
     confidence: str = "UNAVAILABLE"
     headline: str = ""
-    lines: list[str] = field(default_factory=list)
+    #: why no regime is issued ("" when one is), and what every regime rests on
+    regime_reason: str = ""
+    regime_basis: str = REGIME_BASIS
 
     # levels — chain scope for every level in this dataclass: FULL_BOOK (the wide
     # multi-expiry capture chain). The analytics summary_rows carry the SELECTED_EXPIRY
@@ -77,6 +79,10 @@ class TerrainSnapshot:
     #: prices searched without a sign change, or why there is no curve; "" with a flip. The
     #: flip's state, evaluated prices and coverage are in flip_diag (math_levels.GammaFlip).
     gamma_flip_reason: str = ""
+    #: what qualifies the flip shown, or the reason there is none (terrain_read: a level placed
+    #: on a chain too narrow to place it precisely; a curve that disagrees with Schwab's gamma
+    #: at this price); "" when nothing does
+    gamma_flip_caveat: str = ""
     #: {level id: why it has no value} for the levels that have a stated reason when absent
     #: (gamma_flip, pin_candidate, gsf, grc); /api/levels carries it in `families_absent`
     level_absent_reasons: dict[str, str] = field(default_factory=dict)
@@ -175,12 +181,14 @@ class TerrainSnapshot:
     #: a guessed state). Computed with the snapshot, at its spot.
     call_wall_state: str | None = None
     put_wall_state: str | None = None
-    #: the walls' dealer lean (wall_lean), and the spot's distance to each wall and side of the
-    #: flip, at this snapshot's spot
+    #: the walls' dealer lean (wall_lean), and at this snapshot's spot: the distance to each wall
+    #: (never negative) with the side of it spot is on, and the side of the flip (flip_side)
     call_wall_lean: str | None = None
     put_wall_lean: str | None = None
     dist_to_call_wall: float | None = None
     dist_to_put_wall: float | None = None
+    call_wall_relation: str | None = None
+    put_wall_relation: str | None = None
     flip_relation: str | None = None
 
     # provenance — never render a level without knowing where it came from
@@ -247,7 +255,7 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
     read = build_terrain_read(spot=spot, flip=None, flip_confidence=no_flip.coverage)
     return TerrainSnapshot(
         ticker=ticker, spot=spot, regime=read.regime, posture=read.posture,
-        confidence=read.confidence, headline=read.headline, lines=read.lines,
+        confidence=read.confidence, headline=read.headline, regime_reason=read.regime_reason,
         gamma_flip_reason=flip_absent_reason(no_flip), flip_diag=asdict(no_flip),
         level_absent_reasons={"gamma_flip": flip_absent_reason(no_flip)},
         error=reason,
@@ -619,16 +627,15 @@ def wall_lean(call_wall, put_wall, call_state, put_state, regime, confidence) ->
     """(call, put) wall labels as the chart states them: one strike holding both walls is
     TWO-SIDED (a magnet, not a barrier); a breached wall says so; a containing wall earns the
     dealer lean (resistance: dealers sell, support: dealers buy) only in the long-gamma regime
-    on TRUSTED coverage -- the regime in which the read itself says dealers sell strength and
-    buy weakness. In the short-gamma regime the read says the opposite, so no lean is stated;
-    otherwise None."""
+    on TRUSTED coverage, the regime in which dealers sell strength and buy weakness. In the
+    short-gamma regime they do the opposite, so no lean is stated; otherwise None."""
     if call_wall is not None and call_wall == put_wall:
         return ("TWO-SIDED — magnet, not a barrier",) * 2
     earn = regime == REGIME_LONG_GAMMA and confidence == GAMMA_FLIP_TRUSTED
     def one(state, breached, lean):
         return breached if state == "breached" else lean if state == "contains" and earn else None
-    return (one(call_state, "BREACHED — spot above", "DEALERS SELL"),
-            one(put_state, "BREACHED — spot below", "DEALERS BUY"))
+    return (one(call_state, "BREACHED — spot at or above", "DEALERS SELL"),
+            one(put_state, "BREACHED — spot at or below", "DEALERS BUY"))
 
 
 #: RC-292 pin-candidate qualification thresholds. Hardwired, not configurable. Each cites
@@ -833,10 +840,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
 
     read = build_terrain_read(
         spot=spot, flip=flip, flip_confidence=confidence,
-        put_wall=put_wall, call_wall=call_wall,
         gamma_at_spot=flip_diag.get("gamma_at_spot"),
         flip_curve_agrees=flip_diag.get("curve_agrees_with_schwab_at_spot"),
-        flip_reason=flip_reason,
     )
     net_gex_peak = pick_net_gex_peak_strike(exposures, strikes)
     call_state, put_state = wall_geometry_state(spot, call_wall, "call"), wall_geometry_state(spot, put_wall, "put")
@@ -849,9 +854,10 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         posture=read.posture,
         confidence=read.confidence,
         headline=read.headline,
-        lines=read.lines,
+        regime_reason=read.regime_reason,
         gamma_flip=flip,
         gamma_flip_reason=flip_reason,
+        gamma_flip_caveat=read.flip_caveat,
         level_absent_reasons={
             **({"gamma_flip": flip_reason} if flip is None else {}),
             **({"pin_candidate": "not qualified: " + ", ".join(_pin_candidate_blockers)}
@@ -890,8 +896,10 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         put_wall_state=put_state,
         call_wall_lean=call_lean,
         put_wall_lean=put_lean,
-        dist_to_call_wall=(call_wall - spot) if call_wall is not None else None,
-        dist_to_put_wall=(spot - put_wall) if put_wall is not None else None,
+        dist_to_call_wall=abs(call_wall - spot) if call_wall is not None else None,
+        dist_to_put_wall=abs(spot - put_wall) if put_wall is not None else None,
+        call_wall_relation=flip_side(spot, call_wall),
+        put_wall_relation=flip_side(spot, put_wall),
         flip_relation=flip_side(spot, flip),
         max_pain=_front_max_pain,
         max_pain_dte=_front_dte,

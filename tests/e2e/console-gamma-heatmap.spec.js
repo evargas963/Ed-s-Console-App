@@ -797,6 +797,22 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klPcrVolScope')).toContainText('volume');
   });
 
+  test('key levels: the regime prints what it rests on, a flip caveat or a no-regime reason as served', async ({ page }) => {
+    // 2026-09-30 audit: the rail printed a fixed "dealer-sign gated per ticker" under every regime
+    // and nothing when the flip was only approximate or the curve disagreed with it
+    let t = Object.assign({}, TERRAIN, { regime_basis: 'side of the gamma flip', regime_reason: '',
+      gamma_flip_caveat: 'flip level approximate' });
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(t) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klFlipNote')).toHaveText('flip level approximate');
+    await expect(page.locator('#klRegimeSub')).toHaveText('side of the gamma flip');
+    t = Object.assign({}, TERRAIN, { regime_basis: 'side of the gamma flip', regime_reason: 'no gamma flip in the prices searched',
+      gamma_flip_caveat: '' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klRegimeSub')).toHaveText('no gamma flip in the prices searched');
+    await expect(page.locator('#klFlipNote')).toBeHidden();
+  });
+
   test('PCR: the selected expiry re-scopes the ratio; an expiry the chain has no ratio for shows none', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klPcr')).toHaveText('1.02');

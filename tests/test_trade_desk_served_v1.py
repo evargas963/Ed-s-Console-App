@@ -136,21 +136,29 @@ def _crwd_at(live, pin_clock):
 
 
 def test_wall_distances_and_flip_relation_are_served(pin_clock):
-    out = _crwd_at(lambda b: b["spot"] + 1.0, pin_clock)
+    out = _crwd_at(lambda b: (b["call_wall"] + b["put_wall"]) / 2, pin_clock)
     assert out["dist_to_call_wall"] == pytest.approx(out["call_wall"] - out["spot"])
     assert out["dist_to_put_wall"] == pytest.approx(out["spot"] - out["put_wall"])
+    assert (out["call_wall_relation"], out["put_wall_relation"]) == ("BELOW", "ABOVE")
     assert out["flip_relation"] == (None if out["gamma_flip"] is None
                                     else "ABOVE" if out["spot"] >= out["gamma_flip"] else "BELOW")
 
 
 def test_a_breached_wall_says_so_at_the_live_price(pin_clock):
-    """Real CRWD chain; stand-in live prices one dollar beyond each wall."""
+    """Real CRWD chain; stand-in live prices one dollar beyond each wall, then at it. The
+    distance is never negative: the side spot is on is served beside it (2026-09-30: Right Now
+    printed a put wall spot had fallen through as a negative distance "above put wall")."""
     out = _crwd_at(lambda b: b["call_wall"] + 1.0, pin_clock)
     assert out["spot"] > out["call_wall"]
-    assert out["call_wall_state"] == "breached" and out["call_wall_lean"] == "BREACHED — spot above"
+    assert out["call_wall_state"] == "breached" and out["call_wall_lean"] == "BREACHED — spot at or above"
+    assert out["dist_to_call_wall"] == pytest.approx(1.0) and out["call_wall_relation"] == "ABOVE"
     out = _crwd_at(lambda b: b["put_wall"] - 1.0, pin_clock)
     assert out["spot"] < out["put_wall"]
-    assert out["put_wall_state"] == "breached" and out["put_wall_lean"] == "BREACHED — spot below"
+    assert out["put_wall_state"] == "breached" and out["put_wall_lean"] == "BREACHED — spot at or below"
+    assert out["dist_to_put_wall"] == pytest.approx(1.0) and out["put_wall_relation"] == "BELOW"
+    out = _crwd_at(lambda b: b["put_wall"], pin_clock)
+    assert out["put_wall_state"] == "breached" and out["put_wall_relation"] == "AT"
+    assert out["dist_to_put_wall"] == 0
 
 
 def test_a_containing_wall_earns_the_dealer_lean_only_in_long_gamma_on_trusted_coverage(pin_clock):
@@ -163,17 +171,16 @@ def test_a_containing_wall_earns_the_dealer_lean_only_in_long_gamma_on_trusted_c
 
 def test_no_lean_contradicts_the_read_in_short_gamma():
     """2026-09-30 audit: in the short-gamma regime the put wall read DEALERS BUY while the same
-    publication's read said dealers "buy strength and sell weakness". The lean is stated only
-    where the read agrees with it."""
+    publication's read was the trend regime (dealers buy strength and sell weakness: follow
+    breaks). The lean is stated only where the read agrees with it."""
     from terrain_engine import wall_lean
-    from terrain_read import build_terrain_read
-    read = build_terrain_read(spot=770.0, flip=775.0, flip_confidence="TRUSTED", put_wall=760.0,
-                              call_wall=780.0, gamma_at_spot=-1.0e9)
-    assert read.regime == "SHORT_GAMMA_TREND" and "sell weakness" in read.lines[0]
+    from terrain_read import POSTURE_FOLLOW, build_terrain_read
+    read = build_terrain_read(spot=770.0, flip=775.0, flip_confidence="TRUSTED", gamma_at_spot=-1.0e9)
+    assert read.regime == "SHORT_GAMMA_TREND" and read.posture == POSTURE_FOLLOW
     assert wall_lean(780.0, 760.0, "contains", "contains", read.regime, read.confidence) == (None, None)
     # a breached wall still says so, whatever the regime
     assert wall_lean(780.0, 760.0, "breached", "contains", read.regime, read.confidence) == (
-        "BREACHED — spot above", None)
+        "BREACHED — spot at or above", None)
 
 
 def test_one_strike_holding_both_walls_is_two_sided():
