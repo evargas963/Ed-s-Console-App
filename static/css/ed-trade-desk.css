@@ -34,6 +34,7 @@
 /* ---------- Options > Gamma > Chart on the shared chart ---------- */
 #chartBody{display:flex;flex-direction:column;min-height:0}
 .gchart-head{flex:none;padding:4px 10px}
+.gchart-tb,.liqm-tb{flex:none;display:flex;padding:0 10px 6px}
 .gchart-plot{position:relative;flex:1;min-height:320px}
 .gchart-empty{position:absolute;inset:40% 0 auto;text-align:center;color:var(--ed-warn);font-size:13px;z-index:5}
 .gchart-empty[hidden]{display:none}
@@ -59,7 +60,6 @@
 .tdm-idx span{color:var(--ed-ink-3);font-weight:600;letter-spacing:.04em}
 .tdm-idx b{font-weight:600;font-variant-numeric:tabular-nums;color:var(--ed-ink)}
 .tdm-idx em{font-style:normal;font-size:11.5px}
-.tdm-grow{flex:1}
 .tdm-trust-l{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--ed-ink-3)}
 .tdm-trust{display:flex;flex-wrap:wrap;gap:5px}
 .tdm-pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--ed-ink-2);padding:2px 7px;border-radius:10px;
@@ -77,15 +77,17 @@
 .tdm-map-h .t,.tdm-card-h .t,.tdm-agree-t{font-weight:700;text-transform:uppercase;
   font-stretch:var(--ed-title-stretch);letter-spacing:var(--ed-title-spacing);color:var(--ed-ink)}
 .tdm-map-h .t,.tdm-queue .panel-h .t{font-size:19px}
-.tdm-toolbar{display:flex;align-items:center;gap:3px;flex:1;flex-wrap:wrap;min-width:0}
-.tdm-tfs{display:flex;gap:2px}
-.tdm-tb{min-width:26px;height:24px;padding:0 7px;border-radius:4px;border:1px solid transparent;background:none;color:var(--ed-ink-2);
+/* the one chart toolbar (ed-tv-chart toolbar()), on every chart */
+.tvc-toolbar{display:flex;align-items:center;gap:3px;flex:1;flex-wrap:wrap;min-width:0}
+.tvc-tfs,.tvc-slot{display:flex;align-items:center;gap:2px}
+.tvc-grow{flex:1}
+.tvc-tb{min-width:26px;height:24px;padding:0 7px;border-radius:4px;border:1px solid transparent;background:none;color:var(--ed-ink-2);
   font:600 12px var(--ed-sans);cursor:pointer}
-.tdm-tb:hover{background:var(--ed-panel-2);color:var(--ed-ink)}
-.tdm-tb.on{background:var(--ed-accent-bg);border-color:var(--ed-accent-edge);color:var(--ed-accent-2)}
-.tdm-sep{width:1px;height:18px;background:var(--ed-edge);margin:0 4px}
-.tdm-nsel{font-size:11.5px;color:var(--ed-ink-3);display:inline-flex;gap:5px;align-items:center}
-.tdm-nsel select{background:var(--ed-panel-2);color:var(--ed-ink);border:1px solid var(--ed-edge);border-radius:4px;font-size:11.5px;padding:1px 3px}
+.tvc-tb:hover{background:var(--ed-panel-2);color:var(--ed-ink)}
+.tvc-tb.on{background:var(--ed-accent-bg);border-color:var(--ed-accent-edge);color:var(--ed-accent-2)}
+.tvc-sep{width:1px;height:18px;background:var(--ed-edge);margin:0 4px}
+.tvc-nsel{font-size:11.5px;color:var(--ed-ink-3);display:inline-flex;gap:5px;align-items:center}
+.tvc-nsel select{background:var(--ed-panel-2);color:var(--ed-ink);border:1px solid var(--ed-edge);border-radius:4px;font-size:11.5px;padding:1px 3px}
 /* the chart key, as the reference sets it: a swatch, the name, the served value; a click hides or shows */
 .tdm-families{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;padding:6px 14px;border-bottom:1px solid var(--ed-edge-soft)}
 .tdm-fam{display:inline-flex;align-items:center;gap:7px;font:500 12.5px var(--ed-sans);color:var(--ed-ink-3);background:none;

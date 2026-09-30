@@ -15,11 +15,9 @@
 (function () {
   'use strict';
 
-  var TFS = [{ id: '1', lbl: '1m' }, { id: '3', lbl: '3m' }, { id: '5', lbl: '5m' }, { id: '15', lbl: '15m' },
-    { id: '30', lbl: '30m' }, { id: '60', lbl: '1h' }, { id: 'D', lbl: 'D' }];
-  // 1m rows fetched per timeframe (the server rolls them up), and the tail re-read on each new
-  // completed bar: two whole buckets.
-  var FULL_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
+  // the chart's timeframes and 1m rows per timeframe (ed-tv-chart, every chart's), and the tail
+  // re-read on each new completed bar: two whole buckets.
+  var TFS = window.EdTvChart.TFS, FULL_LIMIT = window.EdTvChart.BARS_LIMIT;
   // the Order Flow card's bars: the newest hour of 1-minute bars
   var FLOW_BARS = 60;
   var TAIL_LIMIT = { '1': 5, '3': 9, '5': 15, '15': 35, '30': 65, '60': 125, 'D': 2000 };
@@ -82,52 +80,14 @@
     tf: sget('ed.desk.tf', '5'), nearest: Number(sget('ed.desk.nearest', '6')) || 6,
     fam: (function () { try { return JSON.parse(sget('ed.desk.fam', 'null')) || null; } catch (e) { return null; } })() ||
       { value_area: 1, vwap: 1, gamma: 1, expected_move: 1, prior_day: 1, opening_range: 1, overnight: 1 },
-    style: sget('ed.desk.style', 'candles'),
-    ticker: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
+    ticker: null, tb: null, gen: 0, chart: null, bars: [], levels: null, terrain: null, micro: null, crosses: null,
     analytics: null, liq: null, quotes: {}, queue: [], sel: null
   };
 
   // ------------------------------------------------------------------ layout wiring
   function buildToolbar() {
-    var tb = $('tdmToolbar'); if (!tb || tb.getAttribute('data-built')) return;
-    tb.setAttribute('data-built', '1');
-    tb.innerHTML =
-      '<div class="tdm-tfs">' + TFS.map(function (t) {
-        return '<button type="button" class="tdm-tb" data-tf="' + t.id + '">' + t.lbl + '</button>'; }).join('') + '</div>' +
-      '<span class="tdm-sep"></span>' +
-      '<button type="button" class="tdm-tb" data-act="style" id="tdmStyle" title="Candles or line">Line</button>' +
-      '<span class="tdm-sep"></span>' +
-      '<button type="button" class="tdm-tb tdm-tool on" data-tool="cursor" title="Crosshair (Esc)">&#10010;</button>' +
-      '<button type="button" class="tdm-tb tdm-tool" data-tool="hline" title="Horizontal line (Alt+H)">&#8212;</button>' +
-      '<button type="button" class="tdm-tb tdm-tool" data-tool="trend" title="Trend line (Alt+T)">&#8725;</button>' +
-      '<button type="button" class="tdm-tb" data-act="undo" title="Undo drawing (Ctrl+Z)">&#8630;</button>' +
-      '<button type="button" class="tdm-tb" data-act="clear" title="Remove all drawings">&#10005;</button>' +
-      '<span class="tdm-sep"></span>' +
-      '<label class="tdm-nsel" title="How many key levels to draw (nearest to price, inside the visible range)">Levels ' +
-        '<select id="tdmNearest">' + [3, 4, 6, 8, 12, 99].map(function (n) {
-          return '<option value="' + n + '"' + (n === S.nearest ? ' selected' : '') + '>' + (n === 99 ? 'All' : n) + '</option>'; }).join('') +
-        '</select></label>' +
-      '<span class="tdm-grow"></span>' +
-      '<button type="button" class="tdm-tb" data-act="reset" title="Reset chart (Alt+R)">&#10227;</button>' +
-      '<button type="button" class="tdm-tb" data-act="shot" title="Save a PNG of the chart">&#128247;</button>' +
-      '<button type="button" class="tdm-tb" data-act="full" title="Full screen">&#9974;</button>';
-    tb.addEventListener('click', function (e) {
-      var b = e.target.closest('button'); if (!b || !S.chart) return;
-      if (b.hasAttribute('data-tf')) { setTf(b.getAttribute('data-tf')); return; }
-      if (b.hasAttribute('data-tool')) { S.chart.setTool(b.getAttribute('data-tool')); return; }
-      var a = b.getAttribute('data-act');
-      if (a === 'undo') S.chart.undo();
-      else if (a === 'clear') S.chart.clearDrawings();
-      else if (a === 'reset') S.chart.resetAll();
-      else if (a === 'shot') S.chart.screenshot();
-      else if (a === 'full') S.chart.fullscreen();
-      else if (a === 'style') { S.style = S.style === 'line' ? 'candles' : 'line'; sset('ed.desk.style', S.style); paintStyle(); }
-    });
-    $('tdmNearest').addEventListener('change', function (e) {
-      S.nearest = Number(e.target.value) || 6; sset('ed.desk.nearest', String(S.nearest));
-      if (S.chart) S.chart.setNearestN(S.nearest);
-    });
-    var fam = $('tdmFamilies');
+    var fam = $('tdmFamilies'); if (!fam || fam.getAttribute('data-built')) return;
+    fam.setAttribute('data-built', '1');
     fam.innerHTML = FAMILIES.map(function (f) {
       return '<button type="button" class="tdm-fam fam-' + f.id + '" data-fam="' + f.id + '"><i></i>' + f.lbl + '<b data-famv="' + f.id + '"></b></button>'; }).join('') +
       '<span class="tdm-fam-note" id="tdmProfNote"></span>' +
@@ -137,7 +97,7 @@
       var id = b.getAttribute('data-fam'); S.fam[id] = S.fam[id] === 0 ? 1 : 0;   // a family not yet saved is on
       sset('ed.desk.fam', JSON.stringify(S.fam)); paintChartLevels();
     });
-    paintFamilies(); paintTfButtons(); paintStyle();
+    paintFamilies();
   }
   function paintFamilies() {
     document.querySelectorAll('#tdmFamilies [data-fam]').forEach(function (b) {
@@ -155,17 +115,24 @@
       ' RTH bars sent no volume and are not in it' : '') : why ? 'Volume profile (RTH) not drawn: ' + why.reason : '';
   }
   function paintTfButtons() {
-    document.querySelectorAll('#tdmToolbar [data-tf]').forEach(function (b) {
-      b.classList.toggle('on', b.getAttribute('data-tf') === S.tf); });
+    if (S.tb) S.tb.setTf(S.tf);
     var lb = $('tdmLookback'); if (lb) lb.textContent = windowLabel();
   }
   function ensureChart() {
     if (S.chart) return S.chart;
     if (!window.EdTvChart || !window.LightweightCharts) return null;
-    S.chart = window.EdTvChart.create($('tdmChart'), { nearestN: S.nearest, fullscreenEl: $('tdmMap'),
-      onTool: function (t) { document.querySelectorAll('#tdmToolbar [data-tool]').forEach(function (b) {
-        b.classList.toggle('on', b.getAttribute('data-tool') === t); }); } });
-    paintStyle();
+    S.chart = window.EdTvChart.create($('tdmChart'), { nearestN: S.nearest, fullscreenEl: $('tdmMap') });
+    S.tb = window.EdTvChart.toolbar($('tdmToolbar'), S.chart, { tf: S.tf, onTf: setTf, styleKey: 'ed.desk.style' });
+    S.tb.slot.innerHTML = '<span class="tvc-sep"></span>' +
+      '<label class="tvc-nsel" title="How many key levels to draw (nearest to price, inside the visible range)">Levels ' +
+      '<select id="tdmNearest">' + [3, 4, 6, 8, 12, 99].map(function (n) {
+        return '<option value="' + n + '"' + (n === S.nearest ? ' selected' : '') + '>' + (n === 99 ? 'All' : n) + '</option>'; }).join('') +
+      '</select></label>';
+    $('tdmNearest').addEventListener('change', function (e) {
+      S.nearest = Number(e.target.value) || 6; sset('ed.desk.nearest', String(S.nearest));
+      S.chart.setNearestN(S.nearest);
+    });
+    paintTfButtons();
     document.querySelectorAll('[data-drill]').forEach(function (el) {
       el.addEventListener('click', function () {
         var d = DRILL[el.getAttribute('data-drill')]; if (!d || !window.EdShell) return;
@@ -286,10 +253,6 @@
     return l && l.price != null ? Number(l.price) : null;
   }
   function pdValueArea() { return { val: levelPrice('PD_VAL'), vah: levelPrice('PD_VAH') }; }
-  function paintStyle() {
-    if (S.chart) S.chart.setStyle(S.style);
-    var b = $('tdmStyle'); if (b) { b.classList.toggle('on', S.style === 'line'); }
-  }
   function paintChartLevels() {
     if (!S.chart) return;
     paintFamilies();

@@ -7,10 +7,11 @@
    The operator's chart standard (feedback_chart_interactions_mirror_tradingview), measured
    against the library on real SPY bars before use:
      - plot drag pans BOTH ways. The library pans price vertically only once the price scale is
-       out of auto-fit; TradingView turns auto-fit off the moment you drag vertically. The one
-       gap is closed below (installVerticalPan) -- everything else is the library's own.
-     - price-axis drag rescales price, time-axis drag rescales time, double-click an axis
-       resets it, Alt+R resets everything, the wheel zooms time.
+       out of auto-fit; TradingView turns auto-fit off the moment you drag vertically. The two
+       gaps are closed below (installVerticalPan, installPriceAxisWheel) -- everything else is
+       the library's own.
+     - price-axis drag or wheel rescales price, time-axis drag rescales time, double-click an
+       axis resets it, Alt+R resets everything, the wheel over the plot zooms time.
      - the crosshair follows the mouse; the readout BOX appears only on click (pinned, with a
        close control) -- never a hover tooltip.
    Every number drawn here is the server's (bars from /api/bars1m, levels from /api/levels +
@@ -171,7 +172,9 @@
           var top = Math.min(y1, y2) * vr, h = Math.max(1, Math.abs(y2 - y1) * vr);
           c.fillStyle = alpha(z.color, 0.13); c.fillRect(0, top, W, h);
           c.fillStyle = alpha(z.color, 0.6); c.fillRect(0, top, W, Math.max(1, vr)); c.fillRect(0, top + h - Math.max(1, vr), W, Math.max(1, vr));
-          if (z.label) { c.fillStyle = z.color; c.font = Math.round(11 * vr) + 'px ' + tok('--ed-sans', 'sans-serif'); c.fillText(z.label, 6 * hr, top + 12 * vr); }
+          // the label sits inside its band, below the legend line (28px) when the band's top is above it
+          if (z.label) { c.fillStyle = z.color; c.font = Math.round(11 * vr) + 'px ' + tok('--ed-sans', 'sans-serif');
+            c.fillText(z.label, 6 * hr, Math.min(Math.max(top, 28 * vr) + 12 * vr, top + h - 3 * vr)); }
         });
       });
     } };
@@ -432,7 +435,23 @@
     draw.color = P.accent2;
     candles.attachPrimitive(draw);
 
-    // ---- the one gap vs TradingView: vertical plot drag must pan price even in auto-fit ----
+    // ---- the wheel over the price axis rescales price about the middle of the visible range, as
+    // TradingView does (the library's wheel zooms time only); auto-fit turns off ----
+    (function installPriceAxisWheel() {
+      plot.addEventListener('wheel', function (e) {
+        if (e.clientX - plot.getBoundingClientRect().left <= chart.timeScale().width()) return;   // the plot: time
+        e.preventDefault(); e.stopPropagation();
+        var ps = chart.priceScale('right'), r = ps.getVisibleRange(); if (!r) return;
+        var log = ps.options().mode === LWC.PriceScaleMode.Logarithmic && r.from > 0;
+        var lo = log ? Math.log(r.from) : r.from, hi = log ? Math.log(r.to) : r.to;
+        var mid = (lo + hi) / 2, half = (hi - lo) / 2 * Math.exp(e.deltaY * 0.002);   // down: wider range
+        setAuto(false);
+        ps.setVisibleRange(log ? { from: Math.exp(mid - half), to: Math.exp(mid + half) } : { from: mid - half, to: mid + half });
+        scheduleLevels();
+      }, { passive: false, capture: true });
+    })();
+
+    // ---- vertical plot drag must pan price even in auto-fit ----
     (function installVerticalPan() {
       var start = null;
       plot.addEventListener('pointerdown', function (e) { start = { x: e.clientX, y: e.clientY }; }, true);
@@ -552,8 +571,9 @@
       S.tool = t; draw.preview = null; draw.redraw();
       host.classList.toggle('tvc-drawing', t !== 'cursor');
       chart.applyOptions({ handleScroll: { pressedMouseMove: t === 'cursor' } });
-      if (opts.onTool) opts.onTool(t);
+      toolListeners.forEach(function (fn) { fn(t); });
     }
+    var toolListeners = [];   // the toolbar's tool buttons follow the tool, keyboard included
 
     // Drawing tools read the pointer directly. The library reports no click for a second click
     // at a different spot inside its double-click window (measured: two quick trend-line clicks
@@ -768,7 +788,7 @@
         var to = Math.min(lg + w / 2, S.bars.length + 8);   // never scroll past the latest bar
         chart.timeScale().setVisibleLogicalRange({ from: to - w, to: to });
       },
-      setTool: setTool, undo: undo,
+      setTool: setTool, undo: undo, onTool: function (fn) { toolListeners.push(fn); fn(S.tool); },
       clearDrawings: function () { clearDrawingObjects(); S.undo = []; saveDrawings(); },
       resetAll: resetAll,
       screenshot: function () {
@@ -834,5 +854,54 @@
     return api;
   }
 
-  window.EdTvChart = { create: create, alpha: alpha };
+  // The timeframes every chart offers, and the 1-minute bars each asks /api/bars1m for (the server
+  // rolls them up to the timeframe).
+  var TFS = [{ id: '1', lbl: '1m' }, { id: '3', lbl: '3m' }, { id: '5', lbl: '5m' }, { id: '15', lbl: '15m' },
+    { id: '30', lbl: '30m' }, { id: '60', lbl: '1h' }, { id: 'D', lbl: 'D' }];
+  var BARS_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
+
+  function lsGet(k, d) { try { var v = window.localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
+  function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }
+
+  // The one chart toolbar, TradingView's: the timeframes (when the page passes onTf), candles or
+  // line, the crosshair / horizontal-line / trend-line tools, undo, clear, reset, screenshot and
+  // full screen. o: {tf, onTf(tf), styleKey (the viewer's candles/line choice, kept per chart)}.
+  // Returns {setTf(tf), slot}: `slot` is where a page adds its own controls.
+  function toolbar(el, api, o) {
+    o = o || {};
+    var style = o.styleKey ? lsGet(o.styleKey, 'candles') : 'candles';
+    var btn = function (attr, title, html, cls) {
+      return '<button type="button" class="tvc-tb' + (cls ? ' ' + cls : '') + '" ' + attr + ' title="' + title + '">' + html + '</button>'; };
+    el.classList.add('tvc-toolbar');
+    el.innerHTML = (o.onTf ? '<div class="tvc-tfs">' + TFS.map(function (t) {
+        return btn('data-tf="' + t.id + '"', t.lbl, t.lbl); }).join('') + '</div><span class="tvc-sep"></span>' : '') +
+      btn('data-act="style"', 'Candles or line', 'Line') + '<span class="tvc-sep"></span>' +
+      btn('data-tool="cursor"', 'Crosshair (Esc)', '&#10010;', 'tvc-tool') +
+      btn('data-tool="hline"', 'Horizontal line (Alt+H)', '&#8212;', 'tvc-tool') +
+      btn('data-tool="trend"', 'Trend line (Alt+T)', '&#8725;', 'tvc-tool') +
+      btn('data-act="undo"', 'Undo drawing (Ctrl+Z)', '&#8630;') + btn('data-act="clear"', 'Remove all drawings', '&#10005;') +
+      '<span class="tvc-slot"></span><span class="tvc-grow"></span>' +
+      btn('data-act="reset"', 'Reset chart (Alt+R)', '&#10227;') + btn('data-act="shot"', 'Save a PNG of the chart', '&#128247;') +
+      btn('data-act="full"', 'Full screen', '&#9974;');
+    function setTf(tf) { el.querySelectorAll('[data-tf]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tf') === tf); }); }
+    function paintStyle() { api.setStyle(style); el.querySelector('[data-act="style"]').classList.toggle('on', style === 'line'); }
+    el.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.hasAttribute('data-tf')) { setTf(b.getAttribute('data-tf')); o.onTf(b.getAttribute('data-tf')); return; }
+      if (b.hasAttribute('data-tool')) { api.setTool(b.getAttribute('data-tool')); return; }
+      var a = b.getAttribute('data-act');
+      if (a === 'style') { style = style === 'line' ? 'candles' : 'line'; if (o.styleKey) lsSet(o.styleKey, style); paintStyle(); }
+      else if (a === 'undo') api.undo();
+      else if (a === 'clear') api.clearDrawings();
+      else if (a === 'reset') api.resetAll();
+      else if (a === 'shot') api.screenshot();
+      else if (a === 'full') api.fullscreen();
+    });
+    api.onTool(function (t) { el.querySelectorAll('[data-tool]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tool') === t); }); });
+    if (o.onTf) setTf(o.tf);
+    paintStyle();
+    return { setTf: setTf, slot: el.querySelector('.tvc-slot') };
+  }
+
+  window.EdTvChart = { create: create, toolbar: toolbar, TFS: TFS, BARS_LIMIT: BARS_LIMIT, alpha: alpha };
 })();

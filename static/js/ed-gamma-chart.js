@@ -1,6 +1,6 @@
 /* Ed Console — Options/Gamma Chart view. PRESENTATION ONLY.
    On the one TradingView-style chart every chart in the console uses (ed-tv-chart.js): the price
-   (/api/bars1m, completed Schwab 1-minute bars), the flip and the walls (/api/terrain) as level
+   (/api/bars1m, completed Schwab bars at the toolbar's timeframe), the flip and the walls (/api/terrain) as level
    lines, the live price (the header's price row), and the selected measure's per-strike rows
    (/api/terrain/strikes: GEX `today.all`, DEX and OI `measures`) as a profile on the price axis --
    bars, or dots sized by magnitude (Dot Map). The same view serves the Gamma, Delta / DEX and Open
@@ -34,6 +34,9 @@
   var _chart = null;
   var _liveQuote = null;          // the header's price row (ed:quote_tick), the one displayed price
   var _last = { bars: undefined, strikes: undefined, terrain: undefined };
+  // the chart's timeframe (the toolbar's), kept per viewer
+  var _tf = (function () { try { return window.localStorage.getItem('ed.gchart.tf') || '1'; } catch (e) { return '1'; } })();
+  function tfLabel() { return (window.EdTvChart.TFS.filter(function (t) { return t.id === _tf; })[0] || {}).lbl || _tf; }
 
   function liveSpot() {   // the row whose served key is the selected instrument's (EdShell state.key)
     var q = _liveQuote;
@@ -43,13 +46,15 @@
     var host = document.getElementById('chartBody');
     if (!host || !window.EdTvChart || !window.LightweightCharts) return null;
     if (_chart && host.querySelector('.gchart-plot')) return _chart;
-    host.innerHTML = '<div class="gchart-head"></div><div class="gchart-plot"></div><div class="gchart-empty" hidden></div>';
+    host.innerHTML = '<div class="gchart-head"></div><div class="gchart-tb"></div><div class="gchart-plot"></div><div class="gchart-empty" hidden></div>';
     _chart = window.EdTvChart.create(host.querySelector('.gchart-plot'), { nearestN: 99,
       onProfileClick: function (row) {
         if (!window.EdShell) return;
         var exp = window.EdShell.getExpiry ? window.EdShell.getExpiry() : null;   // the workspace's expiry filter carries through
         window.EdShell.setStrike(row.price, exp || null);
       } });
+    window.EdTvChart.toolbar(host.querySelector('.gchart-tb'), _chart, { tf: _tf, styleKey: 'ed.gchart.style',
+      onTf: function (tf) { _tf = tf; try { window.localStorage.setItem('ed.gchart.tf', tf); } catch (e) { /* per-viewer only */ } load(); } });
     return _chart;
   }
 
@@ -58,7 +63,8 @@
   function loadImpl(tk, signal) {
     if (!isChart() || ticker() !== tk || !ensureChart()) return;
     return Promise.all([
-      fetch('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=1&limit=390', { cache: 'no-store', signal: signal }).then(okJson).catch(nullp),
+      fetch('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + _tf + '&limit=' + window.EdTvChart.BARS_LIMIT[_tf],
+        { cache: 'no-store', signal: signal }).then(okJson).catch(nullp),
       fetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal }).then(okJson).catch(nullp),
       fetch('/api/terrain?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal }).then(okJson).catch(nullp)
     ]).then(function (r) {
@@ -98,7 +104,7 @@
       ? window.EdShell.scopeSelect(srows.map(function (r) { return r[0]; }), prof.spot_strike)
       : { idx: srows.map(function (_r, i) { return i; }) };
     var win = sel.idx.map(function (i) { return srows[i]; }).filter(function (r) { return r[1] != null; });   // unknown: nothing drawn
-    c.setBars(bars, '1', st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
+    c.setBars(bars, (barsD && barsD.tf) || _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
     c.setProfile(win.map(function (r) {
       return { price: Number(r[0]), value: Number(r[1]), color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down }; }),
       _mode === 'dotmap' ? 'dots' : 'bars');
@@ -124,7 +130,7 @@
     var ab = (window.EdShell && window.EdShell.asOfBadge) || function () { return ''; };
     var lastT = bars.length ? bars[bars.length - 1].t : null;
     var src = sd && sd.today_source;
-    var asof = (lastT ? '<span class="asof">price 1m · ' + ctTime(lastT) + ' CT</span>' : '') +
+    var asof = (lastT ? '<span class="asof">price ' + tfLabel() + ' · ' + ctTime(lastT) + ' CT</span>' : '') +
       (src ? ab({ label: n + ' ' + (src === 'terrain_live_cache' ? 'terrain live' : src), ageSec: sd.today_age_sec,
         stale: !!sd.levels_stale, reason: sd.levels_stale_reason, live: src === 'terrain_live_cache' && sd.levels_stale === false }) : '');
     var top = srows.filter(function (r) { return r[0] === prof.max_abs_strike; })[0];   // served: the largest-magnitude strike
