@@ -1,7 +1,7 @@
 /* Ed Console — Liquidity / "Map" subview. PRESENTATION ONLY, computes nothing.
    The zones /api/liquidity-snapshot computes (support / resistance / value bands, each with its
    served label, side and confluence score) on the one TradingView-style chart every chart in the
-   console uses (ed-tv-chart.js), over the price (/api/bars1m, completed Schwab bars, 5-minute),
+   console uses (ed-tv-chart.js), over the price (/api/bars1m, completed Schwab bars, the toolbar's timeframe),
    with the prior-day and overnight levels and the live price from /api/levels -- the one level
    route. The zone list below the chart names each zone's source levels. */
 (function () {
@@ -22,12 +22,16 @@
   var REF_FAMILIES = { prior_day: 1, overnight: 1 };
 
   var _chart = null;
+  // the map's timeframe (the toolbar's), kept per viewer
+  var _tf = (function () { try { return window.localStorage.getItem('ed.liqm.tf') || '5'; } catch (e) { return '5'; } })();
   function ensureChart(h) {
     if (_chart && h.querySelector('.liqm-plot')) return _chart;
     if (!window.EdTvChart || !window.LightweightCharts) return null;
-    h.innerHTML = '<div class="liqm-plot"></div><div class="liqm-empty" hidden></div><div class="liqm-zones"></div>' +
+    h.innerHTML = '<div class="liqm-tb"></div><div class="liqm-plot"></div><div class="liqm-empty" hidden></div><div class="liqm-zones"></div>' +
       '<div class="fl-foot">Zones from /api/liquidity-snapshot; prior-day and overnight levels and the price from /api/levels and /api/bars1m. The map arranges them; it computes nothing.</div>';
     _chart = window.EdTvChart.create(h.querySelector('.liqm-plot'), { nearestN: 99 });
+    window.EdTvChart.toolbar(h.querySelector('.liqm-tb'), _chart, { tf: _tf, styleKey: 'ed.liqm.style',
+      onTf: function (tf) { _tf = tf; try { window.localStorage.setItem('ed.liqm.tf', tf); } catch (e) { /* per-viewer only */ } load(); } });
     return _chart;
   }
 
@@ -43,7 +47,7 @@
     var P = c.palette();
     var side = { support: P.up, resistance: P.down, value: P.ink3 };
     var zones = (snap && snap.zones) || [];
-    c.setBars((barsD && barsD.bars) || [], '5', st().display || tk, barsD && barsD.last_bar && barsD.last_bar.label);
+    c.setBars((barsD && barsD.bars) || [], (barsD && barsD.tf) || _tf, st().display || tk, barsD && barsD.last_bar && barsD.last_bar.label);
     c.setZones(zones.map(function (z) {
       return { lo: z.zone_low, hi: z.zone_high, color: side[z.zone_side] || P.ink3, label: z.zone_label + ' · ' + z.confluence_score + '×' };
     }));
@@ -63,7 +67,7 @@
     return Promise.all([
       fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=5&limit=3000', signal)
+      fetchJson('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + _tf + '&limit=' + window.EdTvChart.BARS_LIMIT[_tf], signal)
     ]).then(function (r) {
       if (stillMap(tk)) render(h, tk, r[0], r[1], r[2]);
     }).catch(function (e) {
