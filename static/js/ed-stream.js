@@ -98,39 +98,26 @@
   // the union of every owner's current demand, deduplicated, computed fresh on every call
   // so an owner's OWN change (including going back to empty) is reflected immediately.
   var _additionalDemandByOwner = {};
-  // Per-view demand (2026-09-24): the server keeps each page load's declaration under its
-  // own id and streams the union of every live view (server.py
-  // post_streaming_active_option_contracts). It used to be ONE last-writer-wins slot, so
-  // two tabs replaced each other's contracts on every render and the capture daemon
-  // swapped ~200 subscriptions on the shared Schwab socket every few seconds until the
-  // socket died. `_demandSeq` orders this view's own declarations; a declaration is a
-  // lease the server drops after 90 s unrefreshed, so a live view re-declares every
-  // DEMAND_REFRESH_MS and a closing page releases its demand at once.
-  var _clientId = (window.crypto && typeof window.crypto.randomUUID === 'function')
-    ? window.crypto.randomUUID()
-    : 'view-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  // Per-view demand: the server keeps each page load's declaration under its id and streams
+  // the union of every view (server.py post_streaming_active_option_contracts). The view's
+  // demand lives as long as the view has a push connection open (/api/changes, ed-core.js):
+  // the server releases it when the last one closes, so after the view was without one
+  // (`ed:push_open`) it declares again.
+  // `_demandSeq` orders this view's own declarations.
+  var _clientId = window.EdShell.viewId;
   var _demandSeq = 0;
-  var DEMAND_REFRESH_MS = 30000;
-  function _postDemand(contracts, seq, keepalive) {
+  function _postDemand(contracts, seq) {
     return fetch('/api/streaming/active-option-contracts', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: !!keepalive,
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ client_id: _clientId, seq: seq, contracts: contracts }),
     });
   }
-  setInterval(function () {
-    // Refresh only a confirmed, idle, non-empty declaration: an in-flight dispatch will
-    // itself refresh the lease, and an empty one holds nothing to keep.
-    if (_pendingAdditional !== null || !_desiredAdditionalConfirmed || !_desiredAdditional.length) return;
-    _postDemand(_desiredAdditional, ++_demandSeq).catch(function () {});
-  }, DEMAND_REFRESH_MS);
-  window.addEventListener('pagehide', function () {
-    if (!_desiredAdditional.length && _pendingAdditional === null) return;
-    _postDemand([], ++_demandSeq, true).catch(function () {});
-  });
-  window.addEventListener('pageshow', function (ev) {
-    // Restored from the back/forward cache: pagehide released this view's demand, so the
-    // cached confirmation no longer matches the server -- the next render re-declares.
-    if (ev.persisted) _desiredAdditionalConfirmed = false;
+  document.addEventListener('ed:push_open', function () {
+    // nothing the server confirmed before this connection still stands
+    _desiredAdditionalConfirmed = false;
+    _pendingAdditional = null;
+    var demand = _unionedAdditionalDemand();
+    if (demand.length) _dispatchAdditionalContracts(demand);
   });
   function _unionedAdditionalDemand() {
     var seen = {}, out = [];

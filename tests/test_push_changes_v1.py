@@ -20,7 +20,7 @@ TK = _FX["ticker"]
 def _run(body):
     async def main():
         push_changes.bind(asyncio.get_running_loop())
-        mine, other = push_changes.subscribe(TK), push_changes.subscribe("ZZOTHER")
+        mine, other = push_changes.subscribe(TK, "mine"), push_changes.subscribe("ZZOTHER", "other")
         try:
             body()
             await asyncio.sleep(0)

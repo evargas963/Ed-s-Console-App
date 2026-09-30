@@ -570,17 +570,28 @@ _OVER_BUDGET_REASON_PREFIX = "not admitted: outside the live-stream budget"
 #: this used to be one last-writer-wins slot, so two views (a 0DTE ladder and the
 #: all-expiry grid) replaced each other's set on every render and the daemon swapped ~200
 #: contracts on the shared Schwab socket every few seconds until the socket died.
-#: A declaration is a lease: a live view re-declares every 30 s (DEMAND_REFRESH_MS in
-#: static/js/ed-stream.js), and one not refreshed within OPTION_DEMAND_LEASE_SEC -- a closed
-#: or crashed tab -- stops counting at the next declaration from any view.
-OPTION_DEMAND_LEASE_SEC = 90.0
+#: A view's demand lives as long as the view's push connection (/api/changes,
+#: push_changes.view_open): declared only while it is open, released when its last one closes
+#: (release_option_contract_demand). The page declares again each time the connection opens.
 _option_demand_by_client: "dict[str, dict]" = {}
 _option_demand_lock = threading.Lock()
 
 
+class ViewNotConnectedError(RuntimeError):
+    """A view with no open push connection declared demand: nothing would ever release it."""
+
+
+def _stream_demand_union() -> int:
+    """Stream the union of every view's demand; how many views hold any. Caller holds
+    _option_demand_lock."""
+    live = [v["symbols"] for v in _option_demand_by_client.values() if v["symbols"]]
+    set_active_option_contracts(sorted(set().union(*live)) if live else [])
+    return len(live)
+
+
 def declare_option_contract_demand(client_id: str, contract_symbols: "list[str]", *,
-                                   seq: int, now: "float | None" = None) -> dict:
-    """Record one view's demand and stream the union of every live view's demand.
+                                   seq: int) -> dict:
+    """Record one view's demand and stream the union of every view's demand.
 
     `seq` orders ONE client's declarations (a late, older request from the same view never
     overwrites a newer one: StaleOptionCommandError). Different clients never supersede each
@@ -589,23 +600,28 @@ def declare_option_contract_demand(client_id: str, contract_symbols: "list[str]"
     cid = str(client_id or "").strip()
     if not cid:
         raise ValueError("client_id is required: demand is declared per view")
-    t = time.time() if now is None else float(now)
     requested = sorted({ticker_storage_key(s) for s in (contract_symbols or [])  # caps-ok: a view declaring no contracts is an empty declaration, which releases its demand
                         if ticker_storage_key(s)})
     with _option_demand_lock:
+        if not push_changes.view_open(cid):
+            raise ViewNotConnectedError(f"view {cid} has no open push connection")
         prior = _option_demand_by_client.get(cid)
         if prior is not None and seq <= prior["seq"]:
             raise StaleOptionCommandError(
                 f"demand {requested} from view {cid} (seq {seq}) was superseded by that "
                 f"view's newer declaration (seq {prior['seq']})")
-        _option_demand_by_client[cid] = {"symbols": requested, "seq": seq, "ts": t}
-        for other in [k for k, v in _option_demand_by_client.items()
-                      if t - v["ts"] > OPTION_DEMAND_LEASE_SEC]:
-            del _option_demand_by_client[other]
-        live = [v["symbols"] for v in _option_demand_by_client.values() if v["symbols"]]
-        union = sorted(set().union(*live)) if live else []
-        set_active_option_contracts(union)
-    return {"requested": requested, "demand_views": len(live)}
+        _option_demand_by_client[cid] = {"symbols": requested, "seq": seq}
+        views = _stream_demand_union()
+    return {"requested": requested, "demand_views": views}
+
+
+def release_option_contract_demand(client_id: str) -> None:
+    """A push connection of the view closed: with none left open, its demand ends."""
+    with _option_demand_lock:
+        if push_changes.view_open(client_id) or client_id not in _option_demand_by_client:
+            return
+        del _option_demand_by_client[client_id]
+        _stream_demand_union()
 
 
 def get_active_option_contracts() -> "list[str]":

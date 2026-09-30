@@ -37,7 +37,7 @@ def test_the_console_pushes_the_sign_in_with_the_session(monkeypatch):
     monkeypatch.setattr(server.time, "time", lambda: MADE + 6.5 * DAY)
 
     async def first_frame():
-        resp = await server.get_changes(ticker="SPY")
+        resp = await server.get_changes(ticker="SPY", view="test-view")
         try:
             return await resp.body_iterator.__anext__()
         finally:

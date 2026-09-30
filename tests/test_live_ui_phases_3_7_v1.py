@@ -49,7 +49,7 @@ def test_the_console_takes_the_daemons_price_row_and_ticks_on_it(monkeypatch):
                                                            host="127.0.0.1", port=port, stats=stats))
         console = asyncio.create_task(ofs._rows_loop())
         push_changes.bind(asyncio.get_running_loop())
-        page = push_changes.subscribe("BBB")
+        page = push_changes.subscribe("BBB", "test-view")
         try:
             end = time.monotonic() + 5
             while ofs.price_row("BBB") is None and time.monotonic() < end:

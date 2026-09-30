@@ -3418,25 +3418,28 @@ CHANGES_SESSION_SEC = 5.0
 
 
 @app.get("/api/changes")
-async def get_changes(ticker: str = Query(...)):
+async def get_changes(ticker: str = Query(...), view: str = Query(..., min_length=1)):
     """The console's push to the page: `levels`, `flow` or `liquidity` when that value of the
     ticker changed (the page reloads it), and, on connect and every CHANGES_SESSION_SEC with no
     other change, `session` with the market session label and `sign_in` with the Schwab
     sign-in's state (schwab_sign_in_status). Prices
     and bars come from the daemon's own push. Opening it makes the ticker the active one, whose
     NYSE_BOOK and NASDAQ_BOOK the daemon streams: every page reconnects after a console
-    restart, so the books follow the page with no separate request."""
-    from app.options.order_flow.streaming import set_streaming_active_ticker
+    restart, so the books follow the page with no separate request. `view` is the page load's
+    id: the connection is what holds the view's option-contract demand, which ends when the
+    view's last connection closes."""
+    from app.options.order_flow.streaming import release_option_contract_demand, set_streaming_active_ticker
 
     t = ticker_storage_key(_required_ticker(ticker))
     _get_route_offload_executor().submit(lambda: (set_streaming_active_ticker(t), _ensure_default_option_contract(t)))
-    client = push_changes.subscribe(t)
 
     def status() -> str:
         sign_in = json.dumps(schwab_sign_in_status(_schwab_token_creation_ts(), time.time()))
         return f"event: session\ndata: {session_label(now_et())}\n\nevent: sign_in\ndata: {sign_in}\n\n"
 
     async def event_generator():
+        # subscribed only once the response is being sent, so every subscription is closed
+        client = push_changes.subscribe(t, view)
         try:
             yield status()
             while True:
@@ -3449,6 +3452,7 @@ async def get_changes(ticker: str = Query(...)):
                 await asyncio.sleep(CHANGES_PUSH_MIN_SEC)
         finally:
             push_changes.unsubscribe(t, client)
+            _get_route_offload_executor().submit(release_option_contract_demand, view)
 
     return StreamingResponse(
         event_generator(),
@@ -3589,10 +3593,10 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
     one primary contract /api/streaming/active-option-contract manages (RC-UI-3).
 
     Body: {client_id, seq, contracts}. Each view (page load) declares its own demand under
-    its own client_id; `seq` orders that view's declarations. The stream carries the union
-    of every live view's demand ranked to the shared-socket budget -- see
-    app.options.order_flow.streaming.declare_option_contract_demand for why this is no
-    longer one last-writer-wins slot."""
+    its own client_id (the `view` of its /api/changes connection, which must be open: 409
+    `not_connected` otherwise); `seq` orders that view's declarations. The stream carries the
+    union of every view's demand ranked to the shared-socket budget
+    (app.options.order_flow.streaming.declare_option_contract_demand)."""
     raw = payload.get("contracts")
     contracts = [str(s).strip() for s in raw] if isinstance(raw, list) else []
     contracts = [c for c in contracts if c]
@@ -3604,7 +3608,7 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
         raise HTTPException(status_code=400,
                             detail="seq (this view's declaration counter) must be an integer")
 
-    from app.options.order_flow.streaming import StaleOptionCommandError
+    from app.options.order_flow.streaming import StaleOptionCommandError, ViewNotConnectedError
 
     def _apply():
         from app.options.order_flow.streaming import (
@@ -3626,6 +3630,9 @@ async def post_streaming_active_option_contracts(payload: dict = Body(default={}
     except StaleOptionCommandError as e:
         return JSONResponse({"ok": False, "error": str(e), "client_id": client_id, "seq": seq,
                              "superseded": True}, status_code=409)
+    except ViewNotConnectedError as e:
+        return JSONResponse({"ok": False, "error": str(e), "client_id": client_id, "seq": seq,
+                             "not_connected": True}, status_code=409)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e), "contracts": contracts}, status_code=500)
     return JSONResponse(out)

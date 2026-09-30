@@ -239,6 +239,6 @@ def view(monkeypatch):
     monkeypatch.setattr(push_changes, "_clients", {})
     monkeypatch.setattr(push_changes, "_loop", None)
 
-    def open_(*tickers):
-        return [push_changes.subscribe(tk) for tk in tickers]
+    def open_(*tickers, view="test-view"):
+        return [push_changes.subscribe(tk, view) for tk in tickers]
     return open_
