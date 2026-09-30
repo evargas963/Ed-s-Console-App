@@ -347,10 +347,8 @@ def test_destructive_git_has_one_owner_and_it_fires_unscoped(cmd):
     ("rm .git/hooks/pre-commit", "disables a mechanical lock"),
     ("git add -A", "blind staging"),
     ("rm -rf data/ed_console.db", "RC-273"),
-    ("gh pr merge 427 --merge", "operator's"),
-    ("gh api -X PUT repos/o/r/pulls/427/merge", "operator's"),
-    ("git push origin HEAD:main", "operator's"),
-    ("git push origin main", "operator's"),
+    ("git push origin HEAD:main", "only through a PR"),
+    ("git push origin main", "only through a PR"),
 ])
 def test_universal_protections_fire_in_this_repository(cmd, needle):
     out = G.bash_violations(cmd, [], payload_cwd=str(REPO))
@@ -360,11 +358,13 @@ def test_universal_protections_fire_in_this_repository(cmd, needle):
 @pytest.mark.parametrize("cmd", [
     "git push -u origin fix/main-screen",
     "git config --get core.hooksPath",
+    "gh pr merge 427 --merge",
     "gh pr view 427",
     "grep -n no-verify tools/operator_law_guard.py",
 ])
 def test_the_action_is_refused_never_the_word(cmd):
-    """Reading about a lock, or pushing a branch whose name contains "main", is not the action."""
+    """Reading about a lock, pushing a branch whose name contains "main", or merging a PR (the
+    agent merges under AGENTS.md § Authority) is not a refused action."""
     assert G.bash_violations(cmd, [], payload_cwd=str(REPO)) == [], cmd
 
 

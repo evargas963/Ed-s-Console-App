@@ -27,7 +27,8 @@ The architecture every change is built to; §3 is what runs today and §3.5 wher
 ## 2. The rules
 
 `AGENTS.md`: Ed Console is a financial application, and its rules. One copy; it loads with every
-agent session. This document holds the technical definitions those rules refer to.
+agent session. This document holds the technical definitions those rules refer to: the design
+(§1, §4), what runs today (§3) and each value's definition (§7).
 
 **Every field Schwab has sent us:** `docs/schwab_fields.csv`, one row per field path with its
 endpoint, type, the asset types or request variants it appeared in, and when it was first and last
@@ -408,3 +409,136 @@ that fails when the requirement is broken (AGENTS.md rule 10).
    inferred buy/sell side (tick rule, quote rule) is computed or shown as order flow.
 
 The work that closes the gaps in §3.5, in order, is `ACTIVE_PROGRAM.md`.
+
+## 7. Value definitions
+
+What `AGENTS.md` § Every value requires, one family at a time. The journey of each is in §3.4;
+this section adds what the journey does not say. Where the code falls short, the gap is named
+with its `ACTIVE_PROGRAM.md` ID; where a point has no test that fails when it is broken, it is
+NOT_PROVEN. A value not covered here is undefined, and undefined is NOT_PROVEN.
+
+**7.1 Equity price and quote** (LEVELONE_EQUITIES).
+- *Meaning:* Schwab's last trade price (spot), bid, ask, sizes, MARK, session volume, the day's
+  open, high and low, the prior close, Schwab's net change and percent change; dollars, shares,
+  percent as Schwab sends them. Spot is LAST_PRICE only; MARK never stands in.
+- *Producer and owner:* `live_market_plane.record_from_level_one_equity` (one per field, with its
+  receive time) → `live_price_rows.price_row`, in the daemon; the console holds the daemon's row
+  as pushed and computes no price (`resolve_spot` reads it).
+- *Times:* Schwab's QUOTE_TIME and TRADE_TIME, the daemon's receive time per field.
+- *Current when:* the Live rule (§3.4) holds, and the field was received in the current session.
+- *Otherwise:* the row says why (`spot_state`: unavailable, or closed with the last trade as a
+  labeled past observation, `closed_last`); every field is withheld.
+- *Consumers:* the header and watchlist (browser socket), the console's spot for levels, level
+  crosses, distances, zones and the top of book, `/api/levels` `by_distance`.
+- *Recovery:* only Schwab's next message for the field; nothing is restored from storage.
+- *Tests:* `test_live_market_plane_streaming`, `test_header_stream_quote_and_watchlist_push_v1`,
+  `test_live_ui_daemon_to_browser_v1`, `test_schwab_as_sent_v1`.
+- *Gaps:* W-01 (a field from an earlier session reads live), W-02 (a symbol Schwab stops sending
+  reads live), W-03 (a lost message is invisible), W-08 (the console keeps a row it no longer
+  wants).
+
+**7.2 Order books** (NYSE_BOOK, NASDAQ_BOOK, OPTIONS_BOOK).
+- *Meaning:* Schwab's whole book per message, per venue service, never combined; price levels
+  with their sizes (shares or contracts) as sent.
+- *Producer and owner:* the daemon receives; the console's order-flow state holds a second copy
+  (ONE-04); `app/options/order_flow/engine.py` derives the book's measures.
+- *Times:* BOOK_TIME (the venue's), the daemon's receive time.
+- *Current when:* the Live rule holds for that service and symbol.
+- *Otherwise:* no book, with its reason; an empty side is that side with nothing resting.
+- *Consumers:* the Order Flow screens, the book heatmap (reads the database, ONE-04, S-24).
+- *Tests:* `test_order_flow_served_v1`, `test_order_flow_microstructure_v1`,
+  `test_order_flow_book_heatmap_v1` (approves a 1970 book, W-04).
+- *Gaps:* W-02, W-03; the console's copy is not cleared on a push reconnect (W-13); the heatmap
+  serves stored books with no live verdict (W-04).
+
+**7.3 Option chain, option quotes and greeks** (REST chain; LEVELONE_OPTIONS).
+- *Meaning:* per contract: Schwab's instrument identity (symbol, root, strike, expiry,
+  settlementType, multiplier, nonStandard), bid/ask, open interest, session volume, implied
+  volatility, delta and gamma, exactly as sent (gamma is the native authority: operator
+  2026-09-30).
+- *Producer and owner:* the console's chain fetch (every 5 s per board or viewed ticker; P2-1
+  moves it to the daemon); `state.push_level_one` holds each streamed field;
+  `overlay_streamed_contract_fields` puts a live contract's streamed fields over the chain's.
+- *Times:* the chain's quote time; each streamed field's receive time.
+- *Current when:* the chain is from the last refresh cycle (`terrain_staleness`); a streamed
+  field when the Live rule holds for the contract on LEVELONE_OPTIONS.
+- *Otherwise:* a field sent as not a number is unavailable, never its last value or the chain's;
+  a stale chain carries its staleness verdict.
+- *Consumers:* every level, the gamma surface, the chain ladder, Strike Detail, the options
+  microstructure panel.
+- *Tests:* `test_chain_api_v1`, `test_stream_greeks_capture_v1`,
+  `test_overlay_streamed_contract_fields_v1`, `test_schwab_as_sent_v1`.
+- *Gaps:* W-02, W-03 for the streamed fields; the option top of book is held with no receive
+  time (W-13).
+
+**7.4 Exposure, levels and the gamma surface** (the terrain publication).
+- *Meaning:* §3.4 Levels: dealer gamma/delta/vanna/charm exposure by strike (+call/−put, dollars
+  per 1% move), walls, the gamma flip (the modelled flip, defined in §3.4), max pain, PCR, the
+  regime (the sign of Schwab's gamma summed over the book), and the surface's cells.
+- *Producer and owner:* `server._publish_levels` → `terrain_engine.compute_terrain`, one
+  publication per refresh; the levels loop owns refresh and staleness (`terrain_staleness`).
+- *Times:* the chain's fetch time (`computed_ts_utc`), the spot's trade time, the valuation time.
+- *Current when:* the publication is not stale (`levels_stale` false) and its spot is live.
+- *Otherwise:* each level absent with its reason (`level_absent_reasons`); a stale publication
+  carries its verdict; with no live spot the next publication has no levels.
+- *Consumers:* `/api/terrain`, `/api/terrain/strikes`, `/api/levels`, `/api/forces`,
+  `/api/options/gamma-surface`, vanna and charm by strike, the zones, level crosses.
+- *Tests:* `test_one_levels_producer_v1`, `test_gamma_flip_absence_v1`, `test_terrain_engine_v1`,
+  `test_gamma_surface_freshness_v1`, `test_gamma_surface_cell_stream_state_v1` (S-39).
+- *Gaps:* M-15 (a missing leg's 0.0 counted), S-39 (cell stream state served as current), the
+  posture, regime call and pin candidate are trade-affecting and unvalidated (VALIDATE), BASIS
+  (thresholds whose basis was deleted).
+
+**7.5 One-minute bars and roll-ups** (CHART_EQUITY).
+- *Meaning:* Schwab's completed 1-minute bar as sent (open, high, low, close in dollars, volume
+  in shares, None when not reported), on the minute grid, 09:15 ET to 15 minutes after the close;
+  a roll-up is the bars of its bucket (first open, max high, min low, last close, volume summed
+  only when every minute reported one).
+- *Producer and owner:* `live_price_rows.minute_bar` / `aggregate_bars` / `bar_update`, in the
+  daemon (`live_ui`); the console's bar writer stores the same bar.
+- *Times:* the bar's start; the daemon's receive time.
+- *Current when:* the newest completed bar Schwab sent while the page was connected.
+- *Otherwise:* a gap while disconnected is named (`bars_gap`), never filled; history loads only
+  from the store, as history.
+- *Consumers:* every chart, the price levels (§7.6), the ATR.
+- *Tests:* `test_bars_pushed_v1`, `test_bars_and_windows_v1`, `test_collect_window_law_v1`.
+- *Gaps:* O-24 (the console's reconnect resends the last bar); a bucket missing a minute is
+  rolled up unmarked, and whether Schwab sends a bar for a minute with no trade is unmeasured
+  (LIVE-ROLLUP); DATA-SYN (fabricated rows read by every bar reader).
+
+**7.6 Session price levels and zones.** §3.4 Price levels.
+- *Producer and owner:* `_publish_price_levels` → `liquidity_value_engine.build_price_level_snapshot`,
+  one snapshot per bar generation.
+- *Current when:* its newest bar is the last completed minute and the bar feed is live.
+- *Otherwise:* each level absent with its reason; a window not yet ended is absent with the time
+  it ends.
+- *Consumers:* `/api/levels`, `/api/liquidity-snapshot` (the zones), the charts' levels.
+- *Tests:* `test_phase2a_price_level_snapshot_v1`, `test_zones_v1`,
+  `test_levels_single_producer_v1`.
+- *Gaps:* the snapshot has no stale rule when bars stop (`/api/levels` serves `stale: None`,
+  W-06); VWAP is an estimate from 1-minute bars and not labeled one (BASIS).
+
+**7.7 Order flow and tape.** §3.4 Options tape.
+- *Meaning:* each change of Schwab's last trade for a contract (not every trade; no side).
+- *Producer and owner:* `history.tape_rows_for_symbol`, reading the stored messages (ONE-05).
+- *Current when:* NOT_PROVEN: the route serves stored rows with no live verdict (ONE-05, S-24).
+- *Tests:* `test_options_flow_tape_v1`.
+
+**7.8 Statuses and labels.**
+- *Meaning:* the session label, the Schwab sign-in state, the feed state, each panel's live,
+  stale or closed badge.
+- *Producer and owner:* the session label and sign-in (`/api/changes`, every 5 s); the feed
+  (`live_market_plane.daemon_status`); each badge is its value's own verdict, served.
+- *Otherwise:* a status the page cannot receive is withdrawn by the transport rule (§3.4 Live).
+- *Tests:* `test_schwab_sign_in_v1`, `test_feed_status_v1`, `test_push_changes_v1`.
+- *Gaps:* panels fed through `/api/changes` are not told when their source stops (W-07); the page
+  reads an absent `live` as live (P-09).
+
+**7.9 Stored data.**
+- *Meaning:* `stream_capture.db` holds every Schwab message as received; `ed_console.db` holds the
+  bars, chain captures, level crosses and the ticker board. Both are history.
+- *Owner:* the daemon's writer and, until P2-DB4, the console's.
+- *Rule:* a stored row keeps its source and times; a reader shows it as history; a restore
+  keeps provenance and never restores live status.
+- *Gaps:* DATA-SYN (fabricated bars), O-28 (the bars' `source` column mislabels rows), OPS-HOST
+  (retention, backups, restore).
