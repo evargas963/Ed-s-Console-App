@@ -49,8 +49,8 @@ def _load_real_chain() -> tuple[list, float]:
 
 def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
     chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot, span_pct=0.15, steps=120)
-    assert len(prof) == 121
+    prof = compute_gamma_profile(chain, spot)
+    assert len(prof) == 241
     assert all(math.isfinite(v) for _, v in prof)
     prices = [p for p, _ in prof]
     assert prices[0] < spot < prices[-1]
@@ -62,7 +62,7 @@ def test_profile_uses_dealer_sign_convention() -> None:
     chain, spot = _load_real_chain()
     calls = [c for c in chain if str(c.get("putCall", "")).upper().startswith("C")]
     assert calls, "fixture must contain calls"
-    prof = compute_gamma_profile(calls, spot, span_pct=0.10, steps=40)
+    prof = compute_gamma_profile(calls, spot)
     assert prof and all(v >= 0 for _, v in prof)
 
 
@@ -73,8 +73,8 @@ def test_flip_is_interpolated_within_the_profile_span() -> None:
     flip = 761.0, inside the span. Existence is pinned; the exact value is not (it moves
     with vol/time inputs) - span containment is the invariant."""
     chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot, span_pct=0.15, steps=240)
-    flip = gamma_flip_from_profile(prof)
+    prof = compute_gamma_profile(chain, spot)
+    flip = gamma_flip_from_profile(prof, spot)
     assert flip is not None, (
         "the real fixture chain has a zero crossing (measured flip 761.0); a None flip "
         "here means the profile or crossing detection regressed"
@@ -83,15 +83,15 @@ def test_flip_is_interpolated_within_the_profile_span() -> None:
 
 
 def test_flip_returns_none_when_no_zero_crossing() -> None:
-    assert gamma_flip_from_profile([(100.0, 5.0), (101.0, 7.0)]) is None
-    assert gamma_flip_from_profile([]) is None
+    assert gamma_flip_from_profile([(100.0, 5.0), (101.0, 7.0)], 100.5) is None
+    assert gamma_flip_from_profile([], 100.5) is None
 
 
 def test_narrow_chain_flip_is_reported_low_confidence() -> None:
     """The live 20-strike chain spans only ~+/-1.3%; its flip must never be served as
     trustworthy (measured error vs full-chain reference: 770.35 vs 745.61)."""
     chain, spot = _load_real_chain()
-    flip, confidence, diag = compute_gamma_flip_v2(chain, spot)
+    flip, confidence, diag = compute_gamma_flip_v2(chain, spot, profile=compute_gamma_profile(chain, spot))
     assert confidence == GAMMA_FLIP_NARROW
     # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 6): the next line was
     # `assert diag["span_below_pct"] < 0.05 or diag["span_above_pct"] < 0.05` -- LOGICALLY
@@ -112,7 +112,7 @@ def test_narrow_chain_flip_is_reported_low_confidence() -> None:
 
 def test_flip_v2_fails_closed_without_inputs() -> None:
     for contracts, spot in (([], 100.0), (None, 100.0), ([{"strikePrice": 100}], 0.0)):
-        flip, confidence, _diag = compute_gamma_flip_v2(contracts, spot)
+        flip, confidence, _diag = compute_gamma_flip_v2(contracts, spot, profile=[])
         assert flip is None and confidence == GAMMA_FLIP_UNAVAILABLE
 
 def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
@@ -138,7 +138,7 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
         assert lo - 1e-6 <= at_spot <= hi + 1e-6
 
     # a strictly one-signed profile yields no flip but still reports a usable verdict
-    assert gamma_flip_from_profile([(100.0, 5.0), (101.0, 7.0)]) is None
+    assert gamma_flip_from_profile([(100.0, 5.0), (101.0, 7.0)], 100.5) is None
     assert gamma_at_price([(100.0, 5.0), (101.0, 7.0)], 100.5) == 6.0
 
 
@@ -167,14 +167,14 @@ def test_gamma_at_price_clamps_outside_the_profile() -> None:
 
 def test_flip_detects_positive_to_negative_crossing():
     prof = [(90.0, 5.0), (95.0, 2.0), (100.0, -1.0), (105.0, -4.0)]
-    flip = gamma_flip_from_profile(prof)
+    flip = gamma_flip_from_profile(prof, 97.0)
     assert flip is not None, "pos->neg crossing missed — the direction-blind defect"
     assert 95.0 < flip < 100.0, flip
 
 
 def test_flip_still_detects_negative_to_positive():
     prof = [(90.0, -4.0), (95.0, -1.0), (100.0, 2.0), (105.0, 5.0)]
-    flip = gamma_flip_from_profile(prof)
+    flip = gamma_flip_from_profile(prof, 97.0)
     assert flip is not None and 95.0 < flip < 100.0, flip
 
 
@@ -189,20 +189,20 @@ def test_flip_picks_the_crossing_nearest_spot():
 
 
 def test_flip_none_when_one_signed():
-    assert gamma_flip_from_profile([(90.0, -1.0), (100.0, -2.0)]) is None
-    assert gamma_flip_from_profile([(90.0, 1.0), (100.0, 2.0)]) is None
-    assert gamma_flip_from_profile([]) is None
+    assert gamma_flip_from_profile([(90.0, -1.0), (100.0, -2.0)], 95.0) is None
+    assert gamma_flip_from_profile([(90.0, 1.0), (100.0, 2.0)], 95.0) is None
+    assert gamma_flip_from_profile([], 95.0) is None
 
 
 def test_flip_zero_touching_profile_start_is_the_boundary():
     """Cursor audit 2026-07-20: a profile STARTING at exactly zero returned None —
     both strict-sign conditions are false at v0==0, so the boundary vanished."""
-    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, 1.0), (120.0, 2.0)]) == 100.0
-    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, -1.0)]) == 100.0
+    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, 1.0), (120.0, 2.0)], 105.0) == 100.0
+    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, -1.0)], 105.0) == 100.0
     # flat zero segments are not crossings
-    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, 0.0)]) is None
+    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, 0.0)], 105.0) is None
     # segment ENDING at zero still interpolates to the zero point
-    assert gamma_flip_from_profile([(100.0, -1.0), (110.0, 0.0), (120.0, 1.0)]) == 110.0
+    assert gamma_flip_from_profile([(100.0, -1.0), (110.0, 0.0), (120.0, 1.0)], 110.0) == 110.0
 
 
 # ── RC-354: Gamma Support Floor / Gamma Resistance Ceiling ──────────────────────
@@ -324,7 +324,7 @@ def test_rc362_net_vanna_math_and_fail_closed():
     from datetime import datetime
     time_et.now_et = lambda: datetime(2026, 9, 2, 10, 5, tzinfo=time_et.ET)
     try:
-        book, _ = compute_exposures_by_strike(fx["chain"], spot=fx["spot"], require_oi=True)
+        book, _ = compute_exposures_by_strike(fx["chain"], spot=fx["spot"])
     finally:
         time_et.now_et = real_now
     want = sum(b["call_vanna"] for b in book.values()) - sum(b["put_vanna"] for b in book.values())

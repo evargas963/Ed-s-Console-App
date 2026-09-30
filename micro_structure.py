@@ -48,16 +48,6 @@ class Candle:
 
 
 
-    @property
-    def mid(self) -> float:
-        return (self.high + self.low) / 2
-
-
-
-
-
-
-
 
 
 

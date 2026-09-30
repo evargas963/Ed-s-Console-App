@@ -41,8 +41,14 @@ from math_levels import (
     GAMMA_FLIP_TRUSTED,
     GAMMA_FLIP_TRUSTED_SPAN_PCT,
     compute_gamma_flip_v2,
+    compute_gamma_profile,
 )
 from terrain_read import build_terrain_read
+
+
+def _verdict(span: float) -> str:
+    chain = _chain(span)
+    return compute_gamma_flip_v2(chain, 100.0, profile=compute_gamma_profile(chain, 100.0))[1]
 
 
 
@@ -70,15 +76,15 @@ def test_trusted_requires_the_measured_convergence_span():
     assert GAMMA_FLIP_TRUSTED_SPAN_PCT > GAMMA_FLIP_MIN_SPAN_PCT, (
         "the flip-LEVEL trust bar must be strictly above the fetch-width floor, or the two are "
         "conflated again and the fetch compromise sets the trust bar")
-    _, conf_5, _ = compute_gamma_flip_v2(_chain(0.055), 100.0)
+    conf_5 = _verdict(0.055)
     assert conf_5 != GAMMA_FLIP_TRUSTED, (
         f"a ~±5% chain must not be TRUSTED — the study measured 1.38%-of-spot error there; got {conf_5}")
-    _, conf_wide, _ = compute_gamma_flip_v2(_chain(0.12), 100.0)
+    conf_wide = _verdict(0.12)
     assert conf_wide == GAMMA_FLIP_TRUSTED, f"a ±12% chain should be TRUSTED, got {conf_wide}"
 
 
 def test_three_tiers_are_ordered_by_span():
-    below, mid, above = (compute_gamma_flip_v2(_chain(s), 100.0)[1] for s in (0.03, 0.07, 0.15))
+    below, mid, above = (_verdict(s) for s in (0.03, 0.07, 0.15))
     assert below == GAMMA_FLIP_NARROW, below
     assert mid == GAMMA_FLIP_LEVEL_APPROX, mid
     assert above == GAMMA_FLIP_TRUSTED, above

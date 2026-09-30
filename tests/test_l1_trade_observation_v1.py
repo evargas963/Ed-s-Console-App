@@ -68,10 +68,6 @@ def test_missing_size_remains_unavailable():
     assert l1.tick_rule_signed_size(500.0, 500.1, None) is None
     assert l1.extract_vendor_print({"LAST_SIZE": 10, "TRADE_TIME_MILLIS": 1}) is None
     assert l1.compute_cum_delta_proxy([{"price": 1.0, "size": None, "time_millis": 1}]) is None
-    assert l1.NATIVE_AGGRESSOR_AVAILABLE is False
-    assert l1.NATIVE_TIME_AND_SALES_AVAILABLE is False
-    assert l1.TIMESALE_SERVICE_STATUS == "UNAVAILABLE"
-    assert l1.TAPE_CLASSIFICATION == "PROXY_RECONSTRUCTED_L1_TICK"
 
 
 def test_reconnect_clear_resets_restatement_identity():
@@ -124,18 +120,6 @@ def test_mutation_vendor_time_sort_fails_receive_order():
     sorted_cvd = ofe._compute_cum_delta_proxy({"content": vendor_sorted})
     assert receive_cvd == 5
     assert sorted_cvd != receive_cvd
-
-
-def test_source_contract_is_proxy_not_native_tns():
-    c = l1.source_contract()
-    assert c["native_aggressor_available"] is False
-    assert c["native_time_and_sales_available"] is False
-    assert c["timesale_service_status"] == "UNAVAILABLE"
-    assert c["tape_pressure_classification"] == "PROXY_RECONSTRUCTED_L1_TICK"
-    engine = ofe.OrderFlowEngine().compute({"content": _prints((500.0, 10, 1), (500.1, 10, 2))})
-    assert engine["native_aggressor_available"] is False
-    assert engine["timesale_service_status"] == "UNAVAILABLE"
-    assert engine["tape_completeness"] == "INCOMPLETE_OBSERVATION"
 
 
 def test_slope_uses_same_signed_size_walk():

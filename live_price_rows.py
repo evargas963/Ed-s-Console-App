@@ -79,7 +79,7 @@ def price_row(ticker: str) -> dict[str, Any]:
         "ask": field("ask"),
         "bid_size": field("bid_size"),
         "ask_size": field("ask_size"),
-        "mark": field("quote_mid"),                    # Schwab MARK
+        "mark": field("mark"),                         # Schwab MARK
         "quote_ts": field("exchange_quote_ts"),        # Schwab QUOTE_TIME (epoch s)
         "last_size": field("last_size") if spot is not None else None,
         "total_volume": field("total_volume"),

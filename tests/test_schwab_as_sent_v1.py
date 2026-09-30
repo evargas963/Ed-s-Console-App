@@ -63,7 +63,7 @@ def test_a_reported_zero_open_interest_is_reported_not_missing():
     from math_exposure_core import compute_exposures_by_strike
     fx = _load("real_crwd_complete_chain_quarter.json")
     assert sum(1 for c in fx["chain"] if c["openInterest"] == 0) == 122
-    books, _ = compute_exposures_by_strike(fx["chain"], spot=fx["spot"], require_oi=False)
+    books, _ = compute_exposures_by_strike(fx["chain"], spot=fx["spot"])
     assert sum(b["oi_unreported"] for b in books.values()) == 0
 
 
@@ -74,7 +74,7 @@ def test_minus_999_open_interest_is_unreported():
     fx = _load("real_crwd_complete_chain_quarter.json")
     chain = copy.deepcopy(fx["chain"])
     chain[0]["openInterest"] = -999
-    books, _ = compute_exposures_by_strike(chain, spot=fx["spot"], require_oi=False)
+    books, _ = compute_exposures_by_strike(chain, spot=fx["spot"])
     assert books[chain[0]["strikePrice"]]["oi_unreported"] == 1
 
 
@@ -88,7 +88,7 @@ def test_a_strike_whose_open_interest_is_all_zero_shows_zero_not_absent():
         by_strike.setdefault(c["strikePrice"], []).append(c["openInterest"])
     all_zero = [k for k, ois in by_strike.items() if all(o == 0 for o in ois)]
     assert all_zero
-    books, _ = compute_exposures_by_strike(fx["chain"], spot=fx["spot"], require_oi=True)
+    books, _ = compute_exposures_by_strike(fx["chain"], spot=fx["spot"])
     for k in all_zero:
         assert books[k]["has_oi"] and books[k]["call_oi"] in (0.0, None) and books[k]["put_oi"] in (0.0, None)
         assert books[k]["net_gex_1pct"] == 0.0

@@ -62,7 +62,7 @@ def test_real_chain_reported_zero_oi_shows_zero_and_unreported_shows_absent(pin_
     cell = {r["strike"]: r for r in surface["cells"]}
     assert all(v == 0 for v in cell[zero_k]["gex"] if v is not None) and cell[zero_k]["gex"] != [None]
     assert cell[gone_k]["gex"] == [None]
-    exposures, _ = compute_exposures_by_strike(chain, spot=fx["spot"], require_oi=True)
+    exposures, _ = compute_exposures_by_strike(chain, spot=fx["spot"])
     assert exposures[zero_k]["has_oi"] and not exposures[gone_k]["has_oi"]
     rows = {r[0] for r in _per_strike_rows(exposures)}
     assert zero_k in rows and gone_k not in rows
@@ -96,7 +96,7 @@ def test_real_oi_that_nets_to_exactly_zero_still_has_oi_true_and_reports_zero():
     """Equal call/put gamma exposure at real OI must still show as a real 0, not absence."""
     chain = [_ct(100.0, "CALL", 500, gamma=0.04, delta=0.5),
              _ct(100.0, "PUT", 500, gamma=0.04, delta=-0.5)]
-    exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
+    exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT)
     b = exposures[100.0]
     assert b["has_oi"] is True
     assert b["net_gex_1pct"] == 0.0, "call and put gamma exposure must net to exactly zero"
@@ -114,7 +114,7 @@ def test_real_oi_that_nets_to_exactly_zero_surface_cell_is_zero_not_null():
 def test_real_oi_that_nets_to_exactly_zero_terrain_row_is_zero_not_dropped():
     chain = [_ct(100.0, "CALL", 500, gamma=0.04, delta=0.5),
              _ct(100.0, "PUT", 500, gamma=0.04, delta=-0.5)]
-    exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
+    exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT)
     rows = _per_strike_rows(exposures)
     assert len(rows) == 1 and rows[0][0] == 100.0 and rows[0][1] == 0.0
 

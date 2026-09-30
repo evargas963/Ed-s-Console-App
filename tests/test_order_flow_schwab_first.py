@@ -1,55 +1,8 @@
-"""Day 2 — order flow + spread Schwab-first (DFR-019, PQ-002, OP-015/017, etc.)."""
+"""Order flow reads streamed Schwab fields only: top-of-book pressure from BID_SIZE / ASK_SIZE."""
 
 from __future__ import annotations
 
-from app.options.order_flow.engine import (
-    OrderFlowEngine,
-    _compute_options_flow,
-    _compute_rvol,
-    _compute_spread,
-    _compute_top_book_pressure,
-)
-
-
-def test_rvol_unavailable_when_avg_volume_invalid():
-    data = {"stream_total_volume": 1_000_000, "fundamental": {}}
-    rvol, reason = _compute_rvol(data)
-    assert rvol is None
-    assert reason == "avg_volume_unavailable"
-
-
-def test_rvol_returns_none_not_one_point_zero_fallback():
-    """Parent fail: 2e022d0 returned 1.0 when avg_volume missing."""
-    rvol, reason = _compute_rvol({"stream_total_volume": 500, "fundamental": {}})
-    assert rvol is None
-    assert reason == "avg_volume_unavailable"
-    assert rvol != 1.0
-
-
-def test_rvol_is_streamed_volume_over_avg10d_only():
-    """2026-09-24: no REST current volume, no 1y average, no candle-average baseline."""
-    assert _compute_rvol({"stream_total_volume": 500, "fundamental": {"avg10DaysVolume": 1000}}) == (0.5, None)
-    assert _compute_rvol({"quote": {"totalVolume": 500}, "fundamental": {"avg10DaysVolume": 1000}})[1] == "current_volume_unavailable"
-    assert _compute_rvol({"stream_total_volume": 500, "fundamental": {"avg1YearVolume": 1000},
-                          "candles": [{"volume": 10}]})[1] == "avg_volume_unavailable"
-
-
-def test_spread_pts_and_frac_units_not_mixed():
-    data = {"top": {"bid": 500.0, "ask": 500.1, "mark": 500.05}}
-    spread_d = _compute_spread(data)
-    assert spread_d["spread_pts"] == 0.1
-    assert spread_d["spread_frac"] is not None
-    assert abs(spread_d["spread_frac"] - (0.1 / 500.05)) < 1e-6
-    assert spread_d["spread_pts_source"] is not None
-    assert "schwab_mark" in (spread_d["spread_frac_source"] or "")
-    assert spread_d["spread_pts"] != spread_d["spread_frac"]
-
-
-def test_spread_frac_fail_closed_without_mark():
-    data = {"top": {"bid": 500.0, "ask": 500.1}}
-    spread_d = _compute_spread(data)
-    assert spread_d["spread_pts"] == 0.1
-    assert spread_d["spread_frac"] is None
+from app.options.order_flow.engine import _compute_top_book_pressure
 
 
 def test_rest_quote_blocks_never_stand_in_for_streamed_l1():
@@ -60,83 +13,13 @@ def test_rest_quote_blocks_never_stand_in_for_streamed_l1():
             "regular": {"mark": 1.05}, "underlying": {"bid": 1.0, "ask": 1.1},
             "content": [{"BIDS": [{"BID_PRICE": 1.0, "TOTAL_VOLUME": 5}],
                          "ASKS": [{"ASK_PRICE": 1.1, "TOTAL_VOLUME": 5}]}]}
-    assert _compute_spread(rest)["spread_pts"] is None
-    assert _compute_top_book_pressure(rest) == (None, "unavailable")
-
-
-def test_options_flow_lastsize_requires_tick_mode_source():
-    data = {
-        "options_flow_tick_mode": True,
-        "callExpDateMap": {
-            "2099-05-05:0": {
-                "500.0": {
-                    "strikePrice": 500.0,
-                    "lastSize": 50,
-                    "totalVolume": 9999,
-                    "delta": 0.5,
-                }
-            }
-        },
-        "putExpDateMap": {
-            "2099-05-05:0": {
-                "500.0": {
-                    "strikePrice": 500.0,
-                    "lastSize": 30,
-                    "totalVolume": 8888,
-                    "delta": -0.4,
-                }
-            }
-        },
-    }
-    score, direction, ratio, delta_w, vol_src = _compute_options_flow(data)
-    assert score is not None
-    assert vol_src == "schwab_chain_lastSize_tick_mode"
-    assert score == (50 - 30) / 80
-
-
-def test_options_flow_default_uses_total_volume_not_last_size():
-    data = {
-        "callExpDateMap": {
-            "2099-05-05:0": {
-                "500.0": {
-                    "strikePrice": 500.0,
-                    "lastSize": 999,
-                    "totalVolume": 10,
-                    "delta": 0.5,
-                }
-            }
-        },
-        "putExpDateMap": {},
-    }
-    _, _, _, _, vol_src = _compute_options_flow(data)
-    assert vol_src == "schwab_chain_totalVolume"
-
-
-def test_top_book_pressure_emits_source_tier():
-    pressure, tier = _compute_top_book_pressure({"top": {"bid_size": 100, "ask_size": 50}})
-    assert pressure is not None
-    assert tier == "schwab_stream"
+    assert _compute_top_book_pressure(rest) is None
 
 
 def test_top_book_pressure_streaming_uses_bid_ask_size_leaves_only():
-    pressure, tier = _compute_top_book_pressure(
-        {"top": {"bid_size": 120, "ask_size": 80}}
-    )
-    assert pressure == (120 - 80) / 200
-    assert tier == "schwab_stream"
+    assert _compute_top_book_pressure({"top": {"bid_size": 120, "ask_size": 80}}) == (120 - 80) / 200
 
 
 def test_top_book_pressure_ignores_non_canonical_streaming_bid_ask_size_keys():
     """Streaming CSV leaves are BID_SIZE/ASK_SIZE — not REST quote.bidSize/askSize."""
-    pressure, tier = _compute_top_book_pressure(
-        {"content": [{"bidSize": 100, "askSize": 50}]}
-    )
-    assert pressure is None
-    assert tier == "unavailable"
-
-
-def test_order_flow_compute_exposes_split_spread_fields():
-    out = OrderFlowEngine().compute({"content": [], "top": {"bid": 10.0, "ask": 10.2, "mark": 10.1}})
-    assert out["spread_pts"] == 0.2
-    assert out["spread_frac"] is not None
-    assert out["spread_pts"] != out["spread_frac"]
+    assert _compute_top_book_pressure({"content": [{"bidSize": 100, "askSize": 50}]}) is None

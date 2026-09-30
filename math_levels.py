@@ -226,8 +226,12 @@ def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, fl
     return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
 
 
-def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float = 0.15,
-                          steps: int = 240, now=None,
+#: The gamma profile's candidate prices: spot +/- 15%, in 240 equal steps.
+GAMMA_PROFILE_SPAN_PCT = 0.15
+GAMMA_PROFILE_STEPS = 240
+
+
+def compute_gamma_profile(contracts: List[dict], spot: float, *, now=None,
                           parsed: "list | None" = None) -> List[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 
@@ -240,8 +244,8 @@ def compute_gamma_profile(contracts: List[dict], spot: float, *, span_pct: float
         parsed, _ = contract_inputs(contracts, now)
     if not parsed:
         return []
-    lo, hi = spot * (1.0 - span_pct), spot * (1.0 + span_pct)
-    steps = max(int(steps), 2)
+    lo, hi = spot * (1.0 - GAMMA_PROFILE_SPAN_PCT), spot * (1.0 + GAMMA_PROFILE_SPAN_PCT)
+    steps = GAMMA_PROFILE_STEPS
     grid = [lo + (hi - lo) * i / steps for i in range(steps + 1)]
     totals = _gamma_profile_totals(parsed, grid)
     return [(round(s, 4), total) for s, total in zip(grid, totals)]
@@ -279,9 +283,7 @@ def _gamma_profile_totals(parsed: list, grid: List[float]) -> List[float]:
     return out
 
 
-def gamma_flip_from_profile(
-    profile: List[tuple[float, float]], spot: float | None = None
-) -> float | None:
+def gamma_flip_from_profile(profile: List[tuple[float, float]], spot: float) -> float | None:
     """Interpolated price where net dealer gamma changes SIGN — in either direction.
 
     Bugbot 2026-07-20 (HIGH, confirmed): the original condition `v0 < 0 <= v1` detected
@@ -291,7 +293,7 @@ def gamma_flip_from_profile(
     that crosses. Both directions are boundaries; the direction only changes what lies on
     each side, which the caller derives from gamma_at_price at spot (RC-11).
 
-    When `spot` is given and several crossings exist, the one NEAREST SPOT is returned:
+    When several crossings exist, the one NEAREST SPOT is returned:
     regime is the sign AT spot, so the closest sign change is the boundary that governs
     the move the operator is actually trading.
     """
@@ -310,8 +312,6 @@ def gamma_flip_from_profile(
             crossings.append(round(p0 + (p1 - p0) * (-v0) / (v1 - v0), 2))
     if not crossings:
         return None
-    if spot is None:
-        return crossings[0]
     return min(crossings, key=lambda c: abs(c - spot))
 
 
@@ -622,24 +622,24 @@ def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | 
 
 
 def compute_gamma_flip_v2(
-    contracts: List[dict], spot: float, *, min_span_pct: float = GAMMA_FLIP_MIN_SPAN_PCT,
-    trusted_span_pct: float = GAMMA_FLIP_TRUSTED_SPAN_PCT,
-    now=None, profile: List[tuple[float, float]] | None = None
+    contracts: List[dict], spot: float, *, profile: List[tuple[float, float]]
 ) -> tuple[float | None, str, dict]:
     """Canonical gamma flip (profile zero-crossing) plus a CHAIN-COVERAGE verdict.
 
+    `profile` is compute_gamma_profile's curve for the same contracts and spot.
     Returns (flip | None, confidence, diagnostics). The verdict reports how much of the chain
     around spot was actually delivered — it does NOT certify that the flip level is correct
     (see the GAMMA_FLIP_TRUSTED block for exactly what it does and does not assert).
 
     THREE tiers, by delivered span (corrected 2026-08-26 — this docstring previously described
     only two, and framed the result as trustworthiness rather than coverage):
-      * >= trusted_span_pct              -> GAMMA_FLIP_TRUSTED (coverage reaches the measured
+      * >= GAMMA_FLIP_TRUSTED_SPAN_PCT   -> GAMMA_FLIP_TRUSTED (coverage reaches the measured
                                             convergence span; still not proof of the level)
-      * >= min_span_pct, < trusted_span  -> GAMMA_FLIP_LEVEL_APPROX (enough strikes near spot for
+      * >= GAMMA_FLIP_MIN_SPAN_PCT, below
+        the trusted span                 -> GAMMA_FLIP_LEVEL_APPROX (enough strikes near spot for
                                             the at-spot SIGN, so the regime stands, but too narrow
                                             to place the LEVEL — consumers must disclose that)
-      * < min_span_pct                   -> GAMMA_FLIP_NARROW (nothing is claimed)
+      * < GAMMA_FLIP_MIN_SPAN_PCT        -> GAMMA_FLIP_NARROW (nothing is claimed)
     Why the floor exists at all: a narrow chain provably misplaces the flip (measured 2026-07-19 —
     a 40-contract chain returned 770.35 against a full-chain reference of 745.61, a 3.6% error).
     """
@@ -655,7 +655,7 @@ def compute_gamma_flip_v2(
         "n_strikes": len(set(strikes)),
         "span_below_pct": round((spot - lo) / spot, 4),
         "span_above_pct": round((hi - spot) / spot, 4),
-        "min_span_pct": min_span_pct,
+        "min_span_pct": GAMMA_FLIP_MIN_SPAN_PCT,
     }
     # Gamma audit 2026-08-26: TWO span tests, because they answer two different questions.
     #  covers_regime — reaches the conservative floor below which we decline to claim anything.
@@ -667,21 +667,16 @@ def compute_gamma_flip_v2(
     #                  (GAMMA_FLIP_TRUSTED_SPAN_PCT; see its provenance block). Only this earns TRUSTED.
     # Previously ONE test (at the fetch-width constant) awarded TRUSTED, so a chain whose flip is
     # measurably ~1.4% of spot off was presented as trustworthy — the defect the operator flagged.
-    covers_regime = lo <= spot * (1.0 - min_span_pct) and hi >= spot * (1.0 + min_span_pct)
-    covers_level = lo <= spot * (1.0 - trusted_span_pct) and hi >= spot * (1.0 + trusted_span_pct)
+    covers_regime = (lo <= spot * (1.0 - GAMMA_FLIP_MIN_SPAN_PCT)
+                     and hi >= spot * (1.0 + GAMMA_FLIP_MIN_SPAN_PCT))
+    covers_level = (lo <= spot * (1.0 - GAMMA_FLIP_TRUSTED_SPAN_PCT)
+                    and hi >= spot * (1.0 + GAMMA_FLIP_TRUSTED_SPAN_PCT))
     # TRUSTED is earned by the LEVEL span, never the fetch width
     _verdict = (GAMMA_FLIP_TRUSTED if covers_level
                 else GAMMA_FLIP_LEVEL_APPROX if covers_regime
                 else GAMMA_FLIP_NARROW)
-    diag = {**diag, "trusted_span_pct": trusted_span_pct,
+    diag = {**diag, "trusted_span_pct": GAMMA_FLIP_TRUSTED_SPAN_PCT,
             "covers_regime_span": covers_regime, "covers_level_span": covers_level}
-    # RC-345 / F03: accept a pre-built profile so the caller can materialize the gamma
-    # profile ONCE (one producer, one pinned `now`) and share it between the flip and the
-    # regime/gamma-at-spot read. When None, build it here (single-call callers). Passing a
-    # profile pins its `now`, so terrain no longer materializes the same curve twice at two
-    # wall-clock instants.
-    if profile is None:
-        profile = compute_gamma_profile(contracts, spot, now=now)
     flip = gamma_flip_from_profile(profile, spot)   # nearest crossing, EITHER direction
 
     # Dealer gamma AT SPOT is what defines the regime. The flip is only the price where

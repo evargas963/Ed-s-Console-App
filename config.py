@@ -81,22 +81,13 @@ def schwab_live_blocked_for(
 
 @dataclass(frozen=True)
 class AppConfig:
-    app_dir: str
     token_path: str  # Always absolute when built via build_config
-    diagnostics_dir: str
     api_key: str
     app_secret: str
     callback_url: str
 
-    # Barchart data directories (relative to app_dir)
-    barchart_dir: str
-    barchart_raw_dir: str
-    barchart_processed_dir: str
-    barchart_output_dir: str
-    barchart_archive_dir: str
 
-
-def build_config(app_dir: str) -> AppConfig:
+def build_config() -> AppConfig:
     """Build config. token_path is always absolute regardless of launch context."""
     # Env override for launch-method debugging / explicit path
     env_token = os.getenv("SCHWAB_TOKEN_PATH")
@@ -107,15 +98,6 @@ def build_config(app_dir: str) -> AppConfig:
         # ED_RUNTIME_ROOT moves it), never a source-tree fixture.
         from runtime_layout import RUNTIME_ROOT
         token_path = os.path.abspath(os.path.join(str(RUNTIME_ROOT), "schwab_token.json"))
-    from runtime_layout import RUNTIME_ROOT as _runtime_root, data_dir as _runtime_data_dir
-    diagnostics_dir = os.path.join(str(_runtime_root), "diagnostics")
-
-    # Barchart directories (canonical) — runtime data, under the runtime root (RC-523)
-    barchart_dir = os.path.join(str(_runtime_data_dir()), "barchart")
-    barchart_raw_dir = os.path.join(barchart_dir, "raw")
-    barchart_processed_dir = os.path.join(barchart_dir, "processed")
-    barchart_output_dir = os.path.join(barchart_dir, "output")
-    barchart_archive_dir = os.path.join(barchart_dir, "archive")
 
     # RC-514: Schwab credentials are a CAPABILITY input, not an application-shell requirement.
     # These two lines used to call a `_require_env` helper that RAISED when either was absent,
@@ -133,15 +115,8 @@ def build_config(app_dir: str) -> AppConfig:
     callback_url = os.getenv("SCHWAB_CALLBACK_URL", SCHWAB_CALLBACK_URL).strip()
 
     return AppConfig(
-        app_dir=app_dir,
         token_path=token_path,
-        diagnostics_dir=diagnostics_dir,
         api_key=api_key,
         app_secret=app_secret,
         callback_url=callback_url,
-        barchart_dir=barchart_dir,
-        barchart_raw_dir=barchart_raw_dir,
-        barchart_processed_dir=barchart_processed_dir,
-        barchart_output_dir=barchart_output_dir,
-        barchart_archive_dir=barchart_archive_dir,
     )

@@ -755,14 +755,10 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # every operator surface until this producer computes them.
     (call_delta_wall, _cdw_str), (put_delta_wall, _pdw_str) = pick_delta_wall_strikes(
         exposures, strikes)
-    # RC-345 / F03: the gamma profile is materialized ONCE, at one pinned instant, and shared
-    # by both the flip verdict and the regime/gamma-at-spot read. Previously the flip built a
-    # profile inside compute_gamma_flip_v2 and this function built a SECOND one, each defaulting
-    # `now` to its own wall-clock read — two materializations of the same curve at two instants.
+    # the gamma profile, built once at one instant, feeds the flip verdict and the regime read
     parsed, unpriced = contract_inputs(contracts, _terrain_now)   # one parse for profile + charm
     profile = compute_gamma_profile(contracts, spot, now=_terrain_now, parsed=parsed)
-    flip, confidence, flip_diag = compute_gamma_flip_v2(
-        contracts, spot, now=_terrain_now, profile=profile)
+    flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot, profile=profile)
     # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma).
     # The model curve places the flip only (Schwab sends gamma at its own price, never at
     # other prices); where the curve's sign at spot disagrees with Schwab's, the flip says so.
@@ -837,7 +833,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         book_oi_total=_book_oi_total,
         pin_candidate=_pin_candidate,
         pin_candidate_blockers=_pin_candidate_blockers,
-        net_gex_peak=pick_net_gex_peak_strike(exposures, strikes, institutional=True),
+        net_gex_peak=pick_net_gex_peak_strike(exposures, strikes),
         key_delta_strike=pick_key_delta_strike(exposures, strikes),
         hvp=hvp,
         lvp=lvp,

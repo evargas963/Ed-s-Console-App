@@ -83,11 +83,11 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     # call and this reference call are two genuinely separate instants a few milliseconds
     # apart, so a tight tolerance (not exact equality) is the honest comparison, the same
     # discipline the charm test below already applies for the identical reason.
-    exposures, _ = cebs(_CONTRACTS, spot=_SPOT, require_oi=True)
+    exposures, _ = cebs(_CONTRACTS, spot=_SPOT)
     checked = 0
     for k, b in exposures.items():
         # has_oi=False (2026-09-14 SPX honest-absence fix): a bucket can exist in
-        # require_oi=True's own output with every accumulator still at its pre-initialized
+        # compute_exposures_by_strike's own output with every accumulator still at its pre-initialized
         # 0.0 -- not a real computed value, so the endpoint's own has_oi gate correctly
         # omits it from `rows` instead of reporting this bucket's fabricated 0.0.
         if not b.get("has_oi"):

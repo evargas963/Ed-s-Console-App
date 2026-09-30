@@ -22,19 +22,8 @@ from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 
 # Source classification — mechanical, not aspirational.
 NATIVE_AGGRESSOR_AVAILABLE = False
-NATIVE_TIME_AND_SALES_AVAILABLE = False
-TIMESALE_SERVICE_STATUS = "UNAVAILABLE"
 TAPE_CLASSIFICATION = "PROXY_RECONSTRUCTED_L1_TICK"
 TAPE_COMPLETENESS = "INCOMPLETE_OBSERVATION"
-TAPE_IDENTITY_CONVENTION = "L1_OBSERVATION_RESTATEMENT"
-TAPE_NATIVE_EVENT_ID = False
-TAPE_LIMITATIONS = (
-    "Reconstructed L1 tick-rule from LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS. "
-    "Identical adjacent triples are suppressed as restatements under this convention. "
-    "Distinct observed same-ms triples are preserved. Receive order is local "
-    "receive_seq, not a native event id. No aggressor. Not a unique trade "
-    "identifier. Not native time-and-sales. TIMESALE_EQUITY is UNAVAILABLE."
-)
 
 VENDOR_TRADE_TIME = "TRADE_TIME_MILLIS"
 VENDOR_LAST_PRICE = "LAST_PRICE"
@@ -214,21 +203,4 @@ def compute_tape_pressure(
     if total_sz <= 0:
         return None
     return total_delta / total_sz
-
-
-def source_contract() -> dict[str, Any]:
-    return {
-        "native_aggressor_available": NATIVE_AGGRESSOR_AVAILABLE,
-        "native_time_and_sales_available": NATIVE_TIME_AND_SALES_AVAILABLE,
-        "timesale_service_status": TIMESALE_SERVICE_STATUS,
-        "tape_pressure_classification": TAPE_CLASSIFICATION,
-        "cum_delta_classification": TAPE_CLASSIFICATION,
-        "tape_identity_convention": TAPE_IDENTITY_CONVENTION,
-        "tape_native_event_id": TAPE_NATIVE_EVENT_ID,
-        "tape_completeness": TAPE_COMPLETENESS,
-        "tape_limitations": TAPE_LIMITATIONS,
-        "production_l1_service": "LEVELONE_EQUITIES",
-        "production_l1_subscribe": "level_one_equity_subs",
-        "silent_source_fallback": False,
-    }
 
