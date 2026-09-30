@@ -489,6 +489,7 @@ async def run() -> int:
     from app.market_data.schwab.streaming.live_push import serve_live_push
     from app.market_data.schwab.streaming.live_ui import serve_live_ui
     from config import build_config, load_dotenv_file
+    from db_authority import canonical_console_db_path
     from schwab_client import build_client_from_token
     load_dotenv_file()
     cfg = build_config()
@@ -507,7 +508,8 @@ async def run() -> int:
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
                                                  on_wanted=daemon.set_wanted)),
-             asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]
+             asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status,
+                                               bars_db_path=canonical_console_db_path()))]
     try:
         await asyncio.sleep(0)                    # servers subscribe before the first message
         await daemon.run(make_client, stop)

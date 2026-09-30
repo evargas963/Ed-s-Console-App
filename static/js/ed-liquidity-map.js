@@ -1,7 +1,8 @@
 /* Ed Console — Liquidity / "Map" subview. PRESENTATION ONLY, computes nothing.
    The zones /api/liquidity-snapshot computes (support / resistance / value bands, each with its
    served label, side and confluence score) on the one TradingView-style chart every chart in the
-   console uses (ed-tv-chart.js), over the price (/api/bars1m, completed Schwab bars, the toolbar's timeframe),
+   console uses (ed-tv-chart.js), over the price (/api/bars1m, completed Schwab bars, the toolbar's timeframe,
+   then each new bar as the daemon pushes it),
    with the prior-day levels from /api/levels -- the one level route -- and the live price from
    the header's price row (ed:quote_tick). The zone list below the chart names each zone's source
    levels, the time of each of their two inputs (the bars, the option levels), and each input
@@ -81,15 +82,22 @@
       absent + '</div>';
   }
 
+  // what the map last drew: the zones, the levels, and the bars (read once per ticker and
+  // timeframe, then each bar the daemon pushes)
+  var _last = { snap: null, levels: null, bars: null, barsFor: null };
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillMap(tk)) return;
+    var key = tk + '|' + _tf, needBars = _last.barsFor !== key;
     return Promise.all([
       fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + _tf + '&limit=' + window.EdTvChart.BARS_LIMIT[_tf], signal)
+      needBars ? fetchJson('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + _tf + '&limit=' + window.EdTvChart.BARS_LIMIT[_tf], signal)
+        : Promise.resolve(_last.bars)
     ]).then(function (r) {
-      if (stillMap(tk)) render(h, tk, r[0], r[1], r[2]);
+      if (!stillMap(tk)) return;
+      _last = { snap: r[0], levels: r[1], bars: r[2], barsFor: r[2] ? key : null };
+      render(h, tk, r[0], r[1], r[2]);
     }).catch(function (e) {
       if (e && e.name === 'AbortError') return;
       if (stillMap(tk)) render(h, tk, null, null, null);
@@ -101,7 +109,14 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels' || e.detail.kind === 'liquidity') load(); });
+    document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels') load(); });
+    // a completed Schwab minute, pushed by the daemon: the chart bar at the map's timeframe
+    window.addEventListener('ed:bar', function (e) {
+      var b = e.detail, h = host();
+      if (!b || b.ticker !== st().key || _last.barsFor !== ticker() + '|' + _tf || !h || !isMap()) return;
+      _last.bars = window.EdTvChart.withPushedBar(_last.bars, b, _tf);
+      render(h, ticker(), _last.snap, _last.levels, _last.bars);
+    });
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || q.ticker !== st().key) return;
       _liveQuote = q; if (isMap()) paintLive();

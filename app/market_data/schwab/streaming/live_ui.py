@@ -1,10 +1,13 @@
-"""Prices straight from the capture daemon to the browser over WebSocket.
+"""Prices and chart bars straight from the capture daemon to the browser over WebSocket.
 
 The daemon owns the Schwab connection. This server keeps the latest value of every
 LEVELONE_EQUITIES field (live_market_plane, fed here in the daemon's own process), knows
 whether the feed is alive (the daemon's own heartbeat, applied every HEARTBEAT_SEC), and
 pushes the FINISHED displayed row (live_price_rows.price_row -- the one producer) to every
-browser that asked for the symbol, the moment a Schwab message changes it.
+browser that asked for the symbol, the moment a Schwab message changes it. It keeps each
+symbol's 1-minute bars of the day (Schwab CHART_EQUITY, live_price_rows.minute_bar; the day's
+stored minutes are loaded the first time a symbol's bar arrives) and pushes, for each new bar,
+the chart bar it completes or extends at every chart timeframe (live_price_rows.bar_update).
 
 No web server sits in this path, so no analytics load can delay a price.
 
@@ -22,6 +25,10 @@ Protocol (JSON text frames):
                                                                      a dead feed reads dead
                                                                      within FEED_HEARTBEAT_
                                                                      MAX_AGE_SEC)
+  server  -> {"type": "bars", "bars": [bar_update, ...]}             (each completed minute of
+                                                                     a subscribed symbol: its
+                                                                     chart bar at every
+                                                                     timeframe)
 
 Delivery is latest-value-per-symbol per client (conflation, as Lightstreamer MERGE /
 LSEG conflated feeds do): a slow browser gets the newest row for each symbol it is behind
@@ -33,12 +40,16 @@ import asyncio
 import json
 import logging
 import os
+import sqlite3
 import time
+from datetime import datetime
+from pathlib import Path
 
 import live_market_plane as lmp
 import live_price_rows
 from instrument_identity import display_symbol, ticker_storage_key
 from stream_spine import COUNT_DROPS, MessageBus
+from time_et import ET
 
 log = logging.getLogger(__name__)
 
@@ -52,25 +63,47 @@ HEARTBEAT_SEC = 1.0
 MAX_SYMBOLS_PER_CLIENT = 200
 
 
+def stored_minutes(db_path: "str | Path", ticker: str, since_ts: float) -> list[dict]:
+    """`ticker`'s stored 1-minute bars (price_bars_1m) starting at or after `since_ts`, oldest
+    first, as chart bars. Read-only."""
+    con = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True, timeout=10)
+    try:
+        rows = con.execute("SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
+                           "WHERE ticker=? AND bar_start_ts_utc>=? ORDER BY bar_start_ts_utc",
+                           (ticker, since_ts)).fetchall()
+    finally:
+        con.close()
+    return [{"t": t, "o": o, "h": h, "l": lo, "c": c, "v": v} for t, o, h, lo, c, v in rows]
+
+
+def _et_day_start(t: float) -> float:
+    return datetime.fromtimestamp(t, ET).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+
+
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "identity", "wake")
+    __slots__ = ("ws", "symbols", "pending", "bars", "identity", "wake")
 
     def __init__(self, ws) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
         self.pending: set[str] = set()      # symbols changed since the last send
+        self.bars: dict[str, dict] = {}     # each symbol's newest bar update not yet sent
         self.identity: list[dict] | None = None   # the last subscribe's answer, not yet sent
         self.wake = asyncio.Event()
 
 
 class LiveUiServer:
-    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict) -> None:
+    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict, bars_db_path: "str | Path | None" = None) -> None:
         self.bus = bus
         self.heartbeat_fn = heartbeat_fn
         self.stats = stats
         self.clients: set[_Client] = set()
+        #: the stored bars' database, read once per symbol and day; None: streamed bars only
+        self.bars_db_path = bars_db_path
+        #: each symbol's minutes of one ET day: (that day's start, {bar start: bar})
+        self.minutes: dict[str, tuple[float, dict[float, dict]]] = {}
         stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
-                     beat_send_failures=0, listening=None, last_send_ms=None)
+                     beat_send_failures=0, listening=None, last_send_ms=None, bars_sent=0)
 
     # -- plane side -------------------------------------------------------------------
 
@@ -92,6 +125,29 @@ class LiveUiServer:
         for c in self.clients:
             if ticker in c.symbols:
                 c.pending.add(ticker)
+                c.wake.set()
+
+    async def on_bar(self, msg) -> None:
+        """One daemon bar message -> the symbol's minutes of the day -> the chart bar it makes at
+        every timeframe, for every browser watching the symbol. The day's stored minutes are
+        read (off the event loop) the first time the symbol has a bar that day."""
+        if not isinstance(msg, dict) or not msg.get("symbol"):
+            return
+        bar = live_price_rows.minute_bar(msg)
+        if bar is None:
+            return
+        sym, day = ticker_storage_key(msg["symbol"]), _et_day_start(bar["t"])
+        held = self.minutes.get(sym)
+        if held is None or held[0] != day:
+            stored = [] if self.bars_db_path is None else await asyncio.to_thread(
+                stored_minutes, self.bars_db_path, sym, day)
+            held = self.minutes[sym] = (day, {m["t"]: m for m in stored})
+        held[1][bar["t"]] = bar
+        update = live_price_rows.bar_update(sym, sorted(held[1].values(), key=lambda m: m["t"]), bar,
+                                            float(msg["ts_recv"]))
+        for c in self.clients:
+            if sym in c.symbols:
+                c.bars[sym] = update
                 c.wake.set()
 
     def beat(self) -> dict:
@@ -119,6 +175,11 @@ class LiveUiServer:
             rows = [live_price_rows.price_row(s) for s in syms if s in c.symbols]
             if rows:
                 await self._send(c, {"type": "quotes", "rows": rows})
+            bars, c.bars = c.bars, {}
+            bars = [b for s, b in bars.items() if s in c.symbols]
+            if bars:
+                await self._send(c, {"type": "bars", "bars": bars})
+                self.stats["bars_sent"] += len(bars)
 
     async def _read(self, c: _Client) -> None:
         async for frame in c.ws:
@@ -192,17 +253,19 @@ class LiveUiServer:
 
 async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
                         host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
-                        stats: "dict | None" = None) -> None:
+                        stats: "dict | None" = None, bars_db_path: "str | Path | None" = None) -> None:
     """Run until `stop` is set. Start it BEFORE the Schwab connection so the plane sees the
-    first messages (Schwab sends each field once, then only changes)."""
+    first messages (Schwab sends each field once, then only changes). `bars_db_path`: the
+    database of the stored 1-minute bars (the day's earlier minutes of a symbol)."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(bus, heartbeat_fn, stats)
+    srv = LiveUiServer(bus, heartbeat_fn, stats, bars_db_path)
     for topic, msg in list(bus.snapshot().items()):         # whatever arrived before we started
         if topic.startswith("quote."):
             srv.ingest(msg)
     sub = bus.subscribe("quote.", policy=COUNT_DROPS, maxsize=65536, name="live_ui")
+    bsub = bus.subscribe("bar1m.", policy=COUNT_DROPS, maxsize=8192, name="live_ui_bars")
     lmp.add_row_listener(srv.on_row)
 
     async def _track() -> None:
@@ -210,7 +273,18 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
             _topic, msg = await sub.get()
             srv.ingest(msg)
 
-    tasks = [asyncio.create_task(_track()), asyncio.create_task(srv.beat_loop())]
+    async def _track_bars() -> None:
+        while True:
+            _topic, msg = await bsub.get()
+            try:
+                await srv.on_bar(msg)
+            except Exception as e:  # noqa: BLE001 -- counted; one bad bar never ends the feed
+                srv.stats["ingest_failures"] += 1
+                log.warning("live ui bar %s: %s: %s", msg.get("symbol") if isinstance(msg, dict) else None,
+                            type(e).__name__, e)
+
+    tasks = [asyncio.create_task(_track()), asyncio.create_task(_track_bars()),
+             asyncio.create_task(srv.beat_loop())]
     try:
         async with serve(srv.serve_client, host, port, max_size=65536, compression=None,
                          ping_interval=20, ping_timeout=20):
@@ -223,3 +297,4 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
         await asyncio.gather(*tasks, return_exceptions=True)
         lmp.remove_row_listener(srv.on_row)
         bus.unsubscribe(sub)
+        bus.unsubscribe(bsub)

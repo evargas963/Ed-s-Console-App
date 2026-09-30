@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 
-LEVELS, CHAIN, FLOW, LIQUIDITY = "levels", "chain", "flow", "liquidity"
+LEVELS, CHAIN, FLOW = "levels", "chain", "flow"
 
 _loop: asyncio.AbstractEventLoop | None = None
 _clients: dict[str, list["Client"]] = {}

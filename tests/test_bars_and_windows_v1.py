@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 import liquidity_value_engine as lve
+import live_price_rows
 import server as srv
 from db import EdDB
 from liquidity_value_engine import _bars_to_list, build_price_level_snapshot
@@ -74,7 +75,7 @@ def test_the_vwap_curve_is_stamped_with_its_chart_bars_own_time(monkeypatch, pin
                    "c": b["close"], "v": b["volume"]} for b in BARS]
     final_vwap = json.loads(srv.get_levels(ticker="SPY", tf="1").body)["vwap_series"][-1][1]
     for tf in ("3", "5", "15", "30", "60", "D"):
-        bar_times = [b["t"] for b in srv.aggregate_bars(one_minute, tf)]
+        bar_times = [b["t"] for b in live_price_rows.aggregate_bars(one_minute, tf)]
         curve = json.loads(srv.get_levels(ticker="SPY", tf=tf).body)["vwap_series"]
         assert curve and {p[0] for p in curve} <= set(bar_times), tf
         assert curve[-1][1] == final_vwap, tf                   # each bar's value as of its last minute

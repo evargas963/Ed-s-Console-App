@@ -1,17 +1,15 @@
-"""The console's push: the levels producer, the stream handler and the bar writer mark what
-changed for a ticker; a page on that ticker receives each kind once, and no other page does.
-Stream input is Schwab's captured TSLA book (tests/fixtures/real_equity_book.json)."""
+"""The console's push: the levels producer and the stream handler mark what changed for a
+ticker; a page on that ticker receives each kind once, and no other page does. (Bars are the
+daemon's push: tests/test_bars_pushed_v1.py.) Stream input is Schwab's captured TSLA book
+(tests/fixtures/real_equity_book.json)."""
 from __future__ import annotations
 
 import asyncio
 import json
-import sqlite3
 from pathlib import Path
 
 import app.options.order_flow.streaming as ofs
 import push_changes
-import server
-from stream_spine import bar_msg
 
 _FX = json.loads((Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8"))
 TK = _FX["ticker"]
@@ -46,19 +44,6 @@ def test_a_streamed_book_marks_flow():
     assert _run(lambda: ofs._ingest_pushed(f"book.{TK}", {"symbol": TK, "ts_recv": b["ts_recv"],
                                                            "service": b["service"],
                                                            "content": b["native"]}))[0] == {"flow"}
-
-
-def test_a_written_bar_marks_liquidity():
-    start = 1_790_000_040.0
-    msg = bar_msg(symbol=TK, bar_start_ms=int(start * 1000), open=10.0, high=11.0, low=9.5,
-                  close=10.5, volume=100.0, src="schwab_chart", ts_recv=start + 60.0)
-    try:
-        assert _run(lambda: server._write_streamed_bar(msg))[0] == {"liquidity"}
-    finally:
-        con = sqlite3.connect(server.get_db().db_path)
-        con.execute("DELETE FROM price_bars_1m WHERE ticker=? AND bar_start_ts_utc=?", (TK, start))
-        con.commit()
-        con.close()
 
 
 def test_no_change_is_an_empty_push():

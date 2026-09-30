@@ -218,6 +218,34 @@ test('the Gamma chart and the liquidity map carry the Trade Desk toolbar; a time
   expect(errs).toEqual([]);
 });
 
+test('the Gamma chart and the liquidity map draw each bar the daemon pushes, at their timeframe, with no read', async ({ page }) => {
+  // the charts read /api/bars1m again after every completed minute (the console's `liquidity`
+  // push); the daemon now pushes the chart bar itself (live_ui {type:'bars'})
+  const errs = watchErrors(page);
+  await intercept(page);
+  const asked = [];
+  await page.route('**/api/bars1m**', (route) => { const tf = new URL(route.request().url()).searchParams.get('tf'); asked.push(tf);
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, BARS, { tf })) }); });
+  const daemon = await mockPriceSocket(page, []);
+  for (const [ws, sub, view, api] of [['options', 'gamma', 'chart', 'EdGammaChart'], ['liquidity', 'map', '', 'EdLiquidityMap']]) {
+    await page.addInitScript(([w, s, v]) => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', w);
+      localStorage.setItem('ed_sub', s); if (v) localStorage.setItem('ed_view', v); } catch (e) {} }, [ws, sub, view]);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const bars = () => page.evaluate((a) => (window[a].state() || {}).bars, api);
+    await expect.poll(bars, ws).toBe(BARS.bars.length);
+    await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
+    const tf = await page.evaluate((a) => window[a].state().tf, api);
+    const reads = asked.length;
+    const next = { t: BARS.bars[0].t + 3600, o: 771, h: 772, l: 770.5, c: 771.8, v: 900, chg: 0.8, chg_pct: 0.1 };
+    const byTf = {}; ['1', '3', '5', '15', '30', '60', 'D'].forEach((k) => { byTf[k] = next; });
+    daemon.send({ type: 'bars', bars: [{ ticker: 'SPY', ts_recv: next.t + 62.7, last_bar: { t: next.t, label: 'Fri 09/25 10:21 AM CT' }, tf: byTf }] });
+    await expect.poll(bars, ws + ' ' + tf).toBe(BARS.bars.length + 1);
+    await page.waitForTimeout(300);
+    expect(asked.length, ws).toBe(reads);
+  }
+  expect(errs).toEqual([]);
+});
+
 function watchErrors(page) {
   const errs = [];
   page.on('pageerror', (e) => errs.push(e.message));
@@ -389,12 +417,12 @@ test.describe('Trade Desk renders served values', () => {
     expect(await span()).toBeCloseTo(widened, 6);
   });
 
-  test('Market Map: the served last completed bar; a price tick moves the live LAST line and reads no bars', async ({ page }) => {
+  test('Market Map: the served last completed bar; a price tick moves the live LAST line; a completed bar arrives on the daemon\'s push, not a read', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
     const barReads = [];
     page.on('request', (r) => { if (r.url().includes('/api/bars1m')) barReads.push(r.url()); });
-    await mockPriceSocket(page, []);            // the daemon answers what SPY is (its served key)
+    const daemon = await mockPriceSocket(page, []);   // the daemon answers what SPY is (its served key)
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
@@ -414,8 +442,27 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(async () => (await chartState()).livePrice).toBeNull();   // no line left at an old price
     await page.waitForTimeout(1500);
     expect(barReads.length).toBe(before);
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'liquidity' } })));
-    await expect.poll(() => barReads.length).toBeGreaterThan(before);
+    // the daemon's bar push (live_ui {type:'bars'}): the chart bar the new minute extends, then the
+    // next chart bar a later minute opens -- each drawn as pushed, with no read (the same bar at
+    // every timeframe here: the desk draws its own timeframe's)
+    const pushed = (t, last, c) => {
+      const tf = {};
+      window_tfs.forEach((id) => { tf[id] = { t: t, o: 770, h: 772.5, l: 769, c: c.close, v: 1500, chg: c.close - 770, chg_pct: 0.1 }; });
+      tf['1'] = { t: last, o: c.close, h: c.close, l: c.close, c: c.close, v: 10, chg: 0, chg_pct: 0 };
+      return { ticker: 'SPY', ts_recv: last + 62.7, last_bar: { t: last, label: 'Fri 09/25 ' + c.label }, tf: tf };
+    };
+    const window_tfs = ['3', '5', '15', '30', '60', 'D'];
+    daemon.send({ type: 'bars', bars: [pushed(1790343000, 1790343720, { close: 772.4, label: '09:22 AM CT' })] });
+    await expect(legend).toContainText('Last completed bar Fri 09/25 09:22 AM CT');
+    expect((await chartState()).bars).toBe(BARS.bars.length);          // the same bar, extended
+    daemon.send({ type: 'bars', bars: [pushed(1790344800, 1790344800, { close: 772.1, label: '09:40 AM CT' })] });
+    await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length + 1);
+    await expect(legend).toContainText('Last completed bar Fri 09/25 09:40 AM CT');
+    // a bar for another symbol is not drawn
+    daemon.send({ type: 'bars', bars: [Object.assign(pushed(1790346600, 1790346600, { close: 1, label: '10:10 AM CT' }), { ticker: 'QQQ' })] });
+    await page.waitForTimeout(300);
+    expect((await chartState()).bars).toBe(BARS.bars.length + 1);
+    expect(barReads.length).toBe(before);
     expect(errs).toEqual([]);
   });
 

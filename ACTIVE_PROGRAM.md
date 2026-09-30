@@ -111,7 +111,7 @@ producer, with a behavior test that fails if the second one returns.
 | ONE-03 | QUEUED | Feed liveness judged in both processes: the daemon applies its own heartbeat to its price rows (`live_ui.beat`), and the console applies the pushed copy again (`feed_live_for`); one rule since ONE-15, two places it runs. |
 | ONE-04 | QUEUED | Equity books: the console's order-flow copy and the database copy read by the Book Heatmap (`history.book_heatmap_for_ticker`, a live screen reading the DB). |
 | ONE-05 | QUEUED | Option quotes: the options tape reads the database copy (`history.tape_rows_for_symbol`, a live screen reading the DB) while the console's memory holds the same contract's quote fields (`state.py`). |
-| ONE-06 | QUEUED | 1-minute bars in two databases (with P2-DB4). A chart's bar history (`/api/bars1m`) and the price-level producer (after each bar) read `price_bars_1m` (`_read_bars_1m`): a live screen reading the database (rule 6). |
+| ONE-06 | QUEUED | 1-minute bars in two databases (with P2-DB4), and the day's minutes in the daemon's memory (`live_ui`, which pushes each new bar to the charts, P2-3). A chart's bar history as it opens (`/api/bars1m`) and the price-level producer (after each bar) read `price_bars_1m` (`_read_bars_1m`): a live screen reading the database (rule 6). |
 | ONE-07 | QUEUED | Option chains fetched by two processes with two writers to `ed_console.db` (with P2-1). |
 
 ## Phase 2 — the rest of the design, then decomposition
@@ -120,7 +120,7 @@ producer, with a behavior test that fails if the second one returns.
 |---|---|---|
 | P2-1 | QUEUED | **The daemon fetches the chain** (DATA_FLOW decision 1); the console's chain fetch is deleted. Ships with its check: a Schwab call outside the daemon fails. |
 | P2-2 | QUEUED | **The levels producer in its own process** (DATA_FLOW decision 2); results pushed. First measured against the simpler complete design (levels computed in the console, off the request path): page response during a board sweep, failure isolation, who owns the process. Not built unless that proves it necessary; the result goes to the operator. Ships with its check: the console imports no calculation module. |
-| P2-3 | IN PROGRESS | **Everything pushed to the browser**, two push connections (operator 2026-09-27): the daemon pushes prices and bars, the console pushes what changed (`/api/changes`, `push_changes.py`: `levels`, `chain`, `flow`, `liquidity`, the session label). Left: the daemon pushes the 1-minute bars (the charts read `/api/bars1m` after a `liquidity` push today); time passed as an input (`now`) on the live path, with the conftest session-clock stand-in deleted (P1-9). |
+| P2-3 | IN PROGRESS | **Everything pushed to the browser**, two push connections (operator 2026-09-27): the daemon pushes prices and bars, the console pushes what changed (`/api/changes`, `push_changes.py`: `levels`, `chain`, `flow`, the session label). Left: time passed as an input (`now`) on the live path, with the conftest session-clock stand-in deleted (P1-9). |
 | P2-5 | QUEUED | **db.py**: move what remains (bars, level history, enrollment, connection) to `daemon/`. |
 | P2-6 | QUEUED | **server.py**: the chain fetch to `daemon/`, the levels loop and gamma-surface projection to `producer/`, the routes and startup to `console/`. |
 | P2-7 | QUEUED | **The other large files**: liquidity_value_engine.py, app/options/order_flow/streaming.py and engine.py, math_exposure_core.py, ed-core.js, ed-gamma.js — cut what has no job, move each part to the process that runs it. |
