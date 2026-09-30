@@ -121,7 +121,16 @@ Schwab sends is taken as sent (rule 2), never computed.
   capture), the ATR pair (from the 1-minute bars) included. The day-over-day open-interest change
   has one producer: the forces, from the stored captures (`/api/forces`, shown on the Trade Desk).
   An ATR leg that cannot be computed is served absent with its reason (how many trading days or
-  15-minute periods of bars exist; ATR(14) needs 15).
+  15-minute periods of bars exist; ATR(14) needs 15). The publication also carries, with the
+  per-strike rows (`terrain_engine.per_strike_view`), the strike each Chart profile labels as
+  its largest (the GEX profile's is the `net_gex_peak` level) and the net GEX below and above
+  the publication's price; `/api/terrain/strikes` carries them and picks or sums nothing. A
+  gamma level with no value that has a stated reason (the flip, the pin candidate and its
+  failed gates, GSF and GRC by the curve's state) publishes it in `level_absent_reasons`, which
+  `/api/levels` carries in `families_absent`. An expiry's ATM implied volatility is the mean of
+  the call's and the put's at the one listed strike nearest the price, absent when either has
+  none. A containing wall states a dealer lean (call wall: dealers sell; put wall: dealers buy)
+  only in the long-gamma regime on trusted coverage, where the read says the same.
   **The book** is the contracts not yet at their settlement at the publication's valuation time
   (`time_et.time_to_expiry_years`: the close, or the open for an AM-settled contract). A
   contract past it carries no open interest or greeks into any level, wall, regime or total; its

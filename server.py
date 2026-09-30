@@ -2572,6 +2572,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
     # logged-and-swallowed path and then killed the endpoint with NameError on the way out,
     # turning a degraded panel into a 500. Absence must degrade, never explode.
     _snap: dict = {}
+    _ps: dict = {}
     # RC-68 SINGLE SOURCE FOR TODAY'S PER-STRIKE DATA: the LIVE terrain snapshot.
     # This panel used to render from option_chain_morning_full — MEASURED 2026-07-27 11:31 ET:
     # a 09:47 capture served at 11:31 understated session volume by 281 percent (1,095,874 shown
@@ -2597,32 +2598,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
         log.debug("terrain strikes live read failed %s: %s", tk, e)
     prior, prior_src = _snap.get("_prior_strikes") or (None, None)
 
-    # STRIP kill (one-faucet-closeout-v1): per-side GEX/OV sums are computed HERE, against
-    # the exact spot this payload serves — the chart strip used to re-derive them in the
-    # browser from the same rows (a second aggregation site that breaks silently when the
-    # payload changes, and can straddle a different spot than the server's). One aggregator.
-    def _side_sums(rows, s):
-        from numeric_contract import float_finite_or_none
-        if not rows or s is None:
-            return None
-        gb = ga = vb = va = 0.0
-        for r in rows:
-            # RC-276: the third copy. A row with no gamma used to add 0.0 to a side sum, which
-            # is not neutral -- it drags the below/above comparison toward whichever side holds
-            # the unmeasured strikes. Absence is dropped, not counted as flat.
-            k = float_finite_or_none(r[0])
-            g = float_finite_or_none(r[1])
-            v = float_finite_or_none(r[2])
-            if k is None or g is None or v is None:
-                continue
-            if k < s:
-                gb += g; vb += v
-            elif k > s:
-                ga += g; va += v
-        return {"gex_below": round(gb, 1), "gex_above": round(ga, 1),
-                "vol_below": int(vb), "vol_above": int(va),
-                "spot_basis": float(s)}
-
+    peak = (_ps.get("peak") or {}) if isinstance(_ps, dict) else {}
     live_spot, live_src, _live_ts = resolve_spot(tk)   # the one spot on every screen
     return JSONResponse({
         "ticker": tk, "spot": live_spot,
@@ -2631,15 +2607,16 @@ def get_terrain_strikes(ticker: str = Query(...)):
         "today": today or {"all": [], "near": [], "far": []},
         # the Chart view's DEX and OI profiles: each measure's rows (terrain_engine
         # _per_strike_measure_rows), its strike nearest the live price (the window's centre) and
-        # its largest-magnitude strike
+        # its largest-magnitude strike, as published (per_strike_view `peak`)
         "measures": {m: {"rows": rows,
                          "spot_strike": nearest_strike([r[0] for r in rows], live_spot),
-                         "max_abs_strike": max(rows, key=lambda r: abs(r[1]), default=[None])[0]}
+                         "max_abs_strike": peak.get(m)}
                      for m, rows in measures.items()},
-        "today_side_sums": _side_sums((today or {}).get("all"), live_spot),
+        # net GEX below and above the publication's price, as published (per_strike_view)
+        "today_side_sums": _ps.get("side_sums") if today else None,
         "spot_strike": nearest_strike([r[0] for r in (today or {}).get("all") or []], live_spot),
-        # the strike with the largest net GEX magnitude (the chart labels it)
-        "max_abs_strike": max(((today or {}).get("all") or []), key=lambda r: abs(r[1]), default=[None])[0],
+        # the strike with the largest net GEX magnitude (the chart labels it): net_gex_peak
+        "max_abs_strike": peak.get("all") if today else None,
         "migration": {sc: positioning_migration((today or {}).get(sc), (prior or {}).get(sc),
                                                 _snap.get("call_wall"), _snap.get("put_wall"))
                       for sc in ("all", "near", "far")},
@@ -4034,8 +4011,9 @@ def get_levels(ticker: str = Query(...),
     if em is None or spot is None:
         families_absent.append({"family": "expected_move", "reason": "no live price" if spot is None
                                 else "the terrain has no implied 1-day move"})
-    if t.get("gamma_flip_reason"):       # the flip's own reason, carried as published
-        families_absent.append({"family": "gamma_flip", "reason": t["gamma_flip_reason"]})
+    # each gamma level the terrain published no value for, with the reason it published
+    families_absent += [{"family": gid, "reason": why}
+                        for gid, why in (t.get("level_absent_reasons") or {}).items()]
 
     return JSONResponse({
         "ticker": tk,

@@ -79,28 +79,6 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
 # ── RC-227: one-faucet closeout locks (mission one-faucet-closeout-v1) ────────────────
 
 
-def test_strikes_payload_carries_server_side_sums(monkeypatch):
-    """STRIP server half: /api/terrain/strikes serves today_side_sums computed against the
-    payload's own spot — the one aggregator."""
-    import json
-
-    import server as srv
-
-    monkeypatch.setattr(srv, "terrain_cache_get", lambda tk: {
-        "_per_strike": {"all": [[95.0, 10.0, 100], [105.0, -4.0, 50]],
-                        "near": [], "far": []},
-        "spot": 100.0, "computed_ts_utc": 1.0,
-    })
-    monkeypatch.setattr(srv, "resolve_spot", lambda tk, **kw: (100.0, "schwab_quote_last", 1.0))
-    monkeypatch.setattr(srv, "last_capture_per_day", lambda *a, **k: [])   # no prior day
-    resp = srv.get_terrain_strikes(ticker="SPY")
-    payload = json.loads(bytes(resp.body))
-    ss = payload["today_side_sums"]
-    assert ss["gex_below"] == 10.0 and ss["gex_above"] == -4.0
-    assert ss["vol_below"] == 100 and ss["vol_above"] == 50
-    assert ss["spot_basis"] == 100.0, "sums must be computed against the payload's own spot"
-
-
 def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monkeypatch, tmp_path):
     """t12 (RC-227 residual): the PDL must be the min of the WHOLE prior session. Measured
     live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH/PDC

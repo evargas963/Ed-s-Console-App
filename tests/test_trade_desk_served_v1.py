@@ -138,12 +138,27 @@ def test_a_breached_wall_says_so_at_the_live_price(pin_clock):
     assert out["put_wall_state"] == "breached" and out["put_wall_lean"] == "BREACHED — spot below"
 
 
-def test_a_containing_wall_earns_the_dealer_lean_only_on_a_trusted_flip(pin_clock):
+def test_a_containing_wall_earns_the_dealer_lean_only_in_long_gamma_on_trusted_coverage(pin_clock):
     out = _crwd_at(lambda b: (b["call_wall"] + b["put_wall"]) / 2, pin_clock)
     assert out["call_wall_state"] == out["put_wall_state"] == "contains"
-    earned = out["regime"] != "UNAVAILABLE" and out["confidence"] == "TRUSTED"
+    earned = out["regime"] == "LONG_GAMMA_CHOP" and out["confidence"] == "TRUSTED"
     assert out["call_wall_lean"] == ("DEALERS SELL" if earned else None)
     assert out["put_wall_lean"] == ("DEALERS BUY" if earned else None)
+
+
+def test_no_lean_contradicts_the_read_in_short_gamma():
+    """2026-09-30 audit: in the short-gamma regime the put wall read DEALERS BUY while the same
+    publication's read said dealers "buy strength and sell weakness". The lean is stated only
+    where the read agrees with it."""
+    from terrain_engine import wall_lean
+    from terrain_read import build_terrain_read
+    read = build_terrain_read(spot=770.0, flip=775.0, flip_confidence="TRUSTED", put_wall=760.0,
+                              call_wall=780.0, gamma_at_spot=-1.0e9)
+    assert read.regime == "SHORT_GAMMA_TREND" and "sell weakness" in read.lines[0]
+    assert wall_lean(780.0, 760.0, "contains", "contains", read.regime, read.confidence) == (None, None)
+    # a breached wall still says so, whatever the regime
+    assert wall_lean(780.0, 760.0, "breached", "contains", read.regime, read.confidence) == (
+        "BREACHED — spot above", None)
 
 
 def test_one_strike_holding_both_walls_is_two_sided():

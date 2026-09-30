@@ -63,13 +63,18 @@ def test_every_route_serves_the_live_spot_and_names_the_computed_one(held, route
     assert body["priced_at_spot"] == PUBLISHED
 
 
-def test_strike_side_sums_split_at_the_live_spot(held):
+def test_strike_side_sums_are_the_publications_split_at_its_own_price(held):
+    """S-23: the route summed the rows again, at the live price, and left out every strike whose
+    volume Schwab had not reported. The sums are the levels producer's, over every row, split at
+    the price the rows were computed at (DATA_FLOW: everything computed from spot is computed in
+    the one publication at that publication's price); the route carries them."""
     rows = held["_per_strike"]["all"]
-    below = [r for r in rows if r[0] < LIVE]
-    above = [r for r in rows if r[0] > LIVE]
-    assert below and above, "the real chain has strikes on both sides of the live price"
+    below = [r for r in rows if r[0] < PUBLISHED]
+    above = [r for r in rows if r[0] > PUBLISHED]
+    assert below and above, "the real chain has strikes on both sides of its price"
     sums = json.loads(server.get_terrain_strikes(ticker=TK).body)["today_side_sums"]
-    assert sums["spot_basis"] == LIVE
+    assert sums == held["_per_strike"]["side_sums"]
+    assert sums["spot_basis"] == PUBLISHED != LIVE
     assert sums["gex_below"] == pytest.approx(sum(r[1] for r in below), abs=0.1)
     assert sums["gex_above"] == pytest.approx(sum(r[1] for r in above), abs=0.1)
 
@@ -250,10 +255,17 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_is(mon
     assert body["adjusted_deliverable_symbols"] == [cts[0]["symbol"]]
 
 
-def test_the_largest_gex_strike_is_served(held):
+def test_the_largest_strike_of_each_profile_is_the_producers(held):
+    """The route picked each profile's largest strike itself. The GEX profile's is the published
+    net_gex_peak level; the DEX and OI profiles' are published with their rows."""
     rows = held["_per_strike"]["all"]
     body = json.loads(server.get_terrain_strikes(ticker=TK).body)
-    assert body["max_abs_strike"] == max(rows, key=lambda r: abs(r[1]))[0]
+    assert body["max_abs_strike"] == held["net_gex_peak"] == max(rows, key=lambda r: abs(r[1]))[0]
+    for m in ("dex", "oi"):
+        served = body["measures"][m]
+        assert served["rows"] == held["_per_strike"][m]
+        assert served["max_abs_strike"] == held["_per_strike"]["peak"][m]
+        assert served["max_abs_strike"] == max(served["rows"], key=lambda r: abs(r[1]))[0]
 
 
 def test_on_a_closed_market_the_last_trade_is_a_labelled_past_observation(monkeypatch):

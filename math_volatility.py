@@ -32,9 +32,10 @@ def compute_25d_risk_reversal(contracts: List[dict]) -> dict | None:
 
     The skew-steepness read: SPX-typical is −2..−4 (puts richer); deterioration toward
     −6 and beyond = the put bid building — the same-session confirm for a Gamma Support
-    Floor breach. Selection: the front expiry (smallest usable dte ≥ 0), then the call
-    whose delta is nearest +0.25 and the put nearest −0.25, each tolerance-gated
-    (|delta − target| ≤ RR25_DELTA_TOL, else the wing is unusable). Schwab `volatility`
+    Floor breach. Selection: the expiry nearest 30 days (at least one day out), then the
+    listed call whose delta is nearest +0.25 and the listed put nearest −0.25, each
+    tolerance-gated (|delta − target| ≤ RR25_DELTA_TOL, else the wing is unusable): the IVs
+    are those contracts', not interpolated to 0.25 (ACTIVE_PROGRAM RR-25). Schwab `volatility`
     is in PERCENT and stays in vol points here. FAIL-CLOSED: None when either wing is
     missing/unusable — never a fabricated skew.
     """
