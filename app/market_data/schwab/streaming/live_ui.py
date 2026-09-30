@@ -12,7 +12,10 @@ the chart bar it completes or extends at every chart timeframe (live_price_rows.
 No web server sits in this path, so no analytics load can delay a price.
 
 Protocol (JSON text frames):
-  browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...]}   (replaces the set)
+  browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...]}   (replaces the set; with
+             "bars_since": the last beat's feed.ts when the browser    "bars_since", the bar
+             comes back after a drop)                                   updates it missed are sent
+                                                                        first, oldest first)
   server  -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe:
                                                                      what each asked-for symbol
                                                                      is -- "SPX" is key "$SPX",
@@ -81,13 +84,14 @@ def _et_day_start(t: float) -> float:
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "bars", "identity", "wake")
+    __slots__ = ("ws", "symbols", "pending", "bars", "replay", "identity", "wake")
 
     def __init__(self, ws) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
         self.pending: set[str] = set()      # symbols changed since the last send
         self.bars: dict[str, dict] = {}     # each symbol's newest bar update not yet sent
+        self.replay: list[dict] = []        # the bar updates it missed, oldest first, not yet sent
         self.identity: list[dict] | None = None   # the last subscribe's answer, not yet sent
         self.wake = asyncio.Event()
 
@@ -100,8 +104,9 @@ class LiveUiServer:
         self.clients: set[_Client] = set()
         #: the stored bars' database, read once per symbol and day; None: streamed bars only
         self.bars_db_path = bars_db_path
-        #: each symbol's minutes of one ET day: (that day's start, {bar start: bar})
-        self.minutes: dict[str, tuple[float, dict[float, dict]]] = {}
+        #: each symbol's minutes of one ET day: (that day's start, {bar start: bar},
+        #: {bar start: this daemon's receive time of it}; a minute read from the store has none)
+        self.minutes: dict[str, tuple[float, dict[float, dict], dict[float, float]]] = {}
         stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
                      beat_send_failures=0, listening=None, last_send_ms=None, bars_sent=0)
 
@@ -141,14 +146,28 @@ class LiveUiServer:
         if held is None or held[0] != day:
             stored = [] if self.bars_db_path is None else await asyncio.to_thread(
                 stored_minutes, self.bars_db_path, sym, day)
-            held = self.minutes[sym] = (day, {m["t"]: m for m in stored})
+            held = self.minutes[sym] = (day, {m["t"]: m for m in stored}, {})
         held[1][bar["t"]] = bar
+        held[2][bar["t"]] = float(msg["ts_recv"])
         update = live_price_rows.bar_update(sym, sorted(held[1].values(), key=lambda m: m["t"]), bar,
                                             float(msg["ts_recv"]))
         for c in self.clients:
             if sym in c.symbols:
                 c.bars[sym] = update
                 c.wake.set()
+
+    def missed_bars(self, sym: str, since: float) -> list[dict]:
+        """The bar updates of `sym` a browser missed: one for each minute this daemon received at
+        or after `since` (the time of the last beat the browser had, less two beats: a bar and
+        a beat go out on their own tasks, so a bar received just before that beat may not have
+        reached it; a bar sent twice is drawn once), oldest first, rolled from the day's minutes."""
+        held = self.minutes.get(sym)
+        if held is None:
+            return []
+        minutes = sorted(held[1].values(), key=lambda m: m["t"])
+        after = since - 2 * HEARTBEAT_SEC
+        return [live_price_rows.bar_update(sym, minutes, m, held[2][m["t"]]) for m in minutes
+                if held[2].get(m["t"], float("-inf")) >= after]
 
     def beat(self) -> dict:
         hb = self.heartbeat_fn()
@@ -176,6 +195,10 @@ class LiveUiServer:
             rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
             if rows:
                 await self._send(c, {"type": "quotes", "rows": rows})
+            replay, c.replay = c.replay, []
+            if replay:
+                await self._send(c, {"type": "bars", "bars": replay})
+                self.stats["bars_sent"] += len(replay)
             bars, c.bars = c.bars, {}
             bars = [b for s, b in bars.items() if s in c.symbols]
             if bars:
@@ -204,6 +227,9 @@ class LiveUiServer:
             c.symbols = frozenset(keys)
             c.identity = identity            # what each asked-for symbol is, before its rows
             c.pending = set(keys)            # snapshot: the current row for each, now
+            since = req.get("bars_since")    # a browser back from a drop: the bars it missed
+            if isinstance(since, (int, float)) and not isinstance(since, bool):
+                c.replay = [u for k in keys for u in self.missed_bars(k, float(since))]
             c.wake.set()
 
     async def serve_client(self, ws) -> None:

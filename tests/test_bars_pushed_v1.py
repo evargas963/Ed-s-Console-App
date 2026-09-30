@@ -109,6 +109,66 @@ def test_the_pushed_bar_is_the_routes_bar_at_every_timeframe(monkeypatch, tmp_pa
     assert last["tf"]["D"]["o"] == stored[0]["open"] and last["tf"]["D"]["t"] == stored[0]["timestamp"] / 1000.0
 
 
+def test_a_browser_back_from_a_drop_gets_every_bar_the_daemon_received_meanwhile(monkeypatch, tmp_path):
+    """A price socket that dropped and reconnected got the prices again but not the bars the daemon
+    received while it was gone: its charts kept a hole until reloaded. The subscribe after a drop
+    carries the last beat's time; the daemon sends every bar update it received since, oldest
+    first, and the charts end where the route is. A first subscribe gets none."""
+    from websockets.asyncio.client import connect
+
+    monkeypatch.setattr(live_ui, "HEARTBEAT_SEC", 0.2)
+    db = EdDB(tmp_path / "bars.db", allow_noncanonical=True)
+    monkeypatch.setattr(srv, "get_db", lambda: db)
+    before, gone = FRIDAY[:20], FRIDAY[20:35]      # pushed while connected / while disconnected
+
+    async def frames(ws, seconds):
+        out, end = [], time.monotonic() + seconds
+        while time.monotonic() < end:
+            try:
+                out.append(json.loads(await asyncio.wait_for(ws.recv(), 0.05)))
+            except asyncio.TimeoutError:
+                continue
+        return out
+
+    async def main():
+        port, bus, stop, stats = _free_port(), MessageBus(), asyncio.Event(), {}
+        feed = lambda: {"ts": time.time(), "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
+        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, host="127.0.0.1",
+                                                         port=port, stats=stats, bars_db_path=db.db_path))
+        while not stats.get("listening"):
+            await asyncio.sleep(0.01)
+        try:
+            async with connect(f"ws://127.0.0.1:{port}") as ws:
+                await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+                first = await frames(ws, 0.3)
+                for b in before:
+                    msg = dict(_msg(b), ts_recv=time.time())
+                    bus.publish("bar1m.SPY", msg)
+                    await asyncio.sleep(0.01)
+                seen = first + await frames(ws, 1.2)          # a second of beats after the last bar
+            last_beat = [f["feed"]["ts"] for f in seen if f.get("type") == "feed"][-1]
+            for b in gone:                                    # the daemon receives, nobody listens
+                bus.publish("bar1m.SPY", dict(_msg(b), ts_recv=time.time()))
+                await asyncio.sleep(0.01)
+            await asyncio.sleep(0.2)
+            async with connect(f"ws://127.0.0.1:{port}") as ws:
+                await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "bars_since": last_beat}))
+                back = await frames(ws, 0.5)
+        finally:
+            stop.set()
+            await task
+        return first, back
+    first, back = asyncio.run(main())
+    assert not [f for f in first if f.get("type") == "bars"], "a first subscribe gets no bars"
+    replay = [u for f in back if f.get("type") == "bars" for u in f["bars"]]
+    assert [u["tf"]["1"]["t"] for u in replay] == [b["timestamp"] / 1000.0 for b in gone]
+    for b in before + gone:                                   # the console wrote the same bars
+        srv._write_streamed_bar(_msg(b))
+    for tf in live_price_rows.CHART_TFS:
+        route = json.loads(srv.get_bars1m(ticker="SPY", tf=tf, limit=12000).body)
+        assert replay[-1]["tf"][tf] == route["bars"][-1], tf
+
+
 def test_at_every_minute_of_a_real_day_the_push_is_the_roll_up_at_every_timeframe():
     """The daemon rolls only the bucket the new minute is in (it must not hold its event loop:
     44 symbols' updates took 78 ms rolling the whole day at every timeframe, 9 ms the bucket);

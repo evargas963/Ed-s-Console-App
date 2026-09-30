@@ -800,9 +800,14 @@
     loadWL().forEach(function (s) { s = String(s).toUpperCase(); if (out.indexOf(s) === -1) out.push(s); });
     return out;
   }
+  // the daemon's time of the last beat this page had (feed.ts): after a drop the subscribe asks
+  // for the bars the daemon received since then, which the charts draw like any pushed bar
+  var _lastBeatTs = null;
   function subscribePrices() {
     if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
-    try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() })); } catch (e) {}
+    var req = { op: 'subscribe', symbols: priceSymbols() };
+    if (_lastBeatTs != null) req.bars_since = _lastBeatTs;
+    try { _priceWs.send(JSON.stringify(req)); } catch (e) {}
   }
   function openPriceSocket() {
     var url = priceSocketUrl();
@@ -821,6 +826,7 @@
         return;
       }
       if (!msg || !Array.isArray(msg.rows)) return;
+      if (msg.type === 'feed' && msg.feed && msg.feed.ts != null) _lastBeatTs = msg.feed.ts;
       _priceUp = true; _lastPriceTs = Date.now();
       msg.rows.forEach(ingestPriceRow);
     };

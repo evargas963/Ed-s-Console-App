@@ -4,7 +4,8 @@
 // symbol is ({type:'symbols'}: requested, key, display), then sends `rows` 300 ms apart
 // ({type:'quotes'}). Stand-in for instrument_identity: an index root is keyed with '$'
 // (tests/test_live_ui_identity_v1.py holds the daemon's real answer). The returned handle's
-// send(frame) pushes any daemon frame later (e.g. {type:'bars'}), once the page has subscribed.
+// send(frame) pushes any daemon frame later (e.g. {type:'bars'}), once the page has subscribed;
+// `subscribes` is every subscribe the page sent, and `ws` the connection it is on.
 const INDEX_ROOTS = new Set(['SPX', 'NDX', 'VIX', 'DJI', 'COMPX', 'RUT']);
 function served(s) {
   const u = String(s).toUpperCase();
@@ -17,12 +18,13 @@ function priceRow(ticker, spot, extra) {
     trade_age_sec: 1 }, extra || {});
 }
 async function mockPriceSocket(page, rows) {
-  const handle = { ws: null, send(frame) { this.ws.send(JSON.stringify(frame)); } };
+  const handle = { ws: null, subscribes: [], send(frame) { this.ws.send(JSON.stringify(frame)); } };
   await page.routeWebSocket(/:1\/$/, (ws) => {
     ws.onMessage((m) => {
       let req; try { req = JSON.parse(String(m)); } catch (e) { return; }
       if (!req || req.op !== 'subscribe' || !Array.isArray(req.symbols)) return;
       handle.ws = ws;
+      handle.subscribes.push(req);
       ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map(served) }));
       (rows || []).forEach((r, i) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [r] })), 300 * i));
     });
