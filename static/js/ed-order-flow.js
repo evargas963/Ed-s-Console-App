@@ -100,16 +100,28 @@
       ['Ask × size', num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
     ];
     var rowsImb = [
+      ['Top-book pressure', num(d.top_book_pressure, 3), bk('top_book_pressure')],
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), bk('depth.*.imbalance')],
       ['Depth 3 imbalance', num(dep(3, 'imbalance'), 3), bk('depth.*.imbalance')],
       ['Depth 5 imbalance', num(dep(5, 'imbalance'), 3), bk('depth.*.imbalance')],
       ['Bid total (5)', int(dep(5, 'bid_total')), bk('depth.*.bid_total')],
       ['Ask total (5)', int(dep(5, 'ask_total')), bk('depth.*.ask_total')],
     ];
+    // the shape of the displayed book, as served: shares per $1 of depth, and the share of the
+    // top five levels' size that rests at the touch
+    var slope = d.book_slope || {}, conc = d.liquidity_concentration || {}, prov = d.provenance || {};
+    var rowsShape = [
+      ['Slope bid / ask (sh per $)', int(slope.bid) + ' / ' + int(slope.ask), bk('book_slope')],
+      ['At the touch bid / ask', num(conc.bid, 2) + ' / ' + num(conc.ask, 2), bk('liquidity_concentration')],
+      ['Spread ÷ mark', num(d.spread_frac, 5), bk('spread_frac')],
+      ['Crossed', d.crossed === true ? 'YES — mid and microprice withheld' : d.crossed === false ? 'no' : '—', bk('crossed')],
+    ];
     var fresh = [
       ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', bk('ages.book_age_sec')],
       ['Quote age', ages.quote_age_sec != null ? Math.round(ages.quote_age_sec) + 's' : '—', bk('ages.quote_age_sec')],
+      ['Levels bid / ask', int(prov.n_bid_levels) + ' / ' + int(prov.n_ask_levels)],
     ];
+    var wm = d.wall_method || {};
     var wallsHtml = walls.length
       ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '—') + ' @ ' + num(w.price) +
           '</span><span class="v">' + int(w.volume) + ' <span class="sm">(' + num(w.median_mult, 1) + '× median)</span></span></div>'; }).join('')
@@ -128,10 +140,12 @@
       '<div class="dom-wrap">' +
         '<div class="dom-ladder">' + ladderHtml(bidLevels, askLevels, wallSet) + midHtml + '</div>' +
         '<div class="dom-stats">' +
-          section('Top of book', rowsTob) + section('Imbalance', rowsImb) + section('Freshness', fresh) +
+          section('Top of book', rowsTob) + section('Imbalance', rowsImb) + section('Book shape', rowsShape) + section('Freshness', fresh) +
         '</div>' +
       '</div>' +
-      '<div class="fl-sec" style="margin-top:14px;"><div class="fl-sec-h">Wall candidates (size-outlier heuristic, displayed book only)</div>' + wallsHtml + '</div>' +
+      // the candidates' rule is the served one (wall_method), printed, never restated here
+      '<div class="fl-sec" style="margin-top:14px;" title="' + esc(wm.note || '') + '"><div class="fl-sec-h">Wall candidates — ' +
+        esc(wm.basis || 'rule not served') + '</div>' + wallsHtml + '</div>' +
       '<div class="fl-foot">Schwab sends no trade side, so none is shown: no buys/sells, CVD, or bull/bear verdict.</div>';
   }
 

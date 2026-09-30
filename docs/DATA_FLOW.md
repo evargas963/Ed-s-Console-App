@@ -243,13 +243,22 @@ Schwab sends is taken as sent (rule 2), never computed.
   → the `levels` push → `/api/desk/events`, which serves each cross as recorded and flags the
   newest cross at each level, for the newest six levels, as the chart's numbered callouts (one
   served item is both a callout and its queue entry). The window is the timeframe's
-  (`server.DESK_LOOKBACK`; 5m and 30m: this session). No proximity alerts. Absorption,
+  (`server.DESK_LOOKBACK`; 5m and 30m: this session), and every cross in it is read and
+  counted, whatever their number. No proximity alerts. Absorption,
   liquidity pull and replenishment are not produced (open; `ACTIVE_PROGRAM.md` DESK-GAPS).
 - **Market session.** From the market calendar → pushed on `/api/changes` when the page connects
   and every 5 s with no other change. One calendar (`time_et`: holidays, 13:00 early closes,
   `session_label`, `session_close_mins_for_et_date`) decides every session window: the order-flow
   session reset, the prior-day, opening-range, VWAP and value-area windows, and the default option
   contract's expiry cutoff. A day with no session has an empty window.
+- **Schwab sign-in.** Schwab's sign-in ends 7 days after it was made. Its state
+  (`server.schwab_sign_in_status`, from the token file's creation time: ok, warn from day 5,
+  red from day 6, unknown when the file is unreadable) is pushed with the session label, and
+  the header shows when it ends and what to run from the day it warns.
+- **Whether a screen's values are current.** One authority, `terrain_staleness`, for the levels
+  and the chain they were computed from: `/api/terrain`, `/api/terrain/strikes` and `/api/chain`
+  carry its verdict (stale with the reason, the age, market closed with the time the values
+  are as of), and each panel's badge prints it. A complete chain is not thereby a live one.
 - **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the
   price-row loop (an equity's quote), the stream handler (a book) and the bar writer mark a
   ticker's kind changed; each page

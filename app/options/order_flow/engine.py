@@ -155,22 +155,6 @@ def _top_book_pressure(bid_sz: Optional[float], ask_sz: Optional[float]) -> Opti
     return (bid_sz - ask_sz) / total
 
 
-def _resolve_bid_ask_prices(data: dict) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
-    """Level-one BID_PRICE / ASK_PRICE and their leaf labels."""
-    t = _top(data)
-    bid_p, ask_p = t.get("bid"), t.get("ask")
-    return (bid_p, ask_p, "streaming.BID_PRICE" if bid_p is not None else None,
-            "streaming.ASK_PRICE" if ask_p is not None else None)
-
-
-def _resolve_quote_mark(data: dict) -> tuple[Optional[float], Optional[str]]:
-    """Streamed MARK, the spread-fraction denominator (a MARK of 0 divides nothing)."""
-    mark_p = _top(data).get("mark")
-    if mark_p is not None and mark_p > 0:
-        return mark_p, "streaming.MARK"
-    return None, None
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # CANONICAL BOOK MICROSTRUCTURE  (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -213,23 +197,20 @@ def _extract_canonical_book(data: dict) -> dict:
     and sorts both sides, and carries the live top of book (``data["top"]``). Every downstream
     metric reads this result; nothing else re-walks the raw book."""
     snapshot = _latest_book_snapshot(_iter_content(data))
-    bid, ask, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data)
     t = _top(data)
     bid_size = _schwab_int(t.get("bid_size"))
     ask_size = _schwab_int(t.get("ask_size"))
 
     bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
     ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
-    mark, mark_leaf = _resolve_quote_mark(data)
     return {
         # a book with nothing resting on either side is no book to measure
         "has_book": bool(bid_levels or ask_levels),
         "venue": snapshot.get("SERVICE") if snapshot else None,
-        "bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size,
-        "bid_leaf": bid_leaf, "ask_leaf": ask_leaf,
+        "bid": t.get("bid"), "ask": t.get("ask"), "bid_size": bid_size, "ask_size": ask_size,
         "bid_levels": bid_levels, "ask_levels": ask_levels,
         "book_time_ms": schwab_number(snapshot.get("BOOK_TIME")) if snapshot else None,
-        "mark": mark, "mark_leaf": mark_leaf,
+        "mark": t.get("mark"),
     }
 
 
@@ -394,8 +375,6 @@ def _microstructure_structural(cb: dict) -> dict:
             "n_bid_levels": len(bid_levels),
             "n_ask_levels": len(ask_levels),
             "book_source": cb["venue"] if cb["has_book"] else "unavailable",
-            "top_of_book_bid_leaf": cb["bid_leaf"],
-            "top_of_book_ask_leaf": cb["ask_leaf"],
         },
         "classification": {
             "top_of_book.bid": "NATIVE", "top_of_book.ask": "NATIVE",

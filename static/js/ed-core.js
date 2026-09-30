@@ -467,6 +467,23 @@
     return '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(' · ') + '</span>';
   }
 
+  // The one badge for every /api/chain panel (Chain, Strike Detail), from what the route serves:
+  // the chain's scope, its age, and whether it is current (levels_stale and its reason, market
+  // closed and the time the chain is as of). Live only when the server says the chain is
+  // current in an open market; a complete chain is not thereby a live one.
+  function chainBadge(d, prefix) {
+    var sc = d && d.scope, kind = sc && sc.kind;
+    if (!kind) return '';
+    if (kind === 'unavailable') {
+      return asOfBadge({ label: prefix + 'unavailable', stale: true, reason: 'chain scope: unavailable' + (sc.reason ? ' — ' + sc.reason : '') });
+    }
+    var closed = d.levels_market_closed === true;
+    return asOfBadge({
+      label: prefix + (kind === 'complete_single_expiry' ? 'complete (ALL)' : kind) + (closed && d.levels_as_of ? ' · as of ' + d.levels_as_of : ''),
+      ageSec: closed ? null : d.levels_age_sec, stale: d.levels_stale === true, reason: d.levels_stale_reason,
+      ref: closed, live: d.levels_stale === false && !closed, title: 'chain scope: ' + kind });
+  }
+
   // ================= watchlist (editable foundation, localStorage) =================
   function loadWL() {
     // An explicitly saved EMPTY list (every ticker removed) must stay empty — only an
@@ -874,6 +891,7 @@
     _changes.onopen = function () { _wlDeclared = null; declareWatchlistStream(loadWL()); };
     _changes.onerror = function () { paintSession(null, 'session unknown: the console push is down'); };
     _changes.addEventListener('session', function (ev) { paintSession(ev.data); });
+    _changes.addEventListener('sign_in', function (ev) { paintSignIn(JSON.parse(ev.data)); });
     ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
       _changes.addEventListener(kind, function () {
         if (kind === 'levels' && _expiriesPending) loadExpiries(state.ticker);
@@ -888,6 +906,16 @@
     var m = { 'RTH': ['RTH', 'rth'], 'Pre-Market': ['PRE', 'pre'], 'After-Hours': ['AH', 'ah'], 'Closed': ['CLOSED', 'closed'] };
     var v = m[label] || [(label || '—'), ''];
     el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why || '';
+  }
+
+  // the Schwab sign-in (served with the session): shown from the day the server warns, with the
+  // time it ends and what to run; nothing to show while it is ok
+  function paintSignIn(s) {
+    var box = document.getElementById('hSignIn'), el = document.getElementById('hSignInV'); if (!box || !el) return;
+    box.hidden = !s || s.urgency === 'ok';
+    el.textContent = !s ? '' : s.expires ? 'ends ' + s.expires : 'unknown';
+    el.className = 'signin ' + ((s && s.urgency) || '');
+    box.title = (s && s.note) || '';
   }
 
   // The push is not delivering: withdraw the quote instead of leaving the last one on screen
@@ -1023,7 +1051,7 @@
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
-    scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
+    scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, chainBadge: chainBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     setSubview: setSubview };

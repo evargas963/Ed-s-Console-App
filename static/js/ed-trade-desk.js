@@ -104,6 +104,8 @@
     if (!sorted.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No priced levels', '', 0, [], null);
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
+    // how old the session levels' newest bar is, served
+    if (levelsD.snapshot_age_sec != null) rows.push(['Session levels', window.EdShell.fmtAge(levelsD.snapshot_age_sec) + ' old']);
     var heroVal = (nearest.label || nearest.id) + ' ' + num(nearest.price);
     var heroUnit = nearest.side === 'AT' ? 'at spot' : nearest.side === 'ABOVE' ? num(nearest.distance) + ' above spot'
       : nearest.side === 'BELOW' ? num(-nearest.distance) + ' below spot' : '';
@@ -121,9 +123,14 @@
       // max pain is per expiry: label it with the expiry the server computed it on (front)
       ['Max pain' + (d.max_pain_dte != null ? ' (' + d.max_pain_dte + 'DTE)' : ''), num(d.max_pain)],
       ['Net GEX @ spot', d.net_gex_at_spot != null ? (Number(d.net_gex_at_spot) / 1e6).toFixed(1) + 'M' : '—'],
+      // whether the regime is current, as served: stale with its reason, a past observation
+      // with its time after the close, or its age
+      ['Levels', d.levels_stale ? (d.levels_stale_reason || 'stale') : d.levels_market_closed ? 'as of ' + (d.levels_as_of || '—')
+        : d.levels_age_sec != null ? window.EdShell.fmtAge(d.levels_age_sec) + ' old' : '—'],
     ];
-    return stage(3, 'td-accent-amber', 'Confirm — options regime', d.regime || '—', '', 0, rows, d.confidence || null,
-      d.confidence === 'TRUSTED' ? 'live' : 'warn');
+    // a stale regime is badged STALE, never by its confidence alone
+    return stage(3, 'td-accent-amber', 'Confirm — options regime', d.regime || '—', '', 0, rows,
+      d.levels_stale ? 'STALE' : (d.confidence || null), d.levels_stale ? 'stale' : d.confidence === 'TRUSTED' ? 'live' : 'warn');
   }
 
   // ---- Context Summary: plain-English arrangement of the SAME 4 responses. Classifies

@@ -135,12 +135,10 @@ class TerrainSnapshot:
     #: materialized profile as the flip (RC-345 one-profile rule). GSF = highest level
     #: below spot where the positive-gamma cushion has decayed to half its at-spot value
     #: (support ends BEFORE the flip's zero-crossing); GRC = the upside mirror, often
-    #: at/beyond the call wall (resistance strengthens before it exhausts). gsf_state is
-    #: the fail-closed verdict: OK | BELOW_SUPPORT (negative regime — no fabricated
-    #: price) | UNAVAILABLE.
+    #: at/beyond the call wall (resistance strengthens before it exhausts). One that has no
+    #: value says why in level_absent_reasons (the curve's own state at spot).
     gsf: float | None = None
     grc: float | None = None
-    gsf_state: str = "UNAVAILABLE"
 
     #: RC-358: 25Δ risk reversal — {rr_pts, call_iv_25d, put_iv_25d, dte} or None.
     #: Skew steepness on the expiry nearest 30 days; deterioration toward −6 = the put bid
@@ -878,7 +876,6 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         net_gex_at_spot=flip_diag.get("gamma_at_spot"),
         gsf=_gsl["gsf"],
         grc=_gsl["grc"],
-        gsf_state=_gsl["state"],
         rr_25d=_rr25,
         vanna_agg=compute_net_vanna(exposures, spot),     # RC-362: same book, one sum
         implied_1d_move=compute_implied_one_day_move(contracts, spot),   # RC-113

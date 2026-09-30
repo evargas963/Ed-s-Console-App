@@ -36,8 +36,9 @@ def test_the_book_side_is_served_from_the_real_book():
 
 def _desk_events(monkeypatch, ticker, crosses, now, tf):
     """/api/desk/events on real crosses, at `now`."""
-    newest_first = sorted(crosses, key=lambda r: r["ts_utc"], reverse=True)       # as db.get_recent_crosses reads
-    monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda ticker, n=20: newest_first[:n])
+    newest_first = sorted(crosses, key=lambda r: r["ts_utc"], reverse=True)       # as db.get_crosses_since reads
+    monkeypatch.setattr(server.get_db(), "get_crosses_since",
+                        lambda ticker, since: [r for r in newest_first if r["ts_utc"] >= since])
     monkeypatch.setattr(time_et, "now_et", lambda: now)
     monkeypatch.setattr(server, "now_et", lambda: now)
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (None, "none", None))
@@ -65,6 +66,24 @@ def test_each_cross_is_served_as_recorded_and_the_chart_draws_the_newest_at_each
         newest_at[it["price"]] = it
     want = {it["key"] for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-server.DESK_MARKERS:]}
     assert {it["key"] for it in items if it["marker"]} == want
+
+
+def test_the_window_holds_every_cross_in_it_not_the_newest_two_hundred(monkeypatch):
+    """The queue and its up/down counts were cut at the newest 200 crosses whatever the window:
+    SPY's real rows hold 243 crossings in the daily chart's 20 days (on 2026-09-30 QQQ had 294,
+    SPY 260, TSLA 212). The window is read whole."""
+    rows = _load("real_spy_level_crosses.json")["rows"]
+    now = datetime(2026, 9, 25, 18, 0, tzinfo=time_et.ET)
+    assert min(r["ts_utc"] for r in rows) >= now.timestamp() - server.DESK_LOOKBACK["D"][0]
+    body = _desk_events(monkeypatch, "SPY", rows, now, "D")
+    events = {(r["ts_utc"], r["level_value"], r["direction"]) for r in rows}
+    assert len(events) == 243
+    assert len([it for it in body["items"] if it["dom"] == "LEVELS"]) == 243
+    assert sum(body["cross_counts"].values()) == 243
+    # a shorter window holds only its own
+    hour = _desk_events(monkeypatch, "SPY", rows, now, "1")
+    start = now.timestamp() - server.DESK_LOOKBACK["1"][0]
+    assert len([it for it in hour["items"] if it["dom"] == "LEVELS"]) == len({e for e in events if e[0] >= start})
 
 
 def test_a_book_wall_carries_its_books_time_and_says_when_the_book_is_not_live(monkeypatch):

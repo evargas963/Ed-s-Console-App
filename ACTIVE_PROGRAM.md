@@ -31,7 +31,6 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 - S-30 the options microstructure route (`streaming_plane`) and `_contract_admission` return None/{} after an exception with no reason.
 - S-35 `get_levels` expected-move levels: live spot ± the chain-time move, stamped with the terrain's time and stale flag, computed in the route.
 - S-37 `/api/options/tape` turns an invalid `limit` into 100.
-- M-28 `gsf_state` (model curve at spot) and `regime` (Schwab's book) judge gamma at spot from two sources; `gsf_state` is documented as the regime and carries no basis. The regime's source is Schwab's gamma as sent, not the modelled curve (operator 2026-09-30).
 - S-38 `_forces_from_captures` ΔOI is the change in each strike's total between two days' books: an expiry open in the older capture and settled in the newer reads as an open-interest change (2026-09-28 → 09-29: SPY 173,365 and QQQ 213,310 contracts of open interest on such contracts), and opposite changes on two contracts at one strike cancel.
 
 **liquidity_value_engine.py, liquidity_models.py**
@@ -69,8 +68,8 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 - O-16 `closed_last` carries no source.
 - O-17 book heatmap cells start at bid/ask 0.0 (an unobserved side reads 0); its `method` text says "both venues merged".
 - O-18 `history`: an invented 0.01 axis width; read failures return [] with no reason; EXPIRATION_* read raw and truth-tested.
-- O-25 a streamed option greek, open interest or volume sent as not a number leaves the last valid value in `_stream_greeks` (the top of book clears its field). Not seen in 2,114,423 stored LEVELONE_OPTIONS messages (2026-09-29/30, 1,194 contracts): no failure to test against yet.
-- O-26 `price_bars_1m.source`: rows written before 2026-09-30 say `schwab_1m_accumulator_sqlite` whatever wrote them; new rows say `schwab_chart_equity`. Nothing reads the column.
+- O-27 a streamed option greek, open interest or volume sent as not a number leaves the last valid value in `_stream_greeks` (the top of book clears its field). Not seen in 2,114,423 stored LEVELONE_OPTIONS messages (2026-09-29/30, 1,194 contracts): no failure to test against yet.
+- O-28 `price_bars_1m.source`: rows written before 2026-09-30 say `schwab_1m_accumulator_sqlite` whatever wrote them; new rows say `schwab_chart_equity`. Nothing reads the column.
 - O-20 the default contract at startup/closed is picked from the stored capture's spot with no age.
 - O-24 on reconnect the last `bar1m` is replayed and processed as a new bar.
 
@@ -96,7 +95,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 - P-12 Strike Detail matches contracts by tolerance, substitutes the put for the call, uses a UTC date and reads the raw contracts (a -999 prints).
 - P-13 Key Levels: a fallback age formatter and a page-computed live badge.
 - P-14 the chart drops old tail revisions and markers with no bar uncounted, colours a missing change as up, and picks the levels shown.
-- P-16 Trade Desk ages, dates, percents and the LEVELS age are computed on the page; PD value-area picked by id.
+- P-16 Trade Desk ages, dates and the VIX percent are formatted or computed on the page; PD value-area picked by id.
 - P-18 Trade Desk labels first-of, a sign flipped on the page, `/1e6`, and strike-to-wall matching on the page.
 - P-19 a second and third ACK validator in `ed-stream.js`.
 - P-22 an unknown subscription state shows PENDING; the Flow header's strike and expiry come from page state.
@@ -160,7 +159,8 @@ producer, with a behavior test that fails if the second one returns.
 | ATR-DEF | The ATR on the Trade Desk is the simple average of the last 14 true ranges (`math_volatility.compute_atr`, as its docstring states); Wilder's ATR, the usual meaning of "ATR(14)", smooths them (each new value is 13/14 of the last plus 1/14 of the new range). Its daily candle is every stored bar of the day (09:15 to 15 minutes after the close), not the 09:30–16:00 session. Recommended: Wilder's smoothing on regular-session candles. Unchanged until decided. |
 | BAR-TF | Rolled-up chart bars. A 60-minute bar is a clock hour (the first is 09:15–09:59, then 10:00–10:59; a session-anchored chart shows 09:30–10:29); a daily bar is every stored bar of the date, so its open is the 09:15 price and its range takes in the 15 minutes before the open and after the close. Recommended: anchor intraday bars to the 09:30 open and build the daily bar from the regular session. Unchanged until decided. |
 | TAPE | The Options Flow tape shows each change of Schwab's last trade, which is not every trade (the stream reports the last trade when it sends; one captured message moves volume by 2 with a last size of 1). It is labelled so. Keep it as labelled, or remove the panel; every trade needs TIMESALE (DESK-GAPS 3). |
-| UNSHOWN | Values the levels producer computes and `/api/terrain` serves that no screen shows yet, each kept for a named purpose: `rr_25d` (TU-11, RR-25), `vanna_agg` (TU-05), and the pin gate's four inputs (PIN-FLOOR). Each is shown by its item or deleted with it. |
+| UNSHOWN | Values served that no screen shows yet, each kept for a named purpose and shown by its item or deleted with it. On `/api/terrain`: `rr_25d` (TU-11, RR-25), `vanna_agg` (TU-05), the pin gate's four inputs (PIN-FLOOR), and `flip_diag` (the flip's search range, crossings and unpriced counts: FLIP-DOMAIN's evidence). On the price row: Schwab's OPEN_PRICE, HIGH_PRICE, LOW_PRICE and NET_CHANGE (the day's open, high and low are the daily bar's if BAR-TF is decided that way). |
+| DESK-CARD-LINE | Each Trade Desk card prints one line of facts, cut where the card ends (the reference's layout). At 1672 px the Options Positioning line ends after P/C OI: Max pain, Contracts and the FORCES split (GEX, ΔOI, DEX and charm below / above, with the captures and price they are split at) are on the line and not visible; the whole line is the card's hover text. Where the FORCES split is shown is the operator's layout call. |
 
 ## Operator host steps
 

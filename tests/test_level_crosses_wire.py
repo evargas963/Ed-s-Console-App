@@ -59,7 +59,7 @@ def test_every_cross_is_recorded_however_soon_after_the_last(tmp_path: Path, mon
     for i, spot in enumerate((502.0, 500.0, 502.0)):
         crosses, ref = server.level_crosses(ref, spot, levels)
         server._record_level_crosses("SPY", crosses, spot, t0 + 10.0 * i)
-    rows = sorted(edb.get_recent_crosses("SPY", n=10), key=lambda r: r["ts_utc"])
+    rows = sorted(edb.get_crosses_since("SPY", 0.0), key=lambda r: r["ts_utc"])
     assert [r["direction"] for r in rows] == ["up", "down", "up"]
     # each row carries the time and price of the trade that made the cross
     assert [(r["ts_utc"], r["spot_at_cross"]) for r in rows] == [(t0, 502.0), (t0 + 10.0, 500.0), (t0 + 20.0, 502.0)]
@@ -70,7 +70,7 @@ def test_a_cross_with_no_trade_time_is_not_stamped_with_another(tmp_path: Path, 
     edb = EdDB(tmp_path / "level_crosses.db")
     monkeypatch.setattr(server, "get_db", lambda: edb)
     server._record_level_crosses("SPY", [("VWAP", 501.0, "up")], 502.0, None)
-    assert edb.get_recent_crosses("SPY", n=10) == []
+    assert edb.get_crosses_since("SPY", 0.0) == []
 
 
 def test_a_stored_captures_price_is_no_reference_for_a_live_cross(tmp_path, monkeypatch, pin_clock) -> None:
@@ -103,10 +103,10 @@ def test_a_stored_captures_price_is_no_reference_for_a_live_cross(tmp_path, monk
     t1 = time_et_ts(2026, 9, 28, 10, 0)
     monkeypatch.setattr(server, "resolve_spot", lambda tk: (above, "streaming_plane", t1 - 2.0))
     server._publish_levels("PCG", day["contracts"], t1)
-    assert edb.get_recent_crosses("PCG", n=50) == []
+    assert edb.get_crosses_since("PCG", 0.0) == []
     monkeypatch.setattr(server, "resolve_spot", lambda tk: (below, "streaming_plane", t1 + 3.0))
     live = server._publish_levels("PCG", day["contracts"], t1 + 5.0)
-    rows = edb.get_recent_crosses("PCG", n=50)
+    rows = edb.get_crosses_since("PCG", 0.0)
     crossed = {getattr(live, k) for k, _ in server.CROSS_LEVELS if getattr(live, k) is not None}
     assert rows and {r["level_value"] for r in rows} == crossed
     assert {(r["direction"], r["ts_utc"], r["spot_at_cross"]) for r in rows} == {("down", t1 + 3.0, below)}
@@ -121,16 +121,16 @@ def time_et_ts(y: int, mo: int, d: int, h: int, mi: int) -> float:
 
 def test_levels_crossed_together_are_one_event_naming_every_level():
     """RC-88: one price crossing a strike where several levels sit is stored as one row per level.
-    The one reader (server._merged_recent_crosses) serves one event per (time, value, direction)
+    The one reader (server._merged_crosses_since) serves one event per (time, value, direction)
     that names every level. Real SPY rows, tests/fixtures/real_spy_level_crosses.json: 400 rows,
     243 events, up to 6 levels on one event."""
     rows = json.loads((_FX / "real_spy_level_crosses.json").read_text(encoding="utf-8"))["rows"]
 
     class _Stored:                                   # stand-in: the stored rows, as the DB returns them
-        def get_recent_crosses(self, ticker, n):
-            return rows[:n]
+        def get_crosses_since(self, ticker, since):
+            return [r for r in rows if r["ts_utc"] >= since]
 
     assert len(rows) == 400
-    events = server._merged_recent_crosses(_Stored(), "SPY", 400)
+    events = server._merged_crosses_since(_Stored(), "SPY", 0.0)
     assert len(events) == 243
     assert max(len(e["level_names"]) for e in events) == 6

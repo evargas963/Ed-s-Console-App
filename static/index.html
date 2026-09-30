@@ -81,6 +81,9 @@
   .live .dot.warn{background:var(--ed-warn)} .live .dot.stale{background:var(--ed-stale)}
   .sess{font-family:var(--ed-mono);font-size:11px;font-weight:600;letter-spacing:.06em}
   .sess.rth{color:var(--ed-live)} .sess.pre{color:var(--ed-warn)} .sess.ah{color:var(--ed-accent-2)} .sess.closed{color:var(--ed-ink-3)}
+  .hkv[hidden]{display:none}
+  .signin{font-family:var(--ed-sans);font-size:13px;font-weight:600}
+  .signin.warn,.signin.unknown{color:var(--ed-warn)} .signin.red{color:var(--ed-alert)}
   .search{margin-left:auto;display:flex;align-items:center;gap:7px;background:var(--ed-panel);
     border:1px solid var(--ed-edge);border-radius:var(--ed-r);padding:6px 11px;width:280px;color:var(--ed-ink-3)}
   .search input{flex:1;background:none;border:none;outline:none;color:var(--ed-ink);font-family:var(--ed-sans);font-size:12px}
@@ -718,6 +721,7 @@
     <div class="hkv"><span class="k">Data age</span><span class="v" id="hAge">—</span></div>
     <div class="hsep"></div>
     <div class="hkv"><span class="k">Session</span><span class="sess" id="hSession">—</span></div>
+    <div class="hkv" id="hSignIn" hidden><span class="k">Schwab sign-in</span><span class="signin" id="hSignInV"></span></div>
     <div class="hsep"></div>
     <div class="hkv"><span class="k" id="hClockDate">—</span><span class="v" id="hClock">--:--:-- CT</span></div>
     <div class="search">

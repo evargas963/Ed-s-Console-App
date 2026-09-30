@@ -1,6 +1,6 @@
 {
   "ages": {
-    "book_age_sec": 1770514.502,
+    "book_age_sec": 1774078.096,
     "book_stale": false,
     "quote_age_sec": null
   },
@@ -106,9 +106,7 @@
     "exchange_quote_ts": null,
     "n_ask_levels": 3,
     "n_bid_levels": 3,
-    "server_received_ts": 1790770514.5015972,
-    "top_of_book_ask_leaf": "streaming.ASK_PRICE",
-    "top_of_book_bid_leaf": "streaming.BID_PRICE"
+    "server_received_ts": 1790774078.0956614
   },
   "put_call": "CALL",
   "spread_frac": 0.040816,

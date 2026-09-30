@@ -24,6 +24,8 @@ function occSymbol(root, isoExpiry, side, strike) {
 }
 const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
   scope: { kind: 'complete_single_expiry', completeness_basis: 'strike_range=ALL' },
+  // the chain's freshness, served (server.terrain_staleness): current, 12 s old
+  levels_stale: false, levels_age_sec: 12, levels_stale_reason: '',
   contracts: [
     ct('CALL', 102, 'SPY   260911C00102000', 1200, 300, 11.1, 0.35), ct('PUT', 102, 'SPY   260911P00102000', 900, 250, 12.1, -0.65),
     ct('CALL', 100, 'SPY   260911C00100000', 5400, 2100, 12.3, 0.52), ct('PUT', 100, 'SPY   260911P00100000', 4100, 1800, 12.6, -0.48),
@@ -73,9 +75,32 @@ test.describe('D — Gamma Chain subview', () => {
     await expect(page.locator('#chainBody .chn-head')).toContainText('server default');
     await expect(page.locator('#expSel option').first()).toHaveText('Default Expiry');
     await expect(page.locator('#chSrc .asof')).toContainText('complete (ALL)');
+    await expect(page.locator('#chSrc .asof')).toHaveClass(/live/);        // served current
+    await expect(page.locator('#chSrc .asof')).toContainText('12s');
     await page.locator('#subnav .tab', { hasText: 'Gamma' }).click();
     await expect(page.locator('.sub-pane[data-sub-pane="gamma"]')).toBeVisible();
     await expect(page.locator('#expSel option').first()).toHaveText('All Expirations');   // Gamma: null = all
+  });
+
+  test('the Chain badge is live only while the server says the chain is current', async ({ page }) => {
+    // 2026-09-30 audit: a complete chain read LIVE whatever its age -- the badge was decided on the
+    // page from the chain's scope. A chain whose downloads are failing is STALE with the served
+    // reason; after the close it is a past chain with the time it is as of.
+    let freshness = { levels_stale: true, levels_age_sec: 900, levels_stale_reason: 'levels are 900s old and every refresh since is failing — HTTP 502' };
+    await page.route('**/api/chain**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign(served(CHAIN), freshness)) }));
+    await toChain(page);
+    const badge = page.locator('#chSrc .asof');
+    await expect(badge).toHaveClass(/stale/);
+    await expect(badge).not.toHaveClass(/live/);
+    await expect(badge).toContainText('STALE');
+    await expect(badge).toHaveAttribute('title', freshness.levels_stale_reason);
+    freshness = { levels_stale: false, levels_age_sec: 60000, levels_stale_reason: '', levels_market_closed: true, levels_as_of: 'Fri 09/25 03:15 PM CT' };
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.locator('#subnav .tab', { hasText: 'Chain' }).click();
+    await expect(badge).toContainText('as of Fri 09/25 03:15 PM CT');
+    await expect(badge).toHaveClass(/ref/);
+    await expect(badge).not.toHaveClass(/live/);
   });
 
   test('CALL click sends the exact CALL vendor symbol; PUT click the exact PUT symbol (via EdStream)', async ({ page }) => {

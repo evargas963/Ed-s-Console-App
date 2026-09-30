@@ -1102,12 +1102,12 @@ def favicon():
 _CROSS_WORD = {"up": "above", "down": "below"}
 
 
-def _merged_recent_crosses(edb, ticker: str, n: int) -> "list[dict]":
-    """The newest `n` level crosses, each (time, value, direction) one event carrying every
-    level named there in `level_names`. The one reader of level crosses for every route.
-    Price crossing one strike writes one stored row per named level sitting there; they are
-    merged here, at the read, so the stored history keeps its per-level rows."""
-    raw = edb.get_recent_crosses(ticker=ticker, n=max(int(n) * 8, 64))
+def _merged_crosses_since(edb, ticker: str, since_ts_utc: float) -> "list[dict]":
+    """Every level cross at or after `since_ts_utc`, newest first, each (time, value, direction)
+    one event carrying every level named there in `level_names`. The one reader of level crosses
+    for every route. Price crossing one strike writes one stored row per named level sitting
+    there; they are merged here, at the read, so the stored history keeps its per-level rows."""
+    raw = edb.get_crosses_since(ticker, since_ts_utc)
     merged: list[dict] = []
     seen: dict[tuple, dict] = {}
     for r in raw:
@@ -1122,7 +1122,7 @@ def _merged_recent_crosses(edb, ticker: str, n: int) -> "list[dict]":
         nm = r.get("level_name")
         if nm and nm not in hit["level_names"]:
             hit["level_names"].append(nm)
-    return merged[:n]
+    return merged
 
 
 def _required_ticker(ticker: Optional[str]) -> str:
@@ -1365,29 +1365,30 @@ def terrain_cache_get(ticker: str) -> dict | None:
 TERRAIN_STALE_AFTER_SEC: float = 180.0
 
 
-#: RC-108: Schwab refresh tokens die at 7 days, hard. The 2026-07-28 open went fully dark
-#: because the expiry sat in schwab_token.json for a week with no forward warning — the system
-#: only screamed AFTER the data was lost. Warn from day 5, red from day 6.
+#: Schwab's sign-in (the refresh token) ends 7 days after it was made; every Schwab call fails
+#: from then until the operator signs in again. The header warns from day 5 and is red from day 6.
+SCHWAB_SIGN_IN_LIFE_DAYS = 7.0
 _SCHWAB_TOKEN_WARN_DAYS = 5.0
 _SCHWAB_TOKEN_RED_DAYS = 6.0
+SIGN_IN_OK, SIGN_IN_WARN, SIGN_IN_RED, SIGN_IN_UNKNOWN = "ok", "warn", "red", "unknown"
+SIGN_IN_REMEDY = "run: python reauth_schwab.py --manual"
 
 
-def schwab_token_countdown(creation_ts: float | None) -> dict:
-    """Pure urgency computation from the token file's creation_timestamp (unit-tested)."""
+def schwab_sign_in_status(creation_ts: float | None, now: float) -> dict:
+    """The Schwab sign-in's state at `now`, for the page header (the /api/changes push):
+    {urgency, expires, note}, from the token file's creation time. `expires` is the instant it
+    ends, in Central Time; unreadable file: unknown, said so."""
     if creation_ts is None:
-        return {"schwab_token_age_days": None, "schwab_token_urgency": "unknown",
-                "schwab_token_note": "token file unreadable — collection may be dead"}
-    age_days = round((time.time() - float(creation_ts)) / 86400.0, 2)
-    if age_days >= _SCHWAB_TOKEN_RED_DAYS:
-        urgency, note = "red", (f"Schwab token is {age_days:.1f} days old (7-day hard limit) — "
-                                f"re-auth NOW: python reauth_schwab.py --manual")
-    elif age_days >= _SCHWAB_TOKEN_WARN_DAYS:
-        urgency, note = "warn", (f"Schwab token is {age_days:.1f} days old — re-auth before "
-                                 f"day 7 kills collection: python reauth_schwab.py --manual")
-    else:
-        urgency, note = "ok", ""
-    return {"schwab_token_age_days": age_days, "schwab_token_urgency": urgency,
-            "schwab_token_note": note}
+        return {"urgency": SIGN_IN_UNKNOWN, "expires": None,
+                "note": "the Schwab token file is unreadable: the sign-in's age is unknown"}
+    age_days = (now - float(creation_ts)) / 86400.0
+    expires = ct_label(float(creation_ts) + SCHWAB_SIGN_IN_LIFE_DAYS * 86400.0)
+    if age_days >= SCHWAB_SIGN_IN_LIFE_DAYS:
+        return {"urgency": SIGN_IN_RED, "expires": expires, "note": f"Schwab sign-in ended {expires}; {SIGN_IN_REMEDY}"}
+    if age_days >= _SCHWAB_TOKEN_WARN_DAYS:
+        return {"urgency": SIGN_IN_RED if age_days >= _SCHWAB_TOKEN_RED_DAYS else SIGN_IN_WARN,
+                "expires": expires, "note": f"Schwab sign-in ends {expires}; {SIGN_IN_REMEDY}"}
+    return {"urgency": SIGN_IN_OK, "expires": expires, "note": ""}
 
 
 def _schwab_token_creation_ts() -> float | None:
@@ -1420,7 +1421,6 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
     not gets removed (the RC-78 rule, applied to the scorecard that day and never to terrain).
     """
     refreshing = _is_loggable_session()
-    token = schwab_token_countdown(_schwab_token_creation_ts())   # RC-108: warn BEFORE death
     skipped = terrain_skip_reason(ticker)   # RC-146: the producer's own words, when it has any
     # RC-147: the FAILURE channel, which RC-146 left unread. `_terrain_refresh_last_error` was
     # consulted at exactly ONE call site — the not-ready branch of /api/terrain, reachable only
@@ -1447,7 +1447,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
                 "levels_refresh_active": False, "levels_market_closed": True,
                 "levels_as_of": ct_label(computed_ts_utc),
                 "levels_stale_reason": "", "levels_paused_on_purpose": False,
-                "levels_quarantined": False, "levels_failing": False, **token}
+                "levels_quarantined": False, "levels_failing": False}
     if computed_ts_utc is None:
         return {"levels_stale": True, "levels_age_sec": None, "levels_refresh_active": refreshing,
                 "levels_stale_reason": (
@@ -1456,7 +1456,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
                         else "no terrain snapshot has been computed yet")),
                 "levels_paused_on_purpose": bool(skipped and not quarantined),
                 "levels_quarantined": bool(quarantined),
-                "levels_failing": bool(failure or hard_quarantine), **token}
+                "levels_failing": bool(failure or hard_quarantine)}
     age = round(time.time() - float(computed_ts_utc), 1)
     # age is judged against the cycle the loop delivers (a full sweep), not its sleep floor
     # (TERRAIN_REFRESH_SEC)
@@ -1489,7 +1489,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
             "levels_failing": bool(stale and (failure or hard_quarantine)),
             # RC-148: the fourth — not even being REQUESTED. Distinct from failing: re-admission
             # is an operator act, not something the loop will do on its own.
-            "levels_quarantined": bool(quarantined), **token}
+            "levels_quarantined": bool(quarantined)}
 
 
 #: Rotation depth inside the 09:30-10:00 contention window for tickers nobody is viewing: each
@@ -2944,9 +2944,9 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
                 "charm_above": charm_above,
                 "charm_error": charm_err,
                 "newer_et_date": d1, "older_et_date": d0, "bucket_spot": spot1,
-                "method": ("per-strike OI delta first, bucketed by the newer capture's spot; "
-                           "DEX = net_dex_dollars side sums on the newer capture; "
-                           "CHARM = dealer-signed net_charm side sums on the newer capture"),
+                # what the rows are, for the screen: past observations from two stored captures
+                "basis": (f"{d1} chain capture against {d0}, split at that capture's price {spot1:.2f}; "
+                          f"open interest compared on {len(doi)} strikes"),
             }
     except Exception as e:
         payload = {"ticker": tk, "available": False, "reason": f"forces read failed: {e}"}
@@ -3359,9 +3359,7 @@ def get_desk_events(ticker: str = Query(...),
     numbers and orders nothing."""
     tk = ticker_storage_key(_required_ticker(ticker))
     start = _desk_window_start(tf, now_et())
-    crosses = _merged_recent_crosses(get_db(), tk, 200)
-    in_window = sorted((c for c in crosses if c.get("ts_utc") is not None and c["ts_utc"] >= start),
-                       key=lambda c: c["ts_utc"])
+    in_window = sorted(_merged_crosses_since(get_db(), tk, start), key=lambda c: c["ts_utc"])
     items = []
     for i, c in enumerate(in_window):
         names = " + ".join(c["level_names"])
@@ -3422,7 +3420,9 @@ CHANGES_SESSION_SEC = 5.0
 @app.get("/api/changes")
 async def get_changes(ticker: str = Query(...)):
     """The console's push to the page: `levels`, `flow` or `liquidity` when that value of the
-    ticker changed (the page reloads it), and `session` with the market session label. Prices
+    ticker changed (the page reloads it), and, on connect and every CHANGES_SESSION_SEC with no
+    other change, `session` with the market session label and `sign_in` with the Schwab
+    sign-in's state (schwab_sign_in_status). Prices
     and bars come from the daemon's own push. Opening it makes the ticker the active one, whose
     NYSE_BOOK and NASDAQ_BOOK the daemon streams: every page reconnects after a console
     restart, so the books follow the page with no separate request."""
@@ -3432,15 +3432,19 @@ async def get_changes(ticker: str = Query(...)):
     _get_route_offload_executor().submit(lambda: (set_streaming_active_ticker(t), _ensure_default_option_contract(t)))
     client = push_changes.subscribe(t)
 
+    def status() -> str:
+        sign_in = json.dumps(schwab_sign_in_status(_schwab_token_creation_ts(), time.time()))
+        return f"event: session\ndata: {session_label(now_et())}\n\nevent: sign_in\ndata: {sign_in}\n\n"
+
     async def event_generator():
         try:
-            yield f"event: session\ndata: {session_label(now_et())}\n\n"
+            yield status()
             while True:
                 kinds = await push_changes.next_changes(client, CHANGES_SESSION_SEC)
                 for k in sorted(kinds):
                     yield f"event: {k}\ndata: {t}\n\n"
                 if not kinds:
-                    yield f"event: session\ndata: {session_label(now_et())}\n\n"
+                    yield status()
                     continue
                 await asyncio.sleep(CHANGES_PUSH_MIN_SEC)
         finally:
@@ -3693,6 +3697,9 @@ def get_chain(ticker: str = Query(...),
         "has_duplicate_contracts": len({(schwab_number(c.get("strikePrice")), c.get("putCall")) for c in response_contracts})
                                    < len(response_contracts),
         "chain_as_of_ts_utc": fetched_ts,
+        # whether this chain is current (terrain_staleness, the levels' own authority: the levels
+        # and the chain are one download): levels_stale, its reason, the age, market closed
+        **terrain_staleness(fetched_ts, t),
         "contracts": response_contracts, "status": "ok",
         "ladder": ladder, "n_strikes": len({r["strike"] for r in ladder}),
         "contracts_not_on_ladder": not_on_ladder,   # no strike, or a putCall other than CALL/PUT

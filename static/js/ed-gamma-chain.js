@@ -12,18 +12,9 @@
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function isChain() { var s = st(); return s.workspace === 'options' && s.subview === 'chain'; }
 
-  var SCOPE = {
-    complete_single_expiry: { t: 'complete (ALL)', live: true },
-    unavailable: { t: 'unavailable', stale: true },
-  };
   function setSrc(d) {
     var el = document.getElementById('chSrc'); if (!el) return;
-    var sc = d && d.scope, kind = sc && sc.kind;
-    if (!kind) { el.innerHTML = ''; return; }
-    var m = SCOPE[kind] || { t: kind };
-    el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: 'vendor · ' + m.t,
-          live: !!m.live, ref: !!m.ref, stale: !!m.stale, title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') }) : '';
+    el.innerHTML = window.EdShell.chainBadge(d, 'vendor · ');
   }
 
   // auto-scroll to spot only the first time a ticker+expiry is rendered
