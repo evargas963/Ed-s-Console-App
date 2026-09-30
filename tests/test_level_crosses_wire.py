@@ -94,7 +94,8 @@ def test_a_stored_captures_price_is_no_reference_for_a_live_cross(tmp_path, monk
     monkeypatch.setattr(server, "get_db", lambda: edb)
     monkeypatch.setattr(server, "_terrain_cache", {})
     pin_clock(2026, 9, 27, 12, 0)                                        # Sunday: the capture is priced
-    snap = server._publish_levels("PCG", captures=last_capture_per_day(str(db), "PCG", 2))
+    snap = server._publish_levels("PCG", captures=last_capture_per_day(str(db), "PCG", 2),
+                                  now=time_et_ts(2026, 9, 27, 12, 0))
     levels = [getattr(snap, k) for k, _ in server.CROSS_LEVELS if getattr(snap, k) is not None]
     above, below = max(levels) + 1.0, min(levels) - 1.0
     assert below < day["spot"] < above and len(levels) >= 3
@@ -102,10 +103,10 @@ def test_a_stored_captures_price_is_no_reference_for_a_live_cross(tmp_path, monk
     pin_clock(2026, 9, 28, 10, 0)                                        # Monday, live
     t1 = time_et_ts(2026, 9, 28, 10, 0)
     monkeypatch.setattr(server, "resolve_spot", lambda tk: (above, "streaming_plane", t1 - 2.0))
-    server._publish_levels("PCG", day["contracts"], t1)
+    server._publish_levels("PCG", day["contracts"], t1, now=t1)
     assert edb.get_crosses_since("PCG", 0.0) == []
     monkeypatch.setattr(server, "resolve_spot", lambda tk: (below, "streaming_plane", t1 + 3.0))
-    live = server._publish_levels("PCG", day["contracts"], t1 + 5.0)
+    live = server._publish_levels("PCG", day["contracts"], t1 + 5.0, now=t1 + 5.0)
     rows = edb.get_crosses_since("PCG", 0.0)
     crossed = {getattr(live, k) for k, _ in server.CROSS_LEVELS if getattr(live, k) is not None}
     assert rows and {r["level_value"] for r in rows} == crossed

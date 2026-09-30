@@ -157,12 +157,12 @@ def _tick(sym: str) -> None:
                         sym, _tick_callback_failures, e)
 
 
-def _service_feed(symbol: "str | None", service: str) -> dict:
-    """One Schwab service's feed for `symbol`, as the page shows it: LIVE by the one live rule
-    (live_market_plane.feed_live_for), and how long ago the daemon last received anything on
-    that service (its own report)."""
-    health = ((_lmp.daemon_status() or {}).get("health") or {}).get(service) or {}
-    return {"state": "LIVE" if _lmp.feed_live_for(symbol, service) else "NOT LIVE",
+def _service_feed(symbol: "str | None", service: str, now: float) -> dict:
+    """One Schwab service's feed for `symbol` at `now`, as the page shows it: LIVE by the one
+    live rule (live_market_plane.feed_live_for), and how long ago the daemon last received
+    anything on that service (its own report)."""
+    health = ((_lmp.daemon_status(now) or {}).get("health") or {}).get(service) or {}
+    return {"state": "LIVE" if _lmp.feed_live_for(symbol, service, now) else "NOT LIVE",
             "age_sec": health.get("age_sec")}
 
 
@@ -693,30 +693,21 @@ def set_active_option_contracts(contract_symbols: "list[str]") -> bool:
 OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 
 
-def _read_producer_option_contracts() -> dict[str, list[str]]:
-    """What Schwab holds per option service, from the daemon's status; empty when that status
-    is missing or stale (unknown is never confirmation)."""
-    held = (_lmp.daemon_status() or {}).get("held") or {}
+def read_producer_admitted_option_contracts(now: float) -> "dict[str, list[str]]":
+    """What Schwab holds per option service, from the daemon's status at `now`; empty when that
+    status is missing or stale (unknown is never confirmation)."""
+    held = (_lmp.daemon_status(now) or {}).get("held") or {}
     return {s: sorted(held.get(s) or []) for s in OPTION_PRODUCER_SERVICES}
 
 
-def read_producer_admitted_option_contracts() -> "dict[str, list[str]]":
-    """Public wrapper for `_read_producer_option_contracts` (2026-09-16, independent-review
-    follow-up: server.py needs the PRODUCER-confirmed admitted set by name, not the
-    underscore-private one, to distinguish 'admitted' from merely 'desired' when disclosing
-    per-contract subscription state). See that function's own docstring — this is the exact
-    same read, exposed under a name a consumer outside this module is meant to call."""
-    return _read_producer_option_contracts()
+def is_option_producer_daemon_available(now: float) -> bool:
+    """True while the daemon's status is fresh at `now`."""
+    return _lmp.daemon_status(now) is not None
 
 
-def is_option_producer_daemon_available() -> bool:
-    """True while the daemon's status is fresh."""
-    return _lmp.daemon_status() is not None
-
-
-def read_producer_rejected_option_contracts() -> "dict[str, str]":
+def read_producer_rejected_option_contracts(now: float) -> "dict[str, str]":
     """{symbol: Schwab's reason} for option contracts Schwab refused, from the daemon's status."""
-    refused = (_lmp.daemon_status() or {}).get("refused") or {}
+    refused = (_lmp.daemon_status(now) or {}).get("refused") or {}
     return dict(refused.get("LEVELONE_OPTIONS") or {})
 
 
@@ -740,7 +731,7 @@ def _pick_producer_contract(symbols: "list[str]", queried: Optional[str]) -> Opt
 
 
 def get_option_contract_streaming_diagnostics(
-    for_contract: Optional[str] = None,
+    for_contract: Optional[str], now: float,
 ) -> dict[str, Any]:
     """FRESHNESS/HEALTH for the option-contract feed. Answers
     "is the daemon actually subscribed and receiving data for this contract", distinct
@@ -760,8 +751,7 @@ def get_option_contract_streaming_diagnostics(
     health FAILS CLOSED — there is no live evidence about A while the feed is bound
     to B, and absence of evidence must never render as healthy. `for_contract=None`
     (no caller-specified subject) keeps the historical whole-plane answer, with
-    `contract_match` left None rather than fabricated."""
-    now = time.time()
+    `contract_match` left None rather than fabricated. `now`: epoch seconds."""
     queried = ticker_storage_key(for_contract) if for_contract else None
     # RC-UI-3 finding #4 (2026-09-12), REPRODUCED: `last`/`stale_ms` used to read ONLY the
     # single global `_option_streaming_last_update_ts`, which every contract's rows (primary
@@ -774,7 +764,7 @@ def get_option_contract_streaming_diagnostics(
     # the one live rule (live_market_plane.feed_live_for): the daemon's heartbeat is current,
     # its Schwab socket is open, and it holds this contract
     subject = queried or _active_option_contract
-    healthy = bool(_feed_running and subject and _lmp.feed_live_for(subject, "LEVELONE_OPTIONS"))
+    healthy = bool(_feed_running and subject and _lmp.feed_live_for(subject, "LEVELONE_OPTIONS", now))
 
     # Contract binding: compare on the SAME canonical key set_active_option_contract
     # stores (ticker_storage_key), so a caller passing the raw chain "symbol" string
@@ -787,7 +777,7 @@ def get_option_contract_streaming_diagnostics(
     # requested state alone would green B during exactly that window. Producer truth is
     # read from the CANONICAL open coverage epochs in the same stream DB, and a full
     # contract match now requires requested AND both producer services to agree.
-    producer = _read_producer_option_contracts()
+    producer = read_producer_admitted_option_contracts(now)
     contract_match: Optional[bool] = None
     if queried:
         # Independent-review finding (2026-09-12): this used to recognize ONLY the
@@ -837,8 +827,8 @@ def get_option_contract_streaming_diagnostics(
         "streaming_staleness_ms": stale_ms,
         "streaming_healthy": healthy,
         "feed_health": {"replay": "not connected" if not _feed_running else "healthy" if healthy else "stale",
-                        "l1": _service_feed(subject, "LEVELONE_OPTIONS"),
-                        "book": _service_feed(subject, "OPTIONS_BOOK")},
+                        "l1": _service_feed(subject, "LEVELONE_OPTIONS", now),
+                        "book": _service_feed(subject, "OPTIONS_BOOK", now)},
     }
 
 

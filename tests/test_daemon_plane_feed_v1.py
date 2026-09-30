@@ -80,25 +80,29 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     from pathlib import Path
 
     import server
+    from tests.feed_live_helper import CLOSED_NOW, SESSION_NOW
     _reset(tmp_path)
-    monkeypatch.setattr(lmp, "is_capturable_session", lambda: True)
     fx = json.loads((Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json")
                     .read_text(encoding="utf-8"))["books"]
     for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
         ofs._ingest_pushed("book.SPY", book_msg(symbol="SPY", service=svc, content=fx[svc]["content"],
                                                 src="schwab_book", ts_recv=fx[svc]["ts_recv"]))
 
-    def stale(svc):
-        return json.loads(server.api_order_flow_microstructure(ticker="SPY", venue=svc).body)["ages"]["book_stale"]
+    def stale(svc, at):
+        # the route is the entry point that reads the clock: stand-in (named) instant `at`
+        monkeypatch.setattr(server.time, "time", lambda: at)
+        try:
+            return json.loads(server.api_order_flow_microstructure(ticker="SPY", venue=svc).body)["ages"]["book_stale"]
+        finally:
+            monkeypatch.undo()
 
     held = {"schwab_socket_open": True, "held": {"NASDAQ_BOOK": ["SPY"], "NYSE_BOOK": []}}
-    lmp.record_feed_heartbeat(held, time.time())
-    assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (False, True)
-    monkeypatch.setattr(lmp, "is_capturable_session", lambda: False)
-    assert stale("NASDAQ_BOOK") is True
-    monkeypatch.setattr(lmp, "is_capturable_session", lambda: True)
-    lmp.record_feed_heartbeat(held, time.time() - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1)
-    assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)
+    lmp.record_feed_heartbeat(held, SESSION_NOW)
+    assert (stale("NASDAQ_BOOK", SESSION_NOW), stale("NYSE_BOOK", SESSION_NOW)) == (False, True)
+    lmp.record_feed_heartbeat(held, CLOSED_NOW)                          # the market closed
+    assert stale("NASDAQ_BOOK", CLOSED_NOW) is True
+    lmp.record_feed_heartbeat(held, SESSION_NOW - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1)
+    assert (stale("NASDAQ_BOOK", SESSION_NOW), stale("NYSE_BOOK", SESSION_NOW)) == (True, True)
 
 
 def test_each_symbol_lands_in_its_own_state_only(tmp_path):

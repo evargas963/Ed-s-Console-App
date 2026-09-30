@@ -466,7 +466,7 @@ def test_an_option_contracts_top_is_read_only_while_the_daemon_holds_it():
             state.push_option_top(sym, ev["content"])
     try:
         lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}}, time.time())
-        assert lmp.feed_live_for(sym, "LEVELONE_OPTIONS")
+        assert lmp.feed_live_for(sym, "LEVELONE_OPTIONS", time.time())
         assert options_live_payload(sym, time.time())["top_book_pressure"] is not None
         lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": []}}, time.time())
         assert options_live_payload(sym, time.time())["top_book_pressure"] is None

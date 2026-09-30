@@ -1561,9 +1561,9 @@ def _viewed_tickers() -> list[str]:
     return sorted(push_changes.watched())
 
 
-def _live_stream_greeks(streamed: dict) -> dict:
-    """The streamed option values whose contract is live now (the one live rule)."""
-    return {s: g for s, g in streamed.items() if lmp.feed_live_for(s, "LEVELONE_OPTIONS")}
+def _live_stream_greeks(streamed: dict, now: float) -> dict:
+    """The streamed option values whose contract is live at `now` (the one live rule)."""
+    return {s: g for s, g in streamed.items() if lmp.feed_live_for(s, "LEVELONE_OPTIONS", now)}
 
 #: Per-ticker revision of `_gamma_surface`, bumped on every publication; guarded by
 #: _terrain_cache_lock.
@@ -1630,8 +1630,8 @@ def _desired_option_symbols_for_ticker(tk: str, listed: "frozenset | None" = Non
     return out
 
 
-def _option_contract_admission_summary(tk: str) -> dict:
-    """Per-symbol admitted/observed/active/pending/rejected accounting for `tk`'s desired
+def _option_contract_admission_summary(tk: str, now: float) -> dict:
+    """At `now`, per-symbol admitted/observed/active/pending/rejected accounting for `tk`'s desired
     option contracts, sourced ENTIRELY from PRODUCER acknowledgements (2026-09-16,
     independent-review follow-up mandate item 1: "expose the exact admitted, active,
     pending and rejected contracts"). Every bucket answers a materially different
@@ -1660,9 +1660,9 @@ def _option_contract_admission_summary(tk: str) -> dict:
         read_producer_admitted_option_contracts, read_producer_rejected_option_contracts,
         is_option_producer_daemon_available)
     desired = _desired_option_symbols_for_ticker(tk)
-    daemon_available = is_option_producer_daemon_available()
-    rejected_all = read_producer_rejected_option_contracts()
-    admitted_l1 = set((read_producer_admitted_option_contracts() or {}).get("LEVELONE_OPTIONS") or [])
+    daemon_available = is_option_producer_daemon_available(now)
+    rejected_all = read_producer_rejected_option_contracts(now)
+    admitted_l1 = set((read_producer_admitted_option_contracts(now) or {}).get("LEVELONE_OPTIONS") or [])
     streamed = _desired_stream_greeks_for_ticker(tk)
     admitted, active, observed, pending = [], [], [], []
     rejected: "dict[str, str]" = {}
@@ -1670,7 +1670,7 @@ def _option_contract_admission_summary(tk: str) -> dict:
         if sym in rejected_all:
             rejected[sym] = rejected_all[sym]
         elif sym in streamed:
-            (active if lmp.feed_live_for(sym, "LEVELONE_OPTIONS") else observed).append(sym)
+            (active if lmp.feed_live_for(sym, "LEVELONE_OPTIONS", now) else observed).append(sym)
         elif sym in admitted_l1:
             admitted.append(sym)
         elif daemon_available:
@@ -1706,8 +1706,8 @@ def _overlaid_symbols(pre: list, post: list) -> list[str]:
             if new is not orig and isinstance(new, dict) and new.get("symbol")]
 
 
-def _gamma_surface_contracts_with_stream_overlay(tk: str, contracts: list) -> tuple[list, int, list[str]]:
-    """`contracts` with every live streamed option contract of `tk` carrying its streamed
+def _gamma_surface_contracts_with_stream_overlay(tk: str, contracts: list, now: float) -> tuple[list, int, list[str]]:
+    """`contracts` with every option contract of `tk` live at `now` carrying its streamed
     fields (overlay_streamed_contract_fields; RC-UI-3: primary AND every additional contract).
     Changes no formula; the stream owns a live contract's fields.
 
@@ -1716,7 +1716,7 @@ def _gamma_surface_contracts_with_stream_overlay(tk: str, contracts: list) -> tu
     try:
         from math_exposure_core import overlay_streamed_contract_fields
 
-        streamed = _live_stream_greeks(_desired_stream_greeks_for_ticker(tk))
+        streamed = _live_stream_greeks(_desired_stream_greeks_for_ticker(tk), now)
         if not streamed:
             return contracts, 0, []
         overlaid, n = overlay_streamed_contract_fields(contracts, streamed)
@@ -1990,16 +1990,16 @@ def _contract_ticker(sym: str) -> "str | None":
         return next((tk for tk, p in _terrain_cache.items() if sym in (p.get("_contract_symbols") or ())), None)
 
 
-def _ensure_default_option_contract(tk: str) -> None:
+def _ensure_default_option_contract(tk: str, now: float) -> None:
     """The option contract whose OPTIONS_BOOK streams follows the page's ticker: the one already
-    desired or held by the daemon when it is this ticker's, else the at-the-money call of the
-    ticker's front expiry; cleared when the ticker has none. The operator's POST
+    desired or held by the daemon at `now` when it is this ticker's, else the at-the-money call of
+    the ticker's front expiry; cleared when the ticker has none. The operator's POST
     /api/streaming/active-option-contract still wins until the ticker changes."""
     from app.options.order_flow.streaming import (
         clear_active_option_contract, get_active_option_contract, set_active_option_contract)
     if _contract_is_for(get_active_option_contract(), tk):
         return
-    held = ((lmp.daemon_status() or {}).get("held") or {}).get("OPTIONS_BOOK") or []
+    held = ((lmp.daemon_status(now) or {}).get("held") or {}).get("OPTIONS_BOOK") or []
     with _terrain_cache_lock:
         default = (_terrain_cache.get(tk) or {}).get("_default_contract")
     sym = held[0] if held and _contract_is_for(held[0], tk) else default
@@ -2015,7 +2015,7 @@ def _levels_lock(tk: str) -> threading.Lock:
 
 
 def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
-                    *, captures: "list | None" = None) -> "TerrainSnapshot | None":
+                    *, captures: "list | None" = None, now: float) -> "TerrainSnapshot | None":
     """THE producer of a ticker's levels, per-strike rows and gamma-surface grid.
 
     Prices the ticker's chain once -- overlaid with any fresher streamed option greeks, at the
@@ -2050,7 +2050,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                            _default_contract=front_atm_call(chain, spot))
         listed = payload.get("_contract_symbols") or frozenset()
         streamed = _desired_stream_greeks_for_ticker(tk, listed)
-        priced, n_live = overlay_streamed_contract_fields(chain, _live_stream_greeks(streamed))
+        priced, n_live = overlay_streamed_contract_fields(chain, _live_stream_greeks(streamed, now))
         live_syms = _overlaid_symbols(chain, priced)
         snap = compute_terrain(tk, priced, spot, now=(
             datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
@@ -2084,9 +2084,9 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                            stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
                            stream_overlay_computed_ts_utc=time.time())
             _stamp_gamma_surface_cell_stream_state(
-                surface, streamed, set(live_syms), read_producer_rejected_option_contracts(),
+                surface, streamed, set(live_syms), read_producer_rejected_option_contracts(now),
                 set(_desired_option_symbols_for_ticker(tk, listed)),
-                daemon_available=is_option_producer_daemon_available())
+                daemon_available=is_option_producer_daemon_available(now))
             payload["_gamma_surface"] = surface
         # a stored capture's price is no reference for a live cross: only live publications
         # keep one and record crosses
@@ -2207,7 +2207,7 @@ def _reprice_worker(tk: str) -> None:
             _reprice_dirty.discard(tk)
         last = time.monotonic()
         try:
-            if _publish_levels(tk) is None:
+            if _publish_levels(tk, now=time.time()) is None:
                 _terrain_refresh_one(tk, priority=True)
         except Exception as e:  # noqa: BLE001 -- logged; the next tick or chain fetch reprices
             log.warning("levels reprice failed for %s: %s", tk, e)
@@ -2255,7 +2255,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             return "error:chain_http"
         fetched_ts = time.time()   # the chain's as-of: an older streamed value never overrides it
         contracts = flatten_chain_contracts(resp.json())
-        snap = _publish_levels(tk, contracts, fetched_ts)
+        snap = _publish_levels(tk, contracts, fetched_ts, now=fetched_ts)
         _terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
         _note_terrain_success(tk)                   # RC-148: and the failure streak with it
         return f"ok:{snap.confidence}"
@@ -2312,9 +2312,9 @@ def _next_refresh_ct() -> str:
     return "(no market day within 15 days)"
 
 
-def _status_line() -> str:
-    """One line for the console window: is each part working right now, from its own check."""
-    st = lmp.daemon_status()
+def _status_line(now: float) -> str:
+    """One line for the console window: is each part working at `now`, from its own check."""
+    st = lmp.daemon_status(now)
     with _logger_lock:
         board = list(_logger_tickers)
     priced = sum(1 for tk in board if resolve_spot(tk)[0] is not None)
@@ -2360,7 +2360,7 @@ def _terrain_loop() -> None:
         cycle_start = time.monotonic()
         if cycle_start >= next_status:
             try:
-                log.info(_status_line())
+                log.info(_status_line(time.time()))
             except Exception as e:  # noqa: BLE001 -- the status line says it failed, never silence
                 log.warning("status: could not be read (%s: %s)", type(e).__name__, e)
             next_status = cycle_start + STATUS_EVERY_SEC
@@ -2464,7 +2464,7 @@ def _load_stored_levels() -> int:
     n = 0
     for tk in board:
         caps = last_capture_per_day(get_db().db_path, tk, 2)
-        if caps and _publish_levels(tk, captures=caps) is not None:
+        if caps and _publish_levels(tk, captures=caps, now=time.time()) is not None:
             n += 1
     return n
 
@@ -2482,7 +2482,7 @@ def _price_stored_chain_when_closed(tk: str) -> None:
         return
     caps = last_capture_per_day(get_db().db_path, tk, 2)
     if caps:
-        _publish_levels(tk, captures=caps)
+        _publish_levels(tk, captures=caps, now=time.time())
     elif terrain_cache_get(tk) is None:
         _terrain_refresh_last_error[tk] = NO_CAPTURE_REASON
 
@@ -3149,7 +3149,7 @@ def get_options_gamma_surface(ticker: str = Query(...)):
             # exact admitted, active, pending and rejected contracts" — a symbol-level
             # accounting, distinct from the per-cell disclosure above. Best-effort: a
             # diagnostic field must never take down the surface it is attached to.
-            _contract_admission = _option_contract_admission_summary(tk)
+            _contract_admission = _option_contract_admission_summary(tk, time.time())
         except Exception as _ca_e:  # institutional-swallow-ok: diagnostic-only, never load-bearing
             log.debug("contract admission summary skipped for %s: %s", tk, _ca_e)
             _contract_admission = None
@@ -3377,7 +3377,7 @@ CHANGES_SESSION_SEC = 5.0
 
 @app.get("/api/changes")
 async def get_changes(ticker: str = Query(...), view: str = Query(..., min_length=1)):
-    """The console's push to the page: `levels`, `flow` or `liquidity` when that value of the
+    """The console's push to the page: `levels`, `chain` or `flow` when that value of the
     ticker changed (the page reloads it), and, on connect and every CHANGES_SESSION_SEC after
     (on its own clock: a busy ticker does not hold it back), `session` with the market session
     label and `sign_in` with the Schwab sign-in's state (schwab_sign_in_status). Prices
@@ -3389,7 +3389,8 @@ async def get_changes(ticker: str = Query(...), view: str = Query(..., min_lengt
     from app.options.order_flow.streaming import release_option_contract_demand, set_streaming_active_ticker
 
     t = ticker_storage_key(_required_ticker(ticker))
-    _get_route_offload_executor().submit(lambda: (set_streaming_active_ticker(t), _ensure_default_option_contract(t)))
+    _get_route_offload_executor().submit(lambda: (set_streaming_active_ticker(t),
+                                                  _ensure_default_option_contract(t, time.time())))
 
     def status() -> str:
         sign_in = json.dumps(schwab_sign_in_status(_schwab_token_creation_ts(), time.time()))
@@ -3446,10 +3447,11 @@ def api_order_flow_microstructure(ticker: str = Query(...),
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
                    if _row and (_row.get("bid") is not None or _row.get("ask") is not None) else None)
-    data["book_live"] = lmp.book_is_live(t, venue)
+    now = time.time()
+    data["book_live"] = lmp.book_is_live(t, venue, now)
     from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
-    payload = compute_book_microstructure(data, now_ts=time.time(), ticker=t)
+    payload = compute_book_microstructure(data, now_ts=now, ticker=t)
     payload["ticker"] = t
     payload["venue"] = venue
     return JSONResponse(payload)
@@ -3471,7 +3473,8 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
         return JSONResponse({"error": "contract is required"}, status_code=400)
     from app.options.order_flow.live_payload import options_live_payload
     from app.options.order_flow.streaming import get_option_contract_streaming_diagnostics
-    payload = options_live_payload(ticker_storage_key(c), time.time())
+    now = time.time()
+    payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
     from app.options.order_flow.history import put_call_side
     from app.options.order_flow.state import option_contract_type
@@ -3484,7 +3487,7 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
         # beside `streaming_healthy: true` that belonged entirely to B. The book above
         # is still served truthfully (replayed content for A is real and is not
         # discarded); only the LIVE HEALTH claim is bound and fails closed on mismatch.
-        payload["streaming_plane"] = get_option_contract_streaming_diagnostics(for_contract=c)
+        payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
     except Exception:  # diagnostics are informational only — never fail the book payload for them
         payload["streaming_plane"] = {}
     return JSONResponse(payload)
@@ -3519,7 +3522,7 @@ async def post_streaming_active_option_contract(payload: dict = Body(default={})
         # PR214 merge blocker 1A: bind the acknowledgement's health to the contract
         # THIS request asked for, so a client that validates the ack cannot be handed
         # a healthy-looking plane belonging to a different contract.
-        diag = get_option_contract_streaming_diagnostics(for_contract=c)
+        diag = get_option_contract_streaming_diagnostics(c, time.time())
         return {"ok": ok, "contract": c, "command_generation": generation, **diag}
     try:
         out = await asyncio.get_event_loop().run_in_executor(_get_route_offload_executor(), _apply)
@@ -3641,7 +3644,7 @@ def get_chain(ticker: str = Query(...),
     if not contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
     fetched_ts = held.get("_chain_fetched_ts")
-    response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(t, contracts)
+    response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(t, contracts, time.time())
     live_spot, _src, _ts = resolve_spot(t)       # the one spot on every screen
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):

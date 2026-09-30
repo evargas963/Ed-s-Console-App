@@ -13,7 +13,6 @@ only derivations are the live verdict, the trade age, a bar's change and the rol
 """
 from __future__ import annotations
 
-import time
 from bisect import bisect_left
 from datetime import datetime
 from typing import Any, Optional
@@ -21,7 +20,7 @@ from typing import Any, Optional
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
-from time_et import ET, ct_label, is_capturable_session, is_collect_window_bar_end_ts_utc
+from time_et import ET, ct_label, is_collect_window_bar_end_ts_utc
 
 SPOT_SOURCE = "streaming_plane"
 #: the chart timeframes: minutes, and "D" (the ET trading date)
@@ -103,11 +102,11 @@ def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float) -> d
             "tf": by_tf}
 
 
-def live_spot(ticker: str) -> Optional[float]:
-    """The streamed LAST_PRICE while the feed is live for the symbol, else None. THE spot."""
+def live_spot(ticker: str, now: float) -> Optional[float]:
+    """The streamed LAST_PRICE while the feed is live for the symbol at `now`, else None. THE spot."""
     row = lmp.get_quote(ticker)
     if (row and lmp.plane_spot_is_last_price(row) and lmp.plane_row_is_streamed(row)
-            and lmp.spot_is_fresh(row)):
+            and lmp.spot_is_fresh(row, now)):
         return float(row["spot"])
     return None
 
@@ -128,19 +127,18 @@ def _trade_age_sec(trade_ts: Optional[float], now: float) -> Optional[float]:
     return round(max(0.0, now - float(trade_ts)), 1)
 
 
-def price_row(ticker: str) -> dict[str, Any]:
-    """The finished row the screen paints for one symbol, as it is this instant."""
+def price_row(ticker: str, now: float) -> dict[str, Any]:
+    """The finished row the screen paints for one symbol, as it is at `now` (epoch seconds)."""
     tk = ticker_storage_key(ticker)
     row = lmp.get_quote(tk)
-    spot = live_spot(tk)
-    quote_live = bool(row) and lmp.quote_is_fresh(row)
-    now = time.time()
+    spot = live_spot(tk, now)
+    quote_live = bool(row) and lmp.quote_is_fresh(row, now)
     trade_ts = row["trade_ts"] if row and spot is not None and "trade_ts" in row else None
 
     def field(name: str):
         return row[name] if quote_live and name in row else None
 
-    closed = not is_capturable_session()
+    closed = not lmp.in_session(now)
     last = (row if closed and row and lmp.plane_spot_is_last_price(row)
             and lmp.plane_row_is_streamed(row) and row.get("trade_ts") is not None else None)
 
@@ -152,7 +150,7 @@ def price_row(ticker: str) -> dict[str, Any]:
         "spot_source": SPOT_SOURCE if spot is not None else None,
         # the feed itself (heartbeat, socket open, symbol held) -- distinct from "this symbol
         # has traded this session": live feed + no trade yet reads NO TRADE YET, not no feed
-        "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES"),
+        "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now),
         # market closed: the last streamed trade, a past observation labelled with its time
         "closed_last": {"price": float(last["spot"]), "spot_disp": f"{float(last['spot']):.2f}",
                         "as_of": ct_label(last["trade_ts"])}
@@ -165,8 +163,8 @@ def price_row(ticker: str) -> dict[str, Any]:
         "quote_ts": field("exchange_quote_ts"),        # Schwab QUOTE_TIME (epoch s)
         "last_size": field("last_size") if spot is not None else None,
         "total_volume": field("total_volume"),
-        "chg_pct": lmp.streamed_chg_pct(row),
-        "chg_pct_regular": lmp.streamed_chg_pct(row, "chg_pct_regular"),
+        "chg_pct": lmp.streamed_chg_pct(row, now),
+        "chg_pct_regular": lmp.streamed_chg_pct(row, now, "chg_pct_regular"),
         "net_change": field("net_change") if spot is not None else None,
         "open_price": field("open_price"),
         "high_price": field("high_price"),

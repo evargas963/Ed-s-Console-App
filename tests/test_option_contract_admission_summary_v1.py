@@ -28,13 +28,13 @@ def _wire(monkeypatch, *, desired, streamed, admitted_l1, rejected, daemon_avail
     monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk: dict(streamed))
     monkeypatch.setattr(
         "app.options.order_flow.streaming.read_producer_admitted_option_contracts",
-        lambda: {"LEVELONE_OPTIONS": list(admitted_l1)})
+        lambda now: {"LEVELONE_OPTIONS": list(admitted_l1)})
     monkeypatch.setattr(
         "app.options.order_flow.streaming.read_producer_rejected_option_contracts",
-        lambda: dict(rejected))
+        lambda now: dict(rejected))
     monkeypatch.setattr(
         "app.options.order_flow.streaming.is_option_producer_daemon_available",
-        lambda: daemon_available)
+        lambda now: daemon_available)
 
 
 def _live(*symbols):
@@ -52,7 +52,7 @@ def test_active_is_the_live_rule_not_the_age_of_the_last_tick(monkeypatch):
           desired=[_SYM_ACTIVE, _SYM_OBSERVED_STALE],
           streamed={_SYM_ACTIVE: {"gamma_ts_recv": now - 60.0}, _SYM_OBSERVED_STALE: {"gamma_ts_recv": now}},
           admitted_l1=[], rejected={}, daemon_available=True)
-    d = _option_contract_admission_summary(TK)
+    d = _option_contract_admission_summary(TK, time.time())
     assert d["active"] == [_SYM_ACTIVE]
     assert d["observed"] == [_SYM_OBSERVED_STALE]
 
@@ -61,7 +61,7 @@ def test_admitted_means_vendor_confirmed_subscription_with_no_tick_ever(monkeypa
     _wire(monkeypatch,
           desired=[_SYM_ADMITTED_NO_TICK],
           streamed={}, admitted_l1=[_SYM_ADMITTED_NO_TICK], rejected={}, daemon_available=True)
-    d = _option_contract_admission_summary(TK)
+    d = _option_contract_admission_summary(TK, time.time())
     assert d["admitted"] == [_SYM_ADMITTED_NO_TICK]
     assert d["active"] == [] and d["observed"] == [] and d["pending"] == []
 
@@ -70,7 +70,7 @@ def test_pending_means_desired_daemon_alive_nothing_else_known(monkeypatch):
     _wire(monkeypatch,
           desired=[_SYM_PENDING],
           streamed={}, admitted_l1=[], rejected={}, daemon_available=True)
-    d = _option_contract_admission_summary(TK)
+    d = _option_contract_admission_summary(TK, time.time())
     assert d["pending"] == [_SYM_PENDING]
 
 
@@ -78,7 +78,7 @@ def test_daemon_unavailable_symbol_is_omitted_from_every_bucket_not_fabricated_a
     _wire(monkeypatch,
           desired=[_SYM_PENDING],
           streamed={}, admitted_l1=[], rejected={}, daemon_available=False)
-    d = _option_contract_admission_summary(TK)
+    d = _option_contract_admission_summary(TK, time.time())
     assert d["daemon_available"] is False
     for bucket in ("admitted", "active", "observed", "pending"):
         assert d[bucket] == [], f"a daemon-unavailable symbol must not appear in '{bucket}'"
@@ -97,7 +97,7 @@ def test_rejected_is_mutually_exclusive_with_every_other_bucket(monkeypatch):
           admitted_l1=[_SYM_REJECTED],
           rejected={_SYM_REJECTED: "RuntimeError: refused"},
           daemon_available=True)
-    d = _option_contract_admission_summary(TK)
+    d = _option_contract_admission_summary(TK, time.time())
     assert d["rejected"] == {_SYM_REJECTED: "RuntimeError: refused"}
     assert _SYM_REJECTED not in d["active"]
     assert _SYM_REJECTED not in d["observed"]
@@ -116,7 +116,7 @@ def test_every_bucket_together_partitions_the_desired_set_exactly_once(monkeypat
           admitted_l1=[_SYM_ADMITTED_NO_TICK],
           rejected={_SYM_REJECTED: "RuntimeError: refused"},
           daemon_available=True)
-    d = _option_contract_admission_summary(TK)
+    d = _option_contract_admission_summary(TK, time.time())
     seen = []
     for bucket in ("active", "observed", "admitted", "pending"):
         seen.extend(d[bucket])
