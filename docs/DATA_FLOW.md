@@ -7,6 +7,8 @@ operator.
 
 ## 1. The agreed design
 
+The architecture every change is built to; §3 is what runs today and §3.5 where it falls short.
+
 ```
 [Schwab] ─ one WebSocket ─► [Capture daemon: in-memory state] ─ push ─► [Browser]
                                         │
@@ -24,7 +26,8 @@ operator.
 
 ## 2. The rules
 
-`AGENTS.md` § Rules. One copy; it loads with every agent session.
+`AGENTS.md`: Ed Console is a financial application, and its rules. One copy; it loads with every
+agent session. This document holds the technical definitions those rules refer to.
 
 **Every field Schwab has sent us:** `docs/schwab_fields.csv`, one row per field path with its
 endpoint, type, the asset types or request variants it appeared in, and when it was first and last
@@ -265,18 +268,23 @@ Schwab sends is taken as sent (rule 2), never computed.
   Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`), never
   called live; the live price is the daemon's price row. With no live price the next publication
   has no levels, with its reason.
-- **Live.** One rule for every streamed value (price, quote, option quote and greeks, each book):
-  it is live while the daemon's heartbeat, sent every second, is under 3 s old
-  (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
-  symbol on that Schwab service (`live_market_plane.feed_live_for`). The price and each book are
-  live only in session as well (trading day, 04:00–20:00 ET: `spot_is_fresh`, `book_is_live`);
-  outside it the last one is a past observation. A value's age is never the
-  test: Schwab sends a field only when it changes. The daemon's status is read from the same
-  heartbeat (`live_market_plane.daemon_status`). Every one of these, and the price row
-  (`live_price_rows.price_row`), is judged at the `now` its caller passes; only an entry point (a
-  route, a loop, a socket pump) reads the clock. Owner: the console's feed loop records each
-  heartbeat; when the daemon stops or the socket to it drops, every streamed value reads not live
-  within 3 s.
+- **Live** (AGENTS.md rules 5 and 6). A streamed value (price, quote, option quote and greeks,
+  each book) is current when all hold: the market is in session (trading day, 04:00–20:00 ET);
+  the daemon's heartbeat, sent every second, is under 3 s old
+  (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open and holds the
+  symbol on that service (`live_market_plane.feed_live_for`); and the value itself arrived from
+  Schwab in the current session. A value's age within the session is not the test (Schwab sends
+  a field only when it changes), but a value from an earlier session is a past observation, and a
+  field whose meaning spans sessions (a prior close, open interest) is current only for the
+  session its definition names. Every verdict, and the price row (`live_price_rows.price_row`),
+  is judged at the `now` its caller passes; only an entry point reads the clock. Owner: the
+  daemon's heartbeat (`live_market_plane.daemon_status`), recorded by the console's feed loop;
+  when the daemon stops or the socket to it drops, every streamed value reads not live within
+  3 s. An open page must be told when a value it shows stops being current: the daemon's price
+  socket beats every second, and its silence withdraws every price on the page (the page's one
+  transport rule, `ed-core.js` `PRICE_SILENCE_MS`); a panel fed through `/api/changes` must be
+  pushed the change of state too. Where the code falls short of this definition the gap is a
+  violation in `ACTIVE_PROGRAM.md` ("Wrong on screen now").
 - **Level crosses.** Computed by the console at each live levels publish (`server.level_crosses`):
   a cross is a strict change of side between the last live price and this one, against the
   level's value now; a price exactly at a level is on neither side; every cross is recorded,
@@ -324,6 +332,14 @@ Schwab sends is taken as sent (rule 2), never computed.
 5. **The browser reads a route after each push** for order flow, liquidity and the levels,
    instead of receiving the values. Bars are on the daemon's push; a chart's history as it opens
    is still read from the database (ONE-06).
+6. **Live is judged by the feed, not by the value.** The live rule above requires the value to
+   have arrived this session; the code checks only the heartbeat, the socket and the
+   subscription, so a held value from an earlier session reads live (`ACTIVE_PROGRAM.md`, "Wrong
+   on screen now").
+7. **A lost message cannot be seen.** The daemon keeps no Schwab frame time or sequence number
+   (`capture._publisher` reads each frame's `content` only), and a message dropped from a full
+   queue is counted (`stream_spine.Subscription.dropped`) but read by nothing, so a field it
+   would have changed stays on screen as current.
 
 ## 4. The target
 

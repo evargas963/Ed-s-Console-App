@@ -641,11 +641,11 @@ def wall_lean(call_wall, put_wall, call_state, put_state, regime, confidence) ->
 #: RC-292 pin-candidate qualification thresholds. Hardwired, not configurable. Each cites
 #: its source; neither is a new invention:
 #: — proximity: strike within 0.5% of spot — the "strike near spot" cut of the operator's
-#:   pinning framework as committed in tools/study_pin_residence_v1.py (`near`, 0.005).
+#:   pinning framework, from a study script since deleted (ACTIVE_PROGRAM BASIS).
 PIN_CANDIDATE_PROXIMITY_MAX_FRAC = 0.005
 #: — DTE: pinning is an expiration effect (expiration-date clustering turns on positioning
 #:   into expiry — Ni, Pearson & Poteshman, JFE 2005, doi:10.1016/j.jfineco.2004.08.005);
-#:   the framework's committed cut is dte <= 1 (tools/study_pin_residence_v1.py `exp`).
+#:   the framework's cut is dte <= 1 (its study script since deleted; ACTIVE_PROGRAM BASIS).
 PIN_CANDIDATE_DTE_MAX = 1.0
 
 
@@ -671,8 +671,8 @@ def qualify_pin_candidate(
     — completeness: the RC-413 magnitude bundle (strike, strength, GEX$, OI, book OI) is
       present from the SAME book that picked the strike.
     — regime: dealers net LONG gamma at spot (net_gex_at_spot > 0). A long-gamma dealer
-      sells rallies and buys dips, which pins; short gamma repels (RC-315). The framework
-      cut committed in tools/study_pin_residence_v1.py (`lng`).
+      sells rallies and buys dips, which pins; short gamma repels (RC-315). The framework's
+      cut, from a study script since deleted (ACTIVE_PROGRAM BASIS).
     — proximity: |strike − spot| / spot <= PIN_CANDIDATE_PROXIMITY_MAX_FRAC.
     — DTE: front expiry of THIS book within PIN_CANDIDATE_DTE_MAX days (pinning is an
       expiration effect); unknown maturity fails, never passes (RC-290).
@@ -731,8 +731,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     SNAPSHOT's time — repricing a stored historical chain against today's clock silently drops
     every contract whose expiry has since passed (time_to_expiry_years returns None past
     settlement) and understates T for the rest, so the replay does not reproduce what the live
-    reprice saw. _contract_inputs already documented this contract; compute_terrain had no hook
-    to honor it, which is why tools/terrain_backtest_report_v1.py was scoring on the wrong clock.
+    reprice saw.
 
     SINGLE SOURCE OF TRUTH (RC-33, 2026-07-24): this is the ONE terrain engine;
     /api/analytics/state no longer computes a competing terrain read. It must be

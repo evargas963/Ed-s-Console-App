@@ -1,7 +1,7 @@
 name: Pytest Full Suite
 
-# Full Python suite + Playwright E2E (npm run test:all): the required runtime-correctness
-# gate under the ED CONSOLE SLIMMING charter (AGENTS.md), alongside the Hardening quality job.
+# Playwright E2E then the full Python suite (npm run test:all), on Linux: a required check on
+# main (AGENTS.md § Authority), alongside the Hardening job.
 
 on:
   pull_request:
@@ -21,7 +21,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
-          # FULL_FIXES_ONLY_V2: FINAL_SHA verification needs full history
           fetch-depth: 0
 
       - name: Set up Python

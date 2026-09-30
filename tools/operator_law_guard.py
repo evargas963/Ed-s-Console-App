@@ -1,4 +1,4 @@
-"""OPERATOR LAW GUARD — three host-wide ACTION bans on shell commands (RC-93: ban the action,
+"""OPERATOR LAW GUARD — four host-wide ACTION bans on shell commands (RC-93: ban the action,
 never the word). PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`); exit 2 blocks.
 
 What survives, and the concrete failure each prevents (KEEP/MERGE/DELETE, 2026-09-10):
@@ -15,7 +15,10 @@ What survives, and the concrete failure each prevents (KEEP/MERGE/DELETE, 2026-0
   * LOCK DISABLE. `--no-verify`, `-n`, `core.hooksPath`, `SKIP=<hook>` and `pre-commit uninstall`
     bypass the pre-commit battery the operator asked for. Required CI would still catch the
     result, but only after the commit exists; refusing the bypass in session is cheap and blocks
-    nothing legitimate.
+    nothing legitimate. Judged as the git or pre-commit action, never the word in other text.
+  * OPERATOR-ONLY. A merge into main (`gh pr merge`, the merge API) or a push to main is the
+    operator's (AGENTS.md § Authority). The agent runs with the operator's GitHub credential, so
+    GitHub cannot tell the two apart; this refusal is the agent's side of that boundary.
 
 What was DELETED, and why (nothing replaced it):
   * the no-grep rule: it blocked read-only stdout filters three times in one session — governance
@@ -137,11 +140,20 @@ _BLIND_STAGE = re.compile(
 #: Lock-disable routes: git's own (`--no-verify`, `-n` on commit, `core.hooksPath`) and
 #: pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`) — RC-541.
 _SKIP_HOOKS = re.compile(
-    r"--no-verify"
-    r"|hooksPath"
+    r"\bgit\b[^\n;&|]*\b(?:commit|push|merge|rebase|am|cherry-pick|revert)\b[^\n;&|]*\s--no-verify\b"
+    r"|\bgit\b[^\n;&|]*\bconfig\b(?![^\n;&|]*\s--(?:get|get-all|list|show-origin)\b)[^\n;&|]*\bcore\.hooksPath\b"
+    r"|\bgit\s+-c\s+core\.hooksPath\s*="
     r"|\bgit\s+commit\b[^\n]*?(?:\s-n\b)"
     r"|(?:^|[\s;&|(])(?:\$env:)?SKIP\s*=\s*['\"]?[A-Za-z0-9_,\-]"
-    r"|\bpre-commit\s+uninstall\b",
+    r"|\bpre[-_]commit\s+uninstall\b"
+    r"|\b(?:rm|del|erase|rmdir|rd|remove-item|ri|mv|move|move-item)\b[^\n;&|]*\.git[\\/]hooks\b",
+    re.I)
+
+#: Operator-only actions (AGENTS.md § Authority): a merge into main, or a push to it.
+_OPERATOR_ONLY = re.compile(
+    r"\bgh\s+pr\s+merge\b"
+    r"|\bgh\s+api\b[^\n;&|]*/pulls/\d+/merge\b"
+    r"|\bgit\b[^\n;&|]*\bpush\b[^\n;&|]*(?:\s|:|refs/heads/)(?:main|master)(?=\s|$|[;&|])",
     re.I)
 
 
@@ -165,6 +177,9 @@ def bash_violations(cmd: str, ledger=None, payload_cwd: str = "") -> list[str]:
                    "Restores INTO these trees stay legal; removal from them is operator-only.")
     if _SKIP_HOOKS.search(cmd):
         out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
+    if _OPERATOR_ONLY.search(cmd):
+        out.append("ACTION BLOCKED: merging into main or pushing to it is the operator's "
+                   "(AGENTS.md § Authority). Open the PR and hand it over.")
     return out
 
 

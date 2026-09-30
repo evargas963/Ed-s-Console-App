@@ -56,8 +56,8 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
 
     Per-field state (see _fields_by_ticker): each field present in the message replaces
     that field's value and receive time; absent fields stand (Schwab sends changes only).
-    A present-but-invalid price (0 / negative -- e.g. no bid) CLEARS that field: the vendor
-    said there is no such value now. A row is published once a LAST_PRICE is known; spot is
+    A field sent as not a number (-999, text, NaN) CLEARS it: the vendor said there is no such
+    value now; a reported 0 is 0. A row is published once a LAST_PRICE is known; spot is
     LAST_PRICE only (MARK never stands in) and its age is the age of the last LAST_PRICE
     message, never of the bid/ask tick arriving now.
 

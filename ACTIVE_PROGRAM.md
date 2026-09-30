@@ -11,6 +11,27 @@ Every row that names an existing violation of `AGENTS.md` stays a violation unti
 Exceptions the operator authorized (AGENTS.md § Conflicts and exceptions: words, date,
 exception, scope, justification): none.
 
+Evidence is marked: **observed** (seen on real data), **code-proven** (a test or a traced path
+shows it), **unverified** (reported, not yet reproduced; verified before it is fixed).
+
+## Wrong on screen now (AGENTS.md "Found broken": before other work)
+
+| ID | Evidence | Violation | Closed by |
+|---|---|---|---|
+| W-01 | observed | A held quote from an earlier session reads live: real PCG messages (2026-09-29 19:55 to 09-30 04:01 ET) give 12.14, +1.59%, 46,270,430 shares, "live" at 04:00:05 ET. | Each quote field current only for the session its definition names (`DATA_FLOW` Live); a test on those messages. The parked branch `fix/session-boundary-freshness` drops every overnight field alike and is redesigned per field first. |
+| W-02 | code-proven | Live is judged by heartbeat, socket and subscription only (`live_market_plane.feed_live_for`), not by the value arriving (`DATA_FLOW` §3.5 6). | The live rule requires the value's own arrival for its service and symbol; a test where the feed is up and the symbol silent. |
+| W-03 | code-proven | A lost message cannot be seen: no Schwab frame time or sequence is kept, and queue drops are counted but read by nothing (`DATA_FLOW` §3.5 7). | A drop withdraws the live state of the symbol it would have changed; a test that drops one delta. |
+| W-04 | code-proven | Tests approve violations: S-39, M-15, O-24, P-09 (below), and `test_order_flow_book_heatmap_v1` requires a 1970 book served as available. | Each test corrected to the requirement in the change that fixes its violation; never xfail. |
+| W-05 | unverified | Reported 2026-09-30 by independent review: panels fed through `/api/changes` are not told when their source stops; a console restart unsubscribes the daemon's roster; chain captures lost on 2026-09-28/30 with no record; the console keeps a price row after its ticker leaves the stream; 8 injected faults no test caught (negative size, missing bar volume set to 0, console row kept on silence and on disconnect, trade age forced to 0, bar open/close swapped, closed label dropped, missing price printed 0.00); the calendar misses the 2025-01-09 closure; the $SPX default contract can be the AM-settled monthly on expiry day. | Each reproduced, then fixed with its test, or removed from this row. |
+
+## Governance and operations
+
+| ID | Status | Work item |
+|---|---|---|
+| GOV-MERGE | OPERATOR | **Only the operator merges.** The agent uses the operator's GitHub credential (admin) and `main` requires no approving review, so GitHub cannot tell an agent merge from the operator's (checked 2026-09-30 with `gh api .../branches/main/protection`). The agent hooks now refuse `gh pr merge` and pushes to `main` (the agent's side). Closed by: the agent working under its own GitHub account with write access, and `main` requiring one approving review, which only the operator can give (account creation is the operator's). |
+| BASIS | QUEUED | **Thresholds whose basis cannot be reproduced** (code-proven: the study scripts they cite were deleted): `math_levels.GAMMA_FLIP_MIN_SPAN_PCT` (0.05, its own comment measures it insufficient), `terrain_engine.PIN_CANDIDATE_PROXIMITY_MAX_FRAC` (0.005), `PIN_CANDIDATE_DTE_MAX` (1) and the pin candidate's long-gamma cut. Each gets a reproducible basis (a committed test or study on captured data) or goes to the operator; the operator items PIN-FLOOR, DRIFT, ZONE-WIDTH and VALUE-SHIFT are the same class. |
+| OPS-HOST | QUEUED | **Host state** (measured 2026-09-30 17:39 CT): C: 146 GB free; `ed_console.db` 77.9 GB, `stream_capture.db` 27.8 GB, no retention; the only backups are dated 2026-09-07/08, on the same disk, never restored; ports 8000 and 8800 listen on 0.0.0.0 on a network the host classes Public. Each needs an owner and its failure behavior: retention, a tested backup and restore, the intended network exposure. |
+
 ## Phase 1 — restore and stabilize
 
 | ID | Status | Work item |

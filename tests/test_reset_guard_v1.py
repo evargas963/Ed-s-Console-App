@@ -123,28 +123,27 @@ def test_live_path_wired_through_guard(monkeypatch, tmp_path):
 
 
 # ── RC-525 (ported from #221's row 508): adjudicated by what the command can DESTROY ────────
-# Re-measured on ac3f78fb 2026-09-06: `git push -f origin main`, `git -C ../other reset --hard`
-# and `git restore --staged x.py && git reset --mixed HEAD~1` all PASSED the one owner, and
-# `git reset --soft HEAD~1` (HEAD only; index and worktree untouched) was refused although the
-# repository's own merge authority runs it. The class rule is now judged PER STATEMENT, the
-# globals prefix admits `-C <path>`, the push clause admits `-f` and flags after the refspec.
+# The class rule is judged PER STATEMENT, the globals prefix admits `-C <path>`, the push clause
+# admits `-f` and flags after the refspec. AGENTS.md § Authority forbids every `git reset`,
+# `git stash` and force push; the guard refuses them as written (`--soft` and
+# `--force-with-lease` included).
 
 #: (command, must_block, what it can reach). One table, both directions.
 _ADJUDICATION: tuple[tuple[str, bool, str], ...] = (
-    # SAFE — cannot reach operator work
-    ("git reset --soft HEAD~1", False, "HEAD only"),
-    ("git reset --soft origin/main", False, "HEAD only"),
-    ("git reset --soft", False, "HEAD only"),
-    ("git -C ../other reset --soft HEAD~1", False, "HEAD only, another checkout"),
+    # LEGAL — reads, index-only, a new branch, an ordinary push
     ("git restore --staged tools/x.py", False, "index only"),
     ("git stash list", False, "read"),
+    ("git stash show", False, "read"),
     ("git checkout -b feat/x", False, "creates a branch"),
     ("git clean -n", False, "dry run"),
-    ("git push --force-with-lease origin main", False, "refuses to clobber unseen work"),
     ("git push -u origin feat/x", False, "no force flag"),
     ("git push origin feat/x --follow-tags", False, "no force flag"),
     ("git status", False, "read"),
-    # DESTRUCTIVE — every mode that can discard something
+    # FORBIDDEN — every reset, stash and force push, and every mode that can discard something
+    ("git reset --soft HEAD~1", True, "forbidden: every reset"),
+    ("git -C ../other reset --soft HEAD~1", True, "forbidden: every reset, any checkout"),
+    ("git stash push notes.json", True, "forbidden: every stash"),
+    ("git push --force-with-lease origin feat/x", True, "forbidden: every force push"),
     ("git reset --hard", True, "index + worktree"),
     ("git reset --hard HEAD~1", True, "index + worktree + commit"),
     ("git reset --mixed HEAD~1", True, "the index"),
@@ -191,9 +190,9 @@ def test_rc525_a_safe_form_cannot_launder_a_destructive_one(monkeypatch, tmp_pat
         "git status | cat && git stash",
     ):
         assert OPL.reset_guard_violations(chain), f"a safe form laundered the chain: {chain}"
-    # ...and a chain that is safe end to end stays legal, or the fix would be a new over-block.
-    assert not OPL.reset_guard_violations("git status && git reset --soft HEAD~1")
-    assert not OPL.reset_guard_violations("git fetch origin && git reset --soft origin/main")
+    # ...and a chain that is legal end to end stays legal, or the fix would be a new over-block.
+    assert not OPL.reset_guard_violations("git status && git restore --staged x.py")
+    assert not OPL.reset_guard_violations("git fetch origin && git checkout -b feat/y")
 
 
 def test_rc525_an_interpreter_heredoc_is_still_judged_per_line(monkeypatch, tmp_path):
@@ -205,17 +204,15 @@ def test_rc525_an_interpreter_heredoc_is_still_judged_per_line(monkeypatch, tmp_
         "git commit -m 'RC-231: git restore . wiped the tree' && git push origin feat/x")
 
 
-def test_rc525_the_safe_reset_is_live_on_the_pretooluse_path(monkeypatch, tmp_path):
-    """The seam that actually runs: LOCK-2 lets --soft through and still refuses --hard.
+def test_every_reset_is_refused_on_the_pretooluse_path(monkeypatch, tmp_path):
+    """The seam that actually runs refuses what AGENTS.md forbids: `--soft` as well as `--hard`
+    (the `--soft` form was allowed while AGENTS.md said "Never: git reset").
 
-    Asserted on the RESET_GUARD verdict, not on an empty result: the Bash seam also carries
-    PROD_CHECKOUT_LOCK, which legitimately refuses HEAD-moving git in the production primary
-    checkout, and a control whose verdict depends on which checkout it runs in is testing the
-    topology, not the law.
+    Asserted on the RESET_GUARD verdict, not on the whole result: the Bash seam also carries
+    PROD_CHECKOUT_LOCK, and a control whose verdict depends on which checkout it runs in is
+    testing the topology, not the law.
     """
     _no_escape(monkeypatch, tmp_path)
-    soft = PLG.pretooluse_block("Bash", {"command": "git reset --soft HEAD~1"})
-    assert not any("RESET_GUARD" in b for b in soft), (
-        f"LOCK-2 still refuses a reset that cannot touch index or worktree: {soft}")
-    hard = PLG.pretooluse_block("Bash", {"command": "git reset --hard HEAD~1"})
-    assert any("RESET_GUARD" in b for b in hard), "the destructive form stopped blocking"
+    for cmd in ("git reset --soft HEAD~1", "git reset --hard HEAD~1"):
+        out = PLG.pretooluse_block("Bash", {"command": cmd})
+        assert any("RESET_GUARD" in b for b in out), cmd

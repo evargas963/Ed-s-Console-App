@@ -2,7 +2,7 @@
 """Re-exec a tool under this worktree's .venv (+ stale index.lock preflight).
 
 Usage:
-    python tools/run_with_repo_venv.py tools/check_institutional_correctness.py
+    python tools/run_with_repo_venv.py tools/check_venv_parity.py
 
 CI (no .venv): runs the target with the current interpreter.
 Local: requires .venv (auto-bootstrap when ED_AUTO_BOOTSTRAP_VENV=1).

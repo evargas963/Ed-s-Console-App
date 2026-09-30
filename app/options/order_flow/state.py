@@ -248,8 +248,8 @@ def get_content_for_symbol(symbol: str, venue: Optional[str] = None) -> list[dic
 
 
 def clear_all_live_state() -> None:
-    """Drop the book, top of book, contract type and greeks of every symbol (on a stream
-    disconnect or reconnect)."""
+    """Drop the book, top of book, contract type and greeks of every symbol (when the
+    order-flow stream stops)."""
     _LIVE_STATE.clear_all()
 
 

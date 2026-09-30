@@ -1,24 +1,32 @@
 # Ed Console — rules for every change
 
-Ed Console is a financial application: what it shows can drive a trade. This file is the one
-governing authority. `docs/DATA_FLOW.md` (design), `ACTIVE_PROGRAM.md` (work order),
-`docs/ARCHITECTURE.md` (code map), the hooks and the tests follow it and never override it.
-Read the parts a change touches before writing it.
+## Ed Console is a financial application
 
-**Conflicts and exceptions.** Every direction is checked against these rules before it is acted
-on: the operator's, a reviewer's, another model's, a document's, a test's, and the agent's own.
-When a direction, recommendation or proposed change conflicts with a rule, or it is unclear
-whether it does, the affected action pauses (other work continues) and the agent tells the
-operator the conflict, the rule it breaks and its consequence on screen and in the data, and asks
-for explicit confirmation. The operator's own direction is not assumed to intend an exception.
-Only the operator's explicit confirmation authorizes an exception, and only when it names the
-exact exception, its scope (the change, the values and the paths it covers) and its
-justification; it covers nothing else and does not carry to later work. Not confirmation:
-silence, an approval given for other work, an agent's recommendation (another model's included),
-an existing implementation, a passing test, green CI, a saved memory. An agent never grants,
-infers or widens an exception. An authorized exception is recorded in `ACTIVE_PROGRAM.md` with
-the operator's words and date. An existing violation stays a violation, listed in
-`ACTIVE_PROGRAM.md` until fixed; being inherited never makes it an exception.
+Its output can drive real financial decisions. The app is live, unless there is a reason a value
+cannot be, and then it says so. Everything else a financial application implies follows:
+
+- Current output is correct and supported by valid current inputs, or unavailable with its
+  reason (rules 5, 6).
+- Schwab data, instrument identity, timestamps and provenance are preserved as sent (rule 2).
+- Each responsibility and each derived value has one canonical authority (rule 3).
+- History, invalid inputs and missing information never become current data (rules 5, 6).
+- Tests and controls enforce every requirement; one without them is NOT_PROVEN (rule 10).
+
+These govern the entire repository, end to end: data intake, calculations, storage, APIs, push
+channels, screens, processes, configuration, tests and release. No convenience, recommendation,
+existing implementation or passing test overrides them. This file is the one governing authority;
+`docs/DATA_FLOW.md` (the design and each value's technical definition), `ACTIVE_PROGRAM.md`
+(defects and unfinished work), `docs/ARCHITECTURE.md` (code map), the hooks and the tests follow
+it. Examples in any of them never narrow a requirement. Read the parts a change touches first.
+
+**Conflicts and exceptions.** Only the operator authorizes an exception: explicitly, naming the
+exception, its scope and its justification; it covers nothing else. Any direction that conflicts
+or may conflict with a rule, the operator's included, is brought to the operator with the
+conflict and its consequence before the affected action proceeds; other work continues. Not
+authorization: silence, an approval for other work, an agent's or another model's
+recommendation, existing code, a passing test, green CI, a saved memory. An authorized exception
+is recorded in `ACTIVE_PROGRAM.md` with the operator's words and date. An existing violation stays
+a violation, listed there until fixed; being inherited never makes it an exception.
 
 ## Rules
 
@@ -41,26 +49,25 @@ the operator's words and date. An existing violation stays a violation, listed i
    parser, resolver or cache.
 4. **The UI computes nothing.** Page code formats and draws. Every number, total, choice,
    comparison and date the page shows is served.
-5. **Correct or unavailable.** A live output is correct and supported by valid inputs for its
-   defined scope, or it is unavailable, shown absent with its reason. Nothing stale, invalid,
-   incomplete or historical is presented as current. A derived value needs valid inputs for its
-   whole scope: aggregating the earlier minutes of its own bar or day is correct; a concealed gap,
-   an invented input (fallback, default, estimate, proxy, carry-forward, interpolation, synthetic
-   value) or a second calculation is not. A valid past observation may be shown with its source,
-   time and a label saying so; it never substitutes for a current value or feeds current logic.
-   Test: when the source cannot produce the value now, the screen shows it absent with its reason,
-   or a labeled past observation, never a value from elsewhere.
-6. **Current, new and history kept apart.** Schwab → daemon → pushed to the screen as it arrives.
-   Three kinds, never confused: the current state (each field's last value, because Schwab sends
-   a field once and then only its changes; live only while the live rule proves the feed), a new
-   event (a Schwab message, delivered when Schwab sends it) and history (anything stored, or held
-   from before). A reconnect, restart or database load never turns history into a new event and
-   never restores live status: what it loads is history, shown with its time and labeled, until
-   the live rule proves the feed again. A past event (a completed bar, a trade) is never resent
-   or replayed as new; data missed while disconnected is a named gap, never filled. The database
-   is history: one writer, in the background, so persistence never delays live delivery; read at
-   startup, after the close and for research; never for a live screen. Where live cannot be done,
-   the operator is told why.
+5. **Correct or unavailable.** A current output is correct and supported by valid inputs for its
+   defined scope, or it is unavailable with its reason wherever it is used, a screen already open
+   included. A heartbeat, an open socket or a subscription alone never makes a value current: the
+   value itself arrived from Schwab for the current session (each value's definition is in
+   `docs/DATA_FLOW.md`). A derived value needs valid inputs for its whole scope: aggregating the
+   earlier minutes of its own bar or day is correct; a concealed gap, an invented input
+   (fallback, default, estimate, proxy, carry-forward, interpolation, synthetic value) or a second
+   calculation is not. A valid past observation may be shown labeled with its source and time; it
+   never substitutes for a current value or feeds current logic.
+6. **Current, new and history kept apart.** Schwab → daemon → pushed to the screen as it arrives,
+   the database written in the background by one writer so persistence never delays live
+   delivery (`docs/DATA_FLOW.md`; the architecture changes only for a reason agreed with the
+   operator). Three kinds, never confused: the current state (each field's last value: Schwab
+   sends a field once, then only its changes), a new event (a Schwab message, delivered when
+   Schwab sends it) and history (anything stored, or held from before). A reconnect, restart or
+   database load never turns history into a new event and never restores live status. A past
+   event (a completed bar, a trade) is never resent as new; data missed while disconnected is a
+   named gap, never filled. The database is read at startup, after the close and for research,
+   never for a live screen.
 7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,
    report or check lives only while it has a job; once answered, it is deleted.
 8. **All tickers.** Measure and report across the board, never one ticker.
@@ -69,8 +76,12 @@ the operator's words and date. An existing violation stays a violation, listed i
     the missing, invalid, stale and disconnected inputs as well as the normal one. It runs on
     captured Schwab data (`tests/fixtures/`) through the real code. A stand-in (e.g. the live
     price, an open session) is named in the test and never by itself makes true the claim under
-    test. A test that confirms the implementation an agent chose instead of the requirement is
-    corrected. Captured-data replay proves behavior, not deployed live operation.
+    test; a test never mocks the behavior it claims to prove, and its expected result is never
+    computed by the function under test. A test that confirms the implementation an agent chose
+    instead of the requirement is corrected; required behavior is never hidden behind xfail, a
+    skip or a weakened assertion. Captured-data replay proves behavior, not deployed live
+    operation. A requirement with no test or control that fails when it is broken is NOT_PROVEN
+    and listed in `ACTIVE_PROGRAM.md`.
 
 ## Before writing code
 
@@ -97,7 +108,9 @@ the operator's words and date. An existing violation stays a violation, listed i
 - While working: the tests of the files touched. Before the PR is offered: `npm run test:all`
   (Playwright, then pytest) and `python -m ruff check . --select F401,F821,E9` on its final
   commit; after any later change to it (a fix, a merge, a conflict resolution) the affected tests
-  run again, and CI tests that commit. Market hours: push; CI runs them.
+  run again, and CI tests that commit. In market hours the full suite is not run locally (it
+  competes with the live app): push and let CI run it; the work is offered as done only once
+  every required proof is complete.
 - Never kill a commit hook mid-run; a long one runs in the background.
 - Every factual claim cites same-turn output, or is marked `[UNVERIFIED]`.
 - Proof is reproducible: a committed test or a command anyone can re-run. A scratch script is
@@ -132,7 +145,9 @@ and every document that states the old one.
 ## Found broken → fix it
 
 Same session, at its source (rule 1), or name the exact blocker. "Pre-existing", "out of scope" and
-"follow-up" are not dispositions.
+"follow-up" are not dispositions. A defect that shows a wrong, stale or unsupported value as
+current comes before other work. Until it is fixed it is listed in `ACTIVE_PROGRAM.md` with its
+evidence, as a violation.
 
 ## Authority
 
@@ -153,13 +168,17 @@ Same session, at its source (rule 1), or name the exact blocker. "Pre-existing",
   normalising every file to LF is one commit of P1-9).
 - Shell steps that depend on each other are joined with `&&`, so a failure stops the chain.
 - What is enforced, and what is not. The commit hook (`.pre-commit-config.yaml`): the secrets and
-  private-path scan, the line-ending check, the virtualenv check, ruff (F401, F821, E9). CI: ruff,
-  a compile pass, Playwright (`tests/e2e/`), pytest (`tests/`). The agent hooks
-  (`.claude/settings.json`, `.cursor/hooks.json`): destructive git, blind staging, hook bypass,
-  deletes under `data/` and `backups/`, edits of the production checkout. None of these checks a
-  rule above except through a behavior test written for it. Written rules, saved memories and
-  green CI guarantee nothing: a rule with no test that fails when it is broken is NOT_PROVEN, and
-  that test is a work item in `ACTIVE_PROGRAM.md`.
+  private-path scan, the line-ending check, the virtualenv check, ruff (F401, F821, E9). CI
+  (required on `main`, Linux): ruff, a compile pass, Playwright (`tests/e2e/`), pytest (`tests/`).
+  The agent hooks (`.claude/settings.json`, `.cursor/hooks.json`) refuse reset, stash,
+  `checkout --`, `clean -f`, every force push, hook bypass, blind staging, deletes under `data/`
+  and `backups/`, merging into or pushing to `main`, and edits of the production checkout;
+  editing source through a script is not enforced. GitHub
+  does not separate the agent from the operator: the agent uses the operator's credential and
+  `main` requires no approving review (ACTIVE_PROGRAM GOV-MERGE). None of these checks a rule
+  above except through a behavior test written for it. Written rules, saved memories and green CI
+  guarantee nothing: a rule with no test that fails when it is broken is NOT_PROVEN, and that
+  test is a work item in `ACTIVE_PROGRAM.md`.
 - May restart the console and the capture daemon; confirm both came back.
 
 ## Running it

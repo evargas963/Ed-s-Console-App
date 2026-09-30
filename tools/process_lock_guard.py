@@ -265,9 +265,8 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
 
 
 #: A shell redirect destination — `> file` / `>> file` / `N> file` (the path after the operator);
-#: `2>&1`-style fd dups don't match (their "path" would start with `&`). The universal
-#: source-write ban (operator_law_guard) covers `> *.py` repo-wide but is .py-only; extracting
-#: the redirect destination here lets the caller close the static/*.html|*.js gap in production.
+#: `2>&1`-style fd dups don't match (their "path" would start with `&`). It lets the caller refuse
+#: a shell write into the production checkout.
 _REDIRECT_DEST_RE = re.compile(r'(?:^|[^0-9&>])[0-9]*>>?\|?\s*("[^"]+"|\'[^\']+\'|[^\s;|&<>]+)')
 
 
@@ -314,7 +313,7 @@ def _shell_write_dest_paths(seg: str) -> list[str]:
         if any(a == "inplace" or a.startswith("inplace") for a in args):
             dests += positionals
     # An explicit write-intent flag handed to ANY command — a repo codemod invoked as
-    # `python tools/rewrite.py --write server.py`, `ruff check --fix server.py`, a formatter.
+    # `python codemod.py --write server.py`, `ruff check --fix server.py`, a formatter.
     # The operands AFTER the flag are what it rewrites; operands before it (the script being
     # RUN) are reads. LONG FORMS ONLY: a bare `-i` collides with grep/sort/pip, and sed's own
     # in-place flag is handled by its branch above.
@@ -440,8 +439,6 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         cmd = tool_input.get("command") or ""
         if re.search(r"\bgit\s+commit\b", cmd, re.I):
             # RC-234: piped commits mask hook failures as exit 0 — block BEFORE it runs.
-            # (The index≠WT parity check that also ran here was a duplicate of the
-            # `operating-process` pre-commit hook in the target tree — deleted 2026-09-10.)
             out.extend(OPL.commit_pipe_violations(cmd))
         # LOCK-2 (RC-231): the tree-destructive git CLASS blocks BEFORE the tree is touched —
         # three 2026-08-03 wipes used soft forms the old --hard-literal ban never matched.

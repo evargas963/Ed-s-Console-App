@@ -3,7 +3,7 @@
 // never reaches a real daemon. Like the daemon, it answers a subscribe with what each asked-for
 // symbol is ({type:'symbols'}: requested, key, display), then sends `rows` 300 ms apart
 // ({type:'quotes'}). Stand-in for instrument_identity: an index root is keyed with '$'
-// (tests/test_live_ui_identity_v1.py holds the daemon's real answer). The returned handle's
+// (tests/test_live_ui_daemon_to_browser_v1.py holds the daemon's real answer). The returned handle's
 // send(frame) pushes any daemon frame later (e.g. {type:'bars'}), once the page has subscribed;
 // `subscribes` is every subscribe the page sent, and `ws` the connection it is on.
 const INDEX_ROOTS = new Set(['SPX', 'NDX', 'VIX', 'DJI', 'COMPX', 'RUT']);

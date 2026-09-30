@@ -1,18 +1,24 @@
-"""The four governing documents name only paths that exist, and AGENTS.md stays loadable.
+"""The governing documents and instructions name only paths that exist, no source file claims a
+tool that does not exist, and AGENTS.md stays loadable.
 
-Failure this catches (2026-09-27): AGENTS.md named `decision_gate.py`, `call_engine.py` and
-`config/decision_path_admissions.json` for months after they were deleted. Checked: a backticked
-path whose first folder is tracked in git or that names a code, JSON or document file, and a bare
-code or document file name. Runtime files,
-branch names, folders outside the repository and not-yet-built target folders are not repository
-paths and are not checked. Anthropic's CLAUDE.md guidance: under 200 lines, or rules are lost.
+Failures this catches: AGENTS.md named `decision_gate.py`, `call_engine.py` and
+`config/decision_path_admissions.json` for months after they were deleted; guards, a workflow and
+code comments claimed enforcement by `tools/` scripts that do not exist. Checked: a backticked
+path whose first folder is tracked in git or that names a code, config or document file, and a
+bare file name of those kinds. Runtime files, branch names, folders outside the repository and
+not-yet-built target folders are not repository paths and are not checked. Anthropic's CLAUDE.md
+guidance: under 200 lines, or rules are lost.
 """
 import re
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DOCS = ("AGENTS.md", "docs/DATA_FLOW.md", "ACTIVE_PROGRAM.md", "docs/ARCHITECTURE.md")
-FILE_EXT = (".py", ".js", ".mjs", ".html", ".bat", ".md")
+DOCS = ("AGENTS.md", "CLAUDE.md", "README.md", "ACTIVE_PROGRAM.md", "docs/DATA_FLOW.md",
+        "docs/ARCHITECTURE.md", "docs/playwright.md", "docs/host/README.md",
+        "docs/host/BACKUP_AND_MIRROR.md", ".github/pull_request_template.md",
+        ".claude/skills/drift-audit/SKILL.md", ".cursor/rules/00-always.mdc")
+FILE_EXT = (".py", ".js", ".mjs", ".html", ".bat", ".md", ".yml", ".yaml", ".toml", ".mdc")
 
 
 def missing_paths(text: str, tracked: list[str]) -> list[str]:
@@ -22,7 +28,7 @@ def missing_paths(text: str, tracked: list[str]) -> list[str]:
     missing = []
     for tok in re.findall(r"`([^`\s]+)`", text):
         t = tok.rstrip("/")
-        if "*" in t or ":" in t or t.startswith(("/", ".", "-")):
+        if "*" in t or ":" in t or t.startswith(("/", "-", "./", "../")):
             continue
         if "/" in t:
             if (t.split("/")[0] in tops or t.endswith(FILE_EXT + (".json",))) and t not in prefixes:
@@ -32,9 +38,15 @@ def missing_paths(text: str, tracked: list[str]) -> list[str]:
     return missing
 
 
+def _ignored(path: str) -> bool:
+    """A runtime file the documents name as never in git (`.gitignore`)."""
+    return subprocess.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode == 0
+
+
 def test_every_path_the_governing_documents_name_exists(tracked_files):
     assert tracked_files, "git lists no tracked files"
-    bad = {d: missing_paths((ROOT / d).read_text(encoding="utf-8"), tracked_files) for d in DOCS}
+    bad = {d: [p for p in missing_paths((ROOT / d).read_text(encoding="utf-8"), tracked_files)
+               if not _ignored(p)] for d in DOCS}
     assert not any(bad.values()), f"paths that do not exist: {bad}"
 
 
@@ -43,6 +55,25 @@ def test_the_check_catches_the_deleted_paths_the_old_charter_named():
            "`config/decision_path_admissions.json`; `server.py` serves it.")
     tracked = ["server.py", "tools/hook_chain.py"]
     assert missing_paths(old, tracked) == ["decision_gate.py", "config/decision_path_admissions.json"]
+
+
+def test_a_dot_path_is_checked_too():
+    tracked = [".pre-commit-config.yaml", ".claude/settings.json"]
+    assert missing_paths("`.pre-commit-config.yaml` and `.claude/settings.json`", tracked) == []
+    assert missing_paths("`.claude/hooks.json`", tracked) == [".claude/hooks.json"]
+
+
+def test_no_source_file_names_a_tools_script_that_does_not_exist():
+    """A comment or config that cites `tools/<x>.py` as its enforcer names a real file. Tests are
+    left out: they build scratch tools and name retired ones on purpose."""
+    listed = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True,
+                            check=True).stdout.split()
+    files = [p for p in listed if not p.startswith("tests/")
+             and p.endswith((".py", ".js", ".md", ".yml", ".yaml", ".json", ".bat", ".mdc"))]
+    assert files
+    named = {(p, m) for p in files for m in re.findall(
+        r"\btools/[A-Za-z0-9_]+\.py\b", (ROOT / p).read_text(encoding="utf-8", errors="replace"))}
+    assert not {(p, m) for p, m in named if m not in listed}, "tools that do not exist are named"
 
 
 def test_agents_md_stays_under_200_lines():

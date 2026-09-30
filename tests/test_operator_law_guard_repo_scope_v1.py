@@ -336,18 +336,36 @@ DESTRUCTIVE_GIT = ("git reset --hard HEAD~1", "git clean -fd", "git push --force
 @pytest.mark.parametrize("cmd", DESTRUCTIVE_GIT)
 def test_destructive_git_has_one_owner_and_it_fires_unscoped(cmd):
     import tools.operating_process_lock as OPL
-    assert any("destructive git" in v for v in OPL.reset_guard_violations(cmd)), cmd
+    assert any("RESET_GUARD" in v for v in OPL.reset_guard_violations(cmd)), cmd
     assert not hasattr(G, "_DESTRUCTIVE_GIT"), "the second destructive-git rule came back"
 
 
 @pytest.mark.parametrize("cmd,needle", [
     ("git commit --no-verify -m x", "disables a mechanical lock"),
+    ("git config core.hooksPath /dev/null", "disables a mechanical lock"),
+    ("python -m pre_commit uninstall", "disables a mechanical lock"),
+    ("rm .git/hooks/pre-commit", "disables a mechanical lock"),
     ("git add -A", "blind staging"),
     ("rm -rf data/ed_console.db", "RC-273"),
+    ("gh pr merge 427 --merge", "operator's"),
+    ("gh api -X PUT repos/o/r/pulls/427/merge", "operator's"),
+    ("git push origin HEAD:main", "operator's"),
+    ("git push origin main", "operator's"),
 ])
 def test_universal_protections_fire_in_this_repository(cmd, needle):
     out = G.bash_violations(cmd, [], payload_cwd=str(REPO))
     assert any(needle in v for v in out), (cmd, out)
+
+
+@pytest.mark.parametrize("cmd", [
+    "git push -u origin fix/main-screen",
+    "git config --get core.hooksPath",
+    "gh pr view 427",
+    "grep -n no-verify tools/operator_law_guard.py",
+])
+def test_the_action_is_refused_never_the_word(cmd):
+    """Reading about a lock, or pushing a branch whose name contains "main", is not the action."""
+    assert G.bash_violations(cmd, [], payload_cwd=str(REPO)) == [], cmd
 
 
 def test_rc360_head_grant_cannot_authorize_no_verify_in_this_repository():
@@ -455,7 +473,6 @@ def test_rc360_grant_file_cannot_authorize_no_verify(tmp_path):
     for cmd in (
         "git commit --no-verify -m x",
         "git add a && git commit --no-verify -m x && git push --no-verify",
-        "some_tool --no-verify",
         "ED_UI_MOCKUP_LOCK=off git commit --no-verify -m x",
     ):
         out = G.bash_violations(cmd, [], payload_cwd=str(REPO))
