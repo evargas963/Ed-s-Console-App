@@ -489,7 +489,7 @@
       ['VALUE', l && l.summary ? String(l.summary.value_state || '—').replace(/_/g, ' ') : '—', ''],
       ['VWAP', l && l.summary ? String(l.summary.vwap_relation || '—').replace(/_/g, ' ') : '—', ''],
       ['OPTIONS', t && !t.error && t.posture ? String(t.posture).replace(/_/g, ' ') : '—', ''],
-      ['GAMMA', ({ ABOVE: 'Above flip', BELOW: 'Below flip' })[t && t.flip_relation] || (t && t.gamma_flip_reason ? 'Flip ' + t.gamma_flip_reason : '—'),
+      ['GAMMA', ({ ABOVE: 'Above flip', BELOW: 'Below flip', AT: 'At flip' })[t && t.flip_relation] || (t && t.gamma_flip_reason ? 'Flip ' + t.gamma_flip_reason : '—'),
         t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
     ];
     host.innerHTML = cells.map(function (c) {

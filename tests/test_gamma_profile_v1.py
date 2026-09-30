@@ -13,7 +13,10 @@ import math
 from pathlib import Path
 
 from math_levels import (
+    FLIP_CURVE_NOT_FINITE,
     FLIP_FOUND,
+    FLIP_INCOMPLETE,
+    FLIP_NO_CROSSING,
     FLIP_UNAVAILABLE,
     GAMMA_FLIP_NARROW,
     GAMMA_FLIP_UNAVAILABLE,
@@ -24,8 +27,7 @@ from math_levels import (
     compute_gamma_profile,
     compute_gamma_support_levels,
     gamma_at_price,
-    gamma_flip_from_profile,
-    profile_zero_crossings,
+    profile_sign_changes,
 )
 
 import pytest
@@ -48,6 +50,14 @@ _REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json"
 def _load_real_chain() -> tuple[list, float]:
     data = json.loads(_REAL_CHAIN.read_text(encoding="utf-8"))
     return data["chain"], float(data["spot"])
+
+
+def _flip(profile, spot):
+    """compute_gamma_flip -- the one place the flip is picked -- on a hand-built curve.
+    institutional-synthetic-ok: an exact sign pattern (a touch, a run of zeros, a second
+    crossing at a chosen price) cannot be pinned on a captured chain."""
+    strikes = [{"strikePrice": profile[0][0]}, {"strikePrice": profile[-1][0]}]
+    return compute_gamma_flip(strikes, spot, profile=profile, unpriced={})
 
 
 def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
@@ -77,7 +87,7 @@ def test_flip_is_interpolated_within_the_profile_span() -> None:
     with vol/time inputs) - span containment is the invariant."""
     chain, spot = _load_real_chain()
     prof = compute_gamma_profile(chain, spot)
-    flip = gamma_flip_from_profile(prof, spot)
+    flip = compute_gamma_flip(chain, spot, profile=prof, unpriced={}).price
     assert flip is not None, (
         "the real fixture chain has a zero crossing (measured flip 761.0); a None flip "
         "here means the profile or crossing detection regressed"
@@ -86,15 +96,16 @@ def test_flip_is_interpolated_within_the_profile_span() -> None:
 
 
 def test_flip_returns_none_when_no_zero_crossing() -> None:
-    assert gamma_flip_from_profile([(100.0, 5.0), (101.0, 7.0)], 100.5) is None
-    assert gamma_flip_from_profile([], 100.5) is None
+    no = _flip([(100.0, 5.0), (101.0, 7.0)], 100.5)
+    assert no.price is None and no.state == FLIP_NO_CROSSING and no.crossings == 0
+    assert profile_sign_changes([]) == []
 
 
 def test_narrow_chain_flip_is_reported_low_confidence() -> None:
     """The live 20-strike chain spans only ~+/-1.3%; its flip must never be served as
     trustworthy (measured error vs full-chain reference: 770.35 vs 745.61)."""
     chain, spot = _load_real_chain()
-    flip = compute_gamma_flip(chain, spot, profile=compute_gamma_profile(chain, spot))
+    flip = compute_gamma_flip(chain, spot, profile=compute_gamma_profile(chain, spot), unpriced={})
     assert flip.coverage == GAMMA_FLIP_NARROW
     # On this capture (SPY 2026-09-22 12:46 ET, strikes 764-783) the flip is 771.9, inside the
     # delivered strikes: the verdict is NARROW because 20 strikes span only ~+/-1.3% of spot,
@@ -109,9 +120,24 @@ def test_narrow_chain_flip_is_reported_low_confidence() -> None:
 def test_flip_fails_closed_without_inputs() -> None:
     for contracts, spot in (([], 100.0), (None, 100.0), ([{"strikePrice": 100}], 0.0),
                             ([{"strikePrice": 100}], 100.0)):
-        flip = compute_gamma_flip(contracts, spot, profile=[])
+        flip = compute_gamma_flip(contracts, spot, profile=[], unpriced={})
         assert flip.price is None and flip.state == FLIP_UNAVAILABLE and flip.reason
         assert flip.coverage == GAMMA_FLIP_UNAVAILABLE
+
+
+def test_a_curve_that_is_not_finite_is_no_curve_never_a_zero() -> None:
+    """Operator 2026-09-30: nothing stands in for a failed calculation. A term of the profile
+    that is not finite used to be replaced by 0 and the curve served as if complete.
+    Stand-in: the real chain with one contract's open interest set large enough to overflow
+    the sum (Schwab has not sent such a value)."""
+    chain, spot = _load_real_chain()
+    chain = [dict(c) for c in chain]
+    next(c for c in chain if c.get("openInterest")).update(openInterest=1e308)
+    prof = compute_gamma_profile(chain, spot)
+    assert not all(math.isfinite(v) for _, v in prof)
+    flip = compute_gamma_flip(chain, spot, profile=prof, unpriced={})
+    assert (flip.state, flip.reason, flip.price) == (FLIP_UNAVAILABLE, FLIP_CURVE_NOT_FINITE, None)
+    assert flip.curve_gamma_at_spot is None and flip.crossings == 0
 
 def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
     """RC-11: no zero-crossing means no FLIP LEVEL, never an unknown regime.
@@ -136,7 +162,7 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
         assert lo - 1e-6 <= at_spot <= hi + 1e-6
 
     # a strictly one-signed profile yields no flip but still reports a usable verdict
-    assert gamma_flip_from_profile([(100.0, 5.0), (101.0, 7.0)], 100.5) is None
+    assert profile_sign_changes([(100.0, 5.0), (101.0, 7.0)]) == []
     assert gamma_at_price([(100.0, 5.0), (101.0, 7.0)], 100.5) == 6.0
 
 
@@ -163,48 +189,50 @@ def test_gamma_at_price_has_no_value_outside_the_profile() -> None:
 # `v0 < 0 <= v1` found only rising neg->pos crossings. A profile that is long-gamma below
 # and short-gamma above (pos->neg) has a real regime boundary that returned None — the
 # flip vanished and the verdict claimed "no crossing" on a chain that crosses.
-# (gamma_flip_from_profile is imported at the top of this file.)
 
 
 def test_flip_detects_positive_to_negative_crossing():
     prof = [(90.0, 5.0), (95.0, 2.0), (100.0, -1.0), (105.0, -4.0)]
-    flip = gamma_flip_from_profile(prof, 97.0)
+    flip = _flip(prof, 97.0).price
     assert flip is not None, "pos->neg crossing missed — the direction-blind defect"
     assert 95.0 < flip < 100.0, flip
 
 
 def test_flip_still_detects_negative_to_positive():
     prof = [(90.0, -4.0), (95.0, -1.0), (100.0, 2.0), (105.0, 5.0)]
-    flip = gamma_flip_from_profile(prof, 97.0)
+    flip = _flip(prof, 97.0).price
     assert flip is not None and 95.0 < flip < 100.0, flip
 
 
 def test_flip_picks_the_crossing_nearest_spot():
     """Multi-cross profile: the boundary that governs the trade is the one beside spot."""
     prof = [(80.0, -2.0), (90.0, 3.0), (100.0, 1.0), (110.0, -2.0), (120.0, -5.0)]
-    near_low = gamma_flip_from_profile(prof, spot=85.0)
-    near_high = gamma_flip_from_profile(prof, spot=108.0)
-    assert near_low is not None and 80.0 < near_low < 90.0, near_low
-    assert near_high is not None and 100.0 < near_high < 110.0, near_high
-    assert near_low != near_high
-    assert profile_zero_crossings(prof) == [near_low, near_high]   # every crossing, ascending
+    low, high = _flip(prof, spot=85.0), _flip(prof, spot=108.0)
+    assert low.price is not None and 80.0 < low.price < 90.0, low.price
+    assert high.price is not None and 100.0 < high.price < 110.0, high.price
+    assert low.crossings == high.crossings == 2
+    assert profile_sign_changes(prof) == [low.price, high.price]   # every sign change, ascending
 
 
 def test_flip_none_when_one_signed():
-    assert gamma_flip_from_profile([(90.0, -1.0), (100.0, -2.0)], 95.0) is None
-    assert gamma_flip_from_profile([(90.0, 1.0), (100.0, 2.0)], 95.0) is None
-    assert gamma_flip_from_profile([], 95.0) is None
+    assert profile_sign_changes([(90.0, -1.0), (100.0, -2.0)]) == []
+    assert profile_sign_changes([(90.0, 1.0), (100.0, 2.0)]) == []
 
 
-def test_flip_zero_touching_profile_start_is_the_boundary():
-    """Cursor audit 2026-07-20: a profile STARTING at exactly zero returned None —
-    both strict-sign conditions are false at v0==0, so the boundary vanished."""
-    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, 1.0), (120.0, 2.0)], 105.0) == 100.0
-    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, -1.0)], 105.0) == 100.0
-    # flat zero segments are not crossings
-    assert gamma_flip_from_profile([(100.0, 0.0), (110.0, 0.0)], 105.0) is None
-    # segment ENDING at zero still interpolates to the zero point
-    assert gamma_flip_from_profile([(100.0, -1.0), (110.0, 0.0), (120.0, 1.0)], 110.0) == 110.0
+def test_a_zero_touch_is_not_a_flip_only_a_sign_change_is():
+    """Operator 2026-09-30: the flip requires an actual sign change. A curve that starts or
+    ends at exactly zero, or touches zero and keeps its sign, used to report a flip at the
+    zero point (the 2026-07-20 rule this replaces treated a zero point as a boundary)."""
+    assert profile_sign_changes([(100.0, 0.0), (110.0, 1.0), (120.0, 2.0)]) == []      # starts at zero
+    assert profile_sign_changes([(100.0, -2.0), (110.0, -1.0), (120.0, 0.0)]) == []    # ends at zero
+    assert profile_sign_changes([(100.0, 1.0), (110.0, 0.0), (120.0, 1.0)]) == []      # touches, same sign
+    assert profile_sign_changes([(100.0, 0.0), (110.0, 0.0)]) == []                    # no sign at all
+    touch = _flip([(100.0, 1.0), (110.0, 0.0), (120.0, 1.0)], 110.0)
+    assert touch.price is None and touch.state == FLIP_NO_CROSSING
+    # through zero, negative to positive: the change is at the zero point
+    assert profile_sign_changes([(100.0, -1.0), (110.0, 0.0), (120.0, 1.0)]) == [110.0]
+    # across a run of exact zeros: the middle of the run
+    assert profile_sign_changes([(100.0, 1.0), (110.0, 0.0), (120.0, 0.0), (130.0, -1.0)]) == [115.0]
 
 
 # ── RC-354: Gamma Support Floor / Gamma Resistance Ceiling ──────────────────────
@@ -227,7 +255,7 @@ def test_gsf_sits_between_flip_and_spot_and_grc_mirrors_above():
     out = compute_gamma_support_levels(prof, 105.0)
     assert out["state"] == GSF_STATE_OK
     assert out["gsf"] is not None
-    flip = gamma_flip_from_profile(prof, 105.0)
+    flip = _flip(prof, 105.0).price
     assert flip is not None and out["gsf"] > flip           # above the flip
     assert flip < out["gsf"] < 105.0                        # between flip and spot
     assert abs(out["gsf"] - 100.0) < 0.5                    # analytic crossing
@@ -338,9 +366,11 @@ def test_rc362_net_vanna_math_and_fail_closed():
     assert compute_net_vanna({700.0: {"other": 1}}, 800.0) is None
 
 
-def test_the_flip_counts_the_contracts_it_could_not_price():
+def test_a_book_with_unpriced_contracts_has_no_flip_and_says_how_many():
     """M-10: Schwab sent volatility 0 on 5 SNDK contracts with open interest (real 09-25
-    capture). The profile cannot price them; the served flip says how many and why."""
+    capture). The profile cannot price them. Operator 2026-09-30: a curve missing contracts of
+    the book is not a full-book result -- it was served as the flip (1667.10), with the count
+    beside it; now there is no flip, and the reason every screen prints says how many."""
     from datetime import timezone
     from math_levels import contract_inputs
     from terrain_engine import compute_terrain
@@ -350,4 +380,13 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
     priced, unpriced = contract_inputs(cap["chain"], now)
     assert (len(priced), unpriced) == (476, {"no_volatility": 5})
     snap = compute_terrain("SNDK", cap["chain"], cap["spot"], now=now)
-    assert snap.to_dict()["flip_diag"]["unpriced"] == {"no_volatility": 5}
+    served = snap.to_dict()
+    assert served["flip_diag"]["unpriced"] == {"no_volatility": 5}
+    assert served["flip_diag"]["state"] == FLIP_INCOMPLETE and served["flip_diag"]["price"] is None
+    assert served["gamma_flip"] is None and served["flip_relation"] is None
+    assert served["gamma_flip_reason"] == "incomplete, 5 unpriced"
+    # nothing else is read off the incomplete curve: the support levels and its value at spot
+    assert (served["gsf"], served["grc"], served["gsf_state"]) == (None, None, GSF_STATE_UNAVAILABLE)
+    assert served["flip_diag"]["curve_gamma_at_spot"] is None and snap.profile == []
+    # the regime is Schwab's gamma at spot, which does not come from the curve
+    assert served["regime"] != "UNAVAILABLE" and served["net_gex_at_spot"] is not None

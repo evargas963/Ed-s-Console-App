@@ -48,7 +48,7 @@ from terrain_read import build_terrain_read
 
 def _verdict(span: float) -> str:
     chain = _chain(span)
-    return compute_gamma_flip(chain, 100.0, profile=compute_gamma_profile(chain, 100.0)).coverage
+    return compute_gamma_flip(chain, 100.0, profile=compute_gamma_profile(chain, 100.0), unpriced={}).coverage
 
 
 

@@ -4034,6 +4034,8 @@ def get_levels(ticker: str = Query(...),
     if em is None or spot is None:
         families_absent.append({"family": "expected_move", "reason": "no live price" if spot is None
                                 else "the terrain has no implied 1-day move"})
+    if t.get("gamma_flip_reason"):       # the flip's own reason, carried as published
+        families_absent.append({"family": "gamma_flip", "reason": t["gamma_flip_reason"]})
 
     return JSONResponse({
         "ticker": tk,

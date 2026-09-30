@@ -1967,10 +1967,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // (terrain gamma_flip_reason, as MTA's 2026-09-29 close capture gives it); the page prints it.
     await page.route('**/api/terrain?**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, TERRAIN, { gamma_flip: null, gamma_flip_reason: 'none 8.18–11.06' })),
+      body: JSON.stringify(Object.assign({}, TERRAIN, { gamma_flip: null, gamma_flip_reason: 'none in 8.18–11.06' })),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#klFlip')).toHaveText('none 8.18–11.06');
+    await expect(page.locator('#klFlip')).toHaveText('none in 8.18–11.06');
     await expect(page.locator('#klCall')).toHaveText('586.00');   // the other levels are untouched
   });
 
