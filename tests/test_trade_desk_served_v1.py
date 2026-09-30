@@ -222,6 +222,23 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
                for r in priced)
 
 
+def test_a_live_price_of_0_is_a_price(spy_levels, monkeypatch):
+    """AGENTS.md rule 2: a reported 0 is 0. Stand-in: the live price as 0.0 (Schwab has not sent one
+    for SPY); every priced level is its own price above it."""
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (0.0, "live_quote", time.time()))
+    body = json.loads(server.get_levels(ticker="SPY").body)
+    priced = [r for r in body["levels"] if r["price"] is not None]
+    assert priced and all(r["distance"] == r["price"] and r["side"] == "ABOVE" for r in priced)
+
+
+def test_the_tape_refuses_a_limit_outside_1_to_500():
+    """An out-of-range limit was replaced by 1 or 500 and served as if asked for."""
+    from fastapi.testclient import TestClient
+    client = TestClient(server.app)
+    for bad in ("0", "501", "x"):
+        assert client.get(f"/api/options/tape?ticker=SPY&limit={bad}").status_code == 422, bad
+
+
 def test_a_same_day_chain_has_no_expected_move_and_says_why(spy_levels):
     """The SPY capture lists only the 0DTE expiry; the terrain's one-day move needs one a day out."""
     _spot, terrain = spy_levels
