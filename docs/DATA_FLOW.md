@@ -47,9 +47,9 @@ Schwab sends is taken as sent (rule 2), never computed.
 | From → to | Channel | What travels |
 |---|---|---|
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
-| daemon → console | local WebSocket 127.0.0.1:8799 | each Schwab book, option quote, 1-minute bar and news message as sent (an equity quote travels only as the price row below); on connect, the current state first |
+| daemon → console | local WebSocket 127.0.0.1:8799 | each Schwab book, option quote, 1-minute bar and news message as sent (an equity quote travels only as the price row below); on connect, the current state first (each option quote field's last value, each whole book); a completed bar is a past event and is not resent (today it is: O-24) |
 | console → daemon | same socket | the "wanted" list: every symbol per Schwab service |
-| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second; and each completed 1-minute bar of a subscribed symbol as the chart bar it makes at every timeframe (`bars`). A page back from a drop subscribes with the daemon's time of the last beat it had (`bars_since`) and is sent first every bar update the daemon received since then. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
+| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second; and each completed 1-minute bar of a subscribed symbol as the chart bar it makes at every timeframe (`bars`). A page back from a drop subscribes with the daemon's time of the last beat it had (`disconnected_since`) and is told the gap in its live bars (`bars_gap`); no bar received in the gap is resent. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
 | daemon → console | the same :8800 push | the same price rows, for the equities the console wants streamed: the console's only live price |
 | Schwab → console | Schwab REST | full option chains; one quote at startup to validate the login |
 | console → browser | HTTP `/api/*` | everything else, on request |
@@ -111,10 +111,12 @@ Schwab sends is taken as sent (rule 2), never computed.
   symbol's minutes of the day in the daemon's memory (the day's stored minutes are read once, the
   first time the symbol has a bar that day) → for each new minute, the chart bar it makes at every
   timeframe (`live_price_rows.bar_update`) → the browsers subscribed to the symbol, whose charts
-  draw it (`ed:bar`) with no read; a browser that dropped and reconnected gets, from the same
-  memory, an update for every minute the daemon received while it was gone
-  (`live_ui.missed_bars`, from the last beat the page had; a minute the daemon read from the
-  store, not received, is not resent); (b) the daemon's writer (`stream_capture.db`); (c) → console →
+  draw it (`ed:bar`) with no read. A live bar is only one Schwab sends while the browser is
+  connected: a browser that dropped and reconnected is resent none of the bars the daemon
+  received meanwhile; the daemon names the gap instead (`live_ui.bars_gap`: from the last beat
+  the page had, less two beats, to the reconnect, with its note), each chart shows the note
+  until its bars are loaded again from the stored history (a ticker or timeframe change, or a
+  reload), and the next bar drawn is the next one Schwab sends; (b) the daemon's writer (`stream_capture.db`); (c) → console →
   the console's own bar writer → `ed_console.db`, from which `/api/bars1m` serves a chart's
   history as it opens (ONE-06: a live screen reading the database for that history). One
   definition serves both: the chart's 1-minute bar (`live_price_rows.minute_bar`: Schwab's prices

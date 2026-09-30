@@ -466,9 +466,9 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Market Map: back from a price-socket drop, the page asks for the bars it missed and draws them', async ({ page }) => {
-    // the reconnect got the prices again and not the bars the daemon received meanwhile: the
-    // chart kept a hole until it was reloaded
+  test('Market Map: back from a price-socket drop, the chart names the gap in its live bars and draws no bar for it', async ({ page }) => {
+    // live bars are only the ones Schwab sends while the page is connected: after a drop the
+    // chart's missing time is named, never filled from the daemon's memory
     const errs = watchErrors(page);
     await intercept(page);
     const barReads = [];
@@ -479,24 +479,24 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
     const chartBars = () => page.evaluate(() => window.EdTradeDeskMap.state().chart.bars);
     await expect.poll(chartBars).toBe(BARS.bars.length);
-    expect(daemon.subscribes[0].bars_since).toBeUndefined();          // a first subscribe asks for none
+    expect(daemon.subscribes[0].disconnected_since).toBeUndefined();  // a first subscribe names no gap
     const lastBeat = 1790343700.5;                                     // the daemon's clock
     daemon.send({ type: 'feed', feed: { ts: lastBeat, schwab_socket_open: true }, rows: [] });
     await page.waitForTimeout(200);
     const first = daemon.ws;
     await first.close();                                               // the socket drops
     await expect.poll(() => daemon.subscribes.length).toBe(2);         // the page reconnects
-    expect(daemon.subscribes[1].bars_since).toBe(lastBeat);
+    expect(daemon.subscribes[1].disconnected_since).toBe(lastBeat);
     const reads = barReads.length;
-    const missed = [1790344800, 1790346600].map((t) => {               // two chart bars it missed
-      const b = { t: t, o: 771, h: 772, l: 770.5, c: 771.5, v: 900, chg: 0.5, chg_pct: 0.06 };
-      const tf = {}; ['1', '3', '5', '15', '30', '60', 'D'].forEach((k) => { tf[k] = b; });
-      return { ticker: 'SPY', ts_recv: t + 62.7, last_bar: { t: t, label: 'Fri 09/25 ' + (t === 1790344800 ? '09:40' : '10:10') + ' AM CT' }, tf: tf };
-    });
-    daemon.send({ type: 'bars', bars: missed });
-    await expect.poll(chartBars).toBe(BARS.bars.length + 2);
-    await expect(page.locator('#tdmChart .tvc-legend')).toContainText('Last completed bar Fri 09/25 10:10 AM CT');
-    expect(barReads.length).toBe(reads);                               // drawn from the push, no read
+    // the daemon's answer (live_ui.bars_gap), its note as served
+    const note = 'No live bars from Fri 09/25 09:21 AM CT to Fri 09/25 09:40 AM CT: this page was disconnected ' +
+      'from the price feed, and bars completed then are not drawn. Reopening the chart loads the stored history.';
+    daemon.send({ type: 'bars_gap', gap: { from_ts: lastBeat - 2, to_ts: 1790344800, note: note } });
+    const legend = page.locator('#tdmChart .tvc-legend');
+    await expect(legend).toContainText(note);
+    await page.waitForTimeout(300);
+    expect(await chartBars()).toBe(BARS.bars.length);                 // no bar drawn for the gap
+    expect(barReads.length).toBe(reads);                               // and none read to fill it
     expect(errs).toEqual([]);
   });
 

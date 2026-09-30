@@ -507,7 +507,8 @@
       var b = S.pinned ? barAt(S.pinned.time) : S.bars[S.bars.length - 1];
       var tfLbl = S.tf === 'D' ? '1D' : (S.tf === '60' ? '1h' : S.tf + 'm');
       legend.innerHTML = '<span class="tvc-sym">' + esc(S.symbol) + '</span><span class="tvc-tf">' + tfLbl + '</span>' + ohlcHtml(b) +
-        (S.lastBarLabel ? '<span>Last completed bar ' + esc(S.lastBarLabel) + '</span>' : '');
+        (S.lastBarLabel ? '<span>Last completed bar ' + esc(S.lastBarLabel) + '</span>' : '') +
+        (S.gapNote ? '<span class="tvc-gap">' + esc(S.gapNote) + '</span>' : '');
     }
     function paintPin() {
       if (!S.pinned) { pinBox.hidden = true; return; }
@@ -690,6 +691,9 @@
       paintLevels(true);
     }
     document.addEventListener('ed:theme', applyTheme);
+    // the daemon's note of a gap in the live bars (the page was disconnected): shown until the
+    // chart's bars are loaded again from the stored history (a ticker or timeframe change)
+    window.addEventListener('ed:bars_gap', function (e) { S.gapNote = e.detail && e.detail.note; paintLegend(); });
     function paintStyle() {
       var line = S.style === 'line', none = 'rgba(0,0,0,0)';
       candles.applyOptions({ upColor: line ? none : P.up, downColor: line ? none : P.down,
@@ -709,6 +713,7 @@
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
         api.setVolume(S.bars);
         if (changed) {
+          S.gapNote = null;
           api.setLivePrice(null);
           S.pinned = null; paintPin();
           var dk = 'ed.tvc.draw.' + symbol;
