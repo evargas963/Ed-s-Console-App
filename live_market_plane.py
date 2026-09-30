@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
@@ -40,6 +40,14 @@ _SIGNED_FIELDS = ("NET_CHANGE", "NET_CHANGE_PERCENT", "REGULAR_MARKET_CHANGE_PER
 _fields_by_ticker: dict[str, dict[str, tuple[float, float]]] = {}
 
 
+def session_day(ts: float) -> date:
+    """The session an instant (epoch seconds) belongs to: sessions start at 04:00 ET, so an
+    instant before 04:00 ET belongs to the previous date's. Schwab's overnight messages mix the
+    old day (full snapshots after 20:00 ET) and the new (its overnight day roll) and cannot be
+    told apart, so none is the new session's."""
+    return (datetime.fromtimestamp(ts, ET) - timedelta(hours=4)).date()
+
+
 def _read_stream_field(name: str, raw: Any) -> Optional[float]:
     """Each field as Schwab sent it (AGENTS.md rule 2); a reported 0 is 0."""
     if name in _COUNT_FIELDS:
@@ -55,9 +63,10 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     Returns True when a plane row was (re)published.
 
     Per-field state (see _fields_by_ticker): each field present in the message replaces
-    that field's value and receive time; absent fields stand (Schwab sends changes only).
-    A present-but-invalid price (0 / negative -- e.g. no bid) CLEARS that field: the vendor
-    said there is no such value now. A row is published once a LAST_PRICE is known; spot is
+    that field's value and receive time; absent fields stand (Schwab sends changes only)
+    within one session: a field received in an earlier session is dropped by the first
+    message of a new one, never carried into it. A field sent as not a number CLEARS it:
+    the vendor said there is no such value now. A row is published once a LAST_PRICE is known; spot is
     LAST_PRICE only (MARK never stands in) and its age is the age of the last LAST_PRICE
     message, never of the bid/ask tick arriving now.
 
@@ -70,9 +79,12 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     if not t:
         return False
     rts = float(received_ts)
+    day = session_day(rts)
     seen = False
     with _lock:
         fs = _fields_by_ticker.setdefault(t, {})
+        for name in [n for n, (_v, ts) in fs.items() if session_day(ts) != day]:
+            del fs[name]
         for name in _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS + _SIGNED_FIELDS:
             if name not in item:
                 continue
@@ -254,12 +266,14 @@ def book_is_live(symbol: str | None, service: str, now: float) -> bool:
 
 def spot_is_fresh(q: dict[str, Any], now: float) -> bool:
     """Is this row's LAST_PRICE live at `now`: the market is in session (trading day,
-    04:00-20:00 ET), the stream delivered a LAST_PRICE for it (`spot_received_ts`) and the feed
-    is live for its symbol (feed_live_for). Outside the session it is a past observation. Its
-    age since the last trade is information (`trade_ts`), never a reason to blank it."""
+    04:00-20:00 ET), the stream delivered a LAST_PRICE for it in THIS session
+    (`spot_received_ts`; an earlier session's is a past observation) and the feed is live for
+    its symbol (feed_live_for). Outside the session it is a past observation. Its age since the
+    last trade is information (`trade_ts`), never a reason to blank it."""
     if not in_session(now):
         return False
-    if float_finite_or_none((q or {}).get("spot_received_ts")) is None:  # caps-ok: fail-closed -- no LAST_PRICE this session is not live
+    received = float_finite_or_none((q or {}).get("spot_received_ts"))
+    if received is None or session_day(received) != session_day(now):
         return False
     return feed_live_for((q or {}).get("ticker"), "LEVELONE_EQUITIES", now)
 
@@ -278,10 +292,12 @@ def quote_is_fresh(q: dict[str, Any], now: float) -> bool:
     """Is this plane row's quote (bid/ask/sizes) live at `now`: the stream wrote the row
     (`server_received_ts`) and the feed is live for its symbol (feed_live_for). Under
     Schwab's changed-fields-only delivery an unchanged bid IS the current bid while the feed
-    is live; a missing server_received_ts cannot be assumed live (fail closed). Outside the
-    session (is_capturable_session) the quote is a past observation."""
+    is live; a missing server_received_ts cannot be assumed live (fail closed), and a row
+    written in an earlier session is a past observation. Outside the session
+    (is_capturable_session) the quote is a past observation."""
     if not in_session(now):
         return False
-    if float_finite_or_none(q.get("server_received_ts")) is None:
+    received = float_finite_or_none(q.get("server_received_ts"))
+    if received is None or session_day(received) != session_day(now):
         return False
     return feed_live_for(q.get("ticker"), "LEVELONE_EQUITIES", now)

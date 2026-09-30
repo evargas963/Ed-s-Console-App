@@ -3,8 +3,6 @@ to the browser (live_ui.py) and to the console alike: a price on screen and a pr
 console calculation are the same value."""
 from __future__ import annotations
 
-import time
-
 import live_market_plane as lmp
 import live_price_rows
 import server as srv
@@ -14,7 +12,7 @@ from tests.feed_live_helper import SESSION_NOW, feed_live_during
 def test_an_unheld_symbol_row_is_unavailable_with_every_quote_field_withheld(monkeypatch) -> None:
     feed_live_during(monkeypatch, "ZZHELD")
     lmp.record_from_level_one_equity("ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9},
-                                     received_ts=time.time())
+                                     received_ts=SESSION_NOW)
     row = live_price_rows.price_row("ZZNOTHELD", SESSION_NOW)
     assert row["spot"] is None and row["spot_state"] == "unavailable" and row["feed_live"] is False
 
@@ -22,7 +20,8 @@ def test_an_unheld_symbol_row_is_unavailable_with_every_quote_field_withheld(mon
 def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy(monkeypatch) -> None:
     """Measured 2026-09-28: the console's spot differed from the header's in 25 of 200
     same-moment checks -- the console rebuilt LAST_PRICE from the forwarded messages. Real TSLA
-    quote as Schwab sent it (tests/fixtures/real_equity_book.json), received now."""
+    quote as Schwab sent it (tests/fixtures/real_equity_book.json), received at the named session
+    instant."""
     import json
     from pathlib import Path
 
@@ -30,7 +29,7 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
     from tests.feed_live_helper import publish_daemon_rows
 
     fx = json.loads((Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8"))
-    tk, native, now = fx["ticker"], fx["quote"]["native"], time.time()
+    tk, native, now = fx["ticker"], fx["quote"]["native"], SESSION_NOW
     monkeypatch.setattr(lmp, "_by_ticker", {})
     monkeypatch.setattr(lmp, "_fields_by_ticker", {})
     monkeypatch.setattr(ofs, "_price_rows", {})
