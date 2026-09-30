@@ -376,26 +376,23 @@ def test_an_empty_side_is_the_books_state_and_replaces_the_book_before_it():
 
 def test_top_prices_and_sizes_are_carried_exactly():
     data = {"top": {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}}
-    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices(data)
-    assert (bid, ask) == (0.58, 0.59)
-    assert (bid_leaf, ask_leaf) == ("streaming.BID_PRICE", "streaming.ASK_PRICE")
-    assert ofe.compute_book_microstructure(data, now_ts=1.0)["top_book_pressure"] == (11 - 23) / (11 + 23)
-    cb = ofe._extract_canonical_book(data)
-    assert (cb["bid_size"], cb["ask_size"]) == (11, 23)
+    m = ofe.compute_book_microstructure(data, now_ts=1.0)
+    assert m["top_of_book"] == {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}
+    assert m["top_book_pressure"] == (11 - 23) / (11 + 23)
 
 
 def test_zero_size_is_a_real_value_not_a_fallback_trigger():
     data = {"content": [_book_snapshot()], "top": {"bid": 0.10, "ask": 0.12, "bid_size": 0, "ask_size": 5}}
     m = ofe.compute_book_microstructure(data, now_ts=1787233772.0)
     assert m["top_book_pressure"] == (0 - 5) / (0 + 5), "a real BID_SIZE=0 is not missing"
-    assert ofe._extract_canonical_book(data)["bid_size"] == 0
     assert m["top_of_book"]["bid_size"] == 0
 
 
 def test_no_top_resolves_to_none():
     data = {"content": [], "top": None}
-    assert ofe._resolve_bid_ask_prices(data) == (None, None, None, None)
-    assert ofe.compute_book_microstructure(data, now_ts=1.0)["top_book_pressure"] is None
+    m = ofe.compute_book_microstructure(data, now_ts=1.0)
+    assert m["top_of_book"] == {"bid": None, "ask": None, "bid_size": None, "ask_size": None}
+    assert m["top_book_pressure"] is None
 
 
 def test_rest_quote_blocks_never_stand_in_for_streamed_l1():
@@ -449,8 +446,9 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
         "ASKS": [{"ASK_PRICE": 0.03, "TOTAL_VOLUME": 12}],
         "BOOK_TIME": 1,
     }]
-    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices({"content": items, "top": {"ask_size": 12}})
-    assert (bid, ask, bid_leaf, ask_leaf) == (None, None, None, None)
+    m = ofe.compute_book_microstructure({"content": items, "top": {"ask_size": 12}}, now_ts=2.0)
+    assert (m["top_of_book"]["bid"], m["top_of_book"]["ask"], m["mid"]) == (None, None, None)
+    assert m["depth"]["1"]["bid_total"] == 10           # the book itself is still measured
 
 
 def test_an_option_contracts_top_is_read_only_while_the_daemon_holds_it():

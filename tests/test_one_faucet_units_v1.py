@@ -79,6 +79,9 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path, monkeypatc
     body = server._forces_from_captures("SPY", last_capture_per_day(db, "SPY", 2))   # the producer's forces
     assert body["available"] is True
     assert body["charm_below"] is not None and body.get("charm_error") is None, body
+    # the rows are past observations: the payload names the two captures and the price it splits at
+    assert body["basis"].startswith(f"2026-09-22 chain capture against 2026-09-21, split at that capture's "
+                                    f"price {float(_FX['spot']):.2f}; open interest compared on ")
 
 
 def test_the_put_call_volume_ratio_is_todays_trading_and_says_so_when_volume_is_missing():

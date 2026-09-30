@@ -503,15 +503,14 @@ class EdDB:
 
         return _do()
 
-    def get_recent_crosses(self, ticker: str, n: int = 20) -> list:
-        """Return most recent level crossing events."""
+    def get_crosses_since(self, ticker: str, since_ts_utc: float) -> list:
+        """Every stored level cross of `ticker` at or after `since_ts_utc`, newest first."""
         with self._connect() as conn:
             rows = conn.execute("""
                 SELECT * FROM level_crosses
-                WHERE ticker = ?
+                WHERE ticker = ? AND ts_utc >= ?
                 ORDER BY ts_utc DESC
-                LIMIT ?
-            """, (ticker, n)).fetchall()
+            """, (ticker, float(since_ts_utc))).fetchall()
         return [dict(r) for r in rows]
 
 

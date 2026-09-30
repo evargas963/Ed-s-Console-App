@@ -372,7 +372,8 @@ def test_a_book_with_unpriced_contracts_has_no_flip_and_says_how_many():
     assert served["gamma_flip"] is None and served["flip_relation"] is None
     assert served["gamma_flip_reason"] == "incomplete, 5 unpriced"
     # nothing else is read off the incomplete curve: the support levels and its value at spot
-    assert (served["gsf"], served["grc"], served["gsf_state"]) == (None, None, GSF_STATE_UNAVAILABLE)
+    assert (served["gsf"], served["grc"]) == (None, None) and "gsf_state" not in served
+    assert served["level_absent_reasons"]["gsf"] == served["level_absent_reasons"]["grc"] == "no gamma curve"
     assert served["flip_diag"]["curve_gamma_at_spot"] is None and snap.profile == []
     # the regime is Schwab's gamma at spot, which does not come from the curve
     assert served["regime"] != "UNAVAILABLE" and served["net_gex_at_spot"] is not None

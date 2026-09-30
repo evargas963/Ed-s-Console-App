@@ -443,6 +443,27 @@ test.describe('Trade Desk renders served values', () => {
     await expect(body).toContainText('moved UP the chain');
     await expect(body).toContainText('Grew most at 771/770');
     await expect(body).toContainText('inside the wall range');
+    await expect(body).toContainText('Session levels' + '45s old');       // the served snapshot age
+    expect(errs).toEqual([]);
+  });
+
+  test('Right Now: a stale regime is badged STALE with the served reason; after the close it carries its time', async ({ page }) => {
+    // 2026-09-30 audit: the Confirm card showed the regime with its confidence and no age, so
+    // levels an hour old read like current ones
+    const errs = watchErrors(page);
+    await intercept(page);
+    let t = Object.assign({}, TERRAIN, { confidence: 'TRUSTED', levels_stale: true, levels_age_sec: 3600,
+      levels_stale_reason: 'levels are 3600s old and every refresh since is failing — HTTP 502' });
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(t) }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const confirm = page.locator('#tdBody .td-stage.td-accent-amber');
+    await expect(confirm.locator('.fl-badge')).toHaveText('STALE');
+    await expect(confirm).toContainText('levels are 3600s old and every refresh since is failing — HTTP 502');
+    t = Object.assign({}, TERRAIN, { confidence: 'TRUSTED', levels_stale: false, levels_market_closed: true, levels_as_of: 'Fri 09/25 03:15 PM CT' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(confirm).toContainText('Levels' + 'as of Fri 09/25 03:15 PM CT');
+    await expect(confirm.locator('.fl-badge')).toHaveText('TRUSTED');
     expect(errs).toEqual([]);
   });
 
@@ -483,9 +504,10 @@ test.describe('Trade Desk renders served values', () => {
       const url = route.request().url();
       let body = { available: false };
       if (url.includes('/api/desk/events')) body = EVENTS;
-      else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: 8e8 } });
+      else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { today_side_sums: { gex_below: -1.2e9, gex_above: 8e8, spot_basis: 771.3 } });
       else if (url.includes('/api/forces')) body = { ticker: 'SPY', available: true, doi_below: 1200, doi_above: -300,
-        dex_below_dollars: 5e8, dex_above_dollars: -2e8, charm_below: 0.0123, charm_above: -0.0045 };
+        dex_below_dollars: 5e8, dex_above_dollars: -2e8, charm_below: 0.0123, charm_above: -0.0045,
+        basis: "2026-09-24 chain capture against 2026-09-23, split at that capture's price 769.10; open interest compared on 312 strikes" };
       else if (url.includes('/api/terrain')) body = Object.assign({}, TERRAIN, { call_wall: 772, call_wall_lean: 'DEALERS SELL' });
       else if (url.includes('/api/levels')) body = Object.assign({}, LEVELS, { levels: LEVELS.levels.concat([wall, far]),
         by_distance: ['call_wall', 'max_pain', 'PDH', 'grc'] });
@@ -498,11 +520,17 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText('3m');
     await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('GRC 837.58');
-    await expect(page.locator('#tdmCardOpt')).toContainText('GEX below / above');
+    await expect(page.locator('#tdmCardOpt')).toContainText('GEX below / above 771.30');   // the price it is split at, served
     await expect(page.locator('#tdmCardOpt')).toContainText('1200 / -300');          // ΔOI, served
     await expect(page.locator('#tdmCardOpt')).toContainText('0.0123 / -0.0045');     // charm, served
+    // the capture rows say which two captures they are, and at what price they are split
+    await expect(page.locator('#tdmCardOpt .tdm-basis')).toHaveText(/^2026-09-24 chain capture against 2026-09-23, split at that capture's price 769\.10/);
+    // the card's one line is cut where the card ends (at 1672 px, after P/C OI): the whole line is its hover text
+    await expect(page.locator('#tdmCardOpt .tdm-rows')).toHaveAttribute('title', /Call wall 772\.00 · .*ΔOI below \/ above 1200 \/ -300 · .*2026-09-24 chain capture against 2026-09-23/);
     await page.locator('#tdmToolbar [data-act="style"]').click();
     await expect(page.locator('#tdmToolbar [data-act="style"]')).toHaveClass(/on/);
+    await page.setViewportSize({ width: 1672, height: 941 });
+    await page.screenshot({ path: 'test-results/trade-desk-1672x941.png', fullPage: false });
     expect(errs).toEqual([]);
   });
 });

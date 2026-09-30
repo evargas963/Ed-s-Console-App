@@ -183,6 +183,25 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveClass(/rth|pre|ah|closed/);
   });
 
+  test('the header shows the Schwab sign-in when the server warns it is ending, and nothing while it is ok', async ({ page }) => {
+    // the warning was computed and served inside /api/terrain and no screen read it: the sign-in
+    // ended with no notice on the page. It is pushed with the session and printed in the header.
+    const ending = { urgency: 'red', expires: 'Wed 09/30 02:36 PM CT',
+      note: 'Schwab sign-in ends Wed 09/30 02:36 PM CT; run: python reauth_schwab.py --manual' };
+    const renewed = { urgency: 'ok', expires: 'Wed 10/07 02:40 PM CT', note: '' };
+    // the first connection is told the sign-in is ending; the page's reconnects, that it was renewed
+    let connections = 0;
+    await page.route('**/api/changes**', (route) => route.fulfill({ status: 200, contentType: 'text/event-stream',
+      body: 'event: session\ndata: RTH\n\nevent: sign_in\ndata: ' + JSON.stringify(++connections === 1 ? ending : renewed) + '\n\n' }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hSignIn')).toBeVisible();
+    await expect(page.locator('#hSignInV')).toHaveText('ends ' + ending.expires);
+    await expect(page.locator('#hSignInV')).toHaveClass(/red/);
+    await expect(page.locator('#hSignIn')).toHaveAttribute('title', ending.note);
+    await expect(page.locator('#hSignIn')).toBeHidden({ timeout: 15000 });   // renewed: nothing to show
+    expect(connections).toBeGreaterThan(1);
+  });
+
   test('a streamed-only surface update still triggers a re-render even when every REST field is unchanged (RC-UI-2 finding #1)', async ({ page }) => {
     // Independent-review finding (2026-09-12), REPRODUCED: server.py's eager
     // _publish_levels changes _gamma_surface's CELL VALUES without ever

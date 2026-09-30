@@ -326,11 +326,14 @@
   // OI change, DEX and charm below/above from the last two market days' captures (/api/forces)
   function forcesRows() {
     var ss = S.strikes && S.strikes.today_side_sums, f = S.forces || {};
-    var out = row('GEX below / above', ss ? usd(ss.gex_below) + ' / ' + usd(ss.gex_above) : '—');
+    // each split names the price it is split at; the capture rows name their two captures
+    var out = row('GEX below / above' + (ss && ss.spot_basis != null ? ' ' + num(ss.spot_basis) : ''),
+      ss ? usd(ss.gex_below) + ' / ' + usd(ss.gex_above) : '—');
     if (f.available !== true) return out + row('ΔOI · DEX · charm', esc(f.reason || '—'));
     return out + row('ΔOI below / above', num(f.doi_below, 0) + ' / ' + num(f.doi_above, 0)) +
       row('DEX below / above', usd(f.dex_below_dollars) + ' / ' + usd(f.dex_above_dollars)) +
-      row('Charm below / above', num(f.charm_below, 4) + ' / ' + num(f.charm_above, 4));
+      row('Charm below / above', f.charm_below == null ? esc(f.charm_error || '—') : num(f.charm_below, 4) + ' / ' + num(f.charm_above, 4)) +
+      '<span class="tdm-r tdm-basis">' + esc(f.basis || '') + '</span>';
   }
   // a card's facts: one compact line of served values
   function row(k, v, cls) { return '<span class="tdm-r">' + esc(k) + ' <b class="' + (cls || '') + '">' + v + '</b></span>'; }
@@ -456,6 +459,10 @@
         row('ATR 15m', t && t.atr_15m != null ? num(t.atr_15m) : esc((t && t.atr_15m_reason) || '—')) +
         row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : 'waiting for the VIX stream');
     }
+    // a card's one line of facts is cut where the card ends: the whole line is its hover text
+    document.querySelectorAll('#tdmCards .tdm-rows').forEach(function (line) {
+      line.title = Array.prototype.map.call(line.querySelectorAll('.tdm-r'), function (r) { return r.textContent; }).join(' · ');
+    });
     paintCardCharts();
   }
   function paintCardCharts() {

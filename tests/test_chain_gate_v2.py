@@ -64,8 +64,13 @@ def test_same_ticker_requests_coalesce_single_fetch(monkeypatch):
     calls = {"n": 0}
 
     def _slow_chain(client, ticker, **kwargs):
+        # the fetch is in flight until both other requests have joined it: no sleep decides
+        # the overlap (a 0.3 s fetch failed on a loaded machine, 2026-09-30: the third request
+        # started after the first had finished)
         calls["n"] += 1
-        time.sleep(0.3)
+        deadline = time.monotonic() + 10.0
+        while gate.metrics["coalesced_hits"] < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
         return f"RESP_{ticker}"
 
     monkeypatch.setattr(srv, "safe_get_chain", _slow_chain)
@@ -77,9 +82,8 @@ def test_same_ticker_requests_coalesce_single_fetch(monkeypatch):
     threads = [threading.Thread(target=_go) for _ in range(3)]
     for t in threads:
         t.start()
-        time.sleep(0.05)  # ensure the first registers as owner
     for t in threads:
-        t.join(timeout=10)
+        t.join(timeout=15)
     assert calls["n"] == 1, "duplicate same-ticker requests must coalesce"
     assert gate.metrics["coalesced_hits"] == 2
     assert {r[0] for r in results} == {"RESP_ZZCO"}

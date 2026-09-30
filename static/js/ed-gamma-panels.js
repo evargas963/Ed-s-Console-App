@@ -360,19 +360,9 @@
     _sdDesired = { strike: strike, expiry: expiry };
     _sdLoader.trigger(ticker() + '|' + strike + '|' + (expiry || ''));
   }
-  var SCOPE_LABEL = {
-    complete_single_expiry: { t: 'vendor · complete (ALL)', live: true },
-    unavailable: { t: 'vendor · unavailable', stale: true },
-  };
   function setSdAsOf(d) {
     var el = document.getElementById('sdSrc'); if (!el) return;
-    var sc = d && d.scope, kind = sc && sc.kind;
-    if (!kind) { el.innerHTML = ''; return; }
-    var m = SCOPE_LABEL[kind] || { t: kind };
-    el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: m.t, live: !!m.live, stale: !!m.stale,
-          title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') })
-      : '';
+    el.innerHTML = window.EdShell.chainBadge(d, 'vendor · ');
   }
   // Independent-review finding (2026-09-12): an empty/failed chain result left Strike
   // Detail showing "no chain" while the PREVIOUS strike's additional-contract
