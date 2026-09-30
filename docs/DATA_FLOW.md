@@ -49,11 +49,11 @@ Schwab sends is taken as sent (rule 2), never computed.
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
 | daemon → console | local WebSocket 127.0.0.1:8799 | each Schwab book, option quote, 1-minute bar and news message as sent (an equity quote travels only as the price row below); on connect, the current state first |
 | console → daemon | same socket | the "wanted" list: every symbol per Schwab service |
-| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
+| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second; and each completed 1-minute bar of a subscribed symbol as the chart bar it makes at every timeframe (`bars`). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
 | daemon → console | the same :8800 push | the same price rows, for the equities the console wants streamed: the console's only live price |
 | Schwab → console | Schwab REST | full option chains; one quote at startup to validate the login |
 | console → browser | HTTP `/api/*` | everything else, on request |
-| console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`, `liquidity`) and the session label |
+| console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`) and the session label |
 
 ### 3.3 Where data lives
 
@@ -107,14 +107,21 @@ Schwab sends is taken as sent (rule 2), never computed.
   is never without one; after it was without one (the first connection, a dropped one, a
   console restart) the page declares its demand again when the next opens (`ed:push_open`).
   No timer keeps it alive.
-- **1-minute bar.** Schwab → daemon bus → writer (`stream_capture.db`), and → console → the
-  console's own bar writer → `ed_console.db` → a `liquidity` push on `/api/changes` → the browser
-  reads `/api/bars1m`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
-  the newest bar's minute (`last_bar`). The stored bars are those from 09:15 ET to 15 minutes
-  after the close (`time_et.is_collect_window_bar_end_ts_utc`); nothing outside it is stored. A
-  timeframe above one minute is rolled up on the server (`aggregate_bars`: a bar is stamped with
-  its first stored minute); `limit` counts 1-minute bars, and when the read reaches it the oldest
-  rolled bar, which the cut may have shortened, is not served. The live Schwab LAST_PRICE (the header's price row, with
+- **1-minute bar.** Schwab → daemon bus → (a) the daemon's browser push (`live_ui`): the
+  symbol's minutes of the day in the daemon's memory (the day's stored minutes are read once, the
+  first time the symbol has a bar that day) → for each new minute, the chart bar it makes at every
+  timeframe (`live_price_rows.bar_update`) → the browsers subscribed to the symbol, whose charts
+  draw it (`ed:bar`) with no read; (b) the daemon's writer (`stream_capture.db`); (c) → console →
+  the console's own bar writer → `ed_console.db`, from which `/api/bars1m` serves a chart's
+  history as it opens (ONE-06: a live screen reading the database for that history). One
+  definition serves both: the chart's 1-minute bar (`live_price_rows.minute_bar`: Schwab's prices
+  as sent, on the minute grid, from 09:15 ET to 15 minutes after the close,
+  `time_et.is_collect_window_bar_end_ts_utc`; nothing outside it is stored or shown) and its
+  roll-up (`live_price_rows.aggregate_bars`: a bar is stamped with its first stored minute).
+  Schwab sends each minute's bar once, about 2.7 s after the minute ends (median of 1,962 bars,
+  5 symbols, 2026-09-30). Charts show completed Schwab bars only, exactly as Schwab sent them,
+  with the newest bar's minute (`last_bar`). `limit` counts 1-minute bars, and when the read
+  reaches it the oldest rolled bar, which the cut may have shortened, is not served. The live Schwab LAST_PRICE (the header's price row, with
   its age since the trade) is drawn on the chart as its own line and moves with every update; no
   candle is built from quotes (level-one prices do not reproduce a bar's high and low).
 - **Price levels** (prior day, opening range, VWAP, value area). Computed once per
@@ -140,8 +147,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   are as of). The Liquidity Map prints both; stale option levels stay in the zones, labeled
   stale with the reason. Producer `_publish_price_levels`: the
   bar writer (`_write_streamed_bars`) after each bar of every ticker, on its own thread, once
-  every bar waiting has been written and pushed as `liquidity` (a `levels` push when the
-  published snapshot changed); and the levels loop (`_publish_missing_price_levels`) for a
+  every bar waiting has been written (a `levels` push when the published snapshot changed); and
+  the levels loop (`_publish_missing_price_levels`) for a
   ticker with none yet today (the console's start, a new session date). It reads the bars with
   `_read_bars_1m` and normalizes them once (`_bars_to_list`); every level function takes them.
   The routes serve what it published and build nothing. `/api/levels` also serves the order the
@@ -288,9 +295,9 @@ Schwab sends is taken as sent (rule 2), never computed.
   and the chain they were computed from: `/api/terrain`, `/api/terrain/strikes`, `/api/chain`
   and `/api/liquidity-snapshot` (for the option levels in its zones) carry its verdict (stale with the reason, the age, market closed with the time the values
   are as of), and each panel's badge prints it. A complete chain is not thereby a live one.
-- **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the
-  price-row loop (an equity's quote), the stream handler (a book) and the bar writer mark a
-  ticker's kind changed; each page
+- **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer (and the
+  price levels after a bar), the price-row loop (an equity's quote) and the stream handler (a
+  book) mark a ticker's kind changed; each page
   connection gets at most one push a second. The console down: the page's session label reads
   `—` and no panel reloads until the browser's EventSource reconnects. A Trade Desk timeframe
   switch asks only for that timeframe's bars, levels and event window.
@@ -304,8 +311,9 @@ Schwab sends is taken as sent (rule 2), never computed.
 3. **The console talks to Schwab** (REST chains) — the daemon should own every Schwab call.
 4. **The console computes the levels** in the same process that serves the page, so a request
    waits behind that work.
-5. **The browser reads a route after each push** for bars, order flow, liquidity and the levels,
-   instead of receiving the values; bars are not yet on the daemon's push.
+5. **The browser reads a route after each push** for order flow, liquidity and the levels,
+   instead of receiving the values. Bars are on the daemon's push; a chart's history as it opens
+   is still read from the database (ONE-06).
 
 ## 4. The target
 

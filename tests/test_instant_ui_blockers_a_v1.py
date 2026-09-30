@@ -70,7 +70,7 @@ def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
 # ── PR C: server-side bar roll-up; quote_tick carries the screen's numbers; heatmap demand ──
 
 def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
-    import server as srv
+    import live_price_rows as srv   # the roll-up's one owner (the console and the daemon)
     t0 = 1_700_000_100.0                                    # a 5-minute boundary: 1_700_000_100 % 300 == 100? use floor
     base = t0 - (t0 % 300)
     m = [{"t": base + 60 * i, "o": 10 + i, "h": 11 + i, "l": 9 + i, "c": 10.5 + i, "v": 100} for i in range(7)]
@@ -85,7 +85,7 @@ def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
 
 
 def test_daily_roll_up_is_keyed_on_the_et_trading_date():
-    import server as srv
+    import live_price_rows as srv   # the roll-up's one owner (the console and the daemon)
     # 2026-09-24 19:59 ET and 20:01 ET are the same ET date; 00:01 ET next day is not
     d1a, d1b, d2 = 1_790_294_340.0, 1_790_294_460.0, 1_790_308_860.0
     out = srv.aggregate_bars([{"t": d1a, "o": 1, "h": 2, "l": 0.5, "c": 1.5, "v": 1},

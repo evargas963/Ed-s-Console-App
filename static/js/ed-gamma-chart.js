@@ -1,6 +1,7 @@
 /* Ed Console — Options/Gamma Chart view. PRESENTATION ONLY.
    On the one TradingView-style chart every chart in the console uses (ed-tv-chart.js): the price
-   (/api/bars1m, completed Schwab bars at the toolbar's timeframe), the flip and the walls (/api/terrain) as level
+   (/api/bars1m, completed Schwab bars at the toolbar's timeframe, then each new one as the daemon
+   pushes it), the flip and the walls (/api/terrain) as level
    lines, the live price (the header's price row), and the selected measure's per-strike rows
    (/api/terrain/strikes: GEX `today.all`, DEX and OI `measures`) as a profile on the price axis --
    bars, or dots sized by magnitude (Dot Map). The same view serves the Gamma, Delta / DEX and Open
@@ -158,8 +159,15 @@
   document.addEventListener('ed:ticker', function () { _last = { bars: undefined, strikes: undefined, terrain: undefined }; load(); });
   document.addEventListener('ed:scope', function () { if (_chart && isChart()) render(); });
   document.addEventListener('ed:measure', function () { if (_chart && isChart() && _last.strikes !== undefined) render(); });
-  document.addEventListener('ed:changed', function (e) {   // a new bar reloads all; new levels reload the levels
-    if (e.detail.kind === 'liquidity') load(); else if (e.detail.kind === 'levels') _levelsLoader.trigger(ticker());
+  document.addEventListener('ed:changed', function (e) {   // new levels reload the levels
+    if (e.detail.kind === 'levels') _levelsLoader.trigger(ticker());
+  });
+  // a completed Schwab minute, pushed by the daemon: the chart bar at this chart's timeframe
+  window.addEventListener('ed:bar', function (ev) {
+    var b = ev.detail;
+    if (!b || b.ticker !== st().key || !_last.bars || !_last.bars.bars || _last.bars.tf !== _tf) return;
+    _last.bars = window.EdTvChart.withPushedBar(_last.bars, b, _tf);
+    if (isChart() && _chart) render();
   });
   document.addEventListener('ed:strike', function () { if (_chart && isChart()) _chart.selectProfile(st().selStrike == null ? null : Number(st().selStrike)); });
   bindModes();

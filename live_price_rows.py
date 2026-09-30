@@ -1,24 +1,106 @@
-"""THE displayed price row -- one producer for every price the operator sees.
+"""THE displayed price row and THE chart bar -- one producer for every price the operator sees.
 
 Built only from live_market_plane (the per-field Schwab LEVELONE_EQUITIES state) and its feed
-liveness (feed_live_for). Imported by the capture daemon, which pushes these rows straight to
-the browser (app/market_data/schwab/streaming/live_ui.py), and by the console, whose analytics
-read the same function -- so a price on screen and a price in a calculation can never come
-from two different rules.
+liveness (feed_live_for), and from Schwab's CHART_EQUITY 1-minute bars. Imported by the capture
+daemon, which pushes these rows and bars straight to the browser
+(app/market_data/schwab/streaming/live_ui.py), and by the console, whose routes and analytics
+read the same functions -- so a price or a bar on screen and one in a calculation can never
+come from two different rules.
 
 Nothing here computes a market value: every number is a Schwab field or its receive time; the
-only derivations are the live verdict and the trade age.
+only derivations are the live verdict, the trade age, a bar's change and the roll-up of
+1-minute bars to a chart timeframe.
 """
 from __future__ import annotations
 
 import time
+from bisect import bisect_left
+from datetime import datetime
 from typing import Any, Optional
 
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
-from time_et import ct_label, is_capturable_session
+from numeric_contract import schwab_count, schwab_number
+from time_et import ET, ct_label, is_capturable_session, is_collect_window_bar_end_ts_utc
 
 SPOT_SOURCE = "streaming_plane"
+#: the chart timeframes: minutes, and "D" (the ET trading date)
+CHART_TFS = ("1", "3", "5", "15", "30", "60", "D")
+
+
+def minute_bar(msg: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """A streamed Schwab CHART_EQUITY message as the chart's 1-minute bar {t, o, h, l, c, v}
+    (t: the bar's start, epoch seconds), the bar the store keeps and the screen shows. None when
+    a price or the start is not a number (AGENTS.md rule 2), the start is off the minute grid, or
+    the bar does not end in the collect window (time_et.is_collect_window_bar_end_ts_utc). A
+    volume that is not a number is None, never 0."""
+    o, h, lo, c = (schwab_number(msg.get(k)) for k in ("open", "high", "low", "close"))
+    start_ms = schwab_number(msg.get("bar_start_ms"))
+    if None in (o, h, lo, c, start_ms):
+        return None
+    t = start_ms / 1000.0
+    if t % 60 != 0 or not is_collect_window_bar_end_ts_utc(t + 60.0):
+        return None
+    return {"t": t, "o": o, "h": h, "l": lo, "c": c, "v": schwab_count(msg.get("volume"))}
+
+
+def tf_bucket_key(t: float, tf: str):
+    """The chart bar a timestamp belongs to: its ET trading date ("D") or its tf-minute bucket."""
+    return datetime.fromtimestamp(t, ET).date() if tf == "D" else int(t // (int(tf) * 60))
+
+
+def roll_bucket(bucket: list[dict]) -> dict:
+    """THE roll-up of one chart bar from its 1m bars, oldest first: first open, max high, min
+    low, last close, stamped with the first bar's t. Volume is the sum only when every minute
+    reported one -- otherwise None (unknown), never a partial sum or a 0."""
+    vols = [b.get("v") for b in bucket]
+    return {"t": bucket[0]["t"], "o": bucket[0]["o"], "h": max(b["h"] for b in bucket),
+            "l": min(b["l"] for b in bucket), "c": bucket[-1]["c"],
+            "v": None if None in vols else sum(vols)}
+
+
+def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
+    """1m bars, oldest first, rolled up to a chart timeframe (CHART_TFS): each run of bars in one
+    bucket (tf_bucket_key) is one chart bar (roll_bucket)."""
+    if tf == "1":
+        return list(bars)
+    out: list[dict] = []
+    run: list[dict] = []
+    key = None
+    for b in bars:
+        k = tf_bucket_key(float(b["t"]), tf)
+        if run and k != key:
+            out.append(roll_bucket(run))
+            run = []
+        run.append(b)
+        key = k
+    if run:
+        out.append(roll_bucket(run))
+    return out
+
+
+def last_bar(t: Optional[float]) -> Optional[dict[str, Any]]:
+    """The newest completed minute a chart shows, with its Central Time label."""
+    return None if t is None else {"t": t, "label": ct_label(t)}
+
+
+def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float) -> dict[str, Any]:
+    """What the daemon pushes for one new 1-minute `bar`: for every chart timeframe, the chart
+    bar that contains it (roll_bucket), from `minutes` -- the ticker's minutes of `bar`'s ET
+    trading day, oldest first, `bar` among them; the "D" bar is all of them -- with the daemon's
+    receive time of Schwab's message."""
+    i = bisect_left([m["t"] for m in minutes], bar["t"])
+    by_tf = {"D": with_change(roll_bucket(minutes))}
+    for tf in (tf for tf in CHART_TFS if tf != "D"):
+        key = tf_bucket_key(bar["t"], tf)
+        lo, hi = i, i + 1
+        while lo and tf_bucket_key(minutes[lo - 1]["t"], tf) == key:
+            lo -= 1
+        while hi < len(minutes) and tf_bucket_key(minutes[hi]["t"], tf) == key:
+            hi += 1
+        by_tf[tf] = with_change(roll_bucket(minutes[lo:hi]))
+    return {"ticker": ticker_storage_key(ticker), "ts_recv": ts_recv, "last_bar": last_bar(minutes[-1]["t"]),
+            "tf": by_tf}
 
 
 def live_spot(ticker: str) -> Optional[float]:

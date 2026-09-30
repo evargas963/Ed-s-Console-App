@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 
+import live_price_rows
 import server as srv
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +26,7 @@ def _bars(start: datetime, minutes: int) -> list[dict]:
 
 
 def test_thirty_minute_rollup_is_first_open_max_high_min_low_last_close():
-    out = srv.aggregate_bars(_bars(datetime(2026, 9, 25, 9, 30, tzinfo=ET), 60), "30")
+    out = live_price_rows.aggregate_bars(_bars(datetime(2026, 9, 25, 9, 30, tzinfo=ET), 60), "30")
     assert len(out) == 2
     first, second = out
     assert (first["o"], first["h"], first["l"], first["c"], first["v"]) == (100, 129.5, 99.5, 129.25, 300)

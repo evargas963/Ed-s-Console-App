@@ -815,6 +815,11 @@
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
+      // a completed Schwab minute: the chart bar it makes at every timeframe, for the charts
+      if (msg && msg.type === 'bars' && Array.isArray(msg.bars)) {
+        msg.bars.forEach(function (b) { window.dispatchEvent(new CustomEvent('ed:bar', { detail: b })); });
+        return;
+      }
       if (!msg || !Array.isArray(msg.rows)) return;
       _priceUp = true; _lastPriceTs = Date.now();
       msg.rows.forEach(ingestPriceRow);
@@ -880,7 +885,8 @@
   }
 
   // ---- the console's push: which of this ticker's values changed, and the session label.
-  // Each panel reloads on `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
+  // Each panel reloads on `ed:changed` for the kinds it shows: levels, chain, flow. (Bars come
+  // on the daemon's push: `ed:bar`.) ----
   var _changes = null;
   // this page load's id: its push connection carries it, and the console holds the view's
   // option-contract demand (ed-stream.js) for as long as the view has a connection open
@@ -912,7 +918,7 @@
     // a kept connection is the ticker left: only the current one paints
     es.addEventListener('session', function (ev) { if (es === _changes) paintSession(ev.data); });
     es.addEventListener('sign_in', function (ev) { if (es === _changes) paintSignIn(JSON.parse(ev.data)); });
-    ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
+    ['levels', 'chain', 'flow'].forEach(function (kind) {
       es.addEventListener(kind, function () {
         if (es !== _changes) return;
         if (kind === 'levels' && _expiriesPending) loadExpiries(state.ticker);

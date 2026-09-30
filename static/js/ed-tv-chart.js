@@ -860,6 +860,19 @@
     { id: '30', lbl: '30m' }, { id: '60', lbl: '1h' }, { id: 'D', lbl: 'D' }];
   var BARS_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
 
+  // A chart's served bars (/api/bars1m's answer) with the bar the daemon pushed for its
+  // timeframe (`ed:bar`: detail.tf[tf], detail.last_bar): the bar at the same time is replaced, a
+  // later one is added; an earlier one leaves the list as it is. Places served bars; computes none.
+  function withPushedBar(served, update, tf) {
+    var bar = served && update && update.tf && update.tf[tf];
+    if (!bar) return served;
+    var bars = (served.bars || []).slice(), n = bars.length;
+    if (n && bars[n - 1].t === bar.t) bars[n - 1] = bar;
+    else if (!n || bars[n - 1].t < bar.t) bars.push(bar);
+    else return served;
+    return Object.assign({}, served, { bars: bars, last_bar: update.last_bar });
+  }
+
   function lsGet(k, d) { try { var v = window.localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
   function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }
 
@@ -903,5 +916,6 @@
     return { setTf: setTf, slot: el.querySelector('.tvc-slot') };
   }
 
-  window.EdTvChart = { create: create, toolbar: toolbar, TFS: TFS, BARS_LIMIT: BARS_LIMIT, alpha: alpha };
+  window.EdTvChart = { create: create, toolbar: toolbar, TFS: TFS, BARS_LIMIT: BARS_LIMIT, alpha: alpha,
+    withPushedBar: withPushedBar };
 })();

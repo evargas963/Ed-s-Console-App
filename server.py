@@ -172,7 +172,7 @@ from terrain_atr import AtrPair, compute_atr_pair
 
 from db import LevelCrossEvent, get_db
 
-import live_price_rows as _lpr        # with_change: the bar-change computation
+import live_price_rows as _lpr        # the chart bar, its roll-up and its change
 import push_changes
 
 # ── Config + Schwab client (refreshable singleton) ────────────────────────────
@@ -762,18 +762,15 @@ def _bar_dict(c: "Candle") -> dict:
 
 
 def _write_streamed_bar(msg: dict) -> bool:
-    """Write one streamed 1-minute bar (Schwab CHART_EQUITY) to price_bars_1m; False when it
-    lacks a field (then nothing is written)."""
-    from numeric_contract import schwab_count, schwab_number
-    o, h, lo, c = (schwab_number(msg.get(k)) for k in ("open", "high", "low", "close"))
-    start_ms = msg.get("bar_start_ms")
-    if None in (o, h, lo, c, start_ms):
-        # not a number (AGENTS.md rule 2): absent, -999, text, NaN or infinity
-        log.warning("streamed bar for %s lacks a valid field, not written: %s", msg.get("symbol"), msg)
+    """Write one streamed 1-minute bar (Schwab CHART_EQUITY) to price_bars_1m: the chart's bar
+    (live_price_rows.minute_bar, the one the daemon pushes to the screen); False when it is not
+    one (then nothing is written)."""
+    b = _lpr.minute_bar(msg)
+    if b is None:
+        log.debug("streamed bar for %s is not a chart bar, not written: %s", msg.get("symbol"), msg)
         return False
-    get_db().upsert_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo,
-                                                   close=c, volume=schwab_count(msg.get("volume")))])
-    push_changes.changed(msg["symbol"], push_changes.LIQUIDITY)
+    get_db().upsert_1m_bars(msg["symbol"], [Candle(ts=b["t"], open=b["o"], high=b["h"], low=b["l"],
+                                                   close=b["c"], volume=b["v"])])
     return True
 
 
@@ -2669,81 +2666,41 @@ def get_terrain_strikes(ticker: str = Query(...)):
     })
 
 
-# ── CR-03 pre-work (operator directive 2026-07-22 "we have plenty of time"):
-# the console's charts read canonical 1m bars via this endpoint.
-# Read-only, index-served (ticker+timeframe named — the idx_snap lesson applies to
-# price_bars_1m equally), no Schwab call, no model stack. The WS transport replaces
-# the page's polling when CR-CAP clears; this endpoint stays as the history hydrator.
 @app.get("/api/bars1m")
 def get_bars1m(ticker: str = Query(...),
                limit: int = Query(default=780, ge=1, le=12000),
                tf: str = Query(default="1", pattern=r"^(1|3|5|15|30|60|D)$")):
-    """Completed Schwab 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts, rolled
-    up to `tf` by aggregate_bars. `limit` counts 1-minute bars: when the read reaches it, the
-    oldest rolled bar may have lost its first minutes to the cut and is not served. `last_bar`:
-    the newest completed minute and its label."""
+    """A chart's bar history, as it opens: completed Schwab 1m bars, newest-last, [{t,o,h,l,c,v}]
+    epoch-seconds bar starts, rolled up to `tf` (live_price_rows.aggregate_bars). The bars that
+    complete after it come on the daemon's push (live_ui), rolled by the same function.
+    `limit` counts 1-minute bars: when the read reaches it, the oldest rolled bar may have lost
+    its first minutes to the cut and is not served. `last_bar`: the newest completed minute and
+    its label."""
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
-    rolled = aggregate_bars(bars, tf)
+    rolled = _lpr.aggregate_bars(bars, tf)
     if tf != "1" and len(bars) == int(limit):
         rolled = rolled[1:]
     out = [_lpr.with_change(b) for b in rolled]
-    last = bars[-1]["t"] if bars else None
     return JSONResponse({"ticker": tk, "bars": out, "tf": tf, "n": len(out),
-                         "last_bar": {"t": last, "label": ct_label(last)} if last is not None else None})
-
-
-def _tf_bucket_key(t: float, tf: str):
-    """The chart bar a timestamp belongs to: its ET trading date ("D") or its tf-minute bucket."""
-    return datetime.fromtimestamp(t, ET).date() if tf == "D" else int(t // (int(tf) * 60))
+                         "last_bar": _lpr.last_bar(bars[-1]["t"] if bars else None)})
 
 
 def aggregate_vwap(rows: list, tf: str, bar_ts: list) -> list:
-    """VWAP rows [t, vwap, +1s, -1s, +2s, -2s] rolled up to the chart timeframe as aggregate_bars
-    rolls the bars: each chart bar takes the value as of its last minute, stamped with that bar's
-    own `t` -- the first of `bar_ts` (the session's 1-minute bar times, VWAP minute or not) in
-    the bar's bucket."""
+    """VWAP rows [t, vwap, +1s, -1s, +2s, -2s] rolled up to the chart timeframe as
+    live_price_rows.aggregate_bars rolls the bars: each chart bar takes the value as of its last
+    minute, stamped with that bar's own `t` -- the first of `bar_ts` (the session's 1-minute bar
+    times, VWAP minute or not) in the bar's bucket."""
     if tf == "1":
         return [list(r) for r in rows]
     first: dict = {}
     for t in bar_ts:
-        first.setdefault(_tf_bucket_key(float(t), tf), t)
+        first.setdefault(_lpr.tf_bucket_key(float(t), tf), t)
     out: dict = {}
     for r in rows:
-        k = _tf_bucket_key(float(r[0]), tf)
+        k = _lpr.tf_bucket_key(float(r[0]), tf)
         out[k] = [first[k]] + list(r[1:])
     return list(out.values())
-
-
-def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
-    """THE chart-timeframe roll-up of 1m bars ("1", "3", "5", "15", "30", "60" minutes, or "D" =
-    the ET trading date): first open, max high, min low, last close. Volume is the sum only
-    when every minute in the bucket reported one -- otherwise None (unknown), never a partial
-    sum or a 0."""
-    if tf == "1":
-        return list(bars)
-
-    def key(t: float):
-        return _tf_bucket_key(t, tf)
-
-    out: list[dict] = []
-    cur: dict | None = None
-    cur_key = None
-    for b in bars:
-        k = key(float(b["t"]))
-        if cur is None or k != cur_key:
-            if cur is not None:
-                out.append(cur)
-            cur = {"t": b["t"], "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "v": b.get("v")}
-            cur_key = k
-            continue
-        cur["h"] = max(cur["h"], b["h"])
-        cur["l"] = min(cur["l"], b["l"])
-        cur["c"] = b["c"]
-        cur["v"] = None if (cur["v"] is None or b.get("v") is None) else cur["v"] + b["v"]
-    if cur is not None:
-        out.append(cur)
-    return out
 
 
 @app.get("/api/options/vanna-by-strike")

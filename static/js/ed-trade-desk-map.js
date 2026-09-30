@@ -1,7 +1,8 @@
 /* Ed Console — Trade Desk / "Desk" subview (the operator's 2026-09-25 mockup). PRESENTATION ONLY.
 
    One page for the SELECTED ticker, one global timeframe:
-     MARKET MAP   <- /api/bars1m (completed Schwab 1m bars, server-rolled timeframe),
+     MARKET MAP   <- /api/bars1m (completed Schwab 1m bars, server-rolled timeframe), then each
+                     new bar as the daemon pushes it (ed:bar),
                      /api/levels (value area, VWAP + bands, prior day, opening range; a family
                      with no value keeps its button and says why),
                      /api/terrain (call/put wall, gamma flip, max pain -- full chain)
@@ -16,12 +17,10 @@
 (function () {
   'use strict';
 
-  // the chart's timeframes and 1m rows per timeframe (ed-tv-chart, every chart's), and the tail
-  // re-read on each new completed bar: two whole buckets.
+  // the chart's timeframes and 1m rows per timeframe (ed-tv-chart, every chart's)
   var TFS = window.EdTvChart.TFS, FULL_LIMIT = window.EdTvChart.BARS_LIMIT;
   // the Order Flow card's bars: the newest hour of 1-minute bars
   var FLOW_BARS = 60;
-  var TAIL_LIMIT = { '1': 5, '3': 9, '5': 15, '15': 35, '30': 65, '60': 125, 'D': 2000 };
   // The ONE global timeframe also sets how far back the queue and the event markers reach.
   // the event window and its words are the server's (/api/desk/events window_label), for this timeframe
   function windowLabel() { return S.events && S.events.tf === S.tf ? S.events.window_label : '—'; }
@@ -158,7 +157,7 @@
     S.tf = tf; sset('ed.desk.tf', tf); paintTfButtons();
     S.bars = []; S.levels = S.events = undefined;   // answers for another timeframe are dropped (tf check)
     clearChart(); paintQueue(); paintCards();
-    loadBars(true); loadPerTf();
+    loadBars(); loadPerTf();
   }
   function clearChart() {
     if (!S.chart) return;
@@ -170,24 +169,39 @@
   }
 
   // ------------------------------------------------------------------ data
-  function loadBars(full) {
+  // the chart's bars as it opens (a ticker or timeframe change); each later bar is pushed (ed:bar)
+  function loadBars() {
     var tk = S.ticker, tf = S.tf, gen = S.gen;
-    var lim = full ? FULL_LIMIT[tf] : TAIL_LIMIT[tf];
-    return fetchJson('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + tf + '&limit=' + lim).then(function (d) {
+    return fetchJson('/api/bars1m?ticker=' + encodeURIComponent(tk) + '&tf=' + tf + '&limit=' + FULL_LIMIT[tf]).then(function (d) {
       if (gen !== S.gen || tf !== S.tf || !S.chart) return;
       var bars = (d && d.bars) || [];
-      if (full) {
-        S.bars = bars; S.barsAnswered = gen;
-        S.chart.setBars(bars, tf, shown(), d.last_bar && d.last_bar.label);
-        $('tdmChartEmpty').hidden = bars.length > 0;
-        $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
-          : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
-        paintChartOverlays(); paintQueue(); openView();
-        var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
-      } else if (bars.length) {
-        S.chart.updateTail(bars.slice(-2), d.last_bar && d.last_bar.label);
-      }
+      S.bars = bars; S.barsAnswered = gen;
+      S.chart.setBars(bars, tf, shown(), d && d.last_bar && d.last_bar.label);
+      $('tdmChartEmpty').hidden = bars.length > 0;
+      $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
+        : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
+      paintChartOverlays(); paintQueue(); openView();
+      var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
     });
+  }
+  // the Order Flow card's hour of 1-minute bars as the desk opens; each later bar is pushed
+  function loadFlowBars() {
+    var gen = S.gen;
+    return fetchJson('/api/bars1m?ticker=' + encodeURIComponent(S.ticker) + '&tf=1&limit=' + FLOW_BARS).then(function (d) {
+      if (gen !== S.gen) return;
+      S.flowBars = d ? d.bars || [] : null;
+      paintCards();
+    });
+  }
+  // a completed Schwab minute, pushed by the daemon: the chart bar at the desk's timeframe, and the
+  // 1-minute bar for the Order Flow card
+  function takeBar(b) {
+    if (!S.chart || b.ticker !== st().key || S.barsAnswered !== S.gen) return;
+    var had = S.bars.length;
+    S.bars = window.EdTvChart.withPushedBar({ bars: S.bars }, b, S.tf).bars;
+    if (had) S.chart.updateTail([b.tf[S.tf]], b.last_bar && b.last_bar.label);
+    else { S.chart.setBars(S.bars, S.tf, shown(), b.last_bar && b.last_bar.label); $('tdmChartEmpty').hidden = true; paintChartOverlays(); }
+    if (S.flowBars) { S.flowBars = window.EdTvChart.withPushedBar({ bars: S.flowBars }, b, '1').bars.slice(-FLOW_BARS); paintCards(); }
   }
   function loadSlow() { return Promise.all([loadPerTf(), loadPerTicker()]); }
   // the timeframe's levels (VWAP per chart bar) and event window, each drawn as it arrives
@@ -206,19 +220,17 @@
       fetchJson('/api/desk/events?ticker=' + q + '&venue=' + st().bookVenue + '&tf=' + encodeURIComponent(tf)).then(take('events'))
     ]);
   }
-  // the symbol's option terrain, zones, strikes, forces and the Order Flow card's hour of bars
+  // the symbol's option terrain, zones, strikes and forces
   function loadPerTicker() {
     var gen = S.gen, q = encodeURIComponent(S.ticker);
     return Promise.all([
       fetchJson('/api/terrain?ticker=' + q),
       fetchJson('/api/liquidity-snapshot?ticker=' + q),
       fetchJson('/api/terrain/strikes?ticker=' + q),
-      fetchJson('/api/forces?ticker=' + q),
-      fetchJson('/api/bars1m?ticker=' + q + '&tf=1&limit=' + FLOW_BARS)
+      fetchJson('/api/forces?ticker=' + q)
     ]).then(function (r) {
       if (gen !== S.gen) return;
       S.terrain = r[0]; S.liq = r[1]; S.strikes = r[2]; S.forces = r[3];
-      S.flowBars = r[4] ? r[4].bars || [] : null;
       paintChartOverlays(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
     });
   }
@@ -567,10 +579,10 @@
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed
       S.levels = S.terrain = S.micro = S.events = S.liq = S.strikes = S.forces = S.flowBars = undefined; S.sel = null;
       clearChart(); paintHeader(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
-      loadBars(true); loadSlow(); loadFast();
+      loadBars(); loadFlowBars(); loadSlow(); loadFast();
     } else if (!S.bars.length && S.barsAnswered === S.gen) {
       // back on the desk after an answer with no bars: ask again (never while the first ask is in flight)
-      loadBars(true); loadSlow(); loadFast();
+      loadBars(); loadFlowBars(); loadSlow(); loadFast();
     }
   }
   function init() {
@@ -582,9 +594,9 @@
       if (!onDesk() || !S.ticker) return;
       var k = e.detail.kind;
       if (k === 'flow') loadFast();
-      if (k === 'levels' || k === 'liquidity') loadSlow();
-      if (k === 'liquidity') loadBars(false);   // a completed Schwab bar was written
+      if (k === 'levels') loadSlow();
     });
+    window.addEventListener('ed:bar', function (e) { if (e.detail && S.ticker) takeBar(e.detail); });
     // Every streamed price row: header + indices. The chart moves only on a completed bar.
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || !q.ticker) return;
