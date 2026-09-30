@@ -56,7 +56,7 @@ def _cached():
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", 1.0))
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # the open market, unless a test closes it
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: True)   # the open market, unless a test closes it
     monkeypatch.setattr(push_changes, "_clients", {})                    # no page open
     monkeypatch.setattr(push_changes, "_loop", None)                     # changes recorded, not delivered
     ofs._active_option_contract = _A
@@ -321,7 +321,7 @@ def test_a_ticker_just_put_on_screen_gets_its_chain_on_the_first_tick(monkeypatc
     chain through the one producer, as an operator-facing request."""
     monkeypatch.setattr(server, "LEVELS_REPRICE_MIN_INTERVAL_SEC", 0.05)
     fetched = []
-    monkeypatch.setattr(server, "_terrain_refresh_one", lambda tk, priority=False: fetched.append((tk, priority)))
+    monkeypatch.setattr(server, "_terrain_refresh_one", lambda tk, now, priority=False: fetched.append((tk, priority)))
     _stream({}, monkeypatch)
     server._publish_levels(TK, _CONTRACTS, time.time(), now=time.time())                 # published while not viewed
     push_changes.subscribe(TK, "test-view")                              # the operator switches to it
@@ -453,16 +453,17 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
         assert loaded[k] == getattr(expected, k), k
 
 def test_while_closed_the_levels_are_the_last_sessions_labeled_with_their_time(monkeypatch):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: False)
     fri_close = datetime(2026, 9, 25, 16, 29, tzinfo=ZoneInfo("America/New_York")).timestamp()
-    st = server.terrain_staleness(fri_close, TK)
+    saturday = datetime(2026, 9, 26, 12, 0, tzinfo=ZoneInfo("America/New_York")).timestamp()
+    st = server.terrain_staleness(fri_close, TK, saturday)
     assert st["levels_market_closed"] is True and st["levels_stale"] is False
     assert st["levels_as_of"] == "Fri 09/25 03:29 PM CT"
     assert st["levels_refresh_active"] is False and st["levels_failing"] is False
 
 
 def test_a_tick_while_closed_reprices_nothing(monkeypatch):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: False)
     calls = _count_publishes(monkeypatch)
     _put_chain()
     server._on_stream_tick("CRWD")

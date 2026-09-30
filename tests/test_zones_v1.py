@@ -169,10 +169,10 @@ def test_the_route_carries_the_option_levels_own_freshness(monkeypatch, spy_publ
                               now=datetime.fromtimestamp(fx["ts_utc"], ZoneInfo("America/New_York"))).to_dict()
 
     def published(age_sec, refreshing):
-        monkeypatch.setattr(srv, "_is_loggable_session", lambda: refreshing)
+        monkeypatch.setattr(srv, "_is_loggable_session", lambda now: refreshing)
         monkeypatch.setattr(srv, "_terrain_cache", {"SPY": {**terrain, "computed_ts_utc": time.time() - age_sec,
                                                             "levels_source": "wide_chain_loop"}})
-        return srv.get_liquidity_snapshot(ticker="SPY"), srv.terrain_cache_get("SPY")
+        return srv.get_liquidity_snapshot(ticker="SPY"), srv.terrain_cache_get("SPY", time.time())
 
     body, served = published(10, True)
     tags = {s["label"] for z in body["zones"] for s in z["source_levels"]}

@@ -113,7 +113,7 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar(monkeypatch):
 
 
 def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch, view):
-    monkeypatch.setattr("server._is_loggable_session", lambda: True)   # an open-market test
+    monkeypatch.setattr("server._is_loggable_session", lambda now: True)   # an open-market test
     import threading
     import server as srv
     ran, done = [], threading.Event()

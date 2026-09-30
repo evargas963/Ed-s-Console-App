@@ -14,6 +14,7 @@ full chain: if it is ever narrowed back to a window, its levels stop matching an
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -67,7 +68,7 @@ def test_the_window_gives_different_levels_than_the_full_chain(at_capture):
 def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture):
     """The one producer (_terrain_refresh_one), with its real compute_terrain, must publish the
     full chain's levels -- not the window's."""
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # an open-market test
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: True)   # an open-market test
     requested = []
 
     def fake_fetch(client, ticker, get, *, expiry=None):
@@ -75,16 +76,16 @@ def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture
         return FullChainResponse(200, json.loads(json.dumps(_FX["full"])), parts=1)
 
     monkeypatch.setattr(server, "fetch_full_chain", fake_fetch)
-    monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t: False)
+    monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t, now: False)
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (_SPOT, "fixture", 0.0))
     monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
 
     tk = server.ticker_storage_key("MRVL")
-    status = server._terrain_refresh_one(tk)
+    status = server._terrain_refresh_one(tk, time.time())
     assert status.startswith("ok"), status
     assert requested == [(tk, None)], "the producer asks for the whole chain, every expiry"
-    published = server.terrain_cache_get(tk) or {}
+    published = server.terrain_cache_get(tk, time.time()) or {}
     full = _levels(compute_terrain("MRVL", _contracts(_FX["full"]), _SPOT, now=at_capture))
     window = _levels(compute_terrain("MRVL", _contracts(_FX["window"]), _SPOT, now=at_capture))
     got = {k: published.get(k) for k in full}

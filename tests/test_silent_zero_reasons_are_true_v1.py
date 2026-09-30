@@ -48,7 +48,7 @@ def test_a_hold_with_no_expiry_still_blocks(monkeypatch):
     immediately and the evidence of why was gone.
     """
     srv = _fresh_quarantine(monkeypatch, {"failures": 3, "reason": "boom"})
-    assert srv._terrain_quarantine_blocks("ZZQ") is True, (
+    assert srv._terrain_quarantine_blocks("ZZQ", 1_790_000_000.0) is True, (
         "a malformed quarantine entry released the hold — fail-open on missing state")
     assert "ZZQ" in srv._terrain_quarantine, (
         "the entry was erased, destroying the evidence of the malformed hold")
@@ -56,20 +56,17 @@ def test_a_hold_with_no_expiry_still_blocks(monkeypatch):
 
 def test_a_real_expiry_still_releases_when_it_passes(monkeypatch):
     """Failing closed must not mean failing forever."""
-    import time
-
-    srv = _fresh_quarantine(monkeypatch, {"failures": 1, "reason": "x",
-                                          "until_ts": time.time() - 60.0})
-    assert srv._terrain_quarantine_blocks("ZZQ") is False
+    now = 1_790_000_000.0
+    srv = _fresh_quarantine(monkeypatch, {"failures": 1, "reason": "x", "until_ts": now - 60.0})
+    assert srv._terrain_quarantine_blocks("ZZQ", now) is False
     assert "ZZQ" not in srv._terrain_quarantine, "an expired soft hold must self-release"
 
 
 def test_a_future_expiry_still_blocks(monkeypatch):
-    import time
-
-    srv = _fresh_quarantine(monkeypatch, {"failures": 1, "reason": "x",
-                                          "until_ts": time.time() + 600.0})
-    assert srv._terrain_quarantine_blocks("ZZQ") is True
+    now = 1_790_000_000.0
+    srv = _fresh_quarantine(monkeypatch, {"failures": 1, "reason": "x", "until_ts": now + 600.0})
+    assert srv._terrain_quarantine_blocks("ZZQ", now) is True
+    assert srv.terrain_quarantine_reason("ZZQ", now).endswith("next attempt in 600s")
 
 
 def test_the_reason_string_admits_a_malformed_hold(monkeypatch):
@@ -84,7 +81,7 @@ def test_the_reason_string_admits_a_malformed_hold(monkeypatch):
     # itself was fixed and this line finally ran for real; corrected to the real name.
     assert hasattr(srv, "terrain_quarantine_reason"), (
         "terrain_quarantine_reason is gone; the malformed-hold message can't be checked")
-    msg = srv.terrain_quarantine_reason("ZZQ")
+    msg = srv.terrain_quarantine_reason("ZZQ", 1_790_000_000.0)
     assert msg, "a malformed hold (no until_ts) must produce a non-empty reason string"
     assert "NO expiry recorded" in msg or "malformed" in msg, msg
 

@@ -46,7 +46,7 @@ def _clear(tk):
 
 
 def test_live_terrain_surface_is_preferred_and_discloses_coverage(monkeypatch):
-    monkeypatch.setattr("server._is_loggable_session", lambda: True)   # an open-market test
+    monkeypatch.setattr("server._is_loggable_session", lambda now: True)   # an open-market test
     monkeypatch.setattr("server.resolve_spot", lambda tk, **_k: (584.0, "live_quote", time.time()))
     tk = ticker_storage_key("SPY")
     _clear(tk); _put_live(tk, computed_ts=time.time())
@@ -73,7 +73,7 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy(monkeypatch)
     tk = ticker_storage_key("SPY")
     _clear(tk); _put_live(tk, computed_ts=now - 240)   # 4 min old — a 5-min roster cadence is legitimate
     try:
-        live = server.terrain_cache_get(tk)                    # the one authority
+        live = server.terrain_cache_get(tk, now)               # the one authority
         d = _call(tk)
         assert d["stale"] == bool(live.get("levels_stale"))
         assert d["age_sec"] == live.get("levels_age_sec") == 240.0   # one authority, one as-of
@@ -93,14 +93,14 @@ def test_warming_true_only_when_terrain_eligible(monkeypatch, view):
         server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}   # on the board, no surface yet
     monkeypatch.setattr(server, "_logger_tickers", [tk])   # enrolled like any ticker -- no built-in list
     monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
-    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
+    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t, now: None)
     monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
     view(tk)                                                             # a page open on it
     try:
-        monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # eligible
+        monkeypatch.setattr(server, "_is_loggable_session", lambda now: True)   # eligible
         d = _call(tk)
         assert d["warming"] is True and d["requested"] is True
-        monkeypatch.setattr(server, "_is_loggable_session", lambda: False)  # out of session -> not warming
+        monkeypatch.setattr(server, "_is_loggable_session", lambda now: False)  # out of session -> not warming
         d2 = _call(tk)
         assert d2["warming"] is False and d2["requested"] is True           # still open -> requested
     finally:
@@ -127,7 +127,7 @@ def _fresh(monkeypatch, tmp_path, view):
     monkeypatch.setattr(server, "_terrain_cache", {})
     monkeypatch.setattr(server, "_terrain_refresh_last_error", {})
     monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
-    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
+    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t, now: None)
     monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
     monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk, listed=None: {})
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **k: (_CRWD["spot"], "stub", _CAPTURED))
@@ -136,7 +136,7 @@ def _fresh(monkeypatch, tmp_path, view):
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
 def test_first_view_in_session_warms_by_the_refresh_state(_fresh, monkeypatch, view, tk):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: True)
     view(tk)                                        # the page selects the ticker
     d = _call(tk)                                   # the first view: no levels published yet
     assert d["requested"] is True and d["warming"] is True
@@ -161,15 +161,15 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(_fresh, monk
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
 def test_a_held_ticker_does_not_warm_and_says_why(_fresh, monkeypatch, tk):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
-    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: "held: Schwab refused the chain")
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: True)
+    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t, now: "held: Schwab refused the chain")
     d = _call(tk)
     assert d["warming"] is False and d["reason"] == "held: Schwab refused the chain"
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
 def test_closed_market_with_no_capture_gives_one_reason_on_every_route(_fresh, monkeypatch, tk):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: False)
     d = _call(tk)
     assert d["warming"] is False and server.NO_CAPTURE_REASON in d["reason"]
     t = server.get_terrain(ticker=tk)
@@ -180,7 +180,7 @@ def test_closed_market_with_no_capture_gives_one_reason_on_every_route(_fresh, m
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
 def test_closed_market_prices_the_stored_capture_on_every_route(_fresh, monkeypatch, view, tk):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: False)
     view(tk)                                        # the page selects the ticker
     by_expiry: dict = {}
     for ct in _CRWD["chain"]:
@@ -201,7 +201,7 @@ def test_closed_market_prices_the_stored_capture_on_every_route(_fresh, monkeypa
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
 def test_a_refresh_publishes_the_same_fields_for_any_ticker(_fresh, monkeypatch, pin_clock, view, tk):
     pin_clock(2026, 9, 2, 10, 5)
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: True)
     view(tk)                                        # selected on the page
     server._publish_levels(tk, [dict(c) for c in _CRWD["chain"]], _CAPTURED, now=_CAPTURED)
     t = server.get_terrain(ticker=tk)

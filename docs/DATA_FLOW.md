@@ -302,6 +302,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   and the chain they were computed from: `/api/terrain`, `/api/terrain/strikes`, `/api/chain`
   and `/api/liquidity-snapshot` (for the option levels in its zones) carry its verdict (stale with the reason, the age, market closed with the time the values
   are as of), and each panel's badge prints it. A complete chain is not thereby a live one.
+  The verdict, the session gate (`_is_loggable_session`), the refresh hold and the levels loop's
+  one refresh (`_terrain_refresh_one`) are judged at the `now` the route or the loop passes.
 - **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer (and the
   price levels after a bar), the price-row loop (an equity's quote) and the stream handler (a
   book) mark a ticker's kind changed; each page

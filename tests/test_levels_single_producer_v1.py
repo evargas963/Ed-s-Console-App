@@ -150,7 +150,7 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monk
     monkeypatch.setattr(srv, "get_db", lambda: db)
     monkeypatch.setattr(te, "now_et", lambda: now)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (None, "none", None))
-    monkeypatch.setattr(srv, "terrain_cache_get", lambda t: {})
+    monkeypatch.setattr(srv, "terrain_cache_get", lambda t, now: {})
     monkeypatch.setattr(push_changes, "watched", lambda: set())            # no page is open
     monkeypatch.delitem(_MATERIALIZED_SNAPSHOTS, ("SPY", "2026-09-25"), raising=False)
     monkeypatch.delitem(_MATERIALIZED_SNAPSHOTS, ("QQQ", "2026-09-25"), raising=False)

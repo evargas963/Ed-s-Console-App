@@ -100,7 +100,7 @@ def test_the_chain_says_whether_it_is_current(monkeypatch):
     whatever its age: the route served no freshness. It carries the one staleness authority's
     verdict for the download it holds (the levels' own: terrain_staleness). Real TSLA chain;
     stand-ins (named): its download time, and the session state."""
-    monkeypatch.setattr(srv, "_is_loggable_session", lambda: True)
+    monkeypatch.setattr(srv, "_is_loggable_session", lambda now: True)
     with _held_chain("TSLA", _TSLA_CONTRACTS, time.time() - 5.0):
         fresh = _get(ticker="TSLA")
     assert fresh["levels_stale"] is False and 4.0 <= fresh["levels_age_sec"] <= 30.0
@@ -108,7 +108,7 @@ def test_the_chain_says_whether_it_is_current(monkeypatch):
         old = _get(ticker="TSLA")
     assert old["levels_stale"] is True and "3600s old" in old["levels_stale_reason"]
     assert old["scope"]["kind"] == "complete_single_expiry", "complete, and not current"
-    monkeypatch.setattr(srv, "_is_loggable_session", lambda: False)
+    monkeypatch.setattr(srv, "_is_loggable_session", lambda now: False)
     with _held_chain("TSLA", _TSLA_CONTRACTS, time.time() - 3600.0):
         closed = _get(ticker="TSLA")
     assert closed["levels_market_closed"] is True and closed["levels_stale"] is False and closed["levels_as_of"]

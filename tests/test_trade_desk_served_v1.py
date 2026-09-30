@@ -201,7 +201,7 @@ def spy_levels(monkeypatch, pin_clock):
     spot = bars[-1]["close"]
     monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: bars)
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
-    monkeypatch.setattr(server, "terrain_cache_get", lambda t: terrain)
+    monkeypatch.setattr(server, "terrain_cache_get", lambda t, now: terrain)
     pin_clock(2026, 9, 25, 16, 5)
     server._publish_price_levels("SPY")                              # as the bar writer does
     return spot, terrain
@@ -239,7 +239,7 @@ def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move(spy
     terrain = {**compute_terrain("CRWD", [dict(c) for c in fx["chain"]], float(fx["spot"])).to_dict(),
                "computed_ts_utc": time.time()}
     spot = float(fx["spot"])
-    monkeypatch.setattr(server, "terrain_cache_get", lambda t: terrain)
+    monkeypatch.setattr(server, "terrain_cache_get", lambda t, now: terrain)
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
     body = json.loads(server.get_levels(ticker="SPY").body)
     by_id = {r["id"]: r for r in body["levels"]}

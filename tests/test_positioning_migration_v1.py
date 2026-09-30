@@ -94,7 +94,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
     server._publish_levels("PCG", captures=stored, now=time.time())                       # same capture: nothing new
     assert reads == []
     # a new capture is computed once, by the next publish
-    key_before = server.terrain_cache_get("PCG")["_captures_key"]
+    key_before = server.terrain_cache_get("PCG", time.time())["_captures_key"]
     later = newest["ts_utc"] + 1800
     for exp, cs in {str(c.get("expirationDate") or "")[:10]: [] for c in newest["contracts"]}.items():
         persist_complete_chain_capture(db, ticker="PCG", expiry=exp,
@@ -106,7 +106,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
     stored = last_capture_per_day(str(db), "PCG", 2)            # the caller's one read ...
     newer = stored[0]
     server._publish_levels("PCG", captures=stored, now=time.time())
-    assert server.terrain_cache_get("PCG")["_captures_key"] != key_before
+    assert server.terrain_cache_get("PCG", time.time())["_captures_key"] != key_before
     assert reads == []                            # ... serves the levels, forces and prior day
     server._publish_levels("PCG", captures=stored, now=time.time())
     assert reads == []

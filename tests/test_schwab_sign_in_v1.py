@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from datetime import datetime
 
 import server
@@ -48,7 +49,7 @@ def test_the_console_pushes_the_sign_in_with_the_session(monkeypatch):
     assert json.loads(events["event: sign_in"]) == {
         "urgency": "red", "expires": ENDS, "note": f"Schwab sign-in ends {ENDS}; {REMEDY}"}
     # the levels' staleness no longer carries it
-    assert not [k for k in server.terrain_staleness(None, "SPY") if "token" in k]
+    assert not [k for k in server.terrain_staleness(None, "SPY", time.time()) if "token" in k]
 
 
 def test_the_status_keeps_its_own_clock_while_changes_keep_coming(monkeypatch):

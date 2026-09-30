@@ -833,9 +833,10 @@ _logger_tickers:  list[str] = []
 _logger_lock:     threading.Lock   = threading.Lock()
 
 
-def _is_loggable_session() -> bool:
+def _is_loggable_session(now: float) -> bool:
     """
-    Background snapshot logging session gate (Issue 22 — explicit product policy).
+    Background snapshot logging session gate at `now` (epoch seconds; Issue 22 — explicit
+    product policy).
 
     When RTH_ONLY is True (default): allow ET minutes in _refresh_window_et (PRE_MARKET_MINS to
     30 minutes after the day's close)
@@ -851,9 +852,9 @@ def _is_loggable_session() -> bool:
     """
     if not RTH_ONLY:
         return True
-    if not is_capturable_session():   # RC-48: weekend / full holiday / overnight -> never loggable
+    et = datetime.fromtimestamp(now, ET)
+    if not is_capturable_session(et):   # RC-48: weekend / full holiday / overnight -> never loggable
         return False
-    et = now_et()
     win = _refresh_window_et(et.date().isoformat())
     return win is not None and win[0] <= et.hour * 60 + et.minute <= win[1]
 
@@ -1216,8 +1217,8 @@ def terrain_quarantine_state(ticker: str | None = None) -> dict:
         return {k: dict(v) for k, v in _terrain_quarantine.items()}
 
 
-def terrain_quarantine_reason(ticker: str | None) -> str:
-    """Why this ticker is not being requested at all, or "" when it is in the rotation."""
+def terrain_quarantine_reason(ticker: str | None, now: float) -> str:
+    """Why this ticker is not being requested at all at `now`, or "" when it is in the rotation."""
     if not ticker:
         return ""
     tk = ticker_storage_key(ticker)
@@ -1239,14 +1240,13 @@ def terrain_quarantine_reason(ticker: str | None) -> str:
             return (f"backing off after {e.get('failures')} consecutive failures — "
                     f"{e.get('reason')}; hold has NO expiry recorded (malformed entry), "
                     f"so it is held until the console restarts")
-        left = max(0.0, until - time.time())
+        left = max(0.0, until - now)
         return (f"backing off after {e.get('failures')} consecutive failures — {e.get('reason')}; "
                 f"next attempt in {left:.0f}s")
 
 
-def _terrain_quarantine_blocks(tk: str) -> bool:
-    """True when this ticker must NOT be requested this cycle. Expired soft holds self-release."""
-    now = time.time()
+def _terrain_quarantine_blocks(tk: str, now: float) -> bool:
+    """True when this ticker must NOT be requested at `now`. Expired soft holds self-release."""
     with _terrain_quarantine_lock:
         e = _terrain_quarantine.get(tk)
         if not e:
@@ -1264,8 +1264,8 @@ def _terrain_quarantine_blocks(tk: str) -> bool:
     return False
 
 
-def _note_terrain_failure(tk: str, reason: str, kind: str) -> None:
-    """Record a failed refresh and quarantine when the pattern earns it.
+def _note_terrain_failure(tk: str, reason: str, kind: str, now: float) -> None:
+    """Record a refresh that failed at `now` and quarantine when the pattern earns it.
 
     The streak counter lives under the SAME lock as the quarantine book it feeds. TERRAIN_WORKERS
     threads run the rotation while `/api/terrain` can drive `_terrain_refresh_one(priority=True)`
@@ -1279,10 +1279,10 @@ def _note_terrain_failure(tk: str, reason: str, kind: str) -> None:
         if n >= TERRAIN_QUARANTINE_HARD_FAILS:
             if kind == "hard":
                 already = bool(_terrain_quarantine.get(tk, {}).get("hard"))
-                next_day = (now_et() + timedelta(days=1)).replace(hour=0, minute=0, second=0,
-                                                                  microsecond=0)
+                next_day = (datetime.fromtimestamp(now, ET) + timedelta(days=1)).replace(
+                    hour=0, minute=0, second=0, microsecond=0)
                 _terrain_quarantine[tk] = {"reason": reason, "failures": n, "hard": True,
-                                           "since_ts": time.time(),
+                                           "since_ts": now,
                                            "until_ts": next_day.timestamp(), "kind": kind}
                 if not already:
                     log_msg = ("terrain QUARANTINE %s until the next ET day after %d hard "
@@ -1292,8 +1292,8 @@ def _note_terrain_failure(tk: str, reason: str, kind: str) -> None:
                            TERRAIN_QUARANTINE_SOFT_BASE_SEC
                            * (2 ** (n - TERRAIN_QUARANTINE_HARD_FAILS)))
                 _terrain_quarantine[tk] = {"reason": reason, "failures": n, "hard": False,
-                                           "since_ts": time.time(),
-                                           "until_ts": time.time() + wait, "kind": kind}
+                                           "since_ts": now,
+                                           "until_ts": now + wait, "kind": kind}
                 log_msg = ("terrain backoff %s for %.0fs after %d failures: %s",
                            tk, wait, n, reason)
     if log_msg:                               # logged outside the lock
@@ -1340,8 +1340,8 @@ _terrain_loop_running: bool = False
 _terrain_loop_thread: threading.Thread | None = None
 
 
-def terrain_cache_get(ticker: str) -> dict | None:
-    """Return the cached wide-chain terrain snapshot with staleness merged.
+def terrain_cache_get(ticker: str, now: float) -> dict | None:
+    """Return the cached wide-chain terrain snapshot with its staleness at `now` merged.
 
     RC-424: the loop stores computed_ts_utc, not levels_stale. Every consumer that
     gates pin/wall/overlay freshness must derive staleness from terrain_staleness
@@ -1353,7 +1353,7 @@ def terrain_cache_get(ticker: str) -> dict | None:
     if raw is None:
         return None
     out = dict(raw)
-    out.update(terrain_staleness(out.get("computed_ts_utc"), ticker))
+    out.update(terrain_staleness(out.get("computed_ts_utc"), ticker, now))
     return out
 
 
@@ -1397,8 +1397,8 @@ def _schwab_token_creation_ts() -> float | None:
         return None
 
 
-def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) -> dict:
-    """Whether the levels are current, and WHY NOT when they are not (RC-91).
+def terrain_staleness(computed_ts_utc: float | None, ticker: str | None, now: float) -> dict:
+    """Whether the levels are current at `now` (epoch seconds), and WHY NOT when they are not (RC-91).
 
     RC-146 — the reason must come from the PRODUCER, not be inferred from a clock. Age alone
     cannot tell a deliberate pause from a broken loop, so this function used to answer "inside
@@ -1417,7 +1417,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
     under a live label is not: staleness that is budget-justified gets LABELLED, staleness that is
     not gets removed (the RC-78 rule, applied to the scorecard that day and never to terrain).
     """
-    refreshing = _is_loggable_session()
+    refreshing = _is_loggable_session(now)
     skipped = terrain_skip_reason(ticker)   # RC-146: the producer's own words, when it has any
     # RC-147: the FAILURE channel, which RC-146 left unread. `_terrain_refresh_last_error` was
     # consulted at exactly ONE call site — the not-ready branch of /api/terrain, reachable only
@@ -1435,12 +1435,12 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
     # (the vendor refuses the symbol) and is emphatically NOT "paused, resumes on its own", so
     # collapsing it into either single flag would restore the ambiguity RC-146/147 removed.
     q_entry = terrain_quarantine_state(ticker)
-    quarantined = terrain_quarantine_reason(ticker)
+    quarantined = terrain_quarantine_reason(ticker, now)
     failure = "" if (skipped or quarantined) else str(_terrain_refresh_last_error.get(
         ticker_storage_key(ticker) if ticker else "", "") or "")
     hard_quarantine = bool(q_entry.get("hard"))
     if not refreshing and computed_ts_utc is not None:
-        return {"levels_stale": False, "levels_age_sec": round(time.time() - float(computed_ts_utc), 1),
+        return {"levels_stale": False, "levels_age_sec": round(now - float(computed_ts_utc), 1),
                 "levels_refresh_active": False, "levels_market_closed": True,
                 "levels_as_of": ct_label(computed_ts_utc),
                 "levels_stale_reason": "", "levels_paused_on_purpose": False,
@@ -1454,7 +1454,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
                 "levels_paused_on_purpose": bool(skipped and not quarantined),
                 "levels_quarantined": bool(quarantined),
                 "levels_failing": bool(failure or hard_quarantine)}
-    age = round(time.time() - float(computed_ts_utc), 1)
+    age = round(now - float(computed_ts_utc), 1)
     # age is judged against the cycle the loop delivers (a full sweep), not its sleep floor
     # (TERRAIN_REFRESH_SEC)
     observed = _terrain_last_cycle_sec if _terrain_last_cycle_sec > 0 else TERRAIN_REFRESH_SEC
@@ -1471,7 +1471,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
                   if failure else
                   f"levels are {age:.0f}s old; the terrain loop is not refreshing "
                   f"(outside the refresh window: "
-                  f"{_refresh_window_ct(now_et().date().isoformat())})"
+                  f"{_refresh_window_ct(datetime.fromtimestamp(now, ET).date().isoformat())})"
                   if not refreshing else
                   f"levels are {age:.0f}s old; the refresh loop is running but has not reached "
                   f"this ticker in two of its cycles ({expected:.0f}s each)")
@@ -2081,8 +2081,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         if viewed and spot is not None and snap.books:
             surface = project_gamma_surface(priced, snap.books)
             surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts,
-                           stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
-                           stream_overlay_computed_ts_utc=time.time())
+                           stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms)
             _stamp_gamma_surface_cell_stream_state(
                 surface, streamed, set(live_syms), read_producer_rejected_option_contracts(now),
                 set(_desired_option_symbols_for_ticker(tk, listed)),
@@ -2182,7 +2181,7 @@ def _on_stream_tick(sym: str) -> None:
     option quote carrying greeks, open interest or volume. Queues a reprice of the symbol's
     ticker when someone is viewing it, and returns at once."""
     tk = _tick_ticker(sym)
-    if not tk or not _gamma_surface_wanted(tk) or not _is_loggable_session():
+    if not tk or not _gamma_surface_wanted(tk) or not _is_loggable_session(time.time()):
         return
     with _reprice_guard:
         _reprice_dirty.add(tk)
@@ -2207,14 +2206,16 @@ def _reprice_worker(tk: str) -> None:
             _reprice_dirty.discard(tk)
         last = time.monotonic()
         try:
-            if _publish_levels(tk, now=time.time()) is None:
-                _terrain_refresh_one(tk, priority=True)
+            now = time.time()
+            if _publish_levels(tk, now=now) is None:
+                _terrain_refresh_one(tk, now, priority=True)
         except Exception as e:  # noqa: BLE001 -- logged; the next tick or chain fetch reprices
             log.warning("levels reprice failed for %s: %s", tk, e)
 
 
-def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
-    """Fetch one chain and compute terrain into the cache. Never raises.
+def _terrain_refresh_one(ticker: str, now: float, priority: bool = False) -> str:
+    """Fetch one chain and compute terrain into the cache, as the market is at `now` (epoch
+    seconds); the chain is as of the moment Schwab's answer arrived. Never raises.
 
     RC-80 — THE SINGLE PRODUCER OF LEVELS. /api/terrain calls this on a cache miss rather than
     computing its own snapshot, because a second producer is a second faucet even when both write
@@ -2231,12 +2232,12 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     # (RC-147) was necessary and not sufficient: a control that reports the burn while the burn
     # continues has not fixed anything. A `priority` request (an operator is on the endpoint,
     # waiting) still honours the hold — the answer would be the same HTTP 400, just slower.
-    if not _is_loggable_session():
+    if not _is_loggable_session(now):
         # market closed: the newest chain capture is priced, not a download (weekend chains
         # blank open interest -- measured 2026-09-26: every $SPX contract, 18% of SPY's OI)
-        _price_stored_chain_when_closed(tk)
+        _price_stored_chain_when_closed(tk, now)
         return "skip:market_closed"
-    if _terrain_quarantine_blocks(tk):
+    if _terrain_quarantine_blocks(tk, now):
         return "skip:quarantined"
     try:
         client = get_client()
@@ -2251,7 +2252,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
             # RC-148: classify so the response fits the cause. A 4xx is the vendor refusing THIS
             # SYMBOL and will refuse it identically forever; a 5xx is the venue being busy and
             # deserves a backoff, not a death sentence.
-            _note_terrain_failure(tk, _msg, _classify_chain_failure(_code, None))
+            _note_terrain_failure(tk, _msg, _classify_chain_failure(_code, None), now)
             return "error:chain_http"
         fetched_ts = time.time()   # the chain's as-of: an older streamed value never overrides it
         contracts = flatten_chain_contracts(resp.json())
@@ -2267,7 +2268,7 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # RC-148: an exception is never a symbol rejection (those arrive as a 4xx RESPONSE), so
         # it always classifies soft — backoff, never a hard hold. A crash in our own code
         # must not be able to evict a real instrument from the board.
-        _note_terrain_failure(tk, f"{type(e).__name__}: {e}", "soft")
+        _note_terrain_failure(tk, f"{type(e).__name__}: {e}", "soft", now)
         log.warning("terrain refresh %s failed: %s", tk, e, exc_info=True)
         return f"error:{type(e).__name__}"
 
@@ -2277,9 +2278,9 @@ STATUS_EVERY_SEC = 60.0
 FEED_RECORD_STALE_SEC = 150.0
 
 
-def _feed_record_state() -> str:
-    """How old the newest stream_feed_status row in stream_capture.db is: it proves the whole
-    path (the daemon's loop, the bus, the writer, the database) wrote this minute."""
+def _feed_record_state(now: float) -> str:
+    """How old the newest stream_feed_status row in stream_capture.db is at `now`: it proves the
+    whole path (the daemon's loop, the bus, the writer, the database) wrote this minute."""
     from db_authority import canonical_stream_db_path
     path = canonical_stream_db_path()
     if not path.is_file():
@@ -2293,17 +2294,17 @@ def _feed_record_state() -> str:
         conn.close()
     if newest is None:
         return "feed record: none yet"
-    age = time.time() - float(newest)
+    age = now - float(newest)
     return (f"feed record: written {age:.0f}s ago" if age <= FEED_RECORD_STALE_SEC
             else f"FEED RECORD STALE: last written {age / 60:.0f} min ago")
 
 
-def _next_refresh_ct() -> str:
-    """The next market day's refresh window, in Central time."""
-    day = now_et().date()
+def _next_refresh_ct(now: float) -> str:
+    """The next market day's refresh window after `now`, in Central time."""
+    et = datetime.fromtimestamp(now, ET)
+    day = et.date()
     for _ in range(15):
         if _refresh_window_et(day.isoformat()) is not None:
-            et = now_et()
             win = _refresh_window_et(day.isoformat())
             if day > et.date() or et.hour * 60 + et.minute <= win[1]:
                 label = "today" if day == et.date() else day.strftime("%a %m/%d")
@@ -2323,16 +2324,16 @@ def _status_line(now: float) -> str:
     newest = ct_label(max(as_of)) if as_of else "none"
     return " | ".join([
         "alive",
-        f"session {session_label(now_et())}",
+        f"session {session_label(datetime.fromtimestamp(now, ET))}",
         "daemon link: " + ("connected" if st is not None else "NOT CONNECTED"),
         "Schwab socket: " + ("open" if st and st.get("schwab_socket_open") is True else "NOT OPEN"),
         f"live prices: {priced} of {len(board)} board tickers",
         f"levels: {len(as_of)} tickers, newest as of {newest}",
-        _feed_record_state(),
+        _feed_record_state(now),
         (("chain refresh: last sweep of the board took "
           f"{_terrain_last_cycle_sec:.0f} s" if _terrain_last_cycle_sec
-          else "chain refresh: first sweep running") if _is_loggable_session()
-         else "chain refresh next " + _next_refresh_ct()),
+          else "chain refresh: first sweep running") if _is_loggable_session(now)
+         else "chain refresh next " + _next_refresh_ct(now)),
     ])
 
 
@@ -2349,11 +2350,12 @@ def _terrain_loop() -> None:
     loaded = _load_stored_levels()
     with _logger_lock:
         board = len(_logger_tickers)
+    now = time.time()
     log.info("Ready: levels for %d of %d board tickers loaded (session: %s). %s", loaded, board,
-             session_label(now_et()),
-             "Levels refresh every 5 s." if _is_loggable_session() else
+             session_label(datetime.fromtimestamp(now, ET)),
+             "Levels refresh every 5 s." if _is_loggable_session(now) else
              "Levels refresh (a full-chain sweep of the board, 1-2 min each) "
-             + _next_refresh_ct() + ".")
+             + _next_refresh_ct(now) + ".")
     _terrain_cycle_n = 0        # RC-161: drives the morning rotation; monotonic per loop
     next_status = time.monotonic() + STATUS_EVERY_SEC   # the ready line covers the start
     while _terrain_loop_running:
@@ -2403,13 +2405,14 @@ def _terrain_loop() -> None:
         # is necessarily watching all 58 of them, and the morning-contention throttle below is
         # itself an RTH-only concept), but active viewing demand now always gets a live attempt,
         # whether the archival logger is in its window or not.
-        if _is_loggable_session():
+        now = time.time()                       # this cycle's instant
+        if _is_loggable_session(now):
             # During the morning wide-chain window (09:30-10:00 ET) SPY/QQQ/IWM already
             # take 100-strike gated fetches on the money path. Do not pile a full-universe
             # terrain sweep on top of that — refresh sentinels only until the window ends.
             # No try/except: the imports are module-level, so this path cannot fail at
             # runtime — a missing module stops the server at boot instead.
-            _mins = et_minute_total_from_ts_utc(time.time())
+            _mins = et_minute_total_from_ts_utc(now)
             _terrain_cycle_n += 1
             # every viewed ticker (on the board or not) refreshes every cycle; the rest of the
             # board rotates inside the contention window
@@ -2439,7 +2442,7 @@ def _terrain_loop() -> None:
                     f"being held out, so this ticker still accrues inside the window",
                 )
             with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
-                list(pool.map(_terrain_refresh_one, tickers))
+                list(pool.map(lambda t: _terrain_refresh_one(t, now), tickers))
         else:
             tickers = []
         elapsed = time.monotonic() - cycle_start
@@ -2472,18 +2475,18 @@ def _load_stored_levels() -> int:
 NO_CAPTURE_REASON = "market closed; no chain capture of this ticker yet"
 
 
-def _price_stored_chain_when_closed(tk: str) -> None:
+def _price_stored_chain_when_closed(tk: str, now: float) -> None:
     """A viewed ticker keeps its chain and its heatmap. While the market is closed nothing
     downloads a chain, so the first view prices the ticker's newest chain capture with the chain
     kept -- the same capture the startup load priced (DATA_FLOW decision 7), not a second
     source. The startup load keeps no chains: nobody is viewing anything then. The same rule for
     every ticker, on the board or not: a ticker with no capture has that as its levels' reason."""
-    if _is_loggable_session() or (terrain_cache_get(tk) or {}).get("_chain"):
+    if _is_loggable_session(now) or (terrain_cache_get(tk, now) or {}).get("_chain"):
         return
     caps = last_capture_per_day(get_db().db_path, tk, 2)
     if caps:
-        _publish_levels(tk, captures=caps, now=time.time())
-    elif terrain_cache_get(tk) is None:
+        _publish_levels(tk, captures=caps, now=now)
+    elif terrain_cache_get(tk, now) is None:
         _terrain_refresh_last_error[tk] = NO_CAPTURE_REASON
 
 
@@ -2612,8 +2615,9 @@ def get_terrain_strikes(ticker: str = Query(...)):
     # a live wide chain every cycle (terrain_engine._per_strike_map) — it was simply discarded.
     # Reading it here costs ZERO additional vendor calls. The archive is demoted to the
     # prior-day ghost, which is the one thing it is genuinely correct for.
+    now = time.time()
     try:
-        _snap = terrain_cache_get(tk) or {}
+        _snap = terrain_cache_get(tk, now) or {}
         _ps = _snap.get("_per_strike") or {}
         # the terrain loop hands over FINISHED rows ({all,near,far} of
         # [strike, net_gex_1pct$, volume]); they are served as-is
@@ -2623,7 +2627,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
             today = {k: (_ps.get(k) or []) for k in ("all", "near", "far")}
             spot_used = _snap.get("spot")
             _cts_utc = _snap.get("computed_ts_utc")
-            today_age_sec = round(time.time() - float(_cts_utc), 1) if _cts_utc else None
+            today_age_sec = round(now - float(_cts_utc), 1) if _cts_utc else None
             today_src = "terrain_live_cache"
     except Exception as e:
         log.debug("terrain strikes live read failed %s: %s", tk, e)
@@ -2660,7 +2664,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
         # `terrain_live_cache` label, because the terrain loop stops at the background-logging
         # window (16:30 ET) and nothing said so. Naming the right source proves only that the
         # right tap was opened, never that anything is still coming out of it.
-        **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk),
+        **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk, now),
         "prior": prior or {"all": [], "near": [], "far": []},
         "prior_source": prior_src,
     })
@@ -2708,7 +2712,7 @@ def get_vanna_by_strike(ticker: str = Query(...)):
     """Per-strike dealer VANNA exposure from the published levels (net_vanna = call_vanna -
     put_vanna, aggregated across every expiry; no per-expiry surface yet)."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    payload = terrain_cache_get(tk) or {}
+    payload = terrain_cache_get(tk, time.time()) or {}
     if "_vanna_rows" not in payload:
         return JSONResponse({"ticker": tk, "available": False,
                              "reason": "no levels published for this ticker yet"})
@@ -2725,7 +2729,7 @@ def get_charm_by_strike(ticker: str = Query(...)):
     """Per-strike dealer CHARM exposure from the published levels' charm map (the charm walls'
     own): net_charm = call_charm - put_charm per strike, delta-shares/day."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    payload = terrain_cache_get(tk) or {}
+    payload = terrain_cache_get(tk, time.time()) or {}
     if "_charm_rows" not in payload:
         return JSONResponse({"ticker": tk, "available": False,
                              "reason": "no levels published for this ticker yet"})
@@ -2827,7 +2831,7 @@ def get_order_flow_book_heatmap(ticker: str = Query(...),
 def get_forces(ticker: str = Query(...)):
     """The ticker's forces, as the levels producer computed them from its chain captures."""
     tk = ticker_storage_key(_required_ticker(ticker))
-    forces = (terrain_cache_get(tk) or {}).get("_forces")
+    forces = (terrain_cache_get(tk, time.time()) or {}).get("_forces")
     return JSONResponse(forces if forces is not None else {
         "ticker": tk, "available": False, "reason": "no levels published for this ticker yet"})
 
@@ -3111,10 +3115,11 @@ def get_options_gamma_surface(ticker: str = Query(...)):
     Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale visibly."""
 
     tk = ticker_storage_key(_required_ticker(ticker))
-    _price_stored_chain_when_closed(tk)
+    now = time.time()
+    _price_stored_chain_when_closed(tk, now)
 
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
-    live = terrain_cache_get(tk)
+    live = terrain_cache_get(tk, now)
     surf = (live or {}).get("_gamma_surface")
     _surface_live_spot = resolve_spot(tk)
     if live and surf:
@@ -3149,7 +3154,7 @@ def get_options_gamma_surface(ticker: str = Query(...)):
             # exact admitted, active, pending and rejected contracts" — a symbol-level
             # accounting, distinct from the per-cell disclosure above. Best-effort: a
             # diagnostic field must never take down the surface it is attached to.
-            _contract_admission = _option_contract_admission_summary(tk, time.time())
+            _contract_admission = _option_contract_admission_summary(tk, now)
         except Exception as _ca_e:  # institutional-swallow-ok: diagnostic-only, never load-bearing
             log.debug("contract admission summary skipped for %s: %s", tk, _ca_e)
             _contract_admission = None
@@ -3205,7 +3210,7 @@ def get_options_gamma_surface(ticker: str = Query(...)):
     # which is the same with or without published levels and on the board or not (the loop
     # refreshes every viewed ticker each cycle). The reason is that state's own.
     _requested = _gamma_surface_wanted(tk)
-    _state = terrain_staleness((live or {}).get("computed_ts_utc"), tk)
+    _state = terrain_staleness((live or {}).get("computed_ts_utc"), tk, now)
     _warming = (_requested and _state["levels_refresh_active"] and not _state["levels_quarantined"]
                 and not _state["levels_paused_on_purpose"])
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
@@ -3232,7 +3237,8 @@ def get_terrain(ticker: str = Query(...)):
     math on the same chain, so it never needs to compete for that budget.
     """
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
-    cached = terrain_cache_get(tk)
+    now = time.time()
+    cached = terrain_cache_get(tk, now)
     if cached is None:
         # RC-80 — ONE PRODUCER OF LEVELS. This branch used to compute its own terrain from
         # _latest_chain_and_spot(), the most recent NARROW stored snapshot chain, while the
@@ -3247,15 +3253,16 @@ def get_terrain(ticker: str = Query(...)):
         # So on a miss the endpoint drives THE producer instead of imitating it, and if that
         # cannot deliver, the terrain reads UNAVAILABLE. Absence reads as absence; it never
         # reads as a narrower chain's answer.
-        _terrain_refresh_one(tk, priority=True)
-        cached = terrain_cache_get(tk)
+        _terrain_refresh_one(tk, now, priority=True)
+        now = time.time()                    # the answer is read after the refresh it waited on
+        cached = terrain_cache_get(tk, now)
     if cached is not None:
         # the levels as the producer published them, every at-spot value computed at the
         # publication's spot -- the price they were computed at, labelled by spot_source and
         # spot_as_of_ts_utc, never called live (the live price is the daemon's price row);
         # internal fields (the kept chain, the heatmap grid, per-strike rows) have their own routes
         out = {k: v for k, v in cached.items() if not k.startswith("_")}
-        out.update(terrain_staleness(cached.get("computed_ts_utc"), tk))
+        out.update(terrain_staleness(cached.get("computed_ts_utc"), tk, now))
         return out
     spot, spot_source, spot_ts = resolve_spot(tk)
     _why = _terrain_refresh_last_error.get(tk)
@@ -3272,7 +3279,7 @@ def get_terrain(ticker: str = Query(...)):
         # tickers that were failing — MEASURED 2026-07-30 12:08 ET: RTY returned [] structured
         # fields while SPY returned all five. A flag a consumer must parse English to discover
         # is not a flag, and "absent" is indistinguishable from "healthy" to every reader.
-        **terrain_staleness(None, tk),
+        **terrain_staleness(None, tk, now),
     }
 
 
@@ -3606,12 +3613,13 @@ def get_expiries(ticker: str = Query(...)):
     """The ticker's listed expiries with each one's dropdown label (MM/DD/YYYY and Schwab's
     daysToExpiration, as sent); with none, the levels' own reason."""
     ticker = ticker_storage_key(_required_ticker(ticker))   # SPX -> $SPX: the cache's own key
-    t = terrain_cache_get(ticker) or {}
+    now = time.time()
+    t = terrain_cache_get(ticker, now) or {}
     exps, dte = t.get("expiries") or [], t.get("expiry_dte") or {}
     labels = {e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" + (f" · {dte[e]:g}DTE" if dte.get(e) is not None else "")
               for e in exps}
     return JSONResponse({"expiries": exps, "dte": dte, "labels": labels,
-                         "reason": None if exps else (terrain_staleness(None, ticker)["levels_stale_reason"]
+                         "reason": None if exps else (terrain_staleness(None, ticker, now)["levels_stale_reason"]
                                                       if not t else "no expiry listed in the published chain")})
 
 
@@ -3625,8 +3633,9 @@ def get_chain(ticker: str = Query(...),
     open. Answers `status: unavailable` with a reason when no
     chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
-    _price_stored_chain_when_closed(t)
-    held = terrain_cache_get(t) or {}
+    now = time.time()
+    _price_stored_chain_when_closed(t, now)
+    held = terrain_cache_get(t, now) or {}
     resolved_expiry = (expiry or "").strip()[:10] or (held.get("expiries") or [None])[0]
 
     def _unavailable(reason: str) -> JSONResponse:
@@ -3644,7 +3653,7 @@ def get_chain(ticker: str = Query(...),
     if not contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
     fetched_ts = held.get("_chain_fetched_ts")
-    response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(t, contracts, time.time())
+    response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(t, contracts, now)
     live_spot, _src, _ts = resolve_spot(t)       # the one spot on every screen
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
@@ -3669,7 +3678,7 @@ def get_chain(ticker: str = Query(...),
         "chain_as_of_ts_utc": fetched_ts,
         # whether this chain is current (terrain_staleness, the levels' own authority: the levels
         # and the chain are one download): levels_stale, its reason, the age, market closed
-        **terrain_staleness(fetched_ts, t),
+        **terrain_staleness(fetched_ts, t, now),
         "contracts": response_contracts, "status": "ok",
         "ladder": ladder, "n_strikes": len({r["strike"] for r in ladder}),
         "contracts_not_on_ladder": not_on_ladder,   # no strike, or a putCall other than CALL/PUT
@@ -3983,7 +3992,7 @@ def get_levels(ticker: str = Query(...),
                        "staleness": {"as_of_ts_utc": None, "age_sec": None, "stale_after_sec": None,
                                      "stale": None, "reason": "streamed; served only while its quote is live"}})
     # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values)
-    t = terrain_cache_get(tk) or {}
+    t = terrain_cache_get(tk, served_ts) or {}
     em = (t.get("implied_1d_move") or {}).get("points")
     carried = [(gid, label, "gamma", t.get(gid)) for gid, label in GAMMA_LEVELS]
     carried += [("em_up", "+1σ move", "expected_move", None if em is None or spot is None else spot + em),
@@ -4122,7 +4131,7 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
     if canon is None:
         return {"ticker": tk, "zones": [], "reason": NO_PRICE_LEVELS_REASON}
     spot = resolve_spot(tk)[0]
-    terrain = terrain_cache_get(tk) or {}
+    terrain = terrain_cache_get(tk, time.time()) or {}
     option_levels, pdc = _liquidity_option_levels(terrain), _prior_close(tk)
     absent = [a for a in (
         None if spot is not None else

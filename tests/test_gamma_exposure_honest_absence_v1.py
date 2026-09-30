@@ -173,7 +173,7 @@ def test_a_banked_chain_from_any_session_is_never_served_in_place_of_the_live_su
             assert body["available"] is False and body["source"] == "unavailable", name
             assert body["live"] is False
             # the reason is the ticker's refresh state, never a banked source
-            assert body["reason"] == server.terrain_staleness(None, tk)["levels_stale_reason"], name
+            assert body["reason"] == server.terrain_staleness(None, tk, time.time())["levels_stale_reason"], name
         finally:
             _clear_gamma_surface(tk)
 

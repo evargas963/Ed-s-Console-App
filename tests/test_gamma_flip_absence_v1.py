@@ -12,6 +12,7 @@ On Schwab's real 2026-09-29 close captures: MTA's whole chain, and IWM's two nea
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -186,7 +187,7 @@ def _stored_mta(monkeypatch, tmp_path):
     monkeypatch.setattr(server, "get_db", lambda: edb)
     monkeypatch.setattr(server, "_logger_tickers", [tk])
     monkeypatch.setattr(server, "_terrain_cache", {})
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: False)
     monkeypatch.setattr(server, "resolve_spot", lambda t, **kw: (None, "none", None))
     monkeypatch.setattr(push_changes, "_clients", {})
     monkeypatch.setattr(push_changes, "_loop", None)
@@ -218,7 +219,7 @@ def test_the_stored_capture_the_endpoints_and_the_producer_agree_on_the_missing_
     assert absent["pin_candidate"] == "not qualified: " + ", ".join(expected.pin_candidate_blockers)
     for gid, why in expected.level_absent_reasons.items():
         assert absent[gid] == why and gid not in {r["id"] for r in levels["levels"]}
-    assert "GAMMA_FLIP" not in {tag for _price, tag in server._liquidity_option_levels(server.terrain_cache_get(tk))}
+    assert "GAMMA_FLIP" not in {tag for _price, tag in server._liquidity_option_levels(server.terrain_cache_get(tk, time.time()))}
 
 
 def test_a_ticker_with_no_chain_carries_the_flips_own_reason():
