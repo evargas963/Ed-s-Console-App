@@ -44,13 +44,13 @@ def flow_block(of: dict[str, Any]) -> dict[str, Any]:
     return flow
 
 
-def options_live_payload(contract: str) -> dict[str, Any]:
-    """Book microstructure + labeled PROXY flow for one option contract."""
+def options_live_payload(contract: str, now: float) -> dict[str, Any]:
+    """Book microstructure + labeled PROXY flow for one option contract at `now`."""
     items = get_content_for_symbol(contract)
     top = option_top(contract) if lmp.feed_live_for(contract, "LEVELONE_OPTIONS") else None
     of = OrderFlowEngine().compute({"content": items or [], "top": top,
                                     "book_live": lmp.book_is_live(contract, "OPTIONS_BOOK")},
-                                   ticker=contract)
-    book = dict(of.get("book_microstructure") or {})
+                                   now=now, ticker=contract)
+    book = dict(of["book_microstructure"])
     book["flow"] = flow_block(of)
     return book

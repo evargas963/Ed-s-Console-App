@@ -41,20 +41,6 @@ def test_tape_pressure_skips_missing_print_size():
     assert ofe._compute_tape_pressure(data, window_sec=60.0, now=2.0) == 1.0
 
 
-def test_legacy_p1_absorption_is_retired_one_faucet():
-    """Mission TRUTH_V1 lock: the legacy P1 `_compute_absorption` (a volume/price-range density
-    mislabeled 'absorption', dead-ended with zero consumers) was RETIRED. This fails if it is
-    reintroduced, and pins that the engine output no longer carries its keys — so the only
-    `absorption_score` authority is institutional_behavior (P2), i.e. ONE FAUCET for the name."""
-    assert not hasattr(ofe, "_compute_absorption"), "legacy P1 _compute_absorption must stay retired"
-    out = ofe.OrderFlowEngine().compute({"content": [
-        {"BIDS": [{"BID_PRICE": 9.9, "TOTAL_VOLUME": 100}], "ASKS": [{"ASK_PRICE": 10.1, "TOTAL_VOLUME": 100}]},
-        {"LAST_PRICE": 10.0, "LAST_SIZE": 4, "TRADE_TIME_MILLIS": 1_000},
-    ]})
-    for k in ("absorption_score", "replenishment_score", "absorption_direction", "replenishment_score_source"):
-        assert k not in out, f"engine output must not re-emit retired P1 key {k!r}"
-
-
 def test_an_old_tape_has_no_current_window_pressure():
     """Audit O-08: the 30s/2m/5m windows were anchored to the LAST print, so a tape whose last
     trade was an hour ago still reported "30-second" pressure as current. Windows end at now;

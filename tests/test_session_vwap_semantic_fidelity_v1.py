@@ -1,9 +1,4 @@
-"""Session VWAP semantic fidelity — collision close, warning class, RTH availability.
-
-# universal-scope-ok: hermetic multi-ticker proof over CORE_TICKERS; not a live Chart claim.
-# next-rth-ok: 2026-08-31 Monday (computed: next RTH after 2026-08-29 Saturday).
-# chart-intent-ok: Collect/feature semantics only; Chart yellow/GEX bars not claimed Done.
-"""
+"""Session VWAP semantic fidelity — RTH availability."""
 
 from __future__ import annotations
 
@@ -15,13 +10,6 @@ from liquidity_value_engine import (
     count_session_rth_positive_volume_bars,
 )
 from time_et import ET, RTH_START_MINS, is_trading_day_et
-
-# Standing enrolled core (server.CORE_TICKERS). Logging-universe extras need a live DB.
-CORE_TICKERS = (
-    "SPY", "QQQ", "IWM",
-    "NVDA", "AAPL", "MSFT", "AMZN", "META", "TSLA",
-    "GOOGL", "AVGO",
-)
 
 FRIDAY = date(2026, 8, 28)
 SATURDAY = date(2026, 8, 29)
@@ -47,25 +35,12 @@ def test_friday_is_trading_day_saturday_is_not() -> None:
     assert is_trading_day_et(SATURDAY.isoformat()) is False
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-def test_first_positive_volume_rth_bar_produces_session_vwap_all_core_tickers() -> None:
-    """After the first valid +volume RTH bar, canonical session VWAP exists — all CORE_TICKERS."""
-    assert len(CORE_TICKERS) == 11
-    for ticker in CORE_TICKERS:
-        bars = _bars_to_list([_rth_bar(FRIDAY, 0, 100.0 + float(abs(hash(ticker)) % 50), volume=2_500.0)])
-        assert compute_session_vwap_series(bars, FRIDAY), f"{ticker}: VWAP absent after first +volume RTH bar"
-        assert count_session_rth_positive_volume_bars(bars, FRIDAY) == 1
+def test_first_positive_volume_rth_bar_produces_session_vwap() -> None:
+    """After the first valid +volume RTH bar, canonical session VWAP exists (the rule names no
+    ticker)."""
+    bars = _bars_to_list([_rth_bar(FRIDAY, 0, 100.0, volume=2_500.0)])
+    assert compute_session_vwap_series(bars, FRIDAY), "VWAP absent after the first +volume RTH bar"
+    assert count_session_rth_positive_volume_bars(bars, FRIDAY) == 1
 
 
 def test_zero_volume_rth_bar_does_not_create_session_vwap() -> None:

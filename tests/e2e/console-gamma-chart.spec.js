@@ -71,10 +71,16 @@ async function intercept(page) {
   return { chainRequests, demandCalls };
 }
 
-// a real mouse click where the chart draws the strike's profile row
+// a real mouse click where the chart draws the strike's profile row, once the row has stopped
+// moving: after the first draw the price axis widens to fit its labels, so a point read at once
+// can sit on the axis by the time the click lands
 async function clickStrike(page, strike) {
-  const pt = await page.evaluate((k) => window.EdGammaChart.profilePoint(k), strike);
-  expect(pt).not.toBeNull();
+  let pt = null;
+  await expect.poll(async () => {
+    const prev = pt;
+    pt = await page.evaluate((k) => window.EdGammaChart.profilePoint(k), strike);
+    return !!(prev && pt && prev.x === pt.x && prev.y === pt.y);
+  }, { intervals: [150] }).toBe(true);
   await page.mouse.click(pt.x, pt.y);
 }
 

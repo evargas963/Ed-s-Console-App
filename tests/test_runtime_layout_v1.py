@@ -22,31 +22,6 @@ from runtime_layout import _default_runtime_root
 
 REPO = Path(__file__).resolve().parent.parent
 
-PROBE = r"""
-import json, runtime_layout as rl, db_authority as da, db, config
-cfg = config.build_config(str(rl.SOURCE_ROOT))
-print(json.dumps({
-    "runtime_root": str(rl.RUNTIME_ROOT), "artifacts_root": str(rl.ARTIFACTS_ROOT),
-    "canonical_db": str(da.canonical_console_db_path()), "db_path": str(db.DB_PATH),
-    "db_dir": str(db.DB_DIR), "token": cfg.token_path, "barchart": cfg.barchart_dir,
-    "separated": rl.describe()["separated"],
-}))
-"""
-
-
-def _probe(env_extra: dict[str, str]) -> dict:
-    env = dict(os.environ)
-    for k in ("ED_RUNTIME_ROOT", "ED_ARTIFACTS_ROOT", "ED_CONSOLE_DB", "ED_DB_PATH"):
-        env.pop(k, None)
-    env["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] = "1"
-    env.update(env_extra)
-    r = subprocess.run([sys.executable, "-c", PROBE], cwd=str(REPO), env=env,
-                       capture_output=True, text=True, timeout=300)
-    assert r.returncode == 0, r.stderr
-    return json.loads(r.stdout.strip().splitlines()[-1])
-
-
-
 
 def test_linked_worktree_metadata_failure_refuses_local_runtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -64,10 +39,6 @@ def test_linked_worktree_metadata_failure_refuses_local_runtime(
     (linked / ".git").write_text(f"gitdir: {gitdir}", encoding="utf-8")
     with pytest.raises(RuntimeError, match="commondir missing"):
         runtime_layout._default_runtime_root()
-
-
-
-
 
 
 def test_ambient_db_override_is_refused(tmp_path):

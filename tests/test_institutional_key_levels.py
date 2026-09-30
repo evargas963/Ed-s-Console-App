@@ -28,7 +28,7 @@ def _dollarized_exposures():
       (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
   )
   contracts, spot = fx["chain"], float(fx["spot"])
-  exposures, _ = compute_exposures_by_strike(contracts, spot=spot, require_oi=True)
+  exposures, _ = compute_exposures_by_strike(contracts, spot=spot)
   return exposures, spot
 
 
@@ -170,7 +170,7 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     assert "gamma_pin" not in d, "the retired gamma_pin key returned to the terrain payload"
     assert d["net_gex_at_spot"] is not None, "the chain must price (valued at its capture)"
     assert d["net_gex_at_spot"] == (d["flip_diag"] or {}).get("gamma_at_spot")
-    exposures, _ = compute_exposures_by_strike(fx["chain"], spot=float(fx["spot"]), require_oi=True)
+    exposures, _ = compute_exposures_by_strike(fx["chain"], spot=float(fx["spot"]))
     strikes = sorted(exposures.keys())
     # engine strike list is filtered; pickers must agree when run on the same inputs
     from math_exposure_core import key_level_strikes_with_gamma

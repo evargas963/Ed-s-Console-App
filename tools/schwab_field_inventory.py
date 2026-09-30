@@ -208,7 +208,7 @@ def main() -> int:
     from runtime_layout import RUNTIME_ROOT
     from schwab_client import build_client_from_token
     load_dotenv_file(Path(RUNTIME_ROOT) / ".env")
-    cfg = build_config(str(REPO))
+    cfg = build_config()
     state = build_client_from_token(cfg.token_path, cfg.api_key, cfg.app_secret)
     if not state.ok:
         print(state.message)

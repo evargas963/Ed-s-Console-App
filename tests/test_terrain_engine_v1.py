@@ -348,7 +348,7 @@ def test_pin_score_stamps_match_the_same_exposures_book_as_the_pin() -> None:
 
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot)
-    exposures, _ = compute_exposures_by_strike(chain, spot=spot, require_oi=True)
+    exposures, _ = compute_exposures_by_strike(chain, spot=spot)
     pin = snap.absolute_gamma_strike
     assert pin is not None
     bkt = _bucket_for_pin(exposures, pin)
@@ -390,8 +390,8 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     assert extra, "the pin strike must exist on the captured chain"
     wide = chain + extra
     terrain = compute_terrain("SPY", wide, spot)
-    wide_ex, _ = compute_exposures_by_strike(wide, spot=spot, require_oi=True)
-    sel_ex, _ = compute_exposures_by_strike(chain, spot=spot, require_oi=True)
+    wide_ex, _ = compute_exposures_by_strike(wide, spot=spot)
+    sel_ex, _ = compute_exposures_by_strike(chain, spot=spot)
     assert terrain.absolute_gamma_strike == pin
     wb = _bucket_for_pin(wide_ex, pin)
     sb = _bucket_for_pin(sel_ex, pin)

@@ -19,13 +19,7 @@ Two institutional invariants:
        span was never measured against sign reliability, and when it finally was, no cliff appeared
        at the floor (see math_levels.GAMMA_FLIP_MIN_SPAN_PCT). Passing this bound means we are
        willing to speak; it does not mean the sign is verified.
-     * missing spot, or BOTH flip and at-spot gamma missing -> withheld for the same reason.
-       (Precise, because an earlier version of this line said "or no at-spot gamma" and was WRONG:
-       the guard is `flip is None AND gamma_at_spot is None`. With a flip present and gamma_at_spot
-       None, `_regime_for` deliberately falls back to spot-vs-flip and a regime IS issued. That
-       state is not reachable from any caller in this repo — compute_gamma_flip_v2 returns
-       UNAVAILABLE when the at-spot value is absent — but the invariant must describe the guard
-       that exists, not a stricter one a reader would rely on.)
+     * missing spot, or dealer gamma at spot absent or exactly zero -> withheld, with the reason.
    It never presents a posture derived from a level we know is unreliable (a narrow chain
    misplaces the flip by ~3.6% — measured 2026-07-19: 770.35 against a full-chain reference of
    745.61), and it never presents a coverage verdict as proof the level is right.
@@ -93,21 +87,11 @@ def regime_from_signed_gamma(signed_gamma: float | None) -> str | None:
     """THE authority for the gamma-regime SIGN THRESHOLD (RC-345 / F07). Positive dealer
     gamma is LONG_GAMMA_CHOP (dealers damp moves); negative is SHORT_GAMMA_TREND (dealers
     amplify). Returns None when the sign is absent or exactly zero, so every caller shares
-    one threshold instead of re-deriving `> 0` locally. `_regime_for` and
+    one threshold instead of re-deriving `> 0` locally. build_terrain_read and
     institutional_behavior both consume this — there is no second sign authority."""
     if signed_gamma is None or signed_gamma == 0:
         return None
     return REGIME_LONG_GAMMA if signed_gamma > 0 else REGIME_SHORT_GAMMA
-
-
-def _regime_for(spot: float, flip: float | None, gamma_at_spot: float | None) -> str:
-    """Regime = sign of dealer gamma at spot -- the one derivation. Absent or exactly zero
-    (spot AT the flip) -> unavailable. It used to fall back to spot-vs-flip, which at a zero
-    gamma picked a side of a boundary spot is sitting on, and with no signed value read a
-    flip that did not come from the same curve (audit T-07, 2026-09-24: no fallbacks).
-    `flip` stays in the signature for the callers that pass it."""
-    signed = regime_from_signed_gamma(gamma_at_spot)
-    return signed if signed is not None else REGIME_UNAVAILABLE
 
 
 def _posture_for(regime: str) -> str:
@@ -211,7 +195,8 @@ def build_terrain_read(
             spot, flip_confidence, put_wall, call_wall,
         )
 
-    regime = _regime_for(spot, flip, gamma_at_spot)
+    # the regime is the sign of dealer gamma at spot; absent or exactly zero -> unavailable
+    regime = regime_from_signed_gamma(gamma_at_spot) or REGIME_UNAVAILABLE
     if regime == REGIME_UNAVAILABLE:
         return _unavailable("Dealer gamma at spot is zero or unknown, so the regime cannot be "
                             "determined.", spot, flip_confidence, put_wall, call_wall)

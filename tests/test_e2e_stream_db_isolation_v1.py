@@ -91,7 +91,7 @@ def test_e2e_boundary_blocks_an_inherited_valid_token_from_building_a_client(tmp
                 "import json;"
                 "from config import build_config;"
                 "from schwab_client import build_client_from_token;"
-                "cfg=build_config('.');"
+                "cfg=build_config();"
                 "state=build_client_from_token(cfg.token_path,cfg.api_key,cfg.app_secret);"
                 "print(json.dumps({'ok':state.ok,'has_client':state.client is not None,"
                 "'token_path':cfg.token_path}))"

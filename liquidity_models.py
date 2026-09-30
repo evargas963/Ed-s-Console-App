@@ -240,9 +240,6 @@ class PlaybookConfig:
     value_area_percent: float = 0.70
     clustering_threshold_pct: float = 0.002   # adjacent levels within 0.2% merge
     max_zone_width: float = 0.0   # 0 = no cap; when > 0, zones cannot exceed this width
-    max_distance_from_anchor: float = 0.0   # 0 = no cap; max distance from zone anchor
-    timezone: str = "America/New_York"
-    use_rth_only_profiles: bool = True
     tick_size: float = 0.01
 
 

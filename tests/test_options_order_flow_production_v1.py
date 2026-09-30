@@ -91,7 +91,7 @@ def test_live_payload_one_compute_includes_proxy_flow(monkeypatch):
         "LAST_PRICE": 1.15, "LAST_SIZE": 3,
         "TRADE_TIME_MILLIS": int(time.time() * 1000),
     }, ts_recv=time.time())
-    payload = options_live_payload(contract)
+    payload = options_live_payload(contract, time.time())
     assert payload["status"] == "ok"
     assert "flow" in payload
     assert payload["flow"]["classification"]["cum_delta_proxy"] == "PROXY"

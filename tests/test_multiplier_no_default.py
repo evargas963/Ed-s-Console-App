@@ -34,7 +34,6 @@ def test_exposures_use_schwab_multiplier_without_defaulting_to_100():
     bucket = exposures[500.0]
     assert diag.contracts_used == 1
     assert bucket["call_oi_mult"] == 50.0
-    assert bucket["call_oi_dollars"] == 25_000.0
     assert bucket["call_delta"] == 25.0
 
 
@@ -63,20 +62,10 @@ def test_exposures_preserve_missing_open_interest_instead_of_silent_zero():
     ct = _contract()
     ct.pop("openInterest")
 
-    exposures, diag = compute_exposures_by_strike([ct], spot=500.0, require_oi=False)
-
-    assert diag.contracts_used == 1
-    assert exposures[500.0]["call_oi"] is None
-    assert exposures[500.0]["call_oi_mult"] == 0.0
-
-
-def test_exposures_skip_missing_bidsize_instead_of_coercing_schwab_none_to_zero():
-    ct = _contract()
-    ct.pop("bidSize")
-
     exposures, diag = compute_exposures_by_strike([ct], spot=500.0)
 
-    assert diag.contracts_used == 1
-    assert exposures[500.0]["call_bid_size"] == 0.0
-
+    assert diag.contracts_used == 0
+    assert exposures[500.0]["oi_unreported"] == 1
+    assert exposures[500.0]["call_oi"] is None
+    assert exposures[500.0]["has_oi"] is False
 

@@ -28,7 +28,7 @@ def _c(strike, typ, *, delta, gamma, oi=1000):
 
 
 def _book(contracts, spot=SPOT):
-    ex, _ = compute_exposures_by_strike(contracts, spot=spot, require_oi=True)
+    ex, _ = compute_exposures_by_strike(contracts, spot=spot)
     return ex, sorted(ex)
 
 

@@ -23,7 +23,7 @@ def _at_capture(pin_clock):
 
 
 def _book():
-    per, _ = compute_exposures_by_strike(_FX["chain"], spot=float(_FX["spot"]), require_oi=True)
+    per, _ = compute_exposures_by_strike(_FX["chain"], spot=float(_FX["spot"]))
     return per
 
 
@@ -97,6 +97,6 @@ def test_a_book_that_priced_no_vanna_serves_absent_not_zero():
     from math_exposure_core import bucket_metric
     chain, spot = _FX["chain"], float(_FX["spot"])
     next_day = datetime(*_CAPTURED, tzinfo=time_et.ET) + timedelta(days=1)
-    per, _ = compute_exposures_by_strike(chain, spot=spot, require_oi=True, now=next_day)
+    per, _ = compute_exposures_by_strike(chain, spot=spot, now=next_day)
     assert [bucket_metric(b, "net_vanna") for b in per.values()] == [None] * len(per)
     assert compute_net_vanna(per, spot) is None
