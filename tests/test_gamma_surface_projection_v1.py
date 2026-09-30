@@ -88,11 +88,11 @@ def test_A_cell_equals_canonical_faucet_per_expiry_slice():
     assert {e["expiry"] for e in surface["expirations"]} == {E1, E2}
     checked = 0
     for exp in (E1, E2):
-        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
+        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT)
         assert exposures_e, f"the real {exp} slice must yield OI-bearing strikes"
         for k, bucket in exposures_e.items():
             # has_oi=False (2026-09-14 SPX honest-absence fix): a bucket can exist in
-            # require_oi=True's own output (created via the volume/side write that happens
+            # compute_exposures_by_strike's own output (created via the volume/side write that happens
             # before the OI gate) with every accumulator still at its pre-initialized 0.0 --
             # not a real computed value, so the surface correctly reports None there instead
             # of this bucket's fabricated 0.0. Only a bucket that actually cleared the OI
@@ -113,9 +113,9 @@ def test_A_cell_equals_canonical_faucet_per_expiry_slice():
 # B. ADDITIVITY / RECONCILIATION — per-expiry cells sum to the canonical full-book value.
 def test_B_per_expiry_sum_reconciles_to_full_book():
     chain = _chain()
-    full, _ = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
+    full, _ = compute_exposures_by_strike(chain, spot=SPOT)
     surface = _surface(chain, SPOT)
-    per = {exp: compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)[0]
+    per = {exp: compute_exposures_by_strike(_slice(chain, exp), spot=SPOT)[0]
            for exp in (E1, E2)}
     for k, bucket in full.items():
         # exact math additivity on the unrounded faucet output (the real proof)
@@ -150,7 +150,7 @@ def test_D_sign_preserved():
     surface = _surface(chain, SPOT)
     negatives = 0
     for exp in (E1, E2):
-        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
+        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT)
         for k, bucket in exposures_e.items():
             v = float(bucket["net_gex_1pct"])
             if abs(v) < 1:          # rounds to 0 either way; no sign to preserve
@@ -170,7 +170,7 @@ def test_F_input_projection_coverage():
     assert {e["expiry"] for e in surface["expirations"]} == {E1, E2}
     expected_strikes = set()
     for exp in (E1, E2):
-        expected_strikes |= {float(k) for k in compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)[0]}
+        expected_strikes |= {float(k) for k in compute_exposures_by_strike(_slice(chain, exp), spot=SPOT)[0]}
     assert set(surface["strikes"]) == expected_strikes
     # native DTE carried onto the column header, not inferred
     native_dte = {exp: next(int(ct["daysToExpiration"]) for ct in _slice(chain, exp) if ct.get("daysToExpiration") is not None)
@@ -282,7 +282,7 @@ def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
     surface = _surface(chain, SPOT)
     checked = 0
     for exp in (E1, E2):
-        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
+        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT)
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
         for k, bucket in exposures_e.items():
             if not (bucket.get("has_oi") and bucket.get("has_valid_gamma")):   # see test_A's own note
@@ -298,7 +298,7 @@ def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_conventi
     surface = _surface(chain, SPOT)
     checked = nonzero = 0
     for exp in (E1, E2):
-        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
+        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT)
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
         for k, bucket in exposures_e.items():
             if not (bucket.get("has_oi") and bucket.get("has_valid_gamma")):   # see test_A's own note
@@ -325,7 +325,7 @@ def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_tot
     surface = _surface(chain, SPOT)
     checked = 0
     for exp in (E1, E2):
-        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT, require_oi=True)
+        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT)
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
         for k, bucket in exposures_e.items():
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
@@ -375,7 +375,7 @@ def test_per_expiry_exposures_additively_merge_to_the_full_recompute(monkeypatch
     frozen = time_et.now_et()
     monkeypatch.setattr(time_et, "now_et", lambda: frozen)
     chain = _chain()
-    full, _diag = compute_exposures_by_strike(chain, spot=SPOT, require_oi=True)
+    full, _diag = compute_exposures_by_strike(chain, spot=SPOT)
     from math_exposure_core import exposure_books, merge_exposure_books
     by_expiry = exposure_books(chain, spot=SPOT)
     assert {exp for exp, _dte in by_expiry} == {E1, E2}

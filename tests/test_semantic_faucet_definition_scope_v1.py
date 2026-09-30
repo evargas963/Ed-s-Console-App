@@ -132,10 +132,10 @@ def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
     from math_exposure_core import key_level_strikes_with_gamma
 
     chain, spot = _fixture_book()
-    ex, _ = compute_exposures_by_strike(chain, spot=spot, require_oi=True)
+    ex, _ = compute_exposures_by_strike(chain, spot=spot)
     ks = key_level_strikes_with_gamma(ex) or sorted(ex)
     total_leader, _strength = pick_pin_and_strength(ex, ks)
-    net_leader = pick_net_gex_peak_strike(ex, ks, institutional=True)
+    net_leader = pick_net_gex_peak_strike(ex, ks)
     assert total_leader is not None and net_leader is not None
     assert total_leader != net_leader, (
         "the fixture no longer separates max-total-gamma from max-|net-GEX| — replace it "
@@ -157,10 +157,10 @@ def test_terrain_names_carry_their_declared_definitions():
 
     chain, spot = _fixture_book()
     snap = compute_terrain("SPY", chain, spot)
-    ex, _ = compute_exposures_by_strike(chain, spot=spot, require_oi=True)
+    ex, _ = compute_exposures_by_strike(chain, spot=spot)
     ks = key_level_strikes_with_gamma(ex) or sorted(ex)
     assert snap.absolute_gamma_strike == pick_pin_and_strength(ex, ks)[0]
-    assert snap.net_gex_peak == pick_net_gex_peak_strike(ex, ks, institutional=True)
+    assert snap.net_gex_peak == pick_net_gex_peak_strike(ex, ks)
     # the cross-wire that RC-292 could never see: each name now refuses the other metric
     assert snap.absolute_gamma_strike != snap.net_gex_peak
     d = snap.to_dict()

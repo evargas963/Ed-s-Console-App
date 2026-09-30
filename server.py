@@ -1100,17 +1100,11 @@ def favicon():
 _CROSS_WORD = {"up": "above", "down": "below"}
 
 
-def _merged_recent_crosses(edb, ticker: str, n: int) -> "tuple[list[dict], int]":
-    """The newest `n` level crosses with coincident rows merged into one event, and how many
-    stored rows they came from. The one reader of level crosses for every route."""
-    # RC-88: COLLAPSE COINCIDENT CROSSINGS. Price crossing one strike writes one row per
-    # NAMED level sitting there, and the producer's debounce is keyed on level_name, so it
-    # cannot see that eight names share a value. MEASURED 2026-07-27: 4,747 of 8,108 stored
-    # rows (58.5%) share a (ticker, ts_utc, level_value) with another; IWM 295.0 wrote 8 rows
-    # for a single tick. The chart asks for n=8, so one coincident crossing filled every slot
-    # and hid every other event. That several concepts coincide is real information — it is
-    # carried in `level_names` — but it is ONE crossing, not eight. Collapsed at the READ
-    # boundary so the stored history stays intact for anything that needs per-level rows.
+def _merged_recent_crosses(edb, ticker: str, n: int) -> "list[dict]":
+    """The newest `n` level crosses, each (time, value, direction) one event carrying every
+    level named there in `level_names`. The one reader of level crosses for every route.
+    Price crossing one strike writes one stored row per named level sitting there; they are
+    merged here, at the read, so the stored history keeps its per-level rows."""
     raw = edb.get_recent_crosses(ticker=ticker, n=max(int(n) * 8, 64))
     merged: list[dict] = []
     seen: dict[tuple, dict] = {}
@@ -1120,17 +1114,13 @@ def _merged_recent_crosses(edb, ticker: str, n: int) -> "tuple[list[dict], int]"
         if hit is None:
             row = dict(r)
             row["level_names"] = [r.get("level_name")]
-            row["coincident_levels"] = 1
             seen[key] = row
             merged.append(row)
             continue
         nm = r.get("level_name")
         if nm and nm not in hit["level_names"]:
             hit["level_names"].append(nm)
-            hit["coincident_levels"] = len(hit["level_names"])
-            # One event, one name on screen: say what it is rather than picking one arbitrarily.
-            hit["level_name"] = f"{len(hit['level_names'])} levels @ {r.get('level_value')}"
-    return merged[:n], len(raw)
+    return merged[:n]
 
 
 def _required_ticker(ticker: Optional[str]) -> str:
@@ -2583,7 +2573,7 @@ def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str |
         def _scope(cts: list) -> list:
             if not cts:
                 return []
-            exposures, _diag = _cebs(cts, spot=spot, require_oi=True)
+            exposures, _diag = _cebs(cts, spot=spot)
             # ONE producer (2026-09-24): this was a second copy of terrain_engine._per_strike_rows
             # carrying the same raw-gamma fallback (audit T-01) -- the live panel and this ghost
             # must be one computation or they draw a positioning shift that did not happen.
@@ -2632,13 +2622,8 @@ def get_terrain_strikes(ticker: str = Query(...)):
     try:
         _snap = terrain_cache_get(tk) or {}
         _ps = _snap.get("_per_strike") or {}
-        # RC-79: the terrain loop hands over FINISHED rows ({all,near,far} of
-        # [strike, net_gex_1pct$, volume]) and they are served as-is. This previously rebuilt
-        # synthetic contract dicts out of them and pushed those back through
-        # compute_exposures_by_strike(require_oi=True) — the synthetics had no open interest, so
-        # every row was rejected and the panel rendered EMPTY on a live, 7-second-old snapshot.
-        # Data that is already computed is never recomputed from a lossy reconstruction of its
-        # own inputs.
+        # the terrain loop hands over FINISHED rows ({all,near,far} of
+        # [strike, net_gex_1pct$, volume]); they are served as-is
         if isinstance(_ps, dict):
             measures = {m: (_ps.get(m) or []) for m in ("dex", "oi")}
         if isinstance(_ps, dict) and _ps.get("all"):
@@ -3391,12 +3376,12 @@ def get_desk_events(ticker: str = Query(...),
     numbers and orders nothing."""
     tk = ticker_storage_key(_required_ticker(ticker))
     start = _desk_window_start(tf, now_et())
-    crosses, _raw = _merged_recent_crosses(get_db(), tk, 200)
+    crosses = _merged_recent_crosses(get_db(), tk, 200)
     in_window = sorted((c for c in crosses if c.get("ts_utc") is not None and c["ts_utc"] >= start),
                        key=lambda c: c["ts_utc"])
     items = []
     for i, c in enumerate(in_window):
-        names = " + ".join(c.get("level_names") or [c.get("level_name")])
+        names = " + ".join(c["level_names"])
         cid = c.get("cross_id")                      # external-key-ok: ed_console.db level_crosses column
         items.append({"key": f"x{cid}", "n": i + 1, "ts": c["ts_utc"], "dom": "LEVELS",
                       "price": c.get("level_value"), "dir": c.get("direction"), "marker": False,

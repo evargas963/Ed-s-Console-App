@@ -105,10 +105,7 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             # Contracts at this strike whose openInterest was NOT REPORTED (absent, -999, text);
             # strike_total_oi() reads this so no total treats unknown as zero.
             "oi_unreported": 0,
-            # Same discipline for the flow fields (bidSize / askSize / totalVolume): Schwab
-            # reports them on every contract (measured 2026-09-24, 568 real contracts), so an
-            # absent side is a known zero and an unreported one is UNKNOWN.
-            "size_unreported": 0,
+            # Same discipline for totalVolume: an unreported one is UNKNOWN, never zero.
             "volume_unreported": 0,
             # Operator directive (2026-09-15, canonical input-validity rules): has_oi answers
             # "did any contract clear the OI gate"; has_valid_gamma answers the INDEPENDENT
@@ -150,16 +147,9 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             "call_gex_1pct": 0.0,
             "put_gex_1pct": 0.0,
             "net_gex_1pct": 0.0,
-            "call_oi_dollars": 0.0,
-            "put_oi_dollars": 0.0,
-            "total_oi_dollars": 0.0,
-            # Option-chain order flow (Schwab: bidSize, askSize, totalVolume per leg)
+            # traded contracts per leg (Schwab totalVolume)
             "call_volume": None,
             "put_volume": None,
-            "call_bid_size": 0.0,
-            "call_ask_size": 0.0,
-            "put_bid_size": 0.0,
-            "put_ask_size": 0.0,
         }
     return exposures_by_strike[strike]
 
@@ -167,12 +157,10 @@ def compute_exposures_by_strike(
     contracts: List[dict],
     *,
     spot: float | None = None,
-    use_only_dte_max: int | None = None,
-    require_oi: bool = True,
     now=None,
 ) -> tuple[Dict[float, dict], ExposureDiagnostics]:
     """
-    Produces per-strike aggregated:
+    Produces per-strike aggregated, over the contracts that report open interest:
       - call/put OI
       - call/put delta exposure (scaled)
       - call/put gamma exposure (scaled)
@@ -182,7 +170,7 @@ def compute_exposures_by_strike(
       delta_exposure = delta * OI * multiplier
       gamma_exposure = gamma * OI * multiplier
 
-    NOTE: Dollarized fields (DEX$, GEX$ per 1%, OI$) are computed when `spot` is provided. Net gamma follows Call - Put convention.
+    NOTE: Dollarized fields (DEX$, GEX$ per 1%) are computed when `spot` is provided. Net gamma follows Call - Put convention.
     """
     exposures: Dict[float, dict] = {}
     total = 0
@@ -212,11 +200,7 @@ def compute_exposures_by_strike(
         if strike is None:
             continue
 
-        dte = schwab_number(ct.get("daysToExpiration"))
-        if use_only_dte_max is not None and dte is not None and dte > use_only_dte_max:
-            continue
-
-        oi = schwab_count(ct.get("openInterest"))   # -999 / text / negative: unreported
+        oi =schwab_count(ct.get("openInterest"))   # -999 / text / negative: unreported
         side = (ct.get("putCall") or "").upper()
         if side not in ("CALL", "PUT"):
             continue
@@ -228,33 +212,15 @@ def compute_exposures_by_strike(
 
         b = _strike_bucket(exposures, strike)
         vol = schwab_count(ct.get("totalVolume"))
-        bsz = schwab_count(ct.get("bidSize"))
-        asz = schwab_count(ct.get("askSize"))
-        if bsz is None or asz is None:
-            b["size_unreported"] += 1
         if vol is None:
             b["volume_unreported"] += 1
-        if side == "CALL":
-            if vol is not None:
-                prev = b.get("call_volume")
-                b["call_volume"] = vol if prev is None else float(prev) + vol
-            if bsz is not None:
-                b["call_bid_size"] = b.get("call_bid_size", 0.0) + bsz
-            if asz is not None:
-                b["call_ask_size"] = b.get("call_ask_size", 0.0) + asz
         else:
-            if vol is not None:
-                prev = b.get("put_volume")
-                b["put_volume"] = vol if prev is None else float(prev) + vol
-            if bsz is not None:
-                b["put_bid_size"] = b.get("put_bid_size", 0.0) + bsz
-            if asz is not None:
-                b["put_ask_size"] = b.get("put_ask_size", 0.0) + asz
+            k = "call_volume" if side == "CALL" else "put_volume"
+            b[k] = vol if b[k] is None else float(b[k]) + vol
 
         if oi is None:
             missing += 1
             b["oi_unreported"] += 1
-        if require_oi and oi is None:
             continue
 
         delta = schwab_number(ct.get("delta"))
@@ -266,25 +232,20 @@ def compute_exposures_by_strike(
             missing += 1
 
         used += 1
-        # The ONE canonical "did OI actually contribute here" signal (see _strike_bucket's own
-        # comment) -- exactly the condition every OI-gated accumulation below already shares.
-        if oi is not None:
-            b["has_oi"] = True
+        b["has_oi"] = True
 
         if side == "CALL":
-            if oi is not None:
-                prev = b.get("call_oi")
-                b["call_oi"] = oi if prev is None else float(prev) + oi
-                b["call_oi_mult"] += oi * mult
-            if oi is not None and delta_ok:
+            prev = b.get("call_oi")
+            b["call_oi"] = oi if prev is None else float(prev) + oi
+            b["call_oi_mult"] += oi * mult
+            if delta_ok:
                 b["call_delta"] += delta * oi * mult
                 b["has_valid_delta"] = True
-            if oi is not None and gamma_ok:
+            if gamma_ok:
                 b["call_gamma"] += gamma * oi * mult
                 b["has_valid_gamma"] = True
-            if oi is not None and spot is not None:
+            if spot is not None:
                 spt = float(spot)
-                b["call_oi_dollars"] += oi * mult * spt
                 if delta_ok:
                     b["call_dex_dollars"] += delta * oi * mult * spt
                 if gamma_ok:
@@ -305,20 +266,18 @@ def compute_exposures_by_strike(
                     if _vn is not None:
                         b["call_vanna"] += _vn * 0.01 * oi * mult   # per 1 vol point
                         b["has_valid_vanna"] = True
-        elif side == "PUT":
-            if oi is not None:
-                prev = b.get("put_oi")
-                b["put_oi"] = oi if prev is None else float(prev) + oi
-                b["put_oi_mult"] += oi * mult
-            if oi is not None and delta_ok:
+        else:
+            prev = b.get("put_oi")
+            b["put_oi"] = oi if prev is None else float(prev) + oi
+            b["put_oi_mult"] += oi * mult
+            if delta_ok:
                 b["put_delta"] += delta * oi * mult
                 b["has_valid_delta"] = True
-            if oi is not None and gamma_ok:
+            if gamma_ok:
                 b["put_gamma"] += gamma * oi * mult
                 b["has_valid_gamma"] = True
-            if oi is not None and spot is not None:
+            if spot is not None:
                 spt = float(spot)
-                b["put_oi_dollars"] += oi * mult * spt
                 if delta_ok:
                     b["put_dex_dollars"] += delta * oi * mult * spt
                 if gamma_ok:
@@ -335,8 +294,6 @@ def compute_exposures_by_strike(
                     if _vn is not None:
                         b["put_vanna"] += _vn * 0.01 * oi * mult    # per 1 vol point
                         b["has_valid_vanna"] = True
-        else:
-            continue
 
     for strike, b in exposures.items():
         b["dollarized"] = spot is not None
@@ -351,7 +308,6 @@ def compute_exposures_by_strike(
         # Dollarized net fields (remain 0.0 if spot is None)
         b["net_dex_dollars"] = b.get("call_dex_dollars", 0.0) - b.get("put_dex_dollars", 0.0)
         b["net_gex_1pct"] = b.get("call_gex_1pct", 0.0) - b.get("put_gex_1pct", 0.0)
-        b["total_oi_dollars"] = b.get("call_oi_dollars", 0.0) + b.get("put_oi_dollars", 0.0)
 
     return exposures, _diagnostics(total, used, missing)
 
@@ -368,7 +324,7 @@ def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
 
 def exposure_books(contracts: List[dict], *, spot: float | None, now=None
                    ) -> "Dict[tuple[str, float | None], tuple[Dict[float, dict], ExposureDiagnostics]]":
-    """compute_exposures_by_strike (require_oi=True) once per (expiration date, days to
+    """compute_exposures_by_strike once per (expiration date, days to
     expiry) group. Every contract is priced once; any subset of expiries is then a
     merge_exposure_books of its groups (the full book, 0DTE, the front expiry, <=7 / >7 days)."""
     groups: "dict[tuple[str, float | None], list]" = {}
@@ -376,7 +332,7 @@ def exposure_books(contracts: List[dict], *, spot: float | None, now=None
         if isinstance(ct, dict):
             key = (str(ct.get("expirationDate") or "")[:10], schwab_number(ct.get("daysToExpiration")))
             groups.setdefault(key, []).append(ct)
-    return {k: compute_exposures_by_strike(cs, spot=spot, require_oi=True, now=now)
+    return {k: compute_exposures_by_strike(cs, spot=spot, now=now)
             for k, cs in groups.items()}
 
 
@@ -654,8 +610,8 @@ def compute_zero_dte_gamma_share(
     """RC-357: % of the dealer gamma book from SAME-DAY expiry — the level-persistence read.
 
     share = sum(|net_gex_1pct|) over the 0DTE book / sum(|net_gex_1pct|) over the full book,
-    BOTH books from the ONE producer (compute_exposures_by_strike; the 0DTE book is the same
-    call with use_only_dte_max=0 — same parser, same sign model, zero new math). High share
+    BOTH books from the ONE producer (compute_exposures_by_strike; the 0DTE book merges
+    exposure_books' same-day groups). High share
     means today's walls/flip decay into the close (0DTE gamma dies at 4pm); low share means
     the levels are carried by dated gamma and persist. FAIL-CLOSED: None when the full book
     is empty or has no measurable gamma — never a fabricated 0%.
@@ -754,32 +710,18 @@ def pick_pin_and_strength(
     return round(s, 2), round((v - second) / v * 100.0, 1)
 
 
-def pick_net_gex_peak_strike(
-    exposures: Dict[float, dict],
-    strikes: List[float],
-    *,
-    institutional: bool = True,
-) -> float | None:
+def pick_net_gex_peak_strike(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
     """
-    Net-GEX peak: strike with largest |net GEX$| per 1% (calls minus puts).
-    RC-124: this WAS displayed as "gamma pin" — a non-standard use of that name; the standard
-    pin is total gamma (pick_pin_and_strength). The net peak remains a real measure of where
-    the SIGNED book concentrates, and it keeps its row under its own name.
-    When institutional=True and spot/dollar GEX unavailable, returns None (no raw fallback).
-  """
-    if exposures_have_dollar_gex(exposures):
-        s, _ = _pick_strike_max_metric(
-            exposures, strikes, lambda b: bucket_metric_abs(b, "net_gex_1pct")
-        )
-        return round(s, 2) if s is not None else None
-    if institutional:
+    Net-GEX peak: strike with largest |net GEX$| per 1% (calls minus puts) -- where the SIGNED
+    book concentrates (the standard pin is total gamma, pick_pin_and_strength). None when the
+    book has no dollar GEX (no spot).
+    """
+    if not exposures_have_dollar_gex(exposures):
         return None
     s, _ = _pick_strike_max_metric(
-        exposures, strikes, lambda b: bucket_metric_abs(b, "net_gamma")
+        exposures, strikes, lambda b: bucket_metric_abs(b, "net_gex_1pct")
     )
     return round(s, 2) if s is not None else None
-
-
 
 
 def pick_key_delta_strike(

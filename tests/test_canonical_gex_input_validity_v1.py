@@ -66,7 +66,7 @@ def test_real_spy_capture_is_used_as_schwab_sent_it():
     the in-the-money 764-766 calls report delta 1.0 / gamma 0.0 and count as reported; the
     773 strike's call and put gamma are Schwab's 0.245 times open interest."""
     fx = json.loads((_FX / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
-    exp, diag = compute_exposures_by_strike(fx["chain"], spot=fx["spot"], require_oi=True)
+    exp, diag = compute_exposures_by_strike(fx["chain"], spot=fx["spot"])
     assert diag.greeks_missing == 0
     assert bucket_metric(exp[764.0], "call_delta") == 1.0 * 1685 * 100
     assert bucket_metric(exp[764.0], "call_gamma") == 0.0

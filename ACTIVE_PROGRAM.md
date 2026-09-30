@@ -71,9 +71,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 
 **app/options/order_flow/, live_price_rows.py, live_market_plane.py**
 - O-02 equity TOTAL_VOLUME is written into `_stream_greeks` (read only for options).
-- O-03 two spread producers in the engine (`_compute_spread`, `_microstructure_structural`); MARK relabelled `quote_mid` and back.
 - O-04 a 0 MARK, book price, bid/ask, BOOK_TIME or quote time reads as missing (truthiness / `> 0`).
-- O-06 `_compute_institutional_flow_proxy` clamps with invented 10,000/50,000 divisors.
 - O-07 `state.py` swallows a failed clock read and RTH reset (debug log only) and reads the console clock, not the message time.
 - O-09 the price display (`spot_disp`) is formatted in three places.
 - O-13 malformed push messages and bad frames are dropped uncounted; `_pick_producer_contract` falls back to `symbols[0]`.
@@ -113,12 +111,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 - P-24 the order book matches walls on the page and gives one reason for every no-book cause.
 
 **Code with no job (to delete)**
-- X-04 `config.py` `barchart_*` directories and `diagnostics_dir` (no reader, or a test only).
-- X-05 `engine.py` `_compute_options_flow`, `_compute_rvol`, `_compute_institutional_flow_proxy` (no caller supplies their inputs) and the constant-None `order_flow_*` keys.
-- X-08 unused parameters and branches: `compute_gamma_profile` `span_pct`/`steps`; `compute_exposures_by_strike` `use_only_dte_max` (and `require_oi=False`, test-only); `compute_flip_diagnostics`'s `profile is None` branch (its caller always passes one); `pick_net_gex_peak_strike(institutional=...)` raw branch; `_regime_for` `spot`/`flip` and its stale docstrings; `PlaybookConfig.max_distance_from_anchor`; `Candle.mid`; the per-strike bid/ask size and OI-dollar fields (read only by a test).
 - X-09 `EdStream.status` and what only it reaches (`subscriptionState`, `planeIsBoundToContract`), `getDesiredAdditional`, the gate's `isCurrent`/`pendingContract`; `EdGamma.cellStyle`/`renderSurface` exports (tests only); the fallback `usd` formatters behind `EdGamma.formatUsd ||` and the loader stubs behind `EdL1SseGuards ?` (ed-gamma-chart, -chain, -flow, -levels, -panels).
-- X-10 a test probes `rl.describe()` and `db.DB_DIR` (neither exists); the `db_safety.py` docstring names functions that do not exist; a `time_et.py` comment names a deleted tool.
-- S-05 `_merged_recent_crosses` writes a `level_name` nothing reads; M-26 the flip's unreachable no-spot branch; X-02 a test keeps its own 11-ticker list and count.
 
 ## One producer (rule 3, rule 6)
 

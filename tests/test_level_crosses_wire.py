@@ -193,7 +193,7 @@ def test_levels_crossed_together_are_one_event_naming_every_level():
         def get_recent_crosses(self, ticker, n):
             return rows[:n]
 
-    events, n_rows = server._merged_recent_crosses(_Stored(), "SPY", 400)
-    assert (len(events), n_rows) == (243, 400)
-    widest = max(events, key=lambda e: e["coincident_levels"])
-    assert widest["coincident_levels"] == len(widest["level_names"]) == 6
+    assert len(rows) == 400
+    events = server._merged_recent_crosses(_Stored(), "SPY", 400)
+    assert len(events) == 243
+    assert max(len(e["level_names"]) for e in events) == 6
