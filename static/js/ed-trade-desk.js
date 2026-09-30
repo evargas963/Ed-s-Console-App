@@ -120,6 +120,7 @@
       ['Posture', d.posture || '—'], ['Confidence', d.confidence || '—'],
       ['Call wall', num(d.call_wall)], ['Put wall', num(d.put_wall)],
       ['Gamma flip', d.gamma_flip != null ? num(d.gamma_flip) : (d.gamma_flip_reason || '—')],   // served reason
+    ].concat(d.gamma_flip_caveat ? [['Flip note', d.gamma_flip_caveat]] : []).concat([
       // max pain is per expiry: label it with the expiry the server computed it on (front)
       ['Max pain' + (d.max_pain_dte != null ? ' (' + d.max_pain_dte + 'DTE)' : ''), num(d.max_pain)],
       ['Net GEX @ spot', d.net_gex_at_spot != null ? (Number(d.net_gex_at_spot) / 1e6).toFixed(1) + 'M' : '—'],
@@ -127,7 +128,9 @@
       // with its time after the close, or its age
       ['Levels', d.levels_stale ? (d.levels_stale_reason || 'stale') : d.levels_market_closed ? 'as of ' + (d.levels_as_of || '—')
         : d.levels_age_sec != null ? window.EdShell.fmtAge(d.levels_age_sec) + ' old' : '—'],
-    ];
+      // why no regime is issued, or what every regime rests on (both served)
+      d.regime_reason ? ['No regime', d.regime_reason] : ['Basis', d.regime_basis || '—'],
+    ]);
     // a stale regime is badged STALE, never by its confidence alone
     return stage(3, 'td-accent-amber', 'Confirm — options regime', d.regime || '—', '', 0, rows,
       d.levels_stale ? 'STALE' : (d.confidence || null), d.levels_stale ? 'stale' : d.confidence === 'TRUSTED' ? 'live' : 'warn');
@@ -154,8 +157,11 @@
       if (loc.below) parts.push(esc(loc.below.zone_label) + ' zone below at ' + num(loc.below.zone_high) + ' (confluence ' + loc.below.confluence_score + ')');
       lines.push(['Location', parts.length ? 'Between zones — ' + parts.join(', ') : 'No scored zone nearby']);
     }
-    if (terrain && terrain.dist_to_put_wall != null && terrain.dist_to_call_wall != null) {   // served
-      lines.push(['Box', num(terrain.dist_to_put_wall) + ' above put wall, ' + num(terrain.dist_to_call_wall) + ' below call wall']);
+    if (terrain && terrain.dist_to_put_wall != null && terrain.dist_to_call_wall != null) {
+      // the distance to each wall and the side of it spot is on, both served
+      var side = { ABOVE: ' above ', BELOW: ' below ', AT: ' at ' };
+      lines.push(['Walls', num(terrain.dist_to_put_wall) + side[terrain.put_wall_relation] + 'put wall, ' +
+        num(terrain.dist_to_call_wall) + side[terrain.call_wall_relation] + 'call wall']);
     }
     if (!lines.length) return '';
     return '<div class="td-context"><h4>Context summary</h4>' +

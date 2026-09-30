@@ -63,7 +63,8 @@ def test_real_chain_produces_a_complete_payload() -> None:
     assert snap.contracts_used > 0
     assert snap.strikes_used > 0
     assert snap.headline, "the operator always gets a sentence"
-    assert isinstance(snap.lines, list)
+    # a regime, or the reason there is none
+    assert (snap.regime == "UNAVAILABLE") == bool(snap.regime_reason)
 
 
 def test_levels_are_real_strikes_or_absent() -> None:

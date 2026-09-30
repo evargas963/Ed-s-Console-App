@@ -163,7 +163,7 @@ Schwab sends is taken as sent (rule 2), never computed.
   `/api/levels` carries in `families_absent`. An expiry's ATM implied volatility is the mean of
   the call's and the put's at the one listed strike nearest the price, absent when either has
   none. A containing wall states a dealer lean (call wall: dealers sell; put wall: dealers buy)
-  only in the long-gamma regime on trusted coverage, where the read says the same.
+  only in the long-gamma regime on trusted coverage.
   **The book** is the contracts not yet at their settlement at the publication's valuation time
   (`time_et.time_to_expiry_years`: the close, or the open for an AM-settled contract). A
   contract past it carries no open interest or greeks into any level, wall, regime or total; its
@@ -203,15 +203,23 @@ Schwab sends is taken as sent (rule 2), never computed.
   value at spot). Staleness and a failing refresh are the publication's (`levels_stale`,
   `levels_failing`), as for every level. Every consumer carries the one result and the one
   wording of its absence (`terrain_read.flip_absent_reason`): `/api/terrain` `gamma_flip`,
-  `gamma_flip_reason` and the read's line, `/api/levels` (the level, or the reason in
+  `gamma_flip_reason`, `/api/levels` (the level, or the reason in
   `families_absent`), and the screens, which print the reason where the flip would be. The
   side of the flip spot is on (`flip_relation`: `ABOVE`, `BELOW`, or `AT`) has one rule,
   `terrain_read.flip_side`. The regime is not read from the flip: it is the sign of Schwab's
   gamma as sent, summed over the book (operator 2026-09-30: Schwab's gamma stays the
-  authority; it is not replaced by the modelled gamma), and where the flip's curve disagrees
-  with that sign at spot the read says so (`flip_diag.curve_agrees_with_schwab_at_spot`).
-  Schwab's chain sends gamma to three decimals; on the 2026-09-29 close captures the two
-  disagreed in sign on $SPX, $VIX, CRWV and QQQ.
+  authority; it is not replaced by the modelled gamma). Schwab's chain sends gamma to three
+  decimals; on the 2026-09-29 close captures the two disagreed in sign on $SPX, $VIX, CRWV and
+  QQQ. The read (`terrain_read.build_terrain_read`) is the regime, its posture and confidence
+  and nothing else: it writes no sentences about walls or where spot sits. The terrain carries
+  each wall's distance from spot (never negative) and the side of it spot is on
+  (`call_wall_relation`, `put_wall_relation`: the flip's `flip_side` rule), so a wall spot has
+  gone through is never worded as one that contains it. `/api/terrain` carries with it `regime_basis` (what
+  every regime rests on), `regime_reason` (why there is none, when there is none) and
+  `gamma_flip_caveat` (the flip level is approximate on a narrow chain; the flip's curve
+  disagrees with Schwab's sign at spot, `flip_diag.curve_agrees_with_schwab_at_spot`). Key
+  Levels and Right Now print all three; the Desk's options card marks the flip and prints the
+  caveat.
   None of these rules names a ticker; board
   membership decides only which tickers the daemon captures, which the loop refreshes unviewed,
   and which are priced at startup (tested for a board and an off-board ticker in
