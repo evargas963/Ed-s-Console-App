@@ -230,6 +230,23 @@ def test_every_expiry_carries_its_atm_iv_by_the_one_rule(pin_clock) -> None:
     assert em is not None and by_exp[front_exp] == em["iv_pct_atm"]
 
 
+def test_atm_iv_is_both_legs_at_the_one_nearest_strike_or_absent() -> None:
+    """2026-09-30 audit: a nearest strike whose legs carry no usable IV was skipped and the next
+    strike's IV served as "ATM" with no limit on how far away. Real SNDK chain (Schwab sent
+    volatility 0 on both 1225 legs). Stand-in: a spot of 1225, to put that strike at the money."""
+    from terrain_engine import atm_sigma_by_expiry
+    fx = json.loads((Path(__file__).parent / "fixtures" / "real_sndk_chain_no_volatility.json")
+                    .read_text(encoding="utf-8"))
+    legs = {c["putCall"]: c["volatility"] for c in fx["chain"] if c["strikePrice"] == 1225.0}
+    assert legs == {"CALL": 0.0, "PUT": 0.0}
+    assert list(atm_sigma_by_expiry(fx["chain"], 1225.0).values()) == [None]
+    # at the chain's own spot the nearest strike has both legs, and the value is their mean
+    nearest = min({c["strikePrice"] for c in fx["chain"]}, key=lambda k: (abs(k - fx["spot"]), k))
+    at = {c["putCall"]: c["volatility"] for c in fx["chain"] if c["strikePrice"] == nearest}
+    (sigma,) = atm_sigma_by_expiry(fx["chain"], fx["spot"]).values()
+    assert sigma == pytest.approx((at["CALL"] + at["PUT"]) / 200.0)
+
+
 # ── RC-115: per-side wall ranges — gamma value area (Market-Profile POC expansion) ───────────
 
 def test_wall_value_area_expands_toward_the_heavier_neighbor() -> None:

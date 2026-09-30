@@ -40,19 +40,25 @@ def test_vanna_is_per_vol_point_in_every_bucket_and_in_the_aggregate():
     assert agg["net_vanna_shares_per_volpt"] == pytest.approx(shares, abs=0.01)
 
 
-def test_a_contract_with_no_expiry_is_not_counted_as_same_day(pin_clock):
-    """On a chain with no same-day expiry (CRWD, 16 days out), a contract that does not state its
-    expiry must not create a same-day share (it was pooled into the 0DTE book)."""
+def test_a_contract_with_no_expiry_is_in_no_book_and_makes_the_flip_incomplete(pin_clock):
+    """A contract that does not state its expiry cannot be placed in the book: its open interest
+    and gamma reach no total, and the flip, which cannot price it, says so (it was pooled into
+    the same-day book). Stand-in: CRWD's real chain plus one of its contracts with the expiry
+    fields removed (Schwab has not sent one without them)."""
     pin_clock(2026, 9, 2, 10, 5)                   # the CRWD chain's capture
     fx = json.loads((Path(__file__).parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
                     .read_text(encoding="utf-8"))
     chain, spot = fx["chain"], float(fx["spot"])
-    base = compute_terrain("CRWD", chain, spot).zero_dte_gamma_share_pct
+    base = compute_terrain("CRWD", chain, spot)
     top = max(chain, key=lambda c: c.get("gamma") or 0.0)          # a contract that carries gamma
     orphan = {k: v for k, v in top.items() if k not in ("expirationDate", "daysToExpiration")}
     orphan["openInterest"] = 100_000
-    assert base == 0.0
-    assert compute_terrain("CRWD", chain + [orphan], spot).zero_dte_gamma_share_pct == base
+    with_orphan = compute_terrain("CRWD", chain + [orphan], spot)
+    assert base.net_gex_at_spot is not None and base.flip_diag["state"] == "FOUND"
+    assert with_orphan.net_gex_at_spot == base.net_gex_at_spot
+    assert with_orphan.book_oi_total == base.book_oi_total and with_orphan.call_wall == base.call_wall
+    assert with_orphan.flip_diag["unpriced"] == {"no_expiry": 1}
+    assert with_orphan.flip_diag["state"] == "INCOMPLETE" and with_orphan.gamma_flip is None
 
 
 def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path, monkeypatch, pin_clock):

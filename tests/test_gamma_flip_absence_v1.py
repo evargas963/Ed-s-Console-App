@@ -204,6 +204,12 @@ def test_the_stored_capture_the_endpoints_and_the_producer_agree_on_the_missing_
     assert "gamma_flip" not in {r["id"] for r in levels["levels"]}
     assert "call_wall" in {r["id"] for r in levels["levels"]}, "the other gamma levels are still carried"
     assert {"family": "gamma_flip", "reason": expected.gamma_flip_reason} in levels["families_absent"]
+    # every gamma level published without a value carries the reason it was published with
+    absent = {f["family"]: f["reason"] for f in levels["families_absent"]}
+    assert expected.pin_candidate is None and expected.pin_candidate_blockers
+    assert absent["pin_candidate"] == "not qualified: " + ", ".join(expected.pin_candidate_blockers)
+    for gid, why in expected.level_absent_reasons.items():
+        assert absent[gid] == why and gid not in {r["id"] for r in levels["levels"]}
     assert "GAMMA_FLIP" not in {tag for _price, tag in server._liquidity_option_levels(tk)[0]}
 
 
