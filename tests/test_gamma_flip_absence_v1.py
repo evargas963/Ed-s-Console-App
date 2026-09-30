@@ -29,6 +29,7 @@ from math_levels import (
     FLIP_NO_PRICED_CONTRACT,
     FLIP_UNAVAILABLE,
     GAMMA_PROFILE_SPAN_PCT,
+    UNPRICED_NO_VOLATILITY,
     UNPRICED_SETTLED,
     compute_gamma_profile,
     profile_sign_changes,
@@ -82,17 +83,21 @@ def test_no_crossing_names_the_prices_searched_and_claims_nothing_beyond_them():
 
 def test_every_capture_states_its_flip_by_the_same_rule():
     """All tickers: one rule decides the state. A contract of the book that could not be priced
-    makes the flip incomplete; otherwise the prices searched are spot +/- GAMMA_PROFILE_SPAN_PCT,
-    a found flip is one of the curve's sign changes inside them with no reason, and a missing one
-    carries its reason. The flip, its reason and the side of it are one record's."""
-    states = set()
+    for a reason other than no usable volatility makes the flip incomplete (one Schwab sent with
+    no usable volatility is left out and counted); otherwise the prices searched are spot +/-
+    GAMMA_PROFILE_SPAN_PCT, a found flip is one of the curve's sign changes inside them with no
+    reason, and a missing one carries its reason. The flip, its reason and the side of it are
+    one record's."""
+    states, left_out = set(), []
     for cap, now in _captures():
         snap = compute_terrain(cap["ticker"], cap["chain"], cap["spot"], now=now)
         d = snap.flip_diag
         states.add(d["state"])
+        if d["unpriced"].get(UNPRICED_NO_VOLATILITY):
+            left_out.append(cap["ticker"])
         assert (snap.gamma_flip is None) == bool(snap.gamma_flip_reason) == (snap.flip_relation is None)
         assert snap.gamma_flip == d["price"]
-        if any(n for reason, n in d["unpriced"].items() if reason != UNPRICED_SETTLED):
+        if any(n for reason, n in d["unpriced"].items() if reason not in (UNPRICED_SETTLED, UNPRICED_NO_VOLATILITY)):
             assert d["state"] == FLIP_INCOMPLETE and d["domain_lo"] is None, cap["ticker"]
             continue
         assert d["domain_lo"] == pytest.approx(cap["spot"] * (1 - GAMMA_PROFILE_SPAN_PCT), abs=1e-4), cap["ticker"]
@@ -103,7 +108,9 @@ def test_every_capture_states_its_flip_by_the_same_rule():
             assert snap.gamma_flip in changes and d["domain_lo"] <= snap.gamma_flip <= d["domain_hi"]
         else:
             assert d["state"] == FLIP_NO_CROSSING and changes == []
-    assert states == {FLIP_FOUND, FLIP_NO_CROSSING, FLIP_INCOMPLETE}, "the captures cover each outcome"
+    assert states == {FLIP_FOUND, FLIP_NO_CROSSING}, "the captures cover each outcome they reach"
+    # (an incomplete flip, from a contract with no expiry: test_one_faucet_units_v1)
+    assert left_out, "a capture with contracts left out for no usable volatility is among them"
 
 
 def test_a_chain_with_no_priceable_contract_has_no_curve_and_says_so():

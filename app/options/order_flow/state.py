@@ -23,6 +23,12 @@ log = logging.getLogger(__name__)
 _OPTION_TOP_FIELDS = (("BID_PRICE", "bid", schwab_number), ("ASK_PRICE", "ask", schwab_number),
                       ("BID_SIZE", "bid_size", schwab_count), ("ASK_SIZE", "ask_size", schwab_count),
                       ("MARK", "mark", schwab_number))
+#: the LEVELONE_OPTIONS fields the stream owns for a live contract (the chain overlay), each read
+#: as sent: a reported 0 is 0 (AGENTS.md rule 2)
+_OPTION_GREEK_FIELDS = (("GAMMA", "gamma", schwab_number), ("DELTA", "delta", schwab_number),
+                        ("OPEN_INTEREST", "open_interest", schwab_count),
+                        ("TOTAL_VOLUME", "total_volume", schwab_count),
+                        ("VOLATILITY", "volatility", schwab_number))
 
 
 class OrderFlowState:
@@ -80,7 +86,9 @@ class OrderFlowState:
     ) -> None:
         """Apply one LEVELONE_OPTIONS message's GAMMA / DELTA / OPEN_INTEREST / TOTAL_VOLUME /
         VOLATILITY: each field it carries is merged on its own and stamped with the message's
-        receive time, so a field it does not carry keeps its value and its time."""
+        receive time, so a field it does not carry keeps its value and its time. A field it
+        carries as not a number (-999, text, NaN, a negative count) is held as None: Schwab says
+        it has no value now, and the chain overlay makes the contract's field unavailable."""
         if not content_item or not isinstance(content_item, dict):
             return
         sym = ticker_storage_key(symbol or content_item.get("key"))
@@ -104,27 +112,13 @@ class OrderFlowState:
         except Exception as e:
             log.debug("RTH reset check failed (continuing): %s", e)
 
-        # TOTAL_VOLUME as sent; a reported 0 is 0 (AGENTS.md rule 2).
-        vf = schwab_count(content_item.get("TOTAL_VOLUME"))
-
-        gamma = schwab_number(content_item.get("GAMMA"))
-        delta = schwab_number(content_item.get("DELTA"))
-        oi = schwab_count(content_item.get("OPEN_INTEREST"))
-        # VOLATILITY too: the model's input must be as fresh as the gamma beside it
-        iv = schwab_number(content_item.get("VOLATILITY"))
-        if gamma is not None or delta is not None or oi is not None or vf is not None or iv is not None:
+        sent = [(name, read(content_item[field])) for field, name, read in _OPTION_GREEK_FIELDS
+                if field in content_item]
+        if sent:
             with self._lock:
                 g = self._stream_greeks.setdefault(sym, {})
-                if gamma is not None:
-                    g["gamma"], g["gamma_ts_recv"] = gamma, ts_recv
-                if delta is not None:
-                    g["delta"], g["delta_ts_recv"] = delta, ts_recv
-                if oi is not None:
-                    g["open_interest"], g["open_interest_ts_recv"] = oi, ts_recv
-                if vf is not None:
-                    g["total_volume"], g["total_volume_ts_recv"] = vf, ts_recv
-                if iv is not None:
-                    g["volatility"], g["volatility_ts_recv"] = iv, ts_recv
+                for name, value in sent:
+                    g[name], g[name + "_ts_recv"] = value, ts_recv
 
     def get_content_for_symbol(self, symbol: str, venue: Optional[str] = None) -> list[dict]:
         """The symbol's recent books, oldest first; with `venue`, only that Schwab book
