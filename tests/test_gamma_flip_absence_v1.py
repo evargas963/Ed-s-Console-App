@@ -211,7 +211,7 @@ def test_the_stored_capture_the_endpoints_and_the_producer_agree_on_the_missing_
     assert absent["pin_candidate"] == "not qualified: " + ", ".join(expected.pin_candidate_blockers)
     for gid, why in expected.level_absent_reasons.items():
         assert absent[gid] == why and gid not in {r["id"] for r in levels["levels"]}
-    assert "GAMMA_FLIP" not in {tag for _price, tag in server._liquidity_option_levels(tk)}
+    assert "GAMMA_FLIP" not in {tag for _price, tag in server._liquidity_option_levels(server.terrain_cache_get(tk))}
 
 
 def test_a_ticker_with_no_chain_carries_the_flips_own_reason():

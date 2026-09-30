@@ -3413,16 +3413,17 @@ DESK_MARKERS = 6
 
 #: At most one push per this many seconds per page; changes in between arrive together.
 CHANGES_PUSH_MIN_SEC = 1.0
-#: With no change, the session label is pushed this often (it doubles as the heartbeat).
+#: The session label and the sign-in are pushed this often, whatever else is pushed (they double
+#: as the heartbeat).
 CHANGES_SESSION_SEC = 5.0
 
 
 @app.get("/api/changes")
 async def get_changes(ticker: str = Query(...), view: str = Query(..., min_length=1)):
     """The console's push to the page: `levels`, `flow` or `liquidity` when that value of the
-    ticker changed (the page reloads it), and, on connect and every CHANGES_SESSION_SEC with no
-    other change, `session` with the market session label and `sign_in` with the Schwab
-    sign-in's state (schwab_sign_in_status). Prices
+    ticker changed (the page reloads it), and, on connect and every CHANGES_SESSION_SEC after
+    (on its own clock: a busy ticker does not hold it back), `session` with the market session
+    label and `sign_in` with the Schwab sign-in's state (schwab_sign_in_status). Prices
     and bars come from the daemon's own push. Opening it makes the ticker the active one, whose
     NYSE_BOOK and NASDAQ_BOOK the daemon streams: every page reconnects after a console
     restart, so the books follow the page with no separate request. `view` is the page load's
@@ -3440,16 +3441,18 @@ async def get_changes(ticker: str = Query(...), view: str = Query(..., min_lengt
     async def event_generator():
         # subscribed only once the response is being sent, so every subscription is closed
         client = push_changes.subscribe(t, view)
+        clock = asyncio.get_running_loop().time
+        status_due = clock()          # on connect, then on its own clock whatever else is pushed
         try:
-            yield status()
             while True:
-                kinds = await push_changes.next_changes(client, CHANGES_SESSION_SEC)
+                if clock() >= status_due:
+                    yield status()
+                    status_due = clock() + CHANGES_SESSION_SEC
+                kinds = await push_changes.next_changes(client, status_due - clock())
                 for k in sorted(kinds):
                     yield f"event: {k}\ndata: {t}\n\n"
-                if not kinds:
-                    yield status()
-                    continue
-                await asyncio.sleep(CHANGES_PUSH_MIN_SEC)
+                if kinds:
+                    await asyncio.sleep(CHANGES_PUSH_MIN_SEC)
         finally:
             push_changes.unsubscribe(t, client)
             _get_route_offload_executor().submit(release_option_contract_demand, view)
@@ -4120,10 +4123,9 @@ TERRAIN_FUSION_LEVELS = (("call_wall", "GAMMA_CALL_WALL"), ("put_wall", "GAMMA_P
                          ("max_pain", "MAX_PAIN"), ("gamma_flip", "GAMMA_FLIP"))
 
 
-def _liquidity_option_levels(tk: str) -> list[tuple[float, str]]:
-    """The ticker's option levels from its published terrain, tagged for the liquidity zones."""
-    t = terrain_cache_get(tk) or {}
-    return [(t[k], tag) for k, tag in TERRAIN_FUSION_LEVELS if t.get(k) is not None]
+def _liquidity_option_levels(terrain: dict) -> list[tuple[float, str]]:
+    """The option levels of a published terrain (terrain_cache_get), tagged for the liquidity zones."""
+    return [(terrain[k], tag) for k, tag in TERRAIN_FUSION_LEVELS if terrain.get(k) is not None]
 
 
 def _spot_location(zones: list, spot) -> "dict | None":
@@ -4152,13 +4154,16 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
     levels (the values /api/levels serves), Schwab's prior close and the terrain's option levels,
     clustered and placed against the live price; with today's value context (value_context) and
     where the price sits among the zones. It computes no level of its own. `absent` names each
-    input it did not have, with the reason."""
+    input it did not have, with the reason. The two inputs' times ride with the zones: the
+    newest bar's (`levels_as_of`) and, in `option_levels`, the terrain's own freshness verdict
+    (terrain_staleness, as /api/terrain serves it) for the option levels in them."""
     tk = ticker_storage_key(_required_ticker(ticker))
     canon = canonical_price_level_snapshot(tk)
     if canon is None:
         return {"ticker": tk, "zones": [], "reason": NO_PRICE_LEVELS_REASON}
     spot = resolve_spot(tk)[0]
-    option_levels, pdc = _liquidity_option_levels(tk), _prior_close(tk)
+    terrain = terrain_cache_get(tk) or {}
+    option_levels, pdc = _liquidity_option_levels(terrain), _prior_close(tk)
     absent = [a for a in (
         None if spot is not None else
         {"input": "live price", "reason": "no live price: a zone has no side and the price has no location"},
@@ -4181,6 +4186,8 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
         "level_generation": canon.generation,
         "level_snapshot_as_of_ts_utc": canon.as_of_ts_utc,
         "levels_as_of": None if canon.as_of_ts_utc is None else ct_label(canon.as_of_ts_utc),
+        # the option levels' source and freshness, every `levels_*` field of their terrain
+        "option_levels": {k: v for k, v in terrain.items() if k.startswith("levels_")} if option_levels else None,
     }
 
 

@@ -131,7 +131,11 @@ Schwab sends is taken as sent (rule 2), never computed.
   live price. The live price is never a level. `/api/liquidity-snapshot` also serves where the
   price sits among the zones, the value context (`value_context`: today's point of control
   against the prior day's; the VWAP above, below or inside today's value area; each absent with
-  its reason), the time the zones are as of, and each input they lacked. Producer `_publish_price_levels`: the
+  its reason), each input they lacked, and the time of each of their two inputs: the newest
+  bar's (`levels_as_of`) and, in `option_levels`, the terrain's own `terrain_staleness` verdict
+  for the option levels in them (age, stale with its reason, or after the close the time they
+  are as of). The Liquidity Map prints both; stale option levels stay in the zones, labeled
+  stale with the reason. Producer `_publish_price_levels`: the
   bar writer (`_write_streamed_bars`) after each bar of every ticker, on its own thread, once
   every bar waiting has been written and pushed as `liquidity` (a `levels` push when the
   published snapshot changed); and the levels loop (`_publish_missing_price_levels`) for a
@@ -264,7 +268,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   counted, whatever their number. No proximity alerts. Absorption,
   liquidity pull and replenishment are not produced (open; `ACTIVE_PROGRAM.md` DESK-GAPS).
 - **Market session.** From the market calendar → pushed on `/api/changes` when the page connects
-  and every 5 s with no other change. One calendar (`time_et`: holidays, 13:00 early closes,
+  and every 5 s after, on its own clock: a ticker whose values change every second does not
+  hold the status back. One calendar (`time_et`: holidays, 13:00 early closes,
   `session_label`, `session_close_mins_for_et_date`) decides every session window: the order-flow
   session reset, the prior-day, opening-range, VWAP and value-area windows, and the default option
   contract's expiry cutoff. A day with no session has an empty window.
@@ -273,8 +278,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   red from day 6, unknown when the file is unreadable) is pushed with the session label, and
   the header shows when it ends and what to run from the day it warns.
 - **Whether a screen's values are current.** One authority, `terrain_staleness`, for the levels
-  and the chain they were computed from: `/api/terrain`, `/api/terrain/strikes` and `/api/chain`
-  carry its verdict (stale with the reason, the age, market closed with the time the values
+  and the chain they were computed from: `/api/terrain`, `/api/terrain/strikes`, `/api/chain`
+  and `/api/liquidity-snapshot` (for the option levels in its zones) carry its verdict (stale with the reason, the age, market closed with the time the values
   are as of), and each panel's badge prints it. A complete chain is not thereby a live one.
 - **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the
   price-row loop (an equity's quote), the stream handler (a book) and the bar writer mark a
