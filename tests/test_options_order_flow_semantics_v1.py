@@ -324,7 +324,7 @@ def test_option_contract_streaming_diagnostics_healthy_on_recent_tick():
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()
 
-    diag = ofs.get_option_contract_streaming_diagnostics()
+    diag = ofs.get_option_contract_streaming_diagnostics(None, time.time())
     assert diag["streaming_connected"] is True
     assert diag["option_contract"] == _SPY_CONTRACT
     assert diag["streaming_healthy"] is True
@@ -342,7 +342,7 @@ def test_a_quiet_contract_on_a_live_feed_reads_healthy_with_its_own_staleness():
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time() - 30.0
 
-    diag = ofs.get_option_contract_streaming_diagnostics()
+    diag = ofs.get_option_contract_streaming_diagnostics(None, time.time())
     assert diag["streaming_healthy"] is True
     assert diag["streaming_staleness_ms"] >= 30_000.0
 
@@ -357,7 +357,7 @@ def test_a_just_subscribed_contract_the_daemon_does_not_hold_is_not_healthy():
     ofs._feed_running = True
     assert ofs.set_active_option_contract(contract) is True
 
-    diag = ofs.get_option_contract_streaming_diagnostics()
+    diag = ofs.get_option_contract_streaming_diagnostics(None, time.time())
     assert diag["option_contract"] == contract
     assert diag["streaming_healthy"] is False
     assert diag["streaming_staleness_ms"] is None
@@ -372,7 +372,7 @@ def test_a_just_subscribed_contract_the_daemon_holds_is_healthy():
     ofs._feed_running = True
     assert ofs.set_active_option_contract(contract) is True
 
-    diag = ofs.get_option_contract_streaming_diagnostics(for_contract=contract)
+    diag = ofs.get_option_contract_streaming_diagnostics(contract, time.time())
     assert diag["contract_match"] is True
     assert diag["streaming_healthy"] is True
     assert diag["streaming_staleness_ms"] is None
@@ -384,7 +384,7 @@ def test_option_contract_streaming_diagnostics_unhealthy_when_feed_not_running()
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()
 
-    diag = ofs.get_option_contract_streaming_diagnostics()
+    diag = ofs.get_option_contract_streaming_diagnostics(None, time.time())
     assert diag["streaming_connected"] is False
     assert diag["streaming_healthy"] is False
 
@@ -399,5 +399,5 @@ def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()
 
-    assert lmp.feed_live_for("SPY", "LEVELONE_EQUITIES") is False
-    assert ofs.get_option_contract_streaming_diagnostics()["streaming_healthy"] is True
+    assert lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()) is False
+    assert ofs.get_option_contract_streaming_diagnostics(None, time.time())["streaming_healthy"] is True

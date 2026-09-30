@@ -266,7 +266,9 @@ Schwab sends is taken as sent (rule 2), never computed.
   live only in session as well (trading day, 04:00–20:00 ET: `spot_is_fresh`, `book_is_live`);
   outside it the last one is a past observation. A value's age is never the
   test: Schwab sends a field only when it changes. The daemon's status is read from the same
-  heartbeat (`live_market_plane.daemon_status`). Owner: the console's feed loop records each
+  heartbeat (`live_market_plane.daemon_status`). Every one of these, and the price row
+  (`live_price_rows.price_row`), is judged at the `now` its caller passes; only an entry point (a
+  route, a loop, a socket pump) reads the clock. Owner: the console's feed loop records each
   heartbeat; when the daemon stops or the socket to it drops, every streamed value reads not live
   within 3 s.
 - **Level crosses.** Computed by the console at each live levels publish (`server.level_crosses`):

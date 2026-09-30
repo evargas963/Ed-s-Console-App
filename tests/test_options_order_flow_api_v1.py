@@ -423,7 +423,8 @@ def test_additional_contract_never_requires_options_book(monkeypatch, tmp_path):
     _seed_multi_contract_producer_epochs(
         ofs, monkeypatch, tmp_path, primary=_QQQ_CONTRACT, extra=[_SPY_CONTRACT])
     # Sanity: Schwab genuinely holds no OPTIONS_BOOK for SPY.
-    assert not ofs._lmp.feed_live_for(_SPY_CONTRACT, "OPTIONS_BOOK")
+    import time as _t
+    assert not ofs._lmp.feed_live_for(_SPY_CONTRACT, "OPTIONS_BOOK", _t.time())
     try:
         plane = json.loads(srv.api_order_flow_options_microstructure(
             contract=_SPY_CONTRACT).body)["streaming_plane"]
@@ -647,7 +648,8 @@ def test_blocker1a_whole_plane_query_keeps_historical_unbound_answer(monkeypatch
     _force_live_option_plane(ofs, _QQQ_CONTRACT)
     _seed_producer_epochs(ofs, monkeypatch, tmp_path, l1=_QQQ_CONTRACT, book=_QQQ_CONTRACT)
     try:
-        diag = ofs.get_option_contract_streaming_diagnostics()
+        import time as _t
+        diag = ofs.get_option_contract_streaming_diagnostics(None, _t.time())
         assert diag["contract_match"] is None
         assert diag["queried_contract"] is None
         assert diag["streaming_healthy"] is True

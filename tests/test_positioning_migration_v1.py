@@ -2,6 +2,7 @@
 positioning_migration), from two real days of Schwab's PCG chain (tests/fixtures, captured
 2026-09-24 and 2026-09-25). Expected values are worked out here from the rows themselves."""
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -79,7 +80,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
     from calibration.complete_chain_capture import last_capture_per_day
     stored = last_capture_per_day(str(db), "PCG", 2)            # the startup load's one read
     newest = stored[0]
-    assert server._publish_levels("PCG", captures=stored) is not None
+    assert server._publish_levels("PCG", captures=stored, now=time.time()) is not None
     body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
     assert body["prior_source"] == "chain_capture:2026-09-24"
     m = body["migration"]["all"]
@@ -90,7 +91,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
     for _ in range(3):
         assert json.loads(server.get_terrain_strikes(ticker="PCG").body)["prior_source"] == "chain_capture:2026-09-24"
         server.get_forces(ticker="PCG")
-    server._publish_levels("PCG", captures=stored)                       # same capture: nothing new
+    server._publish_levels("PCG", captures=stored, now=time.time())                       # same capture: nothing new
     assert reads == []
     # a new capture is computed once, by the next publish
     key_before = server.terrain_cache_get("PCG")["_captures_key"]
@@ -104,10 +105,10 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
                         lambda *a, **k: reads.append(a) or last_capture_per_day(*a, **k))
     stored = last_capture_per_day(str(db), "PCG", 2)            # the caller's one read ...
     newer = stored[0]
-    server._publish_levels("PCG", captures=stored)
+    server._publish_levels("PCG", captures=stored, now=time.time())
     assert server.terrain_cache_get("PCG")["_captures_key"] != key_before
     assert reads == []                            # ... serves the levels, forces and prior day
-    server._publish_levels("PCG", captures=stored)
+    server._publish_levels("PCG", captures=stored, now=time.time())
     assert reads == []
     # a new market day's first chain, before that day's first capture: the prior day is recomputed
     # against the new day (Friday's capture becomes the prior day), once
@@ -115,8 +116,8 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
     monkeypatch.setattr(server, "_record_level_crosses", lambda *a, **k: None)
     monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET).timestamp()
     pin_clock(2026, 9, 28, 10, 0)
-    server._publish_levels("PCG", newer["contracts"], monday)
+    server._publish_levels("PCG", newer["contracts"], monday, now=monday)
     assert len(reads) == 1                        # the two newest days, read once for both
     assert json.loads(server.get_terrain_strikes(ticker="PCG").body)["prior_source"] == "chain_capture:2026-09-25"
-    server._publish_levels("PCG", newer["contracts"], monday + 5)
+    server._publish_levels("PCG", newer["contracts"], monday + 5, now=monday + 5)
     assert len(reads) == 1

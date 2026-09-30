@@ -5,12 +5,12 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
+from datetime import datetime
 from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from time_et import is_capturable_session
+from time_et import ET, is_capturable_session
 
 log = logging.getLogger(__name__)
 
@@ -211,70 +211,77 @@ def record_feed_down() -> None:
         _feed.update(rx=None, status=None, held={})
 
 
-def daemon_status() -> dict[str, Any] | None:
-    """The daemon's latest status while its heartbeat is live (FEED_HEARTBEAT_MAX_AGE_SEC),
-    else None: a daemon that stopped reporting holds nothing and streams nothing."""
+def in_session(now: float) -> bool:
+    """The market is in session at `now` (epoch seconds): a trading day, 04:00-20:00 ET. The
+    session rule of every live value (time_et.is_capturable_session)."""
+    return is_capturable_session(datetime.fromtimestamp(now, ET))
+
+
+def daemon_status(now: float) -> dict[str, Any] | None:
+    """The daemon's latest status while its heartbeat is live at `now` (epoch seconds;
+    FEED_HEARTBEAT_MAX_AGE_SEC), else None: a daemon that stopped reporting holds nothing and
+    streams nothing."""
     with _lock:
         rx, status = _feed["rx"], _feed["status"]
-    if rx is None or not 0.0 <= time.time() - rx < FEED_HEARTBEAT_MAX_AGE_SEC:
+    if rx is None or not 0.0 <= now - rx < FEED_HEARTBEAT_MAX_AGE_SEC:
         return None
     return status
 
 
-def feed_live_for(symbol: str | None, service: str) -> bool:
-    """THE live rule, for every streamed value: is Schwab `service` delivering `symbol` right
-    now -- the daemon's heartbeat is live (daemon_status), it reports the Schwab socket open,
-    and it holds the symbol on that service.
+def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
+    """THE live rule, for every streamed value: is Schwab `service` delivering `symbol` at `now`
+    -- the daemon's heartbeat is live (daemon_status), it reports the Schwab socket open, and it
+    holds the symbol on that service.
 
     Not "did a value arrive recently": Schwab sends a field only when it CHANGES (measured: 11%
     of 4,039 messages carried bid+ask+last together), so a quiet symbol's unchanged value is its
     current value; judging by arrival age blanked quiet names on a healthy feed (2026-09-24
     08:44 CT, DELL) and kept a dead feed's prices "live" for 30 s."""
     t = ticker_storage_key(symbol or "")
-    status = daemon_status()
+    status = daemon_status(now)
     if not t or status is None or status.get("schwab_socket_open") is not True:
         return False
     with _lock:
         return t in _feed["held"].get(service, ())
 
 
-def book_is_live(symbol: str | None, service: str) -> bool:
-    """Is `symbol`'s book on `service` live right now: the market is in session (trading day,
+def book_is_live(symbol: str | None, service: str, now: float) -> bool:
+    """Is `symbol`'s book on `service` live at `now`: the market is in session (trading day,
     04:00-20:00 ET) and the feed holds it (feed_live_for). Outside the session its last book is a
     past observation, as the price is (spot_is_fresh)."""
-    return is_capturable_session() and feed_live_for(symbol, service)
+    return in_session(now) and feed_live_for(symbol, service, now)
 
 
-def spot_is_fresh(q: dict[str, Any]) -> bool:
-    """Is this row's LAST_PRICE live right now: the market is in session (trading day,
+def spot_is_fresh(q: dict[str, Any], now: float) -> bool:
+    """Is this row's LAST_PRICE live at `now`: the market is in session (trading day,
     04:00-20:00 ET), the stream delivered a LAST_PRICE for it (`spot_received_ts`) and the feed
     is live for its symbol (feed_live_for). Outside the session it is a past observation. Its
     age since the last trade is information (`trade_ts`), never a reason to blank it."""
-    if not is_capturable_session():
+    if not in_session(now):
         return False
     if float_finite_or_none((q or {}).get("spot_received_ts")) is None:  # caps-ok: fail-closed -- no LAST_PRICE this session is not live
         return False
-    return feed_live_for((q or {}).get("ticker"), "LEVELONE_EQUITIES")
+    return feed_live_for((q or {}).get("ticker"), "LEVELONE_EQUITIES", now)
 
 
-def streamed_chg_pct(row: dict[str, Any] | None, key: str = "chg_pct") -> Optional[float]:
+def streamed_chg_pct(row: dict[str, Any] | None, now: float, key: str = "chg_pct") -> Optional[float]:
     """A Schwab LEVELONE_EQUITIES percent change (0 hops) from a row the stream wrote, while its
-    LAST_PRICE is fresh: `chg_pct` (NET_CHANGE_PERCENT, extended hours included, sent with every
-    LAST_PRICE -- measured on 4,039 messages) or `chg_pct_regular` (REGULAR_MARKET_CHANGE_PERCENT).
-    Otherwise None: no REST value, no stale row (2026-09-24)."""
-    if not (row and plane_row_is_streamed(row) and spot_is_fresh(row)):
+    LAST_PRICE is fresh at `now`: `chg_pct` (NET_CHANGE_PERCENT, extended hours included, sent
+    with every LAST_PRICE -- measured on 4,039 messages) or `chg_pct_regular`
+    (REGULAR_MARKET_CHANGE_PERCENT). Otherwise None: no REST value, no stale row (2026-09-24)."""
+    if not (row and plane_row_is_streamed(row) and spot_is_fresh(row, now)):
         return None
     return float_finite_or_none(row.get(key))
 
 
-def quote_is_fresh(q: dict[str, Any]) -> bool:
-    """Is this plane row's quote (bid/ask/sizes) live right now: the stream wrote the row
+def quote_is_fresh(q: dict[str, Any], now: float) -> bool:
+    """Is this plane row's quote (bid/ask/sizes) live at `now`: the stream wrote the row
     (`server_received_ts`) and the feed is live for its symbol (feed_live_for). Under
     Schwab's changed-fields-only delivery an unchanged bid IS the current bid while the feed
     is live; a missing server_received_ts cannot be assumed live (fail closed). Outside the
     session (is_capturable_session) the quote is a past observation."""
-    if not is_capturable_session():
+    if not in_session(now):
         return False
     if float_finite_or_none(q.get("server_received_ts")) is None:
         return False
-    return feed_live_for(q.get("ticker"), "LEVELONE_EQUITIES")
+    return feed_live_for(q.get("ticker"), "LEVELONE_EQUITIES", now)

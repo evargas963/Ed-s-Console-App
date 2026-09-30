@@ -17,7 +17,7 @@ import live_market_plane as lmp
 import server as srv
 from liquidity_models import PlaybookConfig, ZoneType
 from liquidity_value_engine import _bars_to_list, build_price_level_snapshot, build_zones, value_context
-from tests.feed_live_helper import feed_live_during, publish_daemon_rows
+from tests.feed_live_helper import SESSION_NOW, feed_live_during, publish_daemon_rows
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 BARS = json.loads((_FX / "real_spy_1m_bars_2026_09_24_25.json").read_text(encoding="utf-8"))["bars"]
@@ -214,9 +214,8 @@ def test_the_prior_close_is_schwabs_close_price_on_both_routes(monkeypatch):
     monkeypatch.setattr(lmp, "_fields_by_ticker", {})
     monkeypatch.setattr(lve, "_MATERIALIZED_SNAPSHOTS", {})
     monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda t: [])
-    feed_live_during(monkeypatch, tk)
-    monkeypatch.setattr(lmp, "is_capturable_session", lambda: True)
-    lmp.record_from_level_one_equity(tk, native, received_ts=time.time())
+    feed_live_during(monkeypatch, tk)                   # at SESSION_NOW, the market in session
+    lmp.record_from_level_one_equity(tk, native, received_ts=SESSION_NOW)
     publish_daemon_rows(tk)
     srv._publish_price_levels(tk)
 
@@ -228,7 +227,7 @@ def test_the_prior_close_is_schwabs_close_price_on_both_routes(monkeypatch):
     assert [s for z in zones for s in z["source_levels"]] == [{"label": "PDC", "value": 377.94}]
 
     # the daemon no longer holds the symbol: its quote is not live
-    lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": []}}, time.time())
+    lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": []}}, SESSION_NOW)
     publish_daemon_rows(tk)
     levels = json.loads(srv.get_levels(ticker=tk).body)
     assert not [lv for lv in levels["levels"] if lv["id"] == "PDC"]

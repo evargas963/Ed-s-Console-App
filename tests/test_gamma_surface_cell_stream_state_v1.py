@@ -251,7 +251,7 @@ def test_a_fresh_tick_marks_the_ticking_contracts_own_cell_live(monkeypatch, vie
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
-    assert _publish_levels(TK) is not None
+    assert _publish_levels(TK, now=time.time()) is not None
     cells = _published_surface()["cells"]
 
     found_live = False
@@ -275,7 +275,7 @@ def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monke
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
-    _publish_levels(TK)
+    _publish_levels(TK, now=time.time())
     surface = _published_surface()
     assert surface["stream_overlay_contracts"] == 0   # not live: never overlaid
     counts = _gamma_surface_cell_state_counts(surface)
@@ -290,7 +290,7 @@ def test_dropped_contract_becomes_unavailable_not_lingering_stale(monkeypatch, v
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: None)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
-    _publish_levels(TK)
+    _publish_levels(TK, now=time.time())
     counts = _gamma_surface_cell_state_counts(_published_surface())
     assert counts["live"] == 0 and counts["stale"] == 0
     assert counts["unavailable"] > 0

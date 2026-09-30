@@ -58,9 +58,9 @@ def test_put_call_is_schwabs_contract_type():
 ])
 def test_the_subscription_state_is_served(monkeypatch, l1, book, want):
     monkeypatch.setattr(S, "_active_option_contract", "Q")
-    monkeypatch.setattr(S, "_read_producer_option_contracts", lambda: {"LEVELONE_OPTIONS": l1, "OPTIONS_BOOK": book})
+    monkeypatch.setattr(S, "read_producer_admitted_option_contracts", lambda now: {"LEVELONE_OPTIONS": l1, "OPTIONS_BOOK": book})
     monkeypatch.setattr(S, "_pick_producer_contract", lambda held, q: q if q in held else next(iter(held), None))
-    assert S.get_option_contract_streaming_diagnostics(for_contract="Q")["subscription_state"] == want
+    assert S.get_option_contract_streaming_diagnostics("Q", 0.0)["subscription_state"] == want
 
 
 def test_the_window_ends_at_the_newest_book_with_levels_not_the_empty_after_close_snapshots(tmp_path):

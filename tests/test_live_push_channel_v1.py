@@ -110,7 +110,7 @@ def test_a_schwab_message_reaches_the_console_with_its_own_receive_time(feed):
         ts = time.time() - 0.5          # received by the daemon half a second ago
         bus.publish(_TOPIC, _opt_quote(0.05, ts))
         assert await _until(_received(ts)), "freshness must judge the daemon's receive time"
-        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES"))
+        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()))
     asyncio.run(_run(feed, body))
 
 
@@ -139,13 +139,13 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
         ts = time.time()
         bus.publish(_TOPIC, _opt_quote(0.05, ts))
         assert await _until(_received(ts))
-        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES"))
-        assert not lmp.feed_live_for("QQQ", "LEVELONE_EQUITIES")   # not held by the daemon
-        assert not lmp.feed_live_for("SPY", "NYSE_BOOK")           # held on another service only
-        assert lmp.daemon_status() is not None
+        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()))
+        assert not lmp.feed_live_for("QQQ", "LEVELONE_EQUITIES", time.time())   # not held by the daemon
+        assert not lmp.feed_live_for("SPY", "NYSE_BOOK", time.time())           # held on another service only
+        assert lmp.daemon_status(time.time()) is not None
     asyncio.run(_run(feed, body))
-    assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES")       # push ended -> feed down
-    assert lmp.daemon_status() is None
+    assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time())       # push ended -> feed down
+    assert lmp.daemon_status(time.time()) is None
 
 
 def test_a_closed_schwab_socket_is_not_live(feed):
@@ -155,7 +155,7 @@ def test_a_closed_schwab_socket_is_not_live(feed):
         bus.publish(_TOPIC, _opt_quote(0.05, ts))
         assert await _until(_received(ts))
         await asyncio.sleep(1.3)                            # at least one heartbeat arrived
-        assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES")
+        assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time())
     asyncio.run(_run(feed, body, heartbeat_fn=_daemon_heartbeat(socket_open=False)))
 
 

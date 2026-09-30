@@ -203,7 +203,7 @@ def test_a_refresh_publishes_the_same_fields_for_any_ticker(_fresh, monkeypatch,
     pin_clock(2026, 9, 2, 10, 5)
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
     view(tk)                                        # selected on the page
-    server._publish_levels(tk, [dict(c) for c in _CRWD["chain"]], _CAPTURED)
+    server._publish_levels(tk, [dict(c) for c in _CRWD["chain"]], _CAPTURED, now=_CAPTURED)
     t = server.get_terrain(ticker=tk)
     assert t["chain_basis"] == CAPTURE_BASIS
     assert t["atr_15m"] is None and "0 15-minute periods" in t["atr_15m_reason"]

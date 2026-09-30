@@ -172,7 +172,8 @@ class LiveUiServer:
                 identity, c.identity = c.identity, None
                 await self._send(c, {"type": "symbols", "symbols": identity})
             syms, c.pending = c.pending, set()
-            rows = [live_price_rows.price_row(s) for s in syms if s in c.symbols]
+            now = time.time()
+            rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
             if rows:
                 await self._send(c, {"type": "quotes", "rows": rows})
             bars, c.bars = c.bars, {}
@@ -237,7 +238,8 @@ class LiveUiServer:
                 # a beat is not reading and is closed (2026-09-26: the beat stopped for every
                 # browser and the whole screen read "no live feed" on a healthy Schwab socket)
                 try:
-                    rows = [live_price_rows.price_row(s) for s in sorted(c.symbols)]
+                    now = time.time()
+                    rows = [live_price_rows.price_row(s, now) for s in sorted(c.symbols)]
                     await asyncio.wait_for(
                         self._send(c, {"type": "feed", "feed": feed, "rows": rows}),
                         timeout=HEARTBEAT_SEC)

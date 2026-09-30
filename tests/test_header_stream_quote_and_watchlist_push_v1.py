@@ -8,14 +8,14 @@ import time
 import live_market_plane as lmp
 import live_price_rows
 import server as srv
-from tests.feed_live_helper import feed_live_during
+from tests.feed_live_helper import SESSION_NOW, feed_live_during
 
 
 def test_an_unheld_symbol_row_is_unavailable_with_every_quote_field_withheld(monkeypatch) -> None:
     feed_live_during(monkeypatch, "ZZHELD")
     lmp.record_from_level_one_equity("ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9},
                                      received_ts=time.time())
-    row = live_price_rows.price_row("ZZNOTHELD")
+    row = live_price_rows.price_row("ZZNOTHELD", SESSION_NOW)
     assert row["spot"] is None and row["spot_state"] == "unavailable" and row["feed_live"] is False
 
 

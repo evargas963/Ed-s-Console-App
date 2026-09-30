@@ -53,4 +53,4 @@ def test_the_console_status_line_counts_live_prices_across_the_board(monkeypatch
     live = {"$SPX": 7690.19, "QQQ": None, "MU": 161.2, "ZZQX": None}
     monkeypatch.setattr(server, "_logger_tickers", list(live))
     monkeypatch.setattr(server, "resolve_spot", lambda tk: (live[tk], "plane", None))
-    assert "live prices: 2 of 4 board tickers" in server._status_line()
+    assert "live prices: 2 of 4 board tickers" in server._status_line(0.0)   # no daemon heartbeat at t=0
