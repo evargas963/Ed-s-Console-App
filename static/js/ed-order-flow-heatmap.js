@@ -49,9 +49,7 @@
         if (stillHeatmap(tk)) render(h, tk, null);
       });
   }
-  var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); })
-    : { trigger: function () { loadImpl(ticker()); }, reset: function () {} };
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() {
     if (!isHeatmap()) return;
     // keyed on ticker + venue + minutes: a different window while a fetch is in flight aborts it

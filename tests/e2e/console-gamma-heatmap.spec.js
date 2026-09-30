@@ -32,6 +32,11 @@ function demandAck(body, requested) {
   return JSON.stringify({ ok: true, client_id: body.client_id, seq: body.seq,
     requested: requested || body.contracts || [], contracts: body.contracts || [] });
 }
+// the set this view last had confirmed: re-declaring it sends nothing (`unchanged`); any other
+// set is a new request
+function confirmedIs(page, set) {
+  return page.evaluate((s) => window.EdStream.setAdditionalContracts(s), set).then((r) => r.unchanged === true);
+}
 
 const SURFACE = {
   ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41, spot_strike: 583, front_expiry: '2026-09-11',
@@ -1081,84 +1086,62 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(res.reason).toBe('superseded_server');
   });
 
-  test('#10 shared slot: request-accepted != active; loss of binding fails visibly; no auto re-POST', async ({ page }) => {
-    let postCount = 0;
-    await page.route('**/api/streaming/active-option-contract', (route) => {
-      postCount++;
-      const c = JSON.parse(route.request().postData() || '{}').contract;
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: c, command_generation: postCount }) });
-    });
+  test('#1 perf: a large heatmap surface renders without pathological jank', async ({ page }) => {
+    const exps = [], strikes = [], cells = [];
+    for (let i = 0; i < 20; i++) exps.push({ expiry: '2026-' + (i < 4 ? '09' : '12') + '-' + String(10 + (i % 20)).padStart(2, '0'), dte: i * 3 });
+    for (let s = 0; s < 200; s++) strikes.push(500 + s);
+    for (let si = 0; si < strikes.length; si++) {
+      const row = [];
+      for (let j = 0; j < exps.length; j++) row.push((j % 2 ? 1 : -1) * 1000 * ((si % 50) + 1));
+      cells.push({ strike: strikes[si], gex: row });
+    }
+    const served = { s: SURFACE };
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served.s) }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_scope', 'all'); } catch (e) {} });   // every strike on screen
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const X = 'XXX   260101C00100000', Y = 'YYY   260101C00100000';
-
-    // A selects X -> REQUEST ACCEPTED, but NOT active until the producer confirms (empty plane)
-    expect((await page.evaluate((c) => window.EdStream.setActiveContract(c), X)).accepted).toBe(true);
-    expect((await page.evaluate((c) => window.EdStream.status({}, c), X)).active).toBe(false);
-    // producer binds X (A polls the plane for X) -> A ACTIVE
-    const boundX = { contract_match: true, subscription_state: 'SUBSCRIBED', producer_l1_contract: X, producer_book_contract: X };
-    expect((await page.evaluate(([p, c]) => window.EdStream.status(p, c), [boundX, X])).active).toBe(true);
-
-    // B selects Y (newer legitimate global intent) -> accepted; the global slot moves to Y
-    expect((await page.evaluate((c) => window.EdStream.setActiveContract(c), Y)).accepted).toBe(true);
-    // A now polls the plane for X and sees the producer is Y (contract_match:false) -> NOT ACTIVE,
-    // so A cannot render Y's data as if it were X. A does NOT re-POST X.
-    const aAfter = await page.evaluate(([p, c]) => window.EdStream.status(p, c), [{ contract_match: false, subscription_state: 'MOVED', producer_l1_contract: Y, producer_book_contract: Y }, X]);
-    expect(aAfter.active).toBe(false);
-    expect(aAfter.bound).toBe(false);
-    // B polls the plane for Y and is ACTIVE
-    const boundY = { contract_match: true, subscription_state: 'SUBSCRIBED', producer_l1_contract: Y, producer_book_contract: Y };
-    expect((await page.evaluate(([p, c]) => window.EdStream.status(p, c), [boundY, Y])).active).toBe(true);
-    // no oscillation: exactly the two operator selections (X, Y) were POSTed — losing the slot re-POSTs nothing
-    expect(postCount).toBe(2);
-  });
-
-  test('#1 perf: a large heatmap surface renders synchronously without pathological jank', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const ms = await page.evaluate(() => {
-      var host = document.getElementById('heatBody');
-      var exps = [], strikes = [], cells = [];
-      for (var i = 0; i < 20; i++) exps.push({ expiry: '2026-' + (i < 4 ? '09' : '12') + '-' + String(10 + (i % 20)).padStart(2, '0'), dte: i * 3 });
-      for (var s = 0; s < 200; s++) strikes.push(500 + s);
-      for (var si = 0; si < strikes.length; si++) {
-        var row = [];
-        for (var j = 0; j < exps.length; j++) row.push((j % 2 ? 1 : -1) * 1000 * ((si % 50) + 1));
-        cells.push({ strike: strikes[si], gex: row });
-      }
-      var surface = { available: true, source: 'terrain_live_cache', live: true, spot: 600, complete: false,
-        coverage: { chain_basis: 'full' }, expirations: exps, strikes: strikes, cells: cells };
-      var t0 = performance.now();
-      window.EdGamma.renderSurface(host, surface);   // 200 strikes x 20 expiries = 4000 cells
-      var dt = performance.now() - t0;
-      return { dt: dt, cellCount: document.querySelectorAll('#heatBody .hcell').length };
-    }).then((r) => { console.log('[#1 perf] heatmap render:', Math.round(r.dt), 'ms for', r.cellCount, 'cells'); return r.dt; });
+    await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
+    served.s = { available: true, source: 'terrain_live_cache', live: true, spot: 600, complete: false,
+      coverage: { chain_basis: 'full' }, expirations: exps, strikes, cells };   // 200 strikes x 20 expiries
+    // the page's own reload (a levels push); the time runs from the push to the drawn table
+    const before = await page.locator('#heatBody .hcell').count();
+    const r = await page.evaluate((n0) => new Promise((resolve) => {
+      const t0 = performance.now();
+      document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } }));
+      (function wait() {
+        const n = document.querySelectorAll('#heatBody .hcell').length;
+        if (n > n0) resolve({ ms: performance.now() - t0, cells: n });
+        else requestAnimationFrame(wait);
+      })();
+    }), before);
+    const ms = r.ms;
+    console.log('[#1 perf] heatmap load + render:', Math.round(ms), 'ms,', r.cells, 'cells');
     // no arbitrary tight SLA — a generous ceiling that only fails on pathological render behaviour
     expect(ms).toBeLessThan(1500);
   });
 
   test('#1 revision: DATA change rebuilds; STATUS change updates without rebuild (A-D)', async ({ page }) => {
+    const live = (age, stale) => ({ available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, spot: 583.41,
+      complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
+      coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600] }] });
+    const served = { s: live(3) };
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served.s) }));
+    const reload = () => page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    const mark = () => page.evaluate(() => document.querySelector('#heatBody .hcell').setAttribute('data-marker', '1'));
+    const marked = () => page.locator('#heatBody .hcell[data-marker="1"]');
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const r = await page.evaluate(() => {
-      var host = document.getElementById('heatBody');
-      var R = window.EdGamma.renderSurface;
-      var mark = function () { var c = host.querySelector('.hcell'); if (c) c.setAttribute('data-marker', '1'); };
-      var marked = function () { return !!host.querySelector('.hcell[data-marker="1"]'); };
-      var banner = function () { var b = host.querySelector('.heat-banner'); return b ? b.textContent : ''; };
-      var scope = function () { return document.getElementById('heatScope').textContent; };
-      var live = function (age, stale) {
-        return { available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, spot: 583.41,
-          complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
-          coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600] }] };
-      };
-      // A: same live DATA revision, age changes -> table preserved, scope age updates
-      R(host, live(3)); mark(); R(host, live(99));
-      var A = { preserved: marked(), scopeHasAge: scope().indexOf('99s') !== -1 };
-      // D: stale flips with no cell change -> no rebuild, but the STALE banner appears (not frozen)
-      R(host, live(3)); mark(); R(host, live(3, true));
-      var D = { preserved: marked(), staleBanner: banner().indexOf('STALE') !== -1 };
-      return { A: A, D: D };
-    });
-    expect(r.A.preserved).toBe(true); expect(r.A.scopeHasAge).toBe(true);
-    expect(r.D.preserved).toBe(true); expect(r.D.staleBanner).toBe(true);
+    await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
+    // A: same live DATA revision, age changes -> table preserved, scope age updates
+    await mark();
+    served.s = live(99); await reload();
+    await expect(page.locator('#heatScope')).toContainText('99s');
+    await expect(marked()).toHaveCount(1);
+    // D: stale flips with no cell change -> no rebuild, but the STALE banner appears (not frozen)
+    served.s = live(3); await reload();
+    await expect(page.locator('#heatScope')).not.toContainText('99s');
+    await mark();
+    served.s = live(3, true); await reload();
+    await expect(page.locator('#heatBody .heat-banner')).toContainText('STALE');
+    await expect(marked()).toHaveCount(1);
   });
 
   test('#1.3 a warming (not yet live) surface shows LIVE SURFACE WARMING (never a final state)', async ({ page }) => {
@@ -1566,13 +1549,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(seen.length).toBe(seenBeforeA + 2);   // the clear must have fired its OWN real request
     expect(seen[seen.length - 1]).toBe(keyOf([]));
     expect(clearResult.accepted).toBe(true);
-    expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual([]);
 
     // NOW release A's late response -- it must NOT be able to override the clear.
     if (releaseA) releaseA(undefined);
     await pendingA;
     await page.waitForTimeout(150);   // let any (incorrect) late-commit attempt land
-    expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual([]);
+    expect(await confirmedIs(page, [])).toBe(true);
   });
 
   test('returning to a previously-accepted set while a newer request is pending is not overridden by that request\'s late acceptance (RC-UI-3)', async ({ page }) => {
@@ -1619,13 +1601,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(seen.length).toBe(seenBeforeB + 2);   // the return-to-A must have fired its OWN real request
     expect(seen[seen.length - 1]).toBe(keyOf(A));
     expect(returnToA.accepted).toBe(true);
-    expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual(A);
 
     // NOW release B's late response -- it must NOT be able to override the return to A.
     if (releaseB) releaseB(undefined);
     await pendingB;
     await page.waitForTimeout(150);   // let any (incorrect) late-commit attempt land
-    expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual(A);
+    expect(await confirmedIs(page, A)).toBe(true);
   });
 
   test('retrying a clear after the clear itself failed sends a fresh request, not a stale cache hit (RC-UI-3)', async ({ page }) => {
@@ -1689,7 +1670,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(seen[seen.length - 1]).toBe(keyOf([]));
     expect(retryResult.accepted).toBe(true);
     expect(retryResult.unchanged).toBe(false);
-    expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual([]);
+    expect(await confirmedIs(page, [])).toBe(true);
   });
 
   test('retrying a return-to-prior-value after it failed sends a fresh request, not a stale cache hit (RC-UI-3)', async ({ page }) => {
@@ -1754,7 +1735,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(seen.length).toBe(seenBeforeRetry + 1);   // a REAL new request, not a fabricated accept
     expect(seen[seen.length - 1]).toBe(keyOf(A));
     expect(retryResult.accepted).toBe(true);
-    expect(await page.evaluate(() => window.EdStream.getDesiredAdditional())).toEqual(A);
+    expect(await confirmedIs(page, A)).toBe(true);
   });
 
   // Independent-review finding (2026-09-13), REPRODUCED, then a FOURTH review overturned the

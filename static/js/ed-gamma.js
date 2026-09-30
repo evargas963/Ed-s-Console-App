@@ -274,9 +274,7 @@
       // demand, so a ticker that stops being available kept the LAST successful render's
       // contracts subscribed indefinitely. Every exit from this function states demand,
       // including "none" -- same discipline Strike Detail's renderStrike already applies.
-      if (window.EdStream && window.EdStream.setAdditionalContracts) {
-        window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker || (surface && surface.ticker)));
-      }
+      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker || (surface && surface.ticker)));
       // Independent-review finding (2026-09-13), REPRODUCED ("unavailable heatmap
       // lifecycle"): _lastSurface/_lastRevision used to survive an unavailable result
       // untouched (this branch returned before either was ever assigned), so a LATER
@@ -374,9 +372,7 @@
     // `_lastRevision` cache key is bumped by `filterMissing` requesting its own render skip
     // below, so a real column set arriving next paints immediately).
     if (filterMissing) {
-      if (window.EdStream && window.EdStream.setAdditionalContracts) {
-        window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker || surface.ticker));
-      }
+      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker || surface.ticker));
       _lastSurface = surface;
       _lastRevision = 'filter-missing:' + expFilter;   // never matches a real column set's rev
       host.innerHTML = '<div class="placeholder"><div class="big">Expiry ' + escapeHtml(expFilter) +
@@ -448,9 +444,7 @@
     }
     // ask the stream for the visible contracts; each column's streaming status comes back on the
     // surface itself (stream_by_expiry), never worked out here
-    if (window.EdStream && window.EdStream.setAdditionalContracts) {
-      window.EdStream.setAdditionalContracts(frontDemand, _heatmapOwnerKey(_pendingTicker || surface.ticker));
-    }
+    window.EdStream.setAdditionalContracts(frontDemand, _heatmapOwnerKey(_pendingTicker || surface.ticker));
     _lastSurface = surface;   // cached so a theme switch can re-render without a refetch
     // #1: skip the full table rebuild when the canonical surface REVISION (and the viewport choice)
     // is unchanged (only the age advances between terrain revisions). A theme switch clears
@@ -854,9 +848,7 @@
       });
   }
   var _pendingTicker = null;
-  var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingTicker, signal); })
-    : { trigger: function () { loadImpl(_pendingTicker); }, reset: function () {} };
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingTicker, signal); });
   function load() {
     var host = document.getElementById('heatBody');
     if (!host) return;
@@ -865,15 +857,12 @@
       // Leaving the heatmap: clear demand for whichever ticker was last shown HERE
       // specifically (never any other ticker's demand -- see _heatmapOwnerKey). Runs
       // immediately -- never coalesced behind an in-flight/hung surface fetch.
-      if (window.EdStream && window.EdStream.setAdditionalContracts) {
-        window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker));
-      }
+      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker));
       _pendingTicker = null;
       return;
     }
     var nextTicker = st.ticker || '';
-    if (_pendingTicker && _pendingTicker !== nextTicker
-        && window.EdStream && window.EdStream.setAdditionalContracts) {
+    if (_pendingTicker && _pendingTicker !== nextTicker) {
       // Switching ticker WITHIN the heatmap view: the ticker just left is no longer being
       // watched here -- release its own demand (2026-09-21) so coverage does not grow
       // unbounded across every ticker ever browsed to in one session; a different ticker
@@ -915,5 +904,5 @@
   }
 
   var _root = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : this);
-  _root.EdGamma = { formatUsd: formatUsd, cellStyle: cellStyle, renderSurface: renderSurface };
+  _root.EdGamma = { formatUsd: formatUsd };
 })();

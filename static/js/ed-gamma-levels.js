@@ -36,9 +36,7 @@
         if (stillLevels(tk)) host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/levels</div></div>';
       });
   }
-  var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); })
-    : { trigger: function () { loadImpl(ticker()); }, reset: function () {} };
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() { _loader.trigger(ticker()); }
 
   function render(host, d) {
