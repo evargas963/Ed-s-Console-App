@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const src = fs.readFileSync(path.join(root, 'static', 'js', 'ed-stream.js'), 'utf8');
+// the page loads options_subscription.js before ed-stream.js
+const subSrc = fs.readFileSync(path.join(root, 'static', 'js', 'options_subscription.js'), 'utf8');
 
 function load(respond) {
   const posts = [];
@@ -33,6 +35,8 @@ function load(respond) {
     Promise, JSON, String, Object, Array, Math, Date,
   };
   vm.createContext(ctx);
+  vm.runInContext(subSrc, ctx);
+  window.EdOptionsSubscription = ctx.EdOptionsSubscription;
   vm.runInContext(src, ctx);
   return { S: window.EdStream, posts, listeners, intervals };
 }

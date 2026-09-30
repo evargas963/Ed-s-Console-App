@@ -110,9 +110,6 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 - P-22 an unknown subscription state shows PENDING; the Flow header's strike and expiry come from page state.
 - P-24 the order book matches walls on the page and gives one reason for every no-book cause.
 
-**Code with no job (to delete)**
-- X-09 `EdStream.status` and what only it reaches (`subscriptionState`, `planeIsBoundToContract`), `getDesiredAdditional`, the gate's `isCurrent`/`pendingContract`; `EdGamma.cellStyle`/`renderSurface` exports (tests only); the fallback `usd` formatters behind `EdGamma.formatUsd ||` and the loader stubs behind `EdL1SseGuards ?` (ed-gamma-chart, -chain, -flow, -levels, -panels).
-
 ## One producer (rule 3, rule 6)
 
 Each row is a second copy or a second computation of one value. It is fixed by deleting down to one
