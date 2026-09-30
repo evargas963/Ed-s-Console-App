@@ -466,6 +466,40 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Market Map: back from a price-socket drop, the chart names the gap in its live bars and draws no bar for it', async ({ page }) => {
+    // live bars are only the ones Schwab sends while the page is connected: after a drop the
+    // chart's missing time is named, never filled from the daemon's memory
+    const errs = watchErrors(page);
+    await intercept(page);
+    const barReads = [];
+    page.on('request', (r) => { if (r.url().includes('/api/bars1m')) barReads.push(r.url()); });
+    const daemon = await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
+    const chartBars = () => page.evaluate(() => window.EdTradeDeskMap.state().chart.bars);
+    await expect.poll(chartBars).toBe(BARS.bars.length);
+    expect(daemon.subscribes[0].disconnected_since).toBeUndefined();  // a first subscribe names no gap
+    const lastBeat = 1790343700.5;                                     // the daemon's clock
+    daemon.send({ type: 'feed', feed: { ts: lastBeat, schwab_socket_open: true }, rows: [] });
+    await page.waitForTimeout(200);
+    const first = daemon.ws;
+    await first.close();                                               // the socket drops
+    await expect.poll(() => daemon.subscribes.length).toBe(2);         // the page reconnects
+    expect(daemon.subscribes[1].disconnected_since).toBe(lastBeat);
+    const reads = barReads.length;
+    // the daemon's answer (live_ui.bars_gap), its note as served
+    const note = 'No live bars from Fri 09/25 09:21 AM CT to Fri 09/25 09:40 AM CT: this page was disconnected ' +
+      'from the price feed, and bars completed then are not drawn. Reopening the chart loads the stored history.';
+    daemon.send({ type: 'bars_gap', gap: { from_ts: lastBeat - 2, to_ts: 1790344800, note: note } });
+    const legend = page.locator('#tdmChart .tvc-legend');
+    await expect(legend).toContainText(note);
+    await page.waitForTimeout(300);
+    expect(await chartBars()).toBe(BARS.bars.length);                 // no bar drawn for the gap
+    expect(barReads.length).toBe(reads);                               // and none read to fill it
+    expect(errs).toEqual([]);
+  });
+
   test('Market Map: a pinned bar shows its served change (the chart kept the bar without it)', async ({ page }) => {
     // 2026-09-28 (ONE-16): the chart copied each served bar without chg/chg_pct, so the pinned
     // readout's "Bar change" always read "—" while the legend recomputed close - open.

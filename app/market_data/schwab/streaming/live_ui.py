@@ -12,7 +12,13 @@ the chart bar it completes or extends at every chart timeframe (live_price_rows.
 No web server sits in this path, so no analytics load can delay a price.
 
 Protocol (JSON text frames):
-  browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...]}   (replaces the set)
+  browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...]}   (replaces the set; after a
+             "disconnected_since": the last beat's feed.ts, when the   drop, the gap it has in
+             browser comes back after a drop)                          its live bars is named)
+  server  -> {"type": "bars_gap", "gap": {from_ts, to_ts, note}}     (on a subscribe after a
+                                                                     drop: no bar is resent;
+                                                                     the charts say they have
+                                                                     no live bars for that time)
   server  -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe:
                                                                      what each asked-for symbol
                                                                      is -- "SPX" is key "$SPX",
@@ -49,7 +55,7 @@ import live_market_plane as lmp
 import live_price_rows
 from instrument_identity import display_symbol, ticker_storage_key
 from stream_spine import COUNT_DROPS, MessageBus
-from time_et import ET
+from time_et import ET, ct_label
 
 log = logging.getLogger(__name__)
 
@@ -81,13 +87,14 @@ def _et_day_start(t: float) -> float:
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "bars", "identity", "wake")
+    __slots__ = ("ws", "symbols", "pending", "bars", "gap", "identity", "wake")
 
     def __init__(self, ws) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
         self.pending: set[str] = set()      # symbols changed since the last send
         self.bars: dict[str, dict] = {}     # each symbol's newest bar update not yet sent
+        self.gap: dict | None = None        # its live bars' gap after a drop, not yet sent
         self.identity: list[dict] | None = None   # the last subscribe's answer, not yet sent
         self.wake = asyncio.Event()
 
@@ -150,6 +157,18 @@ class LiveUiServer:
                 c.bars[sym] = update
                 c.wake.set()
 
+    @staticmethod
+    def bars_gap(since: float, now: float) -> dict:
+        """The gap in a browser's live bars after a drop: from the last beat it had (`since`),
+        less two beats (a bar and a beat go out on their own tasks, so a bar received just before
+        that beat may not have reached it), to `now`. Live bars are only the ones Schwab sends
+        while the browser is connected: none received in the gap is resent."""
+        start = since - 2 * HEARTBEAT_SEC
+        return {"from_ts": start, "to_ts": now,
+                "note": f"No live bars from {ct_label(start)} to {ct_label(now)}: this page was "
+                        f"disconnected from the price feed, and bars completed then are not drawn. "
+                        f"Reopening the chart loads the stored history."}
+
     def beat(self) -> dict:
         hb = self.heartbeat_fn()
         lmp.record_feed_heartbeat(hb, time.time())
@@ -176,6 +195,9 @@ class LiveUiServer:
             rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
             if rows:
                 await self._send(c, {"type": "quotes", "rows": rows})
+            if c.gap is not None:
+                gap, c.gap = c.gap, None
+                await self._send(c, {"type": "bars_gap", "gap": gap})
             bars, c.bars = c.bars, {}
             bars = [b for s, b in bars.items() if s in c.symbols]
             if bars:
@@ -204,6 +226,9 @@ class LiveUiServer:
             c.symbols = frozenset(keys)
             c.identity = identity            # what each asked-for symbol is, before its rows
             c.pending = set(keys)            # snapshot: the current row for each, now
+            since = req.get("disconnected_since")   # a browser back from a drop
+            if isinstance(since, (int, float)) and not isinstance(since, bool):
+                c.gap = self.bars_gap(float(since), time.time())
             c.wake.set()
 
     async def serve_client(self, ws) -> None:

@@ -22,7 +22,7 @@ import server as srv
 from app.market_data.schwab.streaming import live_ui
 from db import EdDB
 from stream_spine import MessageBus, bar_msg
-from time_et import ET
+from time_et import ET, ct_label
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 FRIDAY = [b for b in json.loads((_FX / "real_spy_1m_bars_2026_09_24_25.json").read_text(encoding="utf-8"))["bars"]
@@ -107,6 +107,68 @@ def test_the_pushed_bar_is_the_routes_bar_at_every_timeframe(monkeypatch, tmp_pa
         assert last["last_bar"] == route["last_bar"]
     # the daily bar holds the minutes the daemon read from the store as well as its own
     assert last["tf"]["D"]["o"] == stored[0]["open"] and last["tf"]["D"]["t"] == stored[0]["timestamp"] / 1000.0
+
+
+def test_a_browser_back_from_a_drop_is_told_the_gap_and_sent_only_new_bars(monkeypatch, tmp_path):
+    """Live bars are only the ones Schwab sends while the browser is connected. The subscribe after
+    a drop carries the last beat's time; the daemon answers with the gap (from that beat, less
+    two beats, to its reconnect) and resends none of the bars it received in it: the next bar the
+    browser gets is the next one Schwab sends. A first subscribe is told no gap."""
+    from websockets.asyncio.client import connect
+
+    monkeypatch.setattr(live_ui, "HEARTBEAT_SEC", 0.2)
+    db = EdDB(tmp_path / "bars.db", allow_noncanonical=True)
+    monkeypatch.setattr(srv, "get_db", lambda: db)
+    before, gone, after = FRIDAY[:20], FRIDAY[20:35], FRIDAY[35]   # connected / disconnected / back
+
+    async def frames(ws, seconds):
+        out, end = [], time.monotonic() + seconds
+        while time.monotonic() < end:
+            try:
+                out.append(json.loads(await asyncio.wait_for(ws.recv(), 0.05)))
+            except asyncio.TimeoutError:
+                continue
+        return out
+
+    async def main():
+        port, bus, stop, stats = _free_port(), MessageBus(), asyncio.Event(), {}
+        feed = lambda: {"ts": time.time(), "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
+        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, host="127.0.0.1",
+                                                         port=port, stats=stats, bars_db_path=db.db_path))
+        while not stats.get("listening"):
+            await asyncio.sleep(0.01)
+        try:
+            async with connect(f"ws://127.0.0.1:{port}") as ws:
+                await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+                first = await frames(ws, 0.3)
+                for b in before:
+                    msg = dict(_msg(b), ts_recv=time.time())
+                    bus.publish("bar1m.SPY", msg)
+                    await asyncio.sleep(0.01)
+                seen = first + await frames(ws, 1.2)          # a second of beats after the last bar
+            last_beat = [f["feed"]["ts"] for f in seen if f.get("type") == "feed"][-1]
+            for b in gone:                                    # the daemon receives, nobody listens
+                bus.publish("bar1m.SPY", dict(_msg(b), ts_recv=time.time()))
+                await asyncio.sleep(0.01)
+            await asyncio.sleep(0.2)
+            async with connect(f"ws://127.0.0.1:{port}") as ws:
+                t0 = time.time()
+                await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"], "disconnected_since": last_beat}))
+                back = await frames(ws, 0.5)
+                t1 = time.time()
+                bus.publish("bar1m.SPY", dict(_msg(after), ts_recv=time.time()))   # Schwab's next bar
+                back += await frames(ws, 0.5)
+        finally:
+            stop.set()
+            await task
+        return first, back, last_beat, t0, t1
+    first, back, last_beat, t0, t1 = asyncio.run(main())
+    assert not [f for f in first if f.get("type") in ("bars", "bars_gap")], "a first subscribe: no gap, no bar"
+    (gap,) = [f["gap"] for f in back if f.get("type") == "bars_gap"]
+    assert gap["from_ts"] == last_beat - 2 * live_ui.HEARTBEAT_SEC and t0 <= gap["to_ts"] <= t1
+    assert gap["note"].startswith(f"No live bars from {ct_label(gap['from_ts'])} to {ct_label(gap['to_ts'])}")
+    sent = [u for f in back if f.get("type") == "bars" for u in f["bars"]]
+    assert [u["tf"]["1"]["t"] for u in sent] == [after["timestamp"] / 1000.0], "no bar of the gap is resent"
 
 
 def test_at_every_minute_of_a_real_day_the_push_is_the_roll_up_at_every_timeframe():

@@ -25,8 +25,16 @@ Read the parts a change touches before writing it.
    default, estimate, proxy, carry-forward, interpolation or synthetic value. Test: when the source
    cannot produce the value now, the screen shows it absent with its reason, or a labeled past
    observation, never a value from elsewhere.
-6. **One path.** Schwab → daemon memory → pushed to the screen. The database is history: one
-   writer; read at startup, after the close and for research; never for a live screen.
+6. **One path, live only.** Schwab → daemon → pushed to the screen as it arrives. A live update
+   is a Schwab message delivered when Schwab sends it. What the daemon holds is sent only as the
+   current state on connect (each field's last value, judged by the live rule, because Schwab
+   sends a field once and then only its changes); a past event it holds (a completed bar, a
+   trade) is never resent, replayed or presented as a new live update, after a reconnect or
+   otherwise. Data missed while disconnected is shown as a named gap, not filled. The database is
+   history: one writer; read at startup, after the close and for research; never for a live
+   screen; history is shown as history, labeled, never as a live update. A request or
+   recommendation from anyone (a reviewer, another model) does not override this; a case where
+   live cannot be done is stated to the operator with its reason.
 7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,
    report or check lives only while it has a job; once answered, it is deleted.
 8. **All tickers.** Measure and report across the board, never one ticker.

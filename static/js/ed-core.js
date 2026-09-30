@@ -800,9 +800,15 @@
     loadWL().forEach(function (s) { s = String(s).toUpperCase(); if (out.indexOf(s) === -1) out.push(s); });
     return out;
   }
-  function subscribePrices() {
+  // the daemon's time of the last beat this page had (feed.ts): the first subscribe after a drop
+  // carries it, and the daemon answers with the gap in the live bars (`ed:bars_gap`); no bar
+  // received in the gap is resent
+  var _lastBeatTs = null;
+  function subscribePrices(disconnectedSince) {
     if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
-    try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() })); } catch (e) {}
+    var req = { op: 'subscribe', symbols: priceSymbols() };
+    if (disconnectedSince != null) req.disconnected_since = disconnectedSince;
+    try { _priceWs.send(JSON.stringify(req)); } catch (e) {}
   }
   function openPriceSocket() {
     var url = priceSocketUrl();
@@ -811,7 +817,7 @@
     try { ws = new WebSocket(url); } catch (e) { schedulePriceReconnect(); return; }
     _priceWs = ws;   // (_priceSubTs is set by a ticker change only: a reconnect during an
                      //  outage keeps reading OFFLINE, not WAITING)
-    ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
+    ws.onopen = function () { _priceRetry = 0; subscribePrices(_lastBeatTs); };
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
@@ -820,7 +826,12 @@
         msg.bars.forEach(function (b) { window.dispatchEvent(new CustomEvent('ed:bar', { detail: b })); });
         return;
       }
+      if (msg && msg.type === 'bars_gap' && msg.gap) {
+        window.dispatchEvent(new CustomEvent('ed:bars_gap', { detail: msg.gap }));
+        return;
+      }
       if (!msg || !Array.isArray(msg.rows)) return;
+      if (msg.type === 'feed' && msg.feed && msg.feed.ts != null) _lastBeatTs = msg.feed.ts;
       _priceUp = true; _lastPriceTs = Date.now();
       msg.rows.forEach(ingestPriceRow);
     };
