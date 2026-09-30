@@ -129,7 +129,17 @@ Schwab sends is taken as sent (rule 2), never computed.
   `math_exposure_core.compute_exposures_by_strike` and `math_levels._contract_inputs`
   (`tests/test_gamma_flip_absence_v1.py`). The heatmap labels a column expired by the same
   settlement time (`time_et.settlement_et`), read when the surface is served: once the column's
-  last contract has settled.
+  last contract has settled. The settlement time is read from Schwab's `settlementType` on each
+  contract: "A" is the 09:30 ET open of the expiration date, "P" the cash close (16:00 ET, 13:00
+  on an early close). Checked 2026-09-30 against the contract specifications and the 43 stored
+  chains: Schwab sends "A" with a last trading day one day before expiry for the SPX and
+  VIX/VIXW roots (Cboe: trading stops the business day before and the value is set from the
+  opening prices of the expiration date) and "P" with a last trading day on expiry for SPXW and
+  every equity and ETF option (Cboe: expiring SPXW stops at 4:00 p.m. ET and settles on closing
+  prices; equity options end regular trading at 4:00 p.m. ET). One class does not match: the
+  ETF options that trade to 4:15 p.m. ET (on the board: SPY, QQQ, IWM, SMH, XLE) keep trading
+  until 4:15 on their expiration day, and Schwab sends no field that says so, so they leave the
+  book 15 minutes before they stop trading (`ACTIVE_PROGRAM.md` SETTLE-ETF).
   **The gamma flip** has one producer, `math_levels.compute_gamma_flip`, and one definition: the
   price nearest spot at which the modelled total dealer gamma changes sign as the underlying
   price is moved, every contract repriced by Black-Scholes at each candidate price from its own
@@ -155,8 +165,11 @@ Schwab sends is taken as sent (rule 2), never computed.
   `families_absent`), and the screens, which print the reason where the flip would be. The
   side of the flip spot is on (`flip_relation`: `ABOVE`, `BELOW`, or `AT`) has one rule,
   `terrain_read.flip_side`. The regime is not read from the flip: it is the sign of Schwab's
-  gamma as sent, summed over the book, and where the flip's curve disagrees with that sign at
-  spot the read says so (`flip_diag.curve_agrees_with_schwab_at_spot`).
+  gamma as sent, summed over the book (operator 2026-09-30: Schwab's gamma stays the
+  authority; it is not replaced by the modelled gamma), and where the flip's curve disagrees
+  with that sign at spot the read says so (`flip_diag.curve_agrees_with_schwab_at_spot`).
+  Schwab's chain sends gamma to three decimals; on the 2026-09-29 close captures the two
+  disagreed in sign on $SPX, $VIX, CRWV and QQQ.
   None of these rules names a ticker; board
   membership decides only which tickers the daemon captures, which the loop refreshes unviewed,
   and which are priced at startup (tested for a board and an off-board ticker in
