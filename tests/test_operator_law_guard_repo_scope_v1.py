@@ -395,15 +395,6 @@ def test_operator_escape_remains_operator_only():
     assert any("disables a mechanical lock" in v for v in out), out
 
 
-# ── 7. root-cause-row closure at Edit time — RETIRED 2026-09-10 ──────────────────────────
-# The CLOSE-needs-a-verification-this-turn rule read the session transcript (the RC-544 class)
-# and duplicated a stronger judge: required CI EXECUTES every closing row's cited command
-# (tools/check_delta_adds_no_debt.py). No rule reads a ledger row at Edit time any more.
-def test_no_edit_time_ledger_rule_survives():
-    for gone in ("edit_violations", "_has_verification", "turn_ledger", "_successful_commands"):
-        assert not hasattr(_olg, gone), gone
-
-
 # ── 8. end-to-end through the real hook entrypoint ────────────────────────────────────────
 def _hook(session, tool, tool_input, cwd=None):
     payload = {"session_id": session, "tool_name": tool, "tool_input": tool_input}

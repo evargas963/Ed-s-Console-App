@@ -10,42 +10,38 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     families_absent — and never the multi-session union values (the RC-213 defect)."""
     import json
     from datetime import datetime as _dt
+    from pathlib import Path
 
     import server as srv
     from time_et import ET
 
-    def _bar(y, mo, d, h, mi, o, hi, lo, c):
-        return {"timestamp": int(_dt(y, mo, d, h, mi, tzinfo=ET).timestamp() * 1000),
-                "open": o, "high": hi, "low": lo, "close": c, "volume": 1000.0}
-
-    tape = [
-        _bar(2026, 7, 30, 10, 0, 100, 110, 90, 100),   # older prior session: both extremes
-        _bar(2026, 7, 30, 14, 0, 100, 101, 99, 100),
-        _bar(2026, 7, 31, 10, 0, 96, 105, 95, 97),     # most recent prior session
-        _bar(2026, 7, 31, 15, 59, 101, 103, 100, 102),
-        _bar(2026, 8, 3, 9, 35, 103, 104, 102, 103),   # today inside ORB window
-        _bar(2026, 8, 3, 9, 45, 103, 104, 102, 103),   # today post-ORB
-    ]
+    # Real Schwab SPY 1-minute bars: all of 2026-09-24 and 2026-09-25, served at 10:00 ET on the 25th
+    now = _dt(2026, 9, 25, 10, 0, tzinfo=ET)
+    bars = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
+                      .read_text(encoding="utf-8"))["bars"]
+    tape = [b for b in bars if b["timestamp"] / 1000.0 < now.timestamp() - 60]
+    et = lambda b: _dt.fromtimestamp(b["timestamp"] / 1000.0, ET)   # noqa: E731
+    prior = [b for b in tape if et(b).day == 24 and 570 <= et(b).hour * 60 + et(b).minute < 960]
+    today = [b for b in tape if et(b).day == 25]
     monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda t: tape)
-    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (103.5, "schwab_quote_last", 1.0))
-    # This fixture tests WINDOW SELECTION with tiny sessions; the t12 coverage floor is
-    # exercised by its own dedicated test below.
-    import liquidity_value_engine as lve
-    monkeypatch.setattr(lve, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
+    # stand-in (named): the live price
+    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (today[-1]["close"], srv.SPOT_SOURCE_PLANE, 1.0))
     import time_et as te
-    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 3, 10, 0, tzinfo=ET))
+    monkeypatch.setattr(te, "now_et", lambda: now)
 
     srv._publish_price_levels("SPY")                  # as the bar writer does
     resp = srv.get_levels(ticker="SPY")
     payload = json.loads(bytes(resp.body))
 
     assert payload["schema_version"] == 1
-    assert payload["spot"] == 103.5 and payload["spot_source"] == "schwab_quote_last"
+    assert payload["spot"] == today[-1]["close"] and payload["spot_source"] == srv.SPOT_SOURCE_PLANE
 
     ids = [lv["id"] for lv in payload["levels"]]
     assert len(ids) == len(set(ids)), "level ids must be UNIQUE per payload (RC-88)"
     by_id = {lv["id"]: lv for lv in payload["levels"]}
-    assert by_id["PDH"]["price"] == 105 and by_id["PDL"]["price"] == 95, (
+    assert len(prior) == 390
+    assert (by_id["PDH"]["price"], by_id["PDL"]["price"]) == (max(b["high"] for b in prior),
+                                                            min(b["low"] for b in prior)), (
         "prior_day must be the SINGLE most recent prior RTH session"
     )
     # the prior close is Schwab's CLOSE_PRICE, never a bar's close (tests/test_zones_v1.py); no
@@ -53,11 +49,10 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     assert "PDC" not in by_id
     assert {"family": "PDC", "reason": srv.PRIOR_CLOSE_ABSENT_REASON} in payload["families_absent"]
     for lv in payload["levels"]:
-        assert lv["price"] not in (110, 90), "multi-session union value served — RC-213 reopened"
         assert "as_of_ts_utc" in lv["staleness"] and "age_sec" in lv["staleness"]
         if lv["family"] == "prior_day":
             assert lv["provenance"]["session_scope"] == "RTH"
-            assert "2026-07-31" in lv["provenance"]["window"], (
+            assert "2026-09-24" in lv["provenance"]["window"], (
                 "provenance.window must name the literal session used (RC-153)"
             )
 
@@ -94,7 +89,8 @@ def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monke
     import server as srv
     from time_et import ET
 
-    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (758.0, "schwab_quote_last", 1.0))
+    # stand-in (named): the live price
+    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (758.0, srv.SPOT_SOURCE_PLANE, 1.0))
     import time_et as te
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 4, 10, 0, tzinfo=ET))
 

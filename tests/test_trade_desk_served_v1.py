@@ -198,9 +198,9 @@ def spy_levels(monkeypatch, pin_clock):
     chain = _load("real_spy_0dte_chain.json")
     pin_clock(2026, 9, 22, 12, 46)                                   # the chain's own capture time
     terrain = {**compute_terrain("SPY", chain["chain"], chain["spot"]).to_dict(), "computed_ts_utc": time.time()}
-    spot = bars[-1]["close"]
+    spot = bars[-1]["close"]                                         # stand-in (named): the live price
     monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: bars)
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, server.SPOT_SOURCE_PLANE, time.time()))
     monkeypatch.setattr(server, "terrain_cache_get", lambda t, now: terrain)
     pin_clock(2026, 9, 25, 16, 5)
     server._publish_price_levels("SPY")                              # as the bar writer does
@@ -223,9 +223,9 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
 
 
 def test_a_live_price_of_0_is_a_price(spy_levels, monkeypatch):
-    """AGENTS.md rule 2: a reported 0 is 0. Stand-in: the live price as 0.0 (Schwab has not sent one
-    for SPY); every priced level is its own price above it."""
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (0.0, "live_quote", time.time()))
+    """AGENTS.md rule 2: a reported 0 is 0. Stand-in: a live last price of 0.0 as Schwab would
+    send it; every priced level is its own price above it."""
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (0.0, server.SPOT_SOURCE_PLANE, time.time()))
     body = json.loads(server.get_levels(ticker="SPY").body)
     priced = [r for r in body["levels"] if r["price"] is not None]
     assert priced and all(r["distance"] == r["price"] and r["side"] == "ABOVE" for r in priced)
@@ -257,7 +257,7 @@ def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move(spy
                "computed_ts_utc": time.time()}
     spot = float(fx["spot"])
     monkeypatch.setattr(server, "terrain_cache_get", lambda t, now: terrain)
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, server.SPOT_SOURCE_PLANE, time.time()))
     body = json.loads(server.get_levels(ticker="SPY").body)
     by_id = {r["id"]: r for r in body["levels"]}
     em = terrain["implied_1d_move"]["points"]

@@ -22,12 +22,11 @@ What was DELETED, and why (nothing replaced it):
     obstructing inspection; the rule's stated value (read files whole) is a working style, not a
     protection.
   * heredoc / redirect / `-c` payload / PowerShell source-write bans: they existed because shell
-    writes once mangled escapes; ruff and pytest at commit and in CI catch a mangled file, and the
-    retired mockup-approval registry they also guarded is gone.
-  * the CLOSE-a-row-needs-a-verification-this-turn rule and its transcript readers: every ledger
-    row a delta closes has its cited command EXECUTED by required CI (tools/check_delta_adds_no_debt.py);
-    a transcript-derived turn ledger was a second, weaker judge of the same fact — and the last
-    transcript reader on the PreToolUse path (RC-544 class).
+    writes once mangled escapes; ruff at commit and ruff and pytest in CI catch a mangled file,
+    and the retired mockup-approval registry they also guarded is gone.
+  * the CLOSE-a-row-needs-a-verification-this-turn rule and its transcript readers: it read the
+    session transcript (the last transcript reader on the PreToolUse path, RC-544 class). Nothing
+    replaced it: no check verifies a closed work item's proof.
   * the `ED_*_GUARD=off` spellings in the lock-disable regex: no such switch exists (RC-450).
 """
 from __future__ import annotations

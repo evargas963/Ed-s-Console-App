@@ -410,15 +410,8 @@
     ]).then(function (results) {
       if (!stillRightNow(tk)) return;
       var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
-      // Independent-review finding, REPRODUCED: this used to fall back to terrain.spot when
-      // levelsD was absent -- both endpoints resolve spot via the same server-side
-      // resolve_spot() authority today (server.py's get_levels/_reprice_cached_terrain), so
-      // it never disagreed in practice, but the shape is exactly what tools/spot_binding_lock.py
-      // exists to ban (RC-225: a spot value chosen from whichever of two independent responses
-      // happened to be present). /api/levels is server.py's own documented canonical serving
-      // contract for spot ("every other surface carries the values out of the same snapshot");
-      // a failed /api/levels now reads as honest absence (blank, see isFinite(spot) below)
-      // instead of silently substituting a second source.
+      // the spot is /api/levels' alone: a failed /api/levels reads as absent (blank, see
+      // isFinite(spot) below), never another response's spot
       // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
       var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
       h.innerHTML =

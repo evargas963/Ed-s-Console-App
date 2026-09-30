@@ -58,8 +58,9 @@ def test_put_call_is_schwabs_contract_type():
 ])
 def test_the_subscription_state_is_served(monkeypatch, l1, book, want):
     monkeypatch.setattr(S, "_active_option_contract", "Q")
-    monkeypatch.setattr(S, "read_producer_admitted_option_contracts", lambda now: {"LEVELONE_OPTIONS": l1, "OPTIONS_BOOK": book})
-    monkeypatch.setattr(S, "_pick_producer_contract", lambda held, q: q if q in held else next(iter(held), None))
+    # stand-in (named): what the daemon's heartbeat says it holds on each service
+    monkeypatch.setattr(S, "read_producer_admitted_option_contracts",
+                        lambda now: {"LEVELONE_OPTIONS": sorted(l1), "OPTIONS_BOOK": sorted(book)})
     assert S.get_option_contract_streaming_diagnostics("Q", 0.0)["subscription_state"] == want
 
 

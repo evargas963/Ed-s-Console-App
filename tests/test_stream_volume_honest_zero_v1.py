@@ -1,50 +1,31 @@
-"""push_level_one's volume handling (operator finding, 2026-09-11): `or` between
-TOTAL_VOLUME/VOLUME drops a legitimate 0, and `vf > 0` rejected any zero outright --
-so a symbol with genuinely zero volume so far today never got an entry, and a symbol
-whose cache already held a real number kept showing that STALE number if a later
-observation was honestly 0. Negative-controlled: the OLD logic is reproduced inline
-and shown to fail for the same input the fix passes on."""
+"""A streamed option volume of 0 is 0 (AGENTS.md rule 2): the old handling (`or` between
+TOTAL_VOLUME and VOLUME, then `> 0`) dropped a reported 0 and kept the earlier number. Through the
+real push_level_one. Stand-in (named): a LEVELONE_OPTIONS message carrying TOTAL_VOLUME 500, then
+one carrying 0, for a real contract symbol."""
 from __future__ import annotations
 
-import sys
-from pathlib import Path
+import app.options.order_flow.state as st
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+SYM = "SPY   260925C00660000"
 
 
+def test_a_reported_zero_volume_replaces_the_earlier_number():
+    st.clear_all_live_state()
+    try:
+        st.push_level_one(SYM, {"key": SYM, "TOTAL_VOLUME": 500}, ts_recv=1000.0)
+        st.push_level_one(SYM, {"key": SYM, "TOTAL_VOLUME": 0}, ts_recv=1001.0)
+        g = st.get_stream_greeks(SYM)
+        assert (g["total_volume"], g["total_volume_ts_recv"]) == (0, 1001.0)
+    finally:
+        st.clear_all_live_state()
 
 
-
-
-
-
-
-
-
-
-
-def test_negative_control_the_old_or_and_positive_only_logic_fails_this_case():
-    """Reproduces the PRE-FIX logic inline and shows it gives the wrong answer for
-    the exact scenario the fix corrects -- proving this test exercises the real
-    defect, not a coincidence of the new implementation."""
-    def old_logic(cache: dict, sym: str, content_item: dict) -> None:
-        vol = content_item.get("TOTAL_VOLUME") or content_item.get("VOLUME")
-        if vol is not None:
-            vf = float(vol)
-            if vf > 0:
-                cache[sym] = vf
-
-    cache: dict = {"SPY": 500.0}  # a real earlier observation
-    old_logic(cache, "SPY", {"TOTAL_VOLUME": 0})  # a genuine session-reset zero
-    assert cache["SPY"] == 500.0, "demonstrating the old defect: the stale 500 survives"
-
-    # ... and the fixed implementation does not have this problem (already proven above).
-
-
-
-
-
-
-    # (change percent lives on the live plane only since 2026-09-24 -- NET_CHANGE_PERCENT)
+def test_a_volume_sent_as_not_a_number_is_unavailable_never_the_earlier_number():
+    st.clear_all_live_state()
+    try:
+        st.push_level_one(SYM, {"key": SYM, "TOTAL_VOLUME": 500}, ts_recv=1000.0)
+        st.push_level_one(SYM, {"key": SYM, "TOTAL_VOLUME": -999}, ts_recv=1001.0)
+        g = st.get_stream_greeks(SYM)
+        assert (g["total_volume"], g["total_volume_ts_recv"]) == (None, 1001.0)
+    finally:
+        st.clear_all_live_state()

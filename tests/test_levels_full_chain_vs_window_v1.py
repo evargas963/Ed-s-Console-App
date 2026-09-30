@@ -78,7 +78,8 @@ def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture
     monkeypatch.setattr(server, "fetch_full_chain", fake_fetch)
     monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t, now: False)
     monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (_SPOT, "fixture", 0.0))
+    # stand-in (named): the live price, the chain's own underlying price
+    monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (_SPOT, server.SPOT_SOURCE_PLANE, 0.0))
     monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
 
     tk = server.ticker_storage_key("MRVL")

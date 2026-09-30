@@ -301,12 +301,6 @@ def index_worktree_mismatches(
     return out
 
 
-# The enforced-check ROSTER has ONE static reader: tools/check_delta_adds_no_debt.py (the
-# required hardening check compares base vs candidate roster there). The second parser of
-# the same CHECKS literal that lived here had no caller but the measure report — removed
-# 2026-09-10 (KEEP/MERGE/DELETE).
-
-
 _QUOTED_STRING_RE = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'")
 
 

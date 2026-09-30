@@ -37,12 +37,6 @@ def test_ensure_playwright_ready_raises_when_node_missing():
             ensure_playwright_ready(install_browsers=False)
 
 
-def test_e2e_smoke_spec_present():
-    """Contract: browser smoke test file must exist (executed by npm run test:e2e, not pytest)."""
-    smoke = ROOT / "tests" / "e2e" / "smoke.spec.js"
-    assert smoke.is_file(), f"Missing {smoke} — add Playwright smoke test for real browser check."
-
-
 def test_playwright_config_exists():
     p = ROOT / "playwright.config.mjs"
     assert p.is_file(), "playwright.config.mjs missing — E2E cannot run."

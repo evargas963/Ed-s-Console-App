@@ -9,8 +9,11 @@ Proven directly against `_stamp_gamma_surface_cell_stream_state` /
 touch a cell's already-computed exposure value, only annotate it), against the real end-to-end
 `_publish_levels` path with a REAL captured chain fixture (matching this
 repo's existing gamma-surface test convention, not invented contracts), and against
-`/api/options/gamma-surface`'s own served JSON for both the live and banked-morning-reference
-branches."""
+`/api/options/gamma-surface`'s own served JSON.
+
+Stand-ins (named): the live price (`resolve_spot`), the streamed greeks the console holds
+(`state.get_stream_greeks`, a tick with its receive time), and the hand-built surfaces of the
+endpoint tests."""
 from __future__ import annotations
 
 import pytest
@@ -249,7 +252,7 @@ def test_a_fresh_tick_marks_the_ticking_contracts_own_cell_live(monkeypatch, vie
     _daemon_holds(_CONTRACT_SYMBOL)
     live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": now}}
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, server.SPOT_SOURCE_PLANE, time.time()))
 
     assert _publish_levels(TK, now=time.time()) is not None
     cells = _published_surface()["cells"]
@@ -273,7 +276,7 @@ def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monke
     _daemon_holds()
     live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": time.time()}}
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: live.get(sym))
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, server.SPOT_SOURCE_PLANE, time.time()))
 
     _publish_levels(TK, now=time.time())
     surface = _published_surface()
@@ -288,7 +291,7 @@ def test_dropped_contract_becomes_unavailable_not_lingering_stale(monkeypatch, v
     _put_chain(view)
     _ofs._active_option_contract = None   # coverage genuinely ended -- no longer desired at all
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: None)
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, server.SPOT_SOURCE_PLANE, time.time()))
 
     _publish_levels(TK, now=time.time())
     counts = _gamma_surface_cell_state_counts(_published_surface())
@@ -316,7 +319,7 @@ def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is
     _stamp_gamma_surface_cell_stream_state(surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"})
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
-                                      "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
+                                      "spot_source": server.SPOT_SOURCE_PLANE, "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
         assert "stream_confirmed_live" not in d, (
@@ -338,7 +341,7 @@ def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
     _stamp_gamma_surface_cell_stream_state(surf, {}, set())   # never desired
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
-                                      "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
+                                      "spot_source": server.SPOT_SOURCE_PLANE, "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
         assert d["stream_coverage"]["meets_live_requirement"] is False
@@ -367,7 +370,7 @@ def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverag
         surf, {"X": {"gamma_ts_recv": time.time()}, "Y": {"gamma_ts_recv": time.time() - 999}}, {"X"})
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
-                                      "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
+                                      "spot_source": server.SPOT_SOURCE_PLANE, "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
         cov = d["stream_coverage"]
@@ -400,7 +403,7 @@ def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live(
         surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"}, None, {"X", "Y"})
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
-                                      "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
+                                      "spot_source": server.SPOT_SOURCE_PLANE, "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
         cov = d["stream_coverage"]
@@ -434,7 +437,7 @@ def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
         surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"}, None, {"X", "Y"}, daemon_available=False)
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
-                                      "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
+                                      "spot_source": server.SPOT_SOURCE_PLANE, "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
         cov = d["stream_coverage"]
@@ -462,7 +465,7 @@ def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
     assert surf["cells"][0]["stream"][0]["call"]["rejected_reason"] == "RuntimeError: refused"
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
-                                      "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
+                                      "spot_source": server.SPOT_SOURCE_PLANE, "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
         assert d["cell_stream_state_counts"]["rejected"] == 1

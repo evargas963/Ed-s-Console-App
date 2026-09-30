@@ -50,7 +50,7 @@ def _stub_terrain(monkeypatch, proj):
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "_gated_safe_get_chain", lambda *a, **k: (R(), 0.0, 0.0))
     monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [dict(ct) for ct in _REAL_CHAIN])
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (100.0, "stub", 0.0))
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (100.0, server.SPOT_SOURCE_PLANE, 0.0))   # stand-in: the live price
     monkeypatch.setattr(server, "compute_terrain", lambda tk, contracts, spot, **k: Snap(contracts))
     monkeypatch.setattr(server, "_atr_pair", lambda t: AtrPair(None, None, "stand-in", "stand-in"))
     monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
@@ -107,7 +107,7 @@ def test_producer_gates_projection_on_demand(monkeypatch, view):
     assert surf == {
         "expirations": [], "strikes": [], "cells": [], "stream_overlay_contracts": 0,
         "stream_overlay_symbols": [], "surface_seq": 1,
-        "spot": 100.0, "spot_source": "stub", "spot_as_of_ts_utc": 0.0,
+        "spot": 100.0, "spot_source": server.SPOT_SOURCE_PLANE, "spot_as_of_ts_utc": 0.0,
         "stream_by_expiry": {},          # each column's served streaming state (none: no columns)
     }
 

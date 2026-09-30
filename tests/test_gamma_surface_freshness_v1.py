@@ -15,6 +15,8 @@ from db import EdDB
 from server import get_options_gamma_surface, ticker_storage_key
 from time_et import ET, settlement_et
 
+#: stand-in (named): a published surface, built by hand; these tests prove the route's freshness
+#: and source wiring, not the projection (tests/test_gamma_surface_projection_v1.py)
 _SURF = {
     "expirations": [{"expiry": "2026-09-11", "dte": 2, "settles_ts_utc": settlement_et("2026-09-11").timestamp()}],
     "strikes": [580.0, 583.0, 586.0],
@@ -36,7 +38,7 @@ def _put_live(tk, *, computed_ts):
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {
             "_gamma_surface": _SURF, "computed_ts_utc": computed_ts, "spot": 583.41,
-            "spot_source": "last", "spot_as_of_ts_utc": computed_ts, "chain_basis": "full",
+            "spot_source": server.SPOT_SOURCE_PLANE, "spot_as_of_ts_utc": computed_ts, "chain_basis": "full",
         }
 
 
@@ -47,7 +49,8 @@ def _clear(tk):
 
 def test_live_terrain_surface_is_preferred_and_discloses_coverage(monkeypatch):
     monkeypatch.setattr("server._is_loggable_session", lambda now: True)   # an open-market test
-    monkeypatch.setattr("server.resolve_spot", lambda tk, **_k: (584.0, "live_quote", time.time()))
+    # stand-in (named): the live price
+    monkeypatch.setattr("server.resolve_spot", lambda tk, **_k: (584.0, server.SPOT_SOURCE_PLANE, time.time()))
     tk = ticker_storage_key("SPY")
     _clear(tk); _put_live(tk, computed_ts=time.time())
     try:
@@ -130,7 +133,8 @@ def _fresh(monkeypatch, tmp_path, view):
     monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t, now: None)
     monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
     monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk, listed=None: {})
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **k: (_CRWD["spot"], "stub", _CAPTURED))
+    # stand-in (named): the live price, the chain's capture price at its capture time
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **k: (_CRWD["spot"], server.SPOT_SOURCE_PLANE, _CAPTURED))
     return edb
 
 
@@ -189,10 +193,15 @@ def test_closed_market_prices_the_stored_capture_on_every_route(_fresh, monkeypa
         persist_complete_chain_capture(_fresh.db_path, ticker=tk, expiry=expiry, contracts=cts,
                                        spot=_CRWD["spot"], completeness_basis=CAPTURE_BASIS,
                                        ts_utc=_CAPTURED)
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **k: (None, "none", None))   # closed: no live price
     t = server.get_terrain(ticker=tk)                # the Trade Desk's first load
     assert not t["error"] and t["chain_basis"] == CAPTURE_BASIS and t["spot"] == _CRWD["spot"]
+    # history, labeled as history: the capture's own price and time, never live
+    assert t["spot_source"] == server.SPOT_SOURCE_CAPTURE and t["spot_as_of_ts_utc"] == _CAPTURED
+    assert t["levels_market_closed"] is True and t["levels_refresh_active"] is False
     assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
-    assert _call(tk)["available"] is True           # the heatmap from the same publication
+    surf = _call(tk)                                # the heatmap from the same publication
+    assert surf["available"] is True and surf["live"] is False
     # the chain view carries the publication's own basis label (it served a constant before)
     chain = json.loads(server.get_chain(ticker=tk, expiry=None).body)
     assert chain["status"] == "ok" and chain["scope"]["completeness_basis"] == t["chain_basis"]
@@ -244,14 +253,12 @@ def test_surface_session_identity_is_stamped_by_the_server_clock():
     assert server._stamp_surface_session(surf, reference_date=today)["prior_session"] is False
 
 
-def test_fallback_is_labelled_not_live_never_intraday():
+def test_no_live_surface_is_unavailable_with_its_reason_never_a_fallback():
     tk = ticker_storage_key("ZZTESTX")   # no live cache, no banked chain in the offline test DB
     _clear(tk)
     try:
         d = _call(tk)
-        assert d["live"] is False and d["stale"] is True
-        assert d["source"] in ("unavailable", "banked_morning_reference")
-        if d["source"] == "banked_morning_reference":
-            assert "not intraday" in d["degraded"].lower() or "morning" in d["degraded"].lower()
+        assert d["live"] is False and d["stale"] is True and d["available"] is False
+        assert d["source"] == "unavailable" and d["reason"]
     finally:
         _clear(tk)

@@ -19,7 +19,8 @@ operator.
 - Data is pushed at every hop. Nothing polls.
 - The database is history, written in the background by one writer. Nothing on screen waits on it.
 - At startup the in-memory state is loaded once from the latest stored values, so a restart, a
-  weekend or the close shows the last reading with its time.
+  weekend or the close shows the last reading with its time, labeled as history: loading it never
+  makes it live, and it is never pushed as a new event (AGENTS.md rule 6).
 
 ## 2. The rules
 
@@ -40,7 +41,7 @@ Schwab sends is taken as sent (rule 2), never computed.
 |---|---|---|
 | **Capture daemon** | `start_capture_daemon.bat` (its own window, restarts itself) | Holds the one Schwab WebSocket. Subscribes to what the console asks for. Every Schwab message goes once onto its in-memory message bus, and from there to three places: its database writer, the console, and the browser's price socket. Keeps the latest equity quote per symbol in memory to build the price row the browser shows. Every 30 minutes of the session it downloads the full chain of each board ticker and writes it to the chain history in `ed_console.db` (decision 7). |
 | **Console** | `start_ed_console.bat` (`uvicorn server:app`, port 8000) | Receives the daemon's messages (books, option quotes, 1-minute bars, news) and the daemon's finished price rows; it keeps no price and no equity quote of its own. Downloads full option chains from Schwab over REST, computes the levels every 5 s for the tickers on the board and being viewed, and keeps them in memory. Writes the 1-minute bars and level crosses to its own database. Serves the page and every `/api` route. Tells the daemon what to subscribe. |
-| **Browser** | the operator | Loads one page from the console. Gets prices pushed from the daemon; gets change signals (levels, chain, flow, liquidity) and the session label pushed from the console; reads everything else from the console's `/api` routes. |
+| **Browser** | the operator | Loads one page from the console. Gets prices and bars pushed from the daemon; gets change signals (levels, chain, flow) and the session label pushed from the console; reads everything else from the console's `/api` routes. |
 
 ### 3.2 How they talk
 
@@ -330,10 +331,10 @@ Schwab sends is taken as sent (rule 2), never computed.
 
 | Process | What it does |
 |---|---|
-| **Capture daemon** | Holds the one Schwab connection: the streamer, and the REST chain fetch. Holds the one in-memory state: latest quotes, books, bars, chains. Pushes every change. Its writer thread is the one database writer. At startup it loads the latest stored values into memory. |
+| **Capture daemon** | Holds the one Schwab connection: the streamer, and the REST chain fetch. Holds the one in-memory state: latest quotes, books, bars, chains. Pushes every change. Its writer thread is the one database writer. At startup it loads the latest stored values into memory, as history (§1). |
 | **Levels producer** | Its own process. Receives the chain and quotes from the daemon, computes each derived value once, and hands the results back to the daemon to push and write. The daemon never waits on it: it sends and moves on, and results arrive as their own message. Kept out of the daemon because heavy computing in the daemon's process stalls its event loop and Schwab drops the socket. |
 | **Console** | Serves the page and the read routes, from the daemon's state. Computes nothing and holds no copy. |
-| **Browser** | One page, two push connections: the daemon's (prices, bars) and the console's (levels, flow and liquidity changed). No refresh timer. Every panel reads from what is pushed; opening the Chain view reads one expiry from the state. |
+| **Browser** | One page, two push connections: the daemon's (prices, bars) and the console's (levels, chain and flow changed). No refresh timer. Every panel reads from what is pushed; opening the Chain view reads one expiry from the state. |
 
 ### 4.2 The journey of each kind of data
 
@@ -350,18 +351,13 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Level crosses:** producer → written by the one writer.
 - **After a restart, a weekend or the close:** at startup the newest stored chain per ticker and the
   bars are loaded, the levels are computed from them once, and the screens show them with their
-  time.
+  time, labeled as of it; they are not live until the live rule proves the feed.
 
 ## 5. Checks
 
-ruff (F401, F821, E9) at commit and in CI; a compile pass in CI; the behavior tests (`pytest`,
-`tests/`) and the browser tests (Playwright, `tests/e2e/`) in CI; at commit, the secrets and
-private-path scan, the line-ending check and the virtualenv check; for agents, the hooks that
-block destructive git. A passing check proves only what its tests exercise; every rule beyond
-them stays NOT_PROVEN.
-
-A gap gets a check only when a failure it would have caught has happened; the check is a test of
-behavior (AGENTS.md).
+What is enforced is listed once, in `AGENTS.md` § Authority. A passing check proves only what its
+tests exercise; every rule beyond them stays NOT_PROVEN. A requirement's check is a behavior test
+that fails when the requirement is broken (AGENTS.md rule 10).
 
 ## 6. Operator decisions
 
@@ -370,7 +366,7 @@ behavior (AGENTS.md).
 2. **The levels producer runs in its own process**, not inside the daemon.
 3. **The browser is never pushed a whole chain.**
 4. **One shell, two connections** (operator 2026-09-27). One page; tabs switch what is shown;
-   the daemon pushes prices and bars, the console pushes that levels, flow or liquidity changed.
+   the daemon pushes prices and bars, the console pushes that levels, chain or flow changed.
 5. **One database, written only by the daemon's writer; the console reads it read-only.** The
    one database is `ed_console.db` (operator 2026-09-26: the chain history is already there);
    the stream tables move into it, and the console's writes today (bars, level crosses, the

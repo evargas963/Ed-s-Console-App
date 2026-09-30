@@ -1,5 +1,5 @@
-"""Numeric parsing. Schwab fields: `schwab_number` / `schwab_count` only (AGENTS.md rule 2,
-enforced by tools/check_vendor_field_coercion.py)."""
+"""Numeric parsing. Schwab fields: `schwab_number` / `schwab_count` only (AGENTS.md rule 2);
+`float_finite_or_none` parses text and is never a reader of a Schwab field."""
 
 from __future__ import annotations
 

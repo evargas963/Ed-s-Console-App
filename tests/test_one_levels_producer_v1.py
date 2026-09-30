@@ -55,8 +55,9 @@ def _cached():
 
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", 1.0))
-    monkeypatch.setattr(server, "_is_loggable_session", lambda now: True)   # the open market, unless a test closes it
+    # stand-ins (named): the live price, and the open market unless a test closes it
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, server.SPOT_SOURCE_PLANE, 1.0))
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: True)
     monkeypatch.setattr(push_changes, "_clients", {})                    # no page open
     monkeypatch.setattr(push_changes, "_loop", None)                     # changes recorded, not delivered
     ofs._active_option_contract = _A
@@ -212,7 +213,7 @@ def test_a_moved_spot_reprices_every_view_at_the_new_spot(monkeypatch):
     _put_chain()
     server._publish_levels(TK, now=time.time())
     before = _cached()["_gamma_surface"]
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT * 1.02, "stub", 2.0))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT * 1.02, server.SPOT_SOURCE_PLANE, 2.0))
     server._publish_levels(TK, now=time.time())
     after = _cached()
     assert after["_gamma_surface"]["spot"] == _SPOT * 1.02 and after["spot"] == _SPOT * 1.02

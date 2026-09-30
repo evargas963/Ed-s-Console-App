@@ -36,13 +36,13 @@ def _at_capture(pin_clock):
 def held(monkeypatch):
     snap = compute_terrain(TK, _CONTRACTS, PUBLISHED)
     surface = server.project_gamma_surface(_CONTRACTS, snap.books)
-    surface.update(spot=PUBLISHED, spot_source="chain", spot_as_of_ts_utc=time.time())
+    surface.update(spot=PUBLISHED, spot_source=server.SPOT_SOURCE_PLANE, spot_as_of_ts_utc=time.time())
     payload = snap.to_dict()
     payload.update({"computed_ts_utc": time.time(), "_per_strike": snap.per_strike,
                     "_vanna_rows": server._vanna_rows(snap), "_charm_rows": server._charm_rows(snap),
                     "_chain": _CONTRACTS, "_chain_fetched_ts": time.time(), "_gamma_surface": surface})
     monkeypatch.setattr(server, "terrain_cache_get", lambda tk, now: payload)
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (LIVE, "live_quote", time.time()))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (LIVE, server.SPOT_SOURCE_PLANE, time.time()))
     monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk, now: None)
     monkeypatch.setattr(server, "last_capture_per_day", lambda *a, **k: [])
     monkeypatch.setattr(server, "_gamma_surface_contracts_with_stream_overlay",
@@ -166,7 +166,7 @@ def test_levels_are_served_in_ladder_order_with_distance(monkeypatch):
                     .read_text(encoding="utf-8"))
     spot = fx["bars"][-1]["close"]                               # the session's last real close
     monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, server.SPOT_SOURCE_PLANE, time.time()))
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
     server._publish_price_levels("SPY")                          # as the bar writer does
     body = json.loads(server.get_levels(ticker="SPY").body)
@@ -190,7 +190,7 @@ def test_the_volume_profile_the_value_area_is_read_from_is_served(monkeypatch):
     fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
                     .read_text(encoding="utf-8"))
     monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (fx["bars"][-1]["close"], "live_quote", time.time()))
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (fx["bars"][-1]["close"], server.SPOT_SOURCE_PLANE, time.time()))
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
     server._publish_price_levels("SPY")                          # as the bar writer does
     body = json.loads(server.get_levels(ticker="SPY").body)
@@ -247,7 +247,7 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_is(mon
     cts[0]["nonStandard"] = True                      # stand-in: Schwab marking one contract
     payload = {"_chain": cts, "_chain_fetched_ts": time.time(), "computed_ts_utc": time.time()}
     monkeypatch.setattr(server, "terrain_cache_get", lambda tk, now: payload)
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (fx["spot"], "live_quote", time.time()))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (fx["spot"], server.SPOT_SOURCE_PLANE, time.time()))
     monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk, now: None)
     monkeypatch.setattr(server, "_gamma_surface_contracts_with_stream_overlay",
                         lambda t, c, now: (c, 0, None))

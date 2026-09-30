@@ -343,7 +343,7 @@ def build_zones(
         else:
             zt = ZoneType.SUPPORT_LIQUIDITY if hi < spot else ZoneType.RESISTANCE_LIQUIDITY
         zones.append(Zone(zone_type=zt, zone_low=lo, zone_high=hi, zone_mid=mid,
-                          source_levels=[{"label": t, "value": round(p, 4)} for p, t in pairs],
+                          source_levels=[{"label": t, "value": p} for p, t in pairs],
                           confluence_score=len(tags)))
     if spot is None:
         return sorted(zones, key=lambda z: -z.zone_high)
@@ -415,9 +415,7 @@ PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
 }
 
 #: The engine helpers that ARE the Phase 2A computation. `build_price_level_snapshot`
-#: is the only production call site; the static guard
-#: (tools/check_institutional_correctness.check_phase2a_single_level_computation)
-#: enforces that, alias-resolved, so a second invocation under another name still fires.
+#: is the only production call site (no check enforces it).
 #: This module's own name, read rather than spelled: RC-154's Step-3 lock bans the
 #: literal "liquidity" in any non-docstring engine string, and a provenance stamp is
 #: not a market claim — reading __name__ keeps the stamp honest and the lock intact.

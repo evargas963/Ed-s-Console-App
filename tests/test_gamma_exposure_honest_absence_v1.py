@@ -86,8 +86,8 @@ def test_vanna_by_strike_route_omits_unreported_oi_strikes(pin_clock):
                                      "_vanna_rows": server._vanna_rows(snap)}
     try:
         body = json.loads(server.get_vanna_by_strike(ticker="ZZTESTNOOI").body)
-        assert body["available"] is True
         assert body["rows"] == [], f"a chain with no reported OI yields no rows: {body['rows']}"
+        assert body["available"] is False and body["reason"], "no valid input: unavailable, with its reason"
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)

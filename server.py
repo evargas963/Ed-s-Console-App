@@ -2716,11 +2716,13 @@ def get_vanna_by_strike(ticker: str = Query(...)):
     if "_vanna_rows" not in payload:
         return JSONResponse({"ticker": tk, "available": False,
                              "reason": "no levels published for this ticker yet"})
+    rows = payload["_vanna_rows"]
     spot = resolve_spot(tk)[0]
-    return JSONResponse({"ticker": tk, "available": True, "spot": spot,
+    return JSONResponse({"ticker": tk, "available": bool(rows), "spot": spot,
                          "priced_at_spot": payload.get("spot"),
-                         "rows": payload["_vanna_rows"], "levels_as_of": payload.get("levels_as_of"),
-                         "spot_strike": nearest_strike([r[0] for r in payload["_vanna_rows"]], spot),
+                         "rows": rows, "levels_as_of": payload.get("levels_as_of"),
+                         "spot_strike": nearest_strike([r[0] for r in rows], spot),
+                         "reason": None if rows else "no strike has reported open interest and a valid vanna",
                          "method": "the published levels' exposure book -> call_vanna - put_vanna"})
 
 

@@ -345,24 +345,13 @@ def _bucket_for_pin(exposures: dict, pin: float) -> dict | None:
     return None
 
 
-def _book_oi(exposures: dict) -> float | None:
-    total = None
-    for v in exposures.values():
-        if not isinstance(v, dict):
-            continue
-        co, po = v.get("call_oi"), v.get("put_oi")
-        if co is None and po is None:
-            continue
-        add = (float(co) if co is not None else 0.0) + (float(po) if po is not None else 0.0)
-        total = (total or 0.0) + add
-    return total
-
-
 def test_pin_score_stamps_match_the_same_exposures_book_as_the_pin() -> None:
     """RC-413: absolute_gamma_gex_dollars / absolute_gamma_oi / book_oi_total are the same
-    compute_exposures_by_strike map pick_pin_and_strength used (RC-292 renamed the fields).
+    compute_exposures_by_strike map pick_pin_and_strength used (RC-292 renamed the fields), read
+    by the one OI reader (an unreported open interest is unknown, never 0).
     """
-    from math_exposure_core import compute_exposures_by_strike, total_gex_dollars_at_strike
+    from math_exposure_core import (book_total_oi, compute_exposures_by_strike, strike_total_oi,
+                                    total_gex_dollars_at_strike)
 
     chain, spot = _real_chain()
     snap = compute_terrain("SPY", chain, spot)
@@ -372,11 +361,12 @@ def test_pin_score_stamps_match_the_same_exposures_book_as_the_pin() -> None:
     bkt = _bucket_for_pin(exposures, pin)
     assert bkt is not None
     assert snap.absolute_gamma_gex_dollars == total_gex_dollars_at_strike(bkt)
-    co, po = bkt.get("call_oi"), bkt.get("put_oi")
-    assert snap.absolute_gamma_oi == (float(co) if co is not None else 0.0) + (
-        float(po) if po is not None else 0.0
-    )
-    assert snap.book_oi_total == _book_oi(exposures)
+    assert snap.absolute_gamma_oi == strike_total_oi(bkt) is not None
+    assert snap.book_oi_total == book_total_oi(exposures) is not None
+    # a contract with no reported open interest makes the book's total unknown
+    gone = [dict(c) for c in chain]
+    del next(c for c in gone if c.get("openInterest"))["openInterest"]
+    assert compute_terrain("SPY", gone, spot).book_oi_total is None
     payload = snap.to_dict()
     assert payload["absolute_gamma_gex_dollars"] == snap.absolute_gamma_gex_dollars
     assert payload["absolute_gamma_oi"] == snap.absolute_gamma_oi
@@ -386,8 +376,11 @@ def test_pin_score_stamps_match_the_same_exposures_book_as_the_pin() -> None:
 def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> None:
     """RC-413 mixed-book proof: extra later-expiry mass at the pin changes terrain
     GEX/OI and therefore pin_score; the selected-expiry (analytics-style) book does not.
+    Stand-in (named): a later expiry at the pin strike, copied from the real contracts there
+    with 50,000 more open interest.
     """
-    from math_exposure_core import compute_exposures_by_strike, total_gex_dollars_at_strike
+    from math_exposure_core import (book_total_oi, compute_exposures_by_strike, strike_total_oi,
+                                    total_gex_dollars_at_strike)
     from math_probabilities import compute_pin_score
 
     chain, spot = _real_chain()
@@ -418,24 +411,14 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
     sel_gex = total_gex_dollars_at_strike(sb)
     assert wide_gex != sel_gex
     assert terrain.absolute_gamma_gex_dollars == wide_gex
-    assert terrain.absolute_gamma_oi != (
-        (float(sb.get("call_oi") or 0) + float(sb.get("put_oi") or 0))
-    )
+    assert terrain.absolute_gamma_oi != strike_total_oi(sb)
     wide_score = compute_pin_score(
         terrain.absolute_gamma_gex_dollars,
         (terrain.absolute_gamma_oi / terrain.book_oi_total)
         if terrain.absolute_gamma_oi is not None and terrain.book_oi_total
         else None,
     )
-    sel_score = compute_pin_score(
-        sel_gex,
-        (
-            (float(sb.get("call_oi") or 0) + float(sb.get("put_oi") or 0))
-            / _book_oi(sel_ex)
-        )
-        if _book_oi(sel_ex)
-        else None,
-    )
+    sel_score = compute_pin_score(sel_gex, strike_total_oi(sb) / book_total_oi(sel_ex))
     assert wide_score["normalized"] != sel_score["normalized"]
 
 

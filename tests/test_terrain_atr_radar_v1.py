@@ -62,12 +62,25 @@ def test_bars1m_endpoint_serves_canonical_bars_shape(monkeypatch):
     assert [(b["t"], b["o"], b["h"], b["l"], b["c"], b["v"]) for b in full] == rows
 
 
-def test_terrain_strikes_endpoint_shape_and_scopes():
+def test_terrain_strikes_endpoint_shape_and_scopes(monkeypatch, pin_clock):
     """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
-    expiry scopes for today + prior capture, sorted by strike, read-only."""
+    expiry scopes for today + prior capture, sorted by strike, read-only. The real SPY 0DTE chain
+    is published first (the test used to read an empty cache and skip every row assertion).
+    Stand-in (named): the live price, the chain's own underlying price."""
+    import json
+    import time
+    from pathlib import Path
+
     import server as srv
     from fastapi.testclient import TestClient
 
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_0dte_chain.json")
+                    .read_text(encoding="utf-8"))
+    pin_clock(2026, 9, 22, 12, 46)                                   # the chain's capture
+    monkeypatch.setattr(srv, "_terrain_cache", {})
+    monkeypatch.setattr(srv, "last_capture_per_day", lambda *a, **k: [])
+    monkeypatch.setattr(srv, "resolve_spot", lambda t, **k: (float(fx["spot"]), srv.SPOT_SOURCE_PLANE, time.time()))
+    srv._publish_levels("SPY", [dict(c) for c in fx["chain"]], time.time(), now=time.time())
     client = TestClient(srv.app)
     r = client.get("/api/terrain/strikes?ticker=SPY")
     assert r.status_code == 200
@@ -76,10 +89,9 @@ def test_terrain_strikes_endpoint_shape_and_scopes():
     for side in ("today", "prior"):
         assert set(body[side]) == {"all", "near", "far"}
     rows = body["today"]["all"]
-    if rows:
-        assert all(len(x) == 3 for x in rows)
-        ks = [x[0] for x in rows]
-        assert ks == sorted(ks), "strikes must be ascending"
-        # near+far partition the chain: no scope may exceed ALL
-        assert len(body["today"]["near"]) <= len(rows)
-        assert len(body["today"]["far"]) <= len(rows)
+    assert rows and all(len(x) == 3 for x in rows)
+    ks = [x[0] for x in rows]
+    assert ks == sorted(ks), "strikes must be ascending"
+    # near+far partition the chain: no scope may exceed ALL
+    assert len(body["today"]["near"]) <= len(rows)
+    assert len(body["today"]["far"]) <= len(rows)
