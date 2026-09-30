@@ -37,7 +37,7 @@ def _at_capture(pin_clock):
 def _session_open(monkeypatch):
     """These tests are about the open market: levels are computed only then (closed-market
     behaviour: tests/test_one_levels_producer_v1.py)."""
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: True)
 
 
 def _stub_terrain(monkeypatch, proj):
@@ -46,7 +46,7 @@ def _stub_terrain(monkeypatch, proj):
         def json(self):  # noqa: D401 - stub
             return {"x": 1}
 
-    monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t: False)
+    monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t, now: False)
     monkeypatch.setattr(server, "get_client", lambda: object())
     monkeypatch.setattr(server, "_gated_safe_get_chain", lambda *a, **k: (R(), 0.0, 0.0))
     monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [dict(ct) for ct in _REAL_CHAIN])
@@ -77,7 +77,7 @@ class Snap:
 
 
 def _cached_surface(tk):
-    return (server.terrain_cache_get(tk) or {}).get("_gamma_surface")
+    return (server.terrain_cache_get(tk, time.time()) or {}).get("_gamma_surface")
 
 
 def test_producer_gates_projection_on_demand(monkeypatch, view):
@@ -93,17 +93,16 @@ def test_producer_gates_projection_on_demand(monkeypatch, view):
     _stub_terrain(monkeypatch, proj)
 
     # UNWANTED ticker (no page open) -> the producer path does NOT invoke project_gamma_surface
-    server._terrain_refresh_one(tk)
+    server._terrain_refresh_one(tk, time.time())
     assert calls["n"] == 0
     assert _cached_surface(tk) is None
 
     # WANTED ticker -> shaped EXACTLY ONCE, from that cycle's contracts and the snapshot's books
     view(tk)
-    server._terrain_refresh_one(tk)
+    server._terrain_refresh_one(tk, time.time())
     assert calls["n"] == 1
     assert calls["args"] == (len(_REAL_CHAIN), {("2026-09-04", 0.0): ({}, ExposureDiagnostics(0, 0, 0, ""))})
     surf = dict(_cached_surface(tk))
-    assert isinstance(surf.pop("stream_overlay_computed_ts_utc"), float)
     # the spot that priced this generation travels with it; no contract was streaming
     assert surf == {
         "expirations": [], "strikes": [], "cells": [], "stream_overlay_contracts": 0,
@@ -123,9 +122,9 @@ def test_a_projection_failure_is_reported_and_publishes_nothing(monkeypatch, vie
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
     view(tk)
-    res = server._terrain_refresh_one(tk)
+    res = server._terrain_refresh_one(tk, time.time())
     assert res == "error:RuntimeError"
-    assert server.terrain_cache_get(tk) is None      # nothing half-published
+    assert server.terrain_cache_get(tk, time.time()) is None      # nothing half-published
     assert "projection boom" in server._terrain_refresh_last_error[tk]
 
 
@@ -162,7 +161,7 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     _daemon_holds(contract_symbol)
 
     view(tk)
-    server._terrain_refresh_one(tk)
+    server._terrain_refresh_one(tk, time.time())
 
     surf = _cached_surface(tk)
     assert surf["_overlaid_gamma"] == 0.777, "project_gamma_surface must see the overlaid gamma"
@@ -170,7 +169,7 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     assert surf["surface_seq"] == 1
 
     assert priced["snap"].contracts[0]["gamma"] == 0.777, "the levels are priced from the overlay too"
-    cached = server.terrain_cache_get(tk)
+    cached = server.terrain_cache_get(tk, time.time())
     assert cached["_chain"] == _REAL_CHAIN, "the raw chain is kept, unoverlaid"
     assert cached["_chain_fetched_ts"] <= cached["computed_ts_utc"]
 
@@ -216,7 +215,7 @@ def test_surface_seq_publication_is_atomic_with_the_cache_write(monkeypatch, vie
 
     _stub_terrain(monkeypatch, proj)
     view(tk)
-    server._terrain_refresh_one(tk)
+    server._terrain_refresh_one(tk, time.time())
 
     assert seen["seq_call_enter_n"] is not None, "the surface-seq path was not exercised"
     assert seen["cache_write_enter_n"] is not None, "the cache write for this ticker never happened"
@@ -249,16 +248,16 @@ def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(mon
     def proj(contracts, books):
         return {"expirations": [], "strikes": [], "cells": []}
     _stub_terrain(monkeypatch, proj)
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: True)
     monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
     # midday ET: between 09:30 and 10:00 the loop defers tickers, and this test failed whenever
     # it ran then (2026-09-27 audit); the minute is fixed, not read from the clock
     monkeypatch.setattr(server, "et_minute_total_from_ts_utc", lambda ts_utc: 720)
     real_refresh = server._terrain_refresh_one
 
-    def spy_refresh(tk, priority=False):
+    def spy_refresh(tk, now, priority=False):
         calls.append(tk)
-        return real_refresh(tk, priority=priority)
+        return real_refresh(tk, now, priority=priority)
     monkeypatch.setattr(server, "_terrain_refresh_one", spy_refresh)
 
     enrolled_tk = server.ticker_storage_key("SPY")
@@ -299,15 +298,15 @@ def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch, view):
     def proj(contracts, books):
         return {"expirations": [], "strikes": [], "cells": []}
     _stub_terrain(monkeypatch, proj)
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: False)
     monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
     real_refresh = server._terrain_refresh_one
     fetched: list[str] = []
     monkeypatch.setattr(server, "fetch_full_chain", lambda client, tk, get: fetched.append(tk))
 
-    def spy_refresh(tk, priority=False):
+    def spy_refresh(tk, now, priority=False):
         calls.append(tk)
-        return real_refresh(tk, priority=priority)
+        return real_refresh(tk, now, priority=priority)
     monkeypatch.setattr(server, "_terrain_refresh_one", spy_refresh)
 
     viewed_tk = server.ticker_storage_key("$SPX")
@@ -327,7 +326,7 @@ def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch, view):
             server._logger_tickers[:] = prev_logger_tickers
     assert calls == [], "the loop refreshed a ticker while the market was closed"
     # a direct request (the /api/terrain cold miss) is refused before any vendor call
-    assert real_refresh(viewed_tk, priority=True) == "skip:market_closed"
+    assert real_refresh(viewed_tk, time.time(), priority=True) == "skip:market_closed"
     assert fetched == []
 
 
@@ -360,7 +359,7 @@ def test_a_stream_observation_after_the_chain_fetch_is_admitted(monkeypatch, vie
 
     server._gamma_surface_seq.pop(tk, None)
     view(tk)
-    server._terrain_refresh_one(tk)
+    server._terrain_refresh_one(tk, time.time())
 
     surf = _cached_surface(tk)
     assert surf["stream_overlay_contracts"] == 1

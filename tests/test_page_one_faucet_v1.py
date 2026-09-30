@@ -41,12 +41,12 @@ def held(monkeypatch):
     payload.update({"computed_ts_utc": time.time(), "_per_strike": snap.per_strike,
                     "_vanna_rows": server._vanna_rows(snap), "_charm_rows": server._charm_rows(snap),
                     "_chain": _CONTRACTS, "_chain_fetched_ts": time.time(), "_gamma_surface": surface})
-    monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
+    monkeypatch.setattr(server, "terrain_cache_get", lambda tk, now: payload)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (LIVE, "live_quote", time.time()))
-    monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk: None)
+    monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk, now: None)
     monkeypatch.setattr(server, "last_capture_per_day", lambda *a, **k: [])
     monkeypatch.setattr(server, "_gamma_surface_contracts_with_stream_overlay",
-                        lambda t, cts, newer_than_ts=None: (cts, 0, None))
+                        lambda t, cts, now: (cts, 0, None))
     return payload
 
 
@@ -134,7 +134,7 @@ def test_days_to_expiry_are_schwabs_as_sent(held):
 
 def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
     body = json.loads(server.get_expiries(ticker="ZZNOLEVELS").body)
-    assert body["expiries"] == [] and body["reason"] == server.terrain_staleness(None, "ZZNOLEVELS")["levels_stale_reason"]
+    assert body["expiries"] == [] and body["reason"] == server.terrain_staleness(None, "ZZNOLEVELS", time.time())["levels_stale_reason"]
 
 
 @pytest.mark.parametrize("route", [
@@ -246,11 +246,11 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_is(mon
     cts = [dict(c) for c in fx["contracts"]]
     cts[0]["nonStandard"] = True                      # stand-in: Schwab marking one contract
     payload = {"_chain": cts, "_chain_fetched_ts": time.time(), "computed_ts_utc": time.time()}
-    monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
+    monkeypatch.setattr(server, "terrain_cache_get", lambda tk, now: payload)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (fx["spot"], "live_quote", time.time()))
-    monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk: None)
+    monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk, now: None)
     monkeypatch.setattr(server, "_gamma_surface_contracts_with_stream_overlay",
-                        lambda t, c, newer_than_ts=None: (c, 0, None))
+                        lambda t, c, now: (c, 0, None))
     body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
     assert body["adjusted_deliverable_symbols"] == [cts[0]["symbol"]]
 
