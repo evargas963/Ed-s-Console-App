@@ -35,6 +35,6 @@ def test_canonical_book_state_is_bounded_and_contract_isolated():
     assert first_books[-1]["BOOK_TIME"] == base_time + MAX_BOOK_SNAPSHOTS + 4
     assert all(row.get("BOOK_TIME") != second_book["BOOK_TIME"] for row in first_books)
     assert len([row for row in second_content if "BIDS" in row]) == 1
-    assert options_live_payload("MISSING")["status"] == "no_book"
+    assert options_live_payload("MISSING", float(base_time) / 1000)["status"] == "no_book"
 
 

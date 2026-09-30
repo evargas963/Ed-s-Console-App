@@ -177,7 +177,7 @@ import push_changes
 
 # ── Config + Schwab client (refreshable singleton) ────────────────────────────
 load_dotenv_file()
-cfg     = build_config(APP_DIR)
+cfg     = build_config()
 _client = None
 
 
@@ -3519,13 +3519,14 @@ def api_order_flow_microstructure(ticker: str = Query(...),
     data["book_live"] = lmp.book_is_live(t, venue)
     from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
-    payload = compute_book_microstructure(data, ticker=t)
+    now = time.time()
+    payload = compute_book_microstructure(data, now_ts=now, ticker=t)
     # The trade-side read the Trade Desk's Order Flow card shows: tick-rule PROXY flow from the
-    # same OrderFlowEngine the analytics state and the option book use (no second classifier).
+    # same OrderFlowEngine the option book uses (no second classifier).
     try:
         from app.options.order_flow.engine import OrderFlowEngine
         from app.options.order_flow.live_payload import flow_block
-        payload["flow"] = flow_block(OrderFlowEngine().compute(data, ticker=t))
+        payload["flow"] = flow_block(OrderFlowEngine().compute(data, now=now, ticker=t))
     except Exception as e:  # flow is additive -- the book payload stands without it
         log.debug("microstructure flow failed for %s: %s", t, e)
         payload["flow"] = None
@@ -3538,8 +3539,8 @@ def api_order_flow_microstructure(ticker: str = Query(...),
 def api_order_flow_options_microstructure(contract: str = Query(...)):
     """Same canonical L2 book microstructure as /api/order-flow/microstructure, for one
     OPTION CONTRACT's live book. SERIALIZER, not a second producer: delegates to
-    app.options.order_flow.streaming.get_option_contract_book_microstructure, which delegates
-    to the SAME app.options.order_flow.engine.compute_book_microstructure the equity route reads — no
+    app.options.order_flow.live_payload.options_live_payload, which reads
+    the SAME app.options.order_flow.engine.compute_book_microstructure the equity route reads — no
     parallel book-imbalance computation for options. `contract` MUST be a chain response's
     own "symbol" field (OSI format, e.g. "SPY   260820C00767000"); this route does not
     construct or validate that format, it only serializes whatever content has been
@@ -3548,11 +3549,9 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     c = (contract or "").strip()
     if not c:
         return JSONResponse({"error": "contract is required"}, status_code=400)
-    from app.options.order_flow.streaming import (
-        get_option_contract_book_microstructure,
-        get_option_contract_streaming_diagnostics,
-    )
-    payload = get_option_contract_book_microstructure(c)
+    from app.options.order_flow.live_payload import options_live_payload
+    from app.options.order_flow.streaming import get_option_contract_streaming_diagnostics
+    payload = options_live_payload(ticker_storage_key(c), time.time())
     payload["contract"] = c
     from app.options.order_flow.history import put_call_side
     from app.options.order_flow.state import get_content_for_symbol

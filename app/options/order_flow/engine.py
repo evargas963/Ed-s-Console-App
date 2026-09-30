@@ -1,24 +1,17 @@
 """
 app/options/order_flow/engine.py — Order Flow Engine
 ========================================
-Computes order flow metrics from Schwab streaming/REST data using ONLY
-fields from the identified Schwab field list.
+The book microstructure and the tape flow of one symbol, from Schwab streaming fields.
 
-Input: dict `data` with optional:
-  - content.* (Level 2, tape, top of book)
-  - quote (volume, bids, asks)
-  - callExpDateMap / putExpDateMap (options flow)
-  - candles (OHLCV; 1m bars for execution-aligned context and RVOL fallback)
-  - screeners (volume context)
-  - fundamental (avg volume for rvol)
-
-Output: dict of order flow metrics for scoring and regime classification.
+Input: dict `data` with ``content`` (the streamed book and tape items), ``top`` (the live top
+of book, when live) and ``book_live``.
 """
 
 from __future__ import annotations
 
 from typing import Any, Optional
 
+import numpy as np
 
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
 from l1_trade_observation import (
@@ -26,21 +19,16 @@ from l1_trade_observation import (
     compute_cum_delta_proxy as _canonical_cum_delta,
     compute_tape_pressure as _canonical_tape_pressure,
     iter_signed_cum_points,
-    source_contract as l1_source_contract,
 )
 
 
 OF_TAPE_WINDOW_30S_SEC: float = 30.0
 OF_TAPE_WINDOW_2M_SEC: float = 120.0
 OF_TAPE_WINDOW_5M_SEC: float = 300.0
-OF_CUM_DELTA_NORM_DIVISOR: float = 10000.0
-OF_OPTIONS_DELTA_NORM_DIVISOR: float = 50000.0
-# Book-depth ladder for _compute_book_imbalance: top of book, shallow, deep.
+# Book-depth ladder: top of book, shallow, deep.
 OF_BOOK_DEPTH_TOP: int = 1
 OF_BOOK_DEPTH_SHALLOW: int = 3
 OF_BOOK_DEPTH_DEEP: int = 5
-
-import numpy as np
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -134,9 +122,7 @@ def _latest_book_snapshot(items: list) -> Optional[dict]:
 
 def _book_side_depth_total(levels: list[tuple[float, float]], depth: int) -> Optional[float]:
     """Σ TOTAL_VOLUME over the best `depth` levels (best-first). None when the side has no
-    levels. THE single depth-aggregation — `_compute_book_imbalance` and the microstructure
-    depth ladder both call this, so the imbalance and the published side totals are the SAME
-    computation, not two formulas that happen to agree."""
+    levels. The microstructure depth ladder's one depth aggregation."""
     if not levels:
         return None
     return sum(v for _, v in levels[:depth])
@@ -144,8 +130,7 @@ def _book_side_depth_total(levels: list[tuple[float, float]], depth: int) -> Opt
 
 def _book_imbalance_from_totals(bid_total: Optional[float], ask_total: Optional[float]) -> Optional[float]:
     """THE single book-imbalance formula: (bid - ask) / (bid + ask). None if a side total is
-    absent or the combined depth is non-positive. Shared by the engine score path and the
-    microstructure payload so there is exactly one imbalance producer."""
+    absent or the combined depth is non-positive."""
     if bid_total is None or ask_total is None:
         return None
     total = bid_total + ask_total
@@ -169,16 +154,16 @@ def _top(data: dict) -> dict:
     return t if isinstance(t, dict) else {}
 
 
-def _compute_top_book_pressure(data: dict) -> tuple[Optional[float], Optional[str]]:
+def _compute_top_book_pressure(data: dict) -> Optional[float]:
     """Top-of-book pressure: (bid_size - ask_size) / (bid_size + ask_size), streamed sizes."""
     t = _top(data)
     bid_sz, ask_sz = t.get("bid_size"), t.get("ask_size")
     if bid_sz is None or ask_sz is None:
-        return None, "unavailable"
+        return None
     total = bid_sz + ask_sz
     if total <= 0:
-        return None, "schwab_stream"
-    return (bid_sz - ask_sz) / total, "schwab_stream"
+        return None
+    return (bid_sz - ask_sz) / total
 
 
 def _resolve_bid_ask_prices(data: dict) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
@@ -197,45 +182,11 @@ def _resolve_quote_mark(data: dict) -> tuple[Optional[float], Optional[str]]:
     return None, None
 
 
-def _compute_spread(data: dict) -> dict[str, Any]:
-    """
-    Bid-ask spread with explicit unit discipline: ``spread_pts`` (ask-bid points)
-    and ``spread_frac`` (pts / MARK). Never mix units on a single field.
-    """
-    bid_p, ask_p, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data)
-    if bid_p is None or ask_p is None:
-        return {
-            "spread_pts": None,
-            "spread_frac": None,
-            "spread_pts_source": None,
-            "spread_frac_source": None,
-            "spread_bid_leaf": bid_leaf,
-            "spread_ask_leaf": ask_leaf,
-        }
-    spread_pts = round(ask_p - bid_p, 4)
-    mark_p, mark_leaf = _resolve_quote_mark(data)
-    spread_frac = None
-    spread_frac_source = None
-    if mark_p is not None:
-        spread_frac = round(spread_pts / mark_p, 6)
-        spread_frac_source = f"derived_bid_ask_fraction_schwab_mark_{mark_leaf}"
-    leaf_tag = bid_leaf or ask_leaf or "schwab_bid_ask"
-    return {
-        "spread_pts": spread_pts,
-        "spread_frac": spread_frac,
-        "spread_pts_source": f"derived_bid_ask_pts_{leaf_tag}",
-        "spread_frac_source": spread_frac_source,
-        "spread_bid_leaf": bid_leaf,
-        "spread_ask_leaf": ask_leaf,
-    }
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # CANONICAL BOOK MICROSTRUCTURE  (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1)
 # ─────────────────────────────────────────────────────────────────────────────
 # ONE canonical book path. `_extract_canonical_book` walks + validates + SORTS the live
-# book EXACTLY ONCE into a normalized state; every metric — and the engine's
-# book_imbalance_1/3/5 and the institutional-flow consumer — is derived from that single
+# book EXACTLY ONCE into a normalized state; every metric is derived from that single
 # result. Nothing re-walks or re-sums the raw book. `compute_book_microstructure` memoizes the
 # structural state per (ticker, BOOK_TIME), so `/api/order-flow/microstructure` and the engine
 # SERIALIZE the same computed state rather than recomputing it independently.
@@ -479,10 +430,10 @@ def _microstructure_structural(cb: dict) -> dict:
     }
 
 
-def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
+def compute_book_microstructure(data: dict, *, now_ts: float,
                                 ticker: Optional[str] = None) -> dict:
-    """Canonical L2 book microstructure for one symbol — the ONE producer the engine's
-    book_imbalance and the `/api/order-flow/microstructure` route both read. `data.content`
+    """Canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds) — the ONE
+    producer the engine and the `/api/order-flow/microstructure` route both read. `data.content`
     carries the live streaming book + top-of-book (app.options.order_flow.state.get_content_for_symbol);
     `data.exchange_quote_ts` (optional) is the plane's exchange quote clock; `data.book_live` is
     the live rule's answer for the book's service (absent: not live). The structural state
@@ -490,9 +441,7 @@ def compute_book_microstructure(data: dict, *, now_ts: Optional[float] = None,
     unchanged book SERIALIZES the cached state instead of re-walking raw data. Only the age
     fields depend on `now` and are always stamped fresh. Fail-closed: no book snapshot -> status
     'no_book' with null metrics (no fabricated values)."""
-    import time
-    now = time.time() if now_ts is None else now_ts
-
+    now = now_ts
     cb = _extract_canonical_book(data)
     book_time_ms = cb["book_time_ms"]
 
@@ -555,198 +504,6 @@ def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ABSORPTION / REPLENISHMENT
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-
-# RETIRED (mission TRUTH_V1): _compute_absorption (P1) was a whole-buffer volume/price-range density
-# mislabeled "absorption" — never level-based, no validity evidence. It was removed from the composite
-# and its output keys (absorption_score/replenishment_score/absorption_direction) were dropped at the
-# L1 boundary with zero executable consumers, so the function is deleted rather than kept as dead code.
-# The model/UI-facing absorption_score is the separate institutional_behavior producer (P2), the sole
-# remaining authority for that name (ONE FAUCET).
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# OPTIONS FLOW
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _iter_option_exp_levels(exp_map: dict) -> list[dict]:
-    """Flatten callExpDateMap/putExpDateMap to list of strike-level data."""
-    out = []
-    if not isinstance(exp_map, dict):
-        return out
-    for exp_key, strikes in exp_map.items():
-        if not isinstance(strikes, dict):
-            continue
-        for strike_key, opts in strikes.items():
-            # Schwab maps each strike to a LIST of contracts (adjusted / non-standard deliverables
-            # share a strike). Every contract counts -- this used to keep only the first.
-            for opt in (opts if isinstance(opts, list) else [opts]):
-              if not isinstance(opt, dict):
-                  continue
-              out.append({
-                  "exp": exp_key,
-                  "strike": schwab_number(opt.get("strikePrice")),
-                  "totalVolume": schwab_count(opt.get("totalVolume")),
-                  "openInterest": schwab_count(opt.get("openInterest")),
-                  "lastSize": schwab_count(opt.get("lastSize")),
-                  "bidSize": schwab_count(opt.get("bidSize")),
-                  "askSize": schwab_count(opt.get("askSize")),
-                  "bid": schwab_number(opt.get("bid")),
-                  "ask": schwab_number(opt.get("ask")),
-                  "mark": schwab_number(opt.get("mark")),
-                  "delta": schwab_number(opt.get("delta")),
-                  "gamma": schwab_number(opt.get("gamma")),
-                  "vega": schwab_number(opt.get("vega")),
-                  "theta": schwab_number(opt.get("theta")),
-                  "volatility": schwab_number(opt.get("volatility")),
-                  "daysToExpiration": _schwab_int(opt.get("daysToExpiration")),
-                  "tradeTimeInLong": _schwab_int(opt.get("tradeTimeInLong")),
-              })
-    return out
-
-
-def _option_contract_volume(c: dict, *, tick_mode: bool) -> tuple[Optional[float], Optional[str]]:
-    """Schwab volume leaf: totalVolume default; lastSize only when tick_mode is explicit."""
-    if tick_mode:
-        v = schwab_count(c.get("lastSize"))
-        if v is not None:
-            return v, "schwab_chain_lastSize_tick_mode"
-        return None, None
-    v = schwab_count(c.get("totalVolume"))
-    if v is not None:
-        return v, "schwab_chain_totalVolume"
-    return None, None
-
-
-def _compute_options_flow(
-    data: dict,
-) -> tuple[Optional[float], Optional[str], Optional[float], Optional[float], Optional[str]]:
-    """
-    Options flow score, direction, call/put ratio, delta-weighted flow, volume_source.
-    Uses: callExpDateMap.*, putExpDateMap.* (totalVolume; lastSize only in tick_mode).
-    """
-    tick_mode = bool(data.get("options_flow_tick_mode"))
-    calls = _iter_option_exp_levels(data.get("callExpDateMap") or {})
-    puts = _iter_option_exp_levels(data.get("putExpDateMap") or {})
-    if not calls and not puts:
-        return None, None, None, None, None
-    call_vols: list[float] = []
-    put_vols: list[float] = []
-    volume_sources: set[str] = set()
-    # Every contract must report its volume: a contract that did not is UNKNOWN volume, and a
-    # sum over the ones that did is a flow over part of the chain (2026-09-24: no fallbacks).
-    for group, sink in ((calls, call_vols), (puts, put_vols)):
-        for c in group:
-            v, src = _option_contract_volume(c, tick_mode=tick_mode)
-            if v is None:
-                return None, None, None, None, None
-            sink.append(v)
-            if src:
-                volume_sources.add(src)
-    call_vol = sum(call_vols)
-    put_vol = sum(put_vols)
-    total_opt_vol = call_vol + put_vol
-    if total_opt_vol <= 0:
-        return None, None, None, None, None
-    vol_source = next(iter(volume_sources)) if len(volume_sources) == 1 else (
-        "mixed_schwab_chain_volume" if volume_sources else None
-    )
-    # no put volume -> the ratio is undefined (it used to divide by put_vol + 1e-9 and report
-    # ~1e12)
-    call_put_ratio = call_vol / put_vol if put_vol > 0 else None
-    # delta-weighted flow needs the delta of EVERY contract that traded; one missing delta on a
-    # traded contract makes it unknown (it used to be skipped)
-    delta_weighted: Optional[float] = 0.0
-    for sign, group in ((1.0, calls), (-1.0, puts)):
-        for c in group:
-            d = c.get("delta")
-            v, _ = _option_contract_volume(c, tick_mode=tick_mode)
-            if v is not None and v > 0:
-                if d is None:
-                    delta_weighted = None
-                    break
-                delta_weighted += sign * d * v
-        if delta_weighted is None:
-            break
-    options_flow_score = (call_vol - put_vol) / total_opt_vol
-    direction = "call" if options_flow_score > 0 else ("put" if options_flow_score < 0 else "neutral")
-    return (
-        options_flow_score,
-        direction,
-        call_put_ratio,
-        delta_weighted,
-        vol_source,
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# VOLUME CONTEXT (RVOL)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _compute_rvol(data: dict) -> tuple[Optional[float], Optional[str]]:
-    """
-    Relative volume = today's streamed TOTAL_VOLUME / Schwab fundamental avg10DaysVolume.
-
-    One source each (2026-09-24: no fallbacks). It used to fall through four current-volume
-    sources (quote, extended, chain underlying, screeners) and five average sources
-    (avg10DaysVolume, avg1YearVolume, four instrument spellings, then an average of recent
-    CANDLES -- an invented baseline). Returns (rvol, unavailable_reason).
-    """
-    current = schwab_count(data.get("stream_total_volume"))
-    if current is None:
-        return None, "current_volume_unavailable"
-    avg = schwab_count((data.get("fundamental") or {}).get("avg10DaysVolume"))
-    if avg is None or avg <= 0:
-        return None, "avg_volume_unavailable"
-    return current / avg, None
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# INSTITUTIONAL FLOW PROXY
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _compute_institutional_flow_proxy(data: dict, *, book_imbalance_5: Optional[float]) -> Optional[float]:
-    """
-    Proxy for institutional flow: large trades + options activity + book imbalance.
-    Uses: tape (large LAST_SIZE), options flow, book imbalance.
-    ONE CANONICAL PATH: the deep book imbalance is READ from the single canonical
-    microstructure result (passed by the engine as `book_imbalance_5`), not re-walked here.
-    ALL FOUR components or None (2026-09-24): it averaged whichever happened to exist -- one
-    component standing in for four -- and recomputed the book imbalance when not given it.
-    """
-    cum = _compute_cum_delta_proxy(data)
-    opt_score, _, _, delta_w, _ = _compute_options_flow(data)
-    if cum is None or book_imbalance_5 is None or opt_score is None or delta_w is None:
-        return None
-    components = [
-        max(-1, min(1, cum / OF_CUM_DELTA_NORM_DIVISOR)),
-        book_imbalance_5,
-        opt_score,
-        max(-1, min(1, delta_w / OF_OPTIONS_DELTA_NORM_DIVISOR)),
-    ]
-    return sum(components) / len(components)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# NORMALIZATION & SCORING
-# ─────────────────────────────────────────────────────────────────────────────
-
-# (_normalize / _weighted_mean_present deleted 2026-09-24: no production caller, and the
-# latter RENORMALISED the weights of whichever legs were present -- re-weighting by design.)
-
-
-# RETIRED (mission TRUTH_V1, RC-473/RC-474): the composite producers _compute_order_flow_score,
-# _direction and _readiness were DELETED — no fitted weights, no OOS validation; they only ever fed
-# the retired order_flow_score/direction/regime/readiness family and the double-counting verdict.
-# No executable path reconstructs them (locked by tests/test_order_flow_engine_chunk2_or_fallthrough
-# and test_stack_wire_5_v1). The canonical primitives (book_imbalance_*, spread, microprice,
-# tape_pressure_*, cum_delta_proxy, options_flow_score, book_microstructure) remain individually.
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # MAIN ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -756,40 +513,14 @@ class OrderFlowEngine:
     identified field paths.
     """
 
-    def compute(self, data: dict, *, ticker: Optional[str] = None) -> dict:
-        """
-        Compute all order flow metrics from the input data dict.
-        Returns a dict with all metrics; missing data yields None where applicable.
-        """
-        if not isinstance(data, dict):
-            return self._empty_result()
-
-        # ONE freshness clock per compute() call: every top-of-book resolution below (book
-        # microstructure, top_book_pressure, spread) shares this SAME `now`, so the Gap-1
-        # per-field freshness boundary judges "how stale" identically across all three rather
-        # than each independently reading a slightly different wall-clock instant.
-        import time as _time
-        now = _time.time()
-
-        # ONE CANONICAL BOOK PATH: extract/normalize the book ONCE via the single producer, and
-        # READ book_imbalance_1/3/5 from that result. Nothing here re-walks or re-sums the raw
-        # book. `ticker` lets the route serialize this same computed state (carry, not recompute).
+    def compute(self, data: dict, *, now: float, ticker: Optional[str] = None) -> dict:
+        """The book microstructure and the tape flow of one symbol at `now` (epoch seconds);
+        missing data yields None."""
+        # the book, extracted once by its one producer; `ticker` lets the route serialize this
+        # same computed state (carry, not recompute)
         book_micro = compute_book_microstructure(data, now_ts=now, ticker=ticker)
-        book_imbalance_1 = book_micro["depth"]["1"]["imbalance"]
-        book_imbalance_3 = book_micro["depth"]["3"]["imbalance"]
-        book_imbalance_5 = book_micro["depth"]["5"]["imbalance"]
-
-        # Top of book (streamed BID_SIZE/ASK_SIZE). This is L1 SIZE pressure —
-        # a DIFFERENT semantic than an L2 depth imbalance — so it is kept ONLY under its own
-        # field `top_book_pressure` and is NEVER written into book_imbalance_1/3/5. When the
-        # streaming book is absent those stay None: fail-closed, so the book dimension reads
-        # ABSENT rather than a top-of-book proxy mislabeled as depth-5. (Removed the former REST
-        # fallback `book_imbalance_5 = top_book_pressure`, which conflated the two under one name.)
-        top_book_pressure, top_book_pressure_source = _compute_top_book_pressure(data)
-
-        # (RC-473: the retired composite's book/tape leg selection was removed with the score.)
-        spread_d = _compute_spread(data)
-        spread_pts = spread_d.get("spread_pts")
+        # top-of-book SIZE pressure (streamed BID_SIZE / ASK_SIZE), not a depth imbalance
+        top_book_pressure = _compute_top_book_pressure(data)
 
         # Tape metrics
         tape_pressure_30s = _compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC, now)
@@ -800,144 +531,14 @@ class OrderFlowEngine:
         cum_delta_proxy = _compute_cum_delta_proxy(data)
         cum_delta_slope = _compute_cum_delta_slope(data, now)
 
-        # TRUTH_V1: the legacy _compute_absorption (P1) was RETIRED — it computed a volume/price-range
-        # density (never level-based absorption), was removed from the composite, and its output keys
-        # were dropped at the L1 boundary (zero executable consumers). The model/UI-facing
-        # absorption_score is the separate institutional_behavior producer, not this one.
-
-        # Options flow
-        (
-            options_flow_score,
-            options_flow_direction,
-            call_put_flow_ratio,
-            delta_weighted_options_flow,
-            options_flow_volume_source,
-        ) = _compute_options_flow(data)
-
-        # Volume context
-        rvol, rvol_unavailable_reason = _compute_rvol(data)
-
-        # Institutional proxy — reads the canonical deep book imbalance, does not re-walk.
-        institutional_flow_proxy_score = _compute_institutional_flow_proxy(
-            data, book_imbalance_5=book_imbalance_5)
-
-        # absorption_score and rvol are non-directional MAGNITUDES (a density; relative
-        # volume): absorption is emitted below for advisory/PROXY display; rvol is emitted
-        # as a primitive with an explicit unavailable reason (its readiness consumer is
-        # retired with the composite below).
-        # RETIRED (mission TRUTH_V1, RC-473): order_flow_score / _direction / _regime / _readiness
-        # and the order_flow_verdict headline are RETIRED. The composite had no fitted weights or
-        # OOS validation and was withheld from Decide (of_vote=0); compute_order_flow_verdict
-        # additionally DOUBLE-COUNTED book/cum-delta/options (already inside the score) to emit the
-        # false operator claim BUYING/SELLING PRESSURE. No defensible measurable semantic exists, so
-        # the composite and its verdict are not produced. The canonical primitives (book_imbalance_*,
-        # spread, microprice, tape_pressure_*, cum_delta_proxy, options_flow_score, book_microstructure)
-        # remain individually. These fields are emitted as None so no downstream consumer sees a
-        # value; the score-family fields are dropped from the payload where possible below.
-        order_flow_score = None
-        order_flow_direction = None
-        order_flow_regime = None
-        order_flow_readiness = None
-        _order_flow_readiness_rvol = None
-        of_verdict = None
-        of_verdict_color = None
-        of_arrow = None
-        of_agreement = "unavailable"
-        of_score_arrow = of_book_arrow = of_delta_arrow = of_opt_arrow = None
-        of_score_label = of_book_label = of_opt_label = None
-
         return {
-            "book_imbalance_1": book_imbalance_1,
-            "book_imbalance_3": book_imbalance_3,
-            "book_imbalance_5": book_imbalance_5,
             # Carry the single canonical microstructure state so the route serializes THIS
             # computed result (same book) rather than recomputing from raw data.
             "book_microstructure": book_micro,
             "top_book_pressure": top_book_pressure,
-            "top_book_pressure_source": top_book_pressure_source,
-            "spread": spread_pts,
-            "spread_pts": spread_pts,
-            "spread_frac": spread_d.get("spread_frac"),
-            "spread_pts_source": spread_d.get("spread_pts_source"),
-            "spread_frac_source": spread_d.get("spread_frac_source"),
-            "spread_bid_leaf": spread_d.get("spread_bid_leaf"),
-            "spread_ask_leaf": spread_d.get("spread_ask_leaf"),
             "tape_pressure_30s": tape_pressure_30s,
             "tape_pressure_2m": tape_pressure_2m,
             "tape_pressure_5m": tape_pressure_5m,
             "cum_delta_proxy": cum_delta_proxy,
             "cum_delta_slope": cum_delta_slope,
-            "options_flow_score": options_flow_score,
-            "options_flow_direction": options_flow_direction,
-            "call_put_flow_ratio": call_put_flow_ratio,
-            "delta_weighted_options_flow": delta_weighted_options_flow,
-            "options_flow_volume_source": options_flow_volume_source,
-            "rvol": rvol,
-            "rvol_unavailable_reason": rvol_unavailable_reason,
-            "institutional_flow_proxy_score": institutional_flow_proxy_score,
-            "order_flow_score": order_flow_score,
-            "order_flow_direction": order_flow_direction,
-            "order_flow_regime": order_flow_regime,
-            "order_flow_readiness": order_flow_readiness,
-            "order_flow_readiness_rvol": _order_flow_readiness_rvol,
-            "order_flow_verdict": of_verdict,
-            "order_flow_verdict_color": of_verdict_color,
-            "order_flow_arrow": of_arrow,
-            "order_flow_agreement": of_agreement,
-            "order_flow_score_arrow": of_score_arrow,
-            "order_flow_score_label": of_score_label,
-            "order_flow_book_arrow": of_book_arrow,
-            "order_flow_book_label": of_book_label,
-            "order_flow_delta_arrow": of_delta_arrow,
-            "order_flow_opt_arrow": of_opt_arrow,
-            "order_flow_opt_label": of_opt_label,
-            **l1_source_contract(),
-        }
-
-    def _empty_result(self) -> dict:
-        """Return template with all keys set to None or default."""
-        return {
-            "book_imbalance_1": None,
-            "book_imbalance_3": None,
-            "book_imbalance_5": None,
-            "book_microstructure": None,
-            "top_book_pressure": None,
-            "top_book_pressure_source": None,
-            "spread": None,
-            "spread_pts": None,
-            "spread_frac": None,
-            "spread_pts_source": None,
-            "spread_frac_source": None,
-            "spread_bid_leaf": None,
-            "spread_ask_leaf": None,
-            "tape_pressure_30s": None,
-            "tape_pressure_2m": None,
-            "tape_pressure_5m": None,
-            "cum_delta_proxy": None,
-            "cum_delta_slope": None,
-            "options_flow_score": None,
-            "options_flow_direction": None,
-            "call_put_flow_ratio": None,
-            "delta_weighted_options_flow": None,
-            "options_flow_volume_source": None,
-            "rvol": None,
-            "rvol_unavailable_reason": None,
-            "institutional_flow_proxy_score": None,
-            "order_flow_score": None,
-            "order_flow_direction": None,
-            "order_flow_regime": None,
-            "order_flow_readiness": None,
-            "order_flow_readiness_rvol": None,
-            "order_flow_verdict": None,
-            "order_flow_verdict_color": None,
-            "order_flow_arrow": None,
-            "order_flow_agreement": "unavailable",
-            "order_flow_score_arrow": None,
-            "order_flow_score_label": None,
-            "order_flow_book_arrow": None,
-            "order_flow_book_label": None,
-            "order_flow_delta_arrow": None,
-            "order_flow_opt_arrow": None,
-            "order_flow_opt_label": None,
-            **l1_source_contract(),
         }

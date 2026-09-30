@@ -41,20 +41,6 @@ def test_the_regular_session_percent_is_its_own_field_absent_until_schwab_sends_
 
 
 
-def test_rest_cum_delta_is_gone():
-    import server
-    assert not hasattr(server, "_update_rest_cum_delta")
-    assert not hasattr(server, "_rest_cum_delta")
-
-
-
-
-def test_institutional_proxy_needs_all_four_components():
-    from app.options.order_flow.engine import _compute_institutional_flow_proxy
-    # no tape, no options chain: two of four components absent -> no score
-    assert _compute_institutional_flow_proxy({}, book_imbalance_5=0.4) is None
-
-
 def test_mark_is_the_streamed_mark_only():
     from app.options.order_flow.engine import _resolve_quote_mark
     assert _resolve_quote_mark({"top": {"mark": 10.05, "bid_size": 5}}) == (10.05, "streaming.MARK")

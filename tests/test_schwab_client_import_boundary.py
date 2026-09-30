@@ -85,7 +85,7 @@ def test_build_config_fail_closed_without_secrets(monkeypatch: pytest.MonkeyPatc
     from config import schwab_live_blocked_for
     from schwab_client import build_client_from_token
 
-    cfg = build_config(str(tmp_path))            # the app shell builds ...
+    cfg = build_config()                         # the app shell builds ...
     assert cfg.api_key == "" and cfg.app_secret == ""
 
     assert schwab_live_blocked_for() is True     # ... the capability does not

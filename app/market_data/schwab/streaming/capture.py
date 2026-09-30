@@ -491,7 +491,7 @@ async def run() -> int:
     from config import build_config, load_dotenv_file
     from schwab_client import build_client_from_token
     load_dotenv_file()
-    cfg = build_config(str(ROOT))
+    cfg = build_config()
 
     def make_client():
         return build_client_from_token(api_key=cfg.api_key, app_secret=cfg.app_secret,

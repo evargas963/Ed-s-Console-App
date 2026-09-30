@@ -52,13 +52,6 @@ def et_minute_total_from_ts_utc(ts_utc: float) -> int:
 # open, and SPY/QQQ-class ETFs trade to 16:15 ET. This is NEITHER classic cash RTH [570,960)
 # NOR vendor extended hours, which is exactly why it needs its own named authority: three
 # different windows governed one table and nothing encoded the law.
-# MEASURED 2026-08-01 before the lock: 1,224,370 of 2,537,437 rows (48.25%) sat outside it —
-# 820,531 from the ungated Schwab backfill, 315,660 from the accumulator's wider 540–990
-# buffer, and the completeness checker measured a THIRD grid.
-# RESTORED 2026-08-03: these four symbols were destroyed by the RC-210 worktree wipe, leaving
-# `EdDB.upsert_1m_bars` ungated in production and `tools/rth_completeness_check_v1` unable to
-# import. Rebuilt against the surviving negative-control spec in
-# `tests/test_collect_window_law_v1.py`, which is the authority for every boundary below.
 COLLECT_WINDOW_START_MINS = 555      # 09:15 ET bar-END exclusive floor (08:15 CT)
 COLLECT_WINDOW_END_MINS = 975        # 16:15 ET bar-END inclusive ceiling (15:15 CT)
 

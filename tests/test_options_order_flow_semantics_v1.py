@@ -20,6 +20,7 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+from app.options.order_flow.live_payload import options_live_payload
 from stream_spine import book_msg, options_quote_msg
 
 _REAL_STREAM_SAMPLES = Path(__file__).parent / "fixtures" / "real_options_stream_history_samples.json"
@@ -131,21 +132,21 @@ def test_only_an_options_book_advances_the_contracts_freshness_clock(tmp_path, m
     assert ofs._option_contract_last_update_ts[_SPY_CONTRACT] == ts
 
 
-def test_get_option_contract_book_microstructure_reuses_the_one_producer(tmp_path, monkeypatch):
+def test_the_option_book_payload_reuses_the_one_producer(tmp_path, monkeypatch):
     """The decisive proof: this is compute_book_microstructure itself (the SAME function
     the equity /api/order-flow/microstructure route calls), not a parallel computation."""
     _reset(tmp_path, monkeypatch)
     _push_option_book(_SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=time.time())
 
-    result = ofs.get_option_contract_book_microstructure(_SPY_CONTRACT)
+    result = options_live_payload(_SPY_CONTRACT, time.time())
     assert result["depth"]["1"]["imbalance"] is not None
 
 
-def test_get_option_contract_book_microstructure_fails_closed_with_no_book():
+def test_the_option_book_payload_fails_closed_with_no_book():
     """No replayed content yet -> the producer's own fail-closed contract: status
     'no_book', never a fabricated imbalance."""
     ofls.clear_all_live_state()
-    result = ofs.get_option_contract_book_microstructure("QQQ   260820C00450000")
+    result = options_live_payload("QQQ   260820C00450000", time.time())
     assert result.get("status") == "no_book" or result["depth"]["1"]["imbalance"] is None
 
 

@@ -678,19 +678,6 @@ def set_active_option_contracts(contract_symbols: "list[str]") -> bool:
         return True
 
 
-def get_option_contract_book_microstructure(contract_symbol: str) -> dict:
-    """The order-flow SEMANTIC PRODUCT for one option contract: book + PROXY flow.
-
-    Assembled by ``app.options.order_flow.live_payload.options_live_payload``, which calls
-    ``OrderFlowEngine.compute`` once (that function already produces
-    ``book_microstructure``). No second book walk.
-    """
-    from app.options.order_flow.live_payload import options_live_payload
-
-    t = ticker_storage_key(contract_symbol)
-    return options_live_payload(t)
-
-
 #: The two Schwab option services whose durable open coverage epochs constitute
 #: PRODUCER-side subscription identity (as opposed to the server's desired state).
 OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
@@ -747,7 +734,7 @@ def get_option_contract_streaming_diagnostics(
 ) -> dict[str, Any]:
     """FRESHNESS/HEALTH for the option-contract feed. Answers
     "is the daemon actually subscribed and receiving data for this contract", distinct
-    from get_option_contract_book_microstructure's book-CONTENT-level ages/status (which
+    from options_live_payload's book-CONTENT-level ages/status (which
     answer "how stale is the replayed book itself"). Both distinctions matter: a feed can
     be streaming_healthy=True with status='no_book' (subscribed, market simply has not
     sent a book frame yet) as legitimately as it can be streaming_healthy=False with a

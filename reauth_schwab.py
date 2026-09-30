@@ -63,7 +63,7 @@ def reauth():
     redirect_url = _redirect_url_arg()
     manual = "--manual" in sys.argv or "-m" in sys.argv
     load_dotenv_file()
-    cfg = build_config(str(APP_DIR))
+    cfg = build_config()
     token_path = os.path.abspath(cfg.token_path)
 
     print("=" * 60)

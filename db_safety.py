@@ -1,21 +1,7 @@
 """
-Production SQLite safeguards: authorizer-based DROP denial, static SQL validation,
-stable Online Backups, single-writer preflight, and row-count invariants.
-
-**Canonical DB connections** (``db_authority.is_canonical_db_path``) install
-``sqlite3.Connection.set_authorizer`` to deny DROP/DETACH unless
-``ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED=1``. Disable the hook with ``ED_CONSOLE_SQL_EXECUTE_GUARD=0``.
-
-``validate_sql_for_production_guard`` blocks additional patterns (DELETE without WHERE,
-``VACUUM INTO``, etc.) for audited scripts — not wired on every ORM-style execute.
-
-**Backups**
-``backup_permanent_database`` is the sole producer. It accepts only either canonical
-permanent DB, uses SQLite's Online Backup API into a staging file, independently validates
-``quick_check`` and exact schema identity, then atomically promotes one stable DB and
-manifest per source. The previous validated backup is untouched until validation passes.
-
-**Row counts**: ``assert_critical_row_counts_no_drop`` after migration / backfill bar writes.
+Canonical DB connections (``db_authority.is_canonical_db_path``) install an SQLite authorizer
+that denies DROP / DETACH unless ``ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED=1``. Disable the hook
+with ``ED_CONSOLE_SQL_EXECUTE_GUARD=0``.
 """
 from __future__ import annotations
 
@@ -31,8 +17,6 @@ DANGEROUS_SQL_UNRESTRICTED_ENV = "ED_CONSOLE_DANGEROUS_SQL_UNRESTRICTED"
 SQL_EXECUTE_GUARD_ENV = "ED_CONSOLE_SQL_EXECUTE_GUARD"
 
 
-
-
 def dangerous_sql_unrestricted() -> bool:
     return os.environ.get(DANGEROUS_SQL_UNRESTRICTED_ENV, "").strip().lower() in (
         "1",
@@ -46,39 +30,8 @@ def sql_execute_guard_enabled() -> bool:
     return v not in ("0", "false", "no", "off")
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def install_production_sql_authorizer(conn: sqlite3.Connection) -> None:
-    """
-    SQLite authorizer hook: deny structural DROP / DETACH on guarded connections.
-
-    Note: ``DELETE`` / ``UPDATE`` without ``WHERE`` cannot be distinguished reliably here;
-    use ``validate_sql_for_production_guard`` for audited scripts or preflight review.
-    """
+    """SQLite authorizer hook: deny structural DROP / DETACH on guarded connections."""
 
     def _auth(action: int, arg1: str | None, arg2: str | None, db_name: str | None, inner: str | None) -> int:
         if dangerous_sql_unrestricted():

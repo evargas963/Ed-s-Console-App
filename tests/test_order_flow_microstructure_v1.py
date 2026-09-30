@@ -346,17 +346,14 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
 
 
 def test_engine_and_route_read_the_same_canonical_state():
-    """OrderFlowEngine.compute carries the SAME book_microstructure the route serializes, and its
-    book_imbalance_1/3/5 ARE that state's depth imbalances — one faucet, not two producers."""
+    """OrderFlowEngine.compute carries the SAME book_microstructure the route serializes — one
+    faucet, not two producers."""
     from app.options.order_flow.engine import OrderFlowEngine
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
     data = _data()
-    out = OrderFlowEngine().compute(data, ticker="SAME")
-    route = ofe.compute_book_microstructure(data, ticker="SAME")
+    out = OrderFlowEngine().compute(data, now=1787233772.0, ticker="SAME")
+    route = ofe.compute_book_microstructure(data, now_ts=1787233772.0, ticker="SAME")
     assert out["book_microstructure"]["depth"] == route["depth"]
-    assert out["book_imbalance_1"] == route["depth"]["1"]["imbalance"]
-    assert out["book_imbalance_3"] == route["depth"]["3"]["imbalance"]
-    assert out["book_imbalance_5"] == route["depth"]["5"]["imbalance"]
     ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
 
 
@@ -374,18 +371,14 @@ def test_top_prices_and_sizes_are_carried_exactly():
     bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices(data)
     assert (bid, ask) == (0.58, 0.59)
     assert (bid_leaf, ask_leaf) == ("streaming.BID_PRICE", "streaming.ASK_PRICE")
-    pressure, tier = ofe._compute_top_book_pressure(data)
-    assert tier == "schwab_stream"
-    assert pressure == (11 - 23) / (11 + 23)
+    assert ofe._compute_top_book_pressure(data) == (11 - 23) / (11 + 23)
     cb = ofe._extract_canonical_book(data)
     assert (cb["bid_size"], cb["ask_size"]) == (11, 23)
 
 
 def test_zero_size_is_a_real_value_not_a_fallback_trigger():
     data = {"content": [_book_snapshot()], "top": {"bid": 0.10, "ask": 0.12, "bid_size": 0, "ask_size": 5}}
-    pressure, tier = ofe._compute_top_book_pressure(data)
-    assert tier == "schwab_stream", "a real BID_SIZE=0 must not be treated as missing"
-    assert pressure == (0 - 5) / (0 + 5)
+    assert ofe._compute_top_book_pressure(data) == (0 - 5) / (0 + 5), "a real BID_SIZE=0 is not missing"
     assert ofe._extract_canonical_book(data)["bid_size"] == 0
     assert ofe.compute_book_microstructure(data, now_ts=1787233772.0)["top_of_book"]["bid_size"] == 0
 
@@ -393,7 +386,7 @@ def test_zero_size_is_a_real_value_not_a_fallback_trigger():
 def test_no_top_resolves_to_none():
     data = {"content": [{"LAST_PRICE": 0.55, "LAST_SIZE": 3}], "top": None}  # tape print only
     assert ofe._resolve_bid_ask_prices(data) == (None, None, None, None)
-    assert ofe._compute_top_book_pressure(data) == (None, "unavailable")
+    assert ofe._compute_top_book_pressure(data) is None
 
 
 def test_push_option_top_merges_real_partial_ticks_per_field():
@@ -491,9 +484,9 @@ def test_an_option_contracts_top_is_read_only_while_the_daemon_holds_it():
     try:
         lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}}, time.time())
         assert lmp.feed_live_for(sym, "LEVELONE_OPTIONS")
-        assert options_live_payload(sym)["flow"]["top_book_pressure"] is not None
+        assert options_live_payload(sym, time.time())["flow"]["top_book_pressure"] is not None
         lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": []}}, time.time())
-        assert options_live_payload(sym)["flow"]["top_book_pressure"] is None
+        assert options_live_payload(sym, time.time())["flow"]["top_book_pressure"] is None
     finally:
         state.clear_all_live_state()
 
