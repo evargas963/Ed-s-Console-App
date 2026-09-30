@@ -21,8 +21,10 @@ const LEVELS = {
   ],
   by_distance: ['VWAP', 'POC', 'PDH'],
   vwap_series: [[1757000000, 100.0, 100.5, 99.5, 101.0, 99.0]],
-  families_absent: [{ family: 'gamma', reason: 'served by /api/terrain' }],
-  degraded: [],
+  // the served shape: each absent or degraded family with its reason
+  families_absent: [{ family: 'overnight', reason: 'the overnight session is not stored' },
+    { family: 'PDC', reason: 'CLOSE_PRICE is not streaming live' }],
+  degraded: [{ family: 'prior_day', reason: 'prior session holds only 180 RTH bars' }],
 };
 
 async function intercept(page) {
@@ -57,7 +59,11 @@ test.describe('D — Gamma Levels view', () => {
     // no proximity marking (operator 2026-09-29); absence disclosed honestly
     await expect(lv.locator('.lv-row.near-spot')).toHaveCount(0);
     await expect(lv.locator('.lv-foot')).toContainText('VWAP curve');
-    await expect(lv.locator('.lv-foot .lv-absent')).toContainText('gamma');
+    // each absent and degraded family is printed with its served reason (a degraded entry printed "[object Object]")
+    await expect(lv.locator('.lv-why').nth(0)).toContainText('overnight: the overnight session is not stored');
+    await expect(lv.locator('.lv-why').nth(0)).toContainText('PDC: CLOSE_PRICE is not streaming live');
+    await expect(lv.locator('.lv-why').nth(1)).toContainText('prior_day: prior session holds only 180 RTH bars');
+    await expect(lv).not.toContainText('[object Object]');
     await page.setViewportSize({ width: 1672, height: 941 });
     await page.screenshot({ path: 'test-results/gamma-levels-1672x941.png', fullPage: false });
   });

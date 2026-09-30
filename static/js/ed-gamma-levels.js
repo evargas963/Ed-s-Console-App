@@ -39,11 +39,16 @@
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() { _loader.trigger(ticker()); }
 
+  // each served {family, reason}, as "family: reason" lines
+  function reasons(list) {
+    return (list || []).map(function (f) { return '<div>' + esc(f.family) + ': ' + esc(f.reason) + '</div>'; }).join('');
+  }
+
   function render(host, d) {
     var levels = (d && d.levels) || [];
     if (!levels.length) {
       host.innerHTML = '<div class="placeholder"><div class="big">No canonical levels</div>' +
-        '<div class="sm">' + esc((d && (d.degraded || []).join(', ')) || 'the levels snapshot is empty for this symbol') + '</div></div>';
+        '<div class="sm">' + (reasons(d && d.families_absent) || 'the levels snapshot is empty for this symbol') + '</div></div>';
       return;
     }
     // served in ladder order (price, highest first)
@@ -71,10 +76,10 @@
     var vwapN = (d.vwap_series || []).length;
     var foot = '<div class="lv-foot">';
     foot += '<span>VWAP curve: ' + (vwapN ? (vwapN + ' pts carried (±1σ/±2σ)') : 'not available') + '</span>';
-    var absent = (d.families_absent || []).map(function (f) { return (f && f.family) || f; });
-    if (absent.length) foot += '<span class="lv-absent">absent: ' + esc(absent.join(', ')) + '</span>';
-    if ((d.degraded || []).length) foot += '<span class="lv-absent">degraded: ' + esc((d.degraded || []).join(', ')) + '</span>';
     foot += '<span class="lv-provsrc">/api/levels · schema v' + esc(d.schema_version) + '</span></div>';
+    // what is absent or degraded, each with its served reason
+    if ((d.families_absent || []).length) foot += '<div class="lv-absent lv-why">Absent' + reasons(d.families_absent) + '</div>';
+    if ((d.degraded || []).length) foot += '<div class="lv-absent lv-why">Degraded' + reasons(d.degraded) + '</div>';
     host.innerHTML = head + body + foot;
     // A canonical level PRICE (VWAP / value / liquidity / structural) is NOT necessarily a listed
     // option strike, so a level click must never write selStrike (that identity belongs to a real

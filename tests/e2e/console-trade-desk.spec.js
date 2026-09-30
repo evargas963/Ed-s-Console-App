@@ -7,7 +7,7 @@
  */
 const { test, expect } = require('@playwright/test');
 const path = require('path');
-const { mockPriceSocket } = require('./fixtures/price_socket');
+const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
 const EVENTS = {
@@ -22,12 +22,14 @@ const SPOT = 771.3;
 const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA',
   posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3, pcr_all: 1.1,
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
-const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [],
+const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [], snapshot_age_sec: 45,
   levels: [
     { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', },
     { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', },
   ],
-  by_distance: ['max_pain', 'PDH'], families_absent: [], degraded: [],
+  by_distance: ['max_pain', 'PDH'],
+  families_absent: [{ family: 'overnight', reason: 'the overnight session is not stored' }],
+  degraded: [{ family: 'prior_day', reason: 'prior session holds only 180 RTH bars' }],
   volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
     bins: [[769.99, 1200, false], [770.0, 5000, true], [770.01, 3000, true]], poc: 770.0, vah: 770.01, val: 770.0 } };
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
@@ -37,10 +39,15 @@ const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: 
   depth_pressure: { bid: [{ price: 771.29, volume: 300, cum: 300 }, { price: 771.28, volume: 900, cum: 1200 }], ask: [{ price: 771.31, volume: 200, cum: 200 }] },
   ages: { book_age_sec: 1, book_stale: false }, wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' } };
 // the pivot zone below spot was named "support" by type-guessing on the page: each zone's label and
-// side are served (liquidity_models.ZONE_DISPLAY)
-const LIQ = { ticker: 'SPY', zones: [{ zone_low: 772, zone_high: 773, zone_type: 'resistance_liquidity', zone_label: 'Resistance', zone_side: 'resistance', confluence_score: 3 },
-  { zone_low: 768, zone_high: 769, zone_type: 'pivot_value', zone_label: 'Pivot / value', zone_side: 'value', confluence_score: 2 }],
-  spot_location: { inside: null, above: 0, below: 1 }, summary: null };
+// side are served (liquidity_models.ZONE_DISPLAY), with the value context, the time the zones are
+// as of and each input they lacked (server.get_liquidity_snapshot)
+const LIQ = { ticker: 'SPY', zones: [{ zone_low: 772, zone_high: 773, zone_type: 'resistance_liquidity', zone_label: 'Resistance', zone_side: 'resistance', confluence_score: 3,
+    source_levels: [{ label: 'TODAY_VAH', value: 772.22 }] },
+  { zone_low: 768, zone_high: 769, zone_type: 'pivot_value', zone_label: 'Pivot / value', zone_side: 'value', confluence_score: 2,
+    source_levels: [{ label: 'PD_POC', value: 768.5 }] }],
+  spot_location: { inside: null, above: 0, below: 1 },
+  summary: { value_state: 'shifted_higher', value_state_reason: null, vwap_relation: null, vwap_relation_reason: 'no value area today' },
+  absent: [{ input: 'PDC', reason: 'CLOSE_PRICE is not streaming live' }], levels_as_of: 'Fri 09/25 03:00 PM CT' };
 const STRIKES = { ticker: 'SPY', spot: SPOT, spot_strike: 771, today_source: 'terrain_live_cache', levels_stale: false,
   today: { all: [[770, 500000, 1000], [771, 900000, 5000], [772, -200000, 3000]] }, prior: { all: [[770, 400000, 800], [771, 700000, 2000], [772, -100000, 900]] },
   migration: { all: { compared: true, drift: 'UP', grew: [771, 770], shrank: [772], busiest: [771, 772], busiest_vs_walls: 'INSIDE_WALLS',
@@ -141,6 +148,23 @@ test('the liquidity map fits its price scale to the candles; a far zone does not
   expect(errs).toEqual([]);
 });
 
+test('the liquidity map prints when its zones are as of and what they lacked; its live line is the pushed price', async ({ page }) => {
+  // 2026-09-30 audit: the map's LAST line was the spot the levels request happened to carry, with
+  // no age, and stayed there; the zone list named no time and no missing input
+  const errs = watchErrors(page);
+  await intercept(page);
+  await mockPriceSocket(page, [priceRow('SPY', SPOT + 0.4)]);
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const zones = page.locator('#liqmBody .liqm-zones');
+  await expect(zones.locator('.fl-sec-h')).toContainText('as of ' + LIQ.levels_as_of);
+  await expect(zones.locator('.liqm-absent')).toHaveText('PDC: CLOSE_PRICE is not streaming live');
+  await expect(zones.locator('.liqm-tags').first()).toHaveText('TODAY_VAH 772.22');
+  await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).livePrice)).toBeCloseTo(SPOT + 0.4, 6);
+  expect((await page.evaluate(() => window.EdLiquidityMap.state())).liveTitle).toBe('LAST · 1s');
+  expect(errs).toEqual([]);
+});
+
 test('the Gamma chart and the liquidity map carry the Trade Desk toolbar; a timeframe click redraws at that timeframe', async ({ page }) => {
   // operator 2026-09-29: "for all other charts you were supposed to apply the tv characteristics" --
   // only the Trade Desk had the timeframes, candles/line, drawing tools, reset, screenshot and full screen
@@ -232,6 +256,17 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmCardFlow')).toContainText('Crosses (this session (served))');
     await expect(page.locator('#tdmLookback')).toHaveText('this session (served)');
     await expect(page.locator('#tdmAgree')).toContainText('Above flip');
+    // the value context is the served state, or the served reason there is none
+    await expect(page.locator('#tdmAgree')).toContainText('shifted higher');
+    await expect(page.locator('#tdmAgree')).toContainText(LIQ.summary.vwap_relation_reason);
+    // a level family with no value keeps its button and says why; the LEVELS pill is the served age
+    const overnight = page.locator('#tdmFamilies [data-fam="overnight"]');
+    await expect(overnight).toHaveClass(/absent/);
+    await expect(overnight).toHaveAttribute('title', 'Not available: ' + LEVELS.families_absent[0].reason);
+    await expect(overnight).toContainText('not available');
+    const pill = page.locator('#tdmTrust .tdm-pill', { hasText: 'LEVELS' });
+    await expect(pill).toContainText('45s');
+    await expect(pill).toHaveAttribute('title', 'prior_day: ' + LEVELS.degraded[0].reason);
     // the served session volume profile, every bin drawn at the chart's left edge, with its basis
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileBins)).toBe(LEVELS.volume_profile.bins.length);    await expect(page.locator('#tdmProfNote')).toHaveText(LEVELS.volume_profile.basis);
     // each card draws its served series in the reference's chart type (2026-09-28): depth areas,

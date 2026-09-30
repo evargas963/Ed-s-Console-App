@@ -48,7 +48,10 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     assert by_id["PDH"]["price"] == 105 and by_id["PDL"]["price"] == 95, (
         "prior_day must be the SINGLE most recent prior RTH session"
     )
-    assert by_id["PDC"]["price"] == 102
+    # the prior close is Schwab's CLOSE_PRICE, never a bar's close (tests/test_zones_v1.py); no
+    # quote streams in this test, so it is absent with its reason
+    assert "PDC" not in by_id
+    assert {"family": "PDC", "reason": srv.PRIOR_CLOSE_ABSENT_REASON} in payload["families_absent"]
     for lv in payload["levels"]:
         assert lv["price"] not in (110, 90), "multi-session union value served — RC-213 reopened"
         assert "as_of_ts_utc" in lv["staleness"] and "age_sec" in lv["staleness"]
@@ -81,7 +84,7 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
 
 def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monkeypatch, tmp_path):
     """t12 (RC-227 residual): the PDL must be the min of the WHOLE prior session. Measured
-    live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH/PDC
+    live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH
     matched. price_bars_1m (written only from Schwab's streamed bars) is now the one bar
     source, so the full prior session there must set every prior-day level."""
     import json
@@ -118,7 +121,6 @@ def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monke
     by_id = {lv["id"]: lv for lv in payload["levels"]}
     assert by_id["PDL"]["price"] == 749.59, "PDL is not the full prior session's min"
     assert by_id["PDH"]["price"] == 758.58
-    assert by_id["PDC"]["price"] == 757.67
     assert "price_bars_1m" in by_id["PDL"]["provenance"]["vendor_basis"], (
         "provenance must name the one bar source"
     )
@@ -180,8 +182,9 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monk
     again = json.loads(srv.get_levels(ticker="SPY", tf="15").body)
     assert built >= 1 and len(reads) == built, "the route read bars"
     assert served["generation"] == again["generation"] is not None
-    assert served["snapshot_as_of_ts_utc"] == last["timestamp"] / 1000.0
-    assert srv.canonical_price_level_snapshot("QQQ").as_of_ts_utc == last["timestamp"] / 1000.0
+    # as of the end of the newest bar
+    assert served["snapshot_as_of_ts_utc"] == last["timestamp"] / 1000.0 + 60.0
+    assert srv.canonical_price_level_snapshot("QQQ").as_of_ts_utc == last["timestamp"] / 1000.0 + 60.0
 
     # a new session date: the levels loop builds that date's levels (09-25's bars are its prior day)
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 26, 9, 0, tzinfo=ET))

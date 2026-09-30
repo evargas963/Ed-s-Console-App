@@ -98,13 +98,31 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **1-minute bar.** Schwab → daemon bus → writer (`stream_capture.db`), and → console → the
   console's own bar writer → `ed_console.db` → a `liquidity` push on `/api/changes` → the browser
   reads `/api/bars1m`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
-  the newest bar's minute (`last_bar`). The live Schwab LAST_PRICE (the header's price row, with
+  the newest bar's minute (`last_bar`). The stored bars are those from 09:15 ET to 15 minutes
+  after the close (`time_et.is_collect_window_bar_end_ts_utc`); nothing outside it is stored. A
+  timeframe above one minute is rolled up on the server (`aggregate_bars`: a bar is stamped with
+  its first stored minute); `limit` counts 1-minute bars, and when the read reaches it the oldest
+  rolled bar, which the cut may have shortened, is not served. The live Schwab LAST_PRICE (the header's price row, with
   its age since the trade) is drawn on the chart as its own line and moves with every update; no
   candle is built from quotes (level-one prices do not reproduce a bar's high and low).
-- **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
+- **Price levels** (prior day, opening range, VWAP, value area). Computed once per
   generation from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
   → `/api/levels`, and the liquidity zones of `/api/liquidity-snapshot` are built from that same
-  snapshot (today only; no checkpoint or past-date path). Producer `_publish_price_levels`: the
+  snapshot (today only; no checkpoint or past-date path). The snapshot is as of the end of its
+  newest bar. A level is served only for a window that has ended: the opening range once a bar
+  at or after its last minute has arrived (until then absent, with the time it ends). No
+  overnight level is served: the stored bars hold at most 30 minutes of the prior close → open
+  interval, and the family is absent with that reason (`ACTIVE_PROGRAM.md` OVERNIGHT-BARS). The
+  prior close is not computed from bars: it is Schwab's CLOSE_PRICE on the daemon's price row,
+  carried by both routes while the quote is live and absent with its reason otherwise. The VWAP
+  curve is rolled up to the chart's timeframe with each point at its chart bar's own time.
+  The zones (`liquidity_value_engine.build_zones`) cluster the snapshot's levels, the prior close
+  and the terrain's option levels; a zone of value levels only is a pivot; any other is support
+  below the live price and resistance above it, and has no side with the price inside it or no
+  live price. The live price is never a level. `/api/liquidity-snapshot` also serves where the
+  price sits among the zones, the value context (`value_context`: today's point of control
+  against the prior day's; the VWAP above, below or inside today's value area; each absent with
+  its reason), the time the zones are as of, and each input they lacked. Producer `_publish_price_levels`: the
   bar writer (`_write_streamed_bars`) after each bar of every ticker, on its own thread, once
   every bar waiting has been written and pushed as `liquidity` (a `levels` push when the
   published snapshot changed); and the levels loop (`_publish_missing_price_levels`) for a
@@ -133,8 +151,10 @@ Schwab sends is taken as sent (rule 2), never computed.
   A publication carries the same fields whatever its chain's source (a live download or a stored
   capture), the ATR pair (from the 1-minute bars) included. The day-over-day open-interest change
   has one producer: the forces, from the stored captures (`/api/forces`, shown on the Trade Desk).
-  An ATR leg that cannot be computed is served absent with its reason (how many trading days or
-  15-minute periods of bars exist; ATR(14) needs 15). The publication also carries, with the
+  The ATR is the simple average of the last 14 true ranges of completed candles (the day still
+  trading and the 15-minute period still open are left out), built from every stored bar of
+  the day. An ATR leg that cannot be computed is served absent with its reason (how many
+  trading days or 15-minute periods of bars exist; ATR(14) needs 15). The publication also carries, with the
   per-strike rows (`terrain_engine.per_strike_view`), the strike each Chart profile labels as
   its largest (the GEX profile's is the `net_gex_peak` level) and the net GEX below and above
   the publication's price; `/api/terrain/strikes` carries them and picks or sums nothing. A
@@ -228,7 +248,7 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Market session.** From the market calendar → pushed on `/api/changes` when the page connects
   and every 5 s with no other change. One calendar (`time_et`: holidays, 13:00 early closes,
   `session_label`, `session_close_mins_for_et_date`) decides every session window: the order-flow
-  session reset, the prior-day, overnight, VWAP and value-area windows, and the default option
+  session reset, the prior-day, opening-range, VWAP and value-area windows, and the default option
   contract's expiry cutoff. A day with no session has an empty window.
 - **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the
   price-row loop (an equity's quote), the stream handler (a book) and the bar writer mark a

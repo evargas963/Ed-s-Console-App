@@ -2,8 +2,9 @@
    The zones /api/liquidity-snapshot computes (support / resistance / value bands, each with its
    served label, side and confluence score) on the one TradingView-style chart every chart in the
    console uses (ed-tv-chart.js), over the price (/api/bars1m, completed Schwab bars, the toolbar's timeframe),
-   with the prior-day and overnight levels and the live price from /api/levels -- the one level
-   route. The zone list below the chart names each zone's source levels. */
+   with the prior-day levels from /api/levels -- the one level route -- and the live price from
+   the header's price row (ed:quote_tick). The zone list below the chart names each zone's source
+   levels, the time the zones are as of, and each input they lacked with its reason. */
 (function () {
   'use strict';
 
@@ -19,16 +20,17 @@
     return fetch(url, { cache: 'no-store', signal: signal }).then(function (r) { return r.ok ? r.json() : null; });
   }
   // the reference levels this map draws, by their served family
-  var REF_FAMILIES = { prior_day: 1, overnight: 1 };
+  var REF_FAMILIES = { prior_day: 1 };
 
   var _chart = null;
+  var _liveQuote = null;          // the header's price row (ed:quote_tick), the one displayed price
   // the map's timeframe (the toolbar's), kept per viewer
   var _tf = (function () { try { return window.localStorage.getItem('ed.liqm.tf') || '5'; } catch (e) { return '5'; } })();
   function ensureChart(h) {
     if (_chart && h.querySelector('.liqm-plot')) return _chart;
     if (!window.EdTvChart || !window.LightweightCharts) return null;
     h.innerHTML = '<div class="liqm-tb"></div><div class="liqm-plot"></div><div class="liqm-empty" hidden></div><div class="liqm-zones"></div>' +
-      '<div class="fl-foot">Zones from /api/liquidity-snapshot; prior-day and overnight levels and the price from /api/levels and /api/bars1m. The map arranges them; it computes nothing.</div>';
+      '<div class="fl-foot">Zones from /api/liquidity-snapshot; prior-day levels from /api/levels; bars from /api/bars1m; the live price from the header\'s price row. The map arranges them; it computes nothing.</div>';
     _chart = window.EdTvChart.create(h.querySelector('.liqm-plot'), { nearestN: 99 });
     window.EdTvChart.toolbar(h.querySelector('.liqm-tb'), _chart, { tf: _tf, styleKey: 'ed.liqm.style',
       onTf: function (tf) { _tf = tf; try { window.localStorage.setItem('ed.liqm.tf', tf); } catch (e) { /* per-viewer only */ } load(); } });
@@ -39,7 +41,11 @@
     var tags = (z.source_levels || []).map(function (l) { return esc(l.label) + ' ' + num(l.value); }).join(' · ');
     return '<div class="fl-row"><span class="k">' + esc(z.zone_label) + ' ' + num(z.zone_low) + '–' + num(z.zone_high) + '</span>' +
       '<span class="v">confluence ' + esc(z.confluence_score) + '</span></div>' +
-      '<div class="sm liqm-tags">' + (tags || '—') + (z.interpretation_notes ? ' — ' + esc(z.interpretation_notes) : '') + '</div>';
+      '<div class="sm liqm-tags">' + (tags || '—') + '</div>';
+  }
+  function paintLive() {
+    var q = _liveQuote, mine = q && q.ticker === st().key && q.spot_state === 'live';
+    if (_chart) _chart.setLivePrice(mine ? q.spot : null, mine ? q.trade_age_sec : null);
   }
 
   function render(h, tk, snap, levels, barsD) {
@@ -53,12 +59,17 @@
     }));
     c.setLevels(((levels && levels.levels) || []).filter(function (l) { return REF_FAMILIES[l.family] && l.price != null; })
       .map(function (l) { return { id: l.id, price: Number(l.price), label: l.short, color: P.stale, style: 2, width: 1 }; }));
-    c.setLivePrice(levels && levels.spot != null ? Number(levels.spot) : null, null);
+    paintLive();
     var empty = h.querySelector('.liqm-empty');
     empty.hidden = !!(snap && snap.zones !== undefined);
     empty.textContent = empty.hidden ? '' : 'the liquidity snapshot request failed for ' + tk;
-    h.querySelector('.liqm-zones').innerHTML = '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored, /api/liquidity-snapshot)</div>' +
-      (zones.length ? zones.map(zoneRow).join('') : '<div class="sm">no zones for this session yet</div>') + '</div>';
+    // what the zones lacked, each with its served reason; and the time they are as of
+    var absent = ((snap && snap.absent) || []).map(function (a) {
+      return '<div class="sm liqm-absent">' + esc(a.input) + ': ' + esc(a.reason) + '</div>'; }).join('');
+    h.querySelector('.liqm-zones').innerHTML = '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored, /api/liquidity-snapshot)' +
+      (snap && snap.levels_as_of ? ' · as of ' + esc(snap.levels_as_of) : '') + '</div>' +
+      (zones.length ? zones.map(zoneRow).join('') : '<div class="sm">' + esc((snap && snap.reason) || 'no zones for this session yet') + '</div>') +
+      absent + '</div>';
   }
 
   function loadImpl(tk, signal) {
@@ -82,6 +93,10 @@
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels' || e.detail.kind === 'liquidity') load(); });
+    window.addEventListener('ed:quote_tick', function (e) {
+      var q = e.detail; if (!q || q.ticker !== st().key) return;
+      _liveQuote = q; if (isMap()) paintLive();
+    });
   }
   // read-only view for tests (e2e) -- never a control surface
   window.EdLiquidityMap = { state: function () { return _chart ? _chart.state() : null; } };

@@ -21,16 +21,12 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from math_volatility import compute_atr
+from time_et import ET, collect_window_end_mins_for_et_date
 
 
 ATR_PERIOD = 14
-#: ATR(14) daily needs 15 daily candles. MEASURED, not estimated: `price_bars_1m` carries
-#: extended-hours bars (~960/day, not the 390 RTH minutes), so the bar-to-session ratio is
-#: about 1,000:1 --
-#:     6,000 bars -> 6 sessions   12,000 -> 12   20,000 -> 19   40,000 -> 38
-#: 12,000 was tried first on a bad estimate of 390 bars/session and produced daily ATR of
-#: None across the board. 24,000 gives ~23 sessions, comfortably past the 15 required,
-#: while halving the 40,000 that made the cold radar sweep 40 s and time out the UI.
+#: ATR(14) daily needs 15 completed daily candles; price_bars_1m holds up to 420 bars a day
+#: (09:15 ET to 15 minutes after the close), so this many bars is 57 full days or more.
 _MAX_1M_BARS = 24_000
 
 
@@ -48,7 +44,7 @@ def _aggregate(rows: list, bucket_key) -> list[dict]:
     """Roll 1-minute rows up into OHLC buckets, oldest first."""
     buckets: dict = {}
     for r in sorted(rows, key=lambda x: x["ts"]):
-        k = bucket_key(datetime.fromtimestamp(r["ts"], _et()))
+        k = bucket_key(datetime.fromtimestamp(r["ts"], ET))
         b = buckets.get(k)
         if b is None:
             buckets[k] = {"open": r["o"], "high": r["h"], "low": r["l"], "close": r["c"]}
@@ -57,12 +53,6 @@ def _aggregate(rows: list, bucket_key) -> list[dict]:
         b["low"] = min(b["low"], r["l"])
         b["close"] = r["c"]
     return [buckets[k] for k in sorted(buckets)]
-
-
-def _et():
-    from time_et import ET  # single ET authority (COH-SA2)
-
-    return ET
 
 
 def _leg(candles: list, unit: str) -> tuple[float | None, str | None]:
@@ -75,9 +65,12 @@ def _leg(candles: list, unit: str) -> tuple[float | None, str | None]:
     return None, f"the {unit}' prices do not give a true range"
 
 
-def compute_atr_pair(db_path: str, ticker: str) -> AtrPair:
-    """Daily and 15-minute ATR for one ticker, each None with its reason when it cannot be
-    computed. The same rule for every ticker. Never raises."""
+def compute_atr_pair(db_path: str, ticker: str, now: datetime) -> AtrPair:
+    """Daily and 15-minute ATR for one ticker at `now` (ET), from completed candles only: the
+    day still trading (before its stored bars end, time_et.collect_window_end_mins_for_et_date)
+    and the 15-minute period still open are left out, since a candle still forming has a smaller
+    range than it will close with. Each is None with its reason when it cannot be computed.
+    The same rule for every ticker. Never raises."""
     from instrument_identity import ticker_storage_key
     tk = ticker_storage_key(ticker)  # RC-345/F25: ATR DB query owner consumes canonical identity (callee, not caller-masked)
     if not tk:
@@ -98,8 +91,13 @@ def compute_atr_pair(db_path: str, ticker: str) -> AtrPair:
     finally:
         con.close()
 
-    daily, daily_reason = _leg(_aggregate(rows, lambda d: d.date()), "trading days")
-    m15, m15_reason = _leg(_aggregate(rows, lambda d: (d.date(), d.hour, d.minute // 15))[-200:],
+    end_mins = collect_window_end_mins_for_et_date(now.date().isoformat())
+    day_open = end_mins is not None and now.hour * 60 + now.minute < end_mins
+    days = [r for r in rows if not (day_open and datetime.fromtimestamp(r["ts"], ET).date() == now.date())]
+    period_start = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0).timestamp()
+    closed_periods = [r for r in rows if r["ts"] < period_start]
+    daily, daily_reason = _leg(_aggregate(days, lambda d: d.date()), "trading days")
+    m15, m15_reason = _leg(_aggregate(closed_periods, lambda d: (d.date(), d.hour, d.minute // 15))[-200:],
                            "15-minute periods")
     return AtrPair(daily, m15, daily_reason, m15_reason)
 

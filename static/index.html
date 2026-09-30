@@ -646,7 +646,7 @@
   .lv-row{cursor:pointer}.lv-row:hover{background:var(--ed-panel-2)}
   .lv-row.lv-sel{outline:1px solid var(--ed-accent);outline-offset:-1px;background:var(--ed-accent-bg)}
   .lv-foot{display:flex;flex-wrap:wrap;gap:12px;font-family:var(--ed-sans);font-size:10.5px;color:var(--ed-ink-4);padding:10px 2px 0}
-  .lv-foot .lv-absent{color:var(--ed-stale)}
+  .lv-why{font-family:var(--ed-sans);font-size:11.5px;color:var(--ed-stale);padding:8px 2px 0;line-height:1.5}
   /* Options Flow — reference card structure; truthful empty state inside the table */
   .of{width:100%;height:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:12px;font-variant-numeric:tabular-nums}
   .of th{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-3);text-align:right;
@@ -997,14 +997,14 @@
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="liqmTicker">—</span><span class="t">Liquidity Map</span><span class="sub">confluence-scored zones · reference levels · spot</span>
               <div class="r"><span class="prov derived">LIQUIDITY SNAPSHOT</span></div></div>
-            <div class="panel-b" id="liqmBody"><div class="placeholder"><div class="sm">A visual price map from /api/liquidity-snapshot's own confluence-scored support/resistance zones, plus prior-day/overnight reference levels and spot — never a fabricated line.</div></div></div>
+            <div class="panel-b" id="liqmBody"><div class="placeholder"><div class="sm">A visual price map from /api/liquidity-snapshot's own confluence-scored zones, each placed against the live price, plus the prior-day levels — never a fabricated line.</div></div></div>
           </div>
         </div>
         <div class="sub-pane" data-sub-pane="levels">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="lvlTicker">—</span><span class="t">Liquidity Levels</span><span class="sub">prior day · overnight · session</span>
+            <div class="panel-h"><span class="hticker" id="lvlTicker">—</span><span class="t">Liquidity Levels</span><span class="sub">prior day · session</span>
               <div class="r"><span class="prov native">LEVELS</span></div></div>
-            <div class="panel-b" id="lvlBody"><div class="placeholder"><div class="sm">Canonical price levels from /api/levels (PDH/PDL/PDC, POC/VAH/VAL, overnight, VWAP±σ) — vendor-derived, never a fabricated line.</div></div></div>
+            <div class="panel-b" id="lvlBody"><div class="placeholder"><div class="sm">Canonical price levels from /api/levels (PDH/PDL, Schwab's prior close, POC/VAH/VAL, opening range, VWAP±σ); each absent family is listed with its reason.</div></div></div>
           </div>
         </div>
       </section>

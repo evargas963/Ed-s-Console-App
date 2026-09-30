@@ -73,5 +73,5 @@ def test_thin_banked_prior_session_is_stamped_degraded(tmp_path, monkeypatch):
 
 def test_full_banked_prior_session_carries_no_stamp(tmp_path, monkeypatch):
     snap = _published(tmp_path, monkeypatch, "FULL", 390)
-    assert snap.bars_used == 390
+    assert snap.price("PDH") is not None
     assert [d for d in snap.degraded if d.get("family") == "prior_day"] == []

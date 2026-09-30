@@ -67,8 +67,8 @@ def test_snapshot_carries_value_scope_generation_provenance_and_as_of():
     assert snap.price("PDH") == 105 and snap.price("PDL") == 95, (
         "prior_day must be the SINGLE most recent prior RTH session, never the union"
     )
-    assert snap.price("PDC") == 102
-    for lid in ("PDH", "PDL", "PDC"):
+    assert snap.price("PDC") is None, "the prior close is Schwab's CLOSE_PRICE, not a bar's close"
+    for lid in ("PDH", "PDL"):
         assert snap.price(lid) not in (110, 90), "multi-session union value materialized"
 
 
@@ -169,8 +169,8 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
 def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_ids(monkeypatch):
     """ONE-09 (2026-09-28 audit): /api/liquidity-snapshot kept its own path -- checkpoint
     snapshots (premarket, opening, midday, afternoon) and a past-date replay that recomputed the
-    prior day, overnight, VWAP and value area from bars, and a default ("premarket") that served
-    those under "@checkpoint" ids. It serves the one snapshot now: every level it shows is the
+    prior day, VWAP and value area from bars, and a default ("premarket") that served
+    those under "@checkpoint" ids. It serves the one snapshot now: every level in a zone is the
     /api/levels value under the same id."""
     import json
 
@@ -184,14 +184,15 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
     monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda t: tape)
     monkeypatch.setattr(lve, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
     monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (106.0, "schwab_quote_last", 1.0))
-    monkeypatch.setattr(srv, "_liquidity_option_levels", lambda t: ([], "n/a"))
+    monkeypatch.setattr(srv, "_liquidity_option_levels", lambda t: [])
     monkeypatch.setattr(te, "now_et", lambda: noon)
     monkeypatch.setattr(srv, "now_et", lambda: noon)
 
     srv._publish_price_levels("SPY")                  # as the bar writer does
     levels = {lv["id"]: lv["price"] for lv in json.loads(bytes(srv.get_levels(ticker="SPY").body))["levels"]}
     liq = srv.get_liquidity_snapshot(ticker="SPY")
-    used = {i["tag"]: i["value"] for i in liq["raw_levels_used"]}
+    used = {s["label"]: s["value"] for z in liq["zones"] for s in z["source_levels"]}
     assert used and set(used) <= set(PHASE2A_LEVEL_IDS), used
+    assert liq["level_generation"] == json.loads(bytes(srv.get_levels(ticker="SPY").body))["generation"]
     for tag, value in used.items():
         assert levels[tag] == value, tag

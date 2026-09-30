@@ -725,6 +725,8 @@ from calibration.complete_chain_capture import (
     last_capture_per_day,
     newest_capture_ts,
 )
+from liquidity_models import ZONE_DISPLAY, PlaybookConfig
+from liquidity_value_engine import LEVEL_NAMES, build_zones, value_context
 
 
 #: one bar as SQLite writes values in SQL (quote: every stored double exactly, NULL as NULL)
@@ -2519,14 +2521,14 @@ ATR_TTL_SEC: float = 900.0
 
 
 def _atr_pair(ticker: str) -> "AtrPair":
-    """The ticker's (daily, 15-minute) ATR from price_bars_1m, recomputed at most every
-    ATR_TTL_SEC. Too few bars reads as None, never a vendor stand-in."""
+    """The ticker's (daily, 15-minute) ATR from price_bars_1m's completed candles, recomputed
+    at most every ATR_TTL_SEC. Too few bars reads as None, never a vendor stand-in."""
     tk = ticker_storage_key(ticker)
     with _atr_lock:
         hit = _atr_cache.get(tk)
     if hit is not None and time.time() - hit[0] < ATR_TTL_SEC:
         return hit[1]
-    pair = compute_atr_pair(str(get_db().db_path), tk)
+    pair = compute_atr_pair(str(get_db().db_path), tk, now_et())
     with _atr_lock:
         _atr_cache[tk] = (time.time(), pair)
     return pair
@@ -2677,10 +2679,15 @@ def get_bars1m(ticker: str = Query(...),
                limit: int = Query(default=780, ge=1, le=12000),
                tf: str = Query(default="1", pattern=r"^(1|3|5|15|30|60|D)$")):
     """Completed Schwab 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts, rolled
-    up to `tf` by aggregate_bars. `last_bar`: the newest completed minute and its label."""
+    up to `tf` by aggregate_bars. `limit` counts 1-minute bars: when the read reaches it, the
+    oldest rolled bar may have lost its first minutes to the cut and is not served. `last_bar`:
+    the newest completed minute and its label."""
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
-    out = [_lpr.with_change(b) for b in aggregate_bars(bars, tf)]
+    rolled = aggregate_bars(bars, tf)
+    if tf != "1" and len(bars) == int(limit):
+        rolled = rolled[1:]
+    out = [_lpr.with_change(b) for b in rolled]
     last = bars[-1]["t"] if bars else None
     return JSONResponse({"ticker": tk, "bars": out, "tf": tf, "n": len(out),
                          "last_bar": {"t": last, "label": ct_label(last)} if last is not None else None})
@@ -2691,21 +2698,21 @@ def _tf_bucket_key(t: float, tf: str):
     return datetime.fromtimestamp(t, ET).date() if tf == "D" else int(t // (int(tf) * 60))
 
 
-def aggregate_vwap(rows: list, tf: str) -> list:
-    """VWAP rows [t, vwap, +1s, -1s, +2s, -2s] rolled up to the chart timeframe exactly as
-    aggregate_bars rolls the bars: each bar takes the value as of its last minute, stamped with the
-    bar's first minute (the bar's own `t`)."""
+def aggregate_vwap(rows: list, tf: str, bar_ts: list) -> list:
+    """VWAP rows [t, vwap, +1s, -1s, +2s, -2s] rolled up to the chart timeframe as aggregate_bars
+    rolls the bars: each chart bar takes the value as of its last minute, stamped with that bar's
+    own `t` -- the first of `bar_ts` (the session's 1-minute bar times, VWAP minute or not) in
+    the bar's bucket."""
     if tf == "1":
         return [list(r) for r in rows]
-    out, cur_key = [], None
+    first: dict = {}
+    for t in bar_ts:
+        first.setdefault(_tf_bucket_key(float(t), tf), t)
+    out: dict = {}
     for r in rows:
         k = _tf_bucket_key(float(r[0]), tf)
-        if k != cur_key:
-            out.append([r[0]] + list(r[1:]))
-            cur_key = k
-        else:
-            out[-1] = [out[-1][0]] + list(r[1:])
-    return out
+        out[k] = [first[k]] + list(r[1:])
+    return list(out.values())
 
 
 def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
@@ -3905,7 +3912,7 @@ def _publish_price_levels(ticker: str) -> None:
     session date). The routes read what it published (canonical_price_level_snapshot). A failed
     build is logged; the routes serve the last published snapshot with its as-of time, or say
     the levels are absent."""
-    from liquidity_value_engine import PlaybookConfig, _bars_to_list, materialize_price_level_snapshot
+    from liquidity_value_engine import _bars_to_list, materialize_price_level_snapshot
     from time_et import now_et
 
     tk = ticker_storage_key(_required_ticker(ticker))
@@ -3941,6 +3948,16 @@ def canonical_price_level_snapshot(ticker: str):
 #: why a route serves no price levels for a ticker
 NO_PRICE_LEVELS_REASON = ("no price levels published for this ticker today yet (they are built from its "
                           "1-minute bars on each new bar and at the console's start)")
+
+PRIOR_CLOSE_SOURCE = "Schwab LEVELONE_EQUITIES CLOSE_PRICE (the daemon's price row)"
+PRIOR_CLOSE_ABSENT_REASON = "Schwab's prior close (CLOSE_PRICE) is not streaming live for this symbol now"
+
+
+def _prior_close(tk: str) -> "float | None":
+    """The ticker's prior close: Schwab's CLOSE_PRICE on the daemon's price row, which carries it
+    only while the symbol's quote is live. The one prior close every surface shows."""
+    from app.options.order_flow.streaming import price_row
+    return (price_row(tk) or {}).get("prior_close")
 
 
 
@@ -3980,6 +3997,14 @@ def get_levels(ticker: str = Query(...),
                       "price level has no staleness rule, its age is shown",
         }
         levels.append(row)
+    # the prior close, carried from the daemon's price row (Schwab's CLOSE_PRICE)
+    pdc = _prior_close(tk)
+    if pdc is not None:
+        levels.append({"id": "PDC", "price": pdc, "family": "prior_day", "label": LEVEL_NAMES["PDC"][0],
+                       "short": LEVEL_NAMES["PDC"][1], "evidence_tier": "price_fact",
+                       "provenance": {"producer": PRIOR_CLOSE_SOURCE, "carried": True},
+                       "staleness": {"as_of_ts_utc": None, "age_sec": None, "stale_after_sec": None,
+                                     "stale": None, "reason": "streamed; served only while its quote is live"}})
     # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values)
     t = terrain_cache_get(tk) or {}
     em = (t.get("implied_1d_move") or {}).get("points")
@@ -4019,6 +4044,8 @@ def get_levels(ticker: str = Query(...),
     families_absent = (list(snap.families_absent) if snap is not None
                        else [{"family": "price_levels", "reason": NO_PRICE_LEVELS_REASON}])
     vp = snap.volume_profile if snap is not None else None
+    if pdc is None:
+        families_absent.append({"family": "PDC", "reason": PRIOR_CLOSE_ABSENT_REASON})
     if em is None or spot is None:
         families_absent.append({"family": "expected_move", "reason": "no live price" if spot is None
                                 else "the terrain has no implied 1-day move"})
@@ -4035,6 +4062,9 @@ def get_levels(ticker: str = Query(...),
         "spot_as_of_ts_utc": spot_ts,
         "generation": snap.generation if snap is not None else None,
         "snapshot_as_of_ts_utc": snap.as_of_ts_utc if snap is not None else None,
+        # how old the snapshot's newest bar is at this serving
+        "snapshot_age_sec": (round(served_ts - snap.as_of_ts_utc, 1)
+                             if snap is not None and snap.as_of_ts_utc is not None else None),
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,
@@ -4045,7 +4075,8 @@ def get_levels(ticker: str = Query(...),
         # used to accumulate their own from /api/bars1m — two more VWAPs for one
         # session, drawn beside a level neither of them agreed with.
         # [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
-        "vwap_series": aggregate_vwap(snap.vwap_series, tf) if snap is not None else [],   # one point per chart bar of `tf`
+        # one point per chart bar of `tf`, at that bar's own time
+        "vwap_series": aggregate_vwap(snap.vwap_series, tf, snap.session_bar_ts) if snap is not None else [],
         # the session's volume profile the value area is read from (absent: families_absent
         # names the value_area reason)
         "volume_profile": None if vp is None else {
@@ -4059,44 +4090,6 @@ def get_levels(ticker: str = Query(...),
         "families_absent": families_absent,
         "degraded": list(snap.degraded) if snap is not None else [],
     })
-
-
-def _build_raw_levels_used(raw_levels: dict) -> list:
-    """Flatten raw_levels (the one price-level snapshot's values) into [{tag, value}] for
-    display, ordered by price, under their canonical ids."""
-    items = []
-    tag_map = {
-        "pdh": "PDH", "pdl": "PDL", "pdc": "PDC",
-        "pd_poc": "PD_POC", "pd_vah": "PD_VAH", "pd_val": "PD_VAL",
-        "overnight_high": "OVERNIGHT_HIGH", "overnight_low": "OVERNIGHT_LOW",
-        "orb_high": "ORB_HIGH", "orb_low": "ORB_LOW", "orb_mid": "ORB_MID",
-        "vwap": "VWAP", "plus1": "VWAP_P1", "minus1": "VWAP_M1",
-        "plus2": "VWAP_P2", "minus2": "VWAP_M2",
-        "poc": "TODAY_POC", "vah": "TODAY_VAH", "val": "TODAY_VAL",
-    }
-    prev = raw_levels.get("prev_day") or raw_levels.get("prev") or {}
-    for k, v in prev.items():
-        if v is not None and isinstance(v, (int, float)) and k in tag_map:
-            items.append({"tag": tag_map[k], "value": float(v)})
-    for k in ["overnight_high", "overnight_low"]:
-        v = (raw_levels.get("overnight") or {}).get(k)
-        if v is not None:
-            items.append({"tag": tag_map[k], "value": float(v)})
-    orb = raw_levels.get("orb") or {}
-    for k in ["orb_high", "orb_low", "orb_mid"]:
-        if orb.get(k) is not None:
-            items.append({"tag": tag_map[k], "value": float(orb[k])})
-    if raw_levels.get("vwap") is not None:
-        items.append({"tag": "VWAP", "value": float(raw_levels["vwap"])})
-    vwap_bands = raw_levels.get("vwap_bands") or {}
-    for k, tag in [("plus2", "VWAP_P2"), ("plus1", "VWAP_P1"),
-                   ("minus1", "VWAP_M1"), ("minus2", "VWAP_M2")]:
-        if vwap_bands.get(k) is not None:
-            items.append({"tag": tag, "value": float(vwap_bands[k])})
-    for k in ["poc", "vah", "val"]:
-        if raw_levels.get(k) is not None:
-            items.append({"tag": tag_map[k], "value": float(raw_levels[k])})
-    return sorted(items, key=lambda x: x["value"])
 
 
 def _liquidity_1m_bars(ticker: str) -> list[dict]:
@@ -4113,50 +4106,10 @@ TERRAIN_FUSION_LEVELS = (("call_wall", "GAMMA_CALL_WALL"), ("put_wall", "GAMMA_P
                          ("max_pain", "MAX_PAIN"), ("gamma_flip", "GAMMA_FLIP"))
 
 
-def _liquidity_option_levels(tk: str) -> tuple[list[tuple[float, str]], str]:
+def _liquidity_option_levels(tk: str) -> list[tuple[float, str]]:
     """The ticker's option levels from its published terrain, tagged for the liquidity zones."""
-    t = terrain_cache_get(tk)
-    if not t:
-        return [], "levels_not_ready"
-    levels = [(float(t[k]), tag) for k, tag in TERRAIN_FUSION_LEVELS if t.get(k) is not None]
-    return levels, "fused" if levels else "fused_empty"
-
-
-def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
-    """Add anchor, distance_to_spot, tradeable_score, options_level_count (mutates zp)."""
-    from liquidity_value_engine import liquidity_zone_tradeable_score
-
-    tags = zp.get("source_tags") or []
-    lo, hi = float(zp["zone_low"]), float(zp["zone_high"])
-    mid = zp.get("zone_mid")
-    if mid is None:
-        mid = (lo + hi) / 2.0
-    zp["anchor"] = round(float(mid), 4)
-    n_opt = sum(
-        1
-        for t in tags
-        if t.startswith(("GAMMA_", "DELTA_", "OI_", "EM_", "SYNTH_"))
-    )
-    zp["options_level_count"] = n_opt
-    if spot is None:
-        zp["distance_to_spot"] = None
-        zp["spot_inside_zone"] = None
-        zp["tradeable_score"] = liquidity_zone_tradeable_score(
-            n_tags=len(tags), n_opt=n_opt, inside=False, dist_pen=0.0, spot=None
-        )
-        return
-    sf = float(spot)
-    inside = lo <= sf <= hi
-    if inside:
-        d = 0.0
-    else:
-        d = min(abs(sf - lo), abs(sf - hi))
-    zp["distance_to_spot"] = round(d, 4)
-    zp["spot_inside_zone"] = inside
-    dist_pen = min((d / sf) * 12.0, 10.0)
-    zp["tradeable_score"] = liquidity_zone_tradeable_score(
-        n_tags=len(tags), n_opt=n_opt, inside=inside, dist_pen=dist_pen, spot=sf
-    )
+    t = terrain_cache_get(tk) or {}
+    return [(t[k], tag) for k, tag in TERRAIN_FUSION_LEVELS if t.get(k) is not None]
 
 
 def _spot_location(zones: list, spot) -> "dict | None":
@@ -4165,110 +4118,55 @@ def _spot_location(zones: list, spot) -> "dict | None":
     if spot is None or not zones:
         return None
     for i, z in enumerate(zones):
-        if z.get("zone_low") is not None and z.get("zone_high") is not None and z["zone_low"] <= spot <= z["zone_high"]:
+        if z["zone_low"] <= spot <= z["zone_high"]:
             return {"inside": i, "above": None, "below": None}
-    above = [i for i, z in enumerate(zones) if z.get("zone_low") is not None and z["zone_low"] > spot]
-    below = [i for i, z in enumerate(zones) if z.get("zone_high") is not None and z["zone_high"] < spot]
+    above = [i for i, z in enumerate(zones) if z["zone_low"] > spot]
+    below = [i for i, z in enumerate(zones) if z["zone_high"] < spot]
     return {"inside": None,
             "above": min(above, key=lambda i: zones[i]["zone_low"]) if above else None,
             "below": max(below, key=lambda i: zones[i]["zone_high"]) if below else None}
 
 
-@app.get("/api/liquidity-snapshot")
-# SWITCH-LATENCY FIX: sync def → threadpool. This fires on every ticker switch (client
-# setTimeout pollLiquiditySnapshot) and every 60s; it does a blocking Schwab bar fetch with
-# no await, so as async it stalled the event loop on each switch.
-def get_liquidity_snapshot(ticker: str = Query(...)):
-    """Today's liquidity & value zones for the ticker: built from the one price-level snapshot
-    (canonical_price_level_snapshot, the same values /api/levels serves) with the terrain's
-    option levels and the live price fused in. It computes no level of its own."""
-    try:
-        from liquidity_value_engine import build_live_snapshot
-        from liquidity_models import ZONE_DISPLAY, PlaybookConfig
+#: no zone is wider than this many dollars, for every ticker at every price (the figure's origin
+#: is not recorded: ACTIVE_PROGRAM.md ZONE-WIDTH)
+ZONE_MAX_WIDTH_DOLLARS: float = 2.0
 
-        ticker_upper = ticker_storage_key(ticker)
-        config = PlaybookConfig(max_zone_width=2.0)
-        extra, fusion_status = _liquidity_option_levels(ticker_upper)
-        # the one spot (resolve_spot); a stale side-cache served 759.725 beside a 760.13 header
-        # (2026-09-14, RC spot-360-audit)
-        spot_for_zones, _, _ = resolve_spot(ticker_upper)
-        if spot_for_zones is not None:
-            extra = list(extra) + [(spot_for_zones, "SPOT_LIVE")]
-        _canon = canonical_price_level_snapshot(ticker_upper)
-        if _canon is None:
-            return {"ticker": ticker_upper, "zones": [], "reason": NO_PRICE_LEVELS_REASON}
-        out = build_live_snapshot(ticker_upper, config, canonical=_canon, now=now_et(),
-                                  extra_levels=extra)
-        snapshot_val = out.snapshot_type.value
-        zones_payload = []
-        for z in out.zones:
-            w = z.zone_high - z.zone_low
-            merged = len(z.source_tags)
-            zp = {
-                "zone_type": z.zone_type.value,
-                "zone_label": ZONE_DISPLAY[z.zone_type][0],
-                "zone_side": ZONE_DISPLAY[z.zone_type][1],
-                "zone_class": z.zone_class,
-                "zone_low": z.zone_low,
-                "zone_high": z.zone_high,
-                "zone_mid": z.zone_mid,
-                "zone_width": round(w, 4),
-                "source_levels": z.source_levels,
-                "source_tags": z.source_tags,
-                "confluence_score": z.confluence_score,
-                "merged_levels_count": merged,
-                "interpretation_notes": z.interpretation_notes or "",
-                "first_snapshot": snapshot_val,
-                "last_snapshot": snapshot_val,
-                "persistence": 1,
-            }
-            _liquidity_zone_tradeable_fields(zp, spot_for_zones)
-            zones_payload.append(zp)
-        zones_payload.sort(
-            key=lambda x: (
-                x["distance_to_spot"] is None,
-                x["distance_to_spot"] if x["distance_to_spot"] is not None else 1e9,
-                -x.get("tradeable_score", 0),
-            )
-        )
-        result = {
-            "ticker": out.ticker,
-            "symbol": ticker_upper,
-            "session_date": out.session_date,
-            "snapshot_type": snapshot_val,
-            "zones": zones_payload,
-            "summary": None,
-            "raw_levels": out.raw_levels,
-            "raw_levels_used": _build_raw_levels_used(out.raw_levels),
-            "fusion": fusion_status,
-            "as_of_cutoff_et": (out.raw_levels or {}).get("cutoff_et"),
-            "spot_used_for_scoring": spot_for_zones,
-            "spot_location": _spot_location(zones_payload, spot_for_zones),
-            # which snapshot generation these level values ARE
-            "level_generation": _canon.generation,
-            "level_semantic_scope": (out.raw_levels or {}).get("semantic_scope"),
-            "level_snapshot_as_of_ts_utc": _canon.as_of_ts_utc,
-            "level_bar_source": _canon.bar_source,
-        }
-        if out.summary:
-            result["summary"] = {
-                "value_state": out.summary.value_state,
-                "vwap_relation": out.summary.vwap_relation,
-                "auction_interpretation": out.summary.auction_interpretation,
-                "notes": out.summary.notes,
-            }
-        return result
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-    except HTTPException as e:
-        # MEASURED 2026-09-11: get_client() raises HTTPException(503, ...) when Schwab auth is
-        # genuinely unavailable -- a real, distinct, already-correct classification (missing/
-        # invalid credentials is not "the server is broken"). The blanket `except Exception`
-        # below caught it too, along with everything else, and re-issued it as a bare 500 with
-        # only the message text -- discarding the status code FastAPI's own exception handling
-        # would otherwise have propagated correctly. Preserve it instead of replacing it.
-        return JSONResponse({"error": e.detail}, status_code=e.status_code)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/liquidity-snapshot")
+def get_liquidity_snapshot(ticker: str = Query(...)):
+    """The ticker's zones (liquidity_value_engine.build_zones): the one price-level snapshot's
+    levels (the values /api/levels serves), Schwab's prior close and the terrain's option levels,
+    clustered and placed against the live price; with today's value context (value_context) and
+    where the price sits among the zones. It computes no level of its own. `absent` names each
+    input it did not have, with the reason."""
+    tk = ticker_storage_key(_required_ticker(ticker))
+    canon = canonical_price_level_snapshot(tk)
+    if canon is None:
+        return {"ticker": tk, "zones": [], "reason": NO_PRICE_LEVELS_REASON}
+    spot = resolve_spot(tk)[0]
+    option_levels, pdc = _liquidity_option_levels(tk), _prior_close(tk)
+    absent = [a for a in (
+        None if spot is not None else
+        {"input": "live price", "reason": "no live price: a zone has no side and the price has no location"},
+        None if option_levels else
+        {"input": "option levels", "reason": "no option levels are published for this ticker yet"},
+        None if pdc is not None else {"input": "PDC", "reason": PRIOR_CLOSE_ABSENT_REASON}) if a]
+    zones = [{"zone_type": z.zone_type.value,
+              "zone_label": ZONE_DISPLAY[z.zone_type][0], "zone_side": ZONE_DISPLAY[z.zone_type][1],
+              "zone_low": z.zone_low, "zone_high": z.zone_high, "zone_mid": z.zone_mid,
+              "source_levels": z.source_levels, "confluence_score": z.confluence_score}
+             for z in build_zones(canon, PlaybookConfig(max_zone_width=ZONE_MAX_WIDTH_DOLLARS), spot=spot,
+                                  extra_levels=option_levels + ([(pdc, "PDC")] if pdc is not None else []))]
+    return {
+        "ticker": tk,
+        "zones": zones,
+        "summary": asdict(value_context(canon)),
+        "spot_location": _spot_location(zones, spot),
+        "absent": absent,
+        # which price-level snapshot the zones are built from, and the time of its newest bar
+        "level_generation": canon.generation,
+        "level_snapshot_as_of_ts_utc": canon.as_of_ts_utc,
+        "levels_as_of": None if canon.as_of_ts_utc is None else ct_label(canon.as_of_ts_utc),
+    }
 
 
