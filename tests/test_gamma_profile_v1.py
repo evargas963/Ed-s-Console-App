@@ -13,16 +13,19 @@ import math
 from pathlib import Path
 
 from math_levels import (
+    FLIP_FOUND,
+    FLIP_UNAVAILABLE,
     GAMMA_FLIP_NARROW,
     GAMMA_FLIP_UNAVAILABLE,
     GSF_STATE_BELOW_SUPPORT,
     GSF_STATE_OK,
     GSF_STATE_UNAVAILABLE,
-    compute_gamma_flip_v2,
+    compute_gamma_flip,
     compute_gamma_profile,
     compute_gamma_support_levels,
     gamma_at_price,
     gamma_flip_from_profile,
+    profile_zero_crossings,
 )
 
 import pytest
@@ -91,29 +94,24 @@ def test_narrow_chain_flip_is_reported_low_confidence() -> None:
     """The live 20-strike chain spans only ~+/-1.3%; its flip must never be served as
     trustworthy (measured error vs full-chain reference: 770.35 vs 745.61)."""
     chain, spot = _load_real_chain()
-    flip, confidence, diag = compute_gamma_flip_v2(chain, spot, profile=compute_gamma_profile(chain, spot))
-    assert confidence == GAMMA_FLIP_NARROW
-    # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 6): the next line was
-    # `assert diag["span_below_pct"] < 0.05 or diag["span_above_pct"] < 0.05` -- LOGICALLY
-    # IMPLIED by the assertion above it. compute_gamma_flip_v2 returns GAMMA_FLIP_NARROW
-    # exactly when `not covers_regime`, which IS `span_below < 0.05 or span_above < 0.05`
-    # against the same hardcoded GAMMA_FLIP_MIN_SPAN_PCT=0.05. It restated the verdict in
-    # raw numbers and could not fail independently. Likewise `n_strikes > 0` was
-    # guaranteed (an empty chain returns GAMMA_FLIP_UNAVAILABLE, already excluded above).
-    # MEASURED on this capture (SPY 2026-09-22 12:46 ET, strikes 764-783): the flip is 771.9,
-    # inside the delivered strikes -- the verdict is NARROW because 20 strikes span only
-    # ~+/-1.3% of spot, not because the flip falls outside them.
-    assert flip == 771.9 and diag["strike_lo"] == 764.0 and diag["strike_hi"] == 783.0
-    assert diag["covers_regime_span"] is False and diag["covers_level_span"] is False, (
+    flip = compute_gamma_flip(chain, spot, profile=compute_gamma_profile(chain, spot))
+    assert flip.coverage == GAMMA_FLIP_NARROW
+    # On this capture (SPY 2026-09-22 12:46 ET, strikes 764-783) the flip is 771.9, inside the
+    # delivered strikes: the verdict is NARROW because 20 strikes span only ~+/-1.3% of spot,
+    # not because the flip falls outside them.
+    assert flip.state == FLIP_FOUND and flip.price == 771.9
+    assert (flip.strike_lo, flip.strike_hi) == (764.0, 783.0)
+    assert flip.covers_regime_span is False and flip.covers_level_span is False, (
         "both span-coverage flags must be False for a NARROW verdict; a tier-selection "
         "inversion would flip these while leaving the raw spans untouched")
-    assert diag["strike_lo"] < diag["strike_hi"]
 
 
-def test_flip_v2_fails_closed_without_inputs() -> None:
-    for contracts, spot in (([], 100.0), (None, 100.0), ([{"strikePrice": 100}], 0.0)):
-        flip, confidence, _diag = compute_gamma_flip_v2(contracts, spot, profile=[])
-        assert flip is None and confidence == GAMMA_FLIP_UNAVAILABLE
+def test_flip_fails_closed_without_inputs() -> None:
+    for contracts, spot in (([], 100.0), (None, 100.0), ([{"strikePrice": 100}], 0.0),
+                            ([{"strikePrice": 100}], 100.0)):
+        flip = compute_gamma_flip(contracts, spot, profile=[])
+        assert flip.price is None and flip.state == FLIP_UNAVAILABLE and flip.reason
+        assert flip.coverage == GAMMA_FLIP_UNAVAILABLE
 
 def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
     """RC-11: no zero-crossing means no FLIP LEVEL, never an unknown regime.
@@ -142,10 +140,13 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
     assert gamma_at_price([(100.0, 5.0), (101.0, 7.0)], 100.5) == 6.0
 
 
-def test_gamma_at_price_clamps_outside_the_profile() -> None:
+def test_gamma_at_price_has_no_value_outside_the_profile() -> None:
+    """The curve was not evaluated off the profile, so it has no value there (rule 5: the edge
+    value is not a substitute; it used to be returned)."""
     prof = [(100.0, -2.0), (110.0, 4.0)]
-    assert gamma_at_price(prof, 50.0) == -2.0     # below the profile -> first value
-    assert gamma_at_price(prof, 500.0) == 4.0     # above -> last value
+    assert gamma_at_price(prof, 100.0) == -2.0 and gamma_at_price(prof, 110.0) == 4.0
+    assert gamma_at_price(prof, 50.0) is None
+    assert gamma_at_price(prof, 500.0) is None
     assert gamma_at_price([], 100.0) is None
     assert gamma_at_price(prof, None) is None
 
@@ -186,6 +187,7 @@ def test_flip_picks_the_crossing_nearest_spot():
     assert near_low is not None and 80.0 < near_low < 90.0, near_low
     assert near_high is not None and 100.0 < near_high < 110.0, near_high
     assert near_low != near_high
+    assert profile_zero_crossings(prof) == [near_low, near_high]   # every crossing, ascending
 
 
 def test_flip_none_when_one_signed():
@@ -244,8 +246,7 @@ def test_grc_found_when_cushion_decays_above_spot():
     assert out["grc"] is not None and out["grc"] > 106.0    # beyond the peak/wall
     n_spot = out["n_at_spot"]
     # value at the ceiling is ~phi * N(spot)
-    from math_levels import _interp_profile_at
-    assert abs(_interp_profile_at(prof, out["grc"]) - 0.5 * n_spot) / n_spot < 0.05
+    assert abs(gamma_at_price(prof, out["grc"]) - 0.5 * n_spot) / n_spot < 0.05
 
 
 def test_below_support_state_never_fabricates_a_price():

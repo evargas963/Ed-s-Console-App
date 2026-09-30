@@ -424,7 +424,8 @@
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
         src(c, 'Schwab option chain · ' + (t.levels_market_closed ? 'as of ' + esc(t.levels_as_of) : t.levels_stale ? 'stale ' + age(t.levels_age_sec) : age(t.levels_age_sec) + ' old'));
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall), 'up') + row('Put wall', num(t.put_wall), 'dn') +
-          row('Flip', num(t.gamma_flip)) + row('P/C OI', num(t.pcr_all, 2)) + row('Max pain', num(t.max_pain)) +
+          row('Flip', t.gamma_flip != null ? num(t.gamma_flip) : esc(t.gamma_flip_reason || '—')) +
+          row('P/C OI', num(t.pcr_all, 2)) + row('Max pain', num(t.max_pain)) +
           row('Contracts', t.contracts_used != null ? t.contracts_used.toLocaleString() : '—') + forcesRows();
       }
     }
@@ -488,7 +489,8 @@
       ['VALUE', l && l.summary ? String(l.summary.value_state || '—').replace(/_/g, ' ') : '—', ''],
       ['VWAP', l && l.summary ? String(l.summary.vwap_relation || '—').replace(/_/g, ' ') : '—', ''],
       ['OPTIONS', t && !t.error && t.posture ? String(t.posture).replace(/_/g, ' ') : '—', ''],
-      ['GAMMA', ({ ABOVE: 'Above flip', BELOW: 'Below flip' })[t && t.flip_relation] || '—', t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
+      ['GAMMA', ({ ABOVE: 'Above flip', BELOW: 'Below flip' })[t && t.flip_relation] || (t && t.gamma_flip_reason ? 'Flip ' + t.gamma_flip_reason : '—'),
+        t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
     ];
     host.innerHTML = cells.map(function (c) {
       return '<div class="tdm-ag"><span>' + c[0] + '</span><b class="' + c[2] + '">' + esc(c[1]) + '</b></div>'; }).join('') +

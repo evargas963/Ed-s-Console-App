@@ -121,7 +121,32 @@ Schwab sends is taken as sent (rule 2), never computed.
   capture), the ATR pair (from the 1-minute bars) included. The day-over-day open-interest change
   has one producer: the forces, from the stored captures (`/api/forces`, shown on the Trade Desk).
   An ATR leg that cannot be computed is served absent with its reason (how many trading days or
-  15-minute periods of bars exist; ATR(14) needs 15). None of these rules names a ticker; board
+  15-minute periods of bars exist; ATR(14) needs 15).
+  **The book** is the contracts not yet at their settlement at the publication's valuation time
+  (`time_et.time_to_expiry_years`: the close, or the open for an AM-settled contract). A
+  contract past it carries no open interest or greeks into any level, wall, regime or total; its
+  session volume stays in the per-strike rows. One rule, in
+  `math_exposure_core.compute_exposures_by_strike` and `math_levels._contract_inputs`
+  (`tests/test_gamma_flip_absence_v1.py`). The heatmap labels a column expired by the same
+  settlement time (`time_et.settlement_et`), read when the surface is served: once the column's
+  last contract has settled.
+  **The gamma flip** has one producer, `math_levels.compute_gamma_flip`, and one definition: the
+  price nearest spot at which the modelled total dealer gamma changes sign as the underlying
+  price is moved, every contract repriced by Black-Scholes at each candidate price from its own
+  strike, expiry and Schwab implied volatility (held fixed), +call/−put, r = q = 0. It is not
+  a zero of gamma exposure across strikes at today's price. The candidate prices are spot ±15%
+  in 240 steps (`GAMMA_PROFILE_SPAN_PCT`), and they are the only prices searched. The result is
+  a `GammaFlip` record, served as `/api/terrain` `flip_diag`: state `FOUND`; `NO_CROSSING` (the
+  curve holds one sign over the prices searched, which says nothing about any other price);
+  or `UNAVAILABLE` with its reason (no chain or price, no strikes, no contract that could be
+  priced); with the prices searched, the number of sign changes in them, the chain-coverage
+  verdict, and the contracts left out of the curve by reason (`unpriced`). Staleness and a
+  failing refresh are the publication's (`levels_stale`, `levels_failing`), as for every level.
+  When there is no flip the screens print the served `gamma_flip_reason` in its place. The
+  regime is not read from the flip: it is the sign of Schwab's gamma as sent, summed over the
+  book, and where the flip's curve disagrees with that sign at spot the read says so
+  (`flip_diag.curve_agrees_with_schwab_at_spot`).
+  None of these rules names a ticker; board
   membership decides only which tickers the daemon captures, which the loop refreshes unviewed,
   and which are priced at startup (tested for a board and an off-board ticker in
   `tests/test_gamma_surface_freshness_v1.py`; other values are not tested that way). A viewed

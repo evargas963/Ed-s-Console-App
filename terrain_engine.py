@@ -43,9 +43,9 @@ from math_exposure_core import (
     pick_volatility_point_strikes,
     total_gex_dollars_at_strike,
 )
-from math_levels import compute_charm_by_strike, contract_inputs, compute_gamma_flip_v2, compute_gamma_profile, compute_gamma_support_levels, compute_max_pain, pick_charm_wall_strikes
+from math_levels import compute_charm_by_strike, contract_inputs, compute_gamma_flip, compute_gamma_profile, compute_gamma_support_levels, compute_max_pain, pick_charm_wall_strikes
 from math_exposure_core import key_level_strikes_with_gamma
-from terrain_read import build_terrain_read
+from terrain_read import build_terrain_read, flip_absent_reason
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
 #: v2 (2026-07-21): + net_gex_at_spot, key_delta_strike, hvp, lvp.
@@ -74,6 +74,10 @@ class TerrainSnapshot:
     # multi-expiry capture chain). The analytics summary_rows carry the SELECTED_EXPIRY
     # scope; the two scopes never share a payload field (RC-292/RC-303).
     gamma_flip: float | None = None
+    #: why gamma_flip is None, as the screens print it (terrain_read.flip_absent_reason): the
+    #: prices searched without a sign change, or why there is no curve; "" with a flip. The
+    #: flip's state, evaluated prices and coverage are in flip_diag (math_levels.GammaFlip).
+    gamma_flip_reason: str = ""
     call_wall: float | None = None
     put_wall: float | None = None
     #: RC-124/RC-292/RC-315: max TOTAL gamma — |call GEX$| + |put GEX$| — over the full
@@ -725,7 +729,9 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # One pricing pass: exposures per (expiry, DTE) group; every book below is a merge of them.
     books = exposure_books(contracts, spot=spot, now=_terrain_now)
     exposures, diag = merge_exposure_books(books.values())
-    _dtes = [d for (_e, d) in books if d is not None]
+    # the front expiry: the nearest one with a contract in its book (an expiry past its
+    # settlement has none)
+    _dtes = [d for (_e, d), (_book, _diag) in books.items() if d is not None and _diag.contracts_used]
     _front_dte = min(_dtes, default=None)
     if not exposures:
         return _unavailable(ticker, spot, "chain produced no exposures")
@@ -758,13 +764,14 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     # the gamma profile, built once at one instant, feeds the flip verdict and the regime read
     parsed, unpriced = contract_inputs(contracts, _terrain_now)   # one parse for profile + charm
     profile = compute_gamma_profile(contracts, spot, now=_terrain_now, parsed=parsed)
-    flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot, profile=profile)
+    gamma_flip = compute_gamma_flip(contracts, spot, profile=profile)
+    flip, confidence = gamma_flip.price, gamma_flip.coverage
     # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma).
     # The model curve places the flip only (Schwab sends gamma at its own price, never at
     # other prices); where the curve's sign at spot disagrees with Schwab's, the flip says so.
-    _curve_at_spot = flip_diag.get("curve_gamma_at_spot")
+    _curve_at_spot = gamma_flip.curve_gamma_at_spot
     _gamma_at_spot = book_net_gex(exposures)
-    flip_diag = {**flip_diag, "unpriced": unpriced,
+    flip_diag = {**asdict(gamma_flip), "unpriced": unpriced,
                  "gamma_at_spot": _gamma_at_spot,
                  "curve_agrees_with_schwab_at_spot": (
                      None if _gamma_at_spot is None or _curve_at_spot is None
@@ -808,6 +815,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         put_wall=put_wall, call_wall=call_wall,
         gamma_at_spot=flip_diag.get("gamma_at_spot"),
         flip_curve_agrees=flip_diag.get("curve_agrees_with_schwab_at_spot"),
+        flip_domain=(None if gamma_flip.domain_lo is None
+                     else (gamma_flip.domain_lo, gamma_flip.domain_hi)),
     )
     call_state, put_state = wall_geometry_state(spot, call_wall, "call"), wall_geometry_state(spot, put_wall, "put")
     call_lean, put_lean = wall_lean(call_wall, put_wall, call_state, put_state, read.regime, read.confidence)
@@ -821,6 +830,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         headline=read.headline,
         lines=read.lines,
         gamma_flip=flip,
+        gamma_flip_reason=flip_absent_reason(gamma_flip),
         call_wall=call_wall,
         put_wall=put_wall,
         # RC-124/RC-292: the max-TOTAL-gamma concentration under its metric's name with

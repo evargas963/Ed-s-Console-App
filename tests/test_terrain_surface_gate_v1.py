@@ -52,7 +52,6 @@ def _stub_terrain(monkeypatch, proj):
     monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [dict(ct) for ct in _REAL_CHAIN])
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (100.0, "stub", 0.0))
     monkeypatch.setattr(server, "compute_terrain", lambda tk, contracts, spot, **k: Snap(contracts))
-    monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
     monkeypatch.setattr(server, "_atr_pair", lambda t: AtrPair(None, None, "stand-in", "stand-in"))
     monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
     monkeypatch.setattr(server, "project_gamma_surface", proj)

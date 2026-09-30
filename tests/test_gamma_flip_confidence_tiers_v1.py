@@ -40,7 +40,7 @@ from math_levels import (
     GAMMA_FLIP_NARROW,
     GAMMA_FLIP_TRUSTED,
     GAMMA_FLIP_TRUSTED_SPAN_PCT,
-    compute_gamma_flip_v2,
+    compute_gamma_flip,
     compute_gamma_profile,
 )
 from terrain_read import build_terrain_read
@@ -48,7 +48,7 @@ from terrain_read import build_terrain_read
 
 def _verdict(span: float) -> str:
     chain = _chain(span)
-    return compute_gamma_flip_v2(chain, 100.0, profile=compute_gamma_profile(chain, 100.0))[1]
+    return compute_gamma_flip(chain, 100.0, profile=compute_gamma_profile(chain, 100.0)).coverage
 
 
 

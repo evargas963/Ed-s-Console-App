@@ -35,7 +35,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from math_levels import GAMMA_FLIP_LEVEL_APPROX, GAMMA_FLIP_TRUSTED
+from math_levels import (
+    FLIP_FOUND,
+    FLIP_NO_CROSSING,
+    FLIP_NO_INPUT,
+    FLIP_NO_PRICED_CONTRACT,
+    FLIP_NO_STRIKES,
+    GAMMA_FLIP_LEVEL_APPROX,
+    GAMMA_FLIP_TRUSTED,
+    GAMMA_PROFILE_SPAN_PCT,
+    GammaFlip,
+)
 
 REGIME_LONG_GAMMA = "LONG_GAMMA_CHOP"
 REGIME_SHORT_GAMMA = "SHORT_GAMMA_TREND"
@@ -55,6 +65,24 @@ EDGE_PROXIMITY_PCT = 0.004
 #: sign at today's price (the flip is placed by the curve; the regime is Schwab's gamma)
 FLIP_CURVE_DISAGREES = ("The gamma flip is placed by a modelled curve that disagrees with Schwab's "
                         "gamma at today's price.")
+
+#: why there is no gamma flip when its curve could not be built, by GammaFlip.reason
+_FLIP_UNAVAILABLE_TEXT = {
+    FLIP_NO_INPUT: "no option chain or price",
+    FLIP_NO_STRIKES: "no strikes in the chain",
+    FLIP_NO_PRICED_CONTRACT: "no contract could be priced",
+}
+
+
+def flip_absent_reason(flip: GammaFlip) -> str:
+    """Why no gamma flip is shown, in the words every screen prints in its place: the prices
+    searched when the curve holds one sign over them, else why there is no curve. "" when
+    there is a flip."""
+    if flip.state == FLIP_FOUND:
+        return ""
+    if flip.state == FLIP_NO_CROSSING:
+        return f"none {flip.domain_lo:.2f}–{flip.domain_hi:.2f}"
+    return _FLIP_UNAVAILABLE_TEXT[flip.reason]
 
 
 @dataclass(frozen=True)
@@ -145,6 +173,7 @@ def build_terrain_read(
     call_wall: float | None = None,
     gamma_at_spot: float | None = None,
     flip_curve_agrees: bool | None = None,
+    flip_domain: tuple[float, float] | None = None,
 ) -> TerrainRead:
     """Deterministic terrain read. Fail-closed on missing spot, or on coverage below the
     conservative floor at which this repo declines to speak at all (NARROW / UNAVAILABLE).
@@ -230,9 +259,13 @@ def build_terrain_read(
         if flip_confidence == GAMMA_FLIP_LEVEL_APPROX:
             flip_line += (" APPROXIMATE: the chain is too narrow to place this level precisely "
                           "(~1.4% of spot); the regime above does not depend on it.")
+    elif flip_domain is not None:
+        # the flip's curve is evaluated at these prices only: nothing is said about any other
+        flip_line = (f"Spot {spot:.2f} — no gamma flip between {flip_domain[0]:.2f} and "
+                     f"{flip_domain[1]:.2f} (spot ±{GAMMA_PROFILE_SPAN_PCT:.0%}, the prices "
+                     f"evaluated): the modelled dealer gamma holds one sign there.")
     else:
-        flip_line = (f"Spot {spot:.2f} — dealer gamma holds one sign across the whole chain, "
-                     f"so there is no flip nearby to cross. The regime is unambiguous.")
+        flip_line = f"Spot {spot:.2f} — no gamma flip: its modelled curve could not be built."
 
     lines = [
         mechanism,

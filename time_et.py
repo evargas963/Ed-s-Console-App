@@ -221,14 +221,30 @@ MIN_TIME_TO_EXPIRY_YEARS: float = 600.0 / YEAR_SECONDS
 SETTLEMENT_AM = "A"
 
 
+def settlement_et(expiry_et_date: str, settlement_type: str | None = None) -> "datetime | None":
+    """When a contract expiring on this date settles: the session close on that date (16:00 ET,
+    13:00 on an early-close day), or the 09:30 ET open for Schwab's settlementType "A". None for
+    a date that is a full holiday (a data error) or cannot be read. An expiry in a year the
+    calendar does not cover yet is a normal 16:00 close."""
+    d = str(expiry_et_date)[:10]
+    if d in US_EQUITY_FULL_HOLIDAYS_ET:
+        return None
+    close_mins = (RTH_OPEN_MINS if settlement_type == SETTLEMENT_AM
+                  else US_EQUITY_EARLY_CLOSE_MINS_ET.get(d, RTH_END_MINS))
+    try:
+        y, mo, dd = int(d[0:4]), int(d[5:7]), int(d[8:10])
+    except (ValueError, IndexError):
+        return None
+    return datetime(y, mo, dd, close_mins // 60, close_mins % 60, tzinfo=ET)
+
+
 def time_to_expiry_years(expiry_et_date: str, now: "datetime | None" = None, *,
                          settlement_type: str | None = None) -> float | None:
     """Canonical INTRADAY time-to-expiry in years (ACT/365) — the SINGLE SOURCE of T for
     every Black-Scholes greek (gamma, charm, ...).
 
-    T is measured from `now` (ET; defaults to now_et()) to the option's settlement on its
-    expiration date: the session close (16:00 ET, 13:00 ET on early-close days) for a
-    PM-settled contract, the 09:30 ET open for Schwab's settlementType "A". This replaces the per-site day-count/floor conventions
+    T is measured from `now` (ET; defaults to now_et()) to the option's settlement
+    (settlement_et). This replaces the per-site day-count/floor conventions
     (a 0.5-DAY floor in bs_gamma, whole-day dte/365 in charm) that smoothed away the real
     1/sqrt(T) near-expiry spike.
 
@@ -240,20 +256,9 @@ def time_to_expiry_years(expiry_et_date: str, now: "datetime | None" = None, *,
     or when the option has already reached settlement (now >= close). A 10-minute sub-floor
     guards the exact-expiry singularity while preserving the genuine spike.
     """
-    d = str(expiry_et_date)[:10]
-    # Close time for the EXPIRY date: default 16:00 ET, special-casing only the KNOWN
-    # early-close days (13:00) and rejecting a KNOWN full holiday (an expiry landing on one
-    # is a data error). Unlike session_close_mins_for_et_date, this does NOT year-gate — an
-    # expiry in an uncovered future year (2027+ LEAPS) is a normal 16:00 close, not a drop.
-    if d in US_EQUITY_FULL_HOLIDAYS_ET:
+    expiry_dt = settlement_et(expiry_et_date, settlement_type)
+    if expiry_dt is None:
         return None
-    close_mins = (RTH_OPEN_MINS if settlement_type == SETTLEMENT_AM
-                  else US_EQUITY_EARLY_CLOSE_MINS_ET.get(d, RTH_END_MINS))
-    try:
-        y, mo, dd = int(d[0:4]), int(d[5:7]), int(d[8:10])
-    except (ValueError, IndexError):
-        return None
-    expiry_dt = datetime(y, mo, dd, close_mins // 60, close_mins % 60, tzinfo=ET)
     ref = now if now is not None else now_et()
     # Instant elapsed seconds, not civil timedelta. Same-tzinfo subtraction ignores DST
     # (spring-forward Friday→Monday expiry wall 77.5h vs UTC timestamp 76.5h).
