@@ -2,7 +2,8 @@
 
    One page for the SELECTED ticker, one global timeframe:
      MARKET MAP   <- /api/bars1m (completed Schwab 1m bars, server-rolled timeframe),
-                     /api/levels (value area, VWAP + bands, prior day, opening range, overnight),
+                     /api/levels (value area, VWAP + bands, prior day, opening range; a family
+                     with no value keeps its button and says why),
                      /api/terrain (call/put wall, gamma flip, max pain -- full chain)
      ATTENTION    <- /api/desk/events (served, numbered; each marker is its queue entry, linked
                      both ways): level crosses judged by their minute's bar, wall breaches,
@@ -100,11 +101,19 @@
     paintFamilies();
   }
   function paintFamilies() {
+    // a family the server has no value for keeps its place and says why (its served reason)
+    var absent = {};
+    ((S.levels && S.levels.families_absent) || []).forEach(function (a) { absent[a.family] = a.reason; });
     document.querySelectorAll('#tdmFamilies [data-fam]').forEach(function (b) {
-      b.classList.toggle('on', S.fam[b.getAttribute('data-fam')] !== 0); });
+      var why = absent[b.getAttribute('data-fam')];
+      b.classList.toggle('on', S.fam[b.getAttribute('data-fam')] !== 0);
+      b.classList.toggle('absent', !!why);
+      b.title = why ? 'Not available: ' + why : '';
+    });
     var pd = pdValueArea(), vw = levelPrice('VWAP');
     var v = { vwap: vw == null ? '' : num(vw), prior_day: pd.val == null || pd.vah == null ? '' : 'VA ' + num(pd.val) + ' – ' + num(pd.vah) };
-    document.querySelectorAll('#tdmFamilies [data-famv]').forEach(function (b) { b.textContent = v[b.getAttribute('data-famv')] || ''; });
+    document.querySelectorAll('#tdmFamilies [data-famv]').forEach(function (b) {
+      var id = b.getAttribute('data-famv'); b.textContent = absent[id] ? 'not available' : (v[id] || ''); });
     // after the close the levels are ordered from the last trade, a past observation: say so
     var ref = S.levels && S.levels.by_distance_ref, el = $('tdmLevelsRef');
     if (el) el.textContent = ref && ref.source === 'last trade' ? 'Levels nearest the last trade ' + num(ref.price) + ' (' + ref.as_of + ')' : '';
@@ -486,8 +495,9 @@
     var m = S.micro, t = S.terrain, l = S.liq, d5 = m && m.depth && m.depth['5'];
     var cells = [
       ['LIQUIDITY', d5 && d5.side ? (d5.side === 'BID' ? 'Bid heavy' : d5.side === 'ASK' ? 'Offer heavy' : 'Balanced') : 'No book', d5 && d5.side === 'BID' ? 'up' : d5 && d5.side === 'ASK' ? 'dn' : ''],
-      ['VALUE', l && l.summary ? String(l.summary.value_state || '—').replace(/_/g, ' ') : '—', ''],
-      ['VWAP', l && l.summary ? String(l.summary.vwap_relation || '—').replace(/_/g, ' ') : '—', ''],
+      // the served state, or the served reason there is none
+      ['VALUE', l && l.summary ? String(l.summary.value_state || l.summary.value_state_reason || '—').replace(/_/g, ' ') : '—', ''],
+      ['VWAP', l && l.summary ? String(l.summary.vwap_relation || l.summary.vwap_relation_reason || '—').replace(/_/g, ' ') : '—', ''],
       ['OPTIONS', t && !t.error && t.posture ? String(t.posture).replace(/_/g, ' ') : '—', ''],
       ['GAMMA', ({ ABOVE: 'Above flip', BELOW: 'Below flip', AT: 'At flip' })[t && t.flip_relation] || (t && t.gamma_flip_reason ? 'Flip ' + t.gamma_flip_reason : '—'),
         t && t.flip_relation === 'ABOVE' ? 'up' : t && t.flip_relation === 'BELOW' ? 'dn' : '']
@@ -508,8 +518,9 @@
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
       : pill('BOOK', m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
-    var la = L && L.snapshot_as_of_ts_utc ? Date.now() / 1000 - L.snapshot_as_of_ts_utc : null;
-    h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad') : pill('LEVELS', age(la), (L.degraded && L.degraded.length) ? 'warn' : 'ok', 'session levels snapshot age');
+    var degraded = ((L && L.degraded) || []).map(function (d) { return d.family + ': ' + d.reason; }).join('; ');
+    h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad')
+      : pill('LEVELS', age(L.snapshot_age_sec), degraded ? 'warn' : 'ok', degraded || 'age of the newest bar the session levels are built from');
     h += t === undefined ? pill('GAMMA', '…', '') : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) || 'terrain request failed') : pill('GAMMA', t.levels_stale ? 'STALE ' + age(t.levels_age_sec) : age(t.levels_age_sec), t.levels_stale ? 'warn' : 'ok', t.levels_stale_reason || '');
     host.innerHTML = h;
   }
