@@ -7,14 +7,7 @@
 (function () {
   'use strict';
 
-  var usd = (window.EdGamma && window.EdGamma.formatUsd) || function (n) {
-    if (n == null || isNaN(n)) return '';
-    var a = Math.abs(n), s = n < 0 ? '-' : '';
-    if (a >= 1e9) return s + '$' + (a / 1e9).toFixed(1) + 'B';
-    if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(1) + 'M';
-    if (a >= 1e3) return s + '$' + (a / 1e3).toFixed(1) + 'K';
-    return s + '$' + a.toFixed(0);
-  };
+  var usd = window.EdGamma.formatUsd;
   function px(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
   // Compact SESSION VOLUME (native totalVolume, never OI or last-trade size — see the row
   // source below) for the GEX-by-strike row. No sign/color: volume is a magnitude, not signed.
@@ -56,18 +49,13 @@
   function loadLevelsImpl(tk, _signal) {
     if (!stillLevelsCtx(tk)) return;
     // shared with ed-gamma-chart.js's read of the same /api/terrain: one network call
-    var sharedFetch = (window.EdL1SseGuards && window.EdL1SseGuards.sharedFetchJson) || function (u) {
-      return fetch(u, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
-    };
-    return sharedFetch('/api/terrain?ticker=' + encodeURIComponent(tk))
+    return window.EdL1SseGuards.sharedFetchJson('/api/terrain?ticker=' + encodeURIComponent(tk))
       .then(function (d) { if (stillLevelsCtx(tk)) renderLevels(d); })
       .catch(function () {
         if (stillLevelsCtx(tk)) renderLevels(null);
       });
   }
-  var _levelsLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); })
-    : { trigger: function () { loadLevelsImpl(ticker()); }, reset: function () {} };
+  var _levelsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); });
   function loadLevels() { _levelsLoader.trigger(ticker()); }
   function renderLevels(d) {
     var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime'];
@@ -152,18 +140,13 @@
     var host = document.getElementById('gbsBody');
     if (!stillGbsCtx(tk)) return;
     // shared with ed-gamma-chart.js's read of the same endpoint: one network call
-    var sharedFetch = (window.EdL1SseGuards && window.EdL1SseGuards.sharedFetchJson) || function (u) {
-      return fetch(u, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
-    };
-    return sharedFetch('/api/terrain/strikes?ticker=' + encodeURIComponent(tk))
+    return window.EdL1SseGuards.sharedFetchJson('/api/terrain/strikes?ticker=' + encodeURIComponent(tk))
       .then(function (d) { if (stillGbsCtx(tk)) renderGbs(host, d, tk); })
       .catch(function () {
         if (stillGbsCtx(tk)) renderGbs(host, null, tk);
       });
   }
-  var _gbsLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadGbsImpl(ticker(), signal); })
-    : { trigger: function () { loadGbsImpl(ticker()); }, reset: function () {} };
+  var _gbsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadGbsImpl(ticker(), signal); });
   function loadGbs() { _gbsLoader.trigger(ticker()); }
   var SRC_LABEL = { terrain_live_cache: 'terrain live' };
   function srcLabel(s) {
@@ -372,9 +355,7 @@
         }
       });
   }
-  var _sdLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadStrikeImpl(_sdDesired.strike, _sdDesired.expiry, signal); })
-    : { trigger: function () { loadStrikeImpl(_sdDesired.strike, _sdDesired.expiry); }, reset: function () {} };
+  var _sdLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadStrikeImpl(_sdDesired.strike, _sdDesired.expiry, signal); });
   function loadStrike(strike, expiry) {
     _sdDesired = { strike: strike, expiry: expiry };
     _sdLoader.trigger(ticker() + '|' + strike + '|' + (expiry || ''));
@@ -406,7 +387,6 @@
   // unbounded across every ticker ever selected in one session.
   var _lastStrikeOwnerTicker = null;
   function _setAdditionalContractsDemand(symbols) {
-    if (!(window.EdStream && window.EdStream.setAdditionalContracts)) return;
     var tk = ticker();
     if (_lastStrikeOwnerTicker && _lastStrikeOwnerTicker !== tk) {
       window.EdStream.setAdditionalContracts([], 'strike:' + _lastStrikeOwnerTicker);
@@ -611,9 +591,7 @@
           if (stillCtx(tk)) renderIt(host, null, tk);
         });
     }
-    var loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-      ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return impl(ticker(), signal); })
-      : { trigger: function () { impl(ticker()); }, reset: function () {} };
+    var loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return impl(ticker(), signal); });
     return function load() { if (inSub()) loader.trigger(ticker()); };
   }
   var loadVanna = _mkStrikeBar('vanna', '/api/options/vanna-by-strike', 'vnBody', 'vnSrc');
@@ -684,9 +662,8 @@
         if (stillStructuresCtx(tk, exp)) renderStructures(host, null, tk);
       });
   }
-  var _structuresLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadStructuresImpl(ticker(), (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()), signal); })
-    : { trigger: function () { loadStructuresImpl(ticker(), (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry())); }, reset: function () {} };
+  var _structuresLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) {
+    return loadStructuresImpl(ticker(), (window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry()), signal); });
   // Keyed on ticker+expiry (ROUND 8 pattern, same as every other loader in this file) so a
   // context change while a fetch is still in flight ABORTS it immediately instead of merely
   // marking a trailing re-run pending -- an unkeyed trigger() left Structures frozen on the
@@ -756,9 +733,7 @@
         if (stillOfCtx(tk)) renderOf(host, null);
       });
   }
-  var _ofLoader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadOfImpl(ticker(), signal); })
-    : { trigger: function () { loadOfImpl(ticker()); }, reset: function () {} };
+  var _ofLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadOfImpl(ticker(), signal); });
   function loadOf() { if (isGamma()) _ofLoader.trigger(ticker()); }
 
   // ---------- events ----------

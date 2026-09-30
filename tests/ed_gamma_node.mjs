@@ -1,10 +1,11 @@
 /**
- * RC-UI-1 — node assertions for static/js/ed-gamma.js heatmap presentation helpers.
+ * RC-UI-1 — node assertions for static/js/ed-gamma.js.
  * Run: node tests/ed_gamma_node.mjs
  *
- * Proves the operator's frontend invariants D (sign -> colour, no inversion) and E (the
- * displayed dollar text is FORMATTING-ONLY and equals the backend value). These CALL the real
- * functions (a source-text test cannot detect a wrong colour, only a missing one).
+ * E: the displayed dollar text is FORMATTING-ONLY and equals the backend value.
+ * G: the heatmap's streamed-contract demand is keyed per ticker, driven through the module's
+ *    own load path (its ed:view / ed:ticker listeners, a served surface, its render).
+ * Sign -> colour (D) and row order (F) are proven in the browser (console-gamma-heatmap.spec.js).
  */
 import assert from 'assert';
 import { readFileSync } from 'fs';
@@ -14,11 +15,41 @@ import vm from 'vm';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
-vm.runInThisContext(readFileSync(join(ROOT, 'static/js/ed-gamma.js'), 'utf8'),
-  { filename: 'ed-gamma.js' });
 
-const G = globalThis.EdGamma;
-assert(G && typeof G.formatUsd === 'function' && typeof G.cellStyle === 'function', 'EdGamma missing');
+const listeners = {};
+const host = { innerHTML: '', setAttribute: () => {}, removeAttribute: () => {}, querySelector: () => null, querySelectorAll: () => [] };
+const state = { workspace: 'options', subview: 'gamma', view: 'heatmap', ticker: 'SPY' };
+const served = {};
+const demandCalls = [];
+const ctx = {
+  document: {
+    documentElement: {},
+    getElementById: (id) => (id === 'heatBody' ? host : null),
+    querySelectorAll: () => [],
+    addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
+  },
+  getComputedStyle: () => ({ getPropertyValue: () => '' }),
+  fetch: (url) => {
+    const tk = new URL(url, 'http://x').searchParams.get('ticker');
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(served[tk]) });
+  },
+  AbortController, Promise, JSON, Math, Number, String, Object, Array, Date, isNaN, URL, console,
+};
+ctx.window = ctx;
+ctx.globalThis = ctx;
+ctx.EdShell = { getState: () => state };
+ctx.EdStream = {
+  setAdditionalContracts: (symbols, ownerKey) => {
+    demandCalls.push({ symbols: symbols.slice(), ownerKey });
+    return Promise.resolve({ accepted: true, contracts: symbols });
+  },
+};
+vm.createContext(ctx);
+vm.runInContext(readFileSync(join(ROOT, 'static/js/l1_sse_guards.js'), 'utf8'), ctx, { filename: 'l1_sse_guards.js' });
+vm.runInContext(readFileSync(join(ROOT, 'static/js/ed-gamma.js'), 'utf8'), ctx, { filename: 'ed-gamma.js' });
+
+const G = ctx.EdGamma;
+assert(G && typeof G.formatUsd === 'function', 'EdGamma.formatUsd missing');
 
 // ---- E: value formatting is formatting-only and equals the backend number ----
 assert.strictEqual(G.formatUsd(958600), '$958.6K');
@@ -31,120 +62,41 @@ assert.strictEqual(G.formatUsd(null), '');
 assert.strictEqual(G.formatUsd(undefined), '');
 // formatting must not change sign or magnitude scale
 for (const v of [958600, -264500, 7600000, -1, 42, -999999]) {
-  const s = G.formatUsd(v);
-  assert.strictEqual(s.startsWith('-'), v < 0, 'formatUsd changed sign for ' + v);
+  assert.strictEqual(G.formatUsd(v).startsWith('-'), v < 0, 'formatUsd changed sign for ' + v);
 }
 
-// ---- D: sign -> colour, no inversion (theme-aware solid fills, interpolated from heat tokens) ----
-const HEAT = { pos: [35, 192, 107], neg: [229, 72, 77], zero: [18, 26, 37] };
-function rgb(s) { const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(s || ''); return m ? [+m[1], +m[2], +m[3]] : null; }
-
-const pos = rgb(G.cellStyle(500000, 1000000, HEAT).bg);
-const neg = rgb(G.cellStyle(-500000, 1000000, HEAT).bg);
-assert.ok(pos[1] > pos[0] && pos[1] > pos[2], 'positive cell is not green-dominant');   // G channel wins
-assert.ok(neg[0] > neg[1] && neg[0] > neg[2], 'negative cell is not red-dominant');     // R channel wins
-assert.strictEqual(G.cellStyle(500000, 1000000, HEAT).sign, 1);
-assert.strictEqual(G.cellStyle(-500000, 1000000, HEAT).sign, -1);
-
-// larger |magnitude| -> stronger fill (monotone toward full green, same sign, no inversion)
-const gLow = rgb(G.cellStyle(200000, 1000000, HEAT).bg)[1];
-const gHigh = rgb(G.cellStyle(900000, 1000000, HEAT).bg)[1];
-assert.ok(gHigh > gLow, 'shade intensity is not monotone in |value|');
-
-// null -> empty; near-zero recedes to the theme's zero colour, never a signed fill
-assert.strictEqual(G.cellStyle(null, 1000000, HEAT).empty, true);
-assert.deepStrictEqual(rgb(G.cellStyle(0.4, 1000000, HEAT).bg), [18, 26, 37], 'near-zero cell is not the recede colour');
-
-// a DIFFERENT theme palette must still map positive->its green and negative->its red (no inversion)
-const LIGHT = { pos: [26, 158, 92], neg: [214, 59, 59], zero: [230, 235, 241] };
-assert.ok(rgb(G.cellStyle(800000, 1000000, LIGHT).bg)[1] > rgb(G.cellStyle(800000, 1000000, LIGHT).bg)[0], 'light-theme positive not green-dominant');
-assert.ok(rgb(G.cellStyle(-800000, 1000000, LIGHT).bg)[0] > rgb(G.cellStyle(-800000, 1000000, LIGHT).bg)[1], 'light-theme negative not red-dominant');
-
-
-// ---- F: heatmap rows render highest strike at the top, lowest at the bottom (operator
-// finding, 2026-09-11) -- calls the REAL renderSurface against a minimal DOM/EdShell stub,
-// so this proves actual row order and actual per-row strike/gex binding, not source text.
-global.document = {
-  documentElement: {},
-  getElementById: () => null,
-  querySelectorAll: () => [],
-  addEventListener: () => {},
-};
-global.window = {};
-global.getComputedStyle = () => ({ getPropertyValue: () => '' });
-
-function makeHost() {
-  return { innerHTML: '', querySelector: () => null, querySelectorAll: () => [] };
+// ---- G: heatmap streamed-contract demand is keyed per ticker, never one shared 'heatmap'
+// slot. Viewing META's heatmap must not take over SPY's demand key: EdStream unions the
+// demand by ownerKey, so two tickers sharing one key would evict each other.
+const strikes = [763, 764, 765];
+function surface(ticker) {
+  return { available: true, ticker, spot: 764, strikes, live: true, stale: false,
+    expirations: [{ expiry: '2026-09-11', dte: 0, expired: false }],
+    cells: strikes.map((k) => ({ strike: k, gex: [1000], contracts: [{ call: ticker + 'C' + k, put: ticker + 'P' + k }] })) };
 }
+const settle = () => new Promise((r) => setTimeout(r, 20));
+const fire = (ev) => (listeners[ev] || []).forEach((fn) => fn({ detail: {} }));
 
-const strikes = [759, 760, 761, 762, 763, 764, 765, 766, 767, 768, 769]; // ascending, as the API serves them
-const cells = strikes.map((k, i) => ({ strike: k, gex: [1000 * (i + 1)] }));
-const surface = {
-  available: true,
-  spot: 764,
-  strikes,
-  cells,
-  expirations: [{ expiry: '2026-09-11', dte: 0, expired: false }],
-  live: true,
-  stale: false,
-};
-
-const host1 = makeHost();
-G.renderSurface(host1, surface);
-const rowStrikes = [...host1.innerHTML.matchAll(/data-strike="(\d+)"/g)].map((m) => Number(m[1]));
-// one data-strike per <td> per row (single expiry column here) -> one value per row, in
-// render order
-assert.deepStrictEqual(rowStrikes, [...strikes].reverse(),
-  'heatmap rows must descend from the highest strike to the lowest');
-
-// each row's own gex value travels with its own strike (no cross-row value shuffle from the
-// reversal -- this is the "preserve identity" requirement, checked against the real cell text)
-const rows = [...host1.innerHTML.matchAll(/data-strike="(\d+)"[^>]*data-gex="(-?\d+)"/g)];
-for (const [, strikeStr, gexStr] of rows) {
-  const strike = Number(strikeStr);
-  const expectedGex = cells[strikes.indexOf(strike)].gex[0];
-  assert.strictEqual(Number(gexStr), expectedGex, `strike ${strike} lost its own gex value under reversal`);
-}
-
-// the "all available" fallback path (no EdShell.scopeSelect) must ALSO descend -- this is the
-// path a bare surface actually exercises when EdShell is absent, and it is the same path real
-// scopeSelect output flows through, so this proves the render loop's own reversal, not a
-// scopeSelect-specific behaviour.
-const host2 = makeHost();
-G.renderSurface(host2, { ...surface, strikes: [100, 200, 300], cells: [
-  { strike: 100, gex: [1] }, { strike: 200, gex: [2] }, { strike: 300, gex: [3] },
-] });
-const rowStrikes2 = [...host2.innerHTML.matchAll(/data-strike="(\d+)"/g)].map((m) => Number(m[1]));
-assert.deepStrictEqual(rowStrikes2, [300, 200, 100]);
-
-// ---- G: heatmap streamed-contract demand is keyed per ticker, never a single shared
-// 'heatmap' slot (2026-09-21, universal-ticker-scope fix). Reproduced live before this fix:
-// viewing META's heatmap silently evicted SPY's already-active option-contract streaming
-// (EdStream's union is keyed by ownerKey -- see ed-stream.js _additionalDemandByOwner --
-// and every ticker previously shared the literal string 'heatmap'). Proven here against the
-// REAL renderSurface, not source text: two different tickers' renders must produce two
-// DIFFERENT ownerKey strings, so EdStream unions them instead of one replacing the other.
-const demandCalls = [];
-global.window.EdStream = {
-  setAdditionalContracts: (symbols, ownerKey) => {
-    demandCalls.push({ symbols: symbols.slice(), ownerKey });
-    return Promise.resolve({ accepted: true, contracts: symbols });
-  },
-};
-const spySurface = { ...surface, ticker: 'SPY' };
-const metaSurface = { ...surface, ticker: 'META' };
-G.renderSurface(makeHost(), spySurface);
-G.renderSurface(makeHost(), metaSurface);
+served.SPY = surface('SPY');
+served.META = surface('META');
+fire('ed:view');
+await settle();
+state.ticker = 'META';
+fire('ed:ticker');
+await settle();
 const ownerKeys = demandCalls.map((c) => c.ownerKey);
-assert.ok(ownerKeys.some((k) => k === 'heatmap:SPY'), 'SPY render never demanded under heatmap:SPY');
-assert.ok(ownerKeys.some((k) => k === 'heatmap:META'), 'META render never demanded under heatmap:META');
-assert.strictEqual(new Set(ownerKeys).size > 1, true,
-  'SPY and META renders used the SAME ownerKey -- one ticker would silently evict the other');
+assert.ok(ownerKeys.includes('heatmap:SPY'), 'SPY render never demanded under heatmap:SPY: ' + JSON.stringify(ownerKeys));
+assert.ok(ownerKeys.includes('heatmap:META'), 'META render never demanded under heatmap:META: ' + JSON.stringify(ownerKeys));
 
-// an unavailable result for one ticker must clear ONLY that ticker's own slot
+// an unavailable result for one ticker clears ONLY that ticker's own slot
 demandCalls.length = 0;
-G.renderSurface(makeHost(), { available: false, ticker: 'SPY' });
-assert.deepStrictEqual(demandCalls, [{ symbols: [], ownerKey: 'heatmap:SPY' }],
-  'an unavailable SPY surface must clear heatmap:SPY only, not some other/shared key');
+served.SPY = { available: false, ticker: 'SPY' };
+state.ticker = 'SPY';
+fire('ed:ticker');
+await settle();
+assert.ok(demandCalls.some((c) => c.ownerKey === 'heatmap:SPY' && c.symbols.length === 0),
+  'an unavailable SPY surface must clear heatmap:SPY: ' + JSON.stringify(demandCalls));
+assert.ok(demandCalls.every((c) => c.ownerKey === 'heatmap:SPY' || c.ownerKey === 'heatmap:META'),
+  'no shared/other key is touched: ' + JSON.stringify(demandCalls));
 
 console.log('ed_gamma: all assertions passed');

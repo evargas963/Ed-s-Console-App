@@ -14,22 +14,10 @@
 (function () {
   'use strict';
   var OS = window.EdOptionsSubscription;
-  var gate = (OS && OS.createSubscriptionGate) ? OS.createSubscriptionGate() : null;
-  var _desired = null;   // the contract THIS tab last requested (its intent), for binding observation
+  var gate = OS.createSubscriptionGate();
+  var _desired = null;   // the contract THIS tab last requested (its intent)
   var _ctl = 'none';     // control-request lifecycle for the CURRENT desired: none|requested|accepted|failed
 
-  // ONE global slot: a POST is REQUEST ACCEPTED only. A view must call status() against the live
-  // plane's producer identity to decide ACTIVE vs PENDING vs MOVED, and — critically — must NOT
-  // re-POST when it discovers it lost the slot to a newer legitimate selection (no oscillation).
-  function status(plane, contract) {
-    contract = contract || _desired;
-    plane = plane || {};
-    var state = (OS && OS.subscriptionState) ? OS.subscriptionState(plane, contract) : 'none';
-    var bound = (OS && OS.planeIsBoundToContract) ? OS.planeIsBoundToContract(plane, contract) : false;
-    // ACTIVE only when the canonical producer confirms THIS contract on both services; if the slot
-    // has moved to another contract, bound=false and active=false -> the view fails visibly inactive.
-    return { desired: contract, state: state, bound: bound, active: state === 'subscribed' && bound === true };
-  }
   function getDesired() { return _desired; }
   // control-request lifecycle for the current desired contract (Flow uses it to fail closed: only
   // 'accepted' begins microstructure observation; 'requested' shows pending; 'failed' never polls).
@@ -41,12 +29,9 @@
   function setActiveContract(contract) {
     contract = String(contract || '').trim();
     if (!contract) return Promise.resolve({ accepted: false, reason: 'empty' });
-    _desired = contract;                              // this tab's intent (used by status())
+    _desired = contract;
     _ctl = 'requested';                               // POST in flight — not accepted until a validated ACK
-    var token = gate ? gate.begin(contract) : null;   // client generation: a later begin supersedes this
-    // Named httpStatus, not `status` -- this function's own scope must never shadow the
-    // module-level status() export above (EdStream.status), a real footgun a future call
-    // to status(...) from inside this function would have silently hit as "not a function".
+    var token = gate.begin(contract);                 // client generation: a later begin supersedes this
     var httpStatus = null;
     return fetch('/api/streaming/active-option-contract', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contract: contract }),
@@ -58,28 +43,23 @@
       return { networkError: true, status: null, body: null };
     }).then(function (result) {
       // a superseded click (a newer begin() happened) is inert — never commits (client layer)
-      if (gate && !gate.mayCommit(token, contract)) return { accepted: false, reason: 'superseded_client' };
+      if (!gate.mayCommit(token, contract)) return { accepted: false, reason: 'superseded_client' };
       // the server's 409/superseded verdict never commits either (server layer)
       if (result.status === 409 || (result.body && result.body.superseded)) {
         if (_desired === contract) _ctl = 'failed';
         return { accepted: false, reason: 'superseded_server', command_generation: result.body && result.body.command_generation };
       }
-      var verdict = OS ? OS.validateSubscriptionAck(contract, result)
-        : { accepted: !!(result.body && result.body.ok === true && String(result.body.contract) === contract) };
-      if (!verdict.accepted) { if (_desired === contract) _ctl = 'failed'; return { accepted: false, reason: verdict.reason || 'ack_not_ok' }; }
+      var verdict = OS.validateSubscriptionAck(contract, result);
+      if (!verdict.accepted) { if (_desired === contract) _ctl = 'failed'; return { accepted: false, reason: verdict.reason }; }
       if (_desired === contract) _ctl = 'accepted';   // accepted ONLY for the still-current desired
       return { accepted: true, contract: contract, command_generation: result.body && result.body.command_generation };
     });
   }
 
-  // RC-UI-3 (2026-09-12): the ADDITIONAL-contracts slot, beside the ONE primary contract
-  // above -- POST /api/streaming/active-option-contracts, mirrored server-side on its own
-  // independent generation counter (server.py:post_streaming_active_option_contracts /
-  // app.options.order_flow.streaming.set_active_option_contracts). Deliberately simpler
-  // than setActiveContract: there is no per-view "is THIS additional contract active"
-  // status the shell renders today (unlike Flow's subscribe-state badge), so this is a
-  // fire-and-forget request-acceptance report, deduplicated against this tab's own last
-  // request so a caller may call it on every render without spamming the endpoint.
+  // The ADDITIONAL-contracts slot, beside the ONE primary contract above -- POST
+  // /api/streaming/active-option-contracts (server.py:post_streaming_active_option_contracts).
+  // A request-acceptance report, deduplicated against this tab's own last confirmed request
+  // so a caller may call it on every render without spamming the endpoint.
   function _sortedEqual(a, b) {
     if (a.length !== b.length) return false;
     var as = a.slice().sort(), bs = b.slice().sort();
@@ -277,10 +257,6 @@
                  superseded: !isCurrent };
       });
   }
-  function getDesiredAdditional() { return _desiredAdditional.slice(); }
-
-  window.EdStream = { setActiveContract: setActiveContract,
-    setAdditionalContracts: setAdditionalContracts, getDesiredAdditional: getDesiredAdditional,
-    status: status, getDesired: getDesired,
-    controlState: controlState, clearDesired: clearDesired };
+  window.EdStream = { setActiveContract: setActiveContract, setAdditionalContracts: setAdditionalContracts,
+    getDesired: getDesired, controlState: controlState, clearDesired: clearDesired };
 })();

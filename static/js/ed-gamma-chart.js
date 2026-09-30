@@ -9,12 +9,7 @@
 (function () {
   'use strict';
 
-  var usd = (window.EdGamma && window.EdGamma.formatUsd) || function (n) {
-    if (n == null || isNaN(n)) return ''; var a = Math.abs(n), s = n < 0 ? '-' : '';
-    if (a >= 1e9) return s + '$' + (a / 1e9).toFixed(1) + 'B';
-    if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(1) + 'M';
-    if (a >= 1e3) return s + '$' + (a / 1e3).toFixed(1) + 'K'; return s + '$' + a.toFixed(0);
-  };
+  var usd = window.EdGamma.formatUsd;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function ctTime(sec) { try { return new Date(sec * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'America/Chicago' }); } catch (e) { return ''; } }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
@@ -73,15 +68,13 @@
       render();
     });
   }
-  var _loader = (window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); })
-    : { trigger: function () { loadImpl(ticker()); } };
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   function load() { _loader.trigger(ticker()); }
 
   // the profile and the levels only (a levels push): the bars are unchanged
   function loadLevelsImpl(tk) {
     if (!isChart() || ticker() !== tk || !_chart) return;
-    var get = (window.EdL1SseGuards && window.EdL1SseGuards.sharedFetchJson) || function (u) { return fetch(u, { cache: 'no-store' }).then(okJson); };
+    var get = window.EdL1SseGuards.sharedFetchJson;
     return Promise.all([get('/api/terrain/strikes?ticker=' + encodeURIComponent(tk)).catch(nullp),
       get('/api/terrain?ticker=' + encodeURIComponent(tk)).catch(nullp)]).then(function (r) {
       if (!isChart() || ticker() !== tk || r[0] == null || r[1] == null) return;
@@ -89,9 +82,7 @@
       render();
     });
   }
-  var _levelsLoader = (window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); })
-    : { trigger: function () { loadLevelsImpl(ticker()); } };
+  var _levelsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); });
 
   function render() {
     var c = ensureChart(); if (!c) return;

@@ -429,9 +429,7 @@
       if (stillRightNow(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">no console serving Right Now — one of its endpoints failed to render</div></div>';
     });
   }
-  var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); })
-    : { trigger: function () { loadImpl(ticker()); }, reset: function () {} };
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
   // Every dimension that makes this "a different request" must be in the key -- ticker AND the
   // migration section's own scope/ghost toggles -- or a toggle click queues behind an in-flight
   // fetch for the OLD toggle state instead of aborting it (the exact bug class this session's

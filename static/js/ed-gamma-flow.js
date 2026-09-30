@@ -40,9 +40,7 @@
   // Fixed: a response is only current if BOTH the desired contract AND the control state
   // it was fetched under are still what they were.
   function stillFlow(desired) {
-    var ES = window.EdStream;
-    return isFlow() && ((ES && ES.getDesired && ES.getDesired()) || null) === desired
-      && ((ES && ES.controlState && ES.controlState()) || 'none') === 'accepted';
+    return isFlow() && window.EdStream.getDesired() === desired && window.EdStream.controlState() === 'accepted';
   }
   // Only the actual microstructure fetch is coalesced. The NONE/REQUESTED/FAILED branches are
   // synchronous, state-authority-visible renders (no network) and must run the INSTANT load()
@@ -69,14 +67,11 @@
       });
   }
   var _pendingDesired = null;
-  var _loader = (typeof window !== 'undefined' && window.EdL1SseGuards && window.EdL1SseGuards.makeCoalescedLoader)
-    ? window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingDesired, signal); })
-    : { trigger: function () { loadImpl(_pendingDesired); }, reset: function () {} };
+  var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingDesired, signal); });
   function load() {
     var h = host(); if (!h || !isFlow()) return;
-    var ES = window.EdStream;
-    var desired = (ES && ES.getDesired && ES.getDesired()) || null;
-    var ctl = (ES && ES.controlState && ES.controlState()) || 'none';
+    var desired = window.EdStream.getDesired();
+    var ctl = window.EdStream.controlState();
     if (!desired) { return shell(h, null, 'NONE', 'Select a Call or Put contract in Chain.', null); }   // L: fail closed
     if (ctl === 'requested') { return shell(h, desired, 'REQUESTED', 'control request sent — awaiting acknowledgement', null); }
     if (ctl === 'failed') { return shell(h, desired, 'FAILED', 'control request was not accepted — no observation started', null); }
@@ -85,7 +80,6 @@
     _loader.trigger(desired);
   }
 
-  // subscription state from the CANONICAL producer truth (EdStream.status over the payload's plane).
   // the queried contract's subscription, served (streaming_plane.subscription_state)
   function subState(plane) {
     var s = (plane || {}).subscription_state;
@@ -198,8 +192,8 @@
     document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels' || e.detail.kind === 'flow') load(); });
     // E: a ticker or expiry-context change clears THIS tab's old contract intent LOCALLY (no POST,
     // no fight for the slot). A fresh explicit selection is then required to observe again.
-    document.addEventListener('ed:ticker', function () { if (window.EdStream && window.EdStream.clearDesired) window.EdStream.clearDesired(); load(); });
-    document.addEventListener('ed:expiry', function () { if (window.EdStream && window.EdStream.clearDesired) window.EdStream.clearDesired(); load(); });
+    document.addEventListener('ed:ticker', function () { window.EdStream.clearDesired(); load(); });
+    document.addEventListener('ed:expiry', function () { window.EdStream.clearDesired(); load(); });
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }
