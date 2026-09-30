@@ -114,7 +114,6 @@
       ? walls.map(function (w) { return '<div class="fl-row"><span class="k">' + esc(w.side || '—') + ' @ ' + num(w.price) +
           '</span><span class="v">' + int(w.volume) + ' <span class="sm">(' + num(w.median_mult, 1) + '× median)</span></span></div>'; }).join('')
       : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
-    var deferred = (d.deferred || []).join(' · ');
 
     // Operator-reproduced defect (2026-09-14): this badge was a hardcoded literal, never gated
     // on ages.book_age_sec even though the exact same number is displayed two lines below it in
@@ -133,8 +132,7 @@
         '</div>' +
       '</div>' +
       '<div class="fl-sec" style="margin-top:14px;"><div class="fl-sec-h">Wall candidates (size-outlier heuristic, displayed book only)</div>' + wallsHtml + '</div>' +
-      '<div class="fl-foot">' + (deferred ? esc(deferred) + ' — ' : '') +
-      'no signed buys/sells, CVD, or bull/bear verdict is canonical for the underlying; Schwab exposes no native aggressor field.</div>';
+      '<div class="fl-foot">Schwab sends no trade side, so none is shown: no buys/sells, CVD, or bull/bear verdict.</div>';
   }
 
   if (typeof document !== 'undefined') {

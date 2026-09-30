@@ -7,8 +7,8 @@ SINGLE-STREAM-AUTHORITY LAW (root-fixed here): this module used to own its own
 capture daemon — two authenticated sockets on one account, racing each other for the
 same market truth. It now opens ZERO Schwab connections. The daemon is the one producer.
 
-LIVE PUSH (2026-09-23): the daemon forwards every Schwab stream message to this module over
-a local WebSocket (app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8799) the
+LIVE PUSH (2026-09-23): the daemon forwards each Schwab book, option-quote, news and bar
+message to this module over a local WebSocket (app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8799) the
 moment it arrives, and this module applies it to the in-process planes
 (`app.options.order_flow.state`, `live_market_plane`). The database is NOT in the live
 path: it used to be -- this module polled `stream_capture.db` every 0.5s -- which put a
@@ -182,12 +182,11 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     time for it -- never the time this console processed it (a delayed message must not
     read as fresh; 2026-09-23 audit P0).
 
-      quote.SYM    LEVELONE_EQUITIES -> order-flow state (the tape); the live price is the
-                   daemon's price row (_rows_loop), never rebuilt here
       book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book; OPTIONS_BOOK -> the option
                    contract's book
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
 
+    An equity's quote is the daemon's price row (_rows_loop); the console receives no other copy.
     Every option quote carrying GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME is passed to the
     tick callback (an equity's tick is its price row's arrival). A message missing its symbol, its
     receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
@@ -203,13 +202,6 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     kind = topic.split(".", 1)[0]
     if kind == "bar1m":
         streamed_bars.put(msg)
-        return None
-    if kind == "quote":
-        item = msg.get("native")
-        if not isinstance(item, dict):
-            return None
-        push_level_one(sym, item, ts_recv=ts)
-        push_changes.changed(sym, push_changes.FLOW)
         return None
     if kind == "book":
         content = msg.get("content")
@@ -260,6 +252,8 @@ async def _rows_loop() -> None:
                         _price_rows[row["ticker"]] = row
                         if msg.get("type") == "quotes":
                             _tick(row["ticker"])
+                            # the row carries the top of book the order-flow panels show
+                            push_changes.changed(row["ticker"], push_changes.FLOW)
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute

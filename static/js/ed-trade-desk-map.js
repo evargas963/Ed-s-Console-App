@@ -383,12 +383,12 @@
         src(c, 'Schwab ' + esc(st().bookVenue) + ' · ' + (m && m.status === 'no_book' ? 'no book for this symbol right now' : m === undefined ? 'loading…' : 'microstructure request failed'));
         c.querySelector('.tdm-rows').innerHTML = '';
       } else {
-        var imb = Number(d5.imbalance);
         var bs = m.ages ? m.ages.book_stale : null;   // true, false, or unknown (null)
         var sd = d5.side;   // served: BID / ASK / EVEN
+        var sdCls = sd === 'BID' ? 'up' : sd === 'ASK' ? 'dn' : '';
         state(c, bs === true ? 'STALE BOOK' : bs !== false ? 'BOOK AGE UNKNOWN' : (sd === 'BID' ? 'BID HEAVY' : sd === 'ASK' ? 'OFFER HEAVY' : 'BALANCED'),
-          bs !== false ? 'warn' : (sd === 'BID' ? 'up' : sd === 'ASK' ? 'dn' : ''));
-        c.querySelector('.tdm-hero').innerHTML = '<span class="' + (imb >= 0 ? 'up' : 'dn') + '">' + (imb >= 0 ? '+' : '') + num(imb * 100, 1) + '%</span> <small>depth imbalance, 5 levels</small>';
+          bs !== false ? 'warn' : sdCls);
+        c.querySelector('.tdm-hero').innerHTML = '<span class="' + sdCls + '">' + esc(d5.imbalance_disp) + '</span> <small>depth imbalance, 5 levels</small>';
         src(c, 'Schwab ' + esc(m.venue) + ' · book ' + (bs === false ? age(m.ages.book_age_sec) + ' old' : bs ? 'not live' : 'age unknown'));
         c.querySelector('.tdm-rows').innerHTML = row('Bid / ask depth (5)', fmtVol(d5.bid_total) + ' / ' + fmtVol(d5.ask_total)) +
           row('Spread', num(m.spread_pts, 2));

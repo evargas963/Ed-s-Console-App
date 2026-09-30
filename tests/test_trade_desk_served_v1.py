@@ -30,12 +30,8 @@ def test_the_book_side_is_served_from_the_real_book():
     want = "BID" if bid5 > ask5 else "ASK" if ask5 > bid5 else "EVEN"
     assert (m["depth"]["5"]["bid_total"], m["depth"]["5"]["ask_total"]) == (bid5, ask5)
     assert m["depth"]["5"]["side"] == want
-
-
-def test_the_tape_side_is_served():
-    from app.options.order_flow.live_payload import flow_block
-    assert [flow_block({"tape_pressure_5m": v})["tape_side_5m"] for v in (0.2, -0.1, 0.0, None)] == \
-        ["BUY", "SELL", "EVEN", None]
+    # the percent the Desk card prints is served text, not page arithmetic
+    assert m["depth"]["5"]["imbalance_disp"] == f"{(bid5 - ask5) / (bid5 + ask5) * 100:+.1f}%"
 
 
 def _desk_events(monkeypatch, ticker, crosses, now, tf):

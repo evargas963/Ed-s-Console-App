@@ -2,8 +2,8 @@
 with zero Schwab connection of its own.
 
 This is the seam that used to be a second `schwab.streaming.StreamClient`. Since 2026-09-23
-the daemon PUSHES each message (live_push); these tests drive the REAL message constructors
-the daemon publishes with (stream_spine.quote_msg / book_msg) through the REAL ingest
+the daemon PUSHES each message (live_push); these tests drive the REAL message constructor
+the daemon publishes with (stream_spine.book_msg) through the REAL ingest
 (order_flow_streaming._ingest_pushed). The socket end to end is
 tests/test_live_push_channel_v1.py.
 """
@@ -17,7 +17,7 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-from stream_spine import book_msg, quote_msg
+from stream_spine import book_msg
 
 
 @pytest.fixture(autouse=True)
@@ -32,28 +32,10 @@ def _reset(tmp_path):
     return tmp_path / "stream_capture.db"
 
 
-def _push_l1(symbol, native, ts_recv):
-    ofs._ingest_pushed(f"quote.{symbol}", quote_msg(
-        symbol=symbol, bid=native.get("BID_PRICE"), src="schwab_l1", ts_recv=ts_recv,
-        native=native))
-
-
 def _push_book(symbol, content, ts_recv):
     ofs._ingest_pushed(f"book.{symbol}", book_msg(
         symbol=symbol, service="NASDAQ_BOOK", content=content, src="schwab_book",
         ts_recv=ts_recv))
-
-
-def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path, monkeypatch):
-    _reset(tmp_path)
-    monkeypatch.setattr(lmp, "_by_ticker", {})
-    native = {"key": "SPY", "BID_PRICE": 449.98, "ASK_PRICE": 450.02, "LAST_PRICE": 450.0,
-              "LAST_SIZE": 100, "TRADE_TIME_MILLIS": 1000, "TOTAL_VOLUME": 5000}
-    _push_l1("SPY", native, ts_recv=time.time())
-
-    top = ofls.get_content_for_symbol("SPY")
-    assert any(item.get("LAST_PRICE") == 450.0 for item in top)
-    assert lmp.get_quote("SPY") is None          # the price is the daemon's row, not a copy here
 
 
 def test_book_message_lands_verbatim(tmp_path):
@@ -119,16 +101,16 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)
 
 
-def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
-    """Every roster symbol is applied, each into its OWN state: a QQQ tick must never appear in
+def test_each_symbol_lands_in_its_own_state_only(tmp_path):
+    """Every symbol's book is applied into its OWN state: a QQQ book must never appear in
     SPY's."""
     _reset(tmp_path)
-    monkeypatch.setattr(lmp, "_by_ticker", {})
     ofs._active_ticker = "SPY"
-    _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time.time())
+    _push_book("QQQ", {"key": "QQQ", "BIDS": [{"BID_PRICE": 380.0, "TOTAL_VOLUME": 1}], "ASKS": [],
+                       "BOOK_TIME": 1}, ts_recv=time.time())
 
-    assert not any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("SPY"))
-    assert any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("QQQ"))
+    assert ofls.get_content_for_symbol("SPY") == []
+    assert [b["BIDS"][0]["BID_PRICE"] for b in ofls.get_content_for_symbol("QQQ")] == [380.0]
 
 
 def test_the_selected_ticker_gets_its_books_a_change_replaces_them_and_a_restart_restores_them(monkeypatch):

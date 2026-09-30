@@ -9,9 +9,11 @@ ET = ZoneInfo("America/New_York")
 CT = ZoneInfo("America/Chicago")
 
 
-def ct_label(ts_utc: float) -> str:
-    """An instant as the screen shows it: "Fri 09/25 06:59 PM CT"."""
-    return datetime.fromtimestamp(float(ts_utc), CT).strftime("%a %m/%d %I:%M %p CT")
+def ct_label(ts_utc: float, *, seconds: bool = False) -> str:
+    """An instant as the screen shows it: "Fri 09/25 06:59 PM CT"; with `seconds`,
+    "Fri 09/25 06:59:07 PM CT" (a trade's time)."""
+    return datetime.fromtimestamp(float(ts_utc), CT).strftime(
+        "%a %m/%d %I:%M:%S %p CT" if seconds else "%a %m/%d %I:%M %p CT")
 
 
 # RTH 09:30–16:00 ET (minute-of-day).

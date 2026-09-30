@@ -1,7 +1,7 @@
 /*
  * Trade Desk (Desk + Right Now) renders what the server serves and computes nothing (P1-3, PR B,
  * 2026-09-27): the attention queue is /api/desk/events (numbered, ordered, window-counted on the
- * server); book side, tape side, flip relation, wall distances, spot-vs-zones, levels by distance
+ * server); book side and imbalance, flip relation, wall distances, spot-vs-zones, levels by distance
  * and the positioning migration are served fields. Level crosses are real SPY rows
  * (tests/fixtures/real_spy_level_crosses.json). Any page error fails the test.
  */
@@ -31,10 +31,11 @@ const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series
   volume_profile: { basis: 'RTH 1-minute bars, each bar\'s volume spread evenly over its range (not trade prints)', tick_size: 0.01,
     bins: [[769.99, 1200, false], [770.0, 5000, true], [770.01, 3000, true]], poc: 770.0, vah: 770.01, val: 770.0 } };
 const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: { bid: 771.29, ask: 771.31, bid_size: 300, ask_size: 200 },
-  spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2, side: 'BID' } },
+  // imbalance_disp differs from imbalance on purpose: the page prints the served text, and
+  // arithmetic on the number would print +21.0%
+  spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.21, imbalance_disp: '+20.0%', side: 'BID' } },
   depth_pressure: { bid: [{ price: 771.29, volume: 300, cum: 300 }, { price: 771.28, volume: 900, cum: 1200 }], ask: [{ price: 771.31, volume: 200, cum: 200 }] },
-  ages: { book_age_sec: 1, book_stale: false }, wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
-  flow: { tape_pressure_5m: 0.3, tape_side_5m: 'BUY', tape_pressure_30s: 0.1, tape_pressure_2m: 0.2, cum_delta_proxy: 1000 } };
+  ages: { book_age_sec: 1, book_stale: false }, wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' } };
 // the pivot zone below spot was named "support" by type-guessing on the page: each zone's label and
 // side are served (liquidity_models.ZONE_DISPLAY)
 const LIQ = { ticker: 'SPY', zones: [{ zone_low: 772, zone_high: 773, zone_type: 'resistance_liquidity', zone_label: 'Resistance', zone_side: 'resistance', confluence_score: 3 },
@@ -215,7 +216,7 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Desk: the served queue, counts, book side, tape side and flip relation', async ({ page }) => {
+  test('Desk: the served queue, counts, book side and imbalance, and flip relation', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
@@ -223,6 +224,7 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmQueue .tdm-q')).toHaveCount(3);
     await expect(page.locator('#tdmQueueCount')).toHaveText('3');
     await expect(page.locator('#tdmCardLiq')).toContainText('BID HEAVY');
+    await expect(page.locator('#tdmCardLiq .tdm-hero span')).toHaveText(MICRO.depth['5'].imbalance_disp);
     // Schwab sends no trade side: the Order Flow card claims none (operator 2026-09-29)
     await expect(page.locator('#tdmCardFlow')).not.toContainText(/NET BUYING|NET SELLING|tick rule|PROXY|delta/i);
     await expect(page.locator('#tdmCardFlow')).toContainText(EVENTS.cross_counts.up + ' up · ' + EVENTS.cross_counts.down + ' down');

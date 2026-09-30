@@ -22,9 +22,9 @@ class _Reference:
         self.seq = 0
 
     def record(self, topic, msg):
-        body = FieldHistory.payload(topic, msg)
+        body = msg.get("content")
         ts = msg.get("ts_recv")
-        if body is None or not isinstance(ts, (int, float)):
+        if not isinstance(body, dict) or not isinstance(ts, (int, float)):
             return
         self.seq += 1
         self.msgs[self.seq] = (topic, msg)
@@ -37,20 +37,19 @@ class _Reference:
         return [self.msgs[sid] for _ts, sid in ids]
 
 
-def _msg(rng, t, topic):
+def _msg(rng, t):
     fields = rng.sample(["LAST_PRICE", "BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE",
                          "TOTAL_VOLUME", "NET_CHANGE_PERCENT", "MARK"], rng.randint(0, 4))
-    key = "native" if topic.startswith("quote.") else "content"
-    return {"ts_recv": t, key: {f: rng.random() for f in fields}}
+    return {"ts_recv": t, "content": {f: rng.random() for f in fields}}
 
 
 def test_replay_matches_latest_message_per_field_semantics():
     rng = random.Random(7)
     new, ref = FieldHistory(), _Reference()
-    topics = [f"quote.S{i}" for i in range(30)] + [f"optquote.O{i}" for i in range(30)]
+    topics = [f"optquote.O{i}" for i in range(60)]
     for i in range(20_000):
         topic = rng.choice(topics)
-        m = _msg(rng, 1_000.0 + i * 0.01, topic)
+        m = _msg(rng, 1_000.0 + i * 0.01)
         new.record(topic, m)
         ref.record(topic, m)
         if i % 997 == 0:

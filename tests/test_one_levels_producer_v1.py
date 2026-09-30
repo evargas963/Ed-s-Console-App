@@ -411,7 +411,7 @@ def test_an_option_quote_lands_in_state_with_no_callback(monkeypatch):
     monkeypatch.setattr(ofs, "_on_tick_callback", None)
     ofls.clear_all_live_state()
     _optquote(_GREEKS)
-    assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_OPT))
+    assert ofls.get_stream_greeks(_SPY_OPT)["delta"] == _GREEKS["DELTA"]
 
 
 # ── the closed market: the last session's levels stand, saved and labeled ─────────────────────

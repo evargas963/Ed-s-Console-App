@@ -9,17 +9,20 @@ not in the live path.
 
 What is forwarded -- Schwab only, by each message's `src` (anything else published on
 the same topics is refused):
-  quote.SYM    src "schwab_l1"          LEVELONE_EQUITIES
   book.SYM     src "schwab_book"        NASDAQ_BOOK / NYSE_BOOK / OPTIONS_BOOK (by `service`)
   optquote.SYM src "schwab_options_l1"  LEVELONE_OPTIONS
+  news.SYM     src "schwab_news"        NEWS_HEADLINE
+  bar1m.SYM    src "schwab_chart"       CHART_EQUITY
+An equity's quote (quote.SYM, LEVELONE_EQUITIES) is not forwarded: the daemon turns it into the
+price row it pushes on live_ui, which the console reads like a browser does.
 
 On connect a client first receives the CURRENT STATE, then every new message live. Schwab's
 LEVELONE services send only the fields that changed, so "the last message" is not the state:
-it usually lacks LAST_PRICE, CLOSE_PRICE or the Greeks. For quote.* and optquote.* the server
-therefore keeps, per symbol, the latest message that carried each field (FieldHistory) and
-replays those messages in receive order -- every field arrives exactly as streamed, with the
-receive time of the message that actually carried it, so no old value is made to look new.
-book.* messages are whole books, so the last one is the state.
+it usually lacks the Greeks or a price. For optquote.* the server therefore keeps, per
+contract, the latest message that carried each field (FieldHistory) and replays those
+messages in receive order -- every field arrives exactly as streamed, with the receive time
+of the message that actually carried it, so no old value is made to look new. book.* messages
+are whole books, so the last one is the state.
 
 Wire format: one JSON text frame per message, {"topic": str, "msg": {...}}.
 """
@@ -41,7 +44,7 @@ LIVE_PUSH_HOST = "127.0.0.1"
 LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: operator port config with its declared default, not market data
 
 #: topic prefix -> the only `src` forwarded for it
-_FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwab_options_l1",
+_FORWARDED = {"book.": "schwab_book", "optquote.": "schwab_options_l1",
               "news.": "schwab_news", "bar1m.": "schwab_chart"}
 
 
@@ -55,8 +58,8 @@ def is_forwarded(topic: str, msg) -> bool:
 
 
 class FieldHistory:
-    """Per symbol: the latest message that carried each field. `replay()` returns those
-    messages (deduplicated) in receive order."""
+    """Per option contract: the latest message that carried each field. `replay()` returns
+    those messages (deduplicated) in receive order."""
 
     def __init__(self) -> None:
         self._by_topic: "dict[str, dict[str, tuple[float, int]]]" = {}
@@ -66,15 +69,10 @@ class FieldHistory:
         self._refs: "dict[int, int]" = {}
         self._seq = 0
 
-    @staticmethod
-    def payload(topic: str, msg: dict) -> "dict | None":
-        body = msg.get("native") if topic.startswith("quote.") else msg.get("content")
-        return body if isinstance(body, dict) else None
-
     def record(self, topic: str, msg: dict) -> None:
-        body = self.payload(topic, msg)
+        body = msg.get("content")
         ts = msg.get("ts_recv")
-        if body is None or not isinstance(ts, (int, float)):
+        if not isinstance(body, dict) or not isinstance(ts, (int, float)):
             return
         self._seq += 1
         sid = self._seq
@@ -107,7 +105,7 @@ class FieldHistory:
 
 
 def is_field_delta_topic(topic: str) -> bool:
-    return topic.startswith("quote.") or topic.startswith("optquote.")
+    return topic.startswith("optquote.")
 
 
 def encode(topic: str, msg: dict) -> str:

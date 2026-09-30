@@ -170,7 +170,7 @@ from numeric_contract import schwab_number
 from terrain_engine import (TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike, positioning_migration)
 from terrain_atr import AtrPair, compute_atr_pair
 
-from db import get_db
+from db import LevelCrossEvent, get_db
 
 import live_price_rows as _lpr        # with_change: the bar-change computation
 import push_changes
@@ -2046,7 +2046,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
         else:
             spot, spot_source, spot_ts = resolve_spot(tk)
-        prev_spot = payload.get("spot")
         if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
             payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")),
                            _default_contract=front_atm_call(chain, spot))
@@ -2090,6 +2089,11 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                 set(_desired_option_symbols_for_ticker(tk, listed)),
                 daemon_available=is_option_producer_daemon_available())
             payload["_gamma_surface"] = surface
+        # a stored capture's price is no reference for a live cross: only live publications
+        # keep one and record crosses
+        crosses, payload["_cross_ref"] = ([], {}) if capture is not None else level_crosses(
+            payload.get("_cross_ref") or {}, snap.spot,
+            [(name, getattr(snap, k)) for k, name in CROSS_LEVELS if getattr(snap, k) is not None])
         with _terrain_cache_lock:
             if payload["_gamma_surface"] is not None:
                 payload["_gamma_surface"]["surface_seq"] = _next_gamma_surface_seq(tk)
@@ -2097,8 +2101,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         push_changes.changed(tk, push_changes.LEVELS)
         if new_chain:
             push_changes.changed(tk, push_changes.CHAIN)
-        if capture is None:
-            _log_level_crosses(tk, prev_spot, snap)
+        _record_level_crosses(tk, crosses, snap.spot, spot_ts)
         return snap
 
 
@@ -2108,13 +2111,42 @@ CROSS_LEVELS = (("call_wall", "Call g-Wall"), ("put_wall", "Put g-Wall"), ("gamm
                 ("call_delta_wall", "Call d-Wall"), ("put_delta_wall", "Put d-Wall"))
 
 
-def _log_level_crosses(tk: str, prev_spot: "float | None", snap: "TerrainSnapshot") -> None:
-    """Record each level spot moved through between the previous publication and this one."""
-    levels = [(getattr(snap, k), name) for k, name in CROSS_LEVELS if getattr(snap, k) is not None]
-    now = time.time()
-    get_db().detect_and_log_level_crosses(
-        ticker=tk, prev_spot=prev_spot, cur_spot=snap.spot, levels=levels, ts_utc=now,
-        ts_et=now_et().strftime("%Y-%m-%d %H:%M:%S ET"))
+def level_crosses(ref: dict, spot: "float | None", levels: list) -> "tuple[list, dict]":
+    """The levels spot has moved through, and the references for the next publication.
+
+    `ref` holds, per level name, the last live spot that was not exactly at that level; `levels`
+    is [(name, value)] as published now. A cross is a strict change of side against the level's
+    value now: up when ref < level < spot, down when spot < level < ref. Spot exactly at a
+    level is on neither side: nothing is recorded and that level's reference stays, so reaching
+    a level and turning back records nothing, and passing through after stopping on it records
+    one cross. Returns ([(name, level, "up" | "down")], {name: reference})."""
+    crosses, refs = [], {}
+    for name, level in levels:
+        was = ref.get(name)
+        if spot is None or spot == level:
+            if was is not None:
+                refs[name] = was
+            continue
+        refs[name] = spot
+        if was is not None and was != level and (was < level) != (spot < level):
+            crosses.append((name, float(level), "up" if spot > level else "down"))
+    return crosses, refs
+
+
+def _record_level_crosses(tk: str, crosses: list, spot: "float | None", spot_ts: "float | None") -> None:
+    """Write each cross as one row, at the time of the price that made it (Schwab's trade time
+    on the daemon's price row)."""
+    if not crosses:
+        return
+    if spot_ts is None:
+        log.warning("level crosses for %s not recorded: the crossing price has no trade time: %s", tk, crosses)
+        return
+    ts_et = datetime.fromtimestamp(spot_ts, ET).strftime("%Y-%m-%d %H:%M:%S ET")
+    for name, level, direction in crosses:
+        get_db().log_level_cross(LevelCrossEvent(
+            ticker=tk, ts_utc=float(spot_ts), ts_et=ts_et, level_name=name, level_value=level,
+            direction=direction, spot_at_cross=float(spot), zone_before=None, zone_after=None,
+            timeframe="1m"))
 
 
 def _vanna_rows(snap: "TerrainSnapshot") -> list:
@@ -2747,12 +2779,9 @@ def get_charm_by_strike(ticker: str = Query(...)):
 def get_options_tape(ticker: str = Query(...),
                      contract: Optional[str] = Query(default=None),
                      limit: int = Query(default=100)):
-    """Discrete option TRADE prints (operator field-inventory audit, 2026-09-13) — the
-    Options Flow tape, locked to the operator's own required schema: Time/Symbol/Expiry/
-    Type/Strike/Bid x Size/Ask x Size/Trade/Size/Premium/Volume/OI/IV/Delta/provenance.
-    Sourced from app.options.order_flow.history.tape_rows_for_symbol, which reads the
-    ALREADY-CAPTURED native LEVELONE_OPTIONS ticks in stream_options_quotes_raw verbatim —
-    no new capture, no derived/estimated field, no fabricated buy/sell aggressor side.
+    """The Options Flow tape: each change of a contract's last trade as Schwab streamed it
+    (app.options.order_flow.history.tape_rows_for_symbol, from the stored LEVELONE_OPTIONS
+    messages), at the trade's own time. Not every trade, and no side.
 
     `contract`, when given, scopes to exactly that vendor symbol. Otherwise scopes to every
     CURRENTLY DESIRED contract for `ticker` (the primary + additional option contracts the
@@ -2794,11 +2823,10 @@ def get_options_tape(ticker: str = Query(...),
     rows = rows[:bounded_limit]
     return JSONResponse({
         "ticker": tk, "available": bool(rows), "symbols": symbols, "rows": rows,
-        "reason": None if rows else "no trade prints captured yet for the selected contract(s)",
-        "method": ("stream_options_quotes_raw (native LEVELONE_OPTIONS capture, already "
-                   "retained) -> tape_rows_for_symbol (de-duplicated genuine trade prints, "
-                   "context carried forward) -> merged newest-first across every currently "
-                   "desired contract for this ticker"),
+        "reason": None if rows else "no trade streamed yet for the selected contract(s)",
+        "method": ("stored LEVELONE_OPTIONS messages, each merged onto the contract's fields; a "
+                   "row is a change of Schwab's last trade (time, price or size), which is not "
+                   "every trade; newest first across the selected contracts"),
     })
 
 
@@ -3427,21 +3455,15 @@ def api_order_flow_microstructure(ticker: str = Query(...),
     """Canonical L2 book microstructure (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1): top-of-book,
     spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve, book slope,
     liquidity concentration, wall_candidates, and ages — every field classified
-    NATIVE/DERIVED/PROXY. SERIALIZER, not a second producer: it delegates to the ONE canonical
+    NATIVE/DERIVED. SERIALIZER, not a second producer: it delegates to the ONE canonical
     app.options.order_flow.engine.compute_book_microstructure keyed by this ticker, which carries the
     engine's already-computed structural state for the current book (memoized per ticker +
     BOOK_TIME) rather than re-walking the raw book. No Schwab REST quote call; the client
     renders, never recomputes. `venue` is the one Schwab book shown: NYSE_BOOK (exchanges) or
     NASDAQ_BOOK (market makers); the two are never combined."""
     t = ticker_storage_key(_required_ticker(ticker))
-    data: dict = {}
-    try:
-        from app.options.order_flow.state import get_content_for_symbol
-        _content = get_content_for_symbol(t, venue)
-        if _content:
-            data["content"] = _content
-    except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
-        log.debug("microstructure content build failed for %s: %s", t, e)
+    from app.options.order_flow.state import get_content_for_symbol
+    data: dict = {"content": get_content_for_symbol(t, venue)}
     # top of book: the daemon's price row (its fields are None while the quote is not live)
     from app.options.order_flow.streaming import price_row
     _row = price_row(t)
@@ -3452,17 +3474,7 @@ def api_order_flow_microstructure(ticker: str = Query(...),
     data["book_live"] = lmp.book_is_live(t, venue)
     from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
-    now = time.time()
-    payload = compute_book_microstructure(data, now_ts=now, ticker=t)
-    # The trade-side read the Trade Desk's Order Flow card shows: tick-rule PROXY flow from the
-    # same OrderFlowEngine the option book uses (no second classifier).
-    try:
-        from app.options.order_flow.engine import OrderFlowEngine
-        from app.options.order_flow.live_payload import flow_block
-        payload["flow"] = flow_block(OrderFlowEngine().compute(data, now=now, ticker=t))
-    except Exception as e:  # flow is additive -- the book payload stands without it
-        log.debug("microstructure flow failed for %s: %s", t, e)
-        payload["flow"] = None
+    payload = compute_book_microstructure(data, now_ts=time.time(), ticker=t)
     payload["ticker"] = t
     payload["venue"] = venue
     return JSONResponse(payload)
@@ -3487,9 +3499,8 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     payload = options_live_payload(ticker_storage_key(c), time.time())
     payload["contract"] = c
     from app.options.order_flow.history import put_call_side
-    from app.options.order_flow.state import get_content_for_symbol
-    payload["put_call"] = put_call_side(next((it.get("CONTRACT_TYPE") for it in get_content_for_symbol(c)  # external-key-ok: Schwab LEVELONE_OPTIONS
-                                              if it.get("CONTRACT_TYPE")), None))
+    from app.options.order_flow.state import option_contract_type
+    payload["put_call"] = put_call_side(option_contract_type(c))   # Schwab's CONTRACT_TYPE, as streamed
     try:
         # PR214 merge blocker 1A: the diagnostics are bound to the CONTRACT BEING
         # QUERIED, not to whatever contract the plane happens to be streaming. Without

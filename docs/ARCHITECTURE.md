@@ -40,7 +40,7 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 | `db.py` (the parts that stay: bars, level history, enrollment, connection), `db_authority.py`, `db_safety.py`, `json_blob_codec.py` | `daemon/` (writes) — the console opens the database read-only |
 | `terrain_engine.py`, `terrain_read.py`, `terrain_atr.py`, `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `math_volatility.py` | `producer/` |
 | `liquidity_value_engine.py`, `liquidity_models.py` | `producer/` |
-| `app/options/order_flow/`, `app/options/contracts/`, `l1_trade_observation.py`, `micro_structure.py` | `producer/` |
+| `app/options/order_flow/`, `app/options/contracts/`, `micro_structure.py` | `producer/` |
 | From `server.py`: the levels loop, `_publish_levels`, `_publish_price_levels`, the gamma-surface projection | `producer/` |
 | From `server.py`: the routes, startup; `push_changes.py` (the `/api/changes` push) | `console/` |
 | `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `production_universe.py`, `numeric_contract.py` | `shared/` |

@@ -3,10 +3,9 @@
  * Options Flow tape (operator field-inventory audit, 2026-09-13) — the embedded #ofBody
  * widget on the Gamma pane, rebuilt to the operator's own required schema: Time | Symbol |
  * Expiry | Type | Strike | Bid x Size | Ask x Size | Trade | Size | Premium | Volume | OI |
- * IV | Delta | provenance. Sourced from /api/options/tape (native LEVELONE_OPTIONS trade
- * prints, already retained — see app.options.order_flow.history.tape_rows_for_symbol). No
- * buy/sell aggressor side is ever fabricated; `classification` states only the mechanical
- * fact of where a print landed relative to that same tick's own bid/ask.
+ * IV | Delta. Sourced from /api/options/tape (each change of Schwab's last trade — see
+ * app.options.order_flow.history.tape_rows_for_symbol). The time shown is the trade's own,
+ * as served; no side is shown for a print.
  */
 const { test, expect } = require('@playwright/test');
 
@@ -19,12 +18,13 @@ const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, sour
   cells: [{ strike: 100, gex: [958600], contracts: [{ call: null, put: null }] }] };
 
 const TAPE_ROW = {
-  ts_recv: 1789166557.5, symbol: 'SPY   260918C00600000', underlying: 'SPY',
+  ts_recv: 1789166557.5, trade_ts: 1789166556.9, time: 'Fri 09/11 05:42:36 PM CT',
+  symbol: 'SPY   260918C00600000', underlying: 'SPY',
   expiry: '2026-09-18', type: 'CALL', strike: 600,
   bid: 1.17, bid_size: 187, ask: 1.19, ask_size: 180,
   trade: 1.18, size: 1, premium: 118.0,
   volume: 70984, oi: 901, iv: 7.16, delta: 0.357,
-  multiplier: 100, classification: 'inside_spread',
+  multiplier: 100,
 };
 
 function intercept(page, tapeBody) {
@@ -61,8 +61,9 @@ test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {
     const of = page.locator('#ofBody');
     await expect(of.locator('thead th')).toHaveText(
       ['Time', 'Symbol', 'Exp', 'Type', 'Strike', 'Bid×Size', 'Ask×Size', 'Trade', 'Size',
-       'Premium', 'Vol', 'OI', 'IV%', 'Δ', 'vs Market']);
+       'Premium', 'Vol', 'OI', 'IV%', 'Δ']);
     const row = of.locator('tbody tr').first();
+    await expect(row.locator('td').nth(0)).toHaveText(TAPE_ROW.time);     // the trade's own time, as served
     await expect(row.locator('td').nth(1)).toHaveText(TAPE_ROW.symbol);   // exact vendor symbol, verbatim
     await expect(row.locator('td').nth(2)).toHaveText('09-18');
     await expect(row.locator('td').nth(3)).toHaveText('CALL');
@@ -76,20 +77,9 @@ test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {
     await expect(row.locator('td').nth(11)).toHaveText('901');
     await expect(row.locator('td').nth(12)).toHaveText('7.2');
     await expect(row.locator('td').nth(13)).toHaveText('0.357');
-    // classification is a mechanical bid/ask fact, never a buy/sell verdict
-    await expect(row.locator('.of-cls')).toHaveText('inside');
+    await expect(row.locator('td')).toHaveCount(14);
+    // no side and no position against the quote is shown for a print
     const bodyText = await of.innerText();
-    expect(bodyText.toLowerCase()).not.toMatch(/\bbuy\b|\bsell\b|\bbought\b|\bsold\b/);
-  });
-
-  test('at-bid and at-ask prints are labelled by mechanical comparison, not aggressor inference', async ({ page }) => {
-    const atBid = { ...TAPE_ROW, ts_recv: TAPE_ROW.ts_recv + 1, trade: 1.17, classification: 'at_bid' };
-    const atAsk = { ...TAPE_ROW, ts_recv: TAPE_ROW.ts_recv + 2, trade: 1.19, classification: 'at_ask' };
-    await intercept(page, { ticker: 'SPY', available: true, symbols: [TAPE_ROW.symbol], rows: [atAsk, atBid] });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const rows = page.locator('#ofBody tbody tr');
-    await expect(rows).toHaveCount(2);
-    await expect(rows.nth(0).locator('.of-cls')).toHaveText('at ask');   // newest-first
-    await expect(rows.nth(1).locator('.of-cls')).toHaveText('at bid');
+    expect(bodyText.toLowerCase()).not.toMatch(/\bbuy\b|\bsell\b|\bbought\b|\bsold\b|at bid|at ask|inside/);
   });
 });

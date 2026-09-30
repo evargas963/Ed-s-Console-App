@@ -112,7 +112,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
     # a new market day's first chain, before that day's first capture: the prior day is recomputed
     # against the new day (Friday's capture becomes the prior day), once
     monkeypatch.setattr(server, "resolve_spot", lambda tk: (newer["spot"], "streaming_plane", later))
-    monkeypatch.setattr(server, "_log_level_crosses", lambda *a, **k: None)
+    monkeypatch.setattr(server, "_record_level_crosses", lambda *a, **k: None)
     monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET).timestamp()
     pin_clock(2026, 9, 28, 10, 0)
     server._publish_levels("PCG", newer["contracts"], monday)

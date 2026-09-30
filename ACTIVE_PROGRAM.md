@@ -25,11 +25,10 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 - S-08 `terrain_staleness` calls a snapshot of any age not stale when not refreshing (closed market): label it a past observation with its time.
 - S-09 `terrain_staleness` uses `TERRAIN_REFRESH_SEC` when no cycle time has been measured.
 - S-10 `_gamma_surface_coverage_summary` serves `live_pct` 0.0 when no cell is relevant (absent with a reason instead).
-- S-11 `_publish_levels` seeds level crosses with a stored capture's past spot (`prev_spot`), stamped now.
 - S-12 `get_levels` treats a spot of 0 as missing (`and spot`).
 - S-22 `_prior_strikes` and `terrain_engine.per_strike_view` each define the 7-DTE near/far split.
 - S-24 live screens read the database: `/api/bars1m` and the price levels (`_read_bars_1m`), `/api/options/tape` (`tape_rows_for_symbol`), the book heatmap, `/api/desk/events` (level crosses), the ATR (with ONE-04/05/06).
-- S-30 the equity microstructure route (`flow`), the options one (`streaming_plane`), `_contract_admission` and the microstructure content build return None/{} after an exception with no reason.
+- S-30 the options microstructure route (`streaming_plane`) and `_contract_admission` return None/{} after an exception with no reason.
 - S-35 `get_levels` expected-move levels: live spot ± the chain-time move, stamped with the terrain's time and stale flag, computed in the route.
 - S-36 `_build_raw_levels_used` takes `prev_day` or `prev` (the two snapshot builders name it differently).
 - S-37 / M-03 `_liquidity_zone_tradeable_fields`: midpoint anchor when `zone_mid` is missing; with no spot, `liquidity_zone_tradeable_score` uses another formula instead of absent; the distance penalty is computed in the route; `/api/options/tape` turns an invalid `limit` into 100.
@@ -67,7 +66,6 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 - M-38 04:00/20:00 are literals in two functions; `time_to_expiry_years` does its own close lookup; 9:30 has two names.
 
 **app/options/order_flow/, live_price_rows.py, live_market_plane.py**
-- O-02 equity TOTAL_VOLUME is written into `_stream_greeks` (read only for options).
 - O-04 a 0 MARK, book price, bid/ask, BOOK_TIME or quote time reads as missing (truthiness / `> 0`).
 - O-07 `state.py` swallows a failed clock read and RTH reset (debug log only) and reads the console clock, not the message time.
 - O-09 the price display (`spot_disp`) is formatted in three places.
@@ -75,7 +73,9 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 - O-15 `_trade_age_sec` clamps a negative age to 0.
 - O-16 `closed_last` carries no source.
 - O-17 book heatmap cells start at bid/ask 0.0 (an unobserved side reads 0); its `method` text says "both venues merged".
-- O-18 `history`: an invented 0.01 axis width; contract context carried forward; read failures return [] with no reason; EXPIRATION_* read raw and truth-tested.
+- O-18 `history`: an invented 0.01 axis width; read failures return [] with no reason; EXPIRATION_* read raw and truth-tested.
+- O-25 a streamed option greek, open interest or volume sent as not a number leaves the last valid value in `_stream_greeks` (the top of book clears its field). Not seen in 2,114,423 stored LEVELONE_OPTIONS messages (2026-09-29/30, 1,194 contracts): no failure to test against yet.
+- O-26 `price_bars_1m.source`: rows written before 2026-09-30 say `schwab_1m_accumulator_sqlite` whatever wrote them; new rows say `schwab_chart_equity`. Nothing reads the column.
 - O-20 the default contract at startup/closed is picked from the stored capture's spot with no age.
 - O-24 on reconnect the last `bar1m` is replayed and processed as a new bar.
 
@@ -114,13 +114,11 @@ producer, with a behavior test that fails if the second one returns.
 
 | ID | Status | Work item |
 |---|---|---|
-| ONE-02 | QUEUED | Equity last price and size kept a second time in the console's order-flow tape (`state.py` tape and receive log). |
 | ONE-03 | QUEUED | Feed liveness judged in both processes: the daemon applies its own heartbeat to its price rows (`live_ui.beat`), and the console applies the pushed copy again (`feed_live_for`); one rule since ONE-15, two places it runs. |
 | ONE-04 | QUEUED | Equity books: the console's order-flow copy and the database copy read by the Book Heatmap (`history.book_heatmap_for_ticker`, a live screen reading the DB). |
-| ONE-05 | QUEUED | Option quotes: the options tape reads the database copy (`history.tape_rows_for_symbol`, a live screen reading the DB) beside the order-flow copy. |
+| ONE-05 | QUEUED | Option quotes: the options tape reads the database copy (`history.tape_rows_for_symbol`, a live screen reading the DB) while the console's memory holds the same contract's quote fields (`state.py`). |
 | ONE-06 | QUEUED | 1-minute bars in two databases (with P2-DB4). A chart's bar history (`/api/bars1m`) and the price-level producer (after each bar) read `price_bars_1m` (`_read_bars_1m`): a live screen reading the database (rule 6). |
 | ONE-07 | QUEUED | Option chains fetched by two processes with two writers to `ed_console.db` (with P2-1). |
-| ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
 
 ## Phase 2 — the rest of the design, then decomposition
 
@@ -160,7 +158,8 @@ producer, with a behavior test that fails if the second one returns.
 | VOL-GAMMA | Option volume in the gamma read (e.g. volume-weighted gamma for same-day expiries). |
 | SETTLE-ETF | When an expiring option of a late-close ETF leaves the book. The one settlement rule takes every PM-settled contract out at the 16:00 ET cash close, which is when SPXW and single-stock options stop trading. Expiring options on the ETFs that trade to 16:15 ET (on the board: SPY, QQQ, IWM, SMH, XLE) trade until 16:15 on expiration day (Cboe, checked 2026-09-30), and the levels loop publishes until 16:30, so for those 15 minutes their expiring contracts are out of the book while still trading; their time to expiry is measured to 16:00 as well. Schwab sends no per-contract field for it (`expirationDate` is 16:00 ET and `lastTradingDay` a date for every contract), so matching it needs a list of those products kept by hand. Keep 16:00 for all, or authorize that list. |
 | FLIP-DOMAIN | The prices the gamma flip is looked for at: spot ±15% today. On the 2026-09-29 close captures 11 of 43 tickers had no sign change there; evaluated over every listed strike, 10 of them have one further out (INTC −15.9%, MU −15.8%, MSFT −16.6%, SMCI −17.0%, NET −27.6%, META −28.0%, PCG −32.1%, MTA −50.8%, TSL −56.8%, CRWD −60.1% from spot) and CIFR has none. Keep ±15%, change it, or show the nearest sign change wherever it is, with its distance. The curve holds each contract's implied volatility fixed, which is less true the further the price is moved. |
-| DESK-GAPS | The Trade Desk reference shows elements with no canonical value yet; each keeps its place and says why. (2) High- and low-volume nodes: no producer and not drawn (a 70% value area is not a node; peaks and troughs need a rule of their own; `hvp`/`lvp` are gamma strikes, not volume). (3) Absorption, liquidity pull, replenishment: not produced (open). Each needs per-trade prints at price and venue, which the stream does not carry; TIMESALE is to be asked in market hours in a window the operator agrees (it stops the capture daemon, the one Schwab stream, for about a minute). The chart's events are level crosses as recorded, drawn as numbered callouts. (4) R1/R2/S1/S2: no producer. (5) Severity and each card's 1-hour change: no producer (each card's chart draws a served series: book depth by price, 1-minute volume, put/call OI and ATM IV by expiry; no axis numbers, a page-derived number is not printed). (6) The Trade Desk's Order Flow card shows Schwab's session volume, last trade size, top of book and level crosses; the tick-rule trade-side estimate is off it, and is still shown, labelled PROXY, in Options → Flow (`static/js/ed-gamma-flow.js`; its producer in `app/options/order_flow/engine.py`) until ONE-12 deletes it. |
+| DESK-GAPS | The Trade Desk reference shows elements with no canonical value yet; each keeps its place and says why. (2) High- and low-volume nodes: no producer and not drawn (a 70% value area is not a node; peaks and troughs need a rule of their own; `hvp`/`lvp` are gamma strikes, not volume). (3) Absorption, liquidity pull, replenishment: not produced (open). Each needs per-trade prints at price and venue, which the stream does not carry; TIMESALE is to be asked in market hours in a window the operator agrees (it stops the capture daemon, the one Schwab stream, for about a minute). The chart's events are level crosses as recorded, drawn as numbered callouts. (4) R1/R2/S1/S2: no producer. (5) Severity and each card's 1-hour change: no producer (each card's chart draws a served series: book depth by price, 1-minute volume, put/call OI and ATM IV by expiry; no axis numbers, a page-derived number is not printed). (6) The Trade Desk's Order Flow card shows Schwab's session volume, last trade size, top of book and level crosses; no trade side is computed or shown anywhere (DATA_FLOW decision 9). |
+| TAPE | The Options Flow tape shows each change of Schwab's last trade, which is not every trade (the stream reports the last trade when it sends; one captured message moves volume by 2 with a last size of 1). It is labelled so. Keep it as labelled, or remove the panel; every trade needs TIMESALE (DESK-GAPS 3). |
 | UNSHOWN | Values the levels producer computes and `/api/terrain` serves that no screen shows yet, each kept for a named purpose: `rr_25d` (TU-11, RR-25), `vanna_agg` (TU-05), and the pin gate's four inputs (PIN-FLOOR). Each is shown by its item or deleted with it. |
 
 ## Operator host steps

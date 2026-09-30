@@ -106,8 +106,9 @@ def test_option_contract_l1_lands_in_order_flow_state(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     _push_option_l1(_SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=time.time())
 
-    items = ofls.get_content_for_symbol(_SPY_CONTRACT)
-    assert any(i.get("LAST_PRICE") == 1.27 for i in items)
+    assert ofls.option_top(_SPY_CONTRACT) == {"bid": 1.26, "ask": 1.28, "bid_size": 458, "ask_size": 209}
+    assert ofls.option_contract_type(_SPY_CONTRACT) == "C"
+    assert ofls.get_stream_greeks(_SPY_CONTRACT)["open_interest"] == 2097
 
 
 def test_option_contract_book_lands_verbatim(tmp_path, monkeypatch):
@@ -244,14 +245,14 @@ def test_dropping_an_additional_contract_not_also_primary_still_clears_it(monkey
         ofs._active_option_contracts = []
 
 
-def test_feed_loop_applies_the_ticker_and_every_option_contract_from_one_push(tmp_path, monkeypatch):
-    """The equity ticker, a primary contract and an additional contract all arrive on the
-    daemon's ONE push connection and each lands in its own state -- nothing is filtered by
-    which slot asked for it (the daemon only streams what was requested)."""
+def test_feed_loop_applies_every_option_contract_from_one_push(tmp_path, monkeypatch):
+    """A primary contract and an additional contract both arrive on the daemon's ONE push
+    connection and each lands in its own state -- nothing is filtered by which slot asked for
+    it (the daemon only streams what was requested)."""
     import socket
 
     from app.market_data.schwab.streaming import live_push
-    from stream_spine import MessageBus, quote_msg
+    from stream_spine import MessageBus
 
     _reset(tmp_path, monkeypatch)
     sock = socket.socket()
@@ -263,9 +264,7 @@ def test_feed_loop_applies_the_ticker_and_every_option_contract_from_one_push(tm
     qqq = {**_REAL_LEVELONE_OPTIONS_CONTENT, "key": _QQQ_CONTRACT, "UNDERLYING": "QQQ"}
 
     def _landed():
-        return (any(i.get("LAST_PRICE") == 450.0 for i in ofls.get_content_for_symbol("SPY"))
-                and any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
-                and any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_QQQ_CONTRACT)))
+        return all((ofls.option_top(c) or {}).get("bid") == 1.26 for c in (_SPY_CONTRACT, _QQQ_CONTRACT))
 
     async def go():
         bus = MessageBus()
@@ -279,8 +278,6 @@ def test_feed_loop_applies_the_ticker_and_every_option_contract_from_one_push(tm
             while stats.get("clients") != 1 and time.monotonic() < deadline:
                 await asyncio.sleep(0.02)
             now = time.time()
-            bus.publish("quote.SPY", quote_msg(symbol="SPY", last=450.0, src="schwab_l1",
-                                               ts_recv=now, native={"key": "SPY", "LAST_PRICE": 450.0}))
             bus.publish(f"optquote.{_SPY_CONTRACT}", options_quote_msg(
                 symbol=_SPY_CONTRACT, content=_REAL_LEVELONE_OPTIONS_CONTENT,
                 src="schwab_options_l1", ts_recv=now))
