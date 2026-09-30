@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -149,6 +150,48 @@ def test_the_route_places_the_price_among_the_zones_and_names_what_it_lacks(monk
     for z in zones:
         for s in z["source_levels"]:
             assert round(served[s["label"]], 4) == s["value"]
+
+
+def test_the_route_carries_the_option_levels_own_freshness(monkeypatch, spy_published):
+    """Measured on the running app 2026-09-30 11:51 ET, 44 tickers: the zones named no time for
+    the option levels in them; SNDK's were 84 minutes old, stale on /api/terrain, and the route
+    said "live / fused". The zones carry the terrain's own verdict (terrain_staleness) for the
+    option levels fused into them, beside the bars' time. Terrain: SPY's real chain
+    (tests/fixtures/real_spy_0dte_chain.json); stand-ins: the terrain's age, and the refresh
+    window being open or shut."""
+    from terrain_engine import compute_terrain
+    monkeypatch.setattr(srv, "resolve_spot", lambda tk: (766.5, "streaming_plane", 1.0))   # stand-in
+    body = srv.get_liquidity_snapshot(ticker="SPY")
+    assert body["option_levels"] is None and "option levels" in {a["input"] for a in body["absent"]}
+
+    fx = json.loads((_FX / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
+    terrain = compute_terrain("SPY", fx["chain"], fx["spot"],      # priced at the chain's own time
+                              now=datetime.fromtimestamp(fx["ts_utc"], ZoneInfo("America/New_York"))).to_dict()
+
+    def published(age_sec, refreshing):
+        monkeypatch.setattr(srv, "_is_loggable_session", lambda: refreshing)
+        monkeypatch.setattr(srv, "_terrain_cache", {"SPY": {**terrain, "computed_ts_utc": time.time() - age_sec,
+                                                            "levels_source": "wide_chain_loop"}})
+        return srv.get_liquidity_snapshot(ticker="SPY"), srv.terrain_cache_get("SPY")
+
+    body, served = published(10, True)
+    tags = {s["label"] for z in body["zones"] for s in z["source_levels"]}
+    assert {"GAMMA_CALL_WALL", "GAMMA_PUT_WALL"} <= tags, "the option levels are in the zones"
+    opt = body["option_levels"]
+    assert opt["levels_stale"] is False and opt["levels_source"] == "wide_chain_loop"
+    assert opt["levels_age_sec"] == pytest.approx(10, abs=5)
+    assert body["levels_as_of"] == "Fri 09/25 03:00 PM CT", "the bars keep their own time"
+
+    body, served = published(5045, True)
+    opt = body["option_levels"]
+    assert opt["levels_stale"] is True and opt["levels_stale_reason"].startswith("levels are 50")
+    # the same verdict /api/terrain serves, field for field (the age moves with the clock)
+    assert {k: v for k, v in opt.items() if k not in ("levels_age_sec", "levels_stale_reason")} == {
+        k: v for k, v in served.items() if k.startswith("levels_") and k not in ("levels_age_sec", "levels_stale_reason")}
+
+    body, _ = published(5045, False)                    # after the refresh window: a past observation
+    opt = body["option_levels"]
+    assert opt["levels_stale"] is False and opt["levels_market_closed"] is True and opt["levels_as_of"]
 
 
 def test_the_route_with_no_live_price_gives_no_side_and_no_location(monkeypatch, spy_published):

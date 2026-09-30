@@ -48,7 +48,8 @@ const LIQ = { ticker: 'SPY', zones: [{ zone_low: 772, zone_high: 773, zone_type:
     source_levels: [{ label: 'PD_POC', value: 768.5 }] }],
   spot_location: { inside: null, above: 0, below: 1 },
   summary: { value_state: 'shifted_higher', value_state_reason: null, vwap_relation: null, vwap_relation_reason: 'no value area today' },
-  absent: [{ input: 'PDC', reason: 'CLOSE_PRICE is not streaming live' }], levels_as_of: 'Fri 09/25 03:00 PM CT' };
+  absent: [{ input: 'PDC', reason: 'CLOSE_PRICE is not streaming live' }], levels_as_of: 'Fri 09/25 03:00 PM CT',
+  option_levels: { levels_source: 'wide_chain_loop', levels_stale: false, levels_age_sec: 43, levels_stale_reason: '' } };
 const STRIKES = { ticker: 'SPY', spot: SPOT, spot_strike: 771, today_source: 'terrain_live_cache', levels_stale: false,
   today: { all: [[770, 500000, 1000], [771, 900000, 5000], [772, -200000, 3000]] }, prior: { all: [[770, 400000, 800], [771, 700000, 2000], [772, -100000, 900]] },
   migration: { all: { compared: true, drift: 'UP', grew: [771, 770], shrank: [772], busiest: [771, 772], busiest_vs_walls: 'INSIDE_WALLS',
@@ -158,11 +159,39 @@ test('the liquidity map prints when its zones are as of and what they lacked; it
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); } catch (e) {} });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   const zones = page.locator('#liqmBody .liqm-zones');
-  await expect(zones.locator('.fl-sec-h')).toContainText('as of ' + LIQ.levels_as_of);
+  await expect(zones.locator('.liqm-inputs')).toContainText('bars as of ' + LIQ.levels_as_of);
+  await expect(zones.locator('.liqm-inputs')).toContainText('option levels · 43s');
   await expect(zones.locator('.liqm-absent')).toHaveText('PDC: CLOSE_PRICE is not streaming live');
   await expect(zones.locator('.liqm-tags').first()).toHaveText('TODAY_VAH 772.22');
   await expect.poll(() => page.evaluate(() => (window.EdLiquidityMap.state() || {}).livePrice)).toBeCloseTo(SPOT + 0.4, 6);
   expect((await page.evaluate(() => window.EdLiquidityMap.state())).liveTitle).toBe('LAST · 1s');
+  expect(errs).toEqual([]);
+});
+
+test('the liquidity map says when the option levels in its zones are stale, or as of when after the close', async ({ page }) => {
+  // measured 2026-09-30 11:51 ET on the running app: SNDK's zones were fused with option levels
+  // computed 84 minutes earlier, which /api/terrain called stale, and the map's route said only
+  // "live / fused" (1 of 44 tickers at that moment)
+  const errs = watchErrors(page);
+  await intercept(page);
+  const why = 'levels are 5045s old; the refresh loop is running but has not reached this ticker in two of its cycles (65s each)';
+  let option = { levels_source: 'wide_chain_loop', levels_stale: true, levels_age_sec: 5045, levels_stale_reason: why };
+  await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify(Object.assign({}, LIQ, { absent: [], option_levels: option })) }));
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const zones = page.locator('#liqmBody .liqm-zones');
+  await expect(zones.locator('.liqm-inputs .asof.stale')).toHaveText('option levels · 84m · STALE');
+  await expect(zones.locator('.liqm-absent')).toHaveText('option levels: ' + why);
+  await expect(zones.locator('.liqm-inputs')).toContainText('bars as of ' + LIQ.levels_as_of);   // the bars keep their own time
+  option = { levels_source: 'wide_chain_loop', levels_stale: false, levels_age_sec: 60000, levels_stale_reason: '', levels_market_closed: true, levels_as_of: 'Fri 09/25 03:15 PM CT' };
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(zones.locator('.liqm-inputs .asof.ref')).toHaveText('option levels as of Fri 09/25 03:15 PM CT');
+  await expect(zones.locator('.liqm-absent')).toHaveCount(0);
+  // no option levels in the zones: no option-levels time is printed
+  option = null;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(zones.locator('.liqm-inputs')).toHaveText('bars as of ' + LIQ.levels_as_of);
   expect(errs).toEqual([]);
 });
 

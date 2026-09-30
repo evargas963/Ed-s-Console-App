@@ -4,7 +4,8 @@
    console uses (ed-tv-chart.js), over the price (/api/bars1m, completed Schwab bars, the toolbar's timeframe),
    with the prior-day levels from /api/levels -- the one level route -- and the live price from
    the header's price row (ed:quote_tick). The zone list below the chart names each zone's source
-   levels, the time the zones are as of, and each input they lacked with its reason. */
+   levels, the time of each of their two inputs (the bars, the option levels), and each input
+   they lacked with its reason. */
 (function () {
   'use strict';
 
@@ -63,11 +64,19 @@
     var empty = h.querySelector('.liqm-empty');
     empty.hidden = !!(snap && snap.zones !== undefined);
     empty.textContent = empty.hidden ? '' : 'the liquidity snapshot request failed for ' + tk;
-    // what the zones lacked, each with its served reason; and the time they are as of
+    // what the zones lacked, each with its served reason
     var absent = ((snap && snap.absent) || []).map(function (a) {
       return '<div class="sm liqm-absent">' + esc(a.input) + ': ' + esc(a.reason) + '</div>'; }).join('');
-    h.querySelector('.liqm-zones').innerHTML = '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored, /api/liquidity-snapshot)' +
-      (snap && snap.levels_as_of ? ' · as of ' + esc(snap.levels_as_of) : '') + '</div>' +
+    // the zones' two inputs, each as served: the newest bar's time, and the option levels'
+    // age, or the time they are as of after the close, or STALE with the reason
+    var o = snap && snap.option_levels, closed = !!o && o.levels_market_closed === true, badge = window.EdShell.asOfBadge;
+    var inputs = (snap && snap.levels_as_of ? badge({ label: 'bars as of ' + snap.levels_as_of }) : '') +
+      (o ? ' ' + badge({ label: 'option levels' + (closed && o.levels_as_of ? ' as of ' + o.levels_as_of : ''),
+        ageSec: closed ? null : o.levels_age_sec, stale: o.levels_stale === true, reason: o.levels_stale_reason,
+        ref: closed, live: o.levels_stale === false && !closed }) : '');
+    h.querySelector('.liqm-zones').innerHTML = '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored, /api/liquidity-snapshot) ' +
+      '<span class="liqm-inputs">' + inputs + '</span></div>' +
+      (o && o.levels_stale ? '<div class="sm liqm-absent">option levels: ' + esc(o.levels_stale_reason) + '</div>' : '') +
       (zones.length ? zones.map(zoneRow).join('') : '<div class="sm">' + esc((snap && snap.reason) || 'no zones for this session yet') + '</div>') +
       absent + '</div>';
   }
