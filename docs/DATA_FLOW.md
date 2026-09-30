@@ -39,7 +39,7 @@ Schwab sends is taken as sent (rule 2), never computed.
 | Process | Started by | What it does |
 |---|---|---|
 | **Capture daemon** | `start_capture_daemon.bat` (its own window, restarts itself) | Holds the one Schwab WebSocket. Subscribes to what the console asks for. Every Schwab message goes once onto its in-memory message bus, and from there to three places: its database writer, the console, and the browser's price socket. Keeps the latest equity quote per symbol in memory to build the price row the browser shows. Every 30 minutes of the session it downloads the full chain of each board ticker and writes it to the chain history in `ed_console.db` (decision 7). |
-| **Console** | `start_ed_console.bat` (`uvicorn server:app`, port 8000) | Receives the daemon's messages (books, option quotes, the equity tape) and the daemon's finished price rows; it keeps no price of its own. Downloads full option chains from Schwab over REST, computes the levels every 5 s for the tickers on the board and being viewed, and keeps them in memory. Writes the 1-minute bars and level crosses to its own database. Serves the page and every `/api` route. Tells the daemon what to subscribe. |
+| **Console** | `start_ed_console.bat` (`uvicorn server:app`, port 8000) | Receives the daemon's messages (books, option quotes, 1-minute bars, news) and the daemon's finished price rows; it keeps no price and no equity quote of its own. Downloads full option chains from Schwab over REST, computes the levels every 5 s for the tickers on the board and being viewed, and keeps them in memory. Writes the 1-minute bars and level crosses to its own database. Serves the page and every `/api` route. Tells the daemon what to subscribe. |
 | **Browser** | the operator | Loads one page from the console. Gets prices pushed from the daemon; gets change signals (levels, chain, flow, liquidity) and the session label pushed from the console; reads everything else from the console's `/api` routes. |
 
 ### 3.2 How they talk
@@ -47,7 +47,7 @@ Schwab sends is taken as sent (rule 2), never computed.
 | From → to | Channel | What travels |
 |---|---|---|
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
-| daemon → console | local WebSocket 127.0.0.1:8799 | every Schwab message as sent; on connect, the current state first |
+| daemon → console | local WebSocket 127.0.0.1:8799 | each Schwab book, option quote, 1-minute bar and news message as sent (an equity quote travels only as the price row below); on connect, the current state first |
 | console → daemon | same socket | the "wanted" list: every symbol per Schwab service |
 | daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
 | daemon → console | the same :8800 push | the same price rows, for the equities the console wants streamed: the console's only live price |
@@ -60,7 +60,7 @@ Schwab sends is taken as sent (rule 2), never computed.
 | Place | Owner | What it holds |
 |---|---|---|
 | Daemon memory | daemon | the message bus; the latest equity quote per symbol (for the browser's price row) |
-| Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the downloaded chains; the computed levels |
+| Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books and option quotes (fed from 8799, §3.5 item 1); the downloaded chains; the computed levels |
 | `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers |
 | `ed_console.db` | console | 1-minute bars, level crosses, the ticker board, chain captures and a morning chain per ticker — plus the tables of the deleted ML pipeline (dropped in P2-DB3) |
 
@@ -68,12 +68,25 @@ Schwab sends is taken as sent (rule 2), never computed.
 
 - **Equity quote.** Schwab → daemon bus → (a) daemon writer → `stream_capture.db`; (b) daemon's
   price row → browser socket → header and watchlist, and the same row → the console → the spot the
-  levels and top of book use; (c) the raw message → the console's order-flow tape. Pushed
-  end to end; one price row everywhere.
+  levels and top of book use, and a `flow` push for the ticker's page. The raw message stays in
+  the daemon. Pushed end to end; one price row everywhere.
 - **Option quote and order book.** Schwab → daemon bus → writer, and → console memory → a
   `flow` push on `/api/changes` → the browser reads the order-flow and heatmap routes. An equity
   has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
   under its service and served for the `venue` the screen's venue switch names, never combined.
+  Schwab sends the whole book each time, both sides: the newest message is the book, an empty
+  side is that side with nothing resting (its totals and the imbalance are absent), and a book
+  with nothing on either side is no book — never the book before it. An option contract's top
+  of book and its CONTRACT_TYPE are kept per field as the stream sends them (a field sent as
+  not a number clears it); Call / Put on screen is that field, absent until sent.
+- **Options tape.** `/api/options/tape` reads the contract's stored LEVELONE_OPTIONS messages
+  (`history.tape_rows_for_symbol`; a live screen reading the database, `ACTIVE_PROGRAM.md`
+  ONE-05). Each message is merged onto the contract's fields; a row is a change of the last
+  trade's time, price or size, at the trade's own time (TRADE_TIME_MILLIS, not the receive
+  time: the message sent on subscription reports a trade that may be a day old). The stream
+  reports the last trade when it sends, not every trade (in
+  `tests/fixtures/real_option_l1_partial_trades.json` one message moves TOTAL_VOLUME by 2 with
+  a last size of 1); the panel says so. No side and no position against the quote is shown.
   The books streamed are those of the ticker whose page has `/api/changes` open (opening it makes
   that ticker the active one); a console restart is recovered when the page reconnects. For an
   option contract the daemon holds live, the stream owns its gamma, delta, open interest, volume
@@ -201,7 +214,12 @@ Schwab sends is taken as sent (rule 2), never computed.
   heartbeat (`live_market_plane.daemon_status`). Owner: the console's feed loop records each
   heartbeat; when the daemon stops or the socket to it drops, every streamed value reads not live
   within 3 s.
-- **Level crosses.** Computed by the console at each levels publish; written to `ed_console.db`
+- **Level crosses.** Computed by the console at each live levels publish (`server.level_crosses`):
+  a cross is a strict change of side between the last live price and this one, against the
+  level's value now; a price exactly at a level is on neither side; every cross is recorded,
+  however soon after the last, stamped with the trade time of the price that made it (none
+  recorded when that price has no trade time). A publish from a stored capture records nothing
+  and is no reference for the next live price. Written to `ed_console.db`
   → the `levels` push → `/api/desk/events`, which serves each cross as recorded and flags the
   newest cross at each level, for the newest six levels, as the chart's numbered callouts (one
   served item is both a callout and its queue entry). The window is the timeframe's
@@ -212,16 +230,17 @@ Schwab sends is taken as sent (rule 2), never computed.
   `session_label`, `session_close_mins_for_et_date`) decides every session window: the order-flow
   session reset, the prior-day, overnight, VWAP and value-area windows, and the default option
   contract's expiry cutoff. A day with no session has an empty window.
-- **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the stream
-  handler (equity quote and book) and the bar writer mark a ticker's kind changed; each page
+- **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the
+  price-row loop (an equity's quote), the stream handler (a book) and the bar writer mark a
+  ticker's kind changed; each page
   connection gets at most one push a second. The console down: the page's session label reads
   `—` and no panel reloads until the browser's EventSource reconnects. A Trade Desk timeframe
   switch asks only for that timeframe's bars, levels and event window.
 
 ### 3.5 Where today breaks the design
 
-1. **Two copies of live state** (daemon memory and console memory) for books, option quotes and
-   the equity tape; the live price is one row (the daemon's). Each remaining copy and duplicate
+1. **Two copies of live state** (daemon memory and console memory) for books and option
+   quotes; the live price is one row (the daemon's). Each remaining copy and duplicate
    computation is a row in `ACTIVE_PROGRAM.md` (ONE-*), with its behavior test when fixed.
 2. **Two writers and two databases** (the daemon's and the console's).
 3. **The console talks to Schwab** (REST chains) — the daemon should own every Schwab call.
@@ -298,7 +317,7 @@ behavior (AGENTS.md).
    axis: the server does not know the pan position. The panel draws the server's values
    unchanged; the visible maximum is never shown as a number, never a market metric, and never
    alters a displayed value.
-9. **No trade side** (operator 2026-09-28, ONE-12). Schwab supplies no aggressor side, so no
+9. **No trade side** (operator 2026-09-28). Schwab supplies no aggressor side, so no
    inferred buy/sell side (tick rule, quote rule) is computed or shown as order flow.
 
 The work that closes the gaps in §3.5, in order, is `ACTIVE_PROGRAM.md`.

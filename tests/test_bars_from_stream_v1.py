@@ -61,6 +61,14 @@ def test_a_streamed_bar_is_written_and_read_back_exactly():
     assert server._write_streamed_bar(_bar(T0, o=10.0, h=11.0, lo=9.5, c=10.5, v=100.0))
     (b,) = server._bars_1m(TK)
     assert (b.ts, b.open, b.high, b.low, b.close, b.volume) == (T0, 10.0, 11.0, 9.5, 10.5, 100.0)
+    # the stored row names its source: Schwab's CHART_EQUITY bar (it said "accumulator")
+    import sqlite3
+    con = sqlite3.connect(server.get_db().db_path)
+    try:
+        assert con.execute("SELECT source FROM price_bars_1m WHERE ticker=?", (TK,)).fetchall() == [
+            ("schwab_chart_equity",)]
+    finally:
+        con.close()
 
 
 def test_a_bar_missing_a_field_is_not_written():

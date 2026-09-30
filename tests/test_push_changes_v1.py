@@ -1,6 +1,6 @@
 """The console's push: the levels producer, the stream handler and the bar writer mark what
 changed for a ticker; a page on that ticker receives each kind once, and no other page does.
-Stream input is Schwab's captured TSLA book and quote (tests/fixtures/real_equity_book.json)."""
+Stream input is Schwab's captured TSLA book (tests/fixtures/real_equity_book.json)."""
 from __future__ import annotations
 
 import asyncio
@@ -39,13 +39,10 @@ def test_changes_reach_only_the_tickers_page_each_kind_once():
     assert _run(body) == ({"levels", "flow"}, set())
 
 
-def test_a_streamed_equity_quote_and_book_mark_flow(monkeypatch):
-    # a closed market: the page open on TSLA makes it viewed, and a viewed ticker's tick is also
-    # repriced in session (which marks levels); this test is about the flow mark alone
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
-    q, b = _FX["quote"], _FX["book"]
-    assert _run(lambda: ofs._ingest_pushed(f"quote.{TK}", {"symbol": TK, "ts_recv": q["ts_recv"],
-                                                            "native": q["native"]}))[0] == {"flow"}
+def test_a_streamed_book_marks_flow():
+    # (the equity quote's flow mark is its price row's arrival:
+    # tests/test_live_ui_phases_3_7_v1.py)
+    b = _FX["book"]
     assert _run(lambda: ofs._ingest_pushed(f"book.{TK}", {"symbol": TK, "ts_recv": b["ts_recv"],
                                                            "service": b["service"],
                                                            "content": b["native"]}))[0] == {"flow"}

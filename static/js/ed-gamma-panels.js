@@ -675,18 +675,12 @@
   }
 
   // ---------- Options Flow tape (operator field-inventory audit, 2026-09-13) ------------
-  // The embedded tape widget on the Gamma pane (#ofBody) -- real native trade prints for
-  // whichever contract(s) are currently desired (the same identity Strike Detail's own
-  // _setAdditionalContractsDemand already established), never a fabricated buy/sell side.
-  var OF_CLS_LABEL = { at_bid: 'at bid', at_ask: 'at ask', inside_spread: 'inside',
-    outside_spread_low: 'below bid', outside_spread_high: 'above ask', unknown: '—' };
+  // The embedded tape widget on the Gamma pane (#ofBody) -- each change of Schwab's last-trade
+  // fields for whichever contract(s) are currently desired (the same identity Strike Detail's
+  // own _setAdditionalContractsDemand already established), at the trade's own time; no side
+  // is inferred.
   function fmtOfPrice(n) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(2); }
   function fmtOfSize(n) { return (n == null || isNaN(n)) ? '—' : String(n); }
-  function fmtOfTime(tsRecv) {
-    if (tsRecv == null) return '—';
-    var d = new Date(tsRecv * 1000);
-    return d.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' });
-  }
   function stillOfCtx(tk) { var host = document.getElementById('ofBody'); return isGamma() && !!host && ticker() === tk; }
   function renderOf(host, d) {
     var src = document.getElementById('ofSrc'); if (src) src.textContent = '';
@@ -694,14 +688,14 @@
     if (!rows.length) {
       host.innerHTML = '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
         '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
-        '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead>' +
+        '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th></tr></thead>' +
         '<tbody><tr class="of-empty"><td colspan="14"><div class="oe-sub">' +
         esc((d && d.reason) || 'no console serving /api/options/tape') + '</div></td></tr></tbody></table>';
       return;
     }
     var body = rows.map(function (r) {
       return '<tr>' +
-        '<td>' + fmtOfTime(r.ts_recv) + '</td>' +
+        '<td>' + esc(r.time || '—') + '</td>' +
         '<td class="of-sym">' + esc(r.symbol || '—') + '</td>' +
         '<td>' + esc(r.expiry ? r.expiry.slice(5) : '—') + '</td>' +
         '<td>' + esc(r.type || '—') + '</td>' +
@@ -714,13 +708,11 @@
         '<td>' + fmtVol(r.volume) + '</td>' +
         '<td>' + fmtOfSize(r.oi) + '</td>' +
         '<td>' + (r.iv == null ? '—' : Number(r.iv).toFixed(1)) + '</td>' +
-        '<td>' + (r.delta == null ? '—' : Number(r.delta).toFixed(3)) + '</td>' +
-        '<td><span class="of-cls ' + esc(r.classification || 'unknown') + '">' +
-          esc(OF_CLS_LABEL[r.classification] || '—') + '</span></td></tr>';
+        '<td>' + (r.delta == null ? '—' : Number(r.delta).toFixed(3)) + '</td></tr>';
     }).join('');
     host.innerHTML = '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
       '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
-      '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead><tbody>' + body + '</tbody></table>';
+      '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th></tr></thead><tbody>' + body + '</tbody></table>';
   }
   function loadOfImpl(tk, signal) {
     var host = document.getElementById('ofBody');

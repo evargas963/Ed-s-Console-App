@@ -4,14 +4,13 @@
    streaming-control writer) — this view never POSTs, never re-asserts, never constructs a symbol,
    never recomputes book/flow semantics.
    ONE canonical payload contract (app/options/order_flow/live_payload.py over engine.py):
-     d.top_of_book / d.mid / d.microprice / d.spread_pts / d.depth / d.ages — book microstructure,
-       classified by d.classification (engine keys, e.g. "top_of_book.bid", "mid", "depth.*.imbalance");
-     d.flow.{tape_pressure_30s,tape_pressure_2m,tape_pressure_5m,cum_delta_proxy,cum_delta_slope,
-       top_book_pressure} — classified by d.flow.classification; d.flow.native_aggressor_available;
+     d.top_of_book / d.mid / d.microprice / d.spread_pts / d.top_book_pressure / d.depth / d.ages —
+       book microstructure, classified by d.classification (engine keys, e.g. "top_of_book.bid",
+       "mid", "depth.*.imbalance");
      d.streaming_plane — producer binding / feed health (no classification concept).
-   Every NATIVE/DERIVED/PROXY tag is the backend's own string, verbatim; a served value the backend
+   Every NATIVE/DERIVED tag is the backend's own string, verbatim; a served value the backend
    did not classify is tagged UNKNOWN. Nothing is classified, inferred, or defaulted here.
-   native_aggressor_available=false => no signed buys/sells are ever shown. */
+   Schwab supplies no trade side and none is inferred: no buys/sells are shown. */
 (function () {
   'use strict';
 
@@ -91,7 +90,6 @@
   // The backend's classification string for one canonical key, verbatim — or null when the
   // backend served no classification for it. Never defaulted, never inferred from the key.
   function classOf(map, key) { var v = map ? map[key] : null; return (typeof v === 'string' && v) ? v : null; }
-  function bool3(v) { return v === true ? 'true' : (v === false ? 'false' : '—'); }
 
   function render(h, desired, d) {
     var plane = d.streaming_plane || {};
@@ -99,12 +97,9 @@
     var tob = d.top_of_book || {};
     var depth = d.depth || {};
     var ages = d.ages || {};
-    var flow = d.flow || {};                        // the ONE flow block (never flattened)
     var bookCls = d.classification || {};           // engine's book/microstructure classification
-    var flowCls = flow.classification || {};        // live_payload's flow classification
     function dep(n, side) { var x = depth[String(n)] || {}; return x[side]; }
     function bk(k) { return classOf(bookCls, k); }
-    function fk(k) { return classOf(flowCls, k); }
     // row = [label, displayed value, canonical key (data-k), backend classification | null]
     // The depth ladder is classified by the engine under its own wildcard keys ("depth.*.<leaf>").
     var rowsTob = [
@@ -116,19 +111,12 @@
     var rowsBook = [
       ['Mid', num(d.mid), 'mid', bk('mid')], ['Microprice', num(d.microprice), 'microprice', bk('microprice')],
       ['Spread (pts)', num(d.spread_pts), 'spread_pts', bk('spread_pts')],
+      ['Top-book pressure', num(d.top_book_pressure, 3), 'top_book_pressure', bk('top_book_pressure')],
       ['Depth 1 · imbalance', num(dep(1, 'imbalance'), 3), 'depth.1.imbalance', bk('depth.*.imbalance')],
       ['Depth 3 · imbalance', num(dep(3, 'imbalance'), 3), 'depth.3.imbalance', bk('depth.*.imbalance')],
       ['Depth 5 · imbalance', num(dep(5, 'imbalance'), 3), 'depth.5.imbalance', bk('depth.*.imbalance')],
       ['Bid total (5)', int(dep(5, 'bid_total')), 'depth.5.bid_total', bk('depth.*.bid_total')],
       ['Ask total (5)', int(dep(5, 'ask_total')), 'depth.5.ask_total', bk('depth.*.ask_total')],
-    ];
-    var rowsFlow = [
-      ['Top-book pressure', num(flow.top_book_pressure, 3), 'flow.top_book_pressure', fk('top_book_pressure')],
-      ['Tape pressure 30s', num(flow.tape_pressure_30s, 3), 'flow.tape_pressure_30s', fk('tape_pressure_30s')],
-      ['Tape pressure 2m', num(flow.tape_pressure_2m, 3), 'flow.tape_pressure_2m', fk('tape_pressure_2m')],
-      ['Tape pressure 5m', num(flow.tape_pressure_5m, 3), 'flow.tape_pressure_5m', fk('tape_pressure_5m')],
-      ['Cum Δ (proxy)', num(flow.cum_delta_proxy, 1), 'flow.cum_delta_proxy', fk('cum_delta_proxy')],
-      ['Cum Δ slope (proxy)', num(flow.cum_delta_slope, 3), 'flow.cum_delta_slope', fk('cum_delta_slope')],
     ];
     var fh = plane.feed_health || {};   // served: the selected contract's three feeds
     function svc(x) { return x ? (x.state || '—') + (x.age_sec != null ? ' · ' + num(x.age_sec, 1) + 's' : '') : '—'; }
@@ -146,12 +134,9 @@
       '<div class="fl-grid">' +
       section('Top of book', rowsTob, '') +
       section('Book microstructure', rowsBook, dim) +
-      section('Flow observations', rowsFlow, dim) +
       section('Freshness / health', fresh, '') +
       '</div>' +
-      '<div class="fl-foot">signed aggressor classification NOT PROVEN — native_aggressor_available=' +
-      bool3(flow.native_aggressor_available) + '; tape_classification=' + esc(flow.tape_classification || '—') +
-      '; no signed buys/sells, CVD, or bull/bear verdict is canonical.</div>';
+      '<div class="fl-foot">Schwab sends no trade side, so none is shown: no buys/sells, CVD, or bull/bear verdict.</div>';
   }
 
   function header(desired, ss, putCall) {   // putCall: Schwab's CONTRACT_TYPE, served

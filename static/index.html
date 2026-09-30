@@ -655,15 +655,10 @@
   .of .of-empty td{text-align:center;padding:26px 12px;vertical-align:middle}
   .of .oe-sub{font-size:11px;color:var(--ed-ink-4);margin-top:10px;max-width:44ch;margin-left:auto;margin-right:auto;line-height:1.5}
   .of .notproven{display:inline-block}
-  /* Options Flow tape rows (operator field-inventory audit, 2026-09-13) — native trade
-     prints; classification is a mechanical bid/ask comparison, never an aggressor side. */
+  /* Options Flow tape rows: native trade prints; no side is inferred for a print. */
   .of td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--ed-edge-soft);color:var(--ed-ink)}
   .of td:first-child,.of td.of-sym{text-align:left}
   .of td.of-sym{font-weight:600}
-  .of-cls{font-size:9.5px;letter-spacing:.02em;padding:1px 5px;border-radius:3px;color:var(--ed-ink-4)}
-  .of-cls.at_bid{color:var(--ed-neg-ink);background:var(--ed-neg-bg,transparent)}
-  .of-cls.at_ask{color:var(--ed-pos-ink);background:var(--ed-pos-bg,transparent)}
-  .of-cls.outside_spread_low,.of-cls.outside_spread_high{color:var(--ed-warn)}
 
   /* AI drawer */
   #aidrawer{position:fixed;top:0;right:0;bottom:0;width:380px;background:var(--ed-panel);
@@ -853,14 +848,14 @@
               <div class="panel-b" id="gbsBody"><div class="placeholder"><div class="sm">Per-strike net GEX$ around spot from /api/terrain/strikes.</div></div></div>
             </div>
             <div class="panel">
-              <div class="panel-h"><span class="t">Options Flow</span><span class="sub">tape · desired contracts</span>
+              <div class="panel-h"><span class="t">Options Flow</span><span class="sub">last trade as streamed, not every trade · selected contracts</span>
                 <div class="r"><span id="ofSrc"></span><span class="prov native">NATIVE · NO AGGRESSOR SIDE</span></div></div>
               <div class="panel-b" id="ofBody">
                 <table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>
                   <th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>
-                  <th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead>
+                  <th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th></tr></thead>
                   <tbody><tr class="of-empty"><td colspan="14">
-                    <div class="oe-sub">Select a Call or Put contract in Chain — the tape shows its real native trade prints.</div>
+                    <div class="oe-sub">Select a Call or Put contract in Chain — the tape shows each change of its last trade as Schwab streams it.</div>
                   </td></tr></tbody></table>
               </div>
             </div>
