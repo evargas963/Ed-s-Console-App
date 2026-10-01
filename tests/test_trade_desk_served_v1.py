@@ -283,9 +283,9 @@ def test_vwap_is_served_per_chart_bar(spy_levels):
     one = json.loads(server.get_levels(ticker="SPY", tf="1").body)["vwap_series"]
     fifteen = json.loads(server.get_levels(ticker="SPY", tf="15").body)["vwap_series"]
     buckets = {}
-    for r in one:                                                    # first minute stamps, last minute's value
+    for r in one:                                                    # the bucket's start, last minute's value
         k = int(r[0] // 900)
-        buckets[k] = [buckets[k][0] if k in buckets else r[0]] + list(r[1:])
+        buckets[k] = [float(k * 900)] + list(r[1:])
     assert len(one) > 100 and fifteen == [buckets[k] for k in sorted(buckets)]
 
 

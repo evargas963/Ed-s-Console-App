@@ -117,11 +117,11 @@ opens no second streaming socket).
   whole (`recent_1m`, the Trade Desk Order Flow card's) → the browsers subscribed to the symbol,
   whose charts draw it (`ed:bar`) with no read: the chart library places it (`series.update`:
   the bar at the same time is replaced, a newer one is added), so no page code compares bar times.
-  A push carries a timeframe's bar only when it is that chart's newest, at or after the one
-  already served (history or push, `live_ui` `served`). A minute Schwab sends late is a past
-  event: it is held (every later roll-up, the daily bar and `recent_1m` carry it), and the older
-  chart bar it belongs to, or a bar whose time it would move earlier, is not pushed; the stored
-  history carries it when the chart is loaded again. `/api/bars1m` serves the same hour
+  A push carries a timeframe's bar only when it is that chart's newest bar (a bar's time is its
+  bucket's start, so it never moves). A minute Schwab sends late is a past event: it is held,
+  so the newest bars that contain it (always the daily bar), every later roll-up and `recent_1m`
+  carry it, and the older chart bar it belongs to is not pushed; the stored history carries it
+  when the chart is loaded again. `/api/bars1m` serves the same hour
   (`recent_1m`) with a chart's history, so the window's size (`live_price_rows.RECENT_1M_BARS`)
   exists only on the server. A live bar is only one Schwab sends while the browser is
   connected: a browser that dropped and reconnected is resent none of the bars the daemon
@@ -134,7 +134,10 @@ opens no second streaming socket).
   definition serves both: the chart's 1-minute bar (`live_price_rows.minute_bar`: Schwab's prices
   as sent, on the minute grid, from 09:15 ET to 15 minutes after the close,
   `time_et.is_collect_window_bar_end_ts_utc`; nothing outside it is stored or shown) and its
-  roll-up (`live_price_rows.aggregate_bars`: a bar is stamped with its first stored minute).
+  roll-up (`live_price_rows.aggregate_bars`: a bar is stamped with its bucket's start,
+  `tf_bucket_start` -- the tf-minute bucket's first second, or 00:00 ET of the trading date for
+  the daily bar, which the chart labels with that date -- the chart convention, so no minute
+  held or late moves a bar's time; where buckets begin is BAR-TF's, unchanged).
   Schwab sends each minute's bar once, about 2.7 s after the minute ends (median of 1,962 bars,
   5 symbols, 2026-09-30). Charts show completed Schwab bars only, exactly as Schwab sent them,
   with the newest bar's minute (`last_bar`). `limit` counts 1-minute bars, and when the read

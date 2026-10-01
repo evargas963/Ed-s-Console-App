@@ -116,8 +116,11 @@ def test_the_pushed_bar_is_the_routes_bar_at_every_timeframe(monkeypatch, tmp_pa
         route = json.loads(srv.get_bars1m(ticker="SPY", tf=tf, limit=12000).body)
         assert last["tf"][tf] == route["bars"][-1], tf
         assert last["last_bar"] == route["last_bar"]
-    # the daily bar holds the minutes the daemon read from the store as well as its own
-    assert last["tf"]["D"]["o"] == stored[0]["open"] and last["tf"]["D"]["t"] == stored[0]["timestamp"] / 1000.0
+    # the daily bar holds the minutes the daemon read from the store as well as its own; it is
+    # stamped with its trading date's start, 00:00 ET (a bar's time is its bucket's start, the
+    # chart convention: it was the first held minute's, which a late minute could move)
+    assert last["tf"]["D"]["o"] == stored[0]["open"]
+    assert last["tf"]["D"]["t"] == datetime(2026, 9, 25, tzinfo=ET).timestamp()
     # the newest hour of 1-minute bars the push carries whole is the hour the chart's history
     # serves (the Trade Desk's Order Flow card shows each as served; its size exists once, on the
     # server: the page asked for its own 60 and cut its own window)
@@ -154,7 +157,8 @@ def test_the_store_is_read_at_startup_only(monkeypatch, tmp_path):
     assert spy[0]["tf"]["D"]["o"] == stored[0]["open"]                # the minutes read at startup
     assert [u["tf"]["1"]["t"] for u in qqq] == [b["timestamp"] / 1000.0 for b in streamed]
     assert qqq[-1]["tf"]["D"]["o"] == streamed[0]["open"]             # only what Schwab sent it
-    assert qqq[-1]["tf"]["D"]["t"] == streamed[0]["timestamp"] / 1000.0
+    assert qqq[-1]["tf"]["D"]["v"] == sum(b["volume"] for b in streamed)
+    assert qqq[-1]["tf"]["D"]["t"] == datetime(2026, 9, 25, tzinfo=ET).timestamp()   # its bucket's start
 
 
 def test_a_browser_back_from_a_drop_is_told_the_gap_and_sent_only_new_bars(monkeypatch, tmp_path):
@@ -226,7 +230,7 @@ def test_at_every_minute_of_a_real_day_the_push_is_the_roll_up_at_every_timefram
     day = [live_price_rows.minute_bar(_msg(b)) for b in FRIDAY]
     for k in range(len(day)):
         so_far = day[:k + 1]
-        update = live_price_rows.bar_update("SPY", so_far, so_far[-1], 0.0, live_price_rows.newest_stamps(day[:k]))
+        update = live_price_rows.bar_update("SPY", so_far, so_far[-1], 0.0)
         for tf in live_price_rows.CHART_TFS:
             assert update["tf"][tf] == live_price_rows.with_change(live_price_rows.aggregate_bars(so_far, tf)[-1]), (k, tf)
 
@@ -244,10 +248,13 @@ def test_a_bar_that_is_not_a_chart_bar_or_not_subscribed_is_never_pushed(tmp_pat
 def test_a_minute_schwab_sends_late_is_never_pushed_as_a_charts_newest_bar():
     """A chart places each pushed bar with the library's own update, which only replaces the
     newest bar or adds a newer one: a bar older than the chart's last raised a page error. A
-    minute Schwab sends late (here the 12th, after the 14th) is a past event: it joins the held
-    minutes, so the timeframes whose newest bar contains it, the daily bar and the Order Flow
-    hour hold it; the older chart bar it belongs to is not pushed as a tail. Real SPY CHART_EQUITY
-    bars of 2026-09-25, delivered out of order (the order is the stand-in)."""
+    minute Schwab sends late (here the 12th, after the 14th, and the 9th, before the day's first
+    held minute) is a past event: it joins the held minutes, so the timeframes whose newest bar
+    contains it, the daily bar and the Order Flow hour hold it; the older chart bar it belongs to
+    is not pushed as a tail. A bar's time is its bucket's start, so no late minute moves it: the
+    daily bar is pushed with every minute (it stopped for the rest of the day when the late minute
+    preceded the day's first, as a bar was stamped with its first held minute). Real SPY
+    CHART_EQUITY bars of 2026-09-25, delivered out of order (the order is the stand-in)."""
     class _Ws:
         def __init__(self):
             self.sent = []
@@ -255,7 +262,7 @@ def test_a_minute_schwab_sends_late_is_never_pushed_as_a_charts_newest_bar():
         async def send(self, text):
             self.sent.append(json.loads(text))
 
-    order = [FRIDAY[i] for i in (10, 11, 13, 14, 12, 15)]
+    order = [FRIDAY[i] for i in (10, 11, 13, 14, 12, 15, 9, 16)]
 
     async def main():
         srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: 0.0)
@@ -275,12 +282,16 @@ def test_a_minute_schwab_sends_late_is_never_pushed_as_a_charts_newest_bar():
     for tf in live_price_rows.CHART_TFS:                 # each chart's pushes only move forward
         times = [u["tf"][tf]["t"] for u in sent if tf in u["tf"]]
         assert times == sorted(times), tf
-    late = sent[4]
-    assert "1" not in late["tf"]                         # the late minute's own bar is not a tail
-    held = sorted((live_price_rows.minute_bar(_msg(b)) for b in order[:5]), key=lambda m: m["t"])
-    for tf, bar in late["tf"].items():                   # every bar pushed holds the late minute
-        assert bar == live_price_rows.with_change(live_price_rows.aggregate_bars(held, tf)[-1]), tf
-    assert [m["t"] for m in late["recent_1m"]] == [m["t"] for m in held]
+    for k, update in enumerate(sent):
+        held = sorted((live_price_rows.minute_bar(_msg(b)) for b in order[:k + 1]), key=lambda m: m["t"])
+        assert "D" in update["tf"], k                    # the daily bar keeps being pushed
+        for tf, bar in update["tf"].items():             # every bar pushed holds every minute held
+            assert bar == live_price_rows.with_change(live_price_rows.aggregate_bars(held, tf)[-1]), (k, tf)
+        assert [m["t"] for m in update["recent_1m"]] == [m["t"] for m in held][-live_price_rows.RECENT_1M_BARS:]
+    for k in (4, 6):                                     # the late minutes' own bars are not tails
+        assert "1" not in sent[k]["tf"], k
+    assert sent[4]["tf"]["5"]["t"] == sent[3]["tf"]["5"]["t"]   # the bar it joins keeps its time
+    assert sent[6]["tf"]["D"]["t"] == sent[5]["tf"]["D"]["t"] == datetime(2026, 9, 25, tzinfo=ET).timestamp()
 
 
 def test_bars_that_arrive_before_the_next_send_are_all_sent_in_order():

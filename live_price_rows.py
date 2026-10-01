@@ -51,12 +51,24 @@ def tf_bucket_key(t: float, tf: str):
     return datetime.fromtimestamp(t, ET).date() if tf == "D" else int(t // (int(tf) * 60))
 
 
-def roll_bucket(bucket: list[dict]) -> dict:
-    """THE roll-up of one chart bar from its 1m bars, oldest first: first open, max high, min
-    low, last close, stamped with the first bar's t. Volume is the sum only when every minute
-    reported one -- otherwise None (unknown), never a partial sum or a 0."""
+def tf_bucket_start(t: float, tf: str) -> float:
+    """The time a chart bar is stamped with: the start of the bucket `t` belongs to
+    (tf_bucket_key) -- the tf-minute bucket's first second, or 00:00 ET of the trading date for
+    "D" -- the chart convention (TradingView, lightweight-charts), so a bar's time never depends
+    on which of its minutes is held."""
+    if tf == "D":
+        d = datetime.fromtimestamp(t, ET).date()
+        return datetime(d.year, d.month, d.day, tzinfo=ET).timestamp()
+    return float(tf_bucket_key(t, tf) * int(tf) * 60)
+
+
+def roll_bucket(bucket: list[dict], tf: str) -> dict:
+    """THE roll-up of one chart bar of timeframe `tf` from its 1m bars, oldest first: first open,
+    max high, min low, last close, stamped with its bucket's start (tf_bucket_start). Volume is
+    the sum only when every minute reported one -- otherwise None (unknown), never a partial sum
+    or a 0."""
     vols = [b.get("v") for b in bucket]
-    return {"t": bucket[0]["t"], "o": bucket[0]["o"], "h": max(b["h"] for b in bucket),
+    return {"t": tf_bucket_start(bucket[0]["t"], tf), "o": bucket[0]["o"], "h": max(b["h"] for b in bucket),
             "l": min(b["l"] for b in bucket), "c": bucket[-1]["c"],
             "v": None if None in vols else sum(vols)}
 
@@ -72,12 +84,12 @@ def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
     for b in bars:
         k = tf_bucket_key(float(b["t"]), tf)
         if run and k != key:
-            out.append(roll_bucket(run))
+            out.append(roll_bucket(run, tf))
             run = []
         run.append(b)
         key = k
     if run:
-        out.append(roll_bucket(run))
+        out.append(roll_bucket(run, tf))
     return out
 
 
@@ -92,26 +104,18 @@ def recent_1m(minutes: list[dict]) -> list[dict[str, Any]]:
     return [with_change(dict(m)) for m in minutes[-RECENT_1M_BARS:]]
 
 
-def newest_stamps(minutes: list[dict]) -> dict[str, float]:
-    """Each chart timeframe's newest bar time (its stamp, aggregate_bars) over `minutes`, oldest
-    first: what a chart served from these minutes ends on."""
-    return {tf: aggregate_bars(minutes, tf)[-1]["t"] for tf in CHART_TFS} if minutes else {}
-
-
-def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float,
-               served: dict[str, float]) -> dict[str, Any]:
+def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float) -> dict[str, Any]:
     """What the daemon pushes for one 1-minute `bar`: for each chart timeframe, the chart bar that
     contains it (roll_bucket) when that is the chart's newest bar, from `minutes` -- the ticker's
     minutes of `bar`'s ET trading day, oldest first, `bar` among them; the "D" bar is all of them
-    -- with the daemon's receive time of Schwab's message and `recent_1m`. `served`: each
-    timeframe's newest bar time already served (newest_stamps, then each push).
+    -- with the daemon's receive time of Schwab's message and `recent_1m`.
 
-    A chart's push is only ever its newest bar, at or after the one it was served: a chart places
-    it with the library's own update, which replaces the newest bar or adds a newer one. A minute
-    Schwab sends late (older than the newest one held) is a past event. It is held, so every
-    later roll-up, the "D" bar and `recent_1m` carry it; a chart bar it would put in an older
-    bucket, or whose time it would move earlier (a bar is stamped with its first minute), is not
-    pushed as a tail: the stored history carries it when the chart is loaded again."""
+    A chart's push is only ever its newest bar: a chart places it with the library's own update,
+    which replaces the newest bar or adds a newer one, and a bar's time is its bucket's start, so
+    no minute moves it. A minute Schwab sends late (older than the newest one held) is a past
+    event. It is held, so the newest bars that contain it (always the "D" bar), every later
+    roll-up and `recent_1m` carry it; a chart bar of an older bucket is not pushed as a tail: the
+    stored history carries it when the chart is loaded again."""
     i = bisect_left([m["t"] for m in minutes], bar["t"])
     newest = minutes[-1]["t"]
     by_tf: dict[str, Any] = {}
@@ -124,8 +128,7 @@ def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float,
             lo -= 1
         while hi < len(minutes) and tf_bucket_key(minutes[hi]["t"], tf) == key:
             hi += 1
-        if minutes[lo]["t"] >= served.get(tf, minutes[lo]["t"]):
-            by_tf[tf] = with_change(roll_bucket(minutes[lo:hi]))
+        by_tf[tf] = with_change(roll_bucket(minutes[lo:hi], tf))
     return {"ticker": ticker_storage_key(ticker), "ts_recv": ts_recv, "last_bar": last_bar(newest),
             "tf": by_tf, "recent_1m": recent_1m(minutes)}
 

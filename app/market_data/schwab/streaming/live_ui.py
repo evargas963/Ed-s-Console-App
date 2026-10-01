@@ -117,9 +117,6 @@ class LiveUiServer:
         #: each symbol's minutes of one ET day: (that day's start, {bar start: bar}); the day's
         #: stored minutes as loaded at startup, then only the ones Schwab streams
         self.minutes: dict[str, tuple[float, dict[float, dict]]] = minutes if minutes is not None else {}
-        #: each symbol's newest chart-bar time per timeframe already served (history or push): a
-        #: push is never older (live_price_rows.bar_update)
-        self.served: dict[str, dict[str, float]] = {}
         stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
                      beat_send_failures=0, listening=None, last_send_ms=None, bars_sent=0)
 
@@ -158,13 +155,9 @@ class LiveUiServer:
         held = self.minutes.get(sym)
         if held is None or held[0] != day:
             held = self.minutes[sym] = (day, {})
-            self.served.pop(sym, None)
-        if sym not in self.served:       # what a chart is served from the held minutes (the history)
-            self.served[sym] = live_price_rows.newest_stamps(sorted(held[1].values(), key=lambda m: m["t"]))
         held[1][bar["t"]] = bar
         update = live_price_rows.bar_update(sym, sorted(held[1].values(), key=lambda m: m["t"]), bar,
-                                            float(msg["ts_recv"]), self.served[sym])
-        self.served[sym].update({tf: b["t"] for tf, b in update["tf"].items()})
+                                            float(msg["ts_recv"]))
         for c in self.clients:
             if sym in c.symbols:
                 c.bars.append(update)

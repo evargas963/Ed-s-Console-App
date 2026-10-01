@@ -79,8 +79,10 @@ def test_the_vwap_curve_is_stamped_with_its_chart_bars_own_time(monkeypatch, pin
         curve = json.loads(srv.get_levels(ticker="SPY", tf=tf).body)["vwap_series"]
         assert curve and {p[0] for p in curve} <= set(bar_times), tf
         assert curve[-1][1] == final_vwap, tf                   # each bar's value as of its last minute
+    # a chart bar's time is its bucket's start (the chart convention), so the first hourly bar, which
+    # holds 09:15-09:59, is stamped 09:00 (it was 09:15, its first stored minute)
     hourly = json.loads(srv.get_levels(ticker="SPY", tf="60").body)["vwap_series"]
-    assert [p[0] for p in hourly] == [_at(9, 15), _at(10, 0)]
+    assert [p[0] for p in hourly] == [_at(9, 0), _at(10, 0)]
 
 
 def test_the_session_levels_go_stale_when_their_bars_stop(monkeypatch, pin_clock):

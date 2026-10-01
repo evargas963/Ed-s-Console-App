@@ -489,14 +489,13 @@ class PriceLevelSnapshot:
 
     __slots__ = ("ticker", "session_date", "generation", "bar_source", "as_of_ts_utc",
                  "levels", "vwap_series", "families_absent", "degraded", "input_fingerprint",
-                 "volume_profile", "session_bar_ts")
+                 "volume_profile")
 
     def __init__(self, *, ticker: str, session_date: date, generation: int,
                  bar_source: str, as_of_ts_utc: Optional[float],
                  levels: dict, families_absent: list, degraded: list,
                  vwap_series: Optional[list] = None,
-                 volume_profile: Optional[VolumeProfile] = None,
-                 session_bar_ts: tuple = ()) -> None:
+                 volume_profile: Optional[VolumeProfile] = None) -> None:
         self.ticker = ticker
         self.session_date = session_date
         self.generation = generation
@@ -507,7 +506,6 @@ class PriceLevelSnapshot:
         self.families_absent = families_absent  # [{family, reason}]
         self.degraded = degraded                # [{family, reason}]
         self.volume_profile = volume_profile    # the session's profile the value area is read from
-        self.session_bar_ts = session_bar_ts    # the start of each of the session date's bars
 
     def price(self, level_id: str) -> Optional[float]:
         """The canonical value, or None. Absence is absence — never spot, zero or a sibling."""
@@ -667,7 +665,6 @@ def build_price_level_snapshot(
         levels=levels, vwap_series=vwap_series,
         families_absent=families_absent, degraded=degraded,
         volume_profile=profile,
-        session_bar_ts=tuple(b["_dt"].timestamp() for b in bars_norm if b["_dt"].date() == session_date),
     )
 
 

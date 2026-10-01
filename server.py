@@ -2708,20 +2708,15 @@ def get_bars1m(ticker: str = Query(...),
                          "recent_1m": _lpr.recent_1m(bars)})
 
 
-def aggregate_vwap(rows: list, tf: str, bar_ts: list) -> list:
+def aggregate_vwap(rows: list, tf: str) -> list:
     """VWAP rows [t, vwap, +1s, -1s, +2s, -2s] rolled up to the chart timeframe as
     live_price_rows.aggregate_bars rolls the bars: each chart bar takes the value as of its last
-    minute, stamped with that bar's own `t` -- the first of `bar_ts` (the session's 1-minute bar
-    times, VWAP minute or not) in the bar's bucket."""
+    minute, stamped with that bar's own time, its bucket's start (live_price_rows.tf_bucket_start)."""
     if tf == "1":
         return [list(r) for r in rows]
-    first: dict = {}
-    for t in bar_ts:
-        first.setdefault(_lpr.tf_bucket_key(float(t), tf), t)
     out: dict = {}
     for r in rows:
-        k = _lpr.tf_bucket_key(float(r[0]), tf)
-        out[k] = [first[k]] + list(r[1:])
+        out[_lpr.tf_bucket_key(float(r[0]), tf)] = [_lpr.tf_bucket_start(float(r[0]), tf)] + list(r[1:])
     return list(out.values())
 
 
@@ -4115,7 +4110,7 @@ def get_levels(ticker: str = Query(...),
         # session, drawn beside a level neither of them agreed with.
         # [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
         # one point per chart bar of `tf`, at that bar's own time
-        "vwap_series": aggregate_vwap(snap.vwap_series, tf, snap.session_bar_ts) if snap is not None else [],
+        "vwap_series": aggregate_vwap(snap.vwap_series, tf) if snap is not None else [],
         # the session's volume profile the value area is read from (absent: families_absent
         # names the value_area reason)
         "volume_profile": None if vp is None else {
