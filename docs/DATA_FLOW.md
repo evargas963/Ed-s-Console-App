@@ -208,19 +208,23 @@ opens no second streaming socket).
   last) and TOTAL_VOLUME (the day's volume, pre- and post-market included, p.16). What Schwab
   sent is shown whatever the hour (decided by the operator, 2026-10-01: "i don't care what time
   of the day it is. we show what schwab sends period... we use what schwab gives us and we display
-  it, regardless of the time. if we have it we display it."), as the candle of the trading date
-  it belongs to: the session day of the quote's last trade (TRADE_TIME_MILLIS; sessions start
-  04:00 ET, `live_market_plane.session_day`), labeled with that date (`day.label`) and placed at
-  it on the daily chart, never presented as a later day's. After midnight Schwab re-sends the
-  prior day's values with a new receive time (SPY 2026-09-08 00:02 ET re-sent Friday 09-04's
-  open, high, low and 34,054,199 shares, which were served as Tuesday's; IWM 2026-09-28 01:47 ET
-  Friday's 22,613,925): they are shown as Friday's. Once that session has closed its close is
-  REGULAR_MARKET_LAST_PRICE. From about 01:30 ET Schwab sends the open, high and low as 0 (no
-  regular-session trade yet, p.17-18): that is what Schwab sent, so no candle is drawn and the
-  chart prints Schwab's reason (`day.unavailable`, `ed-tv-chart.setToday`; `/api/bars1m` `tf=D`
-  serves the same as `today`), the candle already drawn for that date stays, and the volume is
-  still shown with its date. Absent only when Schwab has sent no day field. Never filled from
-  minutes. An index's HIGH_PRICE and
+  it, regardless of the time. if we have it we display it."), each value with the time Schwab
+  sent it (the receive time of the message that set it, Central Time, formatted on the server:
+  `day.as_of`, `day.volume_as_of`). No session or date label is inferred for display. The candle
+  is placed on the daily chart at the ET date of Schwab's own last-trade time
+  (TRADE_TIME_MILLIS); with no TRADE_TIME there is no candle and the reason says so. After
+  midnight Schwab re-sends the prior day's values with a new receive time (SPY 2026-09-08
+  00:02 ET re-sent Friday 09-04's open, high, low and 34,054,199 shares; IWM 2026-09-28 01:47 ET
+  Friday's 22,613,925): the candle stays at Friday, the date of their trade. Once that session
+  has closed its close is REGULAR_MARKET_LAST_PRICE. Overnight Schwab sends the open, high and
+  low as 0 (measured on the captured nights of 2026-09-25 to 10-01: 01:30 ET for NYSE- and
+  Arca-listed symbols, about 03:33 ET for Nasdaq-listed ones) and TOTAL_VOLUME as 0 (03:45 ET
+  and 03:59 ET): that is what Schwab sent, so no candle is drawn and the chart prints one
+  sentence naming the fields and their time (`day.unavailable`, `ed-tv-chart.setToday`;
+  `/api/bars1m` `tf=D` serves the same as `today`), the candle already drawn for that date
+  stays, and the volume 0 is shown with its time. A field Schwab sent that is not a number is
+  named as such. Absent only when Schwab has sent no day field. Never filled from minutes. An
+  index's HIGH_PRICE and
   LOW_PRICE are not the regular session's: on 2026-09-30 $VIX's were non-zero from 04:14 ET and
   $NDX's from 04:36 ET (its first message that day), while $SPX's were 0 until 09:30 (read-only
   from `stream_capture.db`); they are shown as Schwab sends them. Measured 2026-09-30 for SPY:
@@ -405,15 +409,19 @@ opens no second streaming socket).
   operator, 2026-10-01: "we should not be showing unavailable anywhere in the app if there is
   schwab data to be render into the ui... we use what schwab gives us and we display it,
   regardless of the time. if we have it we display it."): every field Schwab sent is kept with
-  its time whatever the hour (no field is dropped at a session change) and the price row serves
-  it with its time and session -- the last trade when it is not live (`closed_last`, with
-  `session`, e.g. "post-market Fri 09/04/2026", `live_price_rows.session_text`), the bid and ask
-  with their quote time (`quote_as_of`; `quote_live` says whether a computation may take them),
+  its receive time whatever the hour (no field is dropped at a session change) and the price row
+  serves it with that time, which the page prints next to it -- the last trade when it is not
+  live (`closed_last`, as of Schwab's TRADE_TIME), the bid and ask with their own fields'
+  receive time (`quote_as_of`, from `quote_received_ts`; `quote_live` says whether a computation
+  may take them, judged by the same time, so a re-sent old trade does not make the quote live),
   the prior close as sent with its receive time (`prior_close_as_of`; Schwab reloads CLOSE_PRICE
-  overnight, measured 01:30 ET for NYSE- and Arca-listed symbols and 03:05 ET for Nasdaq-listed
-  ones on every captured reload of 2026-09-25 to 10-01, the Streamer Guide p.16-17 says 3:30 AM
-  ET), Schwab's change percents as sent. A value is absent only when Schwab has sent none, with
-  that reason (`unavailable_reason`, `prior_close_absent`). A row is published on any field.
+  overnight, measured 01:30 ET for NYSE- and Arca-listed symbols and 03:04 ET for Nasdaq-listed
+  ones on every captured reload of 2026-09-25 to 10-01, PCG adjusted again at 03:45 ET on
+  09-30; the Streamer Guide p.16-17 says 3:30 AM ET), Schwab's change percents as sent with
+  their receive times (`chg_pct_as_of`, `chg_pct_regular_as_of`). A value is absent only when
+  Schwab has sent none, or sent one that is not a number, with that reason
+  (`unavailable_reason`, `prior_close_absent`; LAST_PRICE without TRADE_TIME_MILLIS says that).
+  A row is published on any field.
   Open interest is current only for the session its definition names. Every verdict, and the price row (`live_price_rows.price_row`),
   is judged at the `now` its caller passes; only an entry point reads the clock. Owner: the
   daemon's heartbeat (`live_market_plane.daemon_status`), recorded by the console's feed loop;
@@ -690,13 +698,15 @@ send.
 - *Producer and owner:* `live_price_rows.day_candle` on the daemon's price row (`day`); the
   daemon's daily price-history request (`live_ui._ask_daily`, `capture.schwab_days`), carried by
   the console (`streaming.bar_days`).
-- *Times:* each field's receive time (`as_of`); the trading date the day fields belong to (the
-  session day of the quote's last trade, `label`); a daily candle's ET date.
-- *Shown:* always, whatever the hour, as the candle of its trading date (operator 2026-10-01:
-  "if we have it we display it"); the volume with its date. The daily history is whole when its
-  newest candle is the previous trading session's.
-- *Otherwise:* no candle with Schwab's reason when its open, high and low are 0 (no
-  regular-session trade yet), printed on the chart, the candle already drawn for the date kept;
+- *Times:* each field's receive time (`as_of`, the volume's `volume_as_of`); the candle placed
+  at the ET date of Schwab's TRADE_TIME_MILLIS; a daily candle's ET date. No session or date
+  label is inferred.
+- *Shown:* always, whatever the hour (operator 2026-10-01: "if we have it we display it"),
+  each value with the time Schwab sent it; the volume as sent, a 0 included, with its time. The
+  daily history is whole when its newest candle is the previous trading session's.
+- *Otherwise:* no candle when Schwab sent its open, high and low as 0 (one sentence naming the
+  fields and their time), when a field is not a number (named), or when no TRADE_TIME has come
+  (said), printed on the chart, the candle already drawn for the date kept;
   absent only when Schwab has sent no day field; the daily history absent with the request's
   failure or "Schwab's daily history does not yet include <date>" (`days_absent_reason`, the
   daily ATR's and PDH/PDL's reasons), asked again until whole. Never filled from minutes.

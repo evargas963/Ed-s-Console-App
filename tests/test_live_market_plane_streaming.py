@@ -171,15 +171,16 @@ def test_a_value_that_is_not_a_number_clears_the_field():
         row = lmp.get_quote("CLR")
         assert row["bid"] is None and row["ask"] == 10.1, bad
 
-def test_a_new_session_shows_the_last_ones_values_labeled_until_schwab_sends_new_ones():
+def test_a_new_session_shows_the_last_ones_values_with_their_times_until_schwab_sends_new_ones():
     """The daemon runs for days: at 04:00 ET yesterday's last price read LIVE (measured: PCG 12.14
-    from 19:56 ET, 'live' at 04:00:05). What Schwab sent is shown, whatever the hour, labeled with
-    its time and session, never as the current session's (operator 2026-10-01: "we use what
-    schwab gives us and we display it, regardless of the time. if we have it we display it"):
-    yesterday's last trade as yesterday's, the bid and ask and the prior close Schwab sent
-    overnight as sent. Real PCG messages, 2026-09-29 19:55 ET to 2026-09-30 04:01 ET, including
-    Schwab's overnight snapshots and day roll. Stand-in (named): the daemon's heartbeat, live and
-    holding PCG at each instant judged."""
+    from 19:56 ET, 'live' at 04:00:05). What Schwab sent is shown, whatever the hour, with the
+    time Schwab sent it, never as a live price (operator 2026-10-01: "we use what schwab gives us
+    and we display it, regardless of the time. if we have it we display it"; display what Schwab
+    sent with the time Schwab sent it): the last trade with Schwab's trade time, the bid and ask
+    with Schwab's quote time, the prior close and the volume with their receive times -- Schwab's
+    post-roll volume 0 as 0, at the time it came. Real PCG messages, 2026-09-29 19:55 ET to
+    2026-09-30 04:01 ET, including Schwab's overnight snapshots and day roll. Stand-in (named):
+    the daemon's heartbeat, live and holding PCG at each instant judged."""
     import json
     from datetime import datetime
 
@@ -202,24 +203,75 @@ def test_a_new_session_shows_the_last_ones_values_labeled_until_schwab_sends_new
     evening = at(19, 59, 0, 29)
     assert (evening["spot"], evening["spot_state"], evening["chg_pct"]) == (12.14, "live", 1.589958)
     first = at(4, 0, 5, 30)            # a new session: Schwab has sent a bid and ask, no trade yet
-    # no live price: yesterday's last trade is shown as yesterday's, with its time and session
+    # no live price: yesterday's last trade is shown with Schwab's trade time
     assert (first["spot"], first["spot_state"]) == (None, "unavailable")
-    assert first["closed_last"] == {"price": 12.14, "spot_disp": "12.14", "as_of": "Tue 09/29 06:56 PM CT",
-                                    "session": "post-market Tue 09/29/2026"}
+    assert first["closed_last"] == {"price": 12.14, "spot_disp": "12.14", "as_of": "Tue 09/29 06:56 PM CT"}
     # the bid and ask Schwab sent in this session, with their quote time (they stayed blank until the
     # first trade: PCG 12.16 / 12.21 at 04:00:00), live for the computations
     assert (first["bid"], first["ask"], first["ask_size"], first["quote_live"]) == (12.16, 12.21, 4100.0, True)
     assert first["quote_as_of"] == "Wed 09/30 03:00:00 AM CT"
     # the prior close as Schwab sent it overnight (12.18 at 01:30 ET, adjusted to 12.13 at 03:45 ET)
     assert (first["prior_close"], first["prior_close_as_of"]) == (12.13, "Wed 09/30 02:45 AM CT")
-    # the day fields are the last trade's session's: Tuesday's, with Schwab's own overnight 0s
-    assert (first["day"]["label"], first["day"]["bar"], first["day"]["volume"]) == ("Tue 09/29/2026", None, 0.0)
+    # Schwab's post-roll volume 0, shown as 0 at the time it came; its 0 open, high and low make no candle
+    assert (first["day"]["volume"], first["day"]["volume_as_of"], first["day"]["bar"]) == (
+        0.0, "Wed 09/30 02:45 AM CT", None)
+    assert first["day"]["unavailable"] == (
+        "No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (at Wed 09/30 12:30 AM CT)")
     traded = at(4, 0, 10, 30)          # its first trade
     assert (traded["spot"], traded["spot_state"], traded["chg_pct"], traded["day"]["volume"]) == (
         12.18, "live", 0.412201, 3.0)
-    assert traded["closed_last"] is None and traded["day"]["label"] == "Wed 09/30/2026"
+    assert traded["closed_last"] is None and traded["chg_pct_as_of"] == "Wed 09/30 03:00 AM CT"
     # Schwab's own change of the first trade is against that prior close: 12.18 - 12.13 = NET_CHANGE 0.05
     assert traded["prior_close"] == 12.13 and traded["net_change"] == 0.05
+
+
+def test_a_resent_old_trade_is_not_live_and_the_quote_is_judged_by_its_own_fields():
+    """Schwab re-sends the prior day's last trade in a new session: MTA at 2026-09-30 04:36:39 ET
+    re-sent LAST_PRICE 9.59 with TRADE_TIME_MILLIS Tuesday 19:52:55 ET. It is shown with Schwab's
+    trade time, never as a live price (judged by the trade's time, not the message's receive
+    time). The quote is live for computations only when its bid and ask themselves came in this
+    session: at 04:00:00 Schwab sent a new bid, but the ask was still Tuesday's, so it is not live;
+    from 04:00:01 both are this session's. Real MTA messages, 2026-09-29 19:45 ET to 2026-09-30
+    04:40 ET, read-only from production stream_capture.db
+    (tests/fixtures/real_mta_l1_overnight_2026_09_29_30.json); the heartbeat a stand-in."""
+    import json
+    from datetime import datetime
+
+    import live_price_rows
+    from time_et import ET
+    fx = json.loads((ROOT / "tests" / "fixtures" / "real_mta_l1_overnight_2026_09_29_30.json")
+                    .read_text(encoding="utf-8"))["messages"]
+    with lmp._lock:
+        lmp._by_ticker.pop("MTA", None)
+        lmp._fields_by_ticker.pop("MTA", None)
+
+    def at(h, m, s, us=0):
+        now = datetime(2026, 9, 30, h, m, s, us, tzinfo=ET).timestamp()
+        for msg in [x for x in fx if x["ts_recv"] <= now and not x.get("_done")]:
+            lmp.record_from_level_one_equity("MTA", msg["content"], received_ts=msg["ts_recv"])
+            msg["_done"] = True
+        lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["MTA"]}}, now)
+        return live_price_rows.price_row("MTA", now)
+
+    assert at(4, 0, 0, 500000)["quote_live"] is False             # the bid this session's, the ask Tuesday's
+    assert at(4, 0, 2)["quote_live"] is True                       # both this session's
+    row = at(4, 40, 0)                                              # after the 04:36:39 re-send
+    assert row["spot"] is None and row["spot_state"] == "unavailable"
+    assert row["closed_last"] == {"price": 9.59, "spot_disp": "9.59", "as_of": "Tue 09/29 06:52 PM CT"}
+    assert row["unavailable_reason"] is None
+
+
+def test_a_price_with_no_trade_time_or_not_a_number_says_which():
+    """With no price shown the reason said Schwab sent no trade even when it sent one without its
+    trade time, or sent the price as not a number. Each says what Schwab sent. Stand-in quotes."""
+    import live_price_rows
+    from tests.feed_live_helper import SESSION_NOW
+    _rec("NOTIME", {"key": "NOTIME", "LAST_PRICE": 10.0}, received_ts=SESSION_NOW)
+    assert live_price_rows.price_row("NOTIME", SESSION_NOW)["unavailable_reason"] == (
+        "Schwab sent LAST_PRICE without its trade time (TRADE_TIME_MILLIS)")
+    _rec("NOTNUM", {"key": "NOTNUM", "LAST_PRICE": -999, "BID_PRICE": 9.9}, received_ts=SESSION_NOW)
+    assert live_price_rows.price_row("NOTNUM", SESSION_NOW)["unavailable_reason"] == (
+        "Schwab sent LAST_PRICE as a value that is not a number")
 
 
 def test_record_from_level_one_rejects_mark_as_current_spot():

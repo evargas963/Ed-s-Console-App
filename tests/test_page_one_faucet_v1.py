@@ -288,9 +288,7 @@ def test_on_a_closed_market_the_last_trade_is_a_labelled_past_observation(monkey
                                      received_ts=CLOSED_NOW)
     row = live_price_rows.price_row("SPY", CLOSED_NOW)
     assert (row["spot"], row["spot_state"]) == (None, "closed")
-    # with the session it belongs to (operator 2026-10-01: values shown labeled with their session)
-    assert row["closed_last"] == {"price": 772.04, "spot_disp": "772.04", "as_of": "Fri 09/25 06:59 PM CT",
-                                  "session": "post-market Fri 09/25/2026"}
+    assert row["closed_last"] == {"price": 772.04, "spot_disp": "772.04", "as_of": "Fri 09/25 06:59 PM CT"}
     assert server.resolve_spot("SPY")[0] is None
 
 

@@ -23,7 +23,7 @@ from instrument_identity import ticker_storage_key
 from numeric_contract import price_text, schwab_count, schwab_number, volume_text
 from time_et import (COLLECT_WINDOW_START_MINS, ET, ct_label, et_date_str_from_ts_utc,
                      et_minute_total_from_ts_utc, is_collect_window_bar_end_ts_utc, is_trading_day_et,
-                     session_close_mins_for_et_date, session_label, trading_date_label)
+                     session_close_mins_for_et_date, trading_date_label)
 
 SPOT_SOURCE = "streaming_plane"
 #: the chart timeframes: minutes, and "D" (the ET trading date)
@@ -250,56 +250,64 @@ def day_candle(ticker: str, now: float) -> dict[str, Any]:
     REGULAR_MARKET_LAST_PRICE, the regular session's last (2026-09-30: SPY 762.63, Schwab's
     daily candle close) -- and volume TOTAL_VOLUME (the day's, pre- and post-market included,
     p.16). Never built from minutes: Schwab's minute volumes sum to about 68% of TOTAL_VOLUME
-    (SPY 2026-09-30). Whatever the hour, the fields Schwab sent are shown (operator 2026-10-01:
-    "we use what schwab gives us and we display it, regardless of the time. if we have it we
-    display it"), as the candle of the trading date they belong to: the session day of the
-    quote's last trade (TRADE_TIME_MILLIS, lmp.session_day; sessions start 04:00 ET). After
-    midnight Schwab re-sends the prior day's values (SPY 2026-09-08 00:02 ET: Friday 09-04's high,
-    low, open and 34,054,199 shares): they are Friday's candle, labeled Friday, never today's.
-    Once that session has closed its close is REGULAR_MARKET_LAST_PRICE. A 0 open, high or low is
-    what Schwab sends before a regular-session trade (Streamer Guide p.17-18): no candle, with
-    Schwab's reason. Absent only when Schwab has sent nothing. {t: the candle's bar time (00:00
-    ET of its trading date), label: that date, bar: the served daily bar (o, h, l and c all
-    present) or None, volume, absent: {field: reason}, unavailable: the chart's text when there
+    (SPY 2026-09-30). Whatever the hour, what Schwab sent is shown with the time it was received
+    (operator 2026-10-01: "if we have it we display it"; display what Schwab sent with the time
+    Schwab sent it): the volume with its own (`volume_as_of`), a 0 as 0. The chart places the
+    candle at the ET date of Schwab's own last-trade time (TRADE_TIME_MILLIS), whose session, once
+    closed, makes REGULAR_MARKET_LAST_PRICE its close. No candle while Schwab's open, high or low is
+    0 (it sends them so overnight: 01:30 ET for NYSE- and Arca-listed symbols, 03:33 ET for
+    Nasdaq-listed ones, measured 2026-09-30 and 10-01) or not a number, or with no trade time:
+    the chart's line says which, with its time. Absent only when Schwab has sent nothing. {t: the
+    candle's bar time, bar: the served daily bar (o, h, l and c all present) or None, volume,
+    volume_text, volume_as_of, absent: {field: reason}, unavailable: the chart's text when there
     is no bar, as_of, source}."""
     fields = lmp.day_fields(ticker_storage_key(ticker))
     if not set(fields) - {"TRADE_TIME_MILLIS"}:
         why = "Schwab has sent no day field (open, high, low, last, volume) for this symbol"
-        return {"t": None, "label": None, "bar": None, "volume": None, "volume_text": volume_text(None),
+        return {"t": None, "bar": None, "volume": None, "volume_text": volume_text(None), "volume_as_of": None,
                 "absent": {"day": why}, "unavailable": f"No daily candle: {why}", "as_of": None, "source": DAY_SOURCE}
     trade = fields.get("TRADE_TIME_MILLIS")
-    d = lmp.session_day(trade[0] if trade else max(ts for _v, ts in fields.values()))
-    day_start = datetime(d.year, d.month, d.day, tzinfo=ET).timestamp()
-    close = session_close_mins_for_et_date(d.isoformat())
-    closed = (d < lmp.session_day(now) or close is None
-              or (d == lmp.session_day(now) and et_minute_total_from_ts_utc(now) >= close))
+    traded = datetime.fromtimestamp(trade[0], ET).date() if trade and trade[0] is not None else None
+    day_start = datetime(traded.year, traded.month, traded.day, tzinfo=ET).timestamp() if traded else None
+    close = session_close_mins_for_et_date(traded.isoformat()) if traded else None
+    closed = traded is not None and (traded < datetime.fromtimestamp(now, ET).date() or close is None
+                                     or et_minute_total_from_ts_utc(now) >= close)
     absent: dict[str, str] = {}
     used: list[float] = []
-    no_regular = ("Schwab's open, high and low are 0: no regular-session trade yet "
-                  "(Streamer Guide p.17-18)")
+    zeros: dict[str, tuple[str, float]] = {}
 
     def take(key: str, name: str, zero_is_none: bool = False) -> Optional[float]:
         if name not in fields:
             absent[key] = f"Schwab has not sent {name}"
             return None
         value, received = fields[name]
-        if zero_is_none and value == 0:
-            absent[key] = no_regular
+        if value is None:
+            absent[key] = f"Schwab sent {name} as a value that is not a number (at {ct_label(received)})"
             return None
         used.append(received)
+        if zero_is_none and value == 0:
+            zeros[key] = (name, received)
+            return None
         return value
 
     o, h, lo = (take(k, n, zero_is_none=True) for k, n in (("o", "OPEN_PRICE"), ("h", "HIGH_PRICE"),
                                                             ("l", "LOW_PRICE")))
+    if zeros:                                           # Schwab's own 0s, one sentence with their time
+        names = [n for n, _t in zeros.values()]
+        said = (f"Schwab's {' and '.join(names) if len(names) < 3 else ', '.join(names[:-1]) + ' and ' + names[-1]} "
+                f"{'is' if len(names) == 1 else 'are'} 0 (at {ct_label(max(t for _n, t in zeros.values()))})")
+        absent.update(dict.fromkeys(zeros, said))
     c = take("c", "REGULAR_MARKET_LAST_PRICE" if closed else "LAST_PRICE")
     v = take("v", "TOTAL_VOLUME")
+    if traded is None:
+        absent["t"] = "Schwab has sent no last-trade time (TRADE_TIME_MILLIS) to place the candle"
     bar = (served_bar({"t": day_start, "o": o, "h": h, "l": lo, "c": c, "v": v}, "D")
-           if None not in (o, h, lo, c) else None)
-    label = trading_date_label(day_start)
-    return {"t": day_start, "label": label, "bar": bar, "volume": v, "volume_text": volume_text(v), "absent": absent,
-            # the daily chart's line when it draws no candle for the date: each served reason once
-            "unavailable": None if bar else f"No daily candle for {label}: " + "; ".join(
-                dict.fromkeys(absent[k] for k in ("o", "h", "l", "c") if k in absent)),
+           if traded is not None and None not in (o, h, lo, c) else None)
+    return {"t": day_start, "bar": bar, "volume": v, "volume_text": volume_text(v),
+            "volume_as_of": ct_label(fields["TOTAL_VOLUME"][1]) if v is not None else None, "absent": absent,
+            # the daily chart's line when it draws no candle: each served reason once
+            "unavailable": None if bar else "No daily candle: " + "; ".join(
+                dict.fromkeys(absent[k] for k in ("t", "o", "h", "l", "c") if k in absent)),
             "as_of": ct_label(max(used)) if used else None, "source": DAY_SOURCE}
 
 
@@ -361,23 +369,15 @@ def _refused_text(reason: Optional[str]) -> Optional[str]:
     return None if reason is None else f"Schwab refused this symbol's stream: {reason}"
 
 
-def session_text(ts: float) -> str:
-    """The trading session an instant (epoch seconds) belongs to, as every displayed value is
-    labeled: "post-market Fri 09/04/2026" (lmp.session_day's date; time_et.session_label's part)."""
-    d = lmp.session_day(ts)
-    part = {"RTH": "regular session", "Pre-Market": "pre-market", "After-Hours": "post-market"}.get(
-        session_label(datetime.fromtimestamp(ts, ET)), "overnight")
-    return f"{part} {d.strftime('%a %m/%d/%Y')}"
-
-
 def price_row(ticker: str, now: float) -> dict[str, Any]:
     """The finished row the screen paints for one symbol, as it is at `now` (epoch seconds).
-    Every value Schwab sent is shown, whatever the hour, with its time (operator 2026-10-01: "we
-    should not be showing unavailable anywhere in the app if there is schwab data to be render
-    into the ui"): the bid and ask with their quote time, the prior close with its receive time,
-    the last trade (`closed_last` when it is not live) with its time and session. `spot` is the
-    live price only -- what the computations take -- and `quote_live` says whether the quote is
-    live for them. Absent only when Schwab has sent nothing."""
+    Every value Schwab sent is shown, whatever the hour, with the time Schwab sent it (operator
+    2026-10-01: "we should not be showing unavailable anywhere in the app if there is schwab data
+    to be render into the ui"): the bid and ask with Schwab's quote time, the prior close and each
+    change percent with their receive time, the last trade (`closed_last` when it is not live)
+    with Schwab's trade time. `spot` is the live price only -- what the computations take -- and
+    `quote_live` says whether the quote is live for them. Absent only when Schwab has sent
+    nothing, or sent a value that is not a number, with that reason."""
     tk = ticker_storage_key(ticker)
     row = lmp.get_quote(tk) or {}
     spot = live_spot(tk, now)
@@ -386,6 +386,14 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
     closed = not lmp.in_session(now)
     last = (row if spot is None and lmp.plane_spot_is_last_price(row) and lmp.plane_row_is_streamed(row)
             and row.get("trade_ts") is not None else None)
+    not_numbers = row.get("not_numbers") or ()
+
+    def as_of(key: str) -> Optional[str]:
+        return ct_label(row[key]) if row.get(key) is not None else None
+
+    def why_none(name: str) -> str:
+        return (f"Schwab sent {name} as a value that is not a number" if name in not_numbers
+                else f"Schwab has not sent {name} for this symbol")
 
     return {
         "ticker": tk,
@@ -393,17 +401,19 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "spot_disp": price_text(spot) if spot is not None else None,
         "spot_state": "live" if spot is not None else ("closed" if closed else "unavailable"),
         # why there is no price at all: Schwab refused the symbol's stream (its own answer, e.g.
-        # code 19 REACHED_SYMBOL_LIMIT) or has sent no trade for it
+        # code 19 REACHED_SYMBOL_LIMIT), sent no trade, sent it as not a number, or sent its price
+        # without the trade's time
         "unavailable_reason": (None if spot is not None or last else
                                _refused_text(lmp.refused_reason(tk, "LEVELONE_EQUITIES", now))
-                               or "Schwab has sent no trade (LAST_PRICE) for this symbol"),
+                               or ("Schwab sent LAST_PRICE without its trade time (TRADE_TIME_MILLIS)"
+                                   if row.get("spot") is not None else why_none("LAST_PRICE"))),
         "spot_source": SPOT_SOURCE if spot is not None else None,
         # the feed itself (heartbeat, socket open, symbol held) -- distinct from "this symbol
         # has traded this session": live feed + no trade yet reads NO TRADE YET, not no feed
         "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now),
-        # the last trade Schwab sent when it is not live: shown with its time and session
+        # the last trade Schwab sent when it is not live: shown with Schwab's trade time
         "closed_last": {"price": float(last["spot"]), "spot_disp": price_text(float(last['spot'])),
-                        "as_of": ct_label(last["trade_ts"]), "session": session_text(last["trade_ts"])}
+                        "as_of": ct_label(last["trade_ts"])}
                        if last else None,
         "quote_live": quote_live,
         "bid": row.get("bid"),
@@ -419,14 +429,14 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         # day value on screen (the Trade Desk's session volume, the daily candle)
         "day": day_candle(tk, now),
         "chg_pct": row.get("chg_pct"),
+        "chg_pct_as_of": as_of("chg_pct_received_ts"),
         "chg_pct_regular": row.get("chg_pct_regular"),
+        "chg_pct_regular_as_of": as_of("chg_pct_regular_received_ts"),
         "net_change": row.get("net_change"),
         "prior_close": row.get("prior_close"),
-        "prior_close_as_of": (ct_label(row["prior_close_received_ts"])
-                              if row.get("prior_close_received_ts") is not None else None),
-        # why there is no prior close (the PDC level's reason): Schwab has sent none
-        "prior_close_absent": (None if row.get("prior_close") is not None
-                               else "Schwab has not sent CLOSE_PRICE for this symbol"),
+        "prior_close_as_of": as_of("prior_close_received_ts"),
+        # why there is no prior close (the PDC level's reason)
+        "prior_close_absent": None if row.get("prior_close") is not None else why_none("CLOSE_PRICE"),
         "trade_ts": trade_ts,
         "trade_age_sec": _trade_age_sec(trade_ts, now),
         "ts_recv": row.get("server_received_ts") if row else None,

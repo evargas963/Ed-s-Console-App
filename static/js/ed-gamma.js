@@ -536,8 +536,11 @@
         var liveState = cellState ? cellState.state : null;
         var st = cellStyle(v, maxAbs, heat);
         var priorKey = row.strike + '|' + exps[j2].expiry;
-        var justChanged = _priorSurfaceForFlash &&
-          Object.prototype.hasOwnProperty.call(priorValues, priorKey) && priorValues[priorKey] !== v;
+        // a change starts the cell's flash; any rebuild while it runs (a repaint of the same
+        // surface, a refetch with no change) keeps it, so a rebuild never cuts it short
+        if (_priorSurfaceForFlash && Object.prototype.hasOwnProperty.call(priorValues, priorKey)
+            && priorValues[priorKey] !== v) _flashUntil[priorKey] = Date.now() + FLASH_MS;
+        var justChanged = (_flashUntil[priorKey] || 0) > Date.now();
         // "Never mislabel snapshot data as live": a non-live cell's title discloses exactly
         // that, with its own last-confirmed age when one is known -- the SAME per-leg
         // ts_recv/age_sec the API already carries, never fabricated here.
@@ -660,6 +663,8 @@
 
   // ---- fetch + render, guarded (latest-wins) ----
   var _lastSurface = null, _lastRevision = null;
+  // per cell ("strike|expiry"), when its just-changed flash ends (the CSS animation's length)
+  var _flashUntil = {}, FLASH_MS = 900;
   // Streaming-demand confirmation state (2026-09-13) — see the demand-dispatch block in
   // renderSurface for why this exists: `demandCols` is only a REQUEST, not a guarantee.
   //

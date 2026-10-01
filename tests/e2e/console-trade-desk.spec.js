@@ -558,7 +558,7 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Market Map: the session volume and the daily candle show the one served day volume with its date, and a day Schwab sends no candle for prints why', async ({ page }) => {
+  test('Market Map: the session volume and the daily candle show the one served day volume with the time Schwab sent it, and a day Schwab sends no candle for prints why', async ({ page }) => {
     // the day's values are Schwab's day fields on the price row (`day`, live_price_rows.day_candle,
     // operator 2026-10-01): the Order Flow card's session volume and the daily chart's candle
     // read the same served value. Schwab's SPY daily candle of 2026-09-30 (TOTAL_VOLUME 62,110,041,
@@ -566,9 +566,9 @@ test.describe('Trade Desk renders served values', () => {
     // (the stand-in for "today", so the chart places it as its newest).
     const errs = watchErrors(page);
     await intercept(page);
-    const day = { t: 1790395200, label: 'Sat 09/26/2026', unavailable: null, bar: { t: 1790395200, o: 766.45, h: 769.41, l: 762.18, c: 762.63, v: 62110041, chg: -3.82,
+    const day = { t: 1790395200, unavailable: null, bar: { t: 1790395200, o: 766.45, h: 769.41, l: 762.18, c: 762.63, v: 62110041, chg: -3.82,
       chg_pct: -0.4984, label: 'Sat 09/26/2026', v_text: '62.11M' }, volume: 62110041, volume_text: '62.11M',
-      absent: {}, as_of: 'Fri 09/25 07:59 PM CT', source: 'Schwab LEVELONE_EQUITIES day fields' };
+      volume_as_of: 'Fri 09/25 07:59 PM CT', absent: {}, as_of: 'Fri 09/25 07:59 PM CT', source: 'Schwab LEVELONE_EQUITIES day fields' };
     const daemon = await mockPriceSocket(page, []);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -580,14 +580,14 @@ test.describe('Trade Desk renders served values', () => {
     daemon.send({ type: 'quotes', rows: [priceRow('SPY', 762.63, { day: day })] });
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(BARS.bars.length + 1);
     await expect(page.locator('#tdmCardFlow .tdm-hero')).toContainText('62.11M');           // the session volume
-    await expect(page.locator('#tdmCardFlow .tdm-hero')).toContainText('Sat 09/26/2026');   // labeled with its date
+    await expect(page.locator('#tdmCardFlow .tdm-hero')).toContainText('as of Fri 09/25 07:59 PM CT');   // with the time Schwab sent it
     await expect(page.locator('#tdmChart .tvc-legend')).toContainText('Vol 62.11M');       // the daily candle's
-    // Schwab's fields make no candle for the day (its open, high and low 0 before a regular-session
-    // trade): the served reason is printed, and the candle already drawn for that date stays --
-    // what Schwab sent is shown (operator 2026-10-01: "if we have it we display it")
-    const why = "No daily candle for Sat 09/26/2026: Schwab's open, high and low are 0: no regular-session trade yet (Streamer Guide p.17-18)";
-    daemon.send({ type: 'quotes', rows: [priceRow('SPY', 762.63, { day: { t: day.bar.t, label: day.label, bar: null,
-      volume: 62110041, volume_text: '62.11M', absent: {}, unavailable: why, as_of: day.as_of, source: day.source } })] });
+    // Schwab's fields make no candle (its open, high and low sent as 0): the served reason is
+    // printed, and the candle already drawn for that date stays -- what Schwab sent is shown
+    // (operator 2026-10-01: "if we have it we display it")
+    const why = "No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (at Sat 09/26 12:30 AM CT)";
+    daemon.send({ type: 'quotes', rows: [priceRow('SPY', 762.63, { day: { t: day.bar.t, bar: null,
+      volume: 62110041, volume_text: '62.11M', volume_as_of: day.volume_as_of, absent: {}, unavailable: why, as_of: day.as_of, source: day.source } })] });
     await expect(page.locator('#tdmChart .tvc-legend')).toContainText(why);
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(BARS.bars.length + 1);
     expect(errs).toEqual([]);

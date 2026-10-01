@@ -25,7 +25,7 @@ import server as srv
 from app.market_data.schwab.streaming import live_ui
 from app.market_data.schwab.streaming.live_push import is_forwarded
 from stream_spine import MessageBus, subscription_msg
-from time_et import ET
+from time_et import ET, ct_label
 
 FX = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_day_fields_2026_09_30.json")
                 .read_text(encoding="utf-8"))
@@ -74,17 +74,20 @@ def test_the_served_daily_candle_is_schwabs_daily_candle_exactly(plane, sym):
 
 
 def test_before_the_regular_session_the_open_is_absent_with_schwabs_reason(plane):
-    """At 08:00 ET Schwab sends the open, high and low as 0: no regular-session trade yet
-    (Streamer Guide p.17-18). That is what Schwab sent, shown as its reason in one sentence,
-    never filled from the pre-market minutes; no candle is drawn. The day's volume so far is
-    TOTAL_VOLUME as sent (pre-market included, p.16), the 09-30 session's (SPY's last trade)."""
+    """At 08:00 ET Schwab's open, high and low are 0 (as it sends them before the regular
+    session). That is what Schwab sent: shown in one sentence with the time it came (display what
+    Schwab sent with the time Schwab sent it, operator 2026-10-01), never filled from the
+    pre-market minutes; no candle is drawn. The day's volume so far is TOTAL_VOLUME as sent
+    (pre-market included, p.16), with its receive time."""
     plane("SPY", _at(8, 0))
     day = live_price_rows.price_row("SPY", _at(8, 0))["day"]
-    assert day["bar"] is None and day["label"] == "Wed 09/30/2026"
-    why = "Schwab's open, high and low are 0: no regular-session trade yet (Streamer Guide p.17-18)"
-    assert day["absent"]["o"] == day["absent"]["h"] == day["absent"]["l"] == why
-    assert day["unavailable"] == "No daily candle for Wed 09/30/2026: " + why          # one served sentence
-    assert day["volume"] == lmp.day_fields("SPY")["TOTAL_VOLUME"][0] > 0
+    fields = lmp.day_fields("SPY")
+    at = ct_label(max(fields[n][1] for n in ("OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE")))
+    why = f"Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (at {at})"
+    assert day["bar"] is None and day["absent"]["o"] == day["absent"]["h"] == day["absent"]["l"] == why
+    assert day["unavailable"] == "No daily candle: " + why          # one served sentence
+    assert day["volume"] == fields["TOTAL_VOLUME"][0] > 0
+    assert day["volume_as_of"] == ct_label(fields["TOTAL_VOLUME"][1])
 
 
 OVERNIGHT = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_l1_overnight_2026_09_08_28.json")
@@ -98,13 +101,14 @@ def test_after_midnight_the_prior_days_values_are_shown_as_that_days(monkeypatch
     2026-09-08 (after the Labor Day holiday) at 00:02 ET re-sent Friday 09-04's open, high, low
     and 34,054,199 shares, and they were served as Tuesday's candle and volume; IWM on 2026-09-28
     at 01:47 ET re-sent Friday's 22,613,925 shares. What Schwab sent is shown, whatever the hour,
-    as the candle of the session its last trade belongs to (TRADE_TIME_MILLIS: Friday), labeled
-    Friday -- never Tuesday's, never blank (operator 2026-10-01: "we use what schwab gives us and
-    we display it, regardless of the time. if we have it we display it"). From 01:30 ET Schwab
-    sends the open, high and low as 0 (no regular-session trade yet): no candle, with Schwab's
-    reason, the volume still shown. Real messages, read-only from production stream_capture.db
-    (tests/fixtures/real_l1_overnight_2026_09_08_28.json); the daemon's heartbeat, live and
-    holding the symbol, a stand-in."""
+    with the time Schwab sent it -- never blank, never as a later day's (operator 2026-10-01:
+    "we use what schwab gives us and we display it, regardless of the time. if we have it we
+    display it"; display what Schwab sent with the time Schwab sent it): the volume with its
+    receive time, the candle at the date of Schwab's own last-trade time (Friday). From 01:30 ET
+    Schwab sends the open, high and low as 0: no candle, saying so with that time. The last
+    trade is shown with Schwab's trade time, never as a live price. Real messages, read-only from
+    production stream_capture.db (tests/fixtures/real_l1_overnight_2026_09_08_28.json); the
+    daemon's heartbeat, live and holding the symbol, a stand-in."""
     monkeypatch.setattr(lmp, "_fields_by_ticker", {})
     monkeypatch.setattr(lmp, "_by_ticker", {})
     now = datetime(*when, tzinfo=ET).timestamp()
@@ -114,19 +118,20 @@ def test_after_midnight_the_prior_days_values_are_shown_as_that_days(monkeypatch
             lmp.record_from_level_one_equity(sym, m["content"], received_ts=m["ts_recv"])
     lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [sym]}}, now)
     row = live_price_rows.price_row(sym, now)
-    day = row["day"]
-    friday, volume = {"SPY": ("Fri 09/04/2026", 34054199), "IWM": ("Fri 09/25/2026", 22613925)}[sym]
-    assert (day["label"], day["volume"]) == (friday, volume)
+    day, fields = row["day"], lmp.day_fields(sym)
+    friday, volume, traded = {"SPY": ("Fri 09/04/2026", 34054199, "Fri 09/04 06:59 PM CT"),
+                              "IWM": ("Fri 09/25/2026", 22613925, "Fri 09/25 06:59 PM CT")}[sym]
+    assert (day["volume"], day["volume_as_of"]) == (volume, ct_label(fields["TOTAL_VOLUME"][1]))
     assert day["t"] == datetime.strptime(friday, "%a %m/%d/%Y").replace(tzinfo=ET).timestamp()
-    if (sym, when[3]) == ("SPY", 0):                    # before Schwab's 01:30 day roll: Friday's candle
+    if (sym, when[3]) == ("SPY", 0):                    # before Schwab's 01:30 roll: Friday's candle
         assert (day["bar"]["o"], day["bar"]["h"], day["bar"]["l"], day["bar"]["c"]) == (772.01, 772.87, 769.0, 770.19)
         assert day["bar"]["label"] == friday and day["unavailable"] is None
-    else:                                               # Schwab's own 0s: its reason, the volume shown
+    else:                                               # Schwab's own 0s, said with their time
+        zeroed = ct_label(max(fields[n][1] for n in ("OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE")))
         assert day["bar"] is None and day["unavailable"] == (
-            f"No daily candle for {friday}: Schwab's open, high and low are 0: no regular-session trade yet "
-            f"(Streamer Guide p.17-18)")
-    # the last trade is shown as Friday's, never as a live price
-    assert row["spot"] is None and row["closed_last"]["session"] == f"post-market {friday}"
+            f"No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (at {zeroed})")
+    # the last trade is shown with Schwab's trade time, never as a live price
+    assert row["spot"] is None and row["closed_last"]["as_of"] == traded
 
 
 def test_the_daily_chart_is_schwabs_daily_candles_and_never_summed_minutes(plane, monkeypatch):
@@ -170,9 +175,9 @@ def test_the_daily_chart_is_schwabs_daily_candles_and_never_summed_minutes(plane
 
 def test_when_schwabs_fields_make_no_candle_its_reason_is_served_with_the_daily_history(monkeypatch):
     """/api/bars1m tf=D served only the history's reason when the day fields made no candle. The
-    price row's `day` and the route's `today` carry its trading date and Schwab's reason (its
-    open, high and low 0 since its overnight roll), which the chart prints; the candle already
-    drawn for that date stays (operator 2026-10-01: "if we have it we display it"). Real SPY
+    price row's `day` and the route's `today` carry Schwab's reason with its time (its open,
+    high and low 0 since its overnight roll), which the chart prints; the candle already drawn
+    stays (operator 2026-10-01: "if we have it we display it"). Real SPY
     messages of 2026-09-08 to 04:30 ET (its last trade Friday's,
     tests/fixtures/real_l1_overnight_2026_09_08_28.json); the heartbeat a stand-in."""
     monkeypatch.setattr(lmp, "_fields_by_ticker", {})
@@ -185,8 +190,27 @@ def test_when_schwabs_fields_make_no_candle_its_reason_is_served_with_the_daily_
     row = live_price_rows.price_row("SPY", now)
     monkeypatch.setattr(ofs, "_price_rows", {"SPY": row})
     monkeypatch.setattr(ofs, "_bar_days", {})
-    why = ("No daily candle for Fri 09/04/2026: Schwab's open, high and low are 0: no regular-session trade "
-           "yet (Streamer Guide p.17-18)")
-    assert row["day"]["unavailable"] == why and row["day"]["t"] == datetime(2026, 9, 4, tzinfo=ET).timestamp()
+    zeroed = ct_label(max(lmp.day_fields("SPY")[n][1] for n in ("OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE")))
+    why = f"No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (at {zeroed})"
+    assert row["day"]["unavailable"] == why
     body = json.loads(srv.get_bars1m(ticker="SPY", tf="D", limit=12000).body)
     assert body["today"] == row["day"] and body["bars"] == []
+
+
+def test_the_daily_chart_serves_one_candle_per_date(plane, monkeypatch):
+    """/api/bars1m tf=D serves Schwab's daily history and the day-field candle; where both hold
+    the same date only the day-field candle is served (the newer of Schwab's two), never two bars
+    at one time. SPY 2026-09-30: the day fields at 21:00 ET and Schwab's daily candle of the same
+    date, its measured values with the close 0.01 lower as the stand-in for a history that
+    differs."""
+    now = _at(21, 0)
+    plane("SPY", now)
+    want = FX["symbols"]["SPY"]["schwab_daily_candle"]
+    history = live_price_rows.daily_candles(
+        [{**want, "close": want["close"] - 0.01,
+          "datetime": int(datetime(2026, 9, 30, 1, 0, tzinfo=ET).timestamp() * 1000)}], now + 86400)
+    monkeypatch.setattr(ofs, "_bar_days", {"SPY": {"candles": history, "problem": None}})
+    monkeypatch.setattr(ofs, "_price_rows", {"SPY": live_price_rows.price_row("SPY", now)})
+    bars = json.loads(srv.get_bars1m(ticker="SPY", tf="D", limit=12000).body)["bars"]
+    assert [b["t"] for b in bars] == [datetime(2026, 9, 30, tzinfo=ET).timestamp()]
+    assert bars[0]["c"] == want["close"]                           # the day fields' candle

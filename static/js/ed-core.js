@@ -722,13 +722,15 @@
       if (state) srcLbl = (srcLbl ? srcLbl + ' · ' : '') + state;
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
     }
-    if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
+    // Schwab's bid and ask as sent, with Schwab's quote time (served)
+    if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask) + (q.quoteAsOf ? ' · ' + q.quoteAsOf : '');
     // Schwab's two change percents, each labelled: the regular session's and the last price's
-    // (extended hours included). Formatting only; absent reads "—".
-    [[document.getElementById('hChgReg'), 'REG ', q.chgPctRegular], [chg, 'EXT ', q.chgPct]].forEach(function (c) {
+    // (extended hours included), each with the time it came (served). Formatting only; absent reads "—".
+    [[document.getElementById('hChgReg'), 'REG ', q.chgPctRegular, q.chgPctRegularAsOf],
+     [chg, 'EXT ', q.chgPct, q.chgPctAsOf]].forEach(function (c) {
       if (!c[0]) return;
       if (c[2] != null) {
-        c[0].textContent = c[1] + (c[2] >= 0 ? '+' : '') + fmt(c[2]) + '%';
+        c[0].textContent = c[1] + (c[2] >= 0 ? '+' : '') + fmt(c[2]) + '%' + (c[3] ? ' · ' + c[3] : '');
         c[0].className = 'chg mono ' + (c[2] >= 0 ? 'pos' : 'neg');
       } else { c[0].textContent = c[1] + '—'; c[0].className = 'chg mono'; }
     });
@@ -863,16 +865,17 @@
     if (!q || !q.ticker) return;
     if (q.ticker === state.key) {
       var live = q.spot_state === 'live' && q.spot != null;
-      // the last trade Schwab sent when it is not live, shown with its served time and session
+      // the last trade Schwab sent when it is not live, shown with Schwab's served trade time
       // (operator 2026-10-01: "if we have it we display it")
       var closed = !live && q.closed_last;
       // painted NOW, not on requestAnimationFrame: the browser slows or pauses rAF for a
       // window it considers covered (measured 2026-09-24: row in at 6 ms, rAF paint at 773 ms).
       // The daemon already conflates to the newest row per symbol, so there is no burst to
       // throttle -- a few text writes per second.
-      paintQuote({ spot_disp: closed ? q.closed_last.spot_disp + ' ' + q.closed_last.session : q.spot_disp, spot: q.spot,
-        bid: q.bid, ask: q.ask,
-        chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
+      paintQuote({ spot_disp: closed ? q.closed_last.spot_disp : q.spot_disp, spot: q.spot,
+        bid: q.bid, ask: q.ask, quoteAsOf: q.quote_as_of,
+        chgPct: q.chg_pct, chgPctAsOf: q.chg_pct_as_of, chgPctRegular: q.chg_pct_regular,
+        chgPctRegularAsOf: q.chg_pct_regular_as_of, quoteIngestion: q.quote_ingestion,
         spotState: closed ? 'past' : q.spot_state,
         feedCls: live ? '' : 'stale',
         feedLabel: live ? 'LIVE' : (q.spot_state === 'closed' ? 'MARKET CLOSED' : (q.feed_live ? 'NO TRADE YET' : 'NOT LIVE')),
@@ -882,10 +885,10 @@
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
-      // Schwab's change as sent, beside the live price or its last trade (with its session)
+      // Schwab's change as sent, beside the live price or its last trade (with Schwab's trade time)
       setWlRow(wlSym, q.spot_state === 'live' ? q.spot : null, q.chg_pct,
         q.spot_state || 'unavailable',
-        q.spot_state !== 'live' && q.closed_last ? q.closed_last.spot_disp + ' ' + q.closed_last.session : null);
+        q.spot_state !== 'live' && q.closed_last ? q.closed_last.spot_disp + ' · ' + q.closed_last.as_of : null);
       markWlHealthy();
     });
     try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}

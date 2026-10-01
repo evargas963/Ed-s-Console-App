@@ -213,7 +213,7 @@ def test_the_prior_close_is_schwabs_close_price_on_both_routes(monkeypatch):
     15:59 bar, which differed from Schwab's CLOSE_PRICE for 39 of them ($SPX 7671.85 against
     7670.84). The prior close is Schwab's field, from the daemon's price row, on /api/levels and
     in the zones, shown as sent with its time whether or not the quote is live, and absent only
-    when Schwab has not sent it (a field sent as not a number clears it). Real TSLA quote."""
+    when Schwab has not sent it or sent it as not a number, saying which. Real TSLA quote."""
     fx = json.loads((_FX / "real_equity_book.json").read_text(encoding="utf-8"))
     tk, native = fx["ticker"], fx["quote"]["native"]
     monkeypatch.setattr(lmp, "_by_ticker", {})
@@ -239,8 +239,8 @@ def test_the_prior_close_is_schwabs_close_price_on_both_routes(monkeypatch):
     levels = json.loads(srv.get_levels(ticker=tk).body)
     (pdc,) = [lv for lv in levels["levels"] if lv["id"] == "PDC"]
     assert pdc["price"] == 377.94 and pdc["staleness"]["reason"].startswith("Schwab's CLOSE_PRICE as sent, received ")
-    # absent only when Schwab never sent it, with that reason
+    # Schwab sends it as a value that is not a number: absent, saying so (never "not sent")
     lmp.record_from_level_one_equity(tk, {"CLOSE_PRICE": "n/a"}, received_ts=SESSION_NOW)
     publish_daemon_rows(tk)
     levels = json.loads(srv.get_levels(ticker=tk).body)
-    assert {"family": "PDC", "reason": "Schwab has not sent CLOSE_PRICE for this symbol"} in levels["families_absent"]
+    assert {"family": "PDC", "reason": "Schwab sent CLOSE_PRICE as a value that is not a number"} in levels["families_absent"]
