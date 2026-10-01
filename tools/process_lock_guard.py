@@ -32,7 +32,7 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell parser (BEDROCK 
     normalize_repo,
     shell_executed_part,
 )
-from tools.pretooluse_guard import classify_path  # noqa: E402
+from tools.pretooluse_guard import is_production_path  # noqa: E402
 from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
 
 #: The file-mutating tool class is decided ONCE (tools.hook_chain.MUTATING_TOOLS, Cursor's
@@ -250,7 +250,7 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
             resolved.relative_to(primary)    # must be inside the production tree
         except (OSError, ValueError):
             continue
-        if classify_path(str(resolved), repo=str(primary)).production:
+        if is_production_path(str(resolved), repo=str(primary)):
             out.append(
                 f"PROD_CHECKOUT_APP_EDIT: {resolved} is app code in the production checkout "
                 f"{primary}, which is never edited in place. Make the change in a worktree and "
@@ -413,7 +413,7 @@ def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = 
             resolved.relative_to(primary_res)
         except ValueError:
             continue
-        if classify_path(str(resolved), repo=str(primary_res)).production:
+        if is_production_path(str(resolved), repo=str(primary_res)):
             out.append(
                     f"PROD_CHECKOUT_APP_EDIT (shell): a shell command writes {resolved}, app code "
                     f"in the production checkout {primary}, which is never edited in place. Make "

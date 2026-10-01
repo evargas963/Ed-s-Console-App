@@ -31,6 +31,7 @@ CASES: tuple[tuple[str, str], ...] = (
     (".claude/settings.json", ".claude/settings.json"),
     (".cursor/rules/00-always.mdc", ".cursor/rules/00-always.mdc"),
     (".github", ".github"),
+    (".env", ".env"),
     # explicit relative prefix — the case `lstrip("./")` was actually written for
     ("./tools/x.py", "tools/x.py"),
     ("./.github/x.yml", ".github/x.yml"),
@@ -46,7 +47,7 @@ CASES: tuple[tuple[str, str], ...] = (
     # redundant and dot segments
     ("a//b/./c.py", "a/b/c.py"),
     ("a/../b.py", "b.py"),
-    # foreign / escaping — preserved, NOT judged here (classify_path owns that question)
+    # foreign / escaping — preserved, NOT judged here (is_production_path owns that question)
     ("../outside/y.py", "../outside/y.py"),
     ("../../x.py", "../../x.py"),
     # malformed / empty
@@ -66,13 +67,6 @@ def test_normalisation_is_idempotent():
     """A canonical form that changes on a second pass is not canonical."""
     unstable = [raw for raw, _ in CASES if N(N(raw)) != N(raw)]
     assert unstable == [], f"not idempotent for: {unstable}"
-
-
-def test_a_leading_dot_is_never_eaten():
-    """The single property every one of the defects violated."""
-    for raw in (".github/x.yml", ".claude/y.json", ".cursor/rules/z.mdc", ".env"):
-        assert N(raw).startswith("."), (raw, N(raw))
-        assert N(raw) == raw, (raw, N(raw))
 
 
 def test_the_consumers_agree_with_the_authority():
