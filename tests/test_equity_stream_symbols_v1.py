@@ -8,11 +8,7 @@ ADDs/UNSUBSes LEVELONE_EQUITIES to match.
 """
 from __future__ import annotations
 
-import asyncio
-
-
 import app.options.order_flow.streaming as ofs
-from app.market_data.schwab.streaming import capture
 
 
 # ── console: ranking ──────────────────────────────────────────────────────────────────
@@ -30,17 +26,6 @@ def test_everything_past_the_budget_is_named_never_silently_cut():
     assert admitted == ["TSLA", "AAPL", "MSFT"]
     assert set(not_admitted) == {"NVDA", "AMD"}
     assert all("outside the live equity budget (3)" in r for r in not_admitted.values())
-
-
-# ── daemon: add/drop to match ─────────────────────────────────────────────────────────
-
-
-
-def _apply(monkeypatch, requested, held, stream, roster=("BOOT1", "BOOT2")):
-    monkeypatch.setattr(capture, "read_equity_symbols_signal", lambda: list(requested))
-    status: dict = {}
-    out = asyncio.run(capture._apply_equity_symbol_subs(stream, list(roster), frozenset(held), status))
-    return out, status
 
 
 # ── route ─────────────────────────────────────────────────────────────────────────────

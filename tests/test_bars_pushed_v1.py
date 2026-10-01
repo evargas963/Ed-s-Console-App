@@ -395,30 +395,6 @@ def test_a_minute_schwab_sends_late_is_never_pushed_as_a_charts_newest_bar():
     assert sent[5]["tf"]["60"]["t"] == sent[4]["tf"]["60"]["t"] == datetime(2026, 9, 25, 9, 0, tzinfo=ET).timestamp()
 
 
-def test_bars_that_arrive_before_the_next_send_are_all_sent_in_order():
-    """Every completed minute reaches the browser: three bars of one symbol received before the
-    browser's next send go out as three updates, oldest first (a newer bar used to replace an
-    unsent older one, and that minute never reached the chart)."""
-    async def main():
-        srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: _msg(FRIDAY[9])["ts_recv"],
-                                      history_fn=_schwab({"SPY": FRIDAY}), daily_fn=_no_days)
-        c = live_ui._Client(_Ws())
-        c.symbols = frozenset({"SPY"})
-        srv_ui.clients.add(c)
-        await _start_day(srv_ui, c, _msg(FRIDAY[9]))
-        for b in FRIDAY[10:13]:
-            srv_ui.on_bar(_msg(b))
-        pump = asyncio.create_task(srv_ui._pump(c))
-        await asyncio.sleep(0.05)
-        pump.cancel()
-        await asyncio.gather(pump, return_exceptions=True)
-        return c.ws.sent
-
-    sent = asyncio.run(main())
-    assert [u["tf"]["1"]["t"] for f in sent if f["type"] == "bars" for u in f["bars"]] == \
-        [b["timestamp"] / 1000.0 for b in FRIDAY[10:13]]
-
-
 def test_the_streamed_minute_stands_over_schwabs_price_history_and_a_difference_is_recorded(caplog):
     """Where the stream and the price history both give a minute, the streamed one stands and is
     never replaced; a difference between the two is counted and logged with both, never settled

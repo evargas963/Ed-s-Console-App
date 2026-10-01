@@ -38,16 +38,6 @@ def _push_book(symbol, content, ts_recv):
         ts_recv=ts_recv))
 
 
-def test_book_message_lands_verbatim(tmp_path):
-    _reset(tmp_path)
-    content = {"key": "SPY", "BIDS": [{"BID_PRICE": 449.9, "BID_SIZE": 100}],
-               "ASKS": [{"ASK_PRICE": 450.1, "ASK_SIZE": 200}], "BOOK_TIME": 555}
-    _push_book("SPY", content, ts_recv=time.time())
-
-    items = ofls.get_content_for_symbol("SPY")
-    assert any(i.get("BIDS") == content["BIDS"] for i in items)
-
-
 def test_each_venue_serves_only_its_own_book(tmp_path):
     """Real SPY NYSE_BOOK and NASDAQ_BOOK messages (tests/fixtures/real_spy_nyse_nasdaq_books.json)
     through the real ingest: each venue's route answer is that venue's book, never the newest

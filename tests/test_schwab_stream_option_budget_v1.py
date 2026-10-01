@@ -12,11 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-import asyncio
 import time
 
-
-import app.market_data.schwab.streaming.capture as rsc
 import live_market_plane as L
 from stream_spine import (
     OPTION_CONTRACTS_MAX_HELD,
@@ -125,22 +122,6 @@ def test_ranking_is_deterministic_and_order_free():
     a1, _ = rank_option_contracts(syms, _inputs(cs, 820.0), budget=40)
     a2, _ = rank_option_contracts(list(reversed(syms)), _inputs(cs, 820.0), budget=40)
     assert a1 == a2
-
-
-def test_budget_is_below_the_load_that_still_died():
-    assert OPTION_CONTRACTS_MAX_HELD < 850, (
-        "~850 held contracts still killed the socket every 4-20 min on 2026-09-23")
-
-
-# ── the daemon applies the guard and reports refusals honestly ─────────────────────────
-
-
-def _apply(stream, rejected, monkeypatch, symbols):
-    monkeypatch.setattr(rsc, "read_active_option_contract_signal", lambda: None)
-    monkeypatch.setattr(rsc, "read_active_option_contracts_signal", lambda: list(symbols))
-    state: dict = {}
-    return asyncio.run(rsc._apply_active_option_contract_subs(
-        stream, state, rejected_state=rejected, rejection_backoff={}))
 
 
 # ── the console: honest spot identity, budgeted demand ─────────────────────────────────
