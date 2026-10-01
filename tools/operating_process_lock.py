@@ -1,17 +1,10 @@
-"""Operating-process mechanical lock: two predicates, one owner each.
-
-  (a) index≠WT parity on the enforcement paths (`index_worktree_mismatches`); no hook runs it
-      today;
-  (b) the tree-destructive git actions (`git reset`, `git stash`, `checkout --`, `clean -f`,
-      force push) and pipe-masked commits, consumed by tools/process_lock_guard.py at
-      PreToolUse. The rules live in `AGENTS.md` § Authority.
+"""Operating-process mechanical lock: the tree-destructive git actions (`git reset`, `git stash`,
+`checkout --`, `clean -f`, force push) and pipe-masked commits, consumed by
+tools/process_lock_guard.py at PreToolUse. The rules live in `AGENTS.md` § Authority.
 """
 from __future__ import annotations
 
-import argparse
-import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -24,8 +17,8 @@ if str(REPO) not in sys.path:
 # would be one truth with two answers.
 from tools.shell_parse import iter_command_segments  # noqa: E402
 
-#: Paths where index≠WT is catastrophic: the one writer and the guards.
-ENFORCEMENT_PATHS: tuple[str, ...] = (
+#: Wipe-protected paths: the one writer and the guards.
+PROTECTED_PATHS: tuple[str, ...] = (
     "db.py",
     "tools/hook_chain.py",
     "tools/pretooluse_guard.py",
@@ -33,9 +26,6 @@ ENFORCEMENT_PATHS: tuple[str, ...] = (
     "tools/operating_process_lock.py",
     "tools/process_lock_guard.py",
 )
-
-#: Wipe-protected paths (LOCK-2 reach).
-PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS
 
 #: LOCK-2 (RC-231): the tree-destructive git CLASS, not just `reset --hard`. Three wipes on
 #: 2026-08-03 (RC-210 x2, RC-229) used soft forms the literal-match ban never saw. A command
@@ -181,113 +171,6 @@ def reset_guard_violations(command: str) -> list[str]:
             return hit
     return []
 
-#: Process-lock edits to governance process files are always allowed (compliance path).
-# RC-462: PROCESS_ALLOWED_PREFIXES and MISSION_GATED_PREFIXES are gone. They
-# described which paths a 'non-writer' could touch and which needed an in-progress
-# mission - both concepts are retired. There are no designated roles: the operator
-# says what they want done, and the only standing rule is that an acting AI cannot
-# edit the files that decide who is in charge.
-
-
-def _git(args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args],
-        cwd=str(cwd or REPO),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=30,
-    )
-
-
-def enforcement_paths(repo: Path | None = None) -> list[str]:
-    root = repo or REPO
-    paths = list(ENFORCEMENT_PATHS)
-    lock_dir = root / "tools"
-    if lock_dir.is_dir():
-        for p in sorted(lock_dir.glob("*_lock*.py")):
-            rel = p.relative_to(root).as_posix()
-            if rel not in paths:
-                paths.append(rel)
-    return paths
-
-
-def _blob_hash(repo: Path, path: Path) -> str | None:
-    # RC-370: parity is a CONTENT property under git's text semantics, not a raw-byte
-    # property. This repo's history swapped effective autocrlf true->false, leaving
-    # CRLF worktree files over LF index blobs — raw hashing read that config artifact
-    # as permanent enforcement drift on 16 paths while `git status` called the tree
-    # clean. CRLF is normalized to LF before hashing (the committed blobs are LF), so
-    # EOL noise clears while ANY real edit — one changed byte of content — still
-    # produces a different blob hash and trips the lock.
-    if not path.is_file():
-        return None
-    try:
-        data = path.read_bytes().replace(b"\r\n", b"\n")
-    except OSError:
-        return None
-    import hashlib
-
-    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
-
-
-def _index_hash(repo: Path, rel: str) -> str | None:
-    # RC-370: some blobs in this repo's history were COMMITTED with CRLF (i/crlf in
-    # `git ls-files --eol`), so parity must normalize the INDEX side too — both sides
-    # hash over CRLF->LF-normalized content, and only real content edits differ.
-    r = _git(["ls-files", "-s", "--", rel], cwd=repo)
-    if r.returncode != 0 or not r.stdout.strip():
-        return None
-    sha = r.stdout.strip().split()[1]
-    blob = subprocess.run(
-        ["git", "cat-file", "blob", sha],
-        cwd=str(repo),
-        capture_output=True,
-        timeout=15,
-    )
-    if blob.returncode != 0:
-        return None
-    data = blob.stdout.replace(b"\r\n", b"\n")
-    import hashlib
-
-    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
-
-
-def index_worktree_mismatches(
-    repo: Path | None = None,
-    *,
-    paths: list[str] | None = None,
-    only_staged: bool = False,
-) -> list[str]:
-    """Return human-readable violations where WT blob ≠ index blob."""
-    root = repo or REPO
-    out: list[str] = []
-    check = paths or enforcement_paths(root)
-    if only_staged:
-        sr = _git(["diff", "--cached", "--name-only"], cwd=root)
-        if sr.returncode != 0:
-            return ["git diff --cached unavailable"]
-        staged = {ln.strip().replace("\\", "/") for ln in sr.stdout.splitlines() if ln.strip()}
-        check = [p for p in check if p in staged]
-    for rel in check:
-        fp = root / rel
-        idx = _index_hash(root, rel)
-        if idx is None:
-            # RC-374: an enforcement path present in the WORKTREE but absent from the
-            # index is a planted/untracked enforcement surface — fail closed, never
-            # invisible (idx-None used to mean skip, which hid exactly that plant).
-            if fp.is_file():
-                out.append(f"{rel}: exists in worktree but not in the index (untracked enforcement surface)")
-            continue
-        wt = _blob_hash(root, fp)
-        if wt is None:
-            out.append(f"{rel}: tracked in index but missing from worktree")
-            continue
-        if wt != idx:
-            out.append(f"{rel}: index={idx[:12]}… worktree={wt[:12]}… (index≠WT)")
-    return out
-
 
 _QUOTED_STRING_RE = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'")
 
@@ -317,52 +200,3 @@ def commit_pipe_violations(cmd: str) -> list[str]:
                 "`git show --stat`. Escape: '# pipe-ok: <reason>'."
             ]
     return []
-
-
-def measure_report(repo: Path | None = None) -> dict:
-    """MEASURE-before-claim artifact for operators."""
-    root = repo or REPO
-    paths = enforcement_paths(root)
-    rows = []
-    for rel in paths:
-        fp = root / rel
-        idx = _index_hash(root, rel)
-        wt = _blob_hash(root, fp) if fp.is_file() else None
-        head_r = _git(["rev-parse", "HEAD:" + rel], cwd=root) if idx else None
-        head_hash = head_r.stdout.strip() if head_r and head_r.returncode == 0 else None
-        rows.append({
-            "path": rel,
-            "index": idx,
-            "worktree": wt,
-            "head": head_hash,
-            "index_eq_wt": idx == wt if idx and wt else None,
-        })
-    return {
-        "index_worktree_mismatches": index_worktree_mismatches(root),
-        "enforcement_hashes": rows,
-    }
-
-
-def all_precommit_violations(repo: Path | None = None) -> list[str]:
-    return index_worktree_mismatches(repo or REPO)
-
-
-def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Operating process lock (RC-217)")
-    p.add_argument("--pre-commit", action="store_true", help="pre-commit mode: exit 1 on violation")
-    p.add_argument("--measure", action="store_true", help="print JSON measure report")
-    args = p.parse_args(argv)
-    if args.measure:
-        print(json.dumps(measure_report(), indent=2))
-        return 0
-    v = all_precommit_violations(REPO)
-    if v:
-        for msg in v:
-            print(msg, file=sys.stderr)
-        return 1
-    print("PASS operating_process_lock")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

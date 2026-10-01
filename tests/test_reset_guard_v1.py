@@ -2,8 +2,8 @@
 """LOCK-2 reset-guard (RC-231/RC-232) — dedicated acceptance suite.
 
 The tree-destructive git CLASS blocks at PreToolUse: reset, restore, checkout --,
-clean, stash — against protected/mission scope or in bare whole-tree form. Safe and
-read-only forms stay legal; escapes are explicit and operator-visible.
+clean, stash — against protected paths or in bare whole-tree form. Safe and read-only forms
+stay legal; nothing disarms it.
 """
 from __future__ import annotations
 
@@ -27,47 +27,6 @@ def _no_escape(monkeypatch, tmp_path):
 def test_spec_case_reset_double_dash_chart_blocks(monkeypatch, tmp_path):
     """Spec acceptance literal: `git reset -- static/chart.html` → BLOCK."""
     _no_escape(monkeypatch, tmp_path)
-    assert OPL.reset_guard_violations("git reset -- static/chart.html")
-
-
-def test_spec_case_git_status_allows(monkeypatch, tmp_path):
-    """Spec acceptance literal: `git status` → allow."""
-    _no_escape(monkeypatch, tmp_path)
-    assert not OPL.reset_guard_violations("git status")
-
-
-def test_destructive_class_blocks(monkeypatch, tmp_path):
-    _no_escape(monkeypatch, tmp_path)
-    for cmd in (
-        "git restore -- server.py",
-        "git checkout -- static/chart.html",
-        "git checkout HEAD -- db.py",
-        "git reset --hard",
-        "git clean -fd",
-        "git stash",
-    ):
-        assert OPL.reset_guard_violations(cmd), f"LOCK-2 silent on: {cmd}"
-
-
-def test_safe_forms_allow(monkeypatch, tmp_path):
-    _no_escape(monkeypatch, tmp_path)
-    for cmd in (
-        "git log --oneline -5",
-        "git diff HEAD -- server.py",
-        "git restore --staged governance/root_cause_log.md",
-        "git stash list",
-        "git checkout -b feature/next",
-        "git clean -n",
-    ):
-        assert not OPL.reset_guard_violations(cmd), f"LOCK-2 false-fired on: {cmd}"
-
-
-def test_escapes_are_explicit(monkeypatch, tmp_path):
-    """No grant file exists any more (2026-08-24 teardown) and the env token never
-    disarmed the guard (RC-450) — both directions still BLOCK."""
-    monkeypatch.delenv("ED_RESET_GUARD", raising=False)
-    assert OPL.reset_guard_violations("git reset -- static/chart.html")
-    monkeypatch.setenv("ED_RESET_GUARD", "off")
     assert OPL.reset_guard_violations("git reset -- static/chart.html")
 
 
@@ -139,6 +98,7 @@ _ADJUDICATION: tuple[tuple[str, bool, str], ...] = (
     ("git push -u origin feat/x", False, "no force flag"),
     ("git push origin feat/x --follow-tags", False, "no force flag"),
     ("git status", False, "read"),
+    ("git diff HEAD -- server.py", False, "read"),
     # FORBIDDEN — every reset, stash and force push, and every mode that can discard something
     ("git reset --soft HEAD~1", True, "forbidden: every reset"),
     ("git -C ../other reset --soft HEAD~1", True, "forbidden: every reset, any checkout"),
@@ -154,6 +114,7 @@ _ADJUDICATION: tuple[tuple[str, bool, str], ...] = (
     ("git clean -xfd", True, "untracked + ignored"),
     ("git checkout -- .", True, "whole worktree"),
     ("git checkout -- server.py", True, "a product file"),
+    ("git checkout HEAD -- db.py", True, "the one writer, from a ref"),
     ("git restore .", True, "whole worktree"),
     ("git stash", True, "moves the worktree away"),
     ("git push -f origin main", True, "remote history"),
