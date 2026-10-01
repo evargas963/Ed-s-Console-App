@@ -107,10 +107,10 @@ opens no second streaming socket).
   console restart) the page declares its demand again when the next opens (`ed:push_open`).
   No timer keeps it alive.
 - **1-minute bar.** Schwab → daemon bus → (a) the daemon's browser push (`live_ui`): the
-  symbol's minutes of the day in the daemon's memory (the day's stored minutes of the daemon's
-  CHART_EQUITY symbols are read from `price_bars_1m` once, at the daemon's startup, and never
-  after: from then on a symbol's minutes are only the ones Schwab streams, so a symbol added
-  after startup starts with the minutes Schwab sends it; owner `capture.run` through
+  symbol's minutes of the day in the daemon's memory (the day's stored minutes of every symbol
+  in `price_bars_1m` are read once, at the daemon's startup, and never after: from then on a
+  symbol's minutes grow only by the ones Schwab streams, and none is dropped when the symbol
+  leaves the stream, so a symbol streamed later in the day holds the day the store holds; owner `capture.run` through
   `live_ui.day_minutes`; if that read fails the daemon exits and `start_capture_daemon.bat`
   starts it again) → for each new minute, the chart bar it makes at every
   timeframe (`live_price_rows.bar_update`), with the symbol's newest hour of 1-minute bars

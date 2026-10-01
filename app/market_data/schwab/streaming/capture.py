@@ -502,8 +502,8 @@ async def run() -> int:
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     daemon = Daemon(bus, health, wanted_path())
-    # the day's stored 1-minute bars of its chart symbols, read once, now: the store is history
-    minutes = day_minutes(canonical_console_db_path(), daemon.wanted["CHART_EQUITY"], time.time())
+    # the day's stored 1-minute bars of every symbol, read once, now: the store is history
+    minutes = day_minutes(canonical_console_db_path(), time.time())
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(capture_chains(make_client, stop)),

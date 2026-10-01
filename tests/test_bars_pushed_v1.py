@@ -50,17 +50,17 @@ def _free_port() -> int:
 RESTART = FRIDAY[100]["timestamp"] / 1000.0
 
 
-def _pushed(bars_db, streamed, subscribe=("SPY",), symbols=("SPY",), after_start=None):
+def _pushed(bars_db, streamed, subscribe=("SPY",), after_start=None):
     """Start the daemon's browser socket at RESTART as the daemon does (the day's stored minutes
-    of its CHART_EQUITY `symbols` read from the store `bars_db`, none when it is None), call
-    `after_start()` once it is listening, publish `streamed` on its bus, and return every bar
-    update a browser subscribed to `subscribe` received."""
+    of every symbol read from the store `bars_db`, none when it is None), call `after_start()` once
+    it is listening, publish `streamed` on its bus, and return every bar update a browser
+    subscribed to `subscribe` received."""
     from websockets.asyncio.client import connect
 
     async def main():
         port, bus, stop, stats = _free_port(), MessageBus(), asyncio.Event(), {}
         feed = lambda: {"ts": RESTART, "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
-        minutes = None if bars_db is None else live_ui.day_minutes(bars_db, symbols, RESTART)
+        minutes = None if bars_db is None else live_ui.day_minutes(bars_db, RESTART)
         task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=lambda: RESTART,
                                                          host="127.0.0.1", port=port, stats=stats,
                                                          minutes=minutes))
@@ -129,12 +129,11 @@ def test_the_pushed_bar_is_the_routes_bar_at_every_timeframe(monkeypatch, tmp_pa
 
 
 def test_the_store_is_read_at_startup_only(monkeypatch, tmp_path):
-    """The database is history: the daemon reads the day's stored minutes of its symbols once,
+    """The database is history: the daemon reads the day's stored minutes of every symbol once,
     at startup, and never for a live screen. With the database unreadable after startup, a
     symbol's first bar in session is still pushed, its daily bar holding the stored minutes, and
-    no read is made; a symbol added after startup starts with the minutes Schwab sends it. The
-    daemon used to read the store the first time a symbol had a bar that day, in session.
-    QQQ's bars are SPY's real bars under another symbol, a stand-in."""
+    no read is made. The daemon used to read the store the first time a symbol had a bar that
+    day, in session. QQQ's bars are SPY's real bars under another symbol, a stand-in."""
     monkeypatch.setattr(lmp, "_by_ticker", {})
     db = EdDB(tmp_path / "bars.db", allow_noncanonical=True)
     monkeypatch.setattr(srv, "get_db", lambda: db)
@@ -147,18 +146,34 @@ def test_the_store_is_read_at_startup_only(monkeypatch, tmp_path):
         reads.append(a)
         raise sqlite3.OperationalError("unable to open database file")
 
-    got = _pushed(db.db_path, [_msg(b) for b in streamed] + [_msg(b, sym="QQQ") for b in streamed],
-                  subscribe=("SPY", "QQQ"), symbols=("SPY",),
+    got = _pushed(db.db_path, [_msg(b) for b in streamed], subscribe=("SPY",),
                   after_start=lambda: monkeypatch.setattr(live_ui.sqlite3, "connect", unreadable))
     assert reads == []
-    spy = [u for u in got if u["ticker"] == "SPY"]
-    qqq = [u for u in got if u["ticker"] == "QQQ"]
-    assert [u["tf"]["1"]["t"] for u in spy] == [b["timestamp"] / 1000.0 for b in streamed]
-    assert spy[0]["tf"]["D"]["o"] == stored[0]["open"]                # the minutes read at startup
-    assert [u["tf"]["1"]["t"] for u in qqq] == [b["timestamp"] / 1000.0 for b in streamed]
-    assert qqq[-1]["tf"]["D"]["o"] == streamed[0]["open"]             # only what Schwab sent it
-    assert qqq[-1]["tf"]["D"]["v"] == sum(b["volume"] for b in streamed)
-    assert qqq[-1]["tf"]["D"]["t"] == datetime(2026, 9, 25, tzinfo=ET).timestamp()   # its bucket's start
+    assert [u["tf"]["1"]["t"] for u in got] == [b["timestamp"] / 1000.0 for b in streamed]
+    assert got[0]["tf"]["D"]["o"] == stored[0]["open"]                # the minutes read at startup
+
+
+def test_a_symbol_streamed_after_startup_pushes_the_whole_days_bars(monkeypatch, tmp_path):
+    """CHART_EQUITY changes as the operator moves between tickers. A symbol that was not streamed
+    when the daemon started, with minutes already stored today, was held from its first streamed
+    minute only: its pushed daily, 30m and 60m bars and its Order Flow hour were partial and were
+    drawn over the chart's full-day candle (QQQ: open 769.09 for 768.78, volume 372,524 for
+    8,324,197). The daemon loads every symbol's stored minutes at startup, so the pushed bars are
+    the route's. Real SPY CHART_EQUITY bars of 2026-09-25 under the symbol QQQ (the stand-in);
+    QQQ is not streamed at startup and is subscribed after."""
+    monkeypatch.setattr(lmp, "_by_ticker", {})
+    db = EdDB(tmp_path / "bars.db", allow_noncanonical=True)
+    monkeypatch.setattr(srv, "get_db", lambda: db)
+    stored, streamed = FRIDAY[:100], FRIDAY[100:110]
+    for b in stored:                                 # stored today before the daemon started
+        assert srv._write_streamed_bar(_msg(b, sym="QQQ"))
+    got = _pushed(db.db_path, [_msg(b, sym="QQQ") for b in streamed], subscribe=("QQQ",))
+    for b in streamed:                               # the console writes the same bars
+        assert srv._write_streamed_bar(_msg(b, sym="QQQ"))
+    last = got[-1]
+    for tf in live_price_rows.CHART_TFS:
+        assert last["tf"][tf] == json.loads(srv.get_bars1m(ticker="QQQ", tf=tf, limit=12000).body)["bars"][-1], tf
+    assert last["recent_1m"] == json.loads(srv.get_bars1m(ticker="QQQ", tf="30", limit=9000).body)["recent_1m"]
 
 
 def test_a_browser_back_from_a_drop_is_told_the_gap_and_sent_only_new_bars(monkeypatch, tmp_path):
