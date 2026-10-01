@@ -10,8 +10,7 @@ import time
 from datetime import timedelta
 
 import server
-from math_exposure_core import compute_exposures_by_strike
-from math_exposure_core import exposure_books
+from math_exposure_core import bucket_metric, compute_exposures_by_strike, exposure_books
 from server import get_options_gamma_surface, project_gamma_surface, ticker_storage_key
 from terrain_engine import compute_terrain
 from terrain_engine import _per_strike_rows
@@ -63,7 +62,7 @@ def test_real_chain_reported_zero_oi_shows_zero_and_unreported_shows_absent(pin_
     assert all(v == 0 for v in cell[zero_k]["gex"] if v is not None) and cell[zero_k]["gex"] != [None]
     assert cell[gone_k]["gex"] == [None]
     exposures, _ = compute_exposures_by_strike(chain, spot=fx["spot"])
-    assert exposures[zero_k]["has_oi"] and not exposures[gone_k]["has_oi"]
+    assert exposures[zero_k]["net_gex_1pct"] == 0 and exposures[gone_k]["oi_unreported"] > 0
     rows = {r[0] for r in _per_strike_rows(exposures)}
     assert zero_k in rows and gone_k not in rows
 
@@ -92,21 +91,19 @@ def test_vanna_by_strike_route_omits_unreported_oi_strikes(pin_clock):
 
 # ---------------------------------------------------------- 2. a genuine zero still renders ----
 
-def test_real_oi_that_nets_to_exactly_zero_still_has_oi_true_and_reports_zero():
+def test_real_oi_that_nets_to_exactly_zero_reports_zero():
     """Equal call/put gamma exposure at real OI must still show as a real 0, not absence."""
     chain = [_ct(100.0, "CALL", 500, gamma=0.04, delta=0.5),
              _ct(100.0, "PUT", 500, gamma=0.04, delta=-0.5)]
     exposures, _diag = compute_exposures_by_strike(chain, spot=SPOT)
     b = exposures[100.0]
-    assert b["has_oi"] is True
-    assert b["net_gex_1pct"] == 0.0, "call and put gamma exposure must net to exactly zero"
+    assert bucket_metric(b, "net_gex_1pct") == 0.0,"call and put gamma exposure must net to exactly zero"
 
 
 def test_real_oi_that_nets_to_exactly_zero_surface_cell_is_zero_not_null():
     chain = [_ct(100.0, "CALL", 500, gamma=0.04, delta=0.5),
              _ct(100.0, "PUT", 500, gamma=0.04, delta=-0.5)]
     surface = project_gamma_surface(chain, exposure_books(chain, spot=SPOT))
-    assert surface["gamma_available"] is True
     row = [r for r in surface["cells"] if r["strike"] == 100.0][0]
     assert row["gex"] == [0], f"a genuinely computed zero was suppressed as absence: {row}"
 

@@ -678,19 +678,20 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveAttribute('title', /SNAPSHOT/);
   });
 
-  test('always-live heatmap mandate: a cell with no valid computed value at all (has_oi=false) still renders — (unrelated to streaming, pre-existing behavior)', async ({ page }) => {
-    // The ONLY case that still renders '—': project_gamma_surface's own pre-existing
-    // has_oi-gated absence (a strike/expiry that genuinely never cleared the OI gate) --
-    // orthogonal to, and unchanged by, the streaming-state disclosure under test above.
+  test('a cell with no value draws the served reason, whatever its stream state', async ({ page }) => {
+    // operator 2026-10-01: "From Schwab's mouth to our UI's ears. Period." -- a cell has no value
+    // only where Schwab sent nothing for it, and the page draws the server's words for why
     const surf = surfaceWithStreamState([{ call: 'live', put: 'live' }]);
     surf.cells[0].gex = [null];
+    surf.cells[0].absent = { gex: ['not_listed'] };
+    surf.absent_reasons = { not_listed: 'no contract listed' };
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(surf),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
-    await expect(cell).toHaveText('—');
-    await expect(cell).toHaveAttribute('data-cell-state', 'live');   // stream state is unrelated to has_oi absence
+    await expect(cell).toHaveText('no contract listed');
+    await expect(cell).toHaveAttribute('data-cell-state', 'live');   // stream state is beside the value
   });
 
   test('always-live heatmap mandate: a partial cell (one leg live, one not) shows the same value as fully live, visibly flagged distinct from fully live', async ({ page }) => {

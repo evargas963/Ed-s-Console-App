@@ -75,11 +75,17 @@ Schwab sends is taken as sent (rule 2), never computed.
   has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
   under its service and served for the `venue` the screen's venue switch names, never combined.
   The books streamed are those of the ticker whose page has `/api/changes` open (opening it makes
-  that ticker the active one); a console restart is recovered when the page reconnects. For an
-  option contract the daemon holds live, the stream owns its gamma, delta, open interest, volume
-  and IV: its last streamed value is the value, whatever its age, and replaces the chain's (a
-  field the stream has not sent keeps the chain's); every other contract has the chain's values,
-  its Greeks from Schwab's quotes (Option chain, below).
+  that ticker the active one); a console restart is recovered when the page reconnects. For each
+  option contract field the stream carries (gamma, delta, open interest, volume, IV) the newest
+  value Schwab sent wins (`math_exposure_core.overlay_streamed_contract_fields`): neither source
+  carries a Schwab time for these fields, so the receive times decide -- a field streamed after
+  the chain was fetched replaces the chain's, one streamed before it (yesterday's open interest
+  under today's chain) does not, whether or not the daemon still holds the contract (the feed's
+  state labels the heatmap leg, it never picks the value). Every other field is the chain's, its
+  Greeks from Schwab's quotes (Option chain, below). A book message is the book Schwab sent, a
+  side with no levels included (empty, never replaced by an older two-sided book); a side Schwab
+  sent no level for at a price is absent in the book heatmap, never a 0 size. Mid and microprice
+  are computed from the quotes Schwab sent, a crossed book included (served with `crossed`).
   A contract is a ticker's when Schwab listed it in that ticker's chain (whatever its root:
   SPX and SPXW are both $SPX's). The option contract whose book streams follows the page's
   ticker: the at-the-money call of its front expiry, from its chain.
@@ -99,8 +105,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   ticker with none yet today (the console's start, a new session date). It reads the bars with
   `_read_bars_1m` and normalizes them once (`_bars_to_list`); every level function takes them.
   The routes serve what it published and build nothing. `/api/levels` also serves the order the
-  chart draws them in (`by_distance`): nearest the live price, or on a closed market nearest the
-  last streamed trade, named in `by_distance_ref`; distance, near-spot and side stay live-only,
+  chart draws them in (`by_distance`): nearest the spot (Schwab's last trade, at any hour, with
+  its trade time `spot_as_of_ts_utc`), each level's distance and side from it,
   and the session's volume profile (`volume_profile`: each RTH 1-minute bar's volume spread
   evenly over its range, one bin per tick, flagged inside or outside the value area).
 - **Option chain.** Schwab REST → console memory, downloaded by the console for every board and
@@ -126,8 +132,11 @@ Schwab sends is taken as sent (rule 2), never computed.
   chain part does, so the levels keep their last good publication, stale with that reason, and
   no further batch is asked. A contract missing from an answered batch has no Greeks (None, logged with the count), never the
   chain's: its leg's exposure and its strike's net read absent (a leg's sum is known only when
-  every contract on it with open interest above 0 sent the Greek: `bucket_metric`). Open
-  interest stays the chain's. Chain captures stored before 2026-10-01 carry the chain's rounded
+  every contract on it sent its open interest and multiplier, and every one with open interest
+  above 0 sent the Greek: `bucket_metric`). A contract with open interest 0 adds 0 whatever its
+  Greeks (Schwab sends -999 Greeks for a contract that has not traded): a strike listing only
+  such contracts is a computed 0, drawn "$0" (operator 2026-10-01: "shouldn't be a dash should be
+  0"; SPY 2026-10-14 had 121 such strikes drawn "—"). Open interest stays the chain's. Chain captures stored before 2026-10-01 carry the chain's rounded
   Greeks; the startup load prices them until newer captures exist. The request
   budget is unmeasured (`ACTIVE_PROGRAM.md` QUOTES-BUDGET).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
@@ -155,19 +164,31 @@ Schwab sends is taken as sent (rule 2), never computed.
   signal) is refreshed each cycle, and its heatmap reads "warming" unless the ticker is held
   (quarantined), whether or not levels exist yet. Levels older than two delivered cycles are
   stale with the reason (held, the last failure, or not reached), whatever the hour.
-  Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`), never
-  called live; the live price is the daemon's price row. With no live price the next publication
-  has no levels, with its reason.
-- **Live.** One rule for every streamed value (price, quote, option quote and greeks, each book):
-  it is live while the daemon's heartbeat, sent every second, is under 3 s old
+  Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`); the
+  price is the daemon's price row. With no price from Schwab the next publication has no levels,
+  with its reason.
+- **Heatmap cells.** Every strike Schwab listed in any expiry is a row; a cell is the book's
+  value for its strike and expiry, exact. A cell with no value carries the code saying why
+  (`absent`, worded by the surface's `absent_reasons`, drawn by the page): no contract listed at
+  that strike in that expiry, or a contract there sent no open interest, multiplier or (with open
+  interest above 0) Greek, or no open interest or volume. The surface is served whenever the
+  levels projected one; no count of cells withholds it.
+- **Live.** Every value is the last one Schwab sent, served at any hour with Schwab's own time
+  (the price with its TRADE_TIME, `trade_time_ct`); no clock of ours calls a value live or the
+  market closed (operator 2026-10-01: "From Schwab's mouth to our UI's ears. Period."). Whether
+  the feed is delivering a symbol now is stated beside its values, never in place of them: the
+  daemon's heartbeat, sent every second, is under 3 s old
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the
-  symbol on that Schwab service (`live_market_plane.feed_live_for`). The price and each book are
-  live only in session as well (trading day, 04:00–20:00 ET: `spot_is_fresh`, `book_is_live`);
-  outside it the last one is a past observation. A value's age is never the
-  test: Schwab sends a field only when it changes. The daemon's status is read from the same
-  heartbeat (`live_market_plane.daemon_status`). Owner: the console's feed loop records each
-  heartbeat; when the daemon stops or the socket to it drops, every streamed value reads not live
-  within 3 s.
+  symbol on that Schwab service (`live_market_plane.feed_live_for`; the header's LIVE / FEED DOWN,
+  a book's `book_live`, a heatmap leg's state). A value's age is never the test: Schwab sends a
+  field only when it changes. The daemon's status is read from the same heartbeat
+  (`live_market_plane.daemon_status`). Owner: the console's feed loop records each heartbeat;
+  when the daemon stops or the socket to it drops, every symbol reads feed down within 3 s. The
+  console's copy of the daemon's price rows is dropped after 3 s with no frame from the daemon
+  (the connection is gone; the rows return when it reconnects).
+- **Tape.** The cumulative delta (PROXY, tick rule) sums every print the tape holds; no clock
+  resets it, and the window it sums (its first and last print's Schwab trade time,
+  `cum_delta_window`) is served beside it and printed with it. A print of size 0 adds 0.
 - **Level crosses.** Computed by the console at each levels publish; written to `ed_console.db`
   → the `levels` push → `/api/desk/events`, which serves each cross as recorded and flags the
   newest cross at each level, for the newest six levels, as the chart's numbered callouts (one

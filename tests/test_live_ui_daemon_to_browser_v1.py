@@ -8,8 +8,8 @@ no database. Proves:
   * the row is the one producer's row (live_price_rows.price_row): spot, feed verdict,
     Schwab trade age, and no bar (charts show Schwab's completed bars only);
   * a symbol nobody subscribed to is never sent;
-  * the feed verdict rides every beat: a closed Schwab socket turns the price UNAVAILABLE
-    within one beat, with no message needed from Schwab;
+  * the feed verdict rides every beat: a closed Schwab socket reads feed_live False within one
+    beat, with no message needed from Schwab, beside the values Schwab last sent;
   * a slow browser gets the newest row per symbol, never a backlog of stale ones;
   * shutdown is not held up by a connected browser.
 """
@@ -98,7 +98,7 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
         now = time.time()
         bus.publish("quote.SPY", _trade("SPY", 583.41, now))
         msg, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.41)
-        assert row["spot_state"] == "live" and row["spot_disp"] == "583.41"
+        assert row["spot_disp"] == "583.41" and row["trade_time_ct"] is not None
         assert row["feed_live"] is True and row["spot_source"] == "streaming_plane"
         assert row["bid"] == pytest.approx(583.40) and row["ask"] == pytest.approx(583.42)
         assert row["trade_ts"] == pytest.approx(now, abs=0.001)      # epoch SECONDS
@@ -171,28 +171,29 @@ def test_an_index_typed_bare_is_served_under_its_storage_key():
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX"]}))
         bus.publish("quote.$SPX", _trade("$SPX", 6512.25, time.time()))
         _, row = await _next_row(ws, "$SPX", lambda r: r["spot"] == 6512.25)
-        assert row["spot_state"] == "live"
+        assert row["feed_live"] is True
     asyncio.run(_run(body, feed=_Feed(held=("$SPX",))))
 
 
-def test_a_closed_schwab_socket_reads_unavailable_within_one_beat():
+def test_a_closed_schwab_socket_reads_feed_down_within_one_beat_and_keeps_what_schwab_sent():
+    """The feed's state is stated beside Schwab's last values, never in place of them (operator
+    2026-10-01: "From Schwab's mouth to our UI's ears. Period.")."""
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         bus.publish("quote.SPY", _trade("SPY", 583.41, time.time()))
-        await _next_row(ws, "SPY", lambda r: r["spot_state"] == "live")
+        await _next_row(ws, "SPY", lambda r: r["feed_live"] is True)
         feed.open = False                      # nothing from Schwab; only the beat knows
-        msg, row = await _next_row(ws, "SPY", lambda r: r["spot_state"] == "unavailable",
-                                   timeout=1.0)
+        msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False, timeout=1.0)
         assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
-        assert row["spot"] is None and row["feed_live"] is False and row["bid"] is None
+        assert row["spot"] == 583.41 and row["bid"] == pytest.approx(583.40)
     asyncio.run(_run(body))
 
 
-def test_a_symbol_the_daemon_does_not_hold_is_not_live():
+def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live():
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["TSLA"]}))
         bus.publish("quote.TSLA", _trade("TSLA", 400.0, time.time()))
-        msg, row = await _next_row(ws, "TSLA", lambda r: r["spot_state"] == "unavailable")
+        msg, row = await _next_row(ws, "TSLA", lambda r: r["spot"] == 400.0)
         assert row["feed_live"] is False
     asyncio.run(_run(body))
 

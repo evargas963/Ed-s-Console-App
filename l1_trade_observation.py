@@ -111,8 +111,9 @@ def tick_rule_signed_size(
     price: Optional[float],
     size: Optional[int],
 ) -> Optional[float]:
-    """PROXY tick-rule signed size. Not native aggressor. Zero/None is not a side."""
-    if size is None or size <= 0 or price is None or prev_price is None:
+    """PROXY tick-rule signed size. Not native aggressor. None without a size or a price to
+    compare (Schwab sent none); a size of 0 signs 0."""
+    if size is None or price is None or prev_price is None:
         return None
     if price > prev_price:
         return float(size)
@@ -144,7 +145,7 @@ def iter_signed_cum_points(
                 prev_price = price
             continue
         size = p.get("size")
-        if size is None or size <= 0:
+        if size is None:
             if price is not None:
                 prev_price = price
             continue
@@ -162,15 +163,21 @@ def iter_signed_cum_points(
 
 
 def compute_cum_delta_proxy(prints: list[dict[str, Any]]) -> Optional[float]:
-    saw_size = any(
-        (p.get("size") is not None and p.get("size") > 0) for p in prints
-    )
-    if not saw_size:
-        return None
+    """The tick-rule signed size summed over every print with a size (a size of 0 adds 0);
+    None when no print carried one. The prints it sums are cum_delta_window's."""
     points = iter_signed_cum_points(prints)
     if not points:
         return None
     return points[-1][1]
+
+
+def cum_delta_window(prints: list[dict[str, Any]]) -> tuple[Optional[float], Optional[float]]:
+    """(first, last) Schwab trade time, epoch seconds, of the prints compute_cum_delta_proxy
+    sums (those with a size and a trade time): the window the cumulative delta covers. It is
+    what the tape holds -- no clock resets it -- so it is served beside the number."""
+    times = [p["time_millis"] / 1000.0 for p in prints
+             if p.get("size") is not None and p.get("time_millis") is not None]
+    return (min(times), max(times)) if times else (None, None)
 
 
 def compute_tape_pressure(

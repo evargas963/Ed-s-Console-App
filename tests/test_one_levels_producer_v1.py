@@ -19,7 +19,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import push_changes
 import server
-from math_exposure_core import merge_exposure_books
+from math_exposure_core import bucket_metric, merge_exposure_books
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
 
@@ -87,10 +87,14 @@ def test_heatmap_per_strike_rows_and_levels_are_one_computation(monkeypatch):
     full, _ = merge_exposure_books(snap.books.values())
     surface = c["_gamma_surface"]
     # every strike's cells across expiries sum to the one full book the levels were picked from
+    checked = 0
     for row in surface["cells"]:
-        cells = [g for g in row["gex"] if g is not None]
-        if cells and full[row["strike"]].get("has_valid_gamma"):
-            assert abs(sum(cells) - full[row["strike"]]["net_gex_1pct"]) <= len(cells)   # per-cell rounding
+        total = bucket_metric(full[row["strike"]], "net_gex_1pct")
+        if total is not None:       # every listed expiry's cell known: they sum to it, unrounded
+            listed = [g for g, a in zip(row["gex"], row["absent"]["gex"]) if a != server.CELL_NOT_LISTED]
+            assert sum(listed) == pytest.approx(total, rel=1e-9, abs=1e-6)
+            checked += 1
+    assert checked
 
 
 def test_published_levels_equal_compute_terrain_on_the_same_inputs(monkeypatch):
@@ -134,31 +138,35 @@ def test_a_fresh_streamed_greek_reprices_levels_heatmap_and_rows(monkeypatch):
 
 
 def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale(monkeypatch):
-    """ONE-05 (measured live 2026-09-28, MU 15:46 ET): each chain download carried a quote time
-    newer than the contract's last streamed change, the overlay dropped every streamed value,
-    and all 200 heatmap legs flipped between live and stale while the feed stayed live. The
-    stream owns a live contract's fields: a new chain leaves the leg live and its value the
-    streamed one."""
+    """ONE-05 (measured live 2026-09-28, MU 15:46 ET): each chain download made all 200 heatmap
+    legs flip between live and stale while the feed stayed live. A leg's state is the feed's
+    (live while the daemon holds the contract); its value is the newest Schwab sent: the chain's,
+    fetched after the contract's last streamed change (coordinator review of #433/#434,
+    2026-10-01)."""
     now = time.time()
     chain = [dict(_CONTRACTS[0], quoteTimeInLong=int(now * 1000))] + _CONTRACTS[1:]   # a fresh chain
     push_changes.subscribe(TK)                                                         # a page open on it
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": now - 60.0}}, monkeypatch)          # last change a minute ago
     server._publish_levels(TK, chain, now)
     surface = _cached()["_gamma_surface"]
-    assert surface["stream_overlay_symbols"] == [_A]
+    assert surface["stream_overlay_symbols"] == []                                   # the chain is newer
     legs = [col[side] for cell in surface["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
             for side in ("call", "put") if pair.get(side) == _A and col]
     assert legs and all(leg["state"] == "live" for leg in legs)
 
 
-def test_only_a_live_contracts_streamed_value_is_applied_whatever_its_age(monkeypatch):
-    """The one live rule: a contract the daemon holds is live however long its gamma has been
-    unchanged; one it no longer holds is a past observation and never reprices the levels."""
+def test_a_streamed_value_applies_by_its_time_whatever_the_feed_state(monkeypatch):
+    """A streamed gamma received after the chain is the newest Schwab sent: it reprices the levels
+    whether or not the daemon still holds the contract (the feed's state labels the leg, it never
+    picks the value); one received before the chain does not."""
     _put_chain(fetched_ts=time.time() - 120.0)
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time() - 60.0}}, monkeypatch)
     server._publish_levels(TK)
     assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == [_A]
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time()}}, monkeypatch, held=[])
+    server._publish_levels(TK)
+    assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == [_A]
+    _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time() - 600.0}}, monkeypatch)
     server._publish_levels(TK)
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
 

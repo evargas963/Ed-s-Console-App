@@ -28,16 +28,28 @@ def heat(tmp_path):
     return d
 
 
+def _sizes(c):
+    return [v for v in (c["bid"], c["ask"]) if v is not None]
+
+
 def test_each_cell_carries_its_dominant_side_and_the_scale_top(heat):
+    """A side Schwab sent no level for at a price is absent (None), never 0; the cell's side is
+    the one Schwab sent, or the larger of the two."""
+    one_sided = 0
     for c in heat["cells"]:
-        assert c["side"] == ("BID" if c["bid"] > c["ask"] else "ASK" if c["ask"] > c["bid"] else "EVEN")
-    assert heat["max_size"] == max(max(c["bid"], c["ask"]) for c in heat["cells"])
+        b, a = c["bid"], c["ask"]
+        assert _sizes(c), c
+        one_sided += b is None or a is None
+        want = "BID" if a is None else "ASK" if b is None else "BID" if b > a else "ASK" if a > b else "EVEN"
+        assert c["side"] == want
+    assert one_sided, "real TSLA books: a price carries a bid or an ask, rarely both"
+    assert heat["max_size"] == max(v for c in heat["cells"] for v in _sizes(c))
 
 
 def test_the_default_window_drops_the_thin_tails(heat):
     totals = {}
     for c in heat["cells"]:
-        totals[c["price"]] = totals.get(c["price"], 0.0) + c["bid"] + c["ask"]
+        totals[c["price"]] = totals.get(c["price"], 0.0) + sum(_sizes(c))
     whole, cum, inside = sum(totals.values()), 0.0, []
     for px in sorted(totals):
         cum += totals[px]

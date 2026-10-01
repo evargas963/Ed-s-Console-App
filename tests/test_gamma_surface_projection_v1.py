@@ -91,22 +91,9 @@ def test_A_cell_equals_canonical_faucet_per_expiry_slice():
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT)
         assert exposures_e, f"the real {exp} slice must yield OI-bearing strikes"
         for k, bucket in exposures_e.items():
-            # has_oi=False (2026-09-14 SPX honest-absence fix): a bucket can exist in
-            # compute_exposures_by_strike's own output (created via the volume/side write that happens
-            # before the OI gate) with every accumulator still at its pre-initialized 0.0 --
-            # not a real computed value, so the surface correctly reports None there instead
-            # of this bucket's fabricated 0.0. Only a bucket that actually cleared the OI
-            # gate is a real number to compare against.
-            #
-            # has_valid_gamma=False (2026-09-15 canonical input-validity fix): a bucket can
-            # ALSO have real OI while every contributing contract's own greeks were vendor-
-            # invalid (delta/gamma/vega internally self-contradictory, or IV=-999) -- these
-            # REAL captured chains contain some (has_oi gates OI/Volume only; the gex/dex/
-            # vanna cell needs the additional gate the surface itself now applies).
-            if not (bucket.get("has_oi") and bucket.get("has_valid_gamma")):
-                continue
-            # unrounded, and None where a contract with open interest sent no gamma
-            # (bucket_metric, the one reader)
+            # every listed strike's cell is the book's own value, unrounded: 0 where its
+            # contracts have open interest 0, None only where a term Schwab did not send is
+            # missing (bucket_metric, the one reader)
             assert _cell(surface, float(k), exp) == bucket_metric(bucket, "net_gex_1pct")
             checked += 1
     assert checked > 20   # a real book, not a handful of strikes
@@ -288,8 +275,6 @@ def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT)
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
         for k, bucket in exposures_e.items():
-            if not (bucket.get("has_oi") and bucket.get("has_valid_gamma")):   # see test_A's own note
-                continue
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
             assert row["dex"][col] == bucket_metric(bucket, "net_dex_dollars")   # unrounded
             checked += 1
@@ -304,11 +289,10 @@ def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_conventi
         exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT)
         col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == exp][0]
         for k, bucket in exposures_e.items():
-            if not (bucket.get("has_oi") and bucket.get("has_valid_gamma")):   # see test_A's own note
-                continue
-            if bucket.get("call_vanna") is None and bucket.get("put_vanna") is None:
-                continue
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
+            if bucket_metric(bucket, "net_vanna") is None:     # a leg's vanna input not sent
+                assert row["vanna"][col] is None
+                continue
             # 2 decimals, not whole-unit rounding (fixed 2026-09-13: vanna's per-vol-point scale
             # is far smaller than gex/dex's dollar magnitudes -- whole-unit rounding silently
             # zeroed real values). A small tolerance absorbs BS-vanna's own intraday

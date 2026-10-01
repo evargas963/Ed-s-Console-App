@@ -189,6 +189,20 @@ def test_implied_move_fails_closed_without_usable_iv() -> None:
           "daysToExpiration": 1}], None) is None
 
 
+def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> None:
+    """The ATM call's IV is Schwab's -999 (no value): that leg has no IV, and the expiry's ATM IV
+    is None -- the 705 call's IV used to stand in for it, labelled ATM (operator 2026-10-01: "we
+    use what schwab gives us and we display it")."""
+    from terrain_engine import atm_sigma_by_expiry
+    # institutional-synthetic-ok: the rule needs a known ATM contract with no IV beside a priced one
+    chain = [
+        {"putCall": "CALL", "strikePrice": 700.0, "volatility": -999.0, "daysToExpiration": 1, "expirationDate": "2026-10-02"},
+        {"putCall": "CALL", "strikePrice": 705.0, "volatility": 30.0, "daysToExpiration": 1, "expirationDate": "2026-10-02"},
+        {"putCall": "PUT", "strikePrice": 700.0, "volatility": 24.0, "daysToExpiration": 1, "expirationDate": "2026-10-02"},
+    ]
+    assert atm_sigma_by_expiry(chain, 700.0) == {("2026-10-02", 1): None}
+
+
 def test_real_chain_carries_the_sigma_band(pin_clock) -> None:
     """The 1-day band uses the first expiry at least a day out (2026-09-27): a same-day-only
     chain has none; the CRWD chain (16 days out, valued at its capture) has one."""
@@ -238,8 +252,8 @@ def test_wall_value_area_expands_toward_the_heavier_neighbor() -> None:
     from terrain_engine import compute_wall_value_area
     # institutional-synthetic-ok: algorithm verification requires known mass — the real-chain
     # test below covers the live shape.
-    # side GEX$ mass on a dollarized, valid-gamma book (T-05: raw gamma no longer stands in)
-    _f = {"dollarized": True, "has_valid_gamma": True}
+    # side GEX$ mass on a dollarized book (T-05: raw gamma no longer stands in)
+    _f = {"dollarized": True}
     exposures = {
         700.0: {"put_gex_1pct": 100.0, **_f},
         705.0: {"put_gex_1pct": 900.0, **_f},   # the wall (POC)

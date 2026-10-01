@@ -20,7 +20,6 @@ _SURF = {
     "cells": [{"strike": 580.0, "gex": [-90000]}, {"strike": 583.0, "gex": [958600]},
               {"strike": 586.0, "gex": [-264500]}],
     "contracts_total": 3, "contracts_used": 3, "contracts_excluded_malformed_expiry": 0,
-    "gamma_available": True,   # project_gamma_surface always sets its verdict
     # the spot THIS surface was computed from, stamped on it by its producer (served as-is;
     # no fall-through to the terrain payload's own spot)
     "spot": 583.41, "spot_source": "streaming_plane", "spot_as_of_ts_utc": 1.0,

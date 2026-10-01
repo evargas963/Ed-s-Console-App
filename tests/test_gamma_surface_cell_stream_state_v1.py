@@ -264,7 +264,8 @@ def test_a_fresh_tick_marks_the_ticking_contracts_own_cell_live(monkeypatch, vie
 
 def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monkeypatch, view):
     # The contract is desired (primary slot, set in setup_function) and ticked a second ago, but
-    # the daemon no longer holds it: by the one live rule it is a past observation.
+    # the daemon no longer holds it: its leg reads stale (the feed is not delivering it), and its
+    # streamed gamma, newer than the chain, is still the value Schwab last sent.
     _put_chain(view, fetched_ts=time.time() - 10.0)
     _daemon_holds()
     live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": time.time()}}
@@ -273,7 +274,7 @@ def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monke
 
     _publish_levels(TK)
     surface = _published_surface()
-    assert surface["stream_overlay_contracts"] == 0   # not live: never overlaid
+    assert surface["stream_overlay_contracts"] == 1   # the newest value Schwab sent
     counts = _gamma_surface_cell_state_counts(surface)
     assert counts["live"] == 0
     assert counts["stale"] > 0
@@ -307,8 +308,7 @@ def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is
     tk = ticker_storage_key("ZZZTEST1")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
             "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]}],
-            "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0,
-            "gamma_available": True}
+            "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0}
     _stamp_gamma_surface_cell_stream_state(surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"})
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
@@ -329,8 +329,7 @@ def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
     tk = ticker_storage_key("ZZZTEST2")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
             "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]}],
-            "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0,
-            "gamma_available": True}
+            "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0}
     _stamp_gamma_surface_cell_stream_state(surf, {}, set())   # never desired
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
@@ -355,8 +354,7 @@ def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverag
                 {"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]},
                 {"strike": 11.0, "gex": [1.0], "contracts": [{"call": "Y", "put": None}]},
             ],
-            "contracts_total": 2, "contracts_used": 2, "contracts_excluded_malformed_expiry": 0,
-            "gamma_available": True}
+            "contracts_total": 2, "contracts_used": 2, "contracts_excluded_malformed_expiry": 0}
     # X is live-streaming; Y is desired but has never been confirmed fresh -- one of two
     # visible cells is live, the other merely 'stale'.
     _stamp_gamma_surface_cell_stream_state(
@@ -389,8 +387,7 @@ def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live(
                 {"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]},
                 {"strike": 11.0, "gex": [1.0], "contracts": [{"call": "Y", "put": None}]},
             ],
-            "contracts_total": 2, "contracts_used": 2, "contracts_excluded_malformed_expiry": 0,
-            "gamma_available": True}
+            "contracts_total": 2, "contracts_used": 2, "contracts_excluded_malformed_expiry": 0}
     # X is live-streaming; Y has been requested (desired) but never ticked.
     _stamp_gamma_surface_cell_stream_state(
         surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"}, None, {"X", "Y"})
@@ -423,8 +420,7 @@ def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
                 {"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]},
                 {"strike": 11.0, "gex": [1.0], "contracts": [{"call": "Y", "put": None}]},
             ],
-            "contracts_total": 2, "contracts_used": 2, "contracts_excluded_malformed_expiry": 0,
-            "gamma_available": True}
+            "contracts_total": 2, "contracts_used": 2, "contracts_excluded_malformed_expiry": 0}
     # X is live-streaming; Y is desired but the daemon itself is confirmed unreachable.
     _stamp_gamma_surface_cell_stream_state(
         surf, {"X": {"gamma_ts_recv": time.time()}}, {"X"}, None, {"X", "Y"}, daemon_available=False)
@@ -451,8 +447,7 @@ def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
     tk = ticker_storage_key("ZZZTEST_REJECTED")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
             "cells": [{"strike": 10.0, "gex": [None], "contracts": [{"call": "BADSYM", "put": None}]}],
-            "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0,
-            "gamma_available": False}
+            "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0}
     _stamp_gamma_surface_cell_stream_state(surf, {}, set(), {"BADSYM": "RuntimeError: refused"})
     assert surf["cells"][0]["stream"][0]["state"] == "rejected"
     assert surf["cells"][0]["stream"][0]["call"]["rejected_reason"] == "RuntimeError: refused"

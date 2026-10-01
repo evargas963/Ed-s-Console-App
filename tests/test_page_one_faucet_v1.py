@@ -44,8 +44,6 @@ def held(monkeypatch):
     monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (LIVE, "live_quote", time.time()))
     monkeypatch.setattr(server, "last_capture_per_day", lambda *a, **k: [])
-    monkeypatch.setattr(server, "_gamma_surface_contracts_with_stream_overlay",
-                        lambda t, cts, newer_than_ts=None: (cts, 0, None))
     return payload
 
 
@@ -71,6 +69,19 @@ def test_strike_side_sums_split_at_the_live_spot(held):
     assert sums["spot_basis"] == LIVE
     assert sums["gex_below"] == pytest.approx(sum(r[1] for r in below), abs=0.1)
     assert sums["gex_above"] == pytest.approx(sum(r[1] for r in above), abs=0.1)
+
+
+def test_a_strikes_gex_is_summed_when_its_volume_was_not_sent(held):
+    """A strike whose volume Schwab did not send keeps its GEX in the side sum: one value never
+    hides the other (it used to drop the whole row). Stand-in: one real row's volume removed, as
+    Schwab never omitted it in the capture."""
+    rows = [list(r) for r in held["_per_strike"]["all"]]
+    k = next(i for i, r in enumerate(rows) if r[0] < LIVE and r[1] != 0)
+    rows[k][2] = None
+    held["_per_strike"] = dict(held["_per_strike"], all=rows)
+    sums = json.loads(server.get_terrain_strikes(ticker=TK).body)["today_side_sums"]
+    assert sums["gex_below"] == sum(r[1] for r in rows if r[0] < LIVE)
+    assert sums["vol_below"] == int(sum(r[2] for r in rows if r[0] < LIVE and r[2] is not None))
 
 
 def test_chain_serves_this_expirys_net_gex_from_the_heatmaps_own_column(held):
@@ -242,8 +253,6 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_is(mon
     payload = {"_chain": cts, "_chain_fetched_ts": time.time(), "computed_ts_utc": time.time()}
     monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (fx["spot"], "live_quote", time.time()))
-    monkeypatch.setattr(server, "_gamma_surface_contracts_with_stream_overlay",
-                        lambda t, c, newer_than_ts=None: (c, 0, None))
     body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
     assert body["adjusted_deliverable_symbols"] == [cts[0]["symbol"]]
 
@@ -254,31 +263,32 @@ def test_the_largest_gex_strike_is_served(held):
     assert body["max_abs_strike"] == max(rows, key=lambda r: abs(r[1]))[0]
 
 
-def test_on_a_closed_market_the_last_trade_is_a_labelled_past_observation(monkeypatch):
-    """Sunday 2026-09-27: the daemon streamed SPY's last trade (Friday 18:59:59 CT) on a live
-    feed, and the page called it LIVE. Replayed here as the daemon captured it
-    (stream_quotes_raw): outside the session it is not live; the row serves it as the closed
-    market's last trade with its time, and it is no spot."""
+def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time(monkeypatch):
+    """Sunday 2026-09-27: the daemon held SPY's last trade (Friday 18:59:59 CT), replayed as it
+    captured it (stream_quotes_raw). Operator, 2026-10-01: "From Schwab's mouth to our UI's ears.
+    Period." -- no live/closed verdict by our clock: the row serves Schwab's last price as the
+    spot with Schwab's trade time, and every consumer reads it."""
     import live_market_plane as lmp
     import live_price_rows
+    from app.options.order_flow import streaming
     from tests.feed_live_helper import mark_feed_live
-    monkeypatch.setattr(lmp, "is_capturable_session", lambda: False)
-    monkeypatch.setattr(live_price_rows, "is_capturable_session", lambda: False)
     mark_feed_live("SPY")
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
                                      received_ts=time.time())
     row = live_price_rows.price_row("SPY")
-    assert (row["spot"], row["spot_state"]) == (None, "closed")
-    assert row["closed_last"] == {"price": 772.04, "spot_disp": "772.04", "as_of": "Fri 09/25 06:59 PM CT"}
-    assert server.resolve_spot("SPY")[0] is None
+    assert (row["spot"], row["spot_disp"], row["trade_time_ct"]) == (772.04, "772.04", "Fri 09/25 06:59 PM CT")
+    assert "spot_state" not in row and "closed_last" not in row
+    monkeypatch.setitem(streaming._price_rows, "SPY", row)
+    assert server.resolve_spot("SPY") == (772.04, server.SPOT_SOURCE_PLANE, 1790380799.83)
 
 
-def test_on_a_closed_market_the_levels_are_ordered_from_the_last_trade(monkeypatch):
+def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(monkeypatch):
     """Monday 2026-09-28 21:40 ET: the Trade Desk chart drew no key level at all after the close --
-    /api/levels served 30 SPY levels and an empty by_distance, the order the chart draws them in,
-    because it was measured only from a live price. Closed, it is measured from the last streamed
-    trade and names it; distance and near-spot stay live-only. Real SPY 1-minute bars
-    (2026-09-24 and 25); the last trade is the one the daemon captured."""
+    /api/levels served 30 SPY levels and an empty by_distance, because it was measured only from a
+    live price. The spot is Schwab's last trade at any hour (operator 2026-10-01: "we use what
+    schwab gives us and we display it"): the levels are ordered, and their distance measured, from
+    it, carrying its trade time. Real SPY 1-minute bars (2026-09-24 and 25); the last trade is the
+    one the daemon captured."""
     from datetime import datetime as _dt
     import live_market_plane as lmp
     import live_price_rows
@@ -289,8 +299,6 @@ def test_on_a_closed_market_the_levels_are_ordered_from_the_last_trade(monkeypat
                     .read_text(encoding="utf-8"))
     monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
-    monkeypatch.setattr(lmp, "is_capturable_session", lambda: False)
-    monkeypatch.setattr(live_price_rows, "is_capturable_session", lambda: False)
     mark_feed_live("SPY")
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
                                      received_ts=time.time())
@@ -298,7 +306,6 @@ def test_on_a_closed_market_the_levels_are_ordered_from_the_last_trade(monkeypat
     server._publish_price_levels("SPY")                          # as the bar writer does
     body = json.loads(server.get_levels(ticker="SPY").body)
     priced = [r for r in body["levels"] if r["price"] is not None]
-    assert len(priced) > 5 and body["spot"] is None
+    assert len(priced) > 5 and body["spot"] == 772.04 and body["spot_as_of_ts_utc"] == 1790380799.83
     assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - 772.04))]
-    assert body["by_distance_ref"] == {"price": 772.04, "source": "last trade", "as_of": "Fri 09/25 06:59 PM CT"}
-    assert all(r["distance"] is None for r in priced)
+    assert all(r["distance"] == r["price"] - 772.04 for r in priced)

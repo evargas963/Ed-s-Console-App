@@ -21,7 +21,7 @@ from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
 from time_et import ET, now_et, RTH_OPEN_MINS, ct_label, et_date_str_from_ts_utc, session_label
-from math_exposure_core import bucket_metric, merge_exposure_books
+from math_exposure_core import bucket_metric, merge_exposure_books, overlay_streamed_contract_fields
 
 import json
 from html import escape as html_escape
@@ -529,12 +529,13 @@ def _install_signal_handlers() -> None:
 
 
 def resolve_spot(ticker: str) -> tuple[float | None, str, float | None]:
-    """(spot, source, as_of_ts_utc): the daemon's price row's live Schwab LAST_PRICE and its
-    trade time, the value the header shows; (None, "none", None) while it is not live."""
+    """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
+    trade time, at any hour -- the value the header shows; (None, "none", None) until Schwab has
+    sent one."""
     from app.options.order_flow.streaming import price_row
 
     row = price_row(ticker)
-    if not row or row.get("spot_state") != "live":
+    if not row or row.get("spot") is None:
         return None, "none", None
     return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
 
@@ -1423,10 +1424,6 @@ def _viewed_tickers() -> list[str]:
     return sorted(push_changes.watched())
 
 
-def _live_stream_greeks(streamed: dict) -> dict:
-    """The streamed option values whose contract is live now (the one live rule)."""
-    return {s: g for s, g in streamed.items() if lmp.feed_live_for(s, "LEVELONE_OPTIONS")}
-
 #: Per-ticker revision of `_gamma_surface`, bumped on every publication; guarded by
 #: _terrain_cache_lock.
 _gamma_surface_seq: dict[str, int] = {}
@@ -1568,26 +1565,6 @@ def _overlaid_symbols(pre: list, post: list) -> list[str]:
             if new is not orig and isinstance(new, dict) and new.get("symbol")]
 
 
-def _gamma_surface_contracts_with_stream_overlay(tk: str, contracts: list) -> tuple[list, int, list[str]]:
-    """`contracts` with every live streamed option contract of `tk` carrying its streamed
-    fields (overlay_streamed_contract_fields; RC-UI-3: primary AND every additional contract).
-    Changes no formula; the stream owns a live contract's fields.
-
-    Fails closed to the unmodified `contracts` on any error or when nothing applies — this is
-    a best-effort freshening, never a precondition for the projection to run at all."""
-    try:
-        from math_exposure_core import overlay_streamed_contract_fields
-
-        streamed = _live_stream_greeks(_desired_stream_greeks_for_ticker(tk))
-        if not streamed:
-            return contracts, 0, []
-        overlaid, n = overlay_streamed_contract_fields(contracts, streamed)
-        return overlaid, n, _overlaid_symbols(contracts, overlaid)
-    except Exception as e:  # institutional-swallow-ok: best-effort freshening, never load-bearing
-        log.debug("gamma-surface stream overlay skipped for %s: %s", tk, e)
-        return contracts, 0, []
-
-
 def _leg_stream_ts_recv(greeks: dict | None) -> float | None:
     """The freshest of a streamed contract's own per-field `_ts_recv` stamps (get_stream_greeks'
     shape, app.options.order_flow.state), or None if `greeks` is absent/empty. Any one of these
@@ -1631,10 +1608,8 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
     UNAVAILABLE instead of presenting every REST-cadence cell as indistinguishable from a
     genuinely streamed one.
 
-    Per leg, `overlay_symbols` is the EXACT set _publish_levels's stream overlay already
-    decided passed this cycle's
-    REST-precedence check and the live rule for this specific symbol — reused
-    verbatim rather than re-deriving a second staleness policy. `rejected_symbols` (2026-09-16,
+    Per leg, `overlay_symbols` is the set of streamed symbols the feed is delivering now
+    (live_market_plane.feed_live_for, the one live rule), passed by _publish_levels. `rejected_symbols` (2026-09-16,
     audit finding #6 — "fail the affected cells visibly", bounded-vendor-call reconciliation) is
     the producer's own {symbol: vendor_error} map (streaming.read_producer_rejected_option_
     contracts) — a symbol the vendor explicitly refused, not merely one not yet confirmed.
@@ -1650,11 +1625,10 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
     daemon is confirmed alive; the identical symbol reads 'daemon_unavailable' the instant it
     is not, which is a materially different, and more actionable, fact for an operator ("the
     daemon needs restarting", not "this contract is merely queued behind a live one"):
-      'live'                — this symbol's tick was fresh enough to be overlaid THIS cycle.
-      'stale'                — the symbol IS currently desired/subscribed (present in
-                              `streamed`, which _desired_stream_greeks_for_ticker already
-                              filters to symbols matching this ticker) but its tick did not
-                              pass this cycle's check.
+      'live'                — the feed is delivering this symbol now.
+      'stale'                — the symbol has streamed (present in `streamed`, which
+                              _desired_stream_greeks_for_ticker already filters to symbols
+                              matching this ticker) but the feed is not delivering it now.
       'pending'              — the symbol is desired, the daemon is CONFIRMED alive, and no
                               tick/rejection has landed yet — requested, outcome not yet known.
       'daemon_unavailable'   — the symbol is desired but the daemon's own producer heartbeat is
@@ -1889,7 +1863,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     read once: the newest is priced with Schwab's underlying price from that capture, valued and
     dated at its own time, and both feed the forces and prior-day rows. Returns the snapshot, or
     None when there is no chain to price."""
-    from math_exposure_core import overlay_streamed_contract_fields
     from app.options.order_flow.streaming import (
         read_producer_rejected_option_contracts, is_option_producer_daemon_available)
     with _levels_lock(tk):
@@ -1913,7 +1886,8 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                            _default_contract=front_atm_call(chain, spot))
         listed = payload.get("_contract_symbols") or frozenset()
         streamed = _desired_stream_greeks_for_ticker(tk, listed)
-        priced, n_live = overlay_streamed_contract_fields(chain, _live_stream_greeks(streamed))
+        # each field the newest Schwab sent: a streamed value received after this chain, else the chain's
+        priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
         live_syms = _overlaid_symbols(chain, priced)
         snap = compute_terrain(tk, priced, spot, now=(
             datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
@@ -1947,7 +1921,8 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                            stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
                            stream_overlay_computed_ts_utc=time.time())
             _stamp_gamma_surface_cell_stream_state(
-                surface, streamed, set(live_syms), read_producer_rejected_option_contracts(),
+                surface, streamed, {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS")},
+                read_producer_rejected_option_contracts(),
                 set(_desired_option_symbols_for_ticker(tk, listed)),
                 daemon_available=is_option_producer_daemon_available())
             payload["_gamma_surface"] = surface
@@ -1979,22 +1954,22 @@ def _log_level_crosses(tk: str, prev_spot: "float | None", snap: "TerrainSnapsho
 
 
 def _vanna_rows(snap: "TerrainSnapshot") -> list:
-    """[strike, net dealer vanna] for every strike with open interest, from the published book:
-    each strike's net_vanna as compute_exposures_by_strike computed it (+call/-put)."""
+    """[strike, net dealer vanna] for every strike whose vanna is known, from the published book:
+    each strike's net_vanna exactly as compute_exposures_by_strike computed it (+call/-put)."""
     exposures, _diag = merge_exposure_books(snap.books.values())
     rows = []
     for k, b in exposures.items():
         net = bucket_metric(b, "net_vanna")
         if net is None:
             continue
-        rows.append([round(float(k), 2), round(net, 2)])
+        rows.append([float(k), net])
     rows.sort(key=lambda r: r[0])
     return rows
 
 
 def _charm_rows(snap: "TerrainSnapshot") -> list:
-    """[strike, net dealer charm] from the published charm map (the charm walls' own)."""
-    return sorted([round(float(k), 2), round(float(b["net_charm"]), 4)]
+    """[strike, net dealer charm] from the published charm map (the charm walls' own), exact."""
+    return sorted([float(k), float(b["net_charm"])]
                   for k, b in (snap.charm_by_strike or {}).items() if b.get("net_charm") is not None)
 
 
@@ -2382,16 +2357,24 @@ def get_terrain_strikes(ticker: str = Query(...)):
             # RC-276: the third copy. A row with no gamma used to add 0.0 to a side sum, which
             # is not neutral -- it drags the below/above comparison toward whichever side holds
             # the unmeasured strikes. Absence is dropped, not counted as flat.
+            # A row's GEX and its volume are summed each on its own: one never hides the other.
             k = float_finite_or_none(r[0])
             g = float_finite_or_none(r[1])
             v = float_finite_or_none(r[2])
-            if k is None or g is None or v is None:
+            if k is None or k == s:
                 continue
-            if k < s:
-                gb += g; vb += v
-            elif k > s:
-                ga += g; va += v
-        return {"gex_below": round(gb, 1), "gex_above": round(ga, 1),
+            below = k < s
+            if g is not None:
+                if below:
+                    gb += g
+                else:
+                    ga += g
+            if v is not None:
+                if below:
+                    vb += v
+                else:
+                    va += v
+        return {"gex_below": gb, "gex_above": ga,
                 "vol_below": int(vb), "vol_above": int(va),
                 "spot_basis": float(s)}
 
@@ -2684,20 +2667,20 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
                     def _ch(v: dict) -> float | None:
                         return _fin_ch(v.get("net_charm"))
 
-                    charm_below = round(sum(
+                    charm_below = sum(
                         c for c in (_ch(v) for k, v in per_ch.items() if k < spot1)
-                        if c is not None), 4)
-                    charm_above = round(sum(
+                        if c is not None)
+                    charm_above = sum(
                         c for c in (_ch(v) for k, v in per_ch.items() if k > spot1)
-                        if c is not None), 4)
+                        if c is not None)
             except Exception as _ce:
                 charm_err = str(_ce)[:120]
             payload = {
                 "ticker": tk, "available": True,
-                "doi_below": round(sum(d for k, d in doi.items() if k < spot1)),
-                "doi_above": round(sum(d for k, d in doi.items() if k > spot1)),
-                "dex_below_dollars": round(sum(d for k, d in dex1.items() if k < spot1)),
-                "dex_above_dollars": round(sum(d for k, d in dex1.items() if k > spot1)),
+                "doi_below": sum(d for k, d in doi.items() if k < spot1),
+                "doi_above": sum(d for k, d in doi.items() if k > spot1),
+                "dex_below_dollars": sum(d for k, d in dex1.items() if k < spot1),
+                "dex_above_dollars": sum(d for k, d in dex1.items() if k > spot1),
                 "strikes_diffed": len(doi),
                 "charm_below": charm_below,
                 "charm_above": charm_above,
@@ -2721,42 +2704,50 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
 # chain + live spot it already fetches each cycle (in-memory, zero extra vendor calls),
 # demand-gated to viewed tickers. No banked-morning fallback (operator rule 2026-09-23).
 
-#: NO LAST-VALID BACKFILL (operator rule 2026-09-23: no fallbacks). A heatmap cell with no
-#: valid data THIS cycle stays empty ('—'); it used to be refilled from the last valid value
-#: (computed at an older spot, possibly hours old) while gamma_available read True and the
-#: unavailable reason was cleared. The surface's own cells_with_data / gamma_available /
-#: gamma_unavailable_reason (project_gamma_surface) describe the current cycle only.
+#: Why a heatmap cell has no value for a measure: the code each cell carries (absent[measure])
+#: and the words the page draws for it (the surface's absent_reasons). A cell is absent only
+#: where Schwab sent nothing for it; a listed contract with open interest 0 is a computed 0.
+CELL_NOT_LISTED = "not_listed"
+CELL_EXPOSURE_NOT_SENT = "exposure_not_sent"
+CELL_OI_NOT_SENT = "oi_not_sent"
+CELL_VOLUME_NOT_SENT = "volume_not_sent"
+CELL_ABSENT_REASONS = {
+    CELL_NOT_LISTED: "no contract listed",
+    # a contract here sent no open interest or multiplier, or has open interest and no Greek
+    CELL_EXPOSURE_NOT_SENT: "Schwab sent no Greek/OI",
+    CELL_OI_NOT_SENT: "Schwab sent no OI",
+    CELL_VOLUME_NOT_SENT: "Schwab sent no volume",
+}
 
 
 def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
-    """Shape ONE (strike, expiry) cell's gex/dex/vanna/oi/volume/contracts fields from its
-    exposure bucket. Returns (gex, dex, vanna, oi, volume, contracts, has_gex_data, has_oi) --
-    see project_gamma_surface's inline comments for why each gate exists."""
-    from numeric_contract import float_finite_or_none
-
-    def _bf(v):
-        fv = float_finite_or_none(v)
-        return round(fv) if fv is not None else None
+    """ONE (strike, expiry) cell's gex/dex/vanna/oi/volume/contracts fields from its exposure
+    bucket, Schwab's values and the book's computed values exact, and for each measure with no
+    value the CELL_* code saying why. Returns (gex, dex, vanna, oi, volume, contracts, absent)."""
+    from math_exposure_core import strike_oi_legs, strike_volume_legs
 
     syms = syms or {}
-    _has_oi = bool(bucket is not None and bucket.get("has_oi"))
-    # the book's own values, unrounded: the page formats them
-    gex = bucket_metric(bucket, "net_gex_1pct") if _has_oi else None
-    _has_gex_data = gex is not None
-    dex = bucket_metric(bucket, "net_dex_dollars") if _has_oi else None
-    vanna = bucket_metric(bucket, "net_vanna") if _has_oi else None
+    contracts = {"call": syms.get("call"), "put": syms.get("put")}
+    if bucket is None:
+        none = {"call": None, "put": None, "total": None}
+        return (None, None, None, none, none, contracts,
+                {m: CELL_NOT_LISTED for m in ("gex", "dex", "vanna", "oi", "volume")})
+    gex = bucket_metric(bucket, "net_gex_1pct")
+    dex = bucket_metric(bucket, "net_dex_dollars")
+    vanna = bucket_metric(bucket, "net_vanna")
+
     def _legs(legs):
-        # the one readers (strike_oi_legs / strike_volume_legs): Schwab's values as sent, 0 a real
-        # zero; unknown only when a contract at the strike did not report the field
         if legs is None:
             return {"call": None, "put": None, "total": None}
-        return {"call": _bf(legs[0]), "put": _bf(legs[1]), "total": _bf(legs[0] + legs[1])}
+        return {"call": legs[0], "put": legs[1], "total": legs[0] + legs[1]}
 
-    from math_exposure_core import strike_oi_legs, strike_volume_legs
-    oi = _legs(strike_oi_legs(bucket) if bucket is not None else None)
-    volume = _legs(strike_volume_legs(bucket) if bucket is not None else None)
-    contracts = {"call": syms.get("call"), "put": syms.get("put")}
-    return gex, dex, vanna, oi, volume, contracts, _has_gex_data, _has_oi
+    oi = _legs(strike_oi_legs(bucket))
+    volume = _legs(strike_volume_legs(bucket))
+    absent = {m: (CELL_EXPOSURE_NOT_SENT if v is None else None)
+              for m, v in (("gex", gex), ("dex", dex), ("vanna", vanna))}
+    absent["oi"] = CELL_OI_NOT_SENT if oi["total"] is None else None
+    absent["volume"] = CELL_VOLUME_NOT_SENT if volume["total"] is None else None
+    return gex, dex, vanna, oi, volume, contracts, absent
 
 
 def project_gamma_surface(chain: list, books: dict) -> dict:
@@ -2800,75 +2791,34 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
     expirations = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries]
     # Each cell carries every measure its bucket already holds -- GEX, DEX, vanna
     # (call - put, the dealer convention of compute_net_vanna), OI and volume -- so one grid
-    # serves every heatmap measure. A bucket with no usable OI or greeks reads None, never its
-    # initialiser zero (_gamma_surface_cell_fields gates it).
+    # serves every heatmap measure, and for a measure with no value the code saying why
+    # (_gamma_surface_cell_fields; absent_reasons words them).
     cells = []
-    cells_with_data = 0
-    cells_total = 0
-    cells_with_oi_but_invalid_greeks = 0
     for k in strikes:
         row, dex_row, vanna_row, oi_row, vol_row, contracts_row = [], [], [], [], [], []
+        absent_row: "dict[str, list]" = {m: [] for m in ("gex", "dex", "vanna", "oi", "volume")}
         for col in expirations:
-            cells_total += 1
             bucket = per_expiry.get(col["expiry"], {}).get(k)
             syms = symbols_by_expiry.get(col["expiry"], {}).get(k)
-            gex, dex, vanna, oi, volume, contracts, has_gex, has_oi = \
-                _gamma_surface_cell_fields(bucket, syms)
-            if has_gex:
-                cells_with_data += 1
-            elif has_oi:
-                cells_with_oi_but_invalid_greeks += 1
+            gex, dex, vanna, oi, volume, contracts, absent = _gamma_surface_cell_fields(bucket, syms)
             row.append(gex)
             dex_row.append(dex)
             vanna_row.append(vanna)
             oi_row.append(oi)
             vol_row.append(volume)
             contracts_row.append(contracts)
+            for m, code in absent.items():
+                absent_row[m].append(code)
         cells.append({
             "strike": k, "gex": row, "dex": dex_row, "vanna": vanna_row,
-            "oi": oi_row, "volume": vol_row, "contracts": contracts_row,
+            "oi": oi_row, "volume": vol_row, "contracts": contracts_row, "absent": absent_row,
         })
-
-    # Operator directive (2026-09-14, live SPX reproduction): a grid where every single cell
-    # lacks usable OI is not merely "a lot of quiet cells" -- it means this ticker's exposure
-    # data is unavailable end to end, and that must be a surface-level fact the caller can
-    # check in one field, not something it has to infer by scanning every cell for None.
-    # contracts_used > 0 alone is not enough: a wide chain can have thousands of USED
-    # contracts (real strike/side/multiplier, real greeks) while still having zero cells with
-    # usable OI (exactly the live SPX case this was written from) -- gamma_available is
-    # gated on cells_with_data specifically, the same signal each cell's own _has_data used.
-    gamma_available = cells_with_data > 0
-    _reason = _gamma_surface_unavailable_reason(gamma_available, cells_with_oi_but_invalid_greeks,
-                                                cells_total)
     return {
         "expirations": expirations, "strikes": strikes, "cells": cells,
+        "absent_reasons": CELL_ABSENT_REASONS,
         "contracts_total": total_contracts, "contracts_used": contracts_used,
         "contracts_excluded_malformed_expiry": excluded_malformed,
-        "gamma_available": gamma_available,
-        "gamma_unavailable_reason": _reason,
-        "cells_total": cells_total,
-        "cells_with_oi_but_invalid_greeks": cells_with_oi_but_invalid_greeks,
     }
-
-
-def _gamma_surface_unavailable_reason(gamma_available: bool, cells_with_oi_but_invalid_greeks: int,
-                                      cells_total: int) -> "str | None":
-    """The ONE message for why a surface has no usable gamma this cycle.
-    Operator directive (2026-09-15, canonical input-validity rules): distinguishes a real
-    OI outage (SPX, 2026-09-14: the vendor reports zero OI) from an invalid-greeks-only
-    outage (SPY/QQQ 0DTE ITM puts, 2026-09-15: OI is real, Schwab's own greeks for it are
-    internally self-contradictory) — an operator reading this could not tell "there is
-    nothing here" from "there is real interest but Schwab's greeks for it are unusable
-    right now" before this split. Both counts are diagnostic-only, never load-bearing for
-    any gate (gamma_available/cells_with_data are the actual authorities)."""
-    if gamma_available:
-        return None
-    if cells_with_oi_but_invalid_greeks > 0:
-        return (
-            "real open interest exists but Schwab sent no usable greeks for it this cycle (-999, "
-            "or its quote did not come back) ({} of {} strike×expiry cells have OI with no greeks)"
-        ).format(cells_with_oi_but_invalid_greeks, cells_total)
-    return "no usable open interest in this chain (0 of {} strike×expiry cells)".format(cells_total)
 
 
 def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> dict:
@@ -2914,12 +2864,6 @@ def get_options_gamma_surface(ticker: str = Query(...)):
         # terrain_cache_get — serialize it verbatim, never a second age policy for the same truth.
         stale = bool(live.get("levels_stale"))
         strikes = surf.get("strikes") or []
-        # Operator directive (2026-09-14, live SPX reproduction): a surface with real strikes/
-        # contracts but zero cells carrying usable open interest is NOT "available" in any
-        # sense an operator cares about -- `available` now reflects project_gamma_surface's
-        # own gamma_available signal (computed from the SAME per-cell _has_data gate the grid
-        # itself renders from), not merely "did the live cache have a surface object at all".
-        _gamma_available = surf["gamma_available"]   # project_gamma_surface always sets it
         # Always-live heatmap mandate (2026-09-15): `"live": True` above means "sourced from the
         # live terrain pathway", NOT "currently backed by a confirmed-fresh Schwab stream tick"
         # (a cold-stream surface still reaches here with cells stamped 'stale'/'unavailable' by
@@ -2946,11 +2890,8 @@ def get_options_gamma_surface(ticker: str = Query(...)):
             log.debug("contract admission summary skipped for %s: %s", tk, _ca_e)
             _contract_admission = None
         return JSONResponse({
-            "ticker": tk, "symbol": tk, "available": _gamma_available,
-            # "reason" (not a new field name) -- ed-gamma.js's own unavailable-branch already
-            # reads surface.reason for the placeholder message; reusing it here means the
-            # existing frontend contract picks this up with no client-side change required.
-            "reason": None if _gamma_available else surf.get("gamma_unavailable_reason"),
+            # every cell Schwab listed is drawn: a cell without a value says why (absent)
+            "ticker": tk, "symbol": tk, "available": True, "reason": None,
             "source": "terrain_live_cache", "live": True, "stale": stale,
             "cell_stream_state_counts": _gamma_surface_cell_state_counts(surf),
             "stream_coverage": _coverage,
@@ -3222,14 +3163,14 @@ def api_order_flow_microstructure(ticker: str = Query(...),
             data["content"] = _content
     except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
         log.debug("microstructure content build failed for %s: %s", t, e)
-    # top of book: the daemon's price row (its fields are None while the quote is not live)
+    # top of book: the daemon's price row (each field the last Schwab sent)
     from app.options.order_flow.streaming import price_row
     _row = price_row(t)
     if _row and _row.get("quote_ts") is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
                    if _row and (_row.get("bid") is not None or _row.get("ask") is not None) else None)
-    data["book_live"] = lmp.book_is_live(t, venue)
+    data["book_live"] = lmp.feed_live_for(t, venue)
     from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
     now = time.time()
@@ -3431,7 +3372,9 @@ def get_chain(ticker: str = Query(...),
     if not contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
     fetched_ts = held.get("_chain_fetched_ts")
-    response_contracts, overlay_n, _ = _gamma_surface_contracts_with_stream_overlay(t, contracts)
+    # each field the newest Schwab sent (the levels' own rule, _publish_levels)
+    response_contracts, overlay_n = overlay_streamed_contract_fields(
+        contracts, _desired_stream_greeks_for_ticker(t), fetched_ts)
     live_spot, _src, _ts = resolve_spot(t)       # the one spot on every screen
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):
@@ -3768,21 +3711,16 @@ def get_levels(ticker: str = Query(...),
                                          "reason": "carried from the terrain"}})
     for row in levels:
         price = row.get("price")
-        row["distance"] = (price - spot) if price is not None and spot else None
+        row["distance"] = (price - spot) if price is not None and spot is not None else None
         # which side of spot, at the price's own two decimals (AT: prints as 0.00 away)
         row["side"] = (None if row["distance"] is None else "AT" if round(row["distance"], 2) == 0
                        else "ABOVE" if row["distance"] > 0 else "BELOW")
     # the ladder in price order (highest first, unpriced last), and the order by distance to spot
     levels = (sorted((r for r in levels if r.get("price") is not None), key=lambda r: r["price"], reverse=True)
               + [r for r in levels if r.get("price") is None])
-    # the order the chart draws them in: nearest the live price, or on a closed market nearest the
-    # last streamed trade, a past observation named in by_distance_ref (display order only:
-    # distance and side stay live-price values)
-    from app.options.order_flow.streaming import price_row
-    last = None if spot is not None else (price_row(tk) or {}).get("closed_last")
-    ref = spot if spot is not None else last["price"] if last else None
-    by_distance = [] if ref is None else [r["id"] for r in sorted((r for r in levels if r.get("price") is not None),
-                                                                  key=lambda r: abs(r["price"] - ref))]
+    # the order the chart draws them in: nearest Schwab's last price (spot, with its trade time)
+    by_distance = [] if spot is None else [r["id"] for r in sorted((r for r in levels if r.get("price") is not None),
+                                                                   key=lambda r: abs(r["price"] - spot))]
 
     families_absent = (list(snap.families_absent) if snap is not None
                        else [{"family": "price_levels", "reason": NO_PRICE_LEVELS_REASON}])
@@ -3803,9 +3741,6 @@ def get_levels(ticker: str = Query(...),
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,
-        "by_distance_ref": None if ref is None else
-        {"price": ref, "source": "live price"} if spot is not None else
-        {"price": ref, "source": "last trade", "as_of": last["as_of"]},
         # The VWAP curve and its σ bands, CARRIED. The standalone pages each
         # used to accumulate their own from /api/bars1m — two more VWAPs for one
         # session, drawn beside a level neither of them agreed with.

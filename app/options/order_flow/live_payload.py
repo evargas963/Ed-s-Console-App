@@ -19,6 +19,7 @@ _FLOW_KEYS = (
     "tape_pressure_2m",
     "tape_pressure_5m",
     "cum_delta_proxy",
+    "cum_delta_window",
     "cum_delta_slope",
     "top_book_pressure",
 )
@@ -47,9 +48,9 @@ def flow_block(of: dict[str, Any]) -> dict[str, Any]:
 def options_live_payload(contract: str, now: float) -> dict[str, Any]:
     """Book microstructure + labeled PROXY flow for one option contract at `now`."""
     items = get_content_for_symbol(contract)
-    top = option_top(contract) if lmp.feed_live_for(contract, "LEVELONE_OPTIONS") else None
-    of = OrderFlowEngine().compute({"content": items or [], "top": top,
-                                    "book_live": lmp.book_is_live(contract, "OPTIONS_BOOK")},
+    # the contract's top of book as Schwab last sent it; whether the feed delivers it now is book_live
+    of = OrderFlowEngine().compute({"content": items or [], "top": option_top(contract),
+                                    "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK")},
                                    now=now, ticker=contract)
     book = dict(of["book_microstructure"])
     book["flow"] = flow_block(of)

@@ -4,7 +4,7 @@ every exposure computed from that contract."""
 from __future__ import annotations
 
 
-from math_exposure_core import compute_exposures_by_strike
+from math_exposure_core import bucket_metric, compute_exposures_by_strike
 
 
 def _contract(**overrides):
@@ -37,15 +37,20 @@ def test_exposures_use_schwab_multiplier_without_defaulting_to_100():
     assert bucket["call_delta"] == 25.0
 
 
-def test_exposures_skip_missing_multiplier_instead_of_silent_100_default():
+def test_a_missing_multiplier_leaves_the_exposure_unknown_and_keeps_the_open_interest():
+    """No silent 100: the contract's exposure is not known, its leg's sums are absent; its open
+    interest and volume, which Schwab sent, are kept (M-14: the contract used to be dropped)."""
     ct = _contract()
     ct.pop("multiplier")
 
     exposures, diag = compute_exposures_by_strike([ct], spot=500.0)
 
-    assert exposures == {}
+    bucket = exposures[500.0]
     assert diag.contracts_used == 0
     assert diag.greeks_missing == 1
+    assert bucket["call_oi"] == 10 and bucket["call_volume"] == 1
+    for key in ("call_gex_1pct", "net_gex_1pct", "call_dex_dollars", "net_vanna", "call_oi_mult"):
+        assert bucket_metric(bucket, key) is None, key
 
 
 def test_exposures_preserve_missing_total_volume_instead_of_silent_zero():
@@ -67,5 +72,5 @@ def test_exposures_preserve_missing_open_interest_instead_of_silent_zero():
     assert diag.contracts_used == 0
     assert exposures[500.0]["oi_unreported"] == 1
     assert exposures[500.0]["call_oi"] is None
-    assert exposures[500.0]["has_oi"] is False
+    assert bucket_metric(exposures[500.0], "net_gex_1pct") is None
 

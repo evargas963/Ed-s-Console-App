@@ -30,6 +30,20 @@ def test_cum_delta_proxy_returns_none_when_all_print_sizes_missing():
     assert ofe._compute_cum_delta_proxy(data) is None
 
 
+def test_a_tape_of_zero_size_prints_sums_to_zero_and_serves_its_window():
+    """Prints Schwab sent with LAST_SIZE 0 sum to a cumulative delta of 0, not "no value" (operator
+    2026-10-01: "shouldn't be a dash should be 0"); the window it sums is served beside it -- no
+    clock resets it. Stand-in prints (named): two 0-size trades at 09:30:00 and 09:31:00 ET
+    2026-10-01."""
+    t0 = 1_790_861_400_000            # 2026-10-01 09:30:00 ET
+    data = {"content": [{"LAST_PRICE": 500.0, "LAST_SIZE": 0, "TRADE_TIME_MILLIS": t0},
+                        {"LAST_PRICE": 500.1, "LAST_SIZE": 0, "TRADE_TIME_MILLIS": t0 + 60_000}]}
+    assert ofe._compute_cum_delta_proxy(data) == 0.0
+    flow = ofe.OrderFlowEngine().compute(data, now=t0 / 1000 + 61)
+    assert flow["cum_delta_proxy"] == 0.0
+    assert flow["cum_delta_window"] == "prints Thu 10/01 08:30 AM CT to Thu 10/01 08:31 AM CT"
+
+
 def test_tape_pressure_skips_missing_print_size():
     data = {
         "content": [

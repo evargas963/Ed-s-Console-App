@@ -254,9 +254,10 @@ def _per_strike_rows(exposures: dict) -> list[list]:
     contracts and recomputed.
 
     Audit T-01 / T-02 (2026-09-24, operator rule: no fallbacks):
-      * the bar is net GEX$ from a DOLLARIZED book on a strike whose gamma was VALID. It used
-        to fall back to total_gamma_raw_at_strike -- UNSIGNED raw gamma drawn on the signed
-        GEX$ axis. A strike with no valid gamma, or a book built without spot, has no bar.
+      * the bar is net GEX$ from a DOLLARIZED book, exact (a strike whose contracts have open
+        interest 0 is a $0 bar). It used to fall back to total_gamma_raw_at_strike -- UNSIGNED
+        raw gamma drawn on the signed GEX$ axis. A strike whose GEX is not known
+        (bucket_metric), or a book built without spot, has no bar.
       * volume is strike_total_volume, the one reader: Schwab's volumes as sent (0 is a real
         zero); None ("—") when a contract at the strike did not report it, never a partial sum.
     """
@@ -271,16 +272,11 @@ def _per_strike_rows(exposures: dict) -> list[list]:
         sk = float_finite_or_none(k)
         if sk is None:                      # a NaN strike must never become a rendered bar
             continue
-        # has_oi: the strike's contracts cleared the OI gate (a no-OI strike drew a $0 bar,
-        # reproduced live on SPX 2026-09-14); has_valid_gamma: its 0.0 net GEX is not the
-        # bucket initialiser.
-        if not (isinstance(b, dict) and b.get("has_oi") and b.get("has_valid_gamma")):
-            continue
         gf = float_finite_or_none(net_gex_dollars_at_strike(b))
         if gf is None:
             continue
         vol = strike_total_volume(b)
-        rows.append([round(sk, 2), round(gf, 1), None if vol is None else int(vol)])
+        rows.append([sk, gf, None if vol is None else int(vol)])
     rows.sort(key=lambda r: r[0])
     return rows
 
@@ -416,8 +412,6 @@ def compute_wall_value_area(
     key = f"{side}_gex_1pct"
     mass: dict[float, float] = {}
     for k, b in exposures.items():
-        if not (isinstance(b, dict) and b.get("has_valid_gamma")):
-            continue
         v = bucket_metric_abs(b, key)
         if v is not None and v > 0:
             mass[float(k)] = float(v)
@@ -451,27 +445,31 @@ def compute_wall_value_area(
 def atm_sigma_by_expiry(contracts: list[dict], spot: float) -> dict[tuple[str, float | None], float | None]:
     """Each expiry's ATM implied vol as a fraction, keyed like exposure_books ((expirationDate,
     daysToExpiration)): the mean of the call and the put IV, each at its side's strike nearest
-    spot. Both legs or None: one side's IV never stands in for the mean (audit T-06, 2026-09-24).
-    Schwab `volatility` is a percent, converted by schwab_iv_to_sigma."""
+    spot. Both legs or None: one side's IV never stands in for the mean (audit T-06, 2026-09-24),
+    and a leg whose nearest contract has no IV from Schwab (-999, or 0: no sigma) has none --
+    the next strike's IV never stands in for it. Schwab `volatility` is a percent, converted by
+    schwab_iv_to_sigma."""
     from math_exposure_core import schwab_iv_to_sigma
     from numeric_contract import schwab_number
 
-    legs: dict[tuple[str, float | None], dict[str, tuple[float, float]]] = {}
+    legs: dict[tuple[str, float | None], dict[str, tuple[float, float | None]]] = {}
     for c in contracts:
         if not isinstance(c, dict):
             continue
         key = (str(c.get("expirationDate") or "")[:10], _dte_of(c))
         sides = legs.setdefault(key, {})
         strike = schwab_number(c.get("strikePrice"))
-        sigma = schwab_iv_to_sigma(schwab_number(c.get("volatility")))
         side = str(c.get("putCall") or "").upper()
-        if strike is None or sigma is None or side not in ("CALL", "PUT"):
+        if strike is None or side not in ("CALL", "PUT"):
             continue
         d = abs(strike - float(spot))
         if side not in sides or d < sides[side][0]:
-            sides[side] = (d, sigma)
-    return {k: (s["CALL"][1] + s["PUT"][1]) / 2.0 if set(s) == {"CALL", "PUT"} else None
-            for k, s in sorted(legs.items(), key=lambda kv: kv[0][0])}
+            sides[side] = (d, schwab_iv_to_sigma(schwab_number(c.get("volatility"))))
+    out: dict[tuple[str, float | None], float | None] = {}
+    for k, s in sorted(legs.items(), key=lambda kv: kv[0][0]):
+        sig = [s[x][1] for x in ("CALL", "PUT") if x in s]
+        out[k] = (sig[0] + sig[1]) / 2.0 if len(sig) == 2 and None not in sig else None
+    return out
 
 
 def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> dict | None:
@@ -521,8 +519,8 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
 
 def _per_strike_measure_rows(exposures: dict) -> dict:
     """`{"dex": [[strike, net DEX $], …], "oi": [[strike, total OI], …]}`: every strike whose value
-    is known, by the heatmap cell's own readers (net_dex_dollars on a strike that cleared the OI
-    gate of a dollarized book; strike_total_oi). A strike whose value is unknown has no row."""
+    is known, by the heatmap cell's own readers (net_dex_dollars of a dollarized book;
+    strike_total_oi). A strike whose value is unknown has no row."""
     from math_exposure_core import bucket_metric, exposures_have_dollar_gex, strike_total_oi
     from numeric_contract import float_finite_or_none
 
@@ -533,12 +531,12 @@ def _per_strike_measure_rows(exposures: dict) -> dict:
         sk = float_finite_or_none(k)
         if sk is None or not isinstance(b, dict):
             continue
-        d = float_finite_or_none(bucket_metric(b, "net_dex_dollars")) if dollarized and b.get("has_oi") else None
+        d = float_finite_or_none(bucket_metric(b, "net_dex_dollars")) if dollarized else None
         if d is not None:
-            dex.append([round(sk, 2), round(d, 1)])
+            dex.append([sk, d])
         o = strike_total_oi(b)
         if o is not None:
-            oi.append([round(sk, 2), int(o)])
+            oi.append([sk, int(o)])
     dex.sort(key=lambda r: r[0])
     oi.sort(key=lambda r: r[0])
     return {"dex": dex, "oi": oi}

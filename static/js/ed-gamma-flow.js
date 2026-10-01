@@ -127,7 +127,8 @@
       ['Tape pressure 30s', num(flow.tape_pressure_30s, 3), 'flow.tape_pressure_30s', fk('tape_pressure_30s')],
       ['Tape pressure 2m', num(flow.tape_pressure_2m, 3), 'flow.tape_pressure_2m', fk('tape_pressure_2m')],
       ['Tape pressure 5m', num(flow.tape_pressure_5m, 3), 'flow.tape_pressure_5m', fk('tape_pressure_5m')],
-      ['Cum Δ (proxy)', num(flow.cum_delta_proxy, 1), 'flow.cum_delta_proxy', fk('cum_delta_proxy')],
+      ['Cum Δ (proxy)', num(flow.cum_delta_proxy, 1) + (flow.cum_delta_window ? ' · ' + flow.cum_delta_window : ''),
+        'flow.cum_delta_proxy', fk('cum_delta_proxy')],
       ['Cum Δ slope (proxy)', num(flow.cum_delta_slope, 3), 'flow.cum_delta_slope', fk('cum_delta_slope')],
     ];
     var fh = plane.feed_health || {};   // served: the selected contract's three feeds

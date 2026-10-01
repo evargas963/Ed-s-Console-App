@@ -120,19 +120,19 @@ def test_a_streamed_volume_newer_than_the_contracts_quote_is_overlaid():
     assert next(c for c in body["contracts"] if c["symbol"] == other["symbol"]) == other
 
 
-def test_a_live_contracts_streamed_fields_are_its_values_whatever_the_chains_quote_time():
-    """ONE-05: the stream owns a live contract's fields. A volume streamed before the chain's own
-    quote time is still the contract's current volume (Schwab sends a field only on change);
-    each streamed field is applied as sent, and a field the stream never sent keeps the chain's."""
+def test_each_field_is_the_newest_schwab_sent_streamed_or_chain():
+    """Coordinator review of #433/#434 (2026-10-01): per field the newest Schwab value wins, by
+    receive time. A volume streamed before the chain was fetched keeps the chain's volume; a gamma
+    streamed after it is applied; a field the stream never sent keeps the chain's."""
     now = time.time()
     contracts, target = _with_quote_time(now)
     streamed_volume = (target["totalVolume"] or 0) + 4321
-    streamed_gamma = round((target["gamma"] or 0) + 0.05, 4)
+    streamed_gamma = (target["gamma"] or 0) + 0.05
     with _held_chain("TSLA", contracts, now), _streamed(
-            target["symbol"], [(now - 8, {"TOTAL_VOLUME": streamed_volume}), (now - 1, {"GAMMA": streamed_gamma})]):
+            target["symbol"], [(now - 8, {"TOTAL_VOLUME": streamed_volume}), (now + 1, {"GAMMA": streamed_gamma})]):
         body = _get(ticker="TSLA")
     overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
-    assert overlaid["totalVolume"] == streamed_volume and overlaid["gamma"] == streamed_gamma
+    assert overlaid["totalVolume"] == target["totalVolume"] and overlaid["gamma"] == streamed_gamma
     assert overlaid["openInterest"] == target["openInterest"]          # never streamed: the chain's
     assert body["stream_overlay_contracts"] == 1
 

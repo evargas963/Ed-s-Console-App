@@ -69,14 +69,18 @@ class OrderFlowState:
             return
         bids = content_item.get("BIDS")
         asks = content_item.get("ASKS")
-        if not bids or not asks:
+        if bids is None and asks is None:
             return
         sym = ticker_storage_key(symbol or content_item.get("key"))
         if not sym:
             return
+
+        def _side(levels) -> list:      # a side Schwab sent no levels for is empty, as sent
+            return [] if levels is None else list(levels) if isinstance(levels, list) else [levels]
+
         item = {
-            "BIDS": list(bids) if isinstance(bids, list) else [bids],
-            "ASKS": list(asks) if isinstance(asks, list) else [asks],
+            "BIDS": _side(bids),
+            "ASKS": _side(asks),
             "BOOK_TIME": content_item.get("BOOK_TIME"),
             "SERVICE": service,
         }

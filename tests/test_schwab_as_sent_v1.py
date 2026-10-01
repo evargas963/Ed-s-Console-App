@@ -81,7 +81,7 @@ def test_minus_999_open_interest_is_unreported():
 def test_a_strike_whose_open_interest_is_all_zero_shows_zero_not_absent():
     """Operator ruling 2026-09-27 (take what Schwab sends): a strike whose every contract reports
     openInterest 0 has OI 0 and exposure 0, not "—". Real CRWD chain."""
-    from math_exposure_core import compute_exposures_by_strike
+    from math_exposure_core import bucket_metric, compute_exposures_by_strike
     fx = _load("real_crwd_complete_chain_quarter.json")
     by_strike = {}
     for c in fx["chain"]:
@@ -90,5 +90,6 @@ def test_a_strike_whose_open_interest_is_all_zero_shows_zero_not_absent():
     assert all_zero
     books, _ = compute_exposures_by_strike(fx["chain"], spot=fx["spot"])
     for k in all_zero:
-        assert books[k]["has_oi"] and books[k]["call_oi"] in (0.0, None) and books[k]["put_oi"] in (0.0, None)
-        assert books[k]["net_gex_1pct"] == 0.0
+        assert books[k]["call_oi"] in (0.0, None) and books[k]["put_oi"] in (0.0, None)
+        for key in ("net_gex_1pct", "net_dex_dollars", "net_vanna"):
+            assert bucket_metric(books[k], key) == 0.0, (k, key)

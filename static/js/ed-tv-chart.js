@@ -280,7 +280,7 @@
           if (x == null || y1 == null || y2 == null) return;
           // the served side: BID green, ASK red, EVEN (equal sizes) neutral
           var dom = cell.side === 'ASK' ? cell.ask : cell.bid;
-          if (!dom) return;
+          if (dom == null) return;   // a size of 0 is drawn as sent
           c.fillStyle = cell.side === 'BID' ? self.up : cell.side === 'ASK' ? self.down : self.even;
           c.globalAlpha = 0.15 + 0.85 * Math.min(1, dom / (h.max_size || 1));
           c.fillRect((x - bw / 2) * hr, Math.min(y1, y2) * vr, bw * hr, Math.max(1, Math.abs(y2 - y1)) * vr);

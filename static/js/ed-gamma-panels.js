@@ -742,7 +742,7 @@
   window.addEventListener('ed:quote_tick', function (e) {
     var q = e.detail;
     if (!q || q.ticker !== ((window.EdShell && window.EdShell.getState()) || {}).key) return;   // the served key
-    txt('klSpot', q.spot_state === 'live' && q.spot_disp ? q.spot_disp : '—');
+    txt('klSpot', q.spot_disp != null ? q.spot_disp : '—');
   });
   document.addEventListener('ed:view', loadAll);
   document.addEventListener('ed:scope', loadGbs);   // #3: re-window the GEX-by-strike panel only

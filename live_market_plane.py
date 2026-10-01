@@ -1,5 +1,6 @@
-"""The live quote per ticker, from Schwab's streamed LEVEL_ONE_EQUITY rows
-(`record_from_level_one_equity`), with its live rule (`spot_is_fresh`, `quote_is_fresh`)."""
+"""The quote per ticker, from Schwab's streamed LEVEL_ONE_EQUITY rows
+(`record_from_level_one_equity`): each field the last value Schwab sent, at any hour, and
+whether the feed is delivering the symbol now (`feed_live_for`)."""
 
 from __future__ import annotations
 
@@ -10,7 +11,6 @@ from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from time_et import is_capturable_session
 
 log = logging.getLogger(__name__)
 
@@ -56,10 +56,10 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
 
     Per-field state (see _fields_by_ticker): each field present in the message replaces
     that field's value and receive time; absent fields stand (Schwab sends changes only).
-    A present-but-invalid price (0 / negative -- e.g. no bid) CLEARS that field: the vendor
-    said there is no such value now. A row is published once a LAST_PRICE is known; spot is
-    LAST_PRICE only (MARK never stands in) and its age is the age of the last LAST_PRICE
-    message, never of the bid/ask tick arriving now.
+    A present field that is not a number (-999, text, NaN) CLEARS that field; a 0 is 0. The
+    row is published with every message, each field the last one Schwab sent: spot is
+    LAST_PRICE only (MARK never stands in; None until Schwab sends one), and its age is the
+    age of the last LAST_PRICE message, never of the bid/ask tick arriving now.
 
     `received_ts` is REQUIRED: the capture daemon's own receive time for this message --
     what every freshness check judges (2026-09-23 audit P0).
@@ -83,7 +83,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
             else:
                 fs[name] = (v, rts)
         snapshot = dict(fs)
-    if not seen or "LAST_PRICE" not in snapshot:
+    if not seen:
         return False
 
     def val(name: str) -> Optional[float]:
@@ -97,7 +97,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         "spot": spot_f,
         "bid": bid,
         "ask": ask,
-        "spot_disp": f"{spot_f:.2f}",
+        "spot_disp": f"{spot_f:.2f}" if spot_f is not None else None,
         "mark": mark,
         "bid_size": val("BID_SIZE"),
         "ask_size": val("ASK_SIZE"),
@@ -118,7 +118,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         "trade_ts": val("TRADE_TIME_MILLIS"),
         "quote_time_source": "schwab_streaming_level_one" if quote_ts is not None else "unavailable",
         "server_received_ts": rts,
-        "spot_received_ts": snapshot["LAST_PRICE"][1],
+        "spot_received_ts": snapshot["LAST_PRICE"][1] if "LAST_PRICE" in snapshot else None,
         "quote_ingestion": "schwab_streaming_level_one",
         "quote_source_detail": {
             "spot": "LAST_PRICE",
@@ -238,43 +238,3 @@ def feed_live_for(symbol: str | None, service: str) -> bool:
         return t in _feed["held"].get(service, ())
 
 
-def book_is_live(symbol: str | None, service: str) -> bool:
-    """Is `symbol`'s book on `service` live right now: the market is in session (trading day,
-    04:00-20:00 ET) and the feed holds it (feed_live_for). Outside the session its last book is a
-    past observation, as the price is (spot_is_fresh)."""
-    return is_capturable_session() and feed_live_for(symbol, service)
-
-
-def spot_is_fresh(q: dict[str, Any]) -> bool:
-    """Is this row's LAST_PRICE live right now: the market is in session (trading day,
-    04:00-20:00 ET), the stream delivered a LAST_PRICE for it (`spot_received_ts`) and the feed
-    is live for its symbol (feed_live_for). Outside the session it is a past observation. Its
-    age since the last trade is information (`trade_ts`), never a reason to blank it."""
-    if not is_capturable_session():
-        return False
-    if float_finite_or_none((q or {}).get("spot_received_ts")) is None:  # caps-ok: fail-closed -- no LAST_PRICE this session is not live
-        return False
-    return feed_live_for((q or {}).get("ticker"), "LEVELONE_EQUITIES")
-
-
-def streamed_chg_pct(row: dict[str, Any] | None, key: str = "chg_pct") -> Optional[float]:
-    """A Schwab LEVELONE_EQUITIES percent change (0 hops) from a row the stream wrote, while its
-    LAST_PRICE is fresh: `chg_pct` (NET_CHANGE_PERCENT, extended hours included, sent with every
-    LAST_PRICE -- measured on 4,039 messages) or `chg_pct_regular` (REGULAR_MARKET_CHANGE_PERCENT).
-    Otherwise None: no REST value, no stale row (2026-09-24)."""
-    if not (row and plane_row_is_streamed(row) and spot_is_fresh(row)):
-        return None
-    return float_finite_or_none(row.get(key))
-
-
-def quote_is_fresh(q: dict[str, Any]) -> bool:
-    """Is this plane row's quote (bid/ask/sizes) live right now: the stream wrote the row
-    (`server_received_ts`) and the feed is live for its symbol (feed_live_for). Under
-    Schwab's changed-fields-only delivery an unchanged bid IS the current bid while the feed
-    is live; a missing server_received_ts cannot be assumed live (fail closed). Outside the
-    session (is_capturable_session) the quote is a past observation."""
-    if not is_capturable_session():
-        return False
-    if float_finite_or_none(q.get("server_received_ts")) is None:
-        return False
-    return feed_live_for(q.get("ticker"), "LEVELONE_EQUITIES")

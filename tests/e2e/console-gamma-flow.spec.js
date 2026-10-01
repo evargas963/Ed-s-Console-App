@@ -144,7 +144,8 @@ test.describe('D — Gamma Flow subview (EdStream contract binding)', () => {
     await expect(rowV(page, 'flow.tape_pressure_30s')).toHaveText(fmt(FIXTURE.flow.tape_pressure_30s, 3));
     await expect(rowV(page, 'flow.tape_pressure_2m')).toHaveText(fmt(FIXTURE.flow.tape_pressure_2m, 3));
     await expect(rowV(page, 'flow.tape_pressure_5m')).toHaveText(fmt(FIXTURE.flow.tape_pressure_5m, 3));
-    await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1));
+    // the cumulative delta with the window of prints it sums, served beside it
+    await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1) + ' · ' + FIXTURE.flow.cum_delta_window);
     await expect(rowV(page, 'flow.cum_delta_slope')).toHaveText(fmt(FIXTURE.flow.cum_delta_slope, 3));
     await expect(rowV(page, 'flow.top_book_pressure')).toHaveText(fmt(FIXTURE.flow.top_book_pressure, 3));
     await expect(rowV(page, 'mid')).toHaveText(fmt(FIXTURE.mid, 2));
@@ -170,7 +171,7 @@ test.describe('D — Gamma Flow subview (EdStream contract binding)', () => {
     await selectCallAndOpenFlow(page);
     await expect(page.locator('#flowBody .fl-badge')).toHaveText('ACTIVE');
     await expect(rowV(page, 'flow.tape_pressure_30s')).toHaveText(fmt(FIXTURE.flow.tape_pressure_30s, 3));
-    await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1));
+    await expect(rowV(page, 'flow.cum_delta_proxy')).toHaveText(fmt(FIXTURE.flow.cum_delta_proxy, 1) + ' · ' + FIXTURE.flow.cum_delta_window);
     await expect(rowV(page, 'flow.top_book_pressure')).toHaveText(fmt(FIXTURE.flow.top_book_pressure, 3));
     await expect(rowV(page, 'ages.book_age_sec')).toHaveText(Math.round(FIXTURE.ages.book_age_sec) + 's');
     await expect(page.locator('#flowBody')).not.toContainText('0.999');

@@ -133,7 +133,7 @@ def _display_window(cells: list[dict]) -> tuple[float, float]:
     """(lo, hi): the price window holding all but DISPLAY_TAIL_SHARE of displayed size at each end."""
     totals: dict[float, float] = {}
     for c in cells:
-        totals[c["price"]] = totals.get(c["price"], 0.0) + c["bid"] + c["ask"]
+        totals[c["price"]] = totals.get(c["price"], 0.0) + sum(v for v in (c["bid"], c["ask"]) if v is not None)
     prices = sorted(totals)
     whole = sum(totals.values())
     if not whole:
@@ -263,7 +263,8 @@ def book_heatmap_for_ticker(
                 px, vol = schwab_number(lvl.get(price_key)), schwab_count(lvl.get("TOTAL_VOLUME"))
                 if px is None or vol is None:
                     continue
-                cell = cells.setdefault((bucket, px), {"bid": 0.0, "ask": 0.0})
+                # a side Schwab sent no level for at this price stays absent, never 0
+                cell = cells.setdefault((bucket, px), {"bid": None, "ask": None})
                 # Operator-reproduced defect (2026-09-14): NASDAQ_BOOK/NYSE_BOOK messages are
                 # full-book snapshots, not deltas -- an UNCHANGED 100-share resting level gets
                 # re-transmitted (and re-captured into stream_book_raw) every time ANY other
@@ -279,10 +280,17 @@ def book_heatmap_for_ticker(
     if not prices_seen:
         return {"ticker": sym, "available": False, "reason": "captured rows carried no populated price levels in this window"}
 
+    def _dominant(bid, ask) -> str:
+        """The displayed side at this price and bucket (the cell's colour): the one Schwab sent,
+        or the larger of the two."""
+        if ask is None:
+            return "BID"
+        if bid is None:
+            return "ASK"
+        return "BID" if bid > ask else "ASK" if ask > bid else "EVEN"
+
     cell_list = sorted(
-        ({"t": k[0], "price": k[1], "bid": round(v["bid"], 1), "ask": round(v["ask"], 1),
-          # the dominant displayed side at this price and bucket (the cell's colour)
-          "side": "BID" if v["bid"] > v["ask"] else "ASK" if v["ask"] > v["bid"] else "EVEN"}
+        ({"t": k[0], "price": k[1], "bid": v["bid"], "ask": v["ask"], "side": _dominant(v["bid"], v["ask"])}
          for k, v in cells.items()),
         key=lambda c: (c["t"], c["price"]),
     )
@@ -294,7 +302,7 @@ def book_heatmap_for_ticker(
         "price_min": min(prices_seen), "price_max": max(prices_seen),
         # the default price window, and the largest displayed size (the colour scale's top)
         "display_lo": display_lo, "display_hi": display_hi,
-        "max_size": max(max(c["bid"], c["ask"]) for c in cell_list),
+        "max_size": max(v for c in cell_list for v in (c["bid"], c["ask"]) if v is not None),
         "rows_scanned": len(rows), "rows_capped": rows_capped,
         "cells": cell_list,
         "method": ("stream_book_raw NASDAQ_BOOK+NYSE_BOOK rows for this ticker, oldest-to-newest in "
