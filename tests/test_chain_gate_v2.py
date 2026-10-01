@@ -49,7 +49,7 @@ def test_two_different_tickers_run_concurrently(monkeypatch):
 
     monkeypatch.setattr(srv, "safe_get_chain", _slow_chain)
     threads = [
-        threading.Thread(target=srv._gated_safe_get_chain, args=(None, t), kwargs={"strike_count": 5})
+        threading.Thread(target=srv._gated_safe_get_chain, args=(None, t), kwargs={"strike_range": "ALL"})
         for t in ("ZZGA", "ZZGB", "ZZGC")
     ]
     for t in threads:
@@ -77,7 +77,7 @@ def test_same_ticker_requests_coalesce_single_fetch(monkeypatch):
     results = []
 
     def _go():
-        results.append(srv._gated_safe_get_chain(None, "ZZCO", strike_count=5))
+        results.append(srv._gated_safe_get_chain(None, "ZZCO", strike_range="ALL"))
 
     threads = [threading.Thread(target=_go) for _ in range(3)]
     for t in threads:
@@ -98,7 +98,7 @@ def test_no_cross_ticker_result_delivery(monkeypatch):
     out = {}
 
     def _go(t):
-        out[t] = srv._gated_safe_get_chain(None, t, strike_count=5)[0]
+        out[t] = srv._gated_safe_get_chain(None, t, strike_range="ALL")[0]
 
     threads = [threading.Thread(target=_go, args=(t,)) for t in ("ZZX1", "ZZX2", "ZZX3")]
     for t in threads:
@@ -144,7 +144,7 @@ def test_timeout_fail_open_counts(monkeypatch):
     monkeypatch.setattr(srv, "CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC", 0.1)
     monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, **kwargs: "OK")
     before = srv._chain_fetch_gate_timeout_count
-    resp, wait_s, fetch_s = srv._gated_safe_get_chain(None, "ZZTM", strike_count=5)
+    resp, wait_s, fetch_s = srv._gated_safe_get_chain(None, "ZZTM", strike_range="ALL")
     assert resp == "OK"
     assert srv._chain_fetch_gate_timeout_count == before + 1
     assert wait_s >= 0.1
@@ -162,7 +162,7 @@ def test_http_throttle_degrades_to_one_slot(monkeypatch):
         status_code = 429
 
     monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, **kwargs: _R429())
-    srv._gated_safe_get_chain(None, "ZZTH", strike_count=5)
+    srv._gated_safe_get_chain(None, "ZZTH", strike_range="ALL")
     snap = gate.snapshot()
     assert snap["degraded"] is True
     assert snap["capacity_now"] == 1
@@ -177,7 +177,7 @@ def test_auth_error_degrades_and_propagates(monkeypatch):
 
     monkeypatch.setattr(srv, "safe_get_chain", _boom)
     with pytest.raises(srv.SchwabAuthError):
-        srv._gated_safe_get_chain(None, "ZZAU", strike_count=5)
+        srv._gated_safe_get_chain(None, "ZZAU", strike_range="ALL")
     snap = gate.snapshot()
     assert snap["degraded"] is True
     assert snap["degraded_reason_last"] == "auth_unstable"
@@ -192,7 +192,7 @@ def test_consecutive_failures_trip_breaker_and_recover(monkeypatch):
     monkeypatch.setattr(srv, "safe_get_chain", _fail)
     for i in range(srv.CHAIN_GATE_BREAKER_FAILURE_THRESHOLD):
         with pytest.raises(RuntimeError):
-            srv._gated_safe_get_chain(None, f"ZZF{i}", strike_count=5)
+            srv._gated_safe_get_chain(None, f"ZZF{i}", strike_range="ALL")
     assert gate.snapshot()["degraded"] is True
     assert gate.snapshot()["degraded_reason_last"] == "consecutive_failures"
     # recovery at cooldown expiry
@@ -202,7 +202,7 @@ def test_consecutive_failures_trip_breaker_and_recover(monkeypatch):
     assert gate.snapshot()["capacity_now"] == srv.CHAIN_GATE_GLOBAL_SLOTS_MAX
     # success resets the failure counter
     monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, **kwargs: "OK")
-    srv._gated_safe_get_chain(None, "ZZOK", strike_count=5)
+    srv._gated_safe_get_chain(None, "ZZOK", strike_range="ALL")
     assert gate.snapshot()["consecutive_failures"] == 0
 
 
@@ -220,7 +220,7 @@ def test_coalesced_waiters_receive_owner_exception(monkeypatch):
 
     def _owner():
         try:
-            srv._gated_safe_get_chain(None, "ZZEX", strike_count=5)
+            srv._gated_safe_get_chain(None, "ZZEX", strike_range="ALL")
         except RuntimeError as e:
             errs.append(("owner", str(e)))
 
@@ -228,7 +228,7 @@ def test_coalesced_waiters_receive_owner_exception(monkeypatch):
         started.wait(2)
         time.sleep(0.05)
         try:
-            srv._gated_safe_get_chain(None, "ZZEX", strike_count=5)
+            srv._gated_safe_get_chain(None, "ZZEX", strike_range="ALL")
         except RuntimeError as e:
             errs.append(("waiter", str(e)))
 
@@ -241,7 +241,7 @@ def test_coalesced_waiters_receive_owner_exception(monkeypatch):
 def test_inflight_registry_cleared_after_completion(monkeypatch):
     _fresh_gate(monkeypatch)
     monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, **kwargs: "OK")
-    srv._gated_safe_get_chain(None, "ZZCL", strike_count=5)
+    srv._gated_safe_get_chain(None, "ZZCL", strike_range="ALL")
     with srv._chain_inflight_lock:
         assert "ZZCL" not in srv._chain_inflight
 
@@ -256,7 +256,7 @@ def test_no_deadlock_under_mixed_load(monkeypatch):
 
     def _go(i):
         t = f"ZZM{i % 4}"   # mixes coalescing + distinct tickers
-        srv._gated_safe_get_chain(None, t, strike_count=5, priority=(i % 2 == 0))
+        srv._gated_safe_get_chain(None, t, strike_range="ALL", priority=(i % 2 == 0))
         done.append(i)
 
     threads = [threading.Thread(target=_go, args=(i,)) for i in range(12)]

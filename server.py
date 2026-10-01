@@ -287,7 +287,7 @@ def schwab_capability_state() -> tuple[str, str]:
 # held only around the network call — nothing submits into any pool under it.
 # Schwab CSV authority checked: yes
 # CSV row(s): chains.* via schwab_client.safe_get_chain — call shape unchanged
-#   (safe_get_chain(client, ticker, strike_count=CHAIN_STRIKE_COUNT)); this is
+#   (safe_get_chain(client, ticker, strike_range="ALL")); this is
 #   scheduling-only serialization, no field read/derivation/emission change.
 # Derived-field disposition: none required (no derived field touched);
 #   chain_gate_wait_sec is passive observability only.
@@ -541,13 +541,13 @@ def resolve_spot(ticker: str) -> tuple[float | None, str, float | None]:
     return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
 
 
-def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_range=None,
+def _gated_safe_get_chain(client, ticker: str, *, strike_range=None,
                           priority: bool = False, to_date=None, from_date=None):
     """safe_get_chain behind the bounded two-slot gate -> (resp, gate_wait_sec, fetch_sec).
 
     Schwab CSV authority checked: yes
     CSV row(s): chains.* via schwab_client.safe_get_chain - call shape
-      unchanged (safe_get_chain(client, ticker, strike_count=..., strike_range=...));
+      unchanged (safe_get_chain(client, ticker, strike_range=...));
       this is scheduling (bounded 2-slot gate + per-ticker single-flight coalescing),
       no field read/derivation/emission change.
     Derived-field disposition: none required.
@@ -563,21 +563,9 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_rang
     # code that establishes them, which makes the concurrency harder to verify rather
     # than easier. RC-19: a length ceiling must prompt a judgement, not a reflex split.
     global _chain_fetch_gate_timeout_count
-    # Coalesce key MUST include strike_count. Observed 2026-07-20: terrain's
-    # SPY strikeCount=200 got Schwab 502; UI/analytics coalesced onto that same
-    # ticker key (wanting strikeCount=20) and inherited the failure as
-    # "Chain fetch failed". Same-ticker different widths are different fetches.
-    # RC-127: to_date joins the coalesce key — a full-book fetch and a 45-day rung are
-    # DIFFERENT fetches, same as the strike-width lesson above. Cursor-audit F2: from_date
-    # likewise — a single-expiry window (from=to=sel) and the open-near-end horizon fetch are
-    # different requests and must never coalesce onto each other. strike_range joins it too
-    # (OPTIONS_ORDER_FLOW_V1 2026-08-30): a strike_range="ALL" complete-chain request and a
-    # bounded strike_count request for the SAME ticker/dates are DIFFERENT fetches — MEASURED
-    # live, "ALL" returned 69 more real strikes than strike_count=250 alone for the same SPY
-    # expiry, so coalescing them onto each other would silently hand a caller wanting the
-    # complete set a truncated bounded response, or vice versa.
+    # The coalesce key is the whole request: requests for one ticker over different strike or
+    # date ranges are different fetches and never coalesce onto each other.
     key = ((ticker or "").strip().upper(),
-          int(strike_count) if strike_count is not None else None,
           str(strike_range or ""), str(to_date or ""), str(from_date or ""))
     wait_started = time.monotonic()
     with _chain_inflight_lock:
@@ -598,7 +586,7 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_rang
             resp, _own_wait, fetch_sec = holder["result"]
             return resp, waited, fetch_sec
         log.warning(
-            "chain coalesce wait timed out ticker=%s strike_count=%s - issuing own fetch",
+            "chain coalesce wait timed out ticker=%s strike_range=%s - issuing own fetch",
             key[0], key[1],
         )
         # fail-open to an owned fetch WITHOUT registry (the stuck owner still
@@ -619,7 +607,7 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_rang
     resp = None
     exc = None
     try:
-        resp = safe_get_chain(client, ticker, strike_count=strike_count, strike_range=strike_range,
+        resp = safe_get_chain(client, ticker, strike_range=strike_range,
                               to_date=to_date, from_date=from_date)
         return resp, gate_wait_sec, round(time.monotonic() - fetch_started, 3)
     except SchwabAuthError as e:
