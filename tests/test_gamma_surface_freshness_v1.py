@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 import server
-from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+from calibration.complete_chain_capture import CAPTURE_BASIS
 from db import EdDB
 from server import get_options_gamma_surface, ticker_storage_key
 from time_et import ET
@@ -167,34 +167,11 @@ def test_a_held_ticker_does_not_warm_and_says_why(_fresh, monkeypatch, tk):
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_closed_market_with_no_capture_gives_one_reason_on_every_route(_fresh, monkeypatch, tk):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
-    d = _call(tk)
-    assert d["warming"] is False and server.NO_CAPTURE_REASON in d["reason"]
+def test_with_no_levels_the_atr_is_served_with_its_reason(_fresh, monkeypatch, tk):
+    monkeypatch.setattr(server, "_terrain_refresh_one", lambda t, priority=False: "error:stand-in")
     t = server.get_terrain(ticker=tk)
-    assert server.NO_CAPTURE_REASON in t["error"]
     # ATR is from the bars, not the chain: served (here absent, with its reason) with no levels
     assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
-
-
-@pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_closed_market_prices_the_stored_capture_on_every_route(_fresh, monkeypatch, view, tk):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
-    view(tk)                                        # the page selects the ticker
-    by_expiry: dict = {}
-    for ct in _CRWD["chain"]:
-        by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
-    for expiry, cts in by_expiry.items():
-        persist_complete_chain_capture(_fresh.db_path, ticker=tk, expiry=expiry, contracts=cts,
-                                       spot=_CRWD["spot"], completeness_basis=CAPTURE_BASIS,
-                                       ts_utc=_CAPTURED)
-    t = server.get_terrain(ticker=tk)                # the Trade Desk's first load
-    assert not t["error"] and t["chain_basis"] == CAPTURE_BASIS and t["spot"] == _CRWD["spot"]
-    assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
-    assert _call(tk)["available"] is True           # the heatmap from the same publication
-    # the chain view carries the publication's own basis label (it served a constant before)
-    chain = json.loads(server.get_chain(ticker=tk, expiry=None).body)
-    assert chain["status"] == "ok" and chain["scope"]["completeness_basis"] == t["chain_basis"]
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])

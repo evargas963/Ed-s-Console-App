@@ -24,6 +24,7 @@ def _daemon_holds(*symbols):
 _REAL_CHAIN = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_cde_complete_chain_half_dollar.json")
     .read_text(encoding="utf-8"))["chain"]
+_REAL_LOGGABLE = server._is_loggable_session
 
 
 
@@ -289,47 +290,77 @@ def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(mon
         "pre-enrolled board")
 
 
-def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch, view):
-    """Operator design 2026-09-26: while the market is closed no chain is downloaded -- not for
-    the board, not for a ticker someone is viewing. Weekend chains blank open interest (every
-    $SPX contract, 18% of SPY's OI, measured 2026-09-26); the last session's levels stand."""
+class _ChainOk:
+    """fetch_full_chain's answer (the stand-in for Schwab's network): HTTP 200."""
+    status_code = 200
+
+    def json(self):
+        return {}
+
+
+def _fetches_recorded(monkeypatch):
+    fetched: list[str] = []
+    monkeypatch.setattr(server, "fetch_full_chain",
+                        lambda client, tk, get, quote: fetched.append(tk) or _ChainOk())
+    return fetched
+
+
+def _wait_for(fetched, want):
+    deadline = time.time() + 5.0
+    while time.time() < deadline and not want <= set(fetched):
+        time.sleep(0.05)
+
+
+@pytest.mark.parametrize("when", [(2026, 10, 1, 8, 8), (2026, 10, 1, 21, 0), (2026, 10, 3, 12, 0)],
+                         ids=["pre-market", "after-hours", "saturday"])
+def test_the_board_and_a_viewed_ticker_are_fetched_at_any_hour(monkeypatch, pin_clock, view, when):
+    """2026-10-01 07:08 CT (08:08 ET): the console restarted pre-market, loaded the stored levels
+    and fetched no chain -- the loop's whole refresh sat behind the archival window
+    (07:45 AM-3:30 PM CT), the viewed ticker's too. The loop fetches the board's and the viewed
+    ticker's chains every cycle whatever the hour. Stand-in: fetch_full_chain, Schwab's network."""
     import threading
 
-    calls: list[str] = []
-
-    def proj(contracts, books):
-        return {"expirations": [], "strikes": [], "cells": []}
-    _stub_terrain(monkeypatch, proj)
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    pin_clock(*when)
+    monkeypatch.setattr(server, "_is_loggable_session", _REAL_LOGGABLE)   # the real clock rule
+    monkeypatch.setattr(server, "et_minute_total_from_ts_utc", lambda ts: when[3] * 60 + when[4])
+    _stub_terrain(monkeypatch, lambda contracts, books: {"expirations": [], "strikes": [], "cells": []})
     monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
-    real_refresh = server._terrain_refresh_one
-    fetched: list[str] = []
-    monkeypatch.setattr(server, "fetch_full_chain", lambda client, tk, get, quote: fetched.append(tk))
-
-    def spy_refresh(tk, priority=False):
-        calls.append(tk)
-        return real_refresh(tk, priority=priority)
-    monkeypatch.setattr(server, "_terrain_refresh_one", spy_refresh)
-
-    viewed_tk = server.ticker_storage_key("$SPX")
+    monkeypatch.setattr(server, "_load_stored_levels", lambda: 0)
+    monkeypatch.setattr(server, "_publish_missing_price_levels", lambda tks: None)
+    fetched = _fetches_recorded(monkeypatch)
+    board_tk, viewed_tk = server.ticker_storage_key("SPY"), server.ticker_storage_key("$SPX")
     with server._logger_lock:
         prev_logger_tickers = list(server._logger_tickers)
-        server._logger_tickers[:] = [server.ticker_storage_key("SPY")]
+        server._logger_tickers[:] = [board_tk]
     view(viewed_tk)
     server._terrain_loop_running = True
     th = threading.Thread(target=server._terrain_loop, daemon=True)
     th.start()
     try:
-        time.sleep(1.0)                       # several 0.2 s cycles
+        _wait_for(fetched, {board_tk, viewed_tk})
     finally:
         server._terrain_loop_running = False
         th.join(timeout=5.0)
         with server._logger_lock:
             server._logger_tickers[:] = prev_logger_tickers
-    assert calls == [], "the loop refreshed a ticker while the market was closed"
-    # a direct request (the /api/terrain cold miss) is refused before any vendor call
-    assert real_refresh(viewed_tk, priority=True) == "skip:market_closed"
-    assert fetched == []
+    assert {board_tk, viewed_tk} <= set(fetched), f"chains fetched: {fetched}"
+
+
+def test_a_viewed_ticker_after_a_restart_is_fetched_on_its_first_tick(monkeypatch, pin_clock, view):
+    """After a restart the stored levels carry no chain; the viewed ticker's first streamed tick
+    fetches its chain at once (the priority path), pre-market as in session.
+    Stand-in: fetch_full_chain, Schwab's network."""
+    pin_clock(2026, 10, 1, 8, 8)
+    monkeypatch.setattr(server, "_is_loggable_session", _REAL_LOGGABLE)
+    _stub_terrain(monkeypatch, lambda contracts, books: {"expirations": [], "strikes": [], "cells": []})
+    fetched = _fetches_recorded(monkeypatch)
+    tk = server.ticker_storage_key("QQQ")
+    with server._terrain_cache_lock:
+        server._terrain_cache.pop(tk, None)
+    view(tk)
+    server._on_stream_tick(tk)
+    _wait_for(fetched, {tk})
+    assert tk in fetched
 
 
 def test_a_stream_observation_after_the_chain_fetch_is_admitted(monkeypatch, view):

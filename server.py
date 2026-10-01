@@ -2209,7 +2209,7 @@ def _on_stream_tick(sym: str) -> None:
     option quote carrying greeks, open interest or volume. Queues a reprice of the symbol's
     ticker when someone is viewing it, and returns at once."""
     tk = _tick_ticker(sym)
-    if not tk or not _gamma_surface_wanted(tk) or not _is_loggable_session():
+    if not tk or not _gamma_surface_wanted(tk):
         return
     with _reprice_guard:
         _reprice_dirty.add(tk)
@@ -2258,11 +2258,6 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
     # (RC-147) was necessary and not sufficient: a control that reports the burn while the burn
     # continues has not fixed anything. A `priority` request (an operator is on the endpoint,
     # waiting) still honours the hold — the answer would be the same HTTP 400, just slower.
-    if not _is_loggable_session():
-        # market closed: the newest chain capture is priced, not a download (weekend chains
-        # blank open interest -- measured 2026-09-26: every $SPX contract, 18% of SPY's OI)
-        _price_stored_chain_when_closed(tk)
-        return "skip:market_closed"
     if _terrain_quarantine_blocks(tk):
         return "skip:quarantined"
     try:
@@ -2329,20 +2324,6 @@ def _feed_record_state() -> str:
             else f"FEED RECORD STALE: last written {age / 60:.0f} min ago")
 
 
-def _next_refresh_ct() -> str:
-    """The next market day's refresh window, in Central time."""
-    day = now_et().date()
-    for _ in range(15):
-        if _refresh_window_et(day.isoformat()) is not None:
-            et = now_et()
-            win = _refresh_window_et(day.isoformat())
-            if day > et.date() or et.hour * 60 + et.minute <= win[1]:
-                label = "today" if day == et.date() else day.strftime("%a %m/%d")
-                return f"{label} {_refresh_window_ct(day.isoformat())}"
-        day += timedelta(days=1)
-    return "(no market day within 15 days)"
-
-
 def _status_line() -> str:
     """One line for the console window: is each part working right now, from its own check."""
     st = lmp.daemon_status()
@@ -2360,10 +2341,9 @@ def _status_line() -> str:
         f"live prices: {priced} of {len(board)} board tickers",
         f"levels: {len(as_of)} tickers, newest as of {newest}",
         _feed_record_state(),
-        (("chain refresh: last sweep of the board took "
-          f"{_terrain_last_cycle_sec:.0f} s" if _terrain_last_cycle_sec
-          else "chain refresh: first sweep running") if _is_loggable_session()
-         else "chain refresh next " + _next_refresh_ct()),
+        ("chain refresh: last sweep of the board took "
+         f"{_terrain_last_cycle_sec:.0f} s" if _terrain_last_cycle_sec
+         else "chain refresh: first sweep running"),
     ])
 
 
@@ -2380,11 +2360,8 @@ def _terrain_loop() -> None:
     loaded = _load_stored_levels()
     with _logger_lock:
         board = len(_logger_tickers)
-    log.info("Ready: levels for %d of %d board tickers loaded (session: %s). %s", loaded, board,
-             session_label(now_et()),
-             "Levels refresh every 5 s." if _is_loggable_session() else
-             "Levels refresh (a full-chain sweep of the board, 1-2 min each) "
-             + _next_refresh_ct() + ".")
+    log.info("Ready: levels for %d of %d board tickers loaded (session: %s). Refreshing the "
+             "board's chains now.", loaded, board, session_label(now_et()))
     _terrain_cycle_n = 0        # RC-161: drives the morning rotation; monotonic per loop
     next_status = time.monotonic() + STATUS_EVERY_SEC   # the ready line covers the start
     while _terrain_loop_running:
@@ -2423,56 +2400,27 @@ def _terrain_loop() -> None:
         # of every cycle so a pause that has ended cannot keep telling the operator to wait —
         # the branch below re-records it while, and only while, it still applies.
         _clear_terrain_skips()
-        # Operator-reproduced defect (2026-09-14, "the collection schedule must not block live
-        # viewing"): this whole cycle used to be gated on _is_loggable_session() -- the
-        # ARCHIVAL LOGGER's own RTH-only writing policy (RTH_ONLY, "only log during RTH + 30min
-        # pre/post buffer") -- so a ticker someone had open and was actively looking at got NO
-        # live refresh attempt at all outside that window, not even a try. "should the durable
-        # log be written" and "should an operator who is looking at this ticker right now see
-        # whatever is currently fetchable" are different questions; this loop answered both with
-        # the same switch. The enrolled board's full sweep stays RTH-gated (unchanged -- nobody
-        # is necessarily watching all 58 of them, and the morning-contention throttle below is
-        # itself an RTH-only concept), but active viewing demand now always gets a live attempt,
-        # whether the archival logger is in its window or not.
-        if _is_loggable_session():
-            # During the morning wide-chain window (09:30-10:00 ET) SPY/QQQ/IWM already
-            # take 100-strike gated fetches on the money path. Do not pile a full-universe
-            # terrain sweep on top of that — refresh sentinels only until the window ends.
-            # No try/except: the imports are module-level, so this path cannot fail at
-            # runtime — a missing module stops the server at boot instead.
-            _mins = et_minute_total_from_ts_utc(time.time())
-            _terrain_cycle_n += 1
-            # every viewed ticker (on the board or not) refreshes every cycle; the rest of the
-            # board rotates inside the contention window
-            tickers, _dropped = terrain_cycle_tickers(list(tickers) + _previewed, _mins,
-                                                      _terrain_cycle_n, viewed=_viewed_now)
-            if _dropped:
-                # RC-146: SAY SO. This pause is deliberate and budget-justified, but it was a
-                # silent list filter — nothing anywhere recorded that these tickers were skipped
-                # on purpose. MEASURED 2026-07-30 09:43 ET: MSFT's per-strike panel served a
-                # chain read at 09:29:52 (8 s before the bell, so session volume was 0 on all 44
-                # strikes) under the message "no option volume yet this session", while
-                # terrain_staleness could only offer "inside its window but not producing" — a
-                # correct scheduler reported as a malfunction, and a pre-open corpse reported as
-                # a market fact. The producer knows why it skipped; now the reader can ask.
-                # RC-161: the wording follows the mechanism. This is no longer an exclusion for
-                # the whole window — the ticker is DEFERRED to a later cycle inside it, and will
-                # be refreshed within the accrual cadence rather than held until 10:00.
-                _note_terrain_skip(
-                    _dropped,
-                    f"deferred to a later cycle inside the "
-                    f"{TERRAIN_CONTENTION_START_MINS // 60:02d}:"
-                    f"{TERRAIN_CONTENTION_START_MINS % 60:02d}-"
-                    f"{TERRAIN_CONTENTION_END_MINS // 60:02d}:"
-                    f"{TERRAIN_CONTENTION_END_MINS % 60:02d} ET window, while the morning "
-                    f"wide-chain capture holds the chain slots — the enrolled board rotates at "
-                    f"the rotation cadence ({CONTENTION_ROTATION_SEC:.0f}s) instead of "
-                    f"being held out, so this ticker still accrues inside the window",
-                )
-            with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
-                list(pool.map(_terrain_refresh_one, tickers))
-        else:
-            tickers = []
+        # every board and viewed ticker, every cycle, at any hour
+        _mins = et_minute_total_from_ts_utc(time.time())
+        _terrain_cycle_n += 1
+        # every viewed ticker (on the board or not) refreshes every cycle; the rest of the
+        # board rotates inside the contention window
+        tickers, _dropped = terrain_cycle_tickers(list(tickers) + _previewed, _mins,
+                                                  _terrain_cycle_n, viewed=_viewed_now)
+        if _dropped:
+            _note_terrain_skip(
+                _dropped,
+                f"deferred to a later cycle inside the "
+                f"{TERRAIN_CONTENTION_START_MINS // 60:02d}:"
+                f"{TERRAIN_CONTENTION_START_MINS % 60:02d}-"
+                f"{TERRAIN_CONTENTION_END_MINS // 60:02d}:"
+                f"{TERRAIN_CONTENTION_END_MINS % 60:02d} ET window, while the morning "
+                f"wide-chain capture holds the chain slots — the enrolled board rotates at "
+                f"the rotation cadence ({CONTENTION_ROTATION_SEC:.0f}s) instead of "
+                f"being held out, so this ticker still accrues inside the window",
+            )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
+            list(pool.map(_terrain_refresh_one, tickers))
         elapsed = time.monotonic() - cycle_start
         # RC-165: publish the DELIVERED cycle so freshness is judged against reality, not the
         # sleep floor. This number was already computed and only logged; readers had no access
@@ -2498,24 +2446,6 @@ def _load_stored_levels() -> int:
         if caps and _publish_levels(tk, captures=caps) is not None:
             n += 1
     return n
-
-
-NO_CAPTURE_REASON = "market closed; no chain capture of this ticker yet"
-
-
-def _price_stored_chain_when_closed(tk: str) -> None:
-    """A viewed ticker keeps its chain and its heatmap. While the market is closed nothing
-    downloads a chain, so the first view prices the ticker's newest chain capture with the chain
-    kept -- the same capture the startup load priced (DATA_FLOW decision 7), not a second
-    source. The startup load keeps no chains: nobody is viewing anything then. The same rule for
-    every ticker, on the board or not: a ticker with no capture has that as its levels' reason."""
-    if _is_loggable_session() or (terrain_cache_get(tk) or {}).get("_chain"):
-        return
-    caps = last_capture_per_day(get_db().db_path, tk, 2)
-    if caps:
-        _publish_levels(tk, captures=caps)
-    elif terrain_cache_get(tk) is None:
-        _terrain_refresh_last_error[tk] = NO_CAPTURE_REASON
 
 
 def start_terrain_loop() -> None:
@@ -3193,7 +3123,6 @@ def get_options_gamma_surface(ticker: str = Query(...)):
     Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale visibly."""
 
     tk = ticker_storage_key(_required_ticker(ticker))
-    _price_stored_chain_when_closed(tk)
 
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
     live = terrain_cache_get(tk)
@@ -3707,7 +3636,6 @@ def get_chain(ticker: str = Query(...),
     open. Answers `status: unavailable` with a reason when no
     chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
-    _price_stored_chain_when_closed(t)
     held = terrain_cache_get(t) or {}
     resolved_expiry = (expiry or "").strip()[:10] or (held.get("expiries") or [None])[0]
 

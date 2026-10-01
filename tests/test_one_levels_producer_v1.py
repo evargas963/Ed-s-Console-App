@@ -461,15 +461,6 @@ def test_while_closed_the_levels_are_the_last_sessions_labeled_with_their_time(m
     assert st["levels_refresh_active"] is False and st["levels_failing"] is False
 
 
-def test_a_tick_while_closed_reprices_nothing(monkeypatch):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
-    calls = _count_publishes(monkeypatch)
-    _put_chain()
-    server._on_stream_tick("CRWD")
-    time.sleep(0.05)
-    assert calls == []
-
-
 def test_a_reprice_on_a_kept_chain_keeps_the_chains_time(monkeypatch):
     """Levels are as of the chain they come from: repricing a kept chain on a tick must not make
     them newer, or a chain that stops arriving would never show as stale."""

@@ -43,7 +43,6 @@ def held(monkeypatch):
                     "_chain": _CONTRACTS, "_chain_fetched_ts": time.time(), "_gamma_surface": surface})
     monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (LIVE, "live_quote", time.time()))
-    monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk: None)
     monkeypatch.setattr(server, "last_capture_per_day", lambda *a, **k: [])
     monkeypatch.setattr(server, "_gamma_surface_contracts_with_stream_overlay",
                         lambda t, cts, newer_than_ts=None: (cts, 0, None))
@@ -243,7 +242,6 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_is(mon
     payload = {"_chain": cts, "_chain_fetched_ts": time.time(), "computed_ts_utc": time.time()}
     monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (fx["spot"], "live_quote", time.time()))
-    monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk: None)
     monkeypatch.setattr(server, "_gamma_surface_contracts_with_stream_overlay",
                         lambda t, c, newer_than_ts=None: (c, 0, None))
     body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
