@@ -69,7 +69,10 @@ def test_no_overnight_level_is_built_from_the_minutes_around_the_close():
     snap = build_price_level_snapshot("SPY", TUESDAY, _bars_to_list(BARS), bar_source="price_bars_1m",
                                       prior_day=None, prior_day_absent_reason=NO_DAILY)
     assert not [lid for lid in snap.levels if "OVERNIGHT" in lid]
-    assert {"family": "overnight", "reason": lve.OVERNIGHT_ABSENT_REASON} in snap.families_absent
+    # its times in Central Time, as the screen shows every time (it printed "09:15 ET")
+    assert {"family": "overnight", "reason": (
+        "the stored 1-minute bars start at the session's first collected minute (Tue 09/29 08:15 AM CT) and end "
+        "15 minutes after the close; the overnight session is not stored")} in snap.families_absent
 
 
 def test_the_vwap_curve_is_stamped_with_its_chart_bars_own_time(monkeypatch, pin_clock):

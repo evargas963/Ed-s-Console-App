@@ -57,35 +57,6 @@ def test_the_feed_hands_each_streamed_bar_to_the_writer():
     assert ofs.streamed_bars.get_nowait()["bar_start_ms"] == int(T0 * 1000)
 
 
-def test_one_bad_minute_fails_alone_and_is_named(monkeypatch):
-    """A database error on one minute failed its whole (symbol, backfill, source) group: a held
-    day of hundreds of minutes went unwritten until the next reconnect. The group is written minute
-    by minute when its write fails, so only the bad minute fails, and its levels' reason names it.
-    Five real SPY minutes of 2026-09-25 as the daemon's held day; the store refusing the third, a
-    stand-in."""
-    import sqlite3
-
-    real = json.loads(FIXTURE.read_text(encoding="utf-8"))["bars"][200:205]
-    bad = real[2]["timestamp"] / 1000.0
-    db = server.get_db()
-
-    class _Store:
-        def upsert_1m_bars(self, symbol, candles, **kw):
-            if any(c.ts == bad for c in candles):
-                raise sqlite3.OperationalError("disk I/O error")
-            return db.upsert_1m_bars(symbol, candles, **kw)
-    monkeypatch.setattr(server, "get_db", lambda: _Store())
-    monkeypatch.setattr(server, "_store_problems", {})
-    monkeypatch.setattr(server, "_publish_price_levels", lambda tk: None)
-    held = [dict(_bar(b["timestamp"] / 1000.0, o=b["open"], h=b["high"], lo=b["low"], c=b["close"], v=b["volume"]),
-                 backfill=True) for b in real]
-    server._write_streamed_bars(held)
-    monkeypatch.setattr(server, "get_db", lambda: db)
-    assert [b.ts for b in server._bars_1m(TK)] == [b["timestamp"] / 1000.0 for b in real if b["timestamp"] / 1000.0 != bad]
-    assert server._store_problems == {TK: f"the bar of {ct_label(bad)} was not written to the store: "
-                                          f"OperationalError: disk I/O error"}
-
-
 def test_a_stored_stream_bar_survives_the_held_day_backfill_unchanged():
     """A console's reconnect backfills its store from the daemon's held day (barheld): a minute
     the store already holds as streamed is never overwritten, even where the daemon's minute

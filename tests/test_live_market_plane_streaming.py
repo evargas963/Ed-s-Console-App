@@ -171,13 +171,15 @@ def test_a_value_that_is_not_a_number_clears_the_field():
         row = lmp.get_quote("CLR")
         assert row["bid"] is None and row["ask"] == 10.1, bad
 
-def test_a_new_session_shows_nothing_from_the_last_until_schwab_sends_it():
-    """The daemon runs for days: at 04:00 ET yesterday's last price, change, volume and range
-    read LIVE (measured: PCG 12.14 from 19:56 ET, +1.59%, 46,270,430 shares, 'live' at 04:00:05)
-    until Schwab sent each field again. Real PCG messages, 2026-09-29 19:55 ET to 2026-09-30
-    04:01 ET, including Schwab's overnight snapshots and day roll. Stand-in (named): the daemon's
-    heartbeat, live and holding PCG at each instant judged. Ported from the parked branch
-    fix/session-boundary-freshness (W-01), its day fields now read from the row's `day`."""
+def test_a_new_session_shows_the_last_ones_values_labeled_until_schwab_sends_new_ones():
+    """The daemon runs for days: at 04:00 ET yesterday's last price read LIVE (measured: PCG 12.14
+    from 19:56 ET, 'live' at 04:00:05). What Schwab sent is shown, whatever the hour, labeled with
+    its time and session, never as the current session's (operator 2026-10-01: "we use what
+    schwab gives us and we display it, regardless of the time. if we have it we display it"):
+    yesterday's last trade as yesterday's, the bid and ask and the prior close Schwab sent
+    overnight as sent. Real PCG messages, 2026-09-29 19:55 ET to 2026-09-30 04:01 ET, including
+    Schwab's overnight snapshots and day roll. Stand-in (named): the daemon's heartbeat, live and
+    holding PCG at each instant judged."""
     import json
     from datetime import datetime
 
@@ -200,24 +202,38 @@ def test_a_new_session_shows_nothing_from_the_last_until_schwab_sends_it():
     evening = at(19, 59, 0, 29)
     assert (evening["spot"], evening["spot_state"], evening["chg_pct"]) == (12.14, "live", 1.589958)
     first = at(4, 0, 5, 30)            # a new session: Schwab has sent a bid and ask, no trade yet
+    # no live price: yesterday's last trade is shown as yesterday's, with its time and session
     assert (first["spot"], first["spot_state"]) == (None, "unavailable")
-    assert all(first[k] is None for k in ("chg_pct", "prior_close", "bid", "ask"))
-    assert first["day"]["bar"] is None and first["day"]["volume"] is None
+    assert first["closed_last"] == {"price": 12.14, "spot_disp": "12.14", "as_of": "Tue 09/29 06:56 PM CT",
+                                    "session": "post-market Tue 09/29/2026"}
+    # the bid and ask Schwab sent in this session, with their quote time (they stayed blank until the
+    # first trade: PCG 12.16 / 12.21 at 04:00:00), live for the computations
+    assert (first["bid"], first["ask"], first["ask_size"], first["quote_live"]) == (12.16, 12.21, 4100.0, True)
+    assert first["quote_as_of"] == "Wed 09/30 03:00:00 AM CT"
+    # the prior close as Schwab sent it overnight (12.18 at 01:30 ET, adjusted to 12.13 at 03:45 ET)
+    assert (first["prior_close"], first["prior_close_as_of"]) == (12.13, "Wed 09/30 02:45 AM CT")
+    # the day fields are the last trade's session's: Tuesday's, with Schwab's own overnight 0s
+    assert (first["day"]["label"], first["day"]["bar"], first["day"]["volume"]) == ("Tue 09/29/2026", None, 0.0)
     traded = at(4, 0, 10, 30)          # its first trade
     assert (traded["spot"], traded["spot_state"], traded["chg_pct"], traded["day"]["volume"]) == (
         12.18, "live", 0.412201, 3.0)
-    # sent overnight or yesterday, not again this session: unknown, never yesterday's
-    assert traded["day"]["bar"] is None and traded["prior_close"] is None
+    assert traded["closed_last"] is None and traded["day"]["label"] == "Wed 09/30/2026"
+    # Schwab's own change of the first trade is against that prior close: 12.18 - 12.13 = NET_CHANGE 0.05
+    assert traded["prior_close"] == 12.13 and traded["net_change"] == 0.05
 
 
 def test_record_from_level_one_rejects_mark_as_current_spot():
+    """A quote with no trade publishes its row (its bid and ask are the session's quote; 2026-10-01:
+    they stayed blank until the first trade), but MARK never stands in for the spot."""
     ok = _rec(
         "MARKONLY",
         {"key": "MARKONLY", "MARK": 20.95, "BID_PRICE": 20.9, "ASK_PRICE": 21.1},
     )
 
-    assert ok is False
-    assert lmp.get_quote("MARKONLY") is None
+    assert ok is True
+    row = lmp.get_quote("MARKONLY")
+    assert row["spot"] is None and row["quote_source_detail"]["spot"] is None and row["spot_received_ts"] is None
+    assert (row["bid"], row["ask"], row["mark"]) == (20.9, 21.1, 20.95)
 
 
 def test_record_from_level_one_rejects_midpoint_spot_fabrication():
@@ -226,8 +242,9 @@ def test_record_from_level_one_rejects_midpoint_spot_fabrication():
         {"key": "MIDONLY", "BID_PRICE": 30.0, "ASK_PRICE": 30.2},
     )
 
-    assert ok is False
-    assert lmp.get_quote("MIDONLY") is None
+    assert ok is True
+    row = lmp.get_quote("MIDONLY")
+    assert row["spot"] is None and (row["bid"], row["ask"]) == (30.0, 30.2)       # no midpoint spot
 
 
 def test_a_resent_identical_last_price_refreshes_its_age():
@@ -273,8 +290,9 @@ def test_last_price_is_carried_forward_only_from_a_streamed_row():
             "ticker": "RESTROW", "spot": 50.0, "quote_ingestion": "rest_fast_quote",
             "quote_source_detail": {"spot": "LAST_PRICE"},
         }
-    assert _rec("RESTROW", {"key": "RESTROW", "BID_PRICE": 49.9}) is False
-    assert lmp.get_quote("RESTROW")["quote_ingestion"] == "rest_fast_quote"   # untouched
+    assert _rec("RESTROW", {"key": "RESTROW", "BID_PRICE": 49.9}) is True
+    rest = lmp.get_quote("RESTROW")                     # the stream's row: the REST spot never carried
+    assert rest["spot"] is None and rest["bid"] == 49.9 and rest["quote_ingestion"] == "schwab_streaming_level_one"
     _rec("STREAMROW", {"key": "STREAMROW", "LAST_PRICE": 50.0})
     assert _rec("STREAMROW", {"key": "STREAMROW", "BID_PRICE": 49.9}) is True
     row = lmp.get_quote("STREAMROW")

@@ -35,10 +35,7 @@ from liquidity_models import (
     ZoneType,
     volume_profile,
 )
-
-log = logging.getLogger(__name__)
-
-from live_price_rows import minutes_digest
+from live_price_rows import minutes_digest, session_first_minute
 from time_et import (
     ET,
     RTH_OPEN_MINS,
@@ -46,6 +43,8 @@ from time_et import (
     session_close_mins_for_et_date,
     trading_date_label,
 )
+
+log = logging.getLogger(__name__)
 
 #: the producer of the prior day's high and low (PDH / PDL)
 PRIOR_DAY_SOURCE = "Schwab daily price history (get_price_history_every_day), via the capture daemon"
@@ -85,11 +84,14 @@ LEVEL_NAMES = {
     "ORB_MID": ("Opening range mid", "ORM"),
 }
 
-#: why no overnight level is served: price_bars_1m holds only the collect window's bars
-#: (time_et.is_collect_window_bar_end_ts_utc), at most 30 minutes of the prior close -> open
-#: interval, which is not that interval's range
-OVERNIGHT_ABSENT_REASON = ("the stored 1-minute bars cover 09:15 ET to 15 minutes after the close; "
-                           "the overnight session is not stored")
+def overnight_absent_reason(session_date: date) -> str:
+    """Why no overnight level is served: price_bars_1m holds only the collect window's bars
+    (time_et.is_collect_window_bar_end_ts_utc), at most 30 minutes of the prior close -> open
+    interval, which is not that interval's range. Its first minute in Central Time (ct_label)."""
+    day = datetime(session_date.year, session_date.month, session_date.day, tzinfo=ET).timestamp()
+    return (f"the stored 1-minute bars start at the session's first collected minute "
+            f"({ct_label(session_first_minute(day))}) and end 15 minutes after the close; the overnight "
+            f"session is not stored")
 
 
 def _resolve_bar_timestamp(d: dict) -> Optional[Any]:
@@ -624,7 +626,7 @@ def build_price_level_snapshot(
                 f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; prior-day levels derive from a partial tape")})
 
     sess_window = f"{session_date.isoformat()} RTH (canonical snapshot over {bar_source})"
-    families_absent.append({"family": "overnight", "reason": OVERNIGHT_ABSENT_REASON})
+    families_absent.append({"family": "overnight", "reason": overnight_absent_reason(session_date)})
 
     if not bars_norm:
         for fam in ("vwap", "opening_range", "value_area"):

@@ -442,12 +442,13 @@
       // the daily candle carries; absent: the served reason
       var dayV = q && q.day;
       c.querySelector('.tdm-hero').innerHTML = !dayV ? '' : dayV.volume != null
-        ? esc(dayV.volume_text) + ' <small>shares, Schwab TOTAL_VOLUME</small>'
-        : '<small>' + esc((dayV.absent || {}).v || '') + '</small>';
+        ? esc(dayV.volume_text) + ' <small>shares, Schwab TOTAL_VOLUME · ' + esc(dayV.label) + '</small>'   // its trading date
+        : '<small>' + esc((dayV.absent || {}).v || (dayV.absent || {}).day || '') + '</small>';
       src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : liveQ ? 'last trade ' + age(q.trade_age_sec) + ' ago'
-        : (q.closed_last ? 'last trade ' + esc(q.closed_last.as_of) : String(q.spot_state || 'unavailable'))));
+        : (q.closed_last ? 'last trade ' + esc(q.closed_last.as_of) + ' · ' + esc(q.closed_last.session)
+          : String(q.unavailable_reason || q.spot_state || 'unavailable'))));
       c.querySelector('.tdm-rows').innerHTML =
-        row('Last trade size', liveQ && q.last_size != null ? fmtVol(q.last_size) : '—') +
+        row('Last trade size', q && q.last_size != null ? fmtVol(q.last_size) : '—') +
         row('Top of book', tob && tob.bid_size != null ? fmtVol(tob.bid_size) + ' × ' + fmtVol(tob.ask_size) : '—') +
         row('Crosses (' + esc(windowLabel()) + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '—');
     }

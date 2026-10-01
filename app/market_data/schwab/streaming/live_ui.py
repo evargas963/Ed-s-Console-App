@@ -115,10 +115,12 @@ class _Day:
     trade): the stream's span (LiveUiServer.streaming) and every price-history reply's (the
     request's start through the reply's newest completed minute). `asking`: a request for the
     uncovered spans is out, `asked_at` when the last one started; `problem`: why the last request
-    failed."""
+    failed; `digest`: the held minutes' set (live_price_rows.minutes_digest), kept as they are
+    held."""
     start: float
     minutes: dict[float, dict] = field(default_factory=dict)
     source: dict[float, str] = field(default_factory=dict)
+    digest: str = field(default_factory=lambda: live_price_rows.minutes_digest(()))
     covered: "list[tuple[float, float]]" = field(default_factory=list)
     asking: bool = False
     asked_at: float = float("-inf")
@@ -355,6 +357,8 @@ class LiveUiServer:
                         self.stats["bar_source_mismatches"])
         if prev is None or src == SRC_STREAM or prev_src == SRC_PRICEHISTORY:
             day.minutes[bar["t"]], day.source[bar["t"]] = bar, src
+        if prev is None:                               # a new minute: the set changed
+            day.digest = live_price_rows.minutes_digest(day.minutes)
 
     async def held_minutes(self) -> "list[tuple[str, dict]]":
         """Every symbol's held minutes of the day (barheld.SYM, stream_spine.held_minutes_msg),
@@ -449,7 +453,7 @@ class LiveUiServer:
                 reason = f"{reason} ({day.problem})"
             self.bus.publish(f"barstate.{sym}", bar_state_msg(
                 symbol=sym, coverage=state, coverage_reason=reason, minutes=len(day.minutes),
-                newest=max(day.minutes, default=None), digest=live_price_rows.minutes_digest(day.minutes), ts=now))
+                newest=max(day.minutes, default=None), digest=day.digest, ts=now))
 
     @staticmethod
     def bars_gap(since: float, now: float) -> dict:

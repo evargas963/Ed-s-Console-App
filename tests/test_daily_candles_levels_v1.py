@@ -65,6 +65,18 @@ def test_the_prior_days_high_and_low_are_schwabs_candle_of_the_previous_session(
     assert (levels["PDH"]["price"], levels["PDL"]["price"]) == (RAW[-1]["high"], RAW[-1]["low"]) == (772.47, 768.1)
 
 
+@pytest.mark.parametrize("when, prior", [((2026, 8, 17, 10, 0), (778.8, 775.4301)),     # Monday: Friday 08-14
+                                         ((2026, 7, 6, 10, 0), (751.31, 740.03))])     # after the 07-03 holiday
+def test_after_a_weekend_or_a_market_holiday_the_prior_day_is_the_last_session(console, when, prior):
+    """The previous trading session skips weekends and market holidays: on Monday 2026-08-17 it
+    is Friday 08-14, and on Monday 2026-07-06 it is Thursday 07-02 (07-03, Independence Day
+    observed, the market closed). Taking the previous calendar day read those days' history as
+    short and left the prior day's high and low absent (the sixth review's M8 survived)."""
+    levels, absent = console(*when)
+    assert (levels["PDH"]["price"], levels["PDL"]["price"]) == prior
+    assert not [a for a in absent if a["family"] == "prior_day_range"]
+
+
 def test_the_daily_atr_is_the_average_true_range_of_schwabs_last_15_candles(console):
     """The daily ATR leg is the simple average of the last 14 true ranges of Schwab's daily
     candles before today (each the greatest of high - low and the distances of the high and the

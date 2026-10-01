@@ -802,26 +802,21 @@ _store_problems: "dict[str, str]" = {}
 def _write_streamed_bars(msgs: list) -> None:
     """Write forwarded bars, one write per (symbol, backfill, source) group (_bar_groups: the
     daemon's held day after a reconnect is hundreds of minutes per symbol); a group whose write
-    fails is written minute by minute, so only a bad minute fails, logged and kept as its
-    ticker's levels' reason. Then build the price levels of each ticker written, and of each whose
-    daily candles arrived (`levels_input`, streaming's ingest of bardays): every bar is written
-    before any level is built (a minute's bars for the whole board arrive together)."""
+    fails is logged and kept as its ticker's levels' reason. Then build the price levels of each
+    ticker written, and of each whose daily candles arrived (`levels_input`, streaming's ingest of
+    bardays): every bar is written before any level is built (a minute's bars for the whole board
+    arrive together)."""
     rebuild = [m["symbol"] for m in msgs if m.get("levels_input")]
     for (sym, backfill, source), candles in _bar_groups([m for m in msgs if not m.get("levels_input")]).items():
         rebuild.append(sym)
         try:
             get_db().upsert_1m_bars(sym, candles, backfill=backfill, source=source)
-            continue
-        except Exception as e:  # noqa: BLE001 -- logged; the group is written minute by minute
-            log.warning("bars for %s not written together (%s: %s): writing them one by one", sym,
-                        type(e).__name__, e)
-        for c in candles:
-            try:
-                get_db().upsert_1m_bars(sym, [c], backfill=backfill, source=source)
-            except Exception as e:  # noqa: BLE001 -- logged and kept as the levels' reason; the next minute is still written
-                log.warning("the bar of %s for %s not written: %s", ct_label(c.ts), sym, e)
-                _store_problems[ticker_storage_key(sym)] = (
-                    f"the bar of {ct_label(c.ts)} was not written to the store: {type(e).__name__}: {e}")
+        except Exception as e:  # noqa: BLE001 -- logged and kept as the levels' reason; the next group is still written
+            log.warning("bars for %s not written: %s", sym, e)
+            span = ct_label(candles[0].ts) + ("" if len(candles) == 1 else f" – {ct_label(candles[-1].ts)}")
+            _store_problems[ticker_storage_key(sym)] = (
+                f"the {'bar' if len(candles) == 1 else 'bars'} of {span} "
+                f"{'was' if len(candles) == 1 else 'were'} not written to the store: {type(e).__name__}: {e}")
     for tk in dict.fromkeys(rebuild):
         _publish_price_levels(tk)
 
@@ -2769,14 +2764,14 @@ def get_bars1m(ticker: str = Query(...),
     if tf == "D":
         days = bar_days(tk)
         row = price_row(tk)
-        # today's candle, or why there is none: the price row's day (live_price_rows.day_candle)
-        now = time.time()
-        d = datetime.fromtimestamp(now, ET).date()
+        # the newest day's candle from Schwab's day fields, at its own trading date, or why there
+        # is none: the price row's day (live_price_rows.day_candle)
         body["today"] = (row or {}).get("day") or {
-            "t": datetime(d.year, d.month, d.day, tzinfo=ET).timestamp(), "bar": None,
-            "unavailable": "No daily candle today: the capture daemon has sent no price row for this symbol"}
+            "t": None, "label": None, "bar": None,
+            "unavailable": "No daily candle: the capture daemon has sent no price row for this symbol"}
         today = body["today"]["bar"]
-        out = list((days or {}).get("candles") or []) + ([today] if today else [])
+        out = [c for c in (days or {}).get("candles") or [] if today is None or c["t"] != today["t"]] + (
+            [today] if today else [])
         # why the daily history is missing or not whole (the daemon's: a failed request, or its
         # newest candle not yet the previous trading session's)
         body["days_absent_reason"] = ((days or {}).get("problem") or
@@ -3546,13 +3541,16 @@ def api_order_flow_microstructure(ticker: str = Query(...),
     t = ticker_storage_key(_required_ticker(ticker))
     from app.options.order_flow.state import get_content_for_symbol
     data: dict = {"content": get_content_for_symbol(t, venue)}
-    # top of book: the daemon's price row (its fields are None while the quote is not live)
+    # top of book: the daemon's price row while its quote is live (`quote_live`); the row shows
+    # Schwab's last quote at all times, labeled with its time, but the book's pressure is computed
+    # only from a live one
     from app.options.order_flow.streaming import price_row
     _row = price_row(t)
-    if _row and _row.get("quote_ts") is not None:
+    _live = bool(_row and _row.get("quote_live"))
+    if _live and _row.get("quote_ts") is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
-                   if _row and (_row.get("bid") is not None or _row.get("ask") is not None) else None)
+                   if _live and (_row.get("bid") is not None or _row.get("ask") is not None) else None)
     now = time.time()
     data["book_live"] = lmp.book_is_live(t, venue, now)
     from app.options.order_flow.engine import compute_book_microstructure
@@ -4101,14 +4099,19 @@ NO_PRICE_LEVELS_REASON = ("no price levels published for this ticker today yet (
                           "1-minute bars on each new bar and at the console's start)")
 
 PRIOR_CLOSE_SOURCE = "Schwab LEVELONE_EQUITIES CLOSE_PRICE (the daemon's price row)"
-PRIOR_CLOSE_ABSENT_REASON = "Schwab's prior close (CLOSE_PRICE) is not streaming live for this symbol now"
+#: why there is no prior close when the daemon has sent no price row for the symbol
+NO_PRICE_ROW_REASON = "the capture daemon has sent no price row for this symbol"
 
 
-def _prior_close(tk: str) -> "float | None":
-    """The ticker's prior close: Schwab's CLOSE_PRICE on the daemon's price row, which carries it
-    only while the symbol's quote is live. The one prior close every surface shows."""
+def _prior_close(tk: str) -> "tuple[float | None, str | None, str | None]":
+    """The ticker's prior close: Schwab's CLOSE_PRICE on the daemon's price row, as sent, with
+    when it was received (`prior_close_as_of`), or None with the row's reason
+    (`prior_close_absent`). The one prior close every surface shows."""
     from app.options.order_flow.streaming import price_row
-    return (price_row(tk) or {}).get("prior_close")
+    row = price_row(tk)
+    if row is None:
+        return None, NO_PRICE_ROW_REASON, None
+    return row.get("prior_close"), row.get("prior_close_absent"), row.get("prior_close_as_of")
 
 
 
@@ -4149,13 +4152,13 @@ def get_levels(ticker: str = Query(...),
         }
         levels.append(row)
     # the prior close, carried from the daemon's price row (Schwab's CLOSE_PRICE)
-    pdc = _prior_close(tk)
+    pdc, pdc_absent, pdc_as_of = _prior_close(tk)
     if pdc is not None:
         levels.append({"id": "PDC", "price": pdc, "family": "prior_day", "label": LEVEL_NAMES["PDC"][0],
                        "short": LEVEL_NAMES["PDC"][1], "evidence_tier": "price_fact",
                        "provenance": {"producer": PRIOR_CLOSE_SOURCE, "carried": True},
                        "staleness": {"as_of_ts_utc": None, "age_sec": None, "stale_after_sec": None,
-                                     "stale": None, "reason": "streamed; served only while its quote is live"}})
+                                     "stale": None, "reason": f"Schwab's CLOSE_PRICE as sent, received {pdc_as_of}"}})
     # the gamma family, carried from the terrain (terrain_engine.compute_terrain's own values)
     t = terrain_cache_get(tk, served_ts) or {}
     em = (t.get("implied_1d_move") or {}).get("points")
@@ -4196,7 +4199,7 @@ def get_levels(ticker: str = Query(...),
                        else [{"family": "price_levels", "reason": NO_PRICE_LEVELS_REASON}])
     vp = snap.volume_profile if snap is not None else None
     if pdc is None:
-        families_absent.append({"family": "PDC", "reason": PRIOR_CLOSE_ABSENT_REASON})
+        families_absent.append({"family": "PDC", "reason": pdc_absent})
     if em is None or spot is None:
         families_absent.append({"family": "expected_move", "reason": "no live price" if spot is None
                                 else "the terrain has no implied 1-day move"})
@@ -4303,13 +4306,13 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
     served_ts = time.time()
     spot = resolve_spot(tk)[0]
     terrain = terrain_cache_get(tk, served_ts) or {}
-    option_levels, pdc = _liquidity_option_levels(terrain), _prior_close(tk)
+    option_levels, (pdc, pdc_absent, _pdc_as_of) = _liquidity_option_levels(terrain), _prior_close(tk)
     absent = [a for a in (
         None if spot is not None else
         {"input": "live price", "reason": "no live price: a zone has no side and the price has no location"},
         None if option_levels else
         {"input": "option levels", "reason": "no option levels are published for this ticker yet"},
-        None if pdc is not None else {"input": "PDC", "reason": PRIOR_CLOSE_ABSENT_REASON}) if a]
+        None if pdc is not None else {"input": "PDC", "reason": pdc_absent}) if a]
     zones = [{"zone_type": z.zone_type.value,
               "zone_label": ZONE_DISPLAY[z.zone_type][0], "zone_side": ZONE_DISPLAY[z.zone_type][1],
               "zone_low": z.zone_low, "zone_high": z.zone_high, "zone_mid": z.zone_mid,

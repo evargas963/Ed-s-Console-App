@@ -747,23 +747,13 @@
         if (lastBarLabel !== undefined) S.lastBarLabel = lastBarLabel || null;
         paintLegend(); if (S.pinned) paintPin(); syncButtons(); scheduleLevels();
       },
-      // the daily chart's today, the price row's served `day`: its candle drawn when served,
-      // otherwise the candle at its time (day.t) removed and its served reason (day.unavailable)
-      // shown -- never a candle the server no longer serves
+      // the daily chart's newest day, the price row's served `day`: its candle drawn at its own
+      // trading date when served, and the served reason printed when Schwab's fields make none
+      // (a candle already drawn stays: it is that date's, operator 2026-10-01)
       setToday: function (day) {
-        if (day.bar) {
-          S.today = null;
-          api.pushBar(day.bar);
-          return;
-        }
         S.today = day.unavailable || null;
-        if (S.bars.some(function (b) { return b.t === day.t; })) {
-          S.bars = S.bars.filter(function (b) { return b.t !== day.t; });
-          candles.setData(S.bars.map(candle));
-          closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
-          api.setVolume(S.bars);
-        }
-        paintLegend(); if (S.pinned) paintPin(); syncButtons(); scheduleLevels();
+        if (day.bar) { api.pushBar(day.bar); return; }
+        paintLegend();
       },
       // the bars the chart holds, as served and pushed
       bars: function () { return S.bars.slice(); },

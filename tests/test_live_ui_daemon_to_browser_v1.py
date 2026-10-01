@@ -195,7 +195,10 @@ def test_a_closed_schwab_socket_reads_unavailable_within_one_beat():
         msg, row = await _next_row(ws, "SPY", lambda r: r["spot_state"] == "unavailable",
                                    timeout=1.0)
         assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
-        assert row["spot"] is None and row["feed_live"] is False and row["bid"] is None
+        # not live; Schwab's last trade is still shown, with its time (operator 2026-10-01: "if we
+        # have it we display it"), and the quote is not live for any computation
+        assert row["spot"] is None and row["feed_live"] is False and row["quote_live"] is False
+        assert row["closed_last"]["price"] == 583.41
     asyncio.run(_run(body))
 
 

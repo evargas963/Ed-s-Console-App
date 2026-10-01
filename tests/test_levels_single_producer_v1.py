@@ -46,9 +46,9 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     assert {"family": "prior_day_range", "reason": "Schwab's daily candles have not come from the capture daemon"} \
         in payload["families_absent"]
     # the prior close is Schwab's CLOSE_PRICE, never a bar's close (tests/test_zones_v1.py); no
-    # quote streams in this test, so it is absent with its reason
+    # quote streams in this test, so it is absent with its reason (no price row from the daemon)
     assert "PDC" not in by_id
-    assert {"family": "PDC", "reason": srv.PRIOR_CLOSE_ABSENT_REASON} in payload["families_absent"]
+    assert {"family": "PDC", "reason": srv.NO_PRICE_ROW_REASON} in payload["families_absent"]
     for lv in payload["levels"]:
         assert "as_of_ts_utc" in lv["staleness"] and "age_sec" in lv["staleness"]
         if lv["family"] == "prior_day":

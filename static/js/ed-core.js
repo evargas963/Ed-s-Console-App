@@ -742,7 +742,7 @@
   function setWlRow(sym, spot, chgPct, spotState, closedDisp) {
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
     if (pe) {
-      if (closedDisp) pe.textContent = closedDisp + ' CLOSED';
+      if (closedDisp) pe.textContent = closedDisp;
       else if (spotState === 'unavailable' || spot == null) pe.textContent = 'UNAVAILABLE';
       else pe.textContent = fmt(spot) + (spotState === 'stale' ? ' STALE' : '');
     }
@@ -863,25 +863,29 @@
     if (!q || !q.ticker) return;
     if (q.ticker === state.key) {
       var live = q.spot_state === 'live' && q.spot != null;
-      var closed = q.spot_state === 'closed' && q.closed_last;   // the last trade, labelled
+      // the last trade Schwab sent when it is not live, shown with its served time and session
+      // (operator 2026-10-01: "if we have it we display it")
+      var closed = !live && q.closed_last;
       // painted NOW, not on requestAnimationFrame: the browser slows or pauses rAF for a
       // window it considers covered (measured 2026-09-24: row in at 6 ms, rAF paint at 773 ms).
       // The daemon already conflates to the newest row per symbol, so there is no burst to
       // throttle -- a few text writes per second.
-      paintQuote({ spot_disp: closed ? q.closed_last.spot_disp + ' CLOSED' : q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
+      paintQuote({ spot_disp: closed ? q.closed_last.spot_disp + ' ' + q.closed_last.session : q.spot_disp, spot: q.spot,
+        bid: q.bid, ask: q.ask,
         chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
-        spotState: q.spot_state,
+        spotState: closed ? 'past' : q.spot_state,
         feedCls: live ? '' : 'stale',
-        feedLabel: live ? 'LIVE' : (q.spot_state === 'closed' ? 'MARKET CLOSED' : (q.feed_live ? 'NO TRADE YET' : 'UNAVAILABLE')),
+        feedLabel: live ? 'LIVE' : (q.spot_state === 'closed' ? 'MARKET CLOSED' : (q.feed_live ? 'NO TRADE YET' : 'NOT LIVE')),
         ageLabel: closed ? ('last trade ' + q.closed_last.as_of)
           : q.trade_age_sec != null ? ('last trade ' + Math.round(q.trade_age_sec) + 's')
           : (live ? 'live' : (q.feed_live ? 'feed live · no trade this session' : (q.unavailable_reason || 'no live feed'))) });
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
-      setWlRow(wlSym, q.spot_state === 'live' ? q.spot : null,
-        q.spot_state === 'live' ? q.chg_pct : null,
-        q.spot_state || 'unavailable', q.spot_state === 'closed' && q.closed_last ? q.closed_last.spot_disp : null);
+      // Schwab's change as sent, beside the live price or its last trade (with its session)
+      setWlRow(wlSym, q.spot_state === 'live' ? q.spot : null, q.chg_pct,
+        q.spot_state || 'unavailable',
+        q.spot_state !== 'live' && q.closed_last ? q.closed_last.spot_disp + ' ' + q.closed_last.session : null);
       markWlHealthy();
     });
     try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
