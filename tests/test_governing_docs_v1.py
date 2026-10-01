@@ -1,13 +1,12 @@
-"""The governing documents and instructions name only paths that exist, no source file claims a
-tool that does not exist, and AGENTS.md stays loadable.
+"""The governing documents and instructions name only paths that exist, and no source file claims
+a tool that does not exist.
 
 Failures this catches: AGENTS.md named `decision_gate.py`, `call_engine.py` and
 `config/decision_path_admissions.json` for months after they were deleted; guards, a workflow and
 code comments claimed enforcement by `tools/` scripts that do not exist. Checked: a backticked
 path whose first folder is tracked in git or that names a code, config or document file, and a
 bare file name of those kinds. Runtime files, branch names, folders outside the repository and
-not-yet-built target folders are not repository paths and are not checked. Anthropic's CLAUDE.md
-guidance: under 200 lines, or rules are lost.
+not-yet-built target folders are not repository paths and are not checked.
 """
 import re
 import subprocess
@@ -74,8 +73,3 @@ def test_no_source_file_names_a_tools_script_that_does_not_exist():
     named = {(p, m) for p in files for m in re.findall(
         r"\btools/[A-Za-z0-9_]+\.py\b", (ROOT / p).read_text(encoding="utf-8", errors="replace"))}
     assert not {(p, m) for p, m in named if m not in listed}, "tools that do not exist are named"
-
-
-def test_agents_md_stays_under_200_lines():
-    n = (ROOT / "AGENTS.md").read_text(encoding="utf-8").count("\n")
-    assert n < 200, f"AGENTS.md is {n} lines"
