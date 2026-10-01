@@ -544,7 +544,9 @@ def fetch_full_chain(client, ticker: str, get, quote, *,
 
     The chain's GREEK_FIELDS are replaced by the contract's quote's, as sent, asked for in
     batches of QUOTES_BATCH_MAX; a contract whose quote does not come back has none of them
-    (None), never the chain's rounded value."""
+    (None), never the chain's rounded value. A batch Schwab refuses fails the whole chain (its
+    status and reason), like a missing chain part: a book missing a batch of Greeks is not the
+    book, and no further batch is asked after a refusal."""
     resp = _whole_chain(client, ticker, get, expiry=expiry)
     if resp.status_code != 200:
         return resp
@@ -557,9 +559,9 @@ def fetch_full_chain(client, ticker: str, get, quote, *,
     for i in range(0, len(symbols), QUOTES_BATCH_MAX):
         reply = quote(symbols[i:i + QUOTES_BATCH_MAX])
         if reply.status_code != 200:
-            log.warning("quotes for %s: HTTP %s for %d contracts; their Greeks are absent",
-                        ticker, reply.status_code, len(symbols[i:i + QUOTES_BATCH_MAX]))
-            continue
+            return FullChainResponse(reply.status_code, reason=(
+                f"quotes for {len(symbols[i:i + QUOTES_BATCH_MAX])} of {len(symbols)} contracts "
+                f"returned HTTP {reply.status_code}"))
         quoted.update({s: e["quote"] for s, e in reply.json().items()
                        if isinstance(e, dict) and isinstance(e.get("quote"), dict)})
     for ct in contracts:
