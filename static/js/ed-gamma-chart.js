@@ -163,7 +163,8 @@
   // a completed Schwab minute, pushed by the daemon: the chart bar at this chart's timeframe
   window.addEventListener('ed:bar', function (ev) {
     var b = ev.detail;
-    if (!b || b.ticker !== st().key || !_chart || !_last.bars || !_last.bars.bars || _last.bars.tf !== _tf) return;
+    // a push carries a timeframe's bar only when it is that chart's newest (live_price_rows.bar_update)
+    if (!b || !b.tf[_tf] || b.ticker !== st().key || !_chart || !_last.bars || !_last.bars.bars || _last.bars.tf !== _tf) return;
     _chart.pushBar(b.tf[_tf], b.last_bar && b.last_bar.label);   // the chart library places it
     _last.bars = Object.assign({}, _last.bars, { bars: _chart.bars(), last_bar: b.last_bar });
     if (isChart()) render();

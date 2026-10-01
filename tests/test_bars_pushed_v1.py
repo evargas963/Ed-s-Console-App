@@ -118,10 +118,11 @@ def test_the_pushed_bar_is_the_routes_bar_at_every_timeframe(monkeypatch, tmp_pa
         assert last["last_bar"] == route["last_bar"]
     # the daily bar holds the minutes the daemon read from the store as well as its own
     assert last["tf"]["D"]["o"] == stored[0]["open"] and last["tf"]["D"]["t"] == stored[0]["timestamp"] / 1000.0
-    # the newest hour of 1-minute bars the push carries whole is the route's same hour (the Trade
-    # Desk's Order Flow card shows it as served; the page kept and cut its own window)
-    hour = json.loads(srv.get_bars1m(ticker="SPY", tf="1", limit=live_price_rows.RECENT_1M_BARS).body)["bars"]
-    assert last["recent_1m"] == hour and len(hour) == live_price_rows.RECENT_1M_BARS
+    # the newest hour of 1-minute bars the push carries whole is the hour the chart's history
+    # serves (the Trade Desk's Order Flow card shows each as served; its size exists once, on the
+    # server: the page asked for its own 60 and cut its own window)
+    history = json.loads(srv.get_bars1m(ticker="SPY", tf="30", limit=9000).body)
+    assert last["recent_1m"] == history["recent_1m"] and len(last["recent_1m"]) == live_price_rows.RECENT_1M_BARS
 
 
 def test_the_store_is_read_at_startup_only(monkeypatch, tmp_path):
@@ -225,7 +226,7 @@ def test_at_every_minute_of_a_real_day_the_push_is_the_roll_up_at_every_timefram
     day = [live_price_rows.minute_bar(_msg(b)) for b in FRIDAY]
     for k in range(len(day)):
         so_far = day[:k + 1]
-        update = live_price_rows.bar_update("SPY", so_far, so_far[-1], 0.0)
+        update = live_price_rows.bar_update("SPY", so_far, so_far[-1], 0.0, live_price_rows.newest_stamps(day[:k]))
         for tf in live_price_rows.CHART_TFS:
             assert update["tf"][tf] == live_price_rows.with_change(live_price_rows.aggregate_bars(so_far, tf)[-1]), (k, tf)
 
@@ -238,6 +239,48 @@ def test_a_bar_that_is_not_a_chart_bar_or_not_subscribed_is_never_pushed(tmp_pat
     got = _pushed(None, [_msg(ok), _msg(bad), _msg(early), _msg(FRIDAY[12], sym="QQQ")])
     assert [u["tf"]["1"]["t"] for u in got] == [ok["timestamp"] / 1000.0]
     assert live_price_rows.minute_bar(_msg(bad)) is None and live_price_rows.minute_bar(_msg(early)) is None
+
+
+def test_a_minute_schwab_sends_late_is_never_pushed_as_a_charts_newest_bar():
+    """A chart places each pushed bar with the library's own update, which only replaces the
+    newest bar or adds a newer one: a bar older than the chart's last raised a page error. A
+    minute Schwab sends late (here the 12th, after the 14th) is a past event: it joins the held
+    minutes, so the timeframes whose newest bar contains it, the daily bar and the Order Flow
+    hour hold it; the older chart bar it belongs to is not pushed as a tail. Real SPY CHART_EQUITY
+    bars of 2026-09-25, delivered out of order (the order is the stand-in)."""
+    class _Ws:
+        def __init__(self):
+            self.sent = []
+
+        async def send(self, text):
+            self.sent.append(json.loads(text))
+
+    order = [FRIDAY[i] for i in (10, 11, 13, 14, 12, 15)]
+
+    async def main():
+        srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: 0.0)
+        c = live_ui._Client(_Ws())
+        c.symbols = frozenset({"SPY"})
+        srv_ui.clients.add(c)
+        for b in order:
+            srv_ui.on_bar(_msg(b))
+        pump = asyncio.create_task(srv_ui._pump(c))
+        await asyncio.sleep(0.05)
+        pump.cancel()
+        await asyncio.gather(pump, return_exceptions=True)
+        return [u for f in c.ws.sent if f["type"] == "bars" for u in f["bars"]]
+
+    sent = asyncio.run(main())
+    assert len(sent) == len(order)
+    for tf in live_price_rows.CHART_TFS:                 # each chart's pushes only move forward
+        times = [u["tf"][tf]["t"] for u in sent if tf in u["tf"]]
+        assert times == sorted(times), tf
+    late = sent[4]
+    assert "1" not in late["tf"]                         # the late minute's own bar is not a tail
+    held = sorted((live_price_rows.minute_bar(_msg(b)) for b in order[:5]), key=lambda m: m["t"])
+    for tf, bar in late["tf"].items():                   # every bar pushed holds the late minute
+        assert bar == live_price_rows.with_change(live_price_rows.aggregate_bars(held, tf)[-1]), tf
+    assert [m["t"] for m in late["recent_1m"]] == [m["t"] for m in held]
 
 
 def test_bars_that_arrive_before_the_next_send_are_all_sent_in_order():

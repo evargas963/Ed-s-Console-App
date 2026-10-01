@@ -116,7 +116,14 @@ opens no second streaming socket).
   timeframe (`live_price_rows.bar_update`), with the symbol's newest hour of 1-minute bars
   whole (`recent_1m`, the Trade Desk Order Flow card's) → the browsers subscribed to the symbol,
   whose charts draw it (`ed:bar`) with no read: the chart library places it (`series.update`:
-  the bar at the same time is replaced, a newer one is added), so no page code compares bar times. A live bar is only one Schwab sends while the browser is
+  the bar at the same time is replaced, a newer one is added), so no page code compares bar times.
+  A push carries a timeframe's bar only when it is that chart's newest, at or after the one
+  already served (history or push, `live_ui` `served`). A minute Schwab sends late is a past
+  event: it is held (every later roll-up, the daily bar and `recent_1m` carry it), and the older
+  chart bar it belongs to, or a bar whose time it would move earlier, is not pushed; the stored
+  history carries it when the chart is loaded again. `/api/bars1m` serves the same hour
+  (`recent_1m`) with a chart's history, so the window's size (`live_price_rows.RECENT_1M_BARS`)
+  exists only on the server. A live bar is only one Schwab sends while the browser is
   connected: a browser that dropped and reconnected is resent none of the bars the daemon
   received meanwhile; the daemon names the gap instead (`live_ui.bars_gap`: from the last beat
   the page had, less two beats, to the reconnect, with its note), each chart shows the note

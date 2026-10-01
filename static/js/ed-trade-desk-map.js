@@ -19,9 +19,6 @@
 
   // the chart's timeframes and 1m rows per timeframe (ed-tv-chart, every chart's)
   var TFS = window.EdTvChart.TFS, FULL_LIMIT = window.EdTvChart.BARS_LIMIT;
-  // the Order Flow card's bars as the desk opens: the newest hour of 1-minute bars, asked of
-  // /api/bars1m (each later push carries the daemon's hour whole: live_price_rows.RECENT_1M_BARS)
-  var FLOW_BARS = 60;
   // The ONE global timeframe also sets how far back the queue and the event markers reach.
   // the event window and its words are the server's (/api/desk/events window_label), for this timeframe
   function windowLabel() { return S.events && S.events.tf === S.tf ? S.events.window_label : '—'; }
@@ -177,6 +174,8 @@
       if (gen !== S.gen || tf !== S.tf || !S.chart) return;
       var bars = (d && d.bars) || [];
       S.bars = bars; S.barsAnswered = gen;
+      // the Order Flow card's hour of 1-minute bars, served whole with the history (recent_1m)
+      S.flowBars = d ? d.recent_1m || [] : null; paintCards();
       S.chart.setBars(bars, tf, shown(), d && d.last_bar && d.last_bar.label);
       $('tdmChartEmpty').hidden = bars.length > 0;
       $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
@@ -185,23 +184,16 @@
       var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
     });
   }
-  // the Order Flow card's hour of 1-minute bars as the desk opens; each later bar is pushed
-  function loadFlowBars() {
-    var gen = S.gen;
-    return fetchJson('/api/bars1m?ticker=' + encodeURIComponent(S.ticker) + '&tf=1&limit=' + FLOW_BARS).then(function (d) {
-      if (gen !== S.gen) return;
-      S.flowBars = d ? d.bars || [] : null;
-      paintCards();
-    });
-  }
-  // a completed Schwab minute, pushed by the daemon: the chart bar at the desk's timeframe, and the
-  // 1-minute bar for the Order Flow card
+  // a completed Schwab minute, pushed by the daemon: the chart bar at the desk's timeframe when the
+  // push carries one (only ever the chart's newest bar), and the Order Flow card's hour
   function takeBar(b) {
     if (!S.chart || b.ticker !== st().key || S.barsAnswered !== S.gen) return;
     var had = S.bars.length;
-    S.chart.pushBar(b.tf[S.tf], b.last_bar && b.last_bar.label);   // the chart library places it
-    S.bars = S.chart.bars();
-    if (!had) { $('tdmChartEmpty').hidden = true; paintChartOverlays(); }
+    if (b.tf[S.tf]) {
+      S.chart.pushBar(b.tf[S.tf], b.last_bar && b.last_bar.label);   // the chart library places it
+      S.bars = S.chart.bars();
+      if (!had) { $('tdmChartEmpty').hidden = true; paintChartOverlays(); }
+    }
     S.flowBars = b.recent_1m; paintCards();                        // the daemon's served hour, whole
   }
   function loadSlow() { return Promise.all([loadPerTf(), loadPerTicker()]); }
@@ -582,10 +574,10 @@
       S.ticker = tk; S.gen++; S.bars = []; // undefined = not answered YET (loading); null = the request failed
       S.levels = S.terrain = S.micro = S.events = S.liq = S.strikes = S.forces = S.flowBars = undefined; S.sel = null;
       clearChart(); paintHeader(); paintQueue(); paintCards(); paintTrust(); paintAgreement(); paintFooter();
-      loadBars(); loadFlowBars(); loadSlow(); loadFast();
+      loadBars(); loadSlow(); loadFast();
     } else if (!S.bars.length && S.barsAnswered === S.gen) {
       // back on the desk after an answer with no bars: ask again (never while the first ask is in flight)
-      loadBars(); loadFlowBars(); loadSlow(); loadFast();
+      loadBars(); loadSlow(); loadFast();
     }
   }
   function init() {

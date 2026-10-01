@@ -113,7 +113,8 @@
     // a completed Schwab minute, pushed by the daemon: the chart bar at the map's timeframe
     window.addEventListener('ed:bar', function (e) {
       var b = e.detail, h = host();
-      if (!b || b.ticker !== st().key || _last.barsFor !== ticker() + '|' + _tf || !h || !isMap() || !_chart) return;
+      // a push carries a timeframe's bar only when it is that chart's newest (live_price_rows.bar_update)
+      if (!b || !b.tf[_tf] || b.ticker !== st().key || _last.barsFor !== ticker() + '|' + _tf || !h || !isMap() || !_chart) return;
       _chart.pushBar(b.tf[_tf], b.last_bar && b.last_bar.label);   // the chart library places it
       _last.bars = Object.assign({}, _last.bars, { bars: _chart.bars(), last_bar: b.last_bar });
       render(h, ticker(), _last.snap, _last.levels, _last.bars);

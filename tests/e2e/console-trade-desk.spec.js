@@ -55,7 +55,10 @@ const STRIKES = { ticker: 'SPY', spot: SPOT, spot_strike: 771, today_source: 'te
   migration: { all: { compared: true, drift: 'UP', grew: [771, 770], shrank: [772], busiest: [771, 772], busiest_vs_walls: 'INSIDE_WALLS',
     volume_total: 9000, rows: [[770, 500000, 400000, 100000], [771, 900000, 700000, 200000], [772, -200000, -100000, -100000]] } } };
 const BARS = { ticker: 'SPY', tf: '30', bars: [{ t: 1790343000, o: 770, h: 772, l: 769, c: SPOT, v: 1000, chg: SPOT - 770, chg_pct: (SPOT - 770) / 770 * 100 }],
-  last_bar: { t: 1790343660, label: 'Fri 09/25 09:21 AM CT' } };
+  last_bar: { t: 1790343660, label: 'Fri 09/25 09:21 AM CT' },
+  // the newest hour of 1-minute bars, served with the history (the Order Flow card's)
+  recent_1m: [{ t: 1790343600, o: 770.5, h: 771, l: 770, c: 770.8, v: 300, chg: 0.3, chg_pct: 0.04 },
+    { t: 1790343660, o: 770.8, h: 771.4, l: 770.7, c: SPOT, v: 200, chg: 0.5, chg_pct: 0.06 }] };
 
 async function intercept(page) {
   await page.route('**/api/**', (route) => {
@@ -118,7 +121,9 @@ test('a desk load asks for each value once; a timeframe switch asks only for tha
   await page.waitForTimeout(500);
   const count = (re) => asked.filter((u) => re.test(u)).length;
   for (const re of [/^levels\?/, /^desk\/events\?/, /^terrain\?/, /^liquidity-snapshot\?/, /^terrain\/strikes\?/, /^forces\?/,
-    /^order-flow\/microstructure\?/, /^bars1m\?.*tf=5/, /^bars1m\?.*tf=1&/]) expect(count(re), String(re)).toBe(1);
+    /^order-flow\/microstructure\?/, /^bars1m\?/]) expect(count(re), String(re)).toBe(1);
+  // the Order Flow card's hour comes with the chart's history (recent_1m): no request of its own
+  expect(count(/^bars1m\?.*tf=1&/)).toBe(0);
 
   asked.length = 0;
   await page.locator('#tdmToolbar [data-tf="15"]').click();
@@ -352,7 +357,7 @@ test.describe('Trade Desk renders served values', () => {
     // each card draws its served series in the reference's chart type (2026-09-28): depth areas,
     // volume bars, and lines for put/call OI and ATM IV by expiry (a null expiry breaks the line)
     await expect(page.locator('#tdmCardLiq .tdm-plot svg path')).toHaveCount(4);
-    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(BARS.bars.length);
+    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(BARS.recent_1m.length);   // the served hour
     await expect(page.locator('#tdmCardOpt .tdm-plot svg path')).toHaveCount(2);
     await expect(page.locator('#tdmCardVol .tdm-plot svg path')).toHaveCount(1);
     await expect(page.locator('#tdmCardVol figcaption')).toHaveText('ATM implied vol by expiry, nearest first');
@@ -472,7 +477,8 @@ test.describe('Trade Desk renders served values', () => {
       window_tfs.forEach((id) => { tf[id] = { t: t, o: 770, h: 772.5, l: 769, c: c.close, v: 1500, chg: c.close - 770, chg_pct: 0.1 }; });
       tf['1'] = { t: last, o: c.close, h: c.close, l: c.close, c: c.close, v: 10, chg: 0, chg_pct: 0 };
       // the daemon's newest hour of 1-minute bars (live_price_rows.RECENT_1M_BARS), served whole
-      const recent = [{ t: last - 60, o: 770, h: 771, l: 769.5, c: 770.5, v: 20, chg: 0.5, chg_pct: 0.06 }, tf['1']];
+      const recent = [{ t: last - 120, o: 770, h: 771, l: 769.5, c: 770.5, v: 20, chg: 0.5, chg_pct: 0.06 },
+        { t: last - 60, o: 770.5, h: 771, l: 770, c: 770.6, v: 15, chg: 0.1, chg_pct: 0.01 }, tf['1']];
       return { ticker: 'SPY', ts_recv: last + 62.7, last_bar: { t: last, label: 'Fri 09/25 ' + c.label }, tf: tf, recent_1m: recent };
     };
     const window_tfs = ['3', '5', '15', '30', '60', 'D'];
@@ -480,12 +486,18 @@ test.describe('Trade Desk renders served values', () => {
     await expect(legend).toContainText('Last completed bar Fri 09/25 09:22 AM CT');
     expect((await chartState()).bars).toBe(BARS.bars.length);          // the same bar, extended
     // the Order Flow card draws the pushed hour as served: no window kept on the page
-    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(2);
+    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(3);
     daemon.send({ type: 'bars', bars: [pushed(1790344800, 1790344800, { close: 772.1, label: '09:40 AM CT' })] });
     await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length + 1);
     await expect(legend).toContainText('Last completed bar Fri 09/25 09:40 AM CT');
     // a bar for another symbol is not drawn
     daemon.send({ type: 'bars', bars: [Object.assign(pushed(1790346600, 1790346600, { close: 1, label: '10:10 AM CT' }), { ticker: 'QQQ' })] });
+    await page.waitForTimeout(300);
+    expect((await chartState()).bars).toBe(BARS.bars.length + 1);
+    // a minute Schwab sent late: the daemon pushes no chart bar for it (live_price_rows.bar_update),
+    // only the Order Flow hour that holds it; the chart is untouched and nothing raises
+    daemon.send({ type: 'bars', bars: [Object.assign(pushed(1790344800, 1790344740, { close: 772.0, label: '09:40 AM CT' }), { tf: {} })] });
+    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(3);
     await page.waitForTimeout(300);
     expect((await chartState()).bars).toBe(BARS.bars.length + 1);
     expect(barReads.length).toBe(before);

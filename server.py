@@ -2693,7 +2693,8 @@ def get_bars1m(ticker: str = Query(...),
     complete after it come on the daemon's push (live_ui), rolled by the same function.
     `limit` counts 1-minute bars: when the read reaches it, the oldest rolled bar may have lost
     its first minutes to the cut and is not served. `last_bar`: the newest completed minute and
-    its label."""
+    its label. `recent_1m`: the newest RECENT_1M_BARS of the 1-minute bars read (fewer when
+    `limit` is smaller)."""
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
     rolled = _lpr.aggregate_bars(bars, tf)
@@ -2701,7 +2702,10 @@ def get_bars1m(ticker: str = Query(...),
         rolled = rolled[1:]
     out = [_lpr.with_change(b) for b in rolled]
     return JSONResponse({"ticker": tk, "bars": out, "tf": tf, "n": len(out),
-                         "last_bar": _lpr.last_bar(bars[-1]["t"] if bars else None)})
+                         "last_bar": _lpr.last_bar(bars[-1]["t"] if bars else None),
+                         # the newest hour of the 1-minute bars read: the Order Flow card's, as the
+                         # bar push serves it (live_price_rows.recent_1m)
+                         "recent_1m": _lpr.recent_1m(bars)})
 
 
 def aggregate_vwap(rows: list, tf: str, bar_ts: list) -> list:

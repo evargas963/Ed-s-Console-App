@@ -25,8 +25,8 @@ from time_et import ET, ct_label, is_collect_window_bar_end_ts_utc
 SPOT_SOURCE = "streaming_plane"
 #: the chart timeframes: minutes, and "D" (the ET trading date)
 CHART_TFS = ("1", "3", "5", "15", "30", "60", "D")
-#: the newest 1-minute bars each bar push carries (`recent_1m`): the Trade Desk Order Flow
-#: card's hour, served whole so the page keeps no window of its own
+#: the newest 1-minute bars the Trade Desk Order Flow card shows (`recent_1m`, on each bar push
+#: and on /api/bars1m): served whole so the page keeps no window of its own
 RECENT_1M_BARS = 60
 
 
@@ -86,23 +86,48 @@ def last_bar(t: Optional[float]) -> Optional[dict[str, Any]]:
     return None if t is None else {"t": t, "label": ct_label(t)}
 
 
-def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float) -> dict[str, Any]:
-    """What the daemon pushes for one new 1-minute `bar`: for every chart timeframe, the chart
-    bar that contains it (roll_bucket), from `minutes` -- the ticker's minutes of `bar`'s ET
-    trading day, oldest first, `bar` among them; the "D" bar is all of them -- with the daemon's
-    receive time of Schwab's message, and the newest RECENT_1M_BARS of `minutes` (`recent_1m`)."""
+def recent_1m(minutes: list[dict]) -> list[dict[str, Any]]:
+    """The newest RECENT_1M_BARS of `minutes` (oldest first), each with its change: the Trade
+    Desk Order Flow card's hour, served whole by the bar push and by /api/bars1m."""
+    return [with_change(dict(m)) for m in minutes[-RECENT_1M_BARS:]]
+
+
+def newest_stamps(minutes: list[dict]) -> dict[str, float]:
+    """Each chart timeframe's newest bar time (its stamp, aggregate_bars) over `minutes`, oldest
+    first: what a chart served from these minutes ends on."""
+    return {tf: aggregate_bars(minutes, tf)[-1]["t"] for tf in CHART_TFS} if minutes else {}
+
+
+def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float,
+               served: dict[str, float]) -> dict[str, Any]:
+    """What the daemon pushes for one 1-minute `bar`: for each chart timeframe, the chart bar that
+    contains it (roll_bucket) when that is the chart's newest bar, from `minutes` -- the ticker's
+    minutes of `bar`'s ET trading day, oldest first, `bar` among them; the "D" bar is all of them
+    -- with the daemon's receive time of Schwab's message and `recent_1m`. `served`: each
+    timeframe's newest bar time already served (newest_stamps, then each push).
+
+    A chart's push is only ever its newest bar, at or after the one it was served: a chart places
+    it with the library's own update, which replaces the newest bar or adds a newer one. A minute
+    Schwab sends late (older than the newest one held) is a past event. It is held, so every
+    later roll-up, the "D" bar and `recent_1m` carry it; a chart bar it would put in an older
+    bucket, or whose time it would move earlier (a bar is stamped with its first minute), is not
+    pushed as a tail: the stored history carries it when the chart is loaded again."""
     i = bisect_left([m["t"] for m in minutes], bar["t"])
-    by_tf = {"D": with_change(roll_bucket(minutes))}
-    for tf in (tf for tf in CHART_TFS if tf != "D"):
+    newest = minutes[-1]["t"]
+    by_tf: dict[str, Any] = {}
+    for tf in CHART_TFS:
         key = tf_bucket_key(bar["t"], tf)
+        if key != tf_bucket_key(newest, tf):
+            continue
         lo, hi = i, i + 1
         while lo and tf_bucket_key(minutes[lo - 1]["t"], tf) == key:
             lo -= 1
         while hi < len(minutes) and tf_bucket_key(minutes[hi]["t"], tf) == key:
             hi += 1
-        by_tf[tf] = with_change(roll_bucket(minutes[lo:hi]))
-    return {"ticker": ticker_storage_key(ticker), "ts_recv": ts_recv, "last_bar": last_bar(minutes[-1]["t"]),
-            "tf": by_tf, "recent_1m": [with_change(dict(m)) for m in minutes[-RECENT_1M_BARS:]]}
+        if minutes[lo]["t"] >= served.get(tf, minutes[lo]["t"]):
+            by_tf[tf] = with_change(roll_bucket(minutes[lo:hi]))
+    return {"ticker": ticker_storage_key(ticker), "ts_recv": ts_recv, "last_bar": last_bar(newest),
+            "tf": by_tf, "recent_1m": recent_1m(minutes)}
 
 
 def live_spot(ticker: str, now: float) -> Optional[float]:
