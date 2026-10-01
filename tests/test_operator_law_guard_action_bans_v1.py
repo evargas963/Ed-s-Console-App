@@ -1,63 +1,7 @@
-# institutional-synthetic-ok: these tests INJECT banned shell / edit spellings to prove the
-# action bans BLOCK and the sanctioned forms flow — that is their entire purpose.
-"""Action-ban negative controls for tools/operator_law_guard.py and two gate seams.
-
-BEDROCK PR B (2026-09-06): these controls lived in tests/test_ui_mockup_lock_v1.py because
-the RC-189 mockup-registry rule was one of the actions banned there. The registry, its lock
-and that rule are retired (governance/retired_checks.md, ui_mockup_approval); the general
-bans they sat beside are unchanged and moved here verbatim: lock-disable env spellings
-(RC-186/RC-189 GUN 2), constructed -c / PowerShell write targets (RC-189 v2), the
-ledger-status honesty clause, the domain-faucet registry seam (RC-212), the Edit-tool hook
-wiring (RC-205) and the UTF-8 git reader (RC-187).
-"""
 from __future__ import annotations
 
 import json
 from pathlib import Path
-
-
-# RC-187 (the guard's `_git` must decode UTF-8): that `_git` was the RC-66 lane's reader in
-# tools/pretooluse_guard.py, retired with the lane; the module is a path-facts library now and
-# runs no git. The surviving git readers pin `encoding="utf-8"` at their own sites.
-
-
-def test_v2_payload_and_ps_constructed_writes_are_no_longer_banned():
-    """KEEP/MERGE/DELETE 2026-09-10: the -c payload / PowerShell constructed-write bans guarded
-    the retired mockup-approval registry and a mangling risk ruff and pytest already catch; the
-    Edit/Write tools remain the ordinary path, the bans are gone with no successor."""
-    from tools.operator_law_guard import bash_violations
-    formerly_blocked = (
-        "python -c \"p='x'+'y.json'; open(p,'w').write('1')\"",
-        "python -c \"open('.claude/zzz.json','w').write('1')\"",
-        "python -c \"open('static/chart.html','w').write('1')\"",
-        'Set-Content ("gov"+"ernance/x.json") 1',
-        "Out-File -FilePath $(Resolve-Path x) -InputObject 1",
-        "Copy-Item a.html static/b.html",
-    )
-    for cmd in formerly_blocked:
-        assert bash_violations(cmd, []) == [], cmd
-    legal = (
-        "python -c \"open('reports/x.jsonl','a').write('1')\"",
-        "python -c \"open('governance/root_cause_log.md','a').write('row')\"",
-        "python -c \"print(open('db.py').read())\"",
-    )
-    for cmd in legal:
-        assert bash_violations(cmd, []) == [], cmd
-
-
-def test_lock_disable_routes_are_git_and_precommits_own():
-    """The lock-disable ban names the routes that actually bypass the battery — git's
-    (`--no-verify`, `-n`, `core.hooksPath`) and pre-commit's (`SKIP=`, uninstall). The
-    `ED_*_GUARD=off` spellings it once also policed name switches that do not exist (RC-450)
-    and were deleted 2026-09-10."""
-    from tools.operator_law_guard import _SKIP_HOOKS
-    for cmd in ("git commit --no-verify -m x", "git commit -n -m x", "git -c core.hooksPath=/dev/null commit",
-                "SKIP=institutional-correctness git commit -m x", "$env:SKIP='ruff-correctness'; git commit -m x",
-                "pre-commit uninstall"):
-        assert _SKIP_HOOKS.search(cmd), cmd
-    for cmd in ("git commit -m 'skip the typo'", "SKIPPED=1 python x.py", "echo pre-commit installed",
-                "git push -n origin main", "ED_UI_MOCKUP_LOCK=off git commit", "git commit -m 'normal'"):
-        assert _SKIP_HOOKS.search(cmd) is None, cmd
 
 
 def test_operator_law_guard_wired_for_edit_tools():

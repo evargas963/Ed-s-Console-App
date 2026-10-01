@@ -109,23 +109,6 @@ def _tokens(seg: str) -> list[str]:
     return _TOKEN_RE.findall(seg)
 
 
-def is_git_commit(seg: str) -> bool:
-    """True when this segment runs `git commit`, whatever the option placement.
-
-    The old detector was the adjacency pattern `git\\s+commit`, and MEASURED 2026-08-05 it
-    returned zero violations for `git -C . commit`, `git -C <path> commit` and
-    `git --git-dir=... commit` — four typed characters walked any commit past the law. The
-    action is "this git invocation commits", so the test is tokens, not adjacency.
-    """
-    toks = _tokens(seg.strip())
-    if not toks:
-        return False
-    exe = toks[0].strip("\"'")
-    if Path(exe).name.lower() not in ("git", "git.exe"):
-        return False
-    return any(t.strip("\"'") == "commit" for t in toks[1:])
-
-
 def _join_dir(base: str, path: str) -> str:
     """Resolve `path` against `base`; "" when it is relative and `base` is unknown."""
     path = _msys_to_windows(path)
@@ -134,49 +117,6 @@ def _join_dir(base: str, path: str) -> str:
     if not base:
         return ""
     return os.path.join(_msys_to_windows(base), path)
-
-
-def resolve_target_repo(cmd: str, payload_cwd: str = "") -> tuple[str, str]:
-    """(normalized repository identity, reason). An empty identity means UNRESOLVED.
-
-    Precedence, highest first: an explicit path on the git invocation (-C / --git-dir /
-    --work-tree), then a directory change earlier in the same chained command, then the
-    working directory the tool payload supplies. This function NEVER falls back to `REPO`:
-    assuming the guard's own checkout is exactly how an IEOS commit came to be judged by an
-    Ed Console rule.
-    """
-    executed = shell_executed_part(cmd or "")
-    cur = str(payload_cwd or "")
-    for seg in _SEG_SPLIT.split(executed):
-        seg = seg.strip()
-        if not seg:
-            continue
-        m = _CD_RE.match(seg)
-        if m:
-            cur = _join_dir(cur, _arg_value(m))
-            continue
-        if not is_git_commit(seg):
-            continue
-        target = ""
-        for rx in (_GIT_C_RE, _GIT_DIR_RE):
-            mm = rx.search(seg)
-            if mm:
-                target = _join_dir(cur, _arg_value(mm))
-                if not target:
-                    return "", "relative path on the git invocation with no known working directory"
-                break
-        target = target or cur
-        if not target:
-            return "", "no path on the command and no working directory supplied by the tool payload"
-        root = repo_root_of(target)
-        if not root:
-            return "", f"target path is not inside a git repository: {target}"
-        return root, "resolved from the command"
-    if cur:
-        root = repo_root_of(cur)
-        return (root, "resolved from the tool payload working directory") if root else (
-            "", f"working directory is not inside a git repository: {cur}")
-    return "", "no repository identity in the command and no working directory supplied"
 
 
 #: Command heads that wrap another command (its args are the real invocation).
@@ -226,8 +166,7 @@ def iter_git_invocations(cmd: str, payload_cwd: str = ""):
     command — not only the first. A harmless leading git (or a `git -C` aimed elsewhere) cannot
     launder a later checkout/switch/commit/reset/merge, because each git segment is resolved and
     yielded independently. Target precedence per segment: an explicit `-C` / `--git-dir` /
-    `--work-tree`, else the cwd in effect at that segment. Reuses the SAME path helpers as
-    resolve_target_repo (RC-129 one-faucet)."""
+    `--work-tree`, else the cwd in effect at that segment."""
     for cur, seg in iter_command_segments(cmd, payload_cwd):
         head, _toks = segment_head(seg)
         if head not in ("git", "git.exe"):
