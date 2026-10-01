@@ -282,17 +282,50 @@ def test_a_resent_old_trade_is_not_live_and_the_quote_is_judged_by_its_own_field
     assert {k: v for k, v in row.items() if k not in ("day", "server_ts")} == served
 
 
-def test_a_quote_without_schwabs_own_times_is_not_live():
-    """The quote's live verdict is Schwab's own bid and ask times (BID_TIME_MILLIS,
-    ASK_TIME_MILLIS); a bid and ask received in session with neither is not live, never judged by
-    our receive time instead. Stand-in quotes."""
-    from tests.feed_live_helper import SESSION_NOW, mark_feed_live
-    _rec("NOSTAMP", {"key": "NOSTAMP", "BID_PRICE": 9.9, "ASK_PRICE": 10.1}, received_ts=SESSION_NOW)
-    mark_feed_live("NOSTAMP", now=SESSION_NOW)
-    assert not lmp.quote_is_fresh(lmp.get_quote("NOSTAMP"), SESSION_NOW)
-    _rec("NOSTAMP", {"key": "NOSTAMP", "BID_TIME_MILLIS": SESSION_NOW * 1000,
-                     "ASK_TIME_MILLIS": SESSION_NOW * 1000}, received_ts=SESSION_NOW)
-    assert lmp.quote_is_fresh(lmp.get_quote("NOSTAMP"), SESSION_NOW)
+def test_each_bid_and_ask_carries_the_time_schwab_sent_with_it():
+    """A bid or an ask is shown with, and judged by, the time Schwab sent with it, by which fields
+    Schwab sends for the instrument (no ticker list): its BID_TIME_MILLIS / ASK_TIME_MILLIS; where a
+    price comes without one, the same message's QUOTE_TIME_MILLIS; with neither, our receive time,
+    said so. On 2026-09-30 09:30-10:00 ET 1,711 of $SPX's bid messages had no BID_TIME_MILLIS, so
+    judged by it alone its quote read not live all session. Real messages, read-only from
+    production stream_capture.db (tests/fixtures/real_l1_quote_times_2026_09_30.json); the
+    heartbeat a stand-in."""
+    import json
+    from datetime import datetime
+
+    import live_price_rows
+    from time_et import ET
+    fx = json.loads((ROOT / "tests" / "fixtures" / "real_l1_quote_times_2026_09_30.json")
+                    .read_text(encoding="utf-8"))["symbols"]
+
+    def at(sym, h, m, s, us=0):
+        now = datetime(2026, 9, 30, h, m, s, us, tzinfo=ET).timestamp()
+        with lmp._lock:
+            lmp._by_ticker.pop(sym, None)
+            lmp._fields_by_ticker.pop(sym, None)
+        for msg in fx[sym]:
+            if msg["ts_recv"] <= now:
+                lmp.record_from_level_one_equity(sym, msg["content"], received_ts=msg["ts_recv"])
+        lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [sym]}}, now)
+        return live_price_rows.price_row(sym, now)
+
+    # $SPX: its 09:30:01 bid 7670.92 / ask 7714.41 came with QUOTE_TIME_MILLIS 1790775001065 and no
+    # bid or ask time: live, as of that time
+    spx = at("$SPX", 9, 30, 2)
+    assert (spx["bid_text"], spx["ask_text"], spx["quote_live"]) == ("7,670.92", "7,714.41", True)
+    assert spx["bid_as_of"] == spx["ask_as_of"] == "as of Wed 09/30 08:30:01 AM CT"
+    # CRWD 09:53:26: a new bid 265.72 with QUOTE_TIME_MILLIS 1790776405731 (= its ASK_TIME_MILLIS)
+    # and no BID_TIME_MILLIS: the bid is as of the message's QUOTE_TIME, not the held BID_TIME
+    # (1790776405631, the previous bid 265.83's)
+    crwd = at("CRWD", 9, 53, 27)
+    assert (crwd["bid_text"], crwd["bid_as_of"]) == ("265.72", "as of Wed 09/30 08:53:25 AM CT")
+    assert lmp.get_quote("CRWD")["bid_ts"] == 1790776405.731
+    # RKLB 09:44:08: a new bid 71.85 with neither BID_TIME_MILLIS nor QUOTE_TIME_MILLIS (the held
+    # ones, 1790775846820, are the previous bid 71.84's): Schwab sent no time for it, so it is
+    # shown with our receive time, said so
+    rklb = at("RKLB", 9, 44, 9)
+    assert (rklb["bid_text"], rklb["bid_as_of"]) == ("71.85", "received Wed 09/30 08:44 AM CT")
+    assert rklb["ask_as_of"] == "as of Wed 09/30 08:44:06 AM CT"   # the ask 71.89's own ASK_TIME
 
 
 def test_a_price_with_no_trade_time_or_not_a_number_says_which():

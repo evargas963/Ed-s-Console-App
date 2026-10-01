@@ -424,16 +424,20 @@ opens no second streaming socket).
   Schwab in the current session (`live_market_plane.session_day`: sessions start 04:00 ET),
   judged by Schwab's own time of the value -- the price by its trade's time
   (TRADE_TIME_MILLIS, as Schwab re-sends the prior day's last trade after midnight), the bid and
-  the ask by theirs (BID_TIME_MILLIS, ASK_TIME_MILLIS; a quote with neither is not live). A
-  value's age within the session is not the test (Schwab sends a field only when it changes). Live is what computations take; display is not gated by it (decided by the
+  the ask by the time Schwab sent with each (`live_market_plane._side_time`: BID_TIME_MILLIS /
+  ASK_TIME_MILLIS; for a price sent without one, as Schwab sends an index's, the message's
+  QUOTE_TIME_MILLIS; with neither, our receive time; `ACTIVE_PROGRAM.md` INDEX-QUOTE-TIME). A
+  value's age within the session is not the test (Schwab sends a field only when it changes).
+  Live is what computations take; display is not gated by it (decided by the
   operator, 2026-10-01: "we should not be showing unavailable anywhere in the app if there is
   schwab data to be render into the ui... we use what schwab gives us and we display it,
   regardless of the time. if we have it we display it."): every field Schwab sent is kept
   whatever the hour (no field is dropped at a session change) and the price row serves it with
   one time, which the page prints next to it. That time is Schwab's own time field for the value
   where Schwab sends one, printed "as of": the last trade's TRADE_TIME_MILLIS (`closed_last`),
-  the bid's BID_TIME_MILLIS and the ask's ASK_TIME_MILLIS (`bid_as_of`, `ask_as_of`, the same
-  times `quote_live` judges, so one clock for one value). Where Schwab sends none it is the
+  the bid's BID_TIME_MILLIS and the ask's ASK_TIME_MILLIS, or the message's QUOTE_TIME_MILLIS for
+  a price Schwab sends without one (`bid_as_of`, `ask_as_of`, the same times `quote_live` judges,
+  so one clock for one value). Where Schwab sends none it is the
   daemon's receive time of the message that set the value, printed "received": the prior close
   (`prior_close_as_of`; Schwab reloads CLOSE_PRICE overnight, measured 01:30 ET for NYSE- and
   Arca-listed symbols and 03:04 ET for Nasdaq-listed ones on every captured reload of 2026-09-25
@@ -590,11 +594,12 @@ Each value's definition.
   receive time) → `live_price_rows.price_row`, in the daemon; the console holds the daemon's row
   as pushed and computes no price (`resolve_spot` reads it).
 - *Times:* Schwab's own per value: TRADE_TIME (the last trade), BID_TIME (the bid and its size),
-  ASK_TIME (the ask and its size), QUOTE_TIME (the book's provenance); the daemon's receive time
-  for the values Schwab sends no time for (the prior close, the change percents, MARK, the day
-  fields), shown as "received".
-- *Current when:* the Live rule (§3.4) holds, and Schwab's own time of the value (TRADE_TIME;
-  BID_TIME and ASK_TIME) is in the current session.
+  ASK_TIME (the ask and its size), QUOTE_TIME for a bid or ask sent without its own (an index's)
+  and for the book's provenance; the daemon's receive time for the values Schwab sends no time
+  for (the prior close, the change percents, MARK, the day fields, a bid or ask sent with none),
+  shown as "received".
+- *Current when:* the Live rule (§3.4) holds, and the value's time (above) is in the current
+  session.
 - *Otherwise:* the row says why (`spot_state`: unavailable, or closed with the last trade as a
   labeled past observation, `closed_last`); every field is withheld.
 - *Consumers:* the header and watchlist (browser socket), the console's spot for levels, level

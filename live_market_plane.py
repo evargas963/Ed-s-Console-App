@@ -35,9 +35,9 @@ _PRICE_FIELDS = ("LAST_PRICE", "BID_PRICE", "ASK_PRICE", "MARK", "CLOSE_PRICE",
 DAY_FIELDS = ("OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE", "LAST_PRICE", "REGULAR_MARKET_LAST_PRICE", "TOTAL_VOLUME",
               "TRADE_TIME_MILLIS")
 _COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "LAST_SIZE", "TOTAL_VOLUME")
-#: Schwab's own clocks (epoch ms, read in seconds): the quote's, the last trade's, and the bid's
-#: and the ask's -- each value is shown with, and judged by, its own
-_CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS", "BID_TIME_MILLIS", "ASK_TIME_MILLIS")
+#: Schwab's own clocks (epoch ms, read in seconds): the quote's and the last trade's (the bid's
+#: and the ask's are read with their prices, _side_time)
+_CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
 #: signed values (any finite number): Schwab's own change of the LAST_PRICE vs the prior close.
 #: Measured: NET_CHANGE_PERCENT arrives with every LAST_PRICE; REGULAR_MARKET_CHANGE_PERCENT
 #: with every LAST_PRICE in the regular session (2026-09-28: SPY 113/113, MU 112/112, PCG 17/17)
@@ -60,6 +60,23 @@ def _read_stream_field(name: str, raw: Any) -> Optional[float]:
         return schwab_count(raw)
     v = schwab_number(raw)
     return v / 1000.0 if v is not None and name in _CLOCK_FIELDS else v
+
+
+def _side_time(side: str, item: dict[str, Any], rts: float) -> Optional[tuple[float, bool]]:
+    """The time of the bid or the ask ("BID" / "ASK") a message sets or restamps, and whether it
+    is Schwab's own: its BID_TIME_MILLIS / ASK_TIME_MILLIS; for a price sent without one, the
+    message's QUOTE_TIME_MILLIS (Schwab sends an index's bid and ask changes without them: $SPX on
+    2026-09-30 09:30-10:00 ET, 1,711 bid messages, each with QUOTE_TIME_MILLIS; CRWD 09:53:26 ET, a new bid
+    with QUOTE_TIME_MILLIS and ASK_TIME_MILLIS only); with neither, our receive time (RKLB 09:44:08
+    ET, a new bid with neither, its held BID_TIME the previous bid's). None: the message touches
+    neither."""
+    own = schwab_number(item.get(f"{side}_TIME_MILLIS"))
+    if own is not None:
+        return own / 1000.0, True
+    if f"{side}_PRICE" not in item:
+        return None
+    quote = _read_stream_field("QUOTE_TIME_MILLIS", item.get("QUOTE_TIME_MILLIS"))
+    return (quote, True) if quote is not None else (rts, False)
 
 
 def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
@@ -95,6 +112,11 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
                 continue
             seen = True
             fs[name] = (_read_stream_field(name, item.get(name)), rts)   # None: not a number
+        for side in ("BID", "ASK"):
+            stamp = _side_time(side, item, rts)
+            if stamp is not None:
+                seen = True
+                fs[f"{side}_AT"] = (stamp, rts)
         snapshot = dict(fs)
     if not seen:
         return False
@@ -126,10 +148,12 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         "chg_pct_received_ts": when("NET_CHANGE_PERCENT"),
         "chg_pct_regular": val("REGULAR_MARKET_CHANGE_PERCENT"),
         "chg_pct_regular_received_ts": when("REGULAR_MARKET_CHANGE_PERCENT"),
-        # Schwab's own time of the bid and of the ask (BID_TIME_MILLIS, ASK_TIME_MILLIS, epoch s):
+        # the time of the bid and of the ask (epoch s, _side_time) and whether it is Schwab's own:
         # what each is shown with and what the quote's live rule judges
-        "bid_ts": val("BID_TIME_MILLIS"),
-        "ask_ts": val("ASK_TIME_MILLIS"),
+        "bid_ts": val("BID_AT")[0] if "BID_AT" in snapshot else None,
+        "bid_ts_schwab": val("BID_AT")[1] if "BID_AT" in snapshot else None,
+        "ask_ts": val("ASK_AT")[0] if "ASK_AT" in snapshot else None,
+        "ask_ts_schwab": val("ASK_AT")[1] if "ASK_AT" in snapshot else None,
         # the fields Schwab last sent as not a number (-999, text, NaN)
         "not_numbers": sorted(n for n, (v, _t) in snapshot.items() if v is None),
         "net_change": val("NET_CHANGE"),
@@ -309,10 +333,11 @@ def spot_is_fresh(q: dict[str, Any], now: float) -> bool:
 
 def quote_is_fresh(q: dict[str, Any], now: float) -> bool:
     """Is this plane row's quote (bid/ask/sizes) live at `now`, for the computations that need
-    a live quote: Schwab stamped its bid and its ask in this session (BID_TIME_MILLIS and
-    ASK_TIME_MILLIS, the times the screen shows them with) and the feed is live for its symbol
-    (feed_live_for). Under Schwab's changed-fields-only delivery an unchanged bid IS the current
-    bid while the feed is live; a bid or ask with no time of Schwab's is not live (fail closed).
+    a live quote: the times of its bid and its ask (`bid_ts`, `ask_ts`: Schwab's BID_TIME_MILLIS
+    and ASK_TIME_MILLIS, its QUOTE_TIME_MILLIS where it sends none, our receive time where it sends
+    neither -- _side_time; the times the screen shows them with) are in this session and the feed
+    is live for its symbol (feed_live_for). Under Schwab's changed-fields-only delivery an
+    unchanged bid IS the current bid while the feed is live; no bid or ask is not live.
     Outside the session (is_capturable_session) the quote is a past observation. Display does not
     take this verdict: the price row shows the quote with its time."""
     if not in_session(now):

@@ -242,11 +242,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // "the table was rebuilt" from "this specific value just moved", so a real, correct
     // change could go unnoticed on a busy grid. Two strikes: 583's value genuinely
     // changes between fetches, 586's does not -- only 583's cell may flash, and neither
-    // may flash on the very FIRST render (nothing to compare against yet).
-    let call = 0;
+    // may flash on the very FIRST render (nothing to compare against yet). The value changes when
+    // the test says so, not by fetch count: the page also refetches on the console's own levels
+    // pushes, and a second fetch returning the new value flashed the cell before the test's first
+    // check (seen 2026-10-01: data-gex 2000 with flash-update at line 267).
+    let call = 0, changedValue = 1000;
     await page.route('**/api/options/gamma-surface**', (route) => {
       call += 1;
-      const changedValue = call === 1 ? 1000 : 2000;
       route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
@@ -267,6 +269,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(changedCell).not.toHaveClass(/flash-update/);
     await expect(unchangedCell).not.toHaveClass(/flash-update/);
 
+    changedValue = 2000;
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
     await expect(changedCell).toHaveText('$2.0K');
     await expect(changedCell).toHaveClass(/flash-update/);
@@ -278,16 +281,17 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // after a change (the levels push comes again) rebuilt the changed cell without its flash, so
     // the change could go unseen and the test above could miss it. The flash runs its length
     // (900 ms, .hcell.flash-update) across rebuilds.
-    let call = 0;
+    let call = 0, value = 1000;   // changed when the test says so, never by fetch count
     await page.route('**/api/options/gamma-surface**', (route) => {
       call += 1;
       route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, { strikes: [583, 586], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [call === 1 ? 1000 : 2000] }, { strike: 586, gex: [-50000] }], surface_seq: call })) });
+          cells: [{ strike: 583, gex: [value] }, { strike: 586, gex: [-50000] }], surface_seq: call })) });
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const sel = '.hcell[data-strike="583"][data-expiry="2026-09-11"]';
     await expect(page.locator(sel)).toHaveText('$1.0K');
+    value = 2000;
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
     await expect(page.locator(sel)).toHaveClass(/flash-update/);
     // the same values again, at once: the cell is rebuilt, and still flashing

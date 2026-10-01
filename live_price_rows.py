@@ -377,8 +377,9 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
     2026-10-01: "we should not be showing unavailable anywhere in the app if there is schwab data
     to be render into the ui"), exactly as sent (no rounding: price_text, volume_text,
     percent_text), with Schwab's own time where Schwab sends one -- the bid's BID_TIME, the ask's
-    ASK_TIME, the last trade's TRADE_TIME (`closed_last` when it is not live) -- and our receive
-    time, said as such, where it sends none (the prior close, the change percents). `spot` is the
+    ASK_TIME (or the message's QUOTE_TIME for a price sent without it), the last trade's
+    TRADE_TIME (`closed_last` when it is not live) -- and our receive time, said as such, where it
+    sends none (the prior close, the change percents). `spot` is the
     live price only -- what the computations take -- and `quote_live` says whether the quote is
     live for them. Absent only when Schwab has sent nothing, or sent a value that is not a number,
     with that reason."""
@@ -429,14 +430,15 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "ask": row.get("ask"),
         "bid_size": row.get("bid_size"),
         "ask_size": row.get("ask_size"),
-        # each exactly as sent, with Schwab's own time of the bid and of the ask
-        # (BID_TIME_MILLIS, ASK_TIME_MILLIS), the times the live rule judges
+        # each exactly as sent, with the time of the bid and of the ask the live rule judges:
+        # Schwab's own ("as of": BID_TIME / ASK_TIME, or QUOTE_TIME where it sends none), or ours
+        # ("received") where Schwab sent neither (live_market_plane._side_time)
         "bid_text": price_text(row.get("bid")),
         "ask_text": price_text(row.get("ask")),
         "bid_size_text": volume_text(row.get("bid_size")),
         "ask_size_text": volume_text(row.get("ask_size")),
-        "bid_as_of": stamped("bid_ts"),
-        "ask_as_of": stamped("ask_ts"),
+        "bid_as_of": stamped("bid_ts") if row.get("bid_ts_schwab") else received("bid_ts"),
+        "ask_as_of": stamped("ask_ts") if row.get("ask_ts_schwab") else received("ask_ts"),
         "mark": row.get("mark"),                       # Schwab MARK
         "quote_ts": row.get("exchange_quote_ts"),      # Schwab QUOTE_TIME (epoch s)
         "last_size": row.get("last_size"),

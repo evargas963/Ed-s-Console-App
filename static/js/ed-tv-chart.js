@@ -753,7 +753,7 @@
       setToday: function (day) {
         S.today = day.unavailable || null;
         if (day.bar) { api.pushBar(day.bar); return; }
-        paintLegend(); if (S.pinned) paintPin(); syncButtons(); scheduleLevels();
+        paintLegend();   // no bar changed: only the legend's line is new
       },
       // the bars the chart holds, as served and pushed
       bars: function () { return S.bars.slice(); },
