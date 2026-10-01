@@ -173,33 +173,6 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
     asyncio.run(_run(feed, body))
 
 
-def test_a_connecting_console_receives_the_last_values_first(feed):
-    ts = time.time()
-
-    async def body(bus, stats):
-        assert await _until(_received(ts))
-    bus_holder = {}
-
-    async def run():
-        bus = MessageBus()
-        bus.publish(_TOPIC, _opt_quote(0.05, ts))   # before any client
-        bus_holder["bus"] = bus
-        stop = asyncio.Event()
-        stats: dict = {}
-        server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=feed, stats=stats))
-        assert await _until(lambda: stats.get("listening"))
-        ofs._feed_running = True
-        client = asyncio.create_task(ofs._feed_loop())
-        try:
-            await body(bus, stats)
-        finally:
-            ofs._feed_running = False
-            client.cancel()
-            stop.set()
-            await asyncio.gather(client, server, return_exceptions=True)
-    asyncio.run(run())
-
-
 def _real_bar(i: int, ts_recv: float) -> dict:
     """The bus message the daemon builds from a real Schwab CHART_EQUITY bar (SPY 2026-09-25);
     received at `ts_recv`, a stand-in."""

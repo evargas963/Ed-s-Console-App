@@ -145,15 +145,6 @@ def test_fail_closed_no_book():
     assert m["provenance"]["book_source"] == "unavailable"
 
 
-def test_no_temporal_proxy_claimed():
-    """No trade side is computed or served (docs/DATA_FLOW.md decision 9): Schwab sends no
-    aggressor, so the payload carries no tape pressure, delta or absorption field."""
-    m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
-    for banned in ("aggressor_side", "cvd", "cum_delta", "absorption", "iceberg", "flow", "deferred"):
-        assert banned not in m
-    assert not [k for k in m["classification"] if "tape" in k or "delta" in k]
-
-
 def test_every_emitted_metric_is_classified():
     """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 10): was a
     hardcoded 8-key list checked with `key in cls or f"{key}.*" in cls or

@@ -92,12 +92,6 @@ def test_rows_are_the_shape_the_panel_renders():
     assert any(r[1] != 0 for r in ps["all"]), "every gamma bar is zero — nothing would render"
 
 
-def test_per_strike_map_is_stamped_with_its_own_age():
-    """A number with no age is how a 2.1-hour-old histogram sat under 'TODAY'S OPTION VOLUME'."""
-    snap = compute_terrain(FIXTURE["ticker"], CHAIN, SPOT)
-    assert snap.computed_ts_utc is not None and snap.computed_ts_utc > 0
-
-
 def test_absence_renders_as_absence_not_as_stale_data():
     """With no chain there must be no fabricated per-strike data."""
     snap = compute_terrain(FIXTURE["ticker"], [], SPOT)

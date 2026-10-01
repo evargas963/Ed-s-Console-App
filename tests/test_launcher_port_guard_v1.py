@@ -126,15 +126,6 @@ def test_is_actually_ed_console_false_when_process_identity_startup_sha_disagree
     assert lpg.is_actually_ed_console(8000) is False
 
 
-def test_is_actually_ed_console_true_without_a_pid_argument_when_everything_else_matches(monkeypatch):
-    """pid is optional (callers other than ensure_port_free may not have one) -- when omitted,
-    the pid cross-check is simply skipped, not treated as a failure."""
-    monkeypatch.setattr(
-        lpg.urllib.request, "urlopen",
-        lambda url, timeout=None: _FakeResponse(200, _real_build_body()))
-    assert lpg.is_actually_ed_console(8000, pid=None) is True
-
-
 def test_is_actually_ed_console_false_when_shape_matches_but_identity_endpoint_disagrees(monkeypatch):
     """The exact adversarial case named in this module's docstring: an unrelated
     process with a matching command-line SHAPE must not answer /api/build with

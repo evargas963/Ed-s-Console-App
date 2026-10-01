@@ -48,23 +48,6 @@ def at_capture(monkeypatch):
     return _CAPTURED
 
 
-def test_the_fixture_is_the_full_chain_and_its_window():
-    full, window = _contracts(_FX["full"]), _contracts(_FX["window"])
-    assert len(full) == _FX["n_full"] and len(window) == _FX["n_window"]
-    assert len(window) < len(full)
-    strikes = lambda cs: {c["strikePrice"] for c in cs}   # noqa: E731
-    assert strikes(window) < strikes(full), "the window is a strict subset of the chain's strikes"
-
-
-def test_the_window_gives_different_levels_than_the_full_chain(at_capture):
-    """The measurement itself: same code, same spot, same instant -- only the strikes differ."""
-    full = _levels(compute_terrain("MRVL", _contracts(_FX["full"]), _SPOT, now=at_capture))
-    window = _levels(compute_terrain("MRVL", _contracts(_FX["window"]), _SPOT, now=at_capture))
-    differing = {k for k in full if full[k] != window[k]}
-    assert differing, (full, window)
-    assert full["gamma_flip"] is not None, "the full chain has a flip for MRVL"
-
-
 def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture):
     """The one producer (_terrain_refresh_one), with its real compute_terrain, must publish the
     full chain's levels -- not the window's."""

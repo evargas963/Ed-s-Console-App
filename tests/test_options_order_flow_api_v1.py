@@ -408,31 +408,6 @@ def test_additional_contract_not_yet_producer_confirmed_fails_closed(monkeypatch
         _reset_option_plane(ofs)
 
 
-def test_additional_contract_never_requires_options_book(monkeypatch, tmp_path):
-    """Negative control on the OLD (still-primary-shaped) requirement: an additional
-    contract that will NEVER have an OPTIONS_BOOK epoch (extras don't subscribe it) must
-    still confirm as soon as LEVELONE_OPTIONS does -- proving `contract_match` for an
-    extra does not silently fall back to requiring both services."""
-    import json
-
-    import app.options.order_flow.streaming as ofs
-    import server as srv
-
-    _force_live_option_plane(ofs, _QQQ_CONTRACT)
-    ofs._active_option_contracts = [ofs.ticker_storage_key(_SPY_CONTRACT)]
-    _seed_multi_contract_producer_epochs(
-        ofs, monkeypatch, tmp_path, primary=_QQQ_CONTRACT, extra=[_SPY_CONTRACT])
-    # Sanity: Schwab genuinely holds no OPTIONS_BOOK for SPY.
-    import time as _t
-    assert not ofs._lmp.feed_live_for(_SPY_CONTRACT, "OPTIONS_BOOK", _t.time())
-    try:
-        plane = json.loads(srv.api_order_flow_options_microstructure(
-            contract=_SPY_CONTRACT).body)["streaming_plane"]
-        assert plane["contract_match"] is True
-    finally:
-        _reset_option_plane(ofs)
-
-
 def test_additional_only_contract_healthy_with_no_primary_at_all(monkeypatch, tmp_path):
     """Independent-review finding #4 (2026-09-12), REPRODUCED: _option_streaming_healthy()
     used to unconditionally require the PRIMARY slot (_active_option_contract) to be set

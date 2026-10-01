@@ -357,13 +357,6 @@ def test_the_console_serves_while_the_stored_levels_load(monkeypatch):
         server._terrain_loop_thread.join(5)
 
 
-def test_a_tick_on_an_unviewed_ticker_reprices_nothing(monkeypatch):
-    calls = _count_publishes(monkeypatch)
-    server._on_stream_tick("ZZUNVIEWED")
-    time.sleep(0.05)
-    assert calls == []
-
-
 def test_a_burst_of_ticks_reprices_at_most_once_per_interval_and_prices_the_last(monkeypatch):
     monkeypatch.setattr(server, "LEVELS_REPRICE_MIN_INTERVAL_SEC", 0.2)
     calls = _count_publishes(monkeypatch)

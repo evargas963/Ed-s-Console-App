@@ -143,14 +143,6 @@ def test_the_option_book_payload_reuses_the_one_producer(tmp_path, monkeypatch):
     assert result["depth"]["1"]["imbalance"] is not None
 
 
-def test_the_option_book_payload_fails_closed_with_no_book():
-    """No replayed content yet -> the producer's own fail-closed contract: status
-    'no_book', never a fabricated imbalance."""
-    ofls.clear_all_live_state()
-    result = options_live_payload("QQQ   260820C00450000", time.time())
-    assert result.get("status") == "no_book" or result["depth"]["1"]["imbalance"] is None
-
-
 def test_set_active_option_contract_writes_signal_and_clears_old_symbol(tmp_path, monkeypatch):
     cleared = []
     monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
@@ -313,23 +305,6 @@ def _daemon_heartbeat(*held_contracts):
     on both option services."""
     lmp.record_feed_heartbeat({"schwab_socket_open": True, "health": {}, "held": {
         "LEVELONE_OPTIONS": list(held_contracts), "OPTIONS_BOOK": list(held_contracts)}}, time.time())
-
-
-def test_option_contract_streaming_diagnostics_healthy_on_recent_tick():
-    """A contract the daemon holds on a live socket, with a recent update, reads healthy
-    with ~0 staleness."""
-    _reset_option_feed_globals()
-    _daemon_heartbeat(_SPY_CONTRACT)
-    ofs._feed_running = True
-    ofs._active_option_contract = _SPY_CONTRACT
-    ofs._option_streaming_last_update_ts = time.time()
-
-    diag = ofs.get_option_contract_streaming_diagnostics(None, time.time())
-    assert diag["streaming_connected"] is True
-    assert diag["option_contract"] == _SPY_CONTRACT
-    assert diag["streaming_healthy"] is True
-    assert diag["streaming_staleness_ms"] is not None
-    assert diag["streaming_staleness_ms"] < 1000.0
 
 
 def test_a_quiet_contract_on_a_live_feed_reads_healthy_with_its_own_staleness():

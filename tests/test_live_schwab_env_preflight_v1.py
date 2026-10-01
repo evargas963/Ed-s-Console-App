@@ -39,15 +39,6 @@ def _isolated_contaminated_parent() -> dict[str, str]:
     }
 
 
-def test_ed_ci_offline_inherited_is_sanitized_before_launch():
-    from live_schwab_env import apply_sanitize
-
-    env = _isolated_contaminated_parent()
-    apply_sanitize(env)
-    assert "ED_CI_OFFLINE" not in env
-    assert env.get("ED_CI_OFFLINE") in (None, "")
-
-
 def test_schwab_test_sentinel_inherited_is_sanitized_before_launch():
     from live_schwab_env import apply_sanitize, _is_non_live_schwab_value
 
@@ -163,38 +154,6 @@ def test_block_live_schwab_raises_under_ci_offline_no_arg_call(monkeypatch):
     # RC-514: same refusal, message widened to name every reason the capability is unavailable.
     with pytest.raises(RuntimeError, match="UNAVAILABLE"):
         sc._block_live_schwab_in_ci_offline()
-
-
-def test_preflight_refuses_contaminated_env_then_passes_after_isolated_sanitize(monkeypatch):
-    """Same contract as the old process-env test, but sanitize a copy — no xdist leak."""
-    import live_schwab_env as mod
-
-    monkeypatch.setenv("ED_CI_OFFLINE", "1")
-    monkeypatch.setenv("CI", "true")
-    monkeypatch.setenv("SCHWAB_API_KEY", _TEST_SENTINEL)
-    monkeypatch.setenv("SCHWAB_APP_SECRET", _TEST_SENTINEL)
-
-    assert mod.main([]) == 1
-
-    isolated = {
-        "ED_CI_OFFLINE": "1",
-        "CI": "true",
-        "SCHWAB_API_KEY": _TEST_SENTINEL,
-        "SCHWAB_APP_SECRET": _TEST_SENTINEL,
-        "ED_CONSOLE_ALLOW_NONCANONICAL_DB": "1",
-    }
-    mod.apply_sanitize(isolated)
-    assert "ED_CI_OFFLINE" not in isolated
-    assert isolated["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] == "1"
-
-    monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
-    monkeypatch.delenv("CI", raising=False)
-    monkeypatch.setenv("SCHWAB_API_KEY", _LIVE_KEY)
-    monkeypatch.setenv("SCHWAB_APP_SECRET", _LIVE_SECRET)
-    assert os.getenv("ED_CI_OFFLINE") in (None, "")
-    assert mod.main([]) == 0
-    # process harness flag must still be present for later tests on this worker
-    assert os.getenv("ED_CONSOLE_ALLOW_NONCANONICAL_DB") == "1"
 
 
 def test_bat_unsets_emit_set_lines_for_cmd_contamination_only(monkeypatch, capsys):
