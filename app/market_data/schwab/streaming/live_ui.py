@@ -74,17 +74,16 @@ def _et_day_start(t: float) -> float:
     return datetime.fromtimestamp(t, ET).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
 
 
-def day_minutes(db_path: "str | Path", now: float) -> dict[str, tuple[float, dict[float, dict]]]:
-    """The minutes the daemon starts with: the stored 1-minute bars (price_bars_1m) of every symbol
-    with minutes on `now`'s ET day, as {symbol: (that day's start, {bar start: chart bar})} --
-    every symbol, not only the ones streamed at startup, so a symbol the operator streams later
-    in the day already holds the day the store holds. Read once, at the daemon's startup
-    (capture.run), read-only; a read that fails stops the startup."""
-    day = _et_day_start(now)
+def day_minutes(db_path: "str | Path", symbols, now: float) -> dict[str, tuple[float, dict[float, dict]]]:
+    """The minutes the daemon starts with: the stored 1-minute bars (price_bars_1m) of `symbols`
+    on `now`'s ET day, as {symbol: (that day's start, {bar start: chart bar})}. Read once, at the
+    daemon's startup (capture.run), read-only; a read that fails stops the startup."""
+    day, keys = _et_day_start(now), sorted({ticker_storage_key(s) for s in symbols})
     con = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True, timeout=10)
     try:
         rows = con.execute("SELECT ticker, bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
-                           "WHERE bar_start_ts_utc>=?", (day,)).fetchall()
+                           f"WHERE ticker IN ({','.join('?' * len(keys))}) AND bar_start_ts_utc>=?",
+                           (*keys, day)).fetchall()
     finally:
         con.close()
     out: dict[str, tuple[float, dict[float, dict]]] = {}
@@ -145,9 +144,8 @@ class LiveUiServer:
 
     def on_bar(self, msg) -> None:
         """One daemon bar message -> the symbol's minutes of the day -> the chart bar it makes at
-        every timeframe, for every browser watching the symbol. Held minutes are kept for the day
-        whether the symbol is streamed or not (every symbol's stored minutes were loaded at
-        startup); a new day starts empty. No stored minute is read here."""
+        every timeframe, for every browser watching the symbol. A symbol's first bar of a day it
+        holds no minutes for starts that day's minutes: no stored minute is read here."""
         if not isinstance(msg, dict) or not msg.get("symbol"):
             return
         bar = live_price_rows.minute_bar(msg)
