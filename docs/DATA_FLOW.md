@@ -112,8 +112,9 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Option chain.** Schwab REST → console memory, downloaded by the console for every board and
   viewed ticker each cycle of the levels loop (`_terrain_loop`; a cycle is the whole sweep, at
   least 5 s apart), at any hour: pre-market, in session, after hours, weekends; no time of day
-  removes a ticker from a cycle. A viewed ticker's streamed tick also fetches its chain at once
-  when none is kept. Owner: `_terrain_loop` (started with the console, `start_terrain_loop`);
+  removes a ticker from a cycle. Every ticker's publication keeps its chain and its heatmap, so a
+  ticker put on screen shows at once; a viewed ticker's streamed tick fetches its chain at once
+  only when the loop has not reached it yet. Owner: `_terrain_loop` (started with the console, `start_terrain_loop`);
   when it stops, every ticker's levels go stale with that reason (`terrain_staleness`).
   Separately the daemon stores the full chain on the §4.2 schedule. Both download
   it through `schwab_client.fetch_full_chain`, the one place a chain enters, so every consumer

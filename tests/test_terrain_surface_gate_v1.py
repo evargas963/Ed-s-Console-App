@@ -75,7 +75,9 @@ def _cached_surface(tk):
     return (server.terrain_cache_get(tk) or {}).get("_gamma_surface")
 
 
-def test_producer_gates_projection_on_demand(monkeypatch, view):
+def test_producer_projects_every_tickers_heatmap(monkeypatch, view):
+    """Every ticker's heatmap is projected at its publication, viewed or not (operator,
+    2026-10-01: "when i switch tickers the heatmap doesnt render right away")."""
     tk = server.ticker_storage_key("SPY")
     server._gamma_surface_seq.pop(tk, None)   # surface_seq is a running per-ticker counter
     calls = {"n": 0, "args": None}
@@ -87,13 +89,7 @@ def test_producer_gates_projection_on_demand(monkeypatch, view):
 
     _stub_terrain(monkeypatch, proj)
 
-    # UNWANTED ticker (no page open) -> the producer path does NOT invoke project_gamma_surface
-    server._terrain_refresh_one(tk)
-    assert calls["n"] == 0
-    assert _cached_surface(tk) is None
-
-    # WANTED ticker -> shaped EXACTLY ONCE, from that cycle's contracts and the snapshot's books
-    view(tk)
+    # no page open: shaped EXACTLY ONCE, from that cycle's contracts and the snapshot's books
     server._terrain_refresh_one(tk)
     assert calls["n"] == 1
     assert calls["args"] == (len(_REAL_CHAIN), {("2026-09-04", 0.0): ({}, ExposureDiagnostics(0, 0, 0, ""))})
