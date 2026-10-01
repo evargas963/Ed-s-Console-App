@@ -250,6 +250,16 @@ def schwab_time_text(ts: Optional[float]) -> str:
     return f"as of {ct_label(ts, seconds=True)}" if ts is not None else "Schwab sent no time for it"
 
 
+def value_time_text(stamp: Optional[tuple]) -> Optional[str]:
+    """A value's time as the plane holds it (live_market_plane `time_of`: (Schwab's time field from
+    the message that set the value, True) or (our receive time of that message, False)) as the
+    screen says it; None when the value was not sent."""
+    if stamp is None:
+        return None
+    ts, schwabs = stamp
+    return schwab_time_text(ts) if schwabs else f"received {ct_label(ts)}"
+
+
 def day_candle(ticker: str, now: float) -> dict[str, Any]:
     """Today's daily candle at `now`, Schwab's day fields as sent (decided by the operator,
     2026-10-01: "lets use what schwab gives us"): open OPEN_PRICE, high HIGH_PRICE, low LOW_PRICE
@@ -269,7 +279,7 @@ def day_candle(ticker: str, now: float) -> dict[str, Any]:
     volume_text, volume_as_of, absent: {field: reason}, unavailable: the chart's text when there
     is no bar, source}."""
     fields = lmp.day_fields(ticker_storage_key(ticker))
-    if not set(fields) - {"TRADE_TIME_MILLIS", "REGULAR_MARKET_TRADE_MILLIS"}:
+    if not set(fields) - {"TRADE_TIME_MILLIS"}:
         why = "Schwab has sent no day field (open, high, low, last, volume) for this symbol"
         return {"t": None, "bar": None, "volume": None, "volume_text": volume_text(None), "volume_as_of": None,
                 "absent": {"day": why}, "unavailable": f"No daily candle: {why}", "source": DAY_SOURCE}
@@ -295,9 +305,9 @@ def day_candle(ticker: str, now: float) -> dict[str, Any]:
             return None
         return value
 
-    def stamp(name: str) -> str:
-        """`name`'s own Schwab time (lmp.VALUE_TIME), as the screen says it."""
-        return schwab_time_text((fields.get(lmp.VALUE_TIME[name]) or (None,))[0])
+    def stamp(name: str) -> Optional[str]:
+        """`name`'s time (lmp.VALUE_TIME, value_time_text), as the screen says it."""
+        return value_time_text(((lmp.get_quote(ticker) or {}).get("time_of") or {}).get(name))
 
     o, h, lo = (take(k, n, zero_is_none=True) for k, n in (("o", "OPEN_PRICE"), ("h", "HIGH_PRICE"),
                                                             ("l", "LOW_PRICE")))
@@ -407,9 +417,9 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         return f"received {ct_label(row[key])}" if row.get(key) is not None else None
 
     def own(name: str) -> Optional[str]:
-        """The Schwab time field that belongs to the value `name` (lmp.VALUE_TIME), as the screen
-        says it; None when Schwab has not sent the value."""
-        return None if row.get("time_of") is None else schwab_time_text(row["time_of"].get(name))
+        """The time of the value `name` (lmp.VALUE_TIME, value_time_text), as the screen says it;
+        None when Schwab has not sent the value."""
+        return value_time_text((row.get("time_of") or {}).get(name))
 
     def side(s: str) -> Optional[str]:
         """The bid's or ask's time (live_market_plane._side_time) as the screen says it."""

@@ -218,13 +218,13 @@ def test_a_new_session_shows_the_last_ones_values_with_their_times_until_schwab_
     # the prior close as Schwab sent it overnight (12.18 at 01:30 ET, adjusted to 12.13 at 03:45 ET),
     # with our receive time, said so (Schwab sends no time for it)
     assert (first["prior_close_text"], first["prior_close_as_of"]) == ("12.13", "received Wed 09/30 02:45 AM CT")
-    # Schwab's post-roll volume 0, shown as 0 with its time field, TRADE_TIME_MILLIS (field 35:
-    # Tuesday's last trade, 19:56:44 ET); its 0 open, high and low make no candle, with theirs,
-    # REGULAR_MARKET_TRADE_MILLIS (field 36: Tuesday 19:00:00 ET as Schwab sent it)
+    # Schwab's post-roll volume 0 (03:45:01 ET) and 0 open, high and low (01:30:10 ET) came without
+    # their time fields (TRADE_TIME_MILLIS, REGULAR_MARKET_TRADE_MILLIS): each with the time it was
+    # received, never with the field's value from another message (it read as Tuesday's volume 0)
     assert (first["day"]["volume_text"], first["day"]["volume_as_of"], first["day"]["bar"]) == (
-        "0", "as of Tue 09/29 06:56:44 PM CT", None)
+        "0", "received Wed 09/30 02:45 AM CT", None)
     assert first["day"]["unavailable"] == (
-        "No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (as of Tue 09/29 06:00:00 PM CT)")
+        "No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (received Wed 09/30 12:30 AM CT)")
     traded = at(4, 0, 10, 30)          # its first trade
     assert (traded["spot"], traded["spot_state"], traded["chg_pct"], traded["day"]["volume"]) == (
         12.18, "live", 0.412201, 3.0)

@@ -25,7 +25,7 @@ import server as srv
 from app.market_data.schwab.streaming import live_ui
 from app.market_data.schwab.streaming.live_push import is_forwarded
 from stream_spine import MessageBus, subscription_msg
-from time_et import ET, ct_label
+from time_et import ET
 
 FX = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_day_fields_2026_09_30.json")
                 .read_text(encoding="utf-8"))
@@ -81,16 +81,17 @@ def test_before_the_regular_session_the_open_is_absent_with_schwabs_reason(plane
     Schwab sent with the time Schwab sent it, operator 2026-10-01), never filled from the
     pre-market minutes; no candle is drawn. The day's volume so far is TOTAL_VOLUME as sent
     (pre-market included, p.16), with its trade time (TRADE_TIME_MILLIS, Streamer Guide field 35).
-    The open, high and low pair with REGULAR_MARKET_TRADE_MILLIS (field 36), which this capture of
-    SPY's day fields does not hold: said so."""
+    The open, high and low pair with REGULAR_MARKET_TRADE_MILLIS (field 36) only when it came in
+    the message that set them; this capture's 0s came without it, so with our receive time."""
     plane("SPY", _at(8, 0))
     day = live_price_rows.price_row("SPY", _at(8, 0))["day"]
     fields = lmp.day_fields("SPY")
-    why = "Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (Schwab sent no time for it)"
+    why = "Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (received Wed 09/30 04:23 AM CT)"
     assert day["bar"] is None and day["absent"]["o"] == day["absent"]["h"] == day["absent"]["l"] == why
     assert day["unavailable"] == "No daily candle: " + why          # one served sentence
     assert day["volume"] == fields["TOTAL_VOLUME"][0] > 0
-    assert day["volume_as_of"] == "as of " + ct_label(fields["TRADE_TIME_MILLIS"][0], seconds=True)
+    # the TRADE_TIME_MILLIS of the message that set the volume (07:59:51 ET), not a later message's
+    assert day["volume_as_of"] == "as of Wed 09/30 06:59:51 AM CT"
 
 
 def test_the_volume_is_shown_with_its_trade_time(plane):
@@ -162,7 +163,7 @@ def test_after_midnight_the_prior_days_values_are_shown_as_that_days(monkeypatch
             lmp.record_from_level_one_equity(sym, m["content"], received_ts=m["ts_recv"])
     lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [sym]}}, now)
     row = live_price_rows.price_row(sym, now)
-    day, fields = row["day"], lmp.day_fields(sym)
+    day = row["day"]
     # the volume with its trade time (TRADE_TIME_MILLIS, field 35): Friday's last trade
     friday, volume, traded, vol_at = {
         "SPY": ("Fri 09/04/2026", 34054199, "Fri 09/04 06:59 PM CT", "as of Fri 09/04 06:59:57 PM CT"),
@@ -172,11 +173,12 @@ def test_after_midnight_the_prior_days_values_are_shown_as_that_days(monkeypatch
     if (sym, when[3]) == ("SPY", 0):                    # before Schwab's 01:30 roll: Friday's candle
         assert (day["bar"]["o"], day["bar"]["h"], day["bar"]["l"], day["bar"]["c"]) == (772.01, 772.87, 769.0, 770.19)
         assert day["bar"]["label"] == friday and day["unavailable"] is None
-    else:                                               # Schwab's own 0s, with their time field (36)
-        reg = fields.get("REGULAR_MARKET_TRADE_MILLIS", (None,))[0]
+    else:   # Schwab's own 0s, re-sent on its overnight refreshes with REGULAR_MARKET_TRADE_MILLIS
+        # (field 36) in the same message (SPY 01:39:57 ET: 1788566400001; IWM 01:47 ET:
+        # 1790380800187): with that time
+        reg = {"SPY": "Fri 09/04 07:00:00 PM CT", "IWM": "Fri 09/25 07:00:00 PM CT"}[sym]
         assert day["bar"] is None and day["unavailable"] == (
-            "No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 "
-            + (f"(as of {ct_label(reg, seconds=True)})" if reg is not None else "(Schwab sent no time for it)"))
+            f"No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (as of {reg})")
     # the last trade is shown with Schwab's trade time, never as a live price
     assert row["spot"] is None and row["closed_last"]["as_of"] == traded
 

@@ -450,8 +450,13 @@ opens no second streaming socket).
   | ASK_PRICE, ASK_SIZE | 38 ASK_TIME_MILLIS, else the message's 34 QUOTE_TIME_MILLIS |
   | CLOSE_PRICE (the prior close) | none: our receive time, printed "received" |
 
-  The bid's and ask's time is the one `quote_live` judges (one clock for one value); a bid, ask
-  or size sent with no time field at all takes our receive time, printed "received"
+  A value takes its time field only when that field came in the same message as the value;
+  when the message that set the value did not carry it, the value takes our receive time of
+  that message, printed "received" (Schwab's post-roll TOTAL_VOLUME 0 and its overnight 0 open,
+  high and low come without their time fields: PCG 2026-09-30 03:45 and 01:30 ET read "0 ·
+  received", never as the prior evening's). The bid's and ask's time is the one `quote_live`
+  judges (one clock for one value); a bid, ask or size sent with no time field at all takes our
+  receive time, printed "received"
   (`live_market_plane._side_time`). A Schwab time field sent as 0 is no time: printed "Schwab
   sent no time for it", never a 1969/1970 date. $VIX and $NDX send no bid or ask in session,
   only 0s on their overnight refreshes with every time field 0: the bid × ask place reads
