@@ -12,7 +12,9 @@ It does four things, in one loop:
   2. SYNC    Every SYNC_SEC it compares wanted with what Schwab has accepted on this
              connection and sends the difference: UNSUBS for what is no longer wanted, then
              SUBS (the first request of a service) or ADD (every later one -- a repeated SUBS
-             can replace the whole set). Requests are split so none exceeds Schwab's 64 KB
+             can replace the whole set). The equity services (EQUITY_SERVICES) also want the
+             board (standing_roster, read at the daemon's start) and are only added to on a
+             connection: the console's list adds symbols on top, never removes one. Requests are split so none exceeds Schwab's 64 KB
              message limit (measured 2026-09-22: a 71 KB request closed the socket).
              Schwab's answer to every request goes to the stream_subscriptions table. A symbol
              Schwab refused is not asked for again until the console's list changes.
@@ -42,6 +44,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
+from calibration.complete_chain_capture import board_tickers  # noqa: E402
+from db_authority import canonical_console_db_path  # noqa: E402
 from stream_spine import (  # noqa: E402
     CONNECTION,
     CONNECTION_CLOSED,
@@ -119,14 +123,29 @@ def save_wanted(path: Path, wanted: "dict[str, frozenset[str]]") -> None:
     os.replace(tmp, path)
 
 
+#: The equity services: the daemon's standing board roster plus the console's demand, only ever
+#: added to on a connection -- a console (re)connect, its partial first list or a page closing
+#: never unsubscribes one, so no symbol's stream (its 1-minute bars) is cut and re-added.
+EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
+
+
+def standing_roster(db_path: "Path | str") -> "frozenset[str]":
+    """The board (the console's logging_universe table, read at the daemon's start): the equity
+    symbols the daemon streams whatever the console's list says."""
+    return frozenset(board_tickers(db_path))
+
+
 def plan(wanted: "dict[str, frozenset[str]]", held: "dict[str, frozenset[str]]",
-         refused: "dict[str, dict[str, str]]") -> "list[tuple[str, str, list[str]]]":
+         refused: "dict[str, dict[str, str]]", standing: "frozenset[str]") -> "list[tuple[str, str, list[str]]]":
     """The Schwab requests that turn `held` into `wanted`: [(service, command, symbols)].
-    Per service: UNSUBS what is held but not wanted, then SUBS (nothing held yet) or ADD the
-    wanted symbols not held and not refused. Pure function -- the whole sync decision."""
+    Per service: UNSUBS what is held but not wanted (never on an equity service: it wants what
+    it holds and the `standing` roster too), then SUBS (nothing held yet) or ADD the wanted
+    symbols not held and not refused. Pure function -- the whole sync decision."""
     out: "list[tuple[str, str, list[str]]]" = []
     for svc in SERVICES:
         want, have = wanted.get(svc, frozenset()), held.get(svc, frozenset())
+        if svc in EQUITY_SERVICES:
+            want = want | standing | have
         drop = sorted(have - want)
         add = sorted(want - have - set(refused.get(svc, {})))
         if drop:
@@ -253,11 +272,13 @@ def _connection_lost(e: BaseException) -> bool:
 # ---------------------------------------------------------------------------- the daemon
 
 class Daemon:
-    def __init__(self, bus: MessageBus, health: HealthRegistry, path: Path) -> None:
+    def __init__(self, bus: MessageBus, health: HealthRegistry, path: Path, standing: "frozenset[str]") -> None:
         self.bus = bus
         self.health = health
         self.path = path
         self.wanted = load_wanted(path)
+        #: the board's equity symbols, streamed whatever the console's list says (standing_roster)
+        self.standing = standing
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
@@ -291,7 +312,7 @@ class Daemon:
                 "health": self.health.report(now)}
 
     async def sync(self) -> None:
-        for svc, cmd, symbols in plan(self.wanted, self.held, self.refused):
+        for svc, cmd, symbols in plan(self.wanted, self.held, self.refused, self.standing):
             for chunk in split_request(symbols):
                 try:
                     await _request(self.stream, svc, cmd, chunk)
@@ -481,7 +502,6 @@ async def capture_chains(make_client, stop: asyncio.Event) -> None:
     """The chain history (DATA_FLOW decision 7): at each capture time the full chain of every
     board ticker is fetched and written, in a thread so the stream never waits."""
     from calibration.complete_chain_capture import capture_round, next_capture_ts
-    from db_authority import canonical_console_db_path
     db_path = canonical_console_db_path()
     while True:
         try:
@@ -531,7 +551,7 @@ async def run() -> int:
     stop = asyncio.Event()
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
-    daemon = Daemon(bus, health, wanted_path())
+    daemon = Daemon(bus, health, wanted_path(), standing_roster(canonical_console_db_path()))
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(capture_chains(make_client, stop)),

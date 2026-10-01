@@ -527,7 +527,7 @@ def test_the_daemon_asks_schwab_for_the_days_minutes_with_extended_hours():
             calls.append((symbol, kw))
             return _Response()
 
-    daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"))
+    daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"), frozenset())
     daemon.client = _Client()
     fetch = schwab_minutes(daemon)
     start, end = datetime(2026, 9, 25, 9, 15, tzinfo=ET).timestamp(), RESTART
@@ -547,7 +547,7 @@ def test_without_a_schwab_sign_in_the_reason_served_is_schwabs_own(monkeypatch):
 
     from app.market_data.schwab.streaming.capture import Daemon, schwab_minutes
     expired = "refresh token expired; run python reauth_schwab.py"
-    daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"))
+    daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"), frozenset())
 
     async def run_once():
         stop = asyncio.Event()
@@ -654,7 +654,7 @@ def _replay(minutes: list[dict], first: int, cuts: dict, away: dict,
         return s, c
 
     async def main():
-        daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"))
+        daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"), frozenset())
         closed = daemon.bus.subscribe("sub.", maxsize=64, name="test_subscriptions")
         (srv_ui, c), steps, away_left, ack = start(), [], 0, False
         srv_ui.on_subscription(_subscribed("SPY", ts=minutes[first]["timestamp"] / 1000.0

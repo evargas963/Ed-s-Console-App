@@ -27,26 +27,28 @@ def _wanted(**kw):
 
 def test_first_request_of_a_service_is_subs_later_ones_add():
     empty = _wanted()
-    assert cap.plan(_wanted(NYSE_BOOK=["SPY"]), empty, {}) == [("NYSE_BOOK", "SUBS", ["SPY"])]
+    assert cap.plan(_wanted(NYSE_BOOK=["SPY"]), empty, {}, frozenset()) == [("NYSE_BOOK", "SUBS", ["SPY"])]
     held = _wanted(NYSE_BOOK=["SPY"])
-    assert cap.plan(_wanted(NYSE_BOOK=["SPY", "QQQ"]), held, {}) == [("NYSE_BOOK", "ADD", ["QQQ"])]
+    assert cap.plan(_wanted(NYSE_BOOK=["SPY", "QQQ"]), held, {}, frozenset()) == [("NYSE_BOOK", "ADD", ["QQQ"])]
 
 
 def test_dropped_symbols_are_unsubscribed_before_new_ones_are_added():
-    held = _wanted(LEVELONE_EQUITIES=["SPY", "AAPL"])
-    got = cap.plan(_wanted(LEVELONE_EQUITIES=["SPY", "MSFT"]), held, {})
-    assert got == [("LEVELONE_EQUITIES", "UNSUBS", ["AAPL"]), ("LEVELONE_EQUITIES", "ADD", ["MSFT"])]
+    # a book service (an equity service is never unsubscribed on a connection: W-09, observed
+    # 2026-09-29 -- the console's partial list cut every board ticker's stream)
+    held = _wanted(NYSE_BOOK=["SPY", "AAPL"])
+    got = cap.plan(_wanted(NYSE_BOOK=["SPY", "MSFT"]), held, {}, frozenset())
+    assert got == [("NYSE_BOOK", "UNSUBS", ["AAPL"]), ("NYSE_BOOK", "ADD", ["MSFT"])]
 
 
 def test_replacing_everything_held_starts_the_service_over_with_subs():
     held = _wanted(NYSE_BOOK=["SPY"])
-    got = cap.plan(_wanted(NYSE_BOOK=["NVDA"]), held, {})
+    got = cap.plan(_wanted(NYSE_BOOK=["NVDA"]), held, {}, frozenset())
     assert got == [("NYSE_BOOK", "UNSUBS", ["SPY"]), ("NYSE_BOOK", "SUBS", ["NVDA"])]
 
 
 def test_refused_symbols_are_not_asked_for_again_and_nothing_to_do_is_nothing():
     want = _wanted(LEVELONE_OPTIONS=["A", "B"])
-    assert cap.plan(want, _wanted(LEVELONE_OPTIONS=["A"]), {"LEVELONE_OPTIONS": {"B": "no"}}) == []
+    assert cap.plan(want, _wanted(LEVELONE_OPTIONS=["A"]), {"LEVELONE_OPTIONS": {"B": "no"}}, frozenset()) == []
 
 
 def test_requests_are_split_under_schwabs_message_limit():
@@ -61,10 +63,10 @@ def test_requests_are_split_under_schwabs_message_limit():
 
 def test_the_wanted_list_survives_a_restart_and_a_change_clears_that_services_refusals(tmp_path):
     bus, health = ss.MessageBus(), ss.HealthRegistry()
-    d = cap.Daemon(bus, health, tmp_path / "w.json")
+    d = cap.Daemon(bus, health, tmp_path / "w.json", frozenset())
     assert d.wanted == _wanted(), "no built-in symbol list: the console decides"
     d.set_wanted({"LEVELONE_EQUITIES": ["spy"], "NYSE_BOOK": ["SPY"], "BOGUS": ["X"]})
-    assert cap.Daemon(bus, health, tmp_path / "w.json").wanted == _wanted(
+    assert cap.Daemon(bus, health, tmp_path / "w.json", frozenset()).wanted == _wanted(
         LEVELONE_EQUITIES=["SPY"], NYSE_BOOK=["SPY"])
     d.refused = {s: {} for s in cap.SERVICES}
     d.refused["NYSE_BOOK"] = {"SPY": "x"}
@@ -89,10 +91,10 @@ class FakeSchwab:
             raise RuntimeError("code 19 REACHED_SYMBOL_LIMIT")
 
 
-def _daemon(tmp_path, monkeypatch, fake, **wanted):
+def _daemon(tmp_path, monkeypatch, fake, standing=frozenset(), **wanted):
     bus = ss.MessageBus()
     log = bus.subscribe("sub.", maxsize=100)
-    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json")
+    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json", standing)
     d.set_wanted({k: list(v) for k, v in wanted.items()})
     d.stream = object()
     monkeypatch.setattr(cap, "_request", fake.request)
@@ -109,6 +111,51 @@ def test_sync_subscribes_the_difference_and_logs_every_answer(tmp_path, monkeypa
     fake.calls.clear()
     asyncio.run(d.sync())
     assert fake.calls == [], "nothing changed, nothing sent"
+
+
+#: a board (the console's logging_universe), the stand-in for the production roster
+BOARD = ["$SPX", "$VIX", "AAPL", "AMD", "META", "MSFT", "MU", "NVDA", "QQQ", "SPY", "TSLA"]
+_EQUITY = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
+
+
+def test_a_console_reconnect_with_a_partial_list_never_unsubscribes_a_board_symbol(tmp_path, monkeypatch):
+    """W-09, observed 2026-09-29: CHART_EQUITY was UNSUBS'd for 41 symbols at 11:25:00 ET and 42
+    at 12:19:14 ET and re-added 1.5-2 minutes later, every ticker losing those minutes -- a
+    restarted console's first list holds only what it knows yet (the market context and the
+    active ticker), and the daemon unsubscribed everything else. The board is the daemon's own
+    standing roster: the console's list only adds to it; a partial list removes nothing, and a
+    daemon that starts with a partial saved list still subscribes the board."""
+    fake = FakeSchwab()
+    whole = {svc: BOARD for svc in _EQUITY}
+    d, _ = _daemon(tmp_path, monkeypatch, fake, standing=frozenset(BOARD), **whole)
+    asyncio.run(d.sync())
+    fake.calls.clear()
+    d.set_wanted({svc: ["$SPX", "$NDX", "$VIX", "SPY"] for svc in _EQUITY})   # the restarted console's first list
+    asyncio.run(d.sync())
+    assert [c for c in fake.calls if c[1] == "UNSUBS"] == []
+    assert fake.calls == [(svc, "ADD", ["$NDX"]) for svc in _EQUITY]
+    assert all(d.held[svc] >= set(BOARD) for svc in _EQUITY)
+    fake.calls.clear()                                    # the daemon restarts on that saved list
+    d2 = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json", frozenset(BOARD))
+    d2.stream = object()
+    asyncio.run(d2.sync())
+    assert all(d2.held[svc] == set(BOARD) | {"$NDX"} for svc in _EQUITY)
+
+
+def test_a_demand_list_that_alternates_does_not_churn_a_symbol(tmp_path, monkeypatch):
+    """A viewed ticker off the board (2026-09-29: SNDK, UNSUBS/ADD at 12:47, 13:40, 14:17,
+    14:20, 15:47, 15:49, 15:51 and 15:52 ET) leaves the console's list whenever its page's push
+    connection closes and returns when it opens: each time its stream was cut and its minutes
+    lost. On a connection an equity symbol is added once and never unsubscribed; a board symbol
+    is never touched."""
+    fake = FakeSchwab()
+    d, _ = _daemon(tmp_path, monkeypatch, fake, standing=frozenset(BOARD), **{svc: BOARD for svc in _EQUITY})
+    asyncio.run(d.sync())
+    fake.calls.clear()
+    for k in range(10):
+        d.set_wanted({svc: BOARD + (["SNDK"] if k % 2 == 0 else []) for svc in _EQUITY})
+        asyncio.run(d.sync())
+    assert fake.calls == [(svc, "ADD", ["SNDK"]) for svc in _EQUITY]
 
 
 def test_a_refused_symbol_is_recorded_and_retried_only_after_the_list_changes(tmp_path, monkeypatch):
@@ -234,7 +281,7 @@ def test_a_dying_connection_is_replaced_and_everything_wanted_is_resubscribed(tm
     fake = FakeSchwab()
     monkeypatch.setattr(cap, "_request", fake.request)
     bus = ss.MessageBus()
-    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json")
+    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json", frozenset())
     d.set_wanted({"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["SPY"]})
     stop = asyncio.Event()
 
@@ -258,7 +305,7 @@ def test_silence_from_schwab_ends_the_connection(tmp_path, monkeypatch):
     monkeypatch.setattr(cap, "_open_stream", FakeStream)
     monkeypatch.setattr(cap, "DEAD_SEC", 0.2)
     monkeypatch.setattr(cap, "_request", FakeSchwab().request)
-    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json")
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json", frozenset())
 
     async def go():
         await d.run_connection(object(), asyncio.Event())

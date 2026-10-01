@@ -47,7 +47,7 @@ opens no second streaming socket).
 |---|---|---|
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
 | daemon → console | local WebSocket 127.0.0.1:8799 | each Schwab book, option quote, 1-minute bar and news message as sent (an equity quote travels only as the price row below); on connect, the current state first (each option quote field's last value, each whole book); a completed bar or a headline is a past event and is not resent: the console names the span it was disconnected (`PUSH_GAP` in its log) and the bars of that span are not refilled |
-| console → daemon | same socket | the "wanted" list: every symbol per Schwab service |
+| console → daemon | same socket | the "wanted" list: every symbol per Schwab service. For the equity services (quotes, 1-minute bars, news) it only adds: the daemon streams the board (the `logging_universe` table, read at its start: `capture.standing_roster`) whatever the list says, and on a connection never unsubscribes an equity symbol, so a console restart's partial first list or a page closing cuts no stream (`capture.plan`; W-09) |
 | daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second; and each completed 1-minute bar of a subscribed symbol as the chart bar it makes at every timeframe (`bars`). A page back from a drop subscribes with the daemon's time of the last beat it had (`disconnected_since`) and is told the gap in its live bars (`bars_gap`); no bar received in the gap is resent. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
 | daemon → console | the same :8800 push | the same price rows, for the equities the console wants streamed: the console's only live price |
 | Schwab → console | Schwab REST | full option chains; one quote at startup to validate the login |
@@ -125,7 +125,11 @@ opens no second streaming socket).
   reaching the stream's resumption covers the whole span (a thin ticker's 09:15 ET to its first
   trade, a quiet stretch); an empty reply covers nothing. Where the stream and the price history both give a minute the streamed one
   stands, a difference counted and logged with both and with the symbol's and the board's count
-  (`live_ui._hold`; W-15). Inside a covered span a minute with no bar is a minute with no trade.
+  (`live_ui._hold`; W-15). Inside a covered span a minute with no bar is a minute with no trade:
+  Schwab sends a CHART_EQUITY bar only for a minute with a trade (measured 2026-09-29 read-only
+  from `stream_capture.db`: MTA's 229 and TSL's 234 regular-session minutes without a bar each
+  had no trade in the LEVELONE stream, and no minute had a trade but no bar; the stored bars
+  equal the streamed ones exactly for MTA, TSL, SNDK, MET, NBIX and SPY).
   No live bar reads the database. The 1-minute bar is always pushed; a bar above it, and the
   Order Flow hour, only when every minute from its bucket's start to its newest is covered;
   otherwise it is unavailable naming each span missing ("minutes HH:MM – HH:MM CT not received

@@ -136,7 +136,7 @@ def test_the_selected_ticker_gets_its_books_a_change_replaces_them_and_a_restart
         return normalize_wanted(ofs.current_wanted())
 
     def book_requests(wanted, held):
-        return [r for r in plan(wanted, held, {}) if r[0] in ("NYSE_BOOK", "NASDAQ_BOOK")]
+        return [r for r in plan(wanted, held, {}, frozenset()) if r[0] in ("NYSE_BOOK", "NASDAQ_BOOK")]
 
     monkeypatch.setattr(push_changes, "_clients", {})
     monkeypatch.setattr(ofs, "_active_ticker", None)

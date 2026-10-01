@@ -2351,9 +2351,8 @@ def _status_line(now: float) -> str:
 
 
 def _terrain_loop() -> None:
-    # the board's streams first: the daemon drops a console's streams when it disconnects and
-    # streams only what the console declares, so a restarted console re-declares them before the
-    # start-up work. Then the price levels and the stored option levels, on this thread: the
+    # the board's streams first (the daemon streams the board it read at its start whatever the
+    # console declares; a board ticker enrolled since is streamed once declared). Then the price levels and the stored option levels, on this thread: the
     # console serves the page meanwhile, and each ticker's levels appear as they are priced
     from app.options.order_flow.streaming import declare_equity_symbols
     with _logger_lock:
@@ -2397,7 +2396,8 @@ def _terrain_loop() -> None:
         _previewed = [tk for tk in _viewed_now if tk not in tickers]
         _publish_missing_price_levels(tickers + _previewed)     # a new session date, a new ticker
         # Every board ticker's spot is the streamed LAST_PRICE only, so the daemon must
-        # stream each one (its fixed roster is just --symbols).
+        # stream each one (its standing roster is the board read at its start; a ticker
+        # enrolled or viewed since is streamed from this declaration).
         try:
             from app.options.order_flow.streaming import declare_equity_symbols
             declare_equity_symbols("board", tickers + _previewed)

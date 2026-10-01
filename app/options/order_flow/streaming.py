@@ -356,8 +356,9 @@ def clear_active_option_contract(*, reason: str) -> None:
     _wanted_changed()
 
 
-#: Which stocks/indexes a screen shows a live price for, by source. The daemon streams its
-#: fixed --symbols roster only; everything else is requested here (the no-fallback rule
+#: Which stocks/indexes a screen shows a live price for, by source. The daemon streams the
+#: board it read at its start (capture.standing_roster) and never unsubscribes an equity on a
+#: connection; everything else is requested here (the no-fallback rule
 #: means an unstreamed symbol reads UNAVAILABLE, so every shown symbol must be requested).
 #: The market context every page's header shows beside the selected ticker (Trade Desk,
 #: operator 2026-09-25). Standing demand: measured 2026-09-25, a page whose watchlist did not
