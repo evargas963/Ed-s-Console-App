@@ -1,28 +1,19 @@
-"""The ONE hook executor: runs the rostered guards in-process on one payload; worst exit wins.
+"""The one hook executor: runs the rostered guards in-process on one payload; worst exit wins.
 
 Wired by `.claude/settings.json` / `.cursor/hooks.json` as
     python tools/hook_chain.py tools/<guard>.py [tools/<guard>.py ...]
-for PreToolUse (operator_law_guard + process_lock_guard). One process
-instead of one interpreter per guard (SIMPLICITY REHAB, 2026-08-24: ~300ms vs 2.8-6s).
+for PreToolUse (operator_law_guard + process_lock_guard), in one process instead of one
+interpreter per guard.
 
-What it does, entirely: read the payload; refuse one that is not a JSON object (RC-541 —
-"cannot judge" and "judged clean" must not share an exit code); import each guard and call its
-`main()` on the identical stdin; a guard that crashes is a BLOCK (unmeasurable is never
-compliant, RC-57); on any block, print which checkout and commit judged the event, so a stale
-checkout's rule never reads as a mystery (RC-512).
+What it does, entirely: read the payload; refuse one that is not a JSON object ("cannot judge"
+and "judged clean" do not share an exit code); import each guard and call its `main()` on the
+identical stdin; a guard that crashes is a block; on any block, print which checkout and commit
+judged the event.
 
-What it deliberately does NOT do (deleted 2026-09-10, RC-544/RC-546). It keeps no state
-between events and it never chooses another tree to judge: the earlier executor resolved
-"authority" from the session transcript and delegated to other worktrees' chains, with a
-crashed-delegate recovery door and an uncommitted-guard refusal on top. A transcript cannot
-tell an executed mutation from one the hook refused, so one BLOCKED command poisoned every
-later event; and none of that machinery protected anything the checkout's own guards, the
-pre-commit hooks of the target tree and required CI do not already protect. The guards judge
-the ACTION in the payload; the checkout that runs the session is the checkout whose guards
-run, and the operator launches sessions in the tree they work in (AGENTS.md, Authority: work in a worktree).
-
-INVARIANT: BLOCKED OR UNEXECUTED ACTION => ZERO MUTATION => ZERO EFFECT ON ANY LATER EVENT.
-There is no place for an effect to live.
+It keeps no state between events and never chooses another tree to judge: the guards judge the
+action in the payload, and the checkout that runs the session is the checkout whose guards run.
+A blocked or unexecuted action has no effect on any later event. The rules the guards refuse
+live in `AGENTS.md` § Authority.
 """
 from __future__ import annotations
 

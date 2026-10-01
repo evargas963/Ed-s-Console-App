@@ -223,7 +223,7 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
 
 
 def test_a_live_price_of_0_is_a_price(spy_levels, monkeypatch):
-    """AGENTS.md rule 2: a reported 0 is 0. Stand-in: a live last price of 0.0 as Schwab would
+    """A price Schwab reports as 0 is 0. Stand-in: a live last price of 0.0 as Schwab would
     send it; every priced level is its own price above it."""
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (0.0, server.SPOT_SOURCE_PLANE, time.time()))
     body = json.loads(server.get_levels(ticker="SPY").body)

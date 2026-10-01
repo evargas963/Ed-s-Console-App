@@ -1,13 +1,9 @@
 """Chain net GEX$ / net DEX$: absence is None, never 0.0 and never raw units.
 
-Audit M-01 / M-02 (2026-09-24, operator rule: no fallbacks):
-  * A bucket whose deltas (or gammas) were all invalid keeps net_delta / net_gamma = 0.0 from
-    its initialiser. Summed, a book with NO valid delta read net DEX 0.0 -- and The Call's
-    regime vote reads "net delta >= 0" as LONG. Absence voted.
-  * aggregate_net_dex picked its units on a GAMMA test, so a spot-built book whose gammas were
-    all invalid fell to raw net_delta (shares) while still being reported as DEX$.
-  * "dollarized" was inferred from "some strike has non-zero dollar GEX"; it is now stamped
-    by the one producer (compute_exposures_by_strike) from whether spot was provided.
+  * A book with no valid delta (or gamma) has no net DEX (or GEX), never 0.0.
+  * A spot-built book whose gammas are all invalid is never reported in raw units as DEX$.
+  * "dollarized" is stamped by the one producer (compute_exposures_by_strike) from whether spot
+    was provided.
 """
 from __future__ import annotations
 

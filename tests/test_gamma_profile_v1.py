@@ -166,8 +166,8 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
 
 
 def test_gamma_at_price_has_no_value_outside_the_profile() -> None:
-    """The curve was not evaluated off the profile, so it has no value there (rule 5: the edge
-    value is not a substitute; it used to be returned)."""
+    """The curve was not evaluated off the profile, so it has no value there; the edge
+    value never stands in."""
     prof = [(100.0, -2.0), (110.0, 4.0)]
     assert gamma_at_price(prof, 100.0) == -2.0 and gamma_at_price(prof, 110.0) == 4.0
     assert gamma_at_price(prof, 50.0) is None

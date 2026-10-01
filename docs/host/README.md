@@ -14,7 +14,7 @@ copy to `.env`) and
 - Every linked worktree resolves the primary checkout's `data/ed_console.db` and
   `data/stream_capture.db`.
 
-## Operations: owner and failure behavior (AGENTS.md rule 13)
+## Operations: owner and failure behavior
 
 Checked 2026-09-30 on the production host. A row whose owner or failure behavior is missing is a
 work item (`ACTIVE_PROGRAM.md` OPS-HOST).

@@ -1,7 +1,6 @@
 """A strike whose open interest Schwab did not report never shows its 0.0 accumulator as a
-computed exposure; a strike whose open interest Schwab reported as 0 shows 0 (operator ruling
-2026-09-27, take what Schwab sends -- superseding the 2026-09-14 rule that showed a reported 0 as
-absent); a genuinely netted zero shows 0; a banked chain never stands in for the live surface.
+computed exposure; a strike whose open interest Schwab reported as 0 shows 0; a genuinely netted
+zero shows 0; a banked chain never stands in for the live surface.
 """
 from __future__ import annotations
 
@@ -153,8 +152,8 @@ def _clear_gamma_surface(tk):
 
 
 def test_a_banked_chain_from_any_session_is_never_served_in_place_of_the_live_surface(tmp_path, monkeypatch):
-    """Operator rule 2026-09-23 (no fallbacks): with no live surface the answer is
-    unavailable -- a banked wide chain, even TODAY's, never stands in for it."""
+    """With no live surface the answer is unavailable: a banked wide chain, even today's, never
+    stands in for it."""
     import json
 
     for name, et_date in (("ZZTESTSTALE", None), ("ZZTESTTODAY", now_et().strftime("%Y-%m-%d"))):

@@ -41,7 +41,7 @@ _fields_by_ticker: dict[str, dict[str, tuple[float, float]]] = {}
 
 
 def _read_stream_field(name: str, raw: Any) -> Optional[float]:
-    """Each field as Schwab sent it (AGENTS.md rule 2); a reported 0 is 0."""
+    """Each field as Schwab sent it; a reported 0 is 0."""
     if name in _COUNT_FIELDS:
         return schwab_count(raw)
     v = schwab_number(raw)

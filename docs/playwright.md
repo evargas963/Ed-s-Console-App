@@ -8,7 +8,7 @@
    removed afterwards: the test server never touches the production database. What it proves:
    the page draws what it is served. Every spec but `first-run-no-ticker` replaces `/api/**`
    and the daemon's price socket with fixture data, so it proves nothing about what the server
-   or the daemon serves (AGENTS.md rule 10: the tier of each proof).
+   or the daemon serves.
 2. `node scripts/run-pytest-full.mjs [pytest args]` — `python -m pytest -n auto --dist loadfile
    --durations=20`; extra args narrow the run (a test path, `-n 0`).
 

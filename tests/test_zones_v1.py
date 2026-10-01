@@ -145,9 +145,8 @@ def test_the_route_places_the_price_among_the_zones_and_names_what_it_lacks(monk
     assert {a["input"] for a in body["absent"]} == {"option levels", "PDC"}
     # the zones are as of the end of the newest bar (15:59 ET -> 16:00 ET = 3:00 PM CT)
     assert body["levels_as_of"] == "Fri 09/25 03:00 PM CT"
-    # every zone level is the /api/levels value under the same id, carried unchanged (AGENTS.md
-    # rule 3: it was rounded to 4 places, so ORB_MID read 768.9025 in the zones and 768.9024999... in
-    # /api/levels, 2026-09-25 real bars)
+    # every zone level is the /api/levels value under the same id, carried unchanged, never
+    # rounded
     served = {lv["id"]: lv["price"] for lv in json.loads(srv.get_levels(ticker="SPY").body)["levels"]}
     for z in zones:
         for s in z["source_levels"]:

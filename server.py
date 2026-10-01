@@ -2918,13 +2918,11 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
 # No gamma/GEX/multiplier/OI/spot/sign/missingness math lives here.
 # SOURCE: the live terrain projection only — _terrain_refresh_one projects it from the live wide
 # chain + live spot it already fetches each cycle (in-memory, zero extra vendor calls),
-# demand-gated to viewed tickers. No banked-morning fallback (operator rule 2026-09-23).
+# demand-gated to viewed tickers.
 
-#: NO LAST-VALID BACKFILL (operator rule 2026-09-23: no fallbacks). A heatmap cell with no
-#: valid data THIS cycle stays empty ('—'); it used to be refilled from the last valid value
-#: (computed at an older spot, possibly hours old) while gamma_available read True and the
-#: unavailable reason was cleared. The surface's own cells_with_data / gamma_available /
-#: gamma_unavailable_reason (project_gamma_surface) describe the current cycle only.
+#: A heatmap cell with no valid data this cycle stays empty ('—'). The surface's own
+#: cells_with_data / gamma_available / gamma_unavailable_reason (project_gamma_surface) describe
+#: the current cycle only.
 
 
 def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
@@ -3107,8 +3105,7 @@ def get_options_gamma_surface(ticker: str = Query(...)):
 
     ONE source: the LIVE surface _terrain_refresh_one (the single levels producer) projects each
     cycle from the live wide chain + live spot it already fetches (source=terrain_live_cache).
-    With no live surface the answer is "unavailable" with the reason -- there is no second source
-    (operator rule 2026-09-23: no fallbacks; the banked MORNING wide chain used to stand in).
+    With no live surface the answer is "unavailable" with the reason; there is no second source.
     Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale visibly."""
 
     tk = ticker_storage_key(_required_ticker(ticker))

@@ -101,7 +101,7 @@ def test_each_field_is_independently_updatable():
 
 
 def test_a_negative_open_interest_is_held_as_no_value():
-    """schwab_count (AGENTS.md rule 2): a negative count is not a number; the stream sent the
+    """schwab_count: a negative count is not a number; the stream sent the
     field, so the contract has no open interest now."""
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"OPEN_INTEREST": -5}, ts_recv=time.time())

@@ -30,7 +30,7 @@ CHART_TFS = ("1", "3", "5", "15", "30", "60", "D")
 def minute_bar(msg: dict[str, Any]) -> Optional[dict[str, Any]]:
     """A streamed Schwab CHART_EQUITY message as the chart's 1-minute bar {t, o, h, l, c, v}
     (t: the bar's start, epoch seconds), the bar the store keeps and the screen shows. None when
-    a price or the start is not a number (AGENTS.md rule 2), the start is off the minute grid, or
+    a price or the start is not a number (`schwab_number`), the start is off the minute grid, or
     the bar does not end in the collect window (time_et.is_collect_window_bar_end_ts_utc). A
     volume that is not a number is None, never 0."""
     o, h, lo, c = (schwab_number(msg.get(k)) for k in ("open", "high", "low", "close"))

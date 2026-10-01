@@ -1,9 +1,10 @@
-"""Operating-process mechanical lock (RC-217): two predicates, one owner each.
+"""Operating-process mechanical lock: two predicates, one owner each.
 
   (a) index≠WT parity on the enforcement paths (`index_worktree_mismatches`); no hook runs it
       today;
-  (b) the git actions AGENTS.md forbids — THE one owner of that class — and pipe-masked commits
-      (RC-234), consumed by tools/process_lock_guard.py at PreToolUse.
+  (b) the tree-destructive git actions (`git reset`, `git stash`, `checkout --`, `clean -f`,
+      force push) and pipe-masked commits, consumed by tools/process_lock_guard.py at
+      PreToolUse. The rules live in `AGENTS.md` § Authority.
 """
 from __future__ import annotations
 
@@ -150,35 +151,29 @@ def _reset_class_violation(seg: str) -> list[str]:
     bare = not any(tok in seg for tok in (" -- ", ".py", ".html", ".json"))
     if touched or bare:
         return [
-            "RESET_GUARD (LOCK-2/RC-231): tree-destructive git "
+            "RESET_GUARD: tree-destructive git "
             f"({'paths: ' + ', '.join(sorted(set(touched))[:4]) if touched else 'bare/whole-tree form'}) "
-            "— three 2026-08-03 wipes used exactly this class. Not subject-disableable "
-            "(Architecture A / RC-450)."
+            "is refused (AGENTS.md § Authority)."
         ]
     return []
 
 
 def reset_guard_violations(command: str) -> list[str]:
-    """LOCK-2: BLOCK tree-destructive git — the ONE owner of that question (RC-231/RC-252).
+    """Refuse tree-destructive git; the one owner of that question.
 
-    Two clauses, one predicate. The HARD forms (`reset --hard`, `checkout -- <any path>`,
-    `clean -f`, `push --force`/`-f`) discard work whatever they name, so they refuse on sight,
-    on ANY target (host-wide; the checkout in front of the command is irrelevant — RC-258 kept
-    these unscoped on purpose). The CLASS forms (the wider reset/restore/checkout--/clean/stash
-    family) refuse when they touch a protected/product path or take a bare whole-tree shape,
-    judged PER STATEMENT (RC-525) so a safe first statement cannot launder a later one.
-
-    Not subject-disableable (RC-450): no env token or repo file can authorize a wipe.
-    What AGENTS.md § Authority forbids is refused as written: every `git reset`, every
-    `git stash` but `list`/`show`, every force push (`--force-with-lease` included).
-    `git restore --staged` (index-only) and `git checkout -b` stay legal.
+    Two clauses, one predicate. The hard forms (every `git reset`, every `git stash` but
+    `list`/`show`, `checkout -- <any path>`, `clean -f`, every force push, `--force-with-lease`
+    included) refuse on sight, on any target. The class forms (the wider
+    reset/restore/checkout--/clean/stash family) refuse when they touch a protected or product
+    path or take a bare whole-tree shape, judged per statement so a safe first statement cannot
+    launder a later one. No env token or repo file disables it. `git restore --staged`
+    (index-only) and `git checkout -b` stay legal.
     """
     cmd = _strip_command_payloads(command or "")
     if _UNIVERSAL_DESTRUCTIVE_RE.search(cmd):
         return [
-            "RESET_GUARD (LOCK-2/RC-231): AGENTS.md forbids this git action — reset, stash, "
-            "checkout -- <path>, clean -f and every force push are refused on any target. Hand it "
-            "to the operator. Not subject-disableable (RC-450)."
+            "RESET_GUARD: git reset, stash, checkout -- <path>, clean -f and every force push "
+            "are refused on any target (AGENTS.md § Authority)."
         ]
     for seg in _judged_segments(cmd):
         hit = _reset_class_violation(seg)
@@ -316,9 +311,9 @@ def commit_pipe_violations(cmd: str) -> list[str]:
     for seg in re.split(r"&&|;|\n", stripped):
         if re.search(r"\bgit\s+commit\b", seg, re.I) and masking_filter.search(seg):
             return [
-                "PIPE_MASKED_COMMIT: `git commit` piped into a filter — the filter's exit "
-                "code replaces the commit's and hook failures vanish (RC-234). Run the "
-                "commit UNPIPED (background task for long hooks), then verify via "
+                "PIPE_MASKED_COMMIT: `git commit` piped into a filter: the filter's exit "
+                "code replaces the commit's and hook failures vanish. Run the commit "
+                "unpiped (a background task for long hooks), then verify with "
                 "`git show --stat`. Escape: '# pipe-ok: <reason>'."
             ]
     return []

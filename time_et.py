@@ -48,12 +48,11 @@ def et_minute_total_from_ts_utc(ts_utc: float) -> int:
 
 
 
-# ── Collect-window authority (RC-183, operator law 2026-08-01, non-negotiable) ──────────
+# ── Collect window ──────────
 # `price_bars_1m` persists ET bar-END minutes (555, min(975, cash_close+15)] on trading days
 # only — 08:15–15:15 CT. The app gathers from 08:15 CT because it must be ready before the
-# open, and SPY/QQQ-class ETFs trade to 16:15 ET. This is NEITHER classic cash RTH [570,960)
-# NOR vendor extended hours, which is exactly why it needs its own named authority: three
-# different windows governed one table and nothing encoded the law.
+# open, and SPY/QQQ-class ETFs trade to 16:15 ET. This is neither cash RTH [570,960) nor
+# vendor extended hours.
 COLLECT_WINDOW_START_MINS = 555      # 09:15 ET bar-END exclusive floor (08:15 CT)
 COLLECT_WINDOW_END_MINS = 975        # 16:15 ET bar-END inclusive ceiling (15:15 CT)
 

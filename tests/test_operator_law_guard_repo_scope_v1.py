@@ -346,7 +346,7 @@ def test_destructive_git_has_one_owner_and_it_fires_unscoped(cmd):
     ("python -m pre_commit uninstall", "disables a mechanical lock"),
     ("rm .git/hooks/pre-commit", "disables a mechanical lock"),
     ("git add -A", "blind staging"),
-    ("rm -rf data/ed_console.db", "RC-273"),
+    ("rm -rf data/ed_console.db", "data/ or backups/"),
     ("git push origin HEAD:main", "only through a PR"),
     ("git push origin main", "only through a PR"),
 ])

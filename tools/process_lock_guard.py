@@ -1,17 +1,16 @@
-"""PreToolUse guard for the two things git cannot refuse by itself (RC-217 / RC-350 / RC-231).
+"""PreToolUse guard for what git cannot refuse by itself. The rules live in `AGENTS.md`
+§ Authority.
 
-  * LIVE-CHECKOUT PROTECTION: the production primary (`EdWebConsole`, `.git` a directory)
-    is `main == origin/main` and never edited in place. An Edit/Write of app code inside it,
-    a shell write (`cp`/`sed -i`/`tee`/redirect) into it, a linked worktree reaching into it,
-    and any git verb that moves it off main are refused at the moment of the command
-    (RC-350: the desk went down on a feature branch; RC-442: a side checkout edited the desk).
-  * TREE-DESTRUCTIVE GIT (`operating_process_lock.reset_guard_violations`, the ONE owner):
-    `reset --hard`, `checkout -- <path>`, `clean -f`, `push --force` on any target, and the
-    restore/stash class on product paths — three wipes on 2026-08-03 used exactly these.
-  * PIPED COMMITS (RC-234): `git commit | tail` reports the filter's exit code and hides a
-    failed hook; refused before it runs.
+  * The production checkout (`EdWebConsole`, `.git` a directory) is `main == origin/main` and
+    never edited in place. An Edit/Write of app code inside it, a shell write (`cp`/`sed -i`/
+    `tee`/redirect) into it, a linked worktree reaching into it, and any git verb that moves it
+    off main are refused at the moment of the command.
+  * Tree-destructive git (`operating_process_lock.reset_guard_violations`): `git reset`,
+    `checkout -- <path>`, `clean -f`, `push --force`, and the restore/stash class.
+  * Piped commits: `git commit | tail` reports the filter's exit code and hides a failed hook;
+    refused before it runs.
 
-Exit 2 BLOCKS. No env kill-switch (RC-450). No Stop path. Reads nothing but the payload.
+Exit 2 blocks. No env kill-switch. No Stop path. Reads nothing but the payload.
 """
 from __future__ import annotations
 
@@ -96,10 +95,9 @@ def cross_checkout_edit_violations(tool_input: dict, repo: Path = REPO) -> list[
         except (OSError, ValueError):
             continue
         out.append(
-            f"CROSS_CHECKOUT_EDIT (RC-442/RC-477): this session runs in the linked worktree "
-            f"{repo} but targets {resolved} inside the PRIMARY working tree {primary} — the "
-            f"live checkout. Edit it from its own session, or hand the change over via "
-            f"branch/PR."
+            f"CROSS_CHECKOUT_EDIT: this session runs in the linked worktree {repo} but targets "
+            f"{resolved} inside the production checkout {primary}. Edit it from its own "
+            f"session, or hand the change over by branch and PR (AGENTS.md § Authority)."
         )
     return out
 
@@ -217,11 +215,9 @@ def prod_checkout_git_move_violations(cmd: str, payload_cwd: str = "") -> list[s
         reason = _prod_forbidden_git_reason(seg)
         if reason:
             out.append(
-                f"PROD_CHECKOUT_LOCK (live-checkout invariant / RC-350): {reason} in the "
-                f"PRODUCTION checkout {primary}. That checkout is production ONLY — always "
-                f"main == origin/main. Do this in the separate dev worktree and land via PR; "
-                f"production updates by fast-forward to origin/main. See "
-                f"AGENTS.md.")
+                f"PROD_CHECKOUT_LOCK: {reason} in the production checkout {primary}, which is "
+                f"main == origin/main and changes only by `git pull --ff-only`. Do this in a "
+                f"worktree and land it by PR (AGENTS.md § Authority).")
     return out
 
 
@@ -256,10 +252,9 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
             continue
         if classify_path(str(resolved), repo=str(primary)).production:
             out.append(
-                f"PROD_CHECKOUT_APP_EDIT (live-checkout invariant): {resolved} is app code in the "
-                f"PRODUCTION checkout {primary}. Development does not edit the live checkout — make "
-                f"the change in the separate dev worktree and land via PR. "
-                f"See AGENTS.md."
+                f"PROD_CHECKOUT_APP_EDIT: {resolved} is app code in the production checkout "
+                f"{primary}, which is never edited in place. Make the change in a worktree and "
+                f"land it by PR (AGENTS.md § Authority)."
             )
     return out
 
@@ -420,11 +415,9 @@ def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = 
             continue
         if classify_path(str(resolved), repo=str(primary_res)).production:
             out.append(
-                    f"PROD_CHECKOUT_APP_EDIT (shell, live-checkout invariant): a shell command "
-                    f"writes {resolved} — app code in the PRODUCTION checkout {primary}. "
-                    f"Development does not modify the live checkout by ANY means; make the change "
-                    f"in the separate dev worktree and land via PR. "
-                    f"See AGENTS.md.")
+                    f"PROD_CHECKOUT_APP_EDIT (shell): a shell command writes {resolved}, app code "
+                    f"in the production checkout {primary}, which is never edited in place. Make "
+                    f"the change in a worktree and land it by PR (AGENTS.md § Authority).")
     return out
 
 
@@ -479,10 +472,9 @@ def main() -> int:
     if not bad:
         return 0
     sys.stderr.write(
-        "BLOCKED by operating process lock (RC-217).\n\n"
+        "BLOCKED by operating process lock.\n\n"
         + "".join(f"  {b}\n" for b in bad)
-        + "\nSee AGENTS.md, "
-        + "tools/operating_process_lock.py --measure\n"
+        + "\nSee AGENTS.md § Authority.\n"
     )
     return 2
 

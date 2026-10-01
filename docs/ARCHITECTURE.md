@@ -1,10 +1,8 @@
 # Ed Console — Architecture
 
 Where the code lives. The structure it moves to follows the data flow (`docs/DATA_FLOW.md`): one
-folder per process, plus what they share and the page. Nothing else. A file belongs to the process
-that runs it; a function exists in one place. §1 is the target (none of its process folders exists
-yet); §2 is today's files and where each goes. This document is updated in the same change as
-every move.
+folder per process, plus what they share and the page. §1 is the target (none of its process
+folders exists yet); §2 is today's files and where each goes.
 
 ## 1. The target structure
 

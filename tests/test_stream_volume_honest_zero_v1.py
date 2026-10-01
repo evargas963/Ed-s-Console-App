@@ -1,5 +1,4 @@
-"""A streamed option volume of 0 is 0 (AGENTS.md rule 2): the old handling (`or` between
-TOTAL_VOLUME and VOLUME, then `> 0`) dropped a reported 0 and kept the earlier number. Through the
+"""A streamed option volume of 0 is 0, never dropped in favour of the earlier number. Through the
 real push_level_one. Stand-in (named): a LEVELONE_OPTIONS message carrying TOTAL_VOLUME 500, then
 one carrying 0, for a real contract symbol."""
 from __future__ import annotations

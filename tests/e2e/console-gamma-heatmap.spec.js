@@ -755,7 +755,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a surface that is not live is shown as absent -- never as a reference', async ({ page }) => {
-    // Operator rule 2026-09-23 (no fallbacks): the server no longer serves a banked morning chain
+    // The server serves no banked morning chain
     // in place of the live surface; the heatmap says it is unavailable and why.
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
@@ -841,9 +841,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // the same row height, and an expired prior-session column is never dressed as current structure.
   test('REAL-DATA VIEWPORT: 116x16 canonical surface -> Auto 11 rows x <=11 unexpired columns; Wider 23; All 116x16 legible + EXPIRED labelled; no data loss', async ({ page }) => {
     const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
-    // The captured population is served as a LIVE surface here: the server no longer serves any
-    // banked reference (operator rule 2026-09-23), and this test is about viewport layout over a
-    // real 116x16 population, not about the retired reference path.
+    // The captured population is served as a LIVE surface here: the server serves no banked
+    // reference, and this test is about viewport layout over a real 116x16 population.
     const stamped = Object.assign({}, REAL, {
       source: 'terrain_live_cache', live: true, stale: false, degraded: null,
       session_date_et: '2026-09-10', prior_session: false, spot_strike: 764, front_expiry: '2026-09-10',

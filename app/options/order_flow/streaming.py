@@ -1,21 +1,12 @@
 """
-Live-plane feed for the single active UI ticker — READ-ONLY consumer of the canonical
-capture daemon (app.market_data.schwab.streaming.capture), never a second Schwab session.
+Live-plane feed for the single active UI ticker: a read-only consumer of the capture daemon
+(app.market_data.schwab.streaming.capture). It opens no Schwab connection.
 
-SINGLE-STREAM-AUTHORITY LAW (root-fixed here): this module used to own its own
-`schwab.streaming.StreamClient`, logging into Schwab independently of the canonical
-capture daemon — two authenticated sockets on one account, racing each other for the
-same market truth. It now opens ZERO Schwab connections. The daemon is the one producer.
-
-LIVE PUSH (2026-09-23): the daemon forwards each Schwab book, option-quote, news and bar
-message to this module over a local WebSocket (app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8799) the
-moment it arrives, and this module applies it to the in-process planes
-(`app.options.order_flow.state`, `live_market_plane`). The database is NOT in the live
-path: it used to be -- this module polled `stream_capture.db` every 0.5s -- which put a
-disk write, a commit and a poll between Schwab and the screen. stream_capture.db stays the
-permanent record (options history reads it); nothing live reads it. If the push connection
-drops, the live values go stale and the screen says so; nothing falls back to the database
-(operator rule 2026-09-23: no fallbacks).
+The daemon forwards each Schwab book, option-quote, news and bar message to this module over a
+local WebSocket (app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8799) the moment it
+arrives, and this module applies it to the in-process planes (`app.options.order_flow.state`,
+`live_market_plane`). Nothing here reads `stream_capture.db`. If the push connection drops, the
+live values go stale and the screen says so.
 
 What to stream is decided HERE and sent to the daemon over the same socket, as one
 complete list per Schwab service (current_wanted(); {"op": "wanted", ...}). Every change to

@@ -59,7 +59,7 @@ def test_record_from_level_one_uses_schwab_quote_timestamp_for_fast_ts():
 
 
 def test_record_from_level_one_never_uses_trade_time_as_the_quote_time():
-    """No fallbacks (operator rule 2026-09-23): TRADE_TIME_MILLIS is a different clock. With
+    """TRADE_TIME_MILLIS is a different clock. With
     no QUOTE_TIME_MILLIS the quote time is unavailable -- never the trade time relabeled."""
     ok = _rec(
         "TRADEPROXY",
@@ -156,7 +156,7 @@ def test_unchanged_bid_ask_stand_with_their_own_age():
 
 
 def test_a_zero_price_is_taken_as_sent():
-    """Operator ruling 2026-09-27: take what Schwab sends; a reported 0 is 0."""
+    """A price Schwab reports as 0 is 0."""
     _rec("ZRO", {"key": "ZRO", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
     _rec("ZRO", {"key": "ZRO", "BID_PRICE": 0})
     row = lmp.get_quote("ZRO")
@@ -164,7 +164,7 @@ def test_a_zero_price_is_taken_as_sent():
 
 
 def test_a_value_that_is_not_a_number_clears_the_field():
-    """AGENTS.md rule 2: -999 and text are not numbers."""
+    """A Schwab field sent as -999 or text is not a number."""
     for bad in (-999, "9.9"):
         _rec("CLR", {"key": "CLR", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
         _rec("CLR", {"key": "CLR", "BID_PRICE": bad})

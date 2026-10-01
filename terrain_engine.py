@@ -265,16 +265,11 @@ def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapsho
 def _per_strike_rows(exposures: dict) -> list[list]:
     """`[[strike, net_gex_1pct$, session_volume], …]` — the EXACT shape the panel renders.
 
-    THE one producer of GEX-by-strike rows (live panel AND the prior-day ghost -- server.py
-    carried a second copy, removed 2026-09-24).
+    The one producer of GEX-by-strike rows (the live panel and the prior-day ghost). The
+    finished numbers are handed over as-is, never reassembled into contracts and recomputed.
 
-    RC-79: the finished numbers are handed over as-is, never reassembled into synthetic
-    contracts and recomputed.
-
-    Audit T-01 / T-02 (2026-09-24, operator rule: no fallbacks):
-      * the bar is net GEX$ from a DOLLARIZED book on a strike whose gamma was VALID. It used
-        to fall back to total_gamma_raw_at_strike -- UNSIGNED raw gamma drawn on the signed
-        GEX$ axis. A strike with no valid gamma, or a book built without spot, has no bar.
+      * the bar is net GEX$ from a dollarized book on a strike whose gamma was valid. A strike
+        with no valid gamma, or a book built without spot, has no bar.
       * volume is strike_total_volume, the one reader: Schwab's volumes as sent (0 is a real
         zero); None ("—") when a contract at the strike did not report it, never a partial sum.
     """
@@ -366,7 +361,7 @@ def chain_ladder(contracts, spot) -> tuple[list[dict], int]:
     """One expiry's chain as the ladder draws it, and how many contracts it could not place (no
     strike, or a putCall other than CALL/PUT). Strikes high to low; per strike one row per listed
     contract index (a second contract at one strike and side gets its own row); each contract's
-    numbers read by rule 2 (-999, text, NaN absent); `call_itm` / `put_itm` against `spot` (None
+    numbers read by `schwab_number` (-999, text, NaN absent); `call_itm` / `put_itm` against `spot` (None
     without one); `spot` marks the first row of the strike nearest spot."""
     from numeric_contract import schwab_number
     by_k: dict[float, dict[str, list]] = {}

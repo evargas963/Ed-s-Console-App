@@ -205,8 +205,7 @@ def test_rc525_an_interpreter_heredoc_is_still_judged_per_line(monkeypatch, tmp_
 
 
 def test_every_reset_is_refused_on_the_pretooluse_path(monkeypatch, tmp_path):
-    """The seam that actually runs refuses what AGENTS.md forbids: `--soft` as well as `--hard`
-    (the `--soft` form was allowed while AGENTS.md said "Never: git reset").
+    """The seam that actually runs refuses every `git reset`: `--soft` as well as `--hard`.
 
     Asserted on the RESET_GUARD verdict, not on the whole result: the Bash seam also carries
     PROD_CHECKOUT_LOCK, and a control whose verdict depends on which checkout it runs in is

@@ -184,7 +184,7 @@ def test_at_every_minute_of_a_real_day_the_push_is_the_roll_up_at_every_timefram
 
 
 def test_a_bar_that_is_not_a_chart_bar_or_not_subscribed_is_never_pushed(tmp_path):
-    """A price sent as -999 (not a number, AGENTS.md rule 2), a minute outside the stored
+    """A price sent as -999 (not a number), a minute outside the stored
     window (09:14 ET, before 09:15), and a symbol no browser asked for: none reaches the browser."""
     ok, bad, early = FRIDAY[10], dict(FRIDAY[11], close=-999), dict(FRIDAY[0])
     early["timestamp"] = int(datetime(2026, 9, 25, 9, 13, tzinfo=ET).timestamp() * 1000)

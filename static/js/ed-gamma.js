@@ -716,8 +716,7 @@
     if (!live || stale) {
       var warming = !live && surface.warming === true;
       var requested = !live && !warming && surface.requested === true;
-      // No reference surface exists (operator rule 2026-09-23: no fallbacks) -- a surface that is
-      // not live is simply absent; the state says why.
+      // A surface that is not live is absent; the state says why.
       // WHERE the live surface stands (state)
       var stateLabel = warming ? 'LIVE SURFACE WARMING'
         : requested ? 'LIVE SURFACE REQUESTED'

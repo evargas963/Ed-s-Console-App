@@ -99,7 +99,7 @@ def _resolve_bar_timestamp(d: dict) -> Optional[Any]:
 def _bars_to_list(bars) -> list[dict]:
     """The bars every level function takes, normalized once by the producer:
     {timestamp, _dt (its ET time), open, high, low, close, volume} for each bar dict with a time
-    and four prices that are numbers (rule 2); a volume that is not a number stays None."""
+    and four prices that are numbers (`schwab_number`); a volume that is not a number stays None."""
     out = []
     for b in bars or []:
         ts = _resolve_bar_timestamp(b)

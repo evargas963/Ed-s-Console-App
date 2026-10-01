@@ -697,13 +697,9 @@
   //      app/market_data/schwab/streaming/live_ui.py) -- the finished row (live_price_rows.
   //      price_row) the instant a Schwab message changes it, plus a feed verdict every second.
   //      No web server is in this path, so no analytics load can delay a price. It is the
-  //      ONLY source of the header quote and the watchlist rows (operator rule 2026-09-23: no
-  //      fallbacks): when it is not delivering, the header says so -- nothing polls a quote. ----
-  // Operator directive (2026-09-14, spot 360 audit): the source that answered THIS number
-  // was already on every payload (quote_ingestion / _quote_authority) but never surfaced —
-  // a hover tooltip, not new chrome, so the next divergence (if the plane/REST hierarchy
-  // ever disagrees again) is diagnosable on the spot the operator is already looking at,
-  // not something that needs a screenshot comparison to notice.
+  //      only source of the header quote and the watchlist rows: when it is not delivering,
+  //      the header says so -- nothing polls a quote. ----
+  // The source that answered the number (quote_ingestion), shown as a hover tooltip.
   var QUOTE_INGESTION_LABEL = {
     schwab_streaming_level_one: 'streaming', rest_tier_a: 'REST (header bootstrap)',
     rest_watchlist_batch: 'REST (watchlist batch)', live_market_plane: 'streaming plane',
@@ -957,7 +953,7 @@
   }
 
   // The push is not delivering: withdraw the quote instead of leaving the last one on screen
-  // (and instead of polling for it -- operator rule 2026-09-23: no fallbacks). The session
+  // (and instead of polling for it). The session
   // label is not a live quote and keeps its own slow read.
   function markHeaderPushDown() {
     // just asked for this ticker (page load or a ticker change): the row is on its way

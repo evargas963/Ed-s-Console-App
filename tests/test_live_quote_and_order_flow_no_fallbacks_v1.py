@@ -1,6 +1,6 @@
 """The live quote path and the order-flow engine read the stream only -- no stand-ins.
 
-2026-09-24 (operator rule: no fallbacks; full compliance). Measured facts these pin:
+Measured facts these pin:
   * Schwab LEVELONE_EQUITIES sends changed fields only (4,039 captured messages: 11% carried
     bid+ask+last together) -- so the plane holds each field's latest value with its own age.
   * NET_CHANGE_PERCENT arrives with every LAST_PRICE; CHANGE_PERCENT is never sent.

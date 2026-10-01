@@ -24,7 +24,7 @@ _OPTION_TOP_FIELDS = (("BID_PRICE", "bid", schwab_number), ("ASK_PRICE", "ask", 
                       ("BID_SIZE", "bid_size", schwab_count), ("ASK_SIZE", "ask_size", schwab_count),
                       ("MARK", "mark", schwab_number))
 #: the LEVELONE_OPTIONS fields the stream owns for a live contract (the chain overlay), each read
-#: as sent: a reported 0 is 0 (AGENTS.md rule 2)
+#: as sent: a reported 0 is 0
 _OPTION_GREEK_FIELDS = (("GAMMA", "gamma", schwab_number), ("DELTA", "delta", schwab_number),
                         ("OPEN_INTEREST", "open_interest", schwab_count),
                         ("TOTAL_VOLUME", "total_volume", schwab_count),

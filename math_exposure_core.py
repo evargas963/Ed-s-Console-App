@@ -98,8 +98,8 @@ class ExposureDiagnostics:
 def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dict:
     if strike not in exposures_by_strike:
         exposures_by_strike[strike] = {
-            # has_oi: a contract at this strike reported openInterest (a reported 0 counts:
-            # operator ruling 2026-09-27, take what Schwab sends). Every accumulator below starts
+            # has_oi: a contract at this strike reported openInterest (a reported 0 counts).
+            # Every accumulator below starts
             # at 0.0; a consumer checks has_oi before reading one as computed.
             "has_oi": False,
             # Contracts at this strike whose openInterest was NOT REPORTED (absent, -999, text);

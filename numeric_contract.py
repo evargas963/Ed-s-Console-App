@@ -1,4 +1,4 @@
-"""Numeric parsing. Schwab fields: `schwab_number` / `schwab_count` only (AGENTS.md rule 2);
+"""Numeric parsing. Schwab fields are read by `schwab_number` / `schwab_count`;
 `float_finite_or_none` parses text and is never a reader of a Schwab field."""
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ SCHWAB_NO_VALUE = -999
 
 
 def schwab_number(value: Any) -> float | None:
-    """A Schwab field as sent (AGENTS.md rule 2): None when absent, -999, text, a bool, NaN or
+    """A Schwab field as sent: None when absent, -999, text, a bool, NaN or
     infinity; every other number exactly as sent, a reported 0 included."""
     if value is None or isinstance(value, (bool, str)):
         return None
