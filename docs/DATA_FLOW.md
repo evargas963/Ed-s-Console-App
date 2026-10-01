@@ -51,7 +51,7 @@ opens no second streaming socket).
 | daemon → console | the same :8799 push | each symbol's bar verdict (`barstate.SYM`): today's minutes covered through now or not, with the reason; and Schwab's daily candles of the days before today (`bardays.SYM`, its daily price history); the last of each on connect |
 | daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second; and each completed 1-minute bar of a subscribed symbol as the chart bar it makes at every timeframe (`bars`). A page back from a drop subscribes with the daemon's time of the last beat it had (`disconnected_since`) and is told the gap in its live bars (`bars_gap`); no bar received in the gap is resent. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
 | daemon → console | the same :8800 push | the same price rows, for the equities the console wants streamed: the console's only live price |
-| Schwab → console | Schwab REST | full option chains; one quote at startup to validate the login |
+| Schwab → console | Schwab REST | full option chains, each with its contracts' quotes (their Greeks, §6.3); one quote at startup to validate the login |
 | console → browser | HTTP `/api/*` | everything else, on request |
 | console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`) and the session label |
 
@@ -90,11 +90,11 @@ opens no second streaming socket).
   The books streamed are those of the ticker whose page has `/api/changes` open (opening it makes
   that ticker the active one); a console restart is recovered when the page reconnects. For an
   option contract the daemon holds live, the stream owns its gamma, delta, open interest, volume
-  and IV: its last streamed value is the value, whatever its age, and replaces the chain's (a
-  field the stream has not sent keeps the chain's; a field it sent as not a number, such as
-  -999, is unavailable, never its last value or the chain's, until a number is sent again:
+  and IV: its last streamed value is the value, whatever its age, and replaces the downloaded
+  chain's (a field the stream has not sent keeps the chain's; a field it sent as not a number,
+  such as -999, is unavailable, never its last value or the chain's, until a number is sent again:
   `state.push_level_one`, `overlay_streamed_contract_fields`); every other contract has the
-  chain's values.
+  chain's values, its Greeks from Schwab's quotes (§6.3).
   A contract is a ticker's when Schwab listed it in that ticker's chain (whatever its root:
   SPX and SPXW are both $SPX's). The option contract whose book streams follows the page's
   ticker: the at-the-money call of its front expiry, from its chain. The further contracts a
@@ -266,7 +266,9 @@ opens no second streaming socket).
   and the session's volume profile (`volume_profile`: each RTH 1-minute bar's volume spread
   evenly over its range, one bin per tick, flagged inside or outside the value area).
 - **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per board or
-  viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule.
+  viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule. Both download
+  it through `schwab_client.fetch_full_chain`, which replaces every contract's Greeks with its
+  quote's (§6.3), so every consumer of either reads Schwab's exact Greeks.
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
   chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
   a new chain arrived) → the browser reads `/api/terrain` and four other slice routes. Not stored; at startup and after the close they are computed from the
@@ -351,8 +353,8 @@ opens no second streaming socket).
   side of the flip spot is on (`flip_relation`: `ABOVE`, `BELOW`, or `AT`) has one rule,
   `terrain_read.flip_side`. The regime is not read from the flip: it is the sign of Schwab's
   gamma as sent, summed over the book (operator 2026-09-30: Schwab's gamma stays the
-  authority; it is not replaced by the modelled gamma). Schwab's chain sends gamma to three
-  decimals; on the 2026-09-29 close captures the two disagreed in sign on $SPX, $VIX, CRWV and
+  authority; it is not replaced by the modelled gamma). On the 2026-09-29 close captures, whose
+  gamma is the chain's three decimals (§6.3), the two disagreed in sign on $SPX, $VIX, CRWV and
   QQQ. The read (`terrain_read.build_terrain_read`) is the regime, its posture and confidence
   and nothing else: it writes no sentences about walls or where spot sits. The terrain carries
   each wall's distance from spot (never negative) and the side of it spot is on
@@ -543,23 +545,43 @@ Each value's definition.
 - *Tests:* `test_order_flow_served_v1`, `test_order_flow_microstructure_v1`,
   `test_order_flow_book_heatmap_v1` (approves a 1970 book, W-04).
 
-**6.3 Option chain, option quotes and greeks** (REST chain; LEVELONE_OPTIONS).
+**6.3 Option chain, option quotes and greeks** (REST chain and quotes; LEVELONE_OPTIONS).
 - *Meaning:* per contract: Schwab's instrument identity (symbol, root, strike, expiry,
   settlementType, multiplier, nonStandard), bid/ask, open interest, session volume, implied
   volatility, delta and gamma, exactly as sent (gamma is the native authority: operator
-  2026-09-30).
-- *Producer and owner:* the console's chain fetch (every 5 s per board or viewed ticker; P2-1
-  moves it to the daemon); `state.push_level_one` holds each streamed field;
-  `overlay_streamed_contract_fields` puts a live contract's streamed fields over the chain's.
-- *Times:* the chain's quote time; each streamed field's receive time.
+  2026-09-30). The Greeks (gamma, delta, theta, vega, rho, volatility) are the quotes
+  endpoint's, never the chain's: Schwab's chain sends them rounded to 3 decimals and its quotes
+  send the same contract's unrounded (measured 2026-10-01, SPY 261120C00875000: chain gamma 0.0,
+  delta 0.005; quote gamma 0.00037225, delta 0.00518524, volatility 14.08650183; on SPY's
+  2026-11-20 column, 86 of 221 cells with open interest read $0 GEX on the chain's gamma, none on
+  the quotes'). Operator, 2026-10-01: "you must use what schwab gives us... no rounding, use the
+  exact data that schwab gives us everywhere". Open interest stays the chain's (the quotes'
+  `openInterest` read 0 for contracts the chain lists with 23,235; its meaning is unverified).
+- *Producer and owner:* `schwab_client.fetch_full_chain`, the one place a chain enters (the
+  console's chain fetch every 5 s per board or viewed ticker, P2-1 moves it to the daemon; the
+  daemon's captures): after the chain lands it asks the quotes endpoint for every contract in
+  batches of 300 (`QUOTES_BATCH_MAX`; 400 symbols were refused with HTTP 400, the URL's length)
+  and replaces each contract's Greeks with its quote's, as sent. The console's quotes requests
+  take the chain requests' gate (`_gated_safe_get_quotes`: its two slots, priority, and its
+  breaker, which a 429 degrades). `state.push_level_one` holds each streamed field (Schwab's
+  full precision as well); `overlay_streamed_contract_fields` puts a live contract's streamed
+  fields over the quotes'.
+- *Times:* the chain's quote time (the quotes are asked for right after it); each streamed
+  field's receive time.
 - *Current when:* the chain is from the last refresh cycle (`terrain_staleness`); a streamed
   field when the Live rule holds for the contract on LEVELONE_OPTIONS.
 - *Otherwise:* a field sent as not a number is unavailable, never its last value or the chain's;
-  a stale chain carries its staleness verdict.
-- *Consumers:* every level, the gamma surface, the chain ladder, Strike Detail, the options
-  microstructure panel.
-- *Tests:* `test_chain_api_v1`, `test_stream_greeks_capture_v1`,
-  `test_overlay_streamed_contract_fields_v1`, `test_schwab_as_sent_v1`.
+  a contract whose quote did not come back (not in the reply, or its batch answered other than
+  200) has no Greeks (None, logged with the count), never the chain's rounded values: its leg's
+  exposure and its strike's net are absent (a leg's sum is known only when every contract on it
+  with open interest above 0 sent the Greek: `math_exposure_core.bucket_metric`). A stale chain
+  carries its staleness verdict. Chain captures stored before this change carry the chain's
+  rounded Greeks; the startup and closed-market load prices them until newer captures exist.
+- *Consumers:* every level, the gamma surface, the chain ladder and Strike Detail (which print
+  the Greeks with every digit Schwab sent), the forces, the options microstructure panel.
+- *Tests:* `test_exact_schwab_greeks_v1`, `test_chain_api_v1`, `test_stream_greeks_capture_v1`,
+  `test_overlay_streamed_contract_fields_v1`, `test_schwab_as_sent_v1`,
+  `test_canonical_gex_input_validity_v1`.
 
 **6.4 Exposure, levels and the gamma surface** (the terrain publication).
 - *Meaning:* §3.4 Levels: dealer gamma/delta/vanna/charm exposure by strike (+call/−put, dollars
