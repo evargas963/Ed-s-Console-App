@@ -1,5 +1,6 @@
-"""Numeric parsing. Schwab fields are read by `schwab_number` / `schwab_count`;
-`float_finite_or_none` parses text and is never a reader of a Schwab field."""
+"""Numeric parsing, and the one text of a price and of a volume. Schwab fields are read by
+`schwab_number` / `schwab_count`; `float_finite_or_none` parses text and is never a reader of a
+Schwab field."""
 
 from __future__ import annotations
 
@@ -20,6 +21,22 @@ def float_finite_or_none(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return v if math.isfinite(v) else None
+
+
+def price_text(v: "float | None") -> str:
+    """A price as every server-made text shows it: two decimals; "—" when there is none."""
+    return "—" if v is None else f"{float(v):.2f}"
+
+
+def volume_text(n: "float | None") -> str:
+    """A volume (shares) as the screen shows it: 62.11M, 210.1K, 950; "—" when there is none."""
+    if n is None:
+        return "—"
+    a = abs(float(n))
+    for size, unit, places in ((1e9, "B", 2), (1e6, "M", 2), (1e3, "K", 1)):
+        if a >= size:
+            return f"{a / size:.{places}f}{unit}"
+    return str(round(a))
 
 
 #: Schwab's own "no value" marker (greeks, IV, and any field Schwab could not fill).

@@ -78,6 +78,7 @@
     h.querySelector('.liqm-zones').innerHTML = '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored, /api/liquidity-snapshot) ' +
       '<span class="liqm-inputs">' + inputs + '</span></div>' +
       (o && o.levels_state === 'stale' ? '<div class="sm liqm-absent">option levels: ' + esc(o.levels_stale_reason) + '</div>' : '') +
+      (snap && snap.session_levels && snap.session_levels.stale ? '<div class="sm liqm-absent">price levels stale: ' + esc(snap.session_levels.reason) + '</div>' : '') +
       (zones.length ? zones.map(zoneRow).join('') : '<div class="sm">' + esc((snap && snap.reason) || 'no zones for this session yet') + '</div>') +
       absent + '</div>';
   }

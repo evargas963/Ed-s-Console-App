@@ -161,17 +161,135 @@ def test_the_session_levels_take_their_currency_from_the_daemons_coverage(monkey
     assert served()["session_levels"]["state"] == srv.PRICE_LEVEL_STALE
 
 
+def _desk(monkeypatch, pin_clock, stored):
+    """The daemon's real live_ui streaming every one of BARS for SPY (subscribed at 09:00 ET) and
+    the console: its levels published from `stored` (the bars its store holds), its ingest of the
+    daemon's pushed verdicts. Returns (tick(h, m, s): the daemon's beat at that ET instant, the
+    verdicts delivered to the console; served(h, m, s): /api/levels at that instant)."""
+    import time as _time
+    pin_clock(2026, 9, 29, 10, 31)
+    monkeypatch.setattr(lve, "_MATERIALIZED_SNAPSHOTS", {})
+    monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda tk: stored)
+    monkeypatch.setattr(srv, "resolve_spot", lambda tk: (None, "none", None))
+    monkeypatch.setattr(ofs, "_bar_states", {})
+    srv._publish_price_levels("SPY")
+    clock = {"now": _at(9, 0)}
+    bus = MessageBus()
+    states = bus.subscribe("barstate.", maxsize=4096, name="test_console")
+    ui = live_ui.LiveUiServer(bus, lambda: {}, {}, clock=lambda: clock["now"], history_fn=lambda *a: [],
+                              daily_fn=lambda *a: [])
+
+    async def stream():
+        ui.on_subscription(subscription_msg(service="CHART_EQUITY", command="SUBS", symbols=["SPY"], code=0,
+                                            reason="ok", ts=_at(9, 0)))
+        for b in BARS:
+            clock["now"] = b["timestamp"] / 1000.0 + 62.7
+            ui.on_bar(bar_msg(symbol="SPY", bar_start_ms=b["timestamp"], open=b["open"], high=b["high"],
+                              low=b["low"], close=b["close"], volume=b["volume"], src="schwab_chart",
+                              ts_recv=clock["now"]))
+    asyncio.run(stream())
+
+    async def beat(h, m, s):
+        clock["now"] = datetime(2026, 9, 29, h, m, s, tzinfo=ET).timestamp()
+        ui.tick(clock["now"])
+        while ui._asks:
+            await asyncio.gather(*list(ui._asks))
+
+    def tick(h, m, s=0, delivered=True):
+        asyncio.run(beat(h, m, s))
+        while not states.queue.empty():
+            topic, msg = states.queue.get_nowait()
+            if delivered:
+                ofs._ingest_pushed(topic, msg)
+
+    def served(h, m, s=0):
+        monkeypatch.setattr(_time, "time", lambda: datetime(2026, 9, 29, h, m, s, tzinfo=ET).timestamp())
+        return json.loads(srv.get_levels(ticker="SPY", tf="1").body)["session_levels"]
+    return tick, served
+
+
+def test_levels_built_without_minutes_the_daemon_holds_are_stale(monkeypatch, pin_clock):
+    """The levels took their currency from the daemon's coverage but were built from the
+    console's store: with the store holding bars only through 10:00 ET (the console's push was
+    down 10:00-10:29 ET, those bars never written) they were served current at 10:45 ET, built
+    from bars 29 minutes old. They are current only when built from every minute the daemon holds
+    (the same count and newest minute); otherwise stale, naming both. Real SPY bars of 2026-09-29
+    09:15-10:29 ET."""
+    stored = [b for b in BARS if b["timestamp"] / 1000.0 <= _at(10, 0)]
+    tick, served = _desk(monkeypatch, pin_clock, stored)
+    tick(10, 45)
+    assert served(10, 45) == {"state": srv.PRICE_LEVEL_STALE, "stale": True, "reason": (
+        f"levels built from {len(stored)} bars through Tue 09/29 09:00 AM CT; the capture daemon holds "
+        f"{len(BARS)} of today's minutes through Tue 09/29 09:29 AM CT: the minutes not in the store are missing")}
+
+
+def test_a_bar_the_store_failed_to_write_makes_the_levels_stale_with_the_failure(monkeypatch, pin_clock):
+    """A streamed bar the console failed to write (logged) left the levels built without it and
+    served current. They are stale, and the reason names the failure. Real SPY bars of
+    2026-09-29 09:15-10:29 ET; the store's failure on the 10:29 bar a stand-in."""
+    monkeypatch.setattr(srv, "_store_problems", {})
+    stored = []
+
+    class _Store:
+        def upsert_1m_bars(self, symbol, candles, backfill):
+            if candles[0].ts == _at(10, 29):
+                raise sqlite3.OperationalError("database is locked")
+            stored.extend({"timestamp": int(c.ts * 1000), "open": c.open, "high": c.high, "low": c.low,
+                           "close": c.close, "volume": c.volume} for c in candles)
+    monkeypatch.setattr(srv, "get_db", lambda: _Store())
+    monkeypatch.setattr(srv, "_publish_price_levels", lambda tk: None)        # built below, once
+    srv._write_streamed_bars([bar_msg(symbol="SPY", bar_start_ms=b["timestamp"], open=b["open"], high=b["high"],
+                                      low=b["low"], close=b["close"], volume=b["volume"], src="schwab_chart",
+                                      ts_recv=b["timestamp"] / 1000.0 + 62.7) for b in BARS])
+    problems = dict(srv._store_problems)
+    monkeypatch.undo()
+    monkeypatch.setattr(srv, "_store_problems", problems)
+    tick, served = _desk(monkeypatch, pin_clock, stored)
+    tick(10, 45)
+    assert served(10, 45)["reason"] == (
+        f"levels built from {len(BARS) - 1} bars through Tue 09/29 09:28 AM CT; the capture daemon holds "
+        f"{len(BARS)} of today's minutes through Tue 09/29 09:29 AM CT: the minutes not in the store are missing (the bar of "
+        "Tue 09/29 09:29 AM CT was not written to the store: OperationalError: database is locked)")
+
+
+def test_a_verdict_the_console_stopped_receiving_is_unknown(monkeypatch, pin_clock):
+    """The console kept the daemon's last bar verdict with no regard to its time: one dropped
+    after it left an old "current" standing. The daemon re-sends every verdict on its beat; one
+    older than the beat allows is unknown, and the levels are stale saying when it is from. Real
+    SPY bars of 2026-09-29 09:15-10:29 ET; the verdicts not delivered after 10:45 the stand-in for
+    a drop."""
+    tick, served = _desk(monkeypatch, pin_clock, BARS)
+    tick(10, 45)
+    assert served(10, 45)["state"] == srv.PRICE_LEVEL_CURRENT
+    tick(10, 45, 5, delivered=False)
+    assert served(10, 45, 5) == {"state": srv.PRICE_LEVEL_STALE, "stale": True, "reason": (
+        "the capture daemon's last report on this ticker's 1-minute bars is from Tue 09/29 09:45:00 AM CT; "
+        "it reports every second")}
+
+
+def test_after_the_collect_window_the_levels_are_the_sessions(monkeypatch, pin_clock):
+    """After the collect window (16:15 ET) the session's levels are served as of their newest
+    bar, labelled the session's (not stale, not current). Real SPY bars of 2026-09-29
+    09:15-10:29 ET; the quiet stretch after 10:29 the stand-in for minutes with no trade."""
+    tick, served = _desk(monkeypatch, pin_clock, BARS)
+    tick(16, 20)
+    assert served(16, 20) == {"state": srv.PRICE_LEVEL_SESSION_ENDED, "stale": False, "reason": (
+        "the session's bars have ended; as of the bar ending Tue 09/29 09:30 AM CT")}
+
+
 def test_before_the_sessions_first_bar_the_levels_say_it_has_not_started():
     """At a premarket instant the session levels read "the session's bars have ended", as if the
     day were over. Before today's first bar the session has not started, and the reason says when
-    its first bar ends. Stated instant: Wednesday 2026-09-30 08:00 ET; the newest bar the levels
-    hold is the prior session's last (Tuesday 16:15 ET), a stand-in."""
+    its first bar ends. Stated instant: Wednesday 2026-09-30 08:00 ET; the levels are the prior
+    session's (Tuesday's bars to 10:29 ET), a stand-in."""
     now = datetime(2026, 9, 30, 8, 0, tzinfo=ET).timestamp()
-    st = srv.price_level_staleness("session_rth", datetime(2026, 9, 29, 16, 15, tzinfo=ET).timestamp(), now, None)
+    snap = build_price_level_snapshot("SPY", TUESDAY, _bars_to_list(BARS), bar_source="price_bars_1m",
+                                      prior_day=None, prior_day_absent_reason=NO_DAILY)
+    st = srv.price_level_staleness("session_rth", snap, now, None, None)
     assert st == {"state": srv.PRICE_LEVEL_SESSION_NOT_STARTED, "stale": False,
                   "reason": "today's session has not started: its first 1-minute bar ends Wed 09/30 08:16 AM CT"}
     # after 09:15 ET with no verdict from the daemon on its bars the levels are stale
-    assert srv.price_level_staleness("session_rth", None, now + 78 * 60, None)["state"] == srv.PRICE_LEVEL_STALE
+    assert srv.price_level_staleness("session_rth", snap, now + 78 * 60, None, None)["state"] == srv.PRICE_LEVEL_STALE
 
 
 def test_a_rolled_up_bar_cut_by_the_limit_is_not_served(monkeypatch, tmp_path):

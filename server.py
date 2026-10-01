@@ -167,7 +167,7 @@ from schwab_client import (
 )
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
-from numeric_contract import schwab_number
+from numeric_contract import price_text, schwab_number
 from terrain_engine import (TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike, positioning_migration)
 from terrain_atr import AtrPair, compute_atr_pair
 
@@ -778,6 +778,11 @@ def _write_streamed_bar(msg: dict) -> bool:
     return True
 
 
+#: per ticker, the last failure writing its streamed bars or building its price levels: the
+#: reason its levels are stale while their bars differ from the daemon's (price_level_staleness)
+_store_problems: "dict[str, str]" = {}
+
+
 def _write_streamed_bars(msgs: list) -> None:
     """Write streamed bars, then build the price levels of each ticker written: every bar is
     written before any level is built (a minute's bars for the whole board arrive together)."""
@@ -786,8 +791,12 @@ def _write_streamed_bars(msgs: list) -> None:
         try:
             if _write_streamed_bar(msg):
                 written.append(msg["symbol"])
-        except Exception as e:  # noqa: BLE001 -- logged; the next bar is still written
+        except Exception as e:  # noqa: BLE001 -- logged and kept as the levels' reason; the next bar is still written
             log.warning("streamed bar for %s not written: %s", msg.get("symbol"), e)
+            start = msg.get("bar_start_ms")
+            _store_problems[ticker_storage_key(str(msg.get("symbol") or ""))] = (
+                f"the bar of {ct_label(start / 1000.0) if isinstance(start, (int, float)) else 'an unknown minute'} "
+                f"was not written to the store: {type(e).__name__}: {e}")
     for tk in dict.fromkeys(written):
         _publish_price_levels(tk)
 
@@ -2621,15 +2630,9 @@ def get_terrain_strikes(ticker: str = Query(...)):
 
     today_src, prior_src = None, None
     today, prior = None, None
-    measures: dict = {"dex": [], "oi": []}
     spot_used = None
     today_age_sec = None
-    # RC-146: bound BEFORE the try. `_snap` was assigned only inside the try body yet read
-    # unconditionally in the response dict below — a raising terrain_cache_get took the
-    # logged-and-swallowed path and then killed the endpoint with NameError on the way out,
-    # turning a degraded panel into a 500. Absence must degrade, never explode.
-    _snap: dict = {}
-    _ps: dict = {}
+    _snap: dict = {}                   # nothing read when the read raises
     # RC-68 SINGLE SOURCE FOR TODAY'S PER-STRIKE DATA: the LIVE terrain snapshot.
     # This panel used to render from option_chain_morning_full — MEASURED 2026-07-27 11:31 ET:
     # a 09:47 capture served at 11:31 understated session volume by 281 percent (1,095,874 shown
@@ -2641,20 +2644,23 @@ def get_terrain_strikes(ticker: str = Query(...)):
     now = time.time()
     try:
         _snap = terrain_cache_get(tk, now) or {}
-        _ps = _snap.get("_per_strike") or {}
-        # the terrain loop hands over FINISHED rows ({all,near,far} of
-        # [strike, net_gex_1pct$, volume]); they are served as-is
-        if isinstance(_ps, dict):
-            measures = {m: (_ps.get(m) or []) for m in ("dex", "oi")}
-        if isinstance(_ps, dict) and _ps.get("all"):
-            today = {**{k: (_ps.get(k) or []) for k in ("all", "near", "far")},
-                     "expiry_unknown": _ps.get("expiry_unknown")}
-            spot_used = _snap.get("spot")
-            _cts_utc = _snap.get("computed_ts_utc")
-            today_age_sec = round(now - float(_cts_utc), 1) if _cts_utc else None
-            today_src = "terrain_live_cache"
-    except Exception as e:
-        log.debug("terrain strikes live read failed %s: %s", tk, e)
+        today_why = (None if _snap else "no levels published for this ticker yet")
+    except Exception as e:  # noqa: BLE001 -- logged; the panel serves why it has no rows
+        log.warning("terrain strikes: the published levels of %s could not be read: %s: %s", tk, type(e).__name__, e)
+        today_why = f"the published levels could not be read: {type(e).__name__}: {e}"
+    _ps = _snap.get("_per_strike") or {}
+    # the terrain loop hands over FINISHED rows ({all,near,far} of
+    # [strike, net_gex_1pct$, volume]); they are served as-is
+    measures = {m: (_ps.get(m) or []) for m in ("dex", "oi")}
+    if _ps.get("all"):
+        today = {**{k: (_ps.get(k) or []) for k in ("all", "near", "far")},
+                 "expiry_unknown": _ps.get("expiry_unknown")}
+        spot_used = _snap.get("spot")
+        _cts_utc = _snap.get("computed_ts_utc")
+        today_age_sec = round(now - float(_cts_utc), 1) if _cts_utc else None
+        today_src = "terrain_live_cache"
+    elif today_why is None:                      # published, with no rows: the publication's own reason
+        today_why = _ps.get("absent_reason") or f"the levels were not computed: {_snap.get('error')}"
     prior, prior_src = _snap.get("_prior_strikes") or (None, None)
 
     def _rows(rows: "dict | None", why: str) -> dict:
@@ -2671,7 +2677,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
         "ticker": tk, "spot": live_spot,
         "spot_source": live_src,
         "priced_at_spot": spot_used,
-        "today": _rows(today, "no levels published for this ticker yet"),
+        "today": _rows(today, today_why),
         # the Chart view's DEX and OI profiles: each measure's rows (terrain_engine
         # _per_strike_measure_rows), its strike nearest the live price (the window's centre) and
         # its largest-magnitude strike, as published (per_strike_view `peak`)
@@ -2949,7 +2955,7 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
                 "charm_error": charm_err,
                 "newer_et_date": d1, "older_et_date": d0, "bucket_spot": spot1,
                 # what the rows are, for the screen: past observations from two stored captures
-                "basis": (f"{d1} chain capture against {d0}, split at that capture's price {spot1:.2f}; "
+                "basis": (f"{d1} chain capture against {d0}, split at that capture's price {price_text(spot1)}; "
                           f"open interest compared on {len(doi)} strikes"),
             }
     except Exception as e:
@@ -3356,10 +3362,6 @@ def _desk_window_start(tf: str, now: datetime) -> float:
     raise ValueError(f"no regular session began in the 10 days to {now.date()} (market calendar)")
 
 
-def _f2(v) -> str:
-    return "—" if v is None else f"{float(v):.2f}"
-
-
 @app.get("/api/desk/events")
 def get_desk_events(ticker: str = Query(...),
                     venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
@@ -3381,7 +3383,7 @@ def get_desk_events(ticker: str = Query(...),
         items.append({"key": f"x{cid}", "n": i + 1, "ts": c["ts_utc"], "dom": "LEVELS",
                       "price": c.get("level_value"), "dir": c.get("direction"), "marker": False,
                       "title": f"Crossed {_CROSS_WORD.get(c.get('direction'), 'through')} {names}",
-                      "detail": f"{_f2(c.get('level_value'))} · spot {_f2(c.get('spot_at_cross'))} at the cross",
+                      "detail": f"{price_text(c.get('level_value'))} · spot {price_text(c.get('spot_at_cross'))} at the cross",
                       "src": "level_crosses"})
     # the chart's few: the newest cross at each level, for the newest DESK_MARKERS levels
     newest_at = {it["price"]: it for it in items}
@@ -3393,7 +3395,7 @@ def get_desk_events(ticker: str = Query(...),
         if t.get(f"{side}_wall_state") == "breached":
             items.append({"key": key, "ts": tts, "dom": "OPTIONS", "dir": "up" if side == "call" else "down",
                           "title": f"Spot through the {word} wall",
-                          "detail": f"{word} wall {_f2(t.get(f'{side}_wall'))} · spot {_f2(t.get('spot'))}",
+                          "detail": f"{word} wall {price_text(t.get(f'{side}_wall'))} · spot {price_text(t.get('spot'))}",
                           "src": "/api/terrain"})
     if t.get("levels_stale"):
         items.append({"key": "ls", "ts": tts, "dom": "DATA", "dir": None, "warn": True,
@@ -3407,7 +3409,7 @@ def get_desk_events(ticker: str = Query(...),
     for i, w in enumerate((micro.get("wall_candidates") or [])[:3]):
         items.append({"key": f"wall{i}", "ts": None if book_ms is None else book_ms / 1000.0,
                       "dom": "LIQUIDITY", "dir": "up" if w.get("side") == "bid" else "down", "warn": not live_book,
-                      "title": f"{venue} size wall · {w.get('side') or ''} {_f2(w.get('price'))}"
+                      "title": f"{venue} size wall · {w.get('side') or ''} {price_text(w.get('price'))}"
                                + ("" if live_book else " (not live)"),
                       "detail": f"{w.get('volume')} shown · "
                                 + (f"{w['median_mult']:.1f}× the median level" if w.get("median_mult") is not None else "size outlier")
@@ -3967,8 +3969,9 @@ def _publish_price_levels(ticker: str) -> None:
             prior_day_absent_reason=None if prior else (days or {}).get("problem")
             or "Schwab's daily candles have not come from the capture daemon",
             config=PlaybookConfig())
-    except Exception as e:  # noqa: BLE001 -- logged; the ticker's next bar builds them
+    except Exception as e:  # noqa: BLE001 -- logged and kept as the levels' reason; the ticker's next bar builds them
         log.warning("price levels for %s not built: %s", tk, e)
+        _store_problems[tk] = f"the levels were not built from the newest bars: {type(e).__name__}: {e}"
         return
     if snap is not before:   # the same object when its bars did not change
         push_changes.changed(tk, push_changes.LEVELS)
@@ -3998,16 +4001,19 @@ PRICE_LEVEL_SESSION_ENDED, PRICE_LEVEL_PRIOR_SESSION = "session_ended", "prior_s
 PRICE_LEVEL_SESSION_NOT_STARTED = "session_not_started"
 
 
-def price_level_staleness(semantic_scope: str, newest_bar_end: "float | None", now: float,
-                          bar_state: "dict | None") -> dict:
-    """Whether a session price level is current at `now` (epoch seconds), judged by its source:
-    the day's 1-minute bars, whose newest ends at `newest_bar_end`, and their one currency
-    authority, the daemon's `bar_state` (streaming.bar_state: whether today's minutes are covered
-    through now -- Schwab sends no bar for a minute with no trade, so a quiet ticker's covered
-    minutes are current). A prior session's level is a complete fact. Before the collect window on
-    a trading day the session has not started. Otherwise the level is stale, with the daemon's
-    reason, while a minute of the day is not covered (or the daemon has not reported), and after
-    the window it is the session's. {state, stale, reason}."""
+def price_level_staleness(semantic_scope: str, snap, now: float, bar_state: "dict | None",
+                          store_problem: "str | None") -> dict:
+    """Whether a session price level of the snapshot `snap` is current at `now` (epoch seconds),
+    judged by its source, today's 1-minute bars, and their one currency authority, the daemon's
+    `bar_state` (streaming.bar_state, re-sent on every daemon beat: whether today's minutes are
+    covered through now -- Schwab sends no bar for a minute with no trade, so a quiet ticker's
+    covered minutes are current -- and the minutes it holds). A prior session's level is a
+    complete fact. Before the collect window on a trading day the session has not started.
+    Otherwise the level is stale, with the reason, while the daemon's verdict is missing or older
+    than its beat allows (lmp.FEED_HEARTBEAT_MAX_AGE_SEC), a minute of the day is not covered, or
+    the snapshot was not built from every minute the daemon holds (the console's store lacks
+    some: `store_problem`, the last failure writing them or building the levels, when there was
+    one); after the window it is the session's. {state, stale, reason}."""
     if semantic_scope == "prior_rth_session":
         return {"state": PRICE_LEVEL_PRIOR_SESSION, "stale": False,
                 "reason": "the prior session's level: its session is complete"}
@@ -4020,12 +4026,24 @@ def price_level_staleness(semantic_scope: str, newest_bar_end: "float | None", n
     if bar_state is None:
         return {"state": PRICE_LEVEL_STALE, "stale": True,
                 "reason": "the capture daemon has not reported whether this ticker's 1-minute bars are whole"}
+    if not 0.0 <= now - bar_state["ts"] < lmp.FEED_HEARTBEAT_MAX_AGE_SEC:
+        return {"state": PRICE_LEVEL_STALE, "stale": True, "reason": (
+            f"the capture daemon's last report on this ticker's 1-minute bars is from "
+            f"{ct_label(bar_state['ts'], seconds=True)}; it reports every second")}
     if bar_state.get("coverage") != _lpr.COVERAGE_CURRENT:
         return {"state": PRICE_LEVEL_STALE, "stale": True, "reason": bar_state.get("coverage_reason") or ""}
+    built, newest = snap.minutes
+    if (built, newest) != (bar_state["minutes"], bar_state["newest"]):
+        through = "no bar" if newest is None else f"bars through {ct_label(newest)}"
+        return {"state": PRICE_LEVEL_STALE, "stale": True, "reason": (
+            f"levels built from {built} {through}; the capture daemon holds {bar_state['minutes']} of today's "
+            f"minutes{'' if bar_state['newest'] is None else ' through ' + ct_label(bar_state['newest'])}: "
+            f"the minutes not in the store are missing"
+            + ("" if store_problem is None else f" ({store_problem})"))}
     if not is_collect_window_bar_end_ts_utc(last_end):
         return {"state": PRICE_LEVEL_SESSION_ENDED, "stale": False,
                 "reason": "the session's bars have ended" + (
-                    "" if newest_bar_end is None else f"; as of the bar ending {ct_label(newest_bar_end)}")}
+                    "" if snap.as_of_ts_utc is None else f"; as of the bar ending {ct_label(snap.as_of_ts_utc)}")}
     return {"state": PRICE_LEVEL_CURRENT, "stale": False, "reason": ""}
 
 
@@ -4078,7 +4096,7 @@ def get_levels(ticker: str = Query(...),
             "as_of_ts_utc": as_of,
             "age_sec": None if as_of is None else round(served_ts - as_of, 1),
             "stale_after_sec": None,
-            **price_level_staleness(value.semantic_scope, as_of, served_ts, bars_verdict),
+            **price_level_staleness(value.semantic_scope, snap, served_ts, bars_verdict, _store_problems.get(tk)),
         }
         levels.append(row)
     # the prior close, carried from the daemon's price row (Schwab's CLOSE_PRICE)
@@ -4151,8 +4169,8 @@ def get_levels(ticker: str = Query(...),
                              if snap is not None and snap.as_of_ts_utc is not None else None),
         # today's session levels, the VWAP curve and the profile, all built from today's bars:
         # their currency at this serving (price_level_staleness, from the daemon's coverage)
-        "session_levels": (price_level_staleness("session_rth", snap.as_of_ts_utc, served_ts, bars_verdict)
-                           if snap is not None else None),
+        "session_levels": (price_level_staleness("session_rth", snap, served_ts, bars_verdict,
+                                                 _store_problems.get(tk)) if snap is not None else None),
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,
@@ -4232,8 +4250,10 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
     canon = canonical_price_level_snapshot(tk)
     if canon is None:
         return {"ticker": tk, "zones": [], "reason": NO_PRICE_LEVELS_REASON}
+    from app.options.order_flow.streaming import bar_state
+    served_ts = time.time()
     spot = resolve_spot(tk)[0]
-    terrain = terrain_cache_get(tk, time.time()) or {}
+    terrain = terrain_cache_get(tk, served_ts) or {}
     option_levels, pdc = _liquidity_option_levels(terrain), _prior_close(tk)
     absent = [a for a in (
         None if spot is not None else
@@ -4257,6 +4277,9 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
         "level_generation": canon.generation,
         "level_snapshot_as_of_ts_utc": canon.as_of_ts_utc,
         "levels_as_of": None if canon.as_of_ts_utc is None else ct_label(canon.as_of_ts_utc),
+        # the currency of the price levels in them, as /api/levels serves it (price_level_staleness)
+        "session_levels": price_level_staleness("session_rth", canon, served_ts, bar_state(tk),
+                                                _store_problems.get(tk)),
         # the option levels' source and freshness, every `levels_*` field of their terrain
         "option_levels": {k: v for k, v in terrain.items() if k.startswith("levels_")} if option_levels else None,
     }

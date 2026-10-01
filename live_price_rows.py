@@ -19,7 +19,7 @@ from typing import Any, Optional
 
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
-from numeric_contract import schwab_count, schwab_number
+from numeric_contract import price_text, schwab_count, schwab_number, volume_text
 from time_et import (COLLECT_WINDOW_START_MINS, ET, ct_label, et_date_str_from_ts_utc,
                      et_minute_total_from_ts_utc, is_collect_window_bar_end_ts_utc,
                      session_close_mins_for_et_date, trading_date_label)
@@ -107,9 +107,11 @@ def last_bar(t: Optional[float]) -> Optional[dict[str, Any]]:
 def served_bar(bar: dict[str, Any], tf: str) -> dict[str, Any]:
     """A chart bar of timeframe `tf` as every route and push serves it: with its change
     (with_change) and its label -- the bar's Central Time, or a daily bar's ET trading date
-    (time_et.trading_date_label). The chart prints the label; it formats no bar time."""
+    (time_et.trading_date_label) -- and its volume's text (volume_text). The chart prints them; it
+    formats no bar time or volume."""
     bar = with_change(bar)
     bar["label"] = trading_date_label(bar["t"]) if tf == "D" else ct_label(bar["t"])
+    bar["v_text"] = volume_text(bar.get("v"))
     return bar
 
 
@@ -225,11 +227,6 @@ def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float,
             "tf": by_tf, "recent_1m": None if gaps else recent_1m(minutes), "unavailable": unavailable}
 
 
-def price_text(v: float) -> str:
-    """A price as every server-made text shows it."""
-    return f"{v:.2f}"
-
-
 #: where today's daily candle comes from: Schwab's LEVELONE_EQUITIES day fields, as sent
 DAY_SOURCE = ("Schwab LEVELONE_EQUITIES OPEN_PRICE / HIGH_PRICE / LOW_PRICE / LAST_PRICE "
               "(REGULAR_MARKET_LAST_PRICE after the regular close) / TOTAL_VOLUME")
@@ -253,7 +250,8 @@ def day_candle(ticker: str, now: float) -> dict[str, Any]:
     day_start = datetime(d.year, d.month, d.day, tzinfo=ET).timestamp()
     close = session_close_mins_for_et_date(d.isoformat())
     if close is None:
-        return {"bar": None, "volume": None, "absent": {"day": f"{d.isoformat()} is not a trading day"},
+        return {"bar": None, "volume": None, "volume_text": volume_text(None),
+                "absent": {"day": f"{d.isoformat()} is not a trading day"},
                 "as_of": None, "source": DAY_SOURCE}
     fields = lmp.day_fields(tk)
     stale = lmp.in_session(now) and not lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now)
@@ -282,8 +280,8 @@ def day_candle(ticker: str, now: float) -> dict[str, Any]:
     v = take("v", "TOTAL_VOLUME")
     bar = (served_bar({"t": day_start, "o": o, "h": h, "l": lo, "c": c, "v": v}, "D")
            if None not in (o, h, lo, c) else None)
-    return {"bar": bar, "volume": v, "absent": absent, "as_of": ct_label(max(used)) if used else None,
-            "source": DAY_SOURCE}
+    return {"bar": bar, "volume": v, "volume_text": volume_text(v), "absent": absent,
+            "as_of": ct_label(max(used)) if used else None, "source": DAY_SOURCE}
 
 
 def daily_candles(candles: list[dict], before: float) -> list[dict[str, Any]]:

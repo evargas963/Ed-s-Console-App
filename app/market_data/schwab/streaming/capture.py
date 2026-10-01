@@ -64,7 +64,7 @@ from stream_spine import (  # noqa: E402
     resolve_stream_db_path,
     subscription_msg,
 )
-from time_et import ET  # noqa: E402
+from time_et import ET, ct_label  # noqa: E402
 
 log = logging.getLogger("capture")
 
@@ -541,32 +541,83 @@ async def capture_chains(make_client, stop: asyncio.Event) -> None:
             log.exception("chain capture failed")
 
 
-def schwab_minutes(daemon: "Daemon"):
+#: Schwab answering HTTP 429 (too many requests) holds every price-history request back for this
+#: long, doubling on each further 429 up to the cap; a reply resets it
+RATE_LIMIT_BACKOFF_FIRST_SEC, RATE_LIMIT_BACKOFF_MAX_SEC = 5.0, 300.0
+
+
+def rate_hold_path(db_path: "Path | str | None" = None) -> Path:
+    return resolve_stream_db_path(db_path).with_name("schwab_rate_hold.json")
+
+
+class HeldBack(Exception):
+    """A request not sent: Schwab's rate limit holds every request back (RateHold)."""
+
+
+class RateHold:
+    """Schwab's HTTP 429 answer to a price-history request holds every one back
+    (RATE_LIMIT_BACKOFF_*), kept at `path` ({"until", "sec"}) so a restart keeps it. The one
+    check of the daemon's price-history requests (schwab_minutes, schwab_days)."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.until, self.sec = float("-inf"), 0.0
+        try:
+            held = json.loads(path.read_text(encoding="utf-8"))
+            self.until, self.sec = float(held["until"]), float(held["sec"])
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            log.warning("schwab: the rate-limit hold at %s cannot be read (%s); none is held", path, e)
+
+    def check(self, now: float) -> None:
+        if now < self.until:
+            raise HeldBack(f"Schwab answered 429 (too many requests): no request until {ct_label(self.until)}")
+
+    def answered(self, status: int, now: float) -> None:
+        """Schwab's HTTP status for a request sent at `now`: 429 holds every request back, any
+        other answer ends the doubling."""
+        if status != 429:
+            self.sec = 0.0
+            return
+        self.sec = min(max(self.sec * 2, RATE_LIMIT_BACKOFF_FIRST_SEC), RATE_LIMIT_BACKOFF_MAX_SEC)
+        self.until = now + self.sec
+        self.path.write_text(json.dumps({"until": self.until, "sec": self.sec}), encoding="utf-8")
+        log.warning("schwab: price history answered 429 (too many requests): no request for %.0f s, until %s",
+                    self.sec, ct_label(self.until))
+
+
+def schwab_minutes(daemon: "Daemon", hold: RateHold, clock):
     """Schwab's 1-minute price history (get_price_history_every_minute, extended hours: the
     collect window opens at 09:15 ET), as a function (symbol, start, end epoch seconds) -> the
-    candles Schwab sent, asked with the daemon's one Schwab client. The daemon is the only caller
-    of Schwab; a failed request raises, and with no client the reason is the client's own
-    (a missing or expired sign-in)."""
+    candles Schwab sent, asked with the daemon's one Schwab client unless its rate limit holds
+    requests back (`hold`, judged at `clock()`). The daemon is the only caller of Schwab; a failed
+    request raises, and with no client the reason is the client's own (a missing or expired
+    sign-in)."""
     def fetch(symbol: str, start: float, end: float) -> list:
         if daemon.client is None:
             raise ConnectionError(daemon.client_problem)
+        hold.check(clock())
         r = daemon.client.get_price_history_every_minute(
             symbol, start_datetime=datetime.fromtimestamp(start, ET),
             end_datetime=datetime.fromtimestamp(end, ET), need_extended_hours_data=True)
+        hold.answered(r.status_code, clock())
         r.raise_for_status()
         return r.json()["candles"]
     return fetch
 
 
-def schwab_days(daemon: "Daemon"):
+def schwab_days(daemon: "Daemon", hold: RateHold, clock):
     """Schwab's daily price history (get_price_history_every_day): (symbol, start, end epoch
-    seconds) -> the daily candles Schwab sent, asked with the daemon's one Schwab client, the
-    same way as schwab_minutes."""
+    seconds) -> the daily candles Schwab sent, asked with the daemon's one Schwab client and
+    rate-limit hold, the same way as schwab_minutes."""
     def fetch(symbol: str, start: float, end: float) -> list:
         if daemon.client is None:
             raise ConnectionError(daemon.client_problem)
+        hold.check(clock())
         r = daemon.client.get_price_history_every_day(
             symbol, start_datetime=datetime.fromtimestamp(start, ET), end_datetime=datetime.fromtimestamp(end, ET))
+        hold.answered(r.status_code, clock())
         r.raise_for_status()
         return r.json()["candles"]
     return fetch
@@ -590,13 +641,15 @@ async def run() -> int:
     writer = CaptureWriter()
     daemon = Daemon(bus, health, wanted_path(), standing_roster(canonical_console_db_path()))
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")
+    hold = RateHold(rate_hold_path())
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(capture_chains(make_client, stop)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
                                                  on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, clock=time.time,
-                                               history_fn=schwab_minutes(daemon), daily_fn=schwab_days(daemon)))]
+                                               history_fn=schwab_minutes(daemon, hold, time.time),
+                                               daily_fn=schwab_days(daemon, hold, time.time)))]
     return await run_until_a_part_ends(daemon.run(make_client, stop), tasks, stop)
 
 

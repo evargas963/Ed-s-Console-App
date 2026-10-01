@@ -505,7 +505,7 @@
       var cls = b.chg == null ? '' : b.chg >= 0 ? 'up' : 'dn';   // the served bar change
       return '<span>O <b class="' + cls + '">' + b.o.toFixed(2) + '</b></span><span>H <b class="' + cls + '">' + b.h.toFixed(2) +
         '</b></span><span>L <b class="' + cls + '">' + b.l.toFixed(2) + '</b></span><span>C <b class="' + cls + '">' + b.c.toFixed(2) +
-        '</b></span><span>Vol <b>' + fmtVol(b.v) + '</b></span>';
+        '</b></span><span>Vol <b>' + esc(b.v_text) + '</b></span>';   // the served volume text
     }
     function paintLegend() {
       var b = S.pinned ? barAt(S.pinned.time) : S.bars[S.bars.length - 1];
@@ -536,7 +536,7 @@
         '<div class="tvc-pin-g"><span>Open</span><b>' + b.o.toFixed(2) + '</b><span>High</span><b>' + b.h.toFixed(2) +
         '</b><span>Low</span><b>' + b.l.toFixed(2) + '</b><span>Close</span><b>' + b.c.toFixed(2) +
         '</b><span>Bar change</span><b class="' + (chg == null ? '' : chg >= 0 ? 'up' : 'dn') + '">' + (chg == null ? '—' : (chg >= 0 ? '+' : '') + chg.toFixed(2)) +
-        (pct == null ? '' : ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)') + '</b><span>Volume</span><b>' + fmtVol(b.v) + '</b>' +
+        (pct == null ? '' : ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)') + '</b><span>Volume</span><b>' + esc(b.v_text) + '</b>' +
         (S.pinned.price != null ? '<span>Price at click</span><b>' + S.pinned.price.toFixed(2) + '</b>' : '') + '</div>';
       pinBox.querySelector('.tvc-pin-x').addEventListener('click', function () { unpin(); });
     }
@@ -708,7 +708,7 @@
 
     // a served bar as the chart keeps it, and as its candle (the served bar rides on the candle,
     // so the series the library holds is the chart's list of bars)
-    function servedBar(b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct, label: b.label }; }
+    function servedBar(b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, v_text: b.v_text, chg: b.chg, chg_pct: b.chg_pct, label: b.label }; }
     function candle(b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c, customValues: b }; }
 
     var api = {

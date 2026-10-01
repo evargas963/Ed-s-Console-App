@@ -48,6 +48,7 @@ from math_levels import (
     UNPRICED_SETTLED,
     GammaFlip,
 )
+from numeric_contract import price_text
 
 REGIME_LONG_GAMMA = "LONG_GAMMA_CHOP"
 REGIME_SHORT_GAMMA = "SHORT_GAMMA_TREND"
@@ -88,7 +89,7 @@ def flip_absent_reason(flip: GammaFlip) -> str:
     if flip.state == FLIP_FOUND:
         return ""
     if flip.state == FLIP_NO_CROSSING:
-        return f"none in {flip.domain_lo:.2f}–{flip.domain_hi:.2f}"
+        return f"none in {price_text(flip.domain_lo)}–{price_text(flip.domain_hi)}"
     if flip.state == FLIP_INCOMPLETE:
         return f"incomplete, {sum(n for r, n in flip.unpriced.items() if r != UNPRICED_SETTLED)} unpriced"
     return _FLIP_UNAVAILABLE_TEXT[flip.reason]

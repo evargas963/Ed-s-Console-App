@@ -208,11 +208,14 @@ def news_msg(*, symbol: str, content: dict, src: str, ts_recv: float | None = No
 CONNECTION, CONNECTION_CLOSED, CONNECTION_LOSS = "CONNECTION", "CLOSED", "LOSS"
 
 
-def bar_state_msg(*, symbol: str, coverage: str, coverage_reason: str, ts: float) -> dict:
+def bar_state_msg(*, symbol: str, coverage: str, coverage_reason: str, minutes: int,
+                  newest: "float | None", ts: float) -> dict:
     """barstate.* -- the daemon's verdict on a symbol's 1-minute bars at `ts` (live_ui): whether
     today's minutes are covered through now (`coverage`, live_price_rows.COVERAGE_*, with its
-    reason). Published when it changes; not a stream message."""
-    return {"ts": ts, "symbol": symbol, "src": "live_ui", "coverage": coverage, "coverage_reason": coverage_reason}
+    reason), and the minutes it holds of the day: how many, and the newest one's start. Published
+    on every daemon beat and when it changes; not a stream message."""
+    return {"ts": ts, "symbol": symbol, "src": "live_ui", "coverage": coverage, "coverage_reason": coverage_reason,
+            "minutes": minutes, "newest": newest}
 
 
 def bar_days_msg(*, symbol: str, candles: "list[dict]", problem: "str | None", ts: float) -> dict:

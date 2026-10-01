@@ -568,8 +568,9 @@ def per_strike_view(books: dict, exposures: dict, net_gex_peak: float | None, sp
     largest-magnitude row of the DEX and OI rows. `side_sums`: the GEX rows' net GEX summed
     below and above `spot`, the price this publication was computed at (`spot_basis`); a strike
     at that price is on neither side. `expiry_unknown`: the contracts whose settlement cannot be
-    determined, in no row (the books' own count)."""
-    from math_exposure_core import merge_exposure_books
+    determined, in no row (the books' own count). `absent_reason`: why there is no GEX row (None:
+    there are rows)."""
+    from math_exposure_core import exposures_have_dollar_gex, merge_exposure_books
 
     def rows(keep) -> list:
         chosen = [b for (_exp, d), b in books.items() if keep(d)]
@@ -584,6 +585,11 @@ def per_strike_view(books: dict, exposures: dict, net_gex_peak: float | None, sp
             "near": rows(lambda d: d is not None and d <= 7),
             "far": rows(lambda d: d is not None and d > 7),
             "expiry_unknown": sum(diag.expiry_unknown for _book, diag in books.values()),
+            "absent_reason": None if all_rows else (
+                "the chain's exposure is not in dollars (it was priced without a spot)"
+                if not exposures_have_dollar_gex(exposures)
+                else "no strike of the chain has open interest and a valid gamma (a contract past its "
+                     "settlement has none)"),
             **measures,
             "side_sums": None if not all_rows else {
                 "gex_below": round(sum(g for k, g, _v in all_rows if k < spot), 1),

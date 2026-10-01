@@ -25,8 +25,8 @@ import live_market_plane as lmp
 import live_price_rows
 import server as srv
 from app.market_data.schwab.streaming import live_ui
-from app.market_data.schwab.streaming.capture import (Daemon, StandingRoster, run_until_a_part_ends, schwab_days,
-                                                      schwab_minutes)
+from app.market_data.schwab.streaming.capture import (Daemon, HeldBack, RateHold, StandingRoster,
+                                                      run_until_a_part_ends, schwab_days, schwab_minutes)
 from db import EdDB
 from stream_spine import MessageBus, bar_msg, subscription_msg
 from time_et import ET, ct_label
@@ -74,6 +74,19 @@ def _schwab(by_symbol: dict, asked: "list | None" = None):
             raise answer
         return [_candle(b) for b in answer if start <= b["timestamp"] / 1000.0 < end]
     return fetch
+
+
+class _Response:
+    """Schwab's HTTP answer to a price-history request, the stand-in: its status and candles."""
+    def __init__(self, status_code: int, candles: list):
+        self.status_code, self.candles = status_code, candles
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise _TooManyRequests(f"{self.status_code} Too Many Requests")
+
+    def json(self):
+        return {"symbol": "SPY", "empty": False, "candles": self.candles}
 
 
 def _no_days(symbol, start, end):
@@ -511,7 +524,7 @@ def test_the_price_history_backfills_the_store_and_never_overwrites_a_stored_bar
                     + [(b["timestamp"] / 1000.0, b["close"], "schwab_pricehistory") for b in FRIDAY[5:20]])
 
 
-def test_the_daemon_asks_schwab_for_the_days_minutes_with_extended_hours():
+def test_the_daemon_asks_schwab_for_the_days_minutes_with_extended_hours(tmp_path):
     """The daemon's one price-history call (capture.schwab_minutes): Schwab's
     get_price_history_every_minute for the symbol, from the start to the end it is given, with
     extended hours (the collect window opens 09:15 ET), and Schwab's candles as sent, asked with
@@ -519,21 +532,14 @@ def test_the_daemon_asks_schwab_for_the_days_minutes_with_extended_hours():
     is Schwab's client, answering the captured minutes."""
     calls = []
 
-    class _Response:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"symbol": "SPY", "empty": False, "candles": [_candle(b) for b in FRIDAY[:3]]}
-
     class _Client:
         def get_price_history_every_minute(self, symbol, **kw):
             calls.append((symbol, kw))
-            return _Response()
+            return _Response(200, [_candle(b) for b in FRIDAY[:3]])
 
     daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"), StandingRoster(frozenset()))
     daemon.client = _Client()
-    fetch = schwab_minutes(daemon)
+    fetch = schwab_minutes(daemon, RateHold(tmp_path / "hold.json"), lambda: RESTART)
     start, end = datetime(2026, 9, 25, 9, 15, tzinfo=ET).timestamp(), RESTART
     assert fetch("SPY", start, end) == [_candle(b) for b in FRIDAY[:3]]
     assert fetch("QQQ", start, end) == [_candle(b) for b in FRIDAY[:3]]
@@ -542,7 +548,7 @@ def test_the_daemon_asks_schwab_for_the_days_minutes_with_extended_hours():
     assert kw["start_datetime"].timestamp() == start and kw["end_datetime"].timestamp() == end
 
 
-def test_without_a_schwab_sign_in_the_reason_served_is_schwabs_own(monkeypatch):
+def test_without_a_schwab_sign_in_the_reason_served_is_schwabs_own(monkeypatch, tmp_path):
     """A missing or expired Schwab token surfaced as "AttributeError: 'NoneType' object has no
     attribute ..." on the charts. The daemon keeps the reason its Schwab client could not be built
     (Schwab's own message) and the price history serves it as the unavailable reason. The stand-in
@@ -563,8 +569,10 @@ def test_without_a_schwab_sign_in_the_reason_served_is_schwabs_own(monkeypatch):
     stats: dict = {}
 
     async def main():
+        hold = RateHold(tmp_path / "schwab_rate_hold.json")
         srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, stats, clock=lambda: RESTART,
-                                      history_fn=schwab_minutes(daemon), daily_fn=schwab_days(daemon))
+                                      history_fn=schwab_minutes(daemon, hold, lambda: RESTART),
+                                      daily_fn=schwab_days(daemon, hold, lambda: RESTART))
         c = live_ui._Client(_Ws())
         c.symbols = frozenset({"SPY"})
         srv_ui.clients.add(c)
@@ -955,7 +963,8 @@ def test_a_bar_the_daemons_queue_drops_ends_every_streams_coverage():
             bus.publish("bar1m.SPY", _msg(FRIDAY[100]))
         clock["now"] = _msg(FRIDAY[101])["ts_recv"]
         bus.publish("bar1m.SPY", _msg(FRIDAY[101]))                # dropped: the queue is full
-        while stats.get("stream_losses", 0) == 0:
+        deadline = time.monotonic() + 30                           # an undetected drop fails, never hangs
+        while stats.get("stream_losses", 0) == 0 and time.monotonic() < deadline:
             await asyncio.sleep(0.05)
         await asyncio.sleep(0.5)
         clock["now"] = _msg(FRIDAY[102])["ts_recv"]
@@ -973,21 +982,30 @@ class _TooManyRequests(Exception):
     response = type("R", (), {"status_code": 429})()
 
 
-def test_an_uncovered_span_is_asked_again_on_the_daemons_clock_and_a_429_holds_every_request_back(caplog):
+def test_an_uncovered_span_is_asked_again_on_the_daemons_clock_and_a_429_holds_every_request_back(
+        caplog, tmp_path):
     """An uncovered span was asked again only on the symbol's next streamed minute: a thin ticker
     waited for its next trade. It is asked again on the daemon's clock, once a minute. Schwab's
     HTTP 429 holds every request back for a while that doubles on each further 429 (here 5 s, then
-    10 s), logged; a reply ends it. Real SPY minutes of 2026-09-25; Schwab's network the stand-in,
-    answering 429 twice."""
+    10 s), logged, checked once (capture.RateHold, the daemon's price-history calls); a reply ends
+    it. A request held back is not sent, and its symbol's reason names the hold. The hold survives
+    the daemon's restart (it was lost: a restart asked every symbol's history again at once).
+    Real SPY minutes of 2026-09-25; Schwab's client the stand-in, answering 429 twice."""
     t0 = _msg(FRIDAY[100])["ts_recv"]
-    clock, asked, answers = {"now": t0}, [], [_TooManyRequests("429 Too Many Requests")] * 2
-    truth = _schwab({"SPY": FRIDAY})
+    clock, asked, statuses = {"now": t0}, [], [429, 429]
 
-    def history(symbol, start, end):
-        asked.append(clock["now"])
-        if answers:
-            raise answers.pop(0)
-        return truth(symbol, start, end)
+    class _Client:
+        def get_price_history_every_minute(self, symbol, start_datetime, end_datetime, **kw):
+            asked.append(clock["now"])
+            status = statuses.pop(0) if statuses else 200
+            return _Response(status, [_candle(b) for b in FRIDAY
+                                      if start_datetime.timestamp() <= b["timestamp"] / 1000.0
+                                      < end_datetime.timestamp()])
+
+    daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"), StandingRoster(frozenset()))
+    daemon.client = _Client()
+    path = tmp_path / "schwab_rate_hold.json"
+    history = schwab_minutes(daemon, RateHold(path), lambda: clock["now"])
 
     async def main():
         ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: clock["now"], history_fn=history,
@@ -1001,15 +1019,25 @@ def test_an_uncovered_span_is_asked_again_on_the_daemons_clock_and_a_429_holds_e
         clock["now"] = t0 + 62
         ui.on_bar(_msg(FRIDAY[101]))                             # held back: 10 s from t0 + 61
         await _settled(ui)
+        held_problem = ui.days["SPY"].problem
         clock["now"] = t0 + 122
         ui.tick(t0 + 122)
         await _settled(ui)
-        return ui.days["SPY"]
-    day = asyncio.run(main())
+        return ui.days["SPY"], held_problem
+    day, held_problem = asyncio.run(main())
     assert asked == [t0, t0 + 61, t0 + 122]
+    assert held_problem == ("Schwab's price history: HeldBack: Schwab answered 429 (too many requests): "
+                            f"no request until {ct_label(t0 + 71)}")
     assert not live_price_rows.uncovered(day.covered, live_price_rows.session_first_minute(t0), _t(101))
     held_back = [r.getMessage() for r in caplog.records if "429" in r.getMessage() and "no request for" in r.getMessage()]
     assert len(held_back) == 2 and "for 5 s" in held_back[0] and "for 10 s" in held_back[1]
+    restarted = RateHold(path)                                   # the daemon restarted at t0 + 65
+    assert (restarted.until, restarted.sec) == (t0 + 71, 10.0)
+    try:
+        restarted.check(t0 + 65)
+        raise AssertionError("a restart dropped Schwab's 429 hold")
+    except HeldBack:
+        pass
 
 
 def test_the_stream_covers_from_the_first_minute_after_its_acknowledgement():
@@ -1031,12 +1059,14 @@ def test_the_stream_covers_from_the_first_minute_after_its_acknowledgement():
     assert update["unavailable"]["60"] == "minutes Fri 09/25 10:00 AM CT – Fri 09/25 10:10 AM CT not received from Schwab"
 
 
-def test_a_subscription_answer_the_daemon_cannot_track_stops_it():
-    """A failure tracking Schwab's subscription answers was a task ending silently while the
-    daemon went on serving coverage it no longer tracked. It ends serve_live_ui with the failure
-    (logged), and a part of the daemon ending stops the whole daemon with exit 1, which
-    start_capture_daemon.bat restarts. The malformed answer (no time) is the stand-in."""
-    async def live_ui_ends():
+def test_a_subscription_answer_the_daemon_cannot_read_is_a_loss_and_the_daemon_goes_on():
+    """A malformed subscription answer ended the daemon, and start_capture_daemon.bat restarted it
+    every 5 s for as long as the cause lasted, each time signing in and asking every symbol's
+    history again. The daemon cannot tell which subscription it answered, so it is counted,
+    logged and taken as a loss (every stream's coverage restarts after it), and the daemon goes
+    on. A part that cannot continue still stops the whole daemon with exit 1. The malformed
+    answer (no time) is the stand-in."""
+    async def live_ui_reads_on():
         port, bus, stop, stats = _free_port(), MessageBus(), asyncio.Event(), {}
         feed = lambda: {"ts": RESTART, "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
         task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=lambda: RESTART,
@@ -1044,16 +1074,22 @@ def test_a_subscription_answer_the_daemon_cannot_track_stops_it():
                                                          history_fn=lambda *a: [], daily_fn=_no_days))
         while not stats.get("listening"):
             await asyncio.sleep(0.01)
+        bus.publish("sub.CHART_EQUITY", _subscribed("SPY", ts=RESTART - 120))
         bus.publish("sub.CHART_EQUITY", {"service": "CHART_EQUITY", "command": "SUBS", "symbols": ["SPY"], "code": 0})
-        try:
-            await asyncio.wait_for(task, 5)
-        except RuntimeError as e:
-            return e
-    err = asyncio.run(live_ui_ends())
-    assert isinstance(err, RuntimeError) and isinstance(err.__cause__, KeyError)
+        deadline = time.monotonic() + 5
+        while not stats.get("bad_subscription_messages") and time.monotonic() < deadline:
+            await asyncio.sleep(0.01)
+        alive = not task.done()
+        stop.set()
+        await asyncio.wait_for(task, 5)
+        return stats, alive
+    stats, alive = asyncio.run(live_ui_reads_on())
+    assert alive and stats["bad_subscription_messages"] == 1 and stats["stream_losses"] == 1
 
     async def daemon_stops():
+        async def part_fails():
+            raise RuntimeError("live ui _track_bars ended")
         stop = asyncio.Event()
-        part = asyncio.create_task(live_ui_ends())               # a part that fails
+        part = asyncio.create_task(part_fails())                 # a part that cannot continue
         return await run_until_a_part_ends(stop.wait(), [part], stop), stop.is_set()
     assert asyncio.run(daemon_stops()) == (1, True)

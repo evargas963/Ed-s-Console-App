@@ -69,6 +69,7 @@ def test_the_served_daily_candle_is_schwabs_daily_candle_exactly(plane, sym):
         assert (bar["o"], bar["h"], bar["l"], bar["c"], bar["v"]) == (
             want["open"], want["high"], want["low"], want["close"], want["volume"]), now
         assert day["volume"] == bar["v"] and day["absent"] == {}
+        assert day["volume_text"] == bar["v_text"] == ("62.11M" if sym == "SPY" else "210.1K")   # one text
         assert bar["t"] == datetime(2026, 9, 30, tzinfo=ET).timestamp() and bar["label"] == "Wed 09/30/2026"
 
 

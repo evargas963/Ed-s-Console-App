@@ -567,8 +567,8 @@ test.describe('Trade Desk renders served values', () => {
     const errs = watchErrors(page);
     await intercept(page);
     const day = { bar: { t: 1790395200, o: 766.45, h: 769.41, l: 762.18, c: 762.63, v: 62110041, chg: -3.82,
-      chg_pct: -0.4984, label: 'Sat 09/26/2026' }, volume: 62110041, absent: {}, as_of: 'Fri 09/25 07:59 PM CT',
-      source: 'Schwab LEVELONE_EQUITIES day fields' };
+      chg_pct: -0.4984, label: 'Sat 09/26/2026', v_text: '62.11M' }, volume: 62110041, volume_text: '62.11M',
+      absent: {}, as_of: 'Fri 09/25 07:59 PM CT', source: 'Schwab LEVELONE_EQUITIES day fields' };
     const daemon = await mockPriceSocket(page, []);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });

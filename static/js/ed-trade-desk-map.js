@@ -441,7 +441,7 @@
       // the daily candle carries; absent: the served reason
       var dayV = q && q.day;
       c.querySelector('.tdm-hero').innerHTML = !dayV ? '' : dayV.volume != null
-        ? fmtVol(dayV.volume) + ' <small>shares, Schwab TOTAL_VOLUME</small>'
+        ? esc(dayV.volume_text) + ' <small>shares, Schwab TOTAL_VOLUME</small>'
         : '<small>' + esc((dayV.absent || {}).v || '') + '</small>';
       src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : liveQ ? 'last trade ' + age(q.trade_age_sec) + ' ago'
         : (q.closed_last ? 'last trade ' + esc(q.closed_last.as_of) : String(q.spot_state || 'unavailable'))));

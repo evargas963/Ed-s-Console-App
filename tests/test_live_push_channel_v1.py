@@ -250,6 +250,45 @@ def test_a_reconnecting_console_is_sent_current_state_and_no_past_bar(feed):
     assert [b["bar_start_ms"] for b in got] == [live["bar_start_ms"]]
 
 
+def test_a_connecting_console_is_sent_each_bar_verdict_and_drops_them_when_the_push_ends(feed, monkeypatch):
+    """The daemon's verdict on a symbol's bars (barstate) is state: a console that connects after
+    it was published is sent the last one, and a console whose push ends drops every verdict (no
+    daemon, no verdict) -- neither was tested through the real server and client. The verdict is
+    the daemon's real one (live_ui) for SPY streamed from a real 2026-09-25 minute."""
+    from app.market_data.schwab.streaming import live_ui
+    from stream_spine import subscription_msg
+
+    monkeypatch.setattr(ofs, "_bar_states", {})
+
+    async def run():
+        bus = MessageBus()
+        now = time.time()
+        ui = live_ui.LiveUiServer(bus, lambda: {}, {}, clock=lambda: now, history_fn=lambda *a: [],
+                                  daily_fn=lambda *a: [])
+        ui.on_subscription(subscription_msg(service="CHART_EQUITY", command="SUBS", symbols=["SPY"], code=0,
+                                            reason="ok", ts=now))
+        for t in list(ui._asks):
+            t.cancel()
+        published = bus.snapshot()["barstate.SPY"]                      # before any console
+        stop = asyncio.Event()
+        stats: dict = {}
+        server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=feed, stats=stats))
+        assert await _until(lambda: stats.get("listening"))
+        ofs._feed_running = True
+        client = asyncio.create_task(ofs._feed_loop())
+        try:
+            assert await _until(lambda: ofs.bar_state("SPY") == published)
+            stop.set()                                                   # the daemon's push ends
+            await asyncio.gather(server, return_exceptions=True)
+            assert await _until(lambda: ofs.bar_state("SPY") is None)
+        finally:
+            ofs._feed_running = False
+            client.cancel()
+            stop.set()
+            await asyncio.gather(client, server, return_exceptions=True)
+    asyncio.run(run())
+
+
 def test_option_l1_and_book_update_the_contract_and_report_greeks(feed, monkeypatch):
     seen: list = []
     monkeypatch.setattr(ofs, "_on_tick_callback", seen.append)

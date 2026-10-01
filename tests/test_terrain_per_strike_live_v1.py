@@ -66,6 +66,45 @@ def test_per_strike_is_excluded_from_to_dict_but_timestamp_is_not():
     assert "computed_ts_utc" in d
 
 
+def test_the_per_strike_panel_serves_the_true_reason_it_has_no_rows(monkeypatch, caplog):
+    """/api/terrain/strikes served "no levels published for this ticker yet" when the read of the
+    published levels raised (swallowed at debug) and when they were published with no per-strike
+    rows. Each case serves its own reason; the raise is logged at warning. Real SPY chain of
+    2026-09-22 (tests/fixtures/real_spy_0dte_chain.json, its same-day expiry), published at 16:05
+    ET (every contract past its settlement) and with no spot; the raising read a stand-in."""
+    import json
+    import logging
+    from datetime import datetime
+    from pathlib import Path
+
+    import server
+    from terrain_engine import compute_terrain
+    from time_et import ET
+
+    fx = json.loads((Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **k: (None, None, None))
+
+    def served(published):
+        monkeypatch.setattr(server, "terrain_cache_get", published)
+        return json.loads(server.get_terrain_strikes(ticker="SPY").body)["today"]["absent_reason"]
+
+    def read_fails(tk, t):
+        raise OSError("the terrain cache is unreadable")
+    server.log.addHandler(caplog.handler)                  # the console's logger does not propagate
+    try:
+        assert served(read_fails) == "the published levels could not be read: OSError: the terrain cache is unreadable"
+    finally:
+        server.log.removeHandler(caplog.handler)
+    assert any("could not be read" in r.getMessage() and r.levelno == logging.WARNING for r in caplog.records)
+    assert served(lambda tk, t: None) == "no levels published for this ticker yet"
+    expired = compute_terrain("SPY", fx["chain"], fx["spot"], now=datetime(2026, 9, 22, 16, 5, tzinfo=ET))
+    assert served(lambda tk, t: {**expired.to_dict(), "_per_strike": expired.per_strike}) == (
+        "no strike of the chain has open interest and a valid gamma (a contract past its settlement has none)")
+    no_spot = compute_terrain("SPY", fx["chain"], None)
+    assert served(lambda tk, t: {**no_spot.to_dict(), "_per_strike": no_spot.per_strike}) == (
+        "the levels were not computed: no spot price")
+
+
 def test_snapshot_defaults_are_absent_not_fabricated():
     snap = TerrainSnapshot(ticker="SPY", spot=740.0)
     assert snap.per_strike == {}

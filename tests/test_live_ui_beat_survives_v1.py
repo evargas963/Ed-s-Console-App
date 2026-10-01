@@ -38,3 +38,28 @@ def test_a_stuck_browser_is_closed_and_the_others_keep_their_beat(monkeypatch):
     stuck, ok, beat = asyncio.run(go())
     assert len(ok.ws.sent) >= 3, "the healthy browser stopped getting its beat"
     assert stuck.ws.closed, "the browser that stopped reading was not closed"
+
+
+def test_a_failing_daemon_clock_neither_stops_the_beat_nor_the_daemon(monkeypatch):
+    """A failure in the daemon's clock (`tick`) ended the beat loop, and with it the daemon,
+    which start_capture_daemon.bat restarted every 5 s for as long as the cause lasted. It is
+    counted and logged, and the beat goes on. The failing clock is the stand-in."""
+    monkeypatch.setattr(live_ui, "HEARTBEAT_SEC", 0.05)
+
+    async def go():
+        srv = live_ui.LiveUiServer(MessageBus(), lambda: {"ts": 1.0, "schwab_socket_open": True}, {},
+                                   clock=lambda: 1.0, history_fn=lambda *a: [], daily_fn=lambda *a: [])
+
+        def tick(now):
+            raise KeyError("a symbol's day")
+        monkeypatch.setattr(srv, "tick", tick)
+        browser = live_ui._Client(_Ws())
+        srv.clients.add(browser)
+        beat = asyncio.create_task(srv.beat_loop())
+        await asyncio.sleep(0.4)
+        alive = not beat.done()
+        beat.cancel()
+        return srv.stats, browser, alive
+
+    stats, browser, alive = asyncio.run(go())
+    assert alive and stats["tick_failures"] >= 3 and len(browser.ws.sent) >= 3

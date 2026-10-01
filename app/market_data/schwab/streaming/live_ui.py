@@ -88,9 +88,6 @@ DAILY_HISTORY_DAYS = 400
 #: a symbol whose day still has an uncovered span is asked again at most this often on the
 #: daemon's clock (and on each of its streamed minutes), so a thin ticker never waits for a trade
 PRICE_HISTORY_RETRY_SEC = 60.0
-#: Schwab answering HTTP 429 (too many requests) stops every price-history request for this long,
-#: doubling on each further 429 up to the cap; a reply resets it
-RATE_LIMIT_BACKOFF_FIRST_SEC, RATE_LIMIT_BACKOFF_MAX_SEC = 5.0, 300.0
 
 
 def _et_day_start(t: float) -> float:
@@ -174,15 +171,12 @@ class LiveUiServer:
         self.streaming: dict[str, float] = {}
         self._asks: set[asyncio.Task] = set()
         self._in_flight = asyncio.Semaphore(HISTORY_IN_FLIGHT)
-        #: Schwab's rate limit: no price-history request before `_backoff_until`
-        self._backoff_until, self._backoff_sec = float("-inf"), 0.0
-        #: per symbol, the bar state last published (barstate.SYM)
-        self._states: dict[str, tuple] = {}
         #: per symbol, today's streamed minutes that differed from Schwab's price history
         self.mismatches: dict[str, int] = {}
         stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
                      beat_send_failures=0, listening=None, last_send_ms=None, bars_sent=0,
-                     bar_source_mismatches=0, price_history_failures=0, stream_losses=0)
+                     bar_source_mismatches=0, price_history_failures=0, stream_losses=0, tick_failures=0,
+                     bad_subscription_messages=0)
 
     def on_subscription(self, msg) -> None:
         """A `sub.*` bus message (capture.Daemon): a CHART_EQUITY subscription Schwab acknowledged
@@ -193,8 +187,16 @@ class LiveUiServer:
         CONNECTION; the daemon closes it when no Schwab frame, heartbeats included, arrived for
         capture.DEAD_SEC), ends it; a loss the daemon cannot attribute (CONNECTION LOSS) restarts
         every symbol's at the first minute after it. The minutes not covered are asked of the
-        price history."""
-        if not isinstance(msg, dict) or msg.get("code") != 0:
+        price history. A message the daemon cannot read (no time, symbols not a list) is counted
+        and logged and taken as a loss: which subscription it answered is unknown."""
+        ts = msg.get("ts") if isinstance(msg, dict) else None
+        if (not isinstance(ts, (int, float)) or isinstance(ts, bool) or not math.isfinite(ts)
+                or not isinstance(msg.get("symbols", []), list)):
+            self.stats["bad_subscription_messages"] += 1
+            log.warning("live ui: a subscription message the daemon cannot read: %r", msg)
+            msg = {"service": CONNECTION, "command": CONNECTION_LOSS, "code": 0, "ts": self.clock(),
+                   "reason": "a subscription message the daemon could not read"}
+        if msg.get("code") != 0:
             return
         after = math.ceil(float(msg["ts"]) / 60.0) * 60.0
         if msg.get("service") == CONNECTION and msg.get("command") == CONNECTION_CLOSED:
@@ -216,13 +218,12 @@ class LiveUiServer:
     def _ask_daily(self, sym: str, now: float) -> None:
         """Ask Schwab's daily price history for `sym`'s days before today, once a day (again on
         the daemon's clock every PRICE_HISTORY_RETRY_SEC while it has failed), through the same
-        two requests in flight and rate limit as the minutes."""
+        two requests in flight as the minutes."""
         today = _et_day_start(now)
         held = self.daily.get(sym)
         if held is None or held.day != today:
             held = self.daily[sym] = _Daily(today)
-        if (held.candles is not None or held.asking or now < self._backoff_until
-                or now - held.asked_at < PRICE_HISTORY_RETRY_SEC):
+        if held.candles is not None or held.asking or now - held.asked_at < PRICE_HISTORY_RETRY_SEC:
             return
         held.asking, held.asked_at = True, now
         task = asyncio.get_running_loop().create_task(self._ask_days(sym, held))
@@ -234,15 +235,12 @@ class LiveUiServer:
         published (bardays.SYM, as served daily bars), or the failure's reason."""
         try:
             async with self._in_flight:
-                if self.clock() < self._backoff_until:
-                    return
                 try:
                     candles = await asyncio.to_thread(self.daily_fn, sym, held.day - DAILY_HISTORY_DAYS * 86400.0,
                                                       held.day)
                 except Exception as e:  # noqa: BLE001 -- counted, its reason served; asked again
                     held.problem = self._failed(sym, e)
                     return
-            self._backoff_sec = 0.0
             held.candles, held.problem = live_price_rows.daily_candles(candles, held.day), None
         finally:
             held.asking = False
@@ -250,15 +248,10 @@ class LiveUiServer:
                                                             problem=held.problem, ts=self.clock()))
 
     def _failed(self, sym: str, e: Exception) -> str:
-        """A failed price-history request: counted, logged, its reason returned; Schwab's HTTP
-        429 holds every request back (RATE_LIMIT_BACKOFF_*)."""
+        """A failed price-history request (Schwab's rate limit holding it back included,
+        capture.RateHold): counted, logged, its reason returned."""
         self.stats["price_history_failures"] += 1
         problem = f"Schwab's price history: {type(e).__name__}: {e}"
-        if getattr(getattr(e, "response", None), "status_code", None) == 429:
-            self._backoff_sec = min(max(self._backoff_sec * 2, RATE_LIMIT_BACKOFF_FIRST_SEC), RATE_LIMIT_BACKOFF_MAX_SEC)
-            self._backoff_until = self.clock() + self._backoff_sec
-            log.warning("live ui: Schwab's price history answered 429 (too many requests): no request for "
-                        "%.0f s, until %s", self._backoff_sec, ct_label(self._backoff_until))
         log.warning("live ui: %s %s", sym, problem)
         return problem
 
@@ -312,9 +305,9 @@ class LiveUiServer:
     def _ask_uncovered(self, sym: str, day: _Day, now: float) -> None:
         """Ask the price history for every span of `sym`'s day from 09:15 ET through the newest
         minute completed at `now` that neither its held spans nor its unbroken stream cover,
-        unless a request is out or Schwab's rate limit holds every request back."""
+        unless a request is out (Schwab's rate limit is judged when the request's turn comes)."""
         gaps = live_price_rows.day_gaps(day.covered, self.streaming.get(sym), now)
-        if not gaps or day.asking or now < self._backoff_until:
+        if not gaps or day.asking:
             return
         day.asking, day.asked_at = True, now
         task = asyncio.get_running_loop().create_task(self._ask(sym, day, gaps))
@@ -324,7 +317,7 @@ class LiveUiServer:
     def tick(self, now: float) -> None:
         """The daemon's clock, every beat: each symbol with an uncovered span not asked for
         PRICE_HISTORY_RETRY_SEC is asked again (a thin ticker does not wait for its next trade),
-        and every symbol's bar state is published when it changed."""
+        and every symbol's bar state is published."""
         today = _et_day_start(now)
         for sym in set(self.streaming) | set(self.days):
             day = self.days.get(sym)
@@ -356,12 +349,12 @@ class LiveUiServer:
     async def _ask(self, sym: str, day: _Day, gaps: "list[tuple[float, float]]") -> None:
         """Ask Schwab's price history for the uncovered `gaps` of `sym`'s day, one request per
         span still uncovered when its turn comes, from the span's start to now (at most
-        HISTORY_IN_FLIGHT at once, none while Schwab's rate limit holds them back). A reply
+        HISTORY_IN_FLIGHT at once). A reply
         covers from the request's start through its newest completed minute: one reaching the
         stream's resumption covers the whole span, a minute with no candle in it being a minute
         with no trade; an empty reply covers nothing. Its minutes are held and published for the
         store in one message (the console's bar writer backfills what it lacks). A failed request
-        is counted and its reason kept; HTTP 429 holds every request back (RATE_LIMIT_BACKOFF_*).
+        is counted and its reason kept (Schwab's rate limit holding it back: capture.RateHold).
         Whatever stays uncovered is asked again (`tick`, `on_bar`). When a reply held a minute or
         the reason changed, the bars are pushed again."""
         before = (list(day.covered), day.problem)
@@ -371,14 +364,11 @@ class LiveUiServer:
                     continue                   # an earlier reply reached it
                 async with self._in_flight:
                     now = self.clock()
-                    if now < self._backoff_until:
-                        break                  # held back: asked again once the backoff ends
                     try:
                         candles = await asyncio.to_thread(self.history_fn, sym, a, now)
                     except Exception as e:  # noqa: BLE001 -- counted, its reason served; asked again
                         day.problem = self._failed(sym, e)
                         continue
-                self._backoff_sec = 0.0
                 received, held, newest = self.clock(), [], None
                 for c in candles:
                     msg = bar_msg(symbol=sym, bar_start_ms=c.get("datetime"), open=c.get("open"),
@@ -398,7 +388,7 @@ class LiveUiServer:
             day.asking = False
         if self.days.get(sym) is day and day.minutes and (list(day.covered), day.problem) != before:
             self._push(sym, day, day.minutes[max(day.minutes)], self.clock())
-        self.publish_states(self.clock())
+        self.publish_states(self.clock(), [sym])
 
     def _push(self, sym: str, day: _Day, bar: dict, ts_recv: float) -> None:
         minutes = sorted(day.minutes.values(), key=lambda m: m["t"])
@@ -409,24 +399,24 @@ class LiveUiServer:
             if sym in c.symbols:
                 c.bars.append(update)
                 c.wake.set()
-        self.publish_states(self.clock())
+        self.publish_states(self.clock(), [sym])
 
-    def publish_states(self, now: float) -> None:
-        """Publish each symbol's bar state at `now` (barstate.SYM, stream_spine.bar_state_msg) when
-        it changed: whether today's minutes are covered through now, with the reason -- the one
-        authority every value built from today's bars takes its currency from (the console's
-        session levels and VWAP)."""
+    def publish_states(self, now: float, symbols=None) -> None:
+        """Publish the bar state at `now` (barstate.SYM, stream_spine.bar_state_msg) of each of
+        `symbols` (None: every symbol streamed or held; every beat publishes them all, so the
+        console can tell a verdict it stopped receiving): whether today's minutes are covered
+        through now, with the reason, and the minutes held -- the one authority every value built
+        from today's bars takes its currency from (the console's session levels and VWAP)."""
         today = _et_day_start(now)
-        for sym in set(self.streaming) | set(self.days):
+        for sym in (set(self.streaming) | set(self.days)) if symbols is None else symbols:
             day = self.days.get(sym)
             day = day if day is not None and day.start == today else _Day(today)
             state, reason = live_price_rows.coverage_now(day.covered, self.streaming.get(sym), now)
             if state != live_price_rows.COVERAGE_CURRENT and day.problem:
                 reason = f"{reason} ({day.problem})"
-            if self._states.get(sym) != (state, reason):
-                self._states[sym] = (state, reason)
-                self.bus.publish(f"barstate.{sym}", bar_state_msg(symbol=sym, coverage=state,
-                                                                  coverage_reason=reason, ts=now))
+            self.bus.publish(f"barstate.{sym}", bar_state_msg(
+                symbol=sym, coverage=state, coverage_reason=reason, minutes=len(day.minutes),
+                newest=max(day.minutes, default=None), ts=now))
 
     @staticmethod
     def bars_gap(since: float, now: float) -> dict:
@@ -524,7 +514,11 @@ class LiveUiServer:
     async def beat_loop(self) -> None:
         while True:
             now = self.clock()
-            self.tick(now)
+            try:
+                self.tick(now)
+            except Exception as e:  # noqa: BLE001 -- counted and logged; the beat and the next tick go on
+                self.stats["tick_failures"] += 1
+                log.warning("live ui tick: %s: %s", type(e).__name__, e)
             try:
                 feed = self.beat(now)
             except Exception as e:  # noqa: BLE001 -- a failed beat leaves the feed unproven (it ages out)
@@ -588,7 +582,7 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn, c
                                                                  f"{bsub.dropped - dropped} messages"})
                 dropped = bsub.dropped
             if topic.startswith("sub."):
-                srv.on_subscription(msg)       # a failure here ends the daemon: coverage untracked
+                srv.on_subscription(msg)
                 continue
             try:
                 srv.on_bar(msg)

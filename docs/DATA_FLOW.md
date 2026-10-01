@@ -123,23 +123,33 @@ opens no second streaming socket).
   restarts every one at the first minute after it (`sub.CONNECTION` LOSS): a Schwab frame it
   could not read (`capture.Daemon.read_for`), or a drop on live_ui's one queue of bars and
   subscription answers (in publish order, so a bar is judged against the subscriptions as they
-  were when it was published). A failure tracking those answers stops the daemon
-  (`capture.run_until_a_part_ends`, exit 1; `start_capture_daemon.bat` restarts it): it never
-  serves coverage it no longer tracks. Every span still uncovered from 09:15 ET to the newest
+  were when it was published). A subscription answer the daemon cannot read (no time, symbols
+  not a list) is counted, logged and taken as such a loss; the daemon goes on. A part that
+  cannot continue (a tracker raising) stops the daemon (`capture.run_until_a_part_ends`, exit 1):
+  it never serves coverage it no longer tracks; `start_capture_daemon.bat` restarts it after 5 s,
+  the wait doubling to 300 s after each run shorter than a minute, logged in
+  `logs\stream_capture.log`. A failure in the daemon's clock (`live_ui.tick`) is counted and
+  logged; the beat goes on. Every span still uncovered from 09:15 ET to the newest
   completed minute is asked of Schwab's 1-minute price history, one request per span still
   uncovered, from its start to now (`capture.schwab_minutes`, extended hours, with the daemon's
   one Schwab client, two requests in flight at most, `live_ui.HISTORY_IN_FLIGHT`; the daemon is
   the only caller of Schwab), on each streamed minute and on the daemon's clock once a minute
   per symbol (`live_ui.tick`, PRICE_HISTORY_RETRY_SEC), until covered; Schwab's HTTP 429 holds
-  every request back for 5 s, doubling on each further 429 to 300 s, logged (RATE_LIMIT_BACKOFF_*).
+  every price-history request back for 5 s, doubling on each further 429 to 300 s, logged,
+  checked once where the daemon calls Schwab (`capture.RateHold`, `schwab_minutes`,
+  `schwab_days`) and kept in `schwab_rate_hold.json` beside the stream database so a restart
+  keeps it; each request held back fails with that reason, which its symbol's verdict names.
   A reply covers from its request's start through its newest completed minute: one reaching the
   stream's resumption covers the whole span (a thin ticker's 09:15 ET to its first trade, a quiet
   stretch); an empty reply covers nothing. A stream's minutes after its last bar are covered only
   while it is unbroken: after a break they are asked like any other (a thin ticker's stay
-  uncovered until a reply reaches a later trade). The daemon publishes each symbol's verdict
-  when it changes (`barstate.SYM`, `live_ui.publish_states`): today's minutes covered through
-  now or not, with the reason; live_push forwards it (the last one on connect) and the console carries it (`streaming.bar_state`, dropped when
-  the push is gone): the one currency of every value built from today's bars (§6.6). Where the
+  uncovered until a reply reaches a later trade). The daemon publishes each symbol's verdict on
+  every beat and whenever its minutes change (`barstate.SYM`, `live_ui.publish_states`): today's
+  minutes covered through now or not, with the reason, and how many minutes it holds and the
+  newest; live_push forwards it (the last one on connect) and the console carries it
+  (`streaming.bar_state`, dropped when the push is gone; one older than
+  `live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC` is unknown): the one currency of every value
+  built from today's bars (§6.6). Where the
   stream and the price history both give a minute the streamed one
   stands, a difference counted and logged with both and with the symbol's and the board's count
   (`live_ui._hold`; W-15). Inside a covered span a minute with no bar is a minute with no trade:
@@ -197,7 +207,10 @@ opens no second streaming socket).
   for today only when received since 00:00 ET (until Schwab resets it, it holds the prior day's),
   and while the market is in session only from a live feed; not sent today, or one Schwab's
   definition excludes (OPEN_PRICE 0 before the regular session, HIGH/LOW 0 before its first
-  trade), it is absent with the reason, never filled from minutes. Measured 2026-09-30 for SPY:
+  trade), it is absent with the reason, never filled from minutes. An index's HIGH_PRICE and
+  LOW_PRICE are not the regular session's: on 2026-09-30 $VIX's were non-zero from 04:14 ET and
+  $NDX's from 04:36 ET (its first message that day), while $SPX's were 0 until 09:30 (read-only
+  from `stream_capture.db`); they are shown as Schwab sends them. Measured 2026-09-30 for SPY:
   Schwab's daily candle (get_price_history_every_day) 766.45 / 769.41 / 762.18 / 762.63 /
   62,110,041 equals those fields (TSL likewise, 13.08 / 13.24 / 12.83 / 13.225 / 210,134); the
   chart's daily bar summed from the stored minutes 09:15-16:14 was 767.00 / 769.41 / 761.80 /
@@ -588,8 +601,10 @@ Each value's definition.
 **6.6 Session price levels and zones.** §3.4 Price levels.
 - *Producer and owner:* `_publish_price_levels` → `liquidity_value_engine.build_price_level_snapshot`,
   one snapshot per bar generation; PDH / PDL from Schwab's prior daily candle (§6.10).
-- *Current when:* the daemon's one verdict on the ticker's bars says today's minutes are covered
-  through now (`barstate.SYM`, `live_ui.publish_states` → live_push → `streaming.bar_state`;
+- *Current when:* the daemon's one verdict on the ticker's bars, received within its beat, says
+  today's minutes are covered through now, and the snapshot was built from every minute the
+  daemon holds (the same count and newest minute: the console's store lacks none of them)
+  (`barstate.SYM`, `live_ui.publish_states` → live_push → `streaming.bar_state`;
   `server.price_level_staleness`, at the route's instant). Schwab sends no bar for a minute with
   no trade, so a quiet ticker's covered minutes are current; the rule "stale 2 minutes after the
   newest bar" read TSL (~154) and MTA (~120) regular-session minutes STALE on a healthy feed on
@@ -598,13 +613,17 @@ Each value's definition.
   a complete fact; before the window on a trading day the session has not started (the reason
   names when its first bar ends); after the window the session's levels are served as of their
   newest bar.
-- *Otherwise:* stale, with the daemon's reason (the minutes not received; no verdict from the
-  daemon: stale, saying so) (`/api/levels` `session_levels` and each session level's
-  `staleness`; the Trade Desk prints STALE and the reason); each level with no value absent with
-  its reason; a window not yet ended is absent with the time it ends.
+- *Otherwise:* stale, with the reason: the daemon's (the minutes not received); no verdict, or
+  one older than the beat allows (saying when it is from); or the snapshot built from fewer or
+  older minutes than the daemon holds, naming both and the last failure writing a bar or building
+  the levels (`server._store_problems`) when there was one -- a console whose push was down
+  missed those bars, and they are not refilled (`/api/levels` `session_levels` and each session
+  level's `staleness`, `/api/liquidity-snapshot` `session_levels`; the Trade Desk and the
+  Liquidity Map print STALE and the reason); each level with no value absent with its reason; a
+  window not yet ended is absent with the time it ends.
 - *Consumers:* `/api/levels`, `/api/liquidity-snapshot` (the zones), the charts' levels.
 - *Tests:* `test_phase2a_price_level_snapshot_v1`, `test_zones_v1`,
-  `test_levels_single_producer_v1`.
+  `test_levels_single_producer_v1`, `test_bars_and_windows_v1`, `test_live_push_channel_v1`.
 
 **6.7 Order flow and tape.** §3.4 Options tape.
 - *Meaning:* each change of Schwab's last trade for a contract (not every trade; no side).
