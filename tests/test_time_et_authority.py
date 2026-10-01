@@ -73,6 +73,6 @@ def test_a_contract_is_priced_to_its_own_settlement_whatever_the_ticker():
     assert round(t_pm * 365 * 24, 2) == round((fri_close - thu_close).total_seconds() / 3600, 2)
 
     fri_ten = datetime(2026, 10, 16, 10, 0, tzinfo=ET)
-    assert contract_inputs(am, now=fri_ten) == ([], {"expired_or_no_expiry": len(am)})
+    assert contract_inputs(am, now=fri_ten) == ([], {"settled": len(am)})
     assert len(contract_inputs(pm, now=fri_ten)[0]) == len(pm)
     assert len(contract_inputs(equity, now=fri_ten)[0]) == len(equity)

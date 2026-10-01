@@ -13,10 +13,11 @@ import server
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
 from db import EdDB
 from server import get_options_gamma_surface, ticker_storage_key
-from time_et import ET
+from time_et import ET, settlement_et
 
 _SURF = {
-    "expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [580.0, 583.0, 586.0],
+    "expirations": [{"expiry": "2026-09-11", "dte": 2, "settles_ts_utc": settlement_et("2026-09-11").timestamp()}],
+    "strikes": [580.0, 583.0, 586.0],
     "cells": [{"strike": 580.0, "gex": [-90000]}, {"strike": 583.0, "gex": [958600]},
               {"strike": 586.0, "gex": [-264500]}],
     "contracts_total": 3, "contracts_used": 3, "contracts_excluded_malformed_expiry": 0,
@@ -213,9 +214,15 @@ def test_surface_session_identity_is_stamped_by_the_server_clock():
     """Real-data repair 2026-09-10: a banked 2026-09-09 reference viewed on 2026-09-10 rendered its
     expired 0DTE column as current structure. The server (the ONE ET clock) now stamps today's
     session date, per-expiration `expired`, and `prior_session` for a reference from an earlier
-    day; presentation reads these, never a browser clock. Cell values are untouched."""
+    day; presentation reads these, never a browser clock. Cell values are untouched.
+    A column is expired once its last contract has settled -- the rule that takes a contract out
+    of the book (2026-09-30: it was the expiry date being before today, so a column whose
+    contracts settled at 16:00 read current until midnight) -- or when its settlement is unknown."""
     tk = ticker_storage_key("SPY")
-    surf = dict(_SURF, expirations=[{"expiry": "2000-01-03", "dte": 0}, {"expiry": "2999-01-15", "dte": 9}])
+    now = server.now_et().timestamp()
+    surf = dict(_SURF, expirations=[{"expiry": "2000-01-03", "dte": 0, "settles_ts_utc": now - 60},
+                                    {"expiry": "2999-01-15", "dte": 9, "settles_ts_utc": now + 3600},
+                                    {"expiry": "2999-01-16", "dte": 10, "settles_ts_utc": None}])
     _clear(tk)
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 583.41,
@@ -224,7 +231,8 @@ def test_surface_session_identity_is_stamped_by_the_server_clock():
         d = _call(tk)
         today = server.now_et().strftime("%Y-%m-%d")
         assert d["session_date_et"] == today
-        assert [e["expired"] for e in d["expirations"]] == [True, False]
+        assert [e["expired"] for e in d["expirations"]] == [True, False, True]
+        assert d["front_expiry"] == "2999-01-15"               # the nearest column not expired
         assert d["prior_session"] is False                     # a live surface is this session's
         assert d["cells"] == _SURF["cells"]                    # values untouched
     finally:

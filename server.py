@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass
 
 from time_et import (ET, now_et, RTH_OPEN_MINS, ct_label, is_capturable_session, et_date_str_from_ts_utc,
                      et_minute_total_from_ts_utc,
-                     is_trading_day_et, session_close_mins_for_et_date, session_label)
+                     is_trading_day_et, session_close_mins_for_et_date, session_label, settlement_et)
 from math_exposure_core import bucket_metric, merge_exposure_books
 
 import json
@@ -72,7 +72,7 @@ class _LevelMarkerFormatter(logging.Formatter):
 # uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
 # RC-523: under the RUNTIME root (runtime_layout), which is this checkout unless
 # ED_RUNTIME_ROOT moves it — runtime output must not pollute the source tree (§8).
-from runtime_layout import logs_dir as _runtime_logs_dir, reports_dir as _artifact_reports_dir  # noqa: E402
+from runtime_layout import logs_dir as _runtime_logs_dir  # noqa: E402
 
 ED_SERVER_LOG_PATH = _runtime_logs_dir() / "ed_server.log"
 
@@ -1379,43 +1379,6 @@ def terrain_cache_get(ticker: str) -> dict | None:
     return out
 
 
-#: Flip-drift measurement (unproven-register row due 2026-07-31): the mechanism is
-#: proven (gamma depends on spot/IV/time) but the intraday MAGNITUDE of flip movement
-#: is unmeasured. Every terrain-loop compute appends one JSONL row here so a week of
-#: cycles yields per-ticker intraday min/max/range. reports/ file, not a table — the
-#: operational DB grows by zero bytes (RC-6 discipline). flip=None is absence and is
-#: not logged; gaps read as gaps from the timestamps.
-_FLIP_DRIFT_LOG_PATH = _artifact_reports_dir() / "flip_drift_log.jsonl"   # RC-523: artifacts root
-_flip_drift_lock = threading.Lock()
-
-
-def _log_flip_drift(tk: str, payload: dict) -> None:
-    """Append one flip-drift row. Never raises — terrain refresh must stay ok:x
-    even if logging row assembly or disk write fails (measurement only)."""
-    try:
-        flip = payload.get("gamma_flip")
-        if flip is None:
-            return
-        if payload.get("computed_ts_utc") is None:
-            return                      # no compute time, no row: never stamped "now"
-        _ts = round(float(payload["computed_ts_utc"]), 1)
-        # RC-58: INTRADAY drift is the question, so only real trading sessions may be logged.
-        # The loop runs around the clock, and the first week of this log was 784 of 784 rows from
-        # a single SUNDAY window — spot frozen, so it measured a median 0.023 percent movement and
-        # would have been reported as "the flip is stable intraday". Market-closed rows do not
-        # add noise here, they manufacture the null.
-        from time_et import is_tradable_session_ts_utc as _tradable
-        if not _tradable(_ts):
-            return
-        row = {"ts_utc": _ts,
-               "ticker": tk, "flip": round(float(flip), 4),
-               "spot": payload.get("spot"), "confidence": payload.get("confidence")}
-        with _flip_drift_lock, open(_FLIP_DRIFT_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(row) + "\n")
-    except Exception as e:
-        log.warning("flip drift log append failed: %s", e)
-
-
 #: The least age at which a terrain snapshot stops calling itself current (terrain_staleness also
 #: allows two of the loop's delivered cycles).
 TERRAIN_STALE_AFTER_SEC: float = 180.0
@@ -2284,9 +2247,6 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         fetched_ts = time.time()   # the chain's as-of: an older streamed value never overrides it
         contracts = flatten_chain_contracts(resp.json())
         snap = _publish_levels(tk, contracts, fetched_ts)
-        with _terrain_cache_lock:
-            payload = _terrain_cache[tk]
-        _log_flip_drift(tk, payload)
         _terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
         _note_terrain_success(tk)                   # RC-148: and the failure streak with it
         return f"ok:{snap.confidence}"
@@ -2591,11 +2551,11 @@ def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str |
     before it is one of those two."""
     from math_exposure_core import compute_exposures_by_strike as _cebs
 
-    def _per_strike(contracts: list, spot: float) -> dict:
+    def _per_strike(contracts: list, spot: float, now: datetime) -> dict:
         def _scope(cts: list) -> list:
             if not cts:
                 return []
-            exposures, _diag = _cebs(cts, spot=spot)
+            exposures, _diag = _cebs(cts, spot=spot, now=now)   # valued at the capture's own time
             # ONE producer (2026-09-24): this was a second copy of terrain_engine._per_strike_rows
             # carrying the same raw-gamma fallback (audit T-01) -- the live panel and this ghost
             # must be one computation or they draw a positioning shift that did not happen.
@@ -2615,7 +2575,8 @@ def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str |
     chain_day = et_date_str_from_ts_utc(float(chain_ts))
     prior = next((c for c in captures if c["et_date"] < chain_day), None)
     if prior is not None and prior["spot"] is not None:
-        return _per_strike(prior["contracts"], float(prior["spot"])), f"chain_capture:{prior['et_date']}"
+        return (_per_strike(prior["contracts"], float(prior["spot"]), datetime.fromtimestamp(prior["ts_utc"], ET)),
+                f"chain_capture:{prior['et_date']}")
     return None, None
 
 
@@ -2943,9 +2904,10 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
         rows = [(c["et_date"], c["spot"], c["contracts"], c["ts_utc"])
                 for c in captures if c["spot"] is not None]
         if len(rows) >= 2:
-            (d1, s1, c1, t1), (d0, s0, c0, _t0) = rows[0], rows[1]
-            per1 = _cebs(c1, spot=float(s1))[0]
-            per0 = _cebs(c0, spot=float(s0))[0]
+            (d1, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
+            # each capture valued at its own time, not today's clock
+            per1 = _cebs(c1, spot=float(s1), now=datetime.fromtimestamp(t1, ET))[0]
+            per0 = _cebs(c0, spot=float(s0), now=datetime.fromtimestamp(t0, ET))[0]
 
             from math_exposure_core import bucket_metric as _bm, strike_total_oi as _sto
 
@@ -3064,6 +3026,9 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
     per_expiry = {e: (bs[0][0] if len(bs) == 1 else merge_exposure_books(bs)[0])
                   for e, bs in by_expiry.items()}
     exp_dte: "dict[str, int | None]" = {}
+    # when each column's last contract settles (an expiry date can hold AM- and PM-settled
+    # contracts): settlement times by (expiry, settlementType), then the latest per column
+    settles: "dict[tuple, datetime | None]" = {}
     # the vendor OSI symbol behind each (strike, expiry) leg, so the browser can ask the stream
     # for exactly the contracts it is showing
     symbols_by_expiry: "dict[str, dict[float, dict[str, str]]]" = {}
@@ -3073,6 +3038,8 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
         if e not in per_expiry:
             continue
         contracts_used += 1
+        if (e, ct.get("settlementType")) not in settles:
+            settles[(e, ct.get("settlementType"))] = settlement_et(e, ct.get("settlementType"))
         if exp_dte.get(e) is None:   # native DTE for the column header, never inferred
             d = schwab_number(ct.get("daysToExpiration"))
             exp_dte[e] = int(d) if d is not None else None
@@ -3086,7 +3053,9 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
     strike_set = {float(k) for ex in per_expiry.values() for k in ex}
     expiries = sorted(per_expiry)
     strikes = sorted(strike_set)
-    expirations = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries]
+    last_settlement = {e: max((s.timestamp() for (x, _t), s in settles.items() if x == e and s is not None),
+                              default=None) for e in expiries}
+    expirations = [{"expiry": e, "dte": exp_dte.get(e), "settles_ts_utc": last_settlement[e]} for e in expiries]
     # Each cell carries every measure its bucket already holds -- GEX, DEX, vanna
     # (call - put, the dealer convention of compute_net_vanna), OI and volume -- so one grid
     # serves every heatmap measure. A bucket with no usable OI or greeks reads None, never its
@@ -3164,13 +3133,15 @@ def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> d
     """Session identity for a projected surface, stamped by the ONE ET clock (server side — a
     browser never decides what day it is): today's ET session date, whether the surface is a
     PRIOR-session reference (a banked capture from an earlier trading day viewed today), and which
-    expiration columns have already expired relative to today. Presentation reads these flags to
-    label an expired 0DTE column and a prior-session reference for what they are; it never infers
-    them. No cell value is touched."""
-    today = now_et().strftime("%Y-%m-%d")      # time_et: the ONE ET clock / session-calendar authority
+    expiration columns have expired: every contract of the column has reached its settlement
+    (time_et.settlement_et, the rule that takes a contract out of the book), or its settlement
+    is not known. Presentation reads these flags to label an expired column and a prior-session
+    reference for what they are; it never infers them. No cell value is touched."""
+    now = now_et()
+    today = now.strftime("%Y-%m-%d")      # time_et: the ONE ET clock / session-calendar authority
     out = dict(surface)
     out["expirations"] = [
-        dict(e, expired=bool(e.get("expiry") and str(e["expiry"]) < today))
+        dict(e, expired=e["settles_ts_utc"] is None or now.timestamp() >= e["settles_ts_utc"])
         for e in (surface.get("expirations") or [])
     ]
     out["session_date_et"] = today
@@ -4085,6 +4056,8 @@ def get_levels(ticker: str = Query(...),
     if em is None or spot is None:
         families_absent.append({"family": "expected_move", "reason": "no live price" if spot is None
                                 else "the terrain has no implied 1-day move"})
+    if t.get("gamma_flip_reason"):       # the flip's own reason, carried as published
+        families_absent.append({"family": "gamma_flip", "reason": t["gamma_flip_reason"]})
 
     return JSONResponse({
         "ticker": tk,

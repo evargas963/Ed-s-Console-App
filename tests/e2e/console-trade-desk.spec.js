@@ -409,6 +409,35 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('no gamma flip: Desk and Right Now print the served reason, never a bare dash', async ({ page }) => {
+    const errs = watchErrors(page);
+    await intercept(page);
+    // the terrain of a ticker whose curve holds one sign over the prices searched (served fields)
+    const noFlip = Object.assign({}, TERRAIN, { gamma_flip: null, gamma_flip_reason: 'none in 655.61–887.00', flip_relation: null });
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(noFlip) }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmCardOpt .tdm-rows')).toContainText('Flip none in 655.61–887.00');
+    await expect(page.locator('#tdmAgree')).toContainText('Flip none in 655.61–887.00');
+    await expect(page.locator('#tdmAgree')).not.toContainText(/Above flip|Below flip/);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdBody')).toContainText('Gamma flip' + 'none in 655.61–887.00');
+    expect(errs).toEqual([]);
+  });
+
+  test('spot at the gamma flip: the GAMMA tile says so (served flip_relation AT), on neither side', async ({ page }) => {
+    const errs = watchErrors(page);
+    await intercept(page);
+    const atFlip = Object.assign({}, TERRAIN, { gamma_flip: SPOT, flip_relation: 'AT' });
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(atFlip) }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmAgree')).toContainText('At flip');
+    await expect(page.locator('#tdmAgree')).not.toContainText(/Above flip|Below flip/);
+    expect(errs).toEqual([]);
+  });
+
   test('Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split', async ({ page }) => {
     const errs = watchErrors(page);
     const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', };

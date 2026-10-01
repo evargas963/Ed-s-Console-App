@@ -35,7 +35,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from math_levels import GAMMA_FLIP_LEVEL_APPROX, GAMMA_FLIP_TRUSTED
+from math_levels import (
+    FLIP_CURVE_NOT_FINITE,
+    FLIP_FOUND,
+    FLIP_INCOMPLETE,
+    FLIP_NO_CROSSING,
+    FLIP_NO_INPUT,
+    FLIP_NO_PRICED_CONTRACT,
+    FLIP_NO_STRIKES,
+    GAMMA_FLIP_LEVEL_APPROX,
+    GAMMA_FLIP_TRUSTED,
+    UNPRICED_SETTLED,
+    GammaFlip,
+)
 
 REGIME_LONG_GAMMA = "LONG_GAMMA_CHOP"
 REGIME_SHORT_GAMMA = "SHORT_GAMMA_TREND"
@@ -55,6 +67,42 @@ EDGE_PROXIMITY_PCT = 0.004
 #: sign at today's price (the flip is placed by the curve; the regime is Schwab's gamma)
 FLIP_CURVE_DISAGREES = ("The gamma flip is placed by a modelled curve that disagrees with Schwab's "
                         "gamma at today's price.")
+
+#: why there is no gamma flip when its curve could not be built, by GammaFlip.reason
+_FLIP_UNAVAILABLE_TEXT = {
+    FLIP_NO_INPUT: "no option chain or price",
+    FLIP_NO_STRIKES: "no strikes in the chain",
+    FLIP_NO_PRICED_CONTRACT: "no contract could be priced",
+    FLIP_CURVE_NOT_FINITE: "curve not finite",
+}
+
+
+def flip_absent_reason(flip: GammaFlip) -> str:
+    """Why there is no gamma flip -- the one wording every consumer carries in its place: the
+    prices searched when the curve holds one sign over them, how many of the book's contracts
+    could not be priced when the curve is incomplete, else why there is no curve. "" when
+    there is a flip."""
+    if flip.state == FLIP_FOUND:
+        return ""
+    if flip.state == FLIP_NO_CROSSING:
+        return f"none in {flip.domain_lo:.2f}–{flip.domain_hi:.2f}"
+    if flip.state == FLIP_INCOMPLETE:
+        return f"incomplete, {sum(n for r, n in flip.unpriced.items() if r != UNPRICED_SETTLED)} unpriced"
+    return _FLIP_UNAVAILABLE_TEXT[flip.reason]
+
+
+#: flip_side: which side of the gamma flip a price is on
+FLIP_SIDE_ABOVE = "ABOVE"
+FLIP_SIDE_BELOW = "BELOW"
+FLIP_SIDE_AT = "AT"
+
+
+def flip_side(spot: float | None, flip: float | None) -> str | None:
+    """Which side of the flip spot is on -- the one rule the served flip_relation and the read
+    share. At the flip itself it is on neither. None without a flip or a spot."""
+    if spot is None or flip is None:
+        return None
+    return FLIP_SIDE_AT if spot == flip else FLIP_SIDE_ABOVE if spot > flip else FLIP_SIDE_BELOW
 
 
 @dataclass(frozen=True)
@@ -145,6 +193,7 @@ def build_terrain_read(
     call_wall: float | None = None,
     gamma_at_spot: float | None = None,
     flip_curve_agrees: bool | None = None,
+    flip_reason: str = "",
 ) -> TerrainRead:
     """Deterministic terrain read. Fail-closed on missing spot, or on coverage below the
     conservative floor at which this repo declines to speak at all (NARROW / UNAVAILABLE).
@@ -221,8 +270,9 @@ def build_terrain_read(
 
     if flip is not None:
         distance_pct = _pct_from(spot, flip) * 100.0
+        side = {FLIP_SIDE_ABOVE: "above", FLIP_SIDE_BELOW: "below", FLIP_SIDE_AT: "at"}[flip_side(spot, flip)]
         flip_line = (f"Spot {spot:.2f} vs {_fmt('flip', flip, spot)} — {abs(distance_pct):.2f}% "
-                     f"{'above' if spot > flip else 'below'} the regime line.")
+                     f"{side} the regime line.")
         # Gamma audit: at the middle tier the chain does not reach the measured flip-LEVEL
         # convergence span, so the LEVEL is approximate (~1.4% of spot in the study) even though the
         # regime is sound. Say so on the same line the operator reads the number from — a precise
@@ -231,8 +281,8 @@ def build_terrain_read(
             flip_line += (" APPROXIMATE: the chain is too narrow to place this level precisely "
                           "(~1.4% of spot); the regime above does not depend on it.")
     else:
-        flip_line = (f"Spot {spot:.2f} — dealer gamma holds one sign across the whole chain, "
-                     f"so there is no flip nearby to cross. The regime is unambiguous.")
+        # the flip's own reason (flip_absent_reason), the same words every screen prints
+        flip_line = f"Spot {spot:.2f} — gamma flip: {flip_reason}."
 
     lines = [
         mechanism,

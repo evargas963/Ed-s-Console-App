@@ -8,6 +8,7 @@ Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass, field
 from typing import Dict, List
 
 from numeric_contract import schwab_count, schwab_number
@@ -179,16 +180,26 @@ def pick_charm_wall_strikes(charm_by_strike: Dict[float, dict]
             round(pw, 2) if pw is not None else None)
 
 
+#: Why a contract is not in the gamma profile (contract_inputs' `unpriced` counts).
+UNPRICED_SETTLED = "settled"                        # at or past its settlement: not in the book
+UNPRICED_NO_EXPIRY = "no_expiry"                    # expiry unreadable, or on a market holiday
+UNPRICED_NO_OPEN_INTEREST = "no_open_interest"      # Schwab did not report it
+UNPRICED_INVALID = "invalid"                        # strike, multiplier or side unusable
+UNPRICED_NO_VOLATILITY = "no_volatility"
+_ZERO_OPEN_INTEREST = "zero_open_interest"          # a reported 0 adds nothing: not counted
+
+
 def contract_inputs(contracts: List[dict], now=None) -> tuple[list, dict]:
-    """(priced, unpriced): _contract_inputs for every contract with open interest, parsed once
-    and shared by the gamma profile and charm (compute_terrain); `unpriced` counts the
-    contracts with open interest the profile could not price, by reason."""
+    """(priced, unpriced): _contract_inputs for every contract, parsed once and shared by the
+    gamma profile and charm (compute_terrain). `unpriced` counts, by reason, the contracts the
+    profile leaves out: UNPRICED_SETTLED ones are not in the book; every other reason is a
+    contract that is in the book and could not be priced."""
     priced, unpriced = [], {}
     for ct in contracts:
-        r = _contract_inputs(ct, now=now) if isinstance(ct, dict) else "invalid"
+        r = _contract_inputs(ct, now=now) if isinstance(ct, dict) else UNPRICED_INVALID
         if isinstance(r, tuple):
             priced.append(r)
-        elif r != "zero_open_interest":
+        elif r != _ZERO_OPEN_INTEREST:
             unpriced[r] = unpriced.get(r, 0) + 1
     return priced, unpriced
 
@@ -203,37 +214,43 @@ def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, fl
     against Schwab-reported gamma). Offline/replay callers pass `now` = the snapshot time.
     """
     from math_exposure_core import schwab_iv_to_sigma
-    from time_et import time_to_expiry_years
+    from time_et import settlement_et, time_to_expiry_years
 
     strike = schwab_number(ct.get("strikePrice"))
     oi = schwab_count(ct.get("openInterest"))
     mult = schwab_number(ct.get("multiplier"))
     side = str(ct.get("putCall") or "").upper()
     if oi == 0:
-        return "zero_open_interest"
-    if oi is None:
-        return "no_open_interest"
-    if strike is None or strike <= 0 or mult is None or mult <= 0 or side not in ("CALL", "PUT"):
-        return "invalid"
-    # schwab_iv_to_sigma already rejects None/non-positive, so no separate iv guard.
-    sigma = schwab_iv_to_sigma(schwab_number(ct.get("volatility")))  # single source: math_exposure_core
-    if sigma is None or sigma <= 0:
-        return "no_volatility"
+        return _ZERO_OPEN_INTEREST
+    # settlement before every other reason: a settled contract is out of the book whatever
+    # else Schwab sent for it
+    if settlement_et(ct.get("expirationDate"), ct.get("settlementType")) is None:
+        return UNPRICED_NO_EXPIRY
     t_years = time_to_expiry_years(ct.get("expirationDate"), now=now,
                                    settlement_type=ct.get("settlementType"))
-    if t_years is None or t_years <= 0:
-        return "expired_or_no_expiry"
+    if t_years is None:
+        return UNPRICED_SETTLED
+    if oi is None:
+        return UNPRICED_NO_OPEN_INTEREST
+    if strike is None or strike <= 0 or mult is None or mult <= 0 or side not in ("CALL", "PUT"):
+        return UNPRICED_INVALID
+    sigma = schwab_iv_to_sigma(schwab_number(ct.get("volatility")))  # single source: math_exposure_core
+    if sigma is None:
+        return UNPRICED_NO_VOLATILITY
     return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
 
 
-#: The gamma profile's candidate prices: spot +/- 15%, in 240 equal steps.
+#: The gamma profile's candidate prices: spot +/- 15%, in 240 equal steps. These are the only
+#: prices the flip is looked for at (GammaFlip.domain_lo / domain_hi).
 GAMMA_PROFILE_SPAN_PCT = 0.15
 GAMMA_PROFILE_STEPS = 240
 
 
 def compute_gamma_profile(contracts: List[dict], spot: float, *, now=None,
                           parsed: "list | None" = None) -> List[tuple[float, float]]:
-    """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
+    """Total dealer gamma exposure (per 1% move, dollars) at each candidate price: every
+    contract's Black-Scholes gamma recomputed at that price from its own strike, expiry and
+    Schwab implied volatility (held fixed), times open interest and multiplier.
 
     One dealer convention for every instrument: +call / -put. Returns [(price, total_gex)]
     ascending. The zero crossing of this curve is the gamma flip.
@@ -262,8 +279,9 @@ def _gamma_profile_totals(parsed: list, grid: List[float]) -> List[float]:
     The same Black-Scholes gamma bs_gamma computes (r = q = 0, as every production caller
     passes), evaluated as arrays instead of one Python call per (price, contract) pair.
     MEASURED 2026-09-25 on SPY's full chain (13,290 contracts x 241 prices): the per-call
-    loop made 2.27M bs_gamma calls and was 82% of compute_terrain's 17.8 s. A gamma that is
-    not finite contributes nothing, exactly as bs_gamma's None did."""
+    loop made 2.27M bs_gamma calls and was 82% of compute_terrain's 17.8 s. A term that is
+    not finite makes its total not finite: nothing stands in for it, and compute_gamma_flip
+    reads a curve with such a total as no curve."""
     import numpy as np
 
     arr = np.asarray(parsed, dtype=float)
@@ -278,41 +296,28 @@ def _gamma_profile_totals(parsed: list, grid: List[float]) -> List[float]:
             s = s_all[start:start + _GAMMA_PROFILE_BLOCK, None]
             d1 = (np.log(s / strike) + drift) / vt
             g = np.exp(-0.5 * d1 * d1) / _SQRT_2PI / (s * vt)
-            g = np.where(np.isfinite(g), g, 0.0)
             out.extend(((g * weight).sum(axis=1) * s[:, 0] * s[:, 0] * 0.01).tolist())
     return out
 
 
-def gamma_flip_from_profile(profile: List[tuple[float, float]], spot: float) -> float | None:
-    """Interpolated price where net dealer gamma changes SIGN — in either direction.
-
-    Bugbot 2026-07-20 (HIGH, confirmed): the original condition `v0 < 0 <= v1` detected
-    only negative->positive crossings as price rises. A chain that is long-gamma BELOW
-    and short-gamma ABOVE (positive->negative) has a real regime boundary that this
-    returned None for — the flip vanished and the verdict read "no crossing" on a chain
-    that crosses. Both directions are boundaries; the direction only changes what lies on
-    each side, which the caller derives from gamma_at_price at spot (RC-11).
-
-    When several crossings exist, the one NEAREST SPOT is returned:
-    regime is the sign AT spot, so the closest sign change is the boundary that governs
-    the move the operator is actually trading.
-    """
-    crossings: list[float] = []
-    for i in range(1, len(profile)):
-        (p0, v0), (p1, v1) = profile[i - 1], profile[i]
-        if v1 == v0:
+def profile_sign_changes(profile: List[tuple[float, float]]) -> list[float]:
+    """Every price, ascending, at which the profile's sign changes: negative on one side,
+    positive on the other, in either direction. Exactly zero is no sign: a curve that touches
+    zero and keeps its sign, or starts or ends at zero, has no change there. Between two
+    adjacent candidate prices of opposite sign the price is linearly interpolated; when exact
+    zeros lie between them it is the middle of those zeros."""
+    changes: list[float] = []
+    last: tuple[float, float] | None = None      # the last point with a sign
+    zeros: list[float] = []                      # the exact-zero prices since it
+    for p, v in profile:
+        if v == 0:
+            zeros.append(p)
             continue
-        # v0 == 0 is itself the boundary (Cursor audit 2026-07-20: a profile STARTING at
-        # exactly zero returned None — both strict-sign conditions are false when v0==0,
-        # so a zero-touching profile dropped its flip). The v1==0 side was already
-        # handled: v0<0<=v1 / v0>0>=v1 interpolate to p1 when the segment ENDS at zero.
-        if v0 == 0:
-            crossings.append(round(p0, 2))
-        elif (v0 < 0 <= v1) or (v0 > 0 >= v1):
-            crossings.append(round(p0 + (p1 - p0) * (-v0) / (v1 - v0), 2))
-    if not crossings:
-        return None
-    return min(crossings, key=lambda c: abs(c - spot))
+        if last is not None and (v > 0) != (last[1] > 0):
+            changes.append(round((zeros[0] + zeros[-1]) / 2.0 if zeros
+                                 else last[0] + (p - last[0]) * (-last[1]) / (v - last[1]), 2))
+        last, zeros = (p, v), []
+    return changes
 
 
 #: RC-354 Gamma Support Floor / Gamma Resistance Ceiling — construction constants.
@@ -328,23 +333,6 @@ GSF_EPS_FRAC = 0.005
 GSF_STATE_OK = "OK"
 GSF_STATE_BELOW_SUPPORT = "BELOW_SUPPORT"
 GSF_STATE_UNAVAILABLE = "UNAVAILABLE"
-
-
-def _interp_profile_at(profile: List[tuple[float, float]], s: float) -> float | None:
-    """Linear interpolation of net GEX$ at price s on an ascending profile."""
-    if not profile:
-        return None
-    if s <= profile[0][0]:
-        return profile[0][1]
-    if s >= profile[-1][0]:
-        return profile[-1][1]
-    for i in range(1, len(profile)):
-        (p0, v0), (p1, v1) = profile[i - 1], profile[i]
-        if p0 <= s <= p1:
-            if p1 == p0:
-                return v0
-            return v0 + (v1 - v0) * (s - p0) / (p1 - p0)
-    return None
 
 
 def compute_gamma_support_levels(
@@ -406,7 +394,7 @@ def compute_gamma_support_levels(
     """
     if not profile or spot is None or spot <= 0:
         return {"gsf": None, "grc": None, "state": GSF_STATE_UNAVAILABLE, "n_at_spot": None}
-    n_spot = _interp_profile_at(profile, float(spot))
+    n_spot = gamma_at_price(profile, float(spot))
     if n_spot is None:
         return {"gsf": None, "grc": None, "state": GSF_STATE_UNAVAILABLE, "n_at_spot": None}
     max_abs = max(abs(v) for _, v in profile)
@@ -587,117 +575,110 @@ GAMMA_FLIP_TRUSTED_SPAN_PCT = 0.10
 
 
 def gamma_at_price(profile: List[tuple[float, float]], price: float) -> float | None:
-    """Net dealer gamma at `price`, linearly interpolated from the profile.
-
-    This -- not the flip -- is what determines the regime: positive means dealers are net
-    long gamma there and will dampen moves; negative means they amplify. The flip is
-    simply where this value crosses zero, and a chain need not contain such a crossing.
-
-    RC-320: the claim above is SIGN-based, and that is why it is defensible — a dealer long
-    gamma sells rallies and buys dips, which dampens; short gamma does the opposite. Source:
-    Ni, Pearson and Poteshman, Journal of Financial Economics,
-    doi:10.1016/j.jfineco.2004.08.005, where expiration-date clustering turns on NET
-    positioning; and https://spotgamma.com/what-is-gex-gamma-exposure/ on the sign
-    convention and on dealer ownership being modelled rather than observed.
-
-    Worth recording because of how it was found: this correct statement was already in the
-    repository, uncited, while I wrote the CONTRADICTING claim -- that magnitude pins
-    regardless of sign -- into pick_pin_and_strength one file away. The refutation was
-    already here. Nothing compared the two, because neither carried a source.
-    """
-    if not profile or price is None:
+    """The profile's modelled net dealer gamma at `price`, linearly interpolated between its
+    candidate prices. None at a price the profile was not evaluated over: the curve has no
+    value there, and the nearest edge's value is not one."""
+    if price is None:
         return None
-    pts = sorted(profile)
-    if price <= pts[0][0]:
-        return pts[0][1]
-    if price >= pts[-1][0]:
-        return pts[-1][1]
-    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+    for (x0, y0), (x1, y1) in zip(profile, profile[1:]):
         if x0 <= price <= x1:
-            if x1 == x0:
-                return y0
-            t = (price - x0) / (x1 - x0)
-            return y0 + t * (y1 - y0)
+            return y0 if x1 == x0 else y0 + (price - x0) / (x1 - x0) * (y1 - y0)
     return None
 
 
-def compute_gamma_flip_v2(
-    contracts: List[dict], spot: float, *, profile: List[tuple[float, float]]
-) -> tuple[float | None, str, dict]:
-    """Canonical gamma flip (profile zero-crossing) plus a CHAIN-COVERAGE verdict.
+#: GammaFlip.state.
+FLIP_FOUND = "FOUND"                  # the curve changes sign inside the prices evaluated
+FLIP_NO_CROSSING = "NO_CROSSING"      # the curve holds one sign over every price evaluated
+FLIP_INCOMPLETE = "INCOMPLETE"        # contracts in the book could not be priced (`unpriced`)
+FLIP_UNAVAILABLE = "UNAVAILABLE"      # there is no curve; GammaFlip.reason says why
+#: GammaFlip.reason when the state is FLIP_UNAVAILABLE.
+FLIP_NO_INPUT = "no_contracts_or_spot"
+FLIP_NO_STRIKES = "no_strikes"
+FLIP_NO_PRICED_CONTRACT = "no_priced_contract"
+FLIP_CURVE_NOT_FINITE = "curve_not_finite"
 
-    `profile` is compute_gamma_profile's curve for the same contracts and spot.
-    Returns (flip | None, confidence, diagnostics). The verdict reports how much of the chain
-    around spot was actually delivered — it does NOT certify that the flip level is correct
-    (see the GAMMA_FLIP_TRUSTED block for exactly what it does and does not assert).
 
-    THREE tiers, by delivered span (corrected 2026-08-26 — this docstring previously described
-    only two, and framed the result as trustworthiness rather than coverage):
-      * >= GAMMA_FLIP_TRUSTED_SPAN_PCT   -> GAMMA_FLIP_TRUSTED (coverage reaches the measured
-                                            convergence span; still not proof of the level)
-      * >= GAMMA_FLIP_MIN_SPAN_PCT, below
-        the trusted span                 -> GAMMA_FLIP_LEVEL_APPROX (enough strikes near spot for
-                                            the at-spot SIGN, so the regime stands, but too narrow
-                                            to place the LEVEL — consumers must disclose that)
-      * < GAMMA_FLIP_MIN_SPAN_PCT        -> GAMMA_FLIP_NARROW (nothing is claimed)
-    Why the floor exists at all: a narrow chain provably misplaces the flip (measured 2026-07-19 —
-    a 40-contract chain returned 770.35 against a full-chain reference of 745.61, a 3.6% error).
+@dataclass(frozen=True)
+class GammaFlip:
+    """The gamma flip and what it was looked for in.
+
+    The flip is the price nearest spot at which the modelled total dealer gamma
+    (compute_gamma_profile) changes sign as the underlying price is moved and every contract
+    is repriced. It is not a zero of gamma exposure across strikes at today's price.
+    `price` is set only in state FLIP_FOUND. FLIP_NO_CROSSING says one thing: the curve holds
+    one sign from `domain_lo` to `domain_hi`, the only prices evaluated; nothing is known
+    about prices outside them. Both are statements about the whole book: when a contract in
+    the book could not be priced the state is FLIP_INCOMPLETE and there is no result, and a
+    curve with a total that is not finite is no curve (FLIP_UNAVAILABLE). `coverage` is the
+    chain-coverage verdict (GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX, GAMMA_FLIP_NARROW,
+    GAMMA_FLIP_UNAVAILABLE) on the strikes Schwab listed (`strike_lo` to `strike_hi`), which
+    are not the prices evaluated."""
+
+    state: str
+    reason: str = ""
+    price: float | None = None
+    coverage: str = GAMMA_FLIP_UNAVAILABLE
+    domain_lo: float | None = None
+    domain_hi: float | None = None
+    #: sign changes inside the domain; `price` is the one nearest spot
+    crossings: int = 0
+    curve_gamma_at_spot: float | None = None
+    #: contracts left out of the curve, by reason (contract_inputs)
+    unpriced: dict = field(default_factory=dict)
+    strike_lo: float | None = None
+    strike_hi: float | None = None
+    n_strikes: int = 0
+    span_below_pct: float | None = None
+    span_above_pct: float | None = None
+    covers_regime_span: bool = False
+    covers_level_span: bool = False
+
+
+def compute_gamma_flip(
+    contracts: List[dict], spot: float, *, profile: List[tuple[float, float]], unpriced: dict
+) -> GammaFlip:
+    """The gamma flip of `profile` (compute_gamma_profile's curve for the same contracts and
+    spot; `unpriced` is the contracts that curve left out, from the same contract_inputs),
+    with the prices it was evaluated over and the chain-coverage verdict.
+
+    The verdict, by the span of strikes Schwab listed around spot:
+      * >= GAMMA_FLIP_TRUSTED_SPAN_PCT each side -> GAMMA_FLIP_TRUSTED
+      * >= GAMMA_FLIP_MIN_SPAN_PCT each side     -> GAMMA_FLIP_LEVEL_APPROX (the level is
+                                                    approximate; consumers say so)
+      * narrower                                 -> GAMMA_FLIP_NARROW (nothing is claimed)
+    It is about coverage only; it does not certify the level (see GAMMA_FLIP_TRUSTED).
     """
     if not contracts or not spot or spot <= 0:
-        return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_contracts_or_spot"}
+        return GammaFlip(state=FLIP_UNAVAILABLE, reason=FLIP_NO_INPUT)
     strikes = [k for k in (schwab_number(c.get("strikePrice")) for c in contracts if isinstance(c, dict)) if k is not None]
     if not strikes:
-        return None, GAMMA_FLIP_UNAVAILABLE, {"reason": "no_strikes"}
+        return GammaFlip(state=FLIP_UNAVAILABLE, reason=FLIP_NO_STRIKES)
     lo, hi = min(strikes), max(strikes)
-    diag = {
-        "strike_lo": lo,
-        "strike_hi": hi,
-        "n_strikes": len(set(strikes)),
-        "span_below_pct": round((spot - lo) / spot, 4),
-        "span_above_pct": round((hi - spot) / spot, 4),
-        "min_span_pct": GAMMA_FLIP_MIN_SPAN_PCT,
-    }
-    # Gamma audit 2026-08-26: TWO span tests, because they answer two different questions.
-    #  covers_regime — reaches the conservative floor below which we decline to claim anything.
-    #                  NOT "enough strikes for the at-spot SIGN to mean anything" — that wording was
-    #                  withdrawn 2026-08-26 as unmeasured; span does not establish the sign (see
-    #                  GAMMA_FLIP_MIN_SPAN_PCT for the measurement). Clearing it means we are willing
-    #                  to speak, not that the sign is verified.
-    #  covers_level  — the measured convergence span for the flip LEVEL itself
-    #                  (GAMMA_FLIP_TRUSTED_SPAN_PCT; see its provenance block). Only this earns TRUSTED.
-    # Previously ONE test (at the fetch-width constant) awarded TRUSTED, so a chain whose flip is
-    # measurably ~1.4% of spot off was presented as trustworthy — the defect the operator flagged.
     covers_regime = (lo <= spot * (1.0 - GAMMA_FLIP_MIN_SPAN_PCT)
                      and hi >= spot * (1.0 + GAMMA_FLIP_MIN_SPAN_PCT))
     covers_level = (lo <= spot * (1.0 - GAMMA_FLIP_TRUSTED_SPAN_PCT)
                     and hi >= spot * (1.0 + GAMMA_FLIP_TRUSTED_SPAN_PCT))
-    # TRUSTED is earned by the LEVEL span, never the fetch width
-    _verdict = (GAMMA_FLIP_TRUSTED if covers_level
+    chain = dict(strike_lo=lo, strike_hi=hi, n_strikes=len(set(strikes)),
+                 span_below_pct=round((spot - lo) / spot, 4),
+                 span_above_pct=round((hi - spot) / spot, 4),
+                 covers_regime_span=covers_regime, covers_level_span=covers_level,
+                 unpriced=dict(unpriced))
+    if not profile:
+        return GammaFlip(state=FLIP_UNAVAILABLE, reason=FLIP_NO_PRICED_CONTRACT, **chain)
+    if not all(math.isfinite(v) for _price, v in profile):
+        return GammaFlip(state=FLIP_UNAVAILABLE, reason=FLIP_CURVE_NOT_FINITE, **chain)
+    coverage = (GAMMA_FLIP_TRUSTED if covers_level
                 else GAMMA_FLIP_LEVEL_APPROX if covers_regime
                 else GAMMA_FLIP_NARROW)
-    diag = {**diag, "trusted_span_pct": GAMMA_FLIP_TRUSTED_SPAN_PCT,
-            "covers_regime_span": covers_regime, "covers_level_span": covers_level}
-    flip = gamma_flip_from_profile(profile, spot)   # nearest crossing, EITHER direction
-
-    # Dealer gamma AT SPOT is what defines the regime. The flip is only the price where
-    # that sign changes -- it is a landmark, not a prerequisite.
-    #
-    # Corrected 2026-07-19 (RC-11): a profile that never crosses zero inside the window
-    # used to return UNAVAILABLE, so 20 of 51 tickers displayed "TERRAIN UNAVAILABLE --
-    # STAND ASIDE" while their dealer gamma was unambiguously one-signed at every price
-    # (e.g. TSM all-negative, MET all-positive across a wide chain). No crossing nearby
-    # means there is no regime boundary to worry about, which is MORE certain than a flip
-    # sitting next to spot -- not less. Only the flip level is unknown, never the regime.
-    at_spot = gamma_at_price(profile, spot)
-    diag = {**diag, "curve_gamma_at_spot": at_spot,
-            "no_crossing_in_window": flip is None and at_spot is not None}
-
-    if at_spot is None:
-        return None, GAMMA_FLIP_UNAVAILABLE, {**diag, "reason": "empty_profile"}
-    if flip is None:
-        # regime is knowable; the flip level is not
-        return None, _verdict,                {**diag, "reason": "no_zero_crossing_regime_still_defined"}
-    return flip, _verdict, diag
+    if any(n for reason, n in unpriced.items() if reason != UNPRICED_SETTLED):
+        return GammaFlip(state=FLIP_INCOMPLETE, coverage=coverage, **chain)
+    changes = profile_sign_changes(profile)
+    # several sign changes: the one nearest spot bounds the regime spot is in
+    flip = min(changes, key=lambda c: abs(c - spot)) if changes else None
+    return GammaFlip(
+        state=FLIP_NO_CROSSING if flip is None else FLIP_FOUND, price=flip, coverage=coverage,
+        domain_lo=profile[0][0], domain_hi=profile[-1][0], crossings=len(changes),
+        curve_gamma_at_spot=gamma_at_price(profile, spot), **chain)
 
 
 # ── HVL — strike with largest total gamma (call + put) ───────────────────────

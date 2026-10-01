@@ -140,7 +140,56 @@ Schwab sends is taken as sent (rule 2), never computed.
   capture), the ATR pair (from the 1-minute bars) included. The day-over-day open-interest change
   has one producer: the forces, from the stored captures (`/api/forces`, shown on the Trade Desk).
   An ATR leg that cannot be computed is served absent with its reason (how many trading days or
-  15-minute periods of bars exist; ATR(14) needs 15). None of these rules names a ticker; board
+  15-minute periods of bars exist; ATR(14) needs 15).
+  **The book** is the contracts not yet at their settlement at the publication's valuation time
+  (`time_et.time_to_expiry_years`: the close, or the open for an AM-settled contract). A
+  contract past it carries no open interest or greeks into any level, wall, regime or total; its
+  session volume stays in the per-strike rows. One rule, in
+  `math_exposure_core.compute_exposures_by_strike` and `math_levels._contract_inputs`
+  (`tests/test_gamma_flip_absence_v1.py`). The heatmap labels a column expired by the same
+  settlement time (`time_et.settlement_et`), read when the surface is served: once the column's
+  last contract has settled. The settlement time is read from Schwab's `settlementType` on each
+  contract: "A" is the 09:30 ET open of the expiration date, "P" the cash close (16:00 ET, 13:00
+  on an early close). Checked 2026-09-30 against the contract specifications and the 43 stored
+  chains: Schwab sends "A" with a last trading day one day before expiry for the SPX and
+  VIX/VIXW roots (Cboe: trading stops the business day before and the value is set from the
+  opening prices of the expiration date) and "P" with a last trading day on expiry for SPXW and
+  every equity and ETF option (Cboe: expiring SPXW stops at 4:00 p.m. ET and settles on closing
+  prices; equity options end regular trading at 4:00 p.m. ET). One class does not match: the
+  ETF options that trade to 4:15 p.m. ET (on the board: SPY, QQQ, IWM, SMH, XLE) keep trading
+  until 4:15 on their expiration day, and Schwab sends no field that says so, so they leave the
+  book 15 minutes before they stop trading (`ACTIVE_PROGRAM.md` SETTLE-ETF).
+  **The gamma flip** has one producer, `math_levels.compute_gamma_flip`, and one definition: the
+  price nearest spot at which the modelled total dealer gamma changes sign as the underlying
+  price is moved, every contract repriced by Black-Scholes at each candidate price from its own
+  strike, expiry and Schwab implied volatility (held fixed), +call/−put, r = q = 0. It is not
+  a zero of gamma exposure across strikes at today's price. The candidate prices are spot ±15%
+  in 240 steps (`GAMMA_PROFILE_SPAN_PCT`), and they are the only prices searched. A flip is an
+  actual change of sign (`profile_sign_changes`, computed once): negative on one side and
+  positive on the other. A curve that touches zero and keeps its sign, or starts or ends at
+  zero, has none; with several, the one nearest spot is the flip. The result is a `GammaFlip`
+  record, served as `/api/terrain` `flip_diag`, in one of four states: `FOUND`; `NO_CROSSING`
+  (the curve holds one sign over the prices searched, which says nothing about any other
+  price); `INCOMPLETE` (a contract in the book could not be priced: open interest not reported,
+  no usable volatility, an unreadable expiry, or an unusable strike, multiplier or side, counted
+  by reason in `unpriced`; a curve missing part of the book is not a result for the book, so
+  there is no flip); or `UNAVAILABLE` with its reason (no chain or price, no strikes, no
+  contract that could be priced, or a total that is not finite: nothing stands in for a failed
+  term). With it: the prices searched, the number of sign changes in them, the chain-coverage
+  verdict. Only a `FOUND` or `NO_CROSSING` curve feeds anything else (GSF/GRC, the curve's
+  value at spot). Staleness and a failing refresh are the publication's (`levels_stale`,
+  `levels_failing`), as for every level. Every consumer carries the one result and the one
+  wording of its absence (`terrain_read.flip_absent_reason`): `/api/terrain` `gamma_flip`,
+  `gamma_flip_reason` and the read's line, `/api/levels` (the level, or the reason in
+  `families_absent`), and the screens, which print the reason where the flip would be. The
+  side of the flip spot is on (`flip_relation`: `ABOVE`, `BELOW`, or `AT`) has one rule,
+  `terrain_read.flip_side`. The regime is not read from the flip: it is the sign of Schwab's
+  gamma as sent, summed over the book (operator 2026-09-30: Schwab's gamma stays the
+  authority; it is not replaced by the modelled gamma), and where the flip's curve disagrees
+  with that sign at spot the read says so (`flip_diag.curve_agrees_with_schwab_at_spot`).
+  Schwab's chain sends gamma to three decimals; on the 2026-09-29 close captures the two
+  disagreed in sign on $SPX, $VIX, CRWV and QQQ.
+  None of these rules names a ticker; board
   membership decides only which tickers the daemon captures, which the loop refreshes unviewed,
   and which are priced at startup (tested for a board and an off-board ticker in
   `tests/test_gamma_surface_freshness_v1.py`; other values are not tested that way). A viewed

@@ -225,6 +225,13 @@ def compute_exposures_by_strike(
             k = "call_volume" if side == "CALL" else "put_volume"
             b[k] = vol if b[k] is None else float(b[k]) + vol
 
+        # A contract at or past its settlement (or with no readable expiry) is not open
+        # exposure: its volume traded, its open interest and greeks are in no book. The same
+        # rule the gamma profile prices by (math_levels._contract_inputs).
+        t_years = _tte_memo(ct)
+        if t_years is None:
+            continue
+
         if oi is None:
             missing += 1
             b["oi_unreported"] += 1
@@ -266,15 +273,14 @@ def compute_exposures_by_strike(
                 # independently FD-verified). The prior vega/(S*sigma) shortcut dropped the
                 # -d2 factor: always positive, wrong sign below spot, wrong magnitude.
                 _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
-                _T = _tte_memo(ct)
-                if _iv_ok and _T is not None and _T > 0:
+                if _iv_ok:
                     from math_levels import bs_vanna as _bsv
                     # Cursor-audit F7: route through the ONE IV-conversion authority instead of an
                     # inline _iv/100.0. Charm (compute_net_charm) and levels (_contract_inputs)
                     # already use schwab_iv_to_sigma; vanna alone re-encoded the raw conversion,
                     # breaking the single-authority guarantee and lacking the >3.0 units-flip guard.
                     _sig = schwab_iv_to_sigma(iv)
-                    _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
+                    _vn = _bsv(spt, float(strike), t_years, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["call_vanna"] += _vn * 0.01 * oi * mult   # per 1 vol point
                         b["has_valid_vanna"] = vanna_priced = True
@@ -297,12 +303,11 @@ def compute_exposures_by_strike(
                 # RC-211: same exact-vanna faucet as the CALL side (vanna is IDENTICAL for
                 # calls and puts at a strike/expiry — any split comes from OI, never math).
                 _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
-                _T = _tte_memo(ct)
-                if _iv_ok and _T is not None and _T > 0:
+                if _iv_ok:
                     from math_levels import bs_vanna as _bsv
                     # Cursor-audit F7: single IV-conversion authority (see CALL side above).
                     _sig = schwab_iv_to_sigma(iv)
-                    _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
+                    _vn = _bsv(spt, float(strike), t_years, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["put_vanna"] += _vn * 0.01 * oi * mult    # per 1 vol point
                         b["has_valid_vanna"] = vanna_priced = True

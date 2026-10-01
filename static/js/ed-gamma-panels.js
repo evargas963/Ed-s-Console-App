@@ -65,7 +65,7 @@
       txt('klSrc', d && d.error ? 'terrain not ready' : 'offline');
       return;
     }
-    txt('klFlip', px(d.gamma_flip));
+    txt('klFlip', d.gamma_flip != null ? px(d.gamma_flip) : (d.gamma_flip_reason || '—'));   // served reason
     txt('klCall', px(d.call_wall));
     txt('klPut', px(d.put_wall));
     txt('klAbs', px(d.absolute_gamma_strike));

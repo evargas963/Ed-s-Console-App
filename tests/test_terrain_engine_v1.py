@@ -384,7 +384,7 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
             continue
         d = dict(c)
         d["daysToExpiration"] = int(c.get("daysToExpiration") or 0) + 30
-        d["expirationDate"] = "2026-08-16"
+        d["expirationDate"] = "2026-10-22"     # 30 days after the chain's own expiry
         d["openInterest"] = float(c.get("openInterest") or 0) + 50_000
         extra.append(d)
     assert extra, "the pin strike must exist on the captured chain"

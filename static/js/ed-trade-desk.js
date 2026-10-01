@@ -117,7 +117,7 @@
     var rows = [
       ['Posture', d.posture || '—'], ['Confidence', d.confidence || '—'],
       ['Call wall', num(d.call_wall)], ['Put wall', num(d.put_wall)],
-      ['Gamma flip', num(d.gamma_flip)],
+      ['Gamma flip', d.gamma_flip != null ? num(d.gamma_flip) : (d.gamma_flip_reason || '—')],   // served reason
       // max pain is per expiry: label it with the expiry the server computed it on (front)
       ['Max pain' + (d.max_pain_dte != null ? ' (' + d.max_pain_dte + 'DTE)' : ''), num(d.max_pain)],
       ['Net GEX @ spot', d.net_gex_at_spot != null ? (Number(d.net_gex_at_spot) / 1e6).toFixed(1) + 'M' : '—'],

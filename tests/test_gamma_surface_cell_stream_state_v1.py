@@ -28,6 +28,10 @@ from server import (
     _publish_levels,
     ticker_storage_key,
 )
+from time_et import settlement_et
+
+#: a hand-built surface's one column, in the shape project_gamma_surface gives it
+_EXPIRATION = {"expiry": "2026-09-11", "dte": 2, "settles_ts_utc": settlement_et("2026-09-11").timestamp()}
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -305,7 +309,7 @@ def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is
     be live -- a single-cell, single-contract surface where that one cell is live is the
     trivial case where the bar and the old (wrong) >=1 threshold happen to coincide."""
     tk = ticker_storage_key("ZZZTEST1")
-    surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
+    surf = {"expirations": [_EXPIRATION],"strikes": [10.0],
             "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]}],
             "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0,
             "gamma_available": True}
@@ -327,7 +331,7 @@ def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is
 
 def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
     tk = ticker_storage_key("ZZZTEST2")
-    surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
+    surf = {"expirations": [_EXPIRATION],"strikes": [10.0],
             "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]}],
             "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0,
             "gamma_available": True}
@@ -350,7 +354,7 @@ def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverag
     still report meets_live_requirement=False -- the exact case the old >=1-cell threshold
     got wrong (it would have reported confirmed-live here)."""
     tk = ticker_storage_key("ZZZTEST_PARTIAL")
-    surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
+    surf = {"expirations": [_EXPIRATION],"strikes": [10.0, 11.0],
             "cells": [
                 {"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]},
                 {"strike": 11.0, "gex": [1.0], "contracts": [{"call": "Y", "put": None}]},
@@ -384,7 +388,7 @@ def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live(
     (requested, no tick yet) must never count toward meets_live_requirement, and must
     never be silently folded into the unavailable bucket the client cannot act on."""
     tk = ticker_storage_key("ZZZTEST_PENDING")
-    surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
+    surf = {"expirations": [_EXPIRATION],"strikes": [10.0, 11.0],
             "cells": [
                 {"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]},
                 {"strike": 11.0, "gex": [1.0], "contracts": [{"call": "Y", "put": None}]},
@@ -418,7 +422,7 @@ def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
     excluded from meets_live_requirement, but conflating them hides an operator-actionable
     fact (restart the daemon) behind one that implies nothing is wrong (just wait)."""
     tk = ticker_storage_key("ZZZTEST_DAEMON_DOWN")
-    surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
+    surf = {"expirations": [_EXPIRATION],"strikes": [10.0, 11.0],
             "cells": [
                 {"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]},
                 {"strike": 11.0, "gex": [1.0], "contracts": [{"call": "Y", "put": None}]},
@@ -449,7 +453,7 @@ def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
     distinguishable from a merely never-requested one -- 'fail the affected cells
     visibly', not silently lump it into 'unavailable' forever."""
     tk = ticker_storage_key("ZZZTEST_REJECTED")
-    surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
+    surf = {"expirations": [_EXPIRATION],"strikes": [10.0],
             "cells": [{"strike": 10.0, "gex": [None], "contracts": [{"call": "BADSYM", "put": None}]}],
             "contracts_total": 1, "contracts_used": 1, "contracts_excluded_malformed_expiry": 0,
             "gamma_available": False}
