@@ -549,31 +549,40 @@ test.describe('Trade Desk renders served values', () => {
     await expect(legend).toContainText(why);                          // the desk's 30m chart
     await expect(page.locator('#tdmCardFlow .tdm-plot')).toContainText(why);   // the Order Flow hour
     expect(await chartBars()).toBe(BARS.bars.length);                  // no partial bar drawn
+    // a late minute's push (09:21 after 09:22) carries no bar and no reason for this timeframe:
+    // the reason stays (setUnavailable(undefined) cleared it)
+    daemon.send({ type: 'bars', bars: [{ ticker: 'SPY', ts_recv: 1790343790.0, last_bar: { t: 1790343720, label: 'Fri 09/25 09:22 AM CT' },
+      tf: {}, recent_1m: null, unavailable: { recent_1m: why }, notes: {} }] });
+    await page.waitForTimeout(300);
+    await expect(legend).toContainText(why);
     expect(errs).toEqual([]);
   });
 
   test('Market Map: the daily chart shows the served note when the day\'s high/low differ from Schwab\'s, and nothing otherwise', async ({ page }) => {
-    // the daemon reconciles the daily bar's regular-session high/low with Schwab's HIGH_PRICE /
-    // LOW_PRICE and serves the note for the daily chart (`notes.D`, on a mismatch only); the
-    // page prints it as served
+    // the daemon reconciles the day's regular-session high/low with Schwab's HIGH_PRICE /
+    // LOW_PRICE and serves the note for the daily chart (`notes.D` on the push, `note` with the
+    // history so a chart opened later shows it); the page prints it as served
     const errs = watchErrors(page);
     await intercept(page);
+    const note = "regular session 09:30–16:00 ET high/low differ from Schwab: our high 770.31 is above Schwab's 770.26 by 0.0500";
+    await page.route(/\/api\/bars1m\?.*tf=D/, (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, BARS, { tf: 'D', note: note })) }));
     const daemon = await mockPriceSocket(page, []);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
+    const legend = page.locator('#tdmChart .tvc-legend');
+    await expect(legend).not.toContainText('differ from Schwab');     // the 30m chart: no note
     await page.locator('#tdmToolbar [data-tf="D"]').click();
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.tf)).toBe('D');
-    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(BARS.bars.length);
-    const note = 'high/low differ from Schwab: ours 770.31/767.75 / Schwab 770.26/767.75';
+    await expect(legend).toContainText(note);                          // with the history, before any push
     const minute = { t: 1790343720, o: 772, h: 772.5, l: 771.9, c: 772.4, v: 10, chg: 0.4, chg_pct: 0.05, label: 'Fri 09/25 09:22 AM CT' };
     const push = (notes) => daemon.send({ type: 'bars', bars: [{ ticker: 'SPY', ts_recv: 1790343782.7,
       last_bar: { t: 1790343720, label: 'Fri 09/25 09:22 AM CT' }, tf: { '1': minute }, recent_1m: null, unavailable: {}, notes: notes }] });
-    const legend = page.locator('#tdmChart .tvc-legend');
+    push({});                                                          // consistent: nothing shown
+    await expect(legend).not.toContainText('differ from Schwab');
     push({ D: note });
     await expect(legend).toContainText(note);
-    push({});                                                          // a match: nothing shown
-    await expect(legend).not.toContainText('differ from Schwab');
     expect(errs).toEqual([]);
   });
 

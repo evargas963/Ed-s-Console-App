@@ -259,8 +259,9 @@
     var gbsSpot = (_gbsSpotRaw == null) ? NaN : Number(_gbsSpotRaw);
     var rows = d && d.today && d.today.all;
     if (!rows || !rows.length) {
+      // the served reason (absent_reason); with no answer, the request's own failure
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
-        (d ? 'no banked per-strike gamma for this symbol' : 'no console serving /api/terrain/strikes') + '</div></div>';
+        esc(d ? (d.today && d.today.absent_reason) || '' : 'no console serving /api/terrain/strikes') + '</div></div>';
       return;
     }
     var spot = gbsSpot;

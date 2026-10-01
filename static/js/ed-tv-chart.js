@@ -714,17 +714,18 @@
 
     var api = {
       chart: chart, candles: candles, palette: function () { return P; },
-      // Replace the whole series (ticker or timeframe change).
-      setBars: function (bars, tf, symbol, lastBarLabel) {
+      // Replace the whole series (ticker or timeframe change), with the history's served note.
+      setBars: function (bars, tf, symbol, lastBarLabel, note) {
         var changed = tf !== S.tf || symbol !== S.symbol;
         S.lastBarLabel = lastBarLabel || null;
         S.bars = (bars || []).map(servedBar);
         S.tf = tf; S.symbol = symbol;
+        S.note = note || null;
         candles.setData(S.bars.map(candle));
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
         api.setVolume(S.bars);
         if (changed) {
-          S.gapNote = S.unavailable = S.note = null;
+          S.gapNote = S.unavailable = null;
           api.setLivePrice(null);
           S.pinned = null; paintPin();
           var dk = 'ed.tvc.draw.' + symbol;

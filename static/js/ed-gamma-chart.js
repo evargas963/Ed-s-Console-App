@@ -95,7 +95,8 @@
       ? window.EdShell.scopeSelect(srows.map(function (r) { return r[0]; }), prof.spot_strike)
       : { idx: srows.map(function (_r, i) { return i; }) };
     var win = sel.idx.map(function (i) { return srows[i]; }).filter(function (r) { return r[1] != null; });   // unknown: nothing drawn
-    c.setBars(bars, (barsD && barsD.tf) || _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
+    c.setBars(bars, (barsD && barsD.tf) || _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label,
+      barsD && barsD.note);
     c.setProfile(win.map(function (r) {
       return { price: Number(r[0]), value: Number(r[1]), color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down }; }),
       _mode === 'dotmap' ? 'dots' : 'bars');
@@ -165,8 +166,10 @@
     var b = ev.detail;
     if (!b || b.ticker !== st().key || !_chart || !_last.bars || !_last.bars.bars || _last.bars.tf !== _tf) return;
     // a push carries a timeframe's bar only when it is that chart's newest and its minutes are all
-    // held (live_price_rows.bar_update); otherwise the served reason, if any, is shown
-    _chart.setUnavailable(b.tf[_tf] ? null : (b.unavailable || {})[_tf]);
+    // held (live_price_rows.bar_update), or its reason; a push carrying neither (a late minute's)
+    // leaves the last served reason shown
+    if (b.tf[_tf]) _chart.setUnavailable(null);
+    else if ((b.unavailable || {})[_tf]) _chart.setUnavailable(b.unavailable[_tf]);
     _chart.setNote((b.notes || {})[_tf]);                          // the served note, if any
     if (!b.tf[_tf]) return;
     _chart.pushBar(b.tf[_tf], b.last_bar && b.last_bar.label);   // the chart library places it

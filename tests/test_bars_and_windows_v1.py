@@ -4,6 +4,7 @@ a window that has ended, and a curve point carries its chart bar's own time. Rea
 (tests/fixtures/real_spy_1m_bars_2026_09_29_open.json)."""
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 from datetime import datetime, timedelta
@@ -11,12 +12,16 @@ from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.streaming as ofs
 import liquidity_value_engine as lve
 import live_price_rows
 import server as srv
+from app.market_data.schwab.streaming import live_ui
+from app.market_data.schwab.streaming.live_push import is_forwarded
 from db import EdDB
 from liquidity_value_engine import _bars_to_list, build_price_level_snapshot
 from micro_structure import Candle
+from stream_spine import CONNECTION, CONNECTION_CLOSED, MessageBus, bar_msg, subscription_msg
 from terrain_atr import compute_atr_pair
 from time_et import ET
 
@@ -85,36 +90,69 @@ def test_the_vwap_curve_is_stamped_with_its_chart_bars_own_time(monkeypatch, pin
     assert [p[0] for p in hourly] == [_at(9, 0), _at(10, 0)]
 
 
-def test_the_session_levels_go_stale_when_their_bars_stop(monkeypatch, pin_clock):
-    """/api/levels served the session price levels with `stale: None` whatever their bars' age, so
-    they read current after the bars stopped. Judged by their source: the newest bar they were
-    built from ends 10:30 ET; at 10:30:30 that is the last completed minute (current); at 10:33 the
-    bar ending 10:32 is due and none has come since 10:30 (stale, with the reason); at 16:20 the
-    session's bars have ended (a past observation as of 10:30, not stale)."""
+def test_the_session_levels_take_their_currency_from_the_daemons_coverage(monkeypatch, pin_clock):
+    """The levels were called stale 2 minutes after their newest bar, but Schwab sends no bar for
+    a minute with no trade (2026-09-30: TSL ~154 and MTA ~120 regular-session minutes read STALE
+    on a healthy feed), and it was a second authority beside the daemon's coverage. The levels,
+    the VWAP curve and every value built from today's bars take the daemon's verdict (barstate,
+    pushed to the console): a quiet stretch inside the stream's unbroken coverage is current; the
+    Schwab socket closing makes them stale with the daemon's reason (the minutes since its last
+    bar were covered only while the stream was unbroken: they are asked of the price history,
+    here empty); with no verdict from the daemon they are stale. Real SPY bars of 2026-09-29
+    09:15-10:29 ET, streamed to the daemon's real live_ui; the quiet stretch after 10:29 (no more
+    bars) is the stand-in for minutes with no trade."""
     import time as _time
     pin_clock(2026, 9, 29, 10, 31)
     monkeypatch.setattr(lve, "_MATERIALIZED_SNAPSHOTS", {})
     monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda tk: BARS)
     monkeypatch.setattr(srv, "resolve_spot", lambda tk: (None, "none", None))
+    monkeypatch.setattr(ofs, "_bar_states", {})
     srv._publish_price_levels("SPY")
+    clock = {"now": 0.0}
+    bus = MessageBus()
+    states = bus.subscribe("barstate.", maxsize=1024, name="test_console")
+    ui = live_ui.LiveUiServer(bus, lambda: {}, {}, clock=lambda: clock["now"], history_fn=lambda *a: [])
 
-    def served(h, m, s=0):
-        at = datetime(2026, 9, 29, h, m, s, tzinfo=ET).timestamp()
-        monkeypatch.setattr(_time, "time", lambda: at)
+    async def daemon(h, m, s=0, close=False):
+        if close:                                                 # the Schwab socket closes
+            ui.on_subscription(subscription_msg(service=CONNECTION, command=CONNECTION_CLOSED, symbols=[],
+                                                code=0, reason="the Schwab socket closed", ts=clock["now"]))
+        clock["now"] = datetime(2026, 9, 29, h, m, s, tzinfo=ET).timestamp()
+        ui.tick(clock["now"])                                     # the daemon's clock
+        while ui._asks:
+            await asyncio.gather(*list(ui._asks))
+
+    def served():
+        while not states.queue.empty():
+            topic, msg = states.queue.get_nowait()
+            assert is_forwarded(topic, msg)                       # live_push forwards it
+            ofs._ingest_pushed(topic, msg)                        # the console's ingest
+        monkeypatch.setattr(_time, "time", lambda: clock["now"])
         return json.loads(srv.get_levels(ticker="SPY", tf="1").body)
 
+    async def stream():
+        clock["now"] = _at(9, 0)
+        ui.on_subscription(subscription_msg(service="CHART_EQUITY", command="SUBS", symbols=["SPY"], code=0,
+                                            reason="ok", ts=_at(9, 0)))
+        for b in BARS:
+            clock["now"] = b["timestamp"] / 1000.0 + 62.7
+            ui.on_bar(bar_msg(symbol="SPY", bar_start_ms=b["timestamp"], open=b["open"], high=b["high"],
+                              low=b["low"], close=b["close"], volume=b["volume"], src="schwab_chart",
+                              ts_recv=clock["now"]))
+        await daemon(10, 45)                                      # no bar since 10:29: no trade
+    asyncio.run(stream())
     session_rows = lambda body: [r["staleness"] for r in body["levels"] if r.get("semantic_scope") == "session_rth"]  # noqa: E731
-    live = served(10, 30, 30)
-    assert live["session_levels"] == {"state": srv.PRICE_LEVEL_CURRENT, "stale": False, "reason": ""}
-    assert session_rows(live) and all(s["stale"] is False for s in session_rows(live))
-    stopped = served(10, 33)
-    assert stopped["session_levels"]["state"] == srv.PRICE_LEVEL_STALE and stopped["session_levels"]["stale"] is True
-    assert stopped["session_levels"]["reason"] == (
-        "no 1-minute bar has arrived since the one ending Tue 09/29 09:30 AM CT; "
-        "the bar ending Tue 09/29 09:32 AM CT is due")
+    quiet = served()
+    assert quiet["session_levels"] == {"state": srv.PRICE_LEVEL_CURRENT, "stale": False, "reason": ""}
+    assert session_rows(quiet) and all(s["stale"] is False for s in session_rows(quiet))
+    asyncio.run(daemon(10, 48, close=True))
+    stopped = served()
+    assert stopped["session_levels"] == {"state": srv.PRICE_LEVEL_STALE, "stale": True, "reason": (
+        "minutes Tue 09/29 09:30 AM CT – Tue 09/29 09:47 AM CT not received from Schwab "
+        "(the symbol's 1-minute bar stream is not subscribed now)")}
     assert all(s["stale"] is True for s in session_rows(stopped))
-    ended = served(16, 20)
-    assert ended["session_levels"]["state"] == srv.PRICE_LEVEL_SESSION_ENDED and ended["session_levels"]["stale"] is False
+    monkeypatch.setattr(ofs, "_bar_states", {})                   # the daemon gone: no verdict
+    assert served()["session_levels"]["state"] == srv.PRICE_LEVEL_STALE
 
 
 def test_before_the_sessions_first_bar_the_levels_say_it_has_not_started():
@@ -123,11 +161,11 @@ def test_before_the_sessions_first_bar_the_levels_say_it_has_not_started():
     its first bar ends. Stated instant: Wednesday 2026-09-30 08:00 ET; the newest bar the levels
     hold is the prior session's last (Tuesday 16:15 ET), a stand-in."""
     now = datetime(2026, 9, 30, 8, 0, tzinfo=ET).timestamp()
-    st = srv.price_level_staleness("session_rth", datetime(2026, 9, 29, 16, 15, tzinfo=ET).timestamp(), now)
+    st = srv.price_level_staleness("session_rth", datetime(2026, 9, 29, 16, 15, tzinfo=ET).timestamp(), now, None)
     assert st == {"state": srv.PRICE_LEVEL_SESSION_NOT_STARTED, "stale": False,
                   "reason": "today's session has not started: its first 1-minute bar ends Wed 09/30 08:16 AM CT"}
-    # the collect window's first bar ends 09:16 ET; at 09:18 with no bar today the levels are stale
-    assert srv.price_level_staleness("session_rth", None, now + 78 * 60)["state"] == srv.PRICE_LEVEL_STALE
+    # after 09:15 ET with no verdict from the daemon on its bars the levels are stale
+    assert srv.price_level_staleness("session_rth", None, now + 78 * 60, None)["state"] == srv.PRICE_LEVEL_STALE
 
 
 def test_a_rolled_up_bar_cut_by_the_limit_is_not_served(monkeypatch, tmp_path):

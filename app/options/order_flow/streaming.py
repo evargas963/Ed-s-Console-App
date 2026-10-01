@@ -67,6 +67,17 @@ _price_rows: "dict[str, dict]" = {}
 
 def price_row(ticker: str) -> "dict | None":
     return _price_rows.get(ticker_storage_key(ticker) or "")
+
+
+#: The daemon's verdict on each symbol's 1-minute bars (barstate.SYM, live_ui.publish_states):
+#: whether today's minutes are covered through now, and the daily bar's reconciliation and notes.
+#: Carried as pushed; dropped when the push is gone. The currency of every value the console
+#: builds from today's bars.
+_bar_states: "dict[str, dict]" = {}
+
+
+def bar_state(ticker: str) -> "dict | None":
+    return _bar_states.get(ticker_storage_key(ticker) or "")
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
 PUSH_RECONNECT_SEC = 1.0
@@ -185,6 +196,9 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     part."""
     global _option_streaming_last_update_ts
     if not isinstance(msg, dict):
+        return None
+    if topic.startswith("barstate.") and msg.get("symbol"):
+        _bar_states[ticker_storage_key(msg["symbol"])] = msg      # the daemon's verdict, carried
         return None
     sym = msg.get("symbol")
     ts = msg.get("ts_recv")
@@ -311,6 +325,7 @@ async def _feed_loop() -> None:
                 log.info("live push unavailable (%s: %s); retrying in %.1fs",
                          type(e).__name__, e, PUSH_RECONNECT_SEC)
             _lmp.record_feed_down()        # no daemon, no live price -- visible at once
+            _bar_states.clear()            # nor its verdict on any symbol's bars
             down_since = time.time() if down_since is None else down_since
             if _feed_running:
                 await asyncio.sleep(PUSH_RECONNECT_SEC)
@@ -318,6 +333,7 @@ async def _feed_loop() -> None:
         rows.cancel()
         await asyncio.gather(rows, return_exceptions=True)
         _price_rows.clear()
+        _bar_states.clear()
         _lmp.record_feed_down()
         _log_stream("FEED_LOOP_STOP_DONE")
 

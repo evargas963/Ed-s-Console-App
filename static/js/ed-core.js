@@ -875,7 +875,7 @@
         feedLabel: live ? 'LIVE' : (q.spot_state === 'closed' ? 'MARKET CLOSED' : (q.feed_live ? 'NO TRADE YET' : 'UNAVAILABLE')),
         ageLabel: closed ? ('last trade ' + q.closed_last.as_of)
           : q.trade_age_sec != null ? ('last trade ' + Math.round(q.trade_age_sec) + 's')
-          : (live ? 'live' : (q.feed_live ? 'feed live · no trade this session' : 'no live feed')) });
+          : (live ? 'live' : (q.feed_live ? 'feed live · no trade this session' : (q.unavailable_reason || 'no live feed'))) });
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;

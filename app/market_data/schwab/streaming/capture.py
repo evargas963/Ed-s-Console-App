@@ -36,8 +36,10 @@ import asyncio
 import json
 import logging
 import os
+import sqlite3
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -49,6 +51,7 @@ from db_authority import canonical_console_db_path  # noqa: E402
 from stream_spine import (  # noqa: E402
     CONNECTION,
     CONNECTION_CLOSED,
+    CONNECTION_LOSS,
     COUNT_DROPS,
     CaptureWriter,
     HealthRegistry,
@@ -129,10 +132,25 @@ def save_wanted(path: Path, wanted: "dict[str, frozenset[str]]") -> None:
 EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
 
 
-def standing_roster(db_path: "Path | str") -> "frozenset[str]":
-    """The board (the console's logging_universe table, read at the daemon's start): the equity
-    symbols the daemon streams whatever the console's list says."""
-    return frozenset(board_tickers(db_path))
+@dataclass(frozen=True)
+class StandingRoster:
+    """The board's equity symbols the daemon streams whatever the console's list says, or none
+    with the reason they could not be read (`problem`)."""
+    symbols: "frozenset[str]"
+    problem: "str | None" = None
+
+
+def standing_roster(db_path: "Path | str") -> StandingRoster:
+    """The board (the console's logging_universe table), read once, at the daemon's start (the
+    database is read at startup only). Unreadable: the daemon still starts and streams the
+    console's list; the roster is unavailable with the reason (logged, and in every status)
+    until the daemon's next start."""
+    try:
+        return StandingRoster(frozenset(board_tickers(db_path)))
+    except (sqlite3.Error, OSError) as e:
+        problem = f"the board could not be read from {db_path} ({type(e).__name__}: {e}); streaming the console's list only"
+        log.error("standing roster unavailable: %s", problem)
+        return StandingRoster(frozenset(), problem)
 
 
 def plan(wanted: "dict[str, frozenset[str]]", held: "dict[str, frozenset[str]]",
@@ -272,13 +290,13 @@ def _connection_lost(e: BaseException) -> bool:
 # ---------------------------------------------------------------------------- the daemon
 
 class Daemon:
-    def __init__(self, bus: MessageBus, health: HealthRegistry, path: Path, standing: "frozenset[str]") -> None:
+    def __init__(self, bus: MessageBus, health: HealthRegistry, path: Path, roster: StandingRoster) -> None:
         self.bus = bus
         self.health = health
         self.path = path
         self.wanted = load_wanted(path)
         #: the board's equity symbols, streamed whatever the console's list says (standing_roster)
-        self.standing = standing
+        self.roster = roster
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
@@ -309,10 +327,11 @@ class Daemon:
                 "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "refused": {k: dict(v) for k, v in self.refused.items() if v},
+                "standing_roster": {"symbols": len(self.roster.symbols), "problem": self.roster.problem},
                 "health": self.health.report(now)}
 
     async def sync(self) -> None:
-        for svc, cmd, symbols in plan(self.wanted, self.held, self.refused, self.standing):
+        for svc, cmd, symbols in plan(self.wanted, self.held, self.refused, self.roster.symbols):
             for chunk in split_request(symbols):
                 try:
                     await _request(self.stream, svc, cmd, chunk)
@@ -374,6 +393,10 @@ class Daemon:
                 if _connection_lost(e):
                     raise
                 log.warning("schwab: skipped a frame (%s: %s)", type(e).__name__, str(e)[:250])
+                # whose messages it held cannot be told: every stream may have lost a minute (live_ui)
+                self.bus.publish(f"sub.{CONNECTION}", subscription_msg(
+                    service=CONNECTION, command=CONNECTION_LOSS, symbols=[], code=0,
+                    reason=f"a Schwab frame could not be read ({type(e).__name__})"))
 
     async def run_connection(self, client, stop: asyncio.Event) -> None:
         """One connection's life: sync, read, repeat -- until it dies or stop is set."""
@@ -560,13 +583,28 @@ async def run() -> int:
                                                  on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, clock=time.time,
                                                history_fn=schwab_minutes(daemon)))]
+    return await run_until_a_part_ends(daemon.run(make_client, stop), tasks, stop)
+
+
+async def run_until_a_part_ends(connection, parts: "list[asyncio.Task]", stop: asyncio.Event) -> int:
+    """Run the Schwab `connection` with the daemon's other `parts` until stop -- or until any part
+    ends first, which stops the whole daemon (exit 1, so start_capture_daemon.bat restarts it):
+    a daemon missing a part (its browser push, its record) must not go on looking whole."""
+    main = asyncio.create_task(connection)
     try:
         await asyncio.sleep(0)                    # servers subscribe before the first message
-        await daemon.run(make_client, stop)
+        done, _ = await asyncio.wait({main, *parts}, return_when=asyncio.FIRST_COMPLETED)
+        ended = [t for t in done if t is not main]
+        for t in ended:
+            log.error("capture daemon: %s ended (%r); stopping so it is restarted", t.get_coro().__name__,
+                      "cancelled" if t.cancelled() else t.exception())
+        if ended:
+            return 1
+        main.result()                             # the connection's own failure, raised as before
+        return 0
     finally:
         stop.set()
-        await asyncio.gather(*tasks, return_exceptions=True)
-    return 0
+        await asyncio.gather(main, *parts, return_exceptions=True)
 
 
 def main() -> int:

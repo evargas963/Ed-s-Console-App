@@ -202,8 +202,20 @@ def news_msg(*, symbol: str, content: dict, src: str, ts_recv: float | None = No
     return {"ts_recv": _now(ts_recv), "symbol": symbol, "content": content, "src": src}
 
 
-#: sub.CONNECTION -- the Schwab socket itself: CLOSED ends every subscription at once
-CONNECTION, CONNECTION_CLOSED = "CONNECTION", "CLOSED"
+#: sub.CONNECTION -- the Schwab socket itself: CLOSED ends every subscription at once; LOSS: the
+#: daemon lost Schwab messages it cannot attribute (a frame it could not read), so every
+#: subscription's stream may have lost a minute at that moment
+CONNECTION, CONNECTION_CLOSED, CONNECTION_LOSS = "CONNECTION", "CLOSED", "LOSS"
+
+
+def bar_state_msg(*, symbol: str, coverage: str, coverage_reason: str, reconciliation: "dict | None",
+                  notes: "dict[str, str]", ts: float) -> dict:
+    """barstate.* -- the daemon's verdict on a symbol's 1-minute bars at `ts` (live_ui): whether
+    today's minutes are covered through now (`coverage`, live_price_rows.COVERAGE_*, with its
+    reason), the daily bar's reconciliation with Schwab's high and low, and the note each chart
+    timeframe shows. Published when it changes; not a stream message."""
+    return {"ts": ts, "symbol": symbol, "src": "live_ui", "coverage": coverage,
+            "coverage_reason": coverage_reason, "reconciliation": reconciliation, "notes": dict(notes)}
 
 
 def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: "int | None",
@@ -218,7 +230,9 @@ def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: 
 
 @dataclass
 class Subscription:
-    prefix: str
+    #: one topic prefix, or several (`str.startswith` takes a tuple), delivered on one queue in
+    #: publish order
+    prefix: "str | tuple[str, ...]"
     policy: str
     queue: asyncio.Queue
     pending: dict[str, Any] = field(default_factory=dict)
@@ -261,7 +275,7 @@ class MessageBus:
         self.cache: dict[str, Any] = {}
         self.published = 0
 
-    def subscribe(self, prefix: str, *, policy: str = COUNT_DROPS, maxsize: int = 2048,
+    def subscribe(self, prefix: "str | tuple[str, ...]", *, policy: str = COUNT_DROPS, maxsize: int = 2048,
                   name: str | None = None) -> Subscription:
         """`name` identifies the consumer in drop_counts (default: the prefix)."""
         sub = Subscription(prefix=prefix, policy=policy, queue=asyncio.Queue(maxsize=maxsize))

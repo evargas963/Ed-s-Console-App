@@ -144,6 +144,35 @@ def missing_reason(gaps: list[tuple[float, float]]) -> str:
     return "; ".join(f"minutes {ct_label(a)} – {ct_label(b)} not received from Schwab" for a, b in gaps)
 
 
+#: whether a symbol's minutes of the day are covered through now (coverage_now): every value
+#: built from today's bars is current only while they are
+COVERAGE_CURRENT, COVERAGE_STALE = "current", "stale"
+
+
+def day_gaps(covered: list[tuple[float, float]], stream_from: Optional[float], now: float) -> list[tuple[float, float]]:
+    """The spans of `now`'s ET trading day, from the collect window's first minute (09:15 ET)
+    through the newest one completed at `now` inside the window, not covered -- by `covered`
+    (the spans held: the stream's through its bars, each price-history reply's) nor by the
+    stream's subscription unbroken since `stream_from` (None: not streaming), which covers every
+    completed minute (a minute with no bar had no trade). Not a trading day: none."""
+    close = session_close_mins_for_et_date(et_date_str_from_ts_utc(now))
+    if close is None:
+        return []
+    first = session_first_minute(now)
+    last = min(now // 60 * 60 - 60, first + (close + 15 - COLLECT_WINDOW_START_MINS - 1) * 60.0)
+    spans = sorted(covered + ([(max(stream_from, first), last)] if stream_from is not None else []))
+    return uncovered(spans, first, last) if last >= first else []
+
+
+def coverage_now(covered: list[tuple[float, float]], stream_from: Optional[float], now: float) -> tuple[str, str]:
+    """(state, reason): whether `now`'s day has no gap (day_gaps); nothing due yet: current."""
+    gaps = day_gaps(covered, stream_from, now)
+    if not gaps:
+        return COVERAGE_CURRENT, ""
+    return COVERAGE_STALE, missing_reason(gaps) + ("" if stream_from is not None else
+                                                   " (the symbol's 1-minute bar stream is not subscribed now)")
+
+
 def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float,
                covered: list[tuple[float, float]]) -> dict[str, Any]:
     """What the daemon pushes for one 1-minute `bar`: for each chart timeframe, the chart bar that
@@ -191,22 +220,43 @@ def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float,
             "tf": by_tf, "recent_1m": None if gaps else recent_1m(minutes), "unavailable": unavailable}
 
 
-#: the daily bar's reconciliation with Schwab's own regular-session high and low
-RECONCILED, RECONCILE_MISMATCH, RECONCILE_NOT_COMPARED = "match", "mismatch", "not_compared"
+def price_text(v: float) -> str:
+    """A price as every server-made text shows it."""
+    return f"{v:.2f}"
+
+
+def price_difference_text(v: float) -> str:
+    """A difference between two prices, to Schwab's finest tick (a sub-cent difference reads
+    equal in price_text)."""
+    return f"{v:.4f}"
+
+
+#: the daily bar's reconciliation with Schwab's own high and low
+RECONCILED, RECONCILE_MISMATCH, RECONCILE_NOT_COMPARED = "consistent", "mismatch", "not_compared"
 
 
 def regular_session_reconciliation(minutes: list[dict], covered: list[tuple[float, float]],
                                    quote: Optional[dict[str, Any]]) -> dict[str, Any]:
-    """The day's regular-session (09:30 ET to the close) high and low from `minutes`, against
-    Schwab's LEVELONE_EQUITIES HIGH_PRICE and LOW_PRICE (`quote`, live_market_plane: regular-session
-    trades only; 0 means no regular-session trade, not a value to compare). Compared only when
-    every regular-session minute held so far is covered. Schwab's fields include the minute still
-    trading, which no completed bar holds yet: until the session's last minute is covered the bars
-    can lag Schwab but never exceed it, so only a bar high above HIGH_PRICE or a bar low below
-    LOW_PRICE is a mismatch; once it is covered, any difference is. A mismatch is reported with
-    both values and the note the daily bar's chart shows; nothing is corrected."""
+    """For an equity (Schwab assetMainType EQUITY: stocks and ETF shares), the day's completed
+    regular-session minutes (09:30-15:59 ET: every trade in them is a regular-session trade)
+    against Schwab's LEVELONE_EQUITIES HIGH_PRICE and LOW_PRICE (`quote`, live_market_plane; 0
+    means none, not a value to compare), compared once every one of those minutes held so far is
+    covered. An index is not compared: Schwab's index high/low cover different hours ($SPX moved
+    to 16:05:15 ET and $VIX from 04:14 ET on 2026-09-30). Schwab's equity window is wider than
+    ours, so a difference is a mismatch only where it is certain: our high above HIGH_PRICE or our
+    low below LOW_PRICE, at any time. Our range lagging Schwab's is not one: Schwab's include the
+    minute still trading and prints up to 16:00:01 ET (SPY's low 762.20 -> 762.18 at 16:00:01 on
+    2026-09-30, not its closing price 762.63), which share the 16:00 minute's bar with post-close
+    trades outside Schwab's range (that bar's low was below Schwab's for IWM, PLTR, QQQ and TSLA):
+    no window of bars equals Schwab's, so no two-sided comparison is certain. A mismatch is
+    reported with both values and the note the daily bar's chart shows; nothing is corrected."""
     if not minutes:
         return {"state": RECONCILE_NOT_COMPARED, "reason": "no minute held"}
+    asset = (quote or {}).get("asset_main_type")
+    if asset != "EQUITY":
+        return {"state": RECONCILE_NOT_COMPARED, "reason": (
+            "Schwab's index high/low cover different hours" if asset == "INDEX" else
+            f"Schwab's high/low are reconciled for an equity only (asset type {asset or 'not received'})")}
     date = et_date_str_from_ts_utc(minutes[-1]["t"])
     close = session_close_mins_for_et_date(date)
     rth = [m for m in minutes if close is not None and RTH_START_MINS <= et_minute_total_from_ts_utc(m["t"]) < close]
@@ -221,14 +271,14 @@ def regular_session_reconciliation(minutes: list[dict], covered: list[tuple[floa
         return {"state": RECONCILE_NOT_COMPARED,
                 "reason": "Schwab's HIGH_PRICE / LOW_PRICE not received or 0 (no regular-session trade)"}
     bars_high, bars_low = max(m["h"] for m in rth), min(m["l"] for m in rth)
-    ended = not uncovered(covered, open_minute, open_minute + (close - RTH_START_MINS - 1) * 60.0)
-    differ = (bars_high, bars_low) != (high, low) if ended else (bars_high > high or bars_low < low)
-    out = {"state": RECONCILE_MISMATCH if differ else RECONCILED, "bars_high": bars_high, "bars_low": bars_low,
-           "schwab_high": high, "schwab_low": low, "session_ended": ended}
-    if differ:
-        # as sent, to the last digit: a sub-cent difference would read equal at two decimals
-        out["note"] = (f"high/low differ from Schwab: ours {bars_high:.10g}/{bars_low:.10g} / "
-                       f"Schwab {high:.10g}/{low:.10g}")
+    out = {"state": RECONCILED, "bars_high": bars_high, "bars_low": bars_low, "schwab_high": high, "schwab_low": low}
+    beyond = ([f"our high {price_text(bars_high)} is above Schwab's {price_text(high)} by "
+               f"{price_difference_text(bars_high - high)}"] if bars_high > high else []) + \
+             ([f"our low {price_text(bars_low)} is below Schwab's {price_text(low)} by "
+               f"{price_difference_text(low - bars_low)}"] if bars_low < low else [])
+    if beyond:
+        out["state"] = RECONCILE_MISMATCH
+        out["note"] = "regular session 09:30–16:00 ET high/low differ from Schwab: " + "; ".join(beyond)
     return out
 
 
@@ -257,6 +307,10 @@ def _trade_age_sec(trade_ts: Optional[float], now: float) -> Optional[float]:
     return round(max(0.0, now - float(trade_ts)), 1)
 
 
+def _refused_text(reason: Optional[str]) -> Optional[str]:
+    return None if reason is None else f"Schwab refused this symbol's stream: {reason}"
+
+
 def price_row(ticker: str, now: float) -> dict[str, Any]:
     """The finished row the screen paints for one symbol, as it is at `now` (epoch seconds)."""
     tk = ticker_storage_key(ticker)
@@ -275,14 +329,18 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
     return {
         "ticker": tk,
         "spot": spot,
-        "spot_disp": f"{spot:.2f}" if spot is not None else None,
+        "spot_disp": price_text(spot) if spot is not None else None,
         "spot_state": "live" if spot is not None else ("closed" if closed else "unavailable"),
+        # why there is no live price when Schwab refused the symbol's stream (its own answer,
+        # e.g. code 19 REACHED_SYMBOL_LIMIT; the limit itself is not in Schwab's documents)
+        "unavailable_reason": (None if spot is not None or closed else
+                               _refused_text(lmp.refused_reason(tk, "LEVELONE_EQUITIES", now))),
         "spot_source": SPOT_SOURCE if spot is not None else None,
         # the feed itself (heartbeat, socket open, symbol held) -- distinct from "this symbol
         # has traded this session": live feed + no trade yet reads NO TRADE YET, not no feed
         "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now),
         # market closed: the last streamed trade, a past observation labelled with its time
-        "closed_last": {"price": float(last["spot"]), "spot_disp": f"{float(last['spot']):.2f}",
+        "closed_last": {"price": float(last["spot"]), "spot_disp": price_text(float(last['spot'])),
                         "as_of": ct_label(last["trade_ts"])}
                        if last else None,
         "bid": field("bid"),

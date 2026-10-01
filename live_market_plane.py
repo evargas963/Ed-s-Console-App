@@ -38,6 +38,9 @@ _CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
 #: and outside it only on a full refresh; CHANGE_PERCENT never.
 _SIGNED_FIELDS = ("NET_CHANGE", "NET_CHANGE_PERCENT", "REGULAR_MARKET_CHANGE_PERCENT")
 _fields_by_ticker: dict[str, dict[str, tuple[float, float]]] = {}
+#: per ticker, Schwab's assetMainType as sent (text: EQUITY, INDEX, ...); what its HIGH_PRICE /
+#: LOW_PRICE cover depends on it (live_price_rows.regular_session_reconciliation)
+_asset_main_type: dict[str, str] = {}
 
 
 def _read_stream_field(name: str, raw: Any) -> Optional[float]:
@@ -82,6 +85,9 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
                 fs.pop(name, None)       # not a number (-999, text, NaN): cleared
             else:
                 fs[name] = (v, rts)
+        if isinstance(item.get("assetMainType"), str):
+            _asset_main_type[t] = item["assetMainType"]
+        asset_main_type = _asset_main_type.get(t)
         snapshot = dict(fs)
     if not seen or "LAST_PRICE" not in snapshot:
         return False
@@ -106,6 +112,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         "open_price": val("OPEN_PRICE"),
         "high_price": val("HIGH_PRICE"),
         "low_price": val("LOW_PRICE"),
+        "asset_main_type": asset_main_type,
         "prior_close": val("CLOSE_PRICE"),
         # Schwab's own change vs the prior close (0 hops): NET_CHANGE_PERCENT is the last price's,
         # extended hours included; REGULAR_MARKET_CHANGE_PERCENT is the regular session's
@@ -243,6 +250,14 @@ def feed_live_for(symbol: str | None, service: str, now: float) -> bool:
         return False
     with _lock:
         return t in _feed["held"].get(service, ())
+
+
+def refused_reason(symbol: str | None, service: str, now: float) -> str | None:
+    """Schwab's answer when it refused the daemon's subscription of `symbol` on `service` (e.g.
+    code 19 REACHED_SYMBOL_LIMIT), from the daemon's live status at `now`; None when not refused."""
+    t = ticker_storage_key(symbol or "")
+    refused = ((daemon_status(now) or {}).get("refused") or {}).get(service) or {}
+    return next((why for sym, why in refused.items() if ticker_storage_key(sym) == t), None) if t else None
 
 
 def book_is_live(symbol: str | None, service: str, now: float) -> bool:

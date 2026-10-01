@@ -188,7 +188,7 @@
       S.bars = bars; S.barsAnswered = gen;
       // the Order Flow card's hour of 1-minute bars, served whole with the history (recent_1m)
       S.flowBars = d ? d.recent_1m || [] : null; S.flowReason = null; paintCards();
-      S.chart.setBars(bars, tf, shown(), d && d.last_bar && d.last_bar.label);
+      S.chart.setBars(bars, tf, shown(), d && d.last_bar && d.last_bar.label, d && d.note);
       $('tdmChartEmpty').hidden = bars.length > 0;
       $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
         : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
@@ -201,7 +201,9 @@
   function takeBar(b) {
     if (!S.chart || b.ticker !== st().key || S.barsAnswered !== S.gen) return;
     var had = S.bars.length;
-    S.chart.setUnavailable(b.tf[S.tf] ? null : (b.unavailable || {})[S.tf]);   // the served reason, if any
+    // the bar, or the served reason; a push carrying neither (a late minute's) keeps the last reason
+    if (b.tf[S.tf]) S.chart.setUnavailable(null);
+    else if ((b.unavailable || {})[S.tf]) S.chart.setUnavailable(b.unavailable[S.tf]);
     S.chart.setNote((b.notes || {})[S.tf]);                                     // the served note, if any
     if (b.tf[S.tf]) {
       S.chart.pushBar(b.tf[S.tf], b.last_bar && b.last_bar.label);   // the chart library places it

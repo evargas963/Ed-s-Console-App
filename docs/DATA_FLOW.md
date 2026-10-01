@@ -47,7 +47,8 @@ opens no second streaming socket).
 |---|---|---|
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
 | daemon → console | local WebSocket 127.0.0.1:8799 | each Schwab book, option quote, 1-minute bar and news message as sent (an equity quote travels only as the price row below); on connect, the current state first (each option quote field's last value, each whole book); a completed bar or a headline is a past event and is not resent: the console names the span it was disconnected (`PUSH_GAP` in its log) and the bars of that span are not refilled |
-| console → daemon | same socket | the "wanted" list: every symbol per Schwab service. For the equity services (quotes, 1-minute bars, news) it only adds: the daemon streams the board (the `logging_universe` table, read at its start: `capture.standing_roster`) whatever the list says, and on a connection never unsubscribes an equity symbol, so a console restart's partial first list or a page closing cuts no stream (`capture.plan`; W-09) |
+| console → daemon | same socket | the "wanted" list: every symbol per Schwab service. For the equity services (quotes, 1-minute bars, news) it only adds: the daemon streams the board (the `logging_universe` table, read at its start: `capture.standing_roster`) whatever the list says, and on a connection never unsubscribes an equity symbol, so a console restart's partial first list or a page closing cuts no stream (`capture.plan`; W-09). Without the console's database at its start the daemon still starts and streams the list; the roster is unavailable with the reason (logged, and `standing_roster` in every status) until its next start. A symbol Schwab refuses (e.g. code 19 REACHED_SYMBOL_LIMIT; the limit is not in Schwab's documents) reads unavailable with Schwab's own answer (`price_row.unavailable_reason`) |
+| daemon → console | the same :8799 push | each symbol's bar verdict (`barstate.SYM`): today's minutes covered through now or not, the daily bar's reconciliation and notes; the last one on connect |
 | daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second; and each completed 1-minute bar of a subscribed symbol as the chart bar it makes at every timeframe (`bars`). A page back from a drop subscribes with the daemon's time of the last beat it had (`disconnected_since`) and is told the gap in its live bars (`bars_gap`); no bar received in the gap is resent. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
 | daemon → console | the same :8800 push | the same price rows, for the equities the console wants streamed: the console's only live price |
 | Schwab → console | Schwab REST | full option chains; one quote at startup to validate the login |
@@ -113,17 +114,34 @@ opens no second streaming socket).
   stream covers from the first minute to start after Schwab acknowledges the symbol's
   CHART_EQUITY subscription (`sub.CHART_EQUITY` at the daemon's receive time,
   `capture.Daemon.sync`; never before the collect window's first minute, 09:15 ET) through every
-  completed minute while that subscription and the socket are unbroken: an acknowledged UNSUBS,
-  the socket closing (`sub.CONNECTION` CLOSED, `capture.Daemon.disconnect`; the daemon closes
-  it when no Schwab frame, heartbeats included, arrived for `capture.DEAD_SEC`) or a new SUBS
-  ends the span (`live_ui.on_subscription`). On each streamed minute every span still uncovered
-  from 09:15 ET to the newest is asked of Schwab's 1-minute price history, one request per span
-  still uncovered, from its start to now (`capture.schwab_minutes`, extended hours, with the
-  daemon's one Schwab client, two requests in flight at most, `live_ui.HISTORY_IN_FLIGHT`; the
-  daemon is the only caller of Schwab), and asked again on the next streamed minute until
-  covered. A reply covers from its request's start through its newest completed minute: one
-  reaching the stream's resumption covers the whole span (a thin ticker's 09:15 ET to its first
-  trade, a quiet stretch); an empty reply covers nothing. Where the stream and the price history both give a minute the streamed one
+  completed minute while that subscription and the socket are unbroken; its span is held
+  (`covered`) through each bar it brings. An acknowledged UNSUBS or the socket closing
+  (`sub.CONNECTION` CLOSED, `capture.Daemon.disconnect`; the daemon closes it when no Schwab
+  frame, heartbeats included, arrived for `capture.DEAD_SEC`) ends it; a SUBS or ADD acknowledged
+  again restarts it at the first minute after that acknowledgement. A loss the daemon can detect
+  ends every stream's span it could have touched at that moment, and since it cannot tell which,
+  restarts every one at the first minute after it (`sub.CONNECTION` LOSS): a Schwab frame it
+  could not read (`capture.Daemon.read_for`), or a drop on live_ui's one queue of bars and
+  subscription answers (in publish order, so a bar is judged against the subscriptions as they
+  were when it was published). A failure tracking those answers stops the daemon
+  (`capture.run_until_a_part_ends`, exit 1; `start_capture_daemon.bat` restarts it): it never
+  serves coverage it no longer tracks. Every span still uncovered from 09:15 ET to the newest
+  completed minute is asked of Schwab's 1-minute price history, one request per span still
+  uncovered, from its start to now (`capture.schwab_minutes`, extended hours, with the daemon's
+  one Schwab client, two requests in flight at most, `live_ui.HISTORY_IN_FLIGHT`; the daemon is
+  the only caller of Schwab), on each streamed minute and on the daemon's clock once a minute
+  per symbol (`live_ui.tick`, PRICE_HISTORY_RETRY_SEC), until covered; Schwab's HTTP 429 holds
+  every request back for 5 s, doubling on each further 429 to 300 s, logged (RATE_LIMIT_BACKOFF_*).
+  A reply covers from its request's start through its newest completed minute: one reaching the
+  stream's resumption covers the whole span (a thin ticker's 09:15 ET to its first trade, a quiet
+  stretch); an empty reply covers nothing. A stream's minutes after its last bar are covered only
+  while it is unbroken: after a break they are asked like any other (a thin ticker's stay
+  uncovered until a reply reaches a later trade). The daemon publishes each symbol's verdict
+  when it changes (`barstate.SYM`, `live_ui.publish_states`): today's minutes covered through
+  now or not, with the reason, and the daily bar's reconciliation and notes; live_push forwards
+  it (the last one on connect) and the console carries it (`streaming.bar_state`, dropped when
+  the push is gone): the one currency of every value built from today's bars (§6.6). Where the
+  stream and the price history both give a minute the streamed one
   stands, a difference counted and logged with both and with the symbol's and the board's count
   (`live_ui._hold`; W-15). Inside a covered span a minute with no bar is a minute with no trade:
   Schwab sends a CHART_EQUITY bar only for a minute with a trade (measured 2026-09-29 read-only
@@ -134,17 +152,29 @@ opens no second streaming socket).
   Order Flow hour, only when every minute from its bucket's start to its newest is covered;
   otherwise it is unavailable naming each span missing ("minutes HH:MM – HH:MM CT not received
   from Schwab", with the last request's failure; with no Schwab sign-in, the sign-in's own
-  message), never filled or guessed (`live_price_rows.bar_update`). Each update also carries the
-  day's regular-session high and low reconciled with Schwab's LEVELONE HIGH_PRICE / LOW_PRICE
-  (Streamer Guide p.17: regular session only, the minute still trading included), compared once
-  the regular session is covered from 09:30 ET and neither is 0. While the session trades the
-  completed bars can lag Schwab but never exceed it, so only a bar high above HIGH_PRICE or a
-  bar low below LOW_PRICE is a mismatch; once the session's last minute is covered, any
-  difference is. A mismatch is flagged on the update with both values and the note the daily
-  bar's chart legend prints as served (`notes.D`: "high/low differ from Schwab: ours … /
-  Schwab …"; a match or no comparison prints nothing), counted and logged when it begins,
-  nothing corrected (`live_price_rows.regular_session_reconciliation`;
-  volume is not reconciled: TOTAL_VOLUME includes the extended session, p.16). Each reply's
+  message), never filled or guessed (`live_price_rows.bar_update`); a push that carries neither
+  a timeframe's bar nor its reason (a late minute's) leaves the chart's last reason shown. Each
+  update also carries, for an equity (Schwab assetMainType EQUITY: stocks and ETF shares), the
+  day's completed regular-session minutes (09:30-15:59 ET, every trade a regular-session one)
+  reconciled with Schwab's LEVELONE HIGH_PRICE / LOW_PRICE, compared once they are covered from
+  09:30 ET and neither is 0. An index is not compared ("Schwab's index high/low cover different
+  hours"): it does not follow the Streamer Guide's regular-session rule (p.17); its HIGH/LOW keep
+  moving after 16:00 ($SPX until 16:05:15 ET, $NDX 16:00:02) or start before 09:30 ($VIX from
+  04:14 ET). Schwab's equity window is wider than ours, so a mismatch is flagged only where it is
+  certain: our high above HIGH_PRICE or our low below LOW_PRICE, at any time. Our range lagging
+  Schwab's is not one: Schwab's include the minute still trading and prints to 16:00:01 ET
+  (measured 2026-09-30: SPY's low 762.20 → 762.18 at 16:00:01, not its closing price 762.63),
+  which share the 16:00 minute's bar with post-close trades outside Schwab's range (that bar's
+  low was below Schwab's for IWM 277.79 < 277.86, PLTR, QQQ and TSLA), so neither including nor
+  excluding the 16:00 minute makes a two-sided comparison certain. Across all 45 symbols of
+  2026-09-30 nothing is flagged
+  (`test_the_reconciliation_flags_nothing_on_a_real_day_across_the_board`). A mismatch is flagged
+  on the update with both values and the note the daily bar's chart legend prints as served
+  (`notes.D` on the push, `note` on `/api/bars1m` so a chart opened later shows it: "regular
+  session 09:30–16:00 ET high/low differ from Schwab: our high … is above Schwab's … by …", in the
+  server's price format with the difference to Schwab's finest tick), counted and logged when it
+  begins, nothing corrected (`live_price_rows.regular_session_reconciliation`; volume is not
+  reconciled: TOTAL_VOLUME includes the extended session, p.16). Each reply's
   minutes travel to the console as one message (`barhist.SYM`, not a stream message, so
   `stream_capture.db` does not keep it; a full bus queue is counted and logged) to its one bar
   writer, which writes the ones the store lacks (source `schwab_pricehistory`) and never
@@ -545,22 +575,28 @@ Each value's definition.
   above 1 minute with an uncovered minute is unavailable naming each span missing, until the
   price history answers it; history loads only from the store, as history.
 - *Reconciliation:* the day's regular-session high and low against Schwab's HIGH_PRICE /
-  LOW_PRICE, on every update (`reconciliation`: match, mismatch with both values, or not
-  compared with the reason; while the session trades only a bar outside Schwab's range is a
-  mismatch, once its last minute is covered any difference is); a mismatch's note is printed on
-  the daily bar's chart legend (`notes.D`).
+  LOW_PRICE, on every update (`reconciliation`: consistent, mismatch with both values, or not
+  compared with the reason; an equity's only, a mismatch only where certain: our completed
+  09:30-15:59 ET minutes above HIGH_PRICE or below LOW_PRICE; an index not compared); a mismatch's note is
+  printed on the daily bar's chart legend (`notes.D` on the push, `note` on `/api/bars1m`).
 - *Consumers:* every chart, the price levels (§6.6), the ATR.
 - *Tests:* `test_bars_pushed_v1`, `test_bars_and_windows_v1`, `test_collect_window_law_v1`.
 
 **6.6 Session price levels and zones.** §3.4 Price levels.
 - *Producer and owner:* `_publish_price_levels` → `liquidity_value_engine.build_price_level_snapshot`,
   one snapshot per bar generation.
-- *Current when:* in the collect window, its newest bar ends no earlier than the minute before
-  the last completed one (a bar is due one minute after its minute ends;
-  `server.price_level_staleness`, at the route's instant). A prior session's level is a complete
-  fact; before the window on a trading day the session has not started (the reason names when
-  its first bar ends); after the window the session's levels are served as of their newest bar.
-- *Otherwise:* stale, with the reason (`/api/levels` `session_levels` and each session level's
+- *Current when:* the daemon's one verdict on the ticker's bars says today's minutes are covered
+  through now (`barstate.SYM`, `live_ui.publish_states` → live_push → `streaming.bar_state`;
+  `server.price_level_staleness`, at the route's instant). Schwab sends no bar for a minute with
+  no trade, so a quiet ticker's covered minutes are current; the rule "stale 2 minutes after the
+  newest bar" read TSL (~154) and MTA (~120) regular-session minutes STALE on a healthy feed on
+  2026-09-30 and was a second authority: deleted. It applies to everything built from today's
+  bars on that route (the levels, the VWAP curve, the volume profile). A prior session's level is
+  a complete fact; before the window on a trading day the session has not started (the reason
+  names when its first bar ends); after the window the session's levels are served as of their
+  newest bar.
+- *Otherwise:* stale, with the daemon's reason (the minutes not received; no verdict from the
+  daemon: stale, saying so) (`/api/levels` `session_levels` and each session level's
   `staleness`; the Trade Desk prints STALE and the reason); each level with no value absent with
   its reason; a window not yet ended is absent with the time it ends.
 - *Consumers:* `/api/levels`, `/api/liquidity-snapshot` (the zones), the charts' levels.

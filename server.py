@@ -2651,10 +2651,13 @@ def get_terrain_strikes(ticker: str = Query(...)):
         log.debug("terrain strikes live read failed %s: %s", tk, e)
     prior, prior_src = _snap.get("_prior_strikes") or (None, None)
 
-    def _rows(rows: "dict | None") -> dict:
-        """One shape for today's and the prior day's rows: the three scopes and the count of
-        contracts in no row (expiry_unknown; none counted when there are no rows)."""
-        return rows or {"all": [], "near": [], "far": [], "expiry_unknown": None}
+    def _rows(rows: "dict | None", why: str) -> dict:
+        """One shape for today's and the prior day's rows: the three scopes, the count of
+        contracts in no row (expiry_unknown) and, when there are no rows, why (absent_reason,
+        printed by the per-strike gamma panel)."""
+        if rows:
+            return {**rows, "absent_reason": None}
+        return {"all": [], "near": [], "far": [], "expiry_unknown": None, "absent_reason": why}
 
     peak = (_ps.get("peak") or {}) if isinstance(_ps, dict) else {}
     live_spot, live_src, _live_ts = resolve_spot(tk)   # the one spot on every screen
@@ -2662,7 +2665,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
         "ticker": tk, "spot": live_spot,
         "spot_source": live_src,
         "priced_at_spot": spot_used,
-        "today": _rows(today),
+        "today": _rows(today, "no levels published for this ticker yet"),
         # the Chart view's DEX and OI profiles: each measure's rows (terrain_engine
         # _per_strike_measure_rows), its strike nearest the live price (the window's centre) and
         # its largest-magnitude strike, as published (per_strike_view `peak`)
@@ -2688,7 +2691,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
         # window (16:30 ET) and nothing said so. Naming the right source proves only that the
         # right tap was opened, never that anything is still coming out of it.
         **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk, now),
-        "prior": _rows(prior),
+        "prior": _rows(prior, "no chain capture from the market day before the chain's"),
         "prior_source": prior_src,
     })
 
@@ -2704,7 +2707,9 @@ def get_bars1m(ticker: str = Query(...),
     `limit` counts 1-minute bars: when the read reaches it, the oldest rolled bar may have lost
     its first minutes to the cut and is not served. `last_bar`: the newest completed minute and
     its label. `recent_1m`: the newest RECENT_1M_BARS of the 1-minute bars read (fewer when
-    `limit` is smaller)."""
+    `limit` is smaller). `note`: the daemon's note for this timeframe's chart (live_ui
+    barstate), or None."""
+    from app.options.order_flow.streaming import bar_state
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
     rolled = _lpr.aggregate_bars(bars, tf)
@@ -2715,7 +2720,10 @@ def get_bars1m(ticker: str = Query(...),
                          "last_bar": _lpr.last_bar(bars[-1]["t"] if bars else None),
                          # the newest hour of the 1-minute bars read: the Order Flow card's, as the
                          # bar push serves it (live_price_rows.recent_1m)
-                         "recent_1m": _lpr.recent_1m(bars)})
+                         "recent_1m": _lpr.recent_1m(bars),
+                         # the note this timeframe's chart shows, the daemon's as pushed (the daily
+                         # bar's reconciliation with Schwab), so a chart opened later shows it too
+                         "note": ((bar_state(tk) or {}).get("notes") or {}).get(tf)})
 
 
 def aggregate_vwap(rows: list, tf: str) -> list:
@@ -3968,14 +3976,16 @@ PRICE_LEVEL_SESSION_ENDED, PRICE_LEVEL_PRIOR_SESSION = "session_ended", "prior_s
 PRICE_LEVEL_SESSION_NOT_STARTED = "session_not_started"
 
 
-def price_level_staleness(semantic_scope: str, newest_bar_end: "float | None", now: float) -> dict:
+def price_level_staleness(semantic_scope: str, newest_bar_end: "float | None", now: float,
+                          bar_state: "dict | None") -> dict:
     """Whether a session price level is current at `now` (epoch seconds), judged by its source:
-    the 1-minute bars it was built from, whose newest ends at `newest_bar_end`. A prior session's
-    level is a complete fact. Inside the collect window a bar is due one minute after its minute
-    ends (Schwab sends it about 2.7 s after): a level whose newest bar ends before the minute
-    preceding the last completed one is stale, with the reason. Before the window on a trading day
-    the session has not started; after it the levels are the session's, as of their newest bar.
-    {state, stale, reason}."""
+    the day's 1-minute bars, whose newest ends at `newest_bar_end`, and their one currency
+    authority, the daemon's `bar_state` (streaming.bar_state: whether today's minutes are covered
+    through now -- Schwab sends no bar for a minute with no trade, so a quiet ticker's covered
+    minutes are current). A prior session's level is a complete fact. Before the collect window on
+    a trading day the session has not started. Otherwise the level is stale, with the daemon's
+    reason, while a minute of the day is not covered (or the daemon has not reported), and after
+    the window it is the session's. {state, stale, reason}."""
     if semantic_scope == "prior_rth_session":
         return {"state": PRICE_LEVEL_PRIOR_SESSION, "stale": False,
                 "reason": "the prior session's level: its session is complete"}
@@ -3985,15 +3995,15 @@ def price_level_staleness(semantic_scope: str, newest_bar_end: "float | None", n
         first_end = last_end + (COLLECT_WINDOW_START_MINS + 1 - et_minute_total_from_ts_utc(last_end)) * 60
         return {"state": PRICE_LEVEL_SESSION_NOT_STARTED, "stale": False,
                 "reason": f"today's session has not started: its first 1-minute bar ends {ct_label(first_end)}"}
+    if bar_state is None:
+        return {"state": PRICE_LEVEL_STALE, "stale": True,
+                "reason": "the capture daemon has not reported whether this ticker's 1-minute bars are whole"}
+    if bar_state.get("coverage") != _lpr.COVERAGE_CURRENT:
+        return {"state": PRICE_LEVEL_STALE, "stale": True, "reason": bar_state.get("coverage_reason") or ""}
     if not is_collect_window_bar_end_ts_utc(last_end):
         return {"state": PRICE_LEVEL_SESSION_ENDED, "stale": False,
                 "reason": "the session's bars have ended" + (
                     "" if newest_bar_end is None else f"; as of the bar ending {ct_label(newest_bar_end)}")}
-    if newest_bar_end is None or newest_bar_end < last_end - 60:
-        return {"state": PRICE_LEVEL_STALE, "stale": True, "reason": (
-            "no 1-minute bar has arrived " + ("today" if newest_bar_end is None
-                                              else f"since the one ending {ct_label(newest_bar_end)}")
-            + f"; the bar ending {ct_label(last_end - 60)} is due")}
     return {"state": PRICE_LEVEL_CURRENT, "stale": False, "reason": ""}
 
 
@@ -4035,6 +4045,8 @@ def get_levels(ticker: str = Query(...),
     served_ts = _time.time()
     spot, spot_source, spot_ts = resolve_spot(tk)
     snap = canonical_price_level_snapshot(tk)
+    from app.options.order_flow.streaming import bar_state
+    bars_verdict = bar_state(tk)               # the daemon's: today's minutes covered through now
 
     levels: list[dict] = []
     for lid, value in (snap.levels.items() if snap is not None else ()):
@@ -4044,7 +4056,7 @@ def get_levels(ticker: str = Query(...),
             "as_of_ts_utc": as_of,
             "age_sec": None if as_of is None else round(served_ts - as_of, 1),
             "stale_after_sec": None,
-            **price_level_staleness(value.semantic_scope, as_of, served_ts),
+            **price_level_staleness(value.semantic_scope, as_of, served_ts, bars_verdict),
         }
         levels.append(row)
     # the prior close, carried from the daemon's price row (Schwab's CLOSE_PRICE)
@@ -4115,8 +4127,9 @@ def get_levels(ticker: str = Query(...),
         # how old the snapshot's newest bar is at this serving
         "snapshot_age_sec": (round(served_ts - snap.as_of_ts_utc, 1)
                              if snap is not None and snap.as_of_ts_utc is not None else None),
-        # today's session levels judged by their bars at this serving (price_level_staleness)
-        "session_levels": (price_level_staleness("session_rth", snap.as_of_ts_utc, served_ts)
+        # today's session levels, the VWAP curve and the profile, all built from today's bars:
+        # their currency at this serving (price_level_staleness, from the daemon's coverage)
+        "session_levels": (price_level_staleness("session_rth", snap.as_of_ts_utc, served_ts, bars_verdict)
                            if snap is not None else None),
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,

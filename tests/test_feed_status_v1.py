@@ -19,7 +19,7 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path, monkeypatch)
     writer = CaptureWriter(db)
     bus, health = MessageBus(), HealthRegistry()
     health.beat("NEWS_HEADLINE", 990.0)
-    daemon = capture.Daemon(bus, health, tmp_path / "wanted.json", frozenset())
+    daemon = capture.Daemon(bus, health, tmp_path / "wanted.json", capture.StandingRoster(frozenset()))
     daemon.stream = _Stream()
     got = []
     monkeypatch.setattr(bus, "publish", lambda topic, msg: got.append((topic, msg)))
@@ -74,7 +74,7 @@ def test_a_stopped_record_reads_stale_in_the_console(tmp_path, monkeypatch):
 def test_a_failed_round_is_logged_and_the_next_round_runs(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(capture, "FEED_STATUS_EVERY_SEC", 0.01)
     bus, health = MessageBus(), HealthRegistry()
-    daemon = capture.Daemon(bus, health, tmp_path / "wanted.json", frozenset())
+    daemon = capture.Daemon(bus, health, tmp_path / "wanted.json", capture.StandingRoster(frozenset()))
     daemon.stream = _Stream()
     calls = {"n": 0}
     real = daemon.status

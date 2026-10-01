@@ -55,7 +55,8 @@
     var P = c.palette();
     var side = { support: P.up, resistance: P.down, value: P.ink3 };
     var zones = (snap && snap.zones) || [];
-    c.setBars((barsD && barsD.bars) || [], (barsD && barsD.tf) || _tf, st().display || tk, barsD && barsD.last_bar && barsD.last_bar.label);
+    c.setBars((barsD && barsD.bars) || [], (barsD && barsD.tf) || _tf, st().display || tk, barsD && barsD.last_bar && barsD.last_bar.label,
+      barsD && barsD.note);
     c.setZones(zones.map(function (z) {
       return { lo: z.zone_low, hi: z.zone_high, color: side[z.zone_side] || P.ink3, label: z.zone_label + ' · ' + z.confluence_score + '×' };
     }));
@@ -115,8 +116,10 @@
       var b = e.detail, h = host();
       if (!b || b.ticker !== st().key || _last.barsFor !== ticker() + '|' + _tf || !h || !isMap() || !_chart) return;
       // a push carries a timeframe's bar only when it is that chart's newest and its minutes are
-      // all held (live_price_rows.bar_update); otherwise the served reason, if any, is shown
-      _chart.setUnavailable(b.tf[_tf] ? null : (b.unavailable || {})[_tf]);
+      // all held (live_price_rows.bar_update), or its reason; a push carrying neither (a late
+      // minute's) leaves the last served reason shown
+      if (b.tf[_tf]) _chart.setUnavailable(null);
+      else if ((b.unavailable || {})[_tf]) _chart.setUnavailable(b.unavailable[_tf]);
       _chart.setNote((b.notes || {})[_tf]);                          // the served note, if any
       if (!b.tf[_tf]) return;
       _chart.pushBar(b.tf[_tf], b.last_bar && b.last_bar.label);   // the chart library places it

@@ -83,6 +83,16 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await expect(asof).toContainText('GEX terrain live'); // levels clock (separate)
   });
 
+  test('GEX-by-strike with no rows prints the served reason, not words of its own', async ({ page }) => {
+    // /api/terrain/strikes serves why there are no rows (today.absent_reason); the panel had its
+    // own wording ("no banked per-strike gamma") and the reason was deleted (fourth review)
+    const why = 'no levels published for this ticker yet';
+    const none = Object.assign({}, STRIKES, { today: { all: [], near: [], far: [], expiry_unknown: null, absent_reason: why } });
+    await routes({ strikes: none })(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#gbsBody')).toHaveText(why);
+  });
+
   test('the Key Levels line prints the terrain\'s one served state', async ({ page }) => {
     await routes()(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });

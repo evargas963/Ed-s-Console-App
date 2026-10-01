@@ -25,6 +25,7 @@ import live_market_plane as lmp
 import live_price_rows
 import server as srv
 from app.market_data.schwab.streaming import live_ui
+from app.market_data.schwab.streaming.capture import Daemon, StandingRoster, run_until_a_part_ends, schwab_minutes
 from db import EdDB
 from stream_spine import MessageBus, bar_msg, subscription_msg
 from time_et import ET, ct_label
@@ -512,7 +513,6 @@ def test_the_daemon_asks_schwab_for_the_days_minutes_with_extended_hours():
     extended hours (the collect window opens 09:15 ET), and Schwab's candles as sent, asked with
     the daemon's one Schwab client (every request built its own from the token file). The stand-in
     is Schwab's client, answering the captured minutes."""
-    from app.market_data.schwab.streaming.capture import Daemon, schwab_minutes
     calls = []
 
     class _Response:
@@ -527,7 +527,7 @@ def test_the_daemon_asks_schwab_for_the_days_minutes_with_extended_hours():
             calls.append((symbol, kw))
             return _Response()
 
-    daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"), frozenset())
+    daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"), StandingRoster(frozenset()))
     daemon.client = _Client()
     fetch = schwab_minutes(daemon)
     start, end = datetime(2026, 9, 25, 9, 15, tzinfo=ET).timestamp(), RESTART
@@ -545,9 +545,8 @@ def test_without_a_schwab_sign_in_the_reason_served_is_schwabs_own(monkeypatch):
     is the client builder's answer for an expired token."""
     from types import SimpleNamespace
 
-    from app.market_data.schwab.streaming.capture import Daemon, schwab_minutes
     expired = "refresh token expired; run python reauth_schwab.py"
-    daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"), frozenset())
+    daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"), StandingRoster(frozenset()))
 
     async def run_once():
         stop = asyncio.Event()
@@ -621,8 +620,23 @@ def test_a_full_bus_queue_is_logged_not_silent(caplog):
 #: what a day's stream suffers: Schwab acknowledges an UNSUBS of the symbol and later a SUBS
 #: (leave), the Schwab socket closes and the daemon reconnects (reconnect), the daemon restarts
 #: holding nothing (restart), the next price-history reply is empty (empty) or lacks its newest
-#: three minutes, not yet in Schwab's history (lagging)
-CUTS = ("leave", "reconnect", "restart", "empty", "lagging")
+#: three minutes, not yet in Schwab's history (lagging), the daemon cannot read the Schwab frame
+#: carrying the minute's bar (lost)
+CUTS = ("leave", "reconnect", "restart", "empty", "lagging", "lost")
+#: the random-cut replay's seeds, the same every run (each printed)
+REPLAY_SEEDS = (280206376, 1241873361, 1824975115, 2548402261, 650522273, 752934548)
+
+
+class _Unreadable:
+    """A Schwab stream whose next frame cannot be read (schwab-py raised parsing it), then silent."""
+    def __init__(self):
+        self.read = False
+
+    async def handle_message(self):
+        if not self.read:
+            self.read = True
+            raise ValueError("Expecting value: line 1 column 1 (char 0)")
+        await asyncio.sleep(10)
 
 
 def _replay(minutes: list[dict], first: int, cuts: dict, away: dict,
@@ -634,10 +648,10 @@ def _replay(minutes: list[dict], first: int, cuts: dict, away: dict,
     `cuts[k]` happens; a leave, reconnect or restart keeps the next `away[k]` minutes from being
     streamed, then Schwab acknowledges the SUBS again: as the next minute begins, or, for a
     minute in `ack_after`, after its bar was received (the acknowledgement and the bar travel on
-    separate bus queues). The socket's close is the daemon's own message (capture.Daemon.
-    disconnect). Returns, per streamed minute k, the updates a browser was sent once the requests
-    that minute made were answered, and every request (start, end)."""
-    from app.market_data.schwab.streaming.capture import Daemon
+    separate bus queues). The socket's close and a frame the daemon could not read are the
+    daemon's own messages (capture.Daemon.disconnect, read_for). Returns, per streamed minute k,
+    the updates a browser was sent once the requests that minute made were answered, and every
+    request (start, end)."""
     truth, asked, faults, clock = _schwab({"SPY": minutes}), [], [], {"now": 0.0}
 
     def history(symbol, start, end):
@@ -654,7 +668,7 @@ def _replay(minutes: list[dict], first: int, cuts: dict, away: dict,
         return s, c
 
     async def main():
-        daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"), frozenset())
+        daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"), StandingRoster(frozenset()))
         closed = daemon.bus.subscribe("sub.", maxsize=64, name="test_subscriptions")
         (srv_ui, c), steps, away_left, ack = start(), [], 0, False
         srv_ui.on_subscription(_subscribed("SPY", ts=minutes[first]["timestamp"] / 1000.0
@@ -671,6 +685,12 @@ def _replay(minutes: list[dict], first: int, cuts: dict, away: dict,
                 srv_ui.on_subscription((await closed.get())[1])
             elif cut == "restart":
                 srv_ui, c = start()
+            elif cut == "lost":                       # minute k's bar is in a frame the daemon cannot read
+                daemon.stream = _Unreadable()
+                await daemon.read_for(0.05)
+                loss = (await asyncio.wait_for(closed.get(), 1))[1]
+                srv_ui.on_subscription(dict(loss, ts=clock["now"]))   # its receive time: the stand-in's
+                continue
             if cut in ("leave", "reconnect", "restart"):
                 away_left, ack = away.get(k, 0), True
             if away_left:
@@ -720,17 +740,16 @@ def test_a_day_cut_at_random_never_serves_a_bar_missing_a_minute_and_ends_whole(
     daemon restarting. After every step no bar is served unless it holds every minute (a bar was
     served complete from whatever minutes were held, and a gap after the first streamed minute
     was never asked for); once the price history covers the gaps, every bar is the route's. The
-    seed is printed (ED_REPLAY_SEED replays one)."""
+    same seeds run every time (REPLAY_SEEDS, each printed); ED_REPLAY_SEED runs one other."""
     monkeypatch.setattr(lmp, "_by_ticker", {})
     db = EdDB(tmp_path / "bars.db", allow_noncanonical=True)
     monkeypatch.setattr(srv, "get_db", lambda: db)
     for b in FRIDAY:
         assert srv._write_streamed_bar(_msg(b))
     route = {tf: json.loads(srv.get_bars1m(ticker="SPY", tf=tf, limit=12000).body) for tf in live_price_rows.CHART_TFS}
-    seed = int(os.environ.get("ED_REPLAY_SEED") or random.randrange(2 ** 32))
-    print(f"seed {seed}")
-    rng = random.Random(seed)
-    for run in range(4):
+    for seed in ([int(os.environ["ED_REPLAY_SEED"])] if os.environ.get("ED_REPLAY_SEED") else REPLAY_SEEDS):
+        print(f"seed {seed}")
+        rng, run = random.Random(seed), 0
         first, cuts, away, ack_after = rng.randint(1, 60), {}, {}, set()
         for k in range(first + 1, len(FRIDAY) - 20):           # the last 20 minutes settle the day
             if rng.random() < 0.05:
@@ -848,55 +867,90 @@ def test_a_covered_minute_with_no_bar_is_no_trade_and_an_uncovered_one_is_unavai
     _whole_after(steps, 106)
 
 
-def test_the_regular_session_high_and_low_are_reconciled_with_schwabs_and_a_mismatch_is_flagged(monkeypatch, caplog):
-    """The daily bar's regular-session high and low, from the covered minutes, are compared with
-    Schwab's LEVELONE_EQUITIES HIGH_PRICE and LOW_PRICE (regular-session trades only, Streamer
-    Guide p.17), which include the minute still trading. While the session trades, Schwab's high
-    above the bars' is the minute still trading, not a mismatch; a bars' high above Schwab's is,
-    flagged on the update with both values and the daily chart's note, counted and logged once;
-    nothing is corrected. Once the session's last minute is covered, any difference is a
-    mismatch. A 0 is not compared. Real SPY minutes of 2026-09-25, subscribed at 09:00 ET;
-    Schwab's HIGH_PRICE moved 0.05 off the bars' is the stand-in for a difference."""
+#: 2026-09-30, every symbol the daemon streamed: its CHART_EQUITY bars 09:30-16:00 ET and every
+#: LEVELONE message carrying HIGH_PRICE / LOW_PRICE, 04:00-16:15 ET, with receive times (built
+#: read-only from production stream_capture.db; source and build time inside)
+SEP30 = json.loads((_FX / "real_high_low_and_bars_2026_09_30.json").read_text(encoding="utf-8"))
+
+
+def _replay_day(monkeypatch, sym: str, stats: dict, *, quotes=None) -> list:
+    """Stream `sym`'s 2026-09-30 bars and LEVELONE high/low messages to the daemon's real live_ui
+    and plane in receive order (subscribed at 09:00 ET); every reconciliation it pushed."""
+    day = SEP30["symbols"][sym]
+    monkeypatch.setattr(lmp, "_fields_by_ticker", {})
     monkeypatch.setattr(lmp, "_by_ticker", {})
-    stats: dict = {}
-    high, low = max(b["high"] for b in FRIDAY[:30]), min(b["low"] for b in FRIDAY[:30])
+    monkeypatch.setattr(lmp, "_asset_main_type", {})
+    clock = {"now": 0.0}
+    quotes = list(day["quotes"] if quotes is None else quotes)
+    quotes[0] = (quotes[0][0], {**quotes[0][1], "assetMainType": day["asset_main_type"]})   # Schwab's, as captured
+    events = sorted([(ts, 0, q) for ts, q in quotes]
+                    + [(b[6], 1, b) for b in day["bars"]], key=lambda e: (e[0], e[1]))
 
-    async def main(quote, upto):
-        monkeypatch.setattr(lmp, "_fields_by_ticker", {})
-        srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, stats, clock=lambda: _msg(FRIDAY[upto - 1])["ts_recv"],
-                                      history_fn=_schwab({"SPY": FRIDAY}))
+    async def main():
+        ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, stats, clock=lambda: clock["now"], history_fn=lambda *a: [])
         c = live_ui._Client(_Ws())
-        c.symbols = frozenset({"SPY"})
-        srv_ui.clients.add(c)
-        srv_ui.on_subscription(_subscribed("SPY", ts=datetime(2026, 9, 25, 9, 0, tzinfo=ET).timestamp()))
-        for b in FRIDAY[:upto]:
-            if b is FRIDAY[upto - 1]:         # Schwab's day high and low as its last minute ends
-                lmp.record_from_level_one_equity("SPY", dict(LAST_PRICE=b["close"], **quote),
-                                                 received_ts=_msg(b)["ts_recv"])
-            srv_ui.on_bar(_msg(b))
-            await _settled(srv_ui)
-        last = c.bars[-1]
-        return [u["reconciliation"]["state"] for u in c.bars[:-1]], last["reconciliation"], last["notes"]
+        c.symbols = frozenset({sym})
+        ui.clients.add(c)
+        ui.on_subscription(_subscribed(sym, ts=datetime(2026, 9, 30, 9, 0, tzinfo=ET).timestamp()))
+        for ts, kind, e in events:
+            clock["now"] = ts
+            if kind == 0:
+                lmp.record_from_level_one_equity(sym, e, received_ts=ts)
+                continue
+            ui.on_bar(bar_msg(symbol=sym, bar_start_ms=e[0], open=e[1], high=e[2], low=e[3], close=e[4],
+                              volume=e[5], src="schwab_chart", ts_recv=ts))
+        return [(u["reconciliation"], u["notes"]) for u in c.bars]
+    return asyncio.run(main())
 
-    # trading: Schwab's high above the bars' -- the minute still trading
-    before, rec, notes = asyncio.run(main({"HIGH_PRICE": high + 0.05, "LOW_PRICE": low}, 30))
-    assert set(before) == {live_price_rows.RECONCILE_NOT_COMPARED}     # no HIGH_PRICE received yet
-    assert rec["state"] == live_price_rows.RECONCILED and notes == {} and stats["reconcile_mismatches"] == 0
-    # trading: the bars' high above Schwab's
-    _before, rec, notes = asyncio.run(main({"HIGH_PRICE": high - 0.05, "LOW_PRICE": low}, 30))
-    note = "high/low differ from Schwab: ours 770.31/767.75 / Schwab 770.26/767.75"
-    assert rec == {"state": live_price_rows.RECONCILE_MISMATCH, "bars_high": high, "bars_low": low,
-                   "schwab_high": high - 0.05, "schwab_low": low, "session_ended": False, "note": note}
-    assert notes == {"D": note} and stats["reconcile_mismatches"] == 1
-    (line,) = [r.getMessage() for r in caplog.records if "HIGH_PRICE/LOW_PRICE" in r.getMessage()]
-    assert note in line
-    # the session over (its last minute, 15:59 ET, covered): Schwab's high above the bars' differs
-    day_high, day_low = max(b["high"] for b in FRIDAY), min(b["low"] for b in FRIDAY)
-    _before, rec, notes = asyncio.run(main({"HIGH_PRICE": day_high + 0.05, "LOW_PRICE": day_low}, len(FRIDAY)))
-    assert rec["state"] == live_price_rows.RECONCILE_MISMATCH and rec["session_ended"] and "D" in notes
-    _before, rec, notes = asyncio.run(main({"HIGH_PRICE": day_high, "LOW_PRICE": day_low}, len(FRIDAY)))
-    assert rec["state"] == live_price_rows.RECONCILED and rec["session_ended"] and notes == {}
-    assert asyncio.run(main({"HIGH_PRICE": 0, "LOW_PRICE": low}, 30))[1]["state"] == live_price_rows.RECONCILE_NOT_COMPARED
+
+def test_the_reconciliation_flags_nothing_on_a_real_day_across_the_board(monkeypatch):
+    """Every symbol the daemon streamed on 2026-09-30, replayed in receive order: no update is
+    flagged. An equity's completed regular-session minutes are flagged only outside Schwab's
+    HIGH_PRICE / LOW_PRICE, which is certain. The two-sided comparison flagged real days: SPY's
+    low 762.20 (bars to 15:59) against Schwab's 762.18 printed at 16:00:01 ET; including the 16:00
+    minute instead flags IWM, PLTR, QQQ and TSLA, whose 16:00 bar holds post-close trades outside
+    Schwab's range. An index is not compared ($SPX's low kept moving to 16:05:15 ET)."""
+    flagged, last = {}, {}
+    for sym in SEP30["symbols"]:
+        recs = _replay_day(monkeypatch, sym, {})
+        flagged[sym] = [r for r, _n in recs if r["state"] == live_price_rows.RECONCILE_MISMATCH]
+        last[sym] = recs[-1][0]
+    assert len(SEP30["symbols"]) == 45
+    assert {s: f[0] for s, f in flagged.items() if f} == {}
+    equities = {s for s, d in SEP30["symbols"].items() if d["asset_main_type"] == "EQUITY"}
+    indexes = set(SEP30["symbols"]) - equities
+    assert len(equities) == 42 and indexes == {"$SPX", "$NDX", "$VIX"}
+    assert {s for s in equities if last[s]["state"] != live_price_rows.RECONCILED} == set()
+    assert {last[s]["reason"] for s in indexes} == {"Schwab's index high/low cover different hours"}
+    # the boundary values, as compared at the day's last minute
+    assert (last["SPY"]["bars_low"], last["SPY"]["schwab_low"]) == (762.2, 762.18)
+    assert (last["IWM"]["bars_low"], last["IWM"]["schwab_low"]) == (277.88, 277.86)
+
+
+def test_a_bar_outside_schwabs_high_and_low_is_flagged_with_both_values(monkeypatch, caplog):
+    """Our completed regular-session high above Schwab's HIGH_PRICE is certain whatever Schwab's
+    window: flagged on the update and on the daily chart's note (the window named, both values in
+    the server's one price format, and the difference), counted and logged once, nothing
+    corrected; a 0 is not compared. Real SPY bars and LEVELONE messages of 2026-09-30; the
+    stand-in for a wrong Schwab value is its HIGH_PRICE as received at 10:00 ET kept for the rest
+    of the day (its later highs dropped)."""
+    stats: dict = {}
+    day = SEP30["symbols"]["SPY"]
+    ten = datetime(2026, 9, 30, 10, 0, tzinfo=ET).timestamp()
+    frozen = [(ts, q) if ts <= ten else (ts, {k: v for k, v in q.items() if k != "HIGH_PRICE"})
+              for ts, q in day["quotes"]]
+    recs = _replay_day(monkeypatch, "SPY", stats, quotes=frozen)
+    rec, notes = recs[-1]
+    assert rec["state"] == live_price_rows.RECONCILE_MISMATCH and rec["bars_high"] > rec["schwab_high"]
+    gap = rec["bars_high"] - rec["schwab_high"]
+    note = (f"regular session 09:30–16:00 ET high/low differ from Schwab: our high "
+            f"{live_price_rows.price_text(rec['bars_high'])} is above Schwab's "
+            f"{live_price_rows.price_text(rec['schwab_high'])} by {live_price_rows.price_difference_text(gap)}")
+    assert rec["note"] == note and notes == {"D": note}
+    assert stats["reconcile_mismatches"] == 1
+    assert len([r for r in caplog.records if "HIGH_PRICE/LOW_PRICE" in r.getMessage()]) == 1
+    zero = [(ts, {**q, "HIGH_PRICE": 0} if "HIGH_PRICE" in q else q) for ts, q in day["quotes"]]
+    assert _replay_day(monkeypatch, "SPY", {}, quotes=zero)[-1][0]["state"] == live_price_rows.RECONCILE_NOT_COMPARED
 
 
 def test_a_thin_tickers_first_trade_late_in_the_day_serves_every_timeframe():
@@ -939,3 +993,146 @@ def test_a_quiet_tail_inside_unbroken_coverage_serves_the_bars():
     (at,) = [u for j, u in steps if j == 60]
     assert at[1]["unavailable"] == {} and "60" in at[1]["tf"]
     assert asked == [(live_price_rows.session_first_minute(_t(0)), _msg(quiet[60])["ts_recv"])]
+
+
+def test_a_frame_the_daemon_cannot_read_ends_every_streams_coverage():
+    """capture.read_for logged "skipped a frame" and went on, and the next bar extended the
+    stream's coverage over the minute that frame carried. A frame the daemon cannot read could
+    hold any symbol's bar: every stream's coverage restarts at the first minute after it, and the
+    minutes since each one's last bar are asked of the price history like any other gap. Real SPY
+    minutes of 2026-09-25; the unreadable frame is the stand-in (its receive time the replay's)."""
+    steps, asked = _replay(FRIDAY, 100, {110: "lost"}, {})
+    assert _check(steps, FRIDAY, "lost")
+    (at,) = [u for j, u in steps if j == 111]
+    assert at[0]["unavailable"]["D"] == _gone(110, 111)
+    assert asked[-1] == (_t(110), _msg(FRIDAY[111])["ts_recv"])
+    _whole_after(steps, 111)
+
+
+def test_a_bar_the_daemons_queue_drops_ends_every_streams_coverage():
+    """The daemon's bar queue counted a dropped bar and went on: the next bar extended coverage
+    over the lost minute. A drop on that queue (bars and subscription answers, in publish order)
+    restarts every stream's coverage at the first minute after it, so the lost minute is asked.
+    Real SPY minutes of 2026-09-25 through the real serve_live_ui; a stalled reader (8192 copies of
+    one minute queued at once) is the stand-in for the overflow that drops minute 101."""
+    asked = []
+    clock = {"now": _msg(FRIDAY[100])["ts_recv"]}
+    stats: dict = {}
+
+    async def main():
+        port, bus, stop = _free_port(), MessageBus(), asyncio.Event()
+        feed = lambda: {"ts": clock["now"], "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
+        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=lambda: clock["now"],
+                                                         host="127.0.0.1", port=port, stats=stats,
+                                                         history_fn=_schwab({"SPY": FRIDAY}, asked)))
+        while not stats.get("listening"):
+            await asyncio.sleep(0.01)
+        bus.publish("sub.CHART_EQUITY", _subscribed("SPY", ts=_t(100)))
+        bus.publish("bar1m.SPY", _msg(FRIDAY[100]))
+        await asyncio.sleep(0.3)
+        for _ in range(8192):
+            bus.publish("bar1m.SPY", _msg(FRIDAY[100]))
+        clock["now"] = _msg(FRIDAY[101])["ts_recv"]
+        bus.publish("bar1m.SPY", _msg(FRIDAY[101]))                # dropped: the queue is full
+        while stats.get("stream_losses", 0) == 0:
+            await asyncio.sleep(0.05)
+        await asyncio.sleep(0.5)
+        clock["now"] = _msg(FRIDAY[102])["ts_recv"]
+        bus.publish("bar1m.SPY", _msg(FRIDAY[102]))
+        await asyncio.sleep(0.5)
+        stop.set()
+        await task
+    asyncio.run(main())
+    assert stats["stream_losses"] == 1
+    assert [a for a in asked if a[1] == _t(101)]                    # the lost minute, asked
+
+
+class _TooManyRequests(Exception):
+    """Schwab's HTTP 429 as schwab-py's httpx raises it (the stand-in: its `response`)."""
+    response = type("R", (), {"status_code": 429})()
+
+
+def test_an_uncovered_span_is_asked_again_on_the_daemons_clock_and_a_429_holds_every_request_back(caplog):
+    """An uncovered span was asked again only on the symbol's next streamed minute: a thin ticker
+    waited for its next trade. It is asked again on the daemon's clock, once a minute. Schwab's
+    HTTP 429 holds every request back for a while that doubles on each further 429 (here 5 s, then
+    10 s), logged; a reply ends it. Real SPY minutes of 2026-09-25; Schwab's network the stand-in,
+    answering 429 twice."""
+    t0 = _msg(FRIDAY[100])["ts_recv"]
+    clock, asked, answers = {"now": t0}, [], [_TooManyRequests("429 Too Many Requests")] * 2
+    truth = _schwab({"SPY": FRIDAY})
+
+    def history(symbol, start, end):
+        asked.append(clock["now"])
+        if answers:
+            raise answers.pop(0)
+        return truth(symbol, start, end)
+
+    async def main():
+        ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: clock["now"], history_fn=history)
+        ui.on_subscription(_subscribed("SPY", ts=_t(100)))
+        ui.on_bar(_msg(FRIDAY[100]))                             # the day before 10:10 CT: 429
+        await _settled(ui)
+        for at in (t0 + 30, t0 + 61):                            # asked again a minute later: 429 again
+            clock["now"] = at
+            ui.tick(at)
+            await _settled(ui)
+        clock["now"] = t0 + 62
+        ui.on_bar(_msg(FRIDAY[101]))                             # held back: 10 s from t0 + 61
+        await _settled(ui)
+        clock["now"] = t0 + 122
+        ui.tick(t0 + 122)
+        await _settled(ui)
+        return ui.days["SPY"]
+    day = asyncio.run(main())
+    assert asked == [t0, t0 + 61, t0 + 122]
+    assert not live_price_rows.uncovered(day.covered, live_price_rows.session_first_minute(t0), _t(101))
+    held_back = [r.getMessage() for r in caplog.records if "429" in r.getMessage() and "no request for" in r.getMessage()]
+    assert len(held_back) == 2 and "for 5 s" in held_back[0] and "for 10 s" in held_back[1]
+
+
+def test_the_stream_covers_from_the_first_minute_after_its_acknowledgement():
+    """Schwab acknowledges the subscription half way through 10:10 CT: the stream covers from
+    10:11, and the 10:10 minute (streamed, but begun before the acknowledgement) is asked of the
+    price history with the day before it. Real SPY minutes of 2026-09-25; Schwab's network the
+    stand-in, answering nothing."""
+    async def main():
+        ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: _msg(FRIDAY[100])["ts_recv"],
+                                  history_fn=lambda *a: [])
+        c = live_ui._Client(_Ws())
+        c.symbols = frozenset({"SPY"})
+        ui.clients.add(c)
+        ui.on_subscription(_subscribed("SPY", ts=_t(100) + 30))
+        ui.on_bar(_msg(FRIDAY[100]))
+        await _settled(ui)
+        return c.bars[-1]
+    update = asyncio.run(main())
+    assert update["unavailable"]["D"] == "minutes Fri 09/25 08:15 AM CT – Fri 09/25 10:10 AM CT not received from Schwab"
+
+
+def test_a_subscription_answer_the_daemon_cannot_track_stops_it():
+    """A failure tracking Schwab's subscription answers was a task ending silently while the
+    daemon went on serving coverage it no longer tracked. It ends serve_live_ui with the failure
+    (logged), and a part of the daemon ending stops the whole daemon with exit 1, which
+    start_capture_daemon.bat restarts. The malformed answer (no time) is the stand-in."""
+    async def live_ui_ends():
+        port, bus, stop, stats = _free_port(), MessageBus(), asyncio.Event(), {}
+        feed = lambda: {"ts": RESTART, "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
+        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=lambda: RESTART,
+                                                         host="127.0.0.1", port=port, stats=stats,
+                                                         history_fn=lambda *a: []))
+        while not stats.get("listening"):
+            await asyncio.sleep(0.01)
+        bus.publish("sub.CHART_EQUITY", {"service": "CHART_EQUITY", "command": "SUBS", "symbols": ["SPY"], "code": 0})
+        try:
+            await asyncio.wait_for(task, 5)
+        except RuntimeError as e:
+            return e
+    err = asyncio.run(live_ui_ends())
+    assert isinstance(err, RuntimeError) and isinstance(err.__cause__, KeyError)
+
+    async def daemon_stops():
+        stop = asyncio.Event()
+        part = asyncio.create_task(live_ui_ends())               # a part that fails
+        return await run_until_a_part_ends(stop.wait(), [part], stop), stop.is_set()
+    assert asyncio.run(daemon_stops()) == (1, True)

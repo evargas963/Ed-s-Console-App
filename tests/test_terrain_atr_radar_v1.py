@@ -86,11 +86,14 @@ def test_terrain_strikes_endpoint_shape_and_scopes(monkeypatch, pin_clock):
     assert r.status_code == 200
     body = r.json()
     assert body["ticker"] == "SPY"
-    # today's and the prior day's rows have one shape: the scopes and the count of contracts whose
-    # settlement cannot be determined (in no row). No prior capture here: no prior rows, no count
-    shape = {"all", "near", "far", "expiry_unknown"}
-    assert set(body["today"]) == shape and body["today"]["expiry_unknown"] == 0
+    # today's and the prior day's rows have one shape: the scopes, the count of contracts whose
+    # settlement cannot be determined (in no row) and, with no rows, why -- the reason the
+    # per-strike gamma panel prints (the fourth review restored it: the page had its own words).
+    # No prior capture here: the prior rows are absent with their reason and no count
+    shape = {"all", "near", "far", "expiry_unknown", "absent_reason"}
+    assert set(body["today"]) == shape and body["today"]["expiry_unknown"] == 0 and body["today"]["absent_reason"] is None
     assert set(body["prior"]) == shape and body["prior"]["expiry_unknown"] is None
+    assert body["prior"]["absent_reason"] == "no chain capture from the market day before the chain's"
     rows = body["today"]["all"]
     assert rows and all(len(x) == 3 for x in rows)
     ks = [x[0] for x in rows]
