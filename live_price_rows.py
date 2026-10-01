@@ -20,7 +20,8 @@ from typing import Any, Optional
 
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
-from numeric_contract import price_text, schwab_count, schwab_number, volume_text
+from numeric_contract import (percent_text, price_text, schwab_count, schwab_number, sign_word,
+                              volume_text)
 from time_et import (COLLECT_WINDOW_START_MINS, ET, ct_label, et_date_str_from_ts_utc,
                      et_minute_total_from_ts_utc, is_collect_window_bar_end_ts_utc, is_trading_day_et,
                      session_close_mins_for_et_date, trading_date_label)
@@ -282,7 +283,7 @@ def day_candle(ticker: str, now: float) -> dict[str, Any]:
             return None
         value, received = fields[name]
         if value is None:
-            absent[key] = f"Schwab sent {name} as a value that is not a number (at {ct_label(received)})"
+            absent[key] = f"Schwab sent {name} as a value that is not a number (received {ct_label(received)})"
             return None
         used.append(received)
         if zero_is_none and value == 0:
@@ -295,7 +296,7 @@ def day_candle(ticker: str, now: float) -> dict[str, Any]:
     if zeros:                                           # Schwab's own 0s, one sentence with their time
         names = [n for n, _t in zeros.values()]
         said = (f"Schwab's {' and '.join(names) if len(names) < 3 else ', '.join(names[:-1]) + ' and ' + names[-1]} "
-                f"{'is' if len(names) == 1 else 'are'} 0 (at {ct_label(max(t for _n, t in zeros.values()))})")
+                f"{'is' if len(names) == 1 else 'are'} 0 (received {ct_label(max(t for _n, t in zeros.values()))})")
         absent.update(dict.fromkeys(zeros, said))
     c = take("c", "REGULAR_MARKET_LAST_PRICE" if closed else "LAST_PRICE")
     v = take("v", "TOTAL_VOLUME")
@@ -304,7 +305,8 @@ def day_candle(ticker: str, now: float) -> dict[str, Any]:
     bar = (served_bar({"t": day_start, "o": o, "h": h, "l": lo, "c": c, "v": v}, "D")
            if traded is not None and None not in (o, h, lo, c) else None)
     return {"t": day_start, "bar": bar, "volume": v, "volume_text": volume_text(v),
-            "volume_as_of": ct_label(fields["TOTAL_VOLUME"][1]) if v is not None else None, "absent": absent,
+            "volume_as_of": f"received {ct_label(fields['TOTAL_VOLUME'][1])}" if v is not None else None,
+            "absent": absent,
             # the daily chart's line when it draws no candle: each served reason once
             "unavailable": None if bar else "No daily candle: " + "; ".join(
                 dict.fromkeys(absent[k] for k in ("t", "o", "h", "l", "c") if k in absent)),
@@ -373,11 +375,13 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
     """The finished row the screen paints for one symbol, as it is at `now` (epoch seconds).
     Every value Schwab sent is shown, whatever the hour, with the time Schwab sent it (operator
     2026-10-01: "we should not be showing unavailable anywhere in the app if there is schwab data
-    to be render into the ui"): the bid and ask with Schwab's quote time, the prior close and each
-    change percent with their receive time, the last trade (`closed_last` when it is not live)
-    with Schwab's trade time. `spot` is the live price only -- what the computations take -- and
-    `quote_live` says whether the quote is live for them. Absent only when Schwab has sent
-    nothing, or sent a value that is not a number, with that reason."""
+    to be render into the ui"), exactly as sent (no rounding: price_text, volume_text,
+    percent_text), with Schwab's own time where Schwab sends one -- the bid's BID_TIME, the ask's
+    ASK_TIME, the last trade's TRADE_TIME (`closed_last` when it is not live) -- and our receive
+    time, said as such, where it sends none (the prior close, the change percents). `spot` is the
+    live price only -- what the computations take -- and `quote_live` says whether the quote is
+    live for them. Absent only when Schwab has sent nothing, or sent a value that is not a number,
+    with that reason."""
     tk = ticker_storage_key(ticker)
     row = lmp.get_quote(tk) or {}
     spot = live_spot(tk, now)
@@ -388,8 +392,13 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
             and row.get("trade_ts") is not None else None)
     not_numbers = row.get("not_numbers") or ()
 
-    def as_of(key: str) -> Optional[str]:
-        return ct_label(row[key]) if row.get(key) is not None else None
+    def received(key: str) -> Optional[str]:
+        """Our receive time of a value Schwab sends no time field for, as the screen says it."""
+        return f"received {ct_label(row[key])}" if row.get(key) is not None else None
+
+    def stamped(key: str) -> Optional[str]:
+        """Schwab's own time of a value, as the screen says it."""
+        return f"as of {ct_label(row[key], seconds=True)}" if row.get(key) is not None else None
 
     def why_none(name: str) -> str:
         return (f"Schwab sent {name} as a value that is not a number" if name in not_numbers
@@ -420,21 +429,35 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "ask": row.get("ask"),
         "bid_size": row.get("bid_size"),
         "ask_size": row.get("ask_size"),
+        # each exactly as sent, with Schwab's own time of the bid and of the ask
+        # (BID_TIME_MILLIS, ASK_TIME_MILLIS), the times the live rule judges
+        "bid_text": price_text(row.get("bid")),
+        "ask_text": price_text(row.get("ask")),
+        "bid_size_text": volume_text(row.get("bid_size")),
+        "ask_size_text": volume_text(row.get("ask_size")),
+        "bid_as_of": stamped("bid_ts"),
+        "ask_as_of": stamped("ask_ts"),
         "mark": row.get("mark"),                       # Schwab MARK
         "quote_ts": row.get("exchange_quote_ts"),      # Schwab QUOTE_TIME (epoch s)
-        "quote_as_of": (ct_label(row["exchange_quote_ts"], seconds=True)
-                        if row.get("exchange_quote_ts") is not None else None),
         "last_size": row.get("last_size"),
+        "last_size_text": volume_text(row.get("last_size")),
         # the day's open, high, low, close and volume: Schwab's day fields, the one source of every
         # day value on screen (the Trade Desk's session volume, the daily candle)
         "day": day_candle(tk, now),
+        # Schwab's change percents and prior close exactly as sent, each with the time it was
+        # received (Schwab sends no time field for them), and each change's direction
         "chg_pct": row.get("chg_pct"),
-        "chg_pct_as_of": as_of("chg_pct_received_ts"),
+        "chg_pct_text": percent_text(row.get("chg_pct")),
+        "chg_pct_sign": sign_word(row.get("chg_pct")),
+        "chg_pct_as_of": received("chg_pct_received_ts"),
         "chg_pct_regular": row.get("chg_pct_regular"),
-        "chg_pct_regular_as_of": as_of("chg_pct_regular_received_ts"),
+        "chg_pct_regular_text": percent_text(row.get("chg_pct_regular")),
+        "chg_pct_regular_sign": sign_word(row.get("chg_pct_regular")),
+        "chg_pct_regular_as_of": received("chg_pct_regular_received_ts"),
         "net_change": row.get("net_change"),
         "prior_close": row.get("prior_close"),
-        "prior_close_as_of": as_of("prior_close_received_ts"),
+        "prior_close_text": price_text(row.get("prior_close")),
+        "prior_close_as_of": received("prior_close_received_ts"),
         # why there is no prior close (the PDC level's reason)
         "prior_close_absent": None if row.get("prior_close") is not None else why_none("CLOSE_PRICE"),
         "trade_ts": trade_ts,

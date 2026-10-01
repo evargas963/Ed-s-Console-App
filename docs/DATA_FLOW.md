@@ -94,7 +94,8 @@ opens no second streaming socket).
   field the stream has not sent keeps the chain's; a field it sent as not a number, such as
   -999, is unavailable, never its last value or the chain's, until a number is sent again:
   `state.push_level_one`, `overlay_streamed_contract_fields`); every other contract has the
-  chain's values, its Greeks from Schwab's quotes (Option chain, below).  A contract is a ticker's when Schwab listed it in that ticker's chain (whatever its root:
+  chain's values, its Greeks from Schwab's quotes (Option chain, below).
+  A contract is a ticker's when Schwab listed it in that ticker's chain (whatever its root:
   SPX and SPXW are both $SPX's). The option contract whose book streams follows the page's
   ticker: the at-the-money call of its front expiry, from its chain. The further contracts a
   page shows (the heatmap's cells, Strike Detail's strike) are that view's demand, declared
@@ -207,9 +208,10 @@ opens no second streaming socket).
   last) and TOTAL_VOLUME (the day's volume, pre- and post-market included, p.16). What Schwab
   sent is shown whatever the hour (decided by the operator, 2026-10-01: "i don't care what time
   of the day it is. we show what schwab sends period... we use what schwab gives us and we display
-  it, regardless of the time. if we have it we display it."), each value with the time Schwab
-  sent it (the receive time of the message that set it, Central Time, formatted on the server:
-  `day.as_of`, `day.volume_as_of`). No session or date label is inferred for display. The candle
+  it, regardless of the time. if we have it we display it."), exactly as sent, each value with
+  the time it came: Schwab sends no time field for the day fields, so it is the daemon's receive
+  time of the message that set it, Central Time, formatted on the server and said as "received"
+  (`day.as_of`, `day.volume_as_of`). No session or date label is inferred for display. The candle
   is placed on the daily chart at the ET date of Schwab's own last-trade time
   (TRADE_TIME_MILLIS); with no TRADE_TIME there is no candle and the reason says so. After
   midnight Schwab re-sends the prior day's values with a new receive time (SPY 2026-09-08
@@ -419,23 +421,33 @@ opens no second streaming socket).
   the daemon's heartbeat, sent every second, is under 3 s old
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open and holds the
   symbol on that service (`live_market_plane.feed_live_for`); and the value itself arrived from
-  Schwab in the current session (`live_market_plane.session_day`: sessions start 04:00 ET; the
-  price by its trade's time, TRADE_TIME_MILLIS, as Schwab re-sends the prior day's last trade
-  after midnight). A value's age within the session is not the test (Schwab sends a field only
-  when it changes). Live is what computations take; display is not gated by it (decided by the
+  Schwab in the current session (`live_market_plane.session_day`: sessions start 04:00 ET),
+  judged by Schwab's own time of the value -- the price by its trade's time
+  (TRADE_TIME_MILLIS, as Schwab re-sends the prior day's last trade after midnight), the bid and
+  the ask by theirs (BID_TIME_MILLIS, ASK_TIME_MILLIS; a quote with neither is not live). A
+  value's age within the session is not the test (Schwab sends a field only when it changes). Live is what computations take; display is not gated by it (decided by the
   operator, 2026-10-01: "we should not be showing unavailable anywhere in the app if there is
   schwab data to be render into the ui... we use what schwab gives us and we display it,
-  regardless of the time. if we have it we display it."): every field Schwab sent is kept with
-  its receive time whatever the hour (no field is dropped at a session change) and the price row
-  serves it with that time, which the page prints next to it -- the last trade when it is not
-  live (`closed_last`, as of Schwab's TRADE_TIME), the bid and ask with their own fields'
-  receive time (`quote_as_of`, from `quote_received_ts`; `quote_live` says whether a computation
-  may take them, judged by the same time, so a re-sent old trade does not make the quote live),
-  the prior close as sent with its receive time (`prior_close_as_of`; Schwab reloads CLOSE_PRICE
-  overnight, measured 01:30 ET for NYSE- and Arca-listed symbols and 03:04 ET for Nasdaq-listed
-  ones on every captured reload of 2026-09-25 to 10-01, PCG adjusted again at 03:45 ET on
-  09-30; the Streamer Guide p.16-17 says 3:30 AM ET), Schwab's change percents as sent with
-  their receive times (`chg_pct_as_of`, `chg_pct_regular_as_of`). A value is absent only when
+  regardless of the time. if we have it we display it."): every field Schwab sent is kept
+  whatever the hour (no field is dropped at a session change) and the price row serves it with
+  one time, which the page prints next to it. That time is Schwab's own time field for the value
+  where Schwab sends one, printed "as of": the last trade's TRADE_TIME_MILLIS (`closed_last`),
+  the bid's BID_TIME_MILLIS and the ask's ASK_TIME_MILLIS (`bid_as_of`, `ask_as_of`, the same
+  times `quote_live` judges, so one clock for one value). Where Schwab sends none it is the
+  daemon's receive time of the message that set the value, printed "received": the prior close
+  (`prior_close_as_of`; Schwab reloads CLOSE_PRICE overnight, measured 01:30 ET for NYSE- and
+  Arca-listed symbols and 03:04 ET for Nasdaq-listed ones on every captured reload of 2026-09-25
+  to 10-01, PCG adjusted again at 03:45 ET on 09-30; the Streamer Guide p.16-17 says 3:30 AM
+  ET), the change percents (`chg_pct_as_of`, `chg_pct_regular_as_of`), the day's open, high,
+  low and volume (`day.volume_as_of`). Every Schwab number is shown exactly as sent, every digit,
+  with thousands separators and no rounding or K/M abbreviation (decided by the operator,
+  2026-10-01: "no rounding, use the exact data that schwab gives us everywhere"): the server's
+  one text per format (`numeric_contract.price_text`, `volume_text`, `percent_text`) is served
+  with the value (`spot_disp`, `bid_text`, `ask_text`, `bid_size_text`, `ask_size_text`,
+  `last_size_text`, `prior_close_text`, `chg_pct_text`, `chg_pct_regular_text`,
+  `day.volume_text`, a chart bar's `v_text`) with a change's direction (`chg_pct_sign`), and
+  the page prints it; the screens not yet converted are listed in `ACTIVE_PROGRAM.md` SHOW-SENT.
+  A value is absent only when
   Schwab has sent none, or sent one that is not a number, with that reason
   (`unavailable_reason`, `prior_close_absent`; LAST_PRICE without TRADE_TIME_MILLIS says that).
   A row is published on any field.
@@ -577,8 +589,12 @@ Each value's definition.
 - *Producer and owner:* `live_market_plane.record_from_level_one_equity` (one per field, with its
   receive time) → `live_price_rows.price_row`, in the daemon; the console holds the daemon's row
   as pushed and computes no price (`resolve_spot` reads it).
-- *Times:* Schwab's QUOTE_TIME and TRADE_TIME, the daemon's receive time per field.
-- *Current when:* the Live rule (§3.4) holds, and the field was received in the current session.
+- *Times:* Schwab's own per value: TRADE_TIME (the last trade), BID_TIME (the bid and its size),
+  ASK_TIME (the ask and its size), QUOTE_TIME (the book's provenance); the daemon's receive time
+  for the values Schwab sends no time for (the prior close, the change percents, MARK, the day
+  fields), shown as "received".
+- *Current when:* the Live rule (§3.4) holds, and Schwab's own time of the value (TRADE_TIME;
+  BID_TIME and ASK_TIME) is in the current session.
 - *Otherwise:* the row says why (`spot_state`: unavailable, or closed with the last trade as a
   labeled past observation, `closed_last`); every field is withheld.
 - *Consumers:* the header and watchlist (browser socket), the console's spot for levels, level
@@ -719,7 +735,8 @@ send.
   at the ET date of Schwab's TRADE_TIME_MILLIS; a daily candle's ET date. No session or date
   label is inferred.
 - *Shown:* always, whatever the hour (operator 2026-10-01: "if we have it we display it"),
-  each value with the time Schwab sent it; the volume as sent, a 0 included, with its time. The
+  each value exactly as sent with the time it was received (Schwab sends none for these
+  fields); the volume every digit (62,110,041), a 0 included, with its time. The
   daily history is whole when its newest candle is the previous trading session's.
 - *Otherwise:* no candle when Schwab sent its open, high and low as 0 (one sentence naming the
   fields and their time), when a field is not a number (named), or when no TRADE_TIME has come

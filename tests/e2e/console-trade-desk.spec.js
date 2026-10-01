@@ -567,8 +567,8 @@ test.describe('Trade Desk renders served values', () => {
     const errs = watchErrors(page);
     await intercept(page);
     const day = { t: 1790395200, unavailable: null, bar: { t: 1790395200, o: 766.45, h: 769.41, l: 762.18, c: 762.63, v: 62110041, chg: -3.82,
-      chg_pct: -0.4984, label: 'Sat 09/26/2026', v_text: '62.11M' }, volume: 62110041, volume_text: '62.11M',
-      volume_as_of: 'Fri 09/25 07:59 PM CT', absent: {}, as_of: 'Fri 09/25 07:59 PM CT', source: 'Schwab LEVELONE_EQUITIES day fields' };
+      chg_pct: -0.4984, label: 'Sat 09/26/2026', v_text: '62,110,041' }, volume: 62110041, volume_text: '62,110,041',
+      volume_as_of: 'received Fri 09/25 07:59 PM CT', absent: {}, as_of: 'Fri 09/25 07:59 PM CT', source: 'Schwab LEVELONE_EQUITIES day fields' };
     const daemon = await mockPriceSocket(page, []);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -579,17 +579,43 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(() => daemon.ws !== null).toBe(true);
     daemon.send({ type: 'quotes', rows: [priceRow('SPY', 762.63, { day: day })] });
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(BARS.bars.length + 1);
-    await expect(page.locator('#tdmCardFlow .tdm-hero')).toContainText('62.11M');           // the session volume
-    await expect(page.locator('#tdmCardFlow .tdm-hero')).toContainText('as of Fri 09/25 07:59 PM CT');   // with the time Schwab sent it
-    await expect(page.locator('#tdmChart .tvc-legend')).toContainText('Vol 62.11M');       // the daily candle's
+    // the session volume exactly as sent (operator 2026-10-01: "no rounding"), with the time it came
+    // (ours: Schwab sends no time for TOTAL_VOLUME, so the screen says "received")
+    await expect(page.locator('#tdmCardFlow .tdm-hero')).toContainText('62,110,041 shares, Schwab TOTAL_VOLUME · received Fri 09/25 07:59 PM CT');
+    await expect(page.locator('#tdmChart .tvc-legend')).toContainText('Vol 62,110,041');   // the daily candle's
     // Schwab's fields make no candle (its open, high and low sent as 0): the served reason is
     // printed, and the candle already drawn for that date stays -- what Schwab sent is shown
     // (operator 2026-10-01: "if we have it we display it")
-    const why = "No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (at Sat 09/26 12:30 AM CT)";
+    const why = "No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (received Sat 09/26 12:30 AM CT)";
     daemon.send({ type: 'quotes', rows: [priceRow('SPY', 762.63, { day: { t: day.bar.t, bar: null,
-      volume: 62110041, volume_text: '62.11M', volume_as_of: day.volume_as_of, absent: {}, unavailable: why, as_of: day.as_of, source: day.source } })] });
+      volume: 62110041, volume_text: '62,110,041', volume_as_of: day.volume_as_of, absent: {}, unavailable: why, as_of: day.as_of, source: day.source } })] });
     await expect(page.locator('#tdmChart .tvc-legend')).toContainText(why);
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(BARS.bars.length + 1);
+    expect(errs).toEqual([]);
+  });
+
+  test('the header and the Order Flow card print every value exactly as Schwab sent it, each with its time', async ({ page }) => {
+    // MTA's price row as the real code served it at 2026-09-30 04:40 ET from Schwab's captured
+    // messages (tests/e2e/fixtures/served_price_row_mta_2026_09_30_0440.json, asserted equal to
+    // the code's output by test_live_market_plane_streaming): no live price, the last trade with
+    // Schwab's TRADE_TIME, the bid and ask each with Schwab's own BID_TIME / ASK_TIME, the change
+    // percents and the prior close with our receive time, said so (Schwab sends no time for them).
+    const errs = watchErrors(page);
+    await intercept(page);
+    const row = require(path.join(__dirname, 'fixtures', 'served_price_row_mta_2026_09_30_0440.json'));
+    await mockPriceSocket(page, [row]);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'MTA'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('9.59');
+    await expect(page.locator('#hAge')).toHaveText('last trade Tue 09/29 06:52 PM CT');
+    await expect(page.locator('#hBidAsk')).toHaveText('9.25 · as of Wed 09/30 03:00:00 AM CT × 10.1 · as of Wed 09/30 03:00:10 AM CT');
+    await expect(page.locator('#hChg')).toHaveText('EXT -0.31185% · received Wed 09/30 03:36 AM CT');
+    await expect(page.locator('#hChgReg')).toHaveText('REG -0.310881% · received Wed 09/30 03:36 AM CT');
+    await expect(page.locator('#hChg')).toHaveClass(/\bneg\b/);
+    const rows = page.locator('#tdmCardFlow .tdm-rows');
+    await expect(rows).toContainText('Last trade size 88');
+    await expect(rows).toContainText('Top of book 100 · as of Wed 09/30 03:00:00 AM CT × 100 · as of Wed 09/30 03:00:10 AM CT');
+    await expect(rows).toContainText('Prior close 9.62 · received Wed 09/30 03:36 AM CT');
     expect(errs).toEqual([]);
   });
 

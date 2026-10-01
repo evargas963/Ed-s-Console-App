@@ -168,7 +168,7 @@ from schwab_client import (
 )
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
-from numeric_contract import price_text, schwab_number
+from numeric_contract import price_text, schwab_number, volume_text
 from terrain_engine import (TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike, positioning_migration)
 from terrain_atr import AtrPair, compute_atr_pair
 
@@ -2786,10 +2786,10 @@ def get_bars1m(ticker: str = Query(...),
     if tf == "D":
         days = bar_days(tk)
         row = price_row(tk)
-        # the newest day's candle from Schwab's day fields, at its own trading date, or why there
-        # is none: the price row's day (live_price_rows.day_candle)
+        # the newest day's candle from Schwab's day fields, at the ET date of Schwab's last-trade
+        # time, or why there is none: the price row's day (live_price_rows.day_candle)
         body["today"] = (row or {}).get("day") or {
-            "t": None, "label": None, "bar": None,
+            "t": None, "bar": None, "volume": None, "volume_text": volume_text(None), "volume_as_of": None,
             "unavailable": "No daily candle: the capture daemon has sent no price row for this symbol"}
         today = body["today"]["bar"]
         out = [c for c in (days or {}).get("candles") or [] if today is None or c["t"] != today["t"]] + (

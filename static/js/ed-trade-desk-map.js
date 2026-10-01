@@ -442,18 +442,18 @@
       // the daily candle carries; absent: the served reason
       var dayV = q && q.day;
       c.querySelector('.tdm-hero').innerHTML = !dayV ? '' : dayV.volume != null
-        ? esc(dayV.volume_text) + ' <small>shares, Schwab TOTAL_VOLUME · as of ' + esc(dayV.volume_as_of) + '</small>'
+        ? esc(dayV.volume_text) + ' <small>shares, Schwab TOTAL_VOLUME · ' + esc(dayV.volume_as_of) + '</small>'
         : '<small>' + esc((dayV.absent || {}).v || (dayV.absent || {}).day || '') + '</small>';
       src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : liveQ ? 'last trade ' + age(q.trade_age_sec) + ' ago'
         : (q.closed_last ? 'last trade ' + esc(q.closed_last.as_of)
           : String(q.unavailable_reason || q.spot_state || 'unavailable'))));
-      // the price row's values as Schwab sent them, each with its served time; the book card's
-      // pressure alone takes a live quote
+      // the price row's values exactly as Schwab sent them, each with its served time (served
+      // text); the book card's pressure alone takes a live quote
+      function timed(text, when) { return esc(text || '—') + (when ? ' · ' + esc(when) : ''); }
       c.querySelector('.tdm-rows').innerHTML =
-        row('Last trade size', q && q.last_size != null ? fmtVol(q.last_size) : '—') +
-        row('Top of book', q && q.bid_size != null ? fmtVol(q.bid_size) + ' × ' + fmtVol(q.ask_size)
-          + (q.quote_as_of ? ' · ' + esc(q.quote_as_of) : '') : '—') +
-        row('Prior close', q && q.prior_close != null ? num(q.prior_close, 2) + ' · as of ' + esc(q.prior_close_as_of)
+        row('Last trade size', esc((q && q.last_size_text) || '—')) +
+        row('Top of book', q ? timed(q.bid_size_text, q.bid_as_of) + ' × ' + timed(q.ask_size_text, q.ask_as_of) : '—') +
+        row('Prior close', q && q.prior_close != null ? timed(q.prior_close_text, q.prior_close_as_of)
           : esc((q && q.prior_close_absent) || '—')) +
         row('Crosses (' + esc(windowLabel()) + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '—');
     }

@@ -689,7 +689,6 @@
   }
 
   // ================= header live data (single coordinated poll; degrades honestly) =================
-  function fmt(n, d) { return (n === null || n === undefined || isNaN(n)) ? '—' : Number(n).toFixed(d === undefined ? 2 : d); }
   function setFeed(cls, label, age) {
     var dot = document.getElementById('hFeedDot'), f = document.getElementById('hFeed'), a = document.getElementById('hAge');
     if (dot) dot.className = 'dot' + (cls ? ' ' + cls : '');
@@ -715,24 +714,24 @@
       if (state === 'unavailable' || (q.spot == null && !q.spot_disp)) {
         px.textContent = 'UNAVAILABLE';
       } else {
-        px.textContent = q.spot_disp || fmt(q.spot);
+        px.textContent = q.spot_disp;
         if (state === 'stale') px.textContent += ' STALE';
       }
       var srcLbl = q.quoteIngestion ? (QUOTE_INGESTION_LABEL[q.quoteIngestion] || q.quoteIngestion) : '';
       if (state) srcLbl = (srcLbl ? srcLbl + ' · ' : '') + state;
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
     }
-    // Schwab's bid and ask as sent, with Schwab's quote time (served)
-    if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask) + (q.quoteAsOf ? ' · ' + q.quoteAsOf : '');
+    // Schwab's bid and ask exactly as sent, each with Schwab's own time of it (served text)
+    function withTime(text, when) { return (text || '—') + (when ? ' · ' + when : ''); }
+    if (ba) ba.textContent = withTime(q.bidText, q.bidAsOf) + ' × ' + withTime(q.askText, q.askAsOf);
     // Schwab's two change percents, each labelled: the regular session's and the last price's
-    // (extended hours included), each with the time it came (served). Formatting only; absent reads "—".
-    [[document.getElementById('hChgReg'), 'REG ', q.chgPctRegular, q.chgPctRegularAsOf],
-     [chg, 'EXT ', q.chgPct, q.chgPctAsOf]].forEach(function (c) {
+    // (extended hours included), each exactly as sent, with the time it came and its direction
+    // (served). Absent reads "—".
+    [[document.getElementById('hChgReg'), 'REG ', q.chgPctRegularText, q.chgPctRegularAsOf, q.chgPctRegularSign],
+     [chg, 'EXT ', q.chgPctText, q.chgPctAsOf, q.chgPctSign]].forEach(function (c) {
       if (!c[0]) return;
-      if (c[2] != null) {
-        c[0].textContent = c[1] + (c[2] >= 0 ? '+' : '') + fmt(c[2]) + '%' + (c[3] ? ' · ' + c[3] : '');
-        c[0].className = 'chg mono ' + (c[2] >= 0 ? 'pos' : 'neg');
-      } else { c[0].textContent = c[1] + '—'; c[0].className = 'chg mono'; }
+      c[0].textContent = c[1] + withTime(c[2], c[3]);
+      c[0].className = 'chg mono' + (c[4] ? ' ' + c[4] : '');
     });
     setFeed(q.feedCls, q.feedLabel, q.ageLabel);
     // paintQuote owns the header display only; watchlist rows are written by setWlRow from
@@ -741,17 +740,15 @@
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
   // quote_tick handler (and markWlDegraded). A null field CLEARS to "—" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
-  function setWlRow(sym, spot, chgPct, spotState, closedDisp) {
+  // spotText: the served live price text, or the last trade with its time; chg: the served change
+  // percent {text, sign, asOf}, or null
+  function setWlRow(sym, spotText, chg) {
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
-    if (pe) {
-      if (closedDisp) pe.textContent = closedDisp;
-      else if (spotState === 'unavailable' || spot == null) pe.textContent = 'UNAVAILABLE';
-      else pe.textContent = fmt(spot) + (spotState === 'stale' ? ' STALE' : '');
-    }
+    if (pe) pe.textContent = spotText || 'UNAVAILABLE';
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]');
     if (ce) {
-      if (chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
-      else { ce.textContent = '—'; ce.className = 'wl-chg'; }
+      ce.textContent = chg && chg.text ? chg.text + (chg.asOf ? ' · ' + chg.asOf : '') : '—';
+      ce.className = 'wl-chg' + (chg && chg.sign ? ' ' + chg.sign : '');
     }
   }
   // A silent price push withdraws every row to UNAVAILABLE and marks the list degraded with
@@ -759,7 +756,7 @@
   function markWlDegraded(reason) {
     var host = document.getElementById('watchlist');
     if (host) host.classList.add('wl-degraded');
-    loadWL().forEach(function (sym) { setWlRow(sym, null, null, 'unavailable'); });
+    loadWL().forEach(function (sym) { setWlRow(sym, null, null); });
     wlNotify(reason);
   }
   function markWlHealthy() {
@@ -873,8 +870,9 @@
       // The daemon already conflates to the newest row per symbol, so there is no burst to
       // throttle -- a few text writes per second.
       paintQuote({ spot_disp: closed ? q.closed_last.spot_disp : q.spot_disp, spot: q.spot,
-        bid: q.bid, ask: q.ask, quoteAsOf: q.quote_as_of,
-        chgPct: q.chg_pct, chgPctAsOf: q.chg_pct_as_of, chgPctRegular: q.chg_pct_regular,
+        bidText: q.bid_text, askText: q.ask_text, bidAsOf: q.bid_as_of, askAsOf: q.ask_as_of,
+        chgPctText: q.chg_pct_text, chgPctSign: q.chg_pct_sign, chgPctAsOf: q.chg_pct_as_of,
+        chgPctRegularText: q.chg_pct_regular_text, chgPctRegularSign: q.chg_pct_regular_sign,
         chgPctRegularAsOf: q.chg_pct_regular_as_of, quoteIngestion: q.quote_ingestion,
         spotState: closed ? 'past' : q.spot_state,
         feedCls: live ? '' : 'stale',
@@ -886,9 +884,9 @@
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
       // Schwab's change as sent, beside the live price or its last trade (with Schwab's trade time)
-      setWlRow(wlSym, q.spot_state === 'live' ? q.spot : null, q.chg_pct,
-        q.spot_state || 'unavailable',
-        q.spot_state !== 'live' && q.closed_last ? q.closed_last.spot_disp + ' · ' + q.closed_last.as_of : null);
+      setWlRow(wlSym, q.spot_state === 'live' ? q.spot_disp
+        : q.closed_last ? q.closed_last.spot_disp + ' · ' + q.closed_last.as_of : null,
+        { text: q.chg_pct_text, sign: q.chg_pct_sign, asOf: q.chg_pct_as_of });
       markWlHealthy();
     });
     try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
@@ -970,7 +968,7 @@
     // just asked for this ticker (page load or a ticker change): the row is on its way
     // (WAITING); otherwise the push itself is down (OFFLINE)
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
-    paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
+    paintQuote({ spot: null, spot_disp: null,
       spotState: 'unavailable', feedCls: 'stale',
       feedLabel: connecting ? 'WAITING' : 'OFFLINE',
       ageLabel: connecting ? 'no push yet' : 'live push down' });

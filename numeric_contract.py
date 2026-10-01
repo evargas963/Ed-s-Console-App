@@ -5,6 +5,7 @@ Schwab field."""
 from __future__ import annotations
 
 import math
+from decimal import Decimal
 from typing import (
     Any,
 )
@@ -23,20 +24,34 @@ def float_finite_or_none(value: Any) -> float | None:
     return v if math.isfinite(v) else None
 
 
+def _exact(v: float) -> str:
+    """Every digit of a number as sent (its shortest exact decimal), with thousands separators:
+    9.59, -0.31185, 62,110,041, 7,671.5; never rounded, abbreviated or in exponent form."""
+    return format(Decimal(repr(float(v))).normalize(), ",f")
+
+
 def price_text(v: "float | None") -> str:
-    """A price as every server-made text shows it: two decimals; "—" when there is none."""
-    return "—" if v is None else f"{float(v):.2f}"
+    """A price as every server-made text shows it: exactly as sent (operator 2026-10-01: "no
+    rounding, use the exact data that schwab gives us everywhere"); "—" when there is none."""
+    return "—" if v is None else _exact(v)
 
 
 def volume_text(n: "float | None") -> str:
-    """A volume (shares) as the screen shows it: 62.11M, 210.1K, 950; "—" when there is none."""
-    if n is None:
-        return "—"
-    a = abs(float(n))
-    for size, unit, places in ((1e9, "B", 2), (1e6, "M", 2), (1e3, "K", 1)):
-        if a >= size:
-            return f"{a / size:.{places}f}{unit}"
-    return str(round(a))
+    """A volume or size (shares, contracts) as the screen shows it: exactly as sent, 62,110,041;
+    "—" when there is none."""
+    return "—" if n is None else _exact(n)
+
+
+def percent_text(v: "float | None") -> str:
+    """A percent Schwab sends (its change percents) as the screen shows it: signed, exactly as
+    sent, -0.31185%, +0.5%; "—" when there is none."""
+    return "—" if v is None else ("+" if v > 0 else "") + _exact(v) + "%"
+
+
+def sign_word(v: "float | None") -> "str | None":
+    """The direction of a signed value, for the screen's colour: pos, neg, flat; None when there is
+    none."""
+    return None if v is None else "pos" if v > 0 else "neg" if v < 0 else "flat"
 
 
 #: Schwab's own "no value" marker (greeks, IV, and any field Schwab could not fill).

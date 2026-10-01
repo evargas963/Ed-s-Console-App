@@ -12,8 +12,12 @@ function served(s) {
   const key = u.startsWith('$') || !INDEX_ROOTS.has(u) ? u : '$' + u;
   return { requested: s, key: key, display: key.replace(/^\$/, '') };
 }
+// A live price row as live_price_rows.price_row serves it; every other text is the server's
+// (numeric_contract: exactly as sent, no rounding), passed in `extra` as served
+// (tests/e2e/fixtures/served_price_row_*.json is one the real code served). Stand-in: the price's
+// text is the number's own digits (String), as price_text gives for these prices.
 function priceRow(ticker, spot, extra) {
-  return Object.assign({ ticker: ticker, spot: spot, spot_disp: spot.toFixed(2), spot_state: 'live',
+  return Object.assign({ ticker: ticker, spot: spot, spot_disp: String(spot), spot_state: 'live',
     feed_live: true, spot_source: 'streaming_plane', server_ts: Date.now() / 1000,
     trade_age_sec: 1 }, extra || {});
 }

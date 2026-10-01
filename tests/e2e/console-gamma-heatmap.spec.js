@@ -273,6 +273,36 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(unchangedCell).not.toHaveClass(/flash-update/);
   });
 
+  test('a rebuild of the same values while a cell flashes does not cut its flash short', async ({ page }) => {
+    // The grid is rebuilt on every publication; a second publication with the same values right
+    // after a change (the levels push comes again) rebuilt the changed cell without its flash, so
+    // the change could go unseen and the test above could miss it. The flash runs its length
+    // (900 ms, .hcell.flash-update) across rebuilds.
+    let call = 0;
+    await page.route('**/api/options/gamma-surface**', (route) => {
+      call += 1;
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, SURFACE, { strikes: [583, 586], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+          cells: [{ strike: 583, gex: [call === 1 ? 1000 : 2000] }, { strike: 586, gex: [-50000] }], surface_seq: call })) });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const sel = '.hcell[data-strike="583"][data-expiry="2026-09-11"]';
+    await expect(page.locator(sel)).toHaveText('$1.0K');
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    await expect(page.locator(sel)).toHaveClass(/flash-update/);
+    // the same values again, at once: the cell is rebuilt, and still flashing
+    const after = await page.evaluate(async (s) => {
+      const before = document.querySelector(s);
+      document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } }));
+      const t0 = Date.now();
+      while (document.querySelector(s) === before && Date.now() - t0 < 600) await new Promise((r) => setTimeout(r, 5));
+      const el = document.querySelector(s);
+      return { rebuilt: el !== before, flashing: el.classList.contains('flash-update') };
+    }, sel);
+    expect(after).toEqual({ rebuilt: true, flashing: true });
+    await expect(page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]')).not.toHaveClass(/flash-update/);
+  });
+
   test('a levels push on /api/changes reloads the heatmap, with no manual event dispatch', async ({ page }) => {
     // Delivery, not rendering: the browser's own EventSource parses the pushed `levels` event.
     let surfaceCalls = 0;
@@ -977,21 +1007,30 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('header paints the daemon price row the moment it arrives', async ({ page }) => {
     // Stage 1 of the live-UI architecture: the capture daemon pushes the finished row
     // (live_price_rows.price_row) straight to the page; the console is not in the path.
-    await mockPriceSocket(page, [priceRow('SPY', 601.23, { bid: 601.20, ask: 601.25, chg_pct: 0.5,
-      chg_pct_regular: 0.4, quote_ingestion: 'schwab_streaming_level_one' })]);
+    // Every number is the served text, exactly as Schwab sent it (operator 2026-10-01: "no rounding,
+    // use the exact data that schwab gives us everywhere"), each with its served time. Stand-in
+    // values in the server's text (numeric_contract, live_price_rows.price_row).
+    await mockPriceSocket(page, [priceRow('SPY', 601.23, { bid_text: '601.2', ask_text: '601.25',
+      bid_as_of: 'as of Thu 10/01 08:30:00 AM CT', ask_as_of: 'as of Thu 10/01 08:30:01 AM CT',
+      chg_pct_text: '+0.5%', chg_pct_sign: 'pos', chg_pct_as_of: 'received Thu 10/01 08:30 AM CT',
+      chg_pct_regular_text: '+0.4%', chg_pct_regular_sign: 'pos', chg_pct_regular_as_of: 'received Thu 10/01 08:29 AM CT',
+      quote_ingestion: 'schwab_streaming_level_one' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hFeed')).toContainText('LIVE');
-    await expect(page.locator('#hBidAsk')).toHaveText('601.20 × 601.25');
-    // Schwab's two change percents, each under its own label
-    await expect(page.locator('#hChgReg')).toHaveText('REG +0.40%');
-    await expect(page.locator('#hChg')).toHaveText('EXT +0.50%');
+    await expect(page.locator('#hBidAsk')).toHaveText('601.2 · as of Thu 10/01 08:30:00 AM CT × 601.25 · as of Thu 10/01 08:30:01 AM CT');
+    // Schwab's two change percents, each under its own label, with its time and served direction
+    await expect(page.locator('#hChgReg')).toHaveText('REG +0.4% · received Thu 10/01 08:29 AM CT');
+    await expect(page.locator('#hChg')).toHaveText('EXT +0.5% · received Thu 10/01 08:30 AM CT');
+    await expect(page.locator('#hChg')).toHaveClass(/\bpos\b/);
   });
 
-  test('before the session the regular-session percent reads absent, the extended one live', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23, { chg_pct: -0.495313, chg_pct_regular: null })]);
+  test('before the session the regular-session percent reads absent, the extended one as sent', async ({ page }) => {
+    await mockPriceSocket(page, [priceRow('SPY', 601.23, { chg_pct_text: '-0.495313%', chg_pct_sign: 'neg',
+      chg_pct_regular_text: '—' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#hChg')).toHaveText('EXT -0.50%');
+    await expect(page.locator('#hChg')).toHaveText('EXT -0.495313%');   // every digit Schwab sent
+    await expect(page.locator('#hChg')).toHaveClass(/\bneg\b/);
     await expect(page.locator('#hChgReg')).toHaveText('REG —');
   });
 
@@ -1003,11 +1042,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25 })]);
+    await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct_text: '-1.25%',
+      chg_pct_sign: 'neg', chg_pct_as_of: 'received Thu 10/01 08:30 AM CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
-    await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.50');
-    await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveText('-1.25%');
+    // the served texts, exactly as sent, the change with its time (operator 2026-10-01: no rounding)
+    await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.5');
+    await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveText('-1.25% · received Thu 10/01 08:30 AM CT');
+    await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveClass(/\bneg\b/);
   });
 
   test('theme A/B: explicit dark and light selections persist across reload', async ({ page }) => {

@@ -71,7 +71,9 @@ def test_no_crossing_names_the_prices_searched_and_claims_nothing_beyond_them():
     d = snap.flip_diag
     assert snap.gamma_flip is None and d["state"] == FLIP_NO_CROSSING and d["crossings"] == 0
     assert (d["domain_lo"], d["domain_hi"]) == (snap.profile[0][0], snap.profile[-1][0])
-    assert snap.gamma_flip_reason == f"none in {d['domain_lo']:.2f}–{d['domain_hi']:.2f}" == "none in 8.18–11.06"
+    # the prices searched, every digit (numeric_contract.price_text: no rounding, operator 2026-10-01)
+    assert snap.gamma_flip_reason == "none in 8.177–11.063"
+    assert (d["domain_lo"], d["domain_hi"]) == (8.177, 11.063)
     # no flip is not no regime: Schwab's gamma at spot still reads
     assert snap.regime == REGIME_LONG_GAMMA and snap.flip_relation is None
     # the reason is served once, under the flip's id, and claims nothing about the whole chain

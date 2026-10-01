@@ -35,7 +35,9 @@ _PRICE_FIELDS = ("LAST_PRICE", "BID_PRICE", "ASK_PRICE", "MARK", "CLOSE_PRICE",
 DAY_FIELDS = ("OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE", "LAST_PRICE", "REGULAR_MARKET_LAST_PRICE", "TOTAL_VOLUME",
               "TRADE_TIME_MILLIS")
 _COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "LAST_SIZE", "TOTAL_VOLUME")
-_CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
+#: Schwab's own clocks (epoch ms, read in seconds): the quote's, the last trade's, and the bid's
+#: and the ask's -- each value is shown with, and judged by, its own
+_CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS", "BID_TIME_MILLIS", "ASK_TIME_MILLIS")
 #: signed values (any finite number): Schwab's own change of the LAST_PRICE vs the prior close.
 #: Measured: NET_CHANGE_PERCENT arrives with every LAST_PRICE; REGULAR_MARKET_CHANGE_PERCENT
 #: with every LAST_PRICE in the regular session (2026-09-28: SPY 113/113, MU 112/112, PCG 17/17)
@@ -75,8 +77,9 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     is sent, and its age is the age of the last LAST_PRICE message, never of the bid/ask tick
     arriving now.
 
-    `received_ts` is REQUIRED: the capture daemon's own receive time for this message --
-    what every freshness check judges (2026-09-23 audit P0).
+    `received_ts` is REQUIRED: the capture daemon's own receive time for this message -- the
+    time of a value only where Schwab sends no time field for it (each value with one -- the last
+    trade, the bid, the ask -- is shown with and judged by Schwab's own).
     """
     if not item or not isinstance(item, dict):
         return False
@@ -123,9 +126,10 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         "chg_pct_received_ts": when("NET_CHANGE_PERCENT"),
         "chg_pct_regular": val("REGULAR_MARKET_CHANGE_PERCENT"),
         "chg_pct_regular_received_ts": when("REGULAR_MARKET_CHANGE_PERCENT"),
-        # the bid's and ask's own receive time (the older of the two): what the quote's live rule
-        # judges, never another field's message
-        "quote_received_ts": min((t for t in (when("BID_PRICE"), when("ASK_PRICE")) if t is not None), default=None),
+        # Schwab's own time of the bid and of the ask (BID_TIME_MILLIS, ASK_TIME_MILLIS, epoch s):
+        # what each is shown with and what the quote's live rule judges
+        "bid_ts": val("BID_TIME_MILLIS"),
+        "ask_ts": val("ASK_TIME_MILLIS"),
         # the fields Schwab last sent as not a number (-999, text, NaN)
         "not_numbers": sorted(n for n, (v, _t) in snapshot.items() if v is None),
         "net_change": val("NET_CHANGE"),
@@ -291,8 +295,8 @@ def spot_is_fresh(q: dict[str, Any], now: float) -> bool:
     04:00-20:00 ET), the stream delivered a LAST_PRICE for it, its trade is in this session
     (TRADE_TIME_MILLIS, or else its receive time, on today's session_day: Schwab re-sends the
     prior day's last trade after midnight) and the feed is live for its symbol (feed_live_for).
-    Otherwise it is a past observation, shown with its time and session (price_row
-    `closed_last`), never as the current session's. Its age since the last trade is information
+    Otherwise it is a past observation, shown with Schwab's trade time (price_row `closed_last`),
+    never as the current price. Its age since the last trade is information
     (`trade_ts`), never a reason to blank it."""
     if not in_session(now):
         return False
@@ -305,15 +309,15 @@ def spot_is_fresh(q: dict[str, Any], now: float) -> bool:
 
 def quote_is_fresh(q: dict[str, Any], now: float) -> bool:
     """Is this plane row's quote (bid/ask/sizes) live at `now`, for the computations that need
-    a live quote: its bid and ask were received in this session (`quote_received_ts`, their own
-    receive times -- never another field's message) and the feed is live for its symbol
+    a live quote: Schwab stamped its bid and its ask in this session (BID_TIME_MILLIS and
+    ASK_TIME_MILLIS, the times the screen shows them with) and the feed is live for its symbol
     (feed_live_for). Under Schwab's changed-fields-only delivery an unchanged bid IS the current
-    bid while the feed is live; no bid or ask received is not live (fail closed). Outside the
-    session (is_capturable_session) the quote is a past observation. Display does not take this
-    verdict: the price row shows the quote with its time."""
+    bid while the feed is live; a bid or ask with no time of Schwab's is not live (fail closed).
+    Outside the session (is_capturable_session) the quote is a past observation. Display does not
+    take this verdict: the price row shows the quote with its time."""
     if not in_session(now):
         return False
-    received = float_finite_or_none(q.get("quote_received_ts"))
-    if received is None or session_day(received) != session_day(now):
+    stamped = [float_finite_or_none(q.get(k)) for k in ("bid_ts", "ask_ts")]
+    if None in stamped or session_day(min(stamped)) != session_day(now):
         return False
     return feed_live_for(q.get("ticker"), "LEVELONE_EQUITIES", now)
