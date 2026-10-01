@@ -82,6 +82,9 @@ def test_a_round_writes_every_expiry_with_schwabs_own_price(board_db, monkeypatc
                "BBB": _Resp(200, _chain(-999, ["2030-01-04"])),
                "CCC": _Resp(400)}
     monkeypatch.setattr(cch, "safe_get_chain", lambda client, tk, **k: answers[tk])
+    # Schwab's quotes: each contract's gamma as the quotes endpoint sent SPY 261120C00875000's
+    monkeypatch.setattr(cch, "safe_get_quotes", lambda client, symbols: _Resp(
+        200, {s: {"quote": {"gamma": 0.00037225}} for s in symbols}))
     result = cch.capture_round(object(), board_db)
     assert result == {"written": 2, "failed": ["CCC"]}
     with sqlite3.connect(board_db) as c:
@@ -92,6 +95,7 @@ def test_a_round_writes_every_expiry_with_schwabs_own_price(board_db, monkeypatc
         ("BBB", "2030-01-04", None, 2)]          # -999 is Schwab's "no number"
     assert isinstance(rows[0][4], bytes), "stored compressed"
     assert {c["putCall"] for c in decode_json_blob(rows[0][4])} == {"CALL", "PUT"}
+    assert {c["gamma"] for r in rows for c in decode_json_blob(r[4])} == {0.00037225}, "the quote's gamma is stored"
 
 
 def test_the_daemon_task_stops_when_told(monkeypatch):

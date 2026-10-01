@@ -18,8 +18,8 @@ import json
 from pathlib import Path
 
 from server import project_gamma_surface
-from math_exposure_core import (compute_exposures_by_strike, exposure_books, strike_oi_legs,
-                                strike_volume_legs)
+from math_exposure_core import (bucket_metric, compute_exposures_by_strike, exposure_books,
+                                strike_oi_legs, strike_volume_legs)
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -105,7 +105,9 @@ def test_A_cell_equals_canonical_faucet_per_expiry_slice():
             # vanna cell needs the additional gate the surface itself now applies).
             if not (bucket.get("has_oi") and bucket.get("has_valid_gamma")):
                 continue
-            assert _cell(surface, float(k), exp) == round(float(bucket["net_gex_1pct"]))
+            # unrounded, and None where a contract with open interest sent no gamma
+            # (bucket_metric, the one reader)
+            assert _cell(surface, float(k), exp) == bucket_metric(bucket, "net_gex_1pct")
             checked += 1
     assert checked > 20   # a real book, not a handful of strikes
 
@@ -121,9 +123,10 @@ def test_B_per_expiry_sum_reconciles_to_full_book():
         # exact math additivity on the unrounded faucet output (the real proof)
         per_sum = sum(float(per[exp][float(k)]["net_gex_1pct"]) for exp in (E1, E2) if float(k) in per[exp])
         assert abs(per_sum - float(bucket["net_gex_1pct"])) < 1e-6
-        # rounded display cells reconcile within rounding tolerance
-        cell_sum = sum(v for v in [_cell(surface, float(k), E1), _cell(surface, float(k), E2)] if v is not None)
-        assert abs(cell_sum - round(float(bucket["net_gex_1pct"]))) <= 2
+        # the unrounded cells reconcile to the full book's known net
+        cells = [_cell(surface, float(k), E1), _cell(surface, float(k), E2)]
+        if bucket_metric(bucket, "net_gex_1pct") is not None:
+            assert abs(sum(v for v in cells if v is not None) - bucket_metric(bucket, "net_gex_1pct")) < 1e-6
 
 
 # C. EXPIRY ISOLATION — changing the E2 slice must not alter any E1 cell (shared spot is the
@@ -288,7 +291,7 @@ def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
             if not (bucket.get("has_oi") and bucket.get("has_valid_gamma")):   # see test_A's own note
                 continue
             row = [r for r in surface["cells"] if r["strike"] == float(k)][0]
-            assert row["dex"][col] == round(float(bucket["net_dex_dollars"]))
+            assert row["dex"][col] == bucket_metric(bucket, "net_dex_dollars")   # unrounded
             checked += 1
     assert checked > 20
 

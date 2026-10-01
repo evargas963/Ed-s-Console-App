@@ -52,13 +52,21 @@ def test_schwabs_no_value_code_is_not_a_number():
     assert not greek_reported(None, iv=20.0)
 
 
-def test_a_no_value_contract_adds_nothing_and_the_rest_of_the_strike_counts():
+def test_a_no_value_contract_leaves_its_leg_and_the_strikes_net_unknown():
+    """A put with open interest and no value: the put leg's sums and the strike's net are not
+    known (the call's GEX is not the strike's net); the call leg stands. Open interest 0 adds a
+    known 0 whatever its Greeks."""
     none = _ct(100.0, "PUT", 700, iv=MISSING_GREEK_SENTINEL)
     call = _ct(100.0, "CALL", 500, gamma=0.04)
     exp, diag = compute_exposures_by_strike([none, call], spot=SPOT)
     assert bucket_metric(exp[100.0], "call_gamma") == 0.04 * 500 * 100
-    assert bucket_metric(exp[100.0], "put_gamma") == 0.0     # the put leg carried no value
+    assert bucket_metric(exp[100.0], "put_gamma") is None
+    for net in ("net_gex_1pct", "net_dex_dollars", "net_vanna"):
+        assert bucket_metric(exp[100.0], net) is None, net
     assert diag.greeks_missing == 1
+    no_oi = _ct(100.0, "PUT", 0, iv=MISSING_GREEK_SENTINEL)
+    exp, _ = compute_exposures_by_strike([no_oi, call], spot=SPOT)
+    assert bucket_metric(exp[100.0], "net_gex_1pct") == bucket_metric(exp[100.0], "call_gex_1pct")
 
 
 def test_real_spy_capture_is_used_as_schwab_sent_it():

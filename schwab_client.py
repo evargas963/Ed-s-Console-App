@@ -507,22 +507,77 @@ def _option_expiries(client, ticker: str) -> "list[date] | None":
                    if d >= today})
 
 
-def fetch_full_chain(client, ticker: str, get, *,
+def safe_get_quotes(client, symbols: "list[str]"):
+    """One request to Schwab's quotes endpoint (/marketdata/v1/quotes) for `symbols`, the quote
+    fields only; Schwab's response."""
+    _block_live_schwab_in_ci_offline()
+    if _schwab_auth_latched():
+        raise SchwabAuthError("Schwab auth latched after prior token failure — quotes withheld")
+    try:
+        return client.get_quotes(symbols, fields=["quote"])
+    except Exception as e:
+        if _is_token_error(e):
+            _raise_schwab_auth_error(e)
+        raise
+
+
+#: The most option symbols one quotes request carries: 300 answered in 0.3 s, 400 was refused
+#: with HTTP 400 (the request's URL length).
+QUOTES_BATCH_MAX = 300
+#: The contract fields Schwab's chain sends rounded to 3 decimals and its quotes send as computed
+#: (SPY 261120C00875000: chain gamma 0.0, delta 0.005; quote gamma 0.00037225, delta 0.00518524).
+GREEK_FIELDS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
+
+
+def fetch_full_chain(client, ticker: str, get, quote, *,
                      expiry: "date | None" = None) -> FullChainResponse:
     """EVERY strike of every listed expiry (or of the one `expiry`) -- the chain all level
-    math is computed from. `get(**dates)` makes one strike_range=ALL request for `ticker`
-    and returns Schwab's response (the console passes its gated request, the daemon a plain
-    one).
+    math is computed from -- with each contract's Greeks as Schwab's quotes send them.
+    `get(**dates)` makes one strike_range=ALL request for `ticker` and `quote(symbols)` one
+    quotes request; each returns Schwab's response (the console passes its gated requests, the
+    daemon plain ones).
 
     MEASURED 2026-09-25 across the 42 board tickers: levels computed from the old strike
     window disagreed with the same code run on the full chain -- gamma flip missing for 10
     tickers, max pain different for 16, put wall for 4, $SPX walls 3-4% apart. Operator
     decision 2026-09-25: the full chain for all calculations.
 
-    One request when Schwab answers it. When the vendor answers that the request covers too
-    much, the listed expiries are split into contiguous date ranges, halving any range that
-    is itself refused; the part count that worked is remembered per ticker. Every part must
-    land: a missing part is a failed response (the reason names it), never a partial chain."""
+    The chain's GREEK_FIELDS are replaced by the contract's quote's, as sent, asked for in
+    batches of QUOTES_BATCH_MAX; a contract whose quote does not come back has none of them
+    (None), never the chain's rounded value."""
+    resp = _whole_chain(client, ticker, get, expiry=expiry)
+    if resp.status_code != 200:
+        return resp
+    contracts = [ct for side in ("callExpDateMap", "putExpDateMap")
+                 for by_strike in (resp.json().get(side) or {}).values() if isinstance(by_strike, dict)
+                 for listed in by_strike.values() if isinstance(listed, list)
+                 for ct in listed if isinstance(ct, dict)]
+    symbols = list(dict.fromkeys(ct["symbol"] for ct in contracts if ct.get("symbol")))
+    quoted: dict = {}
+    for i in range(0, len(symbols), QUOTES_BATCH_MAX):
+        reply = quote(symbols[i:i + QUOTES_BATCH_MAX])
+        if reply.status_code != 200:
+            log.warning("quotes for %s: HTTP %s for %d contracts; their Greeks are absent",
+                        ticker, reply.status_code, len(symbols[i:i + QUOTES_BATCH_MAX]))
+            continue
+        quoted.update({s: e["quote"] for s, e in reply.json().items()
+                       if isinstance(e, dict) and isinstance(e.get("quote"), dict)})
+    for ct in contracts:
+        q = quoted.get(ct.get("symbol")) or {}
+        ct.update({f: q.get(f) for f in GREEK_FIELDS})
+    missing = sum(1 for ct in contracts if ct.get("symbol") not in quoted)
+    if missing:
+        log.warning("quotes for %s: no quote came back for %d of %d contracts; their Greeks are absent",
+                    ticker, missing, len(contracts))
+    return resp
+
+
+def _whole_chain(client, ticker: str, get, *, expiry: "date | None" = None) -> FullChainResponse:
+    """The chain of `fetch_full_chain`. One request when Schwab answers it. When the vendor
+    answers that the request covers too much, the listed expiries are split into contiguous
+    date ranges, halving any range that is itself refused; the part count that worked is
+    remembered per ticker. Every part must land: a missing part is a failed response (the
+    reason names it), never a partial chain."""
 
     def _get(**dates):
         resp = get(**dates)

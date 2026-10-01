@@ -36,8 +36,7 @@ def book_net_gex(exposures: dict) -> float | None:
     """Net dealer GEX per 1% move at spot: the sum of every strike's net_gex_1pct -- Schwab's
     gamma as sent, +call/-put. The one gamma at spot (regime, headline, pin gate). None when no
     strike carried a valid gamma."""
-    vals = [b["net_gex_1pct"] for b in exposures.values()
-            if isinstance(b, dict) and b.get("has_valid_gamma") and b.get("net_gex_1pct") is not None]
+    vals = [v for b in exposures.values() if (v := bucket_metric(b, "net_gex_1pct")) is not None]
     return sum(vals) if vals else None
 
 
@@ -54,25 +53,30 @@ def greek_reported(value: float | None, *, iv: float | None = None) -> bool:
 
 
 
-#: Bucket fields priced from Schwab's gamma / delta, and the flag that says a contract at the
-#: strike carried one. A strike where no contract with OI carried a reported Greek has no value
-#: for it -- its 0.0 initialiser is never read as data.
+#: Bucket fields priced from Schwab's gamma / delta / volatility, the flag that says a contract at
+#: the strike carried one, and the counts of contracts on the field's legs with open interest that
+#: carried none. A strike where no contract with OI carried a reported Greek, or a leg where one
+#: with open interest did not, has no value for it: its 0.0 initialiser and a sum missing a
+#: contract are never read as data.
 _GREEK_FIELD_FLAG = {
-    **dict.fromkeys(("call_gamma", "put_gamma", "net_gamma",
-                     "call_gex_1pct", "put_gex_1pct", "net_gex_1pct"), "has_valid_gamma"),
-    **dict.fromkeys(("call_delta", "put_delta", "net_delta",
-                     "call_dex_dollars", "put_dex_dollars", "net_dex_dollars"), "has_valid_delta"),
-    **dict.fromkeys(("call_vanna", "put_vanna", "net_vanna"), "has_valid_vanna"),
+    f"{leg}_{field}": (flag, tuple(f"{s}_{greek}_unreported" for s in (("call", "put") if leg == "net" else (leg,))))
+    for greek, flag, fields in (("gamma", "has_valid_gamma", ("gamma", "gex_1pct")),
+                                ("delta", "has_valid_delta", ("delta", "dex_dollars")),
+                                ("vanna", "has_valid_vanna", ("vanna",)))
+    for field in fields for leg in ("call", "put", "net")
 }
 
 
 def bucket_metric(bucket: dict, key: str) -> float | None:
     """One exposure-bucket field, or None when it is not known: absent, not finite, or a Greek
-    field on a strike no reported Greek reached (see _GREEK_FIELD_FLAG)."""
+    field on a strike no reported Greek reached or where a contract with open interest reported
+    none (see _GREEK_FIELD_FLAG)."""
     if not isinstance(bucket, dict) or key not in bucket:
         return None
-    flag = _GREEK_FIELD_FLAG.get(key)
+    flag, unreported = _GREEK_FIELD_FLAG.get(key, (None, ()))
     if flag is not None and flag in bucket and not bucket[flag]:     # every priced strike carries it
+        return None
+    if any(bucket.get(u) for u in unreported):
         return None
     return float_finite_or_none(bucket[key])
 
@@ -130,6 +134,9 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             "has_valid_delta": False,
             # True once a contract with OI priced a vanna (valid IV and time to expiry)
             "has_valid_vanna": False,
+            # Contracts on each leg with open interest above 0 whose gamma / delta / vanna has no
+            # value (Schwab sent -999 or none): that leg's sum of it is not known
+            **{f"{s}_{g}_unreported": 0 for s in ("call", "put") for g in ("gamma", "delta", "vanna")},
             # True when the book was built WITH spot, i.e. the *_dollars / *_gex_1pct fields are
             # real dollar values. Set explicitly at build; never inferred from values.
             "dollarized": False,
@@ -251,6 +258,11 @@ def compute_exposures_by_strike(
         gamma_ok = greek_reported(gamma, iv=ct.get("volatility"))
         if not delta_ok or not gamma_ok:
             missing += 1
+        leg = side.lower()
+        if oi > 0:      # open interest 0 adds a known 0 whatever its Greeks
+            b[f"{leg}_gamma_unreported"] += not gamma_ok
+            b[f"{leg}_delta_unreported"] += not delta_ok
+        vanna_priced = False
 
         used += 1
         b["has_oi"] = True
@@ -285,7 +297,7 @@ def compute_exposures_by_strike(
                     _vn = _bsv(spt, float(strike), t_years, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["call_vanna"] += _vn * 0.01 * oi * mult   # per 1 vol point
-                        b["has_valid_vanna"] = True
+                        b["has_valid_vanna"] = vanna_priced = True
         else:
             prev = b.get("put_oi")
             b["put_oi"] = oi if prev is None else float(prev) + oi
@@ -312,7 +324,10 @@ def compute_exposures_by_strike(
                     _vn = _bsv(spt, float(strike), t_years, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["put_vanna"] += _vn * 0.01 * oi * mult    # per 1 vol point
-                        b["has_valid_vanna"] = True
+                        b["has_valid_vanna"] = vanna_priced = True
+        # a settled contract (no time to expiry) carries no vanna and leaves none unknown
+        if spot is not None and oi > 0 and not vanna_priced and t_years > 0:
+            b[f"{leg}_vanna_unreported"] += 1
 
     for strike, b in exposures.items():
         b["dollarized"] = spot is not None
@@ -336,7 +351,8 @@ def _diagnostics(total: int, used: int, missing: int, expiry_unknown: int) -> Ex
     if used == 0:
         note = "No usable contracts (OI filtered or chain empty)."
     elif missing == used:
-        note = "All greeks missing (-999). You will still get OI center; gamma/delta pin/inf may be N/A until RTH."
+        note = ("All greeks missing (Schwab sent -999, or no quote came back). You will still get "
+                "OI center; gamma/delta pin/inf may be N/A until RTH.")
     return ExposureDiagnostics(contracts_total=total, contracts_used=used,
                                greeks_missing=missing, expiry_unknown=expiry_unknown, note=note)
 
