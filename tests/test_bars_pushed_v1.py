@@ -139,9 +139,9 @@ def _pushed(streamed, history, subscribe=("SPY",), after_start=None, stats=None)
         st = stats if stats is not None else {}
         published = bus.subscribe("barhist.", maxsize=65536, name="test_published")
         feed = lambda: {"ts": RESTART, "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
-        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=lambda: RESTART,
-                                                         host="127.0.0.1", port=port, stats=st,
-                                                         history_fn=history, daily_fn=_no_days))
+        task = asyncio.create_task(live_ui.serve_live_ui(
+            live_ui.LiveUiServer(bus, feed, st, clock=lambda: RESTART, history_fn=history, daily_fn=_no_days),
+            stop, host="127.0.0.1", port=port))
         while not st.get("listening"):
             await asyncio.sleep(0.01)
         if after_start is not None:
@@ -285,9 +285,9 @@ def test_a_browser_back_from_a_drop_is_told_the_gap_and_sent_only_new_bars(monke
     async def main():
         port, bus, stop, stats = _free_port(), MessageBus(), asyncio.Event(), {}
         feed = lambda: {"ts": time.time(), "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
-        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=time.time,
-                                                         host="127.0.0.1", port=port, stats=stats,
-                                                         history_fn=_schwab({}), daily_fn=_no_days))
+        task = asyncio.create_task(live_ui.serve_live_ui(
+            live_ui.LiveUiServer(bus, feed, stats, clock=time.time, history_fn=_schwab({}), daily_fn=_no_days),
+            stop, host="127.0.0.1", port=port))
         while not stats.get("listening"):
             await asyncio.sleep(0.01)
         try:
@@ -950,10 +950,10 @@ def test_a_bar_the_daemons_queue_drops_ends_every_streams_coverage():
     async def main():
         port, bus, stop = _free_port(), MessageBus(), asyncio.Event()
         feed = lambda: {"ts": clock["now"], "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
-        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=lambda: clock["now"],
-                                                         host="127.0.0.1", port=port, stats=stats,
-                                                         history_fn=_schwab({"SPY": FRIDAY}, asked),
-                                                         daily_fn=_no_days))
+        task = asyncio.create_task(live_ui.serve_live_ui(
+            live_ui.LiveUiServer(bus, feed, stats, clock=lambda: clock["now"],
+                                 history_fn=_schwab({"SPY": FRIDAY}, asked), daily_fn=_no_days),
+            stop, host="127.0.0.1", port=port))
         while not stats.get("listening"):
             await asyncio.sleep(0.01)
         bus.publish("sub.CHART_EQUITY", _subscribed("SPY", ts=_t(100)))
@@ -1069,9 +1069,9 @@ def test_a_subscription_answer_the_daemon_cannot_read_is_a_loss_and_the_daemon_g
     async def live_ui_reads_on():
         port, bus, stop, stats = _free_port(), MessageBus(), asyncio.Event(), {}
         feed = lambda: {"ts": RESTART, "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
-        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=lambda: RESTART,
-                                                         host="127.0.0.1", port=port, stats=stats,
-                                                         history_fn=lambda *a: [], daily_fn=_no_days))
+        task = asyncio.create_task(live_ui.serve_live_ui(
+            live_ui.LiveUiServer(bus, feed, stats, clock=lambda: RESTART, history_fn=lambda *a: [], daily_fn=_no_days),
+            stop, host="127.0.0.1", port=port))
         while not stats.get("listening"):
             await asyncio.sleep(0.01)
         bus.publish("sub.CHART_EQUITY", _subscribed("SPY", ts=RESTART - 120))

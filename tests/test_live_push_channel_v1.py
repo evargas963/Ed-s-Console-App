@@ -254,7 +254,8 @@ def test_a_reconnecting_console_backfills_every_minute_the_daemon_holds_and_its_
         feed, monkeypatch, pin_clock, tmp_path):
     """A console whose push was down missed the bars Schwab streamed meanwhile, and they were never
     written: its levels then read stale for the rest of the day (W-14). On every connect the daemon
-    sends its held minutes of the day as history (barheld), which the console's one bar writer
+    reads its held minutes of the day once (live_ui.held_minutes; nothing is published on the bus
+    per minute) and sends them as history (barheld), which the console's one bar writer
     writes insert-only, each with its own source: the store then holds every minute the daemon
     holds, the levels are rebuilt and read current, and no bar1m event is re-sent. Real SPY bars of
     2026-09-29 09:15-10:29 ET, streamed to the daemon's real live_ui; the console's store held
@@ -291,20 +292,25 @@ def test_a_reconnecting_console_backfills_every_minute_the_daemon_holds_and_its_
 
     async def run():
         bus = MessageBus()
-        ui = live_ui.LiveUiServer(bus, lambda: {}, {}, clock=lambda: clock["now"], history_fn=lambda *a: [],
-                                  daily_fn=lambda *a: [])
-        ui.on_subscription(subscription_msg(service="CHART_EQUITY", command="SUBS", symbols=["SPY"], code=0,
-                                            reason="ok", ts=at(9, 0)))
-        for b in bars:                                        # the daemon streams the whole morning
-            clock["now"] = b["timestamp"] / 1000.0 + 62.7
-            bus.publish("bar1m.SPY", msg(b, clock["now"]))
-            ui.on_bar(msg(b, clock["now"]))
-        for t in list(ui._asks):
-            t.cancel()
-        clock["now"] = at(10, 45)
         stop = asyncio.Event()
+        ui_stats: dict = {}
+        ui = live_ui.LiveUiServer(bus, lambda: {}, ui_stats, clock=lambda: clock["now"], history_fn=lambda *a: [],
+                                  daily_fn=lambda *a: [])
+        daemon = asyncio.create_task(live_ui.serve_live_ui(ui, stop, host="127.0.0.1", port=_free_port()))
+        assert await _until(lambda: ui_stats.get("listening"))
+        bus.publish("sub.CHART_EQUITY", subscription_msg(service="CHART_EQUITY", command="SUBS", symbols=["SPY"],
+                                                         code=0, reason="ok", ts=at(9, 0)))
+        for b in bars:                                        # the daemon streams the whole morning
+            bus.publish("bar1m.SPY", msg(b, b["timestamp"] / 1000.0 + 62.7))
+        clock["now"] = at(10, 45)
+        # read with every bar still on the daemon's queue: the read waits for the queue to empty,
+        # so no minute published before a console's connect falls between the two
+        (topic, first), = await ui.held_minutes()
+        assert topic == "barheld.SPY" and len(first["bars"]) == len(bars)
+        assert not [t for t in bus.snapshot() if t.startswith("barheld.")]   # nothing published per minute
         stats: dict = {}
-        server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=feed, stats=stats))
+        server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=feed, stats=stats,
+                                                               held_fn=ui.held_minutes))
         assert await _until(lambda: stats.get("listening"))
         ofs._feed_running = True
         client = asyncio.create_task(ofs._feed_loop())       # the console comes back
@@ -325,7 +331,7 @@ def test_a_reconnecting_console_backfills_every_minute_the_daemon_holds_and_its_
             ofs._feed_running = False
             client.cancel()
             stop.set()
-            await asyncio.gather(client, server, return_exceptions=True)
+            await asyncio.gather(client, server, daemon, return_exceptions=True)
     got, held, levels = asyncio.run(run())
     assert got and all(m.get("backfill") is True for m in got)                 # history only, no bar event
     with db._connect() as conn:

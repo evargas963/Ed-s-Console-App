@@ -626,7 +626,7 @@ def schwab_days(daemon: "Daemon", hold: RateHold, clock):
 async def run() -> int:
     """The whole daemon: writer, the two local sockets, and the Schwab connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
-    from app.market_data.schwab.streaming.live_ui import serve_live_ui
+    from app.market_data.schwab.streaming.live_ui import LiveUiServer, serve_live_ui
     from config import build_config, load_dotenv_file
     from schwab_client import build_client_from_token
     load_dotenv_file()
@@ -642,14 +642,14 @@ async def run() -> int:
     daemon = Daemon(bus, health, wanted_path(), standing_roster(canonical_console_db_path()))
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")
     hold = RateHold(rate_hold_path())
+    ui = LiveUiServer(bus, daemon.status, {}, clock=time.time, history_fn=schwab_minutes(daemon, hold, time.time),
+                      daily_fn=schwab_days(daemon, hold, time.time))
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(capture_chains(make_client, stop)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
-                                                 on_wanted=daemon.set_wanted)),
-             asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, clock=time.time,
-                                               history_fn=schwab_minutes(daemon, hold, time.time),
-                                               daily_fn=schwab_days(daemon, hold, time.time)))]
+                                                 on_wanted=daemon.set_wanted, held_fn=ui.held_minutes)),
+             asyncio.create_task(serve_live_ui(ui, stop))]
     return await run_until_a_part_ends(daemon.run(make_client, stop), tasks, stop)
 
 

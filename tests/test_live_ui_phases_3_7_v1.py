@@ -51,9 +51,9 @@ def test_the_console_takes_the_daemons_price_row_and_ticks_on_it(monkeypatch):
         bus, stop, stats = MessageBus(), asyncio.Event(), {}
         feed = lambda: {"ts": clock(), "schwab_socket_open": True,  # noqa: E731
                         "held": {"LEVELONE_EQUITIES": ["BBB"]}, "health": {}}
-        daemon = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=clock,
-                                                           host="127.0.0.1", port=port, stats=stats,
-                                                           history_fn=lambda *a: [], daily_fn=lambda *a: []))   # no bar here
+        daemon = asyncio.create_task(live_ui.serve_live_ui(
+            live_ui.LiveUiServer(bus, feed, stats, clock=clock, history_fn=lambda *a: [], daily_fn=lambda *a: []),
+            stop, host="127.0.0.1", port=port))   # no bar here
         console = asyncio.create_task(ofs._rows_loop())
         push_changes.bind(asyncio.get_running_loop())
         page = push_changes.subscribe("BBB", "test-view")

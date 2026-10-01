@@ -23,8 +23,8 @@ the same topics is refused):
                                         so the last one is sent on connect
   barheld.SYM  src "live_ui_held"       the daemon's held minutes of the day, each with its own
                                         source, for the console's bar writer to backfill what it
-                                        missed while away (insert-only); sent on connect only
-                                        (and the first one published after it), never as bar events
+                                        missed while away (insert-only); read from live_ui and sent
+                                        once on connect, never published, never as bar events
 An equity's quote (quote.SYM, LEVELONE_EQUITIES) is not forwarded: the daemon turns it into the
 price row it pushes on live_ui, which the console reads like a browser does.
 
@@ -61,7 +61,7 @@ LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: op
 _FORWARDED = {"book.": ("schwab_book",), "optquote.": ("schwab_options_l1",),
               "news.": ("schwab_news",), "bar1m.": ("schwab_chart",),
               "barhist.": ("schwab_pricehistory",), "barstate.": ("live_ui",),
-              "bardays.": ("schwab_pricehistory_daily",), "barheld.": ("live_ui_held",)}
+              "bardays.": ("schwab_pricehistory_daily",)}
 
 
 def is_forwarded(topic: str, msg) -> bool:
@@ -133,7 +133,7 @@ HEARTBEAT_SEC = 1.0
 
 
 async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
-                        heartbeat_fn=None, on_wanted=None) -> None:
+                        heartbeat_fn=None, on_wanted=None, held_fn=None) -> None:
     """Send the last values, then every live message, until the connection closes.
 
     The send loop runs as its own task and this handler waits on the CONNECTION: a loop
@@ -149,12 +149,12 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
         for topic, msg in history.replay():
             await ws.send(encode(topic, msg))
         for topic, msg in list(bus.snapshot().items()):
-            if topic.startswith(("book.", "barstate.", "bardays.", "barheld.")) and is_forwarded(topic, msg):
+            if topic.startswith(("book.", "barstate.", "bardays.")) and is_forwarded(topic, msg):
                 await ws.send(encode(topic, msg))
-        # a symbol's held minutes are sent on connect only: the snapshot's, and the first one
-        # published after this connection began (it holds a minute streamed while the console was
-        # connecting, before the snapshot had it); never again on this connection
-        held_sent: set = set()
+        # the daemon's held minutes of the day, read once now that this connection's queue exists
+        # (live_ui.held_minutes: every bar published before it is held, every later one is in it)
+        for topic, msg in (await held_fn()) if held_fn is not None else ():
+            await ws.send(encode(topic, msg))
         loop = asyncio.get_running_loop()
         next_beat = loop.time()
         while True:
@@ -171,10 +171,6 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
                         sub.get(), timeout=max(0.0, next_beat - loop.time()))
             except asyncio.TimeoutError:
                 continue
-            if topic.startswith("barheld."):
-                if topic in held_sent:
-                    continue
-                held_sent.add(topic)
             if is_forwarded(topic, msg):
                 await ws.send(encode(topic, msg))
                 stats["sent"] += 1
@@ -209,8 +205,10 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
 async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
                           host: str = LIVE_PUSH_HOST, port: int = LIVE_PUSH_PORT,
                           stats: "dict | None" = None, heartbeat_fn=None,
-                          on_wanted=None) -> None:
-    """Run the push server until `stop` is set. `stats` (mutated) reports clients/sent/dropped."""
+                          on_wanted=None, held_fn=None) -> None:
+    """Run the push server until `stop` is set. `stats` (mutated) reports clients/sent/dropped.
+    `held_fn`: the daemon's held minutes of the day (live_ui.LiveUiServer.held_minutes), sent to
+    each console once on its connect."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
@@ -228,7 +226,7 @@ async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
                 history.record(topic, msg)
 
     async def handler(ws):
-        await _serve_client(ws, bus, stats, history, heartbeat_fn, on_wanted)
+        await _serve_client(ws, bus, stats, history, heartbeat_fn, on_wanted, held_fn)
 
     tracker = asyncio.create_task(_track())
     try:

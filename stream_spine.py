@@ -199,9 +199,9 @@ def price_history_msg(*, symbol: str, bars: "list[dict]", ts_recv: float) -> dic
 
 def held_minutes_msg(*, symbol: str, bars: "list[dict]", ts: float) -> dict:
     """barheld.* -- the daemon's held minutes of the day for a symbol (live_ui), each a bar1m
-    message with its own src (the stream's or the price history's): state, sent to a console on
-    its connect so its store backfills every minute it missed while away (live_push). Not a
-    stream message."""
+    message with its own src (the stream's or the price history's), read from live_ui and sent to
+    a console once on its connect so its store backfills every minute it missed while away
+    (live_push). Never published on the bus; not a stream message."""
     return {"ts": ts, "symbol": symbol, "src": "live_ui_held", "bars": list(bars)}
 
 

@@ -88,6 +88,9 @@ DAILY_HISTORY_DAYS = 400
 #: a symbol whose day still has an uncovered span is asked again at most this often on the
 #: daemon's clock (and on each of its streamed minutes), so a thin ticker never waits for a trade
 PRICE_HISTORY_RETRY_SEC = 60.0
+#: how long a console's connect waits for the daemon's bar queue to empty before reading the held
+#: minutes (held_minutes; the queue empties in milliseconds, a minute's bars for the board at once)
+HELD_DRAIN_MAX_SEC = 5.0
 
 
 def _et_day_start(t: float) -> float:
@@ -171,6 +174,8 @@ class LiveUiServer:
         self.streaming: dict[str, float] = {}
         self._asks: set[asyncio.Task] = set()
         self._in_flight = asyncio.Semaphore(HISTORY_IN_FLIGHT)
+        #: its one queue of bars and subscription answers while it serves (serve_live_ui)
+        self.bars_queue = None
         #: per symbol, today's streamed minutes that differed from Schwab's price history
         self.mismatches: dict[str, int] = {}
         stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
@@ -294,7 +299,6 @@ class LiveUiServer:
         if day is None or day.start != _et_day_start(bar["t"]):
             day = self.days[sym] = _Day(_et_day_start(bar["t"]))
         self._hold(sym, day, bar, SRC_STREAM)
-        self._publish_held(sym, day)
         if sym in self.streaming:
             # the stream's span, from its first minute (or the session's) through this one
             start = max(self.streaming[sym], live_price_rows.session_first_minute(bar["t"]))
@@ -347,14 +351,28 @@ class LiveUiServer:
         if prev is None or src == SRC_STREAM or prev_src == SRC_PRICEHISTORY:
             day.minutes[bar["t"]], day.source[bar["t"]] = bar, src
 
-    def _publish_held(self, sym: str, day: _Day) -> None:
-        """Publish `sym`'s held minutes of the day (barheld.SYM, stream_spine.held_minutes_msg),
-        each as a bar1m message with its own source: the state live_push sends a console on its
-        connect, so the console's store backfills every minute it missed while away."""
-        now = self.clock()
-        self.bus.publish(f"barheld.{sym}", held_minutes_msg(symbol=sym, ts=now, bars=[
-            bar_msg(symbol=sym, bar_start_ms=int(t * 1000), open=m["o"], high=m["h"], low=m["l"], close=m["c"],
-                    volume=m["v"], src=day.source[t], ts_recv=now) for t, m in sorted(day.minutes.items())]))
+    async def held_minutes(self) -> "list[tuple[str, dict]]":
+        """Every symbol's held minutes of the day (barheld.SYM, stream_spine.held_minutes_msg),
+        each as a bar1m message with its own source, read once when a console connects to the
+        push (live_push) so its store backfills what it missed while away. Read after this
+        server's bar queue is empty: every bar published before the console's own queue began is
+        then held (a bar is held in the same step it is taken from the queue), and every later one
+        reaches the console as a bar event, so no minute falls between."""
+        deadline = time.monotonic() + HELD_DRAIN_MAX_SEC
+        while self.bars_queue is not None and not self.bars_queue.queue.empty():
+            if time.monotonic() > deadline:
+                log.warning("live ui: the bar queue did not empty in %.0f s; held minutes read with %d queued",
+                            HELD_DRAIN_MAX_SEC, self.bars_queue.queue.qsize())
+                break
+            await asyncio.sleep(0.005)
+        now, out = self.clock(), []
+        for sym, day in self.days.items():
+            if day.start == _et_day_start(now) and day.minutes:
+                out.append((f"barheld.{sym}", held_minutes_msg(symbol=sym, ts=now, bars=[
+                    bar_msg(symbol=sym, bar_start_ms=int(t * 1000), open=m["o"], high=m["h"], low=m["l"],
+                            close=m["c"], volume=m["v"], src=day.source[t], ts_recv=now)
+                    for t, m in sorted(day.minutes.items())])))
+        return out
 
     async def _ask(self, sym: str, day: _Day, gaps: "list[tuple[float, float]]") -> None:
         """Ask Schwab's price history for the uncovered `gaps` of `sym`'s day, one request per
@@ -394,7 +412,6 @@ class LiveUiServer:
                 if held:
                     day.covered = _cover(day.covered, a, newest)
                     self.bus.publish(f"barhist.{sym}", price_history_msg(symbol=sym, bars=held, ts_recv=received))
-                    self._publish_held(sym, day)
         finally:
             day.asking = False
         if self.days.get(sym) is day and day.minutes and (list(day.covered), day.problem) != before:
@@ -555,27 +572,23 @@ class LiveUiServer:
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
-async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn, clock,
-                        host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
-                        stats: "dict | None" = None, history_fn, daily_fn) -> None:
-    """Run until `stop` is set. Start it BEFORE the Schwab connection so the plane sees the
-    first messages (Schwab sends each field once, then only changes). `clock`: the entry
-    point's clock (epoch seconds), the time every row, beat and gap is judged at. `history_fn`:
-    Schwab's 1-minute price history (capture.schwab_minutes), asked for every span of a symbol's
-    day the stream did not cover; `daily_fn`: its daily price history (capture.schwab_days),
-    asked once a day per streamed symbol. The daemon's `sub.*` messages say when each symbol's
-    stream coverage starts and ends. Nothing here reads the database."""
+async def serve_live_ui(srv: LiveUiServer, stop: asyncio.Event, *,
+                        host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT) -> None:
+    """Serve `srv` (its bus, its clock -- the entry point's, the time every row, beat and gap is
+    judged at -- Schwab's 1-minute and daily price history, its stats) until `stop` is set. Start
+    it BEFORE the Schwab connection so the plane sees the first messages (Schwab sends each field
+    once, then only changes). The daemon's `sub.*` messages say when each symbol's stream
+    coverage starts and ends. Nothing here reads the database."""
     from websockets.asyncio.server import serve
 
-    stats = stats if stats is not None else {}
-    srv = LiveUiServer(bus, heartbeat_fn, stats, clock=clock, history_fn=history_fn, daily_fn=daily_fn)
+    bus, stats = srv.bus, srv.stats
     for topic, msg in list(bus.snapshot().items()):         # whatever arrived before we started
         if topic.startswith("quote."):
             srv.ingest(msg)
     sub = bus.subscribe("quote.", policy=COUNT_DROPS, maxsize=65536, name="live_ui")
     # bars and subscription answers on ONE queue, in publish order: a bar is judged against the
     # subscriptions as they were when it was published
-    bsub = bus.subscribe(("bar1m.", "sub."), policy=COUNT_DROPS, maxsize=8192, name="live_ui_bars")
+    bsub = srv.bars_queue = bus.subscribe(("bar1m.", "sub."), policy=COUNT_DROPS, maxsize=8192, name="live_ui_bars")
     lmp.add_row_listener(srv.on_row)
 
     async def _track() -> None:
@@ -625,3 +638,4 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn, c
         lmp.remove_row_listener(srv.on_row)
         bus.unsubscribe(sub)
         bus.unsubscribe(bsub)
+        srv.bars_queue = None
