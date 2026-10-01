@@ -1419,8 +1419,7 @@ def _gamma_surface_wanted(tk: str) -> bool:
 
 
 def _viewed_tickers() -> list[str]:
-    """Every viewed ticker: the levels loop refreshes each one every cycle, on the board or not,
-    keeps its chain and projects its heatmap."""
+    """Every viewed ticker: the levels loop refreshes each one every cycle, on the board or not."""
     return sorted(push_changes.watched())
 
 
@@ -1892,7 +1891,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         snap = compute_terrain(tk, priced, spot, now=(
             datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
         payload.update(snap.to_dict())
-        viewed = _gamma_surface_wanted(tk)
         payload.update({
             # as of the chain they were computed from: a reprice on a kept chain does not make
             # the levels newer, so a chain that stops arriving shows as stale
@@ -1903,8 +1901,8 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             **_atr_fields(tk),
             "_per_strike": snap.per_strike, "_gamma_surface": None,
             "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
-            # only a viewed ticker is repriced between chain fetches, so only its chain is kept
-            "_chain": chain if viewed else None, "_chain_fetched_ts": fetched_ts,
+            # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
+            "_chain": chain, "_chain_fetched_ts": fetched_ts,
         })
         # the values read from the stored chain captures (forces, the prior day's per-strike rows)
         # change only with a new capture or a new chain day: computed then, once, for all readers
@@ -1915,7 +1913,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                 payload.update(_forces=_forces_from_captures(tk, stored),
                                _prior_strikes=_prior_strikes(stored, fetched_ts),
                                _captures_key=captures_key)
-        if viewed and spot is not None and snap.books:
+        if spot is not None and snap.books:
             surface = project_gamma_surface(priced, snap.books)
             surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts,
                            stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
@@ -1999,9 +1997,8 @@ def _on_stream_tick(sym: str) -> None:
 
 def _reprice_worker(tk: str) -> None:
     """Reprice `tk` while ticks keep arriving, at most once per LEVELS_REPRICE_MIN_INTERVAL_SEC;
-    the last tick of a burst is always priced. A ticker just put on screen has no kept chain
-    (only a viewed ticker's is kept): its chain is fetched now, by the one producer, rather than
-    when the levels loop next comes round to it."""
+    the last tick of a burst is always priced. A ticker with no chain yet (not yet reached by the
+    levels loop) has its chain fetched now, by the one producer."""
     last = float("-inf")
     while True:
         time.sleep(max(0.0, last + LEVELS_REPRICE_MIN_INTERVAL_SEC - time.monotonic()))
@@ -3350,8 +3347,8 @@ def get_chain(ticker: str = Query(...),
               expiry: Optional[str] = Query(default=None)):
     """One expiry of the ticker's full chain -- every contract Schwab listed, every field as sent
     -- from the chain the levels loop downloads (strike_range=ALL), with each live streamed
-    contract's streamed fields as its values (the stream owns them). The loop keeps a ticker's chain while a page has it
-    open. Answers `status: unavailable` with a reason when no
+    contract's streamed fields as its values (the stream owns them). The loop keeps every
+    ticker's chain. Answers `status: unavailable` with a reason when no
     chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
     held = terrain_cache_get(t) or {}

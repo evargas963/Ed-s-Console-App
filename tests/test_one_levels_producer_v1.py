@@ -229,13 +229,16 @@ def test_a_moved_spot_reprices_every_view_at_the_new_spot(monkeypatch):
 
 # ── what is kept, and for whom ───────────────────────────────────────────────────────────────
 
-def test_an_unviewed_ticker_keeps_no_chain_and_gets_no_heatmap(monkeypatch):
+def test_every_ticker_keeps_its_chain_and_heatmap_so_a_switch_shows_at_once(monkeypatch):
+    """2026-10-01, operator: "when i switch tickers the heatmap doesnt render right away". Only a
+    viewed ticker kept its chain and got a heatmap, so a ticker put on screen showed none until
+    its chain was fetched again. Every ticker's publication keeps its chain and its heatmap."""
     _stream({}, monkeypatch)
-    server._publish_levels(TK, _CONTRACTS, time.time())
+    server._publish_levels(TK, _CONTRACTS, time.time())                 # published while not viewed
     c = _cached()
-    assert c["_chain"] is None and c["_gamma_surface"] is None
-    assert c["gamma_flip"] is not None or c["call_wall"] is not None     # levels still published
-    assert server._publish_levels(TK) is None                            # nothing to reprice
+    assert c["_chain"] and c["_gamma_surface"] is not None
+    assert c["_gamma_surface"]["cells"]
+    assert server._publish_levels(TK) is not None                        # repriced from its kept chain
 
 
 def test_a_stored_capture_and_a_live_chain_publish_the_same_fields(monkeypatch):
@@ -321,11 +324,10 @@ def _wait_idle(tk, timeout=10.0):
     raise AssertionError("reprice worker did not finish")
 
 
-def test_a_ticker_just_put_on_screen_gets_its_chain_on_the_first_tick(monkeypatch):
-    """2026-09-28, operator: switching tickers, the heatmap took ~45 s (measured: AMD). Only a
-    viewed ticker's chain is kept, so a ticker just put on screen had none and every tick
-    repriced nothing until the levels loop came round to it. The first tick now fetches its
-    chain through the one producer, as an operator-facing request."""
+def test_a_ticker_put_on_screen_reprices_from_its_kept_chain_without_a_fetch(monkeypatch):
+    """Switching tickers: the ticker's chain is already held (every publication keeps it), so its
+    first tick reprices it at once; a fetch happens only for a ticker the levels loop has not
+    reached yet."""
     monkeypatch.setattr(server, "LEVELS_REPRICE_MIN_INTERVAL_SEC", 0.05)
     fetched = []
     monkeypatch.setattr(server, "_terrain_refresh_one", lambda tk, priority=False: fetched.append((tk, priority)))
@@ -334,7 +336,8 @@ def test_a_ticker_just_put_on_screen_gets_its_chain_on_the_first_tick(monkeypatc
     push_changes.subscribe(TK)                                           # the operator switches to it
     server._on_stream_tick(TK)
     _wait_idle(TK)
-    assert fetched == [(TK, True)]
+    assert fetched == []
+    assert _cached()["_gamma_surface"] is not None
 
 
 def test_the_console_serves_while_the_stored_levels_load(monkeypatch):
