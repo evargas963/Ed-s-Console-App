@@ -237,9 +237,7 @@
         // the wrong contract set" must not be treated as acceptance of THIS request's set):
         // the server echoes this view's id, this declaration's seq and the demand it
         // recorded (`requested`); all three must match what was sent. `contracts` is the
-        // union the stream carries (every view, ranked to the socket budget) and is NOT
-        // this view's demand -- confirming against it never matched a demand over the
-        // budget, so every render re-posted and the stream re-ranked (measured 2026-09-24).
+        // union the stream carries (every view) and is NOT this view's demand.
         var acked = (b && Array.isArray(b.requested))
           ? b.requested.map(function (s) { return String(s || '').toUpperCase(); }) : null;
         var identityOk = acked !== null && _sortedEqual(acked, dedup)

@@ -106,11 +106,19 @@ def schwab(monkeypatch):
     return net
 
 
+def _built():
+    """make_client's answer: schwab-py's own Client over a plain httpx session (the network
+    calls themselves are the `schwab` stand-in's)."""
+    import httpx
+    from schwab.client import Client
+    return type("State", (), {"ok": True, "client": Client("key", httpx.Client()), "message": ""})()
+
+
 def _sweep(tmp_path, board, at):
     sqlite3.connect(tmp_path / "ed_console.db").close()          # the daemon's database exists
     published: list = []
     clock = {"now": _ts(at)}
-    sweep = cch.ChainSweep(tmp_path / "ed_console.db", lambda: list(board),
+    sweep = cch.ChainSweep(tmp_path / "ed_console.db", board,
                            lambda topic, msg: published.append((topic, msg)), clock=lambda: clock["now"])
     return sweep, published, clock
 
@@ -158,6 +166,19 @@ def test_a_chain_missing_a_part_is_reported_even_when_the_next_chain_is_one_part
     assert second[1] is not None and len(second[1]) == 442
 
 
+def test_a_chain_begun_before_the_console_connected_is_no_failure(tmp_path, schwab, monkeypatch):
+    """2026-10-01 audit: a console connecting mid-chain got its last parts only and reported the
+    chain as arriving incomplete."""
+    monkeypatch.setattr(cch, "CHAIN_PART_CONTRACTS", 100)
+    sweep, published, clock = _sweep(tmp_path, ["SPY"], "2026-09-30 15:31:57")
+    sweep.fetch_one(object(), "SPY")
+    del published[:2]                                    # the console connected after part 1
+    clock["now"] += 240
+    sweep.fetch_one(object(), "SPY")
+    (tk, contracts, _ts, reason), = _assembled(published)
+    assert contracts is not None and reason is None and len(contracts) == 442
+
+
 def test_a_refused_chain_reaches_the_console_as_schwabs_answer(tmp_path, schwab):
     schwab.refused = {"SPY": 400}
     sweep, published, _clock = _sweep(tmp_path, ["SPY"], "2026-09-30 15:31:57")
@@ -198,28 +219,72 @@ def _fetched(sweep, now):
     return tk
 
 
-def test_the_sweep_fetches_every_board_ticker_in_turn_and_a_new_one_first(tmp_path, schwab):
+def test_the_sweep_fetches_every_board_ticker_in_turn(tmp_path, schwab):
     board = ["AAA", "BBB", "CCC"]
     sweep, _published, clock = _sweep(tmp_path, board, "2026-09-30 15:31:57")
     order = [_fetched(sweep, clock["now"]) for _ in range(3)]
-    board.append("NEW")
-    sweep.fetch_next("NEW")
     order += [_fetched(sweep, clock["now"] + 200)]
-    order += [_fetched(sweep, clock["now"] + 200)]
-    assert order == ["AAA", "BBB", "CCC", "NEW", "AAA"]
+    assert order == ["AAA", "BBB", "CCC", "AAA"]
     assert sweep.round_sec == 200                       # the round it delivered
 
 
-def test_a_removed_ticker_is_not_fetched_and_no_ticker_is_fetched_twice_at_once(tmp_path, schwab):
-    """2026-10-01 audit: the round was a snapshot of the board, so a ticker taken off it was
-    still fetched (and written to the history) until the round ended; and the two workers could
-    fetch one ticker at the same time (a one-ticker board, or a ticker put first)."""
+def test_the_active_ticker_is_fetched_back_to_back_ahead_of_the_board(tmp_path, schwab):
+    """Operator 2026-10-01: the ticker on screen is fetched first and again the moment its last
+    fetch ends, on or off the board; the other workers go round the board."""
     board = ["AAA", "BBB", "CCC"]
     sweep, _published, clock = _sweep(tmp_path, board, "2026-09-30 15:31:57")
+    sweep.set_active("OFF")                             # not on the board
+    assert sweep._next(clock["now"]) == "OFF"           # a worker is fetching OFF
+    assert sweep._next(clock["now"]) == "AAA"           # never OFF twice at once
+    assert sweep._next(clock["now"]) == "BBB"
+    sweep._fetching.discard("OFF")                      # OFF's fetch ends
+    assert sweep._next(clock["now"]) == "OFF"           # and it is fetched again at once
+    sweep._fetching.discard("AAA")
+    sweep._fetching.discard("BBB")
+    assert sweep._next(clock["now"]) == "CCC"
+    sweep._fetching.discard("CCC")
+    assert sweep._next(clock["now"] + 30) == "AAA", "the round restarts while OFF is in flight"
+
+
+def test_an_idle_worker_takes_a_new_active_ticker_at_once(tmp_path, schwab):
+    """2026-10-01 audit: an idle worker slept up to 1 s before it looked again, so a ticker put
+    on screen waited for it."""
+    import threading
+    sweep, _published, _clock = _sweep(tmp_path, [], "2026-09-30 15:31:57")
+    state = _built()
+    halt = threading.Event()
+    worker = threading.Thread(target=sweep.work, args=(lambda: state, halt), daemon=True)
+    worker.start()
+    time.sleep(0.1)                                     # the worker is idle: nothing to fetch
+    put = time.monotonic()
+    sweep.set_active("SPY")
+    while "SPY" not in schwab.chains and time.monotonic() - put < 5:
+        time.sleep(0.005)
+    took = time.monotonic() - put
+    halt.set()
+    worker.join(5)
+    assert "SPY" in schwab.chains and took < 0.5, took
+
+
+def test_a_request_waiting_for_a_connection_never_times_out(tmp_path):
+    """Every request of a chain is sent at once (operator 2026-10-01), more than the client's
+    100 connections: one that waits for a connection must not fail on httpx's 5 s pool timer;
+    Schwab's own answer keeps its 5 s limit."""
+    state = _built()
+    sweep, _published, _clock = _sweep(tmp_path, [], "2026-09-30 15:31:57")
+    client = sweep._shared_client(lambda: state)
+    assert client.session.timeout.pool is None
+    assert client.session.timeout.read == client.session.timeout.connect == 5.0
+
+
+def test_no_ticker_is_fetched_twice_at_once(tmp_path, schwab):
+    """2026-10-01 audit: two workers could fetch one ticker at the same time (a one-ticker
+    board, or the active one)."""
+    board = ["AAA", "BBB"]
+    sweep, _published, clock = _sweep(tmp_path, board, "2026-09-30 15:31:57")
     assert sweep._next(clock["now"]) == "AAA"           # a worker is fetching AAA
-    board.remove("BBB")
-    sweep.fetch_next("AAA")                             # AAA asked for again while in flight
-    assert sweep._next(clock["now"]) == "CCC"           # not AAA a second time, not BBB
+    sweep.set_active("AAA")                             # AAA put on screen while in flight
+    assert sweep._next(clock["now"]) == "BBB"           # not AAA a second time
     assert sweep._next(clock["now"] + 9) is None        # the round holds nothing else to take
     assert sweep.round_sec is None, "the round ends when its last fetch is done, not when handed out"
 
@@ -271,7 +336,7 @@ def test_a_failing_schwab_client_pauses_the_sweep_instead_of_spinning(tmp_path, 
     def make_client():
         built.append(1)
         raise ConnectionError("Refresh token is invalid, expired or revoked")
-    sweep = cch.ChainSweep(tmp_path / "ed_console.db", lambda: ["SPY", "QQQ", "IWM"],
+    sweep = cch.ChainSweep(tmp_path / "ed_console.db", ["SPY", "QQQ", "IWM"],
                            lambda topic, msg: None)
     halt = threading.Event()
     workers = [threading.Thread(target=sweep.work, args=(make_client, halt), daemon=True) for _ in range(2)]
@@ -295,7 +360,7 @@ def test_every_board_ticker_is_fetched_at_any_hour(tmp_path, schwab, at):
     board = ["SPY", "QQQ", "IWM", "$SPX", "MU"]
     sweep, published, _clock = _sweep(tmp_path, board, at)
     halt = threading.Event()
-    state = type("State", (), {"ok": True, "client": object(), "message": ""})()
+    state = _built()
     worker = threading.Thread(target=sweep.work, args=(lambda: state, halt), daemon=True)
     worker.start()
     deadline = time.monotonic() + 10
@@ -311,12 +376,15 @@ def test_the_daemon_task_stops_when_told():
     from app.market_data.schwab.streaming import capture
 
     class _Daemon:
-        board, board_db, chains = [], None, None
+        board, chains = [], None
         bus = None
+
+        def active_ticker(self):
+            return None
 
     async def go():
         stop = asyncio.Event()
-        task = asyncio.create_task(capture.run_chains(_Daemon(), lambda: None, stop))
+        task = asyncio.create_task(capture.run_chains(_Daemon(), "unused.db", lambda: None, stop))
         await asyncio.sleep(0)
         stop.set()
         await asyncio.wait_for(task, timeout=5)

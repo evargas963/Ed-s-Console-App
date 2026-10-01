@@ -84,7 +84,7 @@ def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture
 
     tk = server.ticker_storage_key("MRVL")
     sqlite3.connect(tmp_path / "ed.db").close()           # the daemon's database exists
-    sweep = cch.ChainSweep(tmp_path / "ed.db", lambda: [tk],
+    sweep = cch.ChainSweep(tmp_path / "ed.db", [tk],
                            lambda topic, msg: ofs._ingest_pushed(topic, json.loads(msg["frame"])["msg"]),
                            clock=lambda: _FX["captured_utc"])
     sweep.fetch_one(object(), tk)

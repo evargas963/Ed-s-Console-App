@@ -875,13 +875,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.screenshot({ path: 'test-results/gamma-real-116x16-auto.png', fullPage: false });
   });
 
-  test('workspace switching + the editable board', async ({ page }) => {
-    await mockPriceSocket(page, []);                                   // the daemon's board
+  test('workspace switching + editable watchlist foundation', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.navitem[data-ws="system"]').click();
     await expect(page.locator('[data-ws-pane="system"]')).toBeVisible();
     await expect(page.locator('#subnav .wtitle')).toContainText('SYSTEM');
-    // add a symbol via the shell API: it goes on the daemon's board, which the rail shows
+    // add a symbol via the shell API (foundation is editable + localStorage-backed)
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
     await expect(page.locator('.wl-row .wl-sym', { hasText: 'AMD' })).toHaveCount(1);
   });
@@ -950,7 +949,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE', { timeout: 6000 });
   });
 
-  test('a board symbol paints from its own row on the same socket', async ({ page }) => {
+  test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {
     await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25 })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
@@ -2021,7 +2020,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const scopeText = await page.locator('#heatScope').textContent();
     expect(scopeText).toMatch(/OPT CELLS·50%/);
     expect(scopeText).not.toMatch(/LIVE/);   // the literal word must never appear below 100%
-    await expect(page.locator('#heatScope')).toHaveAttribute('title', /1 live, 0 partial, 1 stale, 0 pending, 0 daemon-unavailable, 0 rejected, 0 outside the stream budget, 0 unavailable of 2 visible/);
+    await expect(page.locator('#heatScope')).toHaveAttribute('title', /1 live, 0 partial, 1 stale, 0 pending, 0 daemon-unavailable, 0 rejected, 0 unavailable of 2 visible/);
   });
 
   test('audit #6: a vendor-rejected contract renders a distinct, visibly-failed cell', async ({ page }) => {

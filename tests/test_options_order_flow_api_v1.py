@@ -31,9 +31,9 @@ def _board_chains(monkeypatch):
         "QQQ": {"_contract_symbols": frozenset({_QQQ_CONTRACT})}})
 
 
-def test_a_contract_in_no_board_tickers_chain_is_refused(monkeypatch):
-    """2026-10-01 audit: the route streamed any string as an option contract, for an underlying
-    on the board or not."""
+def test_a_contract_in_no_held_chain_is_refused(monkeypatch):
+    """2026-10-01 audit: the route streamed any string as an option contract, listed by Schwab
+    or not."""
     import asyncio
     import json
 
@@ -44,7 +44,7 @@ def test_a_contract_in_no_board_tickers_chain_is_refused(monkeypatch):
     resp = asyncio.run(srv.post_streaming_active_option_contract(
         payload={"contract": "MU    261016C00200000"}))
     assert resp.status_code == 409
-    assert json.loads(resp.body)["error"] == "not a contract in the chain of a ticker on the board"
+    assert json.loads(resp.body)["error"] == "not a contract in a chain the console holds"
     assert calls == []
 
 

@@ -114,6 +114,28 @@ def test_the_learned_split_is_reused_without_the_refused_one_shot(vendor):
     assert (_EXPIRIES[0], _EXPIRIES[-1]) not in v.calls, "the known-refused one-shot was re-sent"
 
 
+def test_every_part_and_every_quote_batch_is_asked_at_once(vendor, monkeypatch):
+    """Operator 2026-10-01: ask Schwab as fast as we can. The chain's parts are requested
+    together, then its quote batches together: each request below waits until all of its kind
+    are in flight, so one asked after another never completes."""
+    import threading
+    v = vendor(max_expiries=3)
+    sc.fetch_full_chain(v, "ZZ", v.get, v.quote)                  # learns the 4-part split
+    monkeypatch.setattr(sc, "QUOTES_BATCH_MAX", 4)                # 16 contracts: 4 batches
+    parts, batches = threading.Barrier(4, timeout=5), threading.Barrier(4, timeout=5)
+
+    def get(**dates):
+        parts.wait()
+        return v.get(**dates)
+
+    def quote(symbols):
+        batches.wait()
+        return v.quote(symbols)
+    r = sc.fetch_full_chain(v, "ZZ", get, quote)
+    assert r.status_code == 200 and r.parts == 4
+    assert len(flatten_chain_contracts(r.json())) == 2 * len(_EXPIRIES)
+
+
 def test_a_part_that_cannot_land_is_no_chain_not_a_partial_one(vendor):
     v = vendor(max_expiries=3, refuse={_EXPIRIES[5]})
     r = sc.fetch_full_chain(v, "ZZ", v.get, v.quote)

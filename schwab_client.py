@@ -8,6 +8,7 @@ import os
 import socket
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date
 from typing import Optional
@@ -543,27 +544,35 @@ def fetch_full_chain(client, ticker: str, get, quote, *,
     decision 2026-09-25: the full chain for all calculations.
 
     The chain's GREEK_FIELDS are replaced by the contract's quote's, as sent, asked for in
-    batches of QUOTES_BATCH_MAX; a contract whose quote does not come back has none of them
-    (None), never the chain's rounded value. A batch Schwab refuses fails the whole chain (its
-    status and reason), like a missing chain part: a book missing a batch of Greeks is not the
-    book, and no further batch is asked after a refusal."""
+    batches of QUOTES_BATCH_MAX, every batch at once; a contract whose quote does not come back
+    has none of them (None), never the chain's rounded value. A batch Schwab refuses fails the
+    whole chain (its status and reason), like a missing chain part: a book missing a batch of
+    Greeks is not the book. Each fetch logs its contracts, requests and their times."""
+    t0 = time.perf_counter()
     resp = _whole_chain(client, ticker, get, expiry=expiry)
     if resp.status_code != 200:
         return resp
+    t_chain = time.perf_counter() - t0
     contracts = [ct for side in ("callExpDateMap", "putExpDateMap")
                  for by_strike in (resp.json().get(side) or {}).values() if isinstance(by_strike, dict)
                  for listed in by_strike.values() if isinstance(listed, list)
                  for ct in listed if isinstance(ct, dict)]
     symbols = list(dict.fromkeys(ct["symbol"] for ct in contracts if ct.get("symbol")))
+    batches = [symbols[i:i + QUOTES_BATCH_MAX] for i in range(0, len(symbols), QUOTES_BATCH_MAX)]
+    t1 = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=max(1, len(batches))) as pool:
+        replies = list(pool.map(quote, batches))
     quoted: dict = {}
-    for i in range(0, len(symbols), QUOTES_BATCH_MAX):
-        reply = quote(symbols[i:i + QUOTES_BATCH_MAX])
+    for batch, reply in zip(batches, replies):
         if reply.status_code != 200:
             return FullChainResponse(reply.status_code, reason=(
-                f"quotes for {len(symbols[i:i + QUOTES_BATCH_MAX])} of {len(symbols)} contracts "
+                f"quotes for {len(batch)} of {len(symbols)} contracts "
                 f"returned HTTP {reply.status_code}"))
         quoted.update({s: e["quote"] for s, e in reply.json().items()
                        if isinstance(e, dict) and isinstance(e.get("quote"), dict)})
+    log.info("chain %s: %d contracts; chain %d part(s) %.2f s; quotes %d request(s) %.2f s; total %.2f s",
+             ticker, len(contracts), resp.parts, t_chain, len(batches), time.perf_counter() - t1,
+             time.perf_counter() - t0)
     for ct in contracts:
         q = quoted.get(ct.get("symbol")) or {}
         ct.update({f: q.get(f) for f in GREEK_FIELDS})
@@ -577,9 +586,9 @@ def fetch_full_chain(client, ticker: str, get, quote, *,
 def _whole_chain(client, ticker: str, get, *, expiry: "date | None" = None) -> FullChainResponse:
     """The chain of `fetch_full_chain`. One request when Schwab answers it. When the vendor
     answers that the request covers too much, the listed expiries are split into contiguous
-    date ranges, halving any range that is itself refused; the part count that worked is
-    remembered per ticker. Every part must land: a missing part is a failed response (the
-    reason names it), never a partial chain."""
+    date ranges, all requested at once, halving any range that is itself refused; the part count
+    that worked is remembered per ticker. Every part must land: a missing part is a failed
+    response (the reason names it), never a partial chain."""
 
     def _get(**dates):
         resp = get(**dates)
@@ -609,25 +618,27 @@ def _whole_chain(client, ticker: str, get, *, expiry: "date | None" = None) -> F
     merged: "dict | None" = None
     done = 0
     while pending:
-        part = pending.pop(0)
-        resp, code = _get(from_date=part[0], to_date=part[-1])
-        if code == 200:
-            payload = resp.json()
-            if merged is None:
-                merged = payload
-                merged["callExpDateMap"] = dict(payload.get("callExpDateMap") or {})
-                merged["putExpDateMap"] = dict(payload.get("putExpDateMap") or {})
+        with ThreadPoolExecutor(max_workers=len(pending)) as pool:
+            answers = list(pool.map(lambda p: _get(from_date=p[0], to_date=p[-1]), pending))
+        refused = []
+        for part, (resp, code) in zip(pending, answers):
+            if code == 200:
+                payload = resp.json()
+                if merged is None:
+                    merged = payload
+                    merged["callExpDateMap"] = dict(payload.get("callExpDateMap") or {})
+                    merged["putExpDateMap"] = dict(payload.get("putExpDateMap") or {})
+                else:
+                    merged["callExpDateMap"].update(payload.get("callExpDateMap") or {})
+                    merged["putExpDateMap"].update(payload.get("putExpDateMap") or {})
+                done += 1
+            elif code in _CHAIN_TOO_BIG_CODES and len(part) > 1:
+                half = len(part) // 2
+                refused += [part[:half], part[half:]]
             else:
-                merged["callExpDateMap"].update(payload.get("callExpDateMap") or {})
-                merged["putExpDateMap"].update(payload.get("putExpDateMap") or {})
-            done += 1
-            continue
-        if code in _CHAIN_TOO_BIG_CODES and len(part) > 1:
-            half = len(part) // 2
-            pending[:0] = [part[:half], part[half:]]
-            continue
-        return FullChainResponse(code, reason=(f"chain for {part[0]}..{part[-1]} returned HTTP "
-                                               f"{code}; the full chain is incomplete"))
+                return FullChainResponse(code, reason=(f"chain for {part[0]}..{part[-1]} returned HTTP "
+                                                       f"{code}; the full chain is incomplete"))
+        pending = refused
     with _full_chain_parts_lock:
         _full_chain_parts[ticker] = done
     return FullChainResponse(200, merged, parts=done)

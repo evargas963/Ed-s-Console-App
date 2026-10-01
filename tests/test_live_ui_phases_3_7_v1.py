@@ -14,12 +14,11 @@ def test_token_write_is_atomic_temp_replace(tmp_path):
     assert leftovers == [], leftovers
 
 
-def test_the_console_takes_the_daemons_price_row_and_ticks_on_it(monkeypatch, tmp_path):
+def test_the_console_takes_the_daemons_price_row_and_ticks_on_it(monkeypatch):
     """End to end on the real parts: the daemon's price push (live_ui.serve_live_ui on a real
-    bus and socket, BBB on the daemon's board) and the console's client of it
-    (streaming._rows_loop). A Schwab trade on the bus reaches the console as the daemon's row:
-    that row is the console's spot, and its arrival is the equity's tick. Stand-in trade (named):
-    BBB 10.00."""
+    bus and socket) and the console's client of it (streaming._rows_loop). A Schwab trade on the
+    bus reaches the console as the daemon's row: that row is the console's spot, and its arrival
+    is the equity's tick. Stand-in trade (named): BBB 10.00."""
     import asyncio
     import socket
     import time
@@ -27,12 +26,13 @@ def test_the_console_takes_the_daemons_price_row_and_ticks_on_it(monkeypatch, tm
     import app.options.order_flow.streaming as ofs
     import live_market_plane as lmp
     import server
-    from app.market_data.schwab.streaming import capture, live_ui
-    from stream_spine import HealthRegistry, MessageBus, quote_msg
+    from app.market_data.schwab.streaming import live_ui
+    from stream_spine import MessageBus, quote_msg
 
     s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
     hits: list[str] = []
     monkeypatch.setattr(ofs, "_on_tick_callback", lambda sym: hits.append(sym))
+    monkeypatch.setattr(ofs, "_watchlist", ["BBB"])
     monkeypatch.setattr(ofs, "LIVE_UI_URL", f"ws://127.0.0.1:{port}")
     monkeypatch.setattr(ofs, "_price_rows", {})
     monkeypatch.setattr(ofs, "_feed_running", True)
@@ -41,10 +41,9 @@ def test_the_console_takes_the_daemons_price_row_and_ticks_on_it(monkeypatch, tm
 
     async def main():
         bus, stop, stats = MessageBus(), asyncio.Event(), {}
-        board = capture.Daemon(bus, HealthRegistry(), tmp_path / "w.json", board=["BBB"])
         feed = lambda: {"ts": time.time(), "schwab_socket_open": True,  # noqa: E731
                         "held": {"LEVELONE_EQUITIES": ["BBB"]}, "health": {}}
-        daemon = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, daemon=board,
+        daemon = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed,
                                                            host="127.0.0.1", port=port, stats=stats))
         console = asyncio.create_task(ofs._rows_loop())
         try:

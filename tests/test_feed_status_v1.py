@@ -43,21 +43,6 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path, monkeypatch)
     assert all(r[3] is None for r in rows if r[1] != "NEWS_HEADLINE"), "no data is None, not a time"
 
 
-def test_an_expired_option_contract_is_never_streamed():
-    """Measured 2026-09-27: a weekend heatmap subscribed 200 DELL contracts that expired Friday --
-    the ranking put the earliest expiry first, and an expired one is the earliest."""
-    from stream_spine import rank_option_contracts
-    from time_et import now_et
-    from datetime import timedelta
-    yesterday = (now_et().date() - timedelta(days=1)).isoformat()
-    tomorrow = (now_et().date() + timedelta(days=1)).isoformat()
-    inputs = {"OLD": {"expirationDate": yesterday, "strikePrice": 100.0, "spot": 100.0},
-              "NEW": {"expirationDate": tomorrow, "strikePrice": 100.0, "spot": 100.0}}
-    admitted, not_admitted = rank_option_contracts(["OLD", "NEW"], inputs)
-    assert admitted == ["NEW"]
-    assert not_admitted["OLD"] == f"not admitted: expired {yesterday}"
-
-
 def test_a_stopped_record_reads_stale_in_the_console(tmp_path, monkeypatch):
     import time
     import db_authority

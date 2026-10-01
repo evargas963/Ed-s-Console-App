@@ -90,8 +90,8 @@ def _board_is(board):
 
 
 def test_a_viewed_ticker_warms_at_any_hour(monkeypatch, pin_clock, view):
-    # WARMING: viewed and on the board. The daemon fetches every board ticker's chain at any hour,
-    # so a Saturday is warming too (it read "not warming" outside the archival window before).
+    # WARMING: viewed. The daemon fetches the viewed ticker's chain at any hour, so a Saturday is
+    # warming too (it read "not warming" outside the archival window before).
     pin_clock(2026, 9, 26, 12, 0)
     tk = ticker_storage_key("SPY")
     with server._terrain_cache_lock:
@@ -129,17 +129,14 @@ def _fresh(monkeypatch, tmp_path, view):
     return edb
 
 
-def test_first_view_warms_a_board_ticker_and_names_one_off_the_board(_fresh, monkeypatch, view):
-    """Every board ticker's chain is fetched by the daemon; a ticker off the board has none, and
-    says so instead of waiting for one."""
-    view(_BOARD)
-    view(_OFF)                                      # the page selects each ticker
-    d = _call(_BOARD)                               # the first view: no levels published yet
+@pytest.mark.parametrize("tk", [_BOARD, _OFF])
+def test_first_view_warms_any_ticker_on_or_off_the_board(_fresh, monkeypatch, view, tk):
+    """A viewed ticker is the daemon's active ticker, whose chain it fetches ahead of every
+    other, on the board or not (operator 2026-10-01)."""
+    view(tk)                                        # the page selects the ticker
+    d = _call(tk)                                   # the first view: no levels published yet
     assert d["requested"] is True and d["warming"] is True
     assert d["reason"] == "no terrain snapshot has been computed yet"
-    d = _call(_OFF)
-    assert d["requested"] is True and d["warming"] is False
-    assert d["reason"] == "ZZQX is not on the board: add it to fetch its chain"
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])

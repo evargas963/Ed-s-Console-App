@@ -1,8 +1,8 @@
 """The board and the option chains (DATA_FLOW decisions 1 and 7), run by the capture daemon.
 
-The board (the logging_universe table) is the one list of tickers. The daemon fetches the full
-chain (every expiry, every strike) of every ticker on it, without end (ChainSweep), and hands each
-chain to the console for the levels. The chain history: the first chain of each ticker fetched in
+The board (the logging_universe table) is the background tickers. The daemon fetches the full
+chain (every expiry, every strike) of the ticker on screen back to back and of every board ticker
+in turn, without end (ChainSweep), and hands each chain to the console for the levels. The chain history: the first chain of each ticker fetched in
 each capture window -- every 30 minutes from 9:30 to the close (ET), and 15 minutes after the close
 (the day's close capture), on market days -- is written here, one row per expiry, compressed, with
 Schwab's own underlying price. Schwab has no past option chains, so a chain not saved is gone.
@@ -18,10 +18,11 @@ import math
 import sqlite3
 import threading
 import time
-from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
@@ -139,7 +140,7 @@ def capture_slot(now_ts: float) -> float | None:
 
 def board_tickers(db_path: Path | str) -> list[str]:
     """Every ticker on the board (the logging_universe table), read-only. The daemon reads it at
-    startup and holds it; board_add / board_remove change it."""
+    startup and holds it."""
     if not Path(db_path).is_file():
         log.warning("board: %s does not exist yet (the console creates it); the board is empty", db_path)
         return []
@@ -159,37 +160,12 @@ def board_tickers(db_path: Path | str) -> list[str]:
     return sorted(k for k in keys if is_valid_production_ticker(k))          # each row as its key
 
 
-def board_add(db_path: Path | str, ticker: str, now_ts: float) -> None:
-    """Put `ticker` (a storage key) on the board."""
-    conn = sqlite3.connect(str(db_path), timeout=60.0)
-    try:
-        conn.execute("INSERT OR IGNORE INTO logging_universe (ticker, category, enrollment_source, "
-                     "enrolled_ts_utc, last_seen_ts_utc) VALUES (?, 'user_persisted', 'operator', ?, ?)",
-                     (ticker, now_ts, now_ts))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def board_remove(db_path: Path | str, ticker: str) -> None:
-    """Take `ticker` (a storage key) off the board, every row stored under any form of it ("SPX"
-    and "$SPX" alike); its stored history stays."""
-    conn = sqlite3.connect(str(db_path), timeout=60.0)
-    try:
-        rows = [r[0] for r in conn.execute("SELECT ticker FROM logging_universe")]
-        conn.executemany("DELETE FROM logging_universe WHERE ticker = ?",
-                         [(t,) for t in rows if ticker_storage_key(t) == ticker])
-        conn.commit()
-    finally:
-        conn.close()
-
-
 #: contracts per chain message to the console: one message is encoded and decoded whole, so a
 #: whole chain in one ($SPX, 29,394 contracts: 40.7 MB, 924 ms to encode, measured 2026-10-01)
 #: would hold the daemon's event loop; 500 contracts take tens of milliseconds
 CHAIN_PART_CONTRACTS = 500
-#: the threads fetching chains (the console's loop ran two against Schwab, 2026-09)
-CHAIN_WORKERS = 2
+#: the threads fetching chains: one for the active ticker, back to back, the rest for the board
+CHAIN_WORKERS = 8
 #: after Schwab answers 429, no chain request for this long
 RATE_LIMITED_PAUSE_SEC = 10.0
 #: after a request fails outright (no client, auth refused, the network down), no chain request
@@ -219,21 +195,23 @@ def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dic
 
 
 class ChainSweep:
-    """The one fetcher of option chains: every board ticker, one after another, without end,
-    on CHAIN_WORKERS threads sharing one Schwab client (the daemon's event loop never waits on
-    it); a ticker is fetched by one worker at a time. Each chain is published to the console in
-    parts (chain_messages); a failure is published with Schwab's answer. The first fetch of a
-    ticker begun inside a capture window (capture_slot) is also written to the chain history. A
-    ticker put on the board is fetched next."""
+    """The one fetcher of option chains, on CHAIN_WORKERS threads sharing one Schwab client (the
+    daemon's event loop never waits on it); a ticker is fetched by one worker at a time. The
+    active ticker (the one on the operator's screen, set_active) is fetched back to back, ahead
+    of everything; every board ticker is fetched in turn, without end, by the other workers.
+    Each chain is published to the console in parts (chain_messages); a failure is published
+    with Schwab's answer. The first fetch of a ticker begun inside a capture window
+    (capture_slot) is also written to the chain history."""
 
-    def __init__(self, db_path: Path | str, board: "callable", publish: "callable",
+    def __init__(self, db_path: Path | str, board: "list[str]", publish: "callable",
                  clock: "callable" = time.time) -> None:
         self.db_path = db_path
-        self.board = board              # () -> the daemon's board, as it is now
+        self.board = list(board)        # the daemon's board, read at its start
         self.publish = publish          # (topic, msg) -> None, safe from any thread
         self.clock = clock              # when a fetch begins, and when its chain is received
-        self._lock = threading.Lock()
-        self._first: "deque[str]" = deque()
+        self._lock = threading.RLock()
+        self._changed = threading.Condition(self._lock)
+        self._active: str | None = None
         self._round: list[str] = []
         self._round_started: float | None = None
         self.round_sec: float | None = None
@@ -243,32 +221,30 @@ class ChainSweep:
         self._client = None
         self._client_lock = threading.Lock()
 
-    def fetch_next(self, ticker: str) -> None:
-        with self._lock:
-            if ticker not in self._first:
-                self._first.append(ticker)
+    def set_active(self, ticker: str | None) -> None:
+        """The ticker on the operator's screen (None: none)."""
+        with self._changed:
+            self._active = ticker
+            self._changed.notify_all()      # an idle worker takes it now
 
     def _next(self, now: float) -> str | None:
-        """The next ticker to fetch, taken by the caller: one just put on the board, else the
-        round's next. A ticker taken off the board since it was queued, or being fetched by the
-        other worker now, is skipped."""
-        board = set(self.board())
+        """The next ticker to fetch, taken by the caller: the active ticker whenever no worker is
+        fetching it, else the round's next. A ticker being fetched by another worker now is
+        skipped."""
         with self._lock:
-            while self._first:
-                tk = self._first.popleft()
-                if tk in board and tk not in self._fetching:
-                    self._fetching.add(tk)
-                    return tk
+            if self._active is not None and self._active not in self._fetching:
+                self._fetching.add(self._active)
+                return self._active
             if not self._round:
-                if self._fetching:
+                if self._fetching - {self._active}:
                     return None             # the round ends when its last fetch is done
                 if self._round_started is not None:
                     self.round_sec = now - self._round_started
-                self._round = sorted(board)
+                self._round = sorted(self.board)
                 self._round_started = now if self._round else None
             while self._round:
                 tk = self._round.pop(0)
-                if tk in board and tk not in self._fetching:
+                if tk not in self._fetching:
                     self._fetching.add(tk)
                     return tk
             return None
@@ -334,6 +310,11 @@ class ChainSweep:
                 state = make_client()
                 if not state.ok or state.client is None:
                     raise ConnectionError(f"no Schwab client ({state.message})")
+                # every request is sent at once, more than the client's 100 connections: one
+                # waiting for a connection waits (httpx's pool wait is 5 s by default). An
+                # answer, once sent, keeps httpx's default 5 s limit, so a hung request frees
+                # its worker; a slower answer fails the chain with that reason (SPEED)
+                state.client.set_timeout(httpx.Timeout(5.0, pool=None))
                 self._client = state.client
             return self._client
 
@@ -345,10 +326,13 @@ class ChainSweep:
             if wait > 0:
                 stop.wait(wait)
                 continue
-            ticker = self._next(self.clock())
-            if ticker is None:
-                stop.wait(1.0)
-                continue
+            with self._changed:
+                ticker = self._next(self.clock())
+                if ticker is None:
+                    # woken the moment a fetch ends or the active ticker changes; the timeout
+                    # only looks at `stop`
+                    self._changed.wait(1.0)
+                    continue
             try:
                 self.fetch_one(self._shared_client(make_client), ticker)
             except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the sweep goes on
@@ -359,8 +343,9 @@ class ChainSweep:
                 with self._lock:
                     self._paused_until = self.clock() + FAILED_PAUSE_SEC
             finally:
-                with self._lock:
+                with self._changed:
                     self._fetching.discard(ticker)
+                    self._changed.notify_all()
 
 
 def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:

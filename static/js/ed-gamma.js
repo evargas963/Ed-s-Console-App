@@ -86,11 +86,8 @@
   // review finding, 2026-09-13, REPRODUCED: at 244 visible contracts a plain 240-slice cut
   // through the last row's second column instead of dropping a whole column cleanly).
   //
-  // `rows` (a SEVENTH independent review, 2026-09-13, REPRODUCED) groups each column's own
-  // symbols by STRIKE ROW, in the same order `symbols` lists them -- a caller that must
-  // PARTIALLY cover an over-budget column (never splitting one strike's own call+put pair)
-  // can slice by whole rows from this list, which `symbols` alone (already flattened) cannot
-  // safely support.
+  // `rows` groups each column's own symbols by strike row, in the same order `symbols` lists
+  // them.
   function _heatmapVisibleContractsByColumn(cells, rowSel, cols) {
     return cols.map(function (j) {
       var seen = {}, symbols = [], rows = [];
@@ -297,9 +294,7 @@
       // available again for the SAME ticker, and the stale manual pan silently reapplies
       // instead of the window re-centering on live spot like every other invalidated field.
       _panAnchor = null; _panTicker = null;
-      // #1-A: even with no surface to draw, disclose the collection status honestly — a requested
-      // symbol that is NOT on the board must read "not currently active for this symbol", never a
-      // promised refresh. buildBanner is the ONE place that wording lives (warming/requested/board).
+      // even with no surface to draw, the served collection status is shown (buildBanner).
       var b = surface ? buildBanner(surface) : '';
       // Operator directive (2026-09-14, live SPX reproduction): buildBanner is gated on
       // `!live || stale` -- a LIVE, non-stale surface that is unavailable because its chain
@@ -388,54 +383,8 @@
     }
     // C: emphasise the front column -- the nearest unexpired expiry, served as front_expiry
     var frontCol = exps.map(function (e) { return e.expiry; }).indexOf(surface.front_expiry);
-    // Live-heatmap coverage (state-authority review, 2026-09-12): every OTHER cell on this
-    // grid only ever refreshed on the ~60s wide-chain REST cycle -- nothing had ever asked
-    // the streaming layer to keep the cells the operator is ACTUALLY LOOKING AT fresh
-    // sub-second, only whatever one strike Strike Detail happened to have separately
-    // selected. Each surface cell now carries its own vendor OSI symbols (server.py's
-    // project_gamma_surface), so the heatmap can declare its OWN demand through the same
-    // single-owner endpoint EdStream already owns (setAdditionalContracts's ownerKey,
-    // 'heatmap' -- coexists with Strike Detail's own 'default'-owner demand, unioned).
-    // Deliberately bounded to the DEFAULT ("auto") scope's visible strikes and only the
-    // FRONT (nearest-unexpired) expiry column -- the column traders actually watch
-    // tick-to-tick, and a contract count (<= MAX_AUTO_COLS strikes x 2 sides) already
-    // within this session's own measured-safe replay-loop budget. "Wider"/"All available"
-    // are an explicit operator zoom-out to the full book and stay REST-cadence only, same
-    // as before -- the full-book vendor-side subscription capacity remains a separate,
-    // NOT_PROVEN, operator-authorized question this does not silently reopen.
-    //
-    // Independent-review findings (2026-09-13), BOTH REPRODUCED, fixed together here:
-    // (a) "demand can target a different expiry from the displayed cells" -- this always
-    //     demanded the FRONT column regardless of an explicit single-expiry filter, so
-    //     picking (e.g.) Sept 25 while the nearer Sept 18 was still the computed "front"
-    //     kept streaming Sept 18's contracts while Sept 25's cells sat on the REST cadence.
-    //     Fixed: when an explicit expFilter is active, viewCols IS that one column
-    //     regardless of scope (see the branch above) -- the same bounded single-column
-    //     cost the front-column policy already allows -- so demand now follows viewCols,
-    //     not always "front", whenever a filter narrows the view.
-    // (b) "demand stays cleared after leaving and returning to an unchanged surface" --
-    //     this call used to live INSIDE the full-table-rebuild branch below, gated by the
-    //     `rev === _lastRevision` fast-path (module state that outlives a leave/return
-    //     cycle). Leaving the heatmap explicitly clears demand (see load()); returning to
-    //     an otherwise-unchanged surface then hit the fast path and never re-declared it.
-    //     Fixed by moving this out of the fast-path gate entirely -- it now runs on EVERY
-    //     render, full rebuild or not (setAdditionalContracts is dedup-safe to call
-    //     repeatedly with the same set, by the same design panels.js already documents).
-    // Computed unconditionally (not just when EdStream exists) -- the column-header
-    // coverage disclosure below reads `demandCols` regardless of whether anything is
-    // actually listening for the demand notification (e.g. the node test harness, which
-    // renders this exact function with no `window`/EdStream at all).
-    // Independent-review finding (2026-09-13, operator-directed): Wider/All used to demand
-    // ZERO contracts unconditionally -- a silent narrowing of the coverage objective that
-    // the operator explicitly rejected as unjustified ("vendor-capacity uncertainty does
-    // not explain away that application behavior"). Wider/All now demand exactly the
-    // columns they DISPLAY (viewCols), the same rule an explicit expiry filter already used.
-    //
-    // Always-live heatmap mandate (2026-09-15, operator directive), FINAL: "every visible
-    // heatmap cell must correspond to an exact option contract actively receiving streamed
-    // Schwab updates" -- Auto's own former front-column-only policy is retired; demand now
-    // always covers every currently-VIEWED column, in every scope, the same rule Wider/All
-    // and an explicit expiry filter already used.
+    // The heatmap's own stream demand (EdStream owner 'heatmap', unioned with Strike Detail's):
+    // every contract of every column on screen, declared on every render.
     var demandCols = viewCols;
     // every visible contract is asked for (the stream takes what Schwab admits; per-symbol
     // outcomes come back as the cells' served stream states)
@@ -556,9 +505,6 @@
           : liveState === 'daemon_unavailable' ? 'DAEMON UNAVAILABLE: the capture daemon is unreachable, so this request cannot even be attempted yet -- most recent valid computed value shown'
           : liveState === 'rejected' ? ('REJECTED: the vendor refused this contract\'s subscription' +
               (rejectedReason ? ' (' + rejectedReason + ')' : '') + ' -- most recent valid computed value shown')
-          : liveState === 'not_admitted' ? ('NOT STREAMED: ' +
-              ((cellState.call || {}).not_admitted_reason || (cellState.put || {}).not_admitted_reason) +
-              ' -- most recent valid computed value shown')
           : liveState === 'unavailable' ? 'SNAPSHOT: streaming not yet confirmed for this contract -- most recent valid computed value shown'
           : '';
         tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + (exps[j2].expired === true ? ' expired' : '') +
@@ -685,7 +631,6 @@
     if (state === 'stale') return 'streamed contracts in this column have gone quiet — most recent valid computed values shown';
     if (state === 'rejected') return 'the vendor refused the streaming subscription for this column — REST-cadence values shown';
     if (state === 'daemon_unavailable') return 'the capture daemon is unreachable — this column cannot stream until it is back';
-    if (state === 'not_admitted') return 'the contracts in this column are outside the stream budget — REST-cadence values shown';
     return 'streaming not yet confirmed for this column — REST-cadence values shown';
   }
 
@@ -748,7 +693,7 @@
   // independently-derived windowing calculation that could drift from the real one.
   function _visibleCellCoverage() {
     var host = document.getElementById('heatBody');
-    var counts = { live: 0, partial: 0, stale: 0, pending: 0, daemon_unavailable: 0, rejected: 0, not_admitted: 0, unavailable: 0 };
+    var counts = { live: 0, partial: 0, stale: 0, pending: 0, daemon_unavailable: 0, rejected: 0, unavailable: 0 };
     var cells = host ? host.querySelectorAll('.hcell[data-cell-state]') : [];
     for (var i = 0; i < cells.length; i++) {
       var st = cells[i].getAttribute('data-cell-state');
@@ -759,7 +704,7 @@
       total_visible_cells: total,
       live: counts.live, partial: counts.partial, stale: counts.stale,
       pending: counts.pending, daemon_unavailable: counts.daemon_unavailable,
-      rejected: counts.rejected, not_admitted: counts.not_admitted, unavailable: counts.unavailable,
+      rejected: counts.rejected, unavailable: counts.unavailable,
       live_pct: total ? Math.round(1000 * counts.live / total) / 10 : 0,
       meets_live_requirement: total > 0 && counts.live === total,
     };
@@ -807,7 +752,7 @@
       el.title = cov.total_visible_cells
         ? ('visible coverage: ' + cov.live + ' live, ' + cov.partial + ' partial, ' + cov.stale +
            ' stale, ' + cov.pending + ' pending, ' + cov.daemon_unavailable + ' daemon-unavailable, ' +
-           cov.rejected + ' rejected, ' + cov.not_admitted + ' outside the stream budget, ' +
+           cov.rejected + ' rejected, ' +
            cov.unavailable + ' unavailable of ' +
            cov.total_visible_cells + ' visible cells (' + cov.live_pct + '% live)')
         : ((surface.coverage && surface.coverage.note) || '');

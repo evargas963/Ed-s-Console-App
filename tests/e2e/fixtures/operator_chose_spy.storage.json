@@ -4,7 +4,8 @@
     {
       "origin": "http://127.0.0.1:8765",
       "localStorage": [
-        { "name": "ed_ticker", "value": "SPY" }
+        { "name": "ed_ticker", "value": "SPY" },
+        { "name": "ed_watchlist_v1", "value": "[\"SPY\",\"QQQ\",\"IWM\",\"NVDA\",\"TSLA\"]" }
       ]
     }
   ]

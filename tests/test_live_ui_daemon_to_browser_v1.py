@@ -1,16 +1,13 @@
-"""Prices and the board straight from the capture daemon to the browser (live_ui.py), end to end.
+"""Prices straight from the capture daemon to the browser (live_ui.py), end to end.
 
-The REAL daemon-side server (serve_live_ui on a real stream_spine.MessageBus, with the REAL
-capture.Daemon holding the board in a real logging_universe table) and a REAL WebSocket client
-standing in for the browser, over a real local socket. No console process. Proves:
+The REAL daemon-side server (serve_live_ui on a real stream_spine.MessageBus) and a REAL
+WebSocket client standing in for the browser, over a real local socket. No console process,
+no database. Proves:
 
-  * a page gets the board and every board ticker's current row at once, then a row for every
-    Schwab change;
+  * a subscribed symbol gets its current row at once, then a row for every Schwab change;
   * the row is the one producer's row (live_price_rows.price_row): spot, feed verdict,
     Schwab trade age, and no bar (charts show Schwab's completed bars only);
-  * a ticker not on the board is never sent;
-  * a page's board edit is answered with the symbol's key, reaches every page, is written to the
-    board table and is streamed (the daemon's own wanted list);
+  * a symbol nobody subscribed to is never sent;
   * the feed verdict rides every beat: a closed Schwab socket reads feed_live False within one
     beat, with no message needed from Schwab, beside the values Schwab last sent;
   * a slow browser gets the newest row per symbol, never a backlog of stale ones;
@@ -26,10 +23,8 @@ import time
 import pytest
 
 import live_market_plane as lmp
-from app.market_data.schwab.streaming import capture, live_ui
-from calibration.complete_chain_capture import board_tickers
-from db import EdDB
-from stream_spine import HealthRegistry, MessageBus, quote_msg
+from app.market_data.schwab.streaming import live_ui
+from stream_spine import MessageBus, quote_msg
 
 
 def _free_port() -> int:
@@ -55,62 +50,36 @@ def _trade(sym: str, last: float, ts: float, **extra) -> dict:
                      src="schwab_l1", ts_recv=ts, native=native)
 
 
-@pytest.fixture
-def daemon(tmp_path):
-    """The real daemon holding a real board: SPY and TSLA on the logging_universe table."""
-    db = tmp_path / "ed_console.db"
-    EdDB(db)
-    d = capture.Daemon(MessageBus(), HealthRegistry(), tmp_path / "stream_wanted.json", board_db=db)
-    for sym in ("SPY", "TSLA"):
-        asyncio.run(d.edit_board("board_add", sym, time.time()))
-    return d
-
-
-#: the console's page, as a browser names it when it opens the price socket
-_CONSOLE_PAGE = "http://127.0.0.1:8000"
-
-
 class _Feed:
-    """The daemon's status, with Schwab's socket open or closed and SPY and the indexes held
-    (TSLA is on the board and not held)."""
-
-    def __init__(self, daemon):
-        self.daemon = daemon
+    def __init__(self, held=("SPY", "AAPL")):
         self.open = True
+        self.held = list(held)
 
     def __call__(self) -> dict:
-        return {**self.daemon.status(), "ts": time.time(), "schwab_socket_open": self.open,
-                "held": {"LEVELONE_EQUITIES": ["SPY", "AAPL", "$SPX"]}}
+        return {"ts": time.time(), "schwab_socket_open": self.open,
+                "held": {"LEVELONE_EQUITIES": self.held}, "health": {}}
 
 
-async def _run(daemon, body, origin=_CONSOLE_PAGE):
+async def _run(body, feed=None):
     from websockets.asyncio.client import connect
 
     port = _free_port()
+    bus = MessageBus()
     stop = asyncio.Event()
     stats: dict = {}
-    feed = _Feed(daemon)
+    feed = feed if feed is not None else _Feed()
     server = asyncio.create_task(live_ui.serve_live_ui(
-        daemon.bus, stop, heartbeat_fn=feed, daemon=daemon, host="127.0.0.1", port=port, stats=stats))
+        bus, stop, heartbeat_fn=feed, host="127.0.0.1", port=port, stats=stats))
     end = time.monotonic() + 5
     while not stats.get("listening") and time.monotonic() < end:
         await asyncio.sleep(0.01)
     assert stats.get("listening")
     try:
-        async with connect(f"ws://127.0.0.1:{port}", origin=origin) as ws:
-            await body(daemon.bus, ws, feed, stats)
+        async with connect(f"ws://127.0.0.1:{port}") as ws:
+            await body(bus, ws, feed, stats)
     finally:
         stop.set()
         await asyncio.wait_for(asyncio.gather(server, return_exceptions=True), 5)
-
-
-async def _next(ws, kind, timeout=3.0):
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        msg = json.loads(await asyncio.wait_for(ws.recv(), max(0.01, end - time.monotonic())))
-        if msg.get("type") == kind:
-            return msg
-    raise AssertionError(f"no {kind} message within {timeout}s")
 
 
 async def _next_row(ws, sym, pred=lambda r: True, timeout=3.0):
@@ -123,8 +92,9 @@ async def _next_row(ws, sym, pred=lambda r: True, timeout=3.0):
     raise AssertionError(f"no matching {sym} row within {timeout}s")
 
 
-def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row(daemon):
+def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
     async def body(bus, ws, feed, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["spy"]}))
         now = time.time()
         bus.publish("quote.SPY", _trade("SPY", 583.41, now))
         msg, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.41)
@@ -140,164 +110,115 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row(daemon):
         msg, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.90)
         assert msg["type"] == "quotes"
         assert time.monotonic() - t0 < 0.15, "a change must go out immediately, not on the beat"
-    asyncio.run(_run(daemon, body))
+    asyncio.run(_run(body))
 
 
-def test_a_ticker_not_on_the_board_is_never_sent(daemon):
+def test_an_unsubscribed_symbol_is_never_sent():
     async def body(bus, ws, feed, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         bus.publish("quote.AAPL", _trade("AAPL", 230.0, time.time()))
         bus.publish("quote.SPY", _trade("SPY", 583.0, time.time()))
         end = time.monotonic() + 0.6
         while time.monotonic() < end:
             msg = json.loads(await asyncio.wait_for(ws.recv(), 1))
-            assert all(r["ticker"] in ("SPY", "TSLA") for r in msg.get("rows") or []), msg
-    asyncio.run(_run(daemon, body))
-
-
-def test_a_page_gets_the_board_first_with_each_tickers_key_and_display(daemon):
-    async def body(bus, ws, feed, stats):
-        first = json.loads(await asyncio.wait_for(ws.recv(), 2))
-        assert first == {"type": "board", "board": [{"key": "SPY", "display": "SPY"},
-                                                    {"key": "TSLA", "display": "TSLA"}]}
-    asyncio.run(_run(daemon, body))
-
-
-def test_adding_a_ticker_answers_its_key_reaches_every_page_is_stored_and_streamed(daemon):
-    """ONE-14 (2026-09-28 audit): the page kept its own list of index roots to match a row to what
-    it asked for. The daemon answers the edit with the key its rows carry ("SPX" is "$SPX") and
-    display name; the new board goes to every page with the ticker's current row at once; the
-    board table holds it and the daemon streams it -- one list, from one edit."""
-    async def body(bus, ws, feed, stats):
-        from websockets.asyncio.client import connect
-        await _next(ws, "board")
-        async with connect(f"ws://127.0.0.1:{ws.remote_address[1]}", origin=_CONSOLE_PAGE) as other:
-            await _next(other, "board")
-            bus.publish("quote.$SPX", _trade("$SPX", 6512.25, time.time()))
-            await ws.send(json.dumps({"op": "board_add", "symbol": "SPX"}))
-            assert await _next(ws, "board_edit") == {
-                "type": "board_edit", "op": "board_add", "requested": "SPX", "key": "$SPX",
-                "display": "SPX", "error": None}
-            seen = await _next(other, "board")
-            assert [b["key"] for b in seen["board"]] == ["$SPX", "SPY", "TSLA"]
-            _, row = await _next_row(other, "$SPX", lambda r: r["spot"] == 6512.25, timeout=0.5)
-            assert row["feed_live"] is True
-    asyncio.run(_run(daemon, body))
-    assert board_tickers(daemon.board_db) == ["$SPX", "SPY", "TSLA"]
-    assert daemon.all_wanted()["LEVELONE_EQUITIES"] == frozenset({"$SPX", "SPY", "TSLA"})
-    assert daemon.all_wanted()["CHART_EQUITY"] == daemon.all_wanted()["NEWS_HEADLINE"] \
-        == frozenset({"$SPX", "SPY", "TSLA"})
-
-
-def test_removing_a_ticker_stops_its_rows_and_its_stream_and_keeps_nothing_else(daemon):
-    async def body(bus, ws, feed, stats):
-        await _next(ws, "board")
-        await ws.send(json.dumps({"op": "board_remove", "symbol": "TSLA"}))
-        assert (await _next(ws, "board"))["board"] == [{"key": "SPY", "display": "SPY"}]
-        assert (await _next(ws, "board_edit"))["key"] == "TSLA"
-        bus.publish("quote.TSLA", _trade("TSLA", 400.0, time.time()))
-        end = time.monotonic() + 0.5
-        while time.monotonic() < end:
-            msg = json.loads(await asyncio.wait_for(ws.recv(), 1))
             assert all(r["ticker"] == "SPY" for r in msg.get("rows") or []), msg
-    asyncio.run(_run(daemon, body))
-    assert board_tickers(daemon.board_db) == ["SPY"]
-    assert daemon.all_wanted()["LEVELONE_EQUITIES"] == frozenset({"SPY"})
+    asyncio.run(_run(body))
 
 
-def test_a_symbol_that_is_not_a_symbol_is_refused_with_why(daemon):
+def test_resubscribing_sends_the_new_symbols_current_rows_at_once():
     async def body(bus, ws, feed, stats):
-        await _next(ws, "board")
-        await ws.send(json.dumps({"op": "board_add", "symbol": "NOT A SYMBOL"}))
-        edit = await _next(ws, "board_edit")
-        assert edit["key"] is None and edit["error"] == "not a symbol: 'NOT A SYMBOL'"
-    asyncio.run(_run(daemon, body))
-    assert board_tickers(daemon.board_db) == ["SPY", "TSLA"]
+        bus.publish("quote.AAPL", _trade("AAPL", 230.5, time.time()))
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY", "AAPL"]}))
+        msg, row = await _next_row(ws, "AAPL", lambda r: r["spot"] == 230.5, timeout=0.15)
+        assert msg["type"] == "quotes"
+    asyncio.run(_run(body))
 
 
-@pytest.mark.parametrize("origin", ["http://evil.example", "http://192.168.1.20:8000", None])
-def test_only_the_consoles_page_on_this_computer_edits_the_board(daemon, origin):
-    """2026-10-01 audit: the socket listens on every address and took a board edit from any
-    client, so another device on the network, or any other web page open in the browser, could
-    empty the board. An edit is taken only from the console's page on this computer."""
+def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
+    """ONE-14 (2026-09-28 audit): the page stripped "$" in eight places to match a row to what
+    it asked for, and kept its own list of index roots. The daemon answers each subscribe with
+    each asked-for symbol's key (what its rows carry) and display name, from instrument_identity,
+    for an index typed bare or with "$", an ETF and a single name alike."""
     async def body(bus, ws, feed, stats):
-        await _next(ws, "board")
-        await ws.send(json.dumps({"op": "board_remove", "symbol": "SPY"}))
-        edit = await _next(ws, "board_edit")
-        assert edit["key"] is None and edit["error"].startswith("the board is edited only from")
-    asyncio.run(_run(daemon, body, origin=origin))
-    assert board_tickers(daemon.board_db) == ["SPY", "TSLA"]
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX", "$VIX", "spy", "MU"]}))
+        first = json.loads(await asyncio.wait_for(ws.recv(), 2))
+        assert first == {"type": "symbols", "symbols": [
+            {"requested": "SPX", "key": "$SPX", "display": "SPX"},
+            {"requested": "$VIX", "key": "$VIX", "display": "VIX"},
+            {"requested": "spy", "key": "SPY", "display": "SPY"},
+            {"requested": "MU", "key": "MU", "display": "MU"}]}
+    asyncio.run(_run(body))
 
 
-def test_adding_a_ticker_already_on_the_board_changes_nothing_and_fetches_nothing(daemon):
-    """2026-10-01 audit: every add of a ticker already on the board put its chain at the front of
-    the sweep and re-sent the board to every page (each page load and reconnect sent one)."""
-    asked: list = []
-    daemon.chains = type("Sweep", (), {"fetch_next": lambda self, tk: asked.append(tk), "round_sec": None})()
-
-    async def body(bus, ws, feed, stats):
-        await _next(ws, "board")
-        await ws.send(json.dumps({"op": "board_add", "symbol": "spy"}))
-        assert (await _next(ws, "board_edit"))["key"] == "SPY"
-        end = time.monotonic() + 0.4
-        while time.monotonic() < end:
-            msg = json.loads(await asyncio.wait_for(ws.recv(), 1))
-            assert msg.get("type") != "board", "an unchanged board is not re-sent"
-    asyncio.run(_run(daemon, body))
-    assert asked == []
-
-
-def test_pages_are_told_the_headers_context_slots_with_their_display_names() -> None:
-    """TICK-06: the page kept its own ['SPX','NDX','VIX']; the console serves the header's slots,
-    each with its display name (each shows its board ticker's row)."""
+def test_pages_are_told_the_market_context_with_its_display_names() -> None:
+    """TICK-06: the page kept its own ['SPX','NDX','VIX'] beside streaming.MARKET_CONTEXT_SYMBOLS;
+    the console now serves the one list, each with its display name."""
     import html as _html
     import re
     import server as srv
+    from app.options.order_flow.streaming import MARKET_CONTEXT_SYMBOLS
     page = srv.root().body.decode("utf-8")
     served = json.loads(_html.unescape(re.search(r'<meta name="ed-market-context" content="([^"]*)">', page).group(1)))
-    assert served == [{"key": "$SPX", "display": "SPX"}, {"key": "$NDX", "display": "NDX"},
-                      {"key": "$VIX", "display": "VIX"}]
+    assert [c["key"] for c in served] == list(MARKET_CONTEXT_SYMBOLS)
+    assert [c["display"] for c in served] == [k.lstrip("$") for k in MARKET_CONTEXT_SYMBOLS]
 
 
-def test_a_closed_schwab_socket_reads_feed_down_within_one_beat_and_keeps_what_schwab_sent(daemon):
+def test_an_index_typed_bare_is_served_under_its_storage_key():
+    """The operator types "SPX"; Schwab keys "$SPX". The subscription goes through
+    ticker_storage_key, so the typed form gets the index's rows."""
+    async def body(bus, ws, feed, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX"]}))
+        bus.publish("quote.$SPX", _trade("$SPX", 6512.25, time.time()))
+        _, row = await _next_row(ws, "$SPX", lambda r: r["spot"] == 6512.25)
+        assert row["feed_live"] is True
+    asyncio.run(_run(body, feed=_Feed(held=("$SPX",))))
+
+
+def test_a_closed_schwab_socket_reads_feed_down_within_one_beat_and_keeps_what_schwab_sent():
     """The feed's state is stated beside Schwab's last values, never in place of them (operator
     2026-10-01: "From Schwab's mouth to our UI's ears. Period.")."""
     async def body(bus, ws, feed, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         bus.publish("quote.SPY", _trade("SPY", 583.41, time.time()))
         await _next_row(ws, "SPY", lambda r: r["feed_live"] is True)
         feed.open = False                      # nothing from Schwab; only the beat knows
         msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False, timeout=1.0)
         assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
         assert row["spot"] == 583.41 and row["bid"] == pytest.approx(583.40)
-    asyncio.run(_run(daemon, body))
+    asyncio.run(_run(body))
 
 
-def test_a_board_ticker_the_daemon_does_not_hold_reads_feed_not_live(daemon):
+def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live():
     async def body(bus, ws, feed, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["TSLA"]}))
         bus.publish("quote.TSLA", _trade("TSLA", 400.0, time.time()))
         msg, row = await _next_row(ws, "TSLA", lambda r: r["spot"] == 400.0)
         assert row["feed_live"] is False
-    asyncio.run(_run(daemon, body))
+    asyncio.run(_run(body))
 
 
-def test_a_burst_is_conflated_to_the_newest_row_per_symbol(daemon):
+def test_a_burst_is_conflated_to_the_newest_row_per_symbol():
     """A browser that is behind gets the newest value of each symbol, never a stale backlog
     (latest-value-per-symbol per client)."""
     async def body(bus, ws, feed, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY", "AAPL"]}))
         await _next_row(ws, "SPY")                      # the (empty) snapshot
         for i in range(500):
             now = time.time()
             bus.publish("quote.SPY", _trade("SPY", 500 + i / 100, now))
-            bus.publish("quote.TSLA", _trade("TSLA", 200 + i / 100, now))
+            bus.publish("quote.AAPL", _trade("AAPL", 200 + i / 100, now))
         _, spy = await _next_row(ws, "SPY", lambda r: r["spot"] == pytest.approx(504.99))
-        _, tsla = await _next_row(ws, "TSLA", lambda r: r["spot"] == pytest.approx(204.99))
+        _, aapl = await _next_row(ws, "AAPL", lambda r: r["spot"] == pytest.approx(204.99))
         # 1000 messages, far fewer frames: the browser was never handed the backlog
         assert stats["rows_sent"] < 200, stats
-    asyncio.run(_run(daemon, body))
+    asyncio.run(_run(body))
 
 
-def test_shutdown_is_not_held_up_by_a_connected_browser(daemon):
+def test_shutdown_is_not_held_up_by_a_connected_browser():
     async def body(bus, ws, feed, stats):
+        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         await _next_row(ws, "SPY")
     t0 = time.monotonic()
-    asyncio.run(_run(daemon, body))
+    asyncio.run(_run(body))
     assert time.monotonic() - t0 < 5

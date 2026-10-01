@@ -152,16 +152,15 @@ def test_a_contract_whose_quote_did_not_come_back_has_no_greek_never_the_chains(
     assert surface["absent_reasons"][server.CELL_EXPOSURE_NOT_SENT] == "Schwab sent no Greek/OI"
 
 
-def test_a_refused_quotes_batch_fails_the_chain_and_asks_no_further_batch():
+def test_a_refused_quotes_batch_fails_the_chain():
     """Schwab answering HTTP 429 to a quotes batch: the chain fails with that status and its
     reason, so the levels keep their last good publication with the failure as their stale reason
     (a book missing a batch of Greeks published as the book flipped the regime and walls in the
-    PR #431 review), and no further batch is asked."""
+    PR #431 review). Every batch is asked at once (operator 2026-10-01)."""
     schwab = _Schwab(refused=429)
     resp = sc.fetch_full_chain(schwab, "SPY", schwab.chain, schwab.quote)
     assert resp.status_code == 429
     assert "returned HTTP 429" in resp.reason
-    assert len(schwab.asked) == 1
 
 
 def test_quotes_are_asked_in_batches_of_at_most_300_every_contract_once():
