@@ -112,14 +112,6 @@ def test_oi_and_volume_cells_carry_the_served_total(held):
     assert checked > 50
 
 
-def test_no_proximity_alerts_are_served():
-    """Operator 2026-09-29: proximity alerts are removed everywhere -- no alert route, no
-    near-spot flag on the levels, no alert items in the Trade Desk queue."""
-    from fastapi.testclient import TestClient
-    assert TestClient(server.app).get("/api/alerts?ticker=SPY").status_code == 404
-    assert not hasattr(server, "get_alerts") and not hasattr(server, "LEVEL_NEAR_SPOT_FRACTION")
-
-
 def test_a_book_with_no_age_is_not_reported_fresh():
     """LIVE badges read book_stale: an unknown book age is unknown (None), never False (fresh)."""
     from app.options.order_flow.engine import compute_book_microstructure

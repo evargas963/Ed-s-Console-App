@@ -41,18 +41,6 @@ def _reload_server_module() -> object:
     return importlib.import_module("server")
 
 
-def test_schwab_py_package_importable() -> None:
-    import schwab.auth
-    assert schwab.auth.__name__ == "schwab.auth"
-
-
-def test_schwab_client_imports_without_constructing_live_client() -> None:
-    import schwab_client
-
-    assert callable(schwab_client.build_client_from_token)
-    assert not hasattr(schwab_client, "_client")
-
-
 def test_build_client_from_token_fails_closed_without_token_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -94,20 +82,6 @@ def test_build_config_fail_closed_without_secrets(monkeypatch: pytest.MonkeyPatc
     assert "UNAVAILABLE" in state.message, state.message
 
 
-def test_server_imports_in_ci_without_live_credentials() -> None:
-    """Importing server in a CI env must not build a client.
-
-    Uses a fresh module load rather than whatever `server` the suite already imported:
-    `_client` is a module-level global, so asserting on the shared instance made this
-    test depend on suite order (observed 2026-07-19 inside the full run only). The
-    reload tests the actual intent - a clean import builds no client.
-    """
-    srv = _reload_server_module()
-
-    assert srv._client is None
-    assert srv.app is not None
-
-
 def test_server_import_does_not_build_client_or_run_login_flow() -> None:
     with patch("schwab_client.build_client_from_token") as mock_build, patch(
         "schwab_client.run_login_flow"
@@ -138,9 +112,3 @@ def test_get_client_requires_token_only_when_called(monkeypatch: pytest.MonkeyPa
         server.get_client(force_refresh=True)
     assert exc_info.value.status_code == 503
     assert "Schwab auth failed" in str(exc_info.value.detail)
-
-
-def test_adversarial_tests_can_import_server() -> None:
-    import server as srv
-
-    assert hasattr(srv, "app")

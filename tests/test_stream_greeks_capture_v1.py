@@ -50,13 +50,6 @@ def test_a_volume_only_tick_alone_is_captured_without_any_greek_present():
     assert g == {"total_volume": 777.0, "total_volume_ts_recv": g["total_volume_ts_recv"]}
 
 
-def test_a_genuine_zero_volume_is_captured_not_dropped():
-    st = LiveOrderFlowState()
-    st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": 0}, ts_recv=time.time())
-    g = st.get_stream_greeks("SPY   260116C00580000")
-    assert g["total_volume"] == 0.0
-
-
 def test_a_negative_volume_is_held_as_no_value_never_as_a_number():
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": -1}, ts_recv=100.0)

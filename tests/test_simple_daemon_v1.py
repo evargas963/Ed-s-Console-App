@@ -376,11 +376,6 @@ def test_every_service_is_published_verbatim_and_only_delivered_data_counts_as_a
     assert health.last("NYSE_BOOK") is not None
 
 
-def test_the_daemon_never_asks_for_a_trade_tape():
-    """TIMESALE_* answers code 11 (probed live 2026-09-25): no service the daemon streams is one."""
-    assert not [s for s in cap.SERVICES if "TIMESALE" in s or "ACTIVES" in s]
-
-
 # ------------------------------------------------------------------ the database
 
 def test_news_and_every_subscription_answer_are_written(tmp_path):

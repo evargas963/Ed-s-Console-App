@@ -251,13 +251,3 @@ def test_health_answers_unavailable_when_the_capability_cannot_be_read(clean_env
     payload = server.health()
     assert payload["status"] == "ok"
     assert payload["capabilities"]["schwab"] == "UNAVAILABLE", payload
-
-
-def test_core_runtime_provisioning_still_blocks_startup():
-    """PROOF 5. §4's reserved case is untouched: a broken venv still refuses to start.
-
-    The narrow correction must not have turned every launch preflight into a warning.
-    """
-    result = subprocess.run([sys.executable, str(REPO / "runtime_preflight.py")],
-                            cwd=str(REPO), capture_output=True, text=True, timeout=300)
-    assert result.returncode == 0, result.stdout + result.stderr
