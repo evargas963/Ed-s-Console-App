@@ -19,7 +19,9 @@ def test_the_console_takes_the_daemons_price_row_and_ticks_on_it(monkeypatch):
     bus and socket) and the console's client of it (streaming._rows_loop). A Schwab trade on the
     bus reaches the console as the daemon's row: that row is the console's spot, and its arrival
     is the equity's tick and the change a page on that ticker is told of (the row carries the
-    top of book its order-flow panels show). Stand-in trade (named): BBB 10.00."""
+    top of book its order-flow panels show). Stand-in trade (named): BBB 10.00. Stand-in clock
+    (named): the daemon's, started at SESSION_NOW (Friday 2026-09-25 12:00 ET, in session) and
+    running at real speed."""
     import asyncio
     import socket
     import time
@@ -30,6 +32,10 @@ def test_the_console_takes_the_daemons_price_row_and_ticks_on_it(monkeypatch):
     import server
     from app.market_data.schwab.streaming import live_ui
     from stream_spine import MessageBus, quote_msg
+    from tests.feed_live_helper import SESSION_NOW
+
+    t0 = time.monotonic()
+    clock = lambda: SESSION_NOW + (time.monotonic() - t0)  # noqa: E731
 
     s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
     hits: list[str] = []
@@ -43,9 +49,9 @@ def test_the_console_takes_the_daemons_price_row_and_ticks_on_it(monkeypatch):
 
     async def main():
         bus, stop, stats = MessageBus(), asyncio.Event(), {}
-        feed = lambda: {"ts": time.time(), "schwab_socket_open": True,  # noqa: E731
+        feed = lambda: {"ts": clock(), "schwab_socket_open": True,  # noqa: E731
                         "held": {"LEVELONE_EQUITIES": ["BBB"]}, "health": {}}
-        daemon = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed,
+        daemon = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=clock,
                                                            host="127.0.0.1", port=port, stats=stats))
         console = asyncio.create_task(ofs._rows_loop())
         push_changes.bind(asyncio.get_running_loop())
@@ -56,7 +62,7 @@ def test_the_console_takes_the_daemons_price_row_and_ticks_on_it(monkeypatch):
                 await asyncio.sleep(0.05)                           # subscribed: the snapshot row
             hits.clear()
             await push_changes.next_changes(page, 0.05)             # drain the snapshot's mark
-            now = time.time()
+            now = clock()
             bus.publish("quote.BBB", quote_msg(symbol="BBB", last=10.0, src="schwab_l1", ts_recv=now,
                                                native={"key": "BBB", "LAST_PRICE": 10.0,
                                                        "TRADE_TIME_MILLIS": int(now * 1000)}))

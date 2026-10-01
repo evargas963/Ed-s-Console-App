@@ -36,9 +36,10 @@ Protocol (JSON text frames):
                                                                      chart bar at every
                                                                      timeframe)
 
-Delivery is latest-value-per-symbol per client (conflation, as Lightstreamer MERGE /
+Rows are delivered latest-value-per-symbol per client (conflation, as Lightstreamer MERGE /
 LSEG conflated feeds do): a slow browser gets the newest row for each symbol it is behind
-on, never a queue of stale ones, and never loses a symbol's only update.
+on, never a queue of stale ones, and never loses a symbol's only update. Bars are not
+conflated: every bar update is sent, in arrival order.
 """
 from __future__ import annotations
 
@@ -93,16 +94,19 @@ class _Client:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
         self.pending: set[str] = set()      # symbols changed since the last send
-        self.bars: dict[str, dict] = {}     # each symbol's newest bar update not yet sent
+        self.bars: list[dict] = []          # the bar updates not yet sent, in arrival order
         self.gap: dict | None = None        # its live bars' gap after a drop, not yet sent
         self.identity: list[dict] | None = None   # the last subscribe's answer, not yet sent
         self.wake = asyncio.Event()
 
 
 class LiveUiServer:
-    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict, bars_db_path: "str | Path | None" = None) -> None:
+    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict, bars_db_path: "str | Path | None" = None,
+                 *, clock) -> None:
         self.bus = bus
         self.heartbeat_fn = heartbeat_fn
+        #: the entry point's clock (epoch seconds): every row, beat and gap is judged at its time
+        self.clock = clock
         self.stats = stats
         self.clients: set[_Client] = set()
         #: the stored bars' database, read once per symbol and day; None: streamed bars only
@@ -154,7 +158,7 @@ class LiveUiServer:
                                             float(msg["ts_recv"]))
         for c in self.clients:
             if sym in c.symbols:
-                c.bars[sym] = update
+                c.bars.append(update)
                 c.wake.set()
 
     @staticmethod
@@ -169,9 +173,9 @@ class LiveUiServer:
                         f"disconnected from the price feed, and bars completed then are not drawn. "
                         f"Reopening the chart loads the stored history."}
 
-    def beat(self) -> dict:
+    def beat(self, now: float) -> dict:
         hb = self.heartbeat_fn()
-        lmp.record_feed_heartbeat(hb, time.time())
+        lmp.record_feed_heartbeat(hb, now)
         return {"ts": hb.get("ts"), "schwab_socket_open": hb.get("schwab_socket_open") is True}
 
     # -- browser side -----------------------------------------------------------------
@@ -191,15 +195,15 @@ class LiveUiServer:
                 identity, c.identity = c.identity, None
                 await self._send(c, {"type": "symbols", "symbols": identity})
             syms, c.pending = c.pending, set()
-            now = time.time()
+            now = self.clock()
             rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
             if rows:
                 await self._send(c, {"type": "quotes", "rows": rows})
             if c.gap is not None:
                 gap, c.gap = c.gap, None
                 await self._send(c, {"type": "bars_gap", "gap": gap})
-            bars, c.bars = c.bars, {}
-            bars = [b for s, b in bars.items() if s in c.symbols]
+            bars, c.bars = c.bars, []
+            bars = [b for b in bars if b["ticker"] in c.symbols]
             if bars:
                 await self._send(c, {"type": "bars", "bars": bars})
                 self.stats["bars_sent"] += len(bars)
@@ -228,7 +232,7 @@ class LiveUiServer:
             c.pending = set(keys)            # snapshot: the current row for each, now
             since = req.get("disconnected_since")   # a browser back from a drop
             if isinstance(since, (int, float)) and not isinstance(since, bool):
-                c.gap = self.bars_gap(float(since), time.time())
+                c.gap = self.bars_gap(float(since), self.clock())
             c.wake.set()
 
     async def serve_client(self, ws) -> None:
@@ -252,8 +256,9 @@ class LiveUiServer:
 
     async def beat_loop(self) -> None:
         while True:
+            now = self.clock()
             try:
-                feed = self.beat()
+                feed = self.beat(now)
             except Exception as e:  # noqa: BLE001 -- a failed beat leaves the feed unproven (it ages out)
                 log.warning("live ui heartbeat: %s: %s", type(e).__name__, e)
                 feed = None
@@ -263,7 +268,6 @@ class LiveUiServer:
                 # a beat is not reading and is closed (2026-09-26: the beat stopped for every
                 # browser and the whole screen read "no live feed" on a healthy Schwab socket)
                 try:
-                    now = time.time()
                     rows = [live_price_rows.price_row(s, now) for s in sorted(c.symbols)]
                     await asyncio.wait_for(
                         self._send(c, {"type": "feed", "feed": feed, "rows": rows}),
@@ -278,16 +282,18 @@ class LiveUiServer:
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
-async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
+async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn, clock,
                         host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
                         stats: "dict | None" = None, bars_db_path: "str | Path | None" = None) -> None:
     """Run until `stop` is set. Start it BEFORE the Schwab connection so the plane sees the
-    first messages (Schwab sends each field once, then only changes). `bars_db_path`: the
-    database of the stored 1-minute bars (the day's earlier minutes of a symbol)."""
+    first messages (Schwab sends each field once, then only changes). `clock`: the entry
+    point's clock (epoch seconds), the time every row, beat and gap is judged at.
+    `bars_db_path`: the database of the stored 1-minute bars (the day's earlier minutes of a
+    symbol)."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(bus, heartbeat_fn, stats, bars_db_path)
+    srv = LiveUiServer(bus, heartbeat_fn, stats, bars_db_path, clock=clock)
     for topic, msg in list(bus.snapshot().items()):         # whatever arrived before we started
         if topic.startswith("quote."):
             srv.ingest(msg)

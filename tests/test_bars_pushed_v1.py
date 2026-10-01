@@ -53,8 +53,9 @@ def _pushed(bars_db, streamed, subscribe=("SPY",)):
     async def main():
         port, bus, stop, stats = _free_port(), MessageBus(), asyncio.Event(), {}
         feed = lambda: {"ts": time.time(), "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
-        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, host="127.0.0.1",
-                                                         port=port, stats=stats, bars_db_path=bars_db))
+        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=time.time,
+                                                         host="127.0.0.1", port=port, stats=stats,
+                                                         bars_db_path=bars_db))
         while not stats.get("listening"):
             await asyncio.sleep(0.01)
         got = []
@@ -133,8 +134,9 @@ def test_a_browser_back_from_a_drop_is_told_the_gap_and_sent_only_new_bars(monke
     async def main():
         port, bus, stop, stats = _free_port(), MessageBus(), asyncio.Event(), {}
         feed = lambda: {"ts": time.time(), "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
-        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, host="127.0.0.1",
-                                                         port=port, stats=stats, bars_db_path=db.db_path))
+        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=time.time,
+                                                         host="127.0.0.1", port=port, stats=stats,
+                                                         bars_db_path=db.db_path))
         while not stats.get("listening"):
             await asyncio.sleep(0.01)
         try:
@@ -191,3 +193,32 @@ def test_a_bar_that_is_not_a_chart_bar_or_not_subscribed_is_never_pushed(tmp_pat
     got = _pushed(None, [_msg(ok), _msg(bad), _msg(early), _msg(FRIDAY[12], sym="QQQ")])
     assert [u["tf"]["1"]["t"] for u in got] == [ok["timestamp"] / 1000.0]
     assert live_price_rows.minute_bar(_msg(bad)) is None and live_price_rows.minute_bar(_msg(early)) is None
+
+
+def test_bars_that_arrive_before_the_next_send_are_all_sent_in_order():
+    """Every completed minute reaches the browser: three bars of one symbol received before the
+    browser's next send go out as three updates, oldest first (a newer bar used to replace an
+    unsent older one, and that minute never reached the chart)."""
+    class _Ws:
+        def __init__(self):
+            self.sent = []
+
+        async def send(self, text):
+            self.sent.append(json.loads(text))
+
+    async def main():
+        srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, None, clock=lambda: 0.0)
+        c = live_ui._Client(_Ws())
+        c.symbols = frozenset({"SPY"})
+        srv_ui.clients.add(c)
+        for b in FRIDAY[10:13]:
+            await srv_ui.on_bar(_msg(b))
+        pump = asyncio.create_task(srv_ui._pump(c))
+        await asyncio.sleep(0.05)
+        pump.cancel()
+        await asyncio.gather(pump, return_exceptions=True)
+        return c.ws.sent
+
+    sent = asyncio.run(main())
+    assert [u["tf"]["1"]["t"] for f in sent if f["type"] == "bars" for u in f["bars"]] == \
+        [b["timestamp"] / 1000.0 for b in FRIDAY[10:13]]

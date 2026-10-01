@@ -508,7 +508,7 @@ async def run() -> int:
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
                                                  on_wanted=daemon.set_wanted)),
-             asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status,
+             asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, clock=time.time,
                                                bars_db_path=canonical_console_db_path()))]
     try:
         await asyncio.sleep(0)                    # servers subscribe before the first message
