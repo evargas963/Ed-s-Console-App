@@ -26,8 +26,6 @@ from time_et import (COLLECT_WINDOW_START_MINS, ET, RTH_START_MINS, ct_label, et
                      session_close_mins_for_et_date, trading_date_label)
 
 SPOT_SOURCE = "streaming_plane"
-#: the chart timeframes: minutes, and "D" (the ET trading date)
-CHART_TFS = ("1", "3", "5", "15", "30", "60", "D")
 #: the timeframes built from Schwab's 1-minute bars (1m as sent; 3m-60m summed from them). The
 #: daily candle is Schwab's own, never summed from minutes (day_candle, daily_candles): Schwab's
 #: minute volumes sum to less than its daily volume (SPY 2026-09-30: about 68%)
