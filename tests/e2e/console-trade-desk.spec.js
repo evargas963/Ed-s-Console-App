@@ -171,23 +171,20 @@ function watchErrors(page) {
 }
 
 test.describe('Trade Desk renders served values', () => {
-  test('Desk after the close: levels drawn from the served order, named from the last trade; dark by default', async ({ page }) => {
+  test('Desk after the close: levels drawn from the served order; dark by default', async ({ page }) => {
     // 2026-09-28 21:40 ET: after the close /api/levels served an empty by_distance and the chart drew
-    // no key level; the server now orders them from the last trade and names it (by_distance_ref)
+    // no key level; the spot is now Schwab's last trade at any hour and orders them (by_distance)
     const errs = watchErrors(page);
     await page.route('**/api/**', (route) => {
       const url = route.request().url();
       let body = { available: false };
-      if (url.includes('/api/levels')) body = Object.assign({}, LEVELS, { spot: null,
-        levels: LEVELS.levels.map((l) => Object.assign({}, l, { distance: null, side: null })),
-        by_distance_ref: { price: SPOT, source: 'last trade', as_of: 'Fri 09/25 03:59 PM CT' } });
+      if (url.includes('/api/levels')) body = LEVELS;
       else if (url.includes('/api/bars1m')) body = BARS;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
-    await expect(page.locator('#tdmLevelsRef')).toHaveText('Levels nearest the last trade ' + SPOT.toFixed(2) + ' (Fri 09/25 03:59 PM CT)');
     // max pain (770) is inside the one bar's price range; PDH (773.50) is above it, pinned at the edge
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBe(1);
     await expect(page.locator('#tdmChart .tvc-edge-top')).toContainText('PDH 773.50');
@@ -336,15 +333,15 @@ test.describe('Trade Desk renders served values', () => {
     const before = barReads.length;
     await page.evaluate((spot) => {
       for (let i = 0; i < 3; i++) window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: spot + i / 100,
-        spot_disp: (spot + i / 100).toFixed(2), spot_state: 'live', feed_live: true, trade_age_sec: 1 } }));
+        spot_disp: (spot + i / 100).toFixed(2), feed_live: true, trade_age_sec: 1 } }));
     }, SPOT);
     const chartState = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
     await expect.poll(async () => (await chartState()).livePrice).toBeCloseTo(SPOT + 0.02, 6);
     expect((await chartState()).liveTitle).toBe('LAST · 1s');
     expect((await chartState()).bars).toBe(BARS.bars.length);          // the candles are untouched
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: { ticker: 'SPY', spot: null,
-      spot_disp: null, spot_state: 'unavailable', feed_live: false, trade_age_sec: null } })));
-    await expect.poll(async () => (await chartState()).livePrice).toBeNull();   // no line left at an old price
+      spot_disp: null, feed_live: false, trade_age_sec: null } })));
+    await expect.poll(async () => (await chartState()).livePrice).toBeNull();   // Schwab sent no price: no line
     await page.waitForTimeout(1500);
     expect(barReads.length).toBe(before);
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'liquidity' } })));

@@ -67,7 +67,6 @@ def test_pin_fails_closed_without_dollarized_gex():
 def test_terrain_cache_get_derives_staleness_from_computed_ts(monkeypatch):
     """RC-424: production cache stores computed_ts_utc, not levels_stale. terrain_cache_get
     must merge terrain_staleness so missing levels_stale cannot fail-open as fresh."""
-    monkeypatch.setattr("server._is_loggable_session", lambda: True)   # an open-market test
     import time
 
     import server as srv

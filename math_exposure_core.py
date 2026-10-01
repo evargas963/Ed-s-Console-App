@@ -53,30 +53,25 @@ def greek_reported(value: float | None, *, iv: float | None = None) -> bool:
 
 
 
-#: Bucket fields priced from Schwab's gamma / delta / volatility, the flag that says a contract at
-#: the strike carried one, and the counts of contracts on the field's legs with open interest that
-#: carried none. A strike where no contract with OI carried a reported Greek, or a leg where one
-#: with open interest did not, has no value for it: its 0.0 initialiser and a sum missing a
-#: contract are never read as data.
-_GREEK_FIELD_FLAG = {
-    f"{leg}_{field}": (flag, tuple(f"{s}_{greek}_unreported" for s in (("call", "put") if leg == "net" else (leg,))))
-    for greek, flag, fields in (("gamma", "has_valid_gamma", ("gamma", "gex_1pct")),
-                                ("delta", "has_valid_delta", ("delta", "dex_dollars")),
-                                ("vanna", "has_valid_vanna", ("vanna",)))
+#: Bucket fields priced from Schwab's gamma / delta / volatility -> the counts of contracts on the
+#: field's legs whose term is not known (see compute_exposures_by_strike). A leg with one has no
+#: value for the field; every other sum is Schwab's inputs computed, 0 included.
+_GREEK_FIELD_UNREPORTED = {
+    f"{leg}_{field}": tuple(f"{s}_{greek}_unreported" for s in (("call", "put") if leg == "net" else (leg,)))
+    for greek, fields in (("gamma", ("gamma", "gex_1pct")),
+                          ("delta", ("delta", "dex_dollars")),
+                          ("vanna", ("vanna",)),
+                          ("oi_mult", ("oi_mult",)))
     for field in fields for leg in ("call", "put", "net")
 }
 
 
 def bucket_metric(bucket: dict, key: str) -> float | None:
     """One exposure-bucket field, or None when it is not known: absent, not finite, or a Greek
-    field on a strike no reported Greek reached or where a contract with open interest reported
-    none (see _GREEK_FIELD_FLAG)."""
+    field on a leg where a contract's term is not known (see _GREEK_FIELD_UNREPORTED)."""
     if not isinstance(bucket, dict) or key not in bucket:
         return None
-    flag, unreported = _GREEK_FIELD_FLAG.get(key, (None, ()))
-    if flag is not None and flag in bucket and not bucket[flag]:     # every priced strike carries it
-        return None
-    if any(bucket.get(u) for u in unreported):
+    if any(bucket.get(u) for u in _GREEK_FIELD_UNREPORTED.get(key, ())):
         return None
     return float_finite_or_none(bucket[key])
 
@@ -102,35 +97,15 @@ class ExposureDiagnostics:
 def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dict:
     if strike not in exposures_by_strike:
         exposures_by_strike[strike] = {
-            # has_oi: a contract at this strike reported openInterest (a reported 0 counts:
-            # operator ruling 2026-09-27, take what Schwab sends). Every accumulator below starts
-            # at 0.0; a consumer checks has_oi before reading one as computed.
-            "has_oi": False,
             # Contracts at this strike whose openInterest was NOT REPORTED (absent, -999, text);
             # strike_total_oi() reads this so no total treats unknown as zero.
             "oi_unreported": 0,
             # Same discipline for totalVolume: an unreported one is UNKNOWN, never zero.
             "volume_unreported": 0,
-            # Operator directive (2026-09-15, canonical input-validity rules): has_oi answers
-            # "did any contract clear the OI gate"; has_valid_gamma answers the INDEPENDENT
-            # question "did any contract that cleared it ALSO report genuine, vendor-
-            # confirmed-usable greeks" (see vendor_greeks_unavailable). A contract can have
-            # real OI and simultaneously garbage greeks (live-reproduced: SPY/QQQ 0DTE ITM
-            # puts, real OI, delta=-1.0/gamma=0.0) -- conflating the two meant a genuinely
-            # invalid-greeks strike silently rendered as a computed $0 instead of an honest
-            # absence. Never re-derived from call_gamma/put_gamma being nonzero (a REAL
-            # position can net to a genuine zero too -- see net_gex_1pct's own honest-zero
-            # test coverage).
-            "has_valid_gamma": False,
-            # Same honest-absence signal for delta: True only once a valid delta (with OI)
-            # contributed. A bucket whose deltas were all invalid keeps net_delta 0.0 from its
-            # initialiser -- that 0.0 is NOT data (audit M-01, 2026-09-23).
-            "has_valid_delta": False,
-            # True once a contract with OI priced a vanna (valid IV and time to expiry)
-            "has_valid_vanna": False,
-            # Contracts on each leg with open interest above 0 whose gamma / delta / vanna has no
-            # value (Schwab sent -999 or none): that leg's sum of it is not known
-            **{f"{s}_{g}_unreported": 0 for s in ("call", "put") for g in ("gamma", "delta", "vanna")},
+            # Contracts on each leg whose gamma / delta / vanna term is not known: openInterest or
+            # multiplier not reported, or open interest above 0 with no Greek (Schwab sent -999 or
+            # none). That leg's sum of it is not known; a contract with open interest 0 adds 0.
+            **{f"{s}_{g}_unreported": 0 for s in ("call", "put") for g in ("gamma", "delta", "vanna", "oi_mult")},
             # True when the book was built WITH spot, i.e. the *_dollars / *_gex_1pct fields are
             # real dollar values. Set explicitly at build; never inferred from values.
             "dollarized": False,
@@ -167,7 +142,7 @@ def compute_exposures_by_strike(
     now=None,
 ) -> tuple[Dict[float, dict], ExposureDiagnostics]:
     """
-    Produces per-strike aggregated, over the contracts that report open interest:
+    Produces per-strike aggregated, over every listed contract with a strike and a side:
       - call/put OI
       - call/put delta exposure (scaled)
       - call/put gamma exposure (scaled)
@@ -207,17 +182,13 @@ def compute_exposures_by_strike(
         if strike is None:
             continue
 
-        oi =schwab_count(ct.get("openInterest"))   # -999 / text / negative: unreported
+        oi = schwab_count(ct.get("openInterest"))   # -999 / text / negative: unreported
         side = (ct.get("putCall") or "").upper()
         if side not in ("CALL", "PUT"):
             continue
 
-        mult = schwab_number(ct.get("multiplier"))
-        if mult is None or mult <= 0:
-            missing += 1
-            continue
-
         b = _strike_bucket(exposures, strike)
+        leg = side.lower()
         vol = schwab_count(ct.get("totalVolume"))
         if vol is None:
             b["volume_unreported"] += 1
@@ -228,6 +199,19 @@ def compute_exposures_by_strike(
         if oi is None:
             missing += 1
             b["oi_unreported"] += 1
+        else:
+            prev = b[f"{leg}_oi"]
+            b[f"{leg}_oi"] = oi if prev is None else float(prev) + oi
+
+        # a negative multiplier is not a contract size (rule 2); 0 is taken as sent
+        mult = schwab_number(ct.get("multiplier"))
+        if mult is not None and mult < 0:
+            mult = None
+        if oi is None or mult is None:      # the contract's exposure terms are not known
+            missing += oi is not None
+            b[f"{leg}_oi_mult_unreported"] += 1
+            for g in ("gamma", "delta", "vanna"):
+                b[f"{leg}_{g}_unreported"] += 1
             continue
 
         delta = schwab_number(ct.get("delta"))
@@ -237,92 +221,57 @@ def compute_exposures_by_strike(
         gamma_ok = greek_reported(gamma, iv=ct.get("volatility"))
         if not delta_ok or not gamma_ok:
             missing += 1
-        leg = side.lower()
         if oi > 0:      # open interest 0 adds a known 0 whatever its Greeks
             b[f"{leg}_gamma_unreported"] += not gamma_ok
             b[f"{leg}_delta_unreported"] += not delta_ok
         vanna_priced = False
+        _T = None
 
         used += 1
-        b["has_oi"] = True
 
-        if side == "CALL":
-            prev = b.get("call_oi")
-            b["call_oi"] = oi if prev is None else float(prev) + oi
-            b["call_oi_mult"] += oi * mult
+        b[f"{leg}_oi_mult"] += oi * mult
+        if delta_ok:
+            b[f"{leg}_delta"] += delta * oi * mult
+        if gamma_ok:
+            b[f"{leg}_gamma"] += gamma * oi * mult
+        if spot is not None:
+            spt = float(spot)
             if delta_ok:
-                b["call_delta"] += delta * oi * mult
-                b["has_valid_delta"] = True
+                b[f"{leg}_dex_dollars"] += delta * oi * mult * spt
             if gamma_ok:
-                b["call_gamma"] += gamma * oi * mult
-                b["has_valid_gamma"] = True
-            if spot is not None:
-                spt = float(spot)
-                if delta_ok:
-                    b["call_dex_dollars"] += delta * oi * mult * spt
-                if gamma_ok:
-                    b["call_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01  # $-GEX per 1% spot move
-                # RC-211: exact BS vanna from the shared d1/d2 faucet (math_levels.bs_vanna,
-                # independently FD-verified). The prior vega/(S*sigma) shortcut dropped the
-                # -d2 factor: always positive, wrong sign below spot, wrong magnitude.
-                _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
-                _T = _tte_memo(ct)
-                if _iv_ok and _T is not None and _T > 0:
-                    from math_levels import bs_vanna as _bsv
-                    # Cursor-audit F7: route through the ONE IV-conversion authority instead of an
-                    # inline _iv/100.0. Charm (compute_net_charm) and levels (_contract_inputs)
-                    # already use schwab_iv_to_sigma; vanna alone re-encoded the raw conversion,
-                    # breaking the single-authority guarantee and lacking the >3.0 units-flip guard.
-                    _sig = schwab_iv_to_sigma(iv)
-                    _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
-                    if _vn is not None:
-                        b["call_vanna"] += _vn * 0.01 * oi * mult   # per 1 vol point
-                        b["has_valid_vanna"] = vanna_priced = True
-        else:
-            prev = b.get("put_oi")
-            b["put_oi"] = oi if prev is None else float(prev) + oi
-            b["put_oi_mult"] += oi * mult
-            if delta_ok:
-                b["put_delta"] += delta * oi * mult
-                b["has_valid_delta"] = True
-            if gamma_ok:
-                b["put_gamma"] += gamma * oi * mult
-                b["has_valid_gamma"] = True
-            if spot is not None:
-                spt = float(spot)
-                if delta_ok:
-                    b["put_dex_dollars"] += delta * oi * mult * spt
-                if gamma_ok:
-                    b["put_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01   # $-GEX per 1% spot move
-                # RC-211: same exact-vanna faucet as the CALL side (vanna is IDENTICAL for
-                # calls and puts at a strike/expiry — any split comes from OI, never math).
-                _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
-                _T = _tte_memo(ct)
-                if _iv_ok and _T is not None and _T > 0:
-                    from math_levels import bs_vanna as _bsv
-                    # Cursor-audit F7: single IV-conversion authority (see CALL side above).
-                    _sig = schwab_iv_to_sigma(iv)
-                    _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
-                    if _vn is not None:
-                        b["put_vanna"] += _vn * 0.01 * oi * mult    # per 1 vol point
-                        b["has_valid_vanna"] = vanna_priced = True
-        # a settled contract (no time to expiry) carries no vanna and leaves none unknown
-        if spot is not None and oi > 0 and not vanna_priced and _T is not None and _T > 0:
-            b[f"{leg}_vanna_unreported"] += 1
+                b[f"{leg}_gex_1pct"] += gamma * oi * mult * spt * spt * 0.01  # $-GEX per 1% spot move
+            # RC-211: exact BS vanna from the shared d1/d2 faucet (math_levels.bs_vanna), per
+            # vol point; vanna is the same for a call and a put at a strike and expiry.
+            _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
+            _T = _tte_memo(ct)
+            if _iv_ok and _T is not None and _T > 0:
+                from math_levels import bs_vanna as _bsv
+                _sig = schwab_iv_to_sigma(iv)
+                _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
+                if _vn is not None:
+                    b[f"{leg}_vanna"] += _vn * 0.01 * oi * mult   # per 1 vol point
+                    vanna_priced = True
+            # a settled contract (no time to expiry) carries no vanna; one whose expiry cannot
+            # be read, or with open interest and no IV, leaves its leg's vanna unknown
+            if oi > 0 and not vanna_priced and (_T is None or _T > 0):
+                b[f"{leg}_vanna_unreported"] += 1
 
     for strike, b in exposures.items():
         b["dollarized"] = spot is not None
         b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
         # dealer-signed (+call/-put), the same convention as net_gamma / net GEX and the
-        # terrain's dex_dollars -- one meaning of DEX on every screen (2026-09-27: the bucket
-        # summed call + put, the holder's side, while terrain subtracted)
+        # terrain's dex_dollars -- one meaning of DEX on every screen
         b["net_delta"] = b["call_delta"] - b["put_delta"]
+        if spot is None:    # the dollar fields and vanna need spot: none without it
+            for f in ("dex_dollars", "gex_1pct", "vanna"):
+                for s in ("call", "put", "net"):
+                    b[f"{s}_{f}"] = None
+            continue
         # net dealer vanna, delta-shares per vol point, +call/-put: THE per-strike net vanna the
         # heatmap, the vanna-by-strike rows and the book total all carry
         b["net_vanna"] = b["call_vanna"] - b["put_vanna"]
-        # Dollarized net fields (remain 0.0 if spot is None)
-        b["net_dex_dollars"] = b.get("call_dex_dollars", 0.0) - b.get("put_dex_dollars", 0.0)
-        b["net_gex_1pct"] = b.get("call_gex_1pct", 0.0) - b.get("put_gex_1pct", 0.0)
+        b["net_dex_dollars"] = b["call_dex_dollars"] - b["put_dex_dollars"]
+        b["net_gex_1pct"] = b["call_gex_1pct"] - b["put_gex_1pct"]
 
     return exposures, _diagnostics(total, used, missing)
 
@@ -379,7 +328,7 @@ def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics
 
 #: The per-strike bucket fields that are flags (OR-ed when books merge); every other field is
 #: a sum, None when no contract reported it (_strike_bucket, compute_exposures_by_strike).
-_BUCKET_FLAGS = frozenset({"has_oi", "has_valid_gamma", "has_valid_delta", "has_valid_vanna", "dollarized"})
+_BUCKET_FLAGS = frozenset({"dollarized"})
 
 
 #: streamed-state key -> (chain contract field it overlays, that field's own freshness key).
@@ -404,17 +353,14 @@ _STREAMED_GREEK_FIELDS: tuple[tuple[str, str], ...] = (
 def overlay_streamed_contract_fields(
     contracts: List[dict],
     streamed_by_symbol: Dict[str, dict],
+    chain_received_ts: float | None,
 ) -> tuple[List[dict], int]:
-    """A live contract's streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLATILITY onto the REST
-    chain, matched by each contract's own `symbol` field.
-
-    `streamed_by_symbol` holds only contracts the daemon holds live now (the caller applies
-    live_market_plane.feed_live_for). For those the stream is the one owner of these fields:
-    Schwab streams a field only when it changes, so its last streamed value IS the current value
-    however long ago it arrived -- it is never compared with the chain's quote time (ONE-05,
-    2026-09-28: that comparison dropped every streamed value after each chain download, and the
-    heatmap flipped to all-stale while the feed was live). A field the stream has not sent keeps
-    the chain's value; every other contract keeps the chain's values.
+    """A contract's streamed GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLATILITY onto the REST
+    chain, matched by each contract's own `symbol` field: for each field the newest value Schwab
+    sent wins. Neither source carries a Schwab time for these fields, so the receive times decide:
+    a streamed field (its own `<field>_ts_recv`) received after the chain (`chain_received_ts`)
+    replaces the chain's; one received before it -- yesterday's OPEN_INTEREST under a chain
+    fetched today -- does not. A chain with no receive time is replaced by every streamed field.
 
     Pure: `contracts` and its dicts are never mutated; only a contract that gets a field is
     copied. Returns (new_contracts, overlaid_count).
@@ -435,6 +381,9 @@ def overlay_streamed_contract_fields(
         for streamed_key, chain_key in _STREAMED_GREEK_FIELDS:
             val = streamed.get(streamed_key)
             if val is None:
+                continue
+            rx = streamed.get(f"{streamed_key}_ts_recv")
+            if chain_received_ts is not None and (rx is None or rx <= chain_received_ts):
                 continue
             if new_ct is None:
                 new_ct = dict(ct)

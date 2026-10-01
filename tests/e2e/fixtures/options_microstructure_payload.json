@@ -107,6 +107,7 @@
     },
     "cum_delta_proxy": 35.0,
     "cum_delta_slope": 1.499999970869977,
+    "cum_delta_window": "prints Wed 09/09 07:22 PM CT to Wed 09/09 07:26 PM CT",
     "native_aggressor_available": false,
     "tape_classification": "PROXY_RECONSTRUCTED_L1_TICK",
     "tape_pressure_2m": 0.5384615384615384,

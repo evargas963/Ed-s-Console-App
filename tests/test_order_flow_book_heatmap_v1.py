@@ -69,8 +69,10 @@ def test_a_changed_level_in_the_same_bucket_reads_as_its_latest_observed_size(tm
     assert d["available"] is True
     assert d["rows_scanned"] == 2
     cells = {(c["t"], c["price"]): c for c in d["cells"]}
-    assert (0, 100.00) in cells and cells[(0, 100.00)]["bid"] == 20.0 and cells[(0, 100.00)]["ask"] == 0.0
-    assert (0, 100.05) in cells and cells[(0, 100.05)]["ask"] == 10.0 and cells[(0, 100.05)]["bid"] == 0.0
+    # a side Schwab sent no level for at a price is absent, never a 0 size (operator 2026-10-01:
+    # "we use what schwab gives us and we display it")
+    assert (0, 100.00) in cells and cells[(0, 100.00)]["bid"] == 20.0 and cells[(0, 100.00)]["ask"] is None
+    assert (0, 100.05) in cells and cells[(0, 100.05)]["ask"] == 10.0 and cells[(0, 100.05)]["bid"] is None
 
 
 def test_each_venue_shows_only_its_own_book(tmp_path):

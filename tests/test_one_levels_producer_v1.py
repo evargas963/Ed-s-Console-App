@@ -19,7 +19,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import push_changes
 import server
-from math_exposure_core import merge_exposure_books
+from math_exposure_core import bucket_metric, merge_exposure_books
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
 
@@ -56,7 +56,6 @@ def _cached():
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", 1.0))
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # the open market, unless a test closes it
     monkeypatch.setattr(push_changes, "_clients", {})                    # no page open
     monkeypatch.setattr(push_changes, "_loop", None)                     # changes recorded, not delivered
     ofs._active_option_contract = _A
@@ -88,10 +87,14 @@ def test_heatmap_per_strike_rows_and_levels_are_one_computation(monkeypatch):
     full, _ = merge_exposure_books(snap.books.values())
     surface = c["_gamma_surface"]
     # every strike's cells across expiries sum to the one full book the levels were picked from
+    checked = 0
     for row in surface["cells"]:
-        cells = [g for g in row["gex"] if g is not None]
-        if cells and full[row["strike"]].get("has_valid_gamma"):
-            assert abs(sum(cells) - full[row["strike"]]["net_gex_1pct"]) <= len(cells)   # per-cell rounding
+        total = bucket_metric(full[row["strike"]], "net_gex_1pct")
+        if total is not None:       # every listed expiry's cell known: they sum to it, unrounded
+            listed = [g for g, a in zip(row["gex"], row["absent"]["gex"]) if a != server.CELL_NOT_LISTED]
+            assert sum(listed) == pytest.approx(total, rel=1e-9, abs=1e-6)
+            checked += 1
+    assert checked
 
 
 def test_published_levels_equal_compute_terrain_on_the_same_inputs(monkeypatch):
@@ -135,31 +138,35 @@ def test_a_fresh_streamed_greek_reprices_levels_heatmap_and_rows(monkeypatch):
 
 
 def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale(monkeypatch):
-    """ONE-05 (measured live 2026-09-28, MU 15:46 ET): each chain download carried a quote time
-    newer than the contract's last streamed change, the overlay dropped every streamed value,
-    and all 200 heatmap legs flipped between live and stale while the feed stayed live. The
-    stream owns a live contract's fields: a new chain leaves the leg live and its value the
-    streamed one."""
+    """ONE-05 (measured live 2026-09-28, MU 15:46 ET): each chain download made all 200 heatmap
+    legs flip between live and stale while the feed stayed live. A leg's state is the feed's
+    (live while the daemon holds the contract); its value is the newest Schwab sent: the chain's,
+    fetched after the contract's last streamed change (coordinator review of #433/#434,
+    2026-10-01)."""
     now = time.time()
     chain = [dict(_CONTRACTS[0], quoteTimeInLong=int(now * 1000))] + _CONTRACTS[1:]   # a fresh chain
     push_changes.subscribe(TK)                                                         # a page open on it
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": now - 60.0}}, monkeypatch)          # last change a minute ago
     server._publish_levels(TK, chain, now)
     surface = _cached()["_gamma_surface"]
-    assert surface["stream_overlay_symbols"] == [_A]
+    assert surface["stream_overlay_symbols"] == []                                   # the chain is newer
     legs = [col[side] for cell in surface["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
             for side in ("call", "put") if pair.get(side) == _A and col]
     assert legs and all(leg["state"] == "live" for leg in legs)
 
 
-def test_only_a_live_contracts_streamed_value_is_applied_whatever_its_age(monkeypatch):
-    """The one live rule: a contract the daemon holds is live however long its gamma has been
-    unchanged; one it no longer holds is a past observation and never reprices the levels."""
+def test_a_streamed_value_applies_by_its_time_whatever_the_feed_state(monkeypatch):
+    """A streamed gamma received after the chain is the newest Schwab sent: it reprices the levels
+    whether or not the daemon still holds the contract (the feed's state labels the leg, it never
+    picks the value); one received before the chain does not."""
     _put_chain(fetched_ts=time.time() - 120.0)
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time() - 60.0}}, monkeypatch)
     server._publish_levels(TK)
     assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == [_A]
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time()}}, monkeypatch, held=[])
+    server._publish_levels(TK)
+    assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == [_A]
+    _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time() - 600.0}}, monkeypatch)
     server._publish_levels(TK)
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
 
@@ -452,22 +459,15 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
     for k in ("gamma_flip", "call_wall", "put_wall", "max_pain"):
         assert loaded[k] == getattr(expected, k), k
 
-def test_while_closed_the_levels_are_the_last_sessions_labeled_with_their_time(monkeypatch):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+def test_old_levels_are_stale_with_their_reason_at_any_hour(monkeypatch, pin_clock):
+    """A closed market used to call levels of any age current ("market closed", not stale;
+    ACTIVE_PROGRAM S-08). The loop refreshes at any hour, so levels older than two of its cycles
+    are stale with the reason, on a Saturday as in session."""
+    pin_clock(2026, 9, 26, 12, 0)
     fri_close = datetime(2026, 9, 25, 16, 29, tzinfo=ZoneInfo("America/New_York")).timestamp()
     st = server.terrain_staleness(fri_close, TK)
-    assert st["levels_market_closed"] is True and st["levels_stale"] is False
-    assert st["levels_as_of"] == "Fri 09/25 03:29 PM CT"
-    assert st["levels_refresh_active"] is False and st["levels_failing"] is False
-
-
-def test_a_tick_while_closed_reprices_nothing(monkeypatch):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
-    calls = _count_publishes(monkeypatch)
-    _put_chain()
-    server._on_stream_tick("CRWD")
-    time.sleep(0.05)
-    assert calls == []
+    assert st["levels_stale"] is True and "levels_market_closed" not in st
+    assert "the refresh loop is running but has not reached this ticker" in st["levels_stale_reason"]
 
 
 def test_a_reprice_on_a_kept_chain_keeps_the_chains_time(monkeypatch):

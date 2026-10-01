@@ -36,6 +36,11 @@
   function formatMeasureValue(n, measure) {
     return (measure === 'oi' || measure === 'volume') ? formatCount(n) : formatUsd(n);
   }
+  // the served words for why a cell has no value for a measure (server CELL_ABSENT_REASONS)
+  function absentText(surface, row, measure, j) {
+    var code = ((row.absent || {})[measure] || [])[j];
+    return (surface.absent_reasons || {})[code];
+  }
 
   // ---- theme-aware colour: sign -> green/red, |value|/maxAbs -> intensity, ~0 -> recede.
   //      Fills are SOLID, interpolated from the active theme's heat tokens (zero -> pos/neg), so a
@@ -520,14 +525,11 @@
         // display the best valid data available... Never blank valid data, narrow the view,
         // or choose what I am allowed to inspect." `row.stream[j2]` (server.py's
         // _stamp_gamma_surface_cell_stream_state) is per-cell disclosure metadata ONLY -- it
-        // never decides whether a value is shown, only how it is LABELLED: 'live' (every
-        // existing leg confirmed fresh-streamed this cycle), 'partial' (at least one leg is,
-        // not all), 'stale' (desired/subscribed, has gone quiet -- the most recent valid
-        // computed value, honestly timestamped, not a fabrication), 'unavailable' (never
-        // desired yet -- e.g. a subscription still in flight). `v` itself (project_gamma_
-        // surface's own has_oi-gated value, unchanged/ONE FAUCET) is the ONLY thing that
-        // decides whether a number or the pre-existing "no usable OI" '—' renders (cellStyle,
-        // unchanged) -- streaming state is disclosed BESIDE that value, never in place of it.
+        // never decides whether a value is shown, only how it is LABELLED: 'live' (the feed
+        // delivers every existing leg now), 'partial' (at least one leg, not all), 'stale' (the
+        // feed is not delivering it now), 'unavailable' (never desired yet). `v` itself (the
+        // served value) decides whether a number or the served reason it has none renders --
+        // streaming state is disclosed BESIDE that value, never in place of it.
         // `liveState` is null only for a synthetic/legacy surface that never carries `stream`
         // at all (see the file header comment); such a payload renders exactly as it always
         // has, unlabelled.
@@ -565,17 +567,10 @@
           (liveState ? 'data-cell-state="' + liveState + '" ' : '') +
           (stateTitle ? 'title="' + escapeHtml(stateTitle) + '" ' : '') +
           'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j2].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
-          // Independent-review finding, REPRODUCED (live SPX, 2026-09-14): a cell with no
-          // usable OI rendered as a BLANK td, visually indistinguishable from "still loading"
-          // or "outside the streamed window" -- an operator scanning the grid had no way to
-          // tell "no data here" from "nothing painted yet". A blank cell also hid the exact
-          // defect this session found (Schwab's wide multi-expiry chain returning OI=0 for
-          // every SPX contract): the grid looked merely quiet, not wrong. An explicit em dash
-          // makes absence a visible, deliberate statement -- reserved for a cell with NO valid
-          // computed value at all (has_oi=false), never for one that merely is not currently
-          // confirmed live-streamed (that cell still shows its real, valid, honestly-labelled
-          // snapshot value, per the operator's final directive above).
-          (st.empty ? '—' : formatMeasureValue(v, measure)) + '</td>';
+          // a cell with no value draws the served reason for it (row.absent, worded by the
+          // surface's absent_reasons): "no contract listed", or what Schwab did not send
+          (st.empty ? '<span class="absent">' + escapeHtml(absentText(surface, row, measure, j2)) + '</span>'
+            : formatMeasureValue(v, measure)) + '</td>';
       }
       tbl += '</tr>';
     });

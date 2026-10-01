@@ -64,7 +64,7 @@ def test_derived_scalars():
     assert m["mid"] == 712.48
     # microprice weights each price by the OPPOSITE size: (712.47*500 + 712.49*300)/800.
     assert abs(m["microprice"] - 712.4775) < 1e-6
-    assert m["spread_pts"] == 0.02
+    assert m["spread_pts"] == 712.49 - 712.47          # exact, unrounded (operator 2026-10-01)
     assert m["classification"]["microprice"] == "DERIVED"
 
 
@@ -104,14 +104,15 @@ def test_wall_candidates_are_flagged_heuristic():
     assert "HEURISTIC" in m["classification"]["wall_candidates"].upper()
 
 
-def test_microprice_fail_closes_on_crossed_and_invalid():
+def test_microprice_is_computed_from_every_quote_schwab_sent():
+    """Operator 2026-10-01: "we use what schwab gives us and we display it" -- a crossed book's
+    quotes are Schwab's and compute (the book says it is crossed); absent only with a leg Schwab
+    did not send, or no size to weight."""
     ok = ofe._microprice(712.47, 712.49, 300, 500)
     assert abs(ok - 712.4775) < 1e-9
-    assert ofe._microprice(712.50, 712.49, 300, 500) is None   # crossed (bid > ask)
-    assert ofe._microprice(712.47, 712.49, 0, 0) is None       # zero total size
+    assert ofe._microprice(712.50, 712.49, 300, 500) == (712.50 * 500 + 712.49 * 300) / 800   # crossed
+    assert ofe._microprice(712.47, 712.49, 0, 0) is None       # zero total size: nothing to weight
     assert ofe._microprice(None, 712.49, 300, 500) is None     # missing leg
-    assert ofe._microprice(-1.0, 712.49, 300, 500) is None     # non-positive price
-    assert ofe._microprice(712.47, 712.49, -5, 500) is None    # negative size
     # locked book (bid == ask, spread 0) is a valid input, returns the common price.
     assert ofe._microprice(712.49, 712.49, 300, 500) == 712.49
 
@@ -249,9 +250,10 @@ def test_invalid_sizes_are_rejected():
     assert m["top_of_book"]["ask_size"] == 500
 
 
-def test_crossed_book_withholds_mid_and_microprice_in_full_payload():
-    """A crossed book (bid > ask) is invalid microstructure — the FULL payload must withhold
-    BOTH mid and microprice (not just the _microprice helper), flag crossed, and still classify."""
+def test_a_crossed_book_computes_mid_and_microprice_and_says_it_is_crossed():
+    """A crossed book (bid > ask): Schwab sent both quotes, so mid and microprice are computed
+    from them and the payload flags crossed (operator 2026-10-01: "we use what schwab gives us
+    and we display it"; they used to be withheld)."""
     crossed = {"content": [
         {"BIDS": [{"BID_PRICE": 712.60, "TOTAL_VOLUME": 1000}],
          "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}],
@@ -259,9 +261,9 @@ def test_crossed_book_withholds_mid_and_microprice_in_full_payload():
         "top": {"bid": 712.60, "ask": 712.49, "bid_size": 300, "ask_size": 500}}
     m = ofe.compute_book_microstructure(crossed, now_ts=2.0)
     assert m["crossed"] is True
-    assert m["mid"] is None
-    assert m["microprice"] is None
-    assert m["classification"]["microprice"] == "DERIVED"   # still explicitly classified
+    assert m["mid"] == (712.60 + 712.49) / 2.0
+    assert m["microprice"] == (712.60 * 500 + 712.49 * 300) / 800
+    assert m["classification"]["microprice"] == "DERIVED"
 
 
 def test_one_sided_book_fails_closed():
@@ -273,6 +275,21 @@ def test_one_sided_book_fails_closed():
     m = ofe.compute_book_microstructure(one, now_ts=2.0)
     for n in ("1", "3", "5"):
         assert m["depth"][n]["imbalance"] is None
+
+
+def test_a_one_sided_book_schwab_sent_is_the_latest_book_never_the_older_two_sided_one():
+    """A book message with asks and no bids (as Schwab sends a side with no displayed orders) is
+    the latest book: its asks are served. It used to be dropped, and the previous two-sided book
+    stayed on screen as current (operator 2026-10-01: "we use what schwab gives us and we display
+    it")."""
+    st = OrderFlowState()
+    snap = _book_snapshot()
+    st.push_book("ONESIDE", snap, "NASDAQ_BOOK")
+    st.push_book("ONESIDE", {"ASKS": [{"ASK_PRICE": 713.10, "TOTAL_VOLUME": 77}], "BOOK_TIME": snap["BOOK_TIME"] + 1},
+                 "NASDAQ_BOOK")
+    m = ofe.compute_book_microstructure({"content": st.get_content_for_symbol("ONESIDE")}, now_ts=2.0)
+    assert m["status"] == "ok"
+    assert m["depth"]["1"]["ask_total"] == 77.0 and m["depth"]["1"]["bid_total"] is None
 
 
 def test_route_serializes_carried_state_without_recomputing(monkeypatch):
@@ -360,10 +377,10 @@ def test_engine_and_route_read_the_same_canonical_state():
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Top of book is carried, not resolved: the engine reads data["top"] (bid, ask, bid_size,
-# ask_size, mark), supplied by the caller already judged live -- the equity row of
-# live_market_plane under quote_is_fresh, or an option contract's OrderFlowState.option_top
-# under feed_live_for. Per-field merge of Schwab's changed-fields-only ticks is the store's
-# job (push_option_top below; live_market_plane for equities).
+# ask_size, mark), supplied by the caller as Schwab last sent it -- the equity's price row, or
+# an option contract's OrderFlowState.option_top. Per-field merge of Schwab's
+# changed-fields-only ticks is the store's job (push_option_top below; live_market_plane for
+# equities).
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_top_prices_and_sizes_are_carried_exactly():
@@ -468,10 +485,11 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
     assert (bid, ask, bid_leaf, ask_leaf) == (None, None, None, None)
 
 
-def test_an_option_contracts_top_is_read_only_while_the_daemon_holds_it():
-    """O-01: the option top of book is the engine's input only while the one live rule
-    (live_market_plane.feed_live_for) holds for the contract; the daemon heartbeat now carries
-    LEVELONE_OPTIONS holdings. Real TSLA 260831C00367500 ticks (tests/fixtures)."""
+def test_an_option_contracts_top_is_what_schwab_sent_whatever_the_feed_state():
+    """The option top of book is the value Schwab last sent, whether or not the daemon still
+    holds the contract (operator 2026-10-01: "we use what schwab gives us and we display it"; it
+    used to be dropped when the feed was not live). Real TSLA 260831C00367500 ticks
+    (tests/fixtures)."""
     import time
     import live_market_plane as lmp
     from app.options.order_flow import state
@@ -485,16 +503,17 @@ def test_an_option_contracts_top_is_read_only_while_the_daemon_holds_it():
         lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}}, time.time())
         assert lmp.feed_live_for(sym, "LEVELONE_OPTIONS")
         assert options_live_payload(sym, time.time())["flow"]["top_book_pressure"] is not None
+        held = options_live_payload(sym, time.time())["flow"]["top_book_pressure"]
         lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": []}}, time.time())
-        assert options_live_payload(sym, time.time())["flow"]["top_book_pressure"] is None
+        assert options_live_payload(sym, time.time())["flow"]["top_book_pressure"] == held
     finally:
         state.clear_all_live_state()
 
 
 def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
     """O-01: /api/order-flow/microstructure takes the equity top of book from the daemon's price
-    row (the header's) while its quote is live, and has none when the feed is down. Stand-in
-    quote (named): bid 10.00 x 3, ask 10.02 x 5."""
+    row (the header's): the quote Schwab last sent, the feed up or down. Stand-in quote (named):
+    bid 10.00 x 3, ask 10.02 x 5."""
     import time
     import live_market_plane as lmp
     import server
@@ -508,4 +527,4 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
     lmp.record_feed_down()
     publish_daemon_rows("ZZTB")
     body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
-    assert body["flow"]["top_book_pressure"] is None
+    assert body["flow"]["top_book_pressure"] == (3 - 5) / 8

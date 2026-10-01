@@ -10,7 +10,6 @@ import logging
 import threading
 from collections import deque
 from typing import Optional
-from time_et import now_et, session_label
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
 from l1_trade_observation import (
@@ -44,16 +43,6 @@ class OrderFlowState:
         self._receive_seq: dict[str, int] = {}
         self._receive_log: dict[str, deque] = {}
         self._stream_greeks: dict[str, dict] = {}
-        # A newly constructed instance is already empty. If it is created during
-        # RTH (as isolated history states are), mark that session current so its
-        # first L1 observation cannot erase an earlier book observation from the
-        # same replay. A long-lived premarket live singleton still resets once at
-        # the next RTH boundary.
-        try:
-            now = now_et()
-            self._last_rth_date = now.strftime("%Y-%m-%d") if session_label(now) == "RTH" else ""
-        except Exception:
-            self._last_rth_date = ""
 
     def _get_book(self, symbol: str) -> deque:
         with self._lock:
@@ -80,14 +69,18 @@ class OrderFlowState:
             return
         bids = content_item.get("BIDS")
         asks = content_item.get("ASKS")
-        if not bids or not asks:
+        if bids is None and asks is None:
             return
         sym = ticker_storage_key(symbol or content_item.get("key"))
         if not sym:
             return
+
+        def _side(levels) -> list:      # a side Schwab sent no levels for is empty, as sent
+            return [] if levels is None else list(levels) if isinstance(levels, list) else [levels]
+
         item = {
-            "BIDS": list(bids) if isinstance(bids, list) else [bids],
-            "ASKS": list(asks) if isinstance(asks, list) else [asks],
+            "BIDS": _side(bids),
+            "ASKS": _side(asks),
             "BOOK_TIME": content_item.get("BOOK_TIME"),
             "SERVICE": service,
         }
@@ -107,28 +100,6 @@ class OrderFlowState:
             # the daemon's receive time is REQUIRED -- stamping "now" made a replayed or
             # delayed message read as live (same P0 as the live plane, 2026-09-23)
             raise TypeError("push_level_one: ts_recv (the daemon receive time) is required")
-
-        # Operator finding (2026-09-11): this session-reset check used to run AFTER the
-        # volume/chg_pct writes below. On the FIRST update of a new RTH session, that order
-        # applied the fresh, genuinely-valid observation and then immediately discarded it:
-        # _clear_all_session_state_unlocked() wipes _stream_volume/_stream_chg_pct
-        # unconditionally, so the very update that should have seeded the new session was
-        # erased by the reset the same call triggered. The reset must happen BEFORE a new
-        # observation is applied, never after, so a fresh value is never sacrificed to the
-        # transition it arrived on.
-        try:
-            now_et_dt = now_et()
-            current_date = now_et_dt.strftime("%Y-%m-%d")
-            if session_label(now_et_dt) == "RTH" and current_date != self._last_rth_date:
-                with self._lock:
-                    self._clear_all_session_state_unlocked()
-                    self._last_rth_date = current_date
-                log.info(
-                    "RTH open — full state reset "
-                    "(tape + book + top + prev_trade) for all symbols"
-                )
-        except Exception as e:
-            log.debug("RTH reset check failed (continuing): %s", e)
 
         # TOTAL_VOLUME as sent; a reported 0 is 0 (AGENTS.md rule 2).
         vf = schwab_count(content_item.get("TOTAL_VOLUME"))

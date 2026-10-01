@@ -35,7 +35,7 @@
 
   function liveSpot() {   // the row whose served key is the selected instrument's (EdShell state.key)
     var q = _liveQuote;
-    return (q && q.ticker === st().key && q.spot_state === 'live' && q.spot != null) ? Number(q.spot) : null;
+    return (q && q.ticker === st().key && q.spot != null) ? Number(q.spot) : null;
   }
   function ensureChart() {
     var host = document.getElementById('chartBody');

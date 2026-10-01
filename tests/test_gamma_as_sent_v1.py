@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from math_exposure_core import compute_exposures_by_strike
+from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from schwab_client import flatten_chain_contracts
 from terrain_engine import compute_terrain
 
@@ -26,7 +26,7 @@ def test_gamma_at_spot_is_schwabs_gamma_summed_over_the_book():
     chain, spot = _FX["chain"], float(_FX["spot"])
     snap = compute_terrain("SPY", chain, spot)
     per, _ = compute_exposures_by_strike(chain, spot=spot)
-    schwab = sum(b["net_gex_1pct"] for b in per.values() if b.get("has_valid_gamma"))
+    schwab = sum(v for b in per.values() if (v := bucket_metric(b, "net_gex_1pct")) is not None)
     assert snap.net_gex_at_spot == pytest.approx(schwab, rel=1e-9)
     assert snap.flip_diag["gamma_at_spot"] == snap.net_gex_at_spot
     assert snap.flip_diag["curve_gamma_at_spot"] is not None, "the flip's own curve is still reported"

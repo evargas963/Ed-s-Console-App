@@ -90,27 +90,41 @@ def test_received_ts_is_required_and_is_what_freshness_judges():
     assert _rec("RQD", {"key": "RQD", "LAST_PRICE": 1.0}, received_ts=old)
     row = lmp.get_quote("RQD")
     assert row["server_received_ts"] == old and row["spot_received_ts"] == old
-    assert not lmp.quote_is_fresh(row) and not lmp.spot_is_fresh(row)
 
 
-def test_a_carried_last_price_keeps_the_age_of_its_own_trade():
-    """The unchanged LAST_PRICE keeps its own trade's time (information) and is live exactly
-    while the feed is live for the symbol -- never judged by how long ago it arrived."""
+def test_a_carried_last_price_is_served_with_its_own_time_whatever_the_feed_state():
+    """The unchanged LAST_PRICE keeps its own receive time; the price row serves it and the quote
+    as Schwab last sent them, with the feed's state beside them -- never blanked by it (operator
+    2026-10-01: "we use what schwab gives us and we display it")."""
+    import live_price_rows
     from tests.feed_live_helper import mark_feed_down, mark_feed_live
     t_trade = time.time() - 45.0
     _rec("CARRY", {"key": "CARRY", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1},
          received_ts=t_trade)
     _rec("CARRY", {"key": "CARRY", "BID_PRICE": 9.95, "ASK_PRICE": 10.05})
     row = lmp.get_quote("CARRY")
-    assert row["spot"] == 10.0
-    assert row["spot_received_ts"] == t_trade
-    assert not lmp.quote_is_fresh(row) and not lmp.spot_is_fresh(row)   # no heartbeat yet
-    mark_feed_live("CARRY")
-    assert lmp.quote_is_fresh(row) and lmp.spot_is_fresh(row)           # quiet, and live
-    mark_feed_live("OTHER")
-    assert not lmp.spot_is_fresh(row)                                    # not held
-    mark_feed_down()
-    assert not lmp.spot_is_fresh(row)
+    assert row["spot"] == 10.0 and row["spot_received_ts"] == t_trade
+    for feed in (mark_feed_down, lambda: mark_feed_live("CARRY")):
+        feed()
+        price = live_price_rows.price_row("CARRY")
+        assert (price["spot"], price["bid"], price["ask"]) == (10.0, 9.95, 10.05)
+        assert price["feed_live"] is lmp.feed_live_for("CARRY", "LEVELONE_EQUITIES")
+
+
+def test_a_minus_999_last_price_clears_the_spot_and_the_quote_stays():
+    """Schwab's -999 (no value) for LAST_PRICE clears it: the row is published with no spot,
+    never the previous price, and the bid and ask Schwab sent stand."""
+    _rec("NOLAST", {"key": "NOLAST", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
+    assert _rec("NOLAST", {"key": "NOLAST", "LAST_PRICE": -999.0, "BID_PRICE": 9.8}) is True
+    row = lmp.get_quote("NOLAST")
+    assert (row["spot"], row["spot_disp"], row["bid"], row["ask"]) == (None, None, 9.8, 10.1)
+
+
+def test_a_quote_before_the_first_trade_is_published():
+    """BID/ASK before any LAST_PRICE: the row carries the quote Schwab sent, and no spot."""
+    assert _rec("PRETRADE", {"key": "PRETRADE", "BID_PRICE": 4.9, "ASK_PRICE": 5.1, "BID_SIZE": 0}) is True
+    row = lmp.get_quote("PRETRADE")
+    assert (row["spot"], row["bid"], row["ask"], row["bid_size"]) == (None, 4.9, 5.1, 0.0)
 
 
 def test_record_from_level_one_new_schwab_timestamp_not_suppressed_as_duplicate():
@@ -171,13 +185,15 @@ def test_a_value_that_is_not_a_number_clears_the_field():
         assert row["bid"] is None and row["ask"] == 10.1, bad
 
 def test_record_from_level_one_rejects_mark_as_current_spot():
+    """MARK never stands in for the spot: the row carries the quote Schwab sent and no spot."""
     ok = _rec(
         "MARKONLY",
         {"key": "MARKONLY", "MARK": 20.95, "BID_PRICE": 20.9, "ASK_PRICE": 21.1},
     )
 
-    assert ok is False
-    assert lmp.get_quote("MARKONLY") is None
+    assert ok is True
+    row = lmp.get_quote("MARKONLY")
+    assert (row["spot"], row["mark"], row["bid"], row["ask"]) == (None, 20.95, 20.9, 21.1)
 
 
 def test_record_from_level_one_rejects_midpoint_spot_fabrication():
@@ -186,8 +202,8 @@ def test_record_from_level_one_rejects_midpoint_spot_fabrication():
         {"key": "MIDONLY", "BID_PRICE": 30.0, "ASK_PRICE": 30.2},
     )
 
-    assert ok is False
-    assert lmp.get_quote("MIDONLY") is None
+    assert ok is True
+    assert lmp.get_quote("MIDONLY")["spot"] is None
 
 
 def test_a_resent_identical_last_price_refreshes_its_age():
@@ -233,8 +249,9 @@ def test_last_price_is_carried_forward_only_from_a_streamed_row():
             "ticker": "RESTROW", "spot": 50.0, "quote_ingestion": "rest_fast_quote",
             "quote_source_detail": {"spot": "LAST_PRICE"},
         }
-    assert _rec("RESTROW", {"key": "RESTROW", "BID_PRICE": 49.9}) is False
-    assert lmp.get_quote("RESTROW")["quote_ingestion"] == "rest_fast_quote"   # untouched
+    assert _rec("RESTROW", {"key": "RESTROW", "BID_PRICE": 49.9}) is True
+    row = lmp.get_quote("RESTROW")       # the streamed fields only: the REST row's price never carries
+    assert (row["spot"], row["bid"], row["quote_ingestion"]) == (None, 49.9, "schwab_streaming_level_one")
     _rec("STREAMROW", {"key": "STREAMROW", "LAST_PRICE": 50.0})
     assert _rec("STREAMROW", {"key": "STREAMROW", "BID_PRICE": 49.9}) is True
     row = lmp.get_quote("STREAMROW")

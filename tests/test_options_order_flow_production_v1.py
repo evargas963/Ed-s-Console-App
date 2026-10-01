@@ -69,14 +69,9 @@ def test_the_default_contracts_expiry_cutoff_is_the_calendars_close(monkeypatch,
 
 
 def test_live_payload_one_compute_includes_proxy_flow(monkeypatch):
-    import datetime as _dt
     import app.options.order_flow.state as ofls
     from app.options.order_flow.live_payload import options_live_payload
-    from time_et import ET
 
-    # before the open: the session reset (tests/test_stack_wire_5_v1.py) is not this test's
-    # subject, and on the wall clock the suite's first quote of a session day would trigger it
-    monkeypatch.setattr(ofls, "now_et", lambda: _dt.datetime(2026, 9, 25, 8, 0, tzinfo=ET))
     contract = "CDE   260904C00013000"
     ofls.clear_all_live_state()
     ofls.push_book(contract, {

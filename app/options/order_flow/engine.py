@@ -3,8 +3,8 @@ app/options/order_flow/engine.py — Order Flow Engine
 ========================================
 The book microstructure and the tape flow of one symbol, from Schwab streaming fields.
 
-Input: dict `data` with ``content`` (the streamed book and tape items), ``top`` (the live top
-of book, when live) and ``book_live``.
+Input: dict `data` with ``content`` (the streamed book and tape items), ``top`` (the top of
+book as Schwab last sent it) and ``book_live`` (whether the feed delivers the book now).
 """
 
 from __future__ import annotations
@@ -18,8 +18,10 @@ from l1_trade_observation import (
     canonical_tape_prints,
     compute_cum_delta_proxy as _canonical_cum_delta,
     compute_tape_pressure as _canonical_tape_pressure,
+    cum_delta_window,
     iter_signed_cum_points,
 )
+from time_et import ct_label
 
 
 OF_TAPE_WINDOW_30S_SEC: float = 30.0
@@ -113,9 +115,10 @@ def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _latest_book_snapshot(items: list) -> Optional[dict]:
-    """Return the most recent content item that has both BIDS and ASKS."""
+    """Return the most recent book content item (a one-sided book included: the side Schwab sent
+    no levels for is empty)."""
     for item in reversed(items):
-        if isinstance(item, dict) and item.get("BIDS") and item.get("ASKS"):
+        if isinstance(item, dict) and ("BIDS" in item or "ASKS" in item):
             return item
     return None
 
@@ -146,10 +149,8 @@ def _book_imbalance_from_totals(bid_total: Optional[float], ask_total: Optional[
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _top(data: dict) -> dict:
-    """The live top of book the caller supplies as ``data["top"]`` -- bid, ask, bid_size,
-    ask_size, mark -- already judged live by the one live rule for its symbol
-    (live_market_plane.quote_is_fresh for a ticker, feed_live_for for an option contract);
-    absent when it is not live."""
+    """The top of book the caller supplies as ``data["top"]`` -- bid, ask, bid_size, ask_size,
+    mark -- each the last value Schwab sent; absent when Schwab has sent none."""
     t = data.get("top")
     return t if isinstance(t, dict) else {}
 
@@ -213,11 +214,10 @@ _MICRO_STRUCTURAL_CACHE: dict[str, tuple[tuple, dict]] = {}
 
 
 def _sorted_valid_levels(levels: list[tuple[float, float]], *, descending: bool) -> list[tuple[float, float]]:
-    """Normalize a raw book side ONCE: drop invalid levels (non-positive price, negative or
-    non-finite displayed size — the raw reader already drops non-finite via schwab_count), then
-    SORT so `[:N]` is the true Top-N regardless of the vendor's array order: bids DESCENDING,
-    asks ASCENDING."""
-    valid = [(p, v) for (p, v) in levels if p is not None and v is not None and p > 0 and v >= 0]
+    """Normalize a raw book side ONCE: drop a level Schwab sent no price or size for (the raw
+    readers drop -999, text, NaN and a negative size), then SORT so `[:N]` is the true Top-N
+    regardless of the vendor's array order: bids DESCENDING, asks ASCENDING."""
+    valid = [(p, v) for (p, v) in levels if p is not None and v is not None]
     valid.sort(key=lambda pv: pv[0], reverse=descending)
     return valid
 
@@ -264,14 +264,9 @@ def _microprice(bid: Optional[float], ask: Optional[float],
     """Size-weighted top-of-book fair price:
         microprice = (bid·ask_size + ask·bid_size) / (bid_size + ask_size)
     Each price is weighted by the OPPOSITE side's size, so heavier bid size pulls the fair
-    price toward the ask (imminent buy pressure). DERIVED. Fail-closed → None on any missing
-    leg, a non-positive price, a negative size, zero total size, or a CROSSED book (bid > ask),
-    where a size-weighted average between the quotes is meaningless."""
+    price toward the ask (imminent buy pressure). DERIVED from Schwab's quotes as sent. None on
+    a missing leg (Schwab sent none) or zero total size (nothing to weight)."""
     if bid is None or ask is None or bid_size is None or ask_size is None:
-        return None
-    if bid <= 0 or ask <= 0 or bid_size < 0 or ask_size < 0:
-        return None
-    if bid > ask:                      # crossed / inverted book → invalid microstructure input
         return None
     denom = bid_size + ask_size
     if denom <= 0:
@@ -350,12 +345,12 @@ def _microstructure_structural(cb: dict) -> dict:
     have_quotes = bid is not None and ask is not None
     crossed = have_quotes and bid > ask
 
-    # Crossed book WITHHOLDS both mid and microprice (a mid between inverted quotes is meaningless).
-    mid = (bid + ask) / 2.0 if (have_quotes and not crossed) else None
-    microprice = _microprice(bid, ask, bid_size, ask_size)  # also self-rejects crossed
-    spread_pts = round(ask - bid, 4) if have_quotes else None
+    # computed from Schwab's quotes as sent, a crossed book included (served with `crossed`)
+    mid = (bid + ask) / 2.0 if have_quotes else None
+    microprice = _microprice(bid, ask, bid_size, ask_size)
+    spread_pts = ask - bid if have_quotes else None
     mark = cb["mark"]
-    spread_frac = round(spread_pts / mark, 6) if (spread_pts is not None and mark and mark > 0) else None
+    spread_frac = spread_pts / mark if (spread_pts is not None and mark is not None) else None
 
     # Depth ladder — totals aggregated ONCE per (side, depth); imbalance, slope and concentration
     # all reuse these SAME canonical totals. One aggregation authority (`_book_side_depth_total`).
@@ -529,6 +524,7 @@ class OrderFlowEngine:
 
         # Cumulative delta
         cum_delta_proxy = _compute_cum_delta_proxy(data)
+        cum_first, cum_last = cum_delta_window(canonical_tape_prints(_iter_content(data)))
         cum_delta_slope = _compute_cum_delta_slope(data, now)
 
         return {
@@ -540,5 +536,9 @@ class OrderFlowEngine:
             "tape_pressure_2m": tape_pressure_2m,
             "tape_pressure_5m": tape_pressure_5m,
             "cum_delta_proxy": cum_delta_proxy,
+            # the window the cumulative delta sums: the tape's first and last print (Schwab trade
+            # time), served beside the number
+            "cum_delta_window": ("prints " + ct_label(cum_first) + " to " + ct_label(cum_last)
+                                 if cum_first is not None else None),
             "cum_delta_slope": cum_delta_slope,
         }

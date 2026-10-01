@@ -11,12 +11,14 @@ import server as srv
 from tests.feed_live_helper import feed_live_during
 
 
-def test_an_unheld_symbol_row_is_unavailable_with_every_quote_field_withheld(monkeypatch) -> None:
+def test_an_unheld_symbol_row_serves_what_schwab_sent_and_says_the_feed_is_not_live(monkeypatch) -> None:
+    """Operator 2026-10-01: "we use what schwab gives us and we display it" -- the feed's state is
+    stated beside the values, never in place of them."""
     feed_live_during(monkeypatch, "ZZHELD")
     lmp.record_from_level_one_equity("ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9},
                                      received_ts=time.time())
     row = live_price_rows.price_row("ZZNOTHELD")
-    assert row["spot"] is None and row["spot_state"] == "unavailable" and row["feed_live"] is False
+    assert (row["spot"], row["bid"], row["feed_live"]) == (9.0, 8.9, False)
 
 
 def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy(monkeypatch) -> None:

@@ -120,7 +120,8 @@
       ['Gamma flip', num(d.gamma_flip)],
       // max pain is per expiry: label it with the expiry the server computed it on (front)
       ['Max pain' + (d.max_pain_dte != null ? ' (' + d.max_pain_dte + 'DTE)' : ''), num(d.max_pain)],
-      ['Net GEX @ spot', d.net_gex_at_spot != null ? (Number(d.net_gex_at_spot) / 1e6).toFixed(1) + 'M' : '—'],
+      // the heatmap's own dollar formatter: a value under $50K reads as itself, never "0.0M"
+      ['Net GEX @ spot', d.net_gex_at_spot != null ? window.EdGamma.formatUsd(d.net_gex_at_spot) : '—'],
     ];
     return stage(3, 'td-accent-amber', 'Confirm — options regime', d.regime || '—', '', 0, rows, d.confidence || null,
       d.confidence === 'TRUSTED' ? 'live' : 'warn');

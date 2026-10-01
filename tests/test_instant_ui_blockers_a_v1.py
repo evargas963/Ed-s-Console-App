@@ -3,8 +3,7 @@
 - a service is marked alive only by a frame that parsed and published (it beat BEFORE parsing,
   so a frame shape failing on every message kept LEVELONE "RUNNING" with nothing delivered);
 - a sustained run of skipped frames ends the pump (-> the watchdog recycles), while isolated
-  bad frames between good ones do not;
-- terrain rotation happens only inside the contention window (collection mandate).
+  bad frames between good ones do not.
 """
 from __future__ import annotations
 
@@ -21,16 +20,6 @@ def _handler():
 
 
 
-
-
-def test_terrain_rotates_only_inside_the_contention_window():
-    import server as srv
-    board = [f"T{i:02d}" for i in range(40)]
-    now, deferred = srv.terrain_cycle_tickers(board, 12 * 60, 7, viewed=[board[0]])
-    assert (now, deferred) == (board, []), "viewing must never rotate the board outside the window"
-    inside = srv.TERRAIN_CONTENTION_START_MINS
-    now, deferred = srv.terrain_cycle_tickers(board, inside, 7, viewed=[board[0]])
-    assert board[0] in now and deferred                       # the window still rotates
 
 
 
@@ -115,7 +104,6 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar(monkeypatch):
 
 
 def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch, view):
-    monkeypatch.setattr("server._is_loggable_session", lambda: True)   # an open-market test
     import threading
     import server as srv
     ran, done = [], threading.Event()

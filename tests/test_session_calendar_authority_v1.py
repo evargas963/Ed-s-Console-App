@@ -15,7 +15,6 @@ from time_et import (
     EARLY_CLOSE_MINS,
     RTH_END_MINS,
     RTH_START_MINS,
-    is_capturable_session,
     is_trading_day_et,
     is_tradable_session_ts_utc,
     session_close_mins_for_et_date,
@@ -92,42 +91,6 @@ def test_2027_and_2028_match_the_nyse_published_schedule():
 def test_normal_day_close_is_the_rth_constant():
     assert session_close_mins_for_et_date("2026-07-22") == RTH_END_MINS
     assert RTH_START_MINS == 570 and RTH_END_MINS == 960
-
-
-# ── RC-48: is_capturable_session — the extended-hours capture-write authority ──
-# Distinct from is_tradable_session_ts_utc (RTH 09:30-16:00): capturable spans
-# [04:00, 20:00) ET so pre-market and after-hours ARE persisted; overnight,
-# weekends, and holidays are NOT (no signal, excluded from training, read by none).
-
-
-def test_capturable_extended_hours_weekday_boundaries():
-    # Wednesday 2026-07-22 — a normal covered trading day.
-    assert is_capturable_session(_dt(2026, 7, 22, 3, 59)) is False   # overnight
-    assert is_capturable_session(_dt(2026, 7, 22, 4, 0)) is True     # pre-market open 04:00
-    assert is_capturable_session(_dt(2026, 7, 22, 9, 30)) is True    # RTH
-    assert is_capturable_session(_dt(2026, 7, 22, 16, 30)) is True   # after-hours
-    assert is_capturable_session(_dt(2026, 7, 22, 19, 59)) is True   # last after-hours minute
-    assert is_capturable_session(_dt(2026, 7, 22, 20, 0)) is False   # 20:00 -> closed
-    assert is_capturable_session(_dt(2026, 7, 22, 23, 30)) is False  # overnight
-
-
-def test_capturable_is_false_all_weekend_even_in_rth_window():
-    # The measured failure: 27,681 weekend rows were mislabeled 'rth'. Saturday
-    # 2026-07-25 and Sunday 2026-07-26 must be non-capturable at every hour.
-    assert is_capturable_session(_dt(2026, 7, 25, 10, 0)) is False   # Sat RTH-window
-    assert is_capturable_session(_dt(2026, 7, 25, 5, 0)) is False    # Sat pre-market-window
-    assert is_capturable_session(_dt(2026, 7, 26, 13, 0)) is False   # Sun RTH-window
-
-
-def test_capturable_is_false_on_full_holidays():
-    assert is_capturable_session(_dt(2026, 5, 25, 10, 0)) is False   # Memorial Day
-    assert is_capturable_session(_dt(2026, 7, 3, 10, 0)) is False    # Independence observed
-    # Early-close day is still a trading day -> capturable in its extended hours.
-    assert is_capturable_session(_dt(2026, 11, 27, 10, 0)) is True
-
-
-def test_capturable_uncovered_year_fails_closed():
-    assert is_capturable_session(_dt(2029, 6, 15, 10, 0)) is False
 
 
 # ── RC-54/RC-57: is_trading_day_et — the date-level authority that scopes every measurement ──
