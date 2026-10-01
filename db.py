@@ -20,6 +20,9 @@ from typing import Callable, Optional, TypeVar
 from instrument_identity import ticker_storage_key
 from time_et import is_collect_window_bar_end_ts_utc
 
+#: where a stored 1-minute bar came from: Schwab's stream (CHART_EQUITY) or its price history
+BAR_SOURCE_STREAM, BAR_SOURCE_PRICEHISTORY = "schwab_chart_equity", "schwab_pricehistory"
+
 log = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -435,13 +438,15 @@ class EdDB:
             except sqlite3.OperationalError as exc:
                 log.warning("drop confluence_log failed: %s", exc)
 
-    def upsert_1m_bars(self, ticker: str, bars: list, *, backfill: bool = False) -> int:
-        """Write Schwab's 1m bars to price_bars_1m. `bars` are Candle objects from
-        server._write_streamed_bar: ts is the bar start in epoch seconds, OHLC already read with
-        schwab_number. A bar off the minute grid is refused and counted. Only bars ending in the
-        RC-183 collect window are persisted. A streamed bar (source schwab_chart_equity) stands
-        over a stored one; `backfill` bars (Schwab's price history, source schwab_pricehistory)
-        are written only where the store has no bar for the minute. Returns the rows written."""
+    def upsert_1m_bars(self, ticker: str, bars: list, *, backfill: bool = False,
+                       source: str = BAR_SOURCE_STREAM) -> int:
+        """Write Schwab's 1m bars to price_bars_1m, each with its `source` (BAR_SOURCE_*). `bars`
+        are Candle objects from server._write_streamed_bar: ts is the bar start in epoch seconds,
+        OHLC already read with schwab_number. A bar off the minute grid is refused and counted.
+        Only bars ending in the RC-183 collect window are persisted. A bar as streamed stands over
+        a stored one; `backfill` bars (Schwab's price history, or the daemon's held minutes sent
+        on the console's connect) are written only where the store has no bar for the minute.
+        Returns the rows written."""
         tkr = ticker_storage_key(ticker)
         rows = []
         off_grid = 0
@@ -470,7 +475,6 @@ class EdDB:
                        "bar_end_ts_utc = excluded.bar_end_ts_utc, open = excluded.open, "
                        "high = excluded.high, low = excluded.low, close = excluded.close, "
                        "volume = excluded.volume, source = excluded.source")
-        source = "schwab_pricehistory" if backfill else "schwab_chart_equity"
 
         def _do() -> int:
             with self._connect() as conn:

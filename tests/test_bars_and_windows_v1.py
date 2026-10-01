@@ -231,16 +231,17 @@ def test_a_bar_the_store_failed_to_write_makes_the_levels_stale_with_the_failure
     stored = []
 
     class _Store:
-        def upsert_1m_bars(self, symbol, candles, backfill):
+        def upsert_1m_bars(self, symbol, candles, backfill, source):
             if candles[0].ts == _at(10, 29):
                 raise sqlite3.OperationalError("database is locked")
             stored.extend({"timestamp": int(c.ts * 1000), "open": c.open, "high": c.high, "low": c.low,
                            "close": c.close, "volume": c.volume} for c in candles)
     monkeypatch.setattr(srv, "get_db", lambda: _Store())
     monkeypatch.setattr(srv, "_publish_price_levels", lambda tk: None)        # built below, once
-    srv._write_streamed_bars([bar_msg(symbol="SPY", bar_start_ms=b["timestamp"], open=b["open"], high=b["high"],
-                                      low=b["low"], close=b["close"], volume=b["volume"], src="schwab_chart",
-                                      ts_recv=b["timestamp"] / 1000.0 + 62.7) for b in BARS])
+    for b in BARS:                                                            # each minute as it arrives
+        srv._write_streamed_bars([bar_msg(symbol="SPY", bar_start_ms=b["timestamp"], open=b["open"], high=b["high"],
+                                          low=b["low"], close=b["close"], volume=b["volume"], src="schwab_chart",
+                                          ts_recv=b["timestamp"] / 1000.0 + 62.7)])
     problems = dict(srv._store_problems)
     monkeypatch.undo()
     monkeypatch.setattr(srv, "_store_problems", problems)

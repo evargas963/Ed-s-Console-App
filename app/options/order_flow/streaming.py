@@ -211,6 +211,10 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     if topic.startswith("bardays.") and msg.get("symbol"):
         _bar_days[ticker_storage_key(msg["symbol"])] = msg        # Schwab's daily candles, carried
         return None
+    if topic.startswith("barheld."):       # the daemon's held day, sent on connect: backfill only
+        for bar in msg.get("bars") or ():
+            streamed_bars.put({**bar, "backfill": True})
+        return None
     sym = msg.get("symbol")
     ts = msg.get("ts_recv")
     if not sym or not isinstance(ts, (int, float)):
@@ -292,8 +296,10 @@ async def _feed_loop() -> None:
     (_ingest_pushed) -- no poll interval, no database read. A dropped connection is retried
     every PUSH_RECONNECT_SEC; while it is down, the live values age out through their own
     freshness checks and the screen shows them stale. There is no second source. On reconnect
-    the daemon sends current state only (books, option quote fields); the 1-minute bars Schwab
-    sent while it was down are not received, and that span is named (PUSH_GAP), never refilled."""
+    the daemon sends current state only (books, option quote fields, bar verdicts, daily candles)
+    and its held minutes of the day (barheld), which backfill the store insert-only: the 1-minute
+    bars Schwab sent while it was down are not received as bar events, and that span is named
+    (PUSH_GAP)."""
     global _feed_running
     from websockets.asyncio.client import connect
 
@@ -322,7 +328,8 @@ async def _feed_loop() -> None:
                     if down_since is not None:
                         _log_stream("PUSH_GAP", note=(
                             f"no 1-minute bars received from {ct_label(down_since)} to "
-                            f"{ct_label(time.time())}; they are not refilled"))
+                            f"{ct_label(time.time())} as bar events; the daemon's held minutes of "
+                            f"the day backfill the store"))
                         down_since = None
                     sender = asyncio.create_task(_send_wanted(ws))
                     try:

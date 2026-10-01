@@ -21,6 +21,10 @@ the same topics is refused):
   bardays.SYM  src "schwab_pricehistory_daily"  Schwab's daily candles of the days before today
                                         (live_ui), for the daily chart and the daily ATR; state,
                                         so the last one is sent on connect
+  barheld.SYM  src "live_ui_held"       the daemon's held minutes of the day, each with its own
+                                        source, for the console's bar writer to backfill what it
+                                        missed while away (insert-only); sent on connect only
+                                        (and the first one published after it), never as bar events
 An equity's quote (quote.SYM, LEVELONE_EQUITIES) is not forwarded: the daemon turns it into the
 price row it pushes on live_ui, which the console reads like a browser does.
 
@@ -57,7 +61,7 @@ LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: op
 _FORWARDED = {"book.": ("schwab_book",), "optquote.": ("schwab_options_l1",),
               "news.": ("schwab_news",), "bar1m.": ("schwab_chart",),
               "barhist.": ("schwab_pricehistory",), "barstate.": ("live_ui",),
-              "bardays.": ("schwab_pricehistory_daily",)}
+              "bardays.": ("schwab_pricehistory_daily",), "barheld.": ("live_ui_held",)}
 
 
 def is_forwarded(topic: str, msg) -> bool:
@@ -145,8 +149,12 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
         for topic, msg in history.replay():
             await ws.send(encode(topic, msg))
         for topic, msg in list(bus.snapshot().items()):
-            if topic.startswith(("book.", "barstate.", "bardays.")) and is_forwarded(topic, msg):
+            if topic.startswith(("book.", "barstate.", "bardays.", "barheld.")) and is_forwarded(topic, msg):
                 await ws.send(encode(topic, msg))
+        # a symbol's held minutes are sent on connect only: the snapshot's, and the first one
+        # published after this connection began (it holds a minute streamed while the console was
+        # connecting, before the snapshot had it); never again on this connection
+        held_sent: set = set()
         loop = asyncio.get_running_loop()
         next_beat = loop.time()
         while True:
@@ -163,6 +171,10 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
                         sub.get(), timeout=max(0.0, next_beat - loop.time()))
             except asyncio.TimeoutError:
                 continue
+            if topic.startswith("barheld."):
+                if topic in held_sent:
+                    continue
+                held_sent.add(topic)
             if is_forwarded(topic, msg):
                 await ws.send(encode(topic, msg))
                 stats["sent"] += 1

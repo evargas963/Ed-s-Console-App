@@ -250,6 +250,92 @@ def test_a_reconnecting_console_is_sent_current_state_and_no_past_bar(feed):
     assert [b["bar_start_ms"] for b in got] == [live["bar_start_ms"]]
 
 
+def test_a_reconnecting_console_backfills_every_minute_the_daemon_holds_and_its_levels_read_current(
+        feed, monkeypatch, pin_clock, tmp_path):
+    """A console whose push was down missed the bars Schwab streamed meanwhile, and they were never
+    written: its levels then read stale for the rest of the day (W-14). On every connect the daemon
+    sends its held minutes of the day as history (barheld), which the console's one bar writer
+    writes insert-only, each with its own source: the store then holds every minute the daemon
+    holds, the levels are rebuilt and read current, and no bar1m event is re-sent. Real SPY bars of
+    2026-09-29 09:15-10:29 ET, streamed to the daemon's real live_ui; the console's store held
+    them through 10:00 ET (its push down after that), through the real push server and console."""
+    import datetime as _dt
+
+    import liquidity_value_engine as lve
+    import server as srv
+    from app.market_data.schwab.streaming import live_ui
+    from db import BAR_SOURCE_STREAM, EdDB
+    from stream_spine import subscription_msg
+    from time_et import ET
+
+    bars = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_29_open.json")
+                      .read_text(encoding="utf-8"))["bars"]
+    at = lambda h, m: _dt.datetime(2026, 9, 29, h, m, tzinfo=ET).timestamp()  # noqa: E731
+    pin_clock(2026, 9, 29, 10, 45)
+    db = EdDB(tmp_path / "bars.db", allow_noncanonical=True)
+    monkeypatch.setattr(srv, "get_db", lambda: db)
+    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (None, "none", None))
+    monkeypatch.setattr(srv, "terrain_cache_get", lambda t, now: {})
+    monkeypatch.setattr(lve, "_MATERIALIZED_SNAPSHOTS", {})
+    monkeypatch.setattr(srv, "_store_problems", {"SPY": "the bar of 10:01 was not written (a stand-in)"})
+    monkeypatch.setattr(ofs, "_bar_states", {})
+    while not ofs.streamed_bars.empty():
+        ofs.streamed_bars.get()
+
+    def msg(b, ts):
+        return bar_msg(symbol="SPY", bar_start_ms=b["timestamp"], open=b["open"], high=b["high"], low=b["low"],
+                       close=b["close"], volume=b["volume"], src="schwab_chart", ts_recv=ts)
+    srv._write_streamed_bars([msg(b, b["timestamp"] / 1000.0 + 62.7) for b in bars
+                              if b["timestamp"] / 1000.0 <= at(10, 0)])          # before the push dropped
+    clock = {"now": at(9, 0)}
+
+    async def run():
+        bus = MessageBus()
+        ui = live_ui.LiveUiServer(bus, lambda: {}, {}, clock=lambda: clock["now"], history_fn=lambda *a: [],
+                                  daily_fn=lambda *a: [])
+        ui.on_subscription(subscription_msg(service="CHART_EQUITY", command="SUBS", symbols=["SPY"], code=0,
+                                            reason="ok", ts=at(9, 0)))
+        for b in bars:                                        # the daemon streams the whole morning
+            clock["now"] = b["timestamp"] / 1000.0 + 62.7
+            bus.publish("bar1m.SPY", msg(b, clock["now"]))
+            ui.on_bar(msg(b, clock["now"]))
+        for t in list(ui._asks):
+            t.cancel()
+        clock["now"] = at(10, 45)
+        stop = asyncio.Event()
+        stats: dict = {}
+        server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=feed, stats=stats))
+        assert await _until(lambda: stats.get("listening"))
+        ofs._feed_running = True
+        client = asyncio.create_task(ofs._feed_loop())       # the console comes back
+        try:
+            assert await _until(lambda: ofs.streamed_bars.qsize() >= len(bars))
+            ui.publish_states(at(10, 45))                     # the daemon's beat at 10:45
+            assert await _until(lambda: (ofs.bar_state("SPY") or {}).get("ts") == at(10, 45))
+            await asyncio.sleep(0.2)
+            got = []
+            while not ofs.streamed_bars.empty():
+                got.append(ofs.streamed_bars.get())
+            srv._write_streamed_bars(got)                     # the console's bar writer
+            with monkeypatch.context() as m:                  # served at 10:45, the console connected
+                m.setattr(time, "time", lambda: at(10, 45))
+                levels = json.loads(srv.get_levels(ticker="SPY", tf="1").body)["session_levels"]
+            return got, ui.days["SPY"], levels
+        finally:
+            ofs._feed_running = False
+            client.cancel()
+            stop.set()
+            await asyncio.gather(client, server, return_exceptions=True)
+    got, held, levels = asyncio.run(run())
+    assert got and all(m.get("backfill") is True for m in got)                 # history only, no bar event
+    with db._connect() as conn:
+        stored = conn.execute("SELECT bar_start_ts_utc, source FROM price_bars_1m WHERE ticker = 'SPY'").fetchall()
+    assert sorted(t for t, _s in stored) == sorted(held.minutes)               # every minute the daemon holds
+    assert {s for _t, s in stored} == {BAR_SOURCE_STREAM}                      # each with its stream source
+    assert levels == {"state": srv.PRICE_LEVEL_CURRENT, "stale": False, "reason": ""}
+    assert srv._store_problems == {}                       # the minutes match: no earlier failure stands
+
+
 def test_a_connecting_console_is_sent_each_bar_verdict_and_drops_them_when_the_push_ends(feed, monkeypatch):
     """The daemon's verdict on a symbol's bars (barstate) is state: a console that connects after
     it was published is sent the last one, and a console whose push ends drops every verdict (no

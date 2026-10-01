@@ -171,7 +171,7 @@ from numeric_contract import price_text, schwab_number
 from terrain_engine import (TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike, positioning_migration)
 from terrain_atr import AtrPair, compute_atr_pair
 
-from db import LevelCrossEvent, get_db
+from db import BAR_SOURCE_PRICEHISTORY, BAR_SOURCE_STREAM, LevelCrossEvent, get_db
 
 import live_price_rows as _lpr        # the chart bar, its roll-up and its change
 import push_changes
@@ -762,20 +762,34 @@ def _bar_dict(c: "Candle") -> dict:
     return {"t": float(c.ts), "o": c.open, "h": c.high, "l": c.low, "c": c.close, "v": c.volume}
 
 
+def _bar_groups(msgs: list) -> "dict[tuple[str, bool, str], list[Candle]]":
+    """The 1-minute bars the daemon forwards, as the chart's bars (live_price_rows.minute_bar, the
+    ones the daemon pushes to the screen), grouped for one write each by (symbol, backfill,
+    source): a streamed bar (Schwab CHART_EQUITY) stands over any stored one; a price-history bar
+    (a span the daemon's stream did not cover, live_ui) and a minute of the daemon's held day sent
+    on connect (`backfill`, streaming's ingest of barheld) only fill a minute the store does not
+    have, each stored with its own source. A message that is not a chart bar is not written."""
+    groups: "dict[tuple[str, bool, str], list[Candle]]" = {}
+    for msg in msgs:
+        b = _lpr.minute_bar(msg)
+        if b is None:
+            log.debug("streamed bar for %s is not a chart bar, not written: %s", msg.get("symbol"), msg)
+            continue
+        history = msg.get("src") == "schwab_pricehistory"
+        key = (msg["symbol"], history or msg.get("backfill") is True,
+               BAR_SOURCE_PRICEHISTORY if history else BAR_SOURCE_STREAM)
+        groups.setdefault(key, []).append(Candle(ts=b["t"], open=b["o"], high=b["h"], low=b["l"],
+                                                 close=b["c"], volume=b["v"]))
+    return groups
+
+
 def _write_streamed_bar(msg: dict) -> bool:
-    """Write one 1-minute bar the daemon forwards to price_bars_1m: the chart's bar
-    (live_price_rows.minute_bar, the one the daemon pushes to the screen), with its source -- a
-    streamed bar (Schwab CHART_EQUITY) stands over any stored one; a price-history bar (a span the
-    daemon's stream did not cover, live_ui) only fills a minute the store does not have. False when it is not a
+    """Write one forwarded 1-minute bar to price_bars_1m (_bar_groups); False when it is not a
     chart bar (then nothing is written)."""
-    b = _lpr.minute_bar(msg)
-    if b is None:
-        log.debug("streamed bar for %s is not a chart bar, not written: %s", msg.get("symbol"), msg)
-        return False
-    get_db().upsert_1m_bars(msg["symbol"], [Candle(ts=b["t"], open=b["o"], high=b["h"], low=b["l"],
-                                                   close=b["c"], volume=b["v"])],
-                            backfill=msg.get("src") == "schwab_pricehistory")
-    return True
+    groups = _bar_groups([msg])
+    for (sym, backfill, source), candles in groups.items():
+        get_db().upsert_1m_bars(sym, candles, backfill=backfill, source=source)
+    return bool(groups)
 
 
 #: per ticker, the last failure writing its streamed bars or building its price levels: the
@@ -784,19 +798,21 @@ _store_problems: "dict[str, str]" = {}
 
 
 def _write_streamed_bars(msgs: list) -> None:
-    """Write streamed bars, then build the price levels of each ticker written: every bar is
-    written before any level is built (a minute's bars for the whole board arrive together)."""
+    """Write forwarded bars, one write per (symbol, backfill, source) group (_bar_groups: the
+    daemon's held day after a reconnect is hundreds of minutes per symbol), then build the price
+    levels of each ticker written: every bar is written before any level is built (a minute's
+    bars for the whole board arrive together)."""
     written = []
-    for msg in msgs:
+    for (sym, backfill, source), candles in _bar_groups(msgs).items():
         try:
-            if _write_streamed_bar(msg):
-                written.append(msg["symbol"])
-        except Exception as e:  # noqa: BLE001 -- logged and kept as the levels' reason; the next bar is still written
-            log.warning("streamed bar for %s not written: %s", msg.get("symbol"), e)
-            start = msg.get("bar_start_ms")
-            _store_problems[ticker_storage_key(str(msg.get("symbol") or ""))] = (
-                f"the bar of {ct_label(start / 1000.0) if isinstance(start, (int, float)) else 'an unknown minute'} "
-                f"was not written to the store: {type(e).__name__}: {e}")
+            get_db().upsert_1m_bars(sym, candles, backfill=backfill, source=source)
+            written.append(sym)
+        except Exception as e:  # noqa: BLE001 -- logged and kept as the levels' reason; the next group is still written
+            log.warning("bars for %s not written: %s", sym, e)
+            span = ct_label(candles[0].ts) + ("" if len(candles) == 1 else f" – {ct_label(candles[-1].ts)}")
+            _store_problems[ticker_storage_key(sym)] = (
+                f"the {'bar' if len(candles) == 1 else 'bars'} of {span} "
+                f"{'was' if len(candles) == 1 else 'were'} not written to the store: {type(e).__name__}: {e}")
     for tk in dict.fromkeys(written):
         _publish_price_levels(tk)
 
@@ -3952,7 +3968,7 @@ def _publish_price_levels(ticker: str) -> None:
     session date). The routes read what it published (canonical_price_level_snapshot). A failed
     build is logged; the routes serve the last published snapshot with its as-of time, or say
     the levels are absent."""
-    from app.options.order_flow.streaming import bar_days
+    from app.options.order_flow.streaming import bar_days, bar_state
     from liquidity_value_engine import _bars_to_list, materialize_price_level_snapshot
     from time_et import now_et
 
@@ -3973,6 +3989,9 @@ def _publish_price_levels(ticker: str) -> None:
         log.warning("price levels for %s not built: %s", tk, e)
         _store_problems[tk] = f"the levels were not built from the newest bars: {type(e).__name__}: {e}"
         return
+    verdict = bar_state(tk)
+    if verdict is not None and snap.minutes == (verdict["minutes"], verdict["newest"]):
+        _store_problems.pop(tk, None)        # built from every minute the daemon holds: no failure stands
     if snap is not before:   # the same object when its bars did not change
         push_changes.changed(tk, push_changes.LEVELS)
 

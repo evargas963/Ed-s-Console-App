@@ -57,7 +57,7 @@ import live_market_plane as lmp
 import live_price_rows
 from instrument_identity import display_symbol, ticker_storage_key
 from stream_spine import (CONNECTION, CONNECTION_CLOSED, CONNECTION_LOSS, COUNT_DROPS, MessageBus, bar_days_msg,
-                          bar_msg, bar_state_msg, price_history_msg)
+                          bar_msg, bar_state_msg, held_minutes_msg, price_history_msg)
 from time_et import ET, ct_label
 
 log = logging.getLogger(__name__)
@@ -294,6 +294,7 @@ class LiveUiServer:
         if day is None or day.start != _et_day_start(bar["t"]):
             day = self.days[sym] = _Day(_et_day_start(bar["t"]))
         self._hold(sym, day, bar, SRC_STREAM)
+        self._publish_held(sym, day)
         if sym in self.streaming:
             # the stream's span, from its first minute (or the session's) through this one
             start = max(self.streaming[sym], live_price_rows.session_first_minute(bar["t"]))
@@ -346,6 +347,15 @@ class LiveUiServer:
         if prev is None or src == SRC_STREAM or prev_src == SRC_PRICEHISTORY:
             day.minutes[bar["t"]], day.source[bar["t"]] = bar, src
 
+    def _publish_held(self, sym: str, day: _Day) -> None:
+        """Publish `sym`'s held minutes of the day (barheld.SYM, stream_spine.held_minutes_msg),
+        each as a bar1m message with its own source: the state live_push sends a console on its
+        connect, so the console's store backfills every minute it missed while away."""
+        now = self.clock()
+        self.bus.publish(f"barheld.{sym}", held_minutes_msg(symbol=sym, ts=now, bars=[
+            bar_msg(symbol=sym, bar_start_ms=int(t * 1000), open=m["o"], high=m["h"], low=m["l"], close=m["c"],
+                    volume=m["v"], src=day.source[t], ts_recv=now) for t, m in sorted(day.minutes.items())]))
+
     async def _ask(self, sym: str, day: _Day, gaps: "list[tuple[float, float]]") -> None:
         """Ask Schwab's price history for the uncovered `gaps` of `sym`'s day, one request per
         span still uncovered when its turn comes, from the span's start to now (at most
@@ -384,6 +394,7 @@ class LiveUiServer:
                 if held:
                     day.covered = _cover(day.covered, a, newest)
                     self.bus.publish(f"barhist.{sym}", price_history_msg(symbol=sym, bars=held, ts_recv=received))
+                    self._publish_held(sym, day)
         finally:
             day.asking = False
         if self.days.get(sym) is day and day.minutes and (list(day.covered), day.problem) != before:
