@@ -552,6 +552,31 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Market Map: the daily chart shows the served note when the day\'s high/low differ from Schwab\'s, and nothing otherwise', async ({ page }) => {
+    // the daemon reconciles the daily bar's regular-session high/low with Schwab's HIGH_PRICE /
+    // LOW_PRICE and serves the note for the daily chart (`notes.D`, on a mismatch only); the
+    // page prints it as served
+    const errs = watchErrors(page);
+    await intercept(page);
+    const daemon = await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
+    await page.locator('#tdmToolbar [data-tf="D"]').click();
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.tf)).toBe('D');
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(BARS.bars.length);
+    const note = 'high/low differ from Schwab: ours 770.31/767.75 / Schwab 770.26/767.75';
+    const minute = { t: 1790343720, o: 772, h: 772.5, l: 771.9, c: 772.4, v: 10, chg: 0.4, chg_pct: 0.05, label: 'Fri 09/25 09:22 AM CT' };
+    const push = (notes) => daemon.send({ type: 'bars', bars: [{ ticker: 'SPY', ts_recv: 1790343782.7,
+      last_bar: { t: 1790343720, label: 'Fri 09/25 09:22 AM CT' }, tf: { '1': minute }, recent_1m: null, unavailable: {}, notes: notes }] });
+    const legend = page.locator('#tdmChart .tvc-legend');
+    push({ D: note });
+    await expect(legend).toContainText(note);
+    push({});                                                          // a match: nothing shown
+    await expect(legend).not.toContainText('differ from Schwab');
+    expect(errs).toEqual([]);
+  });
+
   test('Market Map: back from a price-socket drop, the chart names the gap in its live bars and draws no bar for it', async ({ page }) => {
     // live bars are only the ones Schwab sends while the page is connected: after a drop the
     // chart's missing time is named, never filled from the daemon's memory

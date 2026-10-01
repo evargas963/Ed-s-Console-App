@@ -202,6 +202,7 @@
     if (!S.chart || b.ticker !== st().key || S.barsAnswered !== S.gen) return;
     var had = S.bars.length;
     S.chart.setUnavailable(b.tf[S.tf] ? null : (b.unavailable || {})[S.tf]);   // the served reason, if any
+    S.chart.setNote((b.notes || {})[S.tf]);                                     // the served note, if any
     if (b.tf[S.tf]) {
       S.chart.pushBar(b.tf[S.tf], b.last_bar && b.last_bar.label);   // the chart library places it
       S.bars = S.chart.bars();

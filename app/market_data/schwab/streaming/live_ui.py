@@ -47,6 +47,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import time
 from dataclasses import dataclass, field
@@ -100,17 +101,15 @@ def _cover(covered: "list[tuple[float, float]]", a: float, b: float) -> "list[tu
 @dataclass
 class _Day:
     """One symbol's minutes of one ET day, each with its source, and the spans of minutes whose
-    every Schwab bar is held (`covered`): a span opens at the first minute streamed after the
-    symbol's CHART_EQUITY subscription is acknowledged (`stream_from`) and lasts while that
-    subscription and the Schwab socket are unbroken; a price-history reply covers the range it
-    answers (the request's start through its newest completed minute). `asking`: a request for
-    the uncovered spans is out; `problem`: why the last request failed; `reconciled`: the last
+    every Schwab bar is held (`covered`; inside them a minute with no bar is a minute with no
+    trade): the stream's span (LiveUiServer.streaming) and every price-history reply's (the
+    request's start through the reply's newest completed minute). `asking`: a request for the
+    uncovered spans is out; `problem`: why the last request failed; `reconciled`: the last
     reconciliation state (a mismatch is counted and logged when it begins)."""
     start: float
     minutes: dict[float, dict] = field(default_factory=dict)
     source: dict[float, str] = field(default_factory=dict)
     covered: "list[tuple[float, float]]" = field(default_factory=list)
-    stream_from: "float | None" = None
     asking: bool = False
     problem: "str | None" = None
     reconciled: str = live_price_rows.RECONCILE_NOT_COMPARED
@@ -144,8 +143,9 @@ class LiveUiServer:
         #: the stream did not cover, the ones its price history gave. Nothing here reads the
         #: database.
         self.days: dict[str, _Day] = {}
-        #: the symbols whose CHART_EQUITY subscription Schwab acknowledged, on the socket still open
-        self.streaming: set[str] = set()
+        #: per symbol whose CHART_EQUITY subscription Schwab acknowledged, on the socket still
+        #: open: the first minute the stream covers (the first to start after the acknowledgement)
+        self.streaming: dict[str, float] = {}
         self._asks: set[asyncio.Task] = set()
         self._in_flight = asyncio.Semaphore(HISTORY_IN_FLIGHT)
         #: per symbol, today's streamed minutes that differed from Schwab's price history
@@ -156,25 +156,22 @@ class LiveUiServer:
 
     def on_subscription(self, msg) -> None:
         """A `sub.*` bus message (capture.Daemon): a CHART_EQUITY subscription Schwab acknowledged
-        starts the symbol's stream coverage afresh at its next streamed minute; an acknowledged
-        UNSUBS, or the Schwab socket closing (service CONNECTION), ends it -- the minutes after it
-        are uncovered until streamed again or answered by the price history."""
+        starts the symbol's stream coverage afresh at the first minute to start after the
+        acknowledgement (`ts`, the daemon's receive time of Schwab's answer); it runs through
+        every completed minute while the subscription and the socket are unbroken. An
+        acknowledged UNSUBS, or the Schwab socket closing (service CONNECTION; the daemon closes
+        it when no Schwab frame, heartbeats included, arrived for capture.DEAD_SEC), ends it: the
+        minutes after it are uncovered until streamed again or answered by the price history."""
         if not isinstance(msg, dict) or msg.get("code") != 0:
             return
         if msg.get("service") == CONNECTION and msg.get("command") == CONNECTION_CLOSED:
-            ended = set(self.streaming)
             self.streaming.clear()
         elif msg.get("service") == "CHART_EQUITY":
-            ended = {ticker_storage_key(s) for s in msg.get("symbols") or ()}
-            if msg.get("command") == "UNSUBS":
-                self.streaming -= ended
-            else:
-                self.streaming |= ended
-        else:
-            return
-        for sym in ended:
-            if sym in self.days:
-                self.days[sym].stream_from = None
+            for sym in {ticker_storage_key(s) for s in msg.get("symbols") or ()}:
+                if msg.get("command") == "UNSUBS":
+                    self.streaming.pop(sym, None)
+                else:
+                    self.streaming[sym] = math.ceil(float(msg["ts"]) / 60.0) * 60.0
 
     # -- plane side -------------------------------------------------------------------
 
@@ -201,7 +198,8 @@ class LiveUiServer:
     def on_bar(self, msg) -> None:
         """One streamed minute (a bus bar message) -> the symbol's minutes of the day -> the chart
         bar it makes at every timeframe, for every browser watching the symbol. While the symbol's
-        subscription is unbroken the minute extends its stream coverage. Every span of the day's
+        subscription is unbroken the stream covers every minute from its first through this one
+        (a minute with no bar in it had no trade). Every span of the day's
         minutes (from the session's first to the newest held) still uncovered is asked of Schwab's
         price history, again on each streamed minute until covered; a bar above 1 minute is
         pushed only when its minutes are all covered."""
@@ -216,10 +214,10 @@ class LiveUiServer:
             day = self.days[sym] = _Day(_et_day_start(bar["t"]))
         self._hold(sym, day, bar, SRC_STREAM)
         if sym in self.streaming:
-            if day.stream_from is None:
-                day.stream_from = bar["t"]
-            if bar["t"] >= day.stream_from:
-                day.covered = _cover(day.covered, day.stream_from, bar["t"])
+            # the stream's span, from its first minute (or the session's) through this one
+            start = max(self.streaming[sym], live_price_rows.session_first_minute(bar["t"]))
+            if bar["t"] >= start:
+                day.covered = _cover(day.covered, start, bar["t"])
         newest = max(day.minutes)
         gaps = live_price_rows.uncovered(day.covered, live_price_rows.session_first_minute(newest), newest)
         if gaps and not day.asking:
@@ -245,9 +243,11 @@ class LiveUiServer:
             day.minutes[bar["t"]], day.source[bar["t"]] = bar, src
 
     async def _ask(self, symbol: str, sym: str, day: _Day, gaps: "list[tuple[float, float]]") -> None:
-        """Ask Schwab's price history for exactly the uncovered `gaps` of `sym`'s day, one request
-        per span (at most HISTORY_IN_FLIGHT at once). A reply covers its span from the span's
-        start through the reply's newest completed minute (an empty reply covers nothing); its
+        """Ask Schwab's price history for the uncovered `gaps` of `sym`'s day, one request per
+        span still uncovered when its turn comes, from the span's start to now (at most
+        HISTORY_IN_FLIGHT at once). A reply covers from the request's start through its newest
+        completed minute: one reaching the stream's resumption covers the whole span, a minute
+        with no candle in it being a minute with no trade; an empty reply covers nothing. Its
         minutes are held and published for the store in one message (the console's bar writer
         backfills what it lacks). A failed request is counted and its reason kept; whatever stays
         uncovered is asked again on the symbol's next streamed minute. When a reply held a minute
@@ -255,10 +255,12 @@ class LiveUiServer:
         before = (list(day.covered), day.problem)
         try:
             for a, b in gaps:
+                if not live_price_rows.uncovered(day.covered, a, b):
+                    continue                   # an earlier reply reached it
                 async with self._in_flight:
                     now = self.clock()
                     try:
-                        candles = await asyncio.to_thread(self.history_fn, symbol, a, b + 60.0)
+                        candles = await asyncio.to_thread(self.history_fn, symbol, a, now)
                     except Exception as e:  # noqa: BLE001 -- counted, its reason served; asked again
                         self.stats["price_history_failures"] += 1
                         day.problem = f"Schwab's price history: {type(e).__name__}: {e}"
@@ -270,8 +272,8 @@ class LiveUiServer:
                                   high=c.get("high"), low=c.get("low"), close=c.get("close"),
                                   volume=c.get("volume"), src=SRC_PRICEHISTORY, ts_recv=received)
                     bar = live_price_rows.minute_bar(msg)
-                    if bar is None or not a <= bar["t"] <= b or bar["t"] + 60.0 > now:
-                        continue               # not a chart bar, outside the span, or not completed
+                    if bar is None or bar["t"] < a or bar["t"] + 60.0 > now:
+                        continue               # not a chart bar, before the request, or not completed
                     self._hold(sym, day, bar, SRC_PRICEHISTORY)
                     held.append(msg)
                     newest = bar["t"] if newest is None else max(newest, bar["t"])
@@ -289,15 +291,14 @@ class LiveUiServer:
         update = live_price_rows.bar_update(sym, minutes, bar, ts_recv, day.covered)
         if day.problem:
             update["unavailable"] = {k: f"{v} ({day.problem})" for k, v in update["unavailable"].items()}
-        update["reconciliation"] = live_price_rows.regular_session_reconciliation(minutes, day.covered, lmp.get_quote(sym))
-        if (update["reconciliation"]["state"] == live_price_rows.RECONCILE_MISMATCH
-                and day.reconciled != live_price_rows.RECONCILE_MISMATCH):
+        rec = update["reconciliation"] = live_price_rows.regular_session_reconciliation(
+            minutes, day.covered, lmp.get_quote(sym))
+        # the note each timeframe's chart legend shows: a mismatch, on the daily bar's
+        update["notes"] = {"D": rec["note"]} if rec["state"] == live_price_rows.RECONCILE_MISMATCH else {}
+        if rec["state"] == live_price_rows.RECONCILE_MISMATCH and day.reconciled != live_price_rows.RECONCILE_MISMATCH:
             self.stats["reconcile_mismatches"] += 1
-            log.warning("live ui: %s the day's regular-session high/low from the bars %s/%s differ from "
-                        "Schwab's HIGH_PRICE/LOW_PRICE %s/%s", sym, update["reconciliation"]["bars_high"],
-                        update["reconciliation"]["bars_low"], update["reconciliation"]["schwab_high"],
-                        update["reconciliation"]["schwab_low"])
-        day.reconciled = update["reconciliation"]["state"]
+            log.warning("live ui: %s the day's regular-session %s (Schwab's HIGH_PRICE/LOW_PRICE)", sym, rec["note"])
+        day.reconciled = rec["state"]
         for c in self.clients:
             if sym in c.symbols:
                 c.bars.append(update)

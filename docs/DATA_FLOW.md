@@ -110,17 +110,20 @@ opens no second streaming socket).
   symbol's minutes of the day in the daemon's memory, each with its source (stream or price
   history), and the spans of minutes whose every Schwab bar the daemon holds (`live_ui._Day.
   covered`; designed by the operator and approved 2026-10-01: "i agree with that flow"). The
-  stream covers from the first minute streamed after Schwab acknowledges the symbol's
-  CHART_EQUITY subscription (`sub.CHART_EQUITY`, `capture.Daemon.sync`) for as long as that
-  subscription and the socket are unbroken: an acknowledged UNSUBS, the socket closing
-  (`sub.CONNECTION` CLOSED, `capture.Daemon.disconnect`) or a new SUBS ends the span
-  (`live_ui.on_subscription`). On each streamed minute every span still uncovered from the
-  collect window's first minute (09:15 ET) to the newest is asked of Schwab's 1-minute price
-  history, one request per span (`capture.schwab_minutes`, extended hours, with the daemon's one
-  Schwab client, two requests in flight at most, `live_ui.HISTORY_IN_FLIGHT`; the daemon is the
-  only caller of Schwab), and asked again on the next streamed minute until covered. A reply
-  covers its span from the span's start through its newest completed minute; an empty reply
-  covers nothing. Where the stream and the price history both give a minute the streamed one
+  stream covers from the first minute to start after Schwab acknowledges the symbol's
+  CHART_EQUITY subscription (`sub.CHART_EQUITY` at the daemon's receive time,
+  `capture.Daemon.sync`; never before the collect window's first minute, 09:15 ET) through every
+  completed minute while that subscription and the socket are unbroken: an acknowledged UNSUBS,
+  the socket closing (`sub.CONNECTION` CLOSED, `capture.Daemon.disconnect`; the daemon closes
+  it when no Schwab frame, heartbeats included, arrived for `capture.DEAD_SEC`) or a new SUBS
+  ends the span (`live_ui.on_subscription`). On each streamed minute every span still uncovered
+  from 09:15 ET to the newest is asked of Schwab's 1-minute price history, one request per span
+  still uncovered, from its start to now (`capture.schwab_minutes`, extended hours, with the
+  daemon's one Schwab client, two requests in flight at most, `live_ui.HISTORY_IN_FLIGHT`; the
+  daemon is the only caller of Schwab), and asked again on the next streamed minute until
+  covered. A reply covers from its request's start through its newest completed minute: one
+  reaching the stream's resumption covers the whole span (a thin ticker's 09:15 ET to its first
+  trade, a quiet stretch); an empty reply covers nothing. Where the stream and the price history both give a minute the streamed one
   stands, a difference counted and logged with both and with the symbol's and the board's count
   (`live_ui._hold`; W-15). Inside a covered span a minute with no bar is a minute with no trade.
   No live bar reads the database. The 1-minute bar is always pushed; a bar above it, and the
@@ -129,9 +132,14 @@ opens no second streaming socket).
   from Schwab", with the last request's failure; with no Schwab sign-in, the sign-in's own
   message), never filled or guessed (`live_price_rows.bar_update`). Each update also carries the
   day's regular-session high and low reconciled with Schwab's LEVELONE HIGH_PRICE / LOW_PRICE
-  (Streamer Guide p.17: regular session only), compared once the regular session is covered from
-  09:30 ET and neither is 0; a mismatch is flagged on the update with both values, counted and
-  logged when it begins, nothing corrected (`live_price_rows.regular_session_reconciliation`;
+  (Streamer Guide p.17: regular session only, the minute still trading included), compared once
+  the regular session is covered from 09:30 ET and neither is 0. While the session trades the
+  completed bars can lag Schwab but never exceed it, so only a bar high above HIGH_PRICE or a
+  bar low below LOW_PRICE is a mismatch; once the session's last minute is covered, any
+  difference is. A mismatch is flagged on the update with both values and the note the daily
+  bar's chart legend prints as served (`notes.D`: "high/low differ from Schwab: ours … /
+  Schwab …"; a match or no comparison prints nothing), counted and logged when it begins,
+  nothing corrected (`live_price_rows.regular_session_reconciliation`;
   volume is not reconciled: TOTAL_VOLUME includes the extended session, p.16). Each reply's
   minutes travel to the console as one message (`barhist.SYM`, not a stream message, so
   `stream_capture.db` does not keep it; a full bus queue is counted and logged) to its one bar
@@ -534,7 +542,9 @@ Each value's definition.
   price history answers it; history loads only from the store, as history.
 - *Reconciliation:* the day's regular-session high and low against Schwab's HIGH_PRICE /
   LOW_PRICE, on every update (`reconciliation`: match, mismatch with both values, or not
-  compared with the reason).
+  compared with the reason; while the session trades only a bar outside Schwab's range is a
+  mismatch, once its last minute is covered any difference is); a mismatch's note is printed on
+  the daily bar's chart legend (`notes.D`).
 - *Consumers:* every chart, the price levels (§6.6), the ATR.
 - *Tests:* `test_bars_pushed_v1`, `test_bars_and_windows_v1`, `test_collect_window_law_v1`.
 

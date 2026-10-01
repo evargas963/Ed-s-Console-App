@@ -200,9 +200,11 @@ def regular_session_reconciliation(minutes: list[dict], covered: list[tuple[floa
     """The day's regular-session (09:30 ET to the close) high and low from `minutes`, against
     Schwab's LEVELONE_EQUITIES HIGH_PRICE and LOW_PRICE (`quote`, live_market_plane: regular-session
     trades only; 0 means no regular-session trade, not a value to compare). Compared only when
-    every regular-session minute held so far is covered. A mismatch is reported with both values;
-    nothing is corrected. Schwab's fields include the minute still trading, which no completed bar
-    holds yet."""
+    every regular-session minute held so far is covered. Schwab's fields include the minute still
+    trading, which no completed bar holds yet: until the session's last minute is covered the bars
+    can lag Schwab but never exceed it, so only a bar high above HIGH_PRICE or a bar low below
+    LOW_PRICE is a mismatch; once it is covered, any difference is. A mismatch is reported with
+    both values and the note the daily bar's chart shows; nothing is corrected."""
     if not minutes:
         return {"state": RECONCILE_NOT_COMPARED, "reason": "no minute held"}
     date = et_date_str_from_ts_utc(minutes[-1]["t"])
@@ -219,9 +221,15 @@ def regular_session_reconciliation(minutes: list[dict], covered: list[tuple[floa
         return {"state": RECONCILE_NOT_COMPARED,
                 "reason": "Schwab's HIGH_PRICE / LOW_PRICE not received or 0 (no regular-session trade)"}
     bars_high, bars_low = max(m["h"] for m in rth), min(m["l"] for m in rth)
-    state = RECONCILED if (bars_high, bars_low) == (high, low) else RECONCILE_MISMATCH
-    return {"state": state, "bars_high": bars_high, "bars_low": bars_low,
-            "schwab_high": high, "schwab_low": low}
+    ended = not uncovered(covered, open_minute, open_minute + (close - RTH_START_MINS - 1) * 60.0)
+    differ = (bars_high, bars_low) != (high, low) if ended else (bars_high > high or bars_low < low)
+    out = {"state": RECONCILE_MISMATCH if differ else RECONCILED, "bars_high": bars_high, "bars_low": bars_low,
+           "schwab_high": high, "schwab_low": low, "session_ended": ended}
+    if differ:
+        # as sent, to the last digit: a sub-cent difference would read equal at two decimals
+        out["note"] = (f"high/low differ from Schwab: ours {bars_high:.10g}/{bars_low:.10g} / "
+                       f"Schwab {high:.10g}/{low:.10g}")
+    return out
 
 
 def live_spot(ticker: str, now: float) -> Optional[float]:
