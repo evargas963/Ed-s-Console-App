@@ -65,6 +65,10 @@ class _Vendor:
             return _Resp(400)
         return _Resp(200, _payload(span))
 
+    def quote(self, symbols):
+        """Schwab's quotes endpoint: no quote for these synthetic contracts."""
+        return _Resp(200, {})
+
 
 @pytest.fixture(autouse=True)
 def _before_the_expiries(pin_clock):
@@ -87,14 +91,14 @@ def _expiries_in(resp) -> set:
 
 def test_one_request_when_the_vendor_answers_it(vendor):
     v = vendor(max_expiries=100)
-    r = sc.fetch_full_chain(v, "ZZ", v.get)
+    r = sc.fetch_full_chain(v, "ZZ", v.get, v.quote)
     assert r.status_code == 200 and r.parts == 1 and len(v.calls) == 1
     assert _expiries_in(r) == {e.isoformat() for e in _EXPIRIES}
 
 
 def test_a_too_big_chain_is_split_until_every_part_lands(vendor):
     v = vendor(max_expiries=3)                 # one-shot 502, halves 502, quarters land
-    r = sc.fetch_full_chain(v, "ZZ", v.get)
+    r = sc.fetch_full_chain(v, "ZZ", v.get, v.quote)
     assert r.status_code == 200
     assert _expiries_in(r) == {e.isoformat() for e in _EXPIRIES}, "every expiry, none twice-lost"
     assert len(flatten_chain_contracts(r.json())) == 2 * len(_EXPIRIES)
@@ -103,29 +107,29 @@ def test_a_too_big_chain_is_split_until_every_part_lands(vendor):
 
 def test_the_learned_split_is_reused_without_the_refused_one_shot(vendor):
     v = vendor(max_expiries=3)
-    sc.fetch_full_chain(v, "ZZ", v.get)
+    sc.fetch_full_chain(v, "ZZ", v.get, v.quote)
     v.calls.clear()
-    r = sc.fetch_full_chain(v, "ZZ", v.get)
+    r = sc.fetch_full_chain(v, "ZZ", v.get, v.quote)
     assert r.status_code == 200 and len(v.calls) == 4, v.calls
     assert (_EXPIRIES[0], _EXPIRIES[-1]) not in v.calls, "the known-refused one-shot was re-sent"
 
 
 def test_a_part_that_cannot_land_is_no_chain_not_a_partial_one(vendor):
     v = vendor(max_expiries=3, refuse={_EXPIRIES[5]})
-    r = sc.fetch_full_chain(v, "ZZ", v.get)
+    r = sc.fetch_full_chain(v, "ZZ", v.get, v.quote)
     assert r.status_code == 400 and r.json() == {}
     assert "incomplete" in r.reason
 
 
 def test_a_symbol_refusal_is_not_split(vendor):
     v = vendor(max_expiries=100, refuse={_EXPIRIES[0]})
-    r = sc.fetch_full_chain(v, "ZZ", v.get)
+    r = sc.fetch_full_chain(v, "ZZ", v.get, v.quote)
     assert r.status_code == 400 and len(v.calls) == 1
 
 
 def test_single_expiry_mode_takes_every_strike_of_that_expiry(vendor):
     v = vendor(max_expiries=100)
-    r = sc.fetch_full_chain(v, "ZZ", v.get, expiry=_EXPIRIES[2])
+    r = sc.fetch_full_chain(v, "ZZ", v.get, v.quote, expiry=_EXPIRIES[2])
     assert r.status_code == 200 and v.calls == [(_EXPIRIES[2], _EXPIRIES[2])]
     assert _expiries_in(r) == {_EXPIRIES[2].isoformat()}
 
@@ -144,6 +148,6 @@ def test_an_expired_listed_expiry_is_never_requested(vendor, monkeypatch):
         if kw.get("from_date") is not None and kw["from_date"] < time_et.now_et().date():
             return _Resp(400)
         return v.get(**kw)
-    r = sc.fetch_full_chain(v, "ZZ", refuses_the_past)
+    r = sc.fetch_full_chain(v, "ZZ", refuses_the_past, v.quote)
     assert r.status_code == 200, r.reason
     assert all(lo >= time_et.now_et().date() for lo, _hi in v.calls[1:])
