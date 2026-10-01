@@ -80,26 +80,26 @@ def test_before_the_regular_session_the_open_is_absent_with_schwabs_reason(plane
     session). That is what Schwab sent: shown in one sentence with the time it came (display what
     Schwab sent with the time Schwab sent it, operator 2026-10-01), never filled from the
     pre-market minutes; no candle is drawn. The day's volume so far is TOTAL_VOLUME as sent
-    (pre-market included, p.16), with its receive time."""
+    (pre-market included, p.16), with its trade time (TRADE_TIME_MILLIS, Streamer Guide field 35).
+    The open, high and low pair with REGULAR_MARKET_TRADE_MILLIS (field 36), which this capture of
+    SPY's day fields does not hold: said so."""
     plane("SPY", _at(8, 0))
     day = live_price_rows.price_row("SPY", _at(8, 0))["day"]
     fields = lmp.day_fields("SPY")
-    at = ct_label(max(fields[n][1] for n in ("OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE")))
-    why = f"Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (received {at})"
+    why = "Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (Schwab sent no time for it)"
     assert day["bar"] is None and day["absent"]["o"] == day["absent"]["h"] == day["absent"]["l"] == why
     assert day["unavailable"] == "No daily candle: " + why          # one served sentence
     assert day["volume"] == fields["TOTAL_VOLUME"][0] > 0
-    assert day["volume_as_of"] == "received " + ct_label(fields["TOTAL_VOLUME"][1])
+    assert day["volume_as_of"] == "as of " + ct_label(fields["TRADE_TIME_MILLIS"][0], seconds=True)
 
 
-def test_the_volume_is_shown_with_its_own_receive_time(plane):
-    """The day's volume is shown with the time its own TOTAL_VOLUME came (Schwab sends no time
-    field for it, so ours, said as "received"), never another day field's. TSL 2026-09-30 at
-    09:30:02 ET: its TOTAL_VOLUME last came at 07:55:20 ET, its OPEN_PRICE at 09:30:01."""
+def test_the_volume_is_shown_with_its_trade_time(plane):
+    """The day's volume (TOTAL_VOLUME) is shown with its Schwab time field, TRADE_TIME_MILLIS
+    (Streamer Guide field 35), never our receive time. TSL 2026-09-30 at 09:30:02 ET: its last
+    trade time 07:55:19 ET."""
     plane("TSL", _at(9, 30, 2))
     day = live_price_rows.price_row("TSL", _at(9, 30, 2))["day"]
-    assert day["volume_as_of"] == "received Wed 09/30 06:55 AM CT"
-    assert day["as_of"] == "Wed 09/30 08:30 AM CT"                  # the newest day field's
+    assert day["volume_as_of"] == "as of Wed 09/30 06:55:19 AM CT"
 
 
 def test_with_no_trade_time_there_is_no_candle_and_it_says_so(plane, monkeypatch):
@@ -163,17 +163,20 @@ def test_after_midnight_the_prior_days_values_are_shown_as_that_days(monkeypatch
     lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [sym]}}, now)
     row = live_price_rows.price_row(sym, now)
     day, fields = row["day"], lmp.day_fields(sym)
-    friday, volume, traded = {"SPY": ("Fri 09/04/2026", 34054199, "Fri 09/04 06:59 PM CT"),
-                              "IWM": ("Fri 09/25/2026", 22613925, "Fri 09/25 06:59 PM CT")}[sym]
-    assert (day["volume"], day["volume_as_of"]) == (volume, "received " + ct_label(fields["TOTAL_VOLUME"][1]))
+    # the volume with its trade time (TRADE_TIME_MILLIS, field 35): Friday's last trade
+    friday, volume, traded, vol_at = {
+        "SPY": ("Fri 09/04/2026", 34054199, "Fri 09/04 06:59 PM CT", "as of Fri 09/04 06:59:57 PM CT"),
+        "IWM": ("Fri 09/25/2026", 22613925, "Fri 09/25 06:59 PM CT", "as of Fri 09/25 06:59:59 PM CT")}[sym]
+    assert (day["volume"], day["volume_as_of"]) == (volume, vol_at)
     assert day["t"] == datetime.strptime(friday, "%a %m/%d/%Y").replace(tzinfo=ET).timestamp()
     if (sym, when[3]) == ("SPY", 0):                    # before Schwab's 01:30 roll: Friday's candle
         assert (day["bar"]["o"], day["bar"]["h"], day["bar"]["l"], day["bar"]["c"]) == (772.01, 772.87, 769.0, 770.19)
         assert day["bar"]["label"] == friday and day["unavailable"] is None
-    else:                                               # Schwab's own 0s, said with their time
-        zeroed = ct_label(max(fields[n][1] for n in ("OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE")))
+    else:                                               # Schwab's own 0s, with their time field (36)
+        reg = fields.get("REGULAR_MARKET_TRADE_MILLIS", (None,))[0]
         assert day["bar"] is None and day["unavailable"] == (
-            f"No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (received {zeroed})")
+            "No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 "
+            + (f"(as of {ct_label(reg, seconds=True)})" if reg is not None else "(Schwab sent no time for it)"))
     # the last trade is shown with Schwab's trade time, never as a live price
     assert row["spot"] is None and row["closed_last"]["as_of"] == traded
 
@@ -234,8 +237,8 @@ def test_when_schwabs_fields_make_no_candle_its_reason_is_served_with_the_daily_
     row = live_price_rows.price_row("SPY", now)
     monkeypatch.setattr(ofs, "_price_rows", {"SPY": row})
     monkeypatch.setattr(ofs, "_bar_days", {})
-    zeroed = ct_label(max(lmp.day_fields("SPY")[n][1] for n in ("OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE")))
-    why = f"No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (received {zeroed})"
+    # with their own time field, REGULAR_MARKET_TRADE_MILLIS (field 36): Friday's 20:00:00 ET
+    why = "No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (as of Fri 09/04 07:00:00 PM CT)"
     assert row["day"]["unavailable"] == why
     body = json.loads(srv.get_bars1m(ticker="SPY", tf="D", limit=12000).body)
     assert body["today"] == row["day"] and body["bars"] == []

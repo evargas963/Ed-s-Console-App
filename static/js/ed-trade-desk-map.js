@@ -451,8 +451,9 @@
       // text); the book card's pressure alone takes a live quote
       function timed(text, when) { return esc(text || '—') + (when ? ' · ' + esc(when) : ''); }
       c.querySelector('.tdm-rows').innerHTML =
-        row('Last trade size', esc((q && q.last_size_text) || '—')) +
-        row('Top of book', q ? timed(q.bid_size_text, q.bid_as_of) + ' × ' + timed(q.ask_size_text, q.ask_as_of) : '—') +
+        row('Last trade size', q ? timed(q.last_size_text, q.last_size_as_of) : '—') +
+        row('Top of book', !q ? '—' : q.quote_text ? esc(q.quote_text)
+          : timed(q.bid_size_text, q.bid_as_of) + ' × ' + timed(q.ask_size_text, q.ask_as_of)) +
         row('Prior close', q && q.prior_close != null ? timed(q.prior_close_text, q.prior_close_as_of)
           : esc((q && q.prior_close_absent) || '—')) +
         row('Crosses (' + esc(windowLabel()) + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '—');

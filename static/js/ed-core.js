@@ -721,9 +721,10 @@
       if (state) srcLbl = (srcLbl ? srcLbl + ' · ' : '') + state;
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
     }
-    // Schwab's bid and ask exactly as sent, each with Schwab's own time of it (served text)
+    // Schwab's bid and ask exactly as sent, each with Schwab's own time of it (served text), or
+    // the served sentence when Schwab sends none for the instrument
     function withTime(text, when) { return (text || '—') + (when ? ' · ' + when : ''); }
-    if (ba) ba.textContent = withTime(q.bidText, q.bidAsOf) + ' × ' + withTime(q.askText, q.askAsOf);
+    if (ba) ba.textContent = q.quoteText || (withTime(q.bidText, q.bidAsOf) + ' × ' + withTime(q.askText, q.askAsOf));
     // Schwab's two change percents, each labelled: the regular session's and the last price's
     // (extended hours included), each exactly as sent, with the time it came and its direction
     // (served). Absent reads "—".
@@ -870,7 +871,7 @@
       // The daemon already conflates to the newest row per symbol, so there is no burst to
       // throttle -- a few text writes per second.
       paintQuote({ spot_disp: closed ? q.closed_last.spot_disp : q.spot_disp, spot: q.spot,
-        bidText: q.bid_text, askText: q.ask_text, bidAsOf: q.bid_as_of, askAsOf: q.ask_as_of,
+        bidText: q.bid_text, askText: q.ask_text, bidAsOf: q.bid_as_of, askAsOf: q.ask_as_of, quoteText: q.quote_text,
         chgPctText: q.chg_pct_text, chgPctSign: q.chg_pct_sign, chgPctAsOf: q.chg_pct_as_of,
         chgPctRegularText: q.chg_pct_regular_text, chgPctRegularSign: q.chg_pct_regular_sign,
         chgPctRegularAsOf: q.chg_pct_regular_as_of, quoteIngestion: q.quote_ingestion,

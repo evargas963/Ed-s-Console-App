@@ -1016,16 +1016,16 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // values in the server's text (numeric_contract, live_price_rows.price_row).
     await mockPriceSocket(page, [priceRow('SPY', 601.23, { bid_text: '601.2', ask_text: '601.25',
       bid_as_of: 'as of Thu 10/01 08:30:00 AM CT', ask_as_of: 'as of Thu 10/01 08:30:01 AM CT',
-      chg_pct_text: '+0.5%', chg_pct_sign: 'pos', chg_pct_as_of: 'received Thu 10/01 08:30 AM CT',
-      chg_pct_regular_text: '+0.4%', chg_pct_regular_sign: 'pos', chg_pct_regular_as_of: 'received Thu 10/01 08:29 AM CT',
+      chg_pct_text: '+0.5%', chg_pct_sign: 'pos', chg_pct_as_of: 'as of Thu 10/01 08:30:02 AM CT',
+      chg_pct_regular_text: '+0.4%', chg_pct_regular_sign: 'pos', chg_pct_regular_as_of: 'as of Thu 10/01 08:29:59 AM CT',
       quote_ingestion: 'schwab_streaming_level_one' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hFeed')).toContainText('LIVE');
     await expect(page.locator('#hBidAsk')).toHaveText('601.2 · as of Thu 10/01 08:30:00 AM CT × 601.25 · as of Thu 10/01 08:30:01 AM CT');
     // Schwab's two change percents, each under its own label, with its time and served direction
-    await expect(page.locator('#hChgReg')).toHaveText('REG +0.4% · received Thu 10/01 08:29 AM CT');
-    await expect(page.locator('#hChg')).toHaveText('EXT +0.5% · received Thu 10/01 08:30 AM CT');
+    await expect(page.locator('#hChgReg')).toHaveText('REG +0.4% · as of Thu 10/01 08:29:59 AM CT');
+    await expect(page.locator('#hChg')).toHaveText('EXT +0.5% · as of Thu 10/01 08:30:02 AM CT');
     await expect(page.locator('#hChg')).toHaveClass(/\bpos\b/);
   });
 
@@ -1047,12 +1047,12 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {
     await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct_text: '-1.25%',
-      chg_pct_sign: 'neg', chg_pct_as_of: 'received Thu 10/01 08:30 AM CT' })]);
+      chg_pct_sign: 'neg', chg_pct_as_of: 'as of Thu 10/01 08:30:02 AM CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
     // the served texts, exactly as sent, the change with its time (operator 2026-10-01: no rounding)
     await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.5');
-    await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveText('-1.25% · received Thu 10/01 08:30 AM CT');
+    await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveText('-1.25% · as of Thu 10/01 08:30:02 AM CT');
     await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveClass(/\bneg\b/);
   });
 

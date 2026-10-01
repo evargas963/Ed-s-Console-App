@@ -31,13 +31,28 @@ _by_ticker: dict[str, dict[str, Any]] = {}
 _PRICE_FIELDS = ("LAST_PRICE", "BID_PRICE", "ASK_PRICE", "MARK", "CLOSE_PRICE",
                  "OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE", "REGULAR_MARKET_LAST_PRICE")
 #: the fields of the day's candle (live_price_rows.day_candle), read with their receive times
-#: and the last trade's time (TRADE_TIME_MILLIS, in seconds), which says whose session they are
+#: and their Schwab time fields (VALUE_TIME, in seconds; TRADE_TIME_MILLIS also places the candle)
 DAY_FIELDS = ("OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE", "LAST_PRICE", "REGULAR_MARKET_LAST_PRICE", "TOTAL_VOLUME",
-              "TRADE_TIME_MILLIS")
+              "TRADE_TIME_MILLIS", "REGULAR_MARKET_TRADE_MILLIS")
 _COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "LAST_SIZE", "TOTAL_VOLUME")
-#: Schwab's own clocks (epoch ms, read in seconds): the quote's and the last trade's (the bid's
-#: and the ask's are read with their prices, _side_time)
-_CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
+#: Schwab's own clocks (epoch ms, read in seconds, _time): the quote's, the last trade's and the
+#: regular session's last trade's (the bid's and the ask's are read with them, _side_time)
+_CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS", "REGULAR_MARKET_TRADE_MILLIS")
+#: THE pairing of each displayed value with the Schwab time field that belongs to it (Streamer
+#: Guide LEVELONE_EQUITIES field numbers): 35 TRADE_TIME_MILLIS, the last trade in any session;
+#: 36 REGULAR_MARKET_TRADE_MILLIS, the regular session's last trade, for the regular-session-only
+#: fields. The bid and its size pair with 37 BID_TIME_MILLIS, the ask and its size with 38
+#: ASK_TIME_MILLIS, or 34 QUOTE_TIME_MILLIS where Schwab sends neither (_side_time). CLOSE_PRICE
+#: has no Schwab time field: it is shown with our receive time, said "received".
+VALUE_TIME = {
+    "LAST_PRICE": "TRADE_TIME_MILLIS", "NET_CHANGE": "TRADE_TIME_MILLIS",
+    "NET_CHANGE_PERCENT": "TRADE_TIME_MILLIS", "LAST_SIZE": "TRADE_TIME_MILLIS",
+    "TOTAL_VOLUME": "TRADE_TIME_MILLIS",
+    "REGULAR_MARKET_LAST_PRICE": "REGULAR_MARKET_TRADE_MILLIS",
+    "REGULAR_MARKET_CHANGE_PERCENT": "REGULAR_MARKET_TRADE_MILLIS",
+    "OPEN_PRICE": "REGULAR_MARKET_TRADE_MILLIS", "HIGH_PRICE": "REGULAR_MARKET_TRADE_MILLIS",
+    "LOW_PRICE": "REGULAR_MARKET_TRADE_MILLIS",
+}
 #: signed values (any finite number): Schwab's own change of the LAST_PRICE vs the prior close.
 #: Measured: NET_CHANGE_PERCENT arrives with every LAST_PRICE; REGULAR_MARKET_CHANGE_PERCENT
 #: with every LAST_PRICE in the regular session (2026-09-28: SPY 113/113, MU 112/112, PCG 17/17)
@@ -54,31 +69,39 @@ def session_day(ts: float) -> date:
     return (datetime.fromtimestamp(ts, ET) - timedelta(hours=4)).date()
 
 
+def _time(raw: Any) -> Optional[float]:
+    """A Schwab time field (epoch milliseconds) in epoch seconds; None when it is not a number or
+    0, which Schwab sends for no time ($VIX and $NDX: every time field 0 on their overnight
+    refreshes, 2026-09-30) -- never shown as a 1969/1970 date."""
+    v = schwab_number(raw)
+    return v / 1000.0 if v else None
+
+
 def _read_stream_field(name: str, raw: Any) -> Optional[float]:
-    """Each field as Schwab sent it; a reported 0 is 0."""
+    """Each field as Schwab sent it; a reported 0 is 0 (a time field's 0 is no time, _time)."""
     if name in _COUNT_FIELDS:
         return schwab_count(raw)
-    v = schwab_number(raw)
-    return v / 1000.0 if v is not None and name in _CLOCK_FIELDS else v
+    return _time(raw) if name in _CLOCK_FIELDS else schwab_number(raw)
 
 
-def _side_time(side: str, item: dict[str, Any], rts: float, index: bool) -> Optional[tuple[float, bool]]:
-    """The time of the bid or the ask ("BID" / "ASK") a message sets or restamps, and whether it
-    is Schwab's own: its BID_TIME_MILLIS / ASK_TIME_MILLIS; for a price sent without one, the
-    message's QUOTE_TIME_MILLIS (CRWD 2026-09-30 09:53:26 ET, a new bid with QUOTE_TIME_MILLIS and
+def _side_time(side: str, item: dict[str, Any], rts: float, index: bool) -> Optional[tuple[Optional[float], bool]]:
+    """The time of the bid or the ask ("BID" / "ASK") and its size, as a message sets or
+    restamps them, and whether it is Schwab's own (None: Schwab sent the field as 0, no time): its
+    BID_TIME_MILLIS / ASK_TIME_MILLIS; for a price or size sent without one, the message's
+    QUOTE_TIME_MILLIS (CRWD 2026-09-30 09:53:26 ET, a new bid with QUOTE_TIME_MILLIS and
     ASK_TIME_MILLIS only); with neither, our receive time (RKLB 09:44:08 ET, a new bid with
     neither, its held BID_TIME the previous bid's). For an index (Schwab's assetMainType INDEX)
     it is QUOTE_TIME_MILLIS always: Schwab sends an index's bid and ask changes without a bid or
     ask time ($SPX 09:30-10:00 ET, 1,711 bid messages), and its full refreshes with BID_TIME_MILLIS
     and ASK_TIME_MILLIS 74996850 ($SPX 04:36 and 05:23 ET), 20:49:56.850 as milliseconds of a
     day, not the epoch milliseconds the field is defined as. None: the message touches neither."""
-    own = None if index else schwab_number(item.get(f"{side}_TIME_MILLIS"))
-    if own is not None:
-        return own / 1000.0, True
-    if f"{side}_PRICE" not in item:
+    if not index and f"{side}_TIME_MILLIS" in item:
+        return _time(item[f"{side}_TIME_MILLIS"]), True
+    if f"{side}_PRICE" not in item and f"{side}_SIZE" not in item:
         return None
-    quote = _read_stream_field("QUOTE_TIME_MILLIS", item.get("QUOTE_TIME_MILLIS"))
-    return (quote, True) if quote is not None else (rts, False)
+    if "QUOTE_TIME_MILLIS" in item:
+        return _time(item["QUOTE_TIME_MILLIS"]), True
+    return rts, False
 
 
 def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
@@ -150,9 +173,10 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         # Schwab's own change vs the prior close (0 hops): NET_CHANGE_PERCENT is the last price's,
         # extended hours included; REGULAR_MARKET_CHANGE_PERCENT is the regular session's
         "chg_pct": val("NET_CHANGE_PERCENT"),
-        "chg_pct_received_ts": when("NET_CHANGE_PERCENT"),
         "chg_pct_regular": val("REGULAR_MARKET_CHANGE_PERCENT"),
-        "chg_pct_regular_received_ts": when("REGULAR_MARKET_CHANGE_PERCENT"),
+        # each value's Schwab time (VALUE_TIME), epoch s; None: Schwab sent none (or sent it as 0)
+        "time_of": {name: val(field) for name, field in VALUE_TIME.items()},
+        "asset_main_type": val("assetMainType"),
         # the time of the bid and of the ask (epoch s, _side_time) and whether it is Schwab's own:
         # what each is shown with and what the quote's live rule judges
         "bid_ts": val("BID_AT")[0] if "BID_AT" in snapshot else None,
@@ -160,7 +184,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         "ask_ts": val("ASK_AT")[0] if "ASK_AT" in snapshot else None,
         "ask_ts_schwab": val("ASK_AT")[1] if "ASK_AT" in snapshot else None,
         # the fields Schwab last sent as not a number (-999, text, NaN)
-        "not_numbers": sorted(n for n, (v, _t) in snapshot.items() if v is None),
+        "not_numbers": sorted(n for n, (v, _t) in snapshot.items() if v is None and n not in _CLOCK_FIELDS),
         "net_change": val("NET_CHANGE"),
         "exchange_quote_ts": quote_ts,
         #: TRADE_TIME_MILLIS (epoch s): the exchange time of the last trade -- the clock a

@@ -178,8 +178,9 @@ def test_a_new_session_shows_the_last_ones_values_with_their_times_until_schwab_
     time Schwab sent it, never as a live price (operator 2026-10-01: "we use what schwab gives us
     and we display it, regardless of the time. if we have it we display it"; display what Schwab
     sent with the time Schwab sent it): the last trade with Schwab's trade time, the bid and ask
-    with Schwab's own times of each, the prior close, the change percents and the volume with
-    their receive times (Schwab sends none for them), each exactly as sent -- Schwab's
+    with Schwab's own times of each, the change percents and the volume with their Schwab time
+    fields (live_market_plane.VALUE_TIME), the prior close with its receive time (Schwab sends
+    none for it), each exactly as sent -- Schwab's
     post-roll volume 0 as 0, at the time it came. Real PCG messages, 2026-09-29 19:55 ET to
     2026-09-30 04:01 ET, including Schwab's overnight snapshots and day roll. Stand-in (named):
     the daemon's heartbeat, live and holding PCG at each instant judged."""
@@ -217,21 +218,24 @@ def test_a_new_session_shows_the_last_ones_values_with_their_times_until_schwab_
     # the prior close as Schwab sent it overnight (12.18 at 01:30 ET, adjusted to 12.13 at 03:45 ET),
     # with our receive time, said so (Schwab sends no time for it)
     assert (first["prior_close_text"], first["prior_close_as_of"]) == ("12.13", "received Wed 09/30 02:45 AM CT")
-    # Schwab's post-roll volume 0, shown as 0 at the time it came; its 0 open, high and low make no candle
+    # Schwab's post-roll volume 0, shown as 0 with its time field, TRADE_TIME_MILLIS (field 35:
+    # Tuesday's last trade, 19:56:44 ET); its 0 open, high and low make no candle, with theirs,
+    # REGULAR_MARKET_TRADE_MILLIS (field 36: Tuesday 19:00:00 ET as Schwab sent it)
     assert (first["day"]["volume_text"], first["day"]["volume_as_of"], first["day"]["bar"]) == (
-        "0", "received Wed 09/30 02:45 AM CT", None)
+        "0", "as of Tue 09/29 06:56:44 PM CT", None)
     assert first["day"]["unavailable"] == (
-        "No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (received Wed 09/30 12:30 AM CT)")
+        "No daily candle: Schwab's OPEN_PRICE, HIGH_PRICE and LOW_PRICE are 0 (as of Tue 09/29 06:00:00 PM CT)")
     traded = at(4, 0, 10, 30)          # its first trade
     assert (traded["spot"], traded["spot_state"], traded["chg_pct"], traded["day"]["volume"]) == (
         12.18, "live", 0.412201, 3.0)
-    # each change percent exactly as sent, with its direction and the time its own message came:
-    # NET_CHANGE_PERCENT with this trade, REGULAR_MARKET_CHANGE_PERCENT last on Tuesday evening
+    # each change percent exactly as sent, with its direction and its own Schwab time field:
+    # NET_CHANGE_PERCENT with TRADE_TIME_MILLIS (this trade, 04:00:07 ET), REGULAR_MARKET_CHANGE_
+    # PERCENT with REGULAR_MARKET_TRADE_MILLIS (Tuesday 19:00:00 ET)
     assert traded["closed_last"] is None
     assert (traded["chg_pct_text"], traded["chg_pct_sign"], traded["chg_pct_as_of"]) == (
-        "+0.412201%", "pos", "received Wed 09/30 03:00 AM CT")
+        "+0.412201%", "pos", "as of Wed 09/30 03:00:07 AM CT")
     assert (traded["chg_pct_regular_text"], traded["chg_pct_regular_sign"], traded["chg_pct_regular_as_of"]) == (
-        "+1.924686%", "pos", "received Tue 09/29 07:40 PM CT")
+        "+1.924686%", "pos", "as of Tue 09/29 06:00:00 PM CT")
     # Schwab's own change of the first trade is against that prior close: 12.18 - 12.13 = NET_CHANGE 0.05
     assert traded["prior_close"] == 12.13 and traded["net_change"] == 0.05
 
@@ -334,6 +338,61 @@ def test_each_bid_and_ask_carries_the_time_schwab_sent_with_it():
     rklb = at("RKLB", 9, 44, 9)
     assert (rklb["bid_text"], rklb["bid_as_of"]) == ("71.85", "received Wed 09/30 08:44 AM CT")
     assert rklb["ask_as_of"] == "as of Wed 09/30 08:44:06 AM CT"   # the ask 71.89's own ASK_TIME
+
+
+def _replay_value_times(sym, h, m, s=0):
+    """`sym`'s real messages of tests/fixtures/real_l1_value_times_2026_09_30.json received by
+    2026-09-30 h:m:s ET (read-only from production stream_capture.db), and its price row then; the
+    heartbeat a stand-in."""
+    import json
+    from datetime import datetime
+
+    import live_price_rows
+    from time_et import ET
+    fx = json.loads((ROOT / "tests" / "fixtures" / "real_l1_value_times_2026_09_30.json")
+                    .read_text(encoding="utf-8"))["symbols"][sym]
+    now = datetime(2026, 9, 30, h, m, s, tzinfo=ET).timestamp()
+    with lmp._lock:
+        lmp._by_ticker.pop(sym, None)
+        lmp._fields_by_ticker.pop(sym, None)
+    for msg in fx:
+        if msg["ts_recv"] <= now:
+            lmp.record_from_level_one_equity(sym, msg["content"], received_ts=msg["ts_recv"])
+    lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [sym]}}, now)
+    return live_price_rows.price_row(sym, now)
+
+
+def test_each_value_is_shown_with_the_schwab_time_field_that_belongs_to_it():
+    """One table pairs each value with its Schwab time field (live_market_plane.VALUE_TIME): field
+    35 TRADE_TIME_MILLIS for the last price, its size, the change and the volume; field 36
+    REGULAR_MARKET_TRADE_MILLIS for the regular-session fields; the bid and ask their own (37, 38).
+    SPY's 04:36:39 ET full refresh of 2026-09-30: LAST 766.289 with TRADE_TIME_MILLIS
+    1790757398710 (04:36:38.710 ET, pre-market), the REG change -0.184167% with
+    REGULAR_MARKET_TRADE_MILLIS 1790712000012 (Tue 20:00:00.012 ET), bid 766.25 with BID_TIME_MILLIS
+    1790757398711, ask 766.29 with ASK_TIME_MILLIS 1790757398080."""
+    row = _replay_value_times("SPY", 4, 37)
+    assert (row["spot_disp"], row["trade_ts"]) == ("766.289", 1790757398.71)
+    assert (row["chg_pct_text"], row["chg_pct_as_of"]) == ("+0.273358%", "as of Wed 09/30 03:36:38 AM CT")
+    assert (row["chg_pct_regular_text"], row["chg_pct_regular_as_of"]) == (
+        "-0.184167%", "as of Tue 09/29 07:00:00 PM CT")
+    assert (row["last_size_text"], row["last_size_as_of"]) == ("0", "as of Wed 09/30 03:36:38 AM CT")
+    assert row["day"]["volume_as_of"] == "as of Wed 09/30 03:36:38 AM CT"
+    assert (row["bid_text"], row["bid_as_of"]) == ("766.25", "as of Wed 09/30 03:36:38 AM CT")
+    assert lmp.get_quote("SPY")["ask_ts"] == 1790757398.08 and row["quote_text"] is None
+
+
+def test_an_index_schwab_sends_no_bid_or_ask_for_says_so_and_its_price_has_its_trade_time():
+    """$VIX: Schwab sends no bid or ask in session, only 0s on its overnight refreshes with every
+    time field 0 (BID_TIME_MILLIS, ASK_TIME_MILLIS, QUOTE_TIME_MILLIS), which is no time -- never
+    a 1969 date; the bid x ask place says so, not 0 x 0. Its price is shown with its
+    TRADE_TIME_MILLIS. Real $VIX messages 2026-09-29 20:00 to 2026-09-30 04:40 ET."""
+    row = _replay_value_times("$VIX", 4, 40)
+    assert row["quote_text"] == "Schwab sends no bid/ask for this index"
+    assert row["bid_as_of"] == row["ask_as_of"] == "Schwab sent no time for it"
+    # 15.9 (sent last at 04:36:39), its trade time Schwab's latest TRADE_TIME_MILLIS 1790757586390
+    # (04:39:46.390 ET), sent alone as the price stood
+    assert (row["spot_disp"], row["spot_state"]) == ("15.9", "live")
+    assert row["trade_ts"] == 1790757586.39
 
 
 def test_a_price_with_no_trade_time_or_not_a_number_says_which():
