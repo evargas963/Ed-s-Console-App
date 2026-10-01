@@ -219,6 +219,7 @@ def test_a_stream_observation_after_the_chain_fetch_is_admitted_and_one_before_i
     contract_symbol = _REAL_CHAIN[0]["symbol"]
     fetched_ts = time.time() - 5.0
     observed = {}
+    monkeypatch.setattr(server, "_terrain_cache", {})       # no newer chain held from another test
 
     def proj(contracts, books):
         return {"expirations": [], "strikes": [], "cells": [],

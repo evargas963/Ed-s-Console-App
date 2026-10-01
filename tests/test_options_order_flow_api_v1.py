@@ -21,6 +21,33 @@ _SPY_CONTRACT = "SPY   260820C00767000"
 _QQQ_CONTRACT = "QQQ   260820C00450000"
 
 
+@pytest.fixture(autouse=True)
+def _board_chains(monkeypatch):
+    """SPY's and QQQ's chains as the console holds them (each lists these contracts): a contract
+    is streamed only from a board ticker's chain."""
+    import server as srv
+    monkeypatch.setattr(srv, "_terrain_cache", {
+        "SPY": {"_contract_symbols": frozenset({_SPY_CONTRACT})},
+        "QQQ": {"_contract_symbols": frozenset({_QQQ_CONTRACT})}})
+
+
+def test_a_contract_in_no_board_tickers_chain_is_refused(monkeypatch):
+    """2026-10-01 audit: the route streamed any string as an option contract, for an underlying
+    on the board or not."""
+    import asyncio
+    import json
+
+    import server as srv
+    calls = []
+    monkeypatch.setattr("app.options.order_flow.streaming.set_active_option_contract",
+                        lambda c, **kw: calls.append(c) or True)
+    resp = asyncio.run(srv.post_streaming_active_option_contract(
+        payload={"contract": "MU    261016C00200000"}))
+    assert resp.status_code == 409
+    assert json.loads(resp.body)["error"] == "not a contract in the chain of a ticker on the board"
+    assert calls == []
+
+
 def test_options_microstructure_requires_contract_param():
     import server as srv
     from starlette.testclient import TestClient

@@ -76,6 +76,14 @@ _price_rows: "dict[str, dict]" = {}
 
 def price_row(ticker: str) -> "dict | None":
     return _price_rows.get(ticker_storage_key(ticker) or "")
+
+
+def forget_price_rows(board: "list[str]") -> None:
+    """A ticker taken off the board has no live price: the daemon stops sending its row, so the
+    last one is dropped rather than kept as if current."""
+    keep = set(board)
+    for tk in [t for t in list(_price_rows) if t not in keep]:
+        _price_rows.pop(tk, None)
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
 PUSH_RECONNECT_SEC = 1.0
@@ -437,8 +445,8 @@ def set_active_option_contract(contract_symbol: str,
     """Request LEVELONE_OPTIONS+OPTIONS_BOOK for this ONE option contract and begin
     replaying its rows. `contract_symbol` MUST already be a chain response's own "symbol"
     field (see stream_spine.ACTIVE_OPTION_CONTRACT_SIGNAL_DEFAULT) — never constructed
-    here. A separate slot from the equity active ticker: the daemon adds its own
-    subscription on its own poll cadence (stream_active_option_contract.json).
+    here. A separate slot from the equity active ticker: it goes to the daemon in the wanted list
+    (current_wanted).
 
     PR214 premerge gap 2: `command_generation` (from begin_option_contract_command)
     mechanically orders competing commands. A request for A that was admitted BEFORE a

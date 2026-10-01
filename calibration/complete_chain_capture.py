@@ -141,9 +141,14 @@ def board_tickers(db_path: Path | str) -> list[str]:
     startup and holds it; board_add / board_remove change it."""
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
     try:
-        return [r[0] for r in conn.execute("SELECT ticker FROM logging_universe ORDER BY ticker")]
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='logging_universe'").fetchone():
+            log.warning("board: %s has no logging_universe table yet (the console creates it); "
+                        "the board is empty", db_path)
+            return []
+        rows = [r[0] for r in conn.execute("SELECT ticker FROM logging_universe")]
     finally:
         conn.close()
+    return sorted({k for k in (ticker_storage_key(t) for t in rows) if k})   # each row as its key
 
 
 def board_add(db_path: Path | str, ticker: str, now_ts: float) -> None:
@@ -159,10 +164,13 @@ def board_add(db_path: Path | str, ticker: str, now_ts: float) -> None:
 
 
 def board_remove(db_path: Path | str, ticker: str) -> None:
-    """Take `ticker` off the board; its stored history stays."""
+    """Take `ticker` (a storage key) off the board, every row stored under any form of it ("SPX"
+    and "$SPX" alike); its stored history stays."""
     conn = sqlite3.connect(str(db_path), timeout=60.0)
     try:
-        conn.execute("DELETE FROM logging_universe WHERE ticker = ? COLLATE NOCASE", (ticker,))
+        rows = [r[0] for r in conn.execute("SELECT ticker FROM logging_universe")]
+        conn.executemany("DELETE FROM logging_universe WHERE ticker = ?",
+                         [(t,) for t in rows if ticker_storage_key(t) == ticker])
         conn.commit()
     finally:
         conn.close()
@@ -176,6 +184,9 @@ CHAIN_PART_CONTRACTS = 500
 CHAIN_WORKERS = 2
 #: after Schwab answers 429, no chain request for this long
 RATE_LIMITED_PAUSE_SEC = 10.0
+#: after a request fails outright (no client, auth refused, the network down), no chain request
+#: for this long, so a failure is not retried at once across the whole board
+FAILED_PAUSE_SEC = 5.0
 
 
 def chain_messages(ticker: str, contracts: list[dict], fetched_ts: float) -> list[tuple[str, dict]]:
@@ -201,24 +212,27 @@ def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dic
 
 class ChainSweep:
     """The one fetcher of option chains: every board ticker, one after another, without end,
-    on CHAIN_WORKERS threads (the daemon's event loop never waits on it). Each chain is published
-    to the console in parts (chain_messages); a failure is published with Schwab's answer. The
-    first fetch of a ticker inside a capture window (capture_slot) is also written to the chain
-    history. A ticker put on the board is fetched next."""
+    on CHAIN_WORKERS threads sharing one Schwab client (the daemon's event loop never waits on
+    it); a ticker is fetched by one worker at a time. Each chain is published to the console in
+    parts (chain_messages); a failure is published with Schwab's answer. The first fetch of a
+    ticker begun inside a capture window (capture_slot) is also written to the chain history. A
+    ticker put on the board is fetched next."""
 
     def __init__(self, db_path: Path | str, board: "callable", publish: "callable",
                  clock: "callable" = time.time) -> None:
         self.db_path = db_path
         self.board = board              # () -> the daemon's board, as it is now
         self.publish = publish          # (topic, msg) -> None, safe from any thread
-        self.clock = clock              # the time a chain is received
+        self.clock = clock              # when a fetch begins, and when its chain is received
         self._lock = threading.Lock()
         self._first: "deque[str]" = deque()
         self._round: list[str] = []
         self._round_started: float | None = None
         self.round_sec: float | None = None
+        self._fetching: set[str] = set()
         self._written: dict[str, float] = {}
         self._paused_until = 0.0
+        self._client = None
 
     def fetch_next(self, ticker: str) -> None:
         with self._lock:
@@ -226,17 +240,30 @@ class ChainSweep:
                 self._first.append(ticker)
 
     def _next(self, now: float) -> str | None:
+        """The next ticker to fetch, taken by the caller: one just put on the board, else the
+        round's next. A ticker taken off the board since it was queued, or being fetched by the
+        other worker now, is skipped."""
+        board = set(self.board())
         with self._lock:
-            if self._first:
-                return self._first.popleft()
+            while self._first:
+                tk = self._first.popleft()
+                if tk in board and tk not in self._fetching:
+                    self._fetching.add(tk)
+                    return tk
             if not self._round:
                 if self._round_started is not None:
                     self.round_sec = now - self._round_started
-                self._round = list(self.board())
+                self._round = sorted(board)
                 self._round_started = now if self._round else None
-            return self._round.pop(0) if self._round else None
+            while self._round:
+                tk = self._round.pop(0)
+                if tk in board and tk not in self._fetching:
+                    self._fetching.add(tk)
+                    return tk
+            return None
 
     def fetch_one(self, client, ticker: str) -> None:
+        started = self.clock()
         resp = fetch_full_chain(client, ticker, lambda **d: safe_get_chain(
             client, ticker, strike_range="ALL", **d), lambda symbols: safe_get_quotes(client, symbols))
         now = self.clock()
@@ -252,57 +279,81 @@ class ChainSweep:
         contracts = flatten_chain_contracts(payload)
         for topic, msg in chain_messages(ticker, contracts, now):
             self.publish(topic, msg)
-        slot = capture_slot(now)
+        try:
+            self._write_history(ticker, payload, contracts, started, now)
+        except Exception as e:  # noqa: BLE001 -- the chain was delivered; only its history write failed
+            log.warning("chain history for %s not written: %s: %s", ticker, type(e).__name__, e)
+
+    def _write_history(self, ticker: str, payload: dict, contracts: list[dict],
+                       started: float, now: float) -> None:
+        """The chain history: a fetch begun inside a capture window, the first one of the window
+        for this ticker (a fetch begun before 16:15 is not the close capture, whenever it ends)."""
+        slot = capture_slot(started)
         if slot is None:
             return
         if ticker not in self._written:
-            self._written[ticker] = newest_capture_ts(self.db_path, ticker) or 0.0
-        if self._written[ticker] >= slot:
-            return
-        spot = payload.get("underlyingPrice")          # Schwab's field, as sent
-        if spot == -999:
-            spot = None
-        by_expiry: dict[str, list[dict]] = {}
-        for ct in contracts:
-            by_expiry.setdefault(str(ct.get("expirationDate") or "")[:10], []).append(ct)
-        for expiry, cts in by_expiry.items():
-            persist_complete_chain_capture(self.db_path, ticker=ticker, expiry=expiry, contracts=cts,
-                                           spot=spot, completeness_basis=CAPTURE_BASIS, ts_utc=now)
-        self._written[ticker] = slot
+            newest = newest_capture_ts(self.db_path, ticker) or 0.0
+            with self._lock:
+                self._written.setdefault(ticker, newest)
+        with self._lock:                                   # claim the window for this ticker
+            before = self._written[ticker]
+            if before >= slot:
+                return
+            self._written[ticker] = slot
+        try:
+            spot = payload.get("underlyingPrice")          # Schwab's field, as sent
+            if spot == -999:
+                spot = None
+            by_expiry: dict[str, list[dict]] = {}
+            for ct in contracts:
+                by_expiry.setdefault(str(ct.get("expirationDate") or "")[:10], []).append(ct)
+            for expiry, cts in by_expiry.items():
+                persist_complete_chain_capture(self.db_path, ticker=ticker, expiry=expiry, contracts=cts,
+                                               spot=spot, completeness_basis=CAPTURE_BASIS, ts_utc=now)
+        except Exception:
+            with self._lock:                               # unwritten: the window's next fetch tries
+                self._written[ticker] = before
+            raise
+
+    def _shared_client(self, make_client):
+        """The workers' one Schwab client, built when there is none."""
+        with self._lock:
+            if self._client is None:
+                state = make_client()
+                if not state.ok or state.client is None:
+                    raise ConnectionError(f"no Schwab client ({state.message})")
+                self._client = state.client
+            return self._client
 
     def work(self, make_client, stop: threading.Event) -> None:
-        """One worker thread's life: the next ticker, its chain, until `stop`."""
-        client = None
+        """One worker thread's life: the next ticker, its chain, until `stop`. A request that
+        fails outright pauses every chain request FAILED_PAUSE_SEC and rebuilds the client."""
         while not stop.is_set():
             wait = self._paused_until - self.clock()
             if wait > 0:
                 stop.wait(wait)
                 continue
-            if client is None:
-                try:
-                    state = make_client()
-                    client = state.client if state.ok else None
-                    why = state.message
-                except Exception as e:  # noqa: BLE001 -- no client this time; the next try builds one
-                    why = f"{type(e).__name__}: {e}"
-                if client is None:
-                    log.warning("chains: no Schwab client (%s)", why)
-                    stop.wait(5.0)
-                    continue
             ticker = self._next(self.clock())
             if ticker is None:
                 stop.wait(1.0)
                 continue
             try:
-                self.fetch_one(client, ticker)
+                self.fetch_one(self._shared_client(make_client), ticker)
             except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the sweep goes on
                 log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
                 self.publish(*chain_failure_message(ticker, f"{type(e).__name__}: {e}", self.clock()))
-                client = None                         # a broken client is rebuilt
+                with self._lock:
+                    self._client = None                   # a broken client is rebuilt
+                    self._paused_until = self.clock() + FAILED_PAUSE_SEC
+            finally:
+                with self._lock:
+                    self._fetching.discard(ticker)
 
 
 def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
-    """When the ticker's newest full capture was taken."""
+    """When the ticker's newest full capture was taken; None when there is none."""
+    if not Path(db_path).is_file():
+        return None
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
     try:
         if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "

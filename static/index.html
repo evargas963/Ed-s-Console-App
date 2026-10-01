@@ -701,8 +701,8 @@
       <a class="navitem" data-ws="system" title="System / Trust"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg><span class="lbl">System / Trust</span></a>
     </div>
     <div class="wl" id="watchlist">
-      <div class="wl-h"><span>Watchlist</span></div>
-      <!-- rows injected by ed-core.js; foundation is editable + localStorage-backed -->
+      <div class="wl-h"><span>Board</span></div>
+      <!-- rows injected by ed-core.js: the capture daemon's board, edited on its price socket -->
       <div class="wl-add" id="wlAdd"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 5v14M5 12h14"/></svg><span class="lbl-add">Add symbol</span></div>
       <div class="wl-msg" id="wlMsg" aria-live="polite"></div>
     </div>
@@ -754,7 +754,7 @@
       <button class="vtab" data-view="levels">Levels</button>
       <button class="vtab" data-view="multimap">Multi-Map</button>
       <div class="ctrls">
-        <label class="ctrl ctrl-sym" title="Active instrument — type any Schwab symbol and press Enter; the watchlist is not changed"><input id="symInput" list="symList" aria-label="Symbol" autocomplete="off" spellcheck="false" maxlength="13" placeholder="SYMBOL"><datalist id="symList"></datalist></label>
+        <label class="ctrl ctrl-sym" title="Active instrument — type any Schwab symbol and press Enter; it goes on the board"><input id="symInput" list="symList" aria-label="Symbol" autocomplete="off" spellcheck="false" maxlength="13" placeholder="SYMBOL"><datalist id="symList"></datalist></label>
         <label class="ctrl" title="Expiration filter (from /api/expiries)"><select id="expSel" aria-label="Expiration"><option value="">All Expirations</option></select><span class="cv"></span></label>
         <label class="ctrl" title="Measure"><select id="measureSel" aria-label="Measure">
           <option value="gex">GEX</option><option value="dex">DEX</option>

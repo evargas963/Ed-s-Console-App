@@ -128,25 +128,35 @@ def test_sync_subscribes_the_difference_and_logs_every_answer(tmp_path, monkeypa
 
 def test_a_refused_symbol_is_recorded_and_retried_only_after_the_list_changes(tmp_path, monkeypatch):
     fake = FakeSchwab(refuse={"BAD"})
-    d, log = _daemon(tmp_path, monkeypatch, fake, NYSE_BOOK=["BAD"])
+    d, log = _daemon(tmp_path, monkeypatch, fake, OPTIONS_BOOK=["BAD"])
     asyncio.run(d.sync())
-    assert "BAD" in d.refused["NYSE_BOOK"] and d.held["NYSE_BOOK"] == set()
+    assert "BAD" in d.refused["OPTIONS_BOOK"] and d.held["OPTIONS_BOOK"] == set()
     assert log.queue.get_nowait()[1]["code"] != 0
     fake.calls.clear()
     asyncio.run(d.sync())
     assert fake.calls == [], "a refused symbol is not asked for again"
-    d.set_wanted({"NYSE_BOOK": ["BAD", "SPY"]})
+    d.set_wanted({"OPTIONS_BOOK": ["BAD", "SPY"]})
     fake.refuse.clear()
     asyncio.run(d.sync())
-    assert fake.calls == [("NYSE_BOOK", "SUBS", ["BAD", "SPY"])]
+    assert fake.calls == [("OPTIONS_BOOK", "SUBS", ["BAD", "SPY"])]
 
 
 def test_a_dead_socket_during_sync_ends_the_connection(tmp_path, monkeypatch):
-    fake = FakeSchwab(die_on=("NYSE_BOOK", "SUBS"))
-    d, _ = _daemon(tmp_path, monkeypatch, fake, NYSE_BOOK=["SPY"])
+    fake = FakeSchwab(die_on=("OPTIONS_BOOK", "SUBS"))
+    d, _ = _daemon(tmp_path, monkeypatch, fake, OPTIONS_BOOK=["SPY"])
     with pytest.raises(ConnectionError):
         asyncio.run(d.sync())
-    assert d.refused["NYSE_BOOK"] == {}, "a dead socket is not Schwab refusing a symbol"
+    assert d.refused["OPTIONS_BOOK"] == {}, "a dead socket is not Schwab refusing a symbol"
+
+
+def test_the_books_stream_only_for_a_ticker_on_the_board(tmp_path):
+    """2026-10-01 audit: the console's active ticker (any string a page opened /api/changes with)
+    had its exchange books streamed and stored whether or not it was on the board."""
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json", board=["SPY"])
+    d.set_wanted({"NYSE_BOOK": ["BRK.B"], "NASDAQ_BOOK": ["BRK.B"]})
+    assert d.all_wanted()["NYSE_BOOK"] == d.all_wanted()["NASDAQ_BOOK"] == frozenset()
+    d.set_wanted({"NYSE_BOOK": ["SPY"], "NASDAQ_BOOK": ["SPY"]})
+    assert d.all_wanted()["NYSE_BOOK"] == d.all_wanted()["NASDAQ_BOOK"] == {"SPY"}
 
 
 def test_request_sends_schwabs_fields_and_never_fields_on_unsubs():

@@ -49,9 +49,9 @@ Schwab sends is taken as sent (rule 2), never computed.
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
 | Schwab → daemon | Schwab REST | full option chains, each with its contracts' quotes (their Greeks, §3.4 Option chain) |
 | daemon → console | local WebSocket 127.0.0.1:8799 | every Schwab message as sent, on connect the current state first; each chain in parts of 500 contracts (`chain.TK`: part i of n, with its fetch time; a failed fetch with Schwab's answer); the heartbeat every second, carrying the board and the chain sweep's last round time |
-| console → daemon | same socket | the "wanted" list: the books and option contracts the console's screens show |
+| console → daemon | same socket | the "wanted" list: the books and option contracts the console's screens show (the books streamed only for a ticker on the board; a contract admitted only from a board ticker's chain) |
 | daemon → browser | local WebSocket :8800 | the board (each ticker's key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`) on connect and on every change; the finished price row of every board ticker, on every change, plus a heartbeat every second. The page matches rows by that key and shows that name; the header's three context slots come in the page (meta `ed-market-context`, from `server.HEADER_CONTEXT_SYMBOLS`) and show their board tickers' rows |
-| browser → daemon | same socket | a board edit (`board_add` / `board_remove`), answered with the symbol's key or why not |
+| browser → daemon | same socket | a board edit (`board_add` / `board_remove`), from the console's page on this computer only (`live_ui.CONSOLE_ORIGINS`), answered with the symbol's key or why not; only the operator's act sends one (+ Add symbol, x, a typed symbol), never a reload or reconnect |
 | daemon → console | the same :8800 push | the same price rows: the console's only live price |
 | console → browser | HTTP `/api/*` | everything else, on request |
 | console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`, `liquidity`) and the session label |
@@ -113,15 +113,22 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Option chain.** Schwab REST → the daemon's chain sweep (`ChainSweep`) → the 8799 socket, in
   parts → the console (`streaming.assemble_chain_part`: a chain is priced only with every part;
   one that arrived incomplete, or a fetch that failed, keeps the last levels with that reason) →
-  `_on_chain` → priced on a pricing thread (`_price_chain`). The sweep fetches every board ticker
-  in turn without end on two threads, at any hour: pre-market, in session, after hours, weekends;
-  no time of day removes a ticker from a round. A ticker put on the board is fetched next. After
-  Schwab answers 429 no chain request is made for 10 s (`RATE_LIMITED_PAUSE_SEC`). Every ticker's
-  publication keeps its chain and its heatmap, so a ticker put on screen shows at once. Owner:
+  `_on_chain` → priced on one pricing thread (`_price_chain`; at most one chain of each ticker
+  waits, the newest; a chain older than the one held is never published, whether delivered or
+  stored). The sweep fetches every board ticker in turn without end on two threads sharing one
+  Schwab client, one fetch of a ticker at a time, at any hour: pre-market, in session, after
+  hours, weekends; no time of day removes a ticker from a round. A ticker put on the board is
+  fetched next; one taken off is not fetched again. After Schwab answers 429 no chain request is
+  made for 10 s (`RATE_LIMITED_PAUSE_SEC`); after a request fails outright (no client, auth
+  refused, the network down), 5 s (`FAILED_PAUSE_SEC`). Every ticker's
+  publication keeps its chain and its heatmap, so a ticker put on screen shows at once. A ticker
+  taken off the board leaves the console within a second: its levels, chain and last price row
+  (`_drop_off_board`); with the daemon's heartbeat late the board is unknown and reads so. Owner:
   the daemon (`run_chains`, started with it); when it stops or its socket to the console drops,
   every ticker's levels go stale with that reason (`terrain_staleness`, judged against two of
-  the sweep's delivered rounds, carried on the heartbeat). The first chain of each ticker fetched
-  in each capture window is also written to the chain history (§4.2, `capture_slot`). The sweep
+  the sweep's delivered rounds, carried on the heartbeat). The first chain of each ticker whose
+  fetch began in a capture window is also written to the chain history (§4.2, `capture_slot`); a
+  failed history write is logged and the window's next fetch writes it, the delivered chain stands. The sweep
   downloads through `schwab_client.fetch_full_chain`, the one place a chain enters, so every consumer
   (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
   the captures) reads the Greeks it sets. The Greeks (gamma, delta, theta, vega, rho,
@@ -165,7 +172,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   board decides which tickers are streamed, fetched and priced: a ticker off it has no chain and
   says so ("not on the board: add it to fetch its chain"; tested for a board and an off-board
   ticker in `tests/test_gamma_surface_freshness_v1.py`; other values are not tested that way).
-  Choosing a ticker on the page puts it on the board. A viewed ticker (a page has it open: its
+  Typing a ticker on the page puts it on the board; a selection restored at load is not added
+  and reads "NOT ON THE BOARD" until it is. A viewed ticker (a page has it open: its
   `/api/changes` connection, on any workspace; the one viewing signal) is repriced on every
   streamed tick, and its heatmap reads "warming" until its first chain is priced. Levels older
   than two of the sweep's delivered rounds are stale with the reason (the daemon's last answer

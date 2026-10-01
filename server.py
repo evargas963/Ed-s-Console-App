@@ -403,6 +403,14 @@ def _board() -> "list[str] | None":
     return list(st.get("board") or []) if st is not None else None
 
 
+def _off_board_reason(tk: str) -> "str | None":
+    """Why `tk` has no chain coming: not on the board, or the board unknown; None when it is on it."""
+    board = _board()
+    if board is None:
+        return "the board is unknown: the capture daemon's heartbeat is not current"
+    return None if tk in board else f"{tk} is not on the board: add it to fetch its chain"
+
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1171,6 +1179,9 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         if capture is not None:
             chain, fetched_ts = capture["contracts"], capture["ts_utc"]
         new_chain = chain is not None
+        held_ts = payload.get("_chain_fetched_ts")
+        if new_chain and held_ts is not None and fetched_ts < held_ts:
+            return None             # a chain older than the one held never replaces it
         if chain is None:
             chain, fetched_ts = payload.get("_chain"), payload.get("_chain_fetched_ts")
             if not chain:
@@ -1314,8 +1325,12 @@ def _reprice_worker(tk: str) -> None:
             log.warning("levels reprice failed for %s: %s", tk, e)
 
 
-#: prices the chains the daemon delivers, off the event loop that received them
-_chain_pricing = ThreadPoolExecutor(max_workers=2, thread_name_prefix="chain-pricing")
+#: prices the chains the daemon delivers, off the event loop that received them, one at a time
+_chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pricing")
+#: ticker -> the newest delivered chain not yet priced; a newer one replaces it, so the queue
+#: holds at most one chain per ticker however far pricing falls behind the sweep
+_chains_waiting: "dict[str, tuple[list, float]]" = {}
+_chains_waiting_lock = threading.Lock()
 
 
 def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | None" = None) -> None:
@@ -1323,17 +1338,31 @@ def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | N
     chain the daemon fetched is priced on a pricing thread; a chain it could not deliver keeps
     the ticker's last levels, which then say why no newer chain came."""
     tk = ticker_storage_key(ticker)
+    board = _board()
+    if board is not None and tk not in board:
+        return                      # taken off the board while its chain was on the way
     if contracts is None:
         _terrain_refresh_last_error[tk] = f"chain fetch failed ({reason})"
         return
-    _chain_pricing.submit(_price_chain, tk, contracts, ts)
+    with _chains_waiting_lock:
+        queued = tk in _chains_waiting
+        _chains_waiting[tk] = (contracts, ts)
+    if not queued:
+        _chain_pricing.submit(_price_waiting_chain, tk)
+
+
+def _price_waiting_chain(tk: str) -> None:
+    with _chains_waiting_lock:
+        contracts, ts = _chains_waiting.pop(tk)
+    _price_chain(tk, contracts, ts)
 
 
 def _price_chain(tk: str, contracts: list, fetched_ts: float) -> None:
     """THE producer of a ticker's levels from a newly fetched chain (_publish_levels), with the
     chain's own fetch time as its as-of: an older streamed value never overrides it."""
     try:
-        _publish_levels(tk, contracts, fetched_ts)
+        if _publish_levels(tk, contracts, fetched_ts) is None:
+            return                  # older than the chain held: nothing published
         with _terrain_cache_lock:
             payload = _terrain_cache[tk]
         _log_flip_drift(tk, payload)
@@ -1372,8 +1401,8 @@ def _feed_record_state() -> str:
 def _status_line() -> str:
     """One line for the console window: is each part working right now, from its own check."""
     st = lmp.daemon_status()
-    board = _board() or []
-    priced = sum(1 for tk in board if resolve_spot(tk)[0] is not None)
+    board = _board()
+    priced = sum(1 for tk in board or [] if resolve_spot(tk)[0] is not None)
     with _terrain_cache_lock:
         as_of = [p.get("computed_ts_utc") for p in _terrain_cache.values() if p.get("computed_ts_utc")]
     newest = ct_label(max(as_of)) if as_of else "none"
@@ -1383,7 +1412,8 @@ def _status_line() -> str:
         f"session {session_label(now_et())}",
         "daemon link: " + ("connected" if st is not None else "NOT CONNECTED"),
         "Schwab socket: " + ("open" if st and st.get("schwab_socket_open") is True else "NOT OPEN"),
-        f"live prices: {priced} of {len(board)} board tickers",
+        (f"live prices: {priced} of {len(board)} board tickers" if board is not None
+         else "live prices: BOARD UNKNOWN (no current daemon heartbeat)"),
         f"levels: {len(as_of)} tickers, newest as of {newest}",
         _feed_record_state(),
         (f"chains: the daemon's last round of the board took {round_sec:.0f} s" if round_sec
@@ -1391,10 +1421,25 @@ def _status_line() -> str:
     ])
 
 
+def _drop_off_board(board: "list[str]") -> None:
+    """A ticker taken off the board leaves the console: its levels, its chain (which maps its
+    option contracts to it and admits them to the stream), its last chain error and its last
+    price row."""
+    from app.options.order_flow.streaming import forget_price_rows
+    forget_price_rows(board)
+    keep = set(board)
+    with _terrain_cache_lock:
+        for tk in [t for t in _terrain_cache if t not in keep]:
+            del _terrain_cache[tk]
+    for tk in [t for t in list(_terrain_refresh_last_error) if t not in keep]:
+        _terrain_refresh_last_error.pop(tk, None)
+
+
 def _terrain_loop() -> None:
-    """The board's stored levels once the daemon has said what the board is, then every
-    STATUS_EVERY_SEC the status line and the price levels of a new session date or a new
-    ticker. The chains arrive from the daemon (_on_chain)."""
+    """The board's stored levels once the daemon has said what the board is; then every second
+    the levels of tickers taken off the board are dropped, and every STATUS_EVERY_SEC the status
+    line is logged and the price levels of a new session date or a new ticker are published. The
+    chains arrive from the daemon (_on_chain)."""
     while _terrain_loop_running and _board() is None:
         time.sleep(0.5)
     board = _board() or []
@@ -1402,13 +1447,20 @@ def _terrain_loop() -> None:
     loaded = _load_stored_levels(board)
     log.info("Ready: levels for %d of %d board tickers loaded (session: %s). The daemon's chains "
              "price them from here.", loaded, len(board), session_label(now_et()))
+    next_status = time.monotonic() + STATUS_EVERY_SEC
     while _terrain_loop_running:
-        time.sleep(STATUS_EVERY_SEC)
+        time.sleep(1.0)
         try:
-            log.info(_status_line())
-            _publish_missing_price_levels(_board() or [])
+            board = _board()
+            if board is not None:
+                _drop_off_board(board)
+            if time.monotonic() >= next_status:
+                next_status = time.monotonic() + STATUS_EVERY_SEC
+                log.info(_status_line())
+                if board is not None:
+                    _publish_missing_price_levels(board)
         except Exception as e:  # noqa: BLE001 -- the status line says it failed, never silence
-            log.warning("status: could not be read (%s: %s)", type(e).__name__, e)
+            log.warning("levels loop: %s: %s", type(e).__name__, e)
     log.info("Terrain loop stopped")
 
 
@@ -2151,12 +2203,11 @@ def get_options_gamma_surface(ticker: str = Query(...)):
     # sweep is fetching it. The reason is that state's own.
     _requested = _gamma_surface_wanted(tk)
     _state = terrain_staleness((live or {}).get("computed_ts_utc"), tk)
-    _on_board = tk in (_board() or [])
-    _warming = _requested and _on_board
+    _off_board = _off_board_reason(tk)
+    _warming = _requested and _off_board is None
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
                      "live": False, "stale": True, "warming": _warming, "requested": _requested,
-                     "reason": (f"{tk} is not on the board: add it to fetch its chain" if not _on_board
-                                else _state["levels_stale_reason"] or (
+                     "reason": (_off_board or _state["levels_stale_reason"] or (
                                     "the surface is projected when the daemon delivers this ticker's chain"
                                     if _warming else "no gamma surface for this ticker's published levels"))}
     return JSONResponse(payload)
@@ -2196,7 +2247,7 @@ def get_terrain(ticker: str = Query(...)):
         # unexplained shrug is how $SPX stayed dark for a session.
         "error": ("terrain_not_ready: no chain from the daemon yet for this ticker"
                   + (f" (last chain error: {_why})" if _why else "")
-                  + ("" if tk in (_board() or []) else f"; {tk} is not on the board")),
+                  + (f"; {_off_board_reason(tk)}" if _off_board_reason(tk) else "")),
         # RC-151: and it carries the STRUCTURED state too, so a consumer never parses English
         # to learn the ticker is failing
         **terrain_staleness(None, tk),
@@ -2430,6 +2481,9 @@ async def post_streaming_active_option_contract(payload: dict = Body(default={})
     c = str(payload.get("contract") or "").strip()
     if not c:
         return JSONResponse({"ok": False, "error": "contract is required"}, status_code=400)
+    if _contract_ticker(c) is None:      # streamed only from a board ticker's chain, as Schwab listed it
+        return JSONResponse({"ok": False, "contract": c, "error": (
+            "not a contract in the chain of a ticker on the board")}, status_code=409)
 
     # PR214 premerge gap 2: take the command's generation HERE, at admission, before the
     # body is offloaded to the executor. Ordering must reflect the order the operator's
@@ -2534,10 +2588,10 @@ def get_expiries(ticker: str = Query(...)):
 def get_chain(ticker: str = Query(...),
               expiry: Optional[str] = Query(default=None)):
     """One expiry of the ticker's full chain -- every contract Schwab listed, every field as sent
-    -- from the chain the levels loop downloads (strike_range=ALL), with each live streamed
-    contract's streamed fields as its values (the stream owns them). The loop keeps every
-    ticker's chain. Answers `status: unavailable` with a reason when no
-    chain is held."""
+    -- from the chain the daemon delivered (strike_range=ALL), with each live streamed contract's
+    streamed fields as its values (the stream owns them), by the levels' own rule on the same
+    inputs (the chain's listed contracts, its fetch time). Every board ticker's chain is kept.
+    Answers `status: unavailable` with a reason when no chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
     held = terrain_cache_get(t) or {}
     resolved_expiry = (expiry or "").strip()[:10] or (held.get("expiries") or [None])[0]
@@ -2550,7 +2604,8 @@ def get_chain(ticker: str = Query(...),
 
     chain = held.get("_chain")
     if not chain:
-        return _unavailable(held.get("error") or "the chain for this ticker has not been downloaded")
+        return _unavailable(held.get("error") or _off_board_reason(t)
+                            or "the daemon has not delivered this ticker's chain yet")
     if resolved_expiry is None:
         return _unavailable("no listed expiry for this ticker")
     contracts = [c for c in chain if str(c.get("expirationDate") or "")[:10] == resolved_expiry]
@@ -2559,7 +2614,7 @@ def get_chain(ticker: str = Query(...),
     fetched_ts = held.get("_chain_fetched_ts")
     # each field the newest Schwab sent (the levels' own rule, _publish_levels)
     response_contracts, overlay_n = overlay_streamed_contract_fields(
-        contracts, _desired_stream_greeks_for_ticker(t), fetched_ts)
+        contracts, _desired_stream_greeks_for_ticker(t, held.get("_contract_symbols")), fetched_ts)
     live_spot, _src, _ts = resolve_spot(t)       # the one spot on every screen
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):

@@ -242,7 +242,7 @@ def test_every_ticker_keeps_its_chain_and_heatmap_so_a_switch_shows_at_once(monk
 
 
 def test_a_stored_capture_and_a_live_chain_publish_the_same_fields(monkeypatch):
-    """2026-09-28 audit: ATR was set only after a live download (_terrain_refresh_one), so every
+    """2026-09-28 audit: ATR was set only after a live download (then the console's fetch), so every
     publication from a stored capture (startup, a closed market) served it absent for every
     ticker, and the chain basis carried two labels for the same full chain ("full" live, the
     capture's own label stored). The one producer sets them all."""
@@ -511,3 +511,70 @@ def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
                            gamma_at_spot=None)
     assert r.regime == "UNAVAILABLE" and "gamma" not in r.headline.lower().split("—")[0]
     assert "Short gamma" not in r.headline and "Long gamma" not in r.headline
+
+
+# ── the chains the daemon delivers ─────────────────────────────────────────────────────────────
+
+def _board_is(board):
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": list(board)},
+                              time.time())
+
+
+def test_an_older_chain_never_replaces_newer_levels():
+    """2026-10-01 audit: the startup load of the stored capture ran beside the daemon's chains,
+    so yesterday's 16:15 capture could replace a chain priced at 10:00:05, and the ticks then
+    repriced yesterday's chain at the live spot. A chain older than the one held is not
+    published, whatever its source."""
+    now = time.time()
+    server._publish_levels(TK, _CONTRACTS, now)
+    assert server._publish_levels(TK, _CONTRACTS[:10], now - 3600) is None
+    assert server._publish_levels(TK, captures=[{"contracts": _CONTRACTS[:10], "ts_utc": now - 86400,
+                                                 "spot": _SPOT, "basis": "x", "et_date": "2026-09-01"}]) is None
+    held = _cached()
+    assert held["_chain_fetched_ts"] == held["computed_ts_utc"] == now
+    assert len(held["_chain"]) == len(_CONTRACTS)
+
+
+def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker(monkeypatch):
+    """2026-10-01 audit: the pricing queue had no bound -- a sweep faster than pricing grew it
+    without end. One chain per ticker waits; a newer one replaces it."""
+    _board_is([TK])
+    priced: list = []
+    real = server._publish_levels
+    monkeypatch.setattr(server, "_publish_levels", lambda tk, c=None, ts=None, **k: priced.append(ts) or real(tk, c, ts, **k))
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 10)                 # the pricing thread is busy
+    now = time.time()
+    for i in range(3):
+        server._on_chain(TK, _CONTRACTS, now + i)
+    gate.set()
+    server._chain_pricing.submit(lambda: None).result(timeout=60)
+    assert priced == [now + 2]
+
+
+def test_a_ticker_taken_off_the_board_leaves_the_console(monkeypatch):
+    """2026-10-01 audit: the console kept every ticker it had ever priced -- its levels, its chain
+    (which still picked and admitted its option contracts to the stream) and its last price,
+    served as current -- after the ticker left the board."""
+    _board_is([TK])
+    server._publish_levels(TK, _CONTRACTS, time.time())
+    ofs._price_rows[TK] = {"ticker": TK, "spot": _SPOT}
+    _board_is([])
+    server._drop_off_board([])
+    assert server.terrain_cache_get(TK) is None
+    assert ofs.price_row(TK) is None
+    assert server._contract_ticker(_A) is None
+    body = json.loads(server.get_options_gamma_surface(TK).body)
+    assert body["reason"] == "CRWD is not on the board: add it to fetch its chain"
+    server._on_chain(TK, _CONTRACTS, time.time())                # a chain on its way when removed
+    server._chain_pricing.submit(lambda: None).result(timeout=60)
+    assert server.terrain_cache_get(TK) is None
+
+
+def test_an_unknown_board_is_said_so_never_called_off_the_board():
+    """2026-10-01 audit: with the daemon's heartbeat late, every ticker read "not on the board:
+    add it"."""
+    lmp.record_feed_down()
+    body = json.loads(server.get_options_gamma_surface(TK).body)
+    assert body["reason"] == "the board is unknown: the capture daemon's heartbeat is not current"
+    assert "BOARD UNKNOWN" in server._status_line()

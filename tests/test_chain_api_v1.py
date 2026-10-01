@@ -146,7 +146,7 @@ def test_the_route_answers_over_real_http():
 
 def test_real_vendor_evidence_strike_count_alone_undercounts_spy():
     """strike_count=250 missed 69 real SPY strikes that strike_range=ALL returned on the same
-    request -- why the levels loop downloads strike_range=ALL."""
+    request -- why the daemon's chain sweep downloads strike_range=ALL."""
     assert len(_SPY_VS_ALL["strikes_missed_by_strike_count_250"]) == 69
     assert _SPY_VS_ALL["converged_all_vs_500"] is True
     assert _SPY_VS_ALL["strike_range_all"]["n_contracts"] > _SPY_VS_ALL["strike_count_250"]["n_contracts"]

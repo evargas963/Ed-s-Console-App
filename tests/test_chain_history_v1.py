@@ -177,15 +177,96 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
     assert all(stored[s]["gamma"] == q["gamma"] for s, q in _QUOTED.items()), "the quote's gamma is stored"
 
 
+def _fetched(sweep, now):
+    """The ticker a worker takes next, its fetch then done (the worker's `finally`)."""
+    tk = sweep._next(now)
+    sweep._fetching.discard(tk)
+    return tk
+
+
 def test_the_sweep_fetches_every_board_ticker_in_turn_and_a_new_one_first(tmp_path, schwab):
     board = ["AAA", "BBB", "CCC"]
     sweep, _published, clock = _sweep(tmp_path, board, "2026-09-30 15:31:57")
-    order = [sweep._next(clock["now"]) for _ in range(3)]
+    order = [_fetched(sweep, clock["now"]) for _ in range(3)]
+    board.append("NEW")
     sweep.fetch_next("NEW")
-    order += [sweep._next(clock["now"] + 200)]
-    order += [sweep._next(clock["now"] + 200)]
+    order += [_fetched(sweep, clock["now"] + 200)]
+    order += [_fetched(sweep, clock["now"] + 200)]
     assert order == ["AAA", "BBB", "CCC", "NEW", "AAA"]
     assert sweep.round_sec == 200                       # the round it delivered
+
+
+def test_a_removed_ticker_is_not_fetched_and_no_ticker_is_fetched_twice_at_once(tmp_path, schwab):
+    """2026-10-01 audit: the round was a snapshot of the board, so a ticker taken off it was
+    still fetched (and written to the history) until the round ended; and the two workers could
+    fetch one ticker at the same time (a one-ticker board, or a ticker put first)."""
+    board = ["AAA", "BBB", "CCC"]
+    sweep, _published, clock = _sweep(tmp_path, board, "2026-09-30 15:31:57")
+    assert sweep._next(clock["now"]) == "AAA"           # a worker is fetching AAA
+    board.remove("BBB")
+    sweep.fetch_next("AAA")                             # AAA asked for again while in flight
+    assert sweep._next(clock["now"]) == "CCC"           # not AAA a second time, not BBB
+    assert sweep._next(clock["now"]) is None            # the round holds nothing else to take
+
+
+def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_path, schwab):
+    """2026-10-01 audit: the capture window was judged by when a fetch finished, so an $SPX
+    fetch begun at 16:14:30 (options still trading) and finished at 16:15:10 became the 16:15
+    close capture. A fetch is written for the window it began in."""
+    db = tmp_path / "ed_console.db"
+    sweep, _published, _clock = _sweep(tmp_path, ["SPY"], "2026-09-30 16:00:30")
+    sweep.fetch_one(object(), "SPY")                       # the 16:00 window's capture
+    times = iter([_ts("2026-09-30 16:14:30"), _ts("2026-09-30 16:15:10")])
+    sweep.clock = lambda: next(times)
+    sweep.fetch_one(object(), "SPY")                       # begun 16:14:30, received 16:15:10
+    with sqlite3.connect(db) as c:
+        assert [_et(r[0]) for r in c.execute("SELECT DISTINCT ts_utc FROM complete_chain_captures")] \
+            == ["2026-09-30 16:00"]
+
+
+def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again(tmp_path, schwab, monkeypatch):
+    """2026-10-01 audit: a history write that failed after the chain was delivered was published
+    to the console as a failed chain."""
+    sweep, published, clock = _sweep(tmp_path, ["SPY"], "2026-09-30 15:31:57")
+
+    def disk_full(*a, **k):
+        raise sqlite3.OperationalError("database or disk is full")
+    monkeypatch.setattr(cch, "persist_complete_chain_capture", disk_full)
+    sweep.fetch_one(object(), "SPY")
+    assert all("failed" not in m for _t, m in published)
+    (tk, contracts, _t, reason), = _assembled(published)
+    assert contracts is not None and reason is None
+    monkeypatch.undo()
+    monkeypatch.setattr(cch, "safe_get_chain", schwab.chain)
+    monkeypatch.setattr(cch, "safe_get_quotes", schwab.quote)
+    clock["now"] += 120                                    # the same window's next fetch
+    sweep.fetch_one(object(), "SPY")
+    with sqlite3.connect(tmp_path / "ed_console.db") as c:
+        assert c.execute("SELECT COUNT(DISTINCT ts_utc) FROM complete_chain_captures").fetchone()[0] == 1
+
+
+def test_a_failing_schwab_client_pauses_the_sweep_instead_of_spinning(tmp_path, schwab, monkeypatch):
+    """2026-10-01 audit: with Schwab's auth refused, each worker rebuilt its client and failed the
+    next ticker at once, around the whole board, without end. A failure pauses every chain
+    request FAILED_PAUSE_SEC; both workers share one client."""
+    import threading
+    monkeypatch.setattr(cch, "FAILED_PAUSE_SEC", 0.2)
+    built = []
+
+    def make_client():
+        built.append(1)
+        raise ConnectionError("Refresh token is invalid, expired or revoked")
+    sweep = cch.ChainSweep(tmp_path / "ed_console.db", lambda: ["SPY", "QQQ", "IWM"],
+                           lambda topic, msg: None)
+    halt = threading.Event()
+    workers = [threading.Thread(target=sweep.work, args=(make_client, halt), daemon=True) for _ in range(2)]
+    for w in workers:
+        w.start()
+    halt.wait(1.0)
+    halt.set()
+    for w in workers:
+        w.join(5)
+    assert 2 <= len(built) <= 12, len(built)               # about one try per pause, not thousands
 
 
 @pytest.mark.parametrize("at", ["2026-10-01 08:08", "2026-10-01 09:45", "2026-10-01 21:00",

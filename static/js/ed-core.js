@@ -1,4 +1,4 @@
-/* Ed Console shell core (RC-UI-1) — navigation, watchlist foundation, ticker store,
+/* Ed Console shell core (RC-UI-1) — navigation, the board's rail, ticker store,
    header live-data, CT clock, AI drawer. NO trading semantics are computed here: this
    file only fetches canonical endpoints and formats/arranges the results (ONE FAUCET).
    View-specific rendering (heatmap, levels, order flow) is wired in per-view modules. */
@@ -503,23 +503,27 @@
     if (_wlMsgTimer) clearTimeout(_wlMsgTimer);
     _wlMsgTimer = setTimeout(function () { el.textContent = ''; }, 3000);
   }
-  // THE BOARD = the one list of tickers the daemon streams and fetches chains for. Adding (the
-  // rail's "+ Add symbol", or choosing a symbol to analyse) and removing are sent to the daemon,
-  // which answers with the symbol's key and pushes the new board to every page.
-  // The selected ticker is put on the board whenever the socket opens (ws.onopen), so a selection
-  // made before it opens is not lost; an explicit edit made while it is down says so.
+  // THE BOARD = the one list of tickers the daemon streams and fetches chains for. Only the
+  // operator's own act edits it: the rail's "+ Add symbol" or x, or typing a symbol to analyse.
+  // The daemon answers with the symbol's key and pushes the new board to every page. Nothing is
+  // added on its own (a reload, a reconnect or a restored selection adds nothing).
   function sendBoardOp(op, sym) {
-    if (!_priceWs || _priceWs.readyState !== 1) {
-      if (!(op === 'board_add' && sym === state.ticker)) wlNotify('Board not changed: the price socket is down');
-      return;
-    }
+    if (!_priceWs || _priceWs.readyState !== 1) { wlNotify('Board not changed: the price socket is down'); return; }
     try { _priceWs.send(JSON.stringify({ op: op, symbol: sym })); } catch (e) {}
   }
   function addSymbol(sym) {
     var raw = sym;
     sym = normSym(sym);
     if (!sym) { wlNotify('Not a valid symbol: "' + raw + '"'); return; }
-    setTicker(sym);   // setTicker puts it on the board
+    setTicker(sym, true);
+  }
+  // The selected ticker's key and display name, as the served board names it (its key, or the
+  // display name the operator typed); none while it is not on the board.
+  function resolveFromBoard() {
+    var b = _board.filter(function (e) { return e.key === state.ticker || e.display === state.ticker; })[0];
+    if (!b || state.key === b.key) return;
+    state.key = b.key; state.display = b.display;
+    paintIdentity(b.display);
   }
   // The client only normalises the FORM (upper-case, the vendor's symbol alphabet); whether the
   // instrument is real is Schwab's answer, shown as its reason — nothing is fabricated for an
@@ -561,7 +565,8 @@
       var s = r.querySelector('.wl-sym'); r.classList.toggle('sel', !!s && (s.textContent === name || s.textContent === state.ticker));
     });
   }
-  function setTicker(sym) {
+  // `add`: the operator chose the symbol (typed it, or added it), so it goes on the board.
+  function setTicker(sym, add) {
     state.ticker = (sym || '').toUpperCase();
     state.key = null; state.display = null;
     try { localStorage.setItem(TICKER_KEY, state.ticker); } catch (e) {}
@@ -571,7 +576,8 @@
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
     openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
     _priceSubTs = Date.now();
-    sendBoardOp('board_add', state.ticker);   // on the board; the daemon answers with its key
+    if (add) sendBoardOp('board_add', state.ticker);   // the daemon answers with its key
+    else resolveFromBoard();
     markHeaderPushDown();                // WAITING until its row lands (milliseconds)
     emit('ed:ticker', { ticker: state.ticker });
   }
@@ -587,7 +593,7 @@
     var v = normSym(input.value);
     if (!v) { input.value = state.ticker; input.classList.add('invalid'); setTimeout(function () { input.classList.remove('invalid'); }, 900); return; }
     input.value = v;
-    if (v !== state.ticker) setTicker(v);
+    if (v !== state.ticker) setTicker(v, true);
     input.blur();
   }
 
@@ -676,8 +682,7 @@
   // ever disagrees again) is diagnosable on the spot the operator is already looking at,
   // not something that needs a screenshot comparison to notice.
   var QUOTE_INGESTION_LABEL = {
-    schwab_streaming_level_one: 'streaming', rest_tier_a: 'REST (header bootstrap)',
-    rest_watchlist_batch: 'REST (watchlist batch)', live_market_plane: 'streaming plane',
+    schwab_streaming_level_one: 'streaming', live_market_plane: 'streaming plane',
   };
   function paintQuote(q) {
     var px = document.getElementById('hPx'), chg = document.getElementById('hChg'), ba = document.getElementById('hBidAsk');
@@ -748,10 +753,12 @@
     try { ws = new WebSocket(url); } catch (e) { schedulePriceReconnect(); return; }
     _priceWs = ws;   // (_priceSubTs is set by a ticker change only: a reconnect during an
                      //  outage keeps reading OFFLINE, not WAITING)
-    ws.onopen = function () { _priceRetry = 0; if (state.ticker) sendBoardOp('board_add', state.ticker); };
+    ws.onopen = function () { _priceRetry = 0; };
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
-      if (msg && msg.type === 'board' && Array.isArray(msg.board)) { _board = msg.board; renderWatchlist(); return; }
+      if (msg && msg.type === 'board' && Array.isArray(msg.board)) {
+        _board = msg.board; resolveFromBoard(); renderWatchlist(); return;
+      }
       if (msg && msg.type === 'board_edit') { ingestBoardEdit(msg); return; }
       if (!msg || !Array.isArray(msg.rows)) return;
       _priceUp = true; _lastPriceTs = Date.now();
@@ -829,11 +836,13 @@
   function markHeaderPushDown() {
     // just asked for this ticker (page load or a ticker change): the row is on its way
     // (WAITING); otherwise the push itself is down (OFFLINE)
+    // a served board without this ticker: no row will come until it is added
+    var offBoard = _board.length > 0 && !state.key;
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
     paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
       feedCls: 'stale',
-      feedLabel: connecting ? 'WAITING' : 'OFFLINE',
-      ageLabel: connecting ? 'no push yet' : 'live push down' });
+      feedLabel: offBoard ? 'NOT ON THE BOARD' : connecting ? 'WAITING' : 'OFFLINE',
+      ageLabel: offBoard ? 'add it to stream it' : connecting ? 'no push yet' : 'live push down' });
   }
 
   // ================= CT clock =================
@@ -914,7 +923,7 @@
     // header search: analyse a symbol (it joins the board)
     var search = document.getElementById('symSearch');
     if (search) search.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && search.value.trim()) { var v = normSym(search.value); if (v) { setTicker(v); search.value = ''; } }
+      if (e.key === 'Enter' && search.value.trim()) { var v = normSym(search.value); if (v) { setTicker(v, true); search.value = ''; } }
     });
     // AI drawer
     document.getElementById('aiOpen').addEventListener('click', function () {
@@ -955,6 +964,7 @@
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
+    board: function () { return _board.slice(); },                   // the daemon's board, as served
     setScope: setScope, getScope: function () { return state.scope; },
     scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },

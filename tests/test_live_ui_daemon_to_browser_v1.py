@@ -62,8 +62,12 @@ def daemon(tmp_path):
     EdDB(db)
     d = capture.Daemon(MessageBus(), HealthRegistry(), tmp_path / "stream_wanted.json", board_db=db)
     for sym in ("SPY", "TSLA"):
-        d.edit_board("board_add", sym, time.time())
+        asyncio.run(d.edit_board("board_add", sym, time.time()))
     return d
+
+
+#: the console's page, as a browser names it when it opens the price socket
+_CONSOLE_PAGE = "http://127.0.0.1:8000"
 
 
 class _Feed:
@@ -79,7 +83,7 @@ class _Feed:
                 "held": {"LEVELONE_EQUITIES": ["SPY", "AAPL", "$SPX"]}}
 
 
-async def _run(daemon, body):
+async def _run(daemon, body, origin=_CONSOLE_PAGE):
     from websockets.asyncio.client import connect
 
     port = _free_port()
@@ -93,7 +97,7 @@ async def _run(daemon, body):
         await asyncio.sleep(0.01)
     assert stats.get("listening")
     try:
-        async with connect(f"ws://127.0.0.1:{port}") as ws:
+        async with connect(f"ws://127.0.0.1:{port}", origin=origin) as ws:
             await body(daemon.bus, ws, feed, stats)
     finally:
         stop.set()
@@ -166,7 +170,7 @@ def test_adding_a_ticker_answers_its_key_reaches_every_page_is_stored_and_stream
     async def body(bus, ws, feed, stats):
         from websockets.asyncio.client import connect
         await _next(ws, "board")
-        async with connect(f"ws://127.0.0.1:{ws.remote_address[1]}") as other:
+        async with connect(f"ws://127.0.0.1:{ws.remote_address[1]}", origin=_CONSOLE_PAGE) as other:
             await _next(other, "board")
             bus.publish("quote.$SPX", _trade("$SPX", 6512.25, time.time()))
             await ws.send(json.dumps({"op": "board_add", "symbol": "SPX"}))
@@ -208,6 +212,38 @@ def test_a_symbol_that_is_not_a_symbol_is_refused_with_why(daemon):
         assert edit["key"] is None and edit["error"] == "not a symbol: 'NOT A SYMBOL'"
     asyncio.run(_run(daemon, body))
     assert board_tickers(daemon.board_db) == ["SPY", "TSLA"]
+
+
+@pytest.mark.parametrize("origin", ["http://evil.example", "http://192.168.1.20:8000", None])
+def test_only_the_consoles_page_on_this_computer_edits_the_board(daemon, origin):
+    """2026-10-01 audit: the socket listens on every address and took a board edit from any
+    client, so another device on the network, or any other web page open in the browser, could
+    empty the board. An edit is taken only from the console's page on this computer."""
+    async def body(bus, ws, feed, stats):
+        await _next(ws, "board")
+        await ws.send(json.dumps({"op": "board_remove", "symbol": "SPY"}))
+        edit = await _next(ws, "board_edit")
+        assert edit["key"] is None and edit["error"].startswith("the board is edited only from")
+    asyncio.run(_run(daemon, body, origin=origin))
+    assert board_tickers(daemon.board_db) == ["SPY", "TSLA"]
+
+
+def test_adding_a_ticker_already_on_the_board_changes_nothing_and_fetches_nothing(daemon):
+    """2026-10-01 audit: every add of a ticker already on the board put its chain at the front of
+    the sweep and re-sent the board to every page (each page load and reconnect sent one)."""
+    asked: list = []
+    daemon.chains = type("Sweep", (), {"fetch_next": lambda self, tk: asked.append(tk), "round_sec": None})()
+
+    async def body(bus, ws, feed, stats):
+        await _next(ws, "board")
+        await ws.send(json.dumps({"op": "board_add", "symbol": "spy"}))
+        assert (await _next(ws, "board_edit"))["key"] == "SPY"
+        end = time.monotonic() + 0.4
+        while time.monotonic() < end:
+            msg = json.loads(await asyncio.wait_for(ws.recv(), 1))
+            assert msg.get("type") != "board", "an unchanged board is not re-sent"
+    asyncio.run(_run(daemon, body))
+    assert asked == []
 
 
 def test_pages_are_told_the_headers_context_slots_with_their_display_names() -> None:

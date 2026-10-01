@@ -17,8 +17,10 @@ function priceRow(ticker, spot, extra) {
     trade_age_sec: 1 }, extra || {});
 }
 const DEFAULT_BOARD = ['SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA'];
+// Returns { ops }: every board edit the page sent, in order.
 async function mockPriceSocket(page, rows, board) {
   const held = (board || DEFAULT_BOARD).slice();
+  const ops = [];
   await page.routeWebSocket(/:1\/$/, (ws) => {
     const sendBoard = () => ws.send(JSON.stringify({ type: 'board', board: held.map(entry) }));
     sendBoard();
@@ -26,13 +28,16 @@ async function mockPriceSocket(page, rows, board) {
     ws.onMessage((m) => {
       let req; try { req = JSON.parse(String(m)); } catch (e) { return; }
       if (!req || (req.op !== 'board_add' && req.op !== 'board_remove')) return;
+      ops.push({ op: req.op, symbol: req.symbol });
       const key = keyOf(req.symbol);
       const at = held.indexOf(key);
-      if (req.op === 'board_add' && at === -1) held.push(key);
-      if (req.op === 'board_remove' && at !== -1) held.splice(at, 1);
+      const changes = (req.op === 'board_add') === (at === -1);
+      if (req.op === 'board_add' && changes) held.push(key);
+      if (req.op === 'board_remove' && changes) held.splice(at, 1);
+      if (changes) sendBoard();                    // like the daemon: a changed board first, to every page
       ws.send(JSON.stringify(Object.assign({ type: 'board_edit', op: req.op, requested: req.symbol, error: null }, entry(key))));
-      sendBoard();
     });
   });
+  return { ops };
 }
 module.exports = { mockPriceSocket, priceRow };

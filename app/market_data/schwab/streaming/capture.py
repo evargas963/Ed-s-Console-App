@@ -268,6 +268,8 @@ def _connection_lost(e: BaseException) -> bool:
 #: The services every board ticker is streamed on; the console's list names only the books and the
 #: option contracts its screens show.
 BOARD_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
+#: The equity books: streamed for the console's active ticker only while it is on the board.
+BOOK_SERVICES = ("NYSE_BOOK", "NASDAQ_BOOK")
 
 
 class Daemon:
@@ -276,10 +278,11 @@ class Daemon:
         self.bus = bus
         self.health = health
         self.path = path
-        self.wanted = load_wanted(path)
+        self.wanted = {**load_wanted(path), **{svc: frozenset() for svc in BOARD_SERVICES}}
         #: the one list of tickers (the logging_universe table, read at startup)
         self.board: "list[str]" = list(board or [])
         self.board_db = board_db
+        self._board_lock = asyncio.Lock()
         self.board_listeners: "list" = []
         self.chains = None                  # the ChainSweep, for its round time and fetch_next
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
@@ -304,30 +307,37 @@ class Daemon:
             log.warning("could not save %s: %s", self.path.name, e)
 
     def all_wanted(self) -> "dict[str, frozenset[str]]":
-        """Everything streamed: every board ticker on BOARD_SERVICES, and the console's list."""
+        """Everything streamed: every board ticker on BOARD_SERVICES, and the console's list --
+        its books only for a ticker on the board."""
         out = dict(self.wanted)
         for svc in BOARD_SERVICES:
             out[svc] = frozenset(self.board)
+        for svc in BOOK_SERVICES:
+            out[svc] = frozenset(out.get(svc, frozenset()) & set(self.board))
         return out
 
-    def edit_board(self, op: str, symbol, now: float) -> "tuple[str | None, str | None]":
+    async def edit_board(self, op: str, symbol, now: float) -> "tuple[str | None, str | None]":
         """A screen puts a ticker on the board or takes one off: (its storage key, None), or
-        (None, why not). Written to the logging_universe table, streamed and fetched from now."""
+        (None, why not). Written to the logging_universe table (on a thread: the event loop that
+        reads Schwab never waits on the database), streamed and fetched from now."""
         key = normalize_production_ticker(symbol if isinstance(symbol, str) else "")
         if not is_valid_production_ticker(key):
             return None, f"not a symbol: {symbol!r}"
-        if op == "board_add":
-            if key not in self.board:
-                board_add(self.board_db, key, now)
-                self.board = sorted([*self.board, key])
-            if self.chains is not None:
-                self.chains.fetch_next(key)
-        elif op == "board_remove":
-            if key in self.board:
-                board_remove(self.board_db, key)
-                self.board = [t for t in self.board if t != key]
-        else:
+        if op not in ("board_add", "board_remove"):
             return None, f"unknown board operation {op!r}"
+        if self.board_db is None:
+            return None, "the daemon was started with no board table"
+        async with self._board_lock:                  # one edit at a time, in arrival order
+            if (key in self.board) == (op == "board_add"):
+                return key, None                      # already so: nothing changes, nothing fetched
+            if op == "board_add":
+                await asyncio.to_thread(board_add, self.board_db, key, now)
+                self.board = sorted([*self.board, key])
+            else:
+                await asyncio.to_thread(board_remove, self.board_db, key)
+                self.board = [t for t in self.board if t != key]
+        if op == "board_add" and self.chains is not None:
+            self.chains.fetch_next(key)
         for svc in BOARD_SERVICES:                # a changed board gets one fresh try
             self.refused[svc] = {}
         for fn in self.board_listeners:

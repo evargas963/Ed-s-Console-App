@@ -440,7 +440,7 @@
         (im && im.dte_used != null ? row('Move from', 'first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)') : '') +
         row('ATR daily', t && t.atr_daily != null ? num(t.atr_daily) : esc((t && t.atr_daily_reason) || '—')) +
         row('ATR 15m', t && t.atr_15m != null ? num(t.atr_15m) : esc((t && t.atr_15m_reason) || '—')) +
-        row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : 'waiting for the VIX stream');
+        row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : (vixC ? notStreamed(vixC) : '—'));
     }
     paintCardCharts();
   }
@@ -518,13 +518,19 @@
       'Clock: <b>Central</b>'
     ].map(function (x) { return '<span>' + x + '</span>'; }).join('');
   }
+  // Why a context symbol has no price: it is on the daemon's board and its row has not come, or
+  // it is not on the board (only board tickers are streamed).
+  function notStreamed(c) {
+    var on = window.EdShell.board().some(function (b) { return b.key === c.key; });
+    return on ? 'waiting for the ' + c.display + ' stream' : c.display + ' is not on the board: add it to show it';
+  }
   // The shell header already carries the symbol, price, change and CT clock; this page adds
   // the index context and the data-trust row beside it.
   function paintHeader() {
     window.EdShell.marketContext().forEach(function (c) {   // the served context symbols
       var el = $('tdmIdx' + c.display); if (!el) return;
       var r = S.quotes[c.key];
-      el.title = r ? '' : 'waiting for the ' + c.display + ' stream';
+      el.title = r ? '' : notStreamed(c);
       el.innerHTML = '<span>' + c.display + '</span><b>' + (r && r.spot != null ? num(r.spot) : '—') + '</b>' +
         (r && r.chg_pct != null ? '<em class="' + (r.chg_pct >= 0 ? 'up' : 'dn') + '">' + (r.chg_pct >= 0 ? '+' : '') + num(r.chg_pct) + '%</em>' : '');
     });

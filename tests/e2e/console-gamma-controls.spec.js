@@ -141,6 +141,24 @@ test.describe('ticker / expiry / measure controls', () => {
     expect(await page.evaluate(() => localStorage.getItem('ed_watchlist_v1'))).toBeNull();
   });
 
+  // 2026-10-01 audit: the page put its selected ticker on the board every time the price socket
+  // opened, so a ticker removed from the board came back at the next reload or reconnect.
+  test('a reload or reconnect adds nothing to the board; a selected ticker not on it says so', async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await intercept(page);
+    const sock = await mockPriceSocket(page, [], ['SPY', 'QQQ']);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'AMD'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.wl-row')).toHaveCount(2);
+    await expect(page.locator('#hFeed')).toHaveText('NOT ON THE BOARD');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.wl-row')).toHaveCount(2);
+    expect(sock.ops).toEqual([]);
+    await page.locator('.wl-row .wl-sym', { hasText: 'QQQ' }).click();   // a board ticker: no edit
+    await expect(page.locator('#hSym')).toHaveText('QQQ');
+    expect(sock.ops).toEqual([]);
+  });
+
   test('#9 ONE ticker state: watchlist click, typed entry, Gamma / Chain / Flow and the expiry filter resolve to the same instrument, no prior-symbol request afterwards', async ({ page }) => {
     const reqs = [];
     page.on('request', (r) => { const u = r.url(); if (u.includes('/api/')) reqs.push(u); });

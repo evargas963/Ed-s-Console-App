@@ -11,7 +11,8 @@ No web server sits in this path, so no analytics load can delay a price.
 Protocol (JSON text frames). Every page gets every board ticker; there is no per-page list.
   server  -> {"type": "board", "board": [{key, display}, ...]}       (on connect and on every
                                                                      change of the board)
-  browser -> {"op": "board_add" | "board_remove", "symbol": "SPX"}  (edits the one board)
+  browser -> {"op": "board_add" | "board_remove", "symbol": "SPX"}  (edits the one board; from
+                                                                     this computer only)
   server  -> {"type": "board_edit", op, requested, key, display, error}  (that page's answer:
                                                                      "SPX" is key "$SPX",
                                                                      shown "SPX")
@@ -49,6 +50,12 @@ LIVE_UI_HOST = os.environ.get("ED_LIVE_UI_HOST", "0.0.0.0")  # caps-ok: operator
 LIVE_UI_PORT = int(os.environ.get("ED_LIVE_UI_PORT", "8800"))  # caps-ok: operator port config with its declared default, not market data
 #: feed verdict + row beat cadence (the heartbeat that keeps "live" honest)
 HEARTBEAT_SEC = 1.0
+#: a board edit is accepted only from the console's own page on this computer: a connection from
+#: this computer whose page came from the console (a browser sends its page's origin; any other
+#: page open in the browser could otherwise edit the board through ws://127.0.0.1)
+LOCAL_ADDRESSES = ("127.0.0.1", "::1")
+CONSOLE_PORT = int(os.environ.get("ED_CONSOLE_PORT", "8000"))  # caps-ok: operator port config with its declared default (start_ed_console.bat), not market data
+CONSOLE_ORIGINS = (f"http://127.0.0.1:{CONSOLE_PORT}", f"http://localhost:{CONSOLE_PORT}")
 
 
 class _Client:
@@ -138,9 +145,14 @@ class LiveUiServer:
                 await self._send(c, {"type": "quotes", "rows": rows})
 
     async def _read(self, c: _Client) -> None:
-        """A page's board edits: {"op": "board_add" | "board_remove", "symbol": ...}. The answer
-        goes to that page ({"type": "board_edit", requested, key, error}); the new board to every
-        page (on_board)."""
+        """A page's board edits: {"op": "board_add" | "board_remove", "symbol": ...}, accepted from
+        the console's page on this computer only (CONSOLE_ORIGINS; the socket serves prices to any
+        address the operator opens the page on). The answer goes to that page ({"type":
+        "board_edit", requested, key, error}); the new board to every page (on_board)."""
+        request = getattr(c.ws, "request", None)
+        origin = request.headers.get("Origin") if request is not None else None
+        local = ((getattr(c.ws, "remote_address", None) or ("",))[0] in LOCAL_ADDRESSES
+                 and origin in CONSOLE_ORIGINS)
         async for frame in c.ws:
             try:
                 req = json.loads(frame)
@@ -148,7 +160,12 @@ class LiveUiServer:
                 continue
             if not isinstance(req, dict) or req.get("op") not in ("board_add", "board_remove"):
                 continue
-            key, error = self.edit(req["op"], req.get("symbol"), time.time())
+            if local:
+                key, error = await self.edit(req["op"], req.get("symbol"), time.time())
+            else:
+                key, error = None, ("the board is edited only from the console's page on the "
+                                    "computer running Ed Console (http://127.0.0.1:"
+                                    f"{CONSOLE_PORT}/)")
             c.notes.append({"type": "board_edit", "op": req["op"], "requested": req.get("symbol"),
                             "key": key, "display": display_symbol(key) if key else None,
                             "error": error})

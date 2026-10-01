@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 
 def test_board_validity_is_the_symbols_form_never_a_list_of_names():
     """TICK-04 (2026-09-28 audit): SP, IW and NV were refused by name (and pruned from the board
@@ -46,9 +48,26 @@ def test_the_console_and_the_daemon_hold_one_board(tmp_path):
                                                  ("$SPX", "pinned"), ("$VIX", "panel_auto")])
     d = _daemon_reading(edb.db_path)
     assert d.board == server._board() == ["$SPX", "$VIX", "MU", "SPY"]
-    d.edit_board("board_remove", "MU", 1.0)
+    asyncio.run(d.edit_board("board_remove", "MU", 1.0))
     lmp.record_feed_heartbeat(d.status(), time.time())
     assert server._board() == ["$SPX", "$VIX", "SPY"], "the console carries the change, no restart"
+
+
+def test_a_row_stored_in_another_form_is_its_key_and_is_removed_by_it(tmp_path):
+    """2026-10-01 audit: with the start-up prune gone, a row stored as bare "SPX" would have been
+    streamed as "SPX" and could not be taken off the board (an edit names "$SPX")."""
+    import sqlite3
+
+    from calibration.complete_chain_capture import board_tickers
+    from db import EdDB
+    edb = EdDB(tmp_path / "board.db")
+    with sqlite3.connect(edb.db_path) as conn:
+        conn.executemany("INSERT INTO logging_universe (ticker, category, enrolled_ts_utc, last_seen_ts_utc) "
+                         "VALUES (?, 'user_persisted', 1, 1)", [("SPX",), ("spy",)])
+    d = _daemon_reading(edb.db_path)
+    assert d.board == ["$SPX", "SPY"]
+    asyncio.run(d.edit_board("board_remove", "$SPX", 1.0))
+    assert board_tickers(edb.db_path) == ["SPY"]
 
 
 def test_the_board_is_what_the_table_holds_no_symbol_list_adds_to_it(tmp_path):
