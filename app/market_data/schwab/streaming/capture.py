@@ -487,7 +487,7 @@ async def capture_chains(make_client, stop: asyncio.Event) -> None:
 async def run() -> int:
     """The whole daemon: writer, the two local sockets, and the Schwab connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
-    from app.market_data.schwab.streaming.live_ui import serve_live_ui
+    from app.market_data.schwab.streaming.live_ui import day_minutes, serve_live_ui
     from config import build_config, load_dotenv_file
     from db_authority import canonical_console_db_path
     from schwab_client import build_client_from_token
@@ -502,6 +502,8 @@ async def run() -> int:
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     daemon = Daemon(bus, health, wanted_path())
+    # the day's stored 1-minute bars of its chart symbols, read once, now: the store is history
+    minutes = day_minutes(canonical_console_db_path(), daemon.wanted["CHART_EQUITY"], time.time())
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(capture_chains(make_client, stop)),
@@ -509,7 +511,7 @@ async def run() -> int:
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
                                                  on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, clock=time.time,
-                                               bars_db_path=canonical_console_db_path()))]
+                                               minutes=minutes))]
     try:
         await asyncio.sleep(0)                    # servers subscribe before the first message
         await daemon.run(make_client, stop)

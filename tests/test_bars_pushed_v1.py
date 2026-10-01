@@ -1,7 +1,7 @@
 """The daemon pushes each completed 1-minute bar to the browser (live_ui), as the chart bar it
 makes at every timeframe; the chart's history is /api/bars1m. The two are one producer: the push
 and the route give the same bar for the same minutes, however many of the day's minutes the
-daemon streamed itself and how many it read from the store.
+daemon streamed itself and how many it read from the store at startup.
 
 Before this, the console wrote each bar and pushed `liquidity`, and every chart read
 /api/bars1m again. Real Schwab CHART_EQUITY bars: SPY 2026-09-25
@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
@@ -45,19 +46,28 @@ def _free_port() -> int:
     return port
 
 
-def _pushed(bars_db, streamed, subscribe=("SPY",)):
-    """Run the daemon's browser socket over the store `bars_db`, publish `streamed` on its bus,
-    and return every bar update a browser subscribed to `subscribe` received."""
+#: the instant the daemon (re)started, a stand-in: as Friday's 101st stored minute began
+RESTART = FRIDAY[100]["timestamp"] / 1000.0
+
+
+def _pushed(bars_db, streamed, subscribe=("SPY",), symbols=("SPY",), after_start=None):
+    """Start the daemon's browser socket at RESTART as the daemon does (the day's stored minutes
+    of its CHART_EQUITY `symbols` read from the store `bars_db`, none when it is None), call
+    `after_start()` once it is listening, publish `streamed` on its bus, and return every bar
+    update a browser subscribed to `subscribe` received."""
     from websockets.asyncio.client import connect
 
     async def main():
         port, bus, stop, stats = _free_port(), MessageBus(), asyncio.Event(), {}
-        feed = lambda: {"ts": time.time(), "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
-        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=time.time,
+        feed = lambda: {"ts": RESTART, "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
+        minutes = None if bars_db is None else live_ui.day_minutes(bars_db, symbols, RESTART)
+        task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=lambda: RESTART,
                                                          host="127.0.0.1", port=port, stats=stats,
-                                                         bars_db_path=bars_db))
+                                                         minutes=minutes))
         while not stats.get("listening"):
             await asyncio.sleep(0.01)
+        if after_start is not None:
+            after_start()
         got = []
         try:
             async with connect(f"ws://127.0.0.1:{port}") as ws:
@@ -110,6 +120,38 @@ def test_the_pushed_bar_is_the_routes_bar_at_every_timeframe(monkeypatch, tmp_pa
     assert last["tf"]["D"]["o"] == stored[0]["open"] and last["tf"]["D"]["t"] == stored[0]["timestamp"] / 1000.0
 
 
+def test_the_store_is_read_at_startup_only(monkeypatch, tmp_path):
+    """The database is history: the daemon reads the day's stored minutes of its symbols once,
+    at startup, and never for a live screen. With the database unreadable after startup, a
+    symbol's first bar in session is still pushed, its daily bar holding the stored minutes, and
+    no read is made; a symbol added after startup starts with the minutes Schwab sends it. The
+    daemon used to read the store the first time a symbol had a bar that day, in session.
+    QQQ's bars are SPY's real bars under another symbol, a stand-in."""
+    monkeypatch.setattr(lmp, "_by_ticker", {})
+    db = EdDB(tmp_path / "bars.db", allow_noncanonical=True)
+    monkeypatch.setattr(srv, "get_db", lambda: db)
+    stored, streamed = FRIDAY[:100], FRIDAY[100:110]
+    for b in stored:
+        assert srv._write_streamed_bar(_msg(b)) and srv._write_streamed_bar(_msg(b, sym="QQQ"))
+    reads = []
+
+    def unreadable(*a, **k):
+        reads.append(a)
+        raise sqlite3.OperationalError("unable to open database file")
+
+    got = _pushed(db.db_path, [_msg(b) for b in streamed] + [_msg(b, sym="QQQ") for b in streamed],
+                  subscribe=("SPY", "QQQ"), symbols=("SPY",),
+                  after_start=lambda: monkeypatch.setattr(live_ui.sqlite3, "connect", unreadable))
+    assert reads == []
+    spy = [u for u in got if u["ticker"] == "SPY"]
+    qqq = [u for u in got if u["ticker"] == "QQQ"]
+    assert [u["tf"]["1"]["t"] for u in spy] == [b["timestamp"] / 1000.0 for b in streamed]
+    assert spy[0]["tf"]["D"]["o"] == stored[0]["open"]                # the minutes read at startup
+    assert [u["tf"]["1"]["t"] for u in qqq] == [b["timestamp"] / 1000.0 for b in streamed]
+    assert qqq[-1]["tf"]["D"]["o"] == streamed[0]["open"]             # only what Schwab sent it
+    assert qqq[-1]["tf"]["D"]["t"] == streamed[0]["timestamp"] / 1000.0
+
+
 def test_a_browser_back_from_a_drop_is_told_the_gap_and_sent_only_new_bars(monkeypatch, tmp_path):
     """Live bars are only the ones Schwab sends while the browser is connected. The subscribe after
     a drop carries the last beat's time; the daemon answers with the gap (from that beat, less
@@ -135,8 +177,7 @@ def test_a_browser_back_from_a_drop_is_told_the_gap_and_sent_only_new_bars(monke
         port, bus, stop, stats = _free_port(), MessageBus(), asyncio.Event(), {}
         feed = lambda: {"ts": time.time(), "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
         task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=time.time,
-                                                         host="127.0.0.1", port=port, stats=stats,
-                                                         bars_db_path=db.db_path))
+                                                         host="127.0.0.1", port=port, stats=stats))
         while not stats.get("listening"):
             await asyncio.sleep(0.01)
         try:
@@ -207,12 +248,12 @@ def test_bars_that_arrive_before_the_next_send_are_all_sent_in_order():
             self.sent.append(json.loads(text))
 
     async def main():
-        srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, None, clock=lambda: 0.0)
+        srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: 0.0)
         c = live_ui._Client(_Ws())
         c.symbols = frozenset({"SPY"})
         srv_ui.clients.add(c)
         for b in FRIDAY[10:13]:
-            await srv_ui.on_bar(_msg(b))
+            srv_ui.on_bar(_msg(b))
         pump = asyncio.create_task(srv_ui._pump(c))
         await asyncio.sleep(0.05)
         pump.cancel()

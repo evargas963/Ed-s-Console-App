@@ -6,7 +6,7 @@ whether the feed is alive (the daemon's own heartbeat, applied every HEARTBEAT_S
 pushes the FINISHED displayed row (live_price_rows.price_row -- the one producer) to every
 browser that asked for the symbol, the moment a Schwab message changes it. It keeps each
 symbol's 1-minute bars of the day (Schwab CHART_EQUITY, live_price_rows.minute_bar; the day's
-stored minutes are loaded the first time a symbol's bar arrives) and pushes, for each new bar,
+stored minutes of its symbols are loaded once, at startup) and pushes, for each new bar,
 the chart bar it completes or extends at every chart timeframe (live_price_rows.bar_update).
 
 No web server sits in this path, so no analytics load can delay a price.
@@ -70,21 +70,26 @@ HEARTBEAT_SEC = 1.0
 MAX_SYMBOLS_PER_CLIENT = 200
 
 
-def stored_minutes(db_path: "str | Path", ticker: str, since_ts: float) -> list[dict]:
-    """`ticker`'s stored 1-minute bars (price_bars_1m) starting at or after `since_ts`, oldest
-    first, as chart bars. Read-only."""
-    con = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True, timeout=10)
-    try:
-        rows = con.execute("SELECT bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
-                           "WHERE ticker=? AND bar_start_ts_utc>=? ORDER BY bar_start_ts_utc",
-                           (ticker, since_ts)).fetchall()
-    finally:
-        con.close()
-    return [{"t": t, "o": o, "h": h, "l": lo, "c": c, "v": v} for t, o, h, lo, c, v in rows]
-
-
 def _et_day_start(t: float) -> float:
     return datetime.fromtimestamp(t, ET).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+
+
+def day_minutes(db_path: "str | Path", symbols, now: float) -> dict[str, tuple[float, dict[float, dict]]]:
+    """The minutes the daemon starts with: the stored 1-minute bars (price_bars_1m) of `symbols`
+    on `now`'s ET day, as {symbol: (that day's start, {bar start: chart bar})}. Read once, at the
+    daemon's startup (capture.run), read-only; a read that fails stops the startup."""
+    day, keys = _et_day_start(now), sorted({ticker_storage_key(s) for s in symbols})
+    con = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True, timeout=10)
+    try:
+        rows = con.execute("SELECT ticker, bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
+                           f"WHERE ticker IN ({','.join('?' * len(keys))}) AND bar_start_ts_utc>=?",
+                           (*keys, day)).fetchall()
+    finally:
+        con.close()
+    out: dict[str, tuple[float, dict[float, dict]]] = {}
+    for tk, t, o, h, lo, c, v in rows:
+        out.setdefault(tk, (day, {}))[1][t] = {"t": t, "o": o, "h": h, "l": lo, "c": c, "v": v}
+    return out
 
 
 class _Client:
@@ -101,18 +106,17 @@ class _Client:
 
 
 class LiveUiServer:
-    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict, bars_db_path: "str | Path | None" = None,
-                 *, clock) -> None:
+    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict, *, clock,
+                 minutes: "dict[str, tuple[float, dict[float, dict]]] | None" = None) -> None:
         self.bus = bus
         self.heartbeat_fn = heartbeat_fn
         #: the entry point's clock (epoch seconds): every row, beat and gap is judged at its time
         self.clock = clock
         self.stats = stats
         self.clients: set[_Client] = set()
-        #: the stored bars' database, read once per symbol and day; None: streamed bars only
-        self.bars_db_path = bars_db_path
-        #: each symbol's minutes of one ET day: (that day's start, {bar start: bar})
-        self.minutes: dict[str, tuple[float, dict[float, dict]]] = {}
+        #: each symbol's minutes of one ET day: (that day's start, {bar start: bar}); the day's
+        #: stored minutes as loaded at startup, then only the ones Schwab streams
+        self.minutes: dict[str, tuple[float, dict[float, dict]]] = minutes if minutes is not None else {}
         stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
                      beat_send_failures=0, listening=None, last_send_ms=None, bars_sent=0)
 
@@ -138,10 +142,10 @@ class LiveUiServer:
                 c.pending.add(ticker)
                 c.wake.set()
 
-    async def on_bar(self, msg) -> None:
+    def on_bar(self, msg) -> None:
         """One daemon bar message -> the symbol's minutes of the day -> the chart bar it makes at
-        every timeframe, for every browser watching the symbol. The day's stored minutes are
-        read (off the event loop) the first time the symbol has a bar that day."""
+        every timeframe, for every browser watching the symbol. A symbol's first bar of a day it
+        holds no minutes for starts that day's minutes: no stored minute is read here."""
         if not isinstance(msg, dict) or not msg.get("symbol"):
             return
         bar = live_price_rows.minute_bar(msg)
@@ -150,9 +154,7 @@ class LiveUiServer:
         sym, day = ticker_storage_key(msg["symbol"]), _et_day_start(bar["t"])
         held = self.minutes.get(sym)
         if held is None or held[0] != day:
-            stored = [] if self.bars_db_path is None else await asyncio.to_thread(
-                stored_minutes, self.bars_db_path, sym, day)
-            held = self.minutes[sym] = (day, {m["t"]: m for m in stored})
+            held = self.minutes[sym] = (day, {})
         held[1][bar["t"]] = bar
         update = live_price_rows.bar_update(sym, sorted(held[1].values(), key=lambda m: m["t"]), bar,
                                             float(msg["ts_recv"]))
@@ -284,16 +286,17 @@ class LiveUiServer:
 
 async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn, clock,
                         host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
-                        stats: "dict | None" = None, bars_db_path: "str | Path | None" = None) -> None:
+                        stats: "dict | None" = None,
+                        minutes: "dict[str, tuple[float, dict[float, dict]]] | None" = None) -> None:
     """Run until `stop` is set. Start it BEFORE the Schwab connection so the plane sees the
     first messages (Schwab sends each field once, then only changes). `clock`: the entry
-    point's clock (epoch seconds), the time every row, beat and gap is judged at.
-    `bars_db_path`: the database of the stored 1-minute bars (the day's earlier minutes of a
-    symbol)."""
+    point's clock (epoch seconds), the time every row, beat and gap is judged at. `minutes`:
+    the day's stored minutes the daemon read at startup (day_minutes); after them a symbol's
+    minutes are only the ones Schwab streams. Nothing here reads the database."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(bus, heartbeat_fn, stats, bars_db_path, clock=clock)
+    srv = LiveUiServer(bus, heartbeat_fn, stats, clock=clock, minutes=minutes)
     for topic, msg in list(bus.snapshot().items()):         # whatever arrived before we started
         if topic.startswith("quote."):
             srv.ingest(msg)
@@ -310,7 +313,7 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn, c
         while True:
             _topic, msg = await bsub.get()
             try:
-                await srv.on_bar(msg)
+                srv.on_bar(msg)
             except Exception as e:  # noqa: BLE001 -- counted; one bad bar never ends the feed
                 srv.stats["ingest_failures"] += 1
                 log.warning("live ui bar %s: %s: %s", msg.get("symbol") if isinstance(msg, dict) else None,
