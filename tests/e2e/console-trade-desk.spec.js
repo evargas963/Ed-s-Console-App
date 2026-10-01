@@ -298,6 +298,28 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Desk: session levels whose bars stopped read STALE with the served reason', async ({ page }) => {
+    // /api/levels served the session levels with no stale rule; it now judges them by their bars
+    // (server.price_level_staleness) and the LEVELS pill prints the served state and reason
+    const why = 'no 1-minute bar has arrived since the one ending Tue 09/29 09:30 AM CT; the bar ending Tue 09/29 09:32 AM CT is due';
+    const errs = watchErrors(page);
+    await page.route('**/api/**', (route) => {
+      const url = route.request().url();
+      let body = { available: false };
+      if (url.includes('/api/levels')) body = Object.assign({}, LEVELS, { degraded: [],
+        session_levels: { state: 'stale', stale: true, reason: why } });
+      else if (url.includes('/api/bars1m')) body = BARS;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const pill = page.locator('#tdmTrust .tdm-pill', { hasText: 'LEVELS' });
+    await expect(pill).toContainText('STALE');
+    await expect(pill).toHaveAttribute('title', why);
+    await expect(pill).toHaveClass(/warn/);
+    expect(errs).toEqual([]);
+  });
+
   test('Desk: the served queue, counts, book side and imbalance, and flip relation', async ({ page }) => {
     const errs = watchErrors(page);
     await intercept(page);

@@ -21,7 +21,7 @@ from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
 from time_et import (ET, now_et, RTH_OPEN_MINS, ct_label, is_capturable_session, et_date_str_from_ts_utc,
-                     et_minute_total_from_ts_utc,
+                     et_minute_total_from_ts_utc, is_collect_window_bar_end_ts_utc,
                      is_trading_day_et, session_close_mins_for_et_date, session_label, settlement_et)
 from math_exposure_core import bucket_metric, merge_exposure_books
 
@@ -3942,8 +3942,36 @@ def canonical_price_level_snapshot(ticker: str):
     return _MATERIALIZED_SNAPSHOTS.get((ticker_storage_key(_required_ticker(ticker)), now_et().date().isoformat()))
 
 
+#: the states of a session price level at serving time (price_level_staleness)
+PRICE_LEVEL_CURRENT, PRICE_LEVEL_STALE = "current", "stale"
+PRICE_LEVEL_SESSION_ENDED, PRICE_LEVEL_PRIOR_SESSION = "session_ended", "prior_session"
+
+
+def price_level_staleness(semantic_scope: str, newest_bar_end: "float | None", now: float) -> dict:
+    """Whether a session price level is current at `now` (epoch seconds), judged by its source:
+    the 1-minute bars it was built from, whose newest ends at `newest_bar_end`. A prior session's
+    level is a complete fact. Inside the collect window a bar is due one minute after its minute
+    ends (Schwab sends it about 2.7 s after): a level whose newest bar ends before the minute
+    preceding the last completed one is stale, with the reason. After the window the levels are
+    the session's, as of their newest bar. {state, stale, reason}."""
+    if semantic_scope == "prior_rth_session":
+        return {"state": PRICE_LEVEL_PRIOR_SESSION, "stale": False,
+                "reason": "the prior session's level: its session is complete"}
+    last_end = now // 60 * 60                      # the end of the last completed minute
+    if not is_collect_window_bar_end_ts_utc(last_end):
+        return {"state": PRICE_LEVEL_SESSION_ENDED, "stale": False,
+                "reason": "the session's bars have ended" + (
+                    "" if newest_bar_end is None else f"; as of the bar ending {ct_label(newest_bar_end)}")}
+    if newest_bar_end is None or newest_bar_end < last_end - 60:
+        return {"state": PRICE_LEVEL_STALE, "stale": True, "reason": (
+            "no 1-minute bar has arrived " + ("today" if newest_bar_end is None
+                                              else f"since the one ending {ct_label(newest_bar_end)}")
+            + f"; the bar ending {ct_label(last_end - 60)} is due")}
+    return {"state": PRICE_LEVEL_CURRENT, "stale": False, "reason": ""}
+
+
 #: why a route serves no price levels for a ticker
-NO_PRICE_LEVELS_REASON = ("no price levels published for this ticker today yet (they are built from its "
+NO_PRICE_LEVELS_REASON =("no price levels published for this ticker today yet (they are built from its "
                           "1-minute bars on each new bar and at the console's start)")
 
 PRIOR_CLOSE_SOURCE = "Schwab LEVELONE_EQUITIES CLOSE_PRICE (the daemon's price row)"
@@ -3989,9 +4017,7 @@ def get_levels(ticker: str = Query(...),
             "as_of_ts_utc": as_of,
             "age_sec": None if as_of is None else round(served_ts - as_of, 1),
             "stale_after_sec": None,
-            "stale": None,
-            "reason": f"carried from canonical snapshot generation {snap.generation}; a session "
-                      "price level has no staleness rule, its age is shown",
+            **price_level_staleness(value.semantic_scope, as_of, served_ts),
         }
         levels.append(row)
     # the prior close, carried from the daemon's price row (Schwab's CLOSE_PRICE)
@@ -4062,6 +4088,9 @@ def get_levels(ticker: str = Query(...),
         # how old the snapshot's newest bar is at this serving
         "snapshot_age_sec": (round(served_ts - snap.as_of_ts_utc, 1)
                              if snap is not None and snap.as_of_ts_utc is not None else None),
+        # today's session levels judged by their bars at this serving (price_level_staleness)
+        "session_levels": (price_level_staleness("session_rth", snap.as_of_ts_utc, served_ts)
+                           if snap is not None else None),
         "bar_source": snap.bar_source if snap is not None else None,
         "levels": levels,
         "by_distance": by_distance,

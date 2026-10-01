@@ -83,6 +83,38 @@ def test_the_vwap_curve_is_stamped_with_its_chart_bars_own_time(monkeypatch, pin
     assert [p[0] for p in hourly] == [_at(9, 15), _at(10, 0)]
 
 
+def test_the_session_levels_go_stale_when_their_bars_stop(monkeypatch, pin_clock):
+    """/api/levels served the session price levels with `stale: None` whatever their bars' age, so
+    they read current after the bars stopped. Judged by their source: the newest bar they were
+    built from ends 10:30 ET; at 10:30:30 that is the last completed minute (current); at 10:33 the
+    bar ending 10:32 is due and none has come since 10:30 (stale, with the reason); at 16:20 the
+    session's bars have ended (a past observation as of 10:30, not stale)."""
+    import time as _time
+    pin_clock(2026, 9, 29, 10, 31)
+    monkeypatch.setattr(lve, "_MATERIALIZED_SNAPSHOTS", {})
+    monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda tk: BARS)
+    monkeypatch.setattr(srv, "resolve_spot", lambda tk: (None, "none", None))
+    srv._publish_price_levels("SPY")
+
+    def served(h, m, s=0):
+        at = datetime(2026, 9, 29, h, m, s, tzinfo=ET).timestamp()
+        monkeypatch.setattr(_time, "time", lambda: at)
+        return json.loads(srv.get_levels(ticker="SPY", tf="1").body)
+
+    session_rows = lambda body: [r["staleness"] for r in body["levels"] if r.get("semantic_scope") == "session_rth"]  # noqa: E731
+    live = served(10, 30, 30)
+    assert live["session_levels"] == {"state": srv.PRICE_LEVEL_CURRENT, "stale": False, "reason": ""}
+    assert session_rows(live) and all(s["stale"] is False for s in session_rows(live))
+    stopped = served(10, 33)
+    assert stopped["session_levels"]["state"] == srv.PRICE_LEVEL_STALE and stopped["session_levels"]["stale"] is True
+    assert stopped["session_levels"]["reason"] == (
+        "no 1-minute bar has arrived since the one ending Tue 09/29 09:30 AM CT; "
+        "the bar ending Tue 09/29 09:32 AM CT is due")
+    assert all(s["stale"] is True for s in session_rows(stopped))
+    ended = served(16, 20)
+    assert ended["session_levels"]["state"] == srv.PRICE_LEVEL_SESSION_ENDED and ended["session_levels"]["stale"] is False
+
+
 def test_a_rolled_up_bar_cut_by_the_limit_is_not_served(monkeypatch, tmp_path):
     """`limit` counts 1-minute bars. The newest 20 of these end 10:29, so they start 10:10: the
     10:00 fifteen-minute bar was served built from 10:10-10:14 alone, with 10:10's open as its

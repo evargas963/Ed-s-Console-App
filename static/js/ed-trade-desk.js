@@ -104,8 +104,10 @@
     if (!sorted.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No priced levels', '', 0, [], null);
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
-    // how old the session levels' newest bar is, served
-    if (levelsD.snapshot_age_sec != null) rows.push(['Session levels', window.EdShell.fmtAge(levelsD.snapshot_age_sec) + ' old']);
+    // how old the session levels' newest bar is, and STALE with the served reason when their bars stopped
+    var sl = levelsD.session_levels;
+    if (sl && sl.stale) rows.push(['Session levels', 'STALE — ' + sl.reason]);
+    else if (levelsD.snapshot_age_sec != null) rows.push(['Session levels', window.EdShell.fmtAge(levelsD.snapshot_age_sec) + ' old']);
     var heroVal = (nearest.label || nearest.id) + ' ' + num(nearest.price);
     var heroUnit = nearest.side === 'AT' ? 'at spot' : nearest.side === 'ABOVE' ? num(nearest.distance) + ' above spot'
       : nearest.side === 'BELOW' ? num(-nearest.distance) + ' below spot' : '';

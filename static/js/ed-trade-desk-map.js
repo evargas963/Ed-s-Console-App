@@ -540,8 +540,10 @@
       : pill('BOOK', m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
     var degraded = ((L && L.degraded) || []).map(function (d) { return d.family + ': ' + d.reason; }).join('; ');
+    var sl = L && L.session_levels, slStale = !!(sl && sl.stale);   // served: the bars stopped, and why
     h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad')
-      : pill('LEVELS', age(L.snapshot_age_sec), degraded ? 'warn' : 'ok', degraded || 'age of the newest bar the session levels are built from');
+      : pill('LEVELS', slStale ? 'STALE' : age(L.snapshot_age_sec), slStale || degraded ? 'warn' : 'ok',
+          [slStale ? sl.reason : '', degraded].filter(Boolean).join('; ') || 'age of the newest bar the session levels are built from');
     h += t === undefined ? pill('GAMMA', '…', '') : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) || 'terrain request failed') : pill('GAMMA', t.levels_stale ? 'STALE ' + age(t.levels_age_sec) : age(t.levels_age_sec), t.levels_stale ? 'warn' : 'ok', t.levels_stale_reason || '');
     host.innerHTML = h;
   }

@@ -491,9 +491,13 @@ Each value's definition.
 **6.6 Session price levels and zones.** §3.4 Price levels.
 - *Producer and owner:* `_publish_price_levels` → `liquidity_value_engine.build_price_level_snapshot`,
   one snapshot per bar generation.
-- *Current when:* its newest bar is the last completed minute and the bar feed is live.
-- *Otherwise:* each level absent with its reason; a window not yet ended is absent with the time
-  it ends.
+- *Current when:* in the collect window, its newest bar ends no earlier than the minute before
+  the last completed one (a bar is due one minute after its minute ends;
+  `server.price_level_staleness`, at the route's instant). A prior session's level is a complete
+  fact; after the window the session's levels are served as of their newest bar.
+- *Otherwise:* stale, with the reason (`/api/levels` `session_levels` and each session level's
+  `staleness`; the Trade Desk prints STALE and the reason); each level with no value absent with
+  its reason; a window not yet ended is absent with the time it ends.
 - *Consumers:* `/api/levels`, `/api/liquidity-snapshot` (the zones), the charts' levels.
 - *Tests:* `test_phase2a_price_level_snapshot_v1`, `test_zones_v1`,
   `test_levels_single_producer_v1`.
