@@ -6,15 +6,16 @@ from __future__ import annotations
 
 import sqlite3
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import server
 from math_exposure_core import compute_exposures_by_strike
 from math_exposure_core import exposure_books
-from server import get_options_gamma_surface, project_gamma_surface, ticker_storage_key
+from server import options_gamma_surface, project_gamma_surface, ticker_storage_key
 from terrain_engine import compute_terrain
 from terrain_engine import _per_strike_rows
-from time_et import ET, is_trading_day_et, now_et
+from tests.feed_live_helper import SESSION_NOW
+from time_et import ET
 
 #: the instant the hand-built contracts below are valued at: three days before they expire
 _NOW = datetime(2026, 9, 15, 12, 0, tzinfo=ET)
@@ -153,26 +154,22 @@ def _clear_gamma_surface(tk):
 
 def test_a_banked_chain_from_any_session_is_never_served_in_place_of_the_live_surface(tmp_path, monkeypatch):
     """With no live surface the answer is unavailable: a banked wide chain, even today's, never
-    stands in for it."""
+    stands in for it. Judged at SESSION_NOW (Friday 2026-09-25 12:00 ET, in session); the
+    banked chains are that day's and the trading day before's."""
     import json
 
-    for name, et_date in (("ZZTESTSTALE", None), ("ZZTESTTODAY", now_et().strftime("%Y-%m-%d"))):
+    for name, et_date in (("ZZTESTSTALE", "2026-09-24"), ("ZZTESTTODAY", "2026-09-25")):
         tk = ticker_storage_key(name)
         _clear_gamma_surface(tk)
         db = tmp_path / f"{name}.db"
-        if et_date is None:
-            d = now_et() - timedelta(days=1)
-            while not is_trading_day_et(d.strftime("%Y-%m-%d")):
-                d -= timedelta(days=1)
-            et_date = d.strftime("%Y-%m-%d")
-        _seed_morning_full(db, name, et_date, time.time() - 1800.0, 100.0)
+        _seed_morning_full(db, name, et_date, SESSION_NOW - 1800.0, 100.0)
         monkeypatch.setattr(server, "get_db", lambda db=db: _FakeDB(db))
         try:
-            body = json.loads(get_options_gamma_surface(ticker=name).body)
+            body = json.loads(options_gamma_surface(name, SESSION_NOW).body)
             assert body["available"] is False and body["source"] == "unavailable", name
             assert body["live"] is False
             # the reason is the ticker's refresh state, never a banked source
-            assert body["reason"] == server.terrain_staleness(None, tk, time.time())["levels_stale_reason"], name
+            assert body["reason"] == server.terrain_staleness(None, tk, SESSION_NOW)["levels_stale_reason"], name
         finally:
             _clear_gamma_surface(tk)
 

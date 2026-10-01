@@ -3100,8 +3100,13 @@ def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> d
 
 @app.get("/api/options/gamma-surface")
 def get_options_gamma_surface(ticker: str = Query(...)):
+    """The gamma surface of `ticker` now (`options_gamma_surface`)."""
+    return options_gamma_surface(ticker, time.time())
+
+
+def options_gamma_surface(ticker: str, now: float) -> JSONResponse:
     """Strike × expiration signed GEX$ surface (cell = net_gex_1pct) through the ONE canonical
-    faucet compute_exposures_by_strike.
+    faucet compute_exposures_by_strike, judged at `now`.
 
     ONE source: the LIVE surface _terrain_refresh_one (the single levels producer) projects each
     cycle from the live wide chain + live spot it already fetches (source=terrain_live_cache).
@@ -3109,7 +3114,6 @@ def get_options_gamma_surface(ticker: str = Query(...)):
     Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale visibly."""
 
     tk = ticker_storage_key(_required_ticker(ticker))
-    now = time.time()
     _price_stored_chain_when_closed(tk, now)
 
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
