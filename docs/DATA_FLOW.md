@@ -103,8 +103,13 @@ Schwab sends is taken as sent (rule 2), never computed.
   last streamed trade, named in `by_distance_ref`; distance, near-spot and side stay live-only,
   and the session's volume profile (`volume_profile`: each RTH 1-minute bar's volume spread
   evenly over its range, one bin per tick, flagged inside or outside the value area).
-- **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per board or
-  viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule. Both download
+- **Option chain.** Schwab REST → console memory, downloaded by the console for every board and
+  viewed ticker each cycle of the levels loop (`_terrain_loop`; a cycle is the whole sweep, at
+  least 5 s apart), at any hour: pre-market, in session, after hours, weekends; no time of day
+  removes a ticker from a cycle. A viewed ticker's streamed tick also fetches its chain at once
+  when none is kept. Owner: `_terrain_loop` (started with the console, `start_terrain_loop`);
+  when it stops, every ticker's levels go stale with that reason (`terrain_staleness`).
+  Separately the daemon stores the full chain on the §4.2 schedule. Both download
   it through `schwab_client.fetch_full_chain`, the one place a chain enters, so every consumer
   (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
   the captures) reads the Greeks it sets. The Greeks (gamma, delta, theta, vega, rho,
@@ -117,16 +122,18 @@ Schwab sends is taken as sent (rule 2), never computed.
   (`QUOTES_BATCH_MAX`; 400 were refused, the URL's length) and replaces each contract's Greeks
   with its quote's, as sent; the console's quotes requests take the chain gate
   (`_gated_safe_get_quotes`: its slots, priority, and its breaker, which a 429 degrades). A
-  contract whose quote does not come back has no Greeks (None, logged with the count), never the
+  quotes batch Schwab refuses fails the whole chain with its status and reason, as a missing
+  chain part does, so the levels keep their last good publication, stale with that reason, and
+  no further batch is asked. A contract missing from an answered batch has no Greeks (None, logged with the count), never the
   chain's: its leg's exposure and its strike's net read absent (a leg's sum is known only when
   every contract on it with open interest above 0 sent the Greek: `bucket_metric`). Open
   interest stays the chain's. Chain captures stored before 2026-10-01 carry the chain's rounded
-  Greeks; the startup and closed-market load prices them until newer captures exist. The request
+  Greeks; the startup load prices them until newer captures exist. The request
   budget is unmeasured (`ACTIVE_PROGRAM.md` QUOTES-BUDGET).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
   chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
-  a new chain arrived) → the browser reads `/api/terrain` and four other slice routes. Not stored; at startup and after the close they are computed from the
-  newest chain capture, on the levels loop's thread while the console already serves the
+  a new chain arrived) → the browser reads `/api/terrain` and four other slice routes. Not stored; at startup they are computed from the
+  newest chain capture until the loop's first fetch of the ticker replaces them, on the levels loop's thread while the console already serves the
   page (each ticker's levels appear as they are priced). The values read from the stored captures (forces: ΔOI, DEX and
   charm by side; the prior day's per-strike rows) are computed by the same producer only when the
   ticker's newest capture or its chain's day changes; `/api/forces` and `/api/terrain/strikes`
@@ -145,10 +152,9 @@ Schwab sends is taken as sent (rule 2), never computed.
   and which are priced at startup (tested for a board and an off-board ticker in
   `tests/test_gamma_surface_freshness_v1.py`; other values are not tested that way). A viewed
   ticker (a page has it open: its `/api/changes` connection, on any workspace; the one viewing
-  signal) is refreshed each cycle, and its heatmap reads "warming"
-  from that refresh state (the session, a hold, a deliberate skip), whether or not levels exist
-  yet. On a closed market every route prices the ticker's newest stored capture; a ticker with
-  none shows "market closed; no chain capture of this ticker yet" on every route.
+  signal) is refreshed each cycle, and its heatmap reads "warming" unless the ticker is held
+  (quarantined), whether or not levels exist yet. Levels older than two delivered cycles are
+  stale with the reason (held, the last failure, or not reached), whatever the hour.
   Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`), never
   called live; the live price is the daemon's price row. With no live price the next publication
   has no levels, with its reason.
@@ -170,9 +176,11 @@ Schwab sends is taken as sent (rule 2), never computed.
   liquidity pull and replenishment are not produced (open; `ACTIVE_PROGRAM.md` DESK-GAPS).
 - **Market session.** From the market calendar → pushed on `/api/changes` when the page connects
   and every 5 s with no other change. One calendar (`time_et`: holidays, 13:00 early closes,
-  `session_label`, `session_close_mins_for_et_date`) decides every session window: the order-flow
-  session reset, the prior-day, overnight, VWAP and value-area windows, and the default option
-  contract's expiry cutoff. A day with no session has an empty window.
+  `session_label`, `session_close_mins_for_et_date`) decides every session window: the prior-day,
+  overnight, VWAP and value-area windows, and the default option contract's expiry cutoff. A day
+  with no session has an empty window. No session window starts, stops or clears a fetch, a
+  refresh or a streamed value: the order-flow state keeps every book, top-of-book field, print
+  and streamed Greek through the open.
 - **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the stream
   handler (equity quote and book) and the bar writer mark a ticker's kind changed; each page
   connection gets at most one push a second. The console down: the page's session label reads
