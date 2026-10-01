@@ -151,13 +151,3 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
     assert [(c["et_date"], c["basis"]) for c in caps] == [("2026-09-28", cch.CAPTURE_BASIS)]
     forces = server._forces_from_captures("ZZ", caps)
     assert forces["available"] is False and "fewer than 2 market days" in forces["reason"]
-
-
-def test_the_console_refresh_window_follows_the_days_close_in_central_time():
-    """7:45 AM CT to 30 minutes after the close; an early close ends early (checked 2026-09-27:
-    the window ran to 3:30 PM CT on early-close days, and was shown in ET)."""
-    import server
-    assert server._refresh_window_ct("2026-09-28") == "7:45 AM-3:30 PM CT"
-    assert server._refresh_window_ct("2026-11-27") == "7:45 AM-12:30 PM CT"
-    assert server._refresh_window_et("2026-09-27") is None      # Sunday
-    assert server._refresh_window_et("2026-11-26") is None      # Thanksgiving

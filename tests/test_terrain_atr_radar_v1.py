@@ -98,7 +98,6 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     """Seam: _terrain_refresh_one must call the logger AFTER a successful cache
     write; a TypeError inside the logger must not turn ok: into error:."""
     import server as srv
-    monkeypatch.setattr(srv, "_is_loggable_session", lambda: True)   # an open-market test
     # its own cache: the SPY levels it publishes (a non-numeric flip below) must not reach
     # another test's /api/levels (they did, 2026-09-28, under CI's file-to-worker split)
     monkeypatch.setattr(srv, "_terrain_cache", {})

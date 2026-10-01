@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 import server
-from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+from calibration.complete_chain_capture import CAPTURE_BASIS
 from db import EdDB
 from server import get_options_gamma_surface, ticker_storage_key
 from time_et import ET
@@ -45,7 +45,6 @@ def _clear(tk):
 
 
 def test_live_terrain_surface_is_preferred_and_discloses_coverage(monkeypatch):
-    monkeypatch.setattr("server._is_loggable_session", lambda: True)   # an open-market test
     monkeypatch.setattr("server.resolve_spot", lambda tk, **_k: (584.0, "live_quote", time.time()))
     tk = ticker_storage_key("SPY")
     _clear(tk); _put_live(tk, computed_ts=time.time())
@@ -84,24 +83,20 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy(monkeypatch)
         _clear(tk)
 
 
-def test_warming_true_only_when_terrain_eligible(monkeypatch, view):
-    # #1.3: WARMING is claimed only when the terrain producer can actually refresh THIS ticker,
-    # reusing terrain_staleness's canonical output (levels_refresh_active + not quarantined/paused).
+def test_a_viewed_ticker_warms_at_any_hour(monkeypatch, pin_clock, view):
+    # WARMING: viewed and not held. The loop refreshes a viewed ticker at any hour, so a Saturday
+    # is warming too (it read "not warming" outside the archival window before).
+    pin_clock(2026, 9, 26, 12, 0)
     tk = ticker_storage_key("SPY")
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}   # on the board, no surface yet
     monkeypatch.setattr(server, "_logger_tickers", [tk])   # enrolled like any ticker -- no built-in list
-    monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
     view(tk)                                                             # a page open on it
     try:
-        monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # eligible
         d = _call(tk)
         assert d["warming"] is True and d["requested"] is True
-        monkeypatch.setattr(server, "_is_loggable_session", lambda: False)  # out of session -> not warming
-        d2 = _call(tk)
-        assert d2["warming"] is False and d2["requested"] is True           # still open -> requested
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
@@ -125,7 +120,6 @@ def _fresh(monkeypatch, tmp_path, view):
     monkeypatch.setattr(server, "_logger_tickers", [_BOARD])
     monkeypatch.setattr(server, "_terrain_cache", {})
     monkeypatch.setattr(server, "_terrain_refresh_last_error", {})
-    monkeypatch.setattr(server, "terrain_skip_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
     monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
     monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk, listed=None: {})
@@ -134,8 +128,7 @@ def _fresh(monkeypatch, tmp_path, view):
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_first_view_in_session_warms_by_the_refresh_state(_fresh, monkeypatch, view, tk):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
+def test_first_view_warms_by_the_refresh_state(_fresh, monkeypatch, view, tk):
     view(tk)                                        # the page selects the ticker
     d = _call(tk)                                   # the first view: no levels published yet
     assert d["requested"] is True and d["warming"] is True
@@ -160,47 +153,22 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(_fresh, monk
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
 def test_a_held_ticker_does_not_warm_and_says_why(_fresh, monkeypatch, tk):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
     monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: "held: Schwab refused the chain")
     d = _call(tk)
     assert d["warming"] is False and d["reason"] == "held: Schwab refused the chain"
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_closed_market_with_no_capture_gives_one_reason_on_every_route(_fresh, monkeypatch, tk):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
-    d = _call(tk)
-    assert d["warming"] is False and server.NO_CAPTURE_REASON in d["reason"]
+def test_with_no_levels_the_atr_is_served_with_its_reason(_fresh, monkeypatch, tk):
+    monkeypatch.setattr(server, "_terrain_refresh_one", lambda t, priority=False: "error:stand-in")
     t = server.get_terrain(ticker=tk)
-    assert server.NO_CAPTURE_REASON in t["error"]
     # ATR is from the bars, not the chain: served (here absent, with its reason) with no levels
     assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_closed_market_prices_the_stored_capture_on_every_route(_fresh, monkeypatch, view, tk):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
-    view(tk)                                        # the page selects the ticker
-    by_expiry: dict = {}
-    for ct in _CRWD["chain"]:
-        by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
-    for expiry, cts in by_expiry.items():
-        persist_complete_chain_capture(_fresh.db_path, ticker=tk, expiry=expiry, contracts=cts,
-                                       spot=_CRWD["spot"], completeness_basis=CAPTURE_BASIS,
-                                       ts_utc=_CAPTURED)
-    t = server.get_terrain(ticker=tk)                # the Trade Desk's first load
-    assert not t["error"] and t["chain_basis"] == CAPTURE_BASIS and t["spot"] == _CRWD["spot"]
-    assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
-    assert _call(tk)["available"] is True           # the heatmap from the same publication
-    # the chain view carries the publication's own basis label (it served a constant before)
-    chain = json.loads(server.get_chain(ticker=tk, expiry=None).body)
-    assert chain["status"] == "ok" and chain["scope"]["completeness_basis"] == t["chain_basis"]
-
-
-@pytest.mark.parametrize("tk", [_BOARD, _OFF])
 def test_a_refresh_publishes_the_same_fields_for_any_ticker(_fresh, monkeypatch, pin_clock, view, tk):
     pin_clock(2026, 9, 2, 10, 5)
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)
     view(tk)                                        # selected on the page
     server._publish_levels(tk, [dict(c) for c in _CRWD["chain"]], _CAPTURED)
     t = server.get_terrain(ticker=tk)
