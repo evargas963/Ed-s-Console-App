@@ -19,7 +19,8 @@
 
   // the chart's timeframes and 1m rows per timeframe (ed-tv-chart, every chart's)
   var TFS = window.EdTvChart.TFS, FULL_LIMIT = window.EdTvChart.BARS_LIMIT;
-  // the Order Flow card's bars: the newest hour of 1-minute bars
+  // the Order Flow card's bars as the desk opens: the newest hour of 1-minute bars, asked of
+  // /api/bars1m (each later push carries the daemon's hour whole: live_price_rows.RECENT_1M_BARS)
   var FLOW_BARS = 60;
   // The ONE global timeframe also sets how far back the queue and the event markers reach.
   // the event window and its words are the server's (/api/desk/events window_label), for this timeframe
@@ -198,10 +199,10 @@
   function takeBar(b) {
     if (!S.chart || b.ticker !== st().key || S.barsAnswered !== S.gen) return;
     var had = S.bars.length;
-    S.bars = window.EdTvChart.withPushedBar({ bars: S.bars }, b, S.tf).bars;
-    if (had) S.chart.updateTail([b.tf[S.tf]], b.last_bar && b.last_bar.label);
-    else { S.chart.setBars(S.bars, S.tf, shown(), b.last_bar && b.last_bar.label); $('tdmChartEmpty').hidden = true; paintChartOverlays(); }
-    if (S.flowBars) { S.flowBars = window.EdTvChart.withPushedBar({ bars: S.flowBars }, b, '1').bars.slice(-FLOW_BARS); paintCards(); }
+    S.chart.pushBar(b.tf[S.tf], b.last_bar && b.last_bar.label);   // the chart library places it
+    S.bars = S.chart.bars();
+    if (!had) { $('tdmChartEmpty').hidden = true; paintChartOverlays(); }
+    S.flowBars = b.recent_1m; paintCards();                        // the daemon's served hour, whole
   }
   function loadSlow() { return Promise.all([loadPerTf(), loadPerTicker()]); }
   // the timeframe's levels (VWAP per chart bar) and event window, each drawn as it arrives

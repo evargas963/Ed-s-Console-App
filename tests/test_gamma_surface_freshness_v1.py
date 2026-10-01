@@ -250,6 +250,22 @@ def test_surface_session_identity_is_stamped_at_the_routes_instant(monkeypatch):
     assert [e["expired"] for e in later["expirations"]] == [True, True] and later["front_expiry"] is None
 
 
+def test_the_levels_badge_state_is_served_one_field(monkeypatch):
+    """The page decided "live" from two served flags (`levels_stale === false && !closed`). The
+    server serves the one state a badge prints (`levels_state`): live, stale with its reason, or
+    closed with the time the levels are as of. Stated instant: 2026-09-30 15:00 ET."""
+    now = datetime(2026, 9, 30, 15, 0, tzinfo=ET).timestamp()
+    tk = ticker_storage_key("SPY")
+    monkeypatch.setattr(server, "_is_loggable_session", lambda t: True)
+    assert server.terrain_staleness(now - 5, tk, now)["levels_state"] == server.LEVELS_LIVE
+    stale = server.terrain_staleness(now - 3600, tk, now)
+    assert stale["levels_state"] == server.LEVELS_STALE and stale["levels_stale_reason"]
+    assert server.terrain_staleness(None, tk, now)["levels_state"] == server.LEVELS_STALE
+    monkeypatch.setattr(server, "_is_loggable_session", lambda t: False)
+    closed = server.terrain_staleness(now - 3600, tk, now)
+    assert closed["levels_state"] == server.LEVELS_CLOSED and closed["levels_as_of"]
+
+
 def test_an_expiry_whose_settlement_is_unknown_is_its_own_state_never_expired_or_front():
     """Unknown settlement is not expiry: the column is served not expired, with its reason, and is
     never chosen as the front expiry. It was labelled expired and dropped from the front choice.

@@ -701,15 +701,20 @@
       closeLine.applyOptions({ visible: line, color: P.accent });
     }
 
+    // a served bar as the chart keeps it, and as its candle (the served bar rides on the candle,
+    // so the series the library holds is the chart's list of bars)
+    function servedBar(b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; }
+    function candle(b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c, customValues: b }; }
+
     var api = {
       chart: chart, candles: candles, palette: function () { return P; },
       // Replace the whole series (ticker or timeframe change).
       setBars: function (bars, tf, symbol, lastBarLabel) {
         var changed = tf !== S.tf || symbol !== S.symbol;
         S.lastBarLabel = lastBarLabel || null;
-        S.bars = (bars || []).map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; });
+        S.bars = (bars || []).map(servedBar);
         S.tf = tf; S.symbol = symbol;
-        candles.setData(S.bars.map(function (b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }; }));
+        candles.setData(S.bars.map(candle));
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
         api.setVolume(S.bars);
         if (changed) {
@@ -723,25 +728,20 @@
         }
         paintLegend(); paintPin(); draw.redraw(); syncButtons(); paintLevels(true);
       },
-      // The newest bars only -- series.update keeps the operator's zoom/scroll exactly where it is.
-      updateTail: function (tail, lastBarLabel) {
-        if (!S.bars.length || !tail || !tail.length) return;
-        if (lastBarLabel) S.lastBarLabel = lastBarLabel;
-        var lastT = S.bars[S.bars.length - 1].t;
-        tail.forEach(function (b0) {
-          var b = { t: Number(b0.t), o: b0.o, h: b0.h, l: b0.l, c: b0.c, v: b0.v, chg: b0.chg, chg_pct: b0.chg_pct };
-          if (b.t < lastT) {
-            var i = barIndexAt(b.t); if (i < 0 || S.bars[i].t !== b.t) return;
-            if (i < S.bars.length - 2) return;
-            S.bars[i] = b;
-          } else if (b.t === lastT) S.bars[S.bars.length - 1] = b;
-          else { S.bars.push(b); lastT = b.t; }
-          candles.update({ time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }, b.t < S.bars[S.bars.length - 1].t);
-          closeLine.update({ time: b.t, value: b.c }, b.t < S.bars[S.bars.length - 1].t);
-          volume.update(api._volPoint(b), b.t < S.bars[S.bars.length - 1].t);
-        });
+      // One bar the daemon pushed (`ed:bar`: detail.tf[tf]) and its served last-bar label. The
+      // library places it (series.update: the bar at the same time is replaced, a newer one is
+      // added) and the chart's bars are read back from the series; the operator's zoom/scroll stays.
+      pushBar: function (bar, lastBarLabel) {
+        var b = servedBar(bar);
+        candles.update(candle(b));
+        closeLine.update({ time: b.t, value: b.c });
+        volume.update(api._volPoint(b));
+        S.bars = candles.data().map(function (d) { return d.customValues; });
+        S.lastBarLabel = lastBarLabel || null;
         paintLegend(); if (S.pinned) paintPin(); syncButtons(); scheduleLevels();
       },
+      // the bars the chart holds, as served and pushed
+      bars: function () { return S.bars.slice(); },
       _volPoint: function (b) {
         return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.7) };
       },
@@ -865,19 +865,6 @@
     { id: '30', lbl: '30m' }, { id: '60', lbl: '1h' }, { id: 'D', lbl: 'D' }];
   var BARS_LIMIT = { '1': 1200, '3': 2000, '5': 3000, '15': 6000, '30': 9000, '60': 12000, 'D': 12000 };
 
-  // A chart's served bars (/api/bars1m's answer) with the bar the daemon pushed for its
-  // timeframe (`ed:bar`: detail.tf[tf], detail.last_bar): the bar at the same time is replaced, a
-  // later one is added; an earlier one leaves the list as it is. Places served bars; computes none.
-  function withPushedBar(served, update, tf) {
-    var bar = served && update && update.tf && update.tf[tf];
-    if (!bar) return served;
-    var bars = (served.bars || []).slice(), n = bars.length;
-    if (n && bars[n - 1].t === bar.t) bars[n - 1] = bar;
-    else if (!n || bars[n - 1].t < bar.t) bars.push(bar);
-    else return served;
-    return Object.assign({}, served, { bars: bars, last_bar: update.last_bar });
-  }
-
   function lsGet(k, d) { try { var v = window.localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
   function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* per-viewer only */ } }
 
@@ -921,6 +908,5 @@
     return { setTf: setTf, slot: el.querySelector('.tvc-slot') };
   }
 
-  window.EdTvChart = { create: create, toolbar: toolbar, TFS: TFS, BARS_LIMIT: BARS_LIMIT, alpha: alpha,
-    withPushedBar: withPushedBar };
+  window.EdTvChart = { create: create, toolbar: toolbar, TFS: TFS, BARS_LIMIT: BARS_LIMIT, alpha: alpha };
 })();

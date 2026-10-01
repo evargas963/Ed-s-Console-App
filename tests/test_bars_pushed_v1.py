@@ -118,6 +118,10 @@ def test_the_pushed_bar_is_the_routes_bar_at_every_timeframe(monkeypatch, tmp_pa
         assert last["last_bar"] == route["last_bar"]
     # the daily bar holds the minutes the daemon read from the store as well as its own
     assert last["tf"]["D"]["o"] == stored[0]["open"] and last["tf"]["D"]["t"] == stored[0]["timestamp"] / 1000.0
+    # the newest hour of 1-minute bars the push carries whole is the route's same hour (the Trade
+    # Desk's Order Flow card shows it as served; the page kept and cut its own window)
+    hour = json.loads(srv.get_bars1m(ticker="SPY", tf="1", limit=live_price_rows.RECENT_1M_BARS).body)["bars"]
+    assert last["recent_1m"] == hour and len(hour) == live_price_rows.RECENT_1M_BARS
 
 
 def test_the_store_is_read_at_startup_only(monkeypatch, tmp_path):

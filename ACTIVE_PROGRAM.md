@@ -122,8 +122,8 @@ the old code.
 - P-09 an absent `live` reads live; first-of and "undefined" reasons; stale cells drawn as normal values; a column-0 default; every error relabelled "no console serving". `tests/e2e/console-gamma-heatmap.spec.js` asserts the cells drawn as normal values (a cell whose legs are unavailable, a partial cell, and a `gex: [null]` cell marked live): its expectations are corrected with the fix.
 - P-10 six or more page formatters for dollars and volume with different precision.
 - P-12 Strike Detail matches contracts by tolerance, substitutes the put for the call, uses a UTC date and reads the raw contracts (a -999 prints).
-- P-13 Key Levels: a fallback age formatter and a page-computed live badge.
-- P-14 the chart drops old tail revisions and markers with no bar uncounted, colours a missing change as up, and picks the levels shown.
+- P-13 Key Levels: a fallback age formatter.
+- P-14 the chart drops markers with no bar uncounted, colours a missing change as up, and picks the levels shown.
 - P-16 Trade Desk ages, dates and the VIX percent are formatted or computed on the page; PD value-area picked by id.
 - P-18 Trade Desk labels first-of, a sign flipped on the page, `/1e6`, and strike-to-wall matching on the page.
 - P-19 a second and third ACK validator in `ed-stream.js`.

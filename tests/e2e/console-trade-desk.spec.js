@@ -49,8 +49,8 @@ const LIQ = { ticker: 'SPY', zones: [{ zone_low: 772, zone_high: 773, zone_type:
   spot_location: { inside: null, above: 0, below: 1 },
   summary: { value_state: 'shifted_higher', value_state_reason: null, vwap_relation: null, vwap_relation_reason: 'no value area today' },
   absent: [{ input: 'PDC', reason: 'CLOSE_PRICE is not streaming live' }], levels_as_of: 'Fri 09/25 03:00 PM CT',
-  option_levels: { levels_source: 'wide_chain_loop', levels_stale: false, levels_age_sec: 43, levels_stale_reason: '' } };
-const STRIKES = { ticker: 'SPY', spot: SPOT, spot_strike: 771, today_source: 'terrain_live_cache', levels_stale: false,
+  option_levels: { levels_source: 'wide_chain_loop', levels_state: 'live', levels_stale: false, levels_age_sec: 43, levels_stale_reason: '' } };
+const STRIKES = { ticker: 'SPY', spot: SPOT, spot_strike: 771, today_source: 'terrain_live_cache', levels_state: 'live', levels_stale: false,
   today: { all: [[770, 500000, 1000], [771, 900000, 5000], [772, -200000, 3000]] }, prior: { all: [[770, 400000, 800], [771, 700000, 2000], [772, -100000, 900]] },
   migration: { all: { compared: true, drift: 'UP', grew: [771, 770], shrank: [772], busiest: [771, 772], busiest_vs_walls: 'INSIDE_WALLS',
     volume_total: 9000, rows: [[770, 500000, 400000, 100000], [771, 900000, 700000, 200000], [772, -200000, -100000, -100000]] } } };
@@ -175,7 +175,7 @@ test('the liquidity map says when the option levels in its zones are stale, or a
   const errs = watchErrors(page);
   await intercept(page);
   const why = 'levels are 5045s old; the refresh loop is running but has not reached this ticker in two of its cycles (65s each)';
-  let option = { levels_source: 'wide_chain_loop', levels_stale: true, levels_age_sec: 5045, levels_stale_reason: why };
+  let option = { levels_source: 'wide_chain_loop', levels_state: 'stale', levels_stale: true, levels_age_sec: 5045, levels_stale_reason: why };
   await page.route('**/api/liquidity-snapshot**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
     body: JSON.stringify(Object.assign({}, LIQ, { absent: [], option_levels: option })) }));
   await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'liquidity'); localStorage.setItem('ed_sub', 'map'); } catch (e) {} });
@@ -184,7 +184,7 @@ test('the liquidity map says when the option levels in its zones are stale, or a
   await expect(zones.locator('.liqm-inputs .asof.stale')).toHaveText('option levels · 84m · STALE');
   await expect(zones.locator('.liqm-absent')).toHaveText('option levels: ' + why);
   await expect(zones.locator('.liqm-inputs')).toContainText('bars as of ' + LIQ.levels_as_of);   // the bars keep their own time
-  option = { levels_source: 'wide_chain_loop', levels_stale: false, levels_age_sec: 60000, levels_stale_reason: '', levels_market_closed: true, levels_as_of: 'Fri 09/25 03:15 PM CT' };
+  option = { levels_source: 'wide_chain_loop', levels_state: 'closed', levels_stale: false, levels_age_sec: 60000, levels_stale_reason: '', levels_market_closed: true, levels_as_of: 'Fri 09/25 03:15 PM CT' };
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(zones.locator('.liqm-inputs .asof.ref')).toHaveText('option levels as of Fri 09/25 03:15 PM CT');
   await expect(zones.locator('.liqm-absent')).toHaveCount(0);
@@ -471,12 +471,16 @@ test.describe('Trade Desk renders served values', () => {
       const tf = {};
       window_tfs.forEach((id) => { tf[id] = { t: t, o: 770, h: 772.5, l: 769, c: c.close, v: 1500, chg: c.close - 770, chg_pct: 0.1 }; });
       tf['1'] = { t: last, o: c.close, h: c.close, l: c.close, c: c.close, v: 10, chg: 0, chg_pct: 0 };
-      return { ticker: 'SPY', ts_recv: last + 62.7, last_bar: { t: last, label: 'Fri 09/25 ' + c.label }, tf: tf };
+      // the daemon's newest hour of 1-minute bars (live_price_rows.RECENT_1M_BARS), served whole
+      const recent = [{ t: last - 60, o: 770, h: 771, l: 769.5, c: 770.5, v: 20, chg: 0.5, chg_pct: 0.06 }, tf['1']];
+      return { ticker: 'SPY', ts_recv: last + 62.7, last_bar: { t: last, label: 'Fri 09/25 ' + c.label }, tf: tf, recent_1m: recent };
     };
     const window_tfs = ['3', '5', '15', '30', '60', 'D'];
     daemon.send({ type: 'bars', bars: [pushed(1790343000, 1790343720, { close: 772.4, label: '09:22 AM CT' })] });
     await expect(legend).toContainText('Last completed bar Fri 09/25 09:22 AM CT');
     expect((await chartState()).bars).toBe(BARS.bars.length);          // the same bar, extended
+    // the Order Flow card draws the pushed hour as served: no window kept on the page
+    await expect(page.locator('#tdmCardFlow .tdm-plot svg rect')).toHaveCount(2);
     daemon.send({ type: 'bars', bars: [pushed(1790344800, 1790344800, { close: 772.1, label: '09:40 AM CT' })] });
     await expect.poll(async () => (await chartState()).bars).toBe(BARS.bars.length + 1);
     await expect(legend).toContainText('Last completed bar Fri 09/25 09:40 AM CT');

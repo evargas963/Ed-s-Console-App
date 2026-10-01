@@ -468,20 +468,24 @@
   }
 
   // The one badge for every /api/chain panel (Chain, Strike Detail), from what the route serves:
-  // the chain's scope, its age, and whether it is current (levels_stale and its reason, market
-  // closed and the time the chain is as of). Live only when the server says the chain is
-  // current in an open market; a complete chain is not thereby a live one.
+  // the chain's scope, its age, and its one served state (levels_state: live, stale with its
+  // reason, or closed with the time the chain is as of). The badge prints that state; a complete
+  // chain is not thereby a live one.
   function chainBadge(d, prefix) {
     var sc = d && d.scope, kind = sc && sc.kind;
     if (!kind) return '';
     if (kind === 'unavailable') {
       return asOfBadge({ label: prefix + 'unavailable', stale: true, reason: 'chain scope: unavailable' + (sc.reason ? ' — ' + sc.reason : '') });
     }
-    var closed = d.levels_market_closed === true;
-    return asOfBadge({
-      label: prefix + (kind === 'complete_single_expiry' ? 'complete (ALL)' : kind) + (closed && d.levels_as_of ? ' · as of ' + d.levels_as_of : ''),
-      ageSec: closed ? null : d.levels_age_sec, stale: d.levels_stale === true, reason: d.levels_stale_reason,
-      ref: closed, live: d.levels_stale === false && !closed, title: 'chain scope: ' + kind });
+    return asOfBadge(Object.assign(levelsBadgeState(d), {
+      label: prefix + (kind === 'complete_single_expiry' ? 'complete (ALL)' : kind) + (d.levels_state === 'closed' && d.levels_as_of ? ' · as of ' + d.levels_as_of : ''),
+      title: 'chain scope: ' + kind }));
+  }
+  // a served levels_state (server.terrain_staleness) as the as-of badge prints it
+  function levelsBadgeState(d) {
+    var s = d.levels_state;
+    return { ageSec: s === 'closed' ? null : d.levels_age_sec, reason: d.levels_stale_reason,
+      stale: s === 'stale', ref: s === 'closed', live: s === 'live' };
   }
 
   // ================= watchlist (editable foundation, localStorage) =================
@@ -1085,7 +1089,7 @@
     setTheme: applyTheme, viewId: VIEW_ID,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
-    scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, chainBadge: chainBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
+    scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, chainBadge: chainBadge, levelsBadgeState: levelsBadgeState, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     setSubview: setSubview };

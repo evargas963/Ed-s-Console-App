@@ -113,8 +113,10 @@ opens no second streaming socket).
   after startup starts with the minutes Schwab sends it; owner `capture.run` through
   `live_ui.day_minutes`; if that read fails the daemon exits and `start_capture_daemon.bat`
   starts it again) → for each new minute, the chart bar it makes at every
-  timeframe (`live_price_rows.bar_update`) → the browsers subscribed to the symbol, whose charts
-  draw it (`ed:bar`) with no read. A live bar is only one Schwab sends while the browser is
+  timeframe (`live_price_rows.bar_update`), with the symbol's newest hour of 1-minute bars
+  whole (`recent_1m`, the Trade Desk Order Flow card's) → the browsers subscribed to the symbol,
+  whose charts draw it (`ed:bar`) with no read: the chart library places it (`series.update`:
+  the bar at the same time is replaced, a newer one is added), so no page code compares bar times. A live bar is only one Schwab sends while the browser is
   connected: a browser that dropped and reconnected is resent none of the bars the daemon
   received meanwhile; the daemon names the gap instead (`live_ui.bars_gap`: from the last beat
   the page had, less two beats, to the reconnect, with its note), each chart shows the note

@@ -1397,6 +1397,12 @@ def _schwab_token_creation_ts() -> float | None:
         return None
 
 
+#: the levels' one served state (terrain_staleness `levels_state`): current in an open market,
+#: stale (with `levels_stale_reason`), or the market is closed and they are as of `levels_as_of`.
+#: A badge prints it; no page combines the flags into it.
+LEVELS_LIVE, LEVELS_STALE, LEVELS_CLOSED = "live", "stale", "closed"
+
+
 def terrain_staleness(computed_ts_utc: float | None, ticker: str | None, now: float) -> dict:
     """Whether the levels are current at `now` (epoch seconds), and WHY NOT when they are not (RC-91).
 
@@ -1440,13 +1446,15 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None, now: fl
         ticker_storage_key(ticker) if ticker else "", "") or "")
     hard_quarantine = bool(q_entry.get("hard"))
     if not refreshing and computed_ts_utc is not None:
-        return {"levels_stale": False, "levels_age_sec": round(now - float(computed_ts_utc), 1),
+        return {"levels_state": LEVELS_CLOSED,
+                "levels_stale": False, "levels_age_sec": round(now - float(computed_ts_utc), 1),
                 "levels_refresh_active": False, "levels_market_closed": True,
                 "levels_as_of": ct_label(computed_ts_utc),
                 "levels_stale_reason": "", "levels_paused_on_purpose": False,
                 "levels_quarantined": False, "levels_failing": False}
     if computed_ts_utc is None:
-        return {"levels_stale": True, "levels_age_sec": None, "levels_refresh_active": refreshing,
+        return {"levels_state": LEVELS_STALE,
+                "levels_stale": True, "levels_age_sec": None, "levels_refresh_active": refreshing,
                 "levels_stale_reason": (
                     quarantined or skipped
                     or (f"no terrain snapshot has been computed yet — {failure}" if failure
@@ -1475,7 +1483,8 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None, now: fl
                   if not refreshing else
                   f"levels are {age:.0f}s old; the refresh loop is running but has not reached "
                   f"this ticker in two of its cycles ({expected:.0f}s each)")
-    return {"levels_stale": stale, "levels_age_sec": age,
+    return {"levels_state": LEVELS_STALE if stale else LEVELS_LIVE,
+            "levels_stale": stale, "levels_age_sec": age,
             "levels_refresh_active": refreshing, "levels_stale_reason": reason,
             # RC-146: a stale panel must be able to distinguish "paused by design, resumes at a
             # known time" from "should be refreshing and is not". They are different operator

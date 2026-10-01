@@ -14,12 +14,13 @@ const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, spot
   cells: [{ strike: 98, gex: [-90000] }, { strike: 100, gex: [958600] }, { strike: 102, gex: [-264500] }] };
 const TERRAIN = { ticker: 'SPY', spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98,
   absolute_gamma_strike: 100, net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP',
-  levels_stale: false, levels_age_sec: 21 };
+  levels_state: 'live', levels_stale: false, levels_age_sec: 21 };
 const STRIKES = { ticker: 'SPY', spot: 100, spot_strike: 100, spot_source: 'schwab_quote_last',
-  today_source: 'terrain_live_cache', today_age_sec: 21, levels_stale: false, levels_age_sec: 21,
+  today_source: 'terrain_live_cache', today_age_sec: 21, levels_state: 'live', levels_stale: false, levels_age_sec: 21,
   today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] } };
 const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 100.0].map(function (c, i) {
-  return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }) };
+  return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }),
+  last_bar: { t: 1757000180, label: 'Thu 09/04 10:36 AM CT' } };
 const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
   scope: { kind: 'complete_single_expiry', requested_expiry: '2026-09-11', completeness_basis: 'strike_range=ALL' },
   contracts: [
@@ -78,12 +79,27 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab', { hasText: 'Chart' }).click();
     const asof = page.locator('#chartBody .chart-asof');
-    await expect(asof).toContainText('price 1m');       // bars clock
+    await expect(asof).toContainText('price 1m · ' + BARS.last_bar.label);   // bars clock, as served
     await expect(asof).toContainText('GEX terrain live'); // levels clock (separate)
   });
 
+  test('the Key Levels line prints the terrain\'s one served state', async ({ page }) => {
+    await routes()(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klSrc')).toContainText('terrain · live');
+  });
+
+  test('after the close the Key Levels line and the GEX-by-strike badge carry the time the levels are as of', async ({ page }) => {
+    const closed = { levels_state: 'closed', levels_stale: false, levels_market_closed: true, levels_as_of: 'Fri 09/25 03:15 PM CT' };
+    await routes({ terrain: Object.assign({}, TERRAIN, closed), strikes: Object.assign({}, STRIKES, closed) })(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klSrc')).toContainText('as of Fri 09/25 03:15 PM CT');
+    await expect(page.locator('#gbsSrc .asof')).toHaveClass(/ref/);
+    await expect(page.locator('#gbsSrc .asof')).not.toHaveClass(/live/);   // a closed market's levels never read live
+  });
+
   test('a stale terrain generation makes the GEX-by-strike badge read stale', async ({ page }) => {
-    const staleStrikes = Object.assign({}, STRIKES, { levels_stale: true, levels_age_sec: 900,
+    const staleStrikes = Object.assign({}, STRIKES, { levels_state: 'stale', levels_stale: true, levels_age_sec: 900,
       today_age_sec: 900, levels_stale_reason: 'levels loop paused' });
     await routes({ strikes: staleStrikes })(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });

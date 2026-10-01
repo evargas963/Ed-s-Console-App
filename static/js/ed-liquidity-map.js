@@ -70,11 +70,11 @@
       return '<div class="sm liqm-absent">' + esc(a.input) + ': ' + esc(a.reason) + '</div>'; }).join('');
     // the zones' two inputs, each as served: the newest bar's time, and the option levels'
     // age, or the time they are as of after the close, or STALE with the reason
-    var o = snap && snap.option_levels, closed = !!o && o.levels_market_closed === true, badge = window.EdShell.asOfBadge;
+    // the option levels' one served state (levels_state), printed
+    var o = snap && snap.option_levels, badge = window.EdShell.asOfBadge;
     var inputs = (snap && snap.levels_as_of ? badge({ label: 'bars as of ' + snap.levels_as_of }) : '') +
-      (o ? ' ' + badge({ label: 'option levels' + (closed && o.levels_as_of ? ' as of ' + o.levels_as_of : ''),
-        ageSec: closed ? null : o.levels_age_sec, stale: o.levels_stale === true, reason: o.levels_stale_reason,
-        ref: closed, live: o.levels_stale === false && !closed }) : '');
+      (o ? ' ' + badge(Object.assign(window.EdShell.levelsBadgeState(o), {
+        label: 'option levels' + (o.levels_state === 'closed' && o.levels_as_of ? ' as of ' + o.levels_as_of : '') })) : '');
     h.querySelector('.liqm-zones').innerHTML = '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored, /api/liquidity-snapshot) ' +
       '<span class="liqm-inputs">' + inputs + '</span></div>' +
       (o && o.levels_stale ? '<div class="sm liqm-absent">option levels: ' + esc(o.levels_stale_reason) + '</div>' : '') +
@@ -113,8 +113,9 @@
     // a completed Schwab minute, pushed by the daemon: the chart bar at the map's timeframe
     window.addEventListener('ed:bar', function (e) {
       var b = e.detail, h = host();
-      if (!b || b.ticker !== st().key || _last.barsFor !== ticker() + '|' + _tf || !h || !isMap()) return;
-      _last.bars = window.EdTvChart.withPushedBar(_last.bars, b, _tf);
+      if (!b || b.ticker !== st().key || _last.barsFor !== ticker() + '|' + _tf || !h || !isMap() || !_chart) return;
+      _chart.pushBar(b.tf[_tf], b.last_bar && b.last_bar.label);   // the chart library places it
+      _last.bars = Object.assign({}, _last.bars, { bars: _chart.bars(), last_bar: b.last_bar });
       render(h, ticker(), _last.snap, _last.levels, _last.bars);
     });
     window.addEventListener('ed:quote_tick', function (e) {

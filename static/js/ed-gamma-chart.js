@@ -12,7 +12,6 @@
 
   var usd = window.EdGamma.formatUsd;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
-  function ctTime(sec) { try { return new Date(sec * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'America/Chicago' }); } catch (e) { return ''; } }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function isChart() {
     var s = st();
@@ -114,17 +113,16 @@
     empty.hidden = !!(bars.length || win.length);
     empty.textContent = empty.hidden ? '' : (barsD || sd ? 'no bars / per-strike ' + prof.name + ' for this symbol'
       : 'the bars and per-strike ' + prof.name + ' requests failed');
-    paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot);
+    paintHead(host.querySelector('.gchart-head'), win, prof, sd, spot);
   }
-  function paintHead(el, bars, win, prof, sd, spot) {
+  function paintHead(el, win, prof, sd, spot) {
     var srows = prof.rows, n = prof.name;
     var note = window.EdShell && window.EdShell.scopeNote ? window.EdShell.scopeNote({ total: srows.length, shown: win.length }) : '';
     var ab = (window.EdShell && window.EdShell.asOfBadge) || function () { return ''; };
-    var lastT = bars.length ? bars[bars.length - 1].t : null;
+    var last = _last.bars && _last.bars.last_bar;   // served: the newest completed minute and its label
     var src = sd && sd.today_source;
-    var asof = (lastT ? '<span class="asof">price ' + tfLabel() + ' · ' + ctTime(lastT) + ' CT</span>' : '') +
-      (src ? ab({ label: n + ' ' + (src === 'terrain_live_cache' ? 'terrain live' : src), ageSec: sd.today_age_sec,
-        stale: !!sd.levels_stale, reason: sd.levels_stale_reason, live: src === 'terrain_live_cache' && sd.levels_stale === false }) : '');
+    var asof = (last ? '<span class="asof">price ' + tfLabel() + ' · ' + esc(last.label) + '</span>' : '') +
+      (src ? ab(Object.assign(window.EdShell.levelsBadgeState(sd), { label: n + ' ' + (src === 'terrain_live_cache' ? 'terrain live' : src) })) : '');
     var top = srows.filter(function (r) { return r[0] === prof.max_abs_strike; })[0];   // served: the largest-magnitude strike
     var shown = top ? (prof.signed ? usd(top[1]) : Number(top[1]).toLocaleString('en-US') + ' contracts') : '';
     el.innerHTML = note + (asof ? '<div class="chart-asof">' + asof + '</div>' : '') +
@@ -165,9 +163,10 @@
   // a completed Schwab minute, pushed by the daemon: the chart bar at this chart's timeframe
   window.addEventListener('ed:bar', function (ev) {
     var b = ev.detail;
-    if (!b || b.ticker !== st().key || !_last.bars || !_last.bars.bars || _last.bars.tf !== _tf) return;
-    _last.bars = window.EdTvChart.withPushedBar(_last.bars, b, _tf);
-    if (isChart() && _chart) render();
+    if (!b || b.ticker !== st().key || !_chart || !_last.bars || !_last.bars.bars || _last.bars.tf !== _tf) return;
+    _chart.pushBar(b.tf[_tf], b.last_bar && b.last_bar.label);   // the chart library places it
+    _last.bars = Object.assign({}, _last.bars, { bars: _chart.bars(), last_bar: b.last_bar });
+    if (isChart()) render();
   });
   document.addEventListener('ed:strike', function () { if (_chart && isChart()) _chart.selectProfile(st().selStrike == null ? null : Number(st().selStrike)); });
   bindModes();
