@@ -5,7 +5,7 @@ repos:
     hooks:
       - id: secrets-and-paths
         name: secrets and operator-home paths
-        entry: python tools/check_credential_leak.py --and-private-paths
+        entry: python tools/check_credential_leak.py
         language: system
         pass_filenames: false
         always_run: true

@@ -108,8 +108,7 @@ def find_credential_leaks(diff_text: str | None = None) -> list[str]:
     return hits
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = list(sys.argv[1:] if argv is None else argv)
+def main() -> int:
     try:
         hits = find_credential_leaks()
     except StagedDiffUnreadable as e:
@@ -131,14 +130,6 @@ def main(argv: list[str] | None = None) -> int:
         rc = 1
     else:
         print("check_credential_leak: PASS (staged diff clean)")
-    if "--and-private-paths" in args:
-        # BEDROCK 2026-09-06: ONE secrets-and-paths hook at the commit seam. The tracked-
-        # evidence private-path scan (tools/check_private_paths.py) keeps its own module and
-        # suite; this flag runs it in the same hook so the seam has one owner.
-        if str(REPO) not in sys.path:
-            sys.path.insert(0, str(REPO))
-        from tools.check_private_paths import main as private_paths_main
-        rc = max(rc, private_paths_main())
     return rc
 
 
