@@ -4,8 +4,7 @@
   "scripts": {
     "test:e2e": "node scripts/run-playwright-e2e.mjs",
     "test:all": "npm run test:e2e && node scripts/run-pytest-full.mjs",
-    "test:e2e:install": "playwright install chromium",
-    "test:e2e:verify": "python tests/playwright_ready.py"
+    "test:e2e:install": "playwright install chromium"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1"

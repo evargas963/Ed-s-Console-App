@@ -1,1 +1,1 @@
-# Makes tests/ a package so tests.playwright_ready can be imported (Issue 40/46).
+# Makes tests/ a package so tests.feed_live_helper can be imported.

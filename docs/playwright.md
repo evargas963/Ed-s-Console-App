@@ -29,7 +29,6 @@ use it only for narrow runs you are watching.
 | Command | Purpose |
 |---------|---------|
 | `npm run test:e2e` / `make test-e2e` | Playwright only |
-| `python tests/playwright_ready.py` (`npm run test:e2e:verify`) | Node, npm, `@playwright/test` and Chromium present (`ensure_playwright_ready`; raises, never skips) |
 
 Requirements: Node.js LTS, npm, `npm install` once at the repo root; the browsers are installed by
 `npm run test:e2e`.
