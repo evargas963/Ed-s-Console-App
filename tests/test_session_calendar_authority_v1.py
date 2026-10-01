@@ -1,11 +1,5 @@
-"""F1 S1 seam tests: the unified session/calendar authority (RC-31 / F-8 / F-9).
-
-Drives the REAL time_et functions. Locks the three dimensions (ET weekday,
-holiday/early-close calendar, RTH minutes) into one call, the fail-closed
-uncovered-year rule, DST boundary exactness at the 2026 spring transition,
-and — regression-critical — the measured holiday classes (Memorial Day /
-2026-07-03) that the legacy clock-only filter admitted.
-"""
+"""The session calendar in time_et: holidays, early closes, the fail-closed uncovered year,
+the capturable extended hours and the trading-day test."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -17,65 +11,30 @@ from time_et import (
     RTH_START_MINS,
     is_capturable_session,
     is_trading_day_et,
-    is_tradable_session_ts_utc,
     session_close_mins_for_et_date,
 )
 
 ET = ZoneInfo("America/New_York")
 
 
-def _ts(y, mo, d, h, mi):
-    return datetime(y, mo, d, h, mi, tzinfo=ET).timestamp()
-
-
 def _dt(y, mo, d, h, mi):
     return datetime(y, mo, d, h, mi, tzinfo=ET)
 
 
-def test_normal_weekday_rth_minute_is_tradable():
-    assert is_tradable_session_ts_utc(_ts(2026, 7, 22, 10, 0)) is True
-    assert is_tradable_session_ts_utc(_ts(2026, 7, 22, 9, 29)) is False
-    assert is_tradable_session_ts_utc(_ts(2026, 7, 22, 16, 0)) is False
-
-
 def test_full_holidays_are_closed_including_the_measured_classes():
-    # Memorial Day 2026 — the store holds 3,795 labeled 'rth' rows here (RC-31 F-9).
-    assert is_tradable_session_ts_utc(_ts(2026, 5, 25, 10, 0)) is False
-    # Independence Day observed 2026-07-03 — 912 measured rows.
-    assert is_tradable_session_ts_utc(_ts(2026, 7, 3, 10, 0)) is False
-    assert session_close_mins_for_et_date("2026-05-25") is None
-    assert session_close_mins_for_et_date("2026-07-03") is None
-
-
+    assert session_close_mins_for_et_date("2026-05-25") is None   # Memorial Day
+    assert session_close_mins_for_et_date("2026-07-03") is None   # Independence Day observed
 
 
 def test_early_close_half_day_ends_at_1300_et():
     # Friday after Thanksgiving 2026.
     assert session_close_mins_for_et_date("2026-11-27") == EARLY_CLOSE_MINS
-    assert is_tradable_session_ts_utc(_ts(2026, 11, 27, 12, 59)) is True
-    assert is_tradable_session_ts_utc(_ts(2026, 11, 27, 13, 0)) is False
     # 2025 coverage spot-check.
     assert session_close_mins_for_et_date("2025-11-28") == EARLY_CLOSE_MINS
 
 
-def test_et_weekday_not_utc_weekday_decides():
-    # Sunday 20:30 ET is already Monday in UTC (the F-8 divergence window).
-    assert is_tradable_session_ts_utc(_ts(2026, 7, 19, 20, 30)) is False
-
-
-def test_dst_transition_boundaries_exact_on_both_sides():
-    # EST Friday before / EDT Monday after the 2026-03-08 spring-forward.
-    assert is_tradable_session_ts_utc(_ts(2026, 3, 6, 9, 29)) is False
-    assert is_tradable_session_ts_utc(_ts(2026, 3, 6, 9, 30)) is True
-    assert is_tradable_session_ts_utc(_ts(2026, 3, 9, 9, 29)) is False
-    assert is_tradable_session_ts_utc(_ts(2026, 3, 9, 9, 30)) is True
-    assert is_tradable_session_ts_utc(_ts(2026, 3, 9, 15, 59)) is True
-    assert is_tradable_session_ts_utc(_ts(2026, 3, 9, 16, 0)) is False
-
-
 def test_uncovered_year_fails_closed():
     assert session_close_mins_for_et_date("2029-06-15") is None
-    assert is_tradable_session_ts_utc(_ts(2029, 6, 15, 10, 0)) is False
     assert session_close_mins_for_et_date("garbage") is None
 
 
@@ -94,10 +53,8 @@ def test_normal_day_close_is_the_rth_constant():
     assert RTH_START_MINS == 570 and RTH_END_MINS == 960
 
 
-# ── RC-48: is_capturable_session — the extended-hours capture-write authority ──
-# Distinct from is_tradable_session_ts_utc (RTH 09:30-16:00): capturable spans
-# [04:00, 20:00) ET so pre-market and after-hours ARE persisted; overnight,
-# weekends, and holidays are NOT (no signal, excluded from training, read by none).
+# ── is_capturable_session: capturable spans [04:00, 20:00) ET so pre-market and after-hours
+# are persisted; overnight, weekends and holidays are not.
 
 
 def test_capturable_extended_hours_weekday_boundaries():

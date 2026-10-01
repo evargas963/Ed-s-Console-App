@@ -100,14 +100,7 @@ def is_collect_window_bar_end_ts_utc(ts_utc: float) -> bool:
 
 
 
-# ── F1 session authority (RC-31 / F-8 / F-9) ─────────────────────────────────
-# ONE function answers "is this instant a tradable RTH minute": ET weekday AND
-# holiday/early-close calendar AND RTH minutes. The legacy pair
-# (is_rth_ts_utc + a SQL weekday clause) was only correct when callers composed
-# BOTH — is_rth_ts_utc alone admits Saturday 10:00 ET and full-holiday
-# afternoons (measured 2026-07-23: 3,795 labeled 'rth' rows on Memorial Day,
-# 912 on 2026-07-03). New F1 consumers must call is_tradable_session_ts_utc.
-
+# ── Session calendar ─────────────────────────────────────────────────────────
 # NYSE/Nasdaq full-closure dates (ET calendar dates). Covered years only —
 # dates outside coverage FAIL CLOSED (excluded, never guessed).
 US_EQUITY_CALENDAR_YEARS: frozenset[int] = frozenset({2025, 2026, 2027, 2028})
@@ -179,8 +172,8 @@ def is_trading_day_et(et_date: str) -> bool:
     Weekday AND not a full holiday AND inside a covered calendar year (uncovered years fail
     closed). Use this to exclude weekend/holiday rows from ANY measurement: a market-closed
     row has frozen spot and stale IV, so including it drags every statistic toward "nothing
-    moved". Timestamp-level callers use is_tradable_session_ts_utc (RTH minutes) or
-    is_capturable_session (extended hours) instead.
+    moved". Instant-level callers use session_label or is_capturable_session (extended
+    hours) instead.
     """
     s = str(et_date)[:10]
     try:
@@ -275,20 +268,3 @@ def time_to_expiry_years(expiry_et_date: str, now: "datetime | None" = None, *,
     if t <= 0.0:
         return None  # at/after settlement — no greeks for an expired contract (fail closed)
     return max(t, MIN_TIME_TO_EXPIRY_YEARS)
-
-
-def is_tradable_session_ts_utc(ts_utc: float) -> bool:
-    """True iff ts_utc is an ET-weekday RTH minute of an actual trading session.
-
-    Checks all three dimensions in one place so a caller cannot forget one:
-    ET weekday (not UTC weekday — Sunday 20:30 ET is Monday in UTC), the
-    holiday/early-close calendar, and the 09:30 <= t < close ET minute window.
-    """
-    h, m, wd = et_clock_from_ts_utc(ts_utc)
-    if wd >= 5:
-        return False
-    close = session_close_mins_for_et_date(et_date_str_from_ts_utc(ts_utc))
-    if close is None:
-        return False
-    mins = h * 60 + m
-    return RTH_START_MINS <= mins < close

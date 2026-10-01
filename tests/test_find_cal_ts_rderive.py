@@ -1,13 +1,10 @@
-"""FIND-CAL-TS-RDERIVE — et_clock_from_ts_utc authority and training RTH filter."""
+"""et_clock_from_ts_utc reads the ET wall clock on both sides of DST."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-
-from time_et import (
-    et_clock_from_ts_utc,
-)
+from time_et import et_clock_from_ts_utc
 
 
 def test_et_clock_from_ts_utc_dst_summer_vs_winter():

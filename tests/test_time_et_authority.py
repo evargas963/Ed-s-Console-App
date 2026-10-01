@@ -4,32 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from time_et import ET, et_clock_from_ts_utc, now_et
-
-
-def test_now_et_uses_america_new_york_zone():
-    dt = now_et()
-    assert dt.tzinfo is not None
-    assert str(dt.tzinfo) in ("America/New_York", "America/New_York EST", "America/New_York EDT")
-    assert dt.utcoffset() is not None
-
-
-def test_et_clock_from_ts_utc_matches_now_et_zone():
-    dt = now_et()
-    h, m, wd = et_clock_from_ts_utc(dt.timestamp())
-    assert h == dt.hour
-    assert m == dt.minute
-    assert wd == dt.weekday()
-
-
-def test_dst_offset_differs_summer_vs_winter():
-    winter = datetime(2026, 1, 15, 12, 0, tzinfo=ET)
-    summer = datetime(2026, 7, 15, 12, 0, tzinfo=ET)
-    assert winter.utcoffset() != summer.utcoffset()
-    assert winter.utcoffset().total_seconds() == -5 * 3600
-    assert summer.utcoffset().total_seconds() == -4 * 3600
-
-
+from time_et import ET
 
 
 def test_time_to_expiry_years_uses_timestamp_elapsed_not_civil_timedelta():
