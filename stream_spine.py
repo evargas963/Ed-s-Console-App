@@ -99,9 +99,6 @@ CREATE TABLE IF NOT EXISTS stream_feed_status (
 CREATE INDEX IF NOT EXISTS idx_sfs_ts ON stream_feed_status(ts);
 """
 
-#: Most equities the console asks the daemon to stream on LEVELONE_EQUITIES (ranked by the
-#: console: the active ticker, then the market context, then the watchlist, then the board).
-EQUITY_SYMBOLS_MAX_HELD = 150
 #: Most option contracts on LEVELONE_OPTIONS (measured 2026-09-23: 510-1,080 contracts on the
 #: one socket caused 4-9 socket deaths an hour; 200 held clean).
 OPTION_CONTRACTS_MAX_HELD = 200

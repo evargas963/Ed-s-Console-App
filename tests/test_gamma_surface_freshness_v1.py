@@ -82,16 +82,21 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy(monkeypatch)
         _clear(tk)
 
 
+def _board_is(board):
+    """The capture daemon's heartbeat, carrying its board (the console's one source for it)."""
+    import live_market_plane as lmp
+    now = time.time()
+    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "board": list(board)}, now)
+
+
 def test_a_viewed_ticker_warms_at_any_hour(monkeypatch, pin_clock, view):
-    # WARMING: viewed and not held. The loop refreshes a viewed ticker at any hour, so a Saturday
-    # is warming too (it read "not warming" outside the archival window before).
+    # WARMING: viewed and on the board. The daemon fetches every board ticker's chain at any hour,
+    # so a Saturday is warming too (it read "not warming" outside the archival window before).
     pin_clock(2026, 9, 26, 12, 0)
     tk = ticker_storage_key("SPY")
     with server._terrain_cache_lock:
         server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}   # on the board, no surface yet
-    monkeypatch.setattr(server, "_logger_tickers", [tk])   # enrolled like any ticker -- no built-in list
-    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
-    monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
+    _board_is([tk])                                                      # enrolled like any ticker -- no built-in list
     view(tk)                                                             # a page open on it
     try:
         d = _call(tk)
@@ -116,22 +121,25 @@ _CAPTURED = datetime(2026, 9, 2, 10, 5, tzinfo=ET).timestamp()   # the CRWD chai
 def _fresh(monkeypatch, tmp_path, view):
     edb = EdDB(tmp_path / "ed.db")
     monkeypatch.setattr(server, "get_db", lambda: edb)
-    monkeypatch.setattr(server, "_logger_tickers", [_BOARD])
+    _board_is([_BOARD])
     monkeypatch.setattr(server, "_terrain_cache", {})
     monkeypatch.setattr(server, "_terrain_refresh_last_error", {})
-    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: None)
-    monkeypatch.setattr(server, "terrain_quarantine_state", lambda t: {})
     monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk, listed=None: {})
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **k: (_CRWD["spot"], "stub", _CAPTURED))
     return edb
 
 
-@pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_first_view_warms_by_the_refresh_state(_fresh, monkeypatch, view, tk):
-    view(tk)                                        # the page selects the ticker
-    d = _call(tk)                                   # the first view: no levels published yet
+def test_first_view_warms_a_board_ticker_and_names_one_off_the_board(_fresh, monkeypatch, view):
+    """Every board ticker's chain is fetched by the daemon; a ticker off the board has none, and
+    says so instead of waiting for one."""
+    view(_BOARD)
+    view(_OFF)                                      # the page selects each ticker
+    d = _call(_BOARD)                               # the first view: no levels published yet
     assert d["requested"] is True and d["warming"] is True
     assert d["reason"] == "no terrain snapshot has been computed yet"
+    d = _call(_OFF)
+    assert d["requested"] is True and d["warming"] is False
+    assert d["reason"] == "ZZQX is not on the board: add it to fetch its chain"
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
@@ -143,23 +151,26 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(_fresh, monk
     viewed, and the ticker stays viewed for as long as the page has it open."""
     import push_changes
     _call(tk)                                       # a route read alone: not viewed
-    assert not server._gamma_surface_wanted(tk) and server._viewed_tickers() == []
+    assert not server._gamma_surface_wanted(tk)
     (client,) = view(tk)                            # /api/changes open on this ticker
-    assert server._gamma_surface_wanted(tk) and server._viewed_tickers() == [tk]
+    assert server._gamma_surface_wanted(tk)
     push_changes.unsubscribe(tk, client)            # the page closed or changed ticker
-    assert not server._gamma_surface_wanted(tk) and server._viewed_tickers() == []
+    assert not server._gamma_surface_wanted(tk)
 
 
-@pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_a_held_ticker_does_not_warm_and_says_why(_fresh, monkeypatch, tk):
-    monkeypatch.setattr(server, "terrain_quarantine_reason", lambda t: "held: Schwab refused the chain")
-    d = _call(tk)
-    assert d["warming"] is False and d["reason"] == "held: Schwab refused the chain"
+def test_a_chain_schwab_refused_says_schwabs_answer(_fresh, view):
+    """The daemon's chain fetch failed: the ticker's reason is Schwab's answer, delivered by the
+    daemon (no console fetch, no hold)."""
+    view(_BOARD)
+    server._on_chain(_BOARD, None, _CAPTURED, "full chain returned HTTP 400")
+    d = _call(_BOARD)
+    assert d["warming"] is True
+    assert d["reason"] == ("no terrain snapshot has been computed yet — "
+                           "chain fetch failed (full chain returned HTTP 400)")
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
 def test_with_no_levels_the_atr_is_served_with_its_reason(_fresh, monkeypatch, tk):
-    monkeypatch.setattr(server, "_terrain_refresh_one", lambda t, priority=False: "error:stand-in")
     t = server.get_terrain(ticker=tk)
     # ATR is from the bars, not the chain: served (here absent, with its reason) with no levels
     assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]

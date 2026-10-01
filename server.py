@@ -10,7 +10,6 @@ import time
 import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
-import concurrent.futures
 import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -153,16 +152,6 @@ log = logging.getLogger("ed_server")
 # ── Import all existing Ed Console modules (unchanged) ───────────────────────
 from config import build_config, load_dotenv_file
 
-from schwab_client import (
-    auth_is_refreshable,
-    build_client_from_token,
-    fetch_full_chain,
-    flatten_chain_contracts,
-    inspect_token_file,
-    safe_get_chain,
-    safe_get_quotes,
-    SchwabAuthError,
-)
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
 from numeric_contract import schwab_number
@@ -174,265 +163,9 @@ from db import get_db
 import live_price_rows as _lpr        # with_change: the bar-change computation
 import push_changes
 
-# ── Config + Schwab client (refreshable singleton) ────────────────────────────
+# ── Config (the token file's age is shown; the console makes no Schwab call) ──
 load_dotenv_file()
 cfg     = build_config()
-_client = None
-
-
-def _log_schwab_startup_diagnostics():
-    """Log cwd, token path, existence — helps diagnose link vs manual launch mismatch."""
-    cwd = os.getcwd()
-    token_path = cfg.token_path
-    inv = inspect_token_file(token_path)
-    token_exists = inv.file_exists
-    refreshable = auth_is_refreshable(inv)
-    python_exe = sys.executable
-    log.info(
-        "Schwab auth diagnostics: cwd=%r token_path=%r token_exists=%s python=%r",
-        cwd, token_path, token_exists, python_exe,
-    )
-    log.info(
-        "Schwab token inspection: path=%r exists=%s json_valid=%s refreshable=%s scope=%r expires_at_present=%s",
-        token_path,
-        inv.file_exists,
-        inv.json_valid,
-        refreshable,
-        inv.scope_value,
-        inv.has_expires_at,
-    )
-    log.info(
-        "Schwab token timing: seconds_to_expiry=%s expired=%s expiring_soon=%s",
-        inv.seconds_to_expiry,
-        inv.is_expired,
-        inv.is_expiring_soon,
-    )
-    if not token_exists:
-        log.error(
-            "Token file not found. CWD=%r may differ from app dir. "
-            "Set SCHWAB_TOKEN_PATH to absolute path, or run from project directory. "
-            "Remediation: python reauth_schwab.py",
-        )
-    elif inv.file_exists and inv.json_valid and inv.has_token_object and not refreshable:
-        log.error(
-            "Schwab token file exists but is NOT refreshable (refresh_token missing or empty). "
-            "Remediation: python reauth_schwab.py --manual",
-        )
-
-
-def get_client(force_refresh: bool = False):
-    """Return Schwab client. force_refresh=True clears cache and rebuilds."""
-    global _client
-    if force_refresh:
-        _client = None
-    if _client is None:
-        state = build_client_from_token(
-            api_key=cfg.api_key,
-            app_secret=cfg.app_secret,
-            token_path=cfg.token_path,
-        )
-        if not state.ok or state.client is None:
-            log.error(f"Schwab client init failed: {state.message}")
-            raise HTTPException(status_code=503, detail=f"Schwab auth failed: {state.message}")
-        _client = state.client
-        log.info("Schwab client initialized")
-    return _client
-
-
-def schwab_capability_state() -> tuple[str, str]:
-    """`("AVAILABLE" | "UNAVAILABLE", reason)` for the Schwab capability.
-
-    RC-514 second cut. The first published this from `config.schwab_live_blocked_for()` alone,
-    which only proves credentials and CI state PERMIT an attempt — it says nothing about the
-    token. A missing, malformed, or unrefreshable token file leaves the capability unable to
-    operate while that gate reads clear, so health could advertise AVAILABLE for a Schwab that
-    cannot serve a single quote.
-
-    This asks the canonical client instead, through the SAME `build_client_from_token` and the
-    SAME `_client` cache `get_client()` uses — not a parallel health computation. The gate is
-    still enforced, because it is the first thing that builder checks.
-
-    Cost is why it can sit on a polled endpoint. MEASURED: every UNAVAILABLE verdict is cheap
-    and local — missing file 3.3 ms, malformed JSON 15.3 ms, malformed layout 0.3 ms,
-    unrefreshable 13.4 ms — while the ~400 ms client construction happens only on the
-    AVAILABLE path, once, and populates the cache the app then uses. An expired token WITH a
-    refresh token builds fine and is correctly AVAILABLE; schwab-py refreshes it.
-    """
-    global _client
-    if _client is not None:
-        return "AVAILABLE", ""
-    try:
-        state = build_client_from_token(
-            api_key=cfg.api_key,
-            app_secret=cfg.app_secret,
-            token_path=cfg.token_path,
-        )
-    except Exception as exc:  # noqa: BLE001 — health must answer, never optimistically
-        return "UNAVAILABLE", f"{type(exc).__name__}: {exc}"
-    if state.ok and state.client is not None:
-        _client = state.client
-        return "AVAILABLE", ""
-    return "UNAVAILABLE", (state.message or "").strip()
-
-
-# ── TIER_C_CHAIN_FETCH_GATE_IMPLEMENTATION_V1 — serialize Schwab chain fetches ──
-# Root cause (TIER_C_RECOMPUTE_LATENCY_V1 stage-split sample 2026-07-06): three
-# concurrent Tier C recomputes stretch safe_get_chain from ~1-3s solo to 10-22s,
-# alone exceeding the 10s freshness budget. The gate lives at the _fetch_state
-# call site so it covers EVERY trigger source (warm / SSE loop / viewer / force /
-# harness) — all converge there. Fail-open: acquire timeout logs loudly and
-# proceeds ungated; chain data semantics are untouched either way. The gate is
-# held only around the network call — nothing submits into any pool under it.
-# Schwab CSV authority checked: yes
-# CSV row(s): chains.* via schwab_client.safe_get_chain — call shape unchanged
-#   (safe_get_chain(client, ticker, strike_count=CHAIN_STRIKE_COUNT)); this is
-#   scheduling-only serialization, no field read/derivation/emission change.
-# Derived-field disposition: none required (no derived field touched);
-#   chain_gate_wait_sec is passive observability only.
-# All consumers checked: yes — c_resp consumed identically downstream in
-#   _fetch_state; other safe_get_chain call sites intentionally not gated
-#   (approved scope: _fetch_state site only).
-# SCHWAB_CSV_CHECKED
-# UI_05_OPERATOR_PRIORITY_ADMISSION_V1 (2026-07-10): single-slot gate with a
-# two-class wait discipline. Operator-facing chain fetches (viewer switch /
-# SSE / REST poll) acquire the slot before queued background acquirers
-# (logger / idle refresh / warm). Total Schwab concurrency is UNCHANGED —
-# still exactly one chain fetch at a time; only the ORDER of waiters changes.
-# Measured cause (2026-07-10 RTH): cold-guest wall-to-chain 11–48s behind
-# background chains while pure Schwab fetch is 0.8–2.6s.
-CHAIN_GATE_GLOBAL_SLOTS_MAX: int = 2
-CHAIN_GATE_DEGRADED_SLOTS: int = 1
-CHAIN_GATE_BREAKER_FAILURE_THRESHOLD: int = 3
-CHAIN_GATE_BREAKER_COOLDOWN_SEC: float = 120.0
-
-
-class _ChainGateV2:
-    """Bounded TWO-slot chain gate (operator-approved 2026-07-10 EVE).
-
-    Controls (mechanically tested in tests/test_chain_gate_v2.py):
-      - global max CHAIN_GATE_GLOBAL_SLOTS_MAX (2) concurrent chain requests;
-      - priority-first handoff: while any priority waiter is queued,
-        background acquirers stand down (the discipline the single-slot
-        gate proved);
-      - automatic degradation to CHAIN_GATE_DEGRADED_SLOTS (1) for
-        CHAIN_GATE_BREAKER_COOLDOWN_SEC when the source degrades: HTTP
-        throttling, auth instability, or
-        CHAIN_GATE_BREAKER_FAILURE_THRESHOLD consecutive failures;
-        recovery is automatic at cooldown expiry;
-      - complete metrics (slot assignment, queue waits, coalescing,
-        timeouts, breaker state, fallback reason) via snapshot() ->
-        /api/diagnostics/chain-gate.
-
-    Per-ticker max 1 + duplicate coalescing live in _gated_safe_get_chain
-    (the request layer); the gate owns global capacity only.
-    acquire(timeout=None, priority=False)/release() stay Semaphore-shaped.
-    """
-
-    def __init__(self) -> None:
-        self._cond = threading.Condition()
-        self._in_use = 0
-        self._priority_waiting = 0
-        self._degraded_until = 0.0
-        self._consecutive_failures = 0
-        self.metrics: dict = {
-            "acquisitions": 0,
-            "priority_acquisitions": 0,
-            "timeouts": 0,
-            "queue_wait_max_ms": 0.0,
-            "coalesced_hits": 0,
-            "degraded_entries": 0,
-            "degraded_reason_last": None,
-            "last_result_ok": None,
-        }
-
-    def _capacity(self) -> int:
-        return (
-            CHAIN_GATE_DEGRADED_SLOTS
-            if time.monotonic() < self._degraded_until
-            else CHAIN_GATE_GLOBAL_SLOTS_MAX
-        )
-
-    def degraded(self) -> bool:
-        return time.monotonic() < self._degraded_until
-
-    def acquire(self, timeout: float | None = None, priority: bool = False) -> bool:
-        started = time.monotonic()
-        deadline = None if timeout is None else started + timeout
-        with self._cond:
-            if priority:
-                self._priority_waiting += 1
-            try:
-                while True:
-                    if self._in_use < self._capacity() and (
-                        priority or self._priority_waiting == 0
-                    ):
-                        self._in_use += 1
-                        waited_ms = round((time.monotonic() - started) * 1000.0, 1)
-                        self.metrics["acquisitions"] += 1
-                        if priority:
-                            self.metrics["priority_acquisitions"] += 1
-                        if waited_ms > self.metrics["queue_wait_max_ms"]:
-                            self.metrics["queue_wait_max_ms"] = waited_ms
-                        return True
-                    remaining = None if deadline is None else deadline - time.monotonic()
-                    if remaining is not None and remaining <= 0:
-                        self.metrics["timeouts"] += 1
-                        return False
-                    self._cond.wait(min(remaining, 1.0) if remaining is not None else 1.0)
-            finally:
-                if priority:
-                    self._priority_waiting -= 1
-
-    def release(self) -> None:
-        with self._cond:
-            self._in_use = max(0, self._in_use - 1)
-            self._cond.notify_all()
-
-    def record_result(self, ok: bool, *, throttled: bool = False, auth_error: bool = False) -> None:
-        """Source-health input driving the breaker. Never raises; callers
-        re-raise their own exceptions (nothing is swallowed here)."""
-        with self._cond:
-            self.metrics["last_result_ok"] = bool(ok)
-            if ok and not throttled and not auth_error:
-                self._consecutive_failures = 0
-                return
-            self._consecutive_failures += 1
-            reason = (
-                "http_throttled" if throttled
-                else "auth_unstable" if auth_error
-                else "consecutive_failures"
-                if self._consecutive_failures >= CHAIN_GATE_BREAKER_FAILURE_THRESHOLD
-                else None
-            )
-            if reason is not None:
-                self._degraded_until = time.monotonic() + CHAIN_GATE_BREAKER_COOLDOWN_SEC
-                self.metrics["degraded_entries"] += 1
-                self.metrics["degraded_reason_last"] = reason
-                self._cond.notify_all()
-
-    def snapshot(self) -> dict:
-        with self._cond:
-            return {
-                **self.metrics,
-                "in_use": self._in_use,
-                "capacity_now": self._capacity(),
-                "global_slots_max": CHAIN_GATE_GLOBAL_SLOTS_MAX,
-                "degraded": time.monotonic() < self._degraded_until,
-                "priority_waiting": self._priority_waiting,
-                "consecutive_failures": self._consecutive_failures,
-            }
-
-
-_schwab_chain_fetch_gate = _ChainGateV2()
-CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC: float = 30.0
-_chain_fetch_gate_timeout_count: int = 0
-
-# Per-ticker single-flight + duplicate coalescing (max ONE active chain
-# request per ticker; duplicate same-ticker callers wait on the owner
-# result: same response object, same ticker, so no cross-ticker delivery
-# and no provenance change).
-_chain_inflight_lock = threading.Lock()
-_chain_inflight: dict = {}
 
 
 #: Precedence for the ONE spot authority. Highest wins; every entry records where the
@@ -540,134 +273,6 @@ def resolve_spot(ticker: str) -> tuple[float | None, str, float | None]:
     return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
 
 
-def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_range=None,
-                          priority: bool = False, to_date=None, from_date=None):
-    """safe_get_chain behind the bounded two-slot gate -> (resp, gate_wait_sec, fetch_sec).
-
-    Schwab CSV authority checked: yes
-    CSV row(s): chains.* via schwab_client.safe_get_chain - call shape
-      unchanged (safe_get_chain(client, ticker, strike_count=..., strike_range=...));
-      this is scheduling (bounded 2-slot gate + per-ticker single-flight coalescing),
-      no field read/derivation/emission change.
-    Derived-field disposition: none required.
-    All consumers checked: yes - c_resp consumed identically downstream;
-      coalesced callers receive the owner response for the SAME ticker only.
-    SCHWAB_CSV_CHECKED
-    """
-    # institutional-length-ok: 85 lines, 13 of them the mandated SCHWAB_CSV_CHECKED
-    # docstring. This is ONE protocol for a single chain fetch - coalesce, gate, fetch,
-    # then bookkeep - and its stages share key/holder/is_owner/acquired/exc across a
-    # try/finally. Extracting any stage means threading five mutable variables through a
-    # boundary and splitting the lock/release and event-set bookkeeping away from the
-    # code that establishes them, which makes the concurrency harder to verify rather
-    # than easier. RC-19: a length ceiling must prompt a judgement, not a reflex split.
-    global _chain_fetch_gate_timeout_count
-    # Coalesce key MUST include strike_count. Observed 2026-07-20: terrain's
-    # SPY strikeCount=200 got Schwab 502; UI/analytics coalesced onto that same
-    # ticker key (wanting strikeCount=20) and inherited the failure as
-    # "Chain fetch failed". Same-ticker different widths are different fetches.
-    # RC-127: to_date joins the coalesce key — a full-book fetch and a 45-day rung are
-    # DIFFERENT fetches, same as the strike-width lesson above. Cursor-audit F2: from_date
-    # likewise — a single-expiry window (from=to=sel) and the open-near-end horizon fetch are
-    # different requests and must never coalesce onto each other. strike_range joins it too
-    # (OPTIONS_ORDER_FLOW_V1 2026-08-30): a strike_range="ALL" complete-chain request and a
-    # bounded strike_count request for the SAME ticker/dates are DIFFERENT fetches — MEASURED
-    # live, "ALL" returned 69 more real strikes than strike_count=250 alone for the same SPY
-    # expiry, so coalescing them onto each other would silently hand a caller wanting the
-    # complete set a truncated bounded response, or vice versa.
-    key = ((ticker or "").strip().upper(),
-          int(strike_count) if strike_count is not None else None,
-          str(strike_range or ""), str(to_date or ""), str(from_date or ""))
-    wait_started = time.monotonic()
-    with _chain_inflight_lock:
-        holder = _chain_inflight.get(key)
-        if holder is None:
-            holder = {"event": threading.Event(), "result": None, "exc": None}
-            _chain_inflight[key] = holder
-            is_owner = True
-        else:
-            is_owner = False
-    if not is_owner:
-        _schwab_chain_fetch_gate.metrics["coalesced_hits"] += 1
-        done = holder["event"].wait(CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC + 60.0)
-        waited = round(time.monotonic() - wait_started, 3)
-        if done:
-            if holder["exc"] is not None:
-                raise holder["exc"]  # source exceptions propagate, never swallowed
-            resp, _own_wait, fetch_sec = holder["result"]
-            return resp, waited, fetch_sec
-        log.warning(
-            "chain coalesce wait timed out ticker=%s strike_count=%s - issuing own fetch",
-            key[0], key[1],
-        )
-        # fail-open to an owned fetch WITHOUT registry (the stuck owner still
-        # holds the key; never double-register)
-    acquired = _schwab_chain_fetch_gate.acquire(
-        timeout=CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC, priority=priority
-    )
-    gate_wait_sec = round(time.monotonic() - wait_started, 3)
-    if not acquired:
-        _chain_fetch_gate_timeout_count += 1
-        log.warning(
-            "chain_gate_timeout ticker=%s waited=%.3fs count=%s - proceeding ungated (fail-open)",
-            ticker,
-            gate_wait_sec,
-            _chain_fetch_gate_timeout_count,
-        )
-    fetch_started = time.monotonic()
-    resp = None
-    exc = None
-    try:
-        resp = safe_get_chain(client, ticker, strike_count=strike_count, strike_range=strike_range,
-                              to_date=to_date, from_date=from_date)
-        return resp, gate_wait_sec, round(time.monotonic() - fetch_started, 3)
-    except SchwabAuthError as e:
-        exc = e
-        _schwab_chain_fetch_gate.record_result(False, auth_error=True)
-        raise
-    except Exception as e:
-        exc = e
-        _schwab_chain_fetch_gate.record_result(False)
-        raise
-    finally:
-        if exc is None:
-            status = getattr(resp, "status_code", None)
-            throttled = status == 429
-            ok = status is None or int(status) < 500
-            _schwab_chain_fetch_gate.record_result(ok and not throttled, throttled=throttled)
-        if acquired:
-            _schwab_chain_fetch_gate.release()
-        if is_owner:
-            with _chain_inflight_lock:
-                _chain_inflight.pop(key, None)
-            if exc is not None:
-                holder["exc"] = exc
-            else:
-                holder["result"] = (resp, 0.0, round(time.monotonic() - fetch_started, 3))
-            holder["event"].set()
-
-
-def _gated_safe_get_quotes(client, symbols: "list[str]", *, priority: bool = False):
-    """safe_get_quotes behind the chain gate: the same two slots, priority and breaker (a 429
-    degrades the gate) as the chain requests, one Schwab budget. Schwab's response."""
-    acquired = _schwab_chain_fetch_gate.acquire(timeout=CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC,
-                                                priority=priority)
-    try:
-        resp = safe_get_quotes(client, symbols)
-    except SchwabAuthError:
-        _schwab_chain_fetch_gate.record_result(False, auth_error=True)
-        raise
-    except Exception:
-        _schwab_chain_fetch_gate.record_result(False)
-        raise
-    finally:
-        if acquired:
-            _schwab_chain_fetch_gate.release()
-    _schwab_chain_fetch_gate.record_result(resp.status_code < 500 and resp.status_code != 429,
-                                           throttled=resp.status_code == 429)
-    return resp
-
-
 _route_offload_executor: Optional[ThreadPoolExecutor] = None
 
 
@@ -707,7 +312,6 @@ from micro_structure import Candle
 from app.options.contracts.default import front_atm_call
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
-    board_tickers,
     last_capture_per_day,
     newest_capture_ts,
 )
@@ -792,31 +396,11 @@ def start_bar_writer() -> None:
     threading.Thread(target=_bar_writer, name="bar-writer", daemon=True).start()
 
 
-# The board is the logging_universe table, read by board_tickers in both processes; every row is
-# processed alike, whatever its category.
-
-
-def _hydrate_logger_tickers_from_db() -> None:
-    """The board, read from the logging_universe table by board_tickers -- the same reader the
-    capture daemon uses, so both processes hold one roster (startup / heal drift)."""
-    global _logger_tickers
-    try:
-        db = get_db()
-        try:
-            removed = db.logging_universe_prune_invalid_enrollments()
-            if removed:
-                log.warning("Issue 22: pruned invalid logging_universe enrollments: %s", removed)
-        except Exception as e:
-            log.warning("Issue 22: logging_universe prune failed: %s", e)
-        board = board_tickers(db.db_path)
-        with _logger_lock:
-            _logger_tickers = board
-    except Exception as e:
-        log.warning("hydrate logger tickers from DB: %s", e)
-
-
-_logger_tickers:  list[str] = []
-_logger_lock:     threading.Lock   = threading.Lock()
+def _board() -> "list[str] | None":
+    """The board: the capture daemon's one list of tickers, as its heartbeat carries it; None
+    while the daemon's status is not current."""
+    st = lmp.daemon_status()
+    return list(st.get("board") or []) if st is not None else None
 
 
 
@@ -843,117 +427,19 @@ async def _app_lifespan(app):
     # Installed FIRST: until these exist, Ctrl+C depends on uvicorn's graceful path
     # completing, and that path joins background workers which may be blocked.
     _install_signal_handlers()
-    # Schwab auth diagnostics (helps debug link vs manual launch)
-    _log_schwab_startup_diagnostics()
 
-    # Lightweight auth validation — don't wait for first /api/state to discover issues.
-    #
-    # MEASURED (operator finding, 2026-09-11): this block used to (a) build a SEPARATE
-    # client via build_client_from_token() instead of the canonical cached owner
-    # get_client() — so the ~400ms construction cost (schwab_capability_state's own
-    # docstring measurement) was paid AGAIN on the first real request, and (b) issue a
-    # BLOCKING live client.get_quote("SPY") call here, before `yield` below — since
-    # FastAPI does not accept ANY HTTP request (including Schwab-independent ones, like
-    # static assets) until this lifespan function reaches `yield`, a slow or unavailable
-    # vendor delayed the whole app's first byte, not just Schwab-dependent routes.
-    #
-    # Fix: the file-based inspection above stays synchronous (cheap, local, no network).
-    # Client construction now goes through get_client() — the SAME cache every other
-    # consumer uses, so it is built here ONCE, not rebuilt on first use. The actual vendor
-    # round-trip (the real "does the token work" proof) is dispatched as a background task
-    # and does NOT block `yield` — HTTP serving is available immediately once the (fast,
-    # local) construction step above returns; the live-quote verdict lands in the log a
-    # moment later. No decision restriction changes: schwab_capability_state()/get_client()
-    # are still the SAME enforcement points every route already calls at decision time.
-    try:
-        _inv_startup = inspect_token_file(cfg.token_path)
-        log.info(
-            "Schwab startup auth: token_path=%r exists=%s refreshable=%s scope=%r",
-            cfg.token_path,
-            _inv_startup.file_exists,
-            auth_is_refreshable(_inv_startup),
-            _inv_startup.scope_value,
-        )
-        log.info(
-            "Schwab token timing: seconds_to_expiry=%s expired=%s expiring_soon=%s",
-            _inv_startup.seconds_to_expiry,
-            _inv_startup.is_expired,
-            _inv_startup.is_expiring_soon,
-        )
-        if (
-            _inv_startup.file_exists
-            and _inv_startup.json_valid
-            and _inv_startup.has_token_object
-            and not auth_is_refreshable(_inv_startup)
-        ):
-            log.error(
-                "Schwab startup: token exists but NOT refreshable (no refresh_token). "
-                "Remediation: python reauth_schwab.py --manual",
-            )
-        try:
-            startup_client = get_client()
-        except HTTPException as ce:
-            startup_client = None
-            log.error(
-                "Schwab auth invalid at startup: %s — Remediation: run python reauth_schwab.py",
-                ce.detail,
-            )
-
-        if startup_client is not None:
-            def _validate_schwab_quote_sync(client):
-                try:
-                    r = client.get_quote("SPY")
-                    if not r or getattr(r, "status_code", 0) != 200:
-                        log.warning(
-                            "Schwab token validation failed (SPY quote returned %s). "
-                            "Token may be expired. Remediation: python reauth_schwab.py",
-                            getattr(r, "status_code", "None"),
-                        )
-                    else:
-                        log.info("Schwab auth validated at startup (background)")
-                except Exception as ve:
-                    from schwab_client import _is_token_error
-                    if _is_token_error(ve):
-                        log.error(
-                            "Schwab token invalid at startup: %s — Remediation: python reauth_schwab.py",
-                            ve,
-                        )
-                    else:
-                        log.warning("Schwab startup validation: %s", ve)
-
-            if _inv_startup.is_expiring_soon:
-                log.info("Token near expiry — background validation will also exercise refresh")
-            asyncio.get_event_loop().run_in_executor(
-                None, _validate_schwab_quote_sync, startup_client
-            )
-    except Exception as e:
-        log.warning("Schwab auth check: %s", e)
-
-    # DB-WRITE-PATH-FIXES (d): start_logger() -> _hydrate_logger_tickers_from_db() performs the
-    # DB-backed logging-universe load here in the lifespan (kept off the module-import path).
-    _hydrate_logger_tickers_from_db()
-
-    # Terrain collection — its OWN loop, never gated on operator mode. The background
-    # logger runs the full model stack and therefore had to be throttled while a viewer
-    # is connected; terrain is ~5 ms of math plus one chain call per ticker, so it keeps
-    # every ticker's levels fresh regardless of what the model stack is doing.
+    # The levels loop: the stored levels at startup, then the status line and the price levels
+    # (the chains arrive from the daemon, _on_chain).
     start_terrain_loop()
     # RC-69: bar collection is its own always-on service — never a side-effect of rendering.
     start_bar_writer()
-    log.info("Terrain loop started — %.0fs cadence, %d workers, full chain per ticker",
-             TERRAIN_REFRESH_SEC, TERRAIN_WORKERS)
 
-    # Live-plane feed (nasdaq_book, nyse_book, level_one_equity) — READ-ONLY from the
-    # canonical capture daemon's stream_capture.db. SINGLE-STREAM-AUTHORITY repair: this
-    # used to gate on a resolved Schwab account_id because it needed one to open its own
-    # StreamClient. It opens no Schwab session now, so it has no account dependency —
-    # gating it behind account resolution was a correctness bug under the new
-    # architecture (a broken/expiring token would silently disable the live UI's quote
-    # feed even though the daemon was capturing fine). Unconditional.
+    # The live feed from the capture daemon (the only Schwab client): every streamed equity
+    # quote and option greeks/OI/volume quote -> _on_stream_tick, which reprices a viewed
+    # ticker; every chain the daemon fetched -> _on_chain, which prices it.
     from app.options.order_flow.streaming import start_order_flow_stream
-    # every streamed equity quote and option greeks/OI/volume quote -> _on_stream_tick,
-    # which reprices a viewed ticker through the one levels producer
-    start_order_flow_stream(None, None, None, on_tick_callback=_on_stream_tick)
+    start_order_flow_stream(None, None, None, on_tick_callback=_on_stream_tick,
+                            on_chain_callback=_on_chain)
 
     push_changes.bind(asyncio.get_running_loop())
 
@@ -1018,17 +504,19 @@ app.mount("/static", _RevalidateStaticFiles(directory=str(static_dir)), name="st
 
 _LIVE_UI_PORT_META = '<meta name="ed-live-ui-port" content="">'
 _MARKET_CONTEXT_META = '<meta name="ed-market-context" content="">'
+#: The header's three market-context slots (Trade Desk, operator 2026-09-25): where on the page
+#: they sit, not what is streamed. Each shows its board ticker's row; one not on the board reads
+#: "not on the board".
+HEADER_CONTEXT_SYMBOLS = ("$SPX", "$NDX", "$VIX")
 
 
 def _with_live_ui_port(html: str) -> str:
     """Tell the page where the capture daemon's price socket listens (the same
-    ED_LIVE_UI_PORT the daemon binds) and which market-context symbols it always shows
-    (streaming.MARKET_CONTEXT_SYMBOLS, each with its display name). An unfilled page opens no
-    price socket -- its prices read UNAVAILABLE rather than reaching a daemon nobody configured
-    it for."""
+    ED_LIVE_UI_PORT the daemon binds) and its header's context slots (HEADER_CONTEXT_SYMBOLS,
+    each with its display name). An unfilled page opens no price socket -- its prices read
+    UNAVAILABLE rather than reaching a daemon nobody configured it for."""
     from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
-    from app.options.order_flow.streaming import MARKET_CONTEXT_SYMBOLS
-    context = json.dumps([{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT_SYMBOLS])
+    context = json.dumps([{"key": k, "display": display_symbol(k)} for k in HEADER_CONTEXT_SYMBOLS])
     return (html.replace(_LIVE_UI_PORT_META,
                          f'<meta name="ed-live-ui-port" content="{int(LIVE_UI_PORT)}">', 1)
             .replace(_MARKET_CONTEXT_META,
@@ -1092,176 +580,12 @@ def _required_ticker(ticker: Optional[str]) -> str:
     return t
 
 
-# ── TERRAIN COLLECTION LOOP ──────────────────────────────────────────────────
-# 5-whys root cause (2026-07-19): 24 of 31 tickers refreshed only every ~11 minutes
-# because `_live_operator_mode_active()` HARD-SKIPS non-SPY/QQQ/IWM background rotation
-# whenever a viewer is connected -- a gate that exists because `_fetch_state` runs the
-# full model stack and would otherwise compete with the live UI.
-#
-# Terrain does not run the model stack. Measured: ~5 ms of math per ticker plus one chain
-# call each.
-#
-# RC-570 (2026-09-21, operator directive): the prior 60.0 was throttled against a "~120
-# req/min Schwab budget" this comment cited without distinguishing WHICH Schwab budget --
-# the operator's explicit correction: that ceiling governs trade/order (two-way) execution
-# calls, not read-only market-data polling, and this loop has never placed a trade. Holding
-# a live market-data UI to a trading rate limit was the wrong model, not a real constraint.
-# Lowered to run the loop back-to-back with only a minimal floor -- ACTUAL fetch latency
-# (network + vendor response time), not an artificial policy pause, is now what paces this
-# loop. If Schwab's real market-data limit turns out to be lower than assumed here, that
-# will surface as observable 429/502s on THIS loop's own chain calls (see
-# _persist_universal_complete_chain/_gated_safe_get_chain's existing status handling) --
-# a measured fact to revisit, not a reason to keep guessing conservatively today.
-TERRAIN_REFRESH_SEC: float = 5.0
-# Match the 2-slot Schwab chain gate. 4 workers × 200-strike payloads queued ~51 tickers
-# and starved the operator card (gate timeouts, Tier-C partial/STALE) at the open.
-TERRAIN_WORKERS: int = 2
+# ── THE LEVELS (from the chains the capture daemon fetches) ──────────────────
 _terrain_cache: dict[str, dict] = {}
 _terrain_cache_lock = threading.Lock()
-#: RC-126: the producer's last failure per ticker, so terrain_not_ready can say WHY instead
-#: of shrugging forever (how $SPX stayed dark a full session). Cleared on the next success.
+#: Why the ticker's newest chain is not priced: the daemon's chain fetch failed with Schwab's
+#: answer, or a chain arrived incomplete. Cleared by the next chain priced.
 _terrain_refresh_last_error: dict[str, str] = {}
-
-#: RC-148 — QUARANTINE. Visibility is not sufficiency: RTY and XXT are rejected by the vendor
-#: (`chain fetch failed (HTTP 400)`, no spot, no expiries) yet the loop re-requested them every
-#: 60 s against a 2-slot chain gate, indefinitely. A permanently-rejected symbol is not a
-#: transient error to retry — it is a symbol that will never answer, and retrying it spends a
-#: scarce vendor slot the healthy book needs. Hard rejections (HTTP 4xx: the symbol itself is
-#: refused) hold the ticker out after TERRAIN_QUARANTINE_HARD_FAILS consecutive hits until the
-#: next ET day, when it is tried again -- a 4xx can be our own request's fault (2026-09-26: every
-#: ticker was refused all weekend for asking for Friday's expired expiry), and a hold nobody
-#: lifts would keep a real instrument dark. Soft failures (timeout / 5xx / 429: the venue is
-#: busy, the symbol is fine) back off exponentially and re-admit themselves.
-TERRAIN_QUARANTINE_HARD_FAILS: int = 3
-TERRAIN_QUARANTINE_SOFT_BASE_SEC: float = 60.0
-TERRAIN_QUARANTINE_SOFT_MAX_SEC: float = 900.0
-
-_terrain_quarantine: dict[str, dict] = {}
-_terrain_consecutive_fails: dict[str, int] = {}
-_terrain_quarantine_skips: dict[str, int] = {}
-_terrain_quarantine_lock = threading.Lock()
-
-
-def _classify_chain_failure(status_code: int | None, exc_name: str | None) -> str:
-    """"hard" = the vendor refuses THIS SYMBOL (4xx); "soft" = the venue is busy (timeout/5xx/429).
-
-    Fail-closed to "soft": an unrecognised failure must never earn a permanent quarantine, because
-    a wrong permanent verdict silently removes a real instrument from the board.
-    """
-    if status_code is not None:
-        code = int(status_code)
-        if code == 429:
-            return "soft"                     # rate limit is about US, never about the symbol
-        if 400 <= code < 500:
-            return "hard"
-        return "soft"
-    if exc_name in ("ReadTimeout", "ConnectTimeout", "TimeoutException"):
-        return "soft"
-    return "soft"
-
-
-def terrain_quarantine_state(ticker: str | None = None) -> dict:
-    """Snapshot of the quarantine book (whole book, or one ticker's entry)."""
-    with _terrain_quarantine_lock:
-        if ticker:
-            tk = ticker_storage_key(ticker)
-            e = _terrain_quarantine.get(tk)
-            return dict(e) if e else {}
-        return {k: dict(v) for k, v in _terrain_quarantine.items()}
-
-
-def terrain_quarantine_reason(ticker: str | None) -> str:
-    """Why this ticker is not being requested at all, or "" when it is in the rotation."""
-    if not ticker:
-        return ""
-    tk = ticker_storage_key(ticker)
-    with _terrain_quarantine_lock:
-        e = _terrain_quarantine.get(tk)
-        if not e:
-            return ""
-        if e.get("hard"):
-            return (f"QUARANTINED after {e.get('failures')} consecutive hard rejections — "
-                    f"{e.get('reason')}. The vendor refused this symbol, so the loop has stopped "
-                    f"requesting it until the next ET day, when it is tried again")
-        # RC-281: every constructor supplies until_ts, so absence is MALFORMED STATE, not
-        # "no cooldown". My earlier reason claimed the latter; Cursor's runtime probe showed
-        # it releases the hold and erases the entry, turning an invariant failure into an
-        # immediate vendor retry with the evidence gone.
-        from numeric_contract import float_finite_or_none as _fin_q
-        until = _fin_q(e.get("until_ts"))
-        if until is None:
-            return (f"backing off after {e.get('failures')} consecutive failures — "
-                    f"{e.get('reason')}; hold has NO expiry recorded (malformed entry), "
-                    f"so it is held until the console restarts")
-        left = max(0.0, until - time.time())
-        return (f"backing off after {e.get('failures')} consecutive failures — {e.get('reason')}; "
-                f"next attempt in {left:.0f}s")
-
-
-def _terrain_quarantine_blocks(tk: str) -> bool:
-    """True when this ticker must NOT be requested this cycle. Expired soft holds self-release."""
-    now = time.time()
-    with _terrain_quarantine_lock:
-        e = _terrain_quarantine.get(tk)
-        if not e:
-            return False
-        # RC-281: fail CLOSED on a malformed hold. `or 0.0` dated the expiry to 1970, so the
-        # branch never fired, the entry was popped, and the ticker went straight back into
-        # rotation — the opposite of a quarantine, reached by a missing field.
-        from numeric_contract import float_finite_or_none as _fin_qb
-        until = _fin_qb(e.get("until_ts"))
-        if until is None or now < until:
-            _terrain_quarantine_skips[tk] = _terrain_quarantine_skips.get(tk, 0) + 1
-            return True
-        _terrain_quarantine.pop(tk, None)      # hold expired — back into the rotation
-    log.info("terrain hold elapsed for %s, retrying", tk)
-    return False
-
-
-def _note_terrain_failure(tk: str, reason: str, kind: str) -> None:
-    """Record a failed refresh and quarantine when the pattern earns it.
-
-    The streak counter lives under the SAME lock as the quarantine book it feeds. TERRAIN_WORKERS
-    threads run the rotation while `/api/terrain` can drive `_terrain_refresh_one(priority=True)`
-    for the same ticker concurrently, so a read-modify-write outside the lock can drop a failure —
-    and a dropped failure is a retry storm that never reaches its own threshold.
-    """
-    log_msg: tuple | None = None
-    with _terrain_quarantine_lock:
-        n = _terrain_consecutive_fails.get(tk, 0) + 1
-        _terrain_consecutive_fails[tk] = n
-        if n >= TERRAIN_QUARANTINE_HARD_FAILS:
-            if kind == "hard":
-                already = bool(_terrain_quarantine.get(tk, {}).get("hard"))
-                next_day = (now_et() + timedelta(days=1)).replace(hour=0, minute=0, second=0,
-                                                                  microsecond=0)
-                _terrain_quarantine[tk] = {"reason": reason, "failures": n, "hard": True,
-                                           "since_ts": time.time(),
-                                           "until_ts": next_day.timestamp(), "kind": kind}
-                if not already:
-                    log_msg = ("terrain QUARANTINE %s until the next ET day after %d hard "
-                               "rejections: %s", tk, n, reason)
-            else:
-                wait = min(TERRAIN_QUARANTINE_SOFT_MAX_SEC,
-                           TERRAIN_QUARANTINE_SOFT_BASE_SEC
-                           * (2 ** (n - TERRAIN_QUARANTINE_HARD_FAILS)))
-                _terrain_quarantine[tk] = {"reason": reason, "failures": n, "hard": False,
-                                           "since_ts": time.time(),
-                                           "until_ts": time.time() + wait, "kind": kind}
-                log_msg = ("terrain backoff %s for %.0fs after %d failures: %s",
-                           tk, wait, n, reason)
-    if log_msg:                               # logged outside the lock
-        log.warning(*log_msg)
-
-
-def _note_terrain_success(tk: str) -> None:
-    """A success clears the streak AND any soft hold — the symbol answered."""
-    with _terrain_quarantine_lock:
-        _terrain_consecutive_fails.pop(tk, None)
-        had = _terrain_quarantine.pop(tk, None)
-    if had:
-        log.info("terrain %s answered, hold cleared", tk)
-
 
 _terrain_loop_running: bool = False
 _terrain_loop_thread: threading.Thread | None = None
@@ -1361,66 +685,42 @@ def _schwab_token_creation_ts() -> float | None:
 
 
 def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) -> dict:
-    """Whether the levels are current, and WHY NOT when they are not: a hold on the ticker
-    (quarantine) outranks its last refresh failure, which outranks its age. The levels loop
-    refreshes every board and viewed ticker at any hour, so age past two delivered cycles is
-    a gap, never a schedule."""
+    """Whether the levels are current, and WHY NOT when they are not: the daemon's last answer
+    for the ticker's chain (a failed fetch, an incomplete delivery) outranks its age. The daemon
+    fetches every board ticker's chain at any hour, so age past two of its delivered rounds is a
+    gap, never a schedule."""
     token = schwab_token_countdown(_schwab_token_creation_ts())   # RC-108: warn BEFORE death
-    q_entry = terrain_quarantine_state(ticker)
-    quarantined = terrain_quarantine_reason(ticker)
-    failure = "" if quarantined else str(_terrain_refresh_last_error.get(
+    failure = str(_terrain_refresh_last_error.get(
         ticker_storage_key(ticker) if ticker else "", "") or "")
-    hard_quarantine = bool(q_entry.get("hard"))
     if computed_ts_utc is None:
         return {"levels_stale": True, "levels_age_sec": None,
-                "levels_stale_reason": (
-                    quarantined
-                    or (f"no terrain snapshot has been computed yet — {failure}" if failure
-                        else "no terrain snapshot has been computed yet")),
-                "levels_quarantined": bool(quarantined),
-                "levels_failing": bool(failure or hard_quarantine), **token}
+                "levels_stale_reason": (f"no terrain snapshot has been computed yet — {failure}"
+                                        if failure else "no terrain snapshot has been computed yet"),
+                "levels_failing": bool(failure), **token}
     age = round(time.time() - float(computed_ts_utc), 1)
-    # age is judged against the cycle the loop delivers (a full sweep), not its sleep floor
-    # (TERRAIN_REFRESH_SEC)
-    observed = _terrain_last_cycle_sec if _terrain_last_cycle_sec > 0 else TERRAIN_REFRESH_SEC
-    expected = max(float(TERRAIN_REFRESH_SEC), float(observed))
-    # Stale only past the FLOOR *and* past two delivered cycles — one missed sweep is normal
-    # jitter, two is a real gap. The floor is retained so a fast loop cannot hide staleness.
-    stale_after = max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * expected)
+    # judged against the round the daemon's chain sweep delivers (every board ticker once)
+    round_sec = (lmp.daemon_status() or {}).get("chain_round_sec") or 0.0
+    # Stale only past the floor *and* past two delivered rounds — one missed round is normal
+    # jitter, two is a real gap. The floor is retained so a fast sweep cannot hide staleness.
+    stale_after = max(float(TERRAIN_STALE_AFTER_SEC), 2.0 * float(round_sec))
     stale = age > stale_after
     reason = ""
     if stale:
-        reason = (f"levels are {age:.0f}s old — {quarantined}" if quarantined else
-                  f"levels are {age:.0f}s old and every refresh since is failing — {failure}"
+        reason = (f"levels are {age:.0f}s old and every chain since has failed — {failure}"
                   if failure else
-                  f"levels are {age:.0f}s old; the refresh loop is running but has not reached "
-                  f"this ticker in two of its cycles ({expected:.0f}s each)")
+                  f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "
+                  f"ticker in two of its rounds ({float(round_sec):.0f}s each)")
     return {"levels_stale": stale, "levels_age_sec": age, "levels_stale_reason": reason,
-            # RC-147: actively FAILING is a different action again
-            # (the chain call is erroring, the levels will not come back on their own).
-            "levels_failing": bool(stale and (failure or hard_quarantine)),
-            # RC-148: not even being REQUESTED. Distinct from failing: re-admission
-            # is an operator act, not something the loop will do on its own.
-            "levels_quarantined": bool(quarantined), **token}
-
-
-#: RC-165: the DELIVERED cycle time, published by `_terrain_loop` from the duration it already
-#: measures. `TERRAIN_REFRESH_SEC` is a sleep FLOOR, not a promise — a full sweep over ~40
-#: tickers on 2 workers against a 2-slot chain gate costs more than that, and judging freshness
-#: against the floor reports healthy tickers as broken. 0.0 until the first cycle completes, in
-#: which case readers fall back to the nominal floor.
-_terrain_last_cycle_sec: float = 0.0
+            # actively FAILING is a different action (the chain fetch is erroring, the levels
+            # will not come back on their own)
+            "levels_failing": bool(stale and failure), **token}
 
 
 def _gamma_surface_wanted(tk: str) -> bool:
     """Viewed: a page has the ticker open (its /api/changes connection), on any workspace, for
-    as long as it stays open. The one viewing signal, the same for every ticker."""
+    as long as it stays open. It decides only which tickers are repriced on every streamed tick;
+    every board ticker's chain is fetched and priced alike."""
     return tk in push_changes.watched()
-
-
-def _viewed_tickers() -> list[str]:
-    """Every viewed ticker: the levels loop refreshes each one every cycle, on the board or not."""
-    return sorted(push_changes.watched())
 
 
 #: Per-ticker revision of `_gamma_surface`, bumped on every publication; guarded by
@@ -1997,8 +1297,8 @@ def _on_stream_tick(sym: str) -> None:
 
 def _reprice_worker(tk: str) -> None:
     """Reprice `tk` while ticks keep arriving, at most once per LEVELS_REPRICE_MIN_INTERVAL_SEC;
-    the last tick of a burst is always priced. A ticker with no chain yet (not yet reached by the
-    levels loop) has its chain fetched now, by the one producer."""
+    the last tick of a burst is always priced. A ticker with no chain yet is priced when the
+    daemon delivers its chain (_on_chain)."""
     last = float("-inf")
     while True:
         time.sleep(max(0.0, last + LEVELS_REPRICE_MIN_INTERVAL_SEC - time.monotonic()))
@@ -2009,68 +1309,38 @@ def _reprice_worker(tk: str) -> None:
             _reprice_dirty.discard(tk)
         last = time.monotonic()
         try:
-            if _publish_levels(tk) is None:
-                _terrain_refresh_one(tk, priority=True)
-        except Exception as e:  # noqa: BLE001 -- logged; the next tick or chain fetch reprices
+            _publish_levels(tk)
+        except Exception as e:  # noqa: BLE001 -- logged; the next tick or chain reprices
             log.warning("levels reprice failed for %s: %s", tk, e)
 
 
-def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
-    """Fetch one chain and compute terrain into the cache. Never raises.
+#: prices the chains the daemon delivers, off the event loop that received them
+_chain_pricing = ThreadPoolExecutor(max_workers=2, thread_name_prefix="chain-pricing")
 
-    RC-80 — THE SINGLE PRODUCER OF LEVELS. /api/terrain calls this on a cache miss rather than
-    computing its own snapshot, because a second producer is a second faucet even when both write
-    the same cache key. `priority` is True for that operator-facing miss (someone is waiting on
-    the response) and False for the background rotation.
-    """
-    tk = ticker_storage_key(ticker)   # RC-126: SPX -> $SPX at the producer too — background
-    if not tk:                        # callers (radar, enroll lists) don't pass the endpoints
-        return "skip:empty"
-    # RC-148: BEFORE the client, before the gate, before any vendor budget is spent. MEASURED
-    # 2026-07-30 11:14 ET: RTY and XXT had each been re-requested every ~60 s all session for a
-    # symbol Schwab answers with HTTP 400 — two permanently-wasted slots per minute out of a
-    # 2-slot gate, against a book where $SPX could not get a chain through. Making that visible
-    # (RC-147) was necessary and not sufficient: a control that reports the burn while the burn
-    # continues has not fixed anything. A `priority` request (an operator is on the endpoint,
-    # waiting) still honours the hold — the answer would be the same HTTP 400, just slower.
-    if _terrain_quarantine_blocks(tk):
-        return "skip:quarantined"
+
+def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | None" = None) -> None:
+    """The feed's chain callback (streaming.assemble_chain_part), on the event loop: a whole
+    chain the daemon fetched is priced on a pricing thread; a chain it could not deliver keeps
+    the ticker's last levels, which then say why no newer chain came."""
+    tk = ticker_storage_key(ticker)
+    if contracts is None:
+        _terrain_refresh_last_error[tk] = f"chain fetch failed ({reason})"
+        return
+    _chain_pricing.submit(_price_chain, tk, contracts, ts)
+
+
+def _price_chain(tk: str, contracts: list, fetched_ts: float) -> None:
+    """THE producer of a ticker's levels from a newly fetched chain (_publish_levels), with the
+    chain's own fetch time as its as-of: an older streamed value never overrides it."""
     try:
-        client = get_client()
-        # The FULL chain -- every strike of every listed expiry (fetch_full_chain; operator
-        # decision 2026-09-25 after the strike window was measured disagreeing with it).
-        resp = fetch_full_chain(client, tk, lambda **d: _gated_safe_get_chain(
-            client, tk, strike_range="ALL", priority=priority, **d)[0],
-            lambda symbols: _gated_safe_get_quotes(client, symbols, priority=priority))
-        if resp.status_code != 200:
-            _code = resp.status_code
-            _msg = f"chain fetch failed ({resp.reason or f'HTTP {_code}'})"
-            _terrain_refresh_last_error[tk] = _msg
-            # RC-148: classify so the response fits the cause. A 4xx is the vendor refusing THIS
-            # SYMBOL and will refuse it identically forever; a 5xx is the venue being busy and
-            # deserves a backoff, not a death sentence.
-            _note_terrain_failure(tk, _msg, _classify_chain_failure(_code, None))
-            return "error:chain_http"
-        fetched_ts = time.time()   # the chain's as-of: an older streamed value never overrides it
-        contracts = flatten_chain_contracts(resp.json())
-        snap = _publish_levels(tk, contracts, fetched_ts)
+        _publish_levels(tk, contracts, fetched_ts)
         with _terrain_cache_lock:
             payload = _terrain_cache[tk]
         _log_flip_drift(tk, payload)
-        _terrain_refresh_last_error.pop(tk, None)   # RC-126: success clears the sticky reason
-        _note_terrain_success(tk)                   # RC-148: and the failure streak with it
-        return f"ok:{snap.confidence}"
-    except Exception as e:
-        # RC-126: DEBUG here meant $SPX failed silently for a full session while the operator
-        # stared at 'not_ready' with no reason. The failure is WARNING-visible AND kept, so
-        # the endpoint can tell the operator WHY instead of an eternal shrug.
-        _terrain_refresh_last_error[tk] = f"{type(e).__name__}: {e}"
-        # RC-148: an exception is never a symbol rejection (those arrive as a 4xx RESPONSE), so
-        # it always classifies soft — backoff, never a hard hold. A crash in our own code
-        # must not be able to evict a real instrument from the board.
-        _note_terrain_failure(tk, f"{type(e).__name__}: {e}", "soft")
-        log.warning("terrain refresh %s failed: %s", tk, e, exc_info=True)
-        return f"error:{type(e).__name__}"
+        _terrain_refresh_last_error.pop(tk, None)
+    except Exception as e:  # noqa: BLE001 -- kept as the ticker's reason, and logged
+        _terrain_refresh_last_error[tk] = f"pricing the chain failed: {type(e).__name__}: {e}"
+        log.warning("pricing the chain of %s failed: %s", tk, e, exc_info=True)
 
 
 STATUS_EVERY_SEC = 60.0
@@ -2102,12 +1372,12 @@ def _feed_record_state() -> str:
 def _status_line() -> str:
     """One line for the console window: is each part working right now, from its own check."""
     st = lmp.daemon_status()
-    with _logger_lock:
-        board = list(_logger_tickers)
+    board = _board() or []
     priced = sum(1 for tk in board if resolve_spot(tk)[0] is not None)
     with _terrain_cache_lock:
         as_of = [p.get("computed_ts_utc") for p in _terrain_cache.values() if p.get("computed_ts_utc")]
     newest = ct_label(max(as_of)) if as_of else "none"
+    round_sec = (st or {}).get("chain_round_sec")
     return " | ".join([
         "alive",
         f"session {session_label(now_et())}",
@@ -2116,83 +1386,36 @@ def _status_line() -> str:
         f"live prices: {priced} of {len(board)} board tickers",
         f"levels: {len(as_of)} tickers, newest as of {newest}",
         _feed_record_state(),
-        ("chain refresh: last sweep of the board took "
-         f"{_terrain_last_cycle_sec:.0f} s" if _terrain_last_cycle_sec
-         else "chain refresh: first sweep running"),
+        (f"chains: the daemon's last round of the board took {round_sec:.0f} s" if round_sec
+         else "chains: the daemon's first round is running"),
     ])
 
 
 def _terrain_loop() -> None:
-    # the board's streams first: the daemon drops a console's streams when it disconnects and
-    # streams only what the console declares, so a restarted console re-declares them before the
-    # start-up work. Then the price levels and the stored option levels, on this thread: the
-    # console serves the page meanwhile, and each ticker's levels appear as they are priced
-    from app.options.order_flow.streaming import declare_equity_symbols
-    with _logger_lock:
-        board_now = list(_logger_tickers)
-    declare_equity_symbols("board", board_now)
-    _publish_missing_price_levels(board_now)
-    loaded = _load_stored_levels()
-    with _logger_lock:
-        board = len(_logger_tickers)
-    log.info("Ready: levels for %d of %d board tickers loaded (session: %s). Refreshing the "
-             "board's chains now.", loaded, board, session_label(now_et()))
-    next_status = time.monotonic() + STATUS_EVERY_SEC   # the ready line covers the start
+    """The board's stored levels once the daemon has said what the board is, then every
+    STATUS_EVERY_SEC the status line and the price levels of a new session date or a new
+    ticker. The chains arrive from the daemon (_on_chain)."""
+    while _terrain_loop_running and _board() is None:
+        time.sleep(0.5)
+    board = _board() or []
+    _publish_missing_price_levels(board)
+    loaded = _load_stored_levels(board)
+    log.info("Ready: levels for %d of %d board tickers loaded (session: %s). The daemon's chains "
+             "price them from here.", loaded, len(board), session_label(now_et()))
     while _terrain_loop_running:
-        cycle_start = time.monotonic()
-        if cycle_start >= next_status:
-            try:
-                log.info(_status_line())
-            except Exception as e:  # noqa: BLE001 -- the status line says it failed, never silence
-                log.warning("status: could not be read (%s: %s)", type(e).__name__, e)
-            next_status = cycle_start + STATUS_EVERY_SEC
-        with _logger_lock:
-            tickers = list(_logger_tickers)
-        # Independent-review finding (2026-09-12, state-authority review), REPRODUCED: a
-        # ticker merely PREVIEWED (never enrolled onto _logger_tickers -- see
-        # TICKER-PREVIEW-NO-ENROLL below) got exactly ONE on-demand terrain compute (the
-        # /api/terrain cache-miss priority path) and then NOTHING -- this loop only ever
-        # iterated the enrolled board, so its cache entry sat frozen forever while
-        # /api/options/gamma-surface kept serving it "live: True" (meaning "sourced from
-        # the live pathway", not "currently fresh") alongside a growing stale age with no
-        # honest "never enrolled" reason surfaced. Any ticker with LIVE view demand
-        # (_gamma_surface_wanted -- the SAME signal /api/options/gamma-surface already
-        # records on every request) is folded into this cycle so viewing ANY supported
-        # ticker keeps it refreshing for as long as it is actually being viewed, not only
-        # the pre-enrolled board.
-        _viewed_now = _viewed_tickers()
-        _previewed = [tk for tk in _viewed_now if tk not in tickers]
-        _publish_missing_price_levels(tickers + _previewed)     # a new session date, a new ticker
-        # Every board ticker's spot is the streamed LAST_PRICE only, so the daemon must
-        # stream each one (its fixed roster is just --symbols).
+        time.sleep(STATUS_EVERY_SEC)
         try:
-            from app.options.order_flow.streaming import declare_equity_symbols
-            declare_equity_symbols("board", tickers + _previewed)
-        except Exception as e:  # noqa: BLE001 -- the cycle itself must still run
-            log.warning("equity stream declaration failed: %s", e)
-        # every board and viewed ticker, every cycle, at any hour
-        tickers = tickers + _previewed
-        with concurrent.futures.ThreadPoolExecutor(max_workers=TERRAIN_WORKERS) as pool:
-            list(pool.map(_terrain_refresh_one, tickers))
-        elapsed = time.monotonic() - cycle_start
-        # RC-165: publish the DELIVERED cycle so freshness is judged against reality, not the
-        # sleep floor. This number was already computed and only logged; readers had no access
-        # to it, so terrain_staleness was left comparing against a cadence the loop never meets.
-        globals()["_terrain_last_cycle_sec"] = float(elapsed)
-        if tickers:
-            log.info("Terrain cycle: %d tickers in %.1fs", len(tickers), elapsed)
-        sleep_end = time.monotonic() + max(0.0, TERRAIN_REFRESH_SEC - elapsed)
-        while _terrain_loop_running and time.monotonic() < sleep_end:
-            time.sleep(0.5)
+            log.info(_status_line())
+            _publish_missing_price_levels(_board() or [])
+        except Exception as e:  # noqa: BLE001 -- the status line says it failed, never silence
+            log.warning("status: could not be read (%s: %s)", type(e).__name__, e)
     log.info("Terrain loop stopped")
 
 
-def _load_stored_levels() -> int:
+def _load_stored_levels(board: "list[str]") -> int:
     """At startup, each board ticker's newest full chain capture is priced once (DATA_FLOW
     decision 7), so a restart, a weekend or the close shows the last reading with its time.
     Returns how many tickers were loaded."""
-    with _logger_lock:
-        board = list(_logger_tickers)
     n = 0
     for tk in board:
         caps = last_capture_per_day(get_db().db_path, tk, 2)
@@ -2202,12 +1425,8 @@ def _load_stored_levels() -> int:
 
 
 def start_terrain_loop() -> None:
-    """Start the terrain collection thread.
-
-    Refuses to start under pytest: a background thread inside the test process would fetch
-    chains and hold the shared 2-slot chain gate for the rest of the session. Tests that need
-    the loop call _terrain_loop / _terrain_refresh_one directly.
-    """
+    """Start the levels thread. Refuses to start under pytest: tests call _terrain_loop's parts
+    directly."""
     global _terrain_loop_running, _terrain_loop_thread
     if os.environ.get("PYTEST_CURRENT_TEST"):
         log.debug("terrain loop not started: running under pytest")
@@ -2256,7 +1475,7 @@ def _atr_fields(tk: str) -> dict:
 
 #: WHICH producer computed a set of levels. The radar deliberately merges two of them, and an
 #: unlabelled merge is how systematically-different numbers get ranked as peers (RC-82).
-LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _terrain_refresh_one, the single producer
+LEVELS_SOURCE_WIDE_CHAIN = "wide_chain_loop"      # _publish_levels, the single producer
 
 
 # ── CR-03 screen 1 — per-strike gamma/volume bars for the histogram panel ────
@@ -2697,9 +1916,9 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
 # expirationDate (via the existing _filter_contracts_by_selected_expiry slice) and invokes
 # math_exposure_core.compute_exposures_by_strike per slice, shaping net_gex_1pct cells into a grid.
 # No gamma/GEX/multiplier/OI/spot/sign/missingness math lives here.
-# SOURCE: the live terrain projection only — _terrain_refresh_one projects it from the live wide
-# chain + live spot it already fetches each cycle (in-memory, zero extra vendor calls),
-# demand-gated to viewed tickers. No banked-morning fallback (operator rule 2026-09-23).
+# SOURCE: the live terrain projection only — _publish_levels projects it from the full chain the
+# daemon delivers and the live spot (in-memory, zero extra vendor calls). No banked-morning
+# fallback (operator rule 2026-09-23).
 
 #: Why a heatmap cell has no value for a measure: the code each cell carries (absent[measure])
 #: and the words the page draws for it (the surface's absent_reasons). A cell is absent only
@@ -2844,8 +2063,8 @@ def get_options_gamma_surface(ticker: str = Query(...)):
     """Strike × expiration signed GEX$ surface (cell = net_gex_1pct) through the ONE canonical
     faucet compute_exposures_by_strike.
 
-    ONE source: the LIVE surface _terrain_refresh_one (the single levels producer) projects each
-    cycle from the live wide chain + live spot it already fetches (source=terrain_live_cache).
+    ONE source: the LIVE surface _publish_levels (the single levels producer) projects from the
+    full chain the daemon delivers and the live spot (source=terrain_live_cache).
     With no live surface the answer is "unavailable" with the reason -- there is no second source
     (operator rule 2026-09-23: no fallbacks; the banked MORNING wide chain used to stand in).
     Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale visibly."""
@@ -2928,17 +2147,18 @@ def get_options_gamma_surface(ticker: str = Query(...)):
         })
 
     # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----
-    # REQUESTED: this ticker is viewed. WARMING: viewed and not held (terrain_staleness's
-    # quarantine), with or without published levels and on the board or not (the loop
-    # refreshes every viewed ticker each cycle). The reason is that state's own.
+    # REQUESTED: this ticker is viewed. WARMING: viewed and on the board, so the daemon's chain
+    # sweep is fetching it. The reason is that state's own.
     _requested = _gamma_surface_wanted(tk)
     _state = terrain_staleness((live or {}).get("computed_ts_utc"), tk)
-    _warming = _requested and not _state["levels_quarantined"]
+    _on_board = tk in (_board() or [])
+    _warming = _requested and _on_board
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
                      "live": False, "stale": True, "warming": _warming, "requested": _requested,
-                     "reason": _state["levels_stale_reason"] or (
-                         "the levels loop projects the surface at its next refresh of this ticker"
-                         if _warming else "no gamma surface for this ticker's published levels")}
+                     "reason": (f"{tk} is not on the board: add it to fetch its chain" if not _on_board
+                                else _state["levels_stale_reason"] or (
+                                    "the surface is projected when the daemon delivers this ticker's chain"
+                                    if _warming else "no gamma surface for this ticker's published levels"))}
     return JSONResponse(payload)
 
 
@@ -2959,22 +2179,6 @@ def get_terrain(ticker: str = Query(...)):
     """
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     cached = terrain_cache_get(tk)
-    if cached is None:
-        # RC-80 — ONE PRODUCER OF LEVELS. This branch used to compute its own terrain from
-        # _latest_chain_and_spot(), the most recent NARROW stored snapshot chain, while the
-        # terrain loop computed from a WIDE chain sized by the resolve_chain_strike_count
-        # faucet. Wall and flip selection depends on how much of the wing is present, so the
-        # two disagreed: MEASURED 2026-07-27, /api/terrain?ticker=SPY alternated between
-        # call=750/put=740/flip=746.59 and call=739/put=736/flip=739.80 within ten seconds
-        # while spot moved four cents. The operator was reading two different sets of trade
-        # levels from one endpoint. A second producer is a second faucet even when both write
-        # the same cache key — the provenance audit only ever saw the read side.
-        #
-        # So on a miss the endpoint drives THE producer instead of imitating it, and if that
-        # cannot deliver, the terrain reads UNAVAILABLE. Absence reads as absence; it never
-        # reads as a narrower chain's answer.
-        _terrain_refresh_one(tk, priority=True)
-        cached = terrain_cache_get(tk)
     if cached is not None:
         # the levels as the producer published them, every at-spot value computed at the
         # publication's spot -- the price they were computed at, labelled by spot_source and
@@ -2990,14 +2194,11 @@ def get_terrain(ticker: str = Query(...)):
         **_atr_fields(tk),              # from the bars, which do not wait for a chain
         # RC-126: not_ready carries its REASON when the producer has one — an eternal
         # unexplained shrug is how $SPX stayed dark for a session.
-        "error": ("terrain_not_ready: no wide-chain snapshot yet for this ticker"
-                  + (f" (last refresh error: {_why})" if _why else "")),
-        # RC-151: and it carries the STRUCTURED state too. The cached branch above spreads
-        # terrain_staleness while this one shipped only a prose `error` string, so
-        # levels_failing / levels_quarantined were absent on /api/terrain for precisely the
-        # tickers that were failing — MEASURED 2026-07-30 12:08 ET: RTY returned [] structured
-        # fields while SPY returned all five. A flag a consumer must parse English to discover
-        # is not a flag, and "absent" is indistinguishable from "healthy" to every reader.
+        "error": ("terrain_not_ready: no chain from the daemon yet for this ticker"
+                  + (f" (last chain error: {_why})" if _why else "")
+                  + ("" if tk in (_board() or []) else f"; {tk} is not on the board")),
+        # RC-151: and it carries the STRUCTURED state too, so a consumer never parses English
+        # to learn the ticker is failing
         **terrain_staleness(None, tk),
     }
 
@@ -3266,19 +2467,6 @@ async def post_streaming_active_option_contract(payload: dict = Body(default={})
     return JSONResponse(out)
 
 
-@app.post("/api/streaming/watchlist-symbols")
-async def post_streaming_watchlist_symbols(payload: dict = Body(default={})):
-    """The browser's watchlist, so the daemon streams each row's LEVELONE_EQUITIES (the
-    daemon's fixed roster is only its --symbols). Returns the symbols left unstreamed with
-    the reason -- a row that can't be streamed says why instead of borrowing a REST quote."""
-    from app.options.order_flow.streaming import declare_equity_symbols
-    syms = payload.get("symbols") if isinstance(payload, dict) else None
-    if not isinstance(syms, list):
-        raise HTTPException(status_code=400, detail="symbols must be a list")
-    not_admitted = declare_equity_symbols("watchlist", [str(x) for x in syms])
-    return {"ok": True, "not_streamed": not_admitted}
-
-
 @app.post("/api/streaming/active-option-contracts")
 async def post_streaming_active_option_contracts(payload: dict = Body(default={})):
     """One view's ADDITIONAL option contracts for LEVELONE_OPTIONS+OPTIONS_BOOK, beside the
@@ -3404,25 +2592,21 @@ def get_chain(ticker: str = Query(...),
 
 @app.get("/api/health")
 def health():
-    with _logger_lock:
-        n       = len(_logger_tickers)
     # RC-514 / docs/ARCHITECTURE.md "Failure domains": application availability and capability
     # availability are separate, so `status` answers "is the app alive" and never folds a
-    # vendor outage into it. The capability verdict comes from schwab_capability_state(),
-    # which asks the canonical client -- credentials, CI gate AND token state -- rather than
-    # the credential gate alone, so health cannot advertise a Schwab that could not serve a
-    # quote. Failure to answer reports UNAVAILABLE: unmeasurable is not ok (RC-57).
-    try:
-        schwab_status, schwab_reason = schwab_capability_state()
-    except Exception as exc:  # noqa: BLE001 - health must answer, and never optimistically
-        schwab_status, schwab_reason = "UNAVAILABLE", f"{type(exc).__name__}: {exc}"
-    capability: dict[str, object] = {"schwab": schwab_status}
-    if schwab_reason:
-        capability["schwab_reason"] = schwab_reason
+    # vendor outage into it. Schwab is the capture daemon's: its heartbeat says whether its
+    # Schwab socket is open; no current heartbeat is UNAVAILABLE (unmeasurable is not ok, RC-57).
+    st = lmp.daemon_status()
+    board = _board()
+    capability: dict[str, object] = {
+        "schwab": "AVAILABLE" if st is not None and st.get("schwab_socket_open") is True else "UNAVAILABLE"}
+    if capability["schwab"] == "UNAVAILABLE":
+        capability["schwab_reason"] = ("the capture daemon's heartbeat is not current" if st is None
+                                       else "the capture daemon's Schwab socket is not open")
     return {
         "status": "ok",
         "time": datetime.now().isoformat(),
-        "logger_tickers": n,
+        "logger_tickers": len(board) if board is not None else None,
         "capabilities": capability,
     }
 
@@ -3958,12 +3142,7 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except HTTPException as e:
-        # MEASURED 2026-09-11: get_client() raises HTTPException(503, ...) when Schwab auth is
-        # genuinely unavailable -- a real, distinct, already-correct classification (missing/
-        # invalid credentials is not "the server is broken"). The blanket `except Exception`
-        # below caught it too, along with everything else, and re-issued it as a bare 500 with
-        # only the message text -- discarding the status code FastAPI's own exception handling
-        # would otherwise have propagated correctly. Preserve it instead of replacing it.
+        # its own status code (a missing ticker is 400), never re-issued as a bare 500
         return JSONResponse({"error": e.detail}, status_code=e.status_code)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

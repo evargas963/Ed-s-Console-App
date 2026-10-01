@@ -17,10 +17,12 @@ permanent record (options history reads it); nothing live reads it. If the push 
 drops, the live values go stale and the screen says so; nothing falls back to the database
 (operator rule 2026-09-23: no fallbacks).
 
-What to stream is decided HERE and sent to the daemon over the same socket, as one
-complete list per Schwab service (current_wanted(); {"op": "wanted", ...}). Every change to
-the active ticker, the equity demand or the option contracts bumps _wanted_version and the
-feed loop sends the new list. The daemon's one-second status comes back on the same socket
+The board's quotes, bars and news are streamed by the daemon itself; the books and option
+contracts this console's screens show are decided HERE and sent to the daemon over the same
+socket (current_wanted(); {"op": "wanted", ...}). Every change to the active ticker or the
+option contracts bumps _wanted_version and the feed loop sends the new list. The daemon's
+option chains arrive on the same socket, in parts (chain.TK), and go whole to the chain
+callback. The daemon's one-second status comes back on the same socket
 (topic "daemon.heartbeat") and is the one source for "is the daemon / Schwab alive" and
 "what does Schwab hold / refuse".
 
@@ -41,7 +43,6 @@ from typing import Any, Callable, Optional
 from instrument_identity import ticker_storage_key
 import push_changes
 from stream_spine import (
-    EQUITY_SYMBOLS_MAX_HELD,
     OPTION_CONTRACTS_MAX_HELD,
     rank_option_contracts,
 )
@@ -90,16 +91,13 @@ def _wanted_changed() -> None:
 
 
 def current_wanted() -> "dict[str, list[str]]":
-    """Everything this console wants streamed, per Schwab service -- the ONE list sent to the
-    daemon. Equities (L1, 1-minute bars, news): the ranked equity demand. Books: the active
-    ticker (NYSE_BOOK = the exchange book, NASDAQ_BOOK = market-maker quotes). Options: the
-    primary contract (L1 + book) plus the views' ranked contracts (L1)."""
-    with _equity_lock:
-        equities, _ = rank_equity_symbols(_active_ticker, _equity_demand)
+    """What this console's screens show beyond the board, per Schwab service, sent to the daemon
+    (every board ticker's quotes, bars and news are the daemon's own). Books: the active ticker
+    (NYSE_BOOK = the exchange book, NASDAQ_BOOK = market-maker quotes). Options: the primary
+    contract (L1 + book) plus the views' ranked contracts (L1)."""
     books = [_active_ticker] if _active_ticker else []
     primary = [_active_option_contract] if _active_option_contract else []
-    return {"LEVELONE_EQUITIES": equities, "CHART_EQUITY": equities, "NEWS_HEADLINE": equities,
-            "NYSE_BOOK": books, "NASDAQ_BOOK": books,
+    return {"NYSE_BOOK": books, "NASDAQ_BOOK": books,
             "LEVELONE_OPTIONS": sorted(set(primary) | set(_active_option_contracts)),
             "OPTIONS_BOOK": primary}
 
@@ -142,6 +140,36 @@ _on_tick_callback: Optional[Callable[[str], None]] = None
 _tick_callback_failures = 0
 #: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write.
 streamed_bars: "queue.SimpleQueue[dict]" = queue.SimpleQueue()
+#: Called on the event loop with (ticker, contracts, fetched_ts) for each whole chain the daemon
+#: fetched, and with (ticker, None, ts, reason) for one it could not deliver (server._on_chain).
+_on_chain_callback: Optional[Callable[..., None]] = None
+#: ticker -> the chain being received: {"ts", "parts", "got": {part: contracts}}
+_chain_parts: "dict[str, dict]" = {}
+
+
+def assemble_chain_part(msg: dict) -> "tuple[str, list | None, float, str | None] | None":
+    """One chain message from the daemon (complete_chain_capture.chain_messages) -> the whole
+    chain once its last part is in: (ticker, contracts, fetched_ts, None); a fetch that failed, or
+    a chain whose parts did not all arrive before the next one began: (ticker, None, ts, reason);
+    else None. A chain missing a part is never returned."""
+    tk, ts = msg.get("ticker"), msg.get("ts_recv")
+    if not tk or not isinstance(ts, (int, float)):
+        return None
+    if "failed" in msg:
+        _chain_parts.pop(tk, None)
+        return tk, None, float(ts), str(msg["failed"])
+    cur = _chain_parts.get(tk)
+    out = None
+    if cur is None or cur["ts"] != ts:
+        if cur is not None:
+            out = (tk, None, float(ts), f"the daemon's chain of {tk} arrived with "
+                   f"{len(cur['got'])} of its {cur['parts']} parts")
+        cur = _chain_parts[tk] = {"ts": ts, "parts": int(msg["parts"]), "got": {}}
+    cur["got"][int(msg["part"])] = msg.get("contracts") or []
+    if len(cur["got"]) == cur["parts"]:
+        del _chain_parts[tk]
+        return tk, [c for i in range(cur["parts"]) for c in cur["got"][i]], float(ts), None
+    return out
 
 
 def _tick(sym: str) -> None:
@@ -187,6 +215,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
       book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book; OPTIONS_BOOK -> the option
                    contract's book
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
+      chain.TK     a part of the daemon's REST chain -> the whole chain to the chain callback
 
     Every option quote carrying GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME is passed to the
     tick callback (an equity's tick is its price row's arrival). A message missing its symbol, its
@@ -194,6 +223,11 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     part."""
     global _option_streaming_last_update_ts
     if not isinstance(msg, dict):
+        return None
+    if topic.startswith("chain."):
+        done = assemble_chain_part(msg)
+        if done is not None and _on_chain_callback is not None:
+            _on_chain_callback(*done)
         return None
     sym = msg.get("symbol")
     ts = msg.get("ts_recv")
@@ -237,19 +271,14 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
 
 
 async def _rows_loop() -> None:
-    """Hold the daemon's price rows for the equities this console wants streamed: one browser
-    client of the daemon's price push. Each row's arrival is the equity's tick."""
+    """Hold the daemon's price row of every board ticker: one browser client of the daemon's
+    price push. Each row's arrival is the equity's tick."""
     from websockets.asyncio.client import connect
 
     while _feed_running:
         try:
             async with connect(LIVE_UI_URL, max_size=None, open_timeout=5) as ws:
-                sent = None
                 while _feed_running:
-                    want = current_wanted()["LEVELONE_EQUITIES"]
-                    if want != sent:
-                        await ws.send(json.dumps({"op": "subscribe", "symbols": want}))
-                        sent = want
                     try:
                         frame = await asyncio.wait_for(ws.recv(), _lmp.FEED_HEARTBEAT_MAX_AGE_SEC)
                     except asyncio.TimeoutError:
@@ -357,66 +386,9 @@ def clear_active_option_contract(*, reason: str) -> None:
     _wanted_changed()
 
 
-#: Which stocks/indexes a screen shows a live price for, by source. The daemon streams its
-#: fixed --symbols roster only; everything else is requested here (the no-fallback rule
-#: means an unstreamed symbol reads UNAVAILABLE, so every shown symbol must be requested).
-#: The market context every page's header shows beside the selected ticker (Trade Desk,
-#: operator 2026-09-25). Standing demand: measured 2026-09-25, a page whose watchlist did not
-#: happen to hold them showed SPX/NDX/VIX as "—" all session because nobody requested them.
-MARKET_CONTEXT_SYMBOLS = ("$SPX", "$NDX", "$VIX")
-_EQUITY_DEMAND_ORDER = ("context", "watchlist", "board")
-_equity_demand: "dict[str, list[str]]" = {k: [] for k in _EQUITY_DEMAND_ORDER}
-_equity_demand["context"] = list(MARKET_CONTEXT_SYMBOLS)
-_equity_not_admitted: "dict[str, str]" = {}
-_equity_lock = threading.Lock()
-
-
-def rank_equity_symbols(active: "str | None", demand: "dict[str, list[str]]",
-                        budget: int = EQUITY_SYMBOLS_MAX_HELD,
-                        ) -> "tuple[list[str], dict[str, str]]":
-    """(admitted, {not_admitted: reason}). Order of importance: the active ticker, then the
-    market context (MARKET_CONTEXT_SYMBOLS), then the watchlist in its own order, then the
-    gamma board. Duplicates count once, at their
-    most important place; everything past the budget is named, never silently cut."""
-    ordered: list[str] = []
-    for sym in [active, *[s for k in _EQUITY_DEMAND_ORDER for s in demand.get(k, [])]]:
-        t = ticker_storage_key(sym or "")
-        if t and t not in ordered:
-            ordered.append(t)
-    admitted = ordered[:max(budget, 0)]
-    not_admitted = {t: f"not streamed: outside the live equity budget ({budget})"
-                    for t in ordered[max(budget, 0):]}
-    return admitted, not_admitted
-
-
-def _publish_equity_symbols() -> None:
-    """Re-rank the equity demand; the daemon gets it with the next wanted list."""
-    global _equity_not_admitted
-    with _equity_lock:
-        _, _equity_not_admitted = rank_equity_symbols(_active_ticker, _equity_demand)
-    _wanted_changed()
-
-
-def declare_equity_symbols(kind: str, symbols: "list[str]") -> "dict[str, str]":
-    """A screen's set of symbols whose live price it shows (`kind` = watchlist | board).
-    Returns the symbols left unstreamed, with the reason."""
-    if kind not in _equity_demand:
-        raise ValueError(f"unknown equity demand kind {kind!r}")
-    with _equity_lock:
-        _equity_demand[kind] = [t for t in (ticker_storage_key(s or "") for s in symbols or []) if t]
-    _publish_equity_symbols()
-    return get_equity_symbols_not_admitted()
-
-
-def get_equity_symbols_not_admitted() -> "dict[str, str]":
-    with _equity_lock:
-        return dict(_equity_not_admitted)
-
-
 def set_streaming_active_ticker(ticker: str) -> bool:
-    """Make `ticker` the active symbol: the daemon adds its NASDAQ_BOOK/NYSE_BOOK depth
-    (stream_active_ticker.json) and, when it is outside the daemon's roster, its
-    LEVELONE_EQUITIES stream (stream_equity_symbols.json, ranked first)."""
+    """Make `ticker` the active symbol: the daemon adds its NASDAQ_BOOK/NYSE_BOOK depth (its
+    quotes, bars and news stream because it is on the board)."""
     global _active_ticker
     t = ticker_storage_key(ticker)
     if not t:
@@ -427,7 +399,7 @@ def set_streaming_active_ticker(ticker: str) -> bool:
     _log_stream("STREAM_RESUBSCRIBE_START", old=old, new=[t])
     forget_unsubscribed_symbols(old, [t])
     _active_ticker = t
-    _publish_equity_symbols()
+    _wanted_changed()
     log.info("Live-plane feed active ticker -> %s", t)
     _log_stream("STREAM_RESUBSCRIBE_DONE", ticker=t)
     return True
@@ -837,17 +809,19 @@ def start_order_flow_stream(
     account_id: Any,
     initial_ticker: "str | None",
     on_tick_callback: Optional[Callable[[str], None]] = None,
+    on_chain_callback: Optional[Callable[..., None]] = None,
 ) -> bool:
     """`client`/`account_id` are accepted, not used: this feed opens no Schwab session
     of its own, so it has no account dependency — kept for call-site compatibility.
     `initial_ticker` may be None: the feed then runs with no active ticker until the browser
     chooses one (no built-in ticker -- universality, operator 2026-09-23)."""
-    global _feed_task, _feed_running, _on_tick_callback
+    global _feed_task, _feed_running, _on_tick_callback, _on_chain_callback
     it = (initial_ticker or "").upper().strip()
     if _feed_task is not None and not _feed_task.done():
         log.info("Live-plane feed already running")
         return True
     _on_tick_callback = on_tick_callback
+    _on_chain_callback = on_chain_callback
     _feed_running = True
     if it:
         set_streaming_active_ticker(it)

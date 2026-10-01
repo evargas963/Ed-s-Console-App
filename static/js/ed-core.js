@@ -7,11 +7,10 @@
 
   // ---- shared ticker key (compatible with the legacy shell) ----
   var TICKER_KEY = 'ed_ticker';
-  var WL_KEY = 'ed_watchlist_v1';
   var RAIL_KEY = 'ed_rail_open';
-  // No built-in watchlist or ticker (universality, operator 2026-09-23): a first run starts
-  // empty and every symbol is one the operator chose.
-  var DEFAULT_WL = [];
+  // The board: the one list of tickers, as the capture daemon's price socket serves it
+  // ([{key, display}]); the watchlist rail shows it and edits it.
+  var _board = [];
 
   var app = document.getElementById('app');
 
@@ -83,11 +82,9 @@
   // only — the window never changes any value, only which canonical strikes are on screen.
   var SCOPE_MODES = ['auto', 'wider', 'all'];
   function _lsScope() { var v = _ls('ed_scope', 'auto'); return SCOPE_MODES.indexOf(v) !== -1 ? v : 'auto'; }
-  // every asked-for symbol's served identity, {requested: {requested, key, display}} (ingestIdentity)
-  var _served = {};
   var state = {
     ticker: (_ls(TICKER_KEY, '') || '').toUpperCase(),
-    // the selected instrument's identity as the daemon's price socket serves it (ingestIdentity):
+    // the selected instrument's identity as the daemon's price socket serves it (board_edit):
     // the key every price row and route uses ("$SPX") and its display name ("SPX"); null until served
     key: null, display: null,
     workspace: _ls('ed_ws', app.getAttribute('data-workspace') || 'options'),
@@ -467,55 +464,37 @@
     return '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(' · ') + '</span>';
   }
 
-  // ================= watchlist (editable foundation, localStorage) =================
-  function loadWL() {
-    // An explicitly saved EMPTY list (every ticker removed) must stay empty — only an
-    // absent key (never saved before) falls back to defaults. `[].length` is falsy, so a
-    // naive truthiness check on the parsed array silently resurrected the defaults here.
-    try {
-      var raw = localStorage.getItem(WL_KEY);
-      if (raw == null) return DEFAULT_WL.slice();
-      var v = JSON.parse(raw);
-      if (Array.isArray(v)) return v;
-    } catch (e) {}
-    return DEFAULT_WL.slice();
-  }
-  function saveWL(list) { try { localStorage.setItem(WL_KEY, JSON.stringify(list)); } catch (e) {} }
-
+  // ================= watchlist = the board (the capture daemon's one list of tickers) =================
   function renderWatchlist() {
-    var list = loadWL();
     var host = document.getElementById('watchlist');
     var add = document.getElementById('wlAdd');
     host.querySelectorAll('.wl-row, .wl-empty').forEach(function (n) { n.remove(); });
-    if (!list.length) {
+    if (!_board.length) {
       var empty = document.createElement('div');
       empty.className = 'wl-empty';
-      empty.textContent = 'Watchlist is empty — use + Add symbol below';
+      empty.textContent = _priceWs ? 'The board is empty — use + Add symbol below' : 'Board unavailable: the price socket is down';
       host.insertBefore(empty, add);
     }
-    list.forEach(function (sym) {
+    _board.forEach(function (b) {
       var row = document.createElement('div');
-      row.className = 'wl-row' + (sym === state.ticker ? ' sel' : '');
+      row.className = 'wl-row' + (b.key === state.key ? ' sel' : '');
       // Remove is a real <button> in normal flow (not display:none swapped by hover JS), so
       // Tab reaches it and Enter/Space activates it natively — CSS (:hover/:focus-within/
       // :focus) alone controls its visibility, no mouse required to discover or use it.
-      row.innerHTML = '<span class="wl-sym s">' + (_served[sym] ? _served[sym].display : sym) + '</span>' +
-        '<span class="wl-px" data-wlpx="' + sym + '">—</span>' +
-        '<span class="wl-chg" data-wlchg="' + sym + '">—</span>' +
-        '<button class="st-x" data-rm="' + sym + '" aria-label="Remove ' + sym + ' from watchlist">×</button>';
+      row.innerHTML = '<span class="wl-sym s">' + _escBadge(b.display) + '</span>' +
+        '<span class="wl-px" data-wlpx="' + _escBadge(b.key) + '">—</span>' +
+        '<span class="wl-chg" data-wlchg="' + _escBadge(b.key) + '">—</span>' +
+        '<button class="st-x" data-rm="' + _escBadge(b.key) + '" aria-label="Remove ' + _escBadge(b.display) + ' from the board">×</button>';
       row.addEventListener('click', function (e) {
         if (e.target.getAttribute('data-rm')) return;
-        setTicker(sym);
+        setTicker(b.key);
       });
       host.insertBefore(row, add);
     });
     host.querySelectorAll('[data-rm]').forEach(function (b) {
       b.addEventListener('click', function (e) { e.stopPropagation(); removeSymbol(b.getAttribute('data-rm')); });
     });
-    buildSymList();   // the watchlist is only a SUGGESTION list for the instrument control
-    declareWatchlistStream(loadWL());
-    // the open price socket is told the new set; nothing reconnects, nothing blanks
-    subscribePrices();
+    buildSymList();
   }
   var _wlMsgTimer = null;
   function wlNotify(msg) {   // understandable feedback for invalid/duplicate add — aria-live, self-clearing
@@ -524,28 +503,39 @@
     if (_wlMsgTimer) clearTimeout(_wlMsgTimer);
     _wlMsgTimer = setTimeout(function () { el.textContent = ''; }, 3000);
   }
-  // WATCHLIST = persistent symbols the operator chose to monitor. Adding is an explicit action
-  // (the rail's "+ Add symbol"); analysing an instrument never adds it.
+  // THE BOARD = the one list of tickers the daemon streams and fetches chains for. Adding (the
+  // rail's "+ Add symbol", or choosing a symbol to analyse) and removing are sent to the daemon,
+  // which answers with the symbol's key and pushes the new board to every page.
+  // The selected ticker is put on the board whenever the socket opens (ws.onopen), so a selection
+  // made before it opens is not lost; an explicit edit made while it is down says so.
+  function sendBoardOp(op, sym) {
+    if (!_priceWs || _priceWs.readyState !== 1) {
+      if (!(op === 'board_add' && sym === state.ticker)) wlNotify('Board not changed: the price socket is down');
+      return;
+    }
+    try { _priceWs.send(JSON.stringify({ op: op, symbol: sym })); } catch (e) {}
+  }
   function addSymbol(sym) {
     var raw = sym;
     sym = normSym(sym);
     if (!sym) { wlNotify('Not a valid symbol: "' + raw + '"'); return; }
-    var list = loadWL();
-    if (list.indexOf(sym) !== -1) { wlNotify(sym + ' is already on the watchlist'); setTicker(sym); return; }
-    list.push(sym); saveWL(list);
-    renderWatchlist(); setTicker(sym);
+    setTicker(sym);   // setTicker puts it on the board
   }
-  // ACTIVE INSTRUMENT = any supported Schwab symbol the operator wants to analyse now. The client
-  // only normalises the FORM (upper-case, the vendor's symbol alphabet); whether the instrument is
-  // real/supported is decided by the backend, which fails closed (state_error / no chain) — nothing
-  // is fabricated for an unknown symbol, and no hard-coded allowlist exists here.
+  // The client only normalises the FORM (upper-case, the vendor's symbol alphabet); whether the
+  // instrument is real is Schwab's answer, shown as its reason — nothing is fabricated for an
+  // unknown symbol, and no hard-coded allowlist exists here.
   function normSym(raw) {
     var s = String(raw || '').trim().toUpperCase();
     return /^[$^]?[A-Z0-9][A-Z0-9.\-\/]{0,11}$/.test(s) ? s : null;
   }
-  function removeSymbol(sym) {
-    var list = loadWL().filter(function (s) { return s !== sym; });
-    saveWL(list); renderWatchlist();   // renderWatchlist reopens the push for the new list
+  function removeSymbol(key) { sendBoardOp('board_remove', key); }
+  // The daemon's answer to this page's board edit: the symbol's key and display name, or why not.
+  function ingestBoardEdit(m) {
+    if (m.error) { wlNotify(m.error); return; }
+    if (m.op === 'board_add' && String(m.requested || '').toUpperCase() === state.ticker && state.key !== m.key) {
+      state.key = m.key; state.display = m.display;
+      paintIdentity(m.display);
+    }
   }
 
   // Every view event goes through emit(): with no ticker chosen, no panel is asked to load
@@ -562,7 +552,7 @@
 
   // ================= ticker store (ONE selected-symbol state across every surface) =================
   // The instrument's name on every header: as typed until the daemon's price socket serves its
-  // display name (ingestIdentity).
+  // display name (ingestBoardEdit).
   // Every panel header ticker label shares .hticker, so a panel added later is never missed.
   function paintIdentity(name) {
     ['hSym', 'aiCtxSym'].forEach(function (id) { var el = document.getElementById(id); if (el) el.textContent = name; });
@@ -581,25 +571,23 @@
     loadExpiries(state.ticker);       // refresh the expiry dropdown from /api/expiries for the new ticker
     openChangeStream(state.ticker);      // levels / flow / liquidity changes and the session
     _priceSubTs = Date.now();
-    subscribePrices();                   // the daemon answers with this ticker's row at once
-    markHeaderPushDown();                // WAITING until that row lands (milliseconds)
+    sendBoardOp('board_add', state.ticker);   // on the board; the daemon answers with its key
+    markHeaderPushDown();                // WAITING until its row lands (milliseconds)
     emit('ed:ticker', { ticker: state.ticker });
   }
 
   // ---- instrument control: a typed symbol IS the control (institutional selector: type -> Enter ->
-  //      the whole workspace changes context). The watchlist only feeds the suggestion list; it is
-  //      never a membership test and never changes when an instrument is analysed. ----
+  //      the whole workspace changes context, and the symbol joins the board). The board feeds
+  //      the suggestion list. ----
   function buildSymList() {
     var dl = document.getElementById('symList'); if (!dl) return;
-    var list = loadWL().slice();
-    if (list.indexOf(state.ticker) === -1) list.unshift(state.ticker);
-    dl.innerHTML = list.map(function (s) { return '<option value="' + s + '"></option>'; }).join('');
+    dl.innerHTML = _board.map(function (b) { return '<option value="' + _escBadge(b.key) + '"></option>'; }).join('');
   }
   function commitSymInput(input) {
     var v = normSym(input.value);
     if (!v) { input.value = state.ticker; input.classList.add('invalid'); setTimeout(function () { input.classList.remove('invalid'); }, 900); return; }
     input.value = v;
-    if (v !== state.ticker) setTicker(v);   // analyse it; the watchlist is untouched
+    if (v !== state.ticker) setTicker(v);
     input.blur();
   }
 
@@ -729,25 +717,14 @@
   function markWlDegraded(reason) {
     var host = document.getElementById('watchlist');
     if (host) host.classList.add('wl-degraded');
-    loadWL().forEach(function (sym) { setWlRow(sym, null, null); });
+    _board.forEach(function (b) { setWlRow(b.key, null, null); });
     wlNotify(reason);
   }
   function markWlHealthy() {
     var host = document.getElementById('watchlist');
     if (host) host.classList.remove('wl-degraded');
   }
-  // The daemon streams only what is asked for: hand it the watchlist whenever it changes
-  // (and once at start), so every row can be a streamed quote.
-  var _wlDeclared = null;
-  function declareWatchlistStream(list) {
-    var key = list.join(',');
-    if (key === _wlDeclared) return;
-    _wlDeclared = key;
-    fetch('/api/streaming/watchlist-symbols', { method: 'POST', cache: 'no-store',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: list }) })
-      .catch(function () { _wlDeclared = null; });   // retried when the console push reopens
-  }
-  // ---- the price socket (daemon -> browser) ----
+  // ---- the price socket (daemon -> browser): the board, and every board ticker's row ----
   var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
   var _priceWs = null, _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0, _priceRetry = 0;
   // the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
@@ -758,24 +735,12 @@
     if (!/^\d+$/.test(port)) return null;
     return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/';
   }
-  // The market context the server always streams, served in the page (meta ed-market-context,
-  // from streaming.MARKET_CONTEXT_SYMBOLS): [{key, display}]. The socket pushes only what a page
-  // subscribes to, so every page asks for it.
+  // The header's market-context slots, served in the page (meta ed-market-context, from
+  // server.HEADER_CONTEXT_SYMBOLS): [{key, display}]. Each shows its board ticker's row.
   var MARKET_CONTEXT = (function () {
     var m = document.querySelector('meta[name="ed-market-context"]');
     try { return JSON.parse(m ? m.getAttribute('content') : '[]') || []; } catch (e) { return []; }
   })();
-  function priceSymbols() {
-    var out = [];
-    if (state.ticker) out.push(String(state.ticker).toUpperCase());
-    MARKET_CONTEXT.forEach(function (c) { if (out.indexOf(c.key) === -1) out.push(c.key); });
-    loadWL().forEach(function (s) { s = String(s).toUpperCase(); if (out.indexOf(s) === -1) out.push(s); });
-    return out;
-  }
-  function subscribePrices() {
-    if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
-    try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() })); } catch (e) {}
-  }
   function openPriceSocket() {
     var url = priceSocketUrl();
     if (typeof WebSocket === 'undefined' || !url) return;
@@ -783,10 +748,11 @@
     try { ws = new WebSocket(url); } catch (e) { schedulePriceReconnect(); return; }
     _priceWs = ws;   // (_priceSubTs is set by a ticker change only: a reconnect during an
                      //  outage keeps reading OFFLINE, not WAITING)
-    ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
+    ws.onopen = function () { _priceRetry = 0; if (state.ticker) sendBoardOp('board_add', state.ticker); };
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
-      if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
+      if (msg && msg.type === 'board' && Array.isArray(msg.board)) { _board = msg.board; renderWatchlist(); return; }
+      if (msg && msg.type === 'board_edit') { ingestBoardEdit(msg); return; }
       if (!msg || !Array.isArray(msg.rows)) return;
       _priceUp = true; _lastPriceTs = Date.now();
       msg.rows.forEach(ingestPriceRow);
@@ -800,18 +766,6 @@
     // 0.25 s, 0.5 s, 1 s, then every 2 s: the daemon restarting is seen and recovered at once
     var ms = Math.min(2000, 250 * Math.pow(2, _priceRetry++));
     setTimeout(function () { if (!_priceWs) openPriceSocket(); }, ms);
-  }
-  // What each symbol the page asked for is, as the daemon answers the subscribe: the key its rows
-  // carry ("$SPX") and its display name ("SPX"). Rows are matched to what was asked by that key.
-  function ingestIdentity(list) {
-    list.forEach(function (s) {
-      if (!s || !s.key) return;
-      _served[s.requested] = s;
-      if (s.requested === state.ticker && state.key !== s.key) {
-        state.key = s.key; state.display = s.display;
-        paintIdentity(s.display);
-      }
-    });
   }
   // ONE row in (the daemon's price_row), every surface painted from it. Every number and
   // verdict is the server's; the browser only picks the words.
@@ -829,11 +783,8 @@
         feedLabel: q.feed_live ? 'LIVE' : 'FEED DOWN',
         ageLabel: q.trade_time_ct != null ? ('last trade ' + q.trade_time_ct) : 'no trade sent' });
     }
-    loadWL().forEach(function (wlSym) {
-      if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
-      setWlRow(wlSym, q.spot, q.chg_pct);
-      markWlHealthy();
-    });
+    setWlRow(q.ticker, q.spot, q.chg_pct);   // the board row whose key the row carries
+    markWlHealthy();
     try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
   }
   function pricePushHealthy() { return _priceUp && (Date.now() - _lastPriceTs <= PRICE_SILENCE_MS); }
@@ -854,7 +805,6 @@
     if (typeof EventSource === 'undefined') return;
     try { _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk)); }
     catch (e) { return; }
-    _changes.onopen = function () { _wlDeclared = null; declareWatchlistStream(loadWL()); };
     _changes.onerror = function () { paintSession(null, 'session unknown: the console push is down'); };
     _changes.addEventListener('session', function (ev) { paintSession(ev.data); });
     ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
@@ -958,10 +908,10 @@
     // subnav/view tabs already in HTML are re-bound by renderSubnav/renderViewbar
     // watchlist
     renderWatchlist();
-    document.getElementById('wlAdd').addEventListener('click', function () {   // EXPLICIT watchlist add
-      var s = window.prompt('Add symbol to watchlist', state.ticker); if (s) addSymbol(s);
+    document.getElementById('wlAdd').addEventListener('click', function () {   // EXPLICIT board add
+      var s = window.prompt('Add symbol to the board', state.ticker); if (s) addSymbol(s);
     });
-    // header search: analyse a symbol (active-instrument change only — never a watchlist mutation)
+    // header search: analyse a symbol (it joins the board)
     var search = document.getElementById('symSearch');
     if (search) search.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && search.value.trim()) { var v = normSym(search.value); if (v) { setTicker(v); search.value = ''; } }

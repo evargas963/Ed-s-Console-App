@@ -3,7 +3,7 @@ schwab gives us... no rounding, use the exact data that schwab gives us everywhe
 
 Schwab's option chain sends gamma, delta, theta, vega, rho and volatility rounded to 3 decimals; its
 quotes endpoint sends the same contract's unrounded. schwab_client.fetch_full_chain, the one place
-a chain enters (the console's levels and the daemon's captures), replaces each contract's Greeks
+a chain enters (the capture daemon's chain sweep), replaces each contract's Greeks
 with its quote's, so the heatmap, the levels, the per-strike rows and the forces read them unchanged.
 
 Real data (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json): SPY's 2026-11-20 contracts
@@ -170,14 +170,3 @@ def test_quotes_are_asked_in_batches_of_at_most_300_every_contract_once():
     assert [len(b) for b in schwab.asked] == [300, 142]
     asked = [s for b in schwab.asked for s in b]
     assert sorted(asked) == sorted(c["symbol"] for c in _FX["chain"])
-
-
-def test_the_consoles_quotes_request_shares_the_chain_gate_and_a_429_degrades_it(monkeypatch):
-    """The console's quotes go through the chain requests' gate: Schwab's 429 on a quotes request
-    puts the gate in its throttled state, slowing every Schwab request behind it."""
-    monkeypatch.setattr(server, "_schwab_chain_fetch_gate", server._ChainGateV2())
-    monkeypatch.setattr(server, "safe_get_quotes", lambda client, symbols: _Resp(429))
-    assert server._gated_safe_get_quotes(None, [_CALL_875]).status_code == 429
-    snap = server._schwab_chain_fetch_gate.snapshot()
-    assert snap["degraded"] is True and snap["degraded_reason_last"] == "http_throttled"
-    assert snap["in_use"] == 0

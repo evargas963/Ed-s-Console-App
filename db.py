@@ -350,41 +350,6 @@ class EdDB:
                 "ON logging_universe (category, enrolled_ts_utc)"
             )
 
-    def logging_universe_prune_invalid_enrollments(self) -> list[str]:
-        """
-        Remove invalid user_persisted/pinned rows (migration fragments, corrupted keys).
-
-        Core rows are never touched.
-        """
-        from production_universe import is_valid_production_ticker, normalize_production_ticker
-
-        removed: list[str] = []
-
-        def _do() -> None:
-            with self._connect() as conn:
-                rows = conn.execute(
-                    """
-                    SELECT ticker, category
-                    FROM logging_universe
-                    WHERE category IN ('user_persisted', 'pinned', 'panel_auto')
-                    """
-                ).fetchall()
-                for r in rows:
-                    raw = str(r[0] or "")
-                    cat = str(r[1] or "")
-                    t = normalize_production_ticker(raw)
-                    if is_valid_production_ticker(t):
-                        continue
-                    cur = conn.execute(
-                        "DELETE FROM logging_universe WHERE ticker = ? COLLATE NOCASE AND category = ?",
-                        (raw, cat),
-                    )
-                    if cur.rowcount and int(cur.rowcount) > 0:
-                        removed.append(raw)
-
-        _do()
-        return removed
-
     def _migrate_drop_session_log_v1(self) -> None:
         """Pass 6 — drop the session_log table.
 

@@ -324,19 +324,15 @@ def _wait_idle(tk, timeout=10.0):
     raise AssertionError("reprice worker did not finish")
 
 
-def test_a_ticker_put_on_screen_reprices_from_its_kept_chain_without_a_fetch(monkeypatch):
+def test_a_ticker_put_on_screen_reprices_from_its_kept_chain(monkeypatch):
     """Switching tickers: the ticker's chain is already held (every publication keeps it), so its
-    first tick reprices it at once; a fetch happens only for a ticker the levels loop has not
-    reached yet."""
+    first tick reprices it at once. The console fetches nothing: the chain comes from the daemon."""
     monkeypatch.setattr(server, "LEVELS_REPRICE_MIN_INTERVAL_SEC", 0.05)
-    fetched = []
-    monkeypatch.setattr(server, "_terrain_refresh_one", lambda tk, priority=False: fetched.append((tk, priority)))
     _stream({}, monkeypatch)
     server._publish_levels(TK, _CONTRACTS, time.time())                 # published while not viewed
     push_changes.subscribe(TK)                                           # the operator switches to it
     server._on_stream_tick(TK)
     _wait_idle(TK)
-    assert fetched == []
     assert _cached()["_gamma_surface"] is not None
 
 
@@ -346,13 +342,16 @@ def test_the_console_serves_while_the_stored_levels_load(monkeypatch):
     2.8 s for SPY, 5.4 s for $SPX, measured) ran before the app served its first request. It runs
     on the levels loop's own thread now; starting the loop returns at once."""
     import threading as _th
+    import live_market_plane as lmp
     release, started, finished = _th.Event(), _th.Event(), _th.Event()
 
-    def slow_load():
+    def slow_load(board):
         started.set()
         release.wait(2)
         finished.set()
         return 0
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": [TK]}, time.time())
+    monkeypatch.setattr(server, "_publish_missing_price_levels", lambda board: None)
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(server, "_load_stored_levels", slow_load)
     monkeypatch.setattr(server, "_terrain_loop_running", False)
@@ -447,12 +446,11 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
     from db import EdDB
     edb = EdDB(db)
     monkeypatch.setattr(server, "get_db", lambda: edb)
-    monkeypatch.setattr(server, "_logger_tickers", [TK])
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
 
-    assert server._load_stored_levels() == 1
+    assert server._load_stored_levels([TK]) == 1
     loaded = _cached()
     assert loaded["computed_ts_utc"] == taken
     assert loaded["spot"] == _SPOT and loaded["spot_source"] == server.SPOT_SOURCE_CAPTURE
@@ -464,13 +462,13 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
 
 def test_old_levels_are_stale_with_their_reason_at_any_hour(monkeypatch, pin_clock):
     """A closed market used to call levels of any age current ("market closed", not stale;
-    ACTIVE_PROGRAM S-08). The loop refreshes at any hour, so levels older than two of its cycles
-    are stale with the reason, on a Saturday as in session."""
+    ACTIVE_PROGRAM S-08). The daemon fetches chains at any hour, so levels older than two of its
+    rounds are stale with the reason, on a Saturday as in session."""
     pin_clock(2026, 9, 26, 12, 0)
     fri_close = datetime(2026, 9, 25, 16, 29, tzinfo=ZoneInfo("America/New_York")).timestamp()
     st = server.terrain_staleness(fri_close, TK)
     assert st["levels_stale"] is True and "levels_market_closed" not in st
-    assert "the refresh loop is running but has not reached this ticker" in st["levels_stale_reason"]
+    assert "the daemon's chain sweep has not delivered this ticker" in st["levels_stale_reason"]
 
 
 def test_a_reprice_on_a_kept_chain_keeps_the_chains_time(monkeypatch):
@@ -513,24 +511,3 @@ def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
                            gamma_at_spot=None)
     assert r.regime == "UNAVAILABLE" and "gamma" not in r.headline.lower().split("—")[0]
     assert "Short gamma" not in r.headline and "Long gamma" not in r.headline
-
-
-def test_a_restarted_console_declares_the_boards_streams_before_its_start_up_work(monkeypatch):
-    """The daemon drops a console's streams when it disconnects and streams only what the
-    console declares. The board was re-declared only in the levels loop's first cycle, after
-    the start-up builds (2026-09-29: 30 tickers' 11:19 CT bar was never streamed). The loop
-    declares the board before any start-up work."""
-    class _Stop(Exception):
-        pass
-    seen = []
-
-    def first_start_up_work(tickers):
-        seen.append(list(ofs._equity_demand["board"]))
-        raise _Stop
-
-    monkeypatch.setattr(server, "_logger_tickers", ["SPY", "XLE", "QQQ"])
-    monkeypatch.setitem(ofs._equity_demand, "board", [])
-    monkeypatch.setattr(server, "_publish_missing_price_levels", first_start_up_work)
-    with pytest.raises(_Stop):
-        server._terrain_loop()
-    assert seen == [["SPY", "XLE", "QQQ"]]

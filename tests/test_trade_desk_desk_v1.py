@@ -42,17 +42,6 @@ def test_bars_route_accepts_30m_and_twelve_thousand_rows_and_nothing_beyond():
     assert client.get("/api/bars1m", params={"ticker": "SPY", "limit": 12001}).status_code == 422
 
 
-def test_market_context_indices_are_always_requested_and_subscribed():
-    """Measured 2026-09-25: SPX/NDX/VIX read "—" all session on a page whose watchlist did not
-    hold them -- nobody asked the daemon to stream them. They are standing demand now, ranked
-    right after the active ticker."""
-    from app.options.order_flow import streaming as ofs
-    assert ofs.MARKET_CONTEXT_SYMBOLS == ("$SPX", "$NDX", "$VIX")
-    assert ofs._equity_demand["context"] == list(ofs.MARKET_CONTEXT_SYMBOLS)
-    admitted, _ = ofs.rank_equity_symbols("NVDA", {**ofs._equity_demand, "watchlist": ["AAPL"]})
-    assert admitted[:5] == ["NVDA", "$SPX", "$NDX", "$VIX", "AAPL"]
-
-
 def test_equity_microstructure_serves_the_engines_tick_rule_flow_labelled_proxy():
     client = TestClient(srv.app)
     d = client.get("/api/order-flow/microstructure", params={"ticker": "SPY", "venue": "NYSE_BOOK"}).json()

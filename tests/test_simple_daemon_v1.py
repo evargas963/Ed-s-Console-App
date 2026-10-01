@@ -63,14 +63,28 @@ def test_the_wanted_list_survives_a_restart_and_a_change_clears_that_services_re
     bus, health = ss.MessageBus(), ss.HealthRegistry()
     d = cap.Daemon(bus, health, tmp_path / "w.json")
     assert d.wanted == _wanted(), "no built-in symbol list: the console decides"
-    d.set_wanted({"LEVELONE_EQUITIES": ["spy"], "NYSE_BOOK": ["SPY"], "BOGUS": ["X"]})
+    d.set_wanted({"NYSE_BOOK": ["spy"], "LEVELONE_OPTIONS": ["SPY   261120C00875000"], "BOGUS": ["X"]})
     assert cap.Daemon(bus, health, tmp_path / "w.json").wanted == _wanted(
-        LEVELONE_EQUITIES=["SPY"], NYSE_BOOK=["SPY"])
+        NYSE_BOOK=["SPY"], LEVELONE_OPTIONS=["SPY   261120C00875000"])
     d.refused = {s: {} for s in cap.SERVICES}
     d.refused["NYSE_BOOK"] = {"SPY": "x"}
-    d.refused["LEVELONE_EQUITIES"] = {"ZZZ": "x"}
-    d.set_wanted({"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["QQQ"]})
-    assert d.refused["NYSE_BOOK"] == {} and d.refused["LEVELONE_EQUITIES"] == {"ZZZ": "x"}
+    d.refused["LEVELONE_OPTIONS"] = {"ZZZ": "x"}
+    d.set_wanted({"NYSE_BOOK": ["QQQ"], "LEVELONE_OPTIONS": ["SPY   261120C00875000"]})
+    assert d.refused["NYSE_BOOK"] == {} and d.refused["LEVELONE_OPTIONS"] == {"ZZZ": "x"}
+
+
+def test_the_board_is_the_only_list_of_equities_streamed(tmp_path):
+    """One list (2026-10-01): every board ticker is streamed on LEVELONE_EQUITIES, CHART_EQUITY
+    and NEWS_HEADLINE, and nothing else is -- the console's wanted list names books and option
+    contracts only; an equity it names is not streamed (the browser's watchlist, the header's
+    context, the viewed tickers and the console's own copy of the board each used to add one)."""
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json", board=["$SPX", "SPY"])
+    d.set_wanted({"LEVELONE_EQUITIES": ["AMD"], "CHART_EQUITY": ["AMD"], "NEWS_HEADLINE": ["AMD"],
+                  "NYSE_BOOK": ["SPY"]})
+    w = d.all_wanted()
+    assert w["LEVELONE_EQUITIES"] == w["CHART_EQUITY"] == w["NEWS_HEADLINE"] == {"$SPX", "SPY"}
+    assert w["NYSE_BOOK"] == {"SPY"}
+    assert d.status()["board"] == ["$SPX", "SPY"]
 
 
 # ------------------------------------------------------------------ sync against a fake Schwab
@@ -89,10 +103,10 @@ class FakeSchwab:
             raise RuntimeError("code 19 REACHED_SYMBOL_LIMIT")
 
 
-def _daemon(tmp_path, monkeypatch, fake, **wanted):
+def _daemon(tmp_path, monkeypatch, fake, board=(), **wanted):
     bus = ss.MessageBus()
     log = bus.subscribe("sub.", maxsize=100)
-    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json")
+    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json", board=list(board))
     d.set_wanted({k: list(v) for k, v in wanted.items()})
     d.stream = object()
     monkeypatch.setattr(cap, "_request", fake.request)
@@ -101,11 +115,12 @@ def _daemon(tmp_path, monkeypatch, fake, **wanted):
 
 def test_sync_subscribes_the_difference_and_logs_every_answer(tmp_path, monkeypatch):
     fake = FakeSchwab()
-    d, log = _daemon(tmp_path, monkeypatch, fake, LEVELONE_EQUITIES=["SPY", "AAPL"], NYSE_BOOK=["SPY"])
+    d, log = _daemon(tmp_path, monkeypatch, fake, board=["SPY", "AAPL"], NYSE_BOOK=["SPY"])
     asyncio.run(d.sync())
-    assert fake.calls == [("LEVELONE_EQUITIES", "SUBS", ["AAPL", "SPY"]), ("NYSE_BOOK", "SUBS", ["SPY"])]
+    assert fake.calls == [("LEVELONE_EQUITIES", "SUBS", ["AAPL", "SPY"]), ("CHART_EQUITY", "SUBS", ["AAPL", "SPY"]),
+                          ("NYSE_BOOK", "SUBS", ["SPY"]), ("NEWS_HEADLINE", "SUBS", ["AAPL", "SPY"])]
     assert d.held["LEVELONE_EQUITIES"] == {"SPY", "AAPL"} and d.held["NYSE_BOOK"] == {"SPY"}
-    assert [log.queue.get_nowait()[1]["code"] for _ in range(2)] == [0, 0]
+    assert [log.queue.get_nowait()[1]["code"] for _ in range(4)] == [0, 0, 0, 0]
     fake.calls.clear()
     asyncio.run(d.sync())
     assert fake.calls == [], "nothing changed, nothing sent"
@@ -234,8 +249,8 @@ def test_a_dying_connection_is_replaced_and_everything_wanted_is_resubscribed(tm
     fake = FakeSchwab()
     monkeypatch.setattr(cap, "_request", fake.request)
     bus = ss.MessageBus()
-    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json")
-    d.set_wanted({"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["SPY"]})
+    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json", board=["SPY"])
+    d.set_wanted({"NYSE_BOOK": ["SPY"]})
     stop = asyncio.Event()
 
     async def go():
@@ -353,22 +368,18 @@ def console(monkeypatch):
     monkeypatch.setattr(ofs, "_active_ticker", None)
     monkeypatch.setattr(ofs, "_active_option_contract", None)
     monkeypatch.setattr(ofs, "_active_option_contracts", [])
-    monkeypatch.setattr(ofs, "_equity_demand", {"context": list(ofs.MARKET_CONTEXT_SYMBOLS),
-                                                "watchlist": [], "board": []})
     import live_market_plane as lmp
     lmp.record_feed_down()
     return ofs
 
 
-def test_the_console_wants_the_ticker_its_book_the_context_and_its_contracts(console):
+def test_the_console_wants_the_tickers_book_and_its_contracts_and_no_equity(console):
     ofs = console
     ofs._active_ticker = "NVDA"
-    ofs._equity_demand["watchlist"] = ["AAPL"]
     ofs._active_option_contract = "NVDA  261016C00200000"
     ofs._active_option_contracts = ["NVDA  261016C00210000"]
     w = ofs.current_wanted()
-    assert w["LEVELONE_EQUITIES"] == ["NVDA", "$SPX", "$NDX", "$VIX", "AAPL"]
-    assert w["CHART_EQUITY"] == w["NEWS_HEADLINE"] == w["LEVELONE_EQUITIES"]
+    assert "LEVELONE_EQUITIES" not in w and "CHART_EQUITY" not in w and "NEWS_HEADLINE" not in w
     assert w["NYSE_BOOK"] == w["NASDAQ_BOOK"] == ["NVDA"]
     assert w["OPTIONS_BOOK"] == ["NVDA  261016C00200000"]
     assert w["LEVELONE_OPTIONS"] == ["NVDA  261016C00200000", "NVDA  261016C00210000"]
@@ -385,11 +396,11 @@ def test_every_desired_state_change_is_sent_once(console):
     async def go():
         t = asyncio.create_task(ofs._send_wanted(WS()))
         await asyncio.sleep(0.05)
-        ofs.declare_equity_symbols("watchlist", ["AMD"])
+        ofs.set_streaming_active_ticker("AMD")
         await asyncio.sleep(ofs.WANTED_SEND_SEC * 3)
         t.cancel()
     asyncio.run(go())
-    assert len(sent) == 2 and "AMD" in sent[1]["wanted"]["LEVELONE_EQUITIES"]
+    assert len(sent) == 2 and sent[1]["wanted"]["NYSE_BOOK"] == ["AMD"]
 
 
 def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(console):

@@ -8,13 +8,14 @@ browser that asked for the symbol, the moment a Schwab message changes it.
 
 No web server sits in this path, so no analytics load can delay a price.
 
-Protocol (JSON text frames):
-  browser -> {"op": "subscribe", "symbols": ["SPY", "AAPL", ...]}   (replaces the set)
-  server  -> {"type": "symbols", "symbols": [{requested, key, display}, ...]}  (on subscribe:
-                                                                     what each asked-for symbol
-                                                                     is -- "SPX" is key "$SPX",
+Protocol (JSON text frames). Every page gets every board ticker; there is no per-page list.
+  server  -> {"type": "board", "board": [{key, display}, ...]}       (on connect and on every
+                                                                     change of the board)
+  browser -> {"op": "board_add" | "board_remove", "symbol": "SPX"}  (edits the one board)
+  server  -> {"type": "board_edit", op, requested, key, display, error}  (that page's answer:
+                                                                     "SPX" is key "$SPX",
                                                                      shown "SPX")
-  server  -> {"type": "quotes", "rows": [price_row, ...]}            (snapshot on subscribe,
+  server  -> {"type": "quotes", "rows": [price_row, ...]}            (snapshot on connect,
                                                                      then every change)
   server  -> {"type": "feed", "feed": {...}, "rows": [...]}           (every HEARTBEAT_SEC:
                                                                      the feed verdict and a
@@ -37,7 +38,7 @@ import time
 
 import live_market_plane as lmp
 import live_price_rows
-from instrument_identity import display_symbol, ticker_storage_key
+from instrument_identity import display_symbol
 from stream_spine import COUNT_DROPS, MessageBus
 
 log = logging.getLogger(__name__)
@@ -48,26 +49,33 @@ LIVE_UI_HOST = os.environ.get("ED_LIVE_UI_HOST", "0.0.0.0")  # caps-ok: operator
 LIVE_UI_PORT = int(os.environ.get("ED_LIVE_UI_PORT", "8800"))  # caps-ok: operator port config with its declared default, not market data
 #: feed verdict + row beat cadence (the heartbeat that keeps "live" honest)
 HEARTBEAT_SEC = 1.0
-#: a browser may watch at most this many symbols (the daemon holds ~50)
-MAX_SYMBOLS_PER_CLIENT = 200
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "identity", "wake")
+    __slots__ = ("ws", "pending", "notes", "wake")
 
     def __init__(self, ws) -> None:
         self.ws = ws
-        self.symbols: frozenset[str] = frozenset()
-        self.pending: set[str] = set()      # symbols changed since the last send
-        self.identity: list[dict] | None = None   # the last subscribe's answer, not yet sent
+        self.pending: set[str] = set()      # board symbols changed since the last send
+        self.notes: list[dict] = []         # board messages not yet sent
         self.wake = asyncio.Event()
 
 
+def board_message(board: "list[str]") -> dict:
+    """The board as every page shows it: each ticker's key (its rows carry it) and display name."""
+    return {"type": "board", "board": [{"key": k, "display": display_symbol(k)} for k in board]}
+
+
 class LiveUiServer:
-    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict) -> None:
+    """Every page gets the board and the price row of every board ticker; the board is the
+    daemon's (`board()`), edited through `edit(op, symbol, now)`."""
+
+    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict, board, edit) -> None:
         self.bus = bus
         self.heartbeat_fn = heartbeat_fn
         self.stats = stats
+        self.board = board
+        self.edit = edit
         self.clients: set[_Client] = set()
         stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
                      beat_send_failures=0, listening=None, last_send_ms=None)
@@ -88,11 +96,19 @@ class LiveUiServer:
             log.warning("live ui ingest %s: %s: %s", sym, type(e).__name__, e)
 
     def on_row(self, ticker: str) -> None:
-        """Plane row listener: mark the symbol changed for every browser watching it."""
+        """Plane row listener: mark a board symbol changed for every browser."""
+        if ticker not in self.board():
+            return
         for c in self.clients:
-            if ticker in c.symbols:
-                c.pending.add(ticker)
-                c.wake.set()
+            c.pending.add(ticker)
+            c.wake.set()
+
+    def on_board(self, board: "list[str]") -> None:
+        """The board changed: every browser gets it, and the row of every ticker on it."""
+        for c in self.clients:
+            c.notes.append(board_message(board))
+            c.pending |= set(board)
+            c.wake.set()
 
     def beat(self) -> dict:
         hb = self.heartbeat_fn()
@@ -112,40 +128,37 @@ class LiveUiServer:
         while True:
             await c.wake.wait()
             c.wake.clear()
-            if c.identity is not None:
-                identity, c.identity = c.identity, None
-                await self._send(c, {"type": "symbols", "symbols": identity})
+            notes, c.notes = c.notes, []
+            for note in notes:
+                await self._send(c, note)
+            board = set(self.board())
             syms, c.pending = c.pending, set()
-            rows = [live_price_rows.price_row(s) for s in syms if s in c.symbols]
+            rows = [live_price_rows.price_row(s) for s in syms if s in board]
             if rows:
                 await self._send(c, {"type": "quotes", "rows": rows})
 
     async def _read(self, c: _Client) -> None:
+        """A page's board edits: {"op": "board_add" | "board_remove", "symbol": ...}. The answer
+        goes to that page ({"type": "board_edit", requested, key, error}); the new board to every
+        page (on_board)."""
         async for frame in c.ws:
             try:
                 req = json.loads(frame)
             except (TypeError, ValueError):
                 continue
-            if not isinstance(req, dict) or req.get("op") != "subscribe":
+            if not isinstance(req, dict) or req.get("op") not in ("board_add", "board_remove"):
                 continue
-            raw = req.get("symbols")
-            if not isinstance(raw, list):
-                continue
-            keys, identity = [], []
-            for s in raw[:MAX_SYMBOLS_PER_CLIENT]:
-                k = ticker_storage_key(s) if isinstance(s, str) else ""
-                if not k:
-                    continue
-                identity.append({"requested": s, "key": k, "display": display_symbol(k)})
-                if k not in keys:
-                    keys.append(k)
-            c.symbols = frozenset(keys)
-            c.identity = identity            # what each asked-for symbol is, before its rows
-            c.pending = set(keys)            # snapshot: the current row for each, now
+            key, error = self.edit(req["op"], req.get("symbol"), time.time())
+            c.notes.append({"type": "board_edit", "op": req["op"], "requested": req.get("symbol"),
+                            "key": key, "display": display_symbol(key) if key else None,
+                            "error": error})
             c.wake.set()
 
     async def serve_client(self, ws) -> None:
         c = _Client(ws)
+        c.notes.append(board_message(self.board()))
+        c.pending = set(self.board())        # snapshot: the current row of every board ticker
+        c.wake.set()
         self.clients.add(c)
         self.stats["clients"] = len(self.clients)
         pump = asyncio.create_task(self._pump(c))
@@ -176,7 +189,7 @@ class LiveUiServer:
                 # a beat is not reading and is closed (2026-09-26: the beat stopped for every
                 # browser and the whole screen read "no live feed" on a healthy Schwab socket)
                 try:
-                    rows = [live_price_rows.price_row(s) for s in sorted(c.symbols)]
+                    rows = [live_price_rows.price_row(s) for s in self.board()]
                     await asyncio.wait_for(
                         self._send(c, {"type": "feed", "feed": feed, "rows": rows}),
                         timeout=HEARTBEAT_SEC)
@@ -190,15 +203,17 @@ class LiveUiServer:
             await asyncio.sleep(HEARTBEAT_SEC)
 
 
-async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
+async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn, daemon,
                         host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
                         stats: "dict | None" = None) -> None:
     """Run until `stop` is set. Start it BEFORE the Schwab connection so the plane sees the
-    first messages (Schwab sends each field once, then only changes)."""
+    first messages (Schwab sends each field once, then only changes). `daemon` holds the board
+    (capture.Daemon: .board, .edit_board, .board_listeners)."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(bus, heartbeat_fn, stats)
+    srv = LiveUiServer(bus, heartbeat_fn, stats, lambda: daemon.board, daemon.edit_board)
+    daemon.board_listeners.append(srv.on_board)
     for topic, msg in list(bus.snapshot().items()):         # whatever arrived before we started
         if topic.startswith("quote."):
             srv.ingest(msg)

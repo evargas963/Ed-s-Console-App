@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from fastapi import HTTPException
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -94,20 +93,6 @@ def test_build_config_fail_closed_without_secrets(monkeypatch: pytest.MonkeyPatc
     assert "UNAVAILABLE" in state.message, state.message
 
 
-def test_server_imports_in_ci_without_live_credentials() -> None:
-    """Importing server in a CI env must not build a client.
-
-    Uses a fresh module load rather than whatever `server` the suite already imported:
-    `_client` is a module-level global, so asserting on the shared instance made this
-    test depend on suite order (observed 2026-07-19 inside the full run only). The
-    reload tests the actual intent - a clean import builds no client.
-    """
-    srv = _reload_server_module()
-
-    assert srv._client is None
-    assert srv.app is not None
-
-
 def test_server_import_does_not_build_client_or_run_login_flow() -> None:
     with patch("schwab_client.build_client_from_token") as mock_build, patch(
         "schwab_client.run_login_flow"
@@ -115,29 +100,53 @@ def test_server_import_does_not_build_client_or_run_login_flow() -> None:
         srv = _reload_server_module()
         mock_build.assert_not_called()
         mock_login.assert_not_called()
-        assert srv._client is None
+        assert srv.app is not None
 
 
-def test_get_client_requires_token_only_when_called(monkeypatch: pytest.MonkeyPatch) -> None:
-    from schwab_client import SchwabClientState
+def test_the_console_makes_no_schwab_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The capture daemon is the only Schwab client (DATA_FLOW decision 1). The console started,
+    every one of its GET routes asked for a ticker, and a chain the daemon fetched priced through
+    it: no Schwab client is built and no chain or quote is asked of Schwab. Before this change the
+    console fetched every board ticker's chain itself (the 429s of 2026-10-01 came from it and the
+    daemon asking at once)."""
+    import json as _json
 
+    import schwab
+    import schwab_client
     import server
+    from app.options.order_flow import streaming as ofs
+    from fastapi.testclient import TestClient
 
-    monkeypatch.setattr(server, "_client", None)
-    monkeypatch.setattr(
-        server,
-        "build_client_from_token",
-        lambda **_: SchwabClientState(
-            ok=False,
-            message="Token file not found: ci-missing-token",
-            client=None,
-        ),
-    )
+    calls: list = []
 
-    with pytest.raises(HTTPException) as exc_info:
-        server.get_client(force_refresh=True)
-    assert exc_info.value.status_code == 503
-    assert "Schwab auth failed" in str(exc_info.value.detail)
+    def _schwab_call(name):
+        def call(*_a, **_k):
+            calls.append(name)
+            raise AssertionError(f"the console called Schwab: {name}")
+        return call
+
+    for name in ("build_client_from_token", "client_from_token_file_atomic", "safe_get_chain",
+                 "safe_get_quotes", "fetch_full_chain", "run_login_flow"):
+        monkeypatch.setattr(schwab_client, name, _schwab_call(name))
+    for name in ("client_from_token_file", "client_from_login_flow", "client_from_manual_flow",
+                 "easy_client"):
+        monkeypatch.setattr(schwab.auth, name, _schwab_call(name))
+
+    fx = _json.loads((Path(__file__).resolve().parent / "fixtures"
+                      / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8"))
+    with TestClient(server.app) as client:
+        ofs._on_chain_callback = server._on_chain
+        ofs._ingest_pushed("chain.SPY", {"src": "schwab_chain", "ticker": "SPY",
+                                         "ts_recv": fx["capture_ts_utc"], "part": 0, "parts": 1,
+                                         "contracts": fx["chain"]})
+        server._chain_pricing.submit(lambda: None).result(timeout=120)   # the chain is priced
+        for route in server.app.routes:
+            # /api/changes is an open-ended event stream (it reads only the push's own state)
+            if ("GET" in (getattr(route, "methods", None) or ()) and "{" not in route.path
+                    and route.path != "/api/changes"):
+                client.get(route.path, params={"ticker": "SPY", "contract": "SPY   261120C00875000"})
+    assert calls == []
+    assert server.terrain_cache_get("SPY") is not None, "the daemon's chain was priced"
 
 
 def test_adversarial_tests_can_import_server() -> None:

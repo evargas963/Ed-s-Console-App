@@ -1,12 +1,15 @@
 // @ts-check
 /**
  * TICKER / EXPIRY / MEASURE controls — the value IS the control (real dropdowns, not metadata chips).
- * Proves: one selected-symbol state (dropdown <-> watchlist <-> header <-> panels); the expiry list
- * comes from /api/expiries (never hard-coded); All Expirations shows every canonical column; a single
- * expiry filters the heatmap to that column; an old expiry invalid for a new ticker fails safe to All;
- * terrain Key Levels stay disclosed as all-exp when a single expiry is filtered. Offline.
+ * Proves: one selected-symbol state (dropdown <-> the board's rail <-> header <-> panels); one list
+ * of tickers (the daemon's board: a symbol analysed joins it); the expiry list comes from
+ * /api/expiries (never hard-coded); All Expirations shows every canonical column; a single expiry
+ * filters the heatmap to that column; an old expiry invalid for a new ticker fails safe to All;
+ * terrain Key Levels stay disclosed as all-exp when a single expiry is filtered. Offline; the
+ * daemon's price socket is the stand-in (tests/e2e/fixtures/price_socket.js).
  */
 const { test, expect } = require('@playwright/test');
+const { mockPriceSocket } = require('./fixtures/price_socket');
 
 const EXPS = ['2026-09-11', '2026-09-12', '2026-09-18'];
 function surfaceFor(tk, spot) {
@@ -42,8 +45,8 @@ async function intercept(page) {
 test.describe('ticker / expiry / measure controls', () => {
   test.beforeEach(async ({ page }) => {
     await intercept(page);
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY');
-      localStorage.setItem('ed_watchlist_v1', JSON.stringify(['SPY', 'QQQ', 'IWM'])); } catch (e) {} });
+    await mockPriceSocket(page, [], ['SPY', 'QQQ', 'IWM']);           // the daemon's board
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
   });
 
   test('controls are real dropdowns (value is the control, no SYM/EXPIRY/MEASURE chips)', async ({ page }) => {
@@ -101,38 +104,41 @@ test.describe('ticker / expiry / measure controls', () => {
   });
 
   // #9 (live operator finding 2026-09-10): the analytical ticker control was built FROM the watchlist,
-  // so only SPY/QQQ/IWM/NVDA/TSLA were selectable and analysing a symbol mutated the watchlist. The
-  // two responsibilities are separate: WATCHLIST = persistent symbols the operator monitors (explicit
-  // add/remove); ACTIVE INSTRUMENT = any supported Schwab symbol analysed now (typed -> Enter).
-  test('#9 ACTIVE INSTRUMENT is not watchlist membership: any typed symbol switches the workspace; the watchlist never changes', async ({ page }) => {
+  // so only SPY/QQQ/IWM/NVDA/TSLA were selectable. Any symbol can be analysed (typed -> Enter).
+  // One list (operator 2026-10-01: a browser-kept watchlist beside the board was a second list): a
+  // symbol analysed joins the daemon's board, and the rail shows the board as the daemon serves it.
+  test('#9 any typed symbol switches the workspace and joins the one board; the browser keeps no list', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const wlBefore = await page.evaluate(() => localStorage.getItem('ed_watchlist_v1'));
-    const rowsBefore = await page.locator('.wl-row').count();
-    expect(rowsBefore).toBe(3);
-    for (const sym of ['AAPL', 'META', 'AMZN', 'AVGO', 'PLTR']) {
+    await expect(page.locator('.wl-row')).toHaveCount(3);
+    let rows = 3;
+    for (const sym of ['AAPL', 'META', 'AMZN']) {
       await typeSymbol(page, sym);
+      rows += 1;
       await expect(page.locator('#hSym')).toHaveText(sym);                        // header
       await expect(page.locator('#mvTicker')).toHaveText(sym);                    // Gamma panel
       await expect(page.locator('#symInput')).toHaveValue(sym);                   // the control reflects the ONE state
       expect(await page.evaluate(() => window.EdShell.getState().ticker)).toBe(sym);
-      await expect(page.locator('.wl-row.sel')).toHaveCount(0);                   // not a member -> no row selected, none added
-      await expect(page.locator('.wl-row')).toHaveCount(rowsBefore);
+      await expect(page.locator('.wl-row')).toHaveCount(rows);                    // on the board
+      await expect(page.locator('.wl-row.sel .wl-sym')).toHaveText(sym);
     }
-    expect(await page.evaluate(() => localStorage.getItem('ed_watchlist_v1'))).toBe(wlBefore);   // persisted watchlist untouched
-    // the header search analyses too — it never adds to the watchlist
+    // the header search analyses too, and its symbol joins the board
     await page.locator('#symSearch').fill('nflx'); await page.locator('#symSearch').press('Enter');
     await expect(page.locator('#hSym')).toHaveText('NFLX');
-    expect(await page.evaluate(() => localStorage.getItem('ed_watchlist_v1'))).toBe(wlBefore);
+    await expect(page.locator('.wl-row')).toHaveCount(rows + 1);
     // a malformed entry is refused (nothing is fabricated, no allowlist decides): the control reverts
     await typeSymbol(page, 'not a symbol!!');
     await expect(page.locator('#hSym')).toHaveText('NFLX');
     await expect(page.locator('#symInput')).toHaveValue('NFLX');
-    // adding to the watchlist remains an EXPLICIT separate action (the rail's "+ Add symbol")
+    // the rail's "+ Add symbol" puts a symbol on the board; the row's x takes it off
     page.once('dialog', (d) => d.accept('PLTR'));
     await page.locator('#wlAdd').click();
-    await expect(page.locator('.wl-row')).toHaveCount(rowsBefore + 1);
+    await expect(page.locator('.wl-row')).toHaveCount(rows + 2);
     await expect(page.locator('.wl-row.sel .wl-sym')).toHaveText('PLTR');
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ed_watchlist_v1')))).toEqual(['SPY', 'QQQ', 'IWM', 'PLTR']);
+    await page.locator('[data-rm="QQQ"]').click();
+    await expect(page.locator('.wl-row')).toHaveCount(rows + 1);
+    await expect(page.locator('.wl-row .wl-sym', { hasText: 'QQQ' })).toHaveCount(0);
+    // the browser keeps no list of its own
+    expect(await page.evaluate(() => localStorage.getItem('ed_watchlist_v1'))).toBeNull();
   });
 
   test('#9 ONE ticker state: watchlist click, typed entry, Gamma / Chain / Flow and the expiry filter resolve to the same instrument, no prior-symbol request afterwards', async ({ page }) => {

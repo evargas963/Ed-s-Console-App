@@ -162,15 +162,15 @@ def test_the_selected_ticker_gets_its_books_a_change_replaces_them_and_a_restart
     assert w["NYSE_BOOK"] == w["NASDAQ_BOOK"] == frozenset({"SPY"})
 
 
-def test_set_active_ticker_puts_its_book_and_quote_in_the_wanted_list(tmp_path, monkeypatch):
+def test_set_active_ticker_puts_its_book_in_the_wanted_list(tmp_path, monkeypatch):
     """The wanted list is the ONLY channel by which this module influences the daemon's
-    subscriptions -- the active ticker's book and quote must be in it."""
+    subscriptions -- the active ticker's book must be in it (its quote streams because it is on
+    the board)."""
     monkeypatch.setattr(ofs, "_active_ticker", None)
     before = ofs._wanted_version
     ofs.set_streaming_active_ticker("spy")
     w = ofs.current_wanted()
     assert w["NYSE_BOOK"] == w["NASDAQ_BOOK"] == ["SPY"]
-    assert w["LEVELONE_EQUITIES"][0] == "SPY"
     assert ofs._wanted_version > before, "the feed loop sends the change"
 
 

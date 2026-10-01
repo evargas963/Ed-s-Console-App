@@ -44,7 +44,8 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:8765',
     trace: 'on-first-retry',
     // The console has no built-in ticker (universality, operator 2026-09-23); these specs play
-    // an operator who already chose SPY and a watchlist. A spec testing the first run clears it.
+    // an operator who already chose SPY (the board is the daemon's, served on its price socket:
+    // tests/e2e/fixtures/price_socket.js). A spec testing the first run clears it.
     storageState: 'tests/e2e/fixtures/operator_chose_spy.storage.json',
   },
   webServer: {

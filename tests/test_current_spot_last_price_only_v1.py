@@ -21,7 +21,6 @@ class _FakeResp:
 
 
 def test_resolve_spot_rejects_mark_close_chain_and_snapshot(monkeypatch) -> None:
-    monkeypatch.setattr(server, "get_client", lambda: object())
     L._by_ticker.pop("SPY", None)
     from app.options.order_flow import streaming as ofs
     monkeypatch.setattr(ofs, "_price_rows", {})   # no daemon price row: a chain, MARK or close is no spot

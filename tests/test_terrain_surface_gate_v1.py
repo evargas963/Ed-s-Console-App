@@ -1,6 +1,6 @@
-"""The terrain loop's chain fetch publishes through _publish_levels: the gamma surface is shaped
-only for a demanded (viewed) ticker, exactly once, from the books the levels were priced into,
-and a shaping failure is reported, never half-published. Heavy leaf deps are monkeypatched."""
+"""A chain the daemon delivers is priced through _publish_levels (_price_chain): the gamma surface
+is shaped exactly once, from the books the levels were priced into, and a shaping failure is
+reported, never half-published. Heavy leaf deps are monkeypatched."""
 import json
 import time
 from pathlib import Path
@@ -19,8 +19,7 @@ def _daemon_holds(*symbols):
                                "held": {"LEVELONE_OPTIONS": list(symbols)}}, time.time())
 
 
-#: A REAL complete Schwab capture (native rows verbatim) stands in for the cycle's flattened
-#: chain — the producer hands project_gamma_surface whatever flatten_chain_contracts returns.
+#: A REAL complete Schwab capture (native rows verbatim): the chain the daemon delivers.
 _REAL_CHAIN = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_cde_complete_chain_half_dollar.json")
     .read_text(encoding="utf-8"))["chain"]
@@ -35,21 +34,17 @@ def _at_capture(pin_clock):
 
 
 def _stub_terrain(monkeypatch, proj):
-    class R:
-        status_code = 200
-        def json(self):  # noqa: D401 - stub
-            return {"x": 1}
-
-    monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t: False)
-    monkeypatch.setattr(server, "get_client", lambda: object())
-    monkeypatch.setattr(server, "_gated_safe_get_chain", lambda *a, **k: (R(), 0.0, 0.0))
-    monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [dict(ct) for ct in _REAL_CHAIN])
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (100.0, "stub", 0.0))
     monkeypatch.setattr(server, "compute_terrain", lambda tk, contracts, spot, **k: Snap(contracts))
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
     monkeypatch.setattr(server, "_atr_pair", lambda t: AtrPair(None, None, "stand-in", "stand-in"))
-    monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
     monkeypatch.setattr(server, "project_gamma_surface", proj)
+
+
+def _deliver(tk, fetched_ts=None):
+    """The daemon's chain of `tk`, priced as the console prices every chain it is delivered."""
+    server._price_chain(tk, [dict(ct) for ct in _REAL_CHAIN],
+                        time.time() if fetched_ts is None else fetched_ts)
 
 
 class Snap:
@@ -89,8 +84,8 @@ def test_producer_projects_every_tickers_heatmap(monkeypatch, view):
 
     _stub_terrain(monkeypatch, proj)
 
-    # no page open: shaped EXACTLY ONCE, from that cycle's contracts and the snapshot's books
-    server._terrain_refresh_one(tk)
+    # no page open: shaped EXACTLY ONCE, from that chain's contracts and the snapshot's books
+    _deliver(tk)
     assert calls["n"] == 1
     assert calls["args"] == (len(_REAL_CHAIN), {("2026-09-04", 0.0): ({}, ExposureDiagnostics(0, 0, 0, ""))})
     surf = dict(_cached_surface(tk))
@@ -114,8 +109,7 @@ def test_a_projection_failure_is_reported_and_publishes_nothing(monkeypatch, vie
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
     view(tk)
-    res = server._terrain_refresh_one(tk)
-    assert res == "error:RuntimeError"
+    _deliver(tk)
     assert server.terrain_cache_get(tk) is None      # nothing half-published
     assert "projection boom" in server._terrain_refresh_last_error[tk]
 
@@ -138,11 +132,9 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     monkeypatch.setattr(server, "compute_terrain",
                         lambda tk_, contracts, spot, **k: priced.setdefault("snap", Snap(contracts)))
     import time as _time
-    # Newer-than-REST-baseline precedence (RC-UI-2): the producer stamps computed_ts_utc
-    # DURING _terrain_refresh_one below, after this line runs -- a plain "now" here would
-    # make the streamed value OLDER than the REST baseline it is meant to override, and the
-    # precedence rule would correctly reject it. A far-future stamp keeps this test about the
-    # overlay WIRING, not about winning a race against the producer's own clock read.
+    # Newer-than-REST-baseline precedence (RC-UI-2): the streamed value must be newer than the
+    # chain's fetch time to override it. A far-future stamp keeps this test about the overlay
+    # WIRING, not about the precedence rule (the last test here holds that).
     streamed["gamma_ts_recv"] = _time.time() + 3600.0
     monkeypatch.setattr(
         "app.options.order_flow.streaming.get_active_option_contract",
@@ -153,7 +145,7 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     _daemon_holds(contract_symbol)
 
     view(tk)
-    server._terrain_refresh_one(tk)
+    _deliver(tk)
 
     surf = _cached_surface(tk)
     assert surf["_overlaid_gamma"] == 0.777, "project_gamma_surface must see the overlaid gamma"
@@ -207,7 +199,7 @@ def test_surface_seq_publication_is_atomic_with_the_cache_write(monkeypatch, vie
 
     _stub_terrain(monkeypatch, proj)
     view(tk)
-    server._terrain_refresh_one(tk)
+    _deliver(tk)
 
     assert seen["seq_call_enter_n"] is not None, "the surface-seq path was not exercised"
     assert seen["cache_write_enter_n"] is not None, "the cache write for this ticker never happened"
@@ -219,167 +211,37 @@ def test_surface_seq_publication_is_atomic_with_the_cache_write(monkeypatch, vie
     )
 
 
-def test_terrain_loop_refreshes_a_previewed_ticker_not_on_the_enrolled_board(monkeypatch, view):
-    """Independent-review finding (2026-09-12, state-authority review), REPRODUCED: a ticker
-    merely PREVIEWED (never enrolled onto _logger_tickers -- TICKER-PREVIEW-NO-ENROLL) got
-    exactly ONE on-demand terrain compute (the /api/terrain cache-miss priority path) and
-    then NOTHING -- _terrain_loop only ever iterated the enrolled board, so its cache entry
-    sat frozen forever while /api/options/gamma-surface kept serving it "live: True" (sourced
-    from the live pathway, not "currently fresh") alongside a growing stale age. "Universally
-    across supported tickers" requires that viewing ANY ticker keeps it refreshing, not only
-    the pre-enrolled board.
-
-    Proven with a REAL cycle of the actual loop function, in a real background thread --
-    only the heavy vendor-facing leaves are stubbed (the existing _stub_terrain seam this
-    file already uses); the loop's own ticker-selection logic runs unmodified.
-    """
-    import threading
-
-    calls: list[str] = []
-
-    def proj(contracts, books):
-        return {"expirations": [], "strikes": [], "cells": []}
-    _stub_terrain(monkeypatch, proj)
-    monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
-    real_refresh = server._terrain_refresh_one
-
-    def spy_refresh(tk, priority=False):
-        calls.append(tk)
-        return real_refresh(tk, priority=priority)
-    monkeypatch.setattr(server, "_terrain_refresh_one", spy_refresh)
-
-    enrolled_tk = server.ticker_storage_key("SPY")
-    previewed_tk = server.ticker_storage_key("ZZPREVIEWONLY")
-    with server._logger_lock:
-        prev_logger_tickers = list(server._logger_tickers)
-        server._logger_tickers[:] = [enrolled_tk]
-    view(previewed_tk)                                 # a page open on it, never enrolled
-
-    server._terrain_loop_running = True
-    t = threading.Thread(target=server._terrain_loop, daemon=True)
-    t.start()
-    try:
-        deadline = time.time() + 5.0
-        while time.time() < deadline and previewed_tk not in calls:
-            time.sleep(0.05)
-    finally:
-        server._terrain_loop_running = False
-        t.join(timeout=5.0)
-        with server._logger_lock:
-            server._logger_tickers[:] = prev_logger_tickers
-
-    assert enrolled_tk in calls, "the enrolled ticker must still refresh as before"
-    assert previewed_tk in calls, (
-        "a ticker with live view demand but never enrolled must still be refreshed by the "
-        "terrain loop -- viewing ANY supported ticker must keep it live, not only the "
-        "pre-enrolled board")
-
-
-class _ChainOk:
-    """fetch_full_chain's answer (the stand-in for Schwab's network): HTTP 200."""
-    status_code = 200
-
-    def json(self):
-        return {}
-
-
-def _fetches_recorded(monkeypatch):
-    fetched: list[str] = []
-    monkeypatch.setattr(server, "fetch_full_chain",
-                        lambda client, tk, get, quote: fetched.append(tk) or _ChainOk())
-    return fetched
-
-
-def _wait_for(fetched, want):
-    deadline = time.time() + 5.0
-    while time.time() < deadline and not want <= set(fetched):
-        time.sleep(0.05)
-
-
-@pytest.mark.parametrize("when", [(2026, 10, 1, 8, 8), (2026, 10, 1, 9, 45), (2026, 10, 1, 21, 0),
-                                  (2026, 10, 3, 12, 0)],
-                         ids=["pre-market", "the-open", "after-hours", "saturday"])
-def test_the_board_and_a_viewed_ticker_are_fetched_at_any_hour(monkeypatch, pin_clock, view, when):
-    """2026-10-01 07:08 CT (08:08 ET): the console restarted pre-market, loaded the stored levels
-    and fetched no chain -- the loop's whole refresh sat behind the archival window
-    (07:45 AM-3:30 PM CT), the viewed ticker's too; and 09:30-10:00 ET deferred most of the
-    board. The loop fetches every board ticker's and the viewed ticker's chain every cycle
-    whatever the hour. Stand-in: fetch_full_chain, Schwab's network."""
-    import threading
-
-    pin_clock(*when)
-    _stub_terrain(monkeypatch, lambda contracts, books: {"expirations": [], "strikes": [], "cells": []})
-    monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
-    monkeypatch.setattr(server, "_load_stored_levels", lambda: 0)
-    monkeypatch.setattr(server, "_publish_missing_price_levels", lambda tks: None)
-    fetched = _fetches_recorded(monkeypatch)
-    board = [f"ZZB{i:02d}" for i in range(40)]
-    viewed_tk = server.ticker_storage_key("$SPX")
-    with server._logger_lock:
-        prev_logger_tickers = list(server._logger_tickers)
-        server._logger_tickers[:] = board
-    view(viewed_tk)
-    server._terrain_loop_running = True
-    th = threading.Thread(target=server._terrain_loop, daemon=True)
-    th.start()
-    try:
-        _wait_for(fetched, set(board) | {viewed_tk})
-        first_cycle = fetched[:len(board) + 1]
-    finally:
-        server._terrain_loop_running = False
-        th.join(timeout=5.0)
-        with server._logger_lock:
-            server._logger_tickers[:] = prev_logger_tickers
-    assert set(first_cycle) == set(board) | {viewed_tk}, "one cycle fetches the whole board"
-
-
-def test_a_viewed_ticker_after_a_restart_is_fetched_on_its_first_tick(monkeypatch, pin_clock, view):
-    """After a restart the stored levels carry no chain; the viewed ticker's first streamed tick
-    fetches its chain at once (the priority path), pre-market as in session.
-    Stand-in: fetch_full_chain, Schwab's network."""
-    pin_clock(2026, 10, 1, 8, 8)
-    _stub_terrain(monkeypatch, lambda contracts, books: {"expirations": [], "strikes": [], "cells": []})
-    fetched = _fetches_recorded(monkeypatch)
-    tk = server.ticker_storage_key("QQQ")
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
-    view(tk)
-    server._on_stream_tick(tk)
-    _wait_for(fetched, {tk})
-    assert tk in fetched
-
-
-def test_a_stream_observation_after_the_chain_fetch_is_admitted(monkeypatch, view):
-    """The overlay's freshness baseline is the instant the chain response arrived, not any later
-    point of the publication: a streamed value observed after the fetch (here, while the chain
-    is still being flattened) overrides the chain's own value."""
+def test_a_stream_observation_after_the_chain_fetch_is_admitted_and_one_before_is_not(monkeypatch, view):
+    """The overlay's freshness baseline is the instant the daemon received the chain (its fetch
+    time, carried with it), not any later point of its delivery or pricing: a streamed value
+    observed after the fetch overrides the chain's own value; one observed before it does not."""
     tk = server.ticker_storage_key("CDE")
     contract_symbol = _REAL_CHAIN[0]["symbol"]
-    captured = {}
+    fetched_ts = time.time() - 5.0
+    observed = {}
 
     def proj(contracts, books):
         return {"expirations": [], "strikes": [], "cells": [],
                 "_overlaid_gamma": contracts[0].get("gamma")}
 
-    def slow_flatten(_json):
-        captured["after_fetch_ts"] = time.time()
-        time.sleep(0.05)
-        return [dict(ct) for ct in _REAL_CHAIN]
-
     _stub_terrain(monkeypatch, proj)
-    monkeypatch.setattr(server, "flatten_chain_contracts", slow_flatten)
     monkeypatch.setattr(
         "app.options.order_flow.streaming.get_active_option_contract",
         lambda: contract_symbol)
     monkeypatch.setattr(
         "app.options.order_flow.state.get_stream_greeks",
-        lambda sym: {"gamma": 0.777, "gamma_ts_recv": captured["after_fetch_ts"] + 0.001})
+        lambda sym: {"gamma": 0.777, "gamma_ts_recv": observed["ts"]})
     _daemon_holds(contract_symbol)
+    view(tk)
 
     server._gamma_surface_seq.pop(tk, None)
-    view(tk)
-    server._terrain_refresh_one(tk)
-
+    observed["ts"] = fetched_ts + 0.001                      # after the fetch
+    _deliver(tk, fetched_ts)
     surf = _cached_surface(tk)
-    assert surf["stream_overlay_contracts"] == 1
-    assert surf["_overlaid_gamma"] == 0.777
+    assert surf["stream_overlay_contracts"] == 1 and surf["_overlaid_gamma"] == 0.777
+
+    observed["ts"] = fetched_ts - 0.001                      # before it
+    _deliver(tk, fetched_ts)
+    surf = _cached_surface(tk)
+    assert surf["stream_overlay_contracts"] == 0
+    assert surf["_overlaid_gamma"] == _REAL_CHAIN[0]["gamma"]
