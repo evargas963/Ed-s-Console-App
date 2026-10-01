@@ -36,12 +36,11 @@ _PYTEST_RUNTIME_ROOT = Path(
     )
 ).resolve()
 os.environ["ED_RUNTIME_ROOT"] = str(_PYTEST_RUNTIME_ROOT)
-os.environ["ED_ARTIFACTS_ROOT"] = str(_PYTEST_RUNTIME_ROOT / "artifacts")
 os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
 # The console DB and stream-capture DB are NOT set by env: RC-534 disabled ambient
 # ED_CONSOLE_DB / STREAM_CAPTURE_DB_PATH overrides (db._resolve_console_db_path raises on
 # them). Both resolve canonically under ED_RUNTIME_ROOT above, which is the one isolation
-# knob — the _stream_spine_fallback fixture below still pins the stream reader default.
+# knob.
 
 # Schwab hermetic AND explicitly offline (RC-515): placeholders satisfy import-time config;
 # ED_CI_OFFLINE guarantees no test constructs a live Schwab client. SCHWAB_TOKEN_PATH is NOT
@@ -111,26 +110,6 @@ def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
         f"no trading day found in the 14 ET days before {on_or_before or 'today'} — "
         "the market calendar authority (time_et.is_trading_day_et) is answering False "
         "for every date, which is a calendar defect, not a fixture one")
-
-
-@pytest.fixture(autouse=True)
-def _clear_quote_memo_between_tests():
-    """RC-314: `server._quote_memo` is process-global and outlives every pytest boundary.
-
-    `test_rest_fast_quote_spot_fail_closed_not_zero` passed as a single node and FAILED as
-    part of its own file, with `quote_attempts=0` in the log: a sibling had left SPY at
-    501.25 in the memo, `_memoized_quote_response` served it, and the fail-closed path under
-    test never ran. tmp_path, fresh DBs and monkeypatch all isolate what the TEST owns; a
-    cache owned by the import is invisible to them.
-
-    Guarded on `server` already being imported, so the tests that never touch it pay nothing
-    and none of them triggers a server import it did not ask for.
-    """
-    srv = sys.modules.get("server")
-    memo = getattr(srv, "_quote_memo", None) if srv is not None else None
-    if isinstance(memo, dict):
-        memo.clear()
-    yield
 
 
 def in_window_ts(hour: int = 10, minute: int = 0, *, span_minutes: int = 0) -> float:

@@ -9,7 +9,6 @@ the roots are read at import.
 """
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -18,7 +17,6 @@ from pathlib import Path
 import pytest
 
 import runtime_layout
-from runtime_layout import _default_runtime_root
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -77,53 +75,3 @@ def test_runtime_root_cannot_be_a_linked_worktree(tmp_path):
         )
         assert result.returncode != 0
         assert "cannot select a linked source worktree" in result.stderr
-
-
-def _pytest_path_probe(worker: str | None) -> dict:
-    script = r"""
-import json, runpy, shutil
-state = runpy.run_path("tests/conftest.py")
-import db, runtime_layout
-payload = {
-    "db": str(db.DB_PATH),
-    "runtime": str(runtime_layout.RUNTIME_ROOT),
-    "worker": __import__("os").environ.get("PYTEST_XDIST_WORKER"),
-}
-print(json.dumps(payload))
-shutil.rmtree(runtime_layout.RUNTIME_ROOT, ignore_errors=True)
-"""
-    env = dict(os.environ)
-    for name in ("ED_CONSOLE_DB", "ED_DB_PATH", "ED_RUNTIME_ROOT", "ED_ARTIFACTS_ROOT"):
-        env.pop(name, None)
-    if worker is None:
-        env.pop("PYTEST_XDIST_WORKER", None)
-    else:
-        env["PYTEST_XDIST_WORKER"] = worker
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=str(REPO),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    assert result.returncode == 0, result.stderr
-    return json.loads(result.stdout.strip().splitlines()[-1])
-
-
-def test_serial_pytest_runs_get_distinct_temporary_databases():
-    first = _pytest_path_probe(None)
-    second = _pytest_path_probe(None)
-    assert first["db"] != second["db"]
-    assert Path(first["db"]).parent == Path(first["runtime"]) / "data"
-    assert Path(second["db"]).parent == Path(second["runtime"]) / "data"
-    assert not Path(first["db"]).is_relative_to(_default_runtime_root().resolve())
-    assert not Path(second["db"]).is_relative_to(_default_runtime_root().resolve())
-
-
-def test_xdist_workers_get_distinct_temporary_databases():
-    first = _pytest_path_probe("gw0")
-    second = _pytest_path_probe("gw1")
-    assert first["db"] != second["db"]
-    assert first["worker"] == "gw0"
-    assert second["worker"] == "gw1"

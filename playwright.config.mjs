@@ -20,7 +20,6 @@ export const e2eServerEnv = (() => {
   delete env.ED_DB_PATH;
   delete env.STREAM_CAPTURE_DB_PATH;
   env.ED_RUNTIME_ROOT = e2eRuntimeRoot;
-  env.ED_ARTIFACTS_ROOT = path.join(e2eRuntimeRoot, 'artifacts');
   env.ED_CONSOLE_ALLOW_NONCANONICAL_DB = '1';
   env.SCHWAB_TOKEN_PATH = path.join(e2eRuntimeRoot, 'missing_schwab_token.json');
   env.ED_CI_OFFLINE = '1';

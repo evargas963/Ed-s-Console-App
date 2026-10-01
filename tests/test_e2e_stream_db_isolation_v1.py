@@ -56,7 +56,6 @@ def test_e2e_boundary_rejects_poisoned_inherited_runtime_state(tmp_path):
     # RC-534: the one isolation knob is ED_RUNTIME_ROOT; the forbidden ambient DB overrides
     # are deleted from the server env, and the canonical DBs resolve under <root>/data.
     assert Path(server_env["ED_RUNTIME_ROOT"]).resolve() == root
-    assert Path(server_env["ED_ARTIFACTS_ROOT"]).resolve() == root / "artifacts"
     assert "ED_CONSOLE_DB" not in server_env
     assert "STREAM_CAPTURE_DB_PATH" not in server_env
     token = Path(server_env["SCHWAB_TOKEN_PATH"]).resolve()

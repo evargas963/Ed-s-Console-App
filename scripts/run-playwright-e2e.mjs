@@ -98,7 +98,6 @@ function main() {
   const e2eEnv = {
     ...process.env,
     ED_RUNTIME_ROOT: e2eRuntime,
-    ED_ARTIFACTS_ROOT: e2eRuntime,
   };
   delete e2eEnv.ED_CONSOLE_DB;
   delete e2eEnv.ED_DB_PATH;

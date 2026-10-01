@@ -1,10 +1,9 @@
 """RUNTIME LAYOUT — the ONE owner of where runtime state lives (docs/ARCHITECTURE.md "Runtime state lives outside the source").
 
-Source, runtime state and generated artifacts are separate concerns:
+Source and runtime state are separate concerns:
 
     SOURCE      this checkout (code, tests, records)
     RUNTIME     the live database, logs, tokens            ED_RUNTIME_ROOT
-    ARTIFACTS   generated reports and scorecards           ED_ARTIFACTS_ROOT (default: RUNTIME)
 
 RC-523 (2026-09-06, bedrock step 7). Every runtime path was rooted in the source checkout
 (`Path(__file__).parent / "data"`, `/ "logs"`, `/ "reports"`) with an override for the
@@ -78,8 +77,6 @@ def _default_runtime_root() -> Path:
 
 #: Live database, logs and tokens live here. Linked worktrees share the primary root.
 RUNTIME_ROOT: Path = _dir_from_env("ED_RUNTIME_ROOT", _default_runtime_root())
-#: Generated reports and scorecards live under here. Default: the runtime root.
-ARTIFACTS_ROOT: Path = _dir_from_env("ED_ARTIFACTS_ROOT", RUNTIME_ROOT)
 
 
 def data_dir() -> Path:
@@ -90,11 +87,6 @@ def data_dir() -> Path:
 def logs_dir() -> Path:
     """`<runtime>/logs` — the server log sink and other process logs."""
     return RUNTIME_ROOT / "logs"
-
-
-def reports_dir() -> Path:
-    """`<artifacts>/reports` — runtime-written reports (terrain, operable surface, scoreboards)."""
-    return ARTIFACTS_ROOT / "reports"
 
 
 def live_binding_error(source_root: "Path | None" = None,

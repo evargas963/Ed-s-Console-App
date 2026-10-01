@@ -139,7 +139,6 @@ def write_flow_e2e_fixture() -> None:
            if k not in ("ED_CONSOLE_DB", "ED_DB_PATH", "STREAM_CAPTURE_DB_PATH")}
     env.update({
         "ED_RUNTIME_ROOT": root,
-        "ED_ARTIFACTS_ROOT": os.path.join(root, "artifacts"),
         "ED_CONSOLE_ALLOW_NONCANONICAL_DB": "1",
         "ED_CI_OFFLINE": "1",
         "SCHWAB_API_KEY": "ci-placeholder-api-key",
