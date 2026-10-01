@@ -558,31 +558,29 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Market Map: the daily chart shows the served note when the day\'s high/low differ from Schwab\'s, and nothing otherwise', async ({ page }) => {
-    // the daemon reconciles the day's regular-session high/low with Schwab's HIGH_PRICE /
-    // LOW_PRICE and serves the note for the daily chart (`notes.D` on the push, `note` with the
-    // history so a chart opened later shows it); the page prints it as served
+  test('Market Map: the session volume and the daily candle show the one served day volume', async ({ page }) => {
+    // the day's values are Schwab's day fields on the price row (`day`, live_price_rows.day_candle,
+    // operator 2026-10-01): the Order Flow card's session volume and the daily chart's candle
+    // read the same served value. Schwab's SPY daily candle of 2026-09-30 (TOTAL_VOLUME 62,110,041,
+    // tests/fixtures/real_day_fields_2026_09_30.json), stamped as the day after the bars' last
+    // (the stand-in for "today", so the chart places it as its newest).
     const errs = watchErrors(page);
     await intercept(page);
-    const note = "regular session 09:30–16:00 ET high/low differ from Schwab: our high 770.31 is above Schwab's 770.26 by 0.0500";
-    await page.route(/\/api\/bars1m\?.*tf=D/, (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({}, BARS, { tf: 'D', note: note })) }));
+    const day = { bar: { t: 1790395200, o: 766.45, h: 769.41, l: 762.18, c: 762.63, v: 62110041, chg: -3.82,
+      chg_pct: -0.4984, label: 'Sat 09/26/2026' }, volume: 62110041, absent: {}, as_of: 'Fri 09/25 07:59 PM CT',
+      source: 'Schwab LEVELONE_EQUITIES day fields' };
     const daemon = await mockPriceSocket(page, []);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
-    const legend = page.locator('#tdmChart .tvc-legend');
-    await expect(legend).not.toContainText('differ from Schwab');     // the 30m chart: no note
     await page.locator('#tdmToolbar [data-tf="D"]').click();
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.tf)).toBe('D');
-    await expect(legend).toContainText(note);                          // with the history, before any push
-    const minute = { t: 1790343720, o: 772, h: 772.5, l: 771.9, c: 772.4, v: 10, chg: 0.4, chg_pct: 0.05, label: 'Fri 09/25 09:22 AM CT' };
-    const push = (notes) => daemon.send({ type: 'bars', bars: [{ ticker: 'SPY', ts_recv: 1790343782.7,
-      last_bar: { t: 1790343720, label: 'Fri 09/25 09:22 AM CT' }, tf: { '1': minute }, recent_1m: null, unavailable: {}, notes: notes }] });
-    push({});                                                          // consistent: nothing shown
-    await expect(legend).not.toContainText('differ from Schwab');
-    push({ D: note });
-    await expect(legend).toContainText(note);
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(BARS.bars.length);
+    await expect.poll(() => daemon.ws !== null).toBe(true);
+    daemon.send({ type: 'quotes', rows: [priceRow('SPY', 762.63, { day: day })] });
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(BARS.bars.length + 1);
+    await expect(page.locator('#tdmCardFlow .tdm-hero')).toContainText('62.11M');           // the session volume
+    await expect(page.locator('#tdmChart .tvc-legend')).toContainText('Vol 62.11M');       // the daily candle's
     expect(errs).toEqual([]);
   });
 

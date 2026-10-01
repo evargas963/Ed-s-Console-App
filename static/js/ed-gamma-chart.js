@@ -95,8 +95,7 @@
       ? window.EdShell.scopeSelect(srows.map(function (r) { return r[0]; }), prof.spot_strike)
       : { idx: srows.map(function (_r, i) { return i; }) };
     var win = sel.idx.map(function (i) { return srows[i]; }).filter(function (r) { return r[1] != null; });   // unknown: nothing drawn
-    c.setBars(bars, (barsD && barsD.tf) || _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label,
-      barsD && barsD.note);
+    c.setBars(bars, (barsD && barsD.tf) || _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
     c.setProfile(win.map(function (r) {
       return { price: Number(r[0]), value: Number(r[1]), color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down }; }),
       _mode === 'dotmap' ? 'dots' : 'bars');
@@ -152,6 +151,11 @@
     var q = (ev && ev.detail) || {};
     if (q.ticker !== st().key) return;
     _liveQuote = q;
+    // the daily chart's today: Schwab's day fields on the price row (q.day.bar), as served
+    if (_tf === 'D' && q.day && q.day.bar && _chart && _last.bars && _last.bars.bars && _last.bars.tf === 'D') {
+      _chart.pushBar(q.day.bar);
+      _last.bars = Object.assign({}, _last.bars, { bars: _chart.bars() });
+    }
     if (isChart() && _chart && _last.strikes !== undefined) render();
   });
   document.addEventListener('ed:view', load);
@@ -170,7 +174,6 @@
     // leaves the last served reason shown
     if (b.tf[_tf]) _chart.setUnavailable(null);
     else if ((b.unavailable || {})[_tf]) _chart.setUnavailable(b.unavailable[_tf]);
-    _chart.setNote((b.notes || {})[_tf]);                          // the served note, if any
     if (!b.tf[_tf]) return;
     _chart.pushBar(b.tf[_tf], b.last_bar && b.last_bar.label);   // the chart library places it
     _last.bars = Object.assign({}, _last.bars, { bars: _chart.bars(), last_bar: b.last_bar });

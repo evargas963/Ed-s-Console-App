@@ -2534,15 +2534,21 @@ ATR_TTL_SEC: float = 900.0
 
 
 def _atr_pair(ticker: str, now: float) -> "AtrPair":
-    """The ticker's (daily, 15-minute) ATR at `now` (epoch seconds) from price_bars_1m's
-    completed candles, recomputed at most every ATR_TTL_SEC. Too few bars reads as None, never a
-    vendor stand-in."""
+    """The ticker's (daily, 15-minute) ATR at `now` (epoch seconds): the daily from Schwab's
+    daily candles as the daemon pushed them (streaming.bar_days), the 15-minute from
+    price_bars_1m's completed candles, recomputed at most every ATR_TTL_SEC. Too few candles reads
+    as None with the reason, never a stand-in."""
     tk = ticker_storage_key(ticker)
     with _atr_lock:
         hit = _atr_cache.get(tk)
     if hit is not None and now - hit[0] < ATR_TTL_SEC:
         return hit[1]
-    pair = compute_atr_pair(str(get_db().db_path), tk, datetime.fromtimestamp(now, ET))
+    from app.options.order_flow.streaming import bar_days
+    days = bar_days(tk)
+    held = days.get("candles") if days and days.get("candles") else None
+    pair = compute_atr_pair(str(get_db().db_path), tk, datetime.fromtimestamp(now, ET), held,
+                            None if held else (days or {}).get("problem")
+                            or "Schwab's daily candles have not come from the capture daemon")
     with _atr_lock:
         _atr_cache[tk] = (now, pair)
     return pair
@@ -2700,30 +2706,37 @@ def get_terrain_strikes(ticker: str = Query(...)):
 def get_bars1m(ticker: str = Query(...),
                limit: int = Query(default=780, ge=1, le=12000),
                tf: str = Query(default="1", pattern=r"^(1|3|5|15|30|60|D)$")):
-    """A chart's bar history, as it opens: completed Schwab 1m bars, newest-last, [{t,o,h,l,c,v}]
-    epoch-seconds bar starts, rolled up to `tf` (live_price_rows.aggregate_bars), each with its
-    change and label (live_price_rows.served_bar). The bars that
-    complete after it come on the daemon's push (live_ui), rolled by the same function.
-    `limit` counts 1-minute bars: when the read reaches it, the oldest rolled bar may have lost
-    its first minutes to the cut and is not served. `last_bar`: the newest completed minute and
-    its label. `recent_1m`: the newest RECENT_1M_BARS of the 1-minute bars read (fewer when
-    `limit` is smaller). `note`: the daemon's note for this timeframe's chart (live_ui
-    barstate), or None."""
-    from app.options.order_flow.streaming import bar_state
+    """A chart's bar history, as it opens, newest-last, [{t,o,h,l,c,v}] epoch-seconds bar
+    starts, each with its change and label (live_price_rows.served_bar). Intraday: completed
+    Schwab 1m bars rolled up to `tf` (live_price_rows.aggregate_bars); the bars that complete
+    after it come on the daemon's push (live_ui), rolled by the same function. `limit` counts
+    1-minute bars: when the read reaches it, the oldest rolled bar may have lost its first minutes
+    to the cut and is not served. Daily ("D"): Schwab's own candles, never summed from minutes --
+    its daily price history for the days before today, as the daemon pushed them (bardays), and
+    today's candle from Schwab's day fields on the daemon's price row (live_price_rows.day_candle;
+    later ones come on the price push); `days_absent_reason` when the history is not held.
+    `last_bar`: the newest completed minute and its label. `recent_1m`: the newest RECENT_1M_BARS
+    of the 1-minute bars read (fewer when `limit` is smaller)."""
+    from app.options.order_flow.streaming import bar_days, price_row
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
-    rolled = _lpr.aggregate_bars(bars, tf)
-    if tf != "1" and len(bars) == int(limit):
-        rolled = rolled[1:]
-    out = [_lpr.served_bar(b, tf) for b in rolled]
-    return JSONResponse({"ticker": tk, "bars": out, "tf": tf, "n": len(out),
-                         "last_bar": _lpr.last_bar(bars[-1]["t"] if bars else None),
-                         # the newest hour of the 1-minute bars read: the Order Flow card's, as the
-                         # bar push serves it (live_price_rows.recent_1m)
-                         "recent_1m": _lpr.recent_1m(bars),
-                         # the note this timeframe's chart shows, the daemon's as pushed (the daily
-                         # bar's reconciliation with Schwab), so a chart opened later shows it too
-                         "note": ((bar_state(tk) or {}).get("notes") or {}).get(tf)})
+    body = {"ticker": tk, "tf": tf, "last_bar": _lpr.last_bar(bars[-1]["t"] if bars else None),
+            # the newest hour of the 1-minute bars read: the Order Flow card's, as the bar push
+            # serves it (live_price_rows.recent_1m)
+            "recent_1m": _lpr.recent_1m(bars)}
+    if tf == "D":
+        days = bar_days(tk)
+        today = ((price_row(tk) or {}).get("day") or {}).get("bar")
+        out = list((days or {}).get("candles") or []) + ([today] if today else [])
+        body["days_absent_reason"] = (None if days and days.get("candles") else
+                                      (days or {}).get("problem") or
+                                      "Schwab's daily candles have not come from the capture daemon")
+    else:
+        rolled = _lpr.aggregate_bars(bars, tf)
+        if tf != "1" and len(bars) == int(limit):
+            rolled = rolled[1:]
+        out = [_lpr.served_bar(b, tf) for b in rolled]
+    return JSONResponse({**body, "bars": out, "n": len(out)})
 
 
 def aggregate_vwap(rows: list, tf: str) -> list:
@@ -3937,14 +3950,23 @@ def _publish_price_levels(ticker: str) -> None:
     session date). The routes read what it published (canonical_price_level_snapshot). A failed
     build is logged; the routes serve the last published snapshot with its as-of time, or say
     the levels are absent."""
+    from app.options.order_flow.streaming import bar_days
     from liquidity_value_engine import _bars_to_list, materialize_price_level_snapshot
     from time_et import now_et
 
     tk = ticker_storage_key(_required_ticker(ticker))
     before = canonical_price_level_snapshot(tk)
+    today = now_et().date()
+    start = datetime(today.year, today.month, today.day, tzinfo=ET).timestamp()
+    days = bar_days(tk)
+    prior = [c for c in (days or {}).get("candles") or () if c["t"] < start]   # Schwab's, oldest first
     try:
-        snap = materialize_price_level_snapshot(tk, now_et().date(), _bars_to_list(_liquidity_1m_bars(tk)),
-                                                bar_source="price_bars_1m", config=PlaybookConfig())
+        snap = materialize_price_level_snapshot(
+            tk, today, _bars_to_list(_liquidity_1m_bars(tk)), bar_source="price_bars_1m",
+            prior_day=prior[-1] if prior else None,
+            prior_day_absent_reason=None if prior else (days or {}).get("problem")
+            or "Schwab's daily candles have not come from the capture daemon",
+            config=PlaybookConfig())
     except Exception as e:  # noqa: BLE001 -- logged; the ticker's next bar builds them
         log.warning("price levels for %s not built: %s", tk, e)
         return

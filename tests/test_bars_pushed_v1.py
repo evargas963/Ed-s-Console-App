@@ -25,7 +25,8 @@ import live_market_plane as lmp
 import live_price_rows
 import server as srv
 from app.market_data.schwab.streaming import live_ui
-from app.market_data.schwab.streaming.capture import Daemon, StandingRoster, run_until_a_part_ends, schwab_minutes
+from app.market_data.schwab.streaming.capture import (Daemon, StandingRoster, run_until_a_part_ends, schwab_days,
+                                                      schwab_minutes)
 from db import EdDB
 from stream_spine import MessageBus, bar_msg, subscription_msg
 from time_et import ET, ct_label
@@ -75,6 +76,12 @@ def _schwab(by_symbol: dict, asked: "list | None" = None):
     return fetch
 
 
+def _no_days(symbol, start, end):
+    """Schwab's daily price history, the stand-in for its network: no candles (these tests are of
+    the minutes; the daily candles' own test answers real ones)."""
+    return []
+
+
 def _subscribed(*symbols: str, ts: float, command: str = "SUBS") -> dict:
     """The daemon's message for a CHART_EQUITY request Schwab acknowledged at `ts`
     (capture.Daemon.sync)."""
@@ -84,7 +91,7 @@ def _subscribed(*symbols: str, ts: float, command: str = "SUBS") -> dict:
 
 async def _settled(srv_ui) -> None:
     """Wait until no price-history request is out."""
-    while any(d.asking for d in srv_ui.days.values()):
+    while any(d.asking for d in [*srv_ui.days.values(), *srv_ui.daily.values()]):
         await asyncio.sleep(0.005)
 
 
@@ -121,7 +128,7 @@ def _pushed(streamed, history, subscribe=("SPY",), after_start=None, stats=None)
         feed = lambda: {"ts": RESTART, "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
         task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=lambda: RESTART,
                                                          host="127.0.0.1", port=port, stats=st,
-                                                         history_fn=history))
+                                                         history_fn=history, daily_fn=_no_days))
         while not st.get("listening"):
             await asyncio.sleep(0.01)
         if after_start is not None:
@@ -177,18 +184,13 @@ def test_the_pushed_bar_is_the_routes_bar_at_every_timeframe(monkeypatch, tmp_pa
         assert srv._write_streamed_bar(_msg(b))
     last = got[-1]
     assert last["ts_recv"] == _msg(streamed[-1])["ts_recv"]
-    for tf in live_price_rows.CHART_TFS:
+    for tf in live_price_rows.INTRADAY_TFS:
         route = json.loads(srv.get_bars1m(ticker="SPY", tf=tf, limit=12000).body)
         assert last["tf"][tf] == route["bars"][-1], tf
         assert last["last_bar"] == route["last_bar"]
-    # the daily bar holds the minutes Schwab's price history gave as well as the streamed ones; it is
-    # stamped with its trading date's start, 00:00 ET (a bar's time is its bucket's start, the
-    # chart convention: it was the first held minute's, which a late minute could move)
-    assert last["tf"]["D"]["o"] == stored[0]["open"]
-    assert last["tf"]["D"]["t"] == datetime(2026, 9, 25, tzinfo=ET).timestamp()
-    # each bar carries its label, served (the chart formatted bar times itself): the daily bar its
-    # ET trading date, an intraday bar its Central Time
-    assert last["tf"]["D"]["label"] == "Fri 09/25/2026"
+    # no daily bar is rolled up from minutes: the daily candle is Schwab's (price row `day`)
+    assert "D" not in last["tf"]
+    # each bar carries its label, served (the chart formatted bar times itself): its Central Time
     assert last["tf"]["5"]["label"] == ct_label(last["tf"]["5"]["t"])
     # the newest hour of 1-minute bars the push carries whole is the hour the chart's history
     # serves (the Trade Desk's Order Flow card shows each as served; its size exists once, on the
@@ -199,8 +201,8 @@ def test_the_pushed_bar_is_the_routes_bar_at_every_timeframe(monkeypatch, tmp_pa
 
 def test_no_live_bar_is_built_from_the_database(monkeypatch):
     """The database is history: no live bar reads it. With every database read failing, a
-    symbol's bars are still pushed, its daily bar holding the day's earlier minutes Schwab's price
-    history gave. The daemon read the store for them (in session, then at its startup)."""
+    symbol's bars are still pushed, its Order Flow hour holding the day's earlier minutes Schwab's
+    price history gave. The daemon read the store for them (in session, then at its startup)."""
     monkeypatch.setattr(lmp, "_by_ticker", {})
     earlier, streamed = FRIDAY[:100], FRIDAY[100:110]
     reads = []
@@ -213,8 +215,8 @@ def test_no_live_bar_is_built_from_the_database(monkeypatch):
     got, _published = _pushed([_msg(b) for b in streamed], _schwab({"SPY": earlier}))
     assert reads == []
     assert {u["tf"]["1"]["t"] for u in got} == {b["timestamp"] / 1000.0 for b in streamed}
-    whole = [u for u in got if "D" in u["tf"]]
-    assert whole and whole[-1]["tf"]["D"]["o"] == earlier[0]["open"]   # Schwab's earlier minutes
+    whole = [u for u in got if u["recent_1m"]]
+    assert whole and whole[-1]["recent_1m"][0]["t"] == FRIDAY[50]["timestamp"] / 1000.0   # Schwab's earlier minutes
 
 
 def test_a_symbol_streamed_mid_day_pushes_the_whole_days_bars(monkeypatch, tmp_path):
@@ -236,14 +238,14 @@ def test_a_symbol_streamed_mid_day_pushes_the_whole_days_bars(monkeypatch, tmp_p
     # asked once, for exactly the minutes before the first one streamed
     assert asked == [("QQQ", datetime(2026, 9, 25, 9, 15, tzinfo=ET).timestamp(), RESTART)]
     last = got[-1]
-    for tf in live_price_rows.CHART_TFS:
+    for tf in live_price_rows.INTRADAY_TFS:
         assert last["tf"][tf] == json.loads(srv.get_bars1m(ticker="QQQ", tf=tf, limit=12000).body)["bars"][-1], tf
     assert last["recent_1m"] == json.loads(srv.get_bars1m(ticker="QQQ", tf="30", limit=9000).body)["recent_1m"]
     # before the earlier minutes arrived nothing above 1 minute was served as complete
     first = got[0]
-    assert {"D", "60", "30"}.isdisjoint(first["tf"]) and first["recent_1m"] is None
-    assert first["unavailable"]["D"] == ("minutes Fri 09/25 08:15 AM CT – Fri 09/25 10:09 AM CT "
-                                         "not received from Schwab")
+    assert {"60", "30"}.isdisjoint(first["tf"]) and first["recent_1m"] is None
+    assert first["unavailable"]["60"] == ("minutes Fri 09/25 10:00 AM CT – Fri 09/25 10:09 AM CT "
+                                          "not received from Schwab")
 
 
 def test_a_browser_back_from_a_drop_is_told_the_gap_and_sent_only_new_bars(monkeypatch, tmp_path):
@@ -272,7 +274,7 @@ def test_a_browser_back_from_a_drop_is_told_the_gap_and_sent_only_new_bars(monke
         feed = lambda: {"ts": time.time(), "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
         task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=time.time,
                                                          host="127.0.0.1", port=port, stats=stats,
-                                                         history_fn=_schwab({})))
+                                                         history_fn=_schwab({}), daily_fn=_no_days))
         while not stats.get("listening"):
             await asyncio.sleep(0.01)
         try:
@@ -319,7 +321,7 @@ def test_at_every_minute_of_a_real_day_the_push_is_the_roll_up_at_every_timefram
         so_far = day[:k + 1]
         whole = [(live_price_rows.session_first_minute(so_far[0]["t"]), so_far[-1]["t"])]
         update = live_price_rows.bar_update("SPY", so_far, so_far[-1], 0.0, whole)
-        for tf in live_price_rows.CHART_TFS:
+        for tf in live_price_rows.INTRADAY_TFS:
             assert update["tf"][tf] == live_price_rows.served_bar(live_price_rows.aggregate_bars(so_far, tf)[-1], tf), (k, tf)
 
 
@@ -339,17 +341,17 @@ def test_a_minute_schwab_sends_late_is_never_pushed_as_a_charts_newest_bar():
     newest bar or adds a newer one: a bar older than the chart's last raised a page error. A
     minute Schwab sends late (here the 12th, after the 14th, and the 9th, before the day's first
     held minute) is a past event: it joins the held minutes, so the timeframes whose newest bar
-    contains it, the daily bar and the Order Flow hour hold it; the older chart bar it belongs to
-    is not pushed as a tail. A bar's time is its bucket's start, so no late minute moves it: the
-    daily bar is pushed with every minute (it stopped for the rest of the day when the late minute
-    preceded the day's first, as a bar was stamped with its first held minute). Real SPY
+    contains it and the Order Flow hour hold it; the older chart bar it belongs to is not pushed
+    as a tail. A bar's time is its bucket's start, so no late minute moves it: the hour's bar is
+    pushed with every minute (a bar stamped with its first held minute stopped for the rest of the
+    hour when the late minute preceded it). Real SPY
     CHART_EQUITY bars of 2026-09-25, delivered out of order (the order is the stand-in); Schwab's
     price history (the stand-in for its network) answers the minutes before the first streamed."""
     order = [FRIDAY[i] for i in (10, 11, 13, 14, 12, 15, 9, 16)]
 
     async def main():
         srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: _msg(order[0])["ts_recv"],
-                                      history_fn=_schwab({"SPY": FRIDAY}))
+                                      history_fn=_schwab({"SPY": FRIDAY}), daily_fn=_no_days)
         c = live_ui._Client(_Ws())
         c.symbols = frozenset({"SPY"})
         srv_ui.clients.add(c)
@@ -364,20 +366,20 @@ def test_a_minute_schwab_sends_late_is_never_pushed_as_a_charts_newest_bar():
 
     sent = asyncio.run(main())                           # one update per minute after the first
     assert len(sent) == len(order) - 1
-    for tf in live_price_rows.CHART_TFS:                 # each chart's pushes only move forward
+    for tf in live_price_rows.INTRADAY_TFS:              # each chart's pushes only move forward
         times = [u["tf"][tf]["t"] for u in sent if tf in u["tf"]]
         assert times == sorted(times), tf
     for k, update in enumerate(sent):
         held = sorted({live_price_rows.minute_bar(_msg(b))["t"]: live_price_rows.minute_bar(_msg(b))
                        for b in FRIDAY[:10] + order[:k + 2]}.values(), key=lambda m: m["t"])
-        assert "D" in update["tf"], k                    # the daily bar keeps being pushed
+        assert "60" in update["tf"], k                   # the hour's bar keeps being pushed
         for tf, bar in update["tf"].items():             # every bar pushed holds every minute held
             assert bar == live_price_rows.served_bar(live_price_rows.aggregate_bars(held, tf)[-1], tf), (k, tf)
         assert [m["t"] for m in update["recent_1m"]] == [m["t"] for m in held][-live_price_rows.RECENT_1M_BARS:]
     for k in (3, 5):                                     # the late minutes' own bars are not tails
         assert "1" not in sent[k]["tf"], k
     assert sent[3]["tf"]["5"]["t"] == sent[2]["tf"]["5"]["t"]   # the bar it joins keeps its time
-    assert sent[5]["tf"]["D"]["t"] == sent[4]["tf"]["D"]["t"] == datetime(2026, 9, 25, tzinfo=ET).timestamp()
+    assert sent[5]["tf"]["60"]["t"] == sent[4]["tf"]["60"]["t"] == datetime(2026, 9, 25, 9, 0, tzinfo=ET).timestamp()
 
 
 def test_bars_that_arrive_before_the_next_send_are_all_sent_in_order():
@@ -386,7 +388,7 @@ def test_bars_that_arrive_before_the_next_send_are_all_sent_in_order():
     unsent older one, and that minute never reached the chart)."""
     async def main():
         srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: _msg(FRIDAY[9])["ts_recv"],
-                                      history_fn=_schwab({"SPY": FRIDAY}))
+                                      history_fn=_schwab({"SPY": FRIDAY}), daily_fn=_no_days)
         c = live_ui._Client(_Ws())
         c.symbols = frozenset({"SPY"})
         srv_ui.clients.add(c)
@@ -414,7 +416,8 @@ def test_the_streamed_minute_stands_over_schwabs_price_history_and_a_difference_
 
     async def main():
         srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, stats, clock=lambda: RESTART,
-                                      history_fn=_schwab({"SPY": FRIDAY[:11] + [differing]}))
+                                      history_fn=_schwab({"SPY": FRIDAY[:11] + [differing]}),
+                                      daily_fn=_no_days)
         srv_ui.on_bar(_msg(FRIDAY[11]))      # streamed before its subscription was acknowledged:
         await _settled(srv_ui)               # uncovered, so the price history is asked for it too
         return srv_ui.days["SPY"]
@@ -447,7 +450,8 @@ def test_a_failed_price_history_request_serves_the_bars_above_1m_unavailable_unt
     stats: dict = {}
 
     async def main():
-        srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, stats, clock=lambda: RESTART + 70, history_fn=history)
+        srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, stats, clock=lambda: RESTART + 70, history_fn=history,
+                                      daily_fn=_no_days)
         c = live_ui._Client(_Ws())
         c.symbols = frozenset({"SPY"})
         srv_ui.clients.add(c)
@@ -460,13 +464,13 @@ def test_a_failed_price_history_request_serves_the_bars_above_1m_unavailable_unt
 
     first, failed, retried, whole = asyncio.run(main())
     assert asked == ["SPY", "SPY"]                                   # asked again on the next minute
-    gone = "minutes Fri 09/25 08:15 AM CT – Fri 09/25 10:09 AM CT not received from Schwab"
+    gone = "minutes Fri 09/25 10:00 AM CT – Fri 09/25 10:09 AM CT not received from Schwab"
     for update in (first, failed, retried):      # the bars reaching into the gap are not served
-        assert {"D", "60", "30"}.isdisjoint(update["tf"]) and update["recent_1m"] is None
-        assert update["unavailable"]["D"].startswith(gone)
-    assert failed["unavailable"]["D"] == f"{gone} (Schwab's price history: RuntimeError: HTTP 429 Too Many Requests)"
+        assert {"60", "30"}.isdisjoint(update["tf"]) and update["recent_1m"] is None
+        assert update["unavailable"]["60"].startswith(gone)
+    assert failed["unavailable"]["60"] == f"{gone} (Schwab's price history: RuntimeError: HTTP 429 Too Many Requests)"
     assert whole["unavailable"] == {} and whole["recent_1m"]
-    assert whole["tf"]["D"]["o"] == FRIDAY[0]["open"]
+    assert whole["tf"]["60"]["o"] == FRIDAY[90]["open"]            # 11:00 ET, from Schwab's price history
 
 
 def test_the_price_history_backfills_the_store_and_never_overwrites_a_stored_bar(monkeypatch, tmp_path):
@@ -560,18 +564,19 @@ def test_without_a_schwab_sign_in_the_reason_served_is_schwabs_own(monkeypatch):
 
     async def main():
         srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, stats, clock=lambda: RESTART,
-                                      history_fn=schwab_minutes(daemon))
+                                      history_fn=schwab_minutes(daemon), daily_fn=schwab_days(daemon))
         c = live_ui._Client(_Ws())
         c.symbols = frozenset({"SPY"})
         srv_ui.clients.add(c)
         srv_ui.on_subscription(_subscribed("SPY", ts=RESTART))
         srv_ui.on_bar(_msg(FRIDAY[100]))
         await _settled(srv_ui)
-        return list(c.bars)[-1]
-    update = asyncio.run(main())
-    assert update["unavailable"]["D"] == (
-        "minutes Fri 09/25 08:15 AM CT – Fri 09/25 10:09 AM CT not received from Schwab "
+        return list(c.bars)[-1], srv_ui.daily["SPY"].problem
+    update, days_problem = asyncio.run(main())
+    assert update["unavailable"]["60"] == (
+        "minutes Fri 09/25 10:00 AM CT – Fri 09/25 10:09 AM CT not received from Schwab "
         f"(Schwab's price history: ConnectionError: Schwab client: {expired})")
+    assert days_problem == f"Schwab's price history: ConnectionError: Schwab client: {expired}"
 
 
 def test_at_most_two_price_history_requests_are_in_flight(monkeypatch):
@@ -592,7 +597,8 @@ def test_at_most_two_price_history_requests_are_in_flight(monkeypatch):
         return []
 
     async def main():
-        srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: RESTART, history_fn=history)
+        srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: RESTART, history_fn=history,
+                                      daily_fn=_no_days)
         for sym in ("SPY", "QQQ", "IWM", "DIA", "AAPL", "MSFT"):
             srv_ui.on_bar(_msg(FRIDAY[100], sym=sym))
         await asyncio.sleep(0.2)
@@ -661,7 +667,8 @@ def _replay(minutes: list[dict], first: int, cuts: dict, away: dict,
         return [] if fault == "empty" else got[:-3] if fault == "lagging" else got
 
     def start():
-        s = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: clock["now"], history_fn=history)
+        s = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: clock["now"], history_fn=history,
+                                 daily_fn=_no_days)
         c = live_ui._Client(_Ws())
         c.symbols = frozenset({"SPY"})
         s.clients.add(c)
@@ -713,20 +720,20 @@ def _replay(minutes: list[dict], first: int, cuts: dict, away: dict,
 def _check(steps: list, minutes: list[dict], why: str) -> int:
     """Every update: each timeframe's bar is either served or unavailable with its reason, and a
     served bar (and the Order Flow hour) is the roll-up of every Schwab minute through the newest
-    (a bar missing a minute differs from it). Returns how many updates served the daily bar."""
+    (a bar missing a minute differs from it). Returns how many updates served the hour's bar."""
     day = [live_price_rows.minute_bar(_msg(b)) for b in minutes]
     whole = 0
     for k, updates in steps:
         for u in updates:
             held = [m for m in day if m["t"] <= u["last_bar"]["t"]]
-            for tf in live_price_rows.CHART_TFS:
+            for tf in live_price_rows.INTRADAY_TFS:
                 assert (tf in u["tf"]) != (tf in u["unavailable"]), (why, k, tf)
                 if tf in u["tf"]:
                     assert u["tf"][tf] == live_price_rows.served_bar(
                         live_price_rows.aggregate_bars(held, tf)[-1], tf), (why, k, tf)
             if u["recent_1m"] is not None:
                 assert u["recent_1m"] == live_price_rows.recent_1m(held), (why, k)
-            whole += "D" in u["tf"]
+            whole += "60" in u["tf"]
     return whole
 
 
@@ -746,7 +753,7 @@ def test_a_day_cut_at_random_never_serves_a_bar_missing_a_minute_and_ends_whole(
     monkeypatch.setattr(srv, "get_db", lambda: db)
     for b in FRIDAY:
         assert srv._write_streamed_bar(_msg(b))
-    route = {tf: json.loads(srv.get_bars1m(ticker="SPY", tf=tf, limit=12000).body) for tf in live_price_rows.CHART_TFS}
+    route = {tf: json.loads(srv.get_bars1m(ticker="SPY", tf=tf, limit=12000).body) for tf in live_price_rows.INTRADAY_TFS}
     for seed in ([int(os.environ["ED_REPLAY_SEED"])] if os.environ.get("ED_REPLAY_SEED") else REPLAY_SEEDS):
         print(f"seed {seed}")
         rng, run = random.Random(seed), 0
@@ -761,7 +768,7 @@ def test_a_day_cut_at_random_never_serves_a_bar_missing_a_minute_and_ends_whole(
         assert _check(steps, FRIDAY, why), why
         last = steps[-1][1][-1]
         assert last["unavailable"] == {}, why
-        for tf in live_price_rows.CHART_TFS:
+        for tf in live_price_rows.INTRADAY_TFS:
             assert last["tf"][tf] == route[tf]["bars"][-1], (why, tf)
         assert last["recent_1m"] == route["30"]["recent_1m"], why
 
@@ -774,7 +781,7 @@ def _whole_after(steps: list, k: int) -> None:
     """At minute k the update before the reply named the gap; the one after it is whole."""
     (at,) = [u for j, u in steps if j == k]
     assert len(at) == 2 and at[1]["unavailable"] == {}
-    assert at[1]["tf"]["D"]["o"] == FRIDAY[0]["open"] and at[1]["recent_1m"]
+    assert "60" in at[1]["tf"] and at[1]["recent_1m"]
 
 
 def test_a_symbol_unsubscribed_and_back_asks_for_exactly_the_minutes_it_missed():
@@ -786,7 +793,7 @@ def test_a_symbol_unsubscribed_and_back_asks_for_exactly_the_minutes_it_missed()
     steps, asked = _replay(FRIDAY, 100, {110: "leave"}, {110: 4})
     assert _check(steps, FRIDAY, "leave")
     (at,) = [u for j, u in steps if j == 114]
-    assert at[0]["unavailable"]["D"] == _gone(110, 113) and at[0]["recent_1m"] is None
+    assert at[0]["unavailable"]["60"] == _gone(110, 113) and at[0]["recent_1m"] is None
     assert asked[-1] == (_t(110), _msg(FRIDAY[114])["ts_recv"])
     _whole_after(steps, 114)
     # the first minute back received before the SUBS acknowledgement is uncovered too
@@ -817,7 +824,7 @@ def test_an_empty_price_history_reply_covers_nothing_and_is_asked_again():
     steps, asked = _replay(FRIDAY, 100, {105: "empty", 110: "leave"}, {110: 2})
     assert _check(steps, FRIDAY, "empty")
     (at,) = [u for j, u in steps if j == 112]
-    assert len(at) == 1 and at[0]["unavailable"]["D"] == _gone(110, 111)
+    assert len(at) == 1 and at[0]["unavailable"]["60"] == _gone(110, 111)
     assert asked[-2:] == [(_t(110), _msg(FRIDAY[112])["ts_recv"]), (_t(110), _msg(FRIDAY[113])["ts_recv"])]
     _whole_after(steps, 113)
 
@@ -830,8 +837,8 @@ def test_a_lagging_price_history_reply_covers_only_what_it_holds():
     steps, asked = _replay(FRIDAY, 100, {105: "lagging", 110: "leave"}, {110: 5})
     assert _check(steps, FRIDAY, "lagging")
     (at,) = [u for j, u in steps if j == 115]
-    assert at[0]["unavailable"]["D"] == _gone(110, 114)
-    assert at[1]["unavailable"]["D"] == _gone(114, 114)
+    assert at[0]["unavailable"]["60"] == _gone(110, 114)
+    assert at[1]["unavailable"]["60"] == _gone(114, 114)
     assert asked[-2:] == [(_t(110), _msg(FRIDAY[115])["ts_recv"]), (_t(114), _msg(FRIDAY[116])["ts_recv"])]
     _whole_after(steps, 116)
 
@@ -842,8 +849,7 @@ def test_a_daemon_restarted_mid_day_asks_for_the_day_before_its_first_minute():
     steps, asked = _replay(FRIDAY, 100, {110: "restart"}, {110: 2})
     assert _check(steps, FRIDAY, "restart")
     (at,) = [u for j, u in steps if j == 112]
-    gone = f"minutes {ct_label(live_price_rows.session_first_minute(_t(0)))} – {ct_label(_t(111))} not received from Schwab"
-    assert at[0]["unavailable"]["D"] == gone
+    assert at[0]["unavailable"]["60"] == _gone(90, 111)            # the hour from 11:00 ET
     assert asked[-1] == (live_price_rows.session_first_minute(_t(0)), _msg(FRIDAY[112])["ts_recv"])
     _whole_after(steps, 112)
 
@@ -867,92 +873,6 @@ def test_a_covered_minute_with_no_bar_is_no_trade_and_an_uncovered_one_is_unavai
     _whole_after(steps, 106)
 
 
-#: 2026-09-30, every symbol the daemon streamed: its CHART_EQUITY bars 09:30-16:00 ET and every
-#: LEVELONE message carrying HIGH_PRICE / LOW_PRICE, 04:00-16:15 ET, with receive times (built
-#: read-only from production stream_capture.db; source and build time inside)
-SEP30 = json.loads((_FX / "real_high_low_and_bars_2026_09_30.json").read_text(encoding="utf-8"))
-
-
-def _replay_day(monkeypatch, sym: str, stats: dict, *, quotes=None) -> list:
-    """Stream `sym`'s 2026-09-30 bars and LEVELONE high/low messages to the daemon's real live_ui
-    and plane in receive order (subscribed at 09:00 ET); every reconciliation it pushed."""
-    day = SEP30["symbols"][sym]
-    monkeypatch.setattr(lmp, "_fields_by_ticker", {})
-    monkeypatch.setattr(lmp, "_by_ticker", {})
-    monkeypatch.setattr(lmp, "_asset_main_type", {})
-    clock = {"now": 0.0}
-    quotes = list(day["quotes"] if quotes is None else quotes)
-    quotes[0] = (quotes[0][0], {**quotes[0][1], "assetMainType": day["asset_main_type"]})   # Schwab's, as captured
-    events = sorted([(ts, 0, q) for ts, q in quotes]
-                    + [(b[6], 1, b) for b in day["bars"]], key=lambda e: (e[0], e[1]))
-
-    async def main():
-        ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, stats, clock=lambda: clock["now"], history_fn=lambda *a: [])
-        c = live_ui._Client(_Ws())
-        c.symbols = frozenset({sym})
-        ui.clients.add(c)
-        ui.on_subscription(_subscribed(sym, ts=datetime(2026, 9, 30, 9, 0, tzinfo=ET).timestamp()))
-        for ts, kind, e in events:
-            clock["now"] = ts
-            if kind == 0:
-                lmp.record_from_level_one_equity(sym, e, received_ts=ts)
-                continue
-            ui.on_bar(bar_msg(symbol=sym, bar_start_ms=e[0], open=e[1], high=e[2], low=e[3], close=e[4],
-                              volume=e[5], src="schwab_chart", ts_recv=ts))
-        return [(u["reconciliation"], u["notes"]) for u in c.bars]
-    return asyncio.run(main())
-
-
-def test_the_reconciliation_flags_nothing_on_a_real_day_across_the_board(monkeypatch):
-    """Every symbol the daemon streamed on 2026-09-30, replayed in receive order: no update is
-    flagged. An equity's completed regular-session minutes are flagged only outside Schwab's
-    HIGH_PRICE / LOW_PRICE, which is certain. The two-sided comparison flagged real days: SPY's
-    low 762.20 (bars to 15:59) against Schwab's 762.18 printed at 16:00:01 ET; including the 16:00
-    minute instead flags IWM, PLTR, QQQ and TSLA, whose 16:00 bar holds post-close trades outside
-    Schwab's range. An index is not compared ($SPX's low kept moving to 16:05:15 ET)."""
-    flagged, last = {}, {}
-    for sym in SEP30["symbols"]:
-        recs = _replay_day(monkeypatch, sym, {})
-        flagged[sym] = [r for r, _n in recs if r["state"] == live_price_rows.RECONCILE_MISMATCH]
-        last[sym] = recs[-1][0]
-    assert len(SEP30["symbols"]) == 45
-    assert {s: f[0] for s, f in flagged.items() if f} == {}
-    equities = {s for s, d in SEP30["symbols"].items() if d["asset_main_type"] == "EQUITY"}
-    indexes = set(SEP30["symbols"]) - equities
-    assert len(equities) == 42 and indexes == {"$SPX", "$NDX", "$VIX"}
-    assert {s for s in equities if last[s]["state"] != live_price_rows.RECONCILED} == set()
-    assert {last[s]["reason"] for s in indexes} == {"Schwab's index high/low cover different hours"}
-    # the boundary values, as compared at the day's last minute
-    assert (last["SPY"]["bars_low"], last["SPY"]["schwab_low"]) == (762.2, 762.18)
-    assert (last["IWM"]["bars_low"], last["IWM"]["schwab_low"]) == (277.88, 277.86)
-
-
-def test_a_bar_outside_schwabs_high_and_low_is_flagged_with_both_values(monkeypatch, caplog):
-    """Our completed regular-session high above Schwab's HIGH_PRICE is certain whatever Schwab's
-    window: flagged on the update and on the daily chart's note (the window named, both values in
-    the server's one price format, and the difference), counted and logged once, nothing
-    corrected; a 0 is not compared. Real SPY bars and LEVELONE messages of 2026-09-30; the
-    stand-in for a wrong Schwab value is its HIGH_PRICE as received at 10:00 ET kept for the rest
-    of the day (its later highs dropped)."""
-    stats: dict = {}
-    day = SEP30["symbols"]["SPY"]
-    ten = datetime(2026, 9, 30, 10, 0, tzinfo=ET).timestamp()
-    frozen = [(ts, q) if ts <= ten else (ts, {k: v for k, v in q.items() if k != "HIGH_PRICE"})
-              for ts, q in day["quotes"]]
-    recs = _replay_day(monkeypatch, "SPY", stats, quotes=frozen)
-    rec, notes = recs[-1]
-    assert rec["state"] == live_price_rows.RECONCILE_MISMATCH and rec["bars_high"] > rec["schwab_high"]
-    gap = rec["bars_high"] - rec["schwab_high"]
-    note = (f"regular session 09:30–16:00 ET high/low differ from Schwab: our high "
-            f"{live_price_rows.price_text(rec['bars_high'])} is above Schwab's "
-            f"{live_price_rows.price_text(rec['schwab_high'])} by {live_price_rows.price_difference_text(gap)}")
-    assert rec["note"] == note and notes == {"D": note}
-    assert stats["reconcile_mismatches"] == 1
-    assert len([r for r in caplog.records if "HIGH_PRICE/LOW_PRICE" in r.getMessage()]) == 1
-    zero = [(ts, {**q, "HIGH_PRICE": 0} if "HIGH_PRICE" in q else q) for ts, q in day["quotes"]]
-    assert _replay_day(monkeypatch, "SPY", {}, quotes=zero)[-1][0]["state"] == live_price_rows.RECONCILE_NOT_COMPARED
-
-
 def test_a_thin_tickers_first_trade_late_in_the_day_serves_every_timeframe():
     """A thin ticker's first trade at 09:47 ET. Subscribed before 09:15 ET, the stream covers the
     day from 09:15: the minutes before 09:47 had no trade and every timeframe is served on its
@@ -965,14 +885,14 @@ def test_a_thin_tickers_first_trade_late_in_the_day_serves_every_timeframe():
     steps, asked = _replay(thin, 0, {}, {}, subscribed_at=datetime(2026, 9, 25, 9, 0, tzinfo=ET).timestamp())
     assert _check(steps, thin, "thin, subscribed early")
     assert asked == [] and len(steps[0][1]) == 1 and steps[0][1][0]["unavailable"] == {}
-    assert steps[0][1][0]["tf"]["D"]["o"] == FRIDAY[17]["open"]
+    assert steps[0][1][0]["recent_1m"] and "60" in steps[0][1][0]["tf"]
     ten = 13                                                    # thin[13] is 10:00 ET
     steps, asked = _replay(thin, ten, {}, {})
     assert _check(steps, thin, "thin, restarted at 10:00")
     assert asked == [(live_price_rows.session_first_minute(_t(0)), _msg(thin[ten])["ts_recv"])]
     (at,) = [u for j, u in steps if j == ten]
-    assert at[0]["unavailable"]["D"].startswith("minutes Fri 09/25 08:15 AM CT – Fri 09/25 08:59 AM CT")
-    assert at[1]["unavailable"] == {} and at[1]["tf"]["D"]["o"] == FRIDAY[17]["open"]
+    assert at[0]["unavailable"]["recent_1m"] == "minutes Fri 09/25 08:15 AM CT – Fri 09/25 08:59 AM CT not received from Schwab"
+    assert at[1]["unavailable"] == {} and at[1]["recent_1m"][0]["t"] == thin[0]["timestamp"] / 1000.0
 
 
 def test_a_quiet_tail_inside_unbroken_coverage_serves_the_bars():
@@ -1004,7 +924,7 @@ def test_a_frame_the_daemon_cannot_read_ends_every_streams_coverage():
     steps, asked = _replay(FRIDAY, 100, {110: "lost"}, {})
     assert _check(steps, FRIDAY, "lost")
     (at,) = [u for j, u in steps if j == 111]
-    assert at[0]["unavailable"]["D"] == _gone(110, 111)
+    assert at[0]["unavailable"]["60"] == _gone(110, 111)
     assert asked[-1] == (_t(110), _msg(FRIDAY[111])["ts_recv"])
     _whole_after(steps, 111)
 
@@ -1024,7 +944,8 @@ def test_a_bar_the_daemons_queue_drops_ends_every_streams_coverage():
         feed = lambda: {"ts": clock["now"], "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
         task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=lambda: clock["now"],
                                                          host="127.0.0.1", port=port, stats=stats,
-                                                         history_fn=_schwab({"SPY": FRIDAY}, asked)))
+                                                         history_fn=_schwab({"SPY": FRIDAY}, asked),
+                                                         daily_fn=_no_days))
         while not stats.get("listening"):
             await asyncio.sleep(0.01)
         bus.publish("sub.CHART_EQUITY", _subscribed("SPY", ts=_t(100)))
@@ -1069,9 +990,9 @@ def test_an_uncovered_span_is_asked_again_on_the_daemons_clock_and_a_429_holds_e
         return truth(symbol, start, end)
 
     async def main():
-        ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: clock["now"], history_fn=history)
-        ui.on_subscription(_subscribed("SPY", ts=_t(100)))
-        ui.on_bar(_msg(FRIDAY[100]))                             # the day before 10:10 CT: 429
+        ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: clock["now"], history_fn=history,
+                                  daily_fn=_no_days)
+        ui.on_bar(_msg(FRIDAY[100]))                             # the day through 10:10 CT: 429
         await _settled(ui)
         for at in (t0 + 30, t0 + 61):                            # asked again a minute later: 429 again
             clock["now"] = at
@@ -1098,7 +1019,7 @@ def test_the_stream_covers_from_the_first_minute_after_its_acknowledgement():
     stand-in, answering nothing."""
     async def main():
         ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: _msg(FRIDAY[100])["ts_recv"],
-                                  history_fn=lambda *a: [])
+                                  history_fn=lambda *a: [], daily_fn=_no_days)
         c = live_ui._Client(_Ws())
         c.symbols = frozenset({"SPY"})
         ui.clients.add(c)
@@ -1107,7 +1028,7 @@ def test_the_stream_covers_from_the_first_minute_after_its_acknowledgement():
         await _settled(ui)
         return c.bars[-1]
     update = asyncio.run(main())
-    assert update["unavailable"]["D"] == "minutes Fri 09/25 08:15 AM CT – Fri 09/25 10:10 AM CT not received from Schwab"
+    assert update["unavailable"]["60"] == "minutes Fri 09/25 10:00 AM CT – Fri 09/25 10:10 AM CT not received from Schwab"
 
 
 def test_a_subscription_answer_the_daemon_cannot_track_stops_it():
@@ -1120,7 +1041,7 @@ def test_a_subscription_answer_the_daemon_cannot_track_stops_it():
         feed = lambda: {"ts": RESTART, "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
         task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=lambda: RESTART,
                                                          host="127.0.0.1", port=port, stats=stats,
-                                                         history_fn=lambda *a: []))
+                                                         history_fn=lambda *a: [], daily_fn=_no_days))
         while not stats.get("listening"):
             await asyncio.sleep(0.01)
         bus.publish("sub.CHART_EQUITY", {"service": "CHART_EQUITY", "command": "SUBS", "symbols": ["SPY"], "code": 0})

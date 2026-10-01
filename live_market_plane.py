@@ -29,7 +29,9 @@ _by_ticker: dict[str, dict[str, Any]] = {}
 #: field is the last one Schwab sent, and its age is the age of THAT message. This table holds
 #: exactly that, per ticker, per field: {field: (value, received_ts)}.
 _PRICE_FIELDS = ("LAST_PRICE", "BID_PRICE", "ASK_PRICE", "MARK", "CLOSE_PRICE",
-                 "OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE")
+                 "OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE", "REGULAR_MARKET_LAST_PRICE")
+#: the fields of the day's candle (live_price_rows.day_candle), read with their receive times
+DAY_FIELDS = ("OPEN_PRICE", "HIGH_PRICE", "LOW_PRICE", "LAST_PRICE", "REGULAR_MARKET_LAST_PRICE", "TOTAL_VOLUME")
 _COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "LAST_SIZE", "TOTAL_VOLUME")
 _CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
 #: signed values (any finite number): Schwab's own change of the LAST_PRICE vs the prior close.
@@ -38,9 +40,6 @@ _CLOCK_FIELDS = ("QUOTE_TIME_MILLIS", "TRADE_TIME_MILLIS")
 #: and outside it only on a full refresh; CHANGE_PERCENT never.
 _SIGNED_FIELDS = ("NET_CHANGE", "NET_CHANGE_PERCENT", "REGULAR_MARKET_CHANGE_PERCENT")
 _fields_by_ticker: dict[str, dict[str, tuple[float, float]]] = {}
-#: per ticker, Schwab's assetMainType as sent (text: EQUITY, INDEX, ...); what its HIGH_PRICE /
-#: LOW_PRICE cover depends on it (live_price_rows.regular_session_reconciliation)
-_asset_main_type: dict[str, str] = {}
 
 
 def _read_stream_field(name: str, raw: Any) -> Optional[float]:
@@ -85,9 +84,6 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
                 fs.pop(name, None)       # not a number (-999, text, NaN): cleared
             else:
                 fs[name] = (v, rts)
-        if isinstance(item.get("assetMainType"), str):
-            _asset_main_type[t] = item["assetMainType"]
-        asset_main_type = _asset_main_type.get(t)
         snapshot = dict(fs)
     if not seen or "LAST_PRICE" not in snapshot:
         return False
@@ -108,11 +104,6 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
         "bid_size": val("BID_SIZE"),
         "ask_size": val("ASK_SIZE"),
         "last_size": val("LAST_SIZE"),
-        "total_volume": val("TOTAL_VOLUME"),
-        "open_price": val("OPEN_PRICE"),
-        "high_price": val("HIGH_PRICE"),
-        "low_price": val("LOW_PRICE"),
-        "asset_main_type": asset_main_type,
         "prior_close": val("CLOSE_PRICE"),
         # Schwab's own change vs the prior close (0 hops): NET_CHANGE_PERCENT is the last price's,
         # extended hours included; REGULAR_MARKET_CHANGE_PERCENT is the regular session's
@@ -171,6 +162,15 @@ def get_quote(ticker: str) -> Optional[dict[str, Any]]:
     with _lock:
         row = _by_ticker.get(t)
         return dict(row) if row else None
+
+
+def day_fields(ticker: str) -> dict[str, tuple[float, float]]:
+    """The ticker's day fields (DAY_FIELDS) as Schwab last sent them: {field: (value,
+    received_ts)}, each field only once sent."""
+    t = ticker_storage_key(ticker)
+    with _lock:
+        fs = _fields_by_ticker.get(t) or {}
+        return {k: fs[k] for k in DAY_FIELDS if k in fs}
 
 
 

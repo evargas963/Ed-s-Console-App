@@ -213,7 +213,8 @@ def test_before_the_open_the_zones_hold_the_prior_days_levels_only():
         dt = datetime(prev_date.year, prev_date.month, prev_date.day, 10, 0 + i % 60, tzinfo=ET)
         bars.append(_mk_bar(dt, 500, 501, 499, 500, 1000))
     cfg = PlaybookConfig()
-    snap = build_price_level_snapshot("SPY", session, _bars_to_list(bars), bar_source="test", config=cfg)
+    snap = build_price_level_snapshot("SPY", session, _bars_to_list(bars), bar_source="test", config=cfg,
+                                      prior_day=None, prior_day_absent_reason="no Schwab daily candle in this test")
     tags = {s["label"] for z in build_zones(snap, cfg, spot=None, extra_levels=[]) for s in z.source_levels}
     assert tags and tags <= {"PDH", "PDL", "PD_POC", "PD_VAH", "PD_VAL"}
 

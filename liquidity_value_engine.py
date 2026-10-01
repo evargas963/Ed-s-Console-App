@@ -43,7 +43,11 @@ from time_et import (
     RTH_OPEN_MINS,
     ct_label,
     session_close_mins_for_et_date,
+    trading_date_label,
 )
+
+#: the producer of the prior day's high and low (PDH / PDL)
+PRIOR_DAY_SOURCE = "Schwab daily price history (get_price_history_every_day), via the capture daemon"
 
 # The session comes from time_et, the one market calendar: the open, and each day's close
 # (13:00 on an early close, none on a holiday).
@@ -144,16 +148,16 @@ def get_previous_day_levels(
     config: PlaybookConfig,
 ) -> dict:
     """The prior session (the most recent earlier date with RTH bars, prior_trading_session_date)
-    from normalized bars (_bars_to_list): its date, its RTH bar count, and its high, low, POC,
-    VAH and VAL from those RTH bars. No prior session: {} (never a calendar walk or other
-    days' bars). The prior close is not here: it is Schwab's CLOSE_PRICE, on the price row."""
+    from normalized bars (_bars_to_list): its date, its RTH bar count, and its POC, VAH and VAL
+    from those RTH bars' volume profile. No prior session: {} (never a calendar walk or other
+    days' bars). Its high and low are not here: they are Schwab's daily candle
+    (build_price_level_snapshot `prior_day`); the prior close is Schwab's CLOSE_PRICE."""
     prior = prior_trading_session_date(bars_norm, session_date)
     if prior is None:
         return {}
     prev_bars = [b for b in bars_norm if b["_dt"].date() == prior and _in_rth(b["_dt"])]
     p = volume_profile(prev_bars, config.value_area_percent, config.tick_size, ndigits=4)
     return {"prior_date": prior, "rth_bars": len(prev_bars),
-            "pdh": max(b["high"] for b in prev_bars), "pdl": min(b["low"] for b in prev_bars),
             "pd_poc": None if p is None else p.poc, "pd_vah": None if p is None else p.vah,
             "pd_val": None if p is None else p.val}
 
@@ -515,7 +519,8 @@ class PriceLevelSnapshot:
 
 
 def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list,
-                                bar_source: str) -> tuple:
+                                bar_source: str, prior_day: Optional[dict],
+                                prior_day_absent_reason: Optional[str]) -> tuple:
     """Identity of the INPUT. Same fingerprint ⇒ same generation ⇒ same result object.
 
     Bar identity, not wall-clock: re-asking within a generation must return the very
@@ -531,7 +536,7 @@ def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list
     """
     h = hashlib.blake2b(digest_size=16)
     h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f"
-             f"{len(bars_norm)}".encode())
+             f"{len(bars_norm)}\x1f{sorted((prior_day or {}).items())!r}\x1f{prior_day_absent_reason}".encode())
     for b in bars_norm:
         h.update(b"\x1e")
         h.update(repr((b["timestamp"], b["open"], b["high"], b["low"], b["close"], b["volume"])).encode())
@@ -544,11 +549,15 @@ def build_price_level_snapshot(
     bars_norm: list,
     *,
     bar_source: str,
+    prior_day: Optional[dict],
+    prior_day_absent_reason: Optional[str],
     config: Optional[PlaybookConfig] = None,
     generation: int = 0,
 ) -> PriceLevelSnapshot:
-    """THE Phase 2A producer, from normalized bars (_bars_to_list). The only production caller
-    of the canonical helpers.
+    """THE Phase 2A producer, from normalized bars (_bars_to_list) and Schwab's daily candle of
+    the prior trading day (`prior_day`, a served daily bar {t, o, h, l, c}: the prior day's high
+    and low are Schwab's own, never the range of its minutes; None: not received, with
+    `prior_day_absent_reason`). The only production caller of the canonical helpers.
 
     Absent input stays absent: a family with no bars in its window is declared in
     `families_absent` and its ids are simply not present. Nothing substitutes spot,
@@ -580,6 +589,13 @@ def build_price_level_snapshot(
         )
 
     # ── prior day ────────────────────────────────────────────────────────────
+    # its high and low: Schwab's daily candle (operator 2026-10-01: "lets use what schwab gives us")
+    if prior_day is None:
+        families_absent.append({"family": "prior_day_range", "reason": prior_day_absent_reason})
+    else:
+        day_window = f"{trading_date_label(prior_day['t'])} (Schwab's daily candle)"
+        _put("PDH", prior_day["h"], producer=PRIOR_DAY_SOURCE, window=day_window)
+        _put("PDL", prior_day["l"], producer=PRIOR_DAY_SOURCE, window=day_window)
     eng = get_previous_day_levels(bars_norm, session_date, cfg)
     prior_date = eng.get("prior_date")
     if prior_date is None:
@@ -589,8 +605,7 @@ def build_price_level_snapshot(
         })
     else:
         window = f"{prior_date.isoformat()} RTH (most recent prior RTH session)"
-        for lid, key in (("PDH", "pdh"), ("PDL", "pdl"),
-                         ("PD_POC", "pd_poc"), ("PD_VAH", "pd_vah"), ("PD_VAL", "pd_val")):
+        for lid, key in (("PD_POC", "pd_poc"), ("PD_VAH", "pd_vah"), ("PD_VAL", "pd_val")):
             _put(lid, eng.get(key),
                  producer=f"{_PRODUCER_NS}.get_previous_day_levels", window=window)
         if eng["pd_poc"] is None:
@@ -682,17 +697,20 @@ def materialize_price_level_snapshot(
     bars_norm: list,
     *,
     bar_source: str,
+    prior_day: Optional[dict],
+    prior_day_absent_reason: Optional[str],
     config: Optional[PlaybookConfig] = None,
 ) -> PriceLevelSnapshot:
-    """Materialize once per generation from normalized bars (_bars_to_list); return the SAME
-    object within a generation.
+    """Materialize once per generation from normalized bars (_bars_to_list) and Schwab's prior
+    daily candle (build_price_level_snapshot); return the SAME object within a generation.
 
-    A new market generation (the bar input changed) invokes the producer exactly once.
+    A new market generation (the input changed) invokes the producer exactly once.
     Every later ask in that generation is a read, never a recomputation.
     """
     tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
     key = (tk, session_date.isoformat())
-    fingerprint = _snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source)
+    fingerprint = _snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source, prior_day,
+                                              prior_day_absent_reason)
     # RC-324: the read, the generation decision, the build and the write-back are ONE
     # critical section. Unguarded, this is a check-then-act: Cursor proved two concurrent
     # callers both observed `existing is None`, both computed generation 1, and produced two
@@ -704,8 +722,8 @@ def materialize_price_level_snapshot(
             return existing
         generation = 1 if existing is None else existing.generation + 1
         snap = build_price_level_snapshot(
-            tk, session_date, bars_norm, bar_source=bar_source, config=config,
-            generation=generation,
+            tk, session_date, bars_norm, bar_source=bar_source, prior_day=prior_day,
+            prior_day_absent_reason=prior_day_absent_reason, config=config, generation=generation,
         )
         snap.input_fingerprint = fingerprint
         _MATERIALIZED_SNAPSHOTS[key] = snap

@@ -28,6 +28,8 @@ from time_et import ET
 BARS = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_29_open.json")
                   .read_text(encoding="utf-8"))["bars"]
 TUESDAY = datetime(2026, 9, 29, tzinfo=ET).date()
+#: why these levels have no prior daily candle: none is given (Schwab's comes from the daemon)
+NO_DAILY = "no Schwab daily candle in this test"
 
 
 def _at(h: int, m: int) -> float:
@@ -43,7 +45,8 @@ def test_the_opening_range_is_served_once_its_window_has_ended():
     every bar until 09:45. It is absent, with the reason, until the window's last minute (09:44)
     has completed; then it is the high and low of 09:30-09:44, and no bar before the open or
     after the window is in it."""
-    forming = build_price_level_snapshot("SPY", TUESDAY, _bars_to_list(_before(9, 44)), bar_source="price_bars_1m")
+    forming = build_price_level_snapshot("SPY", TUESDAY, _bars_to_list(_before(9, 44)), bar_source="price_bars_1m",
+                                         prior_day=None, prior_day_absent_reason=NO_DAILY)
     assert forming.price("ORB_HIGH") is None and forming.price("ORB_LOW") is None
     assert {"family": "opening_range", "reason": (
         "the opening range is still forming: its first 15 minutes end Tue 09/29 08:45 AM CT, "
@@ -52,7 +55,8 @@ def test_the_opening_range_is_served_once_its_window_has_ended():
     window = [b for b in BARS if _at(9, 30) <= b["timestamp"] / 1000.0 < _at(9, 45)]
     assert len(window) == 15
     for cut in (_before(9, 45), BARS):                  # the moment it ends, and an hour later
-        done = build_price_level_snapshot("SPY", TUESDAY, _bars_to_list(cut), bar_source="price_bars_1m")
+        done = build_price_level_snapshot("SPY", TUESDAY, _bars_to_list(cut), bar_source="price_bars_1m",
+                                          prior_day=None, prior_day_absent_reason=NO_DAILY)
         assert done.price("ORB_HIGH") == max(b["high"] for b in window)
         assert done.price("ORB_LOW") == min(b["low"] for b in window)
         assert "opening_range" not in {f["family"] for f in done.families_absent}
@@ -62,7 +66,8 @@ def test_no_overnight_level_is_built_from_the_minutes_around_the_close():
     """The stored bars hold 09:15 ET to 15 minutes after the close (measured 2026-09-30, all 43
     board tickers, 7 days: no bar outside it), so "overnight high / low" was the range of the
     15 minutes before the open and after the prior close. It is absent, with that reason."""
-    snap = build_price_level_snapshot("SPY", TUESDAY, _bars_to_list(BARS), bar_source="price_bars_1m")
+    snap = build_price_level_snapshot("SPY", TUESDAY, _bars_to_list(BARS), bar_source="price_bars_1m",
+                                      prior_day=None, prior_day_absent_reason=NO_DAILY)
     assert not [lid for lid in snap.levels if "OVERNIGHT" in lid]
     assert {"family": "overnight", "reason": lve.OVERNIGHT_ABSENT_REASON} in snap.families_absent
 
@@ -111,7 +116,8 @@ def test_the_session_levels_take_their_currency_from_the_daemons_coverage(monkey
     clock = {"now": 0.0}
     bus = MessageBus()
     states = bus.subscribe("barstate.", maxsize=1024, name="test_console")
-    ui = live_ui.LiveUiServer(bus, lambda: {}, {}, clock=lambda: clock["now"], history_fn=lambda *a: [])
+    ui = live_ui.LiveUiServer(bus, lambda: {}, {}, clock=lambda: clock["now"], history_fn=lambda *a: [],
+                              daily_fn=lambda *a: [])
 
     async def daemon(h, m, s=0, close=False):
         if close:                                                 # the Schwab socket closes
@@ -208,18 +214,15 @@ def atr_db(tmp_path):
 
 
 def test_the_atr_leaves_out_the_candle_still_forming(atr_db):
-    """2026-09-30 audit: the daily ATR took in today's candle from its first bar, and the
-    15-minute ATR the period still open: a candle still forming has a smaller range than it
-    closes with, so both read low early in the day and early in each period. Completed candles
-    only."""
+    """2026-09-30 audit: the 15-minute ATR took in the period still open: a candle still forming
+    has a smaller range than it closes with, so it read low early in each period. Completed
+    candles only. The daily ATR is Schwab's daily candles' (never minutes rolled into days,
+    operator 2026-10-01): without them it is absent with the reason given."""
     with_today = round((13 * 10.0 + 1.0) / 14, 4)
-    early = compute_atr_pair(atr_db, "ATRX", datetime(2026, 9, 30, 9, 40, tzinfo=ET))
-    assert (early.daily, early.m15) == (10.0, 10.0)
-    period_closed = compute_atr_pair(atr_db, "ATRX", datetime(2026, 9, 30, 9, 46, tzinfo=ET))
-    assert (period_closed.daily, period_closed.m15) == (10.0, with_today)
-    # today's stored bars end 16:15 ET: the day's candle is complete from then
-    assert compute_atr_pair(atr_db, "ATRX", datetime(2026, 9, 30, 16, 14, tzinfo=ET)).daily == 10.0
-    assert compute_atr_pair(atr_db, "ATRX", datetime(2026, 9, 30, 16, 15, tzinfo=ET)).daily == with_today
+    early = compute_atr_pair(atr_db, "ATRX", datetime(2026, 9, 30, 9, 40, tzinfo=ET), None, NO_DAILY)
+    assert (early.daily, early.daily_reason, early.m15) == (None, NO_DAILY, 10.0)
+    period_closed = compute_atr_pair(atr_db, "ATRX", datetime(2026, 9, 30, 9, 46, tzinfo=ET), None, NO_DAILY)
+    assert period_closed.m15 == with_today
 
 
 def test_the_published_atr_is_judged_at_the_instant_its_entry_point_passes(atr_db, monkeypatch):

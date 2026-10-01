@@ -27,7 +27,7 @@ def test_a_stuck_browser_is_closed_and_the_others_keep_their_beat(monkeypatch):
     async def go():
         srv = live_ui.LiveUiServer(MessageBus(), lambda: {"ts": 1.0, "schwab_socket_open": True}, {
             "frames_sent": 0, "rows_sent": 0, "last_send_ms": 0.0, "beat_send_failures": 0},
-            clock=lambda: 1.0, history_fn=lambda *a: [])   # no bar here: Schwab's history unused
+            clock=lambda: 1.0, history_fn=lambda *a: [], daily_fn=lambda *a: [])   # no bar here: Schwab's history unused
         stuck, ok = live_ui._Client(_Ws(hang=True)), live_ui._Client(_Ws())
         srv.clients.update({stuck, ok})
         beat = asyncio.create_task(srv.beat_loop())

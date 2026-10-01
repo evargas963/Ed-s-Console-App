@@ -20,13 +20,17 @@ from typing import Any, Optional
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
-from time_et import (COLLECT_WINDOW_START_MINS, ET, RTH_START_MINS, ct_label, et_date_str_from_ts_utc,
+from time_et import (COLLECT_WINDOW_START_MINS, ET, ct_label, et_date_str_from_ts_utc,
                      et_minute_total_from_ts_utc, is_collect_window_bar_end_ts_utc,
                      session_close_mins_for_et_date, trading_date_label)
 
 SPOT_SOURCE = "streaming_plane"
 #: the chart timeframes: minutes, and "D" (the ET trading date)
 CHART_TFS = ("1", "3", "5", "15", "30", "60", "D")
+#: the timeframes built from Schwab's 1-minute bars (1m as sent; 3m-60m summed from them). The
+#: daily candle is Schwab's own, never summed from minutes (day_candle, daily_candles): Schwab's
+#: minute volumes sum to less than its daily volume (SPY 2026-09-30: about 68%)
+INTRADAY_TFS = ("1", "3", "5", "15", "30", "60")
 #: the newest 1-minute bars the Trade Desk Order Flow card shows (`recent_1m`, on each bar push
 #: and on /api/bars1m): served whole so the page keeps no window of its own
 RECENT_1M_BARS = 60
@@ -65,7 +69,7 @@ def tf_bucket_start(t: float, tf: str) -> float:
 
 
 def roll_bucket(bucket: list[dict], tf: str) -> dict:
-    """THE roll-up of one chart bar of timeframe `tf` from its 1m bars, oldest first: first open,
+    """THE roll-up of one intraday chart bar of timeframe `tf` (INTRADAY_TFS) from its 1m bars, oldest first: first open,
     max high, min low, last close, stamped with its bucket's start (tf_bucket_start). Volume is
     the sum only when every minute reported one -- otherwise None (unknown), never a partial sum
     or a 0."""
@@ -76,8 +80,8 @@ def roll_bucket(bucket: list[dict], tf: str) -> dict:
 
 
 def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
-    """1m bars, oldest first, rolled up to a chart timeframe (CHART_TFS): each run of bars in one
-    bucket (tf_bucket_key) is one chart bar (roll_bucket)."""
+    """1m bars, oldest first, rolled up to an intraday chart timeframe (INTRADAY_TFS): each run
+    of bars in one bucket (tf_bucket_key) is one chart bar (roll_bucket)."""
     if tf == "1":
         return list(bars)
     out: list[dict] = []
@@ -175,10 +179,11 @@ def coverage_now(covered: list[tuple[float, float]], stream_from: Optional[float
 
 def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float,
                covered: list[tuple[float, float]]) -> dict[str, Any]:
-    """What the daemon pushes for one 1-minute `bar`: for each chart timeframe, the chart bar that
-    contains it (roll_bucket) when that is the chart's newest bar, from `minutes` -- the ticker's
-    minutes of `bar`'s ET trading day, oldest first, `bar` among them; the "D" bar is all of them
-    -- with the daemon's receive time of Schwab's message and `recent_1m`. `covered`: the spans of
+    """What the daemon pushes for one 1-minute `bar`: for each intraday chart timeframe
+    (INTRADAY_TFS), the chart bar that contains it (roll_bucket) when that is the chart's newest
+    bar, from `minutes` -- the ticker's minutes of `bar`'s ET trading day, oldest first, `bar`
+    among them -- with the daemon's receive time of Schwab's message and `recent_1m`. The daily
+    candle is not built from minutes: it is Schwab's (price_row `day`). `covered`: the spans of
     minutes the daemon holds all of Schwab's bars for (the stream while subscribed, or a
     price-history reply); inside them a minute with no bar is a minute Schwab reported no trade
     in. A bar above 1 minute, and `recent_1m`, is served only when every minute from its bucket's
@@ -189,14 +194,14 @@ def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float,
     A chart's push is only ever its newest bar: a chart places it with the library's own update,
     which replaces the newest bar or adds a newer one, and a bar's time is its bucket's start, so
     no minute moves it. A minute Schwab sends late (older than the newest one held) is a past
-    event. It is held, so the newest bars that contain it (always the "D" bar), every later
-    roll-up and `recent_1m` carry it; a chart bar of an older bucket is not pushed as a tail: the
-    stored history carries it when the chart is loaded again."""
+    event. It is held, so the newest bars that contain it, every later roll-up and `recent_1m`
+    carry it; a chart bar of an older bucket is not pushed as a tail: the stored history carries
+    it when the chart is loaded again."""
     i = bisect_left([m["t"] for m in minutes], bar["t"])
     newest, first = minutes[-1]["t"], session_first_minute(bar["t"])
     by_tf: dict[str, Any] = {}
     unavailable: dict[str, str] = {}
-    for tf in CHART_TFS:
+    for tf in INTRADAY_TFS:
         key = tf_bucket_key(bar["t"], tf)
         if key != tf_bucket_key(newest, tf):
             continue
@@ -225,61 +230,77 @@ def price_text(v: float) -> str:
     return f"{v:.2f}"
 
 
-def price_difference_text(v: float) -> str:
-    """A difference between two prices, to Schwab's finest tick (a sub-cent difference reads
-    equal in price_text)."""
-    return f"{v:.4f}"
+#: where today's daily candle comes from: Schwab's LEVELONE_EQUITIES day fields, as sent
+DAY_SOURCE = ("Schwab LEVELONE_EQUITIES OPEN_PRICE / HIGH_PRICE / LOW_PRICE / LAST_PRICE "
+              "(REGULAR_MARKET_LAST_PRICE after the regular close) / TOTAL_VOLUME")
 
 
-#: the daily bar's reconciliation with Schwab's own high and low
-RECONCILED, RECONCILE_MISMATCH, RECONCILE_NOT_COMPARED = "consistent", "mismatch", "not_compared"
+def day_candle(ticker: str, now: float) -> dict[str, Any]:
+    """Today's daily candle at `now`, Schwab's day fields as sent (decided by the operator,
+    2026-10-01: "lets use what schwab gives us"): open OPEN_PRICE, high HIGH_PRICE, low LOW_PRICE
+    (regular-session trades, Streamer Guide p.17-18), close LAST_PRICE -- after the regular close
+    REGULAR_MARKET_LAST_PRICE, the regular session's last (2026-09-30: SPY 762.63, Schwab's
+    daily candle close) -- and volume TOTAL_VOLUME (the day's, pre- and post-market included,
+    p.16). Never built from minutes: Schwab's minute volumes sum to about 68% of TOTAL_VOLUME
+    (SPY 2026-09-30). A field counts for today only when received since 00:00 ET today (until
+    Schwab resets it, it holds the prior day's); while the market is in session only from a live
+    feed. Not sent today, or one Schwab's definition excludes (OPEN_PRICE 0 before the regular
+    session, HIGH/LOW 0 before its first trade): absent with the reason, never filled from
+    minutes. {bar: the served daily bar (o, h, l and c all present) or None, volume, absent:
+    {field: reason}, as_of, source}."""
+    tk = ticker_storage_key(ticker)
+    d = datetime.fromtimestamp(now, ET).date()
+    day_start = datetime(d.year, d.month, d.day, tzinfo=ET).timestamp()
+    close = session_close_mins_for_et_date(d.isoformat())
+    if close is None:
+        return {"bar": None, "volume": None, "absent": {"day": f"{d.isoformat()} is not a trading day"},
+                "as_of": None, "source": DAY_SOURCE}
+    fields = lmp.day_fields(tk)
+    stale = lmp.in_session(now) and not lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now)
+    closed = et_minute_total_from_ts_utc(now) >= close
+    absent: dict[str, str] = {}
+    used: list[float] = []
+
+    def take(key: str, name: str, zero_means: Optional[str] = None) -> Optional[float]:
+        if stale:
+            absent[key] = "Schwab's LEVELONE feed for this symbol is not live"
+            return None
+        if name not in fields or fields[name][1] < day_start:
+            absent[key] = f"Schwab has not sent {name} today"
+            return None
+        value, received = fields[name]
+        if zero_means is not None and value == 0:
+            absent[key] = zero_means
+            return None
+        used.append(received)
+        return value
+
+    o = take("o", "OPEN_PRICE", "Schwab's OPEN_PRICE is blank (0) until the regular session opens (Streamer Guide p.18)")
+    h = take("h", "HIGH_PRICE", "Schwab's HIGH_PRICE is 0 until the regular session's first trade (Streamer Guide p.17)")
+    lo = take("l", "LOW_PRICE", "Schwab's LOW_PRICE is 0 until the regular session's first trade (Streamer Guide p.17)")
+    c = take("c", "REGULAR_MARKET_LAST_PRICE" if closed else "LAST_PRICE")
+    v = take("v", "TOTAL_VOLUME")
+    bar = (served_bar({"t": day_start, "o": o, "h": h, "l": lo, "c": c, "v": v}, "D")
+           if None not in (o, h, lo, c) else None)
+    return {"bar": bar, "volume": v, "absent": absent, "as_of": ct_label(max(used)) if used else None,
+            "source": DAY_SOURCE}
 
 
-def regular_session_reconciliation(minutes: list[dict], covered: list[tuple[float, float]],
-                                   quote: Optional[dict[str, Any]]) -> dict[str, Any]:
-    """For an equity (Schwab assetMainType EQUITY: stocks and ETF shares), the day's completed
-    regular-session minutes (09:30-15:59 ET: every trade in them is a regular-session trade)
-    against Schwab's LEVELONE_EQUITIES HIGH_PRICE and LOW_PRICE (`quote`, live_market_plane; 0
-    means none, not a value to compare), compared once every one of those minutes held so far is
-    covered. An index is not compared: Schwab's index high/low cover different hours ($SPX moved
-    to 16:05:15 ET and $VIX from 04:14 ET on 2026-09-30). Schwab's equity window is wider than
-    ours, so a difference is a mismatch only where it is certain: our high above HIGH_PRICE or our
-    low below LOW_PRICE, at any time. Our range lagging Schwab's is not one: Schwab's include the
-    minute still trading and prints up to 16:00:01 ET (SPY's low 762.20 -> 762.18 at 16:00:01 on
-    2026-09-30, not its closing price 762.63), which share the 16:00 minute's bar with post-close
-    trades outside Schwab's range (that bar's low was below Schwab's for IWM, PLTR, QQQ and TSLA):
-    no window of bars equals Schwab's, so no two-sided comparison is certain. A mismatch is
-    reported with both values and the note the daily bar's chart shows; nothing is corrected."""
-    if not minutes:
-        return {"state": RECONCILE_NOT_COMPARED, "reason": "no minute held"}
-    asset = (quote or {}).get("asset_main_type")
-    if asset != "EQUITY":
-        return {"state": RECONCILE_NOT_COMPARED, "reason": (
-            "Schwab's index high/low cover different hours" if asset == "INDEX" else
-            f"Schwab's high/low are reconciled for an equity only (asset type {asset or 'not received'})")}
-    date = et_date_str_from_ts_utc(minutes[-1]["t"])
-    close = session_close_mins_for_et_date(date)
-    rth = [m for m in minutes if close is not None and RTH_START_MINS <= et_minute_total_from_ts_utc(m["t"]) < close]
-    high, low = (quote or {}).get("high_price"), (quote or {}).get("low_price")
-    if not rth:
-        return {"state": RECONCILE_NOT_COMPARED, "reason": "no regular-session minute held"}
-    open_minute = session_first_minute(rth[0]["t"]) + (RTH_START_MINS - COLLECT_WINDOW_START_MINS) * 60.0
-    gaps = uncovered(covered, open_minute, rth[-1]["t"])
-    if gaps:
-        return {"state": RECONCILE_NOT_COMPARED, "reason": missing_reason(gaps)}
-    if not high or not low:
-        return {"state": RECONCILE_NOT_COMPARED,
-                "reason": "Schwab's HIGH_PRICE / LOW_PRICE not received or 0 (no regular-session trade)"}
-    bars_high, bars_low = max(m["h"] for m in rth), min(m["l"] for m in rth)
-    out = {"state": RECONCILED, "bars_high": bars_high, "bars_low": bars_low, "schwab_high": high, "schwab_low": low}
-    beyond = ([f"our high {price_text(bars_high)} is above Schwab's {price_text(high)} by "
-               f"{price_difference_text(bars_high - high)}"] if bars_high > high else []) + \
-             ([f"our low {price_text(bars_low)} is below Schwab's {price_text(low)} by "
-               f"{price_difference_text(low - bars_low)}"] if bars_low < low else [])
-    if beyond:
-        out["state"] = RECONCILE_MISMATCH
-        out["note"] = "regular session 09:30–16:00 ET high/low differ from Schwab: " + "; ".join(beyond)
-    return out
+def daily_candles(candles: list[dict], before: float) -> list[dict[str, Any]]:
+    """Schwab's daily price-history candles (get_price_history_every_day, as sent) of the days
+    before `before` (epoch seconds; today's candle is day_candle), as served daily bars, oldest
+    first, each stamped 00:00 ET of its date. A candle whose price is not a number is not a chart
+    bar; a volume that is not a number is None."""
+    out = []
+    for c in candles:
+        o, h, lo, cl, ms = (schwab_number(c.get(k)) for k in ("open", "high", "low", "close", "datetime"))
+        if None in (o, h, lo, cl, ms):
+            continue
+        d = datetime.fromtimestamp(ms / 1000.0, ET).date()
+        t = datetime(d.year, d.month, d.day, tzinfo=ET).timestamp()
+        if t < before:
+            out.append(served_bar({"t": t, "o": o, "h": h, "l": lo, "c": cl, "v": schwab_count(c.get("volume"))}, "D"))
+    return sorted(out, key=lambda b: b["t"])
 
 
 def live_spot(ticker: str, now: float) -> Optional[float]:
@@ -350,13 +371,12 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "mark": field("mark"),                         # Schwab MARK
         "quote_ts": field("exchange_quote_ts"),        # Schwab QUOTE_TIME (epoch s)
         "last_size": field("last_size") if spot is not None else None,
-        "total_volume": field("total_volume"),
+        # the day's open, high, low, close and volume: Schwab's day fields, the one source of every
+        # day value on screen (the Trade Desk's session volume, the daily candle)
+        "day": day_candle(tk, now),
         "chg_pct": lmp.streamed_chg_pct(row, now),
         "chg_pct_regular": lmp.streamed_chg_pct(row, now, "chg_pct_regular"),
         "net_change": field("net_change") if spot is not None else None,
-        "open_price": field("open_price"),
-        "high_price": field("high_price"),
-        "low_price": field("low_price"),
         "prior_close": field("prior_close"),
         "trade_ts": trade_ts,
         "trade_age_sec": _trade_age_sec(trade_ts, now),

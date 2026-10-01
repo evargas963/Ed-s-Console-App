@@ -16,9 +16,11 @@ the same topics is refused):
   barhist.SYM  src "schwab_pricehistory" one reply of Schwab's 1-minute price history (live_ui),
                                         for the console's bar writer to backfill
   barstate.SYM src "live_ui"            the daemon's verdict on the symbol's bars: today's
-                                        minutes covered through now or not (with the reason),
-                                        the daily bar's reconciliation and notes; state, so the
-                                        last one is sent on connect
+                                        minutes covered through now or not (with the reason);
+                                        state, so the last one is sent on connect
+  bardays.SYM  src "schwab_pricehistory_daily"  Schwab's daily candles of the days before today
+                                        (live_ui), for the daily chart and the daily ATR; state,
+                                        so the last one is sent on connect
 An equity's quote (quote.SYM, LEVELONE_EQUITIES) is not forwarded: the daemon turns it into the
 price row it pushes on live_ui, which the console reads like a browser does.
 
@@ -54,7 +56,8 @@ LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: op
 #: topic prefix -> the only `src`es forwarded for it
 _FORWARDED = {"book.": ("schwab_book",), "optquote.": ("schwab_options_l1",),
               "news.": ("schwab_news",), "bar1m.": ("schwab_chart",),
-              "barhist.": ("schwab_pricehistory",), "barstate.": ("live_ui",)}
+              "barhist.": ("schwab_pricehistory",), "barstate.": ("live_ui",),
+              "bardays.": ("schwab_pricehistory_daily",)}
 
 
 def is_forwarded(topic: str, msg) -> bool:
@@ -142,7 +145,7 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
         for topic, msg in history.replay():
             await ws.send(encode(topic, msg))
         for topic, msg in list(bus.snapshot().items()):
-            if topic.startswith(("book.", "barstate.")) and is_forwarded(topic, msg):
+            if topic.startswith(("book.", "barstate.", "bardays.")) and is_forwarded(topic, msg):
                 await ws.send(encode(topic, msg))
         loop = asyncio.get_running_loop()
         next_beat = loop.time()

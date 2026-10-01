@@ -558,6 +558,20 @@ def schwab_minutes(daemon: "Daemon"):
     return fetch
 
 
+def schwab_days(daemon: "Daemon"):
+    """Schwab's daily price history (get_price_history_every_day): (symbol, start, end epoch
+    seconds) -> the daily candles Schwab sent, asked with the daemon's one Schwab client, the
+    same way as schwab_minutes."""
+    def fetch(symbol: str, start: float, end: float) -> list:
+        if daemon.client is None:
+            raise ConnectionError(daemon.client_problem)
+        r = daemon.client.get_price_history_every_day(
+            symbol, start_datetime=datetime.fromtimestamp(start, ET), end_datetime=datetime.fromtimestamp(end, ET))
+        r.raise_for_status()
+        return r.json()["candles"]
+    return fetch
+
+
 async def run() -> int:
     """The whole daemon: writer, the two local sockets, and the Schwab connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
@@ -582,7 +596,7 @@ async def run() -> int:
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
                                                  on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, clock=time.time,
-                                               history_fn=schwab_minutes(daemon)))]
+                                               history_fn=schwab_minutes(daemon), daily_fn=schwab_days(daemon)))]
     return await run_until_a_part_ends(daemon.run(make_client, stop), tasks, stop)
 
 

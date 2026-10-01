@@ -179,8 +179,8 @@ def test_closed_market_with_no_capture_gives_one_reason_on_every_route(_fresh, m
     assert d["warming"] is False and server.NO_CAPTURE_REASON in d["reason"]
     t = server.get_terrain(ticker=tk)
     assert server.NO_CAPTURE_REASON in t["error"]
-    # ATR is from the bars, not the chain: served (here absent, with its reason) with no levels
-    assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
+    # ATR is from Schwab's daily candles, not the chain: served (here absent, with its reason) with no levels
+    assert t["atr_daily"] is None and t["atr_daily_reason"] == "Schwab's daily candles have not come from the capture daemon"
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
@@ -200,7 +200,7 @@ def test_closed_market_prices_the_stored_capture_on_every_route(_fresh, monkeypa
     # history, labeled as history: the capture's own price and time, never live
     assert t["spot_source"] == server.SPOT_SOURCE_CAPTURE and t["spot_as_of_ts_utc"] == _CAPTURED
     assert t["levels_market_closed"] is True and t["levels_refresh_active"] is False
-    assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
+    assert t["atr_daily"] is None and t["atr_daily_reason"] == "Schwab's daily candles have not come from the capture daemon"
     surf = _call(tk)                                # the heatmap from the same publication
     assert surf["available"] is True and surf["live"] is False
     # the chain view carries the publication's own basis label (it served a constant before)

@@ -40,10 +40,11 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
     assert len(ids) == len(set(ids)), "level ids must be UNIQUE per payload (RC-88)"
     by_id = {lv["id"]: lv for lv in payload["levels"]}
     assert len(prior) == 390
-    assert (by_id["PDH"]["price"], by_id["PDL"]["price"]) == (max(b["high"] for b in prior),
-                                                            min(b["low"] for b in prior)), (
-        "prior_day must be the SINGLE most recent prior RTH session"
-    )
+    # the prior day's high and low are Schwab's daily candle, never its minutes' range (operator
+    # 2026-10-01): no daily candle has come from the daemon here, so they are absent with the reason
+    assert "PDH" not in by_id and "PDL" not in by_id
+    assert {"family": "prior_day_range", "reason": "Schwab's daily candles have not come from the capture daemon"} \
+        in payload["families_absent"]
     # the prior close is Schwab's CLOSE_PRICE, never a bar's close (tests/test_zones_v1.py); no
     # quote streams in this test, so it is absent with its reason
     assert "PDC" not in by_id
@@ -75,51 +76,6 @@ def test_api_levels_b1_contract_single_session_prior_day(monkeypatch):
 
 
 # ── RC-227: one-faucet closeout locks (mission one-faucet-closeout-v1) ────────────────
-
-
-def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monkeypatch, tmp_path):
-    """t12 (RC-227 residual): the PDL must be the min of the WHOLE prior session. Measured
-    live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH
-    matched. price_bars_1m (written only from Schwab's streamed bars) is now the one bar
-    source, so the full prior session there must set every prior-day level."""
-    import json
-    import sqlite3
-    from datetime import datetime as _dt
-
-    import server as srv
-    from time_et import ET
-
-    # stand-in (named): the live price
-    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (758.0, srv.SPOT_SOURCE_PLANE, 1.0))
-    import time_et as te
-    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 8, 4, 10, 0, tzinfo=ET))
-
-    # The FULL prior session (390 bars) with the true low 749.59 mid-session.
-    dbf = tmp_path / "bars.db"
-    con = sqlite3.connect(str(dbf))
-    con.execute("CREATE TABLE price_bars_1m (ticker TEXT, bar_start_ts_utc REAL, "
-                "bar_end_ts_utc REAL, open REAL, high REAL, low REAL, close REAL, "
-                "volume REAL, source TEXT)")
-    t0 = _dt(2026, 8, 3, 9, 30, tzinfo=ET).timestamp()
-    for i in range(390):
-        lo = 749.59 if i == 100 else 755.0
-        con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
-                    ("SPY", t0 + i * 60, t0 + i * 60 + 60, 756, 758.58 if i == 200 else 757,
-                     lo, 757.67 if i == 389 else 756, 100.0, "schwab_chart"))
-    con.commit(); con.close()
-
-    class _Db:
-        db_path = str(dbf)
-    monkeypatch.setattr(srv, "get_db", lambda: _Db())
-
-    srv._publish_price_levels("SPY")                  # as the bar writer does
-    payload = json.loads(bytes(srv.get_levels(ticker="SPY").body))
-    by_id = {lv["id"]: lv for lv in payload["levels"]}
-    assert by_id["PDL"]["price"] == 749.59, "PDL is not the full prior session's min"
-    assert by_id["PDH"]["price"] == 758.58
-    assert "price_bars_1m" in by_id["PDL"]["provenance"]["vendor_basis"], (
-        "provenance must name the one bar source"
-    )
 
 
 def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monkeypatch, tmp_path):
@@ -186,8 +142,6 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monk
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 26, 9, 0, tzinfo=ET))
     srv._publish_missing_price_levels(["SPY"])
     nextday = json.loads(srv.get_levels(ticker="SPY").body)
-    pdh = {lv["id"]: lv["price"] for lv in nextday["levels"]}["PDH"]
-    assert pdh == max(b["high"] for b in raw if _dt.fromtimestamp(b["timestamp"] / 1000.0, ET).date().isoformat() == "2026-09-25"
-                      and 570 <= _dt.fromtimestamp(b["timestamp"] / 1000.0, ET).hour * 60
-                      + _dt.fromtimestamp(b["timestamp"] / 1000.0, ET).minute < 960)
+    poc = {lv["id"]: lv for lv in nextday["levels"]}["PD_POC"]
+    assert "2026-09-25" in poc["provenance"]["window"]
 

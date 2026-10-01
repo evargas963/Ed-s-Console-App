@@ -208,14 +208,20 @@ def news_msg(*, symbol: str, content: dict, src: str, ts_recv: float | None = No
 CONNECTION, CONNECTION_CLOSED, CONNECTION_LOSS = "CONNECTION", "CLOSED", "LOSS"
 
 
-def bar_state_msg(*, symbol: str, coverage: str, coverage_reason: str, reconciliation: "dict | None",
-                  notes: "dict[str, str]", ts: float) -> dict:
+def bar_state_msg(*, symbol: str, coverage: str, coverage_reason: str, ts: float) -> dict:
     """barstate.* -- the daemon's verdict on a symbol's 1-minute bars at `ts` (live_ui): whether
     today's minutes are covered through now (`coverage`, live_price_rows.COVERAGE_*, with its
-    reason), the daily bar's reconciliation with Schwab's high and low, and the note each chart
-    timeframe shows. Published when it changes; not a stream message."""
-    return {"ts": ts, "symbol": symbol, "src": "live_ui", "coverage": coverage,
-            "coverage_reason": coverage_reason, "reconciliation": reconciliation, "notes": dict(notes)}
+    reason). Published when it changes; not a stream message."""
+    return {"ts": ts, "symbol": symbol, "src": "live_ui", "coverage": coverage, "coverage_reason": coverage_reason}
+
+
+def bar_days_msg(*, symbol: str, candles: "list[dict]", problem: "str | None", ts: float) -> dict:
+    """bardays.* -- Schwab's daily candles of the days before today for a symbol (its daily price
+    history, get_price_history_every_day), as served daily bars
+    (live_price_rows.daily_candles), or none with why (`problem`). State: the last one stands.
+    Not a stream message."""
+    return {"ts": ts, "symbol": symbol, "src": "schwab_pricehistory_daily", "candles": list(candles),
+            "problem": problem}
 
 
 def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: "int | None",

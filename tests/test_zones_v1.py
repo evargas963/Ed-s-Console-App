@@ -28,7 +28,9 @@ LAST = BARS[-1]["close"]
 
 @pytest.fixture
 def snap():
-    return build_price_level_snapshot("SPY", FRIDAY, _bars_to_list(BARS), bar_source="price_bars_1m", generation=1)
+    return build_price_level_snapshot("SPY", FRIDAY, _bars_to_list(BARS), bar_source="price_bars_1m",
+                                      prior_day=None, prior_day_absent_reason="no Schwab daily candle in this test",
+                                      generation=1)
 
 
 def _zones(snap, spot, extra=()):
@@ -43,10 +45,11 @@ def _tags(z):
 def test_a_zone_is_support_below_the_price_and_resistance_above_it(snap):
     """2026-09-30 audit: a zone's side came from what its levels are called, so the prior-day
     high's zone read Resistance with the price above it. SPY closed 2026-09-25 at 771.30, above
-    its prior-day high (768.95): that zone is below the price and is support."""
-    assert snap.price("PDH") < LAST < snap.price("TODAY_VAH")
+    its prior day's value area high: that zone is below the price and is support. (The prior
+    day's high is Schwab's daily candle since 2026-10-01, not given here.)"""
+    assert snap.price("PD_VAH") < LAST < snap.price("TODAY_VAH")
     by_type = {z.zone_type: z for z in _zones(snap, LAST)}
-    pdh_zone = next(z for z in _zones(snap, LAST) if "PDH" in _tags(z))
+    pdh_zone = next(z for z in _zones(snap, LAST) if "PD_VAH" in _tags(z))
     assert pdh_zone.zone_high < LAST and pdh_zone.zone_type is ZoneType.SUPPORT_LIQUIDITY
     assert _tags(by_type[ZoneType.RESISTANCE_LIQUIDITY]) == {"TODAY_VAH"}
     for z in _zones(snap, LAST):
@@ -110,7 +113,8 @@ def test_a_missing_input_leaves_the_value_context_absent_with_its_reason():
     """A missing point of control read "unchanged" and a missing VWAP "at value". Schwab's $SPX
     bars carry no volume (real bars 2026-09-25/28): no VWAP, no value area, no point of control."""
     spx = json.loads((_FX / "real_spx_1m_bars_2026_09_25_28.json").read_text(encoding="utf-8"))["bars"]
-    s = build_price_level_snapshot("$SPX", date(2026, 9, 28), _bars_to_list(spx), bar_source="price_bars_1m")
+    s = build_price_level_snapshot("$SPX", date(2026, 9, 28), _bars_to_list(spx), bar_source="price_bars_1m",
+                                   prior_day=None, prior_day_absent_reason="no Schwab daily candle in this test")
     ctx = value_context(s)
     assert (ctx.value_state, ctx.value_state_reason) == (None, "no point of control today")
     assert (ctx.vwap_relation, ctx.vwap_relation_reason) == (None, "no session VWAP")

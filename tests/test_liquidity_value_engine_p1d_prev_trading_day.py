@@ -2,7 +2,9 @@
 
 Pre-fix defect: session_date-1 on Mondays/post-holiday sessions produced an
 empty window, and the fallback swept EVERY prior bar in the buffer
-(multi-day, extended-hours included) into PDH/PDL.
+(multi-day, extended-hours included) into PDH/PDL. The prior day's high and low are Schwab's
+daily candle since 2026-10-01 (operator: "lets use what schwab gives us"); what the bars still
+build is the prior session's value area, from that session's regular-session bars only.
 """
 
 from __future__ import annotations
@@ -41,9 +43,8 @@ def test_monday_uses_friday_not_weekend_calendar_walk():
         _bar(friday, 14, 0, 101, 106, 96, 102),
     ]
     out = get_previous_day_levels(bars, monday, _cfg())
-    assert out["pdh"] == 106
-    assert out["pdl"] == 95
-    assert "pdc" not in out, "the prior close is Schwab's CLOSE_PRICE, never a bar's close"
+    assert (out["prior_date"], out["rth_bars"]) == (friday, 2)
+    assert "pdc" not in out and "pdh" not in out, "the prior close, high and low are Schwab's, never a bar's"
 
 
 def test_extended_hours_bars_never_enter_prev_day_levels():
@@ -55,8 +56,7 @@ def test_extended_hours_bars_never_enter_prev_day_levels():
         _bar(prev, 17, 0, 100, 998, 2, 100),    # after-hours outlier — must be excluded
     ]
     out = get_previous_day_levels(bars, today, _cfg())
-    assert out["pdh"] == 105
-    assert out["pdl"] == 95
+    assert (out["prior_date"], out["rth_bars"]) == (prev, 1)
 
 
 def test_multi_day_buffer_selects_only_most_recent_trading_day():
@@ -66,8 +66,7 @@ def test_multi_day_buffer_selects_only_most_recent_trading_day():
         _bar(d2, 11, 0, 100, 110, 90, 105),
     ]
     out = get_previous_day_levels(bars, today, _cfg())
-    assert out["pdh"] == 110
-    assert out["pdl"] == 90
+    assert (out["prior_date"], out["rth_bars"]) == (d2, 1)
 
 
 def test_no_prior_rth_bars_fails_closed_empty():
@@ -115,8 +114,6 @@ def test_the_prior_session_ends_at_the_calendars_close_on_an_early_close_day(mon
     monkeypatch.setitem(time_et.US_EQUITY_EARLY_CLOSE_MINS_ET, prior.isoformat(), time_et.EARLY_CLOSE_MINS)
     out = get_previous_day_levels(bars, today, _cfg())
     assert out["rth_bars"] == len(session) == 210
-    assert out["pdh"] == max(b["high"] for b in session)
-    assert out["pdl"] == min(b["low"] for b in session)
     assert (out["pd_poc"], out["pd_vah"], out["pd_val"]) == (want.poc, want.vah, want.val)
 
 

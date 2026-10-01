@@ -9,9 +9,11 @@ TWO horizons, each answering a different question:
   * 15-MIN ATR -> "reachable in the next few bars" — shown only on the focused contact,
                   so the scope stays readable
 
-Both are computed from `price_bars_1m`, which is already collected. Prototyped before
-building: daily/15m ATR ratios came out 4.8x-9.2x across SPY/QQQ/IWM/NVDA/TSLA/WMT,
-consistent with ~26 fifteen-minute buckets per session.
+The daily one is computed from Schwab's own daily candles (its daily price history, carried from
+the capture daemon), never rolled up from minutes (operator 2026-10-01: "lets use what schwab
+gives us"); the 15-minute one from `price_bars_1m`. Prototyped before building: daily/15m ATR
+ratios came out 4.8x-9.2x across SPY/QQQ/IWM/NVDA/TSLA/WMT, consistent with ~26 fifteen-minute
+buckets per session.
 """
 
 from __future__ import annotations
@@ -21,13 +23,12 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from math_volatility import compute_atr
-from time_et import ET, collect_window_end_mins_for_et_date
+from time_et import ET
 
 
 ATR_PERIOD = 14
-#: ATR(14) daily needs 15 completed daily candles; price_bars_1m holds up to 420 bars a day
-#: (09:15 ET to 15 minutes after the close), so this many bars is 57 full days or more.
-_MAX_1M_BARS = 24_000
+#: the 15-minute ATR's 1-minute bars (its 200 periods are under 8 sessions of up to 420 bars)
+_MAX_1M_BARS = 4_000
 
 
 @dataclass(frozen=True)
@@ -61,24 +62,31 @@ def _leg(candles: list, unit: str) -> tuple[float | None, str | None]:
     if atr is not None:
         return atr, None
     if len(candles) < ATR_PERIOD + 1:
-        return None, f"{len(candles)} {unit} of 1-minute bars; ATR({ATR_PERIOD}) needs {ATR_PERIOD + 1}"
+        return None, f"{len(candles)} {unit}; ATR({ATR_PERIOD}) needs {ATR_PERIOD + 1}"
     return None, f"the {unit}' prices do not give a true range"
 
 
-def compute_atr_pair(db_path: str, ticker: str, now: datetime) -> AtrPair:
-    """Daily and 15-minute ATR for one ticker at `now` (ET), from completed candles only: the
-    day still trading (before its stored bars end, time_et.collect_window_end_mins_for_et_date)
-    and the 15-minute period still open are left out, since a candle still forming has a smaller
-    range than it will close with. Each is None with its reason when it cannot be computed.
-    The same rule for every ticker. Never raises."""
+def compute_atr_pair(db_path: str, ticker: str, now: datetime, daily_candles: "list[dict] | None",
+                     daily_absent_reason: str | None) -> AtrPair:
+    """Daily and 15-minute ATR for one ticker at `now` (ET), from completed candles only. Daily:
+    Schwab's daily candles of the days before today (`daily_candles`, served bars {o, h, l, c};
+    None: not received, with `daily_absent_reason`). 15-minute: price_bars_1m's minutes, the
+    period still open left out, since a candle still forming has a smaller range than it will
+    close with. Each is None with its reason when it cannot be computed. The same rule for every
+    ticker. Never raises."""
     from instrument_identity import ticker_storage_key
     tk = ticker_storage_key(ticker)  # RC-345/F25: ATR DB query owner consumes canonical identity (callee, not caller-masked)
     if not tk:
         return AtrPair(None, None, "no ticker", "no ticker")
+    if daily_candles is None:
+        daily, daily_reason = None, daily_absent_reason
+    else:
+        daily, daily_reason = _leg([{"open": b["o"], "high": b["h"], "low": b["l"], "close": b["c"]}
+                                    for b in daily_candles], "Schwab daily candles")
     try:
         con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=30.0)
     except sqlite3.Error as e:
-        return AtrPair(None, None, f"bars unreadable: {e}", f"bars unreadable: {e}")
+        return AtrPair(daily, None, daily_reason, f"bars unreadable: {e}")
     try:
         con.row_factory = sqlite3.Row
         rows = con.execute(
@@ -87,18 +95,14 @@ def compute_atr_pair(db_path: str, ticker: str, now: datetime) -> AtrPair:
             (tk, _MAX_1M_BARS),
         ).fetchall()
     except sqlite3.Error as e:
-        return AtrPair(None, None, f"bars unreadable: {e}", f"bars unreadable: {e}")
+        return AtrPair(daily, None, daily_reason, f"bars unreadable: {e}")
     finally:
         con.close()
 
-    end_mins = collect_window_end_mins_for_et_date(now.date().isoformat())
-    day_open = end_mins is not None and now.hour * 60 + now.minute < end_mins
-    days = [r for r in rows if not (day_open and datetime.fromtimestamp(r["ts"], ET).date() == now.date())]
     period_start = now.replace(minute=now.minute // 15 * 15, second=0, microsecond=0).timestamp()
     closed_periods = [r for r in rows if r["ts"] < period_start]
-    daily, daily_reason = _leg(_aggregate(days, lambda d: d.date()), "trading days")
     m15, m15_reason = _leg(_aggregate(closed_periods, lambda d: (d.date(), d.hour, d.minute // 15))[-200:],
-                           "15-minute periods")
+                           "15-minute periods of 1-minute bars")
     return AtrPair(daily, m15, daily_reason, m15_reason)
 
 

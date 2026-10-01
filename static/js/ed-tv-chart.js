@@ -513,8 +513,7 @@
       legend.innerHTML = '<span class="tvc-sym">' + esc(S.symbol) + '</span><span class="tvc-tf">' + tfLbl + '</span>' + ohlcHtml(b) +
         (S.lastBarLabel ? '<span>Last completed bar ' + esc(S.lastBarLabel) + '</span>' : '') +
         (S.gapNote ? '<span class="tvc-gap">' + esc(S.gapNote) + '</span>' : '') +
-        (S.unavailable ? '<span class="tvc-gap tvc-unavailable">' + esc(S.unavailable) + '</span>' : '') +
-        (S.note ? '<span class="tvc-gap tvc-note">' + esc(S.note) + '</span>' : '');
+        (S.unavailable ? '<span class="tvc-gap tvc-unavailable">' + esc(S.unavailable) + '</span>' : '');
     }
     function paintPin() {
       if (!S.pinned) { pinBox.hidden = true; return; }
@@ -714,13 +713,12 @@
 
     var api = {
       chart: chart, candles: candles, palette: function () { return P; },
-      // Replace the whole series (ticker or timeframe change), with the history's served note.
-      setBars: function (bars, tf, symbol, lastBarLabel, note) {
+      // Replace the whole series (ticker or timeframe change).
+      setBars: function (bars, tf, symbol, lastBarLabel) {
         var changed = tf !== S.tf || symbol !== S.symbol;
         S.lastBarLabel = lastBarLabel || null;
         S.bars = (bars || []).map(servedBar);
         S.tf = tf; S.symbol = symbol;
-        S.note = note || null;
         candles.setData(S.bars.map(candle));
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
         api.setVolume(S.bars);
@@ -735,16 +733,17 @@
         }
         paintLegend(); paintPin(); draw.redraw(); syncButtons(); paintLevels(true);
       },
-      // One bar the daemon pushed (`ed:bar`: detail.tf[tf]) and its served last-bar label. The
-      // library places it (series.update: the bar at the same time is replaced, a newer one is
-      // added) and the chart's bars are read back from the series; the operator's zoom/scroll stays.
+      // One bar the daemon pushed (`ed:bar`: detail.tf[tf], or the price row's daily candle) and
+      // its served last-bar label (none given: the label stands). The library places it
+      // (series.update: the bar at the same time is replaced, a newer one is added) and the
+      // chart's bars are read back from the series; the operator's zoom/scroll stays.
       pushBar: function (bar, lastBarLabel) {
         var b = servedBar(bar);
         candles.update(candle(b));
         closeLine.update({ time: b.t, value: b.c });
         volume.update(api._volPoint(b));
         S.bars = candles.data().map(function (d) { return d.customValues; });
-        S.lastBarLabel = lastBarLabel || null;
+        if (lastBarLabel !== undefined) S.lastBarLabel = lastBarLabel || null;
         paintLegend(); if (S.pinned) paintPin(); syncButtons(); scheduleLevels();
       },
       // the bars the chart holds, as served and pushed
@@ -752,9 +751,6 @@
       // why the daemon pushed no bar for this chart's timeframe (served: the minutes not received
       // from Schwab), shown until a push carries the bar; null clears it
       setUnavailable: function (note) { S.unavailable = note || null; paintLegend(); },
-      // a served note on this timeframe's bars (the daily bar: its high/low differing from
-      // Schwab's), shown until a push carries none; null clears it
-      setNote: function (note) { S.note = note || null; paintLegend(); },
       _volPoint: function (b) {
         return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.7) };
       },

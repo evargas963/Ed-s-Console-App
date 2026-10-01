@@ -188,10 +188,12 @@
       S.bars = bars; S.barsAnswered = gen;
       // the Order Flow card's hour of 1-minute bars, served whole with the history (recent_1m)
       S.flowBars = d ? d.recent_1m || [] : null; S.flowReason = null; paintCards();
-      S.chart.setBars(bars, tf, shown(), d && d.last_bar && d.last_bar.label, d && d.note);
+      S.chart.setBars(bars, tf, shown(), d && d.last_bar && d.last_bar.label);
+      if (d && d.days_absent_reason) S.chart.setUnavailable(d.days_absent_reason);   // the daily history's, served
       $('tdmChartEmpty').hidden = bars.length > 0;
       $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
-        : 'No bars for ' + shown() + (d.error ? ' — ' + d.error : ' — nothing banked or streamed for this symbol yet.'));
+        : 'No bars for ' + shown() + (d.days_absent_reason ? ' — ' + d.days_absent_reason : d.error ? ' — ' + d.error
+          : ' — nothing banked or streamed for this symbol yet.'));
       paintChartOverlays(); paintQueue(); openView();
       var src = $('tdmBarsSrc'); if (src) src.textContent = 'streamed 1m bars';
     });
@@ -204,7 +206,6 @@
     // the bar, or the served reason; a push carrying neither (a late minute's) keeps the last reason
     if (b.tf[S.tf]) S.chart.setUnavailable(null);
     else if ((b.unavailable || {})[S.tf]) S.chart.setUnavailable(b.unavailable[S.tf]);
-    S.chart.setNote((b.notes || {})[S.tf]);                                     // the served note, if any
     if (b.tf[S.tf]) {
       S.chart.pushBar(b.tf[S.tf], b.last_bar && b.last_bar.label);   // the chart library places it
       S.bars = S.chart.bars();
@@ -436,7 +437,12 @@
       var cc = (S.events && S.events.cross_counts) || null;   // served for the window
       var liveQ = q && q.spot_state === 'live';
       state(c, !q ? 'WAITING' : liveQ ? 'SESSION VOLUME' : 'NOT LIVE', liveQ ? '' : 'warn');
-      c.querySelector('.tdm-hero').innerHTML = liveQ && q.total_volume != null ? fmtVol(q.total_volume) + ' <small>shares, Schwab TOTAL_VOLUME</small>' : '';
+      // the day's volume: the price row's served day (q.day, Schwab's TOTAL_VOLUME), the same value
+      // the daily candle carries; absent: the served reason
+      var dayV = q && q.day;
+      c.querySelector('.tdm-hero').innerHTML = !dayV ? '' : dayV.volume != null
+        ? fmtVol(dayV.volume) + ' <small>shares, Schwab TOTAL_VOLUME</small>'
+        : '<small>' + esc((dayV.absent || {}).v || '') + '</small>';
       src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : liveQ ? 'last trade ' + age(q.trade_age_sec) + ' ago'
         : (q.closed_last ? 'last trade ' + esc(q.closed_last.as_of) : String(q.spot_state || 'unavailable'))));
       c.querySelector('.tdm-rows').innerHTML =
@@ -613,7 +619,8 @@
       if (k === 'levels') loadSlow();
     });
     window.addEventListener('ed:bar', function (e) { if (e.detail && S.ticker) takeBar(e.detail); });
-    // Every streamed price row: header + indices. The chart moves only on a completed bar.
+    // Every streamed price row: header + indices. An intraday chart moves only on a completed bar;
+    // the daily chart's today is Schwab's day fields on the row (q.day.bar), as served.
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || !q.ticker) return;
       S.quotes[q.ticker] = q;
@@ -621,6 +628,9 @@
       paintHeader();
       if (q.ticker === st().key) {
         paintTrust();
+        if (S.chart && S.tf === 'D' && S.barsAnswered === S.gen && q.day && q.day.bar) {
+          S.chart.pushBar(q.day.bar); S.bars = S.chart.bars();
+        }
         if (S.chart) S.chart.setLivePrice(q.spot_state === 'live' ? q.spot : null, q.trade_age_sec);
         if (Date.now() - (S.cardsPaintedMs || 0) > 1000) { S.cardsPaintedMs = Date.now(); paintCards(); }   // the Order Flow card's Schwab fields
       }
