@@ -51,7 +51,7 @@ Schwab sends is taken as sent (rule 2), never computed.
 | console → daemon | same socket | the "wanted" list: every symbol per Schwab service |
 | daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
 | daemon → console | the same :8800 push | the same price rows, for the equities the console wants streamed: the console's only live price |
-| Schwab → console | Schwab REST | full option chains; one quote at startup to validate the login |
+| Schwab → console | Schwab REST | full option chains, each with its contracts' quotes (their Greeks, §3.4 Option chain); one quote at startup to validate the login |
 | console → browser | HTTP `/api/*` | everything else, on request |
 | console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`, `liquidity`) and the session label |
 
@@ -78,7 +78,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   that ticker the active one); a console restart is recovered when the page reconnects. For an
   option contract the daemon holds live, the stream owns its gamma, delta, open interest, volume
   and IV: its last streamed value is the value, whatever its age, and replaces the chain's (a
-  field the stream has not sent keeps the chain's); every other contract has the chain's values.
+  field the stream has not sent keeps the chain's); every other contract has the chain's values,
+  its Greeks from Schwab's quotes (Option chain, below).
   A contract is a ticker's when Schwab listed it in that ticker's chain (whatever its root:
   SPX and SPXW are both $SPX's). The option contract whose book streams follows the page's
   ticker: the at-the-money call of its front expiry, from its chain.
@@ -103,7 +104,25 @@ Schwab sends is taken as sent (rule 2), never computed.
   and the session's volume profile (`volume_profile`: each RTH 1-minute bar's volume spread
   evenly over its range, one bin per tick, flagged inside or outside the value area).
 - **Option chain.** Schwab REST → console memory, downloaded by the console every 5 s per board or
-  viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule.
+  viewed ticker. Separately the daemon stores the full chain on the §4.2 schedule. Both download
+  it through `schwab_client.fetch_full_chain`, the one place a chain enters, so every consumer
+  (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
+  the captures) reads the Greeks it sets. The Greeks (gamma, delta, theta, vega, rho,
+  volatility) are Schwab's quotes endpoint's, never the chain's: the chain sends them rounded to
+  3 decimals, the quotes send the same contract's unrounded (measured 2026-10-01, SPY
+  261120C00875000: chain gamma 0.0, quote gamma 0.00037225; on SPY's 2026-11-20 column 86 of 221
+  cells with open interest read $0 GEX on the chain's gamma). Operator, 2026-10-01: "use what
+  schwab gives us... no rounding, use the exact data that schwab gives us everywhere". After the
+  chain lands, `fetch_full_chain` asks the quotes for every contract in batches of 300
+  (`QUOTES_BATCH_MAX`; 400 were refused, the URL's length) and replaces each contract's Greeks
+  with its quote's, as sent; the console's quotes requests take the chain gate
+  (`_gated_safe_get_quotes`: its slots, priority, and its breaker, which a 429 degrades). A
+  contract whose quote does not come back has no Greeks (None, logged with the count), never the
+  chain's: its leg's exposure and its strike's net read absent (a leg's sum is known only when
+  every contract on it with open interest above 0 sent the Greek: `bucket_metric`). Open
+  interest stays the chain's. Chain captures stored before 2026-10-01 carry the chain's rounded
+  Greeks; the startup and closed-market load prices them until newer captures exist. The request
+  budget is unmeasured (`ACTIVE_PROGRAM.md` QUOTES-BUDGET).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
   chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
   a new chain arrived) → the browser reads `/api/terrain` and four other slice routes. Not stored; at startup and after the close they are computed from the
