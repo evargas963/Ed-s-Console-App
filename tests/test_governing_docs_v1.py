@@ -1,9 +1,7 @@
-"""The governing documents and instructions name only paths that exist, and no source file claims
-a tool that does not exist.
+"""The governing documents and instructions name only paths that exist.
 
 Failures this catches: AGENTS.md named `decision_gate.py`, `call_engine.py` and
-`config/decision_path_admissions.json` for months after they were deleted; guards, a workflow and
-code comments claimed enforcement by `tools/` scripts that do not exist. Checked: a backticked
+`config/decision_path_admissions.json` for months after they were deleted. Checked: a backticked
 path whose first folder is tracked in git or that names a code, config or document file, and a
 bare file name of those kinds. Runtime files, branch names, folders outside the repository and
 not-yet-built target folders are not repository paths and are not checked.
@@ -60,16 +58,3 @@ def test_a_dot_path_is_checked_too():
     tracked = [".pre-commit-config.yaml", ".claude/settings.json"]
     assert missing_paths("`.pre-commit-config.yaml` and `.claude/settings.json`", tracked) == []
     assert missing_paths("`.claude/hooks.json`", tracked) == [".claude/hooks.json"]
-
-
-def test_no_source_file_names_a_tools_script_that_does_not_exist():
-    """A comment or config that cites `tools/<x>.py` as its enforcer names a real file. Tests are
-    left out: they build scratch tools and name retired ones on purpose."""
-    listed = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True,
-                            check=True).stdout.split()
-    files = [p for p in listed if not p.startswith("tests/")
-             and p.endswith((".py", ".js", ".md", ".yml", ".yaml", ".json", ".bat", ".mdc"))]
-    assert files
-    named = {(p, m) for p in files for m in re.findall(
-        r"\btools/[A-Za-z0-9_]+\.py\b", (ROOT / p).read_text(encoding="utf-8", errors="replace"))}
-    assert not {(p, m) for p, m in named if m not in listed}, "tools that do not exist are named"

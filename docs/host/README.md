@@ -28,6 +28,3 @@ work item (`ACTIVE_PROGRAM.md` OPS-HOST).
 | Disk | nothing: no retention; 146 GB free, `ed_console.db` 77.9 GB, `stream_capture.db` 27.8 GB | a write that fails when the disk is full | retention per table, a free-space check |
 | Backups and restore | manual copies only (`backups/db/`, 2026-09-07/08, same disk), never restored | — | a scheduled backup off this disk, a tested restore that keeps provenance |
 | Deploy and rollback | `git pull --ff-only` in the production checkout, both processes restarted, the screen checked | — | rollback: a PR reverting the merge, then the same steps; the previous good commit recorded at each deploy |
-
-`start_ed_console.bat` also runs a scheduled task that does not exist (`EdConsole Stream Capture`)
-and sets `ED_OPS_RUNNER`, which no code reads; both are dead lines (OPS-HOST).
