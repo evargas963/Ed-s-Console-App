@@ -117,8 +117,7 @@ def _sweep(tmp_path, board, at):
 
 def _assembled(published):
     ofs._chain_parts.clear()
-    out = [ofs.assemble_chain_part(json.loads(msg["frame"])["msg"]) for _t, msg in published]
-    return [o for o in out if o is not None]
+    return [o for _t, msg in published for o in ofs.assemble_chain_part(json.loads(msg["frame"])["msg"])]
 
 
 def test_each_fetch_reaches_the_console_whole_in_parts_with_schwabs_exact_greeks(tmp_path, schwab, monkeypatch):
@@ -142,6 +141,21 @@ def test_a_chain_missing_a_part_is_never_priced_and_says_why(tmp_path, schwab, m
     first, second = _assembled(published)
     assert first[1] is None and "arrived with 4 of its 5 parts" in first[3]
     assert second[1] is not None and second[3] is None
+
+
+def test_a_chain_missing_a_part_is_reported_even_when_the_next_chain_is_one_part(tmp_path, schwab, monkeypatch):
+    """2026-10-01 audit: when the next chain completed in its first part, the report of the
+    incomplete one before it was lost."""
+    monkeypatch.setattr(cch, "CHAIN_PART_CONTRACTS", 100)
+    sweep, published, clock = _sweep(tmp_path, ["SPY"], "2026-09-30 15:31:57")
+    sweep.fetch_one(object(), "SPY")
+    del published[2:]                                    # two of five parts arrived
+    monkeypatch.setattr(cch, "CHAIN_PART_CONTRACTS", 1000)
+    clock["now"] += 240
+    sweep.fetch_one(object(), "SPY")                     # the next chain: one part
+    first, second = _assembled(published)
+    assert first[1] is None and "arrived with 2 of its 5 parts" in first[3]
+    assert second[1] is not None and len(second[1]) == 442
 
 
 def test_a_refused_chain_reaches_the_console_as_schwabs_answer(tmp_path, schwab):
@@ -206,7 +220,8 @@ def test_a_removed_ticker_is_not_fetched_and_no_ticker_is_fetched_twice_at_once(
     board.remove("BBB")
     sweep.fetch_next("AAA")                             # AAA asked for again while in flight
     assert sweep._next(clock["now"]) == "CCC"           # not AAA a second time, not BBB
-    assert sweep._next(clock["now"]) is None            # the round holds nothing else to take
+    assert sweep._next(clock["now"] + 9) is None        # the round holds nothing else to take
+    assert sweep.round_sec is None, "the round ends when its last fetch is done, not when handed out"
 
 
 def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_path, schwab):

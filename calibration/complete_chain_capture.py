@@ -25,6 +25,7 @@ from typing import Any
 
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
+from production_universe import is_valid_production_ticker
 from schwab_client import fetch_full_chain, flatten_chain_contracts, safe_get_chain, safe_get_quotes
 from time_et import ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date
 
@@ -139,6 +140,9 @@ def capture_slot(now_ts: float) -> float | None:
 def board_tickers(db_path: Path | str) -> list[str]:
     """Every ticker on the board (the logging_universe table), read-only. The daemon reads it at
     startup and holds it; board_add / board_remove change it."""
+    if not Path(db_path).is_file():
+        log.warning("board: %s does not exist yet (the console creates it); the board is empty", db_path)
+        return []
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
     try:
         if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='logging_universe'").fetchone():
@@ -148,7 +152,11 @@ def board_tickers(db_path: Path | str) -> list[str]:
         rows = [r[0] for r in conn.execute("SELECT ticker FROM logging_universe")]
     finally:
         conn.close()
-    return sorted({k for k in (ticker_storage_key(t) for t in rows) if k})   # each row as its key
+    keys = {ticker_storage_key(t) for t in rows}
+    bad = sorted(t for t in rows if not is_valid_production_ticker(ticker_storage_key(t)))
+    if bad:
+        log.warning("board: rows that are not a symbol are not on the board: %s", bad)
+    return sorted(k for k in keys if is_valid_production_ticker(k))          # each row as its key
 
 
 def board_add(db_path: Path | str, ticker: str, now_ts: float) -> None:
@@ -233,6 +241,7 @@ class ChainSweep:
         self._written: dict[str, float] = {}
         self._paused_until = 0.0
         self._client = None
+        self._client_lock = threading.Lock()
 
     def fetch_next(self, ticker: str) -> None:
         with self._lock:
@@ -251,6 +260,8 @@ class ChainSweep:
                     self._fetching.add(tk)
                     return tk
             if not self._round:
+                if self._fetching:
+                    return None             # the round ends when its last fetch is done
                 if self._round_started is not None:
                     self.round_sec = now - self._round_started
                 self._round = sorted(board)
@@ -316,8 +327,9 @@ class ChainSweep:
             raise
 
     def _shared_client(self, make_client):
-        """The workers' one Schwab client, built when there is none."""
-        with self._lock:
+        """The workers' one Schwab client, built when there is none (under its own lock: the
+        daemon's event loop takes self._lock, never this one)."""
+        with self._client_lock:
             if self._client is None:
                 state = make_client()
                 if not state.ok or state.client is None:
@@ -342,8 +354,9 @@ class ChainSweep:
             except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the sweep goes on
                 log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
                 self.publish(*chain_failure_message(ticker, f"{type(e).__name__}: {e}", self.clock()))
-                with self._lock:
+                with self._client_lock:
                     self._client = None                   # a broken client is rebuilt
+                with self._lock:
                     self._paused_until = self.clock() + FAILED_PAUSE_SEC
             finally:
                 with self._lock:

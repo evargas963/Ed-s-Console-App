@@ -42,6 +42,7 @@ import asyncio
 import json
 import logging
 import os
+import sqlite3
 import sys
 import threading
 import time
@@ -327,21 +328,29 @@ class Daemon:
             return None, f"unknown board operation {op!r}"
         if self.board_db is None:
             return None, "the daemon was started with no board table"
-        async with self._board_lock:                  # one edit at a time, in arrival order
-            if (key in self.board) == (op == "board_add"):
-                return key, None                      # already so: nothing changes, nothing fetched
-            if op == "board_add":
-                await asyncio.to_thread(board_add, self.board_db, key, now)
-                self.board = sorted([*self.board, key])
-            else:
-                await asyncio.to_thread(board_remove, self.board_db, key)
-                self.board = [t for t in self.board if t != key]
-        if op == "board_add" and self.chains is not None:
-            self.chains.fetch_next(key)
-        for svc in BOARD_SERVICES:                # a changed board gets one fresh try
-            self.refused[svc] = {}
-        for fn in self.board_listeners:
-            fn(self.board)
+
+        async def apply() -> None:
+            async with self._board_lock:              # one edit at a time, in arrival order
+                if (key in self.board) == (op == "board_add"):
+                    return                            # already so: nothing changes, nothing fetched
+                if op == "board_add":
+                    await asyncio.to_thread(board_add, self.board_db, key, now)
+                    self.board = sorted([*self.board, key])
+                    if self.chains is not None:
+                        self.chains.fetch_next(key)
+                else:
+                    await asyncio.to_thread(board_remove, self.board_db, key)
+                    self.board = [t for t in self.board if t != key]
+                for svc in BOARD_SERVICES:            # a changed board gets one fresh try
+                    self.refused[svc] = {}
+                for fn in self.board_listeners:
+                    fn(self.board)
+        # the table, the daemon's board and every page change together: a page leaving mid-edit
+        # cannot stop the edit between its write and the rest
+        try:
+            await asyncio.shield(asyncio.ensure_future(apply()))
+        except sqlite3.Error as e:
+            return None, f"the board table could not be written: {e}"
         return key, None
 
     def status(self) -> dict:

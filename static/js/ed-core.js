@@ -10,7 +10,7 @@
   var RAIL_KEY = 'ed_rail_open';
   // The board: the one list of tickers, as the capture daemon's price socket serves it
   // ([{key, display}]); the watchlist rail shows it and edits it.
-  var _board = [];
+  var _board = [], _boardServed = false;
 
   var app = document.getElementById('app');
 
@@ -521,7 +521,8 @@
   // display name the operator typed); none while it is not on the board.
   function resolveFromBoard() {
     var b = _board.filter(function (e) { return e.key === state.ticker || e.display === state.ticker; })[0];
-    if (!b || state.key === b.key) return;
+    if (!b) { state.key = null; state.display = null; return; }   // not on the board: no row will come
+    if (state.key === b.key) return;
     state.key = b.key; state.display = b.display;
     paintIdentity(b.display);
   }
@@ -757,7 +758,11 @@
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (msg && msg.type === 'board' && Array.isArray(msg.board)) {
-        _board = msg.board; resolveFromBoard(); renderWatchlist(); return;
+        _board = msg.board; _boardServed = true;
+        resolveFromBoard(); renderWatchlist();
+        if (state.ticker && !state.key) markHeaderPushDown();   // its last price is no longer live
+        try { window.dispatchEvent(new CustomEvent('ed:board', { detail: _board.slice() })); } catch (e) {}
+        return;
       }
       if (msg && msg.type === 'board_edit') { ingestBoardEdit(msg); return; }
       if (!msg || !Array.isArray(msg.rows)) return;
@@ -837,7 +842,7 @@
     // just asked for this ticker (page load or a ticker change): the row is on its way
     // (WAITING); otherwise the push itself is down (OFFLINE)
     // a served board without this ticker: no row will come until it is added
-    var offBoard = _board.length > 0 && !state.key;
+    var offBoard = _boardServed && !state.key;
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
     paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
       feedCls: 'stale',

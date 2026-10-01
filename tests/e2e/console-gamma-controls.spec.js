@@ -146,17 +146,23 @@ test.describe('ticker / expiry / measure controls', () => {
   test('a reload or reconnect adds nothing to the board; a selected ticker not on it says so', async ({ page }) => {
     await page.unrouteAll({ behavior: 'ignoreErrors' });
     await intercept(page);
-    const sock = await mockPriceSocket(page, [], ['SPY', 'QQQ']);
+    const sock = await mockPriceSocket(page, [], ['SPY', 'QQQ'], { beat: true });
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'AMD'); } catch (e) {} });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.wl-row')).toHaveCount(2);
+    await expect(page.locator('#hFeed')).toHaveText('NOT ON THE BOARD');
+    await page.waitForTimeout(3500);                                    // beats keep arriving
     await expect(page.locator('#hFeed')).toHaveText('NOT ON THE BOARD');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.locator('.wl-row')).toHaveCount(2);
     expect(sock.ops).toEqual([]);
     await page.locator('.wl-row .wl-sym', { hasText: 'QQQ' }).click();   // a board ticker: no edit
     await expect(page.locator('#hSym')).toHaveText('QQQ');
+    await expect(page.locator('#hFeed')).toHaveText('LIVE');            // its row, from the beat
     expect(sock.ops).toEqual([]);
+    // the selected ticker taken off the board: its last price stops reading live
+    await page.locator('[data-rm="QQQ"]').click();
+    await expect(page.locator('#hFeed')).toHaveText('NOT ON THE BOARD');
   });
 
   test('#9 ONE ticker state: watchlist click, typed entry, Gamma / Chain / Flow and the expiry filter resolve to the same instrument, no prior-symbol request afterwards', async ({ page }) => {

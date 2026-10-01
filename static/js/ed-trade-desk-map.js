@@ -577,6 +577,13 @@
         if (Date.now() - (S.cardsPaintedMs || 0) > 1000) { S.cardsPaintedMs = Date.now(); paintCards(); }   // the Order Flow card's Schwab fields
       }
     });
+    // A ticker taken off the board stops streaming: its last row is no longer its price.
+    window.addEventListener('ed:board', function (e) {
+      var keys = (e.detail || []).map(function (b) { return b.key; });
+      Object.keys(S.quotes).forEach(function (k) { if (keys.indexOf(k) === -1) delete S.quotes[k]; });
+      if (!onDesk()) return;
+      paintHeader(); paintTrust(); paintCards();
+    });
     $('tdmQueue').addEventListener('click', function (e) {
       var b = e.target.closest('[data-q]'); if (b) selectItem(b.getAttribute('data-q'), true);
     });

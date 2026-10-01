@@ -155,28 +155,31 @@ _on_chain_callback: Optional[Callable[..., None]] = None
 _chain_parts: "dict[str, dict]" = {}
 
 
-def assemble_chain_part(msg: dict) -> "tuple[str, list | None, float, str | None] | None":
-    """One chain message from the daemon (complete_chain_capture.chain_messages) -> the whole
-    chain once its last part is in: (ticker, contracts, fetched_ts, None); a fetch that failed, or
-    a chain whose parts did not all arrive before the next one began: (ticker, None, ts, reason);
-    else None. A chain missing a part is never returned."""
+def assemble_chain_part(msg: dict) -> "list[tuple[str, list | None, float, str | None]]":
+    """One chain message from the daemon (complete_chain_capture.chain_messages) -> what it
+    settles, in order: a chain whose parts did not all arrive before the next one began
+    (ticker, None, ts, reason); a fetch that failed (ticker, None, ts, Schwab's answer); the whole
+    chain once its last part is in (ticker, contracts, fetched_ts, None). A chain missing a part
+    is never returned."""
     tk, ts = msg.get("ticker"), msg.get("ts_recv")
     if not tk or not isinstance(ts, (int, float)):
-        return None
+        return []
+    out = []
+    cur = _chain_parts.get(tk)
+    if cur is not None and cur["ts"] != ts:
+        out.append((tk, None, float(ts), f"the daemon's chain of {tk} arrived with "
+                    f"{len(cur['got'])} of its {cur['parts']} parts"))
+        del _chain_parts[tk]
+        cur = None
     if "failed" in msg:
         _chain_parts.pop(tk, None)
-        return tk, None, float(ts), str(msg["failed"])
-    cur = _chain_parts.get(tk)
-    out = None
-    if cur is None or cur["ts"] != ts:
-        if cur is not None:
-            out = (tk, None, float(ts), f"the daemon's chain of {tk} arrived with "
-                   f"{len(cur['got'])} of its {cur['parts']} parts")
+        return [*out, (tk, None, float(ts), str(msg["failed"]))]
+    if cur is None:
         cur = _chain_parts[tk] = {"ts": ts, "parts": int(msg["parts"]), "got": {}}
     cur["got"][int(msg["part"])] = msg.get("contracts") or []
     if len(cur["got"]) == cur["parts"]:
         del _chain_parts[tk]
-        return tk, [c for i in range(cur["parts"]) for c in cur["got"][i]], float(ts), None
+        out.append((tk, [c for i in range(cur["parts"]) for c in cur["got"][i]], float(ts), None))
     return out
 
 
@@ -233,9 +236,9 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     if not isinstance(msg, dict):
         return None
     if topic.startswith("chain."):
-        done = assemble_chain_part(msg)
-        if done is not None and _on_chain_callback is not None:
-            _on_chain_callback(*done)
+        for done in assemble_chain_part(msg):
+            if _on_chain_callback is not None:
+                _on_chain_callback(*done)
         return None
     sym = msg.get("symbol")
     ts = msg.get("ts_recv")
@@ -524,6 +527,25 @@ def _contract_ranking_inputs(symbols: "list[str]") -> "dict[str, dict]":
                         "strikePrice": ct.get("strikePrice"),
                         "spot": spot_by_ticker[tk]}
     return out
+
+
+def drop_option_contracts(keep: "Callable[[str], bool]") -> None:
+    """Stop streaming every option contract `keep` refuses (its ticker left the board): the
+    primary one and the views' additional ones. A view's next declaration is ranked afresh."""
+    global _active_option_contracts, _option_contracts_last_request
+    if _active_option_contract and not keep(_active_option_contract):
+        clear_active_option_contract(reason="its ticker left the board")
+    with _option_contracts_command_lock:
+        kept = [s for s in _active_option_contracts if keep(s)]
+        if kept == _active_option_contracts:
+            return
+        for s in _active_option_contracts:
+            if s not in kept and s != _active_option_contract:
+                clear_symbol(s)
+                _option_contract_last_update_ts.pop(s, None)
+        _active_option_contracts = kept
+        _option_contracts_last_request = None
+        _wanted_changed()
 
 
 def get_option_contracts_over_budget() -> "list[str]":

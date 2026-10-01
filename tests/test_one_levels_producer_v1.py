@@ -564,6 +564,9 @@ def test_a_ticker_taken_off_the_board_leaves_the_console(monkeypatch):
     assert server.terrain_cache_get(TK) is None
     assert ofs.price_row(TK) is None
     assert server._contract_ticker(_A) is None
+    wanted = ofs.current_wanted()                                # its contracts stop streaming
+    assert _A not in wanted["LEVELONE_OPTIONS"] and _B not in wanted["LEVELONE_OPTIONS"]
+    assert wanted["OPTIONS_BOOK"] == []
     body = json.loads(server.get_options_gamma_surface(TK).body)
     assert body["reason"] == "CRWD is not on the board: add it to fetch its chain"
     server._on_chain(TK, _CONTRACTS, time.time())                # a chain on its way when removed

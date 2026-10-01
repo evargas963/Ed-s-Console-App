@@ -17,14 +17,24 @@ function priceRow(ticker, spot, extra) {
     trade_age_sec: 1 }, extra || {});
 }
 const DEFAULT_BOARD = ['SPY', 'QQQ', 'IWM', 'NVDA', 'TSLA'];
-// Returns { ops }: every board edit the page sent, in order.
-async function mockPriceSocket(page, rows, board) {
+// Returns { ops }: every board edit the page sent, in order. opts.beat: like the daemon, a feed
+// beat every second carrying every board ticker's last row (without it the socket goes silent
+// after the rows, which the real daemon never does).
+async function mockPriceSocket(page, rows, board, opts) {
   const held = (board || DEFAULT_BOARD).slice();
   const ops = [];
   await page.routeWebSocket(/:1\/$/, (ws) => {
     const sendBoard = () => ws.send(JSON.stringify({ type: 'board', board: held.map(entry) }));
     sendBoard();
     (rows || []).forEach((r, i) => setTimeout(() => ws.send(JSON.stringify({ type: 'quotes', rows: [r] })), 300 * (i + 1)));
+    if (opts && opts.beat) {
+      const beat = setInterval(() => {
+        try {
+          ws.send(JSON.stringify({ type: 'feed', feed: { ts: Date.now() / 1000, schwab_socket_open: true },
+            rows: held.map((k) => priceRow(k, 100)) }));
+        } catch (e) { clearInterval(beat); }
+      }, 1000);
+    }
     ws.onMessage((m) => {
       let req; try { req = JSON.parse(String(m)); } catch (e) { return; }
       if (!req || (req.op !== 'board_add' && req.op !== 'board_remove')) return;

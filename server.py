@@ -400,7 +400,9 @@ def _board() -> "list[str] | None":
     """The board: the capture daemon's one list of tickers, as its heartbeat carries it; None
     while the daemon's status is not current."""
     st = lmp.daemon_status()
-    return list(st.get("board") or []) if st is not None else None
+    if st is None or not isinstance(st.get("board"), list):
+        return None                 # no current heartbeat, or one that carries no board: unknown
+    return list(st["board"])
 
 
 def _off_board_reason(tk: str) -> "str | None":
@@ -1354,6 +1356,9 @@ def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | N
 def _price_waiting_chain(tk: str) -> None:
     with _chains_waiting_lock:
         contracts, ts = _chains_waiting.pop(tk)
+    board = _board()
+    if board is not None and tk not in board:
+        return                      # taken off the board while it waited
     _price_chain(tk, contracts, ts)
 
 
@@ -1425,12 +1430,15 @@ def _drop_off_board(board: "list[str]") -> None:
     """A ticker taken off the board leaves the console: its levels, its chain (which maps its
     option contracts to it and admits them to the stream), its last chain error and its last
     price row."""
-    from app.options.order_flow.streaming import forget_price_rows
+    from app.options.order_flow.streaming import drop_option_contracts, forget_price_rows
     forget_price_rows(board)
     keep = set(board)
     with _terrain_cache_lock:
-        for tk in [t for t in _terrain_cache if t not in keep]:
+        gone = [t for t in _terrain_cache if t not in keep]
+        for tk in gone:
             del _terrain_cache[tk]
+    if gone:                        # its option contracts are no board ticker's: stop streaming them
+        drop_option_contracts(lambda sym: _contract_ticker(sym) is not None)
     for tk in [t for t in list(_terrain_refresh_last_error) if t not in keep]:
         _terrain_refresh_last_error.pop(tk, None)
 
