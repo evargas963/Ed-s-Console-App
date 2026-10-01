@@ -9,16 +9,18 @@ prove the seam the 2026-09-23 transport change created:
     receive time (never the time the console processed it);
   * an equity quote is not forwarded: the console reads it as the daemon's price row;
   * only Schwab-sourced messages are forwarded (any other src on the same topic is not);
-  * a connecting console first receives the bus's last values, then live messages;
+  * a connecting console first receives the current state, then live messages; no past bar;
   * the live loop never opens the capture database;
   * with the push server down nothing is served, and the feed picks up when it returns.
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import socket
 import sqlite3
 import time
+from pathlib import Path
 
 import pytest
 
@@ -26,7 +28,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import live_push
-from stream_spine import MessageBus, book_msg, options_quote_msg, quote_msg
+from stream_spine import MessageBus, bar_msg, book_msg, options_quote_msg, quote_msg
 
 _CONTRACT = "SPY   260918C00500000"
 
@@ -196,6 +198,56 @@ def test_a_connecting_console_receives_the_last_values_first(feed):
             stop.set()
             await asyncio.gather(client, server, return_exceptions=True)
     asyncio.run(run())
+
+
+def _real_bar(i: int, ts_recv: float) -> dict:
+    """The bus message the daemon builds from a real Schwab CHART_EQUITY bar (SPY 2026-09-25);
+    received at `ts_recv`, a stand-in."""
+    b = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
+                   .read_text(encoding="utf-8"))["bars"][i]
+    return bar_msg(symbol="SPY", bar_start_ms=b["timestamp"], open=b["open"], high=b["high"], low=b["low"],
+                   close=b["close"], volume=b["volume"], src="schwab_chart", ts_recv=ts_recv)
+
+
+def test_a_reconnecting_console_is_sent_current_state_and_no_past_bar(feed):
+    """A completed bar is a past event: a console that connects after it was published is sent the
+    current state (the option quote's fields, the whole book) and only the bars published after it
+    connected. The connect snapshot used to resend the bus's last bar1m, and the console wrote it
+    and rebuilt its price levels as if it were new."""
+    while not ofs.streamed_bars.empty():
+        ofs.streamed_bars.get()
+
+    async def run():
+        bus = MessageBus()
+        ts = time.time()
+        bus.publish(_TOPIC, _opt_quote(0.05, ts))                       # state
+        bus.publish(f"book.{_CONTRACT}", book_msg(symbol=_CONTRACT, service="OPTIONS_BOOK", src="schwab_book",
+                                                  ts_recv=ts + 1.0, content={"key": _CONTRACT, "BIDS": [], "ASKS": []}))
+        bus.publish("bar1m.SPY", _real_bar(10, ts))                    # a past event
+        stop = asyncio.Event()
+        stats: dict = {}
+        server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=feed, stats=stats))
+        assert await _until(lambda: stats.get("listening"))
+        ofs._feed_running = True
+        client = asyncio.create_task(ofs._feed_loop())
+        try:
+            assert await _until(_received(ts))
+            assert await _until(lambda: ofs._option_contract_last_update_ts.get(_CONTRACT) == ts + 1.0)   # the book
+            live = _real_bar(11, time.time())
+            bus.publish("bar1m.SPY", live)                              # Schwab's next bar
+            assert await _until(lambda: not ofs.streamed_bars.empty())
+            await asyncio.sleep(0.2)
+            got = []
+            while not ofs.streamed_bars.empty():
+                got.append(ofs.streamed_bars.get())
+            return got, live
+        finally:
+            ofs._feed_running = False
+            client.cancel()
+            stop.set()
+            await asyncio.gather(client, server, return_exceptions=True)
+    got, live = asyncio.run(run())
+    assert [b["bar_start_ms"] for b in got] == [live["bar_start_ms"]]
 
 
 def test_option_l1_and_book_update_the_contract_and_report_greeks(feed, monkeypatch):

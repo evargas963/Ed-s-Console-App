@@ -22,7 +22,9 @@ it usually lacks the Greeks or a price. For optquote.* the server therefore keep
 contract, the latest message that carried each field (FieldHistory) and replays those
 messages in receive order -- every field arrives exactly as streamed, with the receive time
 of the message that actually carried it, so no old value is made to look new. book.* messages
-are whole books, so the last one is the state.
+are whole books, so the last one is the state. A 1-minute bar (bar1m.*) or a headline (news.*)
+is an event, not state: a console that connects or reconnects gets only the ones published
+after it connected.
 
 Wire format: one JSON text frame per message, {"topic": str, "msg": {...}}.
 """
@@ -127,12 +129,13 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
     stats["clients"] += 1
 
     async def _pump() -> None:
-        # current state first: field-delta topics from their field history, books from
-        # the bus's last value (a book message is a whole book)
+        # current state first: option quote fields from their field history, books from the
+        # bus's last value (a book message is a whole book). A bar or a headline is a past event,
+        # not state: never resent.
         for topic, msg in history.replay():
             await ws.send(encode(topic, msg))
         for topic, msg in list(bus.snapshot().items()):
-            if not is_field_delta_topic(topic) and is_forwarded(topic, msg):
+            if topic.startswith("book.") and is_forwarded(topic, msg):
                 await ws.send(encode(topic, msg))
         loop = asyncio.get_running_loop()
         next_beat = loop.time()

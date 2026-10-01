@@ -47,6 +47,7 @@ from app.options.order_flow.state import (
 )
 
 import live_market_plane as _lmp
+from time_et import ct_label
 
 log = logging.getLogger(__name__)
 
@@ -261,7 +262,9 @@ async def _feed_loop() -> None:
     Each frame is one Schwab stream message; it is applied the moment it arrives
     (_ingest_pushed) -- no poll interval, no database read. A dropped connection is retried
     every PUSH_RECONNECT_SEC; while it is down, the live values age out through their own
-    freshness checks and the screen shows them stale. There is no second source."""
+    freshness checks and the screen shows them stale. There is no second source. On reconnect
+    the daemon sends current state only (books, option quote fields); the 1-minute bars Schwab
+    sent while it was down are not received, and that span is named (PUSH_GAP), never refilled."""
     global _feed_running
     from websockets.asyncio.client import connect
 
@@ -280,12 +283,18 @@ async def _feed_loop() -> None:
                 continue
             _ingest_pushed(str(env.get("topic") or ""), env.get("msg"))
     rows = asyncio.create_task(_rows_loop(), name="daemon-price-rows")
+    down_since = None          # when the push dropped, until it is back
     try:
         while _feed_running:
             try:
                 async with connect(LIVE_PUSH_URL, max_size=None, open_timeout=5,
                                    ping_interval=20, ping_timeout=20) as ws:
                     _log_stream("PUSH_CONNECTED", url=LIVE_PUSH_URL)
+                    if down_since is not None:
+                        _log_stream("PUSH_GAP", note=(
+                            f"no 1-minute bars received from {ct_label(down_since)} to "
+                            f"{ct_label(time.time())}; they are not refilled"))
+                        down_since = None
                     sender = asyncio.create_task(_send_wanted(ws))
                     try:
                         await _consume(ws)
@@ -298,6 +307,7 @@ async def _feed_loop() -> None:
                 log.info("live push unavailable (%s: %s); retrying in %.1fs",
                          type(e).__name__, e, PUSH_RECONNECT_SEC)
             _lmp.record_feed_down()        # no daemon, no live price -- visible at once
+            down_since = time.time() if down_since is None else down_since
             if _feed_running:
                 await asyncio.sleep(PUSH_RECONNECT_SEC)
     finally:
