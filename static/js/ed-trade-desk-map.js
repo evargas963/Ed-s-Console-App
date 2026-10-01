@@ -201,14 +201,14 @@
   function takeBar(b) {
     if (!S.chart || b.ticker !== st().key || S.barsAnswered !== S.gen) return;
     var had = S.bars.length;
-    S.chart.setUnavailable(b.tf[S.tf] ? null : b.unavailable);      // the served reason, if any
+    S.chart.setUnavailable(b.tf[S.tf] ? null : (b.unavailable || {})[S.tf]);   // the served reason, if any
     if (b.tf[S.tf]) {
       S.chart.pushBar(b.tf[S.tf], b.last_bar && b.last_bar.label);   // the chart library places it
       S.bars = S.chart.bars();
       if (!had) { $('tdmChartEmpty').hidden = true; paintChartOverlays(); }
     }
     // the daemon's served hour, whole, or none with the served reason
-    S.flowBars = b.recent_1m; S.flowReason = b.unavailable; paintCards();
+    S.flowBars = b.recent_1m; S.flowReason = (b.unavailable || {}).recent_1m; paintCards();
   }
   function loadSlow() { return Promise.all([loadPerTf(), loadPerTicker()]); }
   // the timeframe's levels (VWAP per chart bar) and event window, each drawn as it arrives

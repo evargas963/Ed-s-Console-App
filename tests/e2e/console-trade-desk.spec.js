@@ -528,9 +528,9 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Market Map: before the day\'s earlier minutes arrive, the bars above 1m read unavailable with the served reason', async ({ page }) => {
-    // the daemon pushes only the 1-minute bar until Schwab's price history for the day's earlier
-    // minutes is received (live_price_rows.bar_update `unavailable`): no partial bar is drawn
+  test('Market Map: a bar whose minutes are not all received reads unavailable with the served missing span', async ({ page }) => {
+    // the daemon pushes a bar above 1m only when every minute of it is covered
+    // (live_price_rows.bar_update `unavailable`, per timeframe): no partial bar is drawn
     const errs = watchErrors(page);
     await intercept(page);
     const daemon = await mockPriceSocket(page, []);
@@ -539,10 +539,12 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
     const chartBars = () => page.evaluate(() => window.EdTradeDeskMap.state().chart.bars);
     await expect.poll(chartBars).toBe(BARS.bars.length);
-    const why = "today's earlier minutes not received from Schwab: RuntimeError: HTTP 429 Too Many Requests";
+    const why = "minutes Fri 09/25 08:15 AM CT – Fri 09/25 09:20 AM CT not received from Schwab (Schwab's price history: RuntimeError: HTTP 429 Too Many Requests)";
     const minute = { t: 1790343720, o: 772, h: 772.5, l: 771.9, c: 772.4, v: 10, chg: 0.4, chg_pct: 0.05, label: 'Fri 09/25 09:22 AM CT' };
+    const unavailable = { recent_1m: why };
+    ['3', '5', '15', '30', '60', 'D'].forEach((tf) => { unavailable[tf] = why; });
     daemon.send({ type: 'bars', bars: [{ ticker: 'SPY', ts_recv: 1790343782.7, last_bar: { t: 1790343720, label: 'Fri 09/25 09:22 AM CT' },
-      tf: { '1': minute }, recent_1m: null, unavailable: why }] });
+      tf: { '1': minute }, recent_1m: null, unavailable: unavailable }] });
     const legend = page.locator('#tdmChart .tvc-legend');
     await expect(legend).toContainText(why);                          // the desk's 30m chart
     await expect(page.locator('#tdmCardFlow .tdm-plot')).toContainText(why);   // the Order Flow hour

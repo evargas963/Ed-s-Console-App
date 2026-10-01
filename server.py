@@ -765,8 +765,8 @@ def _bar_dict(c: "Candle") -> dict:
 def _write_streamed_bar(msg: dict) -> bool:
     """Write one 1-minute bar the daemon forwards to price_bars_1m: the chart's bar
     (live_price_rows.minute_bar, the one the daemon pushes to the screen), with its source -- a
-    streamed bar (Schwab CHART_EQUITY) stands over any stored one; a price-history bar (the day's
-    earlier minutes, live_ui) only fills a minute the store does not have. False when it is not a
+    streamed bar (Schwab CHART_EQUITY) stands over any stored one; a price-history bar (a span the
+    daemon's stream did not cover, live_ui) only fills a minute the store does not have. False when it is not a
     chart bar (then nothing is written)."""
     b = _lpr.minute_bar(msg)
     if b is None:

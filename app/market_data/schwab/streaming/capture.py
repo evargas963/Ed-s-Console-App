@@ -43,6 +43,8 @@ ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
 from stream_spine import (  # noqa: E402
+    CONNECTION,
+    CONNECTION_CLOSED,
     COUNT_DROPS,
     CaptureWriter,
     HealthRegistry,
@@ -327,6 +329,10 @@ class Daemon:
     async def disconnect(self) -> None:
         s, self.stream = self.stream, None
         self.held = {k: frozenset() for k in SERVICES}
+        # every subscription ended with the socket: what the stream covered ends here (live_ui)
+        self.bus.publish(f"sub.{CONNECTION}", subscription_msg(
+            service=CONNECTION, command=CONNECTION_CLOSED, symbols=[], code=0,
+            reason="the Schwab socket closed"))
         if s is not None:
             try:
                 await asyncio.wait_for(s.logout(), timeout=5)

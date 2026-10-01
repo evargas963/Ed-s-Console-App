@@ -20,7 +20,9 @@ from typing import Any, Optional
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
-from time_et import ET, ct_label, is_collect_window_bar_end_ts_utc, trading_date_label
+from time_et import (COLLECT_WINDOW_START_MINS, ET, RTH_START_MINS, ct_label, et_date_str_from_ts_utc,
+                     et_minute_total_from_ts_utc, is_collect_window_bar_end_ts_utc,
+                     session_close_mins_for_et_date, trading_date_label)
 
 SPOT_SOURCE = "streaming_plane"
 #: the chart timeframes: minutes, and "D" (the ET trading date)
@@ -113,15 +115,47 @@ def recent_1m(minutes: list[dict]) -> list[dict[str, Any]]:
     return [served_bar(dict(m), "1") for m in minutes[-RECENT_1M_BARS:]]
 
 
+def session_first_minute(t: float) -> float:
+    """The start of the first minute the collect window keeps on `t`'s ET date (09:15 ET)."""
+    d = datetime.fromtimestamp(t, ET).date()
+    return datetime(d.year, d.month, d.day, COLLECT_WINDOW_START_MINS // 60, COLLECT_WINDOW_START_MINS % 60,
+                    tzinfo=ET).timestamp()
+
+
+def uncovered(covered: list[tuple[float, float]], first: float, last: float) -> list[tuple[float, float]]:
+    """The minutes from `first` to `last` (minute starts, inclusive) outside the `covered` spans
+    (sorted, inclusive minute-start pairs), as spans."""
+    gaps, at = [], first
+    for a, b in covered:
+        if b < at:
+            continue
+        if a > last:
+            break
+        if a > at:
+            gaps.append((at, a - 60.0))
+        at = max(at, b + 60.0)
+    if at <= last:
+        gaps.append((at, last))
+    return gaps
+
+
+def missing_reason(gaps: list[tuple[float, float]]) -> str:
+    """Why a bar is not served complete: each span of minutes not received from Schwab."""
+    return "; ".join(f"minutes {ct_label(a)} – {ct_label(b)} not received from Schwab" for a, b in gaps)
+
+
 def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float,
-               unavailable: Optional[str] = None) -> dict[str, Any]:
+               covered: list[tuple[float, float]]) -> dict[str, Any]:
     """What the daemon pushes for one 1-minute `bar`: for each chart timeframe, the chart bar that
     contains it (roll_bucket) when that is the chart's newest bar, from `minutes` -- the ticker's
     minutes of `bar`'s ET trading day, oldest first, `bar` among them; the "D" bar is all of them
-    -- with the daemon's receive time of Schwab's message and `recent_1m`. `unavailable`: why the
-    day's earlier minutes are not held (not received from Schwab): then only the 1-minute bar is
-    served, every bar above it and `recent_1m` are absent with that reason (`unavailable`),
-    never a partial bar served as complete.
+    -- with the daemon's receive time of Schwab's message and `recent_1m`. `covered`: the spans of
+    minutes the daemon holds all of Schwab's bars for (the stream while subscribed, or a
+    price-history reply); inside them a minute with no bar is a minute Schwab reported no trade
+    in. A bar above 1 minute, and `recent_1m`, is served only when every minute from its bucket's
+    start (or the session's first minute) to its newest is covered; otherwise it is absent and
+    `unavailable` names each span missing (never a partial bar served as complete, nothing filled
+    or guessed). The 1-minute bar is always served.
 
     A chart's push is only ever its newest bar: a chart places it with the library's own update,
     which replaces the newest bar or adds a newer one, and a bar's time is its bucket's start, so
@@ -130,21 +164,64 @@ def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float,
     roll-up and `recent_1m` carry it; a chart bar of an older bucket is not pushed as a tail: the
     stored history carries it when the chart is loaded again."""
     i = bisect_left([m["t"] for m in minutes], bar["t"])
-    newest = minutes[-1]["t"]
+    newest, first = minutes[-1]["t"], session_first_minute(bar["t"])
     by_tf: dict[str, Any] = {}
+    unavailable: dict[str, str] = {}
     for tf in CHART_TFS:
         key = tf_bucket_key(bar["t"], tf)
-        if key != tf_bucket_key(newest, tf) or (unavailable is not None and tf != "1"):
+        if key != tf_bucket_key(newest, tf):
             continue
         lo, hi = i, i + 1
         while lo and tf_bucket_key(minutes[lo - 1]["t"], tf) == key:
             lo -= 1
         while hi < len(minutes) and tf_bucket_key(minutes[hi]["t"], tf) == key:
             hi += 1
-        by_tf[tf] = served_bar(roll_bucket(minutes[lo:hi], tf), tf)
+        gaps = [] if tf == "1" else uncovered(covered, max(tf_bucket_start(bar["t"], tf), first),
+                                              minutes[hi - 1]["t"])
+        if gaps:
+            unavailable[tf] = missing_reason(gaps)
+        else:
+            by_tf[tf] = served_bar(roll_bucket(minutes[lo:hi], tf), tf)
+    # the Order Flow hour: its minutes, and the hour before the newest, all covered
+    recent = minutes[-RECENT_1M_BARS:]
+    gaps = uncovered(covered, max(min(recent[0]["t"], newest - (RECENT_1M_BARS - 1) * 60.0), first), newest)
+    if gaps:
+        unavailable["recent_1m"] = missing_reason(gaps)
     return {"ticker": ticker_storage_key(ticker), "ts_recv": ts_recv, "last_bar": last_bar(newest),
-            "tf": by_tf, "recent_1m": None if unavailable is not None else recent_1m(minutes),
-            "unavailable": unavailable}
+            "tf": by_tf, "recent_1m": None if gaps else recent_1m(minutes), "unavailable": unavailable}
+
+
+#: the daily bar's reconciliation with Schwab's own regular-session high and low
+RECONCILED, RECONCILE_MISMATCH, RECONCILE_NOT_COMPARED = "match", "mismatch", "not_compared"
+
+
+def regular_session_reconciliation(minutes: list[dict], covered: list[tuple[float, float]],
+                                   quote: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """The day's regular-session (09:30 ET to the close) high and low from `minutes`, against
+    Schwab's LEVELONE_EQUITIES HIGH_PRICE and LOW_PRICE (`quote`, live_market_plane: regular-session
+    trades only; 0 means no regular-session trade, not a value to compare). Compared only when
+    every regular-session minute held so far is covered. A mismatch is reported with both values;
+    nothing is corrected. Schwab's fields include the minute still trading, which no completed bar
+    holds yet."""
+    if not minutes:
+        return {"state": RECONCILE_NOT_COMPARED, "reason": "no minute held"}
+    date = et_date_str_from_ts_utc(minutes[-1]["t"])
+    close = session_close_mins_for_et_date(date)
+    rth = [m for m in minutes if close is not None and RTH_START_MINS <= et_minute_total_from_ts_utc(m["t"]) < close]
+    high, low = (quote or {}).get("high_price"), (quote or {}).get("low_price")
+    if not rth:
+        return {"state": RECONCILE_NOT_COMPARED, "reason": "no regular-session minute held"}
+    open_minute = session_first_minute(rth[0]["t"]) + (RTH_START_MINS - COLLECT_WINDOW_START_MINS) * 60.0
+    gaps = uncovered(covered, open_minute, rth[-1]["t"])
+    if gaps:
+        return {"state": RECONCILE_NOT_COMPARED, "reason": missing_reason(gaps)}
+    if not high or not low:
+        return {"state": RECONCILE_NOT_COMPARED,
+                "reason": "Schwab's HIGH_PRICE / LOW_PRICE not received or 0 (no regular-session trade)"}
+    bars_high, bars_low = max(m["h"] for m in rth), min(m["l"] for m in rth)
+    state = RECONCILED if (bars_high, bars_low) == (high, low) else RECONCILE_MISMATCH
+    return {"state": state, "bars_high": bars_high, "bars_low": bars_low,
+            "schwab_high": high, "schwab_low": low}
 
 
 def live_spot(ticker: str, now: float) -> Optional[float]:

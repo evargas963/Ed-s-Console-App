@@ -116,7 +116,7 @@
       if (!b || b.ticker !== st().key || _last.barsFor !== ticker() + '|' + _tf || !h || !isMap() || !_chart) return;
       // a push carries a timeframe's bar only when it is that chart's newest and its minutes are
       // all held (live_price_rows.bar_update); otherwise the served reason, if any, is shown
-      _chart.setUnavailable(b.tf[_tf] ? null : b.unavailable);
+      _chart.setUnavailable(b.tf[_tf] ? null : (b.unavailable || {})[_tf]);
       if (!b.tf[_tf]) return;
       _chart.pushBar(b.tf[_tf], b.last_bar && b.last_bar.label);   // the chart library places it
       _last.bars = Object.assign({}, _last.bars, { bars: _chart.bars(), last_bar: b.last_bar });

@@ -202,9 +202,14 @@ def news_msg(*, symbol: str, content: dict, src: str, ts_recv: float | None = No
     return {"ts_recv": _now(ts_recv), "symbol": symbol, "content": content, "src": src}
 
 
+#: sub.CONNECTION -- the Schwab socket itself: CLOSED ends every subscription at once
+CONNECTION, CONNECTION_CLOSED = "CONNECTION", "CLOSED"
+
+
 def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: "int | None",
                      reason: str, ts: float | None = None) -> dict:
-    """sub.* -- one request the daemon sent and Schwab's answer."""
+    """sub.* -- one request the daemon sent and Schwab's answer (or, service CONNECTION, the
+    socket's own end)."""
     return {"ts": _now(ts), "service": service, "command": command,
             "symbols": list(symbols), "code": code, "reason": reason}
 
