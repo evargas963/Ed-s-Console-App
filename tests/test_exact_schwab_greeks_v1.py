@@ -148,13 +148,16 @@ def test_a_contract_whose_quote_did_not_come_back_has_no_greek_never_the_chains(
     assert surface["cells_with_oi_but_invalid_greeks"] >= 1
 
 
-def test_a_refused_quotes_request_leaves_its_contracts_with_no_greek():
-    """Schwab answering HTTP 429 to the quotes: no contract keeps the chain's rounded Greeks."""
-    contracts = _fetched(_Schwab(refused=429))
-    assert all(ct[f] is None for ct in contracts for f in sc.GREEK_FIELDS)
-    cells, surface = _column(contracts)
-    assert all(g is None for g, _cts in cells.values())
-    assert surface["gamma_available"] is False
+def test_a_refused_quotes_batch_fails_the_chain_and_asks_no_further_batch():
+    """Schwab answering HTTP 429 to a quotes batch: the chain fails with that status and its
+    reason, so the levels keep their last good publication with the failure as their stale reason
+    (a book missing a batch of Greeks published as the book flipped the regime and walls in the
+    PR #431 review), and no further batch is asked."""
+    schwab = _Schwab(refused=429)
+    resp = sc.fetch_full_chain(schwab, "SPY", schwab.chain, schwab.quote)
+    assert resp.status_code == 429
+    assert "returned HTTP 429" in resp.reason
+    assert len(schwab.asked) == 1
 
 
 def test_quotes_are_asked_in_batches_of_at_most_300_every_contract_once():

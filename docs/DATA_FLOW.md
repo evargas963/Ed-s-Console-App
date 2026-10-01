@@ -117,7 +117,9 @@ Schwab sends is taken as sent (rule 2), never computed.
   (`QUOTES_BATCH_MAX`; 400 were refused, the URL's length) and replaces each contract's Greeks
   with its quote's, as sent; the console's quotes requests take the chain gate
   (`_gated_safe_get_quotes`: its slots, priority, and its breaker, which a 429 degrades). A
-  contract whose quote does not come back has no Greeks (None, logged with the count), never the
+  quotes batch Schwab refuses fails the whole chain with its status and reason, as a missing
+  chain part does, so the levels keep their last good publication, stale with that reason, and
+  no further batch is asked. A contract missing from an answered batch has no Greeks (None, logged with the count), never the
   chain's: its leg's exposure and its strike's net read absent (a leg's sum is known only when
   every contract on it with open interest above 0 sent the Greek: `bucket_metric`). Open
   interest stays the chain's. Chain captures stored before 2026-10-01 carry the chain's rounded
