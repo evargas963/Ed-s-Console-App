@@ -77,8 +77,9 @@ def test_rows_are_the_shape_the_panel_renders():
     # the three GEX scopes, and the Chart view's DEX and OI rows (operator 2026-09-29: those views
     # were blank)
     scopes = ("all", "near", "far", "dex", "oi")
-    # beside the rows: each profile's largest strike and the GEX rows' side sums (2026-09-30)
-    assert set(ps) == {*scopes, "peak", "side_sums"}, (
+    # beside the rows: each profile's largest strike, the GEX rows' side sums (2026-09-30), and
+    # the count of contracts whose settlement cannot be determined (in no row)
+    assert set(ps) == {*scopes, "peak", "side_sums", "expiry_unknown"}, (
         "the ALL / <=7DTE / MONTHLY+ chips each need their own rows; a missing scope is an "
         f"empty panel on that chip. got {sorted(ps)}"
     )
