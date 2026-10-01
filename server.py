@@ -2063,7 +2063,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
             "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
             "chain_basis": capture["basis"] if capture is not None else CAPTURE_BASIS,
             "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
-            **_atr_fields(tk),
+            **_atr_fields(tk, now),
             "_per_strike": snap.per_strike, "_gamma_surface": None,
             "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
             # only a viewed ticker is repriced between chain fetches, so only its chain is kept
@@ -2520,24 +2520,25 @@ _atr_lock = threading.Lock()
 ATR_TTL_SEC: float = 900.0
 
 
-def _atr_pair(ticker: str) -> "AtrPair":
-    """The ticker's (daily, 15-minute) ATR from price_bars_1m's completed candles, recomputed
-    at most every ATR_TTL_SEC. Too few bars reads as None, never a vendor stand-in."""
+def _atr_pair(ticker: str, now: float) -> "AtrPair":
+    """The ticker's (daily, 15-minute) ATR at `now` (epoch seconds) from price_bars_1m's
+    completed candles, recomputed at most every ATR_TTL_SEC. Too few bars reads as None, never a
+    vendor stand-in."""
     tk = ticker_storage_key(ticker)
     with _atr_lock:
         hit = _atr_cache.get(tk)
-    if hit is not None and time.time() - hit[0] < ATR_TTL_SEC:
+    if hit is not None and now - hit[0] < ATR_TTL_SEC:
         return hit[1]
-    pair = compute_atr_pair(str(get_db().db_path), tk, now_et())
+    pair = compute_atr_pair(str(get_db().db_path), tk, datetime.fromtimestamp(now, ET))
     with _atr_lock:
-        _atr_cache[tk] = (time.time(), pair)
+        _atr_cache[tk] = (now, pair)
     return pair
 
 
-def _atr_fields(tk: str) -> dict:
-    """atr_daily / atr_15m for every publication of the ticker's levels, whatever the chain's
-    source (a live download or a stored capture)."""
-    pair = _atr_pair(tk)
+def _atr_fields(tk: str, now: float) -> dict:
+    """atr_daily / atr_15m at `now` for every publication of the ticker's levels, whatever the
+    chain's source (a live download or a stored capture)."""
+    pair = _atr_pair(tk, now)
     return {"atr_daily": round(pair.daily, 3) if pair.daily is not None else None,
             "atr_15m": round(pair.m15, 3) if pair.m15 is not None else None,
             "atr_daily_reason": pair.daily_reason, "atr_15m_reason": pair.m15_reason}
@@ -2564,15 +2565,16 @@ def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str |
     from math_exposure_core import compute_exposures_by_strike as _cebs
 
     def _per_strike(contracts: list, spot: float, now: datetime) -> dict:
-        def _scope(cts: list) -> list:
+        def _scope(cts: list) -> "tuple[list, int]":
+            """The scope's rows, and its contracts whose settlement cannot be determined (in no row)."""
             if not cts:
-                return []
-            exposures, _diag = _cebs(cts, spot=spot, now=now)   # valued at the capture's own time
+                return [], 0
+            exposures, diag = _cebs(cts, spot=spot, now=now)   # valued at the capture's own time
             # ONE producer (2026-09-24): this was a second copy of terrain_engine._per_strike_rows
             # carrying the same raw-gamma fallback (audit T-01) -- the live panel and this ghost
             # must be one computation or they draw a positioning shift that did not happen.
             from terrain_engine import _per_strike_rows
-            return _per_strike_rows(exposures)
+            return _per_strike_rows(exposures), diag.expiry_unknown
 
         # Cursor-audit F8: unknown DTE must belong to NEITHER near nor far, not silently to far.
         # This endpoint carried its own near/far splitter with the old 999.0 sentinel — a duplicate
@@ -2582,7 +2584,9 @@ def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str |
         from terrain_engine import _dte_of
         near = [c for c in contracts if (d := _dte_of(c)) is not None and d <= 7]
         far = [c for c in contracts if (d := _dte_of(c)) is not None and d > 7]
-        return {"all": _scope(contracts), "near": _scope(near), "far": _scope(far)}
+        all_rows, expiry_unknown = _scope(contracts)
+        return {"all": all_rows, "near": _scope(near)[0], "far": _scope(far)[0],
+                "expiry_unknown": expiry_unknown}
 
     chain_day = et_date_str_from_ts_utc(float(chain_ts))
     prior = next((c for c in captures if c["et_date"] < chain_day), None)
@@ -2624,7 +2628,8 @@ def get_terrain_strikes(ticker: str = Query(...)):
         if isinstance(_ps, dict):
             measures = {m: (_ps.get(m) or []) for m in ("dex", "oi")}
         if isinstance(_ps, dict) and _ps.get("all"):
-            today = {k: (_ps.get(k) or []) for k in ("all", "near", "far")}
+            today = {**{k: (_ps.get(k) or []) for k in ("all", "near", "far")},
+                     "expiry_unknown": _ps.get("expiry_unknown")}
             spot_used = _snap.get("spot")
             _cts_utc = _snap.get("computed_ts_utc")
             today_age_sec = round(now - float(_cts_utc), 1) if _cts_utc else None
@@ -2854,8 +2859,8 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
         if len(rows) >= 2:
             (d1, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
             # each capture valued at its own time, not today's clock
-            per1 = _cebs(c1, spot=float(s1), now=datetime.fromtimestamp(t1, ET))[0]
-            per0 = _cebs(c0, spot=float(s0), now=datetime.fromtimestamp(t0, ET))[0]
+            per1, diag1 = _cebs(c1, spot=float(s1), now=datetime.fromtimestamp(t1, ET))
+            per0, diag0 = _cebs(c0, spot=float(s0), now=datetime.fromtimestamp(t0, ET))
 
             from math_exposure_core import bucket_metric as _bm, strike_total_oi as _sto
 
@@ -2898,6 +2903,8 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
                 "dex_below_dollars": round(sum(d for k, d in dex1.items() if k < spot1)),
                 "dex_above_dollars": round(sum(d for k, d in dex1.items() if k > spot1)),
                 "strikes_diffed": len(doi),
+                # each capture's contracts whose settlement cannot be determined, in no row
+                "contracts_expiry_unknown": {"newer": diag1.expiry_unknown, "older": diag0.expiry_unknown},
                 "charm_below": charm_below,
                 "charm_above": charm_above,
                 "charm_error": charm_err,
@@ -3001,7 +3008,13 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
     strikes = sorted(strike_set)
     last_settlement = {e: max((s.timestamp() for (x, _t), s in settles.items() if x == e and s is not None),
                               default=None) for e in expiries}
-    expirations = [{"expiry": e, "dte": exp_dte.get(e), "settles_ts_utc": last_settlement[e]} for e in expiries]
+    # an expiry whose settlement cannot be determined is its own state, served with its reason:
+    # not expired, never the front column, its contracts in no cell (math_exposure_core)
+    expirations = [{"expiry": e, "dte": exp_dte.get(e), "settles_ts_utc": last_settlement[e],
+                    "settlement_unknown_reason": None if last_settlement[e] is not None else (
+                        f"settlement unknown: {e} has no session close in the market calendar "
+                        f"(a holiday or an unreadable date); its contracts are in no cell")}
+                   for e in expiries]
     # Each cell carries every measure its bucket already holds -- GEX, DEX, vanna
     # (call - put, the dealer convention of compute_net_vanna), OI and volume -- so one grid
     # serves every heatmap measure. A bucket with no usable OI or greeks reads None, never its
@@ -3048,6 +3061,8 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
         "expirations": expirations, "strikes": strikes, "cells": cells,
         "contracts_total": total_contracts, "contracts_used": contracts_used,
         "contracts_excluded_malformed_expiry": excluded_malformed,
+        # contracts whose settlement cannot be determined, in no cell (the books' own count)
+        "contracts_expiry_unknown": sum(diag.expiry_unknown for _book, diag in (books or {}).values()),
         "gamma_available": gamma_available,
         "gamma_unavailable_reason": _reason,
         "cells_total": cells_total,
@@ -3075,26 +3090,24 @@ def _gamma_surface_unavailable_reason(gamma_available: bool, cells_with_oi_but_i
     return "no usable open interest in this chain (0 of {} strike×expiry cells)".format(cells_total)
 
 
-def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> dict:
-    """Session identity for a projected surface, stamped by the ONE ET clock (server side — a
-    browser never decides what day it is): today's ET session date, whether the surface is a
-    PRIOR-session reference (a banked capture from an earlier trading day viewed today), and which
-    expiration columns have expired: every contract of the column has reached its settlement
-    (time_et.settlement_et, the rule that takes a contract out of the book), or its settlement
-    is not known. Presentation reads these flags to label an expired column and a prior-session
-    reference for what they are; it never infers them. No cell value is touched."""
-    now = now_et()
-    today = now.strftime("%Y-%m-%d")      # time_et: the ONE ET clock / session-calendar authority
+def _stamp_surface_session(surface: dict, *, now: float) -> dict:
+    """Session identity for a projected surface at `now` (epoch seconds; server side — a browser
+    never decides what day it is): `now`'s ET session date, and which expiration columns have
+    expired: every contract of the column has reached its settlement (time_et.settlement_et, the
+    rule that takes a contract out of the book). A column whose settlement is unknown has not
+    expired; it carries its reason (`settlement_unknown_reason`) and is never the front column.
+    Presentation reads these to label a column for what it is; it never infers them. No cell
+    value is touched."""
     out = dict(surface)
     out["expirations"] = [
-        dict(e, expired=e["settles_ts_utc"] is None or now.timestamp() >= e["settles_ts_utc"])
+        dict(e, expired=e["settles_ts_utc"] is not None and now >= e["settles_ts_utc"])
         for e in (surface.get("expirations") or [])
     ]
-    out["session_date_et"] = today
-    out["prior_session"] = bool(reference_date and str(reference_date) < today)
-    live_cols = [e for e in out["expirations"] if not e["expired"] and e.get("dte") is not None]
-    # the front column: the nearest expiry that has not expired, by Schwab's daysToExpiration
-    out["front_expiry"] = min(live_cols, key=lambda e: e["dte"])["expiry"] if live_cols else None
+    out["session_date_et"] = datetime.fromtimestamp(now, ET).strftime("%Y-%m-%d")
+    open_cols = [e for e in out["expirations"]
+                 if e["settles_ts_utc"] is not None and not e["expired"] and e.get("dte") is not None]
+    # the front column: the nearest open expiry with a known settlement, by Schwab's daysToExpiration
+    out["front_expiry"] = min(open_cols, key=lambda e: e["dte"])["expiry"] if open_cols else None
     return out
 
 
@@ -3180,7 +3193,7 @@ def options_gamma_surface(ticker: str, now: float) -> JSONResponse:
                 "expiry_count": len(surf.get("expirations") or []),
                 "note": "every expiry and every strike Schwab listed (strike_range=ALL)",
             },
-            **_stamp_surface_session(surf, reference_date=None),
+            **_stamp_surface_session(surf, now=now),
             # one spot on every screen (2026-09-27): the live price, the header's own rule, after
             # the surface's own keys so its stamp cannot overwrite it. The
             # price this surface's cells were computed at is named on its own (operator directive
@@ -3266,7 +3279,7 @@ def get_terrain(ticker: str = Query(...)):
     _why = _terrain_refresh_last_error.get(tk)
     return compute_terrain(tk, None, spot).to_dict() | {
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
-        **_atr_fields(tk),              # from the bars, which do not wait for a chain
+        **_atr_fields(tk, now),         # from the bars, which do not wait for a chain
         # RC-126: not_ready carries its REASON when the producer has one — an eternal
         # unexplained shrug is how $SPX stayed dark for a session.
         "error": ("terrain_not_ready: no wide-chain snapshot yet for this ticker"

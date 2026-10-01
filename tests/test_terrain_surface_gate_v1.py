@@ -52,7 +52,7 @@ def _stub_terrain(monkeypatch, proj):
     monkeypatch.setattr(server, "flatten_chain_contracts", lambda j: [dict(ct) for ct in _REAL_CHAIN])
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (100.0, server.SPOT_SOURCE_PLANE, 0.0))   # stand-in: the live price
     monkeypatch.setattr(server, "compute_terrain", lambda tk, contracts, spot, **k: Snap(contracts))
-    monkeypatch.setattr(server, "_atr_pair", lambda t: AtrPair(None, None, "stand-in", "stand-in"))
+    monkeypatch.setattr(server, "_atr_pair", lambda t, now: AtrPair(None, None, "stand-in", "stand-in"))
     monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
     monkeypatch.setattr(server, "project_gamma_surface", proj)
 
@@ -70,7 +70,7 @@ class Snap:
 
     def __init__(self, contracts):
         self.contracts = contracts
-        self.books = {("2026-09-04", 0.0): ({}, ExposureDiagnostics(0, 0, 0, ""))}
+        self.books = {("2026-09-04", 0.0): ({}, ExposureDiagnostics(0, 0, 0, 0, ""))}
 
     def to_dict(self):
         return {}
@@ -101,7 +101,7 @@ def test_producer_gates_projection_on_demand(monkeypatch, view):
     view(tk)
     server._terrain_refresh_one(tk, time.time())
     assert calls["n"] == 1
-    assert calls["args"] == (len(_REAL_CHAIN), {("2026-09-04", 0.0): ({}, ExposureDiagnostics(0, 0, 0, ""))})
+    assert calls["args"] == (len(_REAL_CHAIN), {("2026-09-04", 0.0): ({}, ExposureDiagnostics(0, 0, 0, 0, ""))})
     surf = dict(_cached_surface(tk))
     # the spot that priced this generation travels with it; no contract was streaming
     assert surf == {

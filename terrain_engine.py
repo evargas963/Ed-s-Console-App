@@ -567,7 +567,8 @@ def per_strike_view(books: dict, exposures: dict, net_gex_peak: float | None, sp
     `net_gex_peak` (the published level, pick_net_gex_peak_strike) for the GEX rows, and the
     largest-magnitude row of the DEX and OI rows. `side_sums`: the GEX rows' net GEX summed
     below and above `spot`, the price this publication was computed at (`spot_basis`); a strike
-    at that price is on neither side."""
+    at that price is on neither side. `expiry_unknown`: the contracts whose settlement cannot be
+    determined, in no row (the books' own count)."""
     from math_exposure_core import merge_exposure_books
 
     def rows(keep) -> list:
@@ -582,6 +583,7 @@ def per_strike_view(books: dict, exposures: dict, net_gex_peak: float | None, sp
     return {"all": all_rows,
             "near": rows(lambda d: d is not None and d <= 7),
             "far": rows(lambda d: d is not None and d > 7),
+            "expiry_unknown": sum(diag.expiry_unknown for _book, diag in books.values()),
             **measures,
             "side_sums": None if not all_rows else {
                 "gex_below": round(sum(g for k, g, _v in all_rows if k < spot), 1),

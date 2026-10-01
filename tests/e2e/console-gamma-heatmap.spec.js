@@ -459,6 +459,26 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(col.nth(2)).toHaveAttribute('title', /vendor refused/);
   });
 
+  test('a column whose settlement is unknown prints its served reason, never EXPIRED', async ({ page }) => {
+    // server.project_gamma_surface serves settlement_unknown_reason for an expiry the calendar
+    // cannot settle; it is not expired and not the front column. The header prints the reason.
+    const surf = surfaceWithContracts(3, 3);
+    const e = surf.expirations.map((x) => x.expiry);
+    const why = 'settlement unknown: ' + e[1] + ' has no session close in the market calendar (a holiday or an unreadable date); its contracts are in no cell';
+    surf.front_expiry = e[0];
+    surf.expirations = surf.expirations.map((x, i) => Object.assign({}, x, { expired: false,
+      settlement_unknown_reason: i === 1 ? why : null }));
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surf) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const col = page.locator('.heat thead th.hexp');
+    await expect(col).toHaveCount(3);
+    await expect(col.nth(1).locator('.dte')).toHaveText('SETTLES ?');
+    await expect(col.nth(1)).toHaveAttribute('title', why);
+    await expect(page.locator('.heat thead th.hexp.expired')).toHaveCount(0);
+    await expect(col.nth(0)).toHaveClass(/col-front/);
+  });
+
   test('Wider and All scope declare real streaming demand for what they display, not zero (2026-09-13, operator-directed)', async ({ page }) => {
     // Independent-review finding (2026-09-13), operator-directed: Wider/All used to demand
     // ZERO contracts unconditionally, regardless of what they actually displayed --
@@ -834,8 +854,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   // REAL-DATA VIEWPORT PROOF (2026-09-10 visual FAIL on the running candidate): the fixture is the
   // REAL /api/options/gamma-surface response captured from the candidate at 06:35 CDT — SPY, 116
-  // strikes x 16 expirations, banked_morning_reference from 2026-09-09 — plus the two fields the
-  // server now stamps (session_date_et / prior_session / per-expiration expired; the pre-fix capture
+  // strikes x 16 expirations, banked_morning_reference from 2026-09-09 — plus the fields the
+  // server now stamps (session_date_et / per-expiration expired; the pre-fix capture
   // predates them). Nothing else is altered. The proof: the canonical population is intact and
   // disclosed, Auto selects a legible viewport, Wider widens it, All available exposes everything at
   // the same row height, and an expired prior-session column is never dressed as current structure.
@@ -845,7 +865,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // reference, and this test is about viewport layout over a real 116x16 population.
     const stamped = Object.assign({}, REAL, {
       source: 'terrain_live_cache', live: true, stale: false, degraded: null,
-      session_date_et: '2026-09-10', prior_session: false, spot_strike: 764, front_expiry: '2026-09-10',
+      session_date_et: '2026-09-10', spot_strike: 764, front_expiry: '2026-09-10',
       expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10' })),
     });
     expect(stamped.strikes.length).toBe(116); expect(stamped.expirations.length).toBe(16);

@@ -90,6 +90,9 @@ class ExposureDiagnostics:
     contracts_total: int
     contracts_used: int
     greeks_missing: int
+    #: contracts whose settlement cannot be determined (no readable expiry, or an expiry date
+    #: with no session close): in no book, counted here
+    expiry_unknown: int
     note: str
 
 
@@ -107,6 +110,9 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             "oi_unreported": 0,
             # Same discipline for totalVolume: an unreported one is UNKNOWN, never zero.
             "volume_unreported": 0,
+            # Contracts at this strike whose settlement cannot be determined (no readable expiry,
+            # or an expiry date with no session close): their OI and greeks are in no book.
+            "expiry_unknown": 0,
             # Operator directive (2026-09-15, canonical input-validity rules): has_oi answers
             # "did any contract clear the OI gate"; has_valid_gamma answers the INDEPENDENT
             # question "did any contract that cleared it ALSO report genuine, vendor-
@@ -176,6 +182,7 @@ def compute_exposures_by_strike(
     total = 0
     used = 0
     missing = 0
+    expiry_unknown = 0
 
     # RC-345 / F13: T for the BS-vanna faucet comes from the ONE valuation-T authority,
     # time_et.time_to_expiry_years (intraday ACT/365 to session close), NOT a local
@@ -184,14 +191,16 @@ def compute_exposures_by_strike(
     # valuation instant when given (a replay of a stored chain must price at the snapshot's
     # time -- 2026-09-25: compute_terrain(now=...) priced gamma at the snapshot but vanna at
     # the wall clock, so the same stored chain gave a different vanna on every run), else now.
-    from time_et import time_to_expiry_years as _tte, now_et as _now_et
+    from time_et import settlement_et as _settles, time_to_expiry_years as _tte, now_et as _now_et
     _tte_now = now if now is not None else _now_et()
-    _tte_cache: dict[tuple, float | None] = {}
+    _tte_cache: dict[tuple, tuple[bool, float | None]] = {}
 
-    def _tte_memo(ct: dict) -> float | None:
+    def _tte_memo(ct: dict) -> tuple[bool, float | None]:
+        """(whether the contract's settlement is known, its time to expiry: None once settled)"""
         key = (str(ct.get("expirationDate")), ct.get("settlementType"))
         if key not in _tte_cache:
-            _tte_cache[key] = _tte(key[0], now=_tte_now, settlement_type=key[1])
+            _tte_cache[key] = (_settles(key[0], key[1]) is not None,
+                               _tte(key[0], now=_tte_now, settlement_type=key[1]))
         return _tte_cache[key]
 
     for ct in contracts:
@@ -218,10 +227,15 @@ def compute_exposures_by_strike(
             k = "call_volume" if side == "CALL" else "put_volume"
             b[k] = vol if b[k] is None else float(b[k]) + vol
 
-        # A contract at or past its settlement (or with no readable expiry) is not open
-        # exposure: its volume traded, its open interest and greeks are in no book. The same
-        # rule the gamma profile prices by (math_levels._contract_inputs).
-        t_years = _tte_memo(ct)
+        # A contract at or past its settlement is not open exposure: its volume traded, its open
+        # interest and greeks are in no book. The same rule the gamma profile prices by
+        # (math_levels._contract_inputs). One whose settlement cannot be determined is in no book
+        # either, and is counted.
+        settles_known, t_years = _tte_memo(ct)
+        if not settles_known:
+            expiry_unknown += 1
+            b["expiry_unknown"] += 1
+            continue
         if t_years is None:
             continue
 
@@ -314,17 +328,17 @@ def compute_exposures_by_strike(
         b["net_dex_dollars"] = b.get("call_dex_dollars", 0.0) - b.get("put_dex_dollars", 0.0)
         b["net_gex_1pct"] = b.get("call_gex_1pct", 0.0) - b.get("put_gex_1pct", 0.0)
 
-    return exposures, _diagnostics(total, used, missing)
+    return exposures, _diagnostics(total, used, missing, expiry_unknown)
 
 
-def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
+def _diagnostics(total: int, used: int, missing: int, expiry_unknown: int) -> ExposureDiagnostics:
     note = "OK"
     if used == 0:
         note = "No usable contracts (OI filtered or chain empty)."
     elif missing == used:
         note = "All greeks missing (-999). You will still get OI center; gamma/delta pin/inf may be N/A until RTH."
     return ExposureDiagnostics(contracts_total=total, contracts_used=used,
-                               greeks_missing=missing, note=note)
+                               greeks_missing=missing, expiry_unknown=expiry_unknown, note=note)
 
 
 def exposure_books(contracts: List[dict], *, spot: float | None, now=None
@@ -347,11 +361,12 @@ def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics
     order): every bucket field is a per-contract sum or an OR of a per-contract flag, and a
     leg no contract reported stays None (None + x = x)."""
     merged: Dict[float, dict] = {}
-    total = used = missing = 0
+    total = used = missing = expiry_unknown = 0
     for exposures, diag in books:
         total += diag.contracts_total
         used += diag.contracts_used
         missing += diag.greeks_missing
+        expiry_unknown += diag.expiry_unknown
         for strike, bucket in exposures.items():
             cur = merged.get(strike)
             if cur is None:
@@ -363,7 +378,7 @@ def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics
                 elif v is not None:
                     c = cur.get(k)
                     cur[k] = v if c is None else c + v
-    return merged, _diagnostics(total, used, missing)
+    return merged, _diagnostics(total, used, missing, expiry_unknown)
 
 
 #: The per-strike bucket fields that are flags (OR-ed when books merge); every other field is

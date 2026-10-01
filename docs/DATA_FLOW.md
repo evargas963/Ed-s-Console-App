@@ -200,9 +200,15 @@ opens no second streaming socket).
   contract past it carries no open interest or greeks into any level, wall, regime or total; its
   session volume stays in the per-strike rows. One rule, in
   `math_exposure_core.compute_exposures_by_strike` and `math_levels._contract_inputs`
-  (`tests/test_gamma_flip_absence_v1.py`). The heatmap labels a column expired by the same
-  settlement time (`time_et.settlement_et`), read when the surface is served: once the column's
-  last contract has settled. The settlement time is read from Schwab's `settlementType` on each
+  (`tests/test_gamma_flip_absence_v1.py`). A contract whose settlement cannot be determined (no
+  readable expiry, or an expiry date with no session close) is in no book either and is counted
+  (`expiry_unknown`, per strike and in the book's diagnostics), and the gamma surface
+  (`contracts_expiry_unknown`), the per-strike rows (`today` / `prior` `expiry_unknown`) and the
+  forces (`contracts_expiry_unknown`) serve that count. The heatmap labels a column expired by
+  the same settlement time (`time_et.settlement_et`), at the one instant the route judges the
+  response at: once the column's last contract has settled. A column whose settlement is unknown
+  is not expired: it carries its reason (`settlement_unknown_reason`), the header prints it, and
+  it is never the front expiry. The settlement time is read from Schwab's `settlementType` on each
   contract: "A" is the 09:30 ET open of the expiration date, "P" the cash close (16:00 ET, 13:00
   on an early close). Checked 2026-09-30 against the contract specifications and the 43 stored
   chains: Schwab sends "A" with a last trading day one day before expiry for the SPX and

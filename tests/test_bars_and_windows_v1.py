@@ -135,3 +135,19 @@ def test_the_atr_leaves_out_the_candle_still_forming(atr_db):
     # today's stored bars end 16:15 ET: the day's candle is complete from then
     assert compute_atr_pair(atr_db, "ATRX", datetime(2026, 9, 30, 16, 14, tzinfo=ET)).daily == 10.0
     assert compute_atr_pair(atr_db, "ATRX", datetime(2026, 9, 30, 16, 15, tzinfo=ET)).daily == with_today
+
+
+def test_the_published_atr_is_judged_at_the_instant_its_entry_point_passes(atr_db, monkeypatch):
+    """The levels' ATR read the wall clock below its entry point (now_et for the candles,
+    time.time for the cache), so one publication was judged at two clocks. It is computed at the
+    `now` the levels producer was given, and kept for ATR_TTL_SEC of that clock. Stated instants:
+    Wednesday 2026-09-30 09:40, 09:46 and 09:56 ET."""
+    class _Db:
+        db_path = atr_db
+    monkeypatch.setattr(srv, "get_db", lambda: _Db())
+    monkeypatch.setattr(srv, "_atr_cache", {})
+    with_today = round(round((13 * 10.0 + 1.0) / 14, 4), 3)
+    at = lambda h, m: datetime(2026, 9, 30, h, m, tzinfo=ET).timestamp()   # noqa: E731
+    assert srv._atr_fields("ATRX", at(9, 40))["atr_15m"] == 10.0
+    assert srv._atr_fields("ATRX", at(9, 46))["atr_15m"] == 10.0          # within ATR_TTL_SEC of 09:40
+    assert srv._atr_fields("ATRX", at(9, 56))["atr_15m"] == with_today    # recomputed at 09:56

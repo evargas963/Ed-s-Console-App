@@ -239,7 +239,7 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields(monkeypatch):
     capture's own label stored). The one producer sets them all."""
     from terrain_atr import AtrPair
     _stream({}, monkeypatch)
-    monkeypatch.setattr(server, "_atr_pair", lambda tk: AtrPair(4.2, 0.7))
+    monkeypatch.setattr(server, "_atr_pair", lambda tk, now: AtrPair(4.2, 0.7))
     now = time.time()
     server._publish_levels(TK, _CONTRACTS, now, now=now)
     live = _cached()

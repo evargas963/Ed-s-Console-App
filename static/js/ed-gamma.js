@@ -481,10 +481,11 @@
       // above), so a column's tooltip only ever distinguishes expired vs the real
       // accept/observed/rejected outcome (demandTitle), never a client-guessed capacity cut.
       var streamed = !!demandColSet[j];
-      var dte = expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
+      var unknown = e.settlement_unknown_reason;   // served: its settlement cannot be determined
+      var dte = expired ? 'EXPIRED' : unknown ? 'SETTLES ?' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
       var title = expired
         ? 'this expiration has already expired — a prior-session column kept for reference, not current structure'
-        : demandTitle(streamed, (surface.stream_by_expiry || {})[e.expiry]);
+        : unknown || demandTitle(streamed, (surface.stream_by_expiry || {})[e.expiry]);
       tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') + (streamed ? ' stream-demand' : '') + '"' +
         ' data-col="' + j + '" title="' + escapeHtml(title) + '"' +
         '><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';

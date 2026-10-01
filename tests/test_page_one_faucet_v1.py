@@ -11,12 +11,14 @@ The one stand-in is the live price: no stream runs in a test, so resolve_spot re
 price, LIVE, to tell the live price apart from the capture's own."""
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 import server
 from terrain_engine import compute_terrain
+from time_et import ET
 
 _REAL = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
                    .read_text(encoding="utf-8"))
@@ -30,6 +32,10 @@ LIVE = PUBLISHED + 1.0                     # stand-in for the stream's price
 @pytest.fixture(autouse=True)
 def _at_capture(pin_clock):
     return pin_clock(2026, 9, 2, 10, 5)    # the chain's own capture time
+
+
+def _at_capture_ts() -> float:
+    return datetime(2026, 9, 2, 10, 5, tzinfo=ET).timestamp()
 
 
 @pytest.fixture
@@ -222,7 +228,8 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served(held, monkeyp
     assert surf["stream_by_expiry"][EXPIRY] == "partial"          # one live leg in the column
     ages = [c["stream"][0]["age_sec"] for c in surf["cells"] if c["stream"][0] and c["stream"][0]["age_sec"] is not None]
     assert ages and max(ages) == pytest.approx(90, abs=1)
-    body = json.loads(server.get_options_gamma_surface(ticker=TK).body)
+    # judged at the one instant the route is given: the chain's capture time
+    body = json.loads(server.options_gamma_surface(TK, _at_capture_ts()).body)
     assert body["front_expiry"] == EXPIRY
 
 

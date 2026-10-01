@@ -35,6 +35,7 @@ from math_levels import (
     compute_gamma_profile,
     profile_sign_changes,
 )
+from math_exposure_core import compute_exposures_by_strike
 from numeric_contract import schwab_count
 from terrain_engine import compute_terrain
 from terrain_read import REGIME_LONG_GAMMA, REGIME_UNAVAILABLE
@@ -169,6 +170,40 @@ def test_a_contract_past_its_settlement_is_in_no_book_and_keeps_its_volume():
     # 2026-09-29 contracts are open exposure then
     before = compute_terrain("IWM", cap["chain"], cap["spot"], now=now.replace(hour=15, minute=30))
     assert before.book_oi_total == _oi(cap["chain"]) and before.max_pain_dte == 0
+
+
+def test_a_contract_whose_settlement_cannot_be_determined_is_counted_wherever_its_book_is_served(monkeypatch):
+    """A contract with no readable expiry was dropped from the exposure book with no count. It is
+    in no book and is counted beside `oi_unreported` / `volume_unreported`: per strike, in the
+    book's diagnostics, and in what the gamma surface, the per-strike rows (today's and the prior
+    day's) and the forces serve. Real Schwab chain: MTA's 2026-09-29 close capture, its front
+    expiry (2026-10-16) relabelled 2026-11-26 (Thanksgiving, no session close), a stand-in for an
+    expiry the calendar cannot settle; the older capture for the forces and prior rows is the
+    same chain as Schwab sent it, a day earlier (stand-in)."""
+    cap, now = _capture("real_mta_close_capture_2026_09_29.json")
+    unknown = [dict(c, expirationDate="2026-11-26T20:00:00.000+00:00")
+               for c in cap["chain"] if c["expirationDate"][:10] == "2026-10-16"]
+    chain = unknown + [c for c in cap["chain"] if c["expirationDate"][:10] != "2026-10-16"]
+    n = len(unknown)
+    assert n == 16
+
+    exposures, diag = compute_exposures_by_strike(chain, spot=cap["spot"], now=now)
+    assert diag.expiry_unknown == n and sum(b["expiry_unknown"] for b in exposures.values()) == n
+    snap = compute_terrain("MTA", chain, cap["spot"], now=now)
+    assert server.project_gamma_surface(chain, snap.books)["contracts_expiry_unknown"] == n
+    assert snap.per_strike["expiry_unknown"] == n
+
+    monkeypatch.setattr(server, "terrain_cache_get", lambda tk, t: {
+        "_per_strike": snap.per_strike, "computed_ts_utc": cap["ts_utc"], "spot": cap["spot"]})
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **k: (cap["spot"], server.SPOT_SOURCE_PLANE, cap["ts_utc"]))
+    assert json.loads(server.get_terrain_strikes(ticker="MTA").body)["today"]["expiry_unknown"] == n
+
+    newer = {"et_date": "2026-09-29", "spot": cap["spot"], "contracts": chain, "ts_utc": cap["ts_utc"]}
+    older = {"et_date": "2026-09-28", "spot": cap["spot"], "contracts": cap["chain"], "ts_utc": cap["ts_utc"] - 86400}
+    forces = server._forces_from_captures("MTA", [newer, older])
+    assert forces["available"] is True and forces["contracts_expiry_unknown"] == {"newer": n, "older": 0}
+    prior, _src = server._prior_strikes([newer | {"et_date": "2026-09-28"}], cap["ts_utc"])
+    assert prior["expiry_unknown"] == n
 
 
 @pytest.fixture

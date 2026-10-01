@@ -13,6 +13,7 @@ import server
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
 from db import EdDB
 from server import get_options_gamma_surface, ticker_storage_key
+from terrain_engine import compute_terrain
 from time_et import ET, settlement_et
 
 #: stand-in (named): a published surface, built by hand; these tests prove the route's freshness
@@ -219,38 +220,54 @@ def test_a_refresh_publishes_the_same_fields_for_any_ticker(_fresh, monkeypatch,
     assert _call(tk)["available"] is True
 
 
-def test_surface_session_identity_is_stamped_by_the_server_clock():
+def test_surface_session_identity_is_stamped_at_the_routes_instant(monkeypatch):
     """Real-data repair 2026-09-10: a banked 2026-09-09 reference viewed on 2026-09-10 rendered its
-    expired 0DTE column as current structure. The server (the ONE ET clock) now stamps today's
-    session date, per-expiration `expired`, and `prior_session` for a reference from an earlier
-    day; presentation reads these, never a browser clock. Cell values are untouched.
-    A column is expired once its last contract has settled -- the rule that takes a contract out
-    of the book (2026-09-30: it was the expiry date being before today, so a column whose
-    contracts settled at 16:00 read current until midnight) -- or when its settlement is unknown."""
+    expired 0DTE column as current structure. The server stamps the session date and each
+    column's `expired` at the one instant the route judges the whole response at; presentation
+    reads these, never a browser clock. Cell values are untouched. A column is expired once its
+    last contract has settled -- the rule that takes a contract out of the book. The stated
+    instant: Wednesday 2026-09-30 15:00 ET; the published surface is a stand-in."""
+    NOW = datetime(2026, 9, 30, 15, 0, tzinfo=ET).timestamp()
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (584.0, server.SPOT_SOURCE_PLANE, NOW))
+    monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk, now: None)
     tk = ticker_storage_key("SPY")
-    now = server.now_et().timestamp()
-    surf = dict(_SURF, expirations=[{"expiry": "2000-01-03", "dte": 0, "settles_ts_utc": now - 60},
-                                    {"expiry": "2999-01-15", "dte": 9, "settles_ts_utc": now + 3600},
-                                    {"expiry": "2999-01-16", "dte": 10, "settles_ts_utc": None}])
+    surf = dict(_SURF, expirations=[{"expiry": "2026-09-29", "dte": 0, "settles_ts_utc": NOW - 60},
+                                    {"expiry": "2026-10-09", "dte": 9, "settles_ts_utc": NOW + 3600}])
     _clear(tk)
     with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 583.41,
-                                     "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
+        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": NOW - 5, "spot": 583.41,
+                                     "spot_source": "last", "spot_as_of_ts_utc": NOW - 5, "chain_basis": "full"}
     try:
-        d = _call(tk)
-        today = server.now_et().strftime("%Y-%m-%d")
-        assert d["session_date_et"] == today
-        assert [e["expired"] for e in d["expirations"]] == [True, False, True]
-        assert d["front_expiry"] == "2999-01-15"               # the nearest column not expired
-        assert d["prior_session"] is False                     # a live surface is this session's
+        d = json.loads(server.options_gamma_surface(tk, NOW).body)
+        assert d["session_date_et"] == "2026-09-30"
+        assert [e["expired"] for e in d["expirations"]] == [True, False]
+        assert d["front_expiry"] == "2026-10-09"               # the nearest column not expired
         assert d["cells"] == _SURF["cells"]                    # values untouched
     finally:
         _clear(tk)
-    # a banked reference from an earlier trading day is a PRIOR-session reference
-    stamped = server._stamp_surface_session(surf, reference_date="2000-01-03")
-    assert stamped["prior_session"] is True
-    assert stamped["cells"] == surf["cells"] and stamped["strikes"] == surf["strikes"]
-    assert server._stamp_surface_session(surf, reference_date=today)["prior_session"] is False
+    # the same surface one hour later, after the second column settled: every column expired
+    later = server._stamp_surface_session(surf, now=NOW + 3600)
+    assert [e["expired"] for e in later["expirations"]] == [True, True] and later["front_expiry"] is None
+
+
+def test_an_expiry_whose_settlement_is_unknown_is_its_own_state_never_expired_or_front():
+    """Unknown settlement is not expiry: the column is served not expired, with its reason, and is
+    never chosen as the front expiry. It was labelled expired and dropped from the front choice.
+    Real Schwab chain: MTA's 2026-09-29 close capture; its front expiry (2026-10-16) relabelled
+    2026-11-26 (Thanksgiving, no session close), a stand-in for an expiry the calendar cannot settle."""
+    doc = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_mta_close_capture_2026_09_29.json")
+                     .read_text(encoding="utf-8"))
+    chain = [dict(c, expirationDate="2026-11-26T20:00:00.000+00:00") if c["expirationDate"][:10] == "2026-10-16"
+             else c for c in doc["chain"]]
+    now = datetime.fromtimestamp(doc["ts_utc"], ET)
+    snap = compute_terrain("MTA", chain, doc["spot"], now=now)
+    stamped = server._stamp_surface_session(server.project_gamma_surface(chain, snap.books), now=doc["ts_utc"])
+    by = {e["expiry"]: e for e in stamped["expirations"]}
+    assert by["2026-11-26"]["expired"] is False
+    assert by["2026-11-26"]["settles_ts_utc"] is None
+    assert "settlement unknown" in by["2026-11-26"]["settlement_unknown_reason"]
+    assert [e for e, x in by.items() if x["settlement_unknown_reason"] is not None] == ["2026-11-26"]
+    assert stamped["front_expiry"] == "2026-11-20"             # the nearest expiry with a known settlement
 
 
 def test_no_live_surface_is_unavailable_with_its_reason_never_a_fallback():
