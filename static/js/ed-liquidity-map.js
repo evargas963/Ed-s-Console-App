@@ -77,7 +77,7 @@
         label: 'option levels' + (o.levels_state === 'closed' && o.levels_as_of ? ' as of ' + o.levels_as_of : '') })) : '');
     h.querySelector('.liqm-zones').innerHTML = '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored, /api/liquidity-snapshot) ' +
       '<span class="liqm-inputs">' + inputs + '</span></div>' +
-      (o && o.levels_stale ? '<div class="sm liqm-absent">option levels: ' + esc(o.levels_stale_reason) + '</div>' : '') +
+      (o && o.levels_state === 'stale' ? '<div class="sm liqm-absent">option levels: ' + esc(o.levels_stale_reason) + '</div>' : '') +
       (zones.length ? zones.map(zoneRow).join('') : '<div class="sm">' + esc((snap && snap.reason) || 'no zones for this session yet') + '</div>') +
       absent + '</div>';
   }

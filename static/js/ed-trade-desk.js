@@ -128,14 +128,15 @@
       ['Net GEX @ spot', d.net_gex_at_spot != null ? (Number(d.net_gex_at_spot) / 1e6).toFixed(1) + 'M' : '—'],
       // whether the regime is current, as served: stale with its reason, a past observation
       // with its time after the close, or its age
-      ['Levels', d.levels_stale ? (d.levels_stale_reason || 'stale') : d.levels_market_closed ? 'as of ' + (d.levels_as_of || '—')
-        : d.levels_age_sec != null ? window.EdShell.fmtAge(d.levels_age_sec) + ' old' : '—'],
+      ['Levels', d.levels_state === 'stale' ? (d.levels_stale_reason || 'stale') : d.levels_state === 'closed' ? 'as of ' + (d.levels_as_of || '—')
+        : d.levels_state === 'live' && d.levels_age_sec != null ? window.EdShell.fmtAge(d.levels_age_sec) + ' old' : '—'],
       // why no regime is issued, or what every regime rests on (both served)
       d.regime_reason ? ['No regime', d.regime_reason] : ['Basis', d.regime_basis || '—'],
     ]);
     // a stale regime is badged STALE, never by its confidence alone
     return stage(3, 'td-accent-amber', 'Confirm — options regime', d.regime || '—', '', 0, rows,
-      d.levels_stale ? 'STALE' : (d.confidence || null), d.levels_stale ? 'stale' : d.confidence === 'TRUSTED' ? 'live' : 'warn');
+      d.levels_state === 'stale' ? 'STALE' : (d.confidence || null),
+      d.levels_state === 'stale' ? 'stale' : d.confidence === 'TRUSTED' ? 'live' : 'warn');
   }
 
   // ---- Context Summary: plain-English arrangement of the SAME 4 responses. Classifies
@@ -362,8 +363,8 @@
     var totVol = mig ? mig.volume_total : null;   // served: the scope's session volume
     var volNote = '';
     if (totVol === 0) {
-      volNote = strikesD.levels_stale
-        ? '<div class="mig-vol-note stale">zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source badge above</div>'
+      volNote = strikesD.levels_state === 'stale'
+        ?'<div class="mig-vol-note stale">zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source badge above</div>'
         : '<div class="mig-vol-note">no option volume yet this session — the counter resets at the new session and fills from the open</div>';
     }
     // Wiring itself must wait until this HTML is actually in the DOM (loadImpl assigns

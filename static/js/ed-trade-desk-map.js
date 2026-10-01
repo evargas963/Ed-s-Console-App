@@ -58,6 +58,14 @@
     if (sec < 172800) return (sec / 3600).toFixed(1) + 'h';
     return Math.round(sec / 86400) + 'd';
   }
+  // the option chain's served levels_state, printed: its time after the close, STALE with its age
+  // and served reason, or its age
+  function chainState(t) {
+    var s = t.levels_state;
+    return s === 'closed' ? 'as of ' + esc(t.levels_as_of)
+      : s === 'stale' ? 'STALE ' + age(t.levels_age_sec) + ' — ' + esc(t.levels_stale_reason || '')
+      : s === 'live' ? age(t.levels_age_sec) + ' old' : 'state not served';
+  }
   function whenCT(ts) {
     var d = new Date(ts * 1000);
     return (CT_DAYKEY.format(d) === CT_DAYKEY.format(new Date()) ? '' : CT_MD.format(d) + ' ') + CT_HM.format(d);
@@ -436,10 +444,10 @@
         c.querySelector('.tdm-rows').innerHTML = '';
       } else {
         var reg = String(t.regime || '').replace(/_/g, ' ');
-        state(c, reg || '—', t.levels_stale ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
+        state(c, reg || '—', t.levels_state === 'stale' ? 'warn' : (/LONG/.test(t.regime || '') ? 'up' : /SHORT/.test(t.regime || '') ? 'dn' : ''));
         var ng = t.net_gex_at_spot;   // absent is uncoloured, never read as 0
         c.querySelector('.tdm-hero').innerHTML = '<span class="' + (ng == null ? '' : ng >= 0 ? 'up' : 'dn') + '">' + usd(ng) + '</span> <small>net dealer gamma at spot, per 1%</small>';
-        src(c, 'Schwab option chain · ' + (t.levels_market_closed ? 'as of ' + esc(t.levels_as_of) : t.levels_stale ? 'stale ' + age(t.levels_age_sec) : age(t.levels_age_sec) + ' old'));
+        src(c, 'Schwab option chain · ' + chainState(t));
         c.querySelector('.tdm-rows').innerHTML = row('Call wall', num(t.call_wall), 'up') + row('Put wall', num(t.put_wall), 'dn') +
           // a served caveat on the flip marks it here (*) and is spelled out at the end of the line
           row('Flip', (t.gamma_flip != null ? num(t.gamma_flip) : esc(t.gamma_flip_reason || '—')) + (t.gamma_flip_caveat ? ' *' : '')) +
@@ -459,7 +467,7 @@
         state(c, 'ATM IV ' + num(im.iv_pct_atm, 1) + '%', '');
         c.querySelector('.tdm-hero').innerHTML = '±' + num(im.points, 2) + ' <small>implied 1-day move, 1σ</small>';
       }
-      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : t.levels_market_closed ? 'as of ' + esc(t.levels_as_of) : age(t.levels_age_sec) + ' old'));
+      src(c, 'Schwab option chain · ' + (!t || t.error ? '—' : chainState(t)));
       c.querySelector('.tdm-rows').innerHTML =
         (im && im.dte_used != null ? row('Move from', 'first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)') : '') +
         row('ATR daily', t && t.atr_daily != null ? num(t.atr_daily) : esc((t && t.atr_daily_reason) || '—')) +
@@ -537,7 +545,9 @@
     h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad')
       : pill('LEVELS', slStale ? 'STALE' : age(L.snapshot_age_sec), slStale || degraded ? 'warn' : 'ok',
           [slStale ? sl.reason : '', degraded].filter(Boolean).join('; ') || 'age of the newest bar the session levels are built from');
-    h += t === undefined ? pill('GAMMA', '…', '') : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) || 'terrain request failed') : pill('GAMMA', t.levels_stale ? 'STALE ' + age(t.levels_age_sec) : age(t.levels_age_sec), t.levels_stale ? 'warn' : 'ok', t.levels_stale_reason || '');
+    h += t === undefined ? pill('GAMMA', '…', '') : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) || 'terrain request failed') : pill('GAMMA', t.levels_state === 'stale' ? 'STALE ' + age(t.levels_age_sec) : t.levels_state === 'closed' ? 'CLOSED' : age(t.levels_age_sec),
+          t.levels_state === 'live' ? 'ok' : 'warn',   // the served levels_state, printed with its reason or time
+          t.levels_state === 'closed' ? 'market closed: levels as of ' + t.levels_as_of : t.levels_stale_reason || '');
     host.innerHTML = h;
   }
   function paintFooter() {

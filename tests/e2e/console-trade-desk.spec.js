@@ -20,7 +20,7 @@ const EVENTS = {
 };
 const SPOT = 771.3;
 const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, put_wall: 765, max_pain: 770, regime: 'LONG_GAMMA',
-  posture: 'PINNED', levels_stale: false, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3,
+  posture: 'PINNED', levels_state: 'live', levels_stale: false, flip_relation: 'ABOVE', dist_to_call_wall: 3.7, dist_to_put_wall: 6.3,
   call_wall_relation: 'BELOW', put_wall_relation: 'ABOVE', pcr_all: 1.1,
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [], snapshot_age_sec: 45,
@@ -601,7 +601,7 @@ test.describe('Trade Desk renders served values', () => {
     // levels an hour old read like current ones
     const errs = watchErrors(page);
     await intercept(page);
-    let t = Object.assign({}, TERRAIN, { confidence: 'TRUSTED', levels_stale: true, levels_age_sec: 3600,
+    let t = Object.assign({}, TERRAIN, { confidence: 'TRUSTED', levels_state: 'stale', levels_stale: true, levels_age_sec: 3600,
       levels_stale_reason: 'levels are 3600s old and every refresh since is failing — HTTP 502' });
     await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(t) }));
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
@@ -609,10 +609,30 @@ test.describe('Trade Desk renders served values', () => {
     const confirm = page.locator('#tdBody .td-stage.td-accent-amber');
     await expect(confirm.locator('.fl-badge')).toHaveText('STALE');
     await expect(confirm).toContainText('levels are 3600s old and every refresh since is failing — HTTP 502');
-    t = Object.assign({}, TERRAIN, { confidence: 'TRUSTED', levels_stale: false, levels_market_closed: true, levels_as_of: 'Fri 09/25 03:15 PM CT' });
+    t = Object.assign({}, TERRAIN, { confidence: 'TRUSTED', levels_state: 'closed', levels_stale: false, levels_market_closed: true, levels_as_of: 'Fri 09/25 03:15 PM CT' });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(confirm).toContainText('Levels' + 'as of Fri 09/25 03:15 PM CT');
     await expect(confirm.locator('.fl-badge')).toHaveText('TRUSTED');
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk: stale terrain reads STALE with its served reason on the Volatility card and the GAMMA pill', async ({ page }) => {
+    // the Volatility card printed stale terrain as "N old" with no STALE label, and the GAMMA pill
+    // decided its state on the page from levels_stale; both print the served levels_state
+    const why = 'levels are 3600s old and every refresh since is failing — HTTP 502';
+    const errs = watchErrors(page);
+    await intercept(page);
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, { levels_state: 'stale', levels_stale: true, levels_age_sec: 3600, levels_stale_reason: why,
+        implied_1d_move: { iv_pct_atm: 14.2, points: 6.1, dte_used: 1 } })) }));
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdmCardVol .tdm-src')).toHaveText('Schwab option chain · STALE 60m — ' + why);
+    await expect(page.locator('#tdmCardOpt .tdm-src')).toHaveText('Schwab option chain · STALE 60m — ' + why);
+    const pill = page.locator('#tdmTrust .tdm-pill', { hasText: 'GAMMA' });
+    await expect(pill).toContainText('STALE 60m');
+    await expect(pill).toHaveAttribute('title', why);
+    await expect(pill).toHaveClass(/warn/);
     expect(errs).toEqual([]);
   });
 

@@ -92,7 +92,7 @@
     }
     // B: the levels rail recedes when terrain reports stale
     var klb = document.getElementById('klBody');
-    if (klb) klb.classList.toggle('recede', !!d.levels_stale);
+    if (klb) klb.classList.toggle('recede', d.levels_state === 'stale');
     // freshness / provenance line
     var src = document.getElementById('klSrc');
     if (src) {
