@@ -121,6 +121,10 @@ def test_the_pushed_bar_is_the_routes_bar_at_every_timeframe(monkeypatch, tmp_pa
     # chart convention: it was the first held minute's, which a late minute could move)
     assert last["tf"]["D"]["o"] == stored[0]["open"]
     assert last["tf"]["D"]["t"] == datetime(2026, 9, 25, tzinfo=ET).timestamp()
+    # each bar carries its label, served (the chart formatted bar times itself): the daily bar its
+    # ET trading date, an intraday bar its Central Time
+    assert last["tf"]["D"]["label"] == "Fri 09/25/2026"
+    assert last["tf"]["5"]["label"] == ct_label(last["tf"]["5"]["t"])
     # the newest hour of 1-minute bars the push carries whole is the hour the chart's history
     # serves (the Trade Desk's Order Flow card shows each as served; its size exists once, on the
     # server: the page asked for its own 60 and cut its own window)
@@ -247,7 +251,7 @@ def test_at_every_minute_of_a_real_day_the_push_is_the_roll_up_at_every_timefram
         so_far = day[:k + 1]
         update = live_price_rows.bar_update("SPY", so_far, so_far[-1], 0.0)
         for tf in live_price_rows.CHART_TFS:
-            assert update["tf"][tf] == live_price_rows.with_change(live_price_rows.aggregate_bars(so_far, tf)[-1]), (k, tf)
+            assert update["tf"][tf] == live_price_rows.served_bar(live_price_rows.aggregate_bars(so_far, tf)[-1], tf), (k, tf)
 
 
 def test_a_bar_that_is_not_a_chart_bar_or_not_subscribed_is_never_pushed(tmp_path):
@@ -301,7 +305,7 @@ def test_a_minute_schwab_sends_late_is_never_pushed_as_a_charts_newest_bar():
         held = sorted((live_price_rows.minute_bar(_msg(b)) for b in order[:k + 1]), key=lambda m: m["t"])
         assert "D" in update["tf"], k                    # the daily bar keeps being pushed
         for tf, bar in update["tf"].items():             # every bar pushed holds every minute held
-            assert bar == live_price_rows.with_change(live_price_rows.aggregate_bars(held, tf)[-1]), (k, tf)
+            assert bar == live_price_rows.served_bar(live_price_rows.aggregate_bars(held, tf)[-1], tf), (k, tf)
         assert [m["t"] for m in update["recent_1m"]] == [m["t"] for m in held][-live_price_rows.RECENT_1M_BARS:]
     for k in (4, 6):                                     # the late minutes' own bars are not tails
         assert "1" not in sent[k]["tf"], k

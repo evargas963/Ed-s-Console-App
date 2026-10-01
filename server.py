@@ -2689,7 +2689,8 @@ def get_bars1m(ticker: str = Query(...),
                limit: int = Query(default=780, ge=1, le=12000),
                tf: str = Query(default="1", pattern=r"^(1|3|5|15|30|60|D)$")):
     """A chart's bar history, as it opens: completed Schwab 1m bars, newest-last, [{t,o,h,l,c,v}]
-    epoch-seconds bar starts, rolled up to `tf` (live_price_rows.aggregate_bars). The bars that
+    epoch-seconds bar starts, rolled up to `tf` (live_price_rows.aggregate_bars), each with its
+    change and label (live_price_rows.served_bar). The bars that
     complete after it come on the daemon's push (live_ui), rolled by the same function.
     `limit` counts 1-minute bars: when the read reaches it, the oldest rolled bar may have lost
     its first minutes to the cut and is not served. `last_bar`: the newest completed minute and
@@ -2700,7 +2701,7 @@ def get_bars1m(ticker: str = Query(...),
     rolled = _lpr.aggregate_bars(bars, tf)
     if tf != "1" and len(bars) == int(limit):
         rolled = rolled[1:]
-    out = [_lpr.with_change(b) for b in rolled]
+    out = [_lpr.served_bar(b, tf) for b in rolled]
     return JSONResponse({"ticker": tk, "bars": out, "tf": tf, "n": len(out),
                          "last_bar": _lpr.last_bar(bars[-1]["t"] if bars else None),
                          # the newest hour of the 1-minute bars read: the Order Flow card's, as the

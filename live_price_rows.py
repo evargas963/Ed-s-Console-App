@@ -20,7 +20,7 @@ from typing import Any, Optional
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
-from time_et import ET, ct_label, is_collect_window_bar_end_ts_utc
+from time_et import ET, ct_label, is_collect_window_bar_end_ts_utc, trading_date_label
 
 SPOT_SOURCE = "streaming_plane"
 #: the chart timeframes: minutes, and "D" (the ET trading date)
@@ -98,10 +98,19 @@ def last_bar(t: Optional[float]) -> Optional[dict[str, Any]]:
     return None if t is None else {"t": t, "label": ct_label(t)}
 
 
+def served_bar(bar: dict[str, Any], tf: str) -> dict[str, Any]:
+    """A chart bar of timeframe `tf` as every route and push serves it: with its change
+    (with_change) and its label -- the bar's Central Time, or a daily bar's ET trading date
+    (time_et.trading_date_label). The chart prints the label; it formats no bar time."""
+    bar = with_change(bar)
+    bar["label"] = trading_date_label(bar["t"]) if tf == "D" else ct_label(bar["t"])
+    return bar
+
+
 def recent_1m(minutes: list[dict]) -> list[dict[str, Any]]:
-    """The newest RECENT_1M_BARS of `minutes` (oldest first), each with its change: the Trade
+    """The newest RECENT_1M_BARS of `minutes` (oldest first), served (served_bar): the Trade
     Desk Order Flow card's hour, served whole by the bar push and by /api/bars1m."""
-    return [with_change(dict(m)) for m in minutes[-RECENT_1M_BARS:]]
+    return [served_bar(dict(m), "1") for m in minutes[-RECENT_1M_BARS:]]
 
 
 def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float) -> dict[str, Any]:
@@ -128,7 +137,7 @@ def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float) -> d
             lo -= 1
         while hi < len(minutes) and tf_bucket_key(minutes[hi]["t"], tf) == key:
             hi += 1
-        by_tf[tf] = with_change(roll_bucket(minutes[lo:hi], tf))
+        by_tf[tf] = served_bar(roll_bucket(minutes[lo:hi], tf), tf)
     return {"ticker": ticker_storage_key(ticker), "ts_recv": ts_recv, "last_bar": last_bar(newest),
             "tf": by_tf, "recent_1m": recent_1m(minutes)}
 

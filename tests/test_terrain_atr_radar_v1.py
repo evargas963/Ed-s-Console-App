@@ -51,9 +51,9 @@ def test_bars1m_endpoint_serves_canonical_bars_shape(monkeypatch):
     body = json.loads(srv.get_bars1m(ticker="SPY", limit=5, tf="1").body)
     assert body["ticker"] == "SPY" and len(body["bars"]) == 5
     row = body["bars"][-1]
-    # each bar carries its served change (live_price_rows.with_change: the bar change is served,
-    # the page computes nothing)
-    assert set(row) == {"t", "o", "h", "l", "c", "v", "chg", "chg_pct"}
+    # each bar carries its served change and its label (live_price_rows.served_bar: the page
+    # computes and formats nothing)
+    assert set(row) == {"t", "o", "h", "l", "c", "v", "chg", "chg_pct", "label"}
     assert (row["t"], row["c"]) == (rows[-1][0], rows[-1][4])
     ts = [b["t"] for b in body["bars"]]
     assert ts == sorted(ts), "bars must be newest-last (ascending time)"

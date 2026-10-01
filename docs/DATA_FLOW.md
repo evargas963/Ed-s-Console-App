@@ -136,8 +136,10 @@ opens no second streaming socket).
   `time_et.is_collect_window_bar_end_ts_utc`; nothing outside it is stored or shown) and its
   roll-up (`live_price_rows.aggregate_bars`: a bar is stamped with its bucket's start,
   `tf_bucket_start` -- the tf-minute bucket's first second, or 00:00 ET of the trading date for
-  the daily bar, which the chart labels with that date -- the chart convention, so no minute
-  held or late moves a bar's time; where buckets begin is BAR-TF's, unchanged).
+  the daily bar -- the chart convention, so no minute held or late moves a bar's time; where
+  buckets begin is BAR-TF's, unchanged). Every bar the route and the push serve carries its
+  label (`live_price_rows.served_bar`: Central Time, or the daily bar's ET trading date,
+  `time_et.trading_date_label`), and the chart prints it; it formats no bar time.
   Schwab sends each minute's bar once, about 2.7 s after the minute ends (median of 1,962 bars,
   5 symbols, 2026-09-30). Charts show completed Schwab bars only, exactly as Schwab sent them,
   with the newest bar's minute (`last_bar`). `limit` counts 1-minute bars, and when the read

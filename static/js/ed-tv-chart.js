@@ -26,12 +26,6 @@
   var CT_FULL = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
   var CT_YEAR = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric' });
   var CT_MONTH = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'short' });
-  // A daily bar's time is the start of its ET trading date (00:00 ET, live_price_rows.tf_bucket_start):
-  // it is a date, not a clock time, and is labelled with that trading date
-  var ET_DATE = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-  var ET_DAY = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
-  var ET_YEAR = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' });
-  var ET_MONTH = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short' });
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
@@ -379,13 +373,17 @@
       rightPriceScale: { autoScale: true, borderColor: P.edge, scaleMargins: { top: 0.08, bottom: 0.22 } },
       timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 8, borderColor: P.edge,
         tickMarkFormatter: function (t, type) {
-          var d = new Date(t * 1000), daily = S.tf === 'D';
-          if (type === 0) return (daily ? ET_YEAR : CT_YEAR).format(d);
-          if (type === 1) return (daily ? ET_MONTH : CT_MONTH).format(d);
-          if (type === 2 || daily) return (daily ? ET_DAY : CT_DAY).format(d);
+          // a daily bar's time is 00:00 ET of its trading date: its tick prints the served label
+          if (S.tf === 'D') { var db = barAt(t); return db ? db.label : ''; }
+          var d = new Date(t * 1000);
+          if (type === 0) return CT_YEAR.format(d);
+          if (type === 1) return CT_MONTH.format(d);
+          if (type === 2) return CT_DAY.format(d);
           return CT_TIME.format(d);
         } },
-      localization: { timeFormatter: barTimeLabel },
+      // the crosshair prints a bar's served label (live_price_rows.served_bar); a time with no bar
+      // (the book heatmap's buckets) its Central Time
+      localization: { timeFormatter: function (t) { var b = barAt(t); return b ? b.label : CT_FULL.format(new Date(t * 1000)) + ' CT'; } },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
       handleScale: { axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: { time: true, price: true }, mouseWheel: true, pinch: true },
       kineticScroll: { mouse: false, touch: true }
@@ -516,11 +514,6 @@
         (S.lastBarLabel ? '<span>Last completed bar ' + esc(S.lastBarLabel) + '</span>' : '') +
         (S.gapNote ? '<span class="tvc-gap">' + esc(S.gapNote) + '</span>' : '');
     }
-    // a bar's time as the chart labels it: its Central Time, or a daily bar's trading date
-    function barTimeLabel(t) {
-      var d = new Date(t * 1000);
-      return S.tf === 'D' ? ET_DATE.format(d) : CT_FULL.format(d) + ' CT';
-    }
     function paintPin() {
       if (!S.pinned) { pinBox.hidden = true; return; }
       var b = barAt(S.pinned.time);
@@ -537,7 +530,7 @@
       if (!b) { S.pinned = null; pinBox.hidden = true; return; }
       pinBox.hidden = false;
       var chg = b.chg, pct = b.chg_pct;   // served per bar
-      pinBox.innerHTML = '<div class="tvc-pin-h"><span>' + esc(barTimeLabel(b.t)) + '</span>' +
+      pinBox.innerHTML = '<div class="tvc-pin-h"><span>' + esc(b.label) + '</span>' +   // served label
         '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
         '<div class="tvc-pin-g"><span>Open</span><b>' + b.o.toFixed(2) + '</b><span>High</span><b>' + b.h.toFixed(2) +
         '</b><span>Low</span><b>' + b.l.toFixed(2) + '</b><span>Close</span><b>' + b.c.toFixed(2) +
@@ -714,7 +707,7 @@
 
     // a served bar as the chart keeps it, and as its candle (the served bar rides on the candle,
     // so the series the library holds is the chart's list of bars)
-    function servedBar(b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; }
+    function servedBar(b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct, label: b.label }; }
     function candle(b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c, customValues: b }; }
 
     var api = {

@@ -16,6 +16,12 @@ def ct_label(ts_utc: float, *, seconds: bool = False) -> str:
         "%a %m/%d %I:%M:%S %p CT" if seconds else "%a %m/%d %I:%M %p CT")
 
 
+def trading_date_label(ts_utc: float) -> str:
+    """The ET trading date an instant falls on, as the screen shows a daily bar: "Fri 09/25/2026"
+    (a date, not a clock time: a daily bar is stamped 00:00 ET of its date)."""
+    return datetime.fromtimestamp(float(ts_utc), ET).strftime("%a %m/%d/%Y")
+
+
 # RTH 09:30–16:00 ET (minute-of-day).
 RTH_START_MINS = 570
 RTH_OPEN_MINS = RTH_START_MINS  # 9:30 AM ET (alias for cross-module authority)

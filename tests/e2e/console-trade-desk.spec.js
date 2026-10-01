@@ -545,7 +545,8 @@ test.describe('Trade Desk renders served values', () => {
     await intercept(page);
     // 60 served 30-minute bars, each with its served change (0.25 each), so a click lands on one
     const bars = Array.from({ length: 60 }, (_v, i) => ({ t: 1790343000 - (59 - i) * 1800, o: 770 + i * 0.1,
-      h: 771 + i * 0.1, l: 769 + i * 0.1, c: 770.25 + i * 0.1, v: 1000, chg: 0.25, chg_pct: 0.0325 }));
+      h: 771 + i * 0.1, l: 769 + i * 0.1, c: 770.25 + i * 0.1, v: 1000, chg: 0.25, chg_pct: 0.0325,
+      label: 'served label ' + i }));   // live_price_rows.served_bar: the chart prints it, formats no time
     await page.route('**/api/bars1m**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, BARS, { bars: bars })) }));
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
@@ -556,6 +557,7 @@ test.describe('Trade Desk renders served values', () => {
     const pin = page.locator('#tdmChart .tvc-pin');
     await expect(pin).toBeVisible();
     await expect(pin).toContainText('Bar change+0.25 (+0.03%)');
+    await expect(pin.locator('.tvc-pin-h span')).toHaveText(/^served label \d+$/);   // the bar's served label
     expect(errs).toEqual([]);
   });
 
