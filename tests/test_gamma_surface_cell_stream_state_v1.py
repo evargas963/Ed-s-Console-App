@@ -474,28 +474,3 @@ def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
-
-
-class _FakeDB:
-    def __init__(self, path):
-        self.db_path = str(path)
-
-
-def _seed_morning_full(path, ticker: str, et_date: str, ts_utc: float, spot: float, chain_json: str):
-    import sqlite3
-    con = sqlite3.connect(path)
-    con.execute(
-        "CREATE TABLE IF NOT EXISTS option_chain_morning_full ("
-        "ticker TEXT, et_date TEXT, ts_utc REAL, spot REAL, n_contracts INT, "
-        "n_expiries INT, max_dte REAL, chain_json TEXT, source TEXT)"
-    )
-    con.execute(
-        "INSERT INTO option_chain_morning_full "
-        "(ticker, et_date, ts_utc, spot, n_contracts, n_expiries, max_dte, chain_json, source) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        (ticker, et_date, ts_utc, spot, 0, 0, None, chain_json, "test"),
-    )
-    con.commit()
-    con.close()
-
-

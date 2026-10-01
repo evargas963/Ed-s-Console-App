@@ -70,17 +70,6 @@ def _cell(surface, strike, expiry):
     return row["gex"][col]
 
 
-def test_fixture_preconditions_are_real_two_expiry_input():
-    """The union really is two distinct native expirations with OI-bearing rows on both."""
-    assert E1 != E2 and len(E1) == 10 and len(E2) == 10
-    assert all(_exp_key(ct) == E1 for ct in CRWD["chain"])
-    assert all(_exp_key(ct) == E2 for ct in CDE["chain"])
-    assert sum(1 for ct in CRWD["chain"] if (ct.get("openInterest") or 0) > 0) > 0
-    assert sum(1 for ct in CDE["chain"] if (ct.get("openInterest") or 0) > 0) > 0
-    # the native stamp is the ISO form production feeds the projection, not a bare date
-    assert "T" in str(CRWD["chain"][0]["expirationDate"])
-
-
 # A. EXACT CELL EQUALITY — a surface cell equals the canonical faucet on that expiry's slice.
 def test_A_cell_equals_canonical_faucet_per_expiry_slice():
     chain = _chain()

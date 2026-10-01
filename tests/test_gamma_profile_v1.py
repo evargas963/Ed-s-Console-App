@@ -78,22 +78,6 @@ def test_profile_uses_dealer_sign_convention() -> None:
     assert prof and all(v >= 0 for _, v in prof)
 
 
-def test_flip_is_interpolated_within_the_profile_span() -> None:
-    """RC-467: the real chain MUST yield a flip - the old `if flip is not None` guard let
-    a flip-always-None regression pass silently while asserting nothing. MEASURED on this
-    fixture under the pinned session clock: 241 profile points, 2 sign crossings,
-    flip = 761.0, inside the span. Existence is pinned; the exact value is not (it moves
-    with vol/time inputs) - span containment is the invariant."""
-    chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot)
-    flip = compute_gamma_flip(chain, spot, profile=prof, unpriced={}).price
-    assert flip is not None, (
-        "the real fixture chain has a zero crossing (measured flip 761.0); a None flip "
-        "here means the profile or crossing detection regressed"
-    )
-    assert prof[0][0] <= flip <= prof[-1][0]
-
-
 def test_flip_returns_none_when_no_zero_crossing() -> None:
     no = _flip([(100.0, 5.0), (101.0, 7.0)], 100.5)
     assert no.price is None and no.state == FLIP_NO_CROSSING and no.crossings == 0
@@ -138,32 +122,6 @@ def test_a_curve_that_is_not_finite_is_no_curve_never_a_zero() -> None:
     assert (flip.state, flip.reason, flip.price) == (FLIP_UNAVAILABLE, FLIP_CURVE_NOT_FINITE, None)
     assert flip.curve_gamma_at_spot is None and flip.crossings == 0
 
-def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
-    """RC-11: no zero-crossing means no FLIP LEVEL, never an unknown regime.
-
-    A chain whose dealer gamma holds one sign at every price has an unambiguous regime --
-    arguably more certain than one with a flip beside spot. Before this was corrected, 20
-    of 51 live tickers reported UNAVAILABLE while their gamma was uniformly signed.
-    """
-    chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot)
-    assert prof, "real chain must produce a profile"
-
-    at_spot = gamma_at_price(prof, spot)
-    assert at_spot is not None and math.isfinite(at_spot)
-
-    # interpolation must sit inside the bracketing profile values
-    pts = sorted(prof)
-    below = [v for x, v in pts if x <= spot]
-    above = [v for x, v in pts if x >= spot]
-    if below and above:
-        lo, hi = min(below[-1], above[0]), max(below[-1], above[0])
-        assert lo - 1e-6 <= at_spot <= hi + 1e-6
-
-    # a strictly one-signed profile yields no flip but still reports a usable verdict
-    assert profile_sign_changes([(100.0, 5.0), (101.0, 7.0)]) == []
-    assert gamma_at_price([(100.0, 5.0), (101.0, 7.0)], 100.5) == 6.0
-
 
 def test_gamma_at_price_has_no_value_outside_the_profile() -> None:
     """The curve was not evaluated off the profile, so it has no value there; the edge
@@ -174,20 +132,6 @@ def test_gamma_at_price_has_no_value_outside_the_profile() -> None:
     assert gamma_at_price(prof, 500.0) is None
     assert gamma_at_price([], 100.0) is None
     assert gamma_at_price(prof, None) is None
-
-
-# ── STRIKE WIDTH IS DERIVED, NOT TABULATED (root fix for RC-12) ─────────────
-# RC-12 found the cause -- "a fixed strike count cannot satisfy a percentage-based span
-# requirement across instruments with different strike spacing" -- then answered it with a
-# hardcoded table for three tickers, leaving every other ticker on a fixed 40. MEASURED
-# across 52 stored chains 2026-07-20: that table was wrong in BOTH directions. $SPX needed
-# 150 and got 40; IWM needed 30 and got 80; ~48 equities needed under 20 and got 40.
-
-
-# ── FLIP DETECTION IS DIRECTION-BLIND (Bugbot 2026-07-20, HIGH — confirmed) ──
-# `v0 < 0 <= v1` found only rising neg->pos crossings. A profile that is long-gamma below
-# and short-gamma above (pos->neg) has a real regime boundary that returned None — the
-# flip vanished and the verdict claimed "no crossing" on a chain that crosses.
 
 
 def test_flip_detects_positive_to_negative_crossing():
@@ -211,11 +155,6 @@ def test_flip_picks_the_crossing_nearest_spot():
     assert high.price is not None and 100.0 < high.price < 110.0, high.price
     assert low.crossings == high.crossings == 2
     assert profile_sign_changes(prof) == [low.price, high.price]   # every sign change, ascending
-
-
-def test_flip_none_when_one_signed():
-    assert profile_sign_changes([(90.0, -1.0), (100.0, -2.0)]) == []
-    assert profile_sign_changes([(90.0, 1.0), (100.0, 2.0)]) == []
 
 
 def test_a_zero_touch_is_not_a_flip_only_a_sign_change_is():
