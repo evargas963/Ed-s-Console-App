@@ -3347,8 +3347,8 @@ def get_chain(ticker: str = Query(...),
               expiry: Optional[str] = Query(default=None)):
     """One expiry of the ticker's full chain -- every contract Schwab listed, every field as sent
     -- from the chain the levels loop downloads (strike_range=ALL), with each live streamed
-    contract's streamed fields as its values (the stream owns them). The loop keeps a ticker's chain while a page has it
-    open. Answers `status: unavailable` with a reason when no
+    contract's streamed fields as its values (the stream owns them). The loop keeps every
+    ticker's chain. Answers `status: unavailable` with a reason when no
     chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
     held = terrain_cache_get(t) or {}
