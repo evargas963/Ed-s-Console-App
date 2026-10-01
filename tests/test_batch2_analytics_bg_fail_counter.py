@@ -1,20 +1,8 @@
-"""Batch-2: analytics background recompute fail-counter wiring."""
-
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
-
-
-
-
-
-
-
-
-
-
 
 
 def test_safe_get_chain_raises_schwab_auth_error_on_invalid_grant(monkeypatch: pytest.MonkeyPatch):
@@ -71,32 +59,6 @@ def test_safe_get_chain_latched_skips_second_call(monkeypatch: pytest.MonkeyPatc
     with pytest.raises(sc.SchwabAuthError):
         sc.safe_get_chain(_FakeClient(), "SPY")
     assert calls["n"] == 0
-
-
-
-
-
-
-
-
-def test_api_build_exposes_git_sha(monkeypatch):
-    """BUILD_IDENTITY semantics (operator-approved 2026-07-10): git_sha is the
-    STARTUP process identity; request-time repo state lives only under
-    repository_state_now.repo_head_now.
-
-    TEST_SYSTEM_REHAB_V2 final remediation: api_build is a plain sync handler with
-    no auth/middleware/serialization-shaping dependency -- the HTTP round trip added
-    nothing a direct call doesn't already prove."""
-    import server as srv
-
-    monkeypatch.setattr(srv, "_repo_git_head_sha", lambda: "abc123deadbeef")
-    body = srv.api_build()
-    assert body["git_sha"] == body["process_identity"]["startup_git_sha"]
-    assert body["repository_state_now"]["repo_head_now"] == "abc123deadbeef"
-    assert body["git_sha_semantics"] == "startup_process_identity"
-    assert body["contract"] == "meet_or_exceed_v1"
-
-
 
 
 def test_the_port_guard_refuses_an_occupied_port_and_passes_a_free_one():

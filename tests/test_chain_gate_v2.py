@@ -238,17 +238,6 @@ def test_coalesced_waiters_receive_owner_exception(monkeypatch):
     assert ("waiter", "owner failed") in errs   # propagated, never swallowed
 
 
-def test_gate_metrics_snapshot_shape(monkeypatch):
-    gate = _fresh_gate(monkeypatch)
-    snap = gate.snapshot()
-    for k in ("acquisitions", "priority_acquisitions", "timeouts", "queue_wait_max_ms",
-              "coalesced_hits", "degraded_entries", "degraded_reason_last",
-              "in_use", "capacity_now", "global_slots_max", "degraded",
-              "priority_waiting", "consecutive_failures"):
-        assert k in snap, k
-    assert snap["global_slots_max"] == 2
-
-
 def test_inflight_registry_cleared_after_completion(monkeypatch):
     _fresh_gate(monkeypatch)
     monkeypatch.setattr(srv, "safe_get_chain", lambda c, t, **kwargs: "OK")

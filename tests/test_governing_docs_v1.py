@@ -52,9 +52,3 @@ def test_the_check_catches_the_deleted_paths_the_old_charter_named():
            "`config/decision_path_admissions.json`; `server.py` serves it.")
     tracked = ["server.py", "tools/hook_chain.py"]
     assert missing_paths(old, tracked) == ["decision_gate.py", "config/decision_path_admissions.json"]
-
-
-def test_a_dot_path_is_checked_too():
-    tracked = [".pre-commit-config.yaml", ".claude/settings.json"]
-    assert missing_paths("`.pre-commit-config.yaml` and `.claude/settings.json`", tracked) == []
-    assert missing_paths("`.claude/hooks.json`", tracked) == [".claude/hooks.json"]

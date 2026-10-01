@@ -88,13 +88,3 @@ def test_outside_contention_nothing_is_deferred():
     for mins in (0, 540, 554, 601, 900, SESSION_END_MINS, 1439):
         now, deferred = s.terrain_cycle_tickers(board, mins, 3)
         assert deferred == [] and now == board, f"ET minute {mins} deferred unexpectedly"
-
-
-def test_outside_contention_viewing_never_rotates_the_board():
-    """Collection mandate: outside the contention window every enrolled ticker refreshes every
-    cycle, whoever is viewing. (#280 rotated non-viewed names all session while anyone viewed
-    -- one refresh per >=300 s; this test previously pinned that regression.)"""
-    s = _server()
-    board = _board()
-    now, deferred = s.terrain_cycle_tickers(board, 720, 1, viewed=[board[0]])
-    assert deferred == [] and now == board

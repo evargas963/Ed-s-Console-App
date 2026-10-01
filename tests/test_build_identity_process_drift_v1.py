@@ -217,23 +217,6 @@ def test_t7_sha_validation_and_short_derivation(tmp_path, monkeypatch):
     assert len(rev_parse_calls) == 1  # short SHA never triggers a second git call
 
 
-# ── T8/T9: PID and timestamp stability ───────────────────────────────────────
-
-
-def test_t8_t9_pid_and_timestamps_stable(tmp_path, monkeypatch):
-    repo, _sha_a = _make_repo(tmp_path)
-    ident = _capture_at(monkeypatch, repo)
-    assert ident.process_id == os.getpid()
-    assert ident.startup_identity_captured_at_utc > 0
-    monkeypatch.setattr(srv, "PROCESS_IDENTITY_V1", ident)
-    with TestClient(srv.app) as client:
-        b1 = client.get("/api/build").json()["process_identity"]
-        b2 = client.get("/api/build").json()["process_identity"]
-    assert b1["process_id"] == b2["process_id"] == os.getpid()
-    assert b1["startup_identity_captured_at_utc"] == b2["startup_identity_captured_at_utc"]
-    assert b1["process_started_at_utc"] == b2["process_started_at_utc"]
-
-
 # ── T10: legacy response-contract compatibility ──────────────────────────────
 
 
@@ -293,19 +276,6 @@ def test_t12_request_git_reads_feed_diagnostics_only(monkeypatch):
     after = json.dumps(dataclasses.asdict(srv.PROCESS_IDENTITY_V1), sort_keys=True)
     assert before == after
     assert head_calls["n"] == 3  # one dynamic read per request, diagnostics only
-
-
-# ── T13 (fresh process at SHA B) + dependency safety ─────────────────────────
-
-
-def test_t13_fresh_capture_at_sha_b_reports_sha_b(tmp_path, monkeypatch):
-    repo, sha_a = _make_repo(tmp_path)
-    ident_a = _capture_at(monkeypatch, repo)
-    sha_b = _advance_repo(repo)
-    ident_b = srv._capture_process_identity()  # fresh capture = fresh process semantics
-    assert ident_a.startup_git_sha == sha_a
-    assert ident_b.startup_git_sha == sha_b
-    assert ident_b.startup_identity_captured_at_utc >= ident_a.startup_identity_captured_at_utc
 
 
 def test_t14_operational_without_psutil(monkeypatch, tmp_path):

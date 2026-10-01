@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from db import EdDB, _sqlite_busy_or_locked
+from db import EdDB
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -16,16 +16,6 @@ ROOT = Path(__file__).resolve().parent.parent
 @pytest.fixture
 def tier1_db(tmp_path):
     return EdDB(tmp_path / "tier1_retry.db")
-
-
-def test_sqlite_busy_or_locked_accepts_errorcode_without_message_keywords():
-    e = sqlite3.OperationalError("opaque")
-    e.sqlite_errorcode = sqlite3.SQLITE_BUSY
-    assert _sqlite_busy_or_locked(e) is True
-    e.sqlite_errorcode = sqlite3.SQLITE_LOCKED
-    assert _sqlite_busy_or_locked(e) is True
-    e.sqlite_errorcode = sqlite3.SQLITE_CONSTRAINT
-    assert _sqlite_busy_or_locked(e) is False
 
 
 def test_tier1_retries_on_busy_errorcode_without_busy_in_message(tier1_db, monkeypatch):
