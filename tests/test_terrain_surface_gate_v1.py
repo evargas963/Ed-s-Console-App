@@ -304,7 +304,7 @@ def test_nothing_is_refreshed_while_the_market_is_closed(monkeypatch, view):
     monkeypatch.setattr(server, "TERRAIN_REFRESH_SEC", 0.2)
     real_refresh = server._terrain_refresh_one
     fetched: list[str] = []
-    monkeypatch.setattr(server, "fetch_full_chain", lambda client, tk, get: fetched.append(tk))
+    monkeypatch.setattr(server, "fetch_full_chain", lambda client, tk, get, quote: fetched.append(tk))
 
     def spy_refresh(tk, priority=False):
         calls.append(tk)

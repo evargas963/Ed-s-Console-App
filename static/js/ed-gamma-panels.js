@@ -409,7 +409,8 @@
     }
     var call = pick('CALL'), put = pick('PUT');
     txt('sdCtx', px(strike, strike % 1 ? 2 : 0) + (expiry ? ' · ' + esc(expiry.slice(5)) : ''));
-    function cell(c, k, d2) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? v.toFixed(d2 == null ? 2 : d2) : esc(v)); }
+    // d2: decimals; none: every digit Schwab sent (its Greeks)
+    function cell(c, k, d2) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? (d2 == null ? String(v) : v.toFixed(d2)) : esc(v)); }
     // GEX ($) column: per-side GEX$ is not served (computing it would be frontend math) -> "—"; the
     // NET row is this expiry's net GEX at this strike, served on the same /api/chain response --
     // the heatmap's own cell (2026-09-27: it was GEX-by-Strike's all-expiry total, beside one
@@ -422,9 +423,9 @@
     host.innerHTML =
       '<table class="sd"><thead><tr><th>Type</th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
       '<tr><td class="side c">Call</td><td>' + cell(call, 'openInterest', 0) + '</td><td>' + cell(call, 'totalVolume', 0) +
-      '</td><td>' + cell(call, 'gamma', 4) + '</td><td class="dim">—</td><td>' + cell(call, 'delta', 3) + '</td><td>' + cell(call, 'volatility', 1) + '</td></tr>' +
+      '</td><td>' + cell(call, 'gamma') + '</td><td class="dim">—</td><td>' + cell(call, 'delta') + '</td><td>' + cell(call, 'volatility') + '</td></tr>' +
       '<tr><td class="side p">Put</td><td>' + cell(put, 'openInterest', 0) + '</td><td>' + cell(put, 'totalVolume', 0) +
-      '</td><td>' + cell(put, 'gamma', 4) + '</td><td class="dim">—</td><td>' + cell(put, 'delta', 3) + '</td><td>' + cell(put, 'volatility', 1) + '</td></tr>' +
+      '</td><td>' + cell(put, 'gamma') + '</td><td class="dim">—</td><td>' + cell(put, 'delta') + '</td><td>' + cell(put, 'volatility') + '</td></tr>' +
       '<tr class="sd-net"><td class="side">Net</td><td>—</td><td>—</td><td>—</td><td class="' + netCls + '">' +
       (net == null ? '—' : usd(net)) + '</td><td>—</td><td>—</td></tr>' +
       '</tbody></table><div class="sd-src">vendor per-contract · net GEX$ this expiry · /api/chain</div>';

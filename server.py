@@ -162,6 +162,7 @@ from schwab_client import (
     flatten_chain_contracts,
     inspect_token_file,
     safe_get_chain,
+    safe_get_quotes,
     SchwabAuthError,
 )
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
@@ -646,6 +647,26 @@ def _gated_safe_get_chain(client, ticker: str, *, strike_count=None, strike_rang
                 holder["result"] = (resp, 0.0, round(time.monotonic() - fetch_started, 3))
             holder["event"].set()
 
+
+def _gated_safe_get_quotes(client, symbols: "list[str]", *, priority: bool = False):
+    """safe_get_quotes behind the chain gate: the same two slots, priority and breaker (a 429
+    degrades the gate) as the chain requests, one Schwab budget. Schwab's response."""
+    acquired = _schwab_chain_fetch_gate.acquire(timeout=CHAIN_FETCH_GATE_ACQUIRE_TIMEOUT_SEC,
+                                                priority=priority)
+    try:
+        resp = safe_get_quotes(client, symbols)
+    except SchwabAuthError:
+        _schwab_chain_fetch_gate.record_result(False, auth_error=True)
+        raise
+    except Exception:
+        _schwab_chain_fetch_gate.record_result(False)
+        raise
+    finally:
+        if acquired:
+            _schwab_chain_fetch_gate.release()
+    _schwab_chain_fetch_gate.record_result(resp.status_code < 500 and resp.status_code != 429,
+                                           throttled=resp.status_code == 429)
+    return resp
 
 
 _route_offload_executor: Optional[ThreadPoolExecutor] = None
@@ -2249,7 +2270,8 @@ def _terrain_refresh_one(ticker: str, priority: bool = False) -> str:
         # The FULL chain -- every strike of every listed expiry (fetch_full_chain; operator
         # decision 2026-09-25 after the strike window was measured disagreeing with it).
         resp = fetch_full_chain(client, tk, lambda **d: _gated_safe_get_chain(
-            client, tk, strike_range="ALL", priority=priority, **d)[0])
+            client, tk, strike_range="ALL", priority=priority, **d)[0],
+            lambda symbols: _gated_safe_get_quotes(client, symbols, priority=priority))
         if resp.status_code != 200:
             _code = resp.status_code
             _msg = f"chain fetch failed ({resp.reason or f'HTTP {_code}'})"
@@ -3007,11 +3029,11 @@ def _gamma_surface_cell_fields(bucket: "dict | None", syms: "dict | None"):
 
     syms = syms or {}
     _has_oi = bool(bucket is not None and bucket.get("has_oi"))
-    _has_gex_data = bool(_has_oi and bucket.get("has_valid_gamma"))
-    gex = _bf(bucket.get("net_gex_1pct")) if _has_gex_data else None
-    dex = _bf(bucket_metric(bucket, "net_dex_dollars")) if _has_oi else None
-    _vn = bucket_metric(bucket, "net_vanna") if _has_oi else None   # the book's own net vanna
-    vanna = round(_vn, 2) if _vn is not None else None
+    # the book's own values, unrounded: the page formats them
+    gex = bucket_metric(bucket, "net_gex_1pct") if _has_oi else None
+    _has_gex_data = gex is not None
+    dex = bucket_metric(bucket, "net_dex_dollars") if _has_oi else None
+    vanna = bucket_metric(bucket, "net_vanna") if _has_oi else None
     def _legs(legs):
         # the one readers (strike_oi_legs / strike_volume_legs): Schwab's values as sent, 0 a real
         # zero; unknown only when a contract at the strike did not report the field
@@ -3132,8 +3154,8 @@ def _gamma_surface_unavailable_reason(gamma_available: bool, cells_with_oi_but_i
         return None
     if cells_with_oi_but_invalid_greeks > 0:
         return (
-            "real open interest exists but Schwab's own reported greeks for it are invalid "
-            "this cycle ({} of {} strike×expiry cells have OI with unusable greeks)"
+            "real open interest exists but Schwab sent no usable greeks for it this cycle (-999, "
+            "or its quote did not come back) ({} of {} strike×expiry cells have OI with no greeks)"
         ).format(cells_with_oi_but_invalid_greeks, cells_total)
     return "no usable open interest in this chain (0 of {} strike×expiry cells)".format(cells_total)
 

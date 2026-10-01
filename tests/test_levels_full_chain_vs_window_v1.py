@@ -70,7 +70,7 @@ def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture
     monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # an open-market test
     requested = []
 
-    def fake_fetch(client, ticker, get, *, expiry=None):
+    def fake_fetch(client, ticker, get, quote, *, expiry=None):
         requested.append((ticker, expiry))
         return FullChainResponse(200, json.loads(json.dumps(_FX["full"])), parts=1)
 

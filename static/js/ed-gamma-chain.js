@@ -7,6 +7,7 @@
   'use strict';
 
   function px(n, d) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(d == null ? 2 : d); }
+  var AS_SENT = 'as_sent';
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
@@ -77,7 +78,8 @@
       (filterNull ? ' <span class="chn-default">(server default)</span>' : '') + ' · ' + esc(d.n_strikes) + ' strikes' +
       (dup ? ' · <span class="chn-dup">duplicate contracts retained</span>' : '') + '</span>' +
       '<span>spot ' + (isFinite(spot) ? spot.toFixed(2) : '—') + (d.spot_source ? ' · ' + esc(d.spot_source) : '') + '</span></div>';
-    function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? v.toFixed(dg == null ? 2 : dg) : esc(v)); }
+    // dg: decimals, or AS_SENT: every digit Schwab sent (its Greeks)
+    function cell(c, k, dg) { var v = c ? c[k] : null; return (v == null) ? '—' : (typeof v === 'number' ? (dg === AS_SENT ? String(v) : v.toFixed(dg == null ? 2 : dg)) : esc(v)); }
     function sym(c) { return c && c.symbol ? String(c.symbol) : ''; }
     function selAttr(c) { var s = sym(c); return s ? (' data-sym="' + esc(s) + '"' + (s === desired ? ' data-selc="1"' : '')) : ''; }
     // Independent-review finding (2026-09-13), REPRODUCED then narrowed to a two-sticky-row
@@ -100,8 +102,8 @@
       '<th>Bid</th><th>Ask</th><th>Γ</th><th>Δ</th><th>IV%</th><th>Vol</th><th>OI</th></tr></thead></table>' +
       '<div class="chn-scroll" id="chainScroll">' + head +
       '<table class="chn chn-bodytbl">' + COLGROUP + '<tbody>';
-    var CALL = [['openInterest', 0], ['totalVolume', 0], ['volatility', 1], ['delta', 3], ['gamma', 4], ['bid', 2], ['ask', 2]];
-    var PUT = [['bid', 2], ['ask', 2], ['gamma', 4], ['delta', 3], ['volatility', 1], ['totalVolume', 0], ['openInterest', 0]];
+    var CALL = [['openInterest', 0], ['totalVolume', 0], ['volatility', AS_SENT], ['delta', AS_SENT], ['gamma', AS_SENT], ['bid', 2], ['ask', 2]];
+    var PUT = [['bid', 2], ['ask', 2], ['gamma', AS_SENT], ['delta', AS_SENT], ['volatility', AS_SENT], ['totalVolume', 0], ['openInterest', 0]];
     function side(c, cls, itm, cols) {   // itm: served per row (strike vs the live spot)
       var klass = cls + (c && sym(c) === desired ? ' chn-selc' : '') + (itm === true ? ' chn-itm' : '');
       return cols.map(function (f, j) {

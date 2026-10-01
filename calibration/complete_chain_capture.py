@@ -18,7 +18,7 @@ from typing import Any
 
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
-from schwab_client import fetch_full_chain, flatten_chain_contracts, safe_get_chain
+from schwab_client import fetch_full_chain, flatten_chain_contracts, safe_get_chain, safe_get_quotes
 from time_et import ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date
 
 log = logging.getLogger("chain_history")
@@ -143,7 +143,7 @@ def capture_round(client, db_path: Path | str) -> dict[str, Any]:
     written, failed = 0, []
     for tk in board_tickers(db_path):
         resp = fetch_full_chain(client, tk, lambda **d: safe_get_chain(
-            client, tk, strike_range="ALL", **d))
+            client, tk, strike_range="ALL", **d), lambda symbols: safe_get_quotes(client, symbols))
         if resp.status_code != 200:
             failed.append(tk)
             log.warning("chain capture %s: %s", tk, resp.reason or f"HTTP {resp.status_code}")
