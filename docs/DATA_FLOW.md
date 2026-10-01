@@ -425,8 +425,13 @@ opens no second streaming socket).
   judged by Schwab's own time of the value -- the price by its trade's time
   (TRADE_TIME_MILLIS, as Schwab re-sends the prior day's last trade after midnight), the bid and
   the ask by the time Schwab sent with each (`live_market_plane._side_time`: BID_TIME_MILLIS /
-  ASK_TIME_MILLIS; for a price sent without one, as Schwab sends an index's, the message's
-  QUOTE_TIME_MILLIS; with neither, our receive time; `ACTIVE_PROGRAM.md` INDEX-QUOTE-TIME). A
+  ASK_TIME_MILLIS; for a price sent without one, the message's QUOTE_TIME_MILLIS; with neither,
+  our receive time). For an index (Schwab's `assetMainType` INDEX) it is QUOTE_TIME_MILLIS always
+  (decided 2026-10-01: a difference between instruments follows Schwab's own metadata): Schwab
+  sends an index's bid and ask changes without a bid or ask time ($SPX 2026-09-30 09:30-10:00 ET,
+  1,711 bid messages), and its full refreshes with BID_TIME_MILLIS and ASK_TIME_MILLIS 74996850
+  ($SPX 04:36 and 05:23 ET, read-only from `stream_capture.db`): 20:49:56.850 as milliseconds of
+  a day, not the epoch milliseconds the field is defined as, so they are not used for an index. A
   value's age within the session is not the test (Schwab sends a field only when it changes).
   Live is what computations take; display is not gated by it (decided by the
   operator, 2026-10-01: "we should not be showing unavailable anywhere in the app if there is

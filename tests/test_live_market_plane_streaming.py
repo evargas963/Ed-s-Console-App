@@ -309,6 +309,14 @@ def test_each_bid_and_ask_carries_the_time_schwab_sent_with_it():
         lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": [sym]}}, now)
         return live_price_rows.price_row(sym, now)
 
+    # $SPX, an index (Schwab's assetMainType INDEX): its full refreshes at 04:36:39 and 05:23:00 sent
+    # BID_TIME_MILLIS and ASK_TIME_MILLIS 74996850 (20:49:56.850 as milliseconds of a day, not epoch
+    # milliseconds) with QUOTE_TIME_MILLIS 1790714323636 (Tue 16:38:43.636 ET): the quote is as of
+    # its QUOTE_TIME, Tuesday's, so not live -- never "as of 01/01/1970"
+    for h, m in ((4, 37), (5, 24)):
+        refreshed = at("$SPX", h, m, 0)
+        assert (refreshed["bid_text"], refreshed["quote_live"]) == ("7,643.12", False)
+        assert refreshed["bid_as_of"] == refreshed["ask_as_of"] == "as of Tue 09/29 03:38:43 PM CT"
     # $SPX: its 09:30:01 bid 7670.92 / ask 7714.41 came with QUOTE_TIME_MILLIS 1790775001065 and no
     # bid or ask time: live, as of that time
     spx = at("$SPX", 9, 30, 2)

@@ -62,15 +62,17 @@ def _read_stream_field(name: str, raw: Any) -> Optional[float]:
     return v / 1000.0 if v is not None and name in _CLOCK_FIELDS else v
 
 
-def _side_time(side: str, item: dict[str, Any], rts: float) -> Optional[tuple[float, bool]]:
+def _side_time(side: str, item: dict[str, Any], rts: float, index: bool) -> Optional[tuple[float, bool]]:
     """The time of the bid or the ask ("BID" / "ASK") a message sets or restamps, and whether it
     is Schwab's own: its BID_TIME_MILLIS / ASK_TIME_MILLIS; for a price sent without one, the
-    message's QUOTE_TIME_MILLIS (Schwab sends an index's bid and ask changes without them: $SPX on
-    2026-09-30 09:30-10:00 ET, 1,711 bid messages, each with QUOTE_TIME_MILLIS; CRWD 09:53:26 ET, a new bid
-    with QUOTE_TIME_MILLIS and ASK_TIME_MILLIS only); with neither, our receive time (RKLB 09:44:08
-    ET, a new bid with neither, its held BID_TIME the previous bid's). None: the message touches
-    neither."""
-    own = schwab_number(item.get(f"{side}_TIME_MILLIS"))
+    message's QUOTE_TIME_MILLIS (CRWD 2026-09-30 09:53:26 ET, a new bid with QUOTE_TIME_MILLIS and
+    ASK_TIME_MILLIS only); with neither, our receive time (RKLB 09:44:08 ET, a new bid with
+    neither, its held BID_TIME the previous bid's). For an index (Schwab's assetMainType INDEX)
+    it is QUOTE_TIME_MILLIS always: Schwab sends an index's bid and ask changes without a bid or
+    ask time ($SPX 09:30-10:00 ET, 1,711 bid messages), and its full refreshes with BID_TIME_MILLIS
+    and ASK_TIME_MILLIS 74996850 ($SPX 04:36 and 05:23 ET), 20:49:56.850 as milliseconds of a
+    day, not the epoch milliseconds the field is defined as. None: the message touches neither."""
+    own = None if index else schwab_number(item.get(f"{side}_TIME_MILLIS"))
     if own is not None:
         return own / 1000.0, True
     if f"{side}_PRICE" not in item:
@@ -112,8 +114,11 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
                 continue
             seen = True
             fs[name] = (_read_stream_field(name, item.get(name)), rts)   # None: not a number
+        if "assetMainType" in item:                                    # Schwab's instrument kind
+            fs["assetMainType"] = (item["assetMainType"], rts)
+        index = fs.get("assetMainType", (None, rts))[0] == "INDEX"
         for side in ("BID", "ASK"):
-            stamp = _side_time(side, item, rts)
+            stamp = _side_time(side, item, rts, index)
             if stamp is not None:
                 seen = True
                 fs[f"{side}_AT"] = (stamp, rts)
