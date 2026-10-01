@@ -56,7 +56,7 @@ from datetime import datetime
 import live_market_plane as lmp
 import live_price_rows
 from instrument_identity import display_symbol, ticker_storage_key
-from stream_spine import (CONNECTION, CONNECTION_CLOSED, CONNECTION_LOSS, COUNT_DROPS, MessageBus, bar_days_msg,
+from stream_spine import (CONNECTION, CONNECTION_CLOSED, CONNECTION_LOSS, MessageBus, bar_days_msg,
                           bar_msg, bar_state_msg, held_minutes_msg, price_history_msg)
 from time_et import ET, ct_label
 
@@ -590,10 +590,10 @@ async def serve_live_ui(srv: LiveUiServer, stop: asyncio.Event, *,
     for topic, msg in list(bus.snapshot().items()):         # whatever arrived before we started
         if topic.startswith("quote."):
             srv.ingest(msg)
-    sub = bus.subscribe("quote.", policy=COUNT_DROPS, maxsize=65536, name="live_ui")
+    sub = bus.subscribe("quote.", maxsize=65536, name="live_ui")
     # bars and subscription answers on ONE queue, in publish order: a bar is judged against the
     # subscriptions as they were when it was published
-    bsub = srv.bars_queue = bus.subscribe(("bar1m.", "sub."), policy=COUNT_DROPS, maxsize=8192, name="live_ui_bars")
+    bsub = srv.bars_queue = bus.subscribe(("bar1m.", "sub."), maxsize=8192, name="live_ui_bars")
     lmp.add_row_listener(srv.on_row)
 
     async def _track() -> None:

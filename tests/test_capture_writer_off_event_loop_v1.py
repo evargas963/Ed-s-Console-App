@@ -13,7 +13,7 @@ import sqlite3
 import time
 
 import stream_spine
-from stream_spine import CaptureWriter, MessageBus, COUNT_DROPS, quote_msg
+from stream_spine import CaptureWriter, MessageBus, quote_msg
 
 
 class _SlowCommitConn:
@@ -52,7 +52,7 @@ def test_a_slow_commit_does_not_stall_the_event_loop(tmp_path, monkeypatch):
 
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=1, batch_sec=0.05)
     bus = MessageBus()
-    sub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)
+    sub = bus.subscribe("", maxsize=8192)
 
     async def go():
         stop = asyncio.Event()
@@ -87,7 +87,7 @@ def test_writes_happen_on_the_writer_thread_not_the_loop(tmp_path, monkeypatch):
     monkeypatch.setattr(CaptureWriter, "insert", _spy)
     writer = CaptureWriter(tmp_path / "cap.db", batch_rows=5, batch_sec=0.05)
     bus = MessageBus()
-    sub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)
+    sub = bus.subscribe("", maxsize=8192)
 
     async def go():
         stop = asyncio.Event()

@@ -16,7 +16,7 @@ import queue
 import sqlite3
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -32,9 +32,6 @@ def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
         return Path(default).resolve()
     return canonical_stream_db_path()
 
-
-COALESCE = "coalesce"
-COUNT_DROPS = "count_drops"
 
 STREAM_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS stream_quotes_raw (
@@ -251,22 +248,10 @@ class Subscription:
     #: one topic prefix, or several (`str.startswith` takes a tuple), delivered on one queue in
     #: publish order
     prefix: "str | tuple[str, ...]"
-    policy: str
     queue: asyncio.Queue
-    pending: dict[str, Any] = field(default_factory=dict)
     dropped: int = 0
 
     def deliver(self, topic: str, msg: Any) -> None:
-        if self.policy == COALESCE:
-            fresh = topic not in self.pending
-            self.pending[topic] = msg
-            if fresh:
-                try:
-                    self.queue.put_nowait(topic)
-                except asyncio.QueueFull:
-                    self.pending.pop(topic, None)
-                    self.dropped += 1
-            return
         try:
             self.queue.put_nowait((topic, msg))
         except asyncio.QueueFull:
@@ -276,11 +261,7 @@ class Subscription:
                             self.prefix, self.dropped, topic)
 
     async def get(self) -> tuple[str, Any]:
-        item = await self.queue.get()
-        if self.policy == COALESCE:
-            topic = item
-            return topic, self.pending.pop(topic)
-        return item
+        return await self.queue.get()
 
 
 class MessageBus:
@@ -293,10 +274,11 @@ class MessageBus:
         self.cache: dict[str, Any] = {}
         self.published = 0
 
-    def subscribe(self, prefix: "str | tuple[str, ...]", *, policy: str = COUNT_DROPS, maxsize: int = 2048,
+    def subscribe(self, prefix: "str | tuple[str, ...]", *, maxsize: int = 2048,
                   name: str | None = None) -> Subscription:
-        """`name` identifies the consumer in drop_counts (default: the prefix)."""
-        sub = Subscription(prefix=prefix, policy=policy, queue=asyncio.Queue(maxsize=maxsize))
+        """`name` identifies the consumer in drop_counts (default: the prefix). A full queue
+        drops the message and counts it."""
+        sub = Subscription(prefix=prefix, queue=asyncio.Queue(maxsize=maxsize))
         self._sub_names[id(sub)] = name if name is not None else prefix
         self._subs.append(sub)
         return sub

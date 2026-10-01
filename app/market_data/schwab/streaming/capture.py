@@ -52,7 +52,6 @@ from stream_spine import (  # noqa: E402
     CONNECTION,
     CONNECTION_CLOSED,
     CONNECTION_LOSS,
-    COUNT_DROPS,
     CaptureWriter,
     HealthRegistry,
     MessageBus,
@@ -643,7 +642,7 @@ async def run() -> int:
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     daemon = Daemon(bus, health, wanted_path(), standing_roster(canonical_console_db_path()))
-    wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")
+    wsub = bus.subscribe("", maxsize=8192, name="db_writer")
     hold = RateHold(rate_hold_path())
     ui = LiveUiServer(bus, daemon.status, {}, clock=time.time, history_fn=schwab_minutes(daemon, hold, time.time),
                       daily_fn=schwab_days(daemon, hold, time.time))

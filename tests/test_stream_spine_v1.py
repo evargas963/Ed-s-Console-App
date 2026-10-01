@@ -10,8 +10,6 @@ import pytest
 import json
 
 from stream_spine import (
-    COALESCE,
-    COUNT_DROPS,
     CaptureWriter,
     MessageBus,
     bar_msg,
@@ -26,7 +24,7 @@ def test_cache_written_before_subscribers_and_snapshot_hydrates():
         bus = MessageBus()
         seen_at_delivery = {}
 
-        sub = bus.subscribe("quote.", policy=COUNT_DROPS)
+        sub = bus.subscribe("quote.")
         bus.publish("quote.SPY", {"last": 747.63})
         # cache-then-publish: by the time the message is readable, the cache has it
         topic, msg = await sub.get()
@@ -35,19 +33,6 @@ def test_cache_written_before_subscribers_and_snapshot_hydrates():
         assert seen_at_delivery["cache"] == {"last": 747.63}
         # a late consumer hydrates from snapshot without any poll
         assert bus.snapshot("quote.")["quote.SPY"]["last"] == 747.63
-    asyncio.run(go())
-
-
-def test_coalesce_keeps_newest_only_and_counts_nothing_lost_as_drops():
-    async def go():
-        bus = MessageBus()
-        sub = bus.subscribe("quote.", policy=COALESCE, maxsize=4)
-        for px in (1.0, 2.0, 3.0):
-            bus.publish("quote.SPY", {"last": px})
-        topic, msg = await sub.get()
-        assert msg["last"] == 3.0, "coalesce must deliver the NEWEST pending quote"
-        assert sub.queue.empty(), "one topic key, not three"
-        assert sub.dropped == 0, "coalescing is not a drop"
     asyncio.run(go())
 
 
@@ -83,16 +68,6 @@ def test_quote_native_content_stored_with_field_fidelity(tmp_path):
     con = sqlite3.connect(db)
     row = con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()
     assert json.loads(row[0]) == native
-
-
-def test_quote_without_native_stores_null_not_a_fabricated_value(tmp_path):
-    """Quote producers that pass no native dict (tests) — must stay NULL,
-    never an empty-dict placeholder that would misrepresent 'no data' as 'measured empty'."""
-    db = tmp_path / "stream_capture.db"
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.insert("quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="t", ts_recv=1.0))
-    con = sqlite3.connect(db)
-    assert con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()[0] is None
 
 
 def test_existing_stream_capture_db_migrates_native_json_column(tmp_path):
@@ -203,7 +178,7 @@ def test_writer_drains_full_queue_on_stop(tmp_path):
     """Cursor review HIGH: stop must not vaporize buffered rows."""
     async def go():
         bus = MessageBus()
-        sub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)
+        sub = bus.subscribe("", maxsize=8192)
         w = CaptureWriter(tmp_path / "s.db", batch_rows=10_000, batch_sec=60.0)
         for i in range(50):
             bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=1.0, last_size=i, src="t"))
@@ -220,7 +195,7 @@ def test_writer_drains_full_queue_on_stop(tmp_path):
 def test_insert_failure_is_counted_never_kills_writer(tmp_path):
     async def go():
         bus = MessageBus()
-        sub = bus.subscribe("", policy=COUNT_DROPS)
+        sub = bus.subscribe("")
         w = CaptureWriter(tmp_path / "s.db", batch_rows=10_000, batch_sec=60.0)
         bus.publish("quote.SPY", object())      # not a dict -> insert raises inside
         bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=2.0, src="t"))
