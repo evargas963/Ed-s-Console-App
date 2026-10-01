@@ -259,6 +259,10 @@ class Daemon:
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
+        #: the daemon's one Schwab client (the stream's, also every price-history request's), or
+        #: None with the reason it could not be built (`client_problem`: Schwab's own message)
+        self.client = None
+        self.client_problem = "the daemon has not signed in to Schwab yet"
 
     def set_wanted(self, raw) -> None:
         """The console's list (live_push calls this for every {"op": "wanted"} frame)."""
@@ -364,7 +368,9 @@ class Daemon:
             try:
                 state = make_client()
                 if not state.ok or state.client is None:
-                    raise ConnectionError(f"Schwab client: {state.message}")
+                    self.client, self.client_problem = None, f"Schwab client: {state.message}"
+                    raise ConnectionError(self.client_problem)
+                self.client, self.client_problem = state.client, None
                 await self.run_connection(state.client, stop)
             except Exception as e:  # noqa: BLE001 -- every failure is a reconnect
                 log.warning("schwab: connection ended (%s: %s)", type(e).__name__, str(e)[:350])
@@ -486,12 +492,16 @@ async def capture_chains(make_client, stop: asyncio.Event) -> None:
             log.exception("chain capture failed")
 
 
-def schwab_minutes(make_client):
+def schwab_minutes(daemon: "Daemon"):
     """Schwab's 1-minute price history (get_price_history_every_minute, extended hours: the
     collect window opens at 09:15 ET), as a function (symbol, start, end epoch seconds) -> the
-    candles Schwab sent. The daemon is the only caller of Schwab; a failed request raises."""
+    candles Schwab sent, asked with the daemon's one Schwab client. The daemon is the only caller
+    of Schwab; a failed request raises, and with no client the reason is the client's own
+    (a missing or expired sign-in)."""
     def fetch(symbol: str, start: float, end: float) -> list:
-        r = make_client().client.get_price_history_every_minute(
+        if daemon.client is None:
+            raise ConnectionError(daemon.client_problem)
+        r = daemon.client.get_price_history_every_minute(
             symbol, start_datetime=datetime.fromtimestamp(start, ET),
             end_datetime=datetime.fromtimestamp(end, ET), need_extended_hours_data=True)
         r.raise_for_status()
@@ -523,7 +533,7 @@ async def run() -> int:
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
                                                  on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, clock=time.time,
-                                               history_fn=schwab_minutes(make_client)))]
+                                               history_fn=schwab_minutes(daemon)))]
     try:
         await asyncio.sleep(0)                    # servers subscribe before the first message
         await daemon.run(make_client, stop)

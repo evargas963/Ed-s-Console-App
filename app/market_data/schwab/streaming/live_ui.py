@@ -55,7 +55,7 @@ from datetime import datetime
 import live_market_plane as lmp
 import live_price_rows
 from instrument_identity import display_symbol, ticker_storage_key
-from stream_spine import COUNT_DROPS, MessageBus, bar_msg
+from stream_spine import COUNT_DROPS, MessageBus, bar_msg, price_history_msg
 from time_et import COLLECT_WINDOW_START_MINS, ET, ct_label
 
 log = logging.getLogger(__name__)
@@ -78,6 +78,12 @@ SRC_STREAM, SRC_PRICEHISTORY = "schwab_chart", "schwab_pricehistory"
 EARLIER_NOT_RECEIVED, EARLIER_ASKED, EARLIER_RECEIVED = "not_received", "asked", "received"
 #: why a symbol's bars above 1 minute and its Order Flow hour are not served yet
 EARLIER_MINUTES_UNAVAILABLE = "today's earlier minutes not received from Schwab"
+#: price-history requests in flight at once: one per symbol is asked when the daemon starts
+#: streaming it (~45 symbols at its start and at the open). Schwab's Trader API is said to allow
+#: about 120 requests a minute per app [UNVERIFIED: not found in Schwab's documents in this
+#: repository], shared with the console's chain downloads, so the requests go two at a time.
+#: Two in flight bounds the burst, not the rate per minute (a request's latency is unmeasured).
+HISTORY_IN_FLIGHT = 2
 
 
 def _et_day_start(t: float) -> float:
@@ -123,6 +129,9 @@ class LiveUiServer:
         #: price history, then each minute Schwab streams. Nothing here reads the database.
         self.days: dict[str, _Day] = {}
         self._asks: set[asyncio.Task] = set()
+        self._in_flight = asyncio.Semaphore(HISTORY_IN_FLIGHT)
+        #: per symbol, today's streamed minutes that differed from Schwab's price history
+        self.mismatches: dict[str, int] = {}
         stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
                      beat_send_failures=0, listening=None, last_send_ms=None, bars_sent=0,
                      bar_source_mismatches=0, earlier_minutes_failures=0)
@@ -154,9 +163,8 @@ class LiveUiServer:
         bar it makes at every timeframe, for every browser watching the symbol. Until the day's
         earlier minutes are received from Schwab's price history (asked on the symbol's first
         streamed minute of the day, and again on each later one until received), only its 1-minute
-        bar is pushed and the rest are unavailable with the reason. A price-history message on the
-        bus is this server's own, published for the store: already held."""
-        if not isinstance(msg, dict) or not msg.get("symbol") or msg.get("src") == SRC_PRICEHISTORY:
+        bar is pushed and the rest are unavailable with the reason."""
+        if not isinstance(msg, dict) or not msg.get("symbol"):
             return
         bar = live_price_rows.minute_bar(msg)
         if bar is None:
@@ -179,28 +187,32 @@ class LiveUiServer:
         prev, prev_src = day.minutes.get(bar["t"]), day.source.get(bar["t"])
         if prev is not None and prev_src != src and prev != bar:
             self.stats["bar_source_mismatches"] += 1
+            self.mismatches[sym] = self.mismatches.get(sym, 0) + 1
             stream, history = (prev, bar) if prev_src == SRC_STREAM else (bar, prev)
             log.warning("%s %s: the streamed bar %s and Schwab's price-history bar %s differ; the "
-                        "streamed bar stands", sym, ct_label(bar["t"]), stream, history)
+                        "streamed bar stands (%d such minutes for %s today, %d across the board)",
+                        sym, ct_label(bar["t"]), stream, history, self.mismatches[sym], sym,
+                        self.stats["bar_source_mismatches"])
         if prev is None or src == SRC_STREAM or prev_src == SRC_PRICEHISTORY:
             day.minutes[bar["t"]], day.source[bar["t"]] = bar, src
 
     async def _ask_earlier(self, symbol: str, sym: str, day: _Day) -> None:
         """Ask Schwab's price history for `sym`'s minutes of `day` from the collect window's first
-        minute (09:15 ET) to now; hold each completed one, publish it for the store (the console's
-        bar writer backfills what it lacks), and push the symbol's bars, now whole. A failed
-        request leaves the day's earlier minutes not received, with its reason; the symbol's next
-        streamed minute asks again."""
-        now = self.clock()
-        try:
-            candles = await asyncio.to_thread(self.history_fn, symbol,
-                                              day.start + COLLECT_WINDOW_START_MINS * 60, now)
-        except Exception as e:  # noqa: BLE001 -- counted, served as the reason; asked again
-            self.stats["earlier_minutes_failures"] += 1
-            day.earlier, day.reason = EARLIER_NOT_RECEIVED, f"{EARLIER_MINUTES_UNAVAILABLE}: {type(e).__name__}: {e}"
-            log.warning("live ui: %s %s", sym, day.reason)
-            return
-        received = self.clock()
+        minute (09:15 ET) to now (at most HISTORY_IN_FLIGHT requests at once); hold each completed
+        one, publish them for the store in one message (the console's bar writer backfills what it
+        lacks), and push the symbol's bars, now whole. A failed request leaves the day's earlier
+        minutes not received, with its reason; the symbol's next streamed minute asks again."""
+        async with self._in_flight:
+            now = self.clock()
+            try:
+                candles = await asyncio.to_thread(self.history_fn, symbol,
+                                                  day.start + COLLECT_WINDOW_START_MINS * 60, now)
+            except Exception as e:  # noqa: BLE001 -- counted, served as the reason; asked again
+                self.stats["earlier_minutes_failures"] += 1
+                day.earlier, day.reason = EARLIER_NOT_RECEIVED, f"{EARLIER_MINUTES_UNAVAILABLE}: {type(e).__name__}: {e}"
+                log.warning("live ui: %s %s", sym, day.reason)
+                return
+        received, held = self.clock(), []
         for c in candles:
             msg = bar_msg(symbol=symbol, bar_start_ms=c.get("datetime"), open=c.get("open"), high=c.get("high"),
                           low=c.get("low"), close=c.get("close"), volume=c.get("volume"),
@@ -209,7 +221,9 @@ class LiveUiServer:
             if bar is None or bar["t"] + 60.0 > now or _et_day_start(bar["t"]) != day.start:
                 continue                       # not a chart bar, not completed, or another day
             self._hold(sym, day, bar, SRC_PRICEHISTORY)
-            self.bus.publish(f"bar1m.{symbol}", msg)
+            held.append(msg)
+        if held:
+            self.bus.publish(f"barhist.{symbol}", price_history_msg(symbol=symbol, bars=held, ts_recv=received))
         day.earlier, day.reason = EARLIER_RECEIVED, None
         if self.days.get(sym) is day and day.minutes:
             self._push(sym, day, day.minutes[max(day.minutes)], received)

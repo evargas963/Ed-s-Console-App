@@ -58,6 +58,10 @@
     if (sec < 172800) return (sec / 3600).toFixed(1) + 'h';
     return Math.round(sec / 86400) + 'd';
   }
+  // each served session-levels state (server.price_level_staleness): [the pill's word (none: the
+  // newest bar's age), whether it reads ok]
+  var SESSION_LEVELS_WORD = { current: [null, true], session_ended: [null, true], stale: ['STALE', false],
+    session_not_started: ['NOT STARTED', false] };
   // the option chain's served levels_state, printed: its time after the close, STALE with its age
   // and served reason, or its age
   function chainState(t) {
@@ -543,10 +547,12 @@
       : pill('BOOK', m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
           m.ages && m.ages.book_stale === false ? 'ok' : 'bad');
     var degraded = ((L && L.degraded) || []).map(function (d) { return d.family + ': ' + d.reason; }).join('; ');
-    var sl = L && L.session_levels, slStale = !!(sl && sl.stale);   // served: the bars stopped, and why
+    // the session levels' one served state (server.price_level_staleness), printed with its reason
+    var sl = (L && L.session_levels) || {}, slWord = SESSION_LEVELS_WORD[sl.state];
     h += L === undefined ? pill('LEVELS', '…', '') : !L ? pill('LEVELS', 'FAILED', 'bad')
-      : pill('LEVELS', slStale ? 'STALE' : age(L.snapshot_age_sec), slStale || degraded ? 'warn' : 'ok',
-          [slStale ? sl.reason : '', degraded].filter(Boolean).join('; ') || 'age of the newest bar the session levels are built from');
+      : pill('LEVELS', slWord ? slWord[0] || age(L.snapshot_age_sec) : 'STATE NOT SERVED',
+          slWord && slWord[1] && !degraded ? 'ok' : 'warn',
+          [sl.reason, degraded].filter(Boolean).join('; ') || 'age of the newest bar the session levels are built from');
     h += t === undefined ? pill('GAMMA', '…', '') : !t || t.error ? pill('GAMMA', 'DOWN', 'bad', (t && t.error) || 'terrain request failed') : pill('GAMMA', t.levels_state === 'stale' ? 'STALE ' + age(t.levels_age_sec) : t.levels_state === 'closed' ? 'CLOSED' : age(t.levels_age_sec),
           t.levels_state === 'live' ? 'ok' : 'warn',   // the served levels_state, printed with its reason or time
           t.levels_state === 'closed' ? 'market closed: levels as of ' + t.levels_as_of : t.levels_stale_reason || '');

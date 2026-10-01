@@ -110,16 +110,21 @@ opens no second streaming socket).
   symbol's minutes of the day in the daemon's memory: when the daemon starts streaming a
   symbol (its first streamed minute of the day, at startup or when the symbol is added) it asks
   Schwab's 1-minute price history for the day's earlier minutes, from the collect window's first
-  minute to now (`capture.schwab_minutes`, extended hours; the daemon is the only caller of
+  minute to now (`capture.schwab_minutes`, extended hours, with the daemon's one Schwab client,
+  two requests in flight at most, `live_ui.HISTORY_IN_FLIGHT`; the daemon is the only caller of
   Schwab), then holds each minute Schwab streams; each minute keeps its source (stream or price
   history), and where both give a minute the streamed one stands, a difference counted and
-  logged with both (`live_ui._hold`). No live bar reads the database. Until the earlier minutes
-  are received, only the 1-minute bar is pushed and every bar above it and the Order Flow hour
-  are unavailable with the reason ("today's earlier minutes not received from Schwab", with the
-  failure); the symbol's next streamed minute asks again. The price-history minutes are
-  published to the console's one bar writer, which writes the ones the store lacks (source
-  `schwab_pricehistory`) and never overwrites a stored bar; a streamed bar stands over a stored
-  one. Decided by the operator, 2026-09-30: "we can get all the bars that we need for the day
+  logged with both and with the symbol's and the board's count (`live_ui._hold`; W-15). No live
+  bar reads the database. Until the earlier minutes are received, only the 1-minute bar is
+  pushed and every bar above it and the Order Flow hour are unavailable with the reason
+  ("today's earlier minutes not received from Schwab", with the failure; with no Schwab sign-in,
+  the sign-in's own message); the symbol's next streamed minute asks again. Each reply's
+  minutes travel to the console as one message (`barhist.SYM`, not a stream message, so
+  `stream_capture.db` does not keep it; a full bus queue is counted and logged) to its one bar
+  writer, which writes the ones the store lacks (source `schwab_pricehistory`) and never
+  overwrites a stored bar; a streamed bar stands over a stored one. Open (the operator's design
+  is pending): a gap after the first streamed minute (a symbol leaving and rejoining the stream,
+  a Schwab reconnect) is not asked again. Decided by the operator, 2026-09-30: "we can get all the bars that we need for the day
   right? and then those bars can backfill the db if the db needs to be backfilled?" → for each new minute, the chart bar it makes at every
   timeframe (`live_price_rows.bar_update`), with the symbol's newest hour of 1-minute bars
   whole (`recent_1m`, the Trade Desk Order Flow card's) → the browsers subscribed to the symbol,
@@ -498,15 +503,20 @@ Each value's definition.
 
 **6.5 One-minute bars and roll-ups** (CHART_EQUITY).
 - *Meaning:* Schwab's completed 1-minute bar as sent (open, high, low, close in dollars, volume
-  in shares, None when not reported), on the minute grid, 09:15 ET to 15 minutes after the close;
-  a roll-up is the bars of its bucket (first open, max high, min low, last close, volume summed
-  only when every minute reported one).
+  in shares, None when not reported), streamed (CHART_EQUITY) or, for the day's minutes before
+  the first one streamed, from Schwab's 1-minute price history; on the minute grid, 09:15 ET to
+  15 minutes after the close; a roll-up is the bars of its bucket (first open, max high, min
+  low, last close, volume summed only when every minute reported one), stamped with its bucket's
+  start.
 - *Producer and owner:* `live_price_rows.minute_bar` / `aggregate_bars` / `bar_update`, in the
-  daemon (`live_ui`); the console's bar writer stores the same bar.
+  daemon (`live_ui`, with `capture.schwab_minutes`); the console's bar writer stores each
+  streamed bar and backfills the price-history minutes the store lacks.
 - *Times:* the bar's start; the daemon's receive time.
-- *Current when:* the newest completed bar Schwab sent while the page was connected.
-- *Otherwise:* a gap while disconnected is named (`bars_gap`), never filled; history loads only
-  from the store, as history.
+- *Current when:* the newest completed bar Schwab sent while the page was connected; a bar
+  above 1 minute only once the day's earlier minutes are received.
+- *Otherwise:* a gap while the page was disconnected is named (`bars_gap`), never filled; before
+  the earlier minutes are received, every bar above 1 minute is unavailable with the reason;
+  history loads only from the store, as history.
 - *Consumers:* every chart, the price levels (§6.6), the ATR.
 - *Tests:* `test_bars_pushed_v1`, `test_bars_and_windows_v1`, `test_collect_window_law_v1`.
 

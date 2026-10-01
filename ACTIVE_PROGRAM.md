@@ -26,6 +26,7 @@ None.
 | W-12 | unverified | The calendar misses the 2025-01-09 NYSE closure; the $SPX default contract can be the AM-settled monthly on its expiry day; the posture defaults to STAND_ASIDE with no data. | `time_et`, `app/options/contracts/default.py`, `terrain_read` | Each reproduced, then fixed with its test. |
 | W-13 | unverified | The option contract's top of book is held with no receive time, and the console's order-flow state is not cleared when its push reconnects. | `app/options/order_flow/state.py` | Each field with its receive time; state cleared on reconnect; a test. |
 | W-14 | code-proven | The 1-minute bars Schwab sends while the console is disconnected from the daemon's push are never written to `price_bars_1m`: the console is the bar writer and a reconnect resends no bar (`PUSH_GAP` names the span), so the chart history, the price levels and the ATR have a hole for that span (the price-history backfill runs when the daemon starts streaming a symbol, not on a console reconnect). | the bar writer moves to the daemon (P2-DB4) | The daemon writes every bar it receives; a test with the console disconnected across a bar. |
+| W-15 | code-proven possibility, unmeasured | After a mid-day daemon restart the daemon holds Schwab's price-history minutes where the store holds the streamed ones for the same minutes; where the two differ, the pushed bar and `/api/bars1m`'s bar for that bucket disagree. Whether they ever differ is unmeasured. Blocker: a live-market measurement of `bar_source_mismatches` across the board (each difference is logged per symbol with that symbol's and the board's count: "the streamed bar … and Schwab's price-history bar … differ", `live_ui._hold`). | `live_ui`, the bar writer | The measurement read at the open; then the decision on which minute both serve. |
 
 ## Governance and operations
 
@@ -124,8 +125,8 @@ the old code.
 - P-10 six or more page formatters for dollars and volume with different precision.
 - P-12 Strike Detail matches contracts by tolerance, substitutes the put for the call, uses a UTC date and reads the raw contracts (a -999 prints).
 - P-13 Key Levels: a fallback age formatter.
-- P-14 the chart drops markers with no bar uncounted, colours a missing change as up, and picks the levels shown.
-- P-16 Trade Desk ages, dates and the VIX percent are formatted or computed on the page; PD value-area picked by id.
+- P-14 the chart drops markers with no bar uncounted, colours a missing change as up, and picks the levels shown; it formats intraday axis ticks and a crosshair time with no bar in Central Time on the page (`ed-tv-chart.js` CT_TIME / CT_DAY / CT_FULL / CT_YEAR / CT_MONTH; a bar's own time is its served label).
+- P-16 Trade Desk ages, dates and the VIX percent are formatted or computed on the page (`whenCT` compares a queue entry's Central Time date with the browser's today); PD value-area picked by id.
 - P-18 Trade Desk labels first-of, a sign flipped on the page, `/1e6`, and strike-to-wall matching on the page.
 - P-19 a second and third ACK validator in `ed-stream.js`.
 - P-22 an unknown subscription state shows PENDING; the Flow header's strike and expiry come from page state.

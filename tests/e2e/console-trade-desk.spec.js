@@ -24,6 +24,7 @@ const TERRAIN = { ticker: 'SPY', spot: SPOT, gamma_flip: 768, call_wall: 775, pu
   call_wall_relation: 'BELOW', put_wall_relation: 'ABOVE', pcr_all: 1.1,
   pcr_by_expiry: { '2026-09-25': 1.1, '2026-10-02': null, '2026-10-09': 0.9 }, atm_iv_pct_by_expiry: { '2026-09-25': 14.2, '2026-10-02': 15.1 } };
 const LEVELS = { ticker: 'SPY', spot: SPOT, tf: '30', generation: 1, vwap_series: [], snapshot_age_sec: 45,
+  session_levels: { state: 'current', stale: false, reason: '' },
   levels: [
     { id: 'PDH', price: 773.5, family: 'prior_day', label: 'Prior Day High', short: 'PDH', evidence_tier: 'MEASURED', distance: 2.2, side: 'ABOVE', },
     { id: 'max_pain', price: 770, family: 'gamma', label: 'Max pain', short: 'Max pain', evidence_tier: 'DERIVED', distance: -1.3, side: 'BELOW', },
@@ -300,6 +301,29 @@ test.describe('Trade Desk renders served values', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown)).toBeGreaterThan(0);
     await expect(page.locator('#tdmQueue')).toContainText('Loading');
+    expect(errs).toEqual([]);
+  });
+
+  test('Desk: before the session starts the LEVELS pill reads NOT STARTED with the served reason', async ({ page }) => {
+    // premarket the pill showed the prior session's newest bar age in green (it read only
+    // session_levels.stale); it prints the served state and reason (server.price_level_staleness)
+    const why = "today's session has not started: its first 1-minute bar ends Wed 09/30 08:16 AM CT";
+    const errs = watchErrors(page);
+    await page.route('**/api/**', (route) => {
+      const url = route.request().url();
+      let body = { available: false };
+      if (url.includes('/api/levels')) body = Object.assign({}, LEVELS, { degraded: [], snapshot_age_sec: 56700,
+        session_levels: { state: 'session_not_started', stale: false, reason: why } });
+      else if (url.includes('/api/bars1m')) body = BARS;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const pill = page.locator('#tdmTrust .tdm-pill', { hasText: 'LEVELS' });
+    await expect(pill).toContainText('NOT STARTED');
+    await expect(pill).toHaveAttribute('title', why);
+    await expect(pill).toHaveClass(/warn/);
+    await expect(pill).not.toHaveClass(/ok/);
     expect(errs).toEqual([]);
   });
 

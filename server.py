@@ -2651,12 +2651,10 @@ def get_terrain_strikes(ticker: str = Query(...)):
         log.debug("terrain strikes live read failed %s: %s", tk, e)
     prior, prior_src = _snap.get("_prior_strikes") or (None, None)
 
-    def _rows(rows: "dict | None", why: str) -> dict:
-        """One shape for today's and the prior day's rows: the three scopes, the count of
-        contracts in no row (expiry_unknown) and, when there are no rows, why (absent_reason)."""
-        if rows:
-            return {**rows, "absent_reason": None}
-        return {"all": [], "near": [], "far": [], "expiry_unknown": None, "absent_reason": why}
+    def _rows(rows: "dict | None") -> dict:
+        """One shape for today's and the prior day's rows: the three scopes and the count of
+        contracts in no row (expiry_unknown; none counted when there are no rows)."""
+        return rows or {"all": [], "near": [], "far": [], "expiry_unknown": None}
 
     peak = (_ps.get("peak") or {}) if isinstance(_ps, dict) else {}
     live_spot, live_src, _live_ts = resolve_spot(tk)   # the one spot on every screen
@@ -2664,7 +2662,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
         "ticker": tk, "spot": live_spot,
         "spot_source": live_src,
         "priced_at_spot": spot_used,
-        "today": _rows(today, "no levels published for this ticker yet"),
+        "today": _rows(today),
         # the Chart view's DEX and OI profiles: each measure's rows (terrain_engine
         # _per_strike_measure_rows), its strike nearest the live price (the window's centre) and
         # its largest-magnitude strike, as published (per_strike_view `peak`)
@@ -2690,7 +2688,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
         # window (16:30 ET) and nothing said so. Naming the right source proves only that the
         # right tap was opened, never that anything is still coming out of it.
         **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk, now),
-        "prior": _rows(prior, "no chain capture from the market day before the chain's"),
+        "prior": _rows(prior),
         "prior_source": prior_src,
     })
 

@@ -195,6 +195,10 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     if kind == "bar1m":
         streamed_bars.put(msg)
         return None
+    if kind == "barhist":                  # one price-history reply: each minute to the bar writer
+        for bar in msg.get("bars") or ():
+            streamed_bars.put(bar)
+        return None
     if kind == "book":
         content = msg.get("content")
         if not isinstance(content, dict):

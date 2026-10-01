@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import queue
 import sqlite3
 import threading
@@ -20,6 +21,8 @@ from pathlib import Path
 from typing import Any
 
 from db_authority import canonical_stream_db_path
+
+log = logging.getLogger(__name__)
 
 
 
@@ -186,6 +189,14 @@ def bar_msg(*, symbol: str, bar_start_ms=None, open=None, high=None, low=None, c
             "open": open, "high": high, "low": low, "close": close, "volume": volume, "src": src}
 
 
+def price_history_msg(*, symbol: str, bars: "list[dict]", ts_recv: float) -> dict:
+    """barhist.* -- one reply of Schwab's 1-minute price history (REST, not the stream): its
+    completed minutes of the day as bar1m messages (src schwab_pricehistory), in one message so a
+    whole reply reaches the console's bar writer together. Not a stream message: not written to
+    stream_capture.db."""
+    return {"ts_recv": ts_recv, "symbol": symbol, "src": "schwab_pricehistory", "bars": list(bars)}
+
+
 def news_msg(*, symbol: str, content: dict, src: str, ts_recv: float | None = None) -> dict:
     """news.* (NEWS_HEADLINE), Schwab's item verbatim."""
     return {"ts_recv": _now(ts_recv), "symbol": symbol, "content": content, "src": src}
@@ -223,6 +234,9 @@ class Subscription:
             self.queue.put_nowait((topic, msg))
         except asyncio.QueueFull:
             self.dropped += 1
+            if self.dropped & (self.dropped - 1) == 0:   # logged at 1, 2, 4, 8, ... drops
+                log.warning("bus: the %r consumer's queue is full: %d messages dropped (latest %s)",
+                            self.prefix, self.dropped, topic)
 
     async def get(self) -> tuple[str, Any]:
         item = await self.queue.get()

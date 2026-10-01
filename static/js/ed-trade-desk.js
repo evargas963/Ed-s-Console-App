@@ -104,10 +104,11 @@
     if (!sorted.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No priced levels', '', 0, [], null);
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
-    // how old the session levels' newest bar is, and STALE with the served reason when their bars stopped
+    // the session levels' one served state (server.price_level_staleness), printed: current, the
+    // newest bar's age; otherwise the state's served reason
     var sl = levelsD.session_levels;
-    if (sl && sl.stale) rows.push(['Session levels', 'STALE — ' + sl.reason]);
-    else if (levelsD.snapshot_age_sec != null) rows.push(['Session levels', window.EdShell.fmtAge(levelsD.snapshot_age_sec) + ' old']);
+    if (sl && sl.state === 'current' && levelsD.snapshot_age_sec != null) rows.push(['Session levels', window.EdShell.fmtAge(levelsD.snapshot_age_sec) + ' old']);
+    else if (sl && sl.reason) rows.push(['Session levels', (sl.stale ? 'STALE — ' : '') + sl.reason]);
     var heroVal = (nearest.label || nearest.id) + ' ' + num(nearest.price);
     var heroUnit = nearest.side === 'AT' ? 'at spot' : nearest.side === 'ABOVE' ? num(nearest.distance) + ' above spot'
       : nearest.side === 'BELOW' ? num(-nearest.distance) + ' below spot' : '';

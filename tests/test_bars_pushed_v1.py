@@ -93,13 +93,14 @@ class _Ws:
 def _pushed(streamed, history, subscribe=("SPY",), after_start=None, stats=None):
     """Start the daemon's browser socket at RESTART, with `history` as Schwab's price history,
     call `after_start()` once it is listening, publish `streamed` on its bus, and return every
-    bar update a browser subscribed to `subscribe` received, and every bus message published."""
+    bar update a browser subscribed to `subscribe` received, and every price-history message
+    (barhist.*) published on its bus."""
     from websockets.asyncio.client import connect
 
     async def main():
         port, bus, stop = _free_port(), MessageBus(), asyncio.Event()
         st = stats if stats is not None else {}
-        published = bus.subscribe("bar1m.", maxsize=65536, name="test_published")
+        published = bus.subscribe("barhist.", maxsize=65536, name="test_published")
         feed = lambda: {"ts": RESTART, "schwab_socket_open": True, "held": {}, "health": {}}  # noqa: E731
         task = asyncio.create_task(live_ui.serve_live_ui(bus, stop, heartbeat_fn=feed, clock=lambda: RESTART,
                                                          host="127.0.0.1", port=port, stats=st,
@@ -196,12 +197,10 @@ def test_no_live_bar_is_built_from_the_database(monkeypatch):
 
 
 def test_a_symbol_streamed_mid_day_pushes_the_whole_days_bars(monkeypatch, tmp_path):
-    """A symbol the daemon starts streaming mid-day held only the minutes Schwab streamed it from
-    then: its pushed daily, 30m and 60m bars and Order Flow hour were partial and were drawn over
-    the chart's full-day candle (QQQ, 2026-09-30: open 769.09 for 768.78, low 768.34 for 766.29,
-    volume 372,524 for 8,324,197). The daemon asks Schwab's price history for the day's earlier
-    minutes when the symbol starts streaming: every pushed bar is the route's. Real SPY
-    CHART_EQUITY bars of 2026-09-25 under the symbol QQQ (the stand-in for QQQ's own)."""
+    """A symbol the daemon starts streaming mid-day pushes every timeframe's bar and its Order
+    Flow hour equal to the route's: its earlier minutes come from Schwab's price history, asked
+    when it starts streaming; until they arrive nothing above 1 minute is served as complete. Real
+    SPY CHART_EQUITY bars of 2026-09-25 under the symbol QQQ (the stand-in for QQQ's own)."""
     monkeypatch.setattr(lmp, "_by_ticker", {})
     db = EdDB(tmp_path / "bars.db", allow_noncanonical=True)
     monkeypatch.setattr(srv, "get_db", lambda: db)
@@ -447,8 +446,11 @@ def test_the_price_history_backfills_the_store_and_never_overwrites_a_stored_bar
     bar writer, which writes the minutes the store lacks (source schwab_pricehistory) and leaves
     every stored bar as it is. Real SPY bars of 2026-09-25: the store has the first five minutes,
     streamed; the price history (the stand-in for Schwab's network) gives the first twenty, its
-    first five 0.10 higher."""
+    first five 0.10 higher. The reply travels as one message (barhist.SPY), so a full queue
+    cannot drop part of it, and it is not a stream message: stream_capture.db does not keep it."""
+    import app.options.order_flow.streaming as ofs
     from app.market_data.schwab.streaming.live_push import is_forwarded
+    from stream_spine import CaptureWriter
     monkeypatch.setattr(lmp, "_by_ticker", {})
     db = EdDB(tmp_path / "bars.db", allow_noncanonical=True)
     monkeypatch.setattr(srv, "get_db", lambda: db)
@@ -456,11 +458,17 @@ def test_the_price_history_backfills_the_store_and_never_overwrites_a_stored_bar
         assert srv._write_streamed_bar(_msg(b))
     history = [dict(b, close=b["close"] + 0.10) for b in FRIDAY[:5]] + FRIDAY[5:20]
     _got, published = _pushed([_msg(FRIDAY[100])], _schwab({"SPY": history}))
-    backfill = [m for m in published if m["src"] == live_ui.SRC_PRICEHISTORY]
-    assert [m["bar_start_ms"] for m in backfill] == [b["timestamp"] for b in history]
-    assert all(is_forwarded("bar1m.SPY", m) for m in backfill)     # the daemon forwards them
-    for m in backfill:                                             # the console's bar writer
-        srv._write_streamed_bar(m)
+    (reply,) = published                                           # one message for the reply
+    assert reply["src"] == live_ui.SRC_PRICEHISTORY
+    assert [m["bar_start_ms"] for m in reply["bars"]] == [b["timestamp"] for b in history]
+    assert is_forwarded("barhist.SPY", reply)                      # the daemon forwards it
+    writer = CaptureWriter(tmp_path / "stream_capture.db")
+    writer.insert("barhist.SPY", reply)
+    assert writer.rows_written == 0                                # not a stream message
+    while not ofs.streamed_bars.empty():
+        ofs.streamed_bars.get()
+    ofs._ingest_pushed("barhist.SPY", reply)                       # the console's ingest
+    srv._write_streamed_bars([ofs.streamed_bars.get() for _ in range(ofs.streamed_bars.qsize())])
     con = sqlite3.connect(db.db_path)
     try:
         rows = con.execute("SELECT bar_start_ts_utc, close, source FROM price_bars_1m WHERE ticker='SPY' "
@@ -474,9 +482,10 @@ def test_the_price_history_backfills_the_store_and_never_overwrites_a_stored_bar
 def test_the_daemon_asks_schwab_for_the_days_minutes_with_extended_hours():
     """The daemon's one price-history call (capture.schwab_minutes): Schwab's
     get_price_history_every_minute for the symbol, from the start to the end it is given, with
-    extended hours (the collect window opens 09:15 ET), and Schwab's candles as sent. The stand-in
+    extended hours (the collect window opens 09:15 ET), and Schwab's candles as sent, asked with
+    the daemon's one Schwab client (every request built its own from the token file). The stand-in
     is Schwab's client, answering the captured minutes."""
-    from app.market_data.schwab.streaming.capture import schwab_minutes
+    from app.market_data.schwab.streaming.capture import Daemon, schwab_minutes
     calls = []
 
     class _Response:
@@ -491,11 +500,93 @@ def test_the_daemon_asks_schwab_for_the_days_minutes_with_extended_hours():
             calls.append((symbol, kw))
             return _Response()
 
-    class _Made:
-        client = _Client()
-
+    daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"))
+    daemon.client = _Client()
+    fetch = schwab_minutes(daemon)
     start, end = datetime(2026, 9, 25, 9, 15, tzinfo=ET).timestamp(), RESTART
-    assert schwab_minutes(lambda: _Made())("SPY", start, end) == [_candle(b) for b in FRIDAY[:3]]
-    ((symbol, kw),) = calls
-    assert symbol == "SPY" and kw["need_extended_hours_data"] is True
+    assert fetch("SPY", start, end) == [_candle(b) for b in FRIDAY[:3]]
+    assert fetch("QQQ", start, end) == [_candle(b) for b in FRIDAY[:3]]
+    (symbol, kw), (other, _kw) = calls                    # both on the daemon's one client
+    assert (symbol, other) == ("SPY", "QQQ") and kw["need_extended_hours_data"] is True
     assert kw["start_datetime"].timestamp() == start and kw["end_datetime"].timestamp() == end
+
+
+def test_without_a_schwab_sign_in_the_reason_served_is_schwabs_own(monkeypatch):
+    """A missing or expired Schwab token surfaced as "AttributeError: 'NoneType' object has no
+    attribute ..." on the charts. The daemon keeps the reason its Schwab client could not be built
+    (Schwab's own message) and the price history serves it as the unavailable reason. The stand-in
+    is the client builder's answer for an expired token."""
+    from types import SimpleNamespace
+
+    from app.market_data.schwab.streaming.capture import Daemon, schwab_minutes
+    expired = "refresh token expired; run python reauth_schwab.py"
+    daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"))
+
+    async def run_once():
+        stop = asyncio.Event()
+        task = asyncio.create_task(daemon.run(lambda: SimpleNamespace(ok=False, client=None, message=expired), stop))
+        while daemon.client_problem is None or expired not in daemon.client_problem:
+            await asyncio.sleep(0.005)
+        stop.set()
+        await task
+    asyncio.run(run_once())
+    stats: dict = {}
+
+    async def main():
+        srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, stats, clock=lambda: RESTART,
+                                      history_fn=schwab_minutes(daemon))
+        c = live_ui._Client(_Ws())
+        c.symbols = frozenset({"SPY"})
+        srv_ui.clients.add(c)
+        srv_ui.on_bar(_msg(FRIDAY[100]))
+        while stats["earlier_minutes_failures"] < 1:
+            await asyncio.sleep(0.005)
+        srv_ui.on_bar(_msg(FRIDAY[101]))
+        return list(c.bars)[-1]
+    update = asyncio.run(main())
+    assert update["unavailable"] == (f"{live_ui.EARLIER_MINUTES_UNAVAILABLE}: ConnectionError: "
+                                     f"Schwab client: {expired}")
+
+
+def test_at_most_two_price_history_requests_are_in_flight(monkeypatch):
+    """About 45 symbols start streaming together (the daemon's start, the open): each asked
+    Schwab's price history at once. They go HISTORY_IN_FLIGHT (two) at a time. Real SPY bars of
+    2026-09-25 under six symbols (the stand-in), Schwab's network the stand-in, held until
+    released."""
+    import threading
+    gate, lock, state = threading.Event(), threading.Lock(), {"now": 0, "max": 0}
+
+    def history(symbol, start, end):
+        with lock:
+            state["now"] += 1
+            state["max"] = max(state["max"], state["now"])
+        gate.wait(5)
+        with lock:
+            state["now"] -= 1
+        return []
+
+    async def main():
+        srv_ui = live_ui.LiveUiServer(MessageBus(), lambda: {}, {}, clock=lambda: RESTART, history_fn=history)
+        for sym in ("SPY", "QQQ", "IWM", "DIA", "AAPL", "MSFT"):
+            srv_ui.on_bar(_msg(FRIDAY[100], sym=sym))
+        await asyncio.sleep(0.2)
+        in_flight = state["now"]
+        gate.set()
+        while any(d.earlier != live_ui.EARLIER_RECEIVED for d in srv_ui.days.values()):
+            await asyncio.sleep(0.005)
+        return in_flight
+    assert asyncio.run(main()) == live_ui.HISTORY_IN_FLIGHT == 2
+    assert state["max"] == 2
+
+
+def test_a_full_bus_queue_is_logged_not_silent(caplog):
+    """A consumer's full queue drops a message: counted, and logged (at 1, 2, 4, ... drops), so a
+    lost bar or price-history reply is never silent."""
+    bus = MessageBus()
+    sub = bus.subscribe("barhist.", maxsize=1, name="console")
+    for b in FRIDAY[:3]:
+        bus.publish("barhist.SPY", {"symbol": "SPY", "bars": [_msg(b)]})
+    assert sub.dropped == 2
+    assert [r.getMessage() for r in caplog.records if "dropped" in r.getMessage()] == [
+        "bus: the 'barhist.' consumer's queue is full: 1 messages dropped (latest barhist.SPY)",
+        "bus: the 'barhist.' consumer's queue is full: 2 messages dropped (latest barhist.SPY)"]
