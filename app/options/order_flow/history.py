@@ -7,9 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from instrument_identity import ticker_storage_key
-from l1_trade_observation import extract_vendor_print, is_adjacent_restatement, vendor_triple
 from numeric_contract import schwab_count, schwab_number
 from stream_spine import resolve_stream_db_path
+from time_et import ct_label
+
+#: Schwab's LEVELONE_OPTIONS fields of the last trade: a message carrying one reports a print
+_TRADE_FIELDS = ("TRADE_TIME_MILLIS", "LAST_PRICE", "LAST_SIZE")
 
 
 def tape_rows_for_symbol(
@@ -19,17 +22,19 @@ def tape_rows_for_symbol(
     db_path: str | Path | None = None,
     limit: int = 200,
 ) -> list[dict[str, Any]]:
-    """Discrete TRADE prints for one contract from the native LEVELONE_OPTIONS capture —
-    each row is one genuinely NEW (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE) triple, never a
-    re-emitted duplicate of the same trade caused by an unrelated field (e.g. a Greek)
-    updating on the same underlying tick. Static per-contract context (expiry/strike/type/
-    multiplier) is carried forward from the most recent tick that actually reported it — the
-    vendor does not repeat that context on every partial update, and this must not silently
-    read as if the contract identity were unknown on ticks that omit it.
+    """The contract's trade prints from the stored LEVELONE_OPTIONS messages since `since_ts`.
 
-    Ordered newest-first (tape convention: most recent print on top), bounded by `limit`.
-    Fails closed to `[]` on any read/parse error — a tape that cannot be proven is empty,
-    never a stale or partial one presented as complete."""
+    Schwab sends a field only when it changes, so each message is merged, field by field, onto
+    the contract's fields as they stood: the last value sent is the value. A row is a message
+    that changes the last trade's time, price or size; it carries the merged trade, the trade's
+    own time (Schwab's TRADE_TIME_MILLIS, never the receive time: the first message after a
+    subscription reports a trade that may be a day old) and the quote, volume, open interest
+    and greeks as they stood then. A field Schwab has not sent inside the window is absent from
+    the row. A message that repeats the same trade (a snapshot resent on a reconnect) is not a
+    new row. The stream reports the LAST trade when it sends, not every trade: TOTAL_VOLUME
+    moves by more than the rows' sizes. No side is inferred (docs/DATA_FLOW.md decision 9).
+
+    Ordered newest-first, bounded by `limit`. `[]` on any read error."""
     sym = ticker_storage_key(contract)   # canonical key only -- no raw-string stand-in
     if not sym:
         return []
@@ -62,8 +67,8 @@ def tape_rows_for_symbol(
     finally:
         con.close()
 
-    context: dict[str, Any] = {}
-    last_trade_key: tuple[Any, Any, Any] | None = None
+    fields: dict[str, Any] = {}                      # the contract's fields as they stand
+    last_trade: tuple[Any, Any, Any] | None = None   # the last print's (time, price, size)
     out: list[dict[str, Any]] = []
     for ts_recv, native_json in rows:
         try:
@@ -72,45 +77,32 @@ def tape_rows_for_symbol(
             continue
         if not isinstance(item, dict):
             continue
-        for k in ("STRIKE_TYPE", "CONTRACT_TYPE", "EXPIRATION_YEAR", "EXPIRATION_MONTH",
-                  "EXPIRATION_DAY", "MULTIPLIER", "UNDERLYING"):
-            if item.get(k) is not None:
-                context[k] = item[k]
-        # a trade print and its identity are l1_trade_observation's (the live tape's): no
-        # LAST_PRICE is no print; an adjacent repeat of the same vendor triple is not a new one
-        p = extract_vendor_print(item)
-        if p is None:
+        fields.update(item)
+        if not any(k in item for k in _TRADE_FIELDS):
             continue
-        trade_key = vendor_triple(p["time_millis"], p["price"], p["size"])
-        if is_adjacent_restatement(last_trade_key, trade_key):
+        trade, size = schwab_number(fields.get("LAST_PRICE")), schwab_count(fields.get("LAST_SIZE"))
+        trade_ms = schwab_number(fields.get("TRADE_TIME_MILLIS"))
+        this_trade = (trade_ms, trade, size)
+        if this_trade == last_trade:
             continue
-        last_trade_key = trade_key
-        strike = schwab_number(context.get("STRIKE_TYPE"))
-        side = put_call_side(context.get("CONTRACT_TYPE"))
-        y, m, d = context.get("EXPIRATION_YEAR"), context.get("EXPIRATION_MONTH"), context.get("EXPIRATION_DAY")
-        expiry = f"{y:04d}-{m:02d}-{d:02d}" if (y and m and d) else None
-        mult = schwab_number(context.get("MULTIPLIER"))
-        trade, size = p["price"], p["size"]
-        premium = (trade * size * mult
-                   if (trade is not None and size is not None and mult is not None) else None)
-        bid, ask = schwab_number(item.get("BID_PRICE")), schwab_number(item.get("ASK_PRICE"))
-        classification = "unknown"
-        if trade is not None and bid is not None and ask is not None:
-            if trade <= bid:
-                classification = "at_bid" if trade == bid else "outside_spread_low"
-            elif trade >= ask:
-                classification = "at_ask" if trade == ask else "outside_spread_high"
-            else:
-                classification = "inside_spread"
+        last_trade = this_trade
+        y, m, d = fields.get("EXPIRATION_YEAR"), fields.get("EXPIRATION_MONTH"), fields.get("EXPIRATION_DAY")
+        mult = schwab_number(fields.get("MULTIPLIER"))
         out.append({
-            "ts_recv": float(ts_recv), "symbol": sym, "underlying": context.get("UNDERLYING"),
-            "expiry": expiry, "type": side, "strike": strike,
-            "bid": bid, "bid_size": schwab_count(item.get("BID_SIZE")),
-            "ask": ask, "ask_size": schwab_count(item.get("ASK_SIZE")),
-            "trade": trade, "size": size, "premium": premium,
-            "volume": schwab_count(item.get("TOTAL_VOLUME")), "oi": schwab_count(item.get("OPEN_INTEREST")),
-            "iv": schwab_number(item.get("VOLATILITY")), "delta": schwab_number(item.get("DELTA")),
-            "multiplier": mult, "classification": classification,
+            "ts_recv": float(ts_recv), "symbol": sym, "underlying": fields.get("UNDERLYING"),
+            "trade_ts": None if trade_ms is None else trade_ms / 1000.0,
+            "time": None if trade_ms is None else ct_label(trade_ms / 1000.0, seconds=True),
+            "expiry": f"{y:04d}-{m:02d}-{d:02d}" if (y and m and d) else None,
+            "type": put_call_side(fields.get("CONTRACT_TYPE")),
+            "strike": schwab_number(fields.get("STRIKE_TYPE")),
+            "bid": schwab_number(fields.get("BID_PRICE")), "bid_size": schwab_count(fields.get("BID_SIZE")),
+            "ask": schwab_number(fields.get("ASK_PRICE")), "ask_size": schwab_count(fields.get("ASK_SIZE")),
+            "trade": trade, "size": size,
+            "premium": (trade * size * mult
+                        if (trade is not None and size is not None and mult is not None) else None),
+            "volume": schwab_count(fields.get("TOTAL_VOLUME")), "oi": schwab_count(fields.get("OPEN_INTEREST")),
+            "iv": schwab_number(fields.get("VOLATILITY")), "delta": schwab_number(fields.get("DELTA")),
+            "multiplier": mult,
         })
         if len(out) > bounded_limit:
             out.pop(0)   # keep only the most recent `bounded_limit` — cheaper than re-slicing every append

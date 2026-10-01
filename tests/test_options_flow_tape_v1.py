@@ -1,12 +1,6 @@
-"""app.options.order_flow.history.tape_rows_for_symbol (operator field-inventory audit,
-2026-09-13): discrete TRADE prints for the future Options Flow tape, built from the native
-LEVELONE_OPTIONS capture already retained in stream_options_quotes_raw -- no new capture, no
-second computation. Locked to the operator's own required schema: Time/Symbol/Expiry/Type/
-Strike/Bid x Size/Ask x Size/Trade/Size/Premium/Volume/OI/IV/Delta/provenance, with Trade/
-Size/Time/Bid/Ask/BidSize/AskSize/Volume/OI/IV/Delta read verbatim (never derived) and
-Premium = Trade x Size x native Multiplier. No aggressor-side (buy/sell) classification is
-ever produced -- `classification` states only the mechanical fact of where a print landed
-relative to that SAME tick's own bid/ask."""
+"""app.options.order_flow.history.tape_rows_for_symbol: the Options Flow tape, from the stored
+LEVELONE_OPTIONS messages. Schwab sends a field only when it changes, so a row is a change of
+the contract's merged last trade (time, price or size), at the trade's own time; no side."""
 from __future__ import annotations
 
 import json
@@ -17,9 +11,11 @@ from app.options.order_flow.history import tape_rows_for_symbol
 from stream_spine import STREAM_SCHEMA_SQL
 
 SYM = "SPY   260918C00600000"
+_REAL = json.loads((Path(__file__).parent / "fixtures" / "real_option_l1_partial_trades.json")
+                   .read_text(encoding="utf-8"))
 
 
-def _write_ticks(path: Path, rows: list[tuple[float, dict]]) -> None:
+def _write_ticks(path: Path, rows: list[tuple[float, dict]], symbol: str = SYM) -> None:
     con = sqlite3.connect(path)
     try:
         con.executescript(STREAM_SCHEMA_SQL)
@@ -27,7 +23,7 @@ def _write_ticks(path: Path, rows: list[tuple[float, dict]]) -> None:
             con.execute(
                 "INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src) "
                 "VALUES(?,?,?,?)",
-                (ts_recv, SYM, json.dumps(content), "schwab_options_l1"),
+                (ts_recv, symbol, json.dumps(content), "schwab_options_l1"),
             )
         con.commit()
     finally:
@@ -44,30 +40,53 @@ def _full_context(**overrides) -> dict:
     return base
 
 
-def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema(tmp_path):
+def test_a_trade_schwab_reports_by_its_changed_fields_alone_is_a_row(tmp_path):
+    """2026-09-30 audit, on real messages (TSLA 260930C00380000, its subscription snapshot and
+    the five messages after it, tests/fixtures/real_option_l1_partial_trades.json): the 5th
+    carries a new trade time and LAST_SIZE with no LAST_PRICE, the 6th a new trade time alone.
+    Both are trades at the price that stood (TOTAL_VOLUME moves 12 -> 13 -> 14), and both were
+    dropped because a row required the price on the same message. The 3rd carries no LAST_SIZE:
+    the size that stood is its size."""
+    sym, msgs = _REAL["symbol"], _REAL["messages"]
+    assert [sorted(k for k in ("TRADE_TIME_MILLIS", "LAST_PRICE", "LAST_SIZE") if k in m["native"])
+            for m in msgs[2:]] == [["LAST_PRICE", "TRADE_TIME_MILLIS"],
+                                   ["LAST_PRICE", "LAST_SIZE", "TRADE_TIME_MILLIS"],
+                                   ["LAST_SIZE", "TRADE_TIME_MILLIS"], ["TRADE_TIME_MILLIS"]]
     db = tmp_path / "stream_capture.db"
-    _write_ticks(db, [
-        (1000.0, _full_context(TRADE_TIME_MILLIS=999000, LAST_PRICE=1.18, LAST_SIZE=1,
-                                BID_PRICE=1.17, BID_SIZE=187, ASK_PRICE=1.19, ASK_SIZE=180,
-                                TOTAL_VOLUME=70984, OPEN_INTEREST=901, VOLATILITY=7.16, DELTA=0.357)),
-    ])
-    rows = tape_rows_for_symbol(SYM, since_ts=0, db_path=db, limit=50)
-    assert len(rows) == 1
-    r = rows[0]
-    assert r["symbol"] == SYM and r["underlying"] == "SPY"
-    assert r["expiry"] == "2026-09-18" and r["type"] == "CALL" and r["strike"] == 600
-    assert r["bid"] == 1.17 and r["bid_size"] == 187
-    assert r["ask"] == 1.19 and r["ask_size"] == 180
-    assert r["trade"] == 1.18 and r["size"] == 1
-    assert r["premium"] == 1.18 * 1 * 100
-    assert r["volume"] == 70984 and r["oi"] == 901 and r["iv"] == 7.16 and r["delta"] == 0.357
-    assert r["classification"] == "inside_spread"
+    _write_ticks(db, [(m["ts_recv"], m["native"]) for m in msgs], symbol=sym)
+    rows = tape_rows_for_symbol(sym, since_ts=0, db_path=db, limit=50)
+    assert [(r["trade"], r["size"], r["volume"]) for r in rows] == [
+        (0.25, 1, 14), (0.25, 1, 13), (0.25, 10, 12), (0.22, 1, 2), (0.25, 1, 0)]
+    assert [r["premium"] for r in rows] == [25.0, 25.0, 250.0, 22.0, 25.0]
+    # the contract, carried from the snapshot onto messages that do not repeat it
+    assert {(r["symbol"], r["underlying"], r["expiry"], r["type"], r["strike"]) for r in rows} == {
+        (sym, "TSLA", "2026-09-30", "CALL", 380.0)}
+    # the quote as it stood at each row, Schwab's own
+    assert (rows[0]["bid"], rows[0]["ask"]) == (0.2, 0.25) and (rows[3]["bid"], rows[3]["ask"]) == (0.16, 0.27)
+    # no side and no position against the quote
+    assert "classification" not in rows[0]
+
+
+def test_a_row_is_timed_by_the_trade_not_by_when_the_message_arrived(tmp_path):
+    """The snapshot Schwab sends on subscription reports the contract's last trade, here the
+    prior session's: received Tue 09/29 07:28 AM CT, traded Mon 09/28 02:59:59 PM CT. The row
+    showed the receive time as the trade's. Same real messages."""
+    sym, msgs = _REAL["symbol"], _REAL["messages"]
+    db = tmp_path / "stream_capture.db"
+    _write_ticks(db, [(m["ts_recv"], m["native"]) for m in msgs], symbol=sym)
+    rows = tape_rows_for_symbol(sym, since_ts=0, db_path=db, limit=50)
+    snapshot = rows[-1]
+    assert snapshot["trade_ts"] == msgs[0]["native"]["TRADE_TIME_MILLIS"] / 1000.0
+    assert snapshot["ts_recv"] - snapshot["trade_ts"] > 16 * 3600
+    assert snapshot["time"] == "Mon 09/28 02:59:59 PM CT"
+    assert [r["time"] for r in rows[:4]] == ["Tue 09/29 08:30:04 AM CT", "Tue 09/29 08:30:03 AM CT",
+                                             "Tue 09/29 08:30:02 AM CT", "Tue 09/29 08:30:00 AM CT"]
 
 
 def test_a_re_emitted_duplicate_of_the_same_trade_is_not_counted_twice(tmp_path):
-    """The vendor re-sends the SAME (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE) trade
-    alongside an unrelated field update (e.g. a fresh Greek recompute) -- this must collapse
-    to ONE tape row, not one per re-emission."""
+    """Schwab re-sends the SAME (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE) trade in a snapshot
+    (a reconnect) -- this must collapse to ONE tape row. Stand-in (named): hand-built
+    messages."""
     db = tmp_path / "stream_capture.db"
     tick = _full_context(TRADE_TIME_MILLIS=999000, LAST_PRICE=1.18, LAST_SIZE=1,
                          BID_PRICE=1.17, ASK_PRICE=1.19, TOTAL_VOLUME=70984)
@@ -78,62 +97,6 @@ def test_a_re_emitted_duplicate_of_the_same_trade_is_not_counted_twice(tmp_path)
     ])
     rows = tape_rows_for_symbol(SYM, since_ts=0, db_path=db, limit=50)
     assert len(rows) == 1
-
-
-def test_a_partial_update_with_size_but_no_price_never_produces_a_null_trade_row(tmp_path):
-    """A SEVENTH independent review (2026-09-13), REPRODUCED against real captured Friday
-    data (SPY 260909C00767000): a partial LEVELONE_OPTIONS tick can carry a fresh LAST_SIZE
-    with NO LAST_PRICE on the same packet (a size-only field bumping TOTAL_VOLUME on its
-    own) -- the naive de-dup key (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE) treated this as
-    a "new" trade because the tuple differed, emitting a tape row with trade=None and a
-    stray size. A trade print requires its OWN price AND its OWN trade timestamp on the
-    SAME tick; this reproduces the exact real-world shape and proves it is now excluded."""
-    db = tmp_path / "stream_capture.db"
-    _write_ticks(db, [
-        (1000.0, _full_context(TRADE_TIME_MILLIS=999000, LAST_PRICE=0.01, LAST_SIZE=1,
-                                BID_PRICE=0.0, ASK_PRICE=0.01, TOTAL_VOLUME=108925)),
-        # partial: LAST_SIZE bumped, no LAST_PRICE, no TRADE_TIME_MILLIS at all
-        (1002.0, {"key": SYM, "LAST_SIZE": 2, "TOTAL_VOLUME": 108926}),
-    ])
-    rows = tape_rows_for_symbol(SYM, since_ts=0, db_path=db, limit=50)
-    assert len(rows) == 1, "the size-only partial must not be counted as a second trade print"
-    assert all(r["trade"] is not None for r in rows), "no row may ever report trade=None"
-
-
-def test_context_is_carried_forward_from_the_most_recent_full_tick(tmp_path):
-    """The vendor does not repeat expiry/strike/type/multiplier on every partial update --
-    a LATER genuine trade print that arrives on a tick carrying ONLY price/size/bid/ask
-    must still resolve its own contract identity from the most recent tick that reported
-    it, not read as if that identity were unknown."""
-    db = tmp_path / "stream_capture.db"
-    _write_ticks(db, [
-        (1000.0, _full_context(TRADE_TIME_MILLIS=999000, LAST_PRICE=1.18, LAST_SIZE=1,
-                                BID_PRICE=1.17, ASK_PRICE=1.19)),
-        # a later genuine trade with NO strike/type/expiry/multiplier fields on this tick
-        (2000.0, {"key": SYM, "TRADE_TIME_MILLIS": 1999000, "LAST_PRICE": 1.25, "LAST_SIZE": 3,
-                  "BID_PRICE": 1.24, "ASK_PRICE": 1.26}),
-    ])
-    rows = tape_rows_for_symbol(SYM, since_ts=0, db_path=db, limit=50)
-    assert len(rows) == 2
-    newest = rows[0]   # newest-first
-    assert newest["trade"] == 1.25 and newest["size"] == 3
-    assert newest["expiry"] == "2026-09-18" and newest["type"] == "CALL" and newest["strike"] == 600
-
-
-def test_classification_at_bid_at_ask_and_outside_spread_are_mechanical_not_aggressor(tmp_path):
-    db = tmp_path / "stream_capture.db"
-    _write_ticks(db, [
-        (1000.0, _full_context(TRADE_TIME_MILLIS=1000, LAST_PRICE=1.17, LAST_SIZE=1, BID_PRICE=1.17, ASK_PRICE=1.19)),
-        (1001.0, _full_context(TRADE_TIME_MILLIS=1001, LAST_PRICE=1.19, LAST_SIZE=1, BID_PRICE=1.17, ASK_PRICE=1.19)),
-        (1002.0, _full_context(TRADE_TIME_MILLIS=1002, LAST_PRICE=1.20, LAST_SIZE=1, BID_PRICE=1.17, ASK_PRICE=1.19)),
-        (1003.0, _full_context(TRADE_TIME_MILLIS=1003, LAST_PRICE=1.10, LAST_SIZE=1, BID_PRICE=1.17, ASK_PRICE=1.19)),
-    ])
-    rows = tape_rows_for_symbol(SYM, since_ts=0, db_path=db, limit=50)
-    by_trade = {r["trade"]: r["classification"] for r in rows}
-    assert by_trade[1.17] == "at_bid"
-    assert by_trade[1.19] == "at_ask"
-    assert by_trade[1.20] == "outside_spread_high"
-    assert by_trade[1.10] == "outside_spread_low"
 
 
 def test_newest_first_ordering_and_limit_bound(tmp_path):

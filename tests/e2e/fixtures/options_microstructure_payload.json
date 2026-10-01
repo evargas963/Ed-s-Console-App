@@ -1,7 +1,7 @@
 {
   "ages": {
-    "book_age_sec": 1532774.006,
-    "book_stale": true,
+    "book_age_sec": 1774078.096,
+    "book_stale": false,
     "quote_age_sec": null
   },
   "book_slope": {
@@ -26,6 +26,7 @@
     "provenance.server_received_ts": "DERIVED",
     "spread_frac": "DERIVED",
     "spread_pts": "DERIVED",
+    "top_book_pressure": "DERIVED",
     "top_of_book.ask": "NATIVE",
     "top_of_book.ask_size": "NATIVE",
     "top_of_book.bid": "NATIVE",
@@ -34,29 +35,26 @@
   },
   "contract": "SPY   260911C00100000",
   "crossed": false,
-  "deferred": [
-    "aggressor_side (PROXY: needs trade-vs-quote classification history)",
-    "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
-    "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
-    "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)"
-  ],
   "depth": {
     "1": {
       "ask_total": 55.0,
       "bid_total": 40.0,
       "imbalance": -0.15789473684210525,
+      "imbalance_disp": "-15.8%",
       "side": "ASK"
     },
     "3": {
       "ask_total": 210.0,
       "bid_total": 200.0,
       "imbalance": -0.024390243902439025,
+      "imbalance_disp": "-2.4%",
       "side": "ASK"
     },
     "5": {
       "ask_total": 210.0,
       "bid_total": 200.0,
       "imbalance": -0.024390243902439025,
+      "imbalance_disp": "-2.4%",
       "side": "ASK"
     }
   },
@@ -96,25 +94,6 @@
       }
     ]
   },
-  "flow": {
-    "classification": {
-      "cum_delta_proxy": "PROXY",
-      "cum_delta_slope": "PROXY",
-      "tape_pressure_2m": "PROXY",
-      "tape_pressure_30s": "PROXY",
-      "tape_pressure_5m": "PROXY",
-      "top_book_pressure": "DERIVED"
-    },
-    "cum_delta_proxy": 35.0,
-    "cum_delta_slope": 1.499999970869977,
-    "native_aggressor_available": false,
-    "tape_classification": "PROXY_RECONSTRUCTED_L1_TICK",
-    "tape_pressure_2m": 0.5384615384615384,
-    "tape_pressure_30s": 0.3333333333333333,
-    "tape_pressure_5m": 0.4666666666666667,
-    "tape_side_5m": "BUY",
-    "top_book_pressure": -0.15789473684210525
-  },
   "liquidity_concentration": {
     "ask": 0.2619047619047619,
     "bid": 0.2
@@ -127,12 +106,10 @@
     "exchange_quote_ts": null,
     "n_ask_levels": 3,
     "n_bid_levels": 3,
-    "server_received_ts": 1790532774.005764,
-    "top_of_book_ask_leaf": "streaming.ASK_PRICE",
-    "top_of_book_bid_leaf": "streaming.BID_PRICE"
+    "server_received_ts": 1790774078.0956614
   },
-  "put_call": null,
-  "spread_frac": null,
+  "put_call": "CALL",
+  "spread_frac": 0.040816,
   "spread_pts": 0.05,
   "status": "ok",
   "streaming_plane": {
@@ -140,17 +117,17 @@
     "feed_health": {
       "book": {
         "age_sec": null,
-        "state": "NOT LIVE"
+        "state": "LIVE"
       },
       "l1": {
         "age_sec": null,
-        "state": "NOT LIVE"
+        "state": "LIVE"
       },
       "replay": "not connected"
     },
     "option_contract": null,
-    "producer_book_contract": null,
-    "producer_l1_contract": null,
+    "producer_book_contract": "SPY   260911C00100000",
+    "producer_l1_contract": "SPY   260911C00100000",
     "queried_contract": "SPY   260911C00100000",
     "server_requested_contract": null,
     "streaming_connected": false,
@@ -159,6 +136,7 @@
     "streaming_staleness_ms": null,
     "subscription_state": "PENDING"
   },
+  "top_book_pressure": -0.15789473684210525,
   "top_of_book": {
     "ask": 1.25,
     "ask_size": 55,

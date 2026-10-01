@@ -1,30 +1,20 @@
 """
 app/options/order_flow/engine.py — Order Flow Engine
 ========================================
-The book microstructure and the tape flow of one symbol, from Schwab streaming fields.
+The book microstructure of one symbol, from Schwab streaming fields. No trade side is
+inferred (docs/DATA_FLOW.md decision 9): Schwab supplies no aggressor.
 
-Input: dict `data` with ``content`` (the streamed book and tape items), ``top`` (the live top
-of book, when live) and ``book_live``.
+Input: dict `data` with ``content`` (the streamed books), ``top`` (the live top of book, when
+live) and ``book_live``.
 """
 
 from __future__ import annotations
 
 from typing import Any, Optional
 
-import numpy as np
-
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
-from l1_trade_observation import (
-    canonical_tape_prints,
-    compute_cum_delta_proxy as _canonical_cum_delta,
-    compute_tape_pressure as _canonical_tape_pressure,
-    iter_signed_cum_points,
-)
 
 
-OF_TAPE_WINDOW_30S_SEC: float = 30.0
-OF_TAPE_WINDOW_2M_SEC: float = 120.0
-OF_TAPE_WINDOW_5M_SEC: float = 300.0
 # Book-depth ladder: top of book, shallow, deep.
 OF_BOOK_DEPTH_TOP: int = 1
 OF_BOOK_DEPTH_SHALLOW: int = 3
@@ -113,9 +103,10 @@ def _iter_asks_levels(content_item: dict) -> list[tuple[float, float]]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _latest_book_snapshot(items: list) -> Optional[dict]:
-    """Return the most recent content item that has both BIDS and ASKS."""
+    """The newest book Schwab sent, whatever rests on it: an empty side is the book's state,
+    never a reason to read an older book."""
     for item in reversed(items):
-        if isinstance(item, dict) and item.get("BIDS") and item.get("ASKS"):
+        if isinstance(item, dict) and item.get("BIDS") is not None and item.get("ASKS") is not None:
             return item
     return None
 
@@ -154,10 +145,8 @@ def _top(data: dict) -> dict:
     return t if isinstance(t, dict) else {}
 
 
-def _compute_top_book_pressure(data: dict) -> Optional[float]:
+def _top_book_pressure(bid_sz: Optional[float], ask_sz: Optional[float]) -> Optional[float]:
     """Top-of-book pressure: (bid_size - ask_size) / (bid_size + ask_size), streamed sizes."""
-    t = _top(data)
-    bid_sz, ask_sz = t.get("bid_size"), t.get("ask_size")
     if bid_sz is None or ask_sz is None:
         return None
     total = bid_sz + ask_sz
@@ -166,33 +155,14 @@ def _compute_top_book_pressure(data: dict) -> Optional[float]:
     return (bid_sz - ask_sz) / total
 
 
-def _resolve_bid_ask_prices(data: dict) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
-    """Level-one BID_PRICE / ASK_PRICE and their leaf labels."""
-    t = _top(data)
-    bid_p, ask_p = t.get("bid"), t.get("ask")
-    return (bid_p, ask_p, "streaming.BID_PRICE" if bid_p is not None else None,
-            "streaming.ASK_PRICE" if ask_p is not None else None)
-
-
-def _resolve_quote_mark(data: dict) -> tuple[Optional[float], Optional[str]]:
-    """Streamed MARK, the spread-fraction denominator (a MARK of 0 divides nothing)."""
-    mark_p = _top(data).get("mark")
-    if mark_p is not None and mark_p > 0:
-        return mark_p, "streaming.MARK"
-    return None, None
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # CANONICAL BOOK MICROSTRUCTURE  (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1)
 # ─────────────────────────────────────────────────────────────────────────────
-# ONE canonical book path. `_extract_canonical_book` walks + validates + SORTS the live
-# book EXACTLY ONCE into a normalized state; every metric is derived from that single
-# result. Nothing re-walks or re-sums the raw book. `compute_book_microstructure` memoizes the
-# structural state per (ticker, BOOK_TIME), so `/api/order-flow/microstructure` and the engine
-# SERIALIZE the same computed state rather than recomputing it independently.
-# Every field is classified NATIVE (a Schwab wire field), DERIVED (a deterministic function of
-# NATIVE fields), or PROXY (temporal inference). STATIC book state only — no aggressor/CVD/
-# absorption/iceberg (see `deferred`). No opaque composite score.
+# One book path. `_extract_canonical_book` walks, validates and sorts the newest book once;
+# every metric is derived from that result. `compute_book_microstructure` carries the
+# structural state while the book's content is unchanged. Every field is classified NATIVE (a
+# Schwab wire field) or DERIVED (a function of NATIVE fields). The book's state only: no trade
+# side, delta or absorption, and no composite score.
 
 #: HEURISTIC only: a displayed level is a WALL CANDIDATE when its size is at least this multiple
 #: of the MEDIAN level size across the ladder. A relative size-outlier convention (tunable, and
@@ -227,22 +197,20 @@ def _extract_canonical_book(data: dict) -> dict:
     and sorts both sides, and carries the live top of book (``data["top"]``). Every downstream
     metric reads this result; nothing else re-walks the raw book."""
     snapshot = _latest_book_snapshot(_iter_content(data))
-    bid, ask, bid_leaf, ask_leaf = _resolve_bid_ask_prices(data)
     t = _top(data)
     bid_size = _schwab_int(t.get("bid_size"))
     ask_size = _schwab_int(t.get("ask_size"))
 
     bid_levels = _sorted_valid_levels(_iter_bids_levels(snapshot), descending=True) if snapshot else []
     ask_levels = _sorted_valid_levels(_iter_asks_levels(snapshot), descending=False) if snapshot else []
-    mark, mark_leaf = _resolve_quote_mark(data)
     return {
-        "has_book": snapshot is not None,
+        # a book with nothing resting on either side is no book to measure
+        "has_book": bool(bid_levels or ask_levels),
         "venue": snapshot.get("SERVICE") if snapshot else None,
-        "bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size,
-        "bid_leaf": bid_leaf, "ask_leaf": ask_leaf,
+        "bid": t.get("bid"), "ask": t.get("ask"), "bid_size": bid_size, "ask_size": ask_size,
         "bid_levels": bid_levels, "ask_levels": ask_levels,
         "book_time_ms": schwab_number(snapshot.get("BOOK_TIME")) if snapshot else None,
-        "mark": mark, "mark_leaf": mark_leaf,
+        "mark": t.get("mark"),
     }
 
 
@@ -368,7 +336,9 @@ def _microstructure_structural(cb: dict) -> dict:
         imb = _book_imbalance_from_totals(bt, at)
         # the heavier side, by the imbalance's sign (no threshold): what every panel labels
         side = None if imb is None else "BID" if imb > 0 else "ASK" if imb < 0 else "EVEN"
-        depth[str(n)] = {"bid_total": bt, "ask_total": at, "imbalance": imb, "side": side}
+        depth[str(n)] = {"bid_total": bt, "ask_total": at, "imbalance": imb, "side": side,
+                         # the imbalance as the screen prints it: "+20.0%"
+                         "imbalance_disp": None if imb is None else f"{imb:+.1%}"}
     deep_bt, deep_at = totals[OF_BOOK_DEPTH_DEEP]
 
     return {
@@ -379,6 +349,8 @@ def _microstructure_structural(cb: dict) -> dict:
         "microprice": microprice,
         "spread_pts": spread_pts,
         "spread_frac": spread_frac,
+        # top-of-book SIZE pressure (streamed BID_SIZE / ASK_SIZE), not a depth imbalance
+        "top_book_pressure": _top_book_pressure(bid_size, ask_size),
         "depth": depth,
         "depth_pressure": {
             "bid": _book_pressure_curve(bid_levels, OF_BOOK_DEPTH_DEEP),
@@ -403,14 +375,12 @@ def _microstructure_structural(cb: dict) -> dict:
             "n_bid_levels": len(bid_levels),
             "n_ask_levels": len(ask_levels),
             "book_source": cb["venue"] if cb["has_book"] else "unavailable",
-            "top_of_book_bid_leaf": cb["bid_leaf"],
-            "top_of_book_ask_leaf": cb["ask_leaf"],
         },
         "classification": {
             "top_of_book.bid": "NATIVE", "top_of_book.ask": "NATIVE",
             "top_of_book.bid_size": "NATIVE", "top_of_book.ask_size": "NATIVE",
             "mid": "DERIVED", "microprice": "DERIVED", "crossed": "DERIVED",
-            "spread_pts": "DERIVED", "spread_frac": "DERIVED",
+            "spread_pts": "DERIVED", "spread_frac": "DERIVED", "top_book_pressure": "DERIVED",
             "depth.*.bid_total": "DERIVED", "depth.*.ask_total": "DERIVED",
             "depth.*.imbalance": "DERIVED",
             "depth_pressure": "DERIVED", "book_slope": "DERIVED",
@@ -421,20 +391,14 @@ def _microstructure_structural(cb: dict) -> dict:
             "provenance.book_time_ms": "NATIVE", "provenance.exchange_quote_ts": "NATIVE",
             "provenance.server_received_ts": "DERIVED",
         },
-        "deferred": [
-            "aggressor_side (PROXY: needs trade-vs-quote classification history)",
-            "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
-            "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
-            "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)",
-        ],
     }
 
 
 def compute_book_microstructure(data: dict, *, now_ts: float,
                                 ticker: Optional[str] = None) -> dict:
     """Canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds) — the ONE
-    producer the engine and the `/api/order-flow/microstructure` route both read. `data.content`
-    carries the live streaming book + top-of-book (app.options.order_flow.state.get_content_for_symbol);
+    producer the equity and the option microstructure routes read. `data.content`
+    carries the symbol's streamed books (app.options.order_flow.state.get_content_for_symbol);
     `data.exchange_quote_ts` (optional) is the plane's exchange quote clock; `data.book_live` is
     the live rule's answer for the book's service (absent: not live). The structural state
     is extracted/computed ONCE and memoized per (ticker, BOOK_TIME); a caller with the same
@@ -473,72 +437,3 @@ def compute_book_microstructure(data: dict, *, now_ts: float,
         "book_stale": None if book_age_sec is None else data.get("book_live") is not True,
     }
     return payload
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# TAPE METRICS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _compute_tape_pressure(data: dict, window_sec: float, now: float) -> Optional[float]:
-    """PROXY reconstructed L1 tick-rule pressure. ONE FAUCET: l1_trade_observation."""
-    return _canonical_tape_pressure(canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CUMULATIVE DELTA PROXY
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _compute_cum_delta_proxy(data: dict) -> Optional[float]:
-    """PROXY reconstructed L1 tick-rule signed size sum. ONE FAUCET: l1_trade_observation."""
-    return _canonical_cum_delta(canonical_tape_prints(_iter_content(data)))
-
-
-def _compute_cum_delta_slope(data: dict, now: float, window_sec: float = 60.0) -> Optional[float]:
-    """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
-    points = iter_signed_cum_points(canonical_tape_prints(_iter_content(data)), window_sec, now * 1000.0)
-    if len(points) < 2:
-        return None
-    xs = np.array([p[0] for p in points])
-    ys = np.array([p[1] for p in points])
-    return float(np.polyfit(xs, ys, 1)[0])
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MAIN ENGINE
-# ─────────────────────────────────────────────────────────────────────────────
-
-class OrderFlowEngine:
-    """
-    Order Flow Engine — computes metrics from Schwab data using only
-    identified field paths.
-    """
-
-    def compute(self, data: dict, *, now: float, ticker: Optional[str] = None) -> dict:
-        """The book microstructure and the tape flow of one symbol at `now` (epoch seconds);
-        missing data yields None."""
-        # the book, extracted once by its one producer; `ticker` lets the route serialize this
-        # same computed state (carry, not recompute)
-        book_micro = compute_book_microstructure(data, now_ts=now, ticker=ticker)
-        # top-of-book SIZE pressure (streamed BID_SIZE / ASK_SIZE), not a depth imbalance
-        top_book_pressure = _compute_top_book_pressure(data)
-
-        # Tape metrics
-        tape_pressure_30s = _compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC, now)
-        tape_pressure_2m = _compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC, now)
-        tape_pressure_5m = _compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC, now)
-
-        # Cumulative delta
-        cum_delta_proxy = _compute_cum_delta_proxy(data)
-        cum_delta_slope = _compute_cum_delta_slope(data, now)
-
-        return {
-            # Carry the single canonical microstructure state so the route serializes THIS
-            # computed result (same book) rather than recomputing from raw data.
-            "book_microstructure": book_micro,
-            "top_book_pressure": top_book_pressure,
-            "tape_pressure_30s": tape_pressure_30s,
-            "tape_pressure_2m": tape_pressure_2m,
-            "tape_pressure_5m": tape_pressure_5m,
-            "cum_delta_proxy": cum_delta_proxy,
-            "cum_delta_slope": cum_delta_slope,
-        }

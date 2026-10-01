@@ -60,12 +60,20 @@
   function renderLevels(d) {
     var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime'];
     paintPcr(d && !d.error ? d : null);
+    var note = document.getElementById('klFlipNote'), sub = document.getElementById('klRegimeSub');
     if (!d || d.error) {
       ids.forEach(function (id) { txt(id, '—'); });
       txt('klSrc', d && d.error ? 'terrain not ready' : 'offline');
+      if (note) note.hidden = true;
+      if (sub) sub.textContent = '';
       return;
     }
-    txt('klFlip', px(d.gamma_flip));
+    txt('klFlip', d.gamma_flip != null ? px(d.gamma_flip) : (d.gamma_flip_reason || '—'));   // served reason
+    // what qualifies the flip shown, served (an approximate level, a curve that disagrees with
+    // Schwab's gamma at this price): printed under it
+    if (note) { note.hidden = !d.gamma_flip_caveat; note.textContent = d.gamma_flip_caveat || ''; }
+    // under the regime: why there is none, or what every regime rests on (both served)
+    if (sub) sub.textContent = d.regime_reason || d.regime_basis || '';
     txt('klCall', px(d.call_wall));
     txt('klPut', px(d.put_wall));
     txt('klAbs', px(d.absolute_gamma_strike));
@@ -84,15 +92,16 @@
     }
     // B: the levels rail recedes when terrain reports stale
     var klb = document.getElementById('klBody');
-    if (klb) klb.classList.toggle('recede', !!d.levels_stale);
+    if (klb) klb.classList.toggle('recede', d.levels_state === 'stale');
     // freshness / provenance line
     var src = document.getElementById('klSrc');
     if (src) {
-      if (d.levels_market_closed) {
+      var state = d.levels_state;   // served: the one state this line prints
+      if (state === 'closed') {
         src.textContent = 'as of ' + d.levels_as_of;
         src.title = 'market closed: levels from the last session';
         src.style.color = '';
-      } else if (d.levels_stale) {
+      } else if (state === 'stale') {
         // compact status grammar: state + age on the panel; the full reason is disclosed in the
         // tooltip (title) rather than as a paragraph that consumes the Key Levels rail
         var age = (window.EdShell && window.EdShell.fmtAge) ? window.EdShell.fmtAge(d.levels_age_sec)
@@ -100,7 +109,7 @@
         src.textContent = 'STALE' + (age ? ' · ' + age : '');
         src.title = d.levels_stale_reason || 'terrain levels are stale';
         src.style.color = 'var(--ed-stale)';
-      } else if (d.levels_stale === false) {
+      } else if (state === 'live') {
         src.textContent = 'terrain · live';
         src.title = '';
         src.style.color = '';
@@ -157,12 +166,10 @@
   function setGbsAsOf(d) {
     var el = document.getElementById('gbsSrc'); if (!el) return;
     if (!d || d.today_source == null) { el.innerHTML = ''; return; }
-    // reuse the terrain authority the server already merged (today_age_sec / levels_stale) - no
-    // client-side freshness computation; the badge only formats those server-owned fields.
+    // the terrain's one served state (levels_state) the server merged, printed: no client-side
+    // freshness computation
     el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: srcLabel(d.today_source), ageSec: d.today_age_sec,
-          stale: !!d.levels_stale, reason: d.levels_stale_reason,
-          live: (d.today_source === 'terrain_live_cache' && d.levels_stale === false) })
+      ? window.EdShell.asOfBadge(Object.assign(window.EdShell.levelsBadgeState(d), { label: srcLabel(d.today_source) }))
       : '';
   }
   // ---- Repo-wide chart interaction standard, adapted for this surface's real shape ----
@@ -252,8 +259,9 @@
     var gbsSpot = (_gbsSpotRaw == null) ? NaN : Number(_gbsSpotRaw);
     var rows = d && d.today && d.today.all;
     if (!rows || !rows.length) {
+      // the served reason (absent_reason); with no answer, the request's own failure
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
-        (d ? 'no banked per-strike gamma for this symbol' : 'no console serving /api/terrain/strikes') + '</div></div>';
+        esc(d ? (d.today && d.today.absent_reason) || '' : 'no console serving /api/terrain/strikes') + '</div></div>';
       return;
     }
     var spot = gbsSpot;
@@ -360,19 +368,9 @@
     _sdDesired = { strike: strike, expiry: expiry };
     _sdLoader.trigger(ticker() + '|' + strike + '|' + (expiry || ''));
   }
-  var SCOPE_LABEL = {
-    complete_single_expiry: { t: 'vendor · complete (ALL)', live: true },
-    unavailable: { t: 'vendor · unavailable', stale: true },
-  };
   function setSdAsOf(d) {
     var el = document.getElementById('sdSrc'); if (!el) return;
-    var sc = d && d.scope, kind = sc && sc.kind;
-    if (!kind) { el.innerHTML = ''; return; }
-    var m = SCOPE_LABEL[kind] || { t: kind };
-    el.innerHTML = (window.EdShell && window.EdShell.asOfBadge)
-      ? window.EdShell.asOfBadge({ label: m.t, live: !!m.live, stale: !!m.stale,
-          title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') })
-      : '';
+    el.innerHTML = window.EdShell.chainBadge(d, 'vendor · ');
   }
   // Independent-review finding (2026-09-12): an empty/failed chain result left Strike
   // Detail showing "no chain" while the PREVIOUS strike's additional-contract
@@ -676,18 +674,12 @@
   }
 
   // ---------- Options Flow tape (operator field-inventory audit, 2026-09-13) ------------
-  // The embedded tape widget on the Gamma pane (#ofBody) -- real native trade prints for
-  // whichever contract(s) are currently desired (the same identity Strike Detail's own
-  // _setAdditionalContractsDemand already established), never a fabricated buy/sell side.
-  var OF_CLS_LABEL = { at_bid: 'at bid', at_ask: 'at ask', inside_spread: 'inside',
-    outside_spread_low: 'below bid', outside_spread_high: 'above ask', unknown: '—' };
+  // The embedded tape widget on the Gamma pane (#ofBody) -- each change of Schwab's last-trade
+  // fields for whichever contract(s) are currently desired (the same identity Strike Detail's
+  // own _setAdditionalContractsDemand already established), at the trade's own time; no side
+  // is inferred.
   function fmtOfPrice(n) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(2); }
   function fmtOfSize(n) { return (n == null || isNaN(n)) ? '—' : String(n); }
-  function fmtOfTime(tsRecv) {
-    if (tsRecv == null) return '—';
-    var d = new Date(tsRecv * 1000);
-    return d.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Chicago' });
-  }
   function stillOfCtx(tk) { var host = document.getElementById('ofBody'); return isGamma() && !!host && ticker() === tk; }
   function renderOf(host, d) {
     var src = document.getElementById('ofSrc'); if (src) src.textContent = '';
@@ -695,14 +687,14 @@
     if (!rows.length) {
       host.innerHTML = '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
         '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
-        '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead>' +
+        '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th></tr></thead>' +
         '<tbody><tr class="of-empty"><td colspan="14"><div class="oe-sub">' +
         esc((d && d.reason) || 'no console serving /api/options/tape') + '</div></td></tr></tbody></table>';
       return;
     }
     var body = rows.map(function (r) {
       return '<tr>' +
-        '<td>' + fmtOfTime(r.ts_recv) + '</td>' +
+        '<td>' + esc(r.time || '—') + '</td>' +
         '<td class="of-sym">' + esc(r.symbol || '—') + '</td>' +
         '<td>' + esc(r.expiry ? r.expiry.slice(5) : '—') + '</td>' +
         '<td>' + esc(r.type || '—') + '</td>' +
@@ -715,13 +707,11 @@
         '<td>' + fmtVol(r.volume) + '</td>' +
         '<td>' + fmtOfSize(r.oi) + '</td>' +
         '<td>' + (r.iv == null ? '—' : Number(r.iv).toFixed(1)) + '</td>' +
-        '<td>' + (r.delta == null ? '—' : Number(r.delta).toFixed(3)) + '</td>' +
-        '<td><span class="of-cls ' + esc(r.classification || 'unknown') + '">' +
-          esc(OF_CLS_LABEL[r.classification] || '—') + '</span></td></tr>';
+        '<td>' + (r.delta == null ? '—' : Number(r.delta).toFixed(3)) + '</td></tr>';
     }).join('');
     host.innerHTML = '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
       '<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>' +
-      '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead><tbody>' + body + '</tbody></table>';
+      '<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th></tr></thead><tbody>' + body + '</tbody></table>';
   }
   function loadOfImpl(tk, signal) {
     var host = document.getElementById('ofBody');

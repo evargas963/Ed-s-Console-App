@@ -46,7 +46,7 @@ def _bars(session, high_of_interior: float = 105.0) -> list:
             ts = datetime(d.year, d.month, d.day, 9, 30, tzinfo=ET) + timedelta(minutes=i)
             px = 100.0 + (i % 11) * 0.10
             hi = px + 0.05
-            if off == 1 and i == 30:            # interior bar of the PRIOR session -> PDH
+            if off == 0 and i == 10:            # interior bar of today's opening range -> ORB_HIGH
                 hi = high_of_interior
             out.append({"timestamp": int(ts.timestamp() * 1000), "open": px, "high": hi,
                         "low": px - 0.05, "close": px, "volume": 1000.0 + i})
@@ -59,17 +59,20 @@ def _fresh(monkeypatch):
 
 def _mat(session, bars):
     return materialize_price_level_snapshot(
-        "ZZRC324", session, LVE._bars_to_list(bars), bar_source="test_fixture", config=PlaybookConfig())
+        "ZZRC324", session, LVE._bars_to_list(bars), bar_source="test_fixture", prior_day=None,
+        prior_day_absent_reason="no Schwab daily candle in this test", config=PlaybookConfig())
 
 
 def test_an_interior_bar_change_is_a_new_generation(monkeypatch):
-    """(a) Cursor's stale proof: mutate PDH 105 -> 999 and require the cache to notice."""
+    """(a) Cursor's stale proof: mutate an interior bar's high 105 -> 999 and require the cache
+    to notice (the bar was the prior session's, reaching PDH; PDH is Schwab's daily candle since
+    2026-10-01, so the bar is in today's opening range, reaching ORB_HIGH)."""
     _fresh(monkeypatch)
     session = most_recent_trading_day_et()
 
     first = _mat(session, _bars(session, 105.0))
     assert first.generation == 1
-    pdh_before = first.price("PDH")
+    orb_before = first.price("ORB_HIGH")
 
     second = _mat(session, _bars(session, 999.0))
     assert second is not first, (
@@ -77,8 +80,8 @@ def test_an_interior_bar_change_is_a_new_generation(monkeypatch):
         "fingerprint is sampling the input instead of covering it (RC-324)")
     assert second.generation == first.generation + 1, (
         f"generation did not advance: {first.generation} -> {second.generation}")
-    assert second.price("PDH") != pdh_before, (
-        f"PDH stayed {pdh_before!r} after the high was moved to 999 — a stale value served "
+    assert second.price("ORB_HIGH") != orb_before, (
+        f"ORB_HIGH stayed {orb_before!r} after the high was moved to 999 — a stale value served "
         "under a fresh generation")
 
     # And the same input must still be ONE generation: no churn.
@@ -123,12 +126,12 @@ def test_the_fingerprint_covers_every_bar_field(monkeypatch):
     """Each field that can move a level must move the key — checked field by field."""
     session = most_recent_trading_day_et()
     base = _bars(session, 105.0)
-    fp = LVE._snapshot_input_fingerprint("ZZRC324", session, base, "test_fixture")
+    fp = LVE._snapshot_input_fingerprint("ZZRC324", session, base, "test_fixture", None, None)
 
     for field in ("open", "high", "low", "close", "volume"):
         mutated = [dict(b) for b in base]
         mutated[30][field] = (mutated[30][field] or 0.0) + 7.0
-        other = LVE._snapshot_input_fingerprint("ZZRC324", session, mutated, "test_fixture")
+        other = LVE._snapshot_input_fingerprint("ZZRC324", session, mutated, "test_fixture", None, None)
         assert other != fp, (
             f"changing an interior bar's {field} left the fingerprint unchanged — that "
             f"field can go stale (RC-324)")
@@ -136,4 +139,4 @@ def test_the_fingerprint_covers_every_bar_field(monkeypatch):
     # A timestamp change must also register.
     shifted = [dict(b) for b in base]
     shifted[30]["timestamp"] = shifted[30]["timestamp"] + 60_000
-    assert LVE._snapshot_input_fingerprint("ZZRC324", session, shifted, "test_fixture") != fp
+    assert LVE._snapshot_input_fingerprint("ZZRC324", session, shifted, "test_fixture", None, None) != fp

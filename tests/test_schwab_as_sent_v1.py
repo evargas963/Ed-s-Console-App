@@ -1,4 +1,4 @@
-"""AGENTS.md rule 2: a Schwab field as sent. Not a number: absent, -999, text, NaN or infinity, and
+"""A Schwab field as sent. Not a number: absent, -999, text, NaN or infinity, and
 a negative volume, size or open interest. Everything else is taken as sent; a reported 0 is 0."""
 import math
 
@@ -79,7 +79,7 @@ def test_minus_999_open_interest_is_unreported():
 
 
 def test_a_strike_whose_open_interest_is_all_zero_shows_zero_not_absent():
-    """Operator ruling 2026-09-27 (take what Schwab sends): a strike whose every contract reports
+    """A strike whose every contract reports
     openInterest 0 has OI 0 and exposure 0, not "—". Real CRWD chain."""
     from math_exposure_core import compute_exposures_by_strike
     fx = _load("real_crwd_complete_chain_quarter.json")

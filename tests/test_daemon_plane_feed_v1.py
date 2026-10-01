@@ -2,8 +2,8 @@
 with zero Schwab connection of its own.
 
 This is the seam that used to be a second `schwab.streaming.StreamClient`. Since 2026-09-23
-the daemon PUSHES each message (live_push); these tests drive the REAL message constructors
-the daemon publishes with (stream_spine.quote_msg / book_msg) through the REAL ingest
+the daemon PUSHES each message (live_push); these tests drive the REAL message constructor
+the daemon publishes with (stream_spine.book_msg) through the REAL ingest
 (order_flow_streaming._ingest_pushed). The socket end to end is
 tests/test_live_push_channel_v1.py.
 """
@@ -17,7 +17,7 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-from stream_spine import book_msg, quote_msg
+from stream_spine import book_msg
 
 
 @pytest.fixture(autouse=True)
@@ -32,28 +32,10 @@ def _reset(tmp_path):
     return tmp_path / "stream_capture.db"
 
 
-def _push_l1(symbol, native, ts_recv):
-    ofs._ingest_pushed(f"quote.{symbol}", quote_msg(
-        symbol=symbol, bid=native.get("BID_PRICE"), src="schwab_l1", ts_recv=ts_recv,
-        native=native))
-
-
 def _push_book(symbol, content, ts_recv):
     ofs._ingest_pushed(f"book.{symbol}", book_msg(
         symbol=symbol, service="NASDAQ_BOOK", content=content, src="schwab_book",
         ts_recv=ts_recv))
-
-
-def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path, monkeypatch):
-    _reset(tmp_path)
-    monkeypatch.setattr(lmp, "_by_ticker", {})
-    native = {"key": "SPY", "BID_PRICE": 449.98, "ASK_PRICE": 450.02, "LAST_PRICE": 450.0,
-              "LAST_SIZE": 100, "TRADE_TIME_MILLIS": 1000, "TOTAL_VOLUME": 5000}
-    _push_l1("SPY", native, ts_recv=time.time())
-
-    top = ofls.get_content_for_symbol("SPY")
-    assert any(item.get("LAST_PRICE") == 450.0 for item in top)
-    assert lmp.get_quote("SPY") is None          # the price is the daemon's row, not a copy here
 
 
 def test_book_message_lands_verbatim(tmp_path):
@@ -98,37 +80,41 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     from pathlib import Path
 
     import server
+    from tests.feed_live_helper import CLOSED_NOW, SESSION_NOW
     _reset(tmp_path)
-    monkeypatch.setattr(lmp, "is_capturable_session", lambda: True)
     fx = json.loads((Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json")
                     .read_text(encoding="utf-8"))["books"]
     for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
         ofs._ingest_pushed("book.SPY", book_msg(symbol="SPY", service=svc, content=fx[svc]["content"],
                                                 src="schwab_book", ts_recv=fx[svc]["ts_recv"]))
 
-    def stale(svc):
-        return json.loads(server.api_order_flow_microstructure(ticker="SPY", venue=svc).body)["ages"]["book_stale"]
+    def stale(svc, at):
+        # the route is the entry point that reads the clock: stand-in (named) instant `at`
+        monkeypatch.setattr(server.time, "time", lambda: at)
+        try:
+            return json.loads(server.api_order_flow_microstructure(ticker="SPY", venue=svc).body)["ages"]["book_stale"]
+        finally:
+            monkeypatch.undo()
 
     held = {"schwab_socket_open": True, "held": {"NASDAQ_BOOK": ["SPY"], "NYSE_BOOK": []}}
-    lmp.record_feed_heartbeat(held, time.time())
-    assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (False, True)
-    monkeypatch.setattr(lmp, "is_capturable_session", lambda: False)
-    assert stale("NASDAQ_BOOK") is True
-    monkeypatch.setattr(lmp, "is_capturable_session", lambda: True)
-    lmp.record_feed_heartbeat(held, time.time() - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1)
-    assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)
+    lmp.record_feed_heartbeat(held, SESSION_NOW)
+    assert (stale("NASDAQ_BOOK", SESSION_NOW), stale("NYSE_BOOK", SESSION_NOW)) == (False, True)
+    lmp.record_feed_heartbeat(held, CLOSED_NOW)                          # the market closed
+    assert stale("NASDAQ_BOOK", CLOSED_NOW) is True
+    lmp.record_feed_heartbeat(held, SESSION_NOW - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1)
+    assert (stale("NASDAQ_BOOK", SESSION_NOW), stale("NYSE_BOOK", SESSION_NOW)) == (True, True)
 
 
-def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
-    """Every roster symbol is applied, each into its OWN state: a QQQ tick must never appear in
+def test_each_symbol_lands_in_its_own_state_only(tmp_path):
+    """Every symbol's book is applied into its OWN state: a QQQ book must never appear in
     SPY's."""
     _reset(tmp_path)
-    monkeypatch.setattr(lmp, "_by_ticker", {})
     ofs._active_ticker = "SPY"
-    _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time.time())
+    _push_book("QQQ", {"key": "QQQ", "BIDS": [{"BID_PRICE": 380.0, "TOTAL_VOLUME": 1}], "ASKS": [],
+                       "BOOK_TIME": 1}, ts_recv=time.time())
 
-    assert not any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("SPY"))
-    assert any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("QQQ"))
+    assert ofls.get_content_for_symbol("SPY") == []
+    assert [b["BIDS"][0]["BID_PRICE"] for b in ofls.get_content_for_symbol("QQQ")] == [380.0]
 
 
 def test_the_selected_ticker_gets_its_books_a_change_replaces_them_and_a_restart_restores_them(monkeypatch):
@@ -143,14 +129,14 @@ def test_the_selected_ticker_gets_its_books_a_change_replaces_them_and_a_restart
     from app.market_data.schwab.streaming.capture import normalize_wanted, plan
 
     def select(tk):
-        asyncio.run(server.get_changes(ticker=tk))       # the page opens its connection
+        asyncio.run(server.get_changes(ticker=tk, view="test-view"))   # the page opens its connection
         end = time.monotonic() + 5
         while time.monotonic() < end and ofs.current_wanted()["NYSE_BOOK"] != [tk.upper()]:
             time.sleep(0.02)
         return normalize_wanted(ofs.current_wanted())
 
     def book_requests(wanted, held):
-        return [r for r in plan(wanted, held, {}) if r[0] in ("NYSE_BOOK", "NASDAQ_BOOK")]
+        return [r for r in plan(wanted, held, {}, frozenset()) if r[0] in ("NYSE_BOOK", "NASDAQ_BOOK")]
 
     monkeypatch.setattr(push_changes, "_clients", {})
     monkeypatch.setattr(ofs, "_active_ticker", None)

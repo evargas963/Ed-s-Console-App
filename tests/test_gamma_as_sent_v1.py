@@ -52,5 +52,5 @@ def test_the_option_stream_keeps_iv_beside_gamma():
 def test_a_flip_whose_curve_disagrees_with_schwab_says_so():
     from terrain_read import FLIP_CURVE_DISAGREES, GAMMA_FLIP_TRUSTED, build_terrain_read
     kw = dict(spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED, gamma_at_spot=-5.0)
-    assert FLIP_CURVE_DISAGREES in build_terrain_read(**kw, flip_curve_agrees=False).lines
-    assert FLIP_CURVE_DISAGREES not in build_terrain_read(**kw, flip_curve_agrees=True).lines
+    assert build_terrain_read(**kw, flip_curve_agrees=False).flip_caveat == FLIP_CURVE_DISAGREES
+    assert build_terrain_read(**kw, flip_curve_agrees=True).flip_caveat == ""

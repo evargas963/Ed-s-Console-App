@@ -95,6 +95,25 @@ def test_every_contract_of_the_expiry_is_served_exactly_as_schwab_sent_it():
     assert len(fractional) == _TSLA["n_fractional_strikes"]
 
 
+def test_the_chain_says_whether_it_is_current(monkeypatch):
+    """2026-09-30 audit: the Chain and Strike Detail badges read LIVE for any complete chain,
+    whatever its age: the route served no freshness. It carries the one staleness authority's
+    verdict for the download it holds (the levels' own: terrain_staleness). Real TSLA chain;
+    stand-ins (named): its download time, and the session state."""
+    monkeypatch.setattr(srv, "_is_loggable_session", lambda now: True)
+    with _held_chain("TSLA", _TSLA_CONTRACTS, time.time() - 5.0):
+        fresh = _get(ticker="TSLA")
+    assert fresh["levels_stale"] is False and 4.0 <= fresh["levels_age_sec"] <= 30.0
+    with _held_chain("TSLA", _TSLA_CONTRACTS, time.time() - 3600.0):
+        old = _get(ticker="TSLA")
+    assert old["levels_stale"] is True and "3600s old" in old["levels_stale_reason"]
+    assert old["scope"]["kind"] == "complete_single_expiry", "complete, and not current"
+    monkeypatch.setattr(srv, "_is_loggable_session", lambda now: False)
+    with _held_chain("TSLA", _TSLA_CONTRACTS, time.time() - 3600.0):
+        closed = _get(ticker="TSLA")
+    assert closed["levels_market_closed"] is True and closed["levels_stale"] is False and closed["levels_as_of"]
+
+
 def test_only_the_requested_expiry_is_served():
     later = [dict(c, expirationDate="2099-01-16T21:00:00.000+00:00") for c in _TSLA_CONTRACTS[:4]]
     with _held_chain("TSLA", _TSLA_CONTRACTS + later, time.time()):

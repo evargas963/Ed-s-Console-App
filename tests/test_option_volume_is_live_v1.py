@@ -35,12 +35,14 @@ def _at_capture(pin_clock):
     what this test measures."""
     return pin_clock(2026, 9, 22, 12, 46)
 
-def _expected_volume_by_strike() -> dict[float, int]:
-    """Ground truth read straight off the vendor payload, independent of the engine."""
-    out: dict[float, int] = {}
-    for c in CHAIN:
-        k = float(c["strikePrice"])
-        out[k] = out.get(k, 0) + int(c.get("totalVolume") or 0)
+def _expected_volume_by_strike(chain) -> dict[float, int | None]:
+    """Ground truth read straight off the vendor payload, independent of the engine: call + put
+    as sent (0 is 0), and None for a strike where a contract did not report a volume."""
+    out: dict[float, int | None] = {}
+    for c in chain:
+        k, v = float(c["strikePrice"]), c.get("totalVolume")
+        ok = isinstance(v, int) and not isinstance(v, bool) and v >= 0
+        out[k] = None if not ok or out.get(k, 0) is None else out.get(k, 0) + v
     return out
 
 
@@ -48,10 +50,22 @@ def test_live_chain_volume_reaches_the_per_strike_rows():
     """The volume ON THE VENDOR CHAIN is the volume IN THE ROWS — call + put summed per strike."""
     snap = compute_terrain(FIXTURE["ticker"], CHAIN, SPOT)
     assert snap.per_strike, "terrain produced no per-strike rows; the panel would have no source"
-    expected = _expected_volume_by_strike()
+    expected = _expected_volume_by_strike(CHAIN)
     got = {r[0]: r[2] for r in snap.per_strike["all"]}
     assert got == expected, f"volume altered in transit: {got} != {expected}"
-    assert sum(expected.values()) > 1_000_000, "fixture no longer carries real session volume"
+    assert None not in expected.values() and sum(expected.values()) > 1_000_000, (
+        "fixture no longer carries real session volume on every contract")
+
+
+def test_a_strike_with_an_unreported_volume_has_no_volume_not_a_partial_sum():
+    """A contract whose volume Schwab did not send leaves its strike's volume unknown: never the
+    other leg's volume, never 0. Stand-in: totalVolume removed from one contract of the real chain."""
+    chain = [dict(c) for c in CHAIN]
+    gone = next(c for c in chain if c["totalVolume"] > 0)
+    del gone["totalVolume"]
+    got = {r[0]: r[2] for r in compute_terrain(FIXTURE["ticker"], chain, SPOT).per_strike["all"]}
+    assert got[float(gone["strikePrice"])] is None
+    assert got == _expected_volume_by_strike(chain)
 
 
 def test_rows_are_the_shape_the_panel_renders():
@@ -62,12 +76,16 @@ def test_rows_are_the_shape_the_panel_renders():
     ps = compute_terrain(FIXTURE["ticker"], CHAIN, SPOT).per_strike
     # the three GEX scopes, and the Chart view's DEX and OI rows (operator 2026-09-29: those views
     # were blank)
-    assert set(ps) == {"all", "near", "far", "dex", "oi"}, (
+    scopes = ("all", "near", "far", "dex", "oi")
+    # beside the rows: each profile's largest strike, the GEX rows' side sums (2026-09-30), and
+    # the count of contracts whose settlement cannot be determined (in no row), and why there is
+    # no GEX row when there is none (2026-10-01: the panel served a wrong reason)
+    assert set(ps) == {*scopes, "peak", "side_sums", "expiry_unknown", "absent_reason"}, (
         "the ALL / <=7DTE / MONTHLY+ chips each need their own rows; a missing scope is an "
         f"empty panel on that chip. got {sorted(ps)}"
     )
-    for scope, rows in ps.items():
-        for r in rows:
+    for scope in scopes:
+        for r in ps[scope]:
             assert len(r) == (2 if scope in ("dex", "oi") else 3), f"{scope}: row {r} has the wrong shape"
             assert all(isinstance(x, (int, float)) for x in r), f"{scope}: non-numeric row {r}"
     assert ps["all"], "the ALL scope is empty on a real 40-contract chain"

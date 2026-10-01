@@ -40,7 +40,7 @@ from math_levels import (
     GAMMA_FLIP_NARROW,
     GAMMA_FLIP_TRUSTED,
     GAMMA_FLIP_TRUSTED_SPAN_PCT,
-    compute_gamma_flip_v2,
+    compute_gamma_flip,
     compute_gamma_profile,
 )
 from terrain_read import build_terrain_read
@@ -48,7 +48,7 @@ from terrain_read import build_terrain_read
 
 def _verdict(span: float) -> str:
     chain = _chain(span)
-    return compute_gamma_flip_v2(chain, 100.0, profile=compute_gamma_profile(chain, 100.0))[1]
+    return compute_gamma_flip(chain, 100.0, profile=compute_gamma_profile(chain, 100.0), unpriced={}).coverage
 
 
 
@@ -93,21 +93,17 @@ def test_three_tiers_are_ordered_by_span():
 def test_regime_survives_the_middle_tier_but_level_is_disclosed_approximate():
     """SPY/QQQ class (~8-9% span): the regime must STILL be issued — its basis is the sign of gamma
     at spot, independent of flip-level precision — while the flip LEVEL says it is approximate."""
-    read = build_terrain_read(
-        spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_LEVEL_APPROX,
-        put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9,
-    )
-    assert read.regime, "the regime must survive the middle tier (its basis is the at-spot sign)"
+    from terrain_read import FLIP_LEVEL_APPROXIMATE, REGIME_LONG_GAMMA
+    read = build_terrain_read(spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_LEVEL_APPROX, gamma_at_spot=5.0e9)
+    assert read.regime == REGIME_LONG_GAMMA, "the regime must survive the middle tier (its basis is the at-spot sign)"
     assert read.posture, "posture accompanies a resolved regime"
-    joined = " ".join(read.lines)
-    assert "APPROXIMATE" in joined, f"the flip level must be disclosed as approximate: {read.lines}"
+    assert read.flip_caveat == FLIP_LEVEL_APPROXIMATE, "the flip level must be disclosed as approximate"
+    trusted = build_terrain_read(spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED, gamma_at_spot=5.0e9)
+    assert trusted.flip_caveat == ""
 
 
 def test_a_chain_too_narrow_for_the_at_spot_sign_still_stands_everything_aside():
-    read = build_terrain_read(
-        spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_NARROW,
-        put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9,
-    )
+    read = build_terrain_read(spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_NARROW, gamma_at_spot=5.0e9)
     # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 5): was a 3-way
     # `or` in which the first two disjuncts are DEAD (measured: regime is the truthy
     # string 'UNAVAILABLE', so `not read.regime` and `read.regime in ("", None)` are
@@ -125,15 +121,23 @@ def test_a_chain_too_narrow_for_the_at_spot_sign_still_stands_everything_aside()
         f"a NARROW chain must withhold the regime entirely, got {read.regime!r}")
     assert read.posture == POSTURE_STAND_ASIDE, (
         f"a NARROW chain must stand aside, got {read.posture!r}")
-    assert "not trustworthy" in " ".join(read.lines), (
-        f"the operator must be told why it was withheld: {read.lines}")
+    assert "not trustworthy" in read.regime_reason, (
+        f"the operator must be told why it was withheld: {read.regime_reason}")
 
 
-def test_regime_wording_discloses_the_modeled_dealer_sign():
-    """Operator requirement: modeled dealer positioning must not read as observed fact."""
-    read = build_terrain_read(
-        spot=100.0, flip=99.0, flip_confidence=GAMMA_FLIP_TRUSTED,
-        put_wall=95.0, call_wall=105.0, gamma_at_spot=5.0e9,
-    )
-    mech = " ".join(read.lines)
-    assert "modelled" in mech.lower(), f"the mechanism line must disclose the modeled sign: {mech}"
+def test_every_regime_is_served_with_what_it_rests_on():
+    """Operator requirement: modeled dealer positioning must not read as observed fact. The
+    disclosure sat in the read's text lines, which no screen printed; it is a served field of
+    every terrain (real MTA close capture)."""
+    import json
+    from datetime import datetime
+    from pathlib import Path
+
+    import time_et
+    from terrain_engine import compute_terrain
+    from terrain_read import REGIME_BASIS
+    cap = json.loads((Path(__file__).parent / "fixtures" / "real_mta_close_capture_2026_09_29.json")
+                     .read_text(encoding="utf-8"))
+    snap = compute_terrain("MTA", cap["chain"], cap["spot"], now=datetime.fromtimestamp(cap["ts_utc"], time_et.ET))
+    assert snap.to_dict()["regime_basis"] == REGIME_BASIS
+    assert "modelled" in REGIME_BASIS and "not observed" in REGIME_BASIS

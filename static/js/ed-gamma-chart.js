@@ -1,6 +1,7 @@
 /* Ed Console — Options/Gamma Chart view. PRESENTATION ONLY.
    On the one TradingView-style chart every chart in the console uses (ed-tv-chart.js): the price
-   (/api/bars1m, completed Schwab bars at the toolbar's timeframe), the flip and the walls (/api/terrain) as level
+   (/api/bars1m, completed Schwab bars at the toolbar's timeframe, then each new one as the daemon
+   pushes it), the flip and the walls (/api/terrain) as level
    lines, the live price (the header's price row), and the selected measure's per-strike rows
    (/api/terrain/strikes: GEX `today.all`, DEX and OI `measures`) as a profile on the price axis --
    bars, or dots sized by magnitude (Dot Map). The same view serves the Gamma, Delta / DEX and Open
@@ -11,7 +12,6 @@
 
   var usd = window.EdGamma.formatUsd;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
-  function ctTime(sec) { try { return new Date(sec * 1000).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'America/Chicago' }); } catch (e) { return ''; } }
   function st() { return (window.EdShell && window.EdShell.getState()) || {}; }
   function isChart() {
     var s = st();
@@ -96,6 +96,7 @@
       : { idx: srows.map(function (_r, i) { return i; }) };
     var win = sel.idx.map(function (i) { return srows[i]; }).filter(function (r) { return r[1] != null; });   // unknown: nothing drawn
     c.setBars(bars, (barsD && barsD.tf) || _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
+    if (barsD && barsD.today) c.setToday(barsD.today);   // the daily chart's today, as served
     c.setProfile(win.map(function (r) {
       return { price: Number(r[0]), value: Number(r[1]), color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down }; }),
       _mode === 'dotmap' ? 'dots' : 'bars');
@@ -113,17 +114,16 @@
     empty.hidden = !!(bars.length || win.length);
     empty.textContent = empty.hidden ? '' : (barsD || sd ? 'no bars / per-strike ' + prof.name + ' for this symbol'
       : 'the bars and per-strike ' + prof.name + ' requests failed');
-    paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot);
+    paintHead(host.querySelector('.gchart-head'), win, prof, sd, spot);
   }
-  function paintHead(el, bars, win, prof, sd, spot) {
+  function paintHead(el, win, prof, sd, spot) {
     var srows = prof.rows, n = prof.name;
     var note = window.EdShell && window.EdShell.scopeNote ? window.EdShell.scopeNote({ total: srows.length, shown: win.length }) : '';
     var ab = (window.EdShell && window.EdShell.asOfBadge) || function () { return ''; };
-    var lastT = bars.length ? bars[bars.length - 1].t : null;
+    var last = _last.bars && _last.bars.last_bar;   // served: the newest completed minute and its label
     var src = sd && sd.today_source;
-    var asof = (lastT ? '<span class="asof">price ' + tfLabel() + ' · ' + ctTime(lastT) + ' CT</span>' : '') +
-      (src ? ab({ label: n + ' ' + (src === 'terrain_live_cache' ? 'terrain live' : src), ageSec: sd.today_age_sec,
-        stale: !!sd.levels_stale, reason: sd.levels_stale_reason, live: src === 'terrain_live_cache' && sd.levels_stale === false }) : '');
+    var asof = (last ? '<span class="asof">price ' + tfLabel() + ' · ' + esc(last.label) + '</span>' : '') +
+      (src ? ab(Object.assign(window.EdShell.levelsBadgeState(sd), { label: n + ' ' + (src === 'terrain_live_cache' ? 'terrain live' : src) })) : '');
     var top = srows.filter(function (r) { return r[0] === prof.max_abs_strike; })[0];   // served: the largest-magnitude strike
     var shown = top ? (prof.signed ? usd(top[1]) : Number(top[1]).toLocaleString('en-US') + ' contracts') : '';
     el.innerHTML = note + (asof ? '<div class="chart-asof">' + asof + '</div>' : '') +
@@ -152,14 +152,34 @@
     var q = (ev && ev.detail) || {};
     if (q.ticker !== st().key) return;
     _liveQuote = q;
+    // the daily chart's today: Schwab's day fields on the price row (q.day), as served -- its
+    // candle, or its removal with the served reason
+    if (_tf === 'D' && q.day && _chart && _last.bars && _last.bars.bars && _last.bars.tf === 'D') {
+      _chart.setToday(q.day);
+      _last.bars = Object.assign({}, _last.bars, { bars: _chart.bars(), today: q.day });
+    }
     if (isChart() && _chart && _last.strikes !== undefined) render();
   });
   document.addEventListener('ed:view', load);
   document.addEventListener('ed:ticker', function () { _last = { bars: undefined, strikes: undefined, terrain: undefined }; load(); });
   document.addEventListener('ed:scope', function () { if (_chart && isChart()) render(); });
   document.addEventListener('ed:measure', function () { if (_chart && isChart() && _last.strikes !== undefined) render(); });
-  document.addEventListener('ed:changed', function (e) {   // a new bar reloads all; new levels reload the levels
-    if (e.detail.kind === 'liquidity') load(); else if (e.detail.kind === 'levels') _levelsLoader.trigger(ticker());
+  document.addEventListener('ed:changed', function (e) {   // new levels reload the levels
+    if (e.detail.kind === 'levels') _levelsLoader.trigger(ticker());
+  });
+  // a completed Schwab minute, pushed by the daemon: the chart bar at this chart's timeframe
+  window.addEventListener('ed:bar', function (ev) {
+    var b = ev.detail;
+    if (!b || b.ticker !== st().key || !_chart || !_last.bars || !_last.bars.bars || _last.bars.tf !== _tf) return;
+    // a push carries a timeframe's bar only when it is that chart's newest and its minutes are all
+    // held (live_price_rows.bar_update), or its reason; a push carrying neither (a late minute's)
+    // leaves the last served reason shown
+    if (b.tf[_tf]) _chart.setUnavailable(null);
+    else if ((b.unavailable || {})[_tf]) _chart.setUnavailable(b.unavailable[_tf]);
+    if (!b.tf[_tf]) return;
+    _chart.pushBar(b.tf[_tf], b.last_bar && b.last_bar.label);   // the chart library places it
+    _last.bars = Object.assign({}, _last.bars, { bars: _chart.bars(), last_bar: b.last_bar });
+    if (isChart()) render();
   });
   document.addEventListener('ed:strike', function () { if (_chart && isChart()) _chart.selectProfile(st().selStrike == null ? null : Number(st().selStrike)); });
   bindModes();

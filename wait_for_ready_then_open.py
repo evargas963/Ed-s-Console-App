@@ -16,7 +16,7 @@ not establish. This version distinguishes the three outcomes and reports (via
 both stdout and process exit code) which one happened; only a genuine timeout
 skips opening the browser at all, since there is then nothing real to show.
 
-Usage: python tools/wait_for_ready_then_open.py <url> <browser_exe> [timeout_sec]
+Usage: python wait_for_ready_then_open.py <url> <browser_exe> [timeout_sec]
 Exit 0: the URL answered 200 -- opened the browser.
 Exit 1: the URL answered, but not with 200 (server up, not healthy at this
         route) -- opened the browser anyway (something real to look at), but

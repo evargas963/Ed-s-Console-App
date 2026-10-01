@@ -25,6 +25,16 @@ import pytest
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import live_ui
 from stream_spine import MessageBus, quote_msg
+from tests.feed_live_helper import SESSION_NOW
+
+_T0 = time.monotonic()
+
+
+def _now() -> float:
+    """Stand-in (named): the daemon's clock, started at SESSION_NOW (Friday 2026-09-25 12:00 ET,
+    the market in session) and running at real speed, so the test runs at a stated time whatever
+    the hour it is run."""
+    return SESSION_NOW + (time.monotonic() - _T0)
 
 
 def _free_port() -> int:
@@ -56,7 +66,7 @@ class _Feed:
         self.held = list(held)
 
     def __call__(self) -> dict:
-        return {"ts": time.time(), "schwab_socket_open": self.open,
+        return {"ts": _now(), "schwab_socket_open": self.open,
                 "held": {"LEVELONE_EQUITIES": self.held}, "health": {}}
 
 
@@ -69,7 +79,8 @@ async def _run(body, feed=None):
     stats: dict = {}
     feed = feed if feed is not None else _Feed()
     server = asyncio.create_task(live_ui.serve_live_ui(
-        bus, stop, heartbeat_fn=feed, host="127.0.0.1", port=port, stats=stats))
+        live_ui.LiveUiServer(bus, feed, stats, clock=_now, history_fn=lambda *a: [], daily_fn=lambda *a: []),
+        stop, host="127.0.0.1", port=port))   # no bar here: Schwab's history unused
     end = time.monotonic() + 5
     while not stats.get("listening") and time.monotonic() < end:
         await asyncio.sleep(0.01)
@@ -95,7 +106,7 @@ async def _next_row(ws, sym, pred=lambda r: True, timeout=3.0):
 def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["spy"]}))
-        now = time.time()
+        now = _now()
         bus.publish("quote.SPY", _trade("SPY", 583.41, now))
         msg, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.41)
         assert row["spot_state"] == "live" and row["spot_disp"] == "583.41"
@@ -106,7 +117,7 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
         assert "forming_1m" not in row
         # the next trade moves it, pushed on its own (not on the beat)
         t0 = time.monotonic()
-        bus.publish("quote.SPY", _trade("SPY", 583.90, time.time()))
+        bus.publish("quote.SPY", _trade("SPY", 583.90, _now()))
         msg, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.90)
         assert msg["type"] == "quotes"
         assert time.monotonic() - t0 < 0.15, "a change must go out immediately, not on the beat"
@@ -116,8 +127,8 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
 def test_an_unsubscribed_symbol_is_never_sent():
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
-        bus.publish("quote.AAPL", _trade("AAPL", 230.0, time.time()))
-        bus.publish("quote.SPY", _trade("SPY", 583.0, time.time()))
+        bus.publish("quote.AAPL", _trade("AAPL", 230.0, _now()))
+        bus.publish("quote.SPY", _trade("SPY", 583.0, _now()))
         end = time.monotonic() + 0.6
         while time.monotonic() < end:
             msg = json.loads(await asyncio.wait_for(ws.recv(), 1))
@@ -127,7 +138,7 @@ def test_an_unsubscribed_symbol_is_never_sent():
 
 def test_resubscribing_sends_the_new_symbols_current_rows_at_once():
     async def body(bus, ws, feed, stats):
-        bus.publish("quote.AAPL", _trade("AAPL", 230.5, time.time()))
+        bus.publish("quote.AAPL", _trade("AAPL", 230.5, _now()))
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY", "AAPL"]}))
         msg, row = await _next_row(ws, "AAPL", lambda r: r["spot"] == 230.5, timeout=0.15)
@@ -169,7 +180,7 @@ def test_an_index_typed_bare_is_served_under_its_storage_key():
     ticker_storage_key, so the typed form gets the index's rows."""
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX"]}))
-        bus.publish("quote.$SPX", _trade("$SPX", 6512.25, time.time()))
+        bus.publish("quote.$SPX", _trade("$SPX", 6512.25, _now()))
         _, row = await _next_row(ws, "$SPX", lambda r: r["spot"] == 6512.25)
         assert row["spot_state"] == "live"
     asyncio.run(_run(body, feed=_Feed(held=("$SPX",))))
@@ -178,20 +189,23 @@ def test_an_index_typed_bare_is_served_under_its_storage_key():
 def test_a_closed_schwab_socket_reads_unavailable_within_one_beat():
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
-        bus.publish("quote.SPY", _trade("SPY", 583.41, time.time()))
+        bus.publish("quote.SPY", _trade("SPY", 583.41, _now()))
         await _next_row(ws, "SPY", lambda r: r["spot_state"] == "live")
         feed.open = False                      # nothing from Schwab; only the beat knows
         msg, row = await _next_row(ws, "SPY", lambda r: r["spot_state"] == "unavailable",
                                    timeout=1.0)
         assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
-        assert row["spot"] is None and row["feed_live"] is False and row["bid"] is None
+        # not live; Schwab's last trade is still shown, with its time (operator 2026-10-01: "if we
+        # have it we display it"), and the quote is not live for any computation
+        assert row["spot"] is None and row["feed_live"] is False and row["quote_live"] is False
+        assert row["closed_last"]["price"] == 583.41
     asyncio.run(_run(body))
 
 
 def test_a_symbol_the_daemon_does_not_hold_is_not_live():
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["TSLA"]}))
-        bus.publish("quote.TSLA", _trade("TSLA", 400.0, time.time()))
+        bus.publish("quote.TSLA", _trade("TSLA", 400.0, _now()))
         msg, row = await _next_row(ws, "TSLA", lambda r: r["spot_state"] == "unavailable")
         assert row["feed_live"] is False
     asyncio.run(_run(body))
@@ -204,7 +218,7 @@ def test_a_burst_is_conflated_to_the_newest_row_per_symbol():
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY", "AAPL"]}))
         await _next_row(ws, "SPY")                      # the (empty) snapshot
         for i in range(500):
-            now = time.time()
+            now = _now()
             bus.publish("quote.SPY", _trade("SPY", 500 + i / 100, now))
             bus.publish("quote.AAPL", _trade("AAPL", 200 + i / 100, now))
         _, spy = await _next_row(ws, "SPY", lambda r: r["spot"] == pytest.approx(504.99))

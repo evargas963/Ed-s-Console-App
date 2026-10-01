@@ -5,7 +5,10 @@
 1. `npm run test:e2e` — validates Node, npm and `@playwright/test` (fail-fast, never a skip),
    installs Chromium if needed, and runs `tests/e2e/*.spec.js` against `uvicorn server:app`
    (`playwright.config.mjs` `webServer`) in a run-private runtime root (`ED_RUNTIME_ROOT`),
-   removed afterwards: the test server never touches the production database.
+   removed afterwards: the test server never touches the production database. What it proves:
+   the page draws what it is served. Every spec but `first-run-no-ticker` replaces `/api/**`
+   and the daemon's price socket with fixture data, so it proves nothing about what the server
+   or the daemon serves.
 2. `node scripts/run-pytest-full.mjs [pytest args]` — `python -m pytest -n auto --dist loadfile
    --durations=20`; extra args narrow the run (a test path, `-n 0`).
 

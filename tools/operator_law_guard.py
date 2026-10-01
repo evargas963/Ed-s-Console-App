@@ -1,34 +1,13 @@
-"""OPERATOR LAW GUARD — three host-wide ACTION bans on shell commands (RC-93: ban the action,
-never the word). PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`); exit 2 blocks.
+"""Four host-wide action bans on shell commands, judged on the action a command runs, never on a
+word in other text. PreToolUse for the shell-command tools (`hook_chain.BASH_TOOLS`); exit 2
+blocks. The rules live in `AGENTS.md` § Authority.
 
-What survives, and the concrete failure each prevents (KEEP/MERGE/DELETE, 2026-09-10):
-
-  * UNRECOVERABLE-TREE DESTRUCTION (RC-273). `.gitignore` excludes data/ and backups/,
-    so the 27 GB database has no history at all. The agent destroyed it TWICE in ten minutes
-    (`mv` to exercise a missing-file branch, `rm -f` while testing the ACL meant to prevent the
-    first). The live database files carry an OS deny-delete (file) plus deny-delete-contents
-    (folder) -- measured 2026-09-26 with a canary in the real data/ folder: delete and rename
-    refused. This rule stops an attempt early, with a reason, judged on what the command RUNS.
-  * BLIND STAGING. `git add -A` / `-u` / `.` / `*` swept another agent's in-flight files into a
-    commit twice in one day (a 530 KB runtime log; audit scratch). A commit asserts authorship of
-    everything in it; stage explicit paths.
-  * LOCK DISABLE. `--no-verify`, `-n`, `core.hooksPath`, `SKIP=<hook>` and `pre-commit uninstall`
-    bypass the pre-commit battery the operator asked for. Required CI would still catch the
-    result, but only after the commit exists; refusing the bypass in session is cheap and blocks
-    nothing legitimate.
-
-What was DELETED, and why (nothing replaced it):
-  * the no-grep rule: it blocked read-only stdout filters three times in one session — governance
-    obstructing inspection; the rule's stated value (read files whole) is a working style, not a
-    protection.
-  * heredoc / redirect / `-c` payload / PowerShell source-write bans: they existed because shell
-    writes once mangled escapes; ruff and pytest at commit and in CI catch a mangled file, and the
-    retired mockup-approval registry they also guarded is gone.
-  * the CLOSE-a-row-needs-a-verification-this-turn rule and its transcript readers: every ledger
-    row a delta closes has its cited command EXECUTED by required CI (tools/check_delta_adds_no_debt.py);
-    a transcript-derived turn ledger was a second, weaker judge of the same fact — and the last
-    transcript reader on the PreToolUse path (RC-544 class).
-  * the `ED_*_GUARD=off` spellings in the lock-disable regex: no such switch exists (RC-450).
+  * Deleting, moving, overwriting or unprotecting anything under data/ or backups/ (gitignored:
+    no history, no undo). A copy into those trees (a restore) is allowed.
+  * Blind staging: `git add -A` / `--all` / `-u` / `.` / `*`.
+  * Disabling the commit hooks: `--no-verify`, `-n` on commit, `core.hooksPath`, `SKIP=<hook>`,
+    `pre-commit uninstall`, removing `.git/hooks`.
+  * A push to main: main changes only through a PR.
 """
 from __future__ import annotations
 
@@ -138,11 +117,18 @@ _BLIND_STAGE = re.compile(
 #: Lock-disable routes: git's own (`--no-verify`, `-n` on commit, `core.hooksPath`) and
 #: pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`) — RC-541.
 _SKIP_HOOKS = re.compile(
-    r"--no-verify"
-    r"|hooksPath"
+    r"\bgit\b[^\n;&|]*\b(?:commit|push|merge|rebase|am|cherry-pick|revert)\b[^\n;&|]*\s--no-verify\b"
+    r"|\bgit\b[^\n;&|]*\bconfig\b(?![^\n;&|]*\s--(?:get|get-all|list|show-origin)\b)[^\n;&|]*\bcore\.hooksPath\b"
+    r"|\bgit\s+-c\s+core\.hooksPath\s*="
     r"|\bgit\s+commit\b[^\n]*?(?:\s-n\b)"
     r"|(?:^|[\s;&|(])(?:\$env:)?SKIP\s*=\s*['\"]?[A-Za-z0-9_,\-]"
-    r"|\bpre-commit\s+uninstall\b",
+    r"|\bpre[-_]commit\s+uninstall\b"
+    r"|\b(?:rm|del|erase|rmdir|rd|remove-item|ri|mv|move|move-item)\b[^\n;&|]*\.git[\\/]hooks\b",
+    re.I)
+
+#: A push to main.
+_PUSH_TO_MAIN = re.compile(
+    r"\bgit\b[^\n;&|]*\bpush\b[^\n;&|]*(?:\s|:|refs/heads/)(?:main|master)(?=\s|$|[;&|])",
     re.I)
 
 
@@ -154,18 +140,18 @@ def bash_violations(cmd: str, ledger=None, payload_cwd: str = "") -> list[str]:
     cmd = shell_executed_part(raw)
     out: list[str] = []
     if _BLIND_STAGE.search(cmd):
-        out.append("ACTION BLOCKED: blind staging (git add -A/--all/.) swept another agent's "
-                   "in-flight files into a commit twice on 2026-07-28. Stage EXPLICIT paths — "
-                   "a commit asserts authorship of everything in it.")
+        out.append("ACTION BLOCKED: blind staging (git add -A/--all/-u/.). Stage named paths "
+                   "(AGENTS.md § Authority).")
     if _protected_path_violation(raw):
-        out.append("ACTION BLOCKED (RC-273): this deletes, moves or truncates something under "
-                   "data/ or backups/. Those trees are gitignored -- there is NO "
-                   "history and NO undo. The agent destroyed the 27GB database twice in ten "
-                   "minutes this way, both times while 'just testing'. Test destructive "
-                   "behaviour against a COPY in a temp directory, never the real artefact. "
-                   "Restores INTO these trees stay legal; removal from them is operator-only.")
+        out.append("ACTION BLOCKED: this deletes, moves or truncates something under data/ or "
+                   "backups/, which have no history and no undo. Test against a copy in a temp "
+                   "directory; a restore into these trees is allowed (AGENTS.md § Authority).")
     if _SKIP_HOOKS.search(cmd):
-        out.append("ACTION BLOCKED: this disables a mechanical lock. Only the operator may.")
+        out.append("ACTION BLOCKED: this disables a mechanical lock, the commit hooks "
+                   "(AGENTS.md § Authority).")
+    if _PUSH_TO_MAIN.search(cmd):
+        out.append("ACTION BLOCKED: main changes only through a PR (AGENTS.md § Authority). "
+                   "Push a branch and open one.")
     return out
 
 
@@ -183,7 +169,7 @@ def main() -> int:
     cmd = (payload.get("tool_input") or {}).get("command") or ""
     bad = bash_violations(cmd, [], str(payload.get("cwd") or ""))
     if bad:
-        sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
+        sys.stderr.write("BLOCKED:\n\n"
                          + "\n".join(f"    {b}" for b in bad) + "\n")
         return 2
     return 0

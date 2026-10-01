@@ -45,7 +45,7 @@ def _put_chain(*, fetched_ts=None, viewed=True):
                                      "_chain_fetched_ts": time.time() if fetched_ts is None else fetched_ts}
     push_changes._clients.pop(TK, None)
     if viewed:
-        push_changes.subscribe(TK)                  # a page open on the ticker
+        push_changes.subscribe(TK, "test-view")     # a page open on the ticker
 
 
 def _cached():
@@ -55,8 +55,9 @@ def _cached():
 
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", 1.0))
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: True)   # the open market, unless a test closes it
+    # stand-ins (named): the live price, and the open market unless a test closes it
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, server.SPOT_SOURCE_PLANE, 1.0))
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: True)
     monkeypatch.setattr(push_changes, "_clients", {})                    # no page open
     monkeypatch.setattr(push_changes, "_loop", None)                     # changes recorded, not delivered
     ofs._active_option_contract = _A
@@ -81,7 +82,7 @@ def _stream(values: dict, monkeypatch, held=None):
 def test_heatmap_per_strike_rows_and_levels_are_one_computation(monkeypatch):
     _stream({}, monkeypatch)
     _put_chain()
-    snap = server._publish_levels(TK)
+    snap = server._publish_levels(TK, now=time.time())
     c = _cached()
     assert c["_per_strike"] is snap.per_strike and c["_vanna_rows"] == server._vanna_rows(snap)
     assert c["gamma_flip"] == snap.gamma_flip and c["call_wall"] == snap.call_wall
@@ -97,7 +98,7 @@ def test_heatmap_per_strike_rows_and_levels_are_one_computation(monkeypatch):
 def test_published_levels_equal_compute_terrain_on_the_same_inputs(monkeypatch):
     _stream({}, monkeypatch)
     _put_chain()
-    server._publish_levels(TK)
+    server._publish_levels(TK, now=time.time())
     expected = compute_terrain(TK, _CONTRACTS, _SPOT).to_dict()
     got = _cached()
     assert expected["gamma_flip"] is not None, "the chain must price (valued at its capture)"
@@ -112,7 +113,7 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     from fastapi.testclient import TestClient
     _stream({}, monkeypatch)
     _put_chain()
-    snap = server._publish_levels(TK)
+    snap = server._publish_levels(TK, now=time.time())
     r = TestClient(server.app).get(f"/api/terrain?ticker={TK}")
     assert r.status_code == 200, r.text[:300]
     body = r.json()
@@ -126,7 +127,7 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
 def test_a_fresh_streamed_greek_reprices_levels_heatmap_and_rows(monkeypatch):
     _put_chain(fetched_ts=time.time() - 5.0)
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time()}}, monkeypatch)
-    server._publish_levels(TK)
+    server._publish_levels(TK, now=time.time())
     c = _cached()
     assert c["_gamma_surface"]["stream_overlay_contracts"] == 1
     assert c["_gamma_surface"]["stream_overlay_symbols"] == [_A]
@@ -142,9 +143,9 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale(monkeypatch):
     streamed one."""
     now = time.time()
     chain = [dict(_CONTRACTS[0], quoteTimeInLong=int(now * 1000))] + _CONTRACTS[1:]   # a fresh chain
-    push_changes.subscribe(TK)                                                         # a page open on it
+    push_changes.subscribe(TK, "test-view")                                            # a page open on it
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": now - 60.0}}, monkeypatch)          # last change a minute ago
-    server._publish_levels(TK, chain, now)
+    server._publish_levels(TK, chain, now, now=time.time())                           # after the heartbeat
     surface = _cached()["_gamma_surface"]
     assert surface["stream_overlay_symbols"] == [_A]
     legs = [col[side] for cell in surface["cells"] for col, pair in zip(cell["stream"], cell["contracts"])
@@ -157,10 +158,10 @@ def test_only_a_live_contracts_streamed_value_is_applied_whatever_its_age(monkey
     unchanged; one it no longer holds is a past observation and never reprices the levels."""
     _put_chain(fetched_ts=time.time() - 120.0)
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time() - 60.0}}, monkeypatch)
-    server._publish_levels(TK)
+    server._publish_levels(TK, now=time.time())
     assert _cached()["_gamma_surface"]["stream_overlay_symbols"] == [_A]
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time()}}, monkeypatch, held=[])
-    server._publish_levels(TK)
+    server._publish_levels(TK, now=time.time())
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
 
 
@@ -169,16 +170,16 @@ def test_every_desired_contract_is_overlaid_not_only_the_one_that_ticked(monkeyp
     now = time.time()
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": now}, _B: {"gamma": 0.8, "gamma_ts_recv": now}},
             monkeypatch)
-    server._publish_levels(TK)
+    server._publish_levels(TK, now=time.time())
     assert sorted(_cached()["_gamma_surface"]["stream_overlay_symbols"]) == sorted([_A, _B])
 
 
 def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay(monkeypatch):
     _put_chain(fetched_ts=time.time() - 5.0)
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": time.time()}}, monkeypatch)
-    server._publish_levels(TK)
+    server._publish_levels(TK, now=time.time())
     _stream({}, monkeypatch)                    # the stream for A ended
-    server._publish_levels(TK)
+    server._publish_levels(TK, now=time.time())
     c = _cached()
     assert c["_chain"] is _CONTRACTS and _CONTRACTS[0].get("gamma") != 0.9
     assert c["_gamma_surface"]["stream_overlay_contracts"] == 0
@@ -188,7 +189,7 @@ def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay(monkey
 def test_a_volume_only_tick_reaches_the_per_strike_volume_column(monkeypatch):
     _put_chain(fetched_ts=time.time() - 5.0)
     _stream({_A: {"total_volume": 999999.0, "total_volume_ts_recv": time.time()}}, monkeypatch)
-    server._publish_levels(TK)
+    server._publish_levels(TK, now=time.time())
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
     row = next(r for r in _cached()["_per_strike"]["all"] if r[0] == strike)
     assert row[2] >= 999999
@@ -201,7 +202,7 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain(monkeypatch):
     _put_chain(fetched_ts=time.time() - 5.0)
     _stream({foreign: {"gamma": 0.99, "gamma_ts_recv": time.time()}}, monkeypatch)
     assert server._desired_stream_greeks_for_ticker(TK) == {}
-    server._publish_levels(TK)
+    server._publish_levels(TK, now=time.time())
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
 
 
@@ -210,10 +211,10 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain(monkeypatch):
 def test_a_moved_spot_reprices_every_view_at_the_new_spot(monkeypatch):
     _stream({}, monkeypatch)
     _put_chain()
-    server._publish_levels(TK)
+    server._publish_levels(TK, now=time.time())
     before = _cached()["_gamma_surface"]
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT * 1.02, "stub", 2.0))
-    server._publish_levels(TK)
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT * 1.02, server.SPOT_SOURCE_PLANE, 2.0))
+    server._publish_levels(TK, now=time.time())
     after = _cached()
     assert after["_gamma_surface"]["spot"] == _SPOT * 1.02 and after["spot"] == _SPOT * 1.02
     assert after["_gamma_surface"]["cells"] != before["cells"]          # GEX scales with spot
@@ -224,11 +225,11 @@ def test_a_moved_spot_reprices_every_view_at_the_new_spot(monkeypatch):
 
 def test_an_unviewed_ticker_keeps_no_chain_and_gets_no_heatmap(monkeypatch):
     _stream({}, monkeypatch)
-    server._publish_levels(TK, _CONTRACTS, time.time())
+    server._publish_levels(TK, _CONTRACTS, time.time(), now=time.time())
     c = _cached()
     assert c["_chain"] is None and c["_gamma_surface"] is None
     assert c["gamma_flip"] is not None or c["call_wall"] is not None     # levels still published
-    assert server._publish_levels(TK) is None                            # nothing to reprice
+    assert server._publish_levels(TK, now=time.time()) is None                            # nothing to reprice
 
 
 def test_a_stored_capture_and_a_live_chain_publish_the_same_fields(monkeypatch):
@@ -238,13 +239,13 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields(monkeypatch):
     capture's own label stored). The one producer sets them all."""
     from terrain_atr import AtrPair
     _stream({}, monkeypatch)
-    monkeypatch.setattr(server, "_atr_pair", lambda tk: AtrPair(4.2, 0.7))
+    monkeypatch.setattr(server, "_atr_pair", lambda tk, now: AtrPair(4.2, 0.7))
     now = time.time()
-    server._publish_levels(TK, _CONTRACTS, now)
+    server._publish_levels(TK, _CONTRACTS, now, now=now)
     live = _cached()
     capture = {"contracts": _CONTRACTS, "ts_utc": now, "spot": _SPOT, "et_date": "2026-09-02",
                "basis": server.CAPTURE_BASIS}
-    server._publish_levels(TK, captures=[capture])
+    server._publish_levels(TK, captures=[capture], now=time.time())
     stored = _cached()
     public = {k for k in live if not k.startswith("_")}
     assert public == {k for k in stored if not k.startswith("_")}
@@ -262,7 +263,7 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot(monkeypatch):
                         lambda *a, **k: datetime(2026, 9, 11, 12, 0, tzinfo=ZoneInfo("America/New_York")))
     _stream({}, monkeypatch)
     _put_chain()
-    snap = server._publish_levels(TK)
+    snap = server._publish_levels(TK, now=time.time())
     charm = json.loads(server.get_charm_by_strike(TK).body)
     assert charm["available"] and charm["spot"] == snap.spot
     assert len(charm["rows"]) == sum(1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None)
@@ -287,7 +288,7 @@ def test_publications_for_one_ticker_never_overlap(monkeypatch):
         finally:
             active[0] -= 1
     monkeypatch.setattr(server, "compute_terrain", slow)
-    ts = [threading.Thread(target=server._publish_levels, args=(TK,)) for _ in range(4)]
+    ts = [threading.Thread(target=server._publish_levels, args=(TK,), kwargs={"now": time.time()}) for _ in range(4)]
     for t in ts:
         t.start()
     for t in ts:
@@ -300,7 +301,7 @@ def test_publications_for_one_ticker_never_overlap(monkeypatch):
 def _count_publishes(monkeypatch):
     calls = []
     monkeypatch.setattr(server, "_publish_levels",
-                        lambda tk, *a: calls.append((tk, time.monotonic())) or True)   # published
+                        lambda tk, *a, **kw: calls.append((tk, time.monotonic())) or True)   # published
     return calls
 
 
@@ -321,10 +322,10 @@ def test_a_ticker_just_put_on_screen_gets_its_chain_on_the_first_tick(monkeypatc
     chain through the one producer, as an operator-facing request."""
     monkeypatch.setattr(server, "LEVELS_REPRICE_MIN_INTERVAL_SEC", 0.05)
     fetched = []
-    monkeypatch.setattr(server, "_terrain_refresh_one", lambda tk, priority=False: fetched.append((tk, priority)))
+    monkeypatch.setattr(server, "_terrain_refresh_one", lambda tk, now, priority=False: fetched.append((tk, priority)))
     _stream({}, monkeypatch)
-    server._publish_levels(TK, _CONTRACTS, time.time())                 # published while not viewed
-    push_changes.subscribe(TK)                                           # the operator switches to it
+    server._publish_levels(TK, _CONTRACTS, time.time(), now=time.time())                 # published while not viewed
+    push_changes.subscribe(TK, "test-view")                              # the operator switches to it
     server._on_stream_tick(TK)
     _wait_idle(TK)
     assert fetched == [(TK, True)]
@@ -366,7 +367,7 @@ def test_a_tick_on_an_unviewed_ticker_reprices_nothing(monkeypatch):
 def test_a_burst_of_ticks_reprices_at_most_once_per_interval_and_prices_the_last(monkeypatch):
     monkeypatch.setattr(server, "LEVELS_REPRICE_MIN_INTERVAL_SEC", 0.2)
     calls = _count_publishes(monkeypatch)
-    push_changes.subscribe("ZZBURST")
+    push_changes.subscribe("ZZBURST", "test-view")
     for _ in range(50):
         server._on_stream_tick("ZZBURST")
         time.sleep(0.002)
@@ -411,7 +412,7 @@ def test_an_option_quote_lands_in_state_with_no_callback(monkeypatch):
     monkeypatch.setattr(ofs, "_on_tick_callback", None)
     ofls.clear_all_live_state()
     _optquote(_GREEKS)
-    assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_OPT))
+    assert ofls.get_stream_greeks(_SPY_OPT)["delta"] == _GREEKS["DELTA"]
 
 
 # ── the closed market: the last session's levels stand, saved and labeled ─────────────────────
@@ -453,16 +454,17 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
         assert loaded[k] == getattr(expected, k), k
 
 def test_while_closed_the_levels_are_the_last_sessions_labeled_with_their_time(monkeypatch):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: False)
     fri_close = datetime(2026, 9, 25, 16, 29, tzinfo=ZoneInfo("America/New_York")).timestamp()
-    st = server.terrain_staleness(fri_close, TK)
+    saturday = datetime(2026, 9, 26, 12, 0, tzinfo=ZoneInfo("America/New_York")).timestamp()
+    st = server.terrain_staleness(fri_close, TK, saturday)
     assert st["levels_market_closed"] is True and st["levels_stale"] is False
     assert st["levels_as_of"] == "Fri 09/25 03:29 PM CT"
     assert st["levels_refresh_active"] is False and st["levels_failing"] is False
 
 
 def test_a_tick_while_closed_reprices_nothing(monkeypatch):
-    monkeypatch.setattr(server, "_is_loggable_session", lambda: False)
+    monkeypatch.setattr(server, "_is_loggable_session", lambda now: False)
     calls = _count_publishes(monkeypatch)
     _put_chain()
     server._on_stream_tick("CRWD")
@@ -475,7 +477,7 @@ def test_a_reprice_on_a_kept_chain_keeps_the_chains_time(monkeypatch):
     them newer, or a chain that stops arriving would never show as stale."""
     fetched = time.time() - 600.0
     _put_chain(fetched_ts=fetched)
-    server._publish_levels(TK)
+    server._publish_levels(TK, now=time.time())
     assert _cached()["computed_ts_utc"] == fetched
 
 
@@ -487,7 +489,7 @@ def test_the_route_serves_the_publication_and_no_live_price_publishes_no_levels(
     with its reason."""
     from app.options.order_flow import streaming as ofs_mod
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, server.SPOT_SOURCE_PLANE, 1.0))
-    server._publish_levels(TK, _CONTRACTS, time.time())
+    server._publish_levels(TK, _CONTRACTS, time.time(), now=time.time())
     published = _cached()
     monkeypatch.setattr(ofs_mod, "_price_rows", {})              # the price is no longer live
     out = server.get_terrain(ticker=TK)
@@ -497,7 +499,7 @@ def test_the_route_serves_the_publication_and_no_live_price_publishes_no_levels(
     assert "spot_state" not in out and out["spot_as_of_ts_utc"] == 1.0
     assert out["spot_source"] == server.SPOT_SOURCE_PLANE
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
-    server._publish_levels(TK, _CONTRACTS, time.time())          # the next chain: no live price
+    server._publish_levels(TK, _CONTRACTS, time.time(), now=time.time())          # the next chain: no live price
     out = server.get_terrain(ticker=TK)
     assert out["regime"] == "UNAVAILABLE" and out["call_wall"] is None and out["error"] == "no spot price"
 

@@ -30,18 +30,15 @@ def test_the_book_side_is_served_from_the_real_book():
     want = "BID" if bid5 > ask5 else "ASK" if ask5 > bid5 else "EVEN"
     assert (m["depth"]["5"]["bid_total"], m["depth"]["5"]["ask_total"]) == (bid5, ask5)
     assert m["depth"]["5"]["side"] == want
-
-
-def test_the_tape_side_is_served():
-    from app.options.order_flow.live_payload import flow_block
-    assert [flow_block({"tape_pressure_5m": v})["tape_side_5m"] for v in (0.2, -0.1, 0.0, None)] == \
-        ["BUY", "SELL", "EVEN", None]
+    # the percent the Desk card prints is served text, not page arithmetic
+    assert m["depth"]["5"]["imbalance_disp"] == f"{(bid5 - ask5) / (bid5 + ask5) * 100:+.1f}%"
 
 
 def _desk_events(monkeypatch, ticker, crosses, now, tf):
     """/api/desk/events on real crosses, at `now`."""
-    newest_first = sorted(crosses, key=lambda r: r["ts_utc"], reverse=True)       # as db.get_recent_crosses reads
-    monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda ticker, n=20: newest_first[:n])
+    newest_first = sorted(crosses, key=lambda r: r["ts_utc"], reverse=True)       # as db.get_crosses_since reads
+    monkeypatch.setattr(server.get_db(), "get_crosses_since",
+                        lambda ticker, since: [r for r in newest_first if r["ts_utc"] >= since])
     monkeypatch.setattr(time_et, "now_et", lambda: now)
     monkeypatch.setattr(server, "now_et", lambda: now)
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (None, "none", None))
@@ -69,6 +66,24 @@ def test_each_cross_is_served_as_recorded_and_the_chart_draws_the_newest_at_each
         newest_at[it["price"]] = it
     want = {it["key"] for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-server.DESK_MARKERS:]}
     assert {it["key"] for it in items if it["marker"]} == want
+
+
+def test_the_window_holds_every_cross_in_it_not_the_newest_two_hundred(monkeypatch):
+    """The queue and its up/down counts were cut at the newest 200 crosses whatever the window:
+    SPY's real rows hold 243 crossings in the daily chart's 20 days (on 2026-09-30 QQQ had 294,
+    SPY 260, TSLA 212). The window is read whole."""
+    rows = _load("real_spy_level_crosses.json")["rows"]
+    now = datetime(2026, 9, 25, 18, 0, tzinfo=time_et.ET)
+    assert min(r["ts_utc"] for r in rows) >= now.timestamp() - server.DESK_LOOKBACK["D"][0]
+    body = _desk_events(monkeypatch, "SPY", rows, now, "D")
+    events = {(r["ts_utc"], r["level_value"], r["direction"]) for r in rows}
+    assert len(events) == 243
+    assert len([it for it in body["items"] if it["dom"] == "LEVELS"]) == 243
+    assert sum(body["cross_counts"].values()) == 243
+    # a shorter window holds only its own
+    hour = _desk_events(monkeypatch, "SPY", rows, now, "1")
+    start = now.timestamp() - server.DESK_LOOKBACK["1"][0]
+    assert len([it for it in hour["items"] if it["dom"] == "LEVELS"]) == len({e for e in events if e[0] >= start})
 
 
 def test_a_book_wall_carries_its_books_time_and_says_when_the_book_is_not_live(monkeypatch):
@@ -121,29 +136,51 @@ def _crwd_at(live, pin_clock):
 
 
 def test_wall_distances_and_flip_relation_are_served(pin_clock):
-    out = _crwd_at(lambda b: b["spot"] + 1.0, pin_clock)
+    out = _crwd_at(lambda b: (b["call_wall"] + b["put_wall"]) / 2, pin_clock)
     assert out["dist_to_call_wall"] == pytest.approx(out["call_wall"] - out["spot"])
     assert out["dist_to_put_wall"] == pytest.approx(out["spot"] - out["put_wall"])
+    assert (out["call_wall_relation"], out["put_wall_relation"]) == ("BELOW", "ABOVE")
     assert out["flip_relation"] == (None if out["gamma_flip"] is None
                                     else "ABOVE" if out["spot"] >= out["gamma_flip"] else "BELOW")
 
 
 def test_a_breached_wall_says_so_at_the_live_price(pin_clock):
-    """Real CRWD chain; stand-in live prices one dollar beyond each wall."""
+    """Real CRWD chain; stand-in live prices one dollar beyond each wall, then at it. The
+    distance is never negative: the side spot is on is served beside it (2026-09-30: Right Now
+    printed a put wall spot had fallen through as a negative distance "above put wall")."""
     out = _crwd_at(lambda b: b["call_wall"] + 1.0, pin_clock)
     assert out["spot"] > out["call_wall"]
-    assert out["call_wall_state"] == "breached" and out["call_wall_lean"] == "BREACHED — spot above"
+    assert out["call_wall_state"] == "breached" and out["call_wall_lean"] == "BREACHED — spot at or above"
+    assert out["dist_to_call_wall"] == pytest.approx(1.0) and out["call_wall_relation"] == "ABOVE"
     out = _crwd_at(lambda b: b["put_wall"] - 1.0, pin_clock)
     assert out["spot"] < out["put_wall"]
-    assert out["put_wall_state"] == "breached" and out["put_wall_lean"] == "BREACHED — spot below"
+    assert out["put_wall_state"] == "breached" and out["put_wall_lean"] == "BREACHED — spot at or below"
+    assert out["dist_to_put_wall"] == pytest.approx(1.0) and out["put_wall_relation"] == "BELOW"
+    out = _crwd_at(lambda b: b["put_wall"], pin_clock)
+    assert out["put_wall_state"] == "breached" and out["put_wall_relation"] == "AT"
+    assert out["dist_to_put_wall"] == 0
 
 
-def test_a_containing_wall_earns_the_dealer_lean_only_on_a_trusted_flip(pin_clock):
+def test_a_containing_wall_earns_the_dealer_lean_only_in_long_gamma_on_trusted_coverage(pin_clock):
     out = _crwd_at(lambda b: (b["call_wall"] + b["put_wall"]) / 2, pin_clock)
     assert out["call_wall_state"] == out["put_wall_state"] == "contains"
-    earned = out["regime"] != "UNAVAILABLE" and out["confidence"] == "TRUSTED"
+    earned = out["regime"] == "LONG_GAMMA_CHOP" and out["confidence"] == "TRUSTED"
     assert out["call_wall_lean"] == ("DEALERS SELL" if earned else None)
     assert out["put_wall_lean"] == ("DEALERS BUY" if earned else None)
+
+
+def test_no_lean_contradicts_the_read_in_short_gamma():
+    """2026-09-30 audit: in the short-gamma regime the put wall read DEALERS BUY while the same
+    publication's read was the trend regime (dealers buy strength and sell weakness: follow
+    breaks). The lean is stated only where the read agrees with it."""
+    from terrain_engine import wall_lean
+    from terrain_read import POSTURE_FOLLOW, build_terrain_read
+    read = build_terrain_read(spot=770.0, flip=775.0, flip_confidence="TRUSTED", gamma_at_spot=-1.0e9)
+    assert read.regime == "SHORT_GAMMA_TREND" and read.posture == POSTURE_FOLLOW
+    assert wall_lean(780.0, 760.0, "contains", "contains", read.regime, read.confidence) == (None, None)
+    # a breached wall still says so, whatever the regime
+    assert wall_lean(780.0, 760.0, "breached", "contains", read.regime, read.confidence) == (
+        "BREACHED — spot at or above", None)
 
 
 def test_one_strike_holding_both_walls_is_two_sided():
@@ -161,10 +198,10 @@ def spy_levels(monkeypatch, pin_clock):
     chain = _load("real_spy_0dte_chain.json")
     pin_clock(2026, 9, 22, 12, 46)                                   # the chain's own capture time
     terrain = {**compute_terrain("SPY", chain["chain"], chain["spot"]).to_dict(), "computed_ts_utc": time.time()}
-    spot = bars[-1]["close"]
+    spot = bars[-1]["close"]                                         # stand-in (named): the live price
     monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: bars)
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
-    monkeypatch.setattr(server, "terrain_cache_get", lambda t: terrain)
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, server.SPOT_SOURCE_PLANE, time.time()))
+    monkeypatch.setattr(server, "terrain_cache_get", lambda t, now: terrain)
     pin_clock(2026, 9, 25, 16, 5)
     server._publish_price_levels("SPY")                              # as the bar writer does
     return spot, terrain
@@ -185,6 +222,23 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
                for r in priced)
 
 
+def test_a_live_price_of_0_is_a_price(spy_levels, monkeypatch):
+    """A price Schwab reports as 0 is 0. Stand-in: a live last price of 0.0 as Schwab would
+    send it; every priced level is its own price above it."""
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (0.0, server.SPOT_SOURCE_PLANE, time.time()))
+    body = json.loads(server.get_levels(ticker="SPY").body)
+    priced = [r for r in body["levels"] if r["price"] is not None]
+    assert priced and all(r["distance"] == r["price"] and r["side"] == "ABOVE" for r in priced)
+
+
+def test_the_tape_refuses_a_limit_outside_1_to_500():
+    """An out-of-range limit was replaced by 1 or 500 and served as if asked for."""
+    from fastapi.testclient import TestClient
+    client = TestClient(server.app)
+    for bad in ("0", "501", "x"):
+        assert client.get(f"/api/options/tape?ticker=SPY&limit={bad}").status_code == 422, bad
+
+
 def test_a_same_day_chain_has_no_expected_move_and_says_why(spy_levels):
     """The SPY capture lists only the 0DTE expiry; the terrain's one-day move needs one a day out."""
     _spot, terrain = spy_levels
@@ -202,8 +256,8 @@ def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move(spy
     terrain = {**compute_terrain("CRWD", [dict(c) for c in fx["chain"]], float(fx["spot"])).to_dict(),
                "computed_ts_utc": time.time()}
     spot = float(fx["spot"])
-    monkeypatch.setattr(server, "terrain_cache_get", lambda t: terrain)
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
+    monkeypatch.setattr(server, "terrain_cache_get", lambda t, now: terrain)
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, server.SPOT_SOURCE_PLANE, time.time()))
     body = json.loads(server.get_levels(ticker="SPY").body)
     by_id = {r["id"]: r for r in body["levels"]}
     em = terrain["implied_1d_move"]["points"]
@@ -229,9 +283,9 @@ def test_vwap_is_served_per_chart_bar(spy_levels):
     one = json.loads(server.get_levels(ticker="SPY", tf="1").body)["vwap_series"]
     fifteen = json.loads(server.get_levels(ticker="SPY", tf="15").body)["vwap_series"]
     buckets = {}
-    for r in one:                                                    # first minute stamps, last minute's value
+    for r in one:                                                    # the bucket's start, last minute's value
         k = int(r[0] // 900)
-        buckets[k] = [buckets[k][0] if k in buckets else r[0]] + list(r[1:])
+        buckets[k] = [float(k * 900)] + list(r[1:])
     assert len(one) > 100 and fifteen == [buckets[k] for k in sorted(buckets)]
 
 

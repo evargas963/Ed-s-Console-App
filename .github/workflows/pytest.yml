@@ -1,15 +1,11 @@
 name: Pytest Full Suite
 
-# Full Python suite + Playwright E2E (npm run test:all): the required runtime-correctness
-# gate under the ED CONSOLE SLIMMING charter (AGENTS.md), alongside the Hardening quality job.
+# Playwright E2E then the full Python suite (npm run test:all), on Linux: a required check on
+# main, alongside the Hardening job.
 
 on:
   pull_request:
-  # RC-405 (engineering-cycle latency): run the full suite once per change. `pull_request`
-  # already runs full CI before merge (branch protection's required check), so a `push` event
-  # on a FEATURE branch only duplicates it. Restrict the push trigger to `main` — that keeps
-  # post-merge validation of the trunk while removing the redundant per-feature-push run. No
-  # check is weakened or skipped; the pre-merge proof is unchanged.
+  # A feature branch is tested by its pull request; a push runs only on main.
   push:
     branches: [main]
 
@@ -21,7 +17,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
-          # FULL_FIXES_ONLY_V2: FINAL_SHA verification needs full history
           fetch-depth: 0
 
       - name: Set up Python
@@ -55,10 +50,7 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright system deps (Linux)
-        # Bound this step. Unbounded apt-get is what cancelled required pytest-full:
-        # run 32223509912 (#134) and 32161696563 (main, #129) both sat ~43m on
-        # `playwright install-deps` after `Ign: azure.archive.ubuntu.com`, then the
-        # job `timeout-minutes: 45` cancelled before E2E/pytest started.
+        # Bounded: an apt mirror that does not answer must not consume the job's 45 minutes.
         timeout-minutes: 8
         run: |
           sudo tee /etc/apt/apt.conf.d/99ci-acquire-timeout >/dev/null <<'EOF'
@@ -86,9 +78,7 @@ jobs:
                   n += 1
           print(f"rewrote {n} apt file(s) off azure.archive.ubuntu.com")
           PY
-          # Apt still hung after the .list/.sources-only rewrite (run 32231391764)
-          # because ubuntu-24.04 GHA uses /etc/apt/apt-mirrors.txt. Bound each
-          # attempt so a dead mirror cannot consume the 8-minute step budget.
+          # Each attempt bounded, so a dead mirror cannot consume the step's 8 minutes.
           ok=0
           for attempt in 1 2 3; do
             if timeout 90 npx playwright install-deps chromium; then
@@ -112,28 +102,11 @@ jobs:
           SCHWAB_API_KEY: "ci-not-live-placeholder"
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: |
-          # MEASURED on required pytest-full 32234684073: nproc=4 and
-          # os.cpu_count()=4 but `pytest -n auto` still created 2/2 workers
-          # (Python 3.13 `os.process_cpu_count()` is what xdist `auto` reads).
-          # Pin the worker count to the runner's nproc — same suite, more cores.
+          # xdist `auto` reads `os.process_cpu_count()`, which can be below nproc on the runner;
+          # the worker count is pinned to nproc.
           echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
-          # SEQUENTIAL, not overlapped (2026-09-15 reversal of the prior "overlap E2E with the
-          # pytest wave" optimization). That optimization was sized for the E2E suite AS IT WAS
-          # THEN: "78 passed / 54.4s serial *before* pytest's 232s" -- i.e. E2E was the SHORTER
-          # run and overlap was pure upside. The E2E suite has since grown to 207 tests and is
-          # now the LONGER-RUNNING half; backgrounding it alongside a `pytest -n $(nproc)` run
-          # that consumes every core on this 4-CPU runner starves Playwright's own real-time
-          # per-action timeouts, and this job was OBSERVED to run past its 45-minute ceiling and
-          # get force-cancelled twice in a row (runs 34931697740, 34957824709) with
-          # `npm run test:e2e` still alive at kill time -- not a deadlock, just resource
-          # starvation inflating E2E's wall-clock well past the budget. Each suite now gets the
-          # full runner to itself; a locally uncontended E2E run of this same suite completes in
-          # well under 15 minutes, so sequential is both correct and still comfortably within
-          # this job's 45-minute limit. UNIVERSAL_QUANTITATIVE_CLOSURE_V1 (RC-542): the
-          # `.playwright_last_run_success` marker and tests/test_playwright_must_run.py
-          # are retired — a tracked, hand-editable JSON stamp compared to file mtimes
-          # was a proxy for the run this job already performs and reports exactly.
-          # Local `npm run test:all` stays serial (unchanged by this).
+          # E2E then pytest, one after the other: a pytest run on every core starves
+          # Playwright's real-time per-action timeouts.
           set +e
           npm run test:e2e
           e2e_rc=$?

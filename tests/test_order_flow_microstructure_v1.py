@@ -146,12 +146,12 @@ def test_fail_closed_no_book():
 
 
 def test_no_temporal_proxy_claimed():
-    """The static slice must not silently emit an aggressor/CVD/absorption field."""
+    """No trade side is computed or served (docs/DATA_FLOW.md decision 9): Schwab sends no
+    aggressor, so the payload carries no tape pressure, delta or absorption field."""
     m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
-    for banned in ("aggressor_side", "cvd", "cum_delta", "absorption", "iceberg"):
+    for banned in ("aggressor_side", "cvd", "cum_delta", "absorption", "iceberg", "flow", "deferred"):
         assert banned not in m
-    # and it names what it defers, so the omission is explicit, not accidental.
-    assert any("aggressor" in d for d in m["deferred"])
+    assert not [k for k in m["classification"] if "tape" in k or "delta" in k]
 
 
 def test_every_emitted_metric_is_classified():
@@ -176,9 +176,9 @@ def test_every_emitted_metric_is_classified():
     m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
     cls = m["classification"]
     # Self-describing meta blocks, not emitted metrics: the classification map
-    # itself, the explicit deferral list, the status flag, and wall_method (which
-    # documents HOW wall_candidates is computed and carries no metric of its own).
-    meta = {"classification", "deferred", "status", "wall_method"}
+    # itself, the status flag, and wall_method (which documents HOW wall_candidates
+    # is computed and carries no metric of its own).
+    meta = {"classification", "status", "wall_method"}
     unclassified = [
         key for key in m
         if key not in meta
@@ -345,17 +345,25 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     ofe._MICRO_STRUCTURAL_CACHE.pop("STALE", None)
 
 
-def test_engine_and_route_read_the_same_canonical_state():
-    """OrderFlowEngine.compute carries the SAME book_microstructure the route serializes — one
-    faucet, not two producers."""
-    from app.options.order_flow.engine import OrderFlowEngine
-    ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
-    data = _data()
-    out = OrderFlowEngine().compute(data, now=1787233772.0, ticker="SAME")
-    route = ofe.compute_book_microstructure(data, now_ts=1787233772.0, ticker="SAME")
-    assert out["book_microstructure"]["depth"] == route["depth"]
-    ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
-
+def test_an_empty_side_is_the_books_state_and_replaces_the_book_before_it():
+    """2026-09-30 audit: a book with one side empty was dropped at the store, so the screen kept
+    the last two-sided book as the current one. Schwab sends the whole book each time; the newest
+    is the book. Stand-in (named): the synthetic book above, then the same book with no bids."""
+    st = OrderFlowState()
+    full = _book_snapshot()
+    st.push_book("ONESIDE", full, "NYSE_BOOK")
+    st.push_book("ONESIDE", {"BIDS": [], "ASKS": full["ASKS"], "BOOK_TIME": full["BOOK_TIME"] + 1}, "NYSE_BOOK")
+    m = ofe.compute_book_microstructure({"content": st.get_content_for_symbol("ONESIDE")}, now_ts=1787233772.0)
+    assert m["provenance"]["book_time_ms"] == full["BOOK_TIME"] + 1
+    assert (m["depth"]["5"]["bid_total"], m["depth"]["5"]["ask_total"]) == (None, 2430.0)
+    assert m["depth"]["5"]["imbalance"] is None and m["depth"]["5"]["side"] is None
+    # nothing resting on either side: no book to measure, and not the one before it
+    st.push_book("ONESIDE", {"BIDS": [], "ASKS": [], "BOOK_TIME": full["BOOK_TIME"] + 2}, "NYSE_BOOK")
+    m = ofe.compute_book_microstructure({"content": st.get_content_for_symbol("ONESIDE")}, now_ts=1787233772.0)
+    assert m["status"] == "no_book" and m["depth"]["5"]["ask_total"] is None
+    # a message without one of the two sides is not a book and changes nothing
+    st.push_book("ONESIDE", {"ASKS": full["ASKS"], "BOOK_TIME": full["BOOK_TIME"] + 3}, "NYSE_BOOK")
+    assert len(st.get_content_for_symbol("ONESIDE")) == 3
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -368,25 +376,35 @@ def test_engine_and_route_read_the_same_canonical_state():
 
 def test_top_prices_and_sizes_are_carried_exactly():
     data = {"top": {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}}
-    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices(data)
-    assert (bid, ask) == (0.58, 0.59)
-    assert (bid_leaf, ask_leaf) == ("streaming.BID_PRICE", "streaming.ASK_PRICE")
-    assert ofe._compute_top_book_pressure(data) == (11 - 23) / (11 + 23)
-    cb = ofe._extract_canonical_book(data)
-    assert (cb["bid_size"], cb["ask_size"]) == (11, 23)
+    m = ofe.compute_book_microstructure(data, now_ts=1.0)
+    assert m["top_of_book"] == {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}
+    assert m["top_book_pressure"] == (11 - 23) / (11 + 23)
 
 
 def test_zero_size_is_a_real_value_not_a_fallback_trigger():
     data = {"content": [_book_snapshot()], "top": {"bid": 0.10, "ask": 0.12, "bid_size": 0, "ask_size": 5}}
-    assert ofe._compute_top_book_pressure(data) == (0 - 5) / (0 + 5), "a real BID_SIZE=0 is not missing"
-    assert ofe._extract_canonical_book(data)["bid_size"] == 0
-    assert ofe.compute_book_microstructure(data, now_ts=1787233772.0)["top_of_book"]["bid_size"] == 0
+    m = ofe.compute_book_microstructure(data, now_ts=1787233772.0)
+    assert m["top_book_pressure"] == (0 - 5) / (0 + 5), "a real BID_SIZE=0 is not missing"
+    assert m["top_of_book"]["bid_size"] == 0
 
 
 def test_no_top_resolves_to_none():
-    data = {"content": [{"LAST_PRICE": 0.55, "LAST_SIZE": 3}], "top": None}  # tape print only
-    assert ofe._resolve_bid_ask_prices(data) == (None, None, None, None)
-    assert ofe._compute_top_book_pressure(data) is None
+    data = {"content": [], "top": None}
+    m = ofe.compute_book_microstructure(data, now_ts=1.0)
+    assert m["top_of_book"] == {"bid": None, "ask": None, "bid_size": None, "ask_size": None}
+    assert m["top_book_pressure"] is None
+
+
+def test_rest_quote_blocks_never_stand_in_for_streamed_l1():
+    """2026-09-24: REST quote / extended / regular / chain-underlying blocks and the book's top
+    level do not stand in for a missing streamed BID/ASK/MARK/size."""
+    rest = {"quote": {"bidPrice": 1.0, "askPrice": 1.1, "mark": 1.05, "bidSize": 5, "askSize": 5},
+            "extended": {"bidPrice": 1.0, "askPrice": 1.1, "mark": 1.05},
+            "regular": {"mark": 1.05}, "underlying": {"bid": 1.0, "ask": 1.1},
+            "content": [{"BIDS": [{"BID_PRICE": 1.0, "TOTAL_VOLUME": 5}],
+                         "ASKS": [{"ASK_PRICE": 1.1, "TOTAL_VOLUME": 5}]}]}
+    m = ofe.compute_book_microstructure(rest, now_ts=1.0)
+    assert m["top_book_pressure"] is None and m["top_of_book"]["bid"] is None and m["mid"] is None
 
 
 def test_push_option_top_merges_real_partial_ticks_per_field():
@@ -418,42 +436,6 @@ def test_push_option_top_merges_real_partial_ticks_per_field():
     assert st.option_top(tsla["symbol"])["bid"] == 0.56
 
 
-def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
-    """O-01: an equity's Level-1 quote lives in live_market_plane only. push_level_one no longer
-    writes a top-of-book item beside the book and tape. Stand-in (named): a hand-built
-    LEVELONE_EQUITIES tick."""
-    import app.options.order_flow.state as ofls
-    ofls.clear_symbol("O01EQ")
-    try:
-        ofls.push_level_one("O01EQ", {"key": "O01EQ", "BID_PRICE": 100.0, "ASK_PRICE": 100.02,
-                                      "BID_SIZE": 3, "ASK_SIZE": 4, "MARK": 100.01}, ts_recv=1_000.0)
-        content = ofls.get_content_for_symbol("O01EQ")
-        assert not any("BID_PRICE" in row or "ASK_PRICE" in row for row in content)
-        assert ofls.option_top("O01EQ") is None
-    finally:
-        ofls.clear_symbol("O01EQ")
-
-
-def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_level_one(monkeypatch):
-    """The production seam (order_flow_streaming._ingest_pushed, fed by the daemon's live
-    push) must hand push_level_one the MESSAGE's own ts_recv for both equity
-    (LEVELONE_EQUITIES) and option (LEVELONE_OPTIONS) messages -- never the time the console
-    processed it."""
-    import app.options.order_flow.streaming as ofs
-    from stream_spine import options_quote_msg, quote_msg
-
-    seen = []
-    monkeypatch.setattr(ofs, "push_level_one",
-                        lambda sym, item, *, ts_recv: seen.append((sym, ts_recv)))
-    monkeypatch.setattr(ofs._lmp, "record_from_level_one_equity", lambda *a, **k: False)
-    ofs._ingest_pushed("quote.SIZEG", quote_msg(
-        symbol="SIZEG", src="schwab_l1", ts_recv=1234.5, native={"LAST_PRICE": 1.0}))
-    ofs._ingest_pushed("optquote.SIZEG  260918C00001000", options_quote_msg(
-        symbol="SIZEG  260918C00001000", content={"BID_PRICE": 1.0}, src="schwab_options_l1",
-        ts_recv=2345.5))
-    assert seen == [("SIZEG", 1234.5), ("SIZEG  260918C00001000", 2345.5)]
-
-
 def test_book_top_never_stands_in_for_a_missing_l1_price():
     """2026-09-24 (no fallbacks): the book's top level is a DIFFERENT feed (one venue's
     depth) and no longer stands in when L1 carries no price -- bid/ask stay absent.
@@ -464,8 +446,9 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
         "ASKS": [{"ASK_PRICE": 0.03, "TOTAL_VOLUME": 12}],
         "BOOK_TIME": 1,
     }]
-    bid, ask, bid_leaf, ask_leaf = ofe._resolve_bid_ask_prices({"content": items, "top": {"ask_size": 12}})
-    assert (bid, ask, bid_leaf, ask_leaf) == (None, None, None, None)
+    m = ofe.compute_book_microstructure({"content": items, "top": {"ask_size": 12}}, now_ts=2.0)
+    assert (m["top_of_book"]["bid"], m["top_of_book"]["ask"], m["mid"]) == (None, None, None)
+    assert m["depth"]["1"]["bid_total"] == 10           # the book itself is still measured
 
 
 def test_an_option_contracts_top_is_read_only_while_the_daemon_holds_it():
@@ -483,10 +466,10 @@ def test_an_option_contracts_top_is_read_only_while_the_daemon_holds_it():
             state.push_option_top(sym, ev["content"])
     try:
         lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}}, time.time())
-        assert lmp.feed_live_for(sym, "LEVELONE_OPTIONS")
-        assert options_live_payload(sym, time.time())["flow"]["top_book_pressure"] is not None
+        assert lmp.feed_live_for(sym, "LEVELONE_OPTIONS", time.time())
+        assert options_live_payload(sym, time.time())["top_book_pressure"] is not None
         lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": []}}, time.time())
-        assert options_live_payload(sym, time.time())["flow"]["top_book_pressure"] is None
+        assert options_live_payload(sym, time.time())["top_book_pressure"] is None
     finally:
         state.clear_all_live_state()
 
@@ -494,18 +477,20 @@ def test_an_option_contracts_top_is_read_only_while_the_daemon_holds_it():
 def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
     """O-01: /api/order-flow/microstructure takes the equity top of book from the daemon's price
     row (the header's) while its quote is live, and has none when the feed is down. Stand-in
-    quote (named): bid 10.00 x 3, ask 10.02 x 5."""
-    import time
+    quote (named): bid 10.00 x 3, ask 10.02 x 5, each stamped by Schwab (BID_TIME_MILLIS,
+    ASK_TIME_MILLIS) in the session."""
     import live_market_plane as lmp
     import server
-    from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
+    from tests.feed_live_helper import SESSION_NOW, mark_feed_live, publish_daemon_rows
     mark_feed_live("ZZTB")
     lmp.record_from_level_one_equity("ZZTB", {"LAST_PRICE": 10.01, "BID_PRICE": 10.0, "ASK_PRICE": 10.02,
-                                              "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01}, received_ts=time.time())
+                                              "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01,
+                                              "BID_TIME_MILLIS": SESSION_NOW * 1000,
+                                              "ASK_TIME_MILLIS": SESSION_NOW * 1000}, received_ts=SESSION_NOW)
     publish_daemon_rows("ZZTB")
     body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
-    assert body["flow"]["top_book_pressure"] == (3 - 5) / 8
+    assert body["top_book_pressure"] == (3 - 5) / 8
     lmp.record_feed_down()
     publish_daemon_rows("ZZTB")
     body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
-    assert body["flow"]["top_book_pressure"] is None
+    assert body["top_book_pressure"] is None

@@ -373,13 +373,17 @@
       rightPriceScale: { autoScale: true, borderColor: P.edge, scaleMargins: { top: 0.08, bottom: 0.22 } },
       timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 8, borderColor: P.edge,
         tickMarkFormatter: function (t, type) {
+          // a daily bar's time is 00:00 ET of its trading date: its tick prints the served label
+          if (S.tf === 'D') { var db = barAt(t); return db ? db.label : ''; }
           var d = new Date(t * 1000);
           if (type === 0) return CT_YEAR.format(d);
           if (type === 1) return CT_MONTH.format(d);
           if (type === 2) return CT_DAY.format(d);
           return CT_TIME.format(d);
         } },
-      localization: { timeFormatter: function (t) { return CT_FULL.format(new Date(t * 1000)) + ' CT'; } },
+      // the crosshair prints a bar's served label (live_price_rows.served_bar); a time with no bar
+      // (the book heatmap's buckets) its Central Time
+      localization: { timeFormatter: function (t) { var b = barAt(t); return b ? b.label : CT_FULL.format(new Date(t * 1000)) + ' CT'; } },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
       handleScale: { axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: { time: true, price: true }, mouseWheel: true, pinch: true },
       kineticScroll: { mouse: false, touch: true }
@@ -501,13 +505,16 @@
       var cls = b.chg == null ? '' : b.chg >= 0 ? 'up' : 'dn';   // the served bar change
       return '<span>O <b class="' + cls + '">' + b.o.toFixed(2) + '</b></span><span>H <b class="' + cls + '">' + b.h.toFixed(2) +
         '</b></span><span>L <b class="' + cls + '">' + b.l.toFixed(2) + '</b></span><span>C <b class="' + cls + '">' + b.c.toFixed(2) +
-        '</b></span><span>Vol <b>' + fmtVol(b.v) + '</b></span>';
+        '</b></span><span>Vol <b>' + esc(b.v_text) + '</b></span>';   // the served volume text
     }
     function paintLegend() {
       var b = S.pinned ? barAt(S.pinned.time) : S.bars[S.bars.length - 1];
       var tfLbl = S.tf === 'D' ? '1D' : (S.tf === '60' ? '1h' : S.tf + 'm');
       legend.innerHTML = '<span class="tvc-sym">' + esc(S.symbol) + '</span><span class="tvc-tf">' + tfLbl + '</span>' + ohlcHtml(b) +
-        (S.lastBarLabel ? '<span>Last completed bar ' + esc(S.lastBarLabel) + '</span>' : '');
+        (S.lastBarLabel ? '<span>Last completed bar ' + esc(S.lastBarLabel) + '</span>' : '') +
+        (S.gapNote ? '<span class="tvc-gap">' + esc(S.gapNote) + '</span>' : '') +
+        (S.unavailable ? '<span class="tvc-gap tvc-unavailable">' + esc(S.unavailable) + '</span>' : '') +
+        (S.today ? '<span class="tvc-gap tvc-today">' + esc(S.today) + '</span>' : '');
     }
     function paintPin() {
       if (!S.pinned) { pinBox.hidden = true; return; }
@@ -525,12 +532,12 @@
       if (!b) { S.pinned = null; pinBox.hidden = true; return; }
       pinBox.hidden = false;
       var chg = b.chg, pct = b.chg_pct;   // served per bar
-      pinBox.innerHTML = '<div class="tvc-pin-h"><span>' + esc(CT_FULL.format(new Date(b.t * 1000))) + ' CT</span>' +
+      pinBox.innerHTML = '<div class="tvc-pin-h"><span>' + esc(b.label) + '</span>' +   // served label
         '<button type="button" class="tvc-pin-x" title="Close (Esc)">&#215;</button></div>' +
         '<div class="tvc-pin-g"><span>Open</span><b>' + b.o.toFixed(2) + '</b><span>High</span><b>' + b.h.toFixed(2) +
         '</b><span>Low</span><b>' + b.l.toFixed(2) + '</b><span>Close</span><b>' + b.c.toFixed(2) +
         '</b><span>Bar change</span><b class="' + (chg == null ? '' : chg >= 0 ? 'up' : 'dn') + '">' + (chg == null ? '—' : (chg >= 0 ? '+' : '') + chg.toFixed(2)) +
-        (pct == null ? '' : ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)') + '</b><span>Volume</span><b>' + fmtVol(b.v) + '</b>' +
+        (pct == null ? '' : ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)') + '</b><span>Volume</span><b>' + esc(b.v_text) + '</b>' +
         (S.pinned.price != null ? '<span>Price at click</span><b>' + S.pinned.price.toFixed(2) + '</b>' : '') + '</div>';
       pinBox.querySelector('.tvc-pin-x').addEventListener('click', function () { unpin(); });
     }
@@ -690,6 +697,9 @@
       paintLevels(true);
     }
     document.addEventListener('ed:theme', applyTheme);
+    // the daemon's note of a gap in the live bars (the page was disconnected): shown until the
+    // chart's bars are loaded again from the stored history (a ticker or timeframe change)
+    window.addEventListener('ed:bars_gap', function (e) { S.gapNote = e.detail && e.detail.note; paintLegend(); });
     function paintStyle() {
       var line = S.style === 'line', none = 'rgba(0,0,0,0)';
       candles.applyOptions({ upColor: line ? none : P.up, downColor: line ? none : P.down,
@@ -697,18 +707,24 @@
       closeLine.applyOptions({ visible: line, color: P.accent });
     }
 
+    // a served bar as the chart keeps it, and as its candle (the served bar rides on the candle,
+    // so the series the library holds is the chart's list of bars)
+    function servedBar(b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, v_text: b.v_text, chg: b.chg, chg_pct: b.chg_pct, label: b.label }; }
+    function candle(b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c, customValues: b }; }
+
     var api = {
       chart: chart, candles: candles, palette: function () { return P; },
       // Replace the whole series (ticker or timeframe change).
       setBars: function (bars, tf, symbol, lastBarLabel) {
         var changed = tf !== S.tf || symbol !== S.symbol;
         S.lastBarLabel = lastBarLabel || null;
-        S.bars = (bars || []).map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; });
+        S.bars = (bars || []).map(servedBar);
         S.tf = tf; S.symbol = symbol;
-        candles.setData(S.bars.map(function (b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }; }));
+        candles.setData(S.bars.map(candle));
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
         api.setVolume(S.bars);
         if (changed) {
+          S.gapNote = S.unavailable = S.today = null;
           api.setLivePrice(null);
           S.pinned = null; paintPin();
           var dk = 'ed.tvc.draw.' + symbol;
@@ -718,25 +734,32 @@
         }
         paintLegend(); paintPin(); draw.redraw(); syncButtons(); paintLevels(true);
       },
-      // The newest bars only -- series.update keeps the operator's zoom/scroll exactly where it is.
-      updateTail: function (tail, lastBarLabel) {
-        if (!S.bars.length || !tail || !tail.length) return;
-        if (lastBarLabel) S.lastBarLabel = lastBarLabel;
-        var lastT = S.bars[S.bars.length - 1].t;
-        tail.forEach(function (b0) {
-          var b = { t: Number(b0.t), o: b0.o, h: b0.h, l: b0.l, c: b0.c, v: b0.v, chg: b0.chg, chg_pct: b0.chg_pct };
-          if (b.t < lastT) {
-            var i = barIndexAt(b.t); if (i < 0 || S.bars[i].t !== b.t) return;
-            if (i < S.bars.length - 2) return;
-            S.bars[i] = b;
-          } else if (b.t === lastT) S.bars[S.bars.length - 1] = b;
-          else { S.bars.push(b); lastT = b.t; }
-          candles.update({ time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }, b.t < S.bars[S.bars.length - 1].t);
-          closeLine.update({ time: b.t, value: b.c }, b.t < S.bars[S.bars.length - 1].t);
-          volume.update(api._volPoint(b), b.t < S.bars[S.bars.length - 1].t);
-        });
+      // One bar the daemon pushed (`ed:bar`: detail.tf[tf], or the price row's daily candle) and
+      // its served last-bar label (none given: the label stands). The library places it
+      // (series.update: the bar at the same time is replaced, a newer one is added) and the
+      // chart's bars are read back from the series; the operator's zoom/scroll stays.
+      pushBar: function (bar, lastBarLabel) {
+        var b = servedBar(bar);
+        candles.update(candle(b));
+        closeLine.update({ time: b.t, value: b.c });
+        volume.update(api._volPoint(b));
+        S.bars = candles.data().map(function (d) { return d.customValues; });
+        if (lastBarLabel !== undefined) S.lastBarLabel = lastBarLabel || null;
         paintLegend(); if (S.pinned) paintPin(); syncButtons(); scheduleLevels();
       },
+      // the daily chart's newest day, the price row's served `day`: its candle drawn at its served
+      // time when served, and the served reason printed when Schwab's fields make none (a candle
+      // already drawn stays, operator 2026-10-01)
+      setToday: function (day) {
+        S.today = day.unavailable || null;
+        if (day.bar) { api.pushBar(day.bar); return; }
+        paintLegend();   // no bar changed: only the legend's line is new
+      },
+      // the bars the chart holds, as served and pushed
+      bars: function () { return S.bars.slice(); },
+      // why the daemon pushed no bar for this chart's timeframe (served: the minutes not received
+      // from Schwab), shown until a push carries the bar; null clears it
+      setUnavailable: function (note) { S.unavailable = note || null; paintLegend(); },
       _volPoint: function (b) {
         return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.7) };
       },

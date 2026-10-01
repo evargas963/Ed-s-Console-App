@@ -13,6 +13,7 @@
   font:12px/1.3 var(--ed-sans);color:var(--ed-ink-2);pointer-events:none;max-width:calc(100% - 80px)}
 .tvc-legend b{font-weight:600;font-variant-numeric:tabular-nums}
 .tvc-legend .tvc-sym{font-weight:700;color:var(--ed-ink);letter-spacing:.02em}
+.tvc-legend .tvc-gap{font-weight:600;color:var(--ed-ink);border-left:3px solid var(--ed-warn);padding-left:6px}
 .tvc-legend .tvc-tf{color:var(--ed-ink-3)}
 .tvc-legend .up,.tvc-pin .up{color:var(--ed-pos-ink)}
 .tvc-legend .dn,.tvc-pin .dn{color:var(--ed-neg-ink)}
@@ -52,6 +53,7 @@
 .liqm-empty[hidden]{display:none}
 .liqm-zones{padding:6px 2px}
 .liqm-tags{padding:0 0 6px;color:var(--ed-ink-3)}
+.liqm-absent{padding:2px 0;color:var(--ed-stale)}
 
 /* ---------- desk page ---------- */
 .tdm{height:100%;display:grid;grid-template-rows:minmax(420px,1fr) 196px auto auto;gap:8px;min-height:0;overflow:auto;padding-bottom:4px}
@@ -101,6 +103,9 @@
 .tdm-fam.fam-prior_day i{height:10px;width:12px;background:var(--ed-warn);opacity:.8}
 .tdm-fam.fam-opening_range i,.tdm-fam.fam-overnight i,.tdm-fam.fam-expected_move i{background:repeating-linear-gradient(90deg,var(--ed-stale) 0 4px,transparent 4px 7px)}
 .tdm-fam:not(.on) i{opacity:.3}
+/* a family the server has no value for: in its place, its swatch off, saying so (the reason is its title) */
+.tdm-fam.absent i{opacity:.3}
+.tdm-fam.absent b{font-weight:500;color:var(--ed-ink-3)}
 .tdm-fam-note{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ed-ink-3)}
 .tdm-fam-note:empty{display:none}
 .tdm-chart-wrap{position:relative;flex:1;min-height:300px}

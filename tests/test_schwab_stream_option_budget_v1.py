@@ -153,7 +153,7 @@ def _row(ingestion, age_sec):
 
 def test_a_rest_written_plane_row_is_not_spot(monkeypatch):
     """Spot is the streamed LAST_PRICE only -- a REST-written row is never spot, labelled
-    or not (operator rule 2026-09-23: no fallbacks, a broken feed must look broken)."""
+    or not: a broken feed looks broken."""
     import server
     tk = "ZZRESTROW"
     L._by_ticker[tk] = dict(_row("rest_anchor_lane_refresher", 1.0), ticker=tk)
@@ -170,7 +170,7 @@ def test_admission_summary_reports_over_budget_contracts_as_not_admitted(monkeyp
     monkeypatch.setattr(st, "_option_contracts_not_admitted",
                         {sym: "not admitted: outside the live-stream budget (200)"})
     monkeypatch.setitem(server._terrain_cache, "SPY", {"_contract_symbols": frozenset({sym})})  # SPY's chain lists it
-    out = server._option_contract_admission_summary("SPY")
+    out = server._option_contract_admission_summary("SPY", time.time())
     assert out["not_admitted"] == [sym], "the heatmap must be able to say why the cell has no stream"
     assert sym not in out["pending"] and sym not in out["rejected"]
 

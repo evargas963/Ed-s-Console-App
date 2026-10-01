@@ -2,12 +2,11 @@
 liquidity_value_engine.py — Liquidity & Value Playbook Engine
 ============================================================
 Deterministic institutional intraday zone mapper. Works for any ticker.
-The price levels (prior day, overnight, opening range, VWAP, value area) are computed once per
+The price levels (prior day, opening range, VWAP, value area) are computed once per
 generation into the materialized PriceLevelSnapshot (build_price_level_snapshot); the zones
-(build_live_snapshot, build_premarket_snapshot before the open) are built from that snapshot.
+(build_zones) are built from that snapshot, the prior close Schwab streams and the option levels.
 
-Data source agnostic: consumes normalized OHLCV bars (list of dicts).
-All calculations derived from bars; no Schwab-specific logic.
+The levels are derived from normalized 1-minute OHLCV bars (list of dicts).
 """
 
 from __future__ import annotations
@@ -16,29 +15,39 @@ import hashlib
 import logging
 import threading
 from collections import defaultdict
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, float_positive_or_none, schwab_count, schwab_number
 from liquidity_models import (
+    VALUE_SHIFT_MIN_FRACTION,
+    VALUE_SHIFTED_HIGHER,
+    VALUE_SHIFTED_LOWER,
+    VALUE_UNCHANGED,
+    VWAP_ABOVE_VALUE,
+    VWAP_AT_VALUE,
+    VWAP_BELOW_VALUE,
     PlaybookConfig,
-    SnapshotOutput,
-    SnapshotSummary,
-    SnapshotType,
+    ValueContext,
     Zone,
     VolumeProfile,
     ZoneType,
     volume_profile,
 )
-
-log = logging.getLogger(__name__)
-
+from live_price_rows import minutes_digest, session_first_minute
 from time_et import (
     ET,
     RTH_OPEN_MINS,
+    ct_label,
     session_close_mins_for_et_date,
+    trading_date_label,
 )
+
+log = logging.getLogger(__name__)
+
+#: the producer of the prior day's high and low (PDH / PDL)
+PRIOR_DAY_SOURCE = "Schwab daily price history (get_price_history_every_day), via the capture daemon"
 
 # The session comes from time_et, the one market calendar: the open, and each day's close
 # (13:00 on an early close, none on a holiday).
@@ -73,25 +82,16 @@ LEVEL_NAMES = {
     "PD_VAL": ("Prior day VAL (est. from 1-min bars)", "pVAL est"),
     "ORB_HIGH": ("Opening range high", "ORH"), "ORB_LOW": ("Opening range low", "ORL"),
     "ORB_MID": ("Opening range mid", "ORM"),
-    "OVERNIGHT_HIGH": ("Overnight high", "ONH"), "OVERNIGHT_LOW": ("Overnight low", "ONL"),
 }
 
-
-
-
-
-def liquidity_zone_tradeable_score(
-    *,
-    n_tags: int,
-    n_opt: int,
-    inside: bool,
-    dist_pen: float,
-    spot: Optional[float] = None,
-) -> float:
-    """Spot-normalized liquidity zone tradeability score (LM-1 authority)."""
-    if spot is None:
-        return round(3.0 * n_tags + 2.5 * n_opt, 2)
-    return round(3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen, 2)
+def overnight_absent_reason(session_date: date) -> str:
+    """Why no overnight level is served: price_bars_1m holds only the collect window's bars
+    (time_et.is_collect_window_bar_end_ts_utc), at most 30 minutes of the prior close -> open
+    interval, which is not that interval's range. Its first minute in Central Time (ct_label)."""
+    day = datetime(session_date.year, session_date.month, session_date.day, tzinfo=ET).timestamp()
+    return (f"the stored 1-minute bars start at the session's first collected minute "
+            f"({ct_label(session_first_minute(day))}) and end 15 minutes after the close; the overnight "
+            f"session is not stored")
 
 
 def _resolve_bar_timestamp(d: dict) -> Optional[Any]:
@@ -106,7 +106,7 @@ def _resolve_bar_timestamp(d: dict) -> Optional[Any]:
 def _bars_to_list(bars) -> list[dict]:
     """The bars every level function takes, normalized once by the producer:
     {timestamp, _dt (its ET time), open, high, low, close, volume} for each bar dict with a time
-    and four prices that are numbers (rule 2); a volume that is not a number stays None."""
+    and four prices that are numbers (`schwab_number`); a volume that is not a number stays None."""
     out = []
     for b in bars or []:
         ts = _resolve_bar_timestamp(b)
@@ -122,17 +122,14 @@ def _bars_to_list(bars) -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PREVIOUS DAY / OVERNIGHT
+# PREVIOUS DAY
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def prior_trading_session_date(bars_norm: list, session_date: date) -> Optional[date]:
-    """The most recent date BEFORE `session_date` that actually traded an RTH session.
-
-    LP-01 Step 2 (RC-153) — THE single definition of "the prior session", for both the
-    previous-day levels and the overnight window. The calendar cannot answer this question:
-    `session_date - 1 day` is Sunday on a Monday and a closed holiday after one, and a market
-    that was shut has no close for an overnight range to start from.
+    """The most recent date BEFORE `session_date` that actually traded an RTH session: the one
+    definition of "the prior session". The calendar cannot answer this question:
+    `session_date - 1 day` is Sunday on a Monday and a closed holiday after one.
 
     Presence of bars inside a day's regular session (the market calendar's hours, early closes
     included) is the evidence a session happened, so an ad-hoc closure with no bars is skipped.
@@ -154,51 +151,18 @@ def get_previous_day_levels(
     config: PlaybookConfig,
 ) -> dict:
     """The prior session (the most recent earlier date with RTH bars, prior_trading_session_date)
-    from normalized bars (_bars_to_list): its date, its RTH bar count, and its high, low, close,
-    POC, VAH and VAL from those RTH bars. No prior session: {} (never a calendar walk or other
-    days' bars)."""
+    from normalized bars (_bars_to_list): its date, its RTH bar count, and its POC, VAH and VAL
+    from those RTH bars' volume profile. No prior session: {} (never a calendar walk or other
+    days' bars). Its high and low are not here: they are Schwab's daily candle
+    (build_price_level_snapshot `prior_day`); the prior close is Schwab's CLOSE_PRICE."""
     prior = prior_trading_session_date(bars_norm, session_date)
     if prior is None:
         return {}
     prev_bars = [b for b in bars_norm if b["_dt"].date() == prior and _in_rth(b["_dt"])]
     p = volume_profile(prev_bars, config.value_area_percent, config.tick_size, ndigits=4)
     return {"prior_date": prior, "rth_bars": len(prev_bars),
-            "pdh": max(b["high"] for b in prev_bars), "pdl": min(b["low"] for b in prev_bars),
-            "pdc": prev_bars[-1]["close"],
             "pd_poc": None if p is None else p.poc, "pd_vah": None if p is None else p.vah,
             "pd_val": None if p is None else p.val}
-
-
-def get_overnight_levels(
-    bars_norm: list,
-    session_date: date,
-    prev_session: Optional[date],
-) -> dict:
-    """Overnight range over normalized bars (_bars_to_list): the continuous interval from the
-    prior session's (`prev_session`, prior_trading_session_date) RTH close to this session's RTH
-    open -- a weekend's or holiday's bars included. With no prior session the interval has no
-    start, so only this session's pre-open bars are used. No bars in the window: {}."""
-    session_open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
-    prev_close_dt = (datetime.combine(prev_session, rth_close(prev_session), tzinfo=ET)
-                     if prev_session is not None else None)       # a session day: it has a close
-
-    overnight = []
-    for b in bars_norm:
-        dt = b["_dt"]
-        if dt >= session_open_dt:
-            continue
-        if prev_close_dt is not None:
-            if dt >= prev_close_dt:
-                overnight.append(b)
-        elif dt.date() == session_date:
-            overnight.append(b)
-
-    if not overnight:
-        return {}
-    return {
-        "overnight_high": max(b["high"] for b in overnight),
-        "overnight_low": min(b["low"] for b in overnight),
-    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -211,27 +175,21 @@ def compute_opening_range(
     session_date: date,
     config: PlaybookConfig,
 ) -> dict:
-    """
-    First N minutes of RTH (default 15), from normalized bars (_bars_to_list).
-    """
-    orb_min = config.opening_range_minutes
-
-    orb_bars = []
-    for b in bars_norm:
-        dt = b["_dt"]
-        if dt.date() != session_date:
-            continue
-        mins_since_open = (dt.hour - 9) * 60 + (dt.minute - 30)
-        if 0 <= mins_since_open < orb_min:
-            orb_bars.append(b)
-
+    """The range of the session's first `opening_range_minutes` of RTH, from normalized bars
+    (_bars_to_list), once that window has ended. A stored bar is a completed minute, so the
+    window has ended when the session's newest bar starts at or after the window's last minute;
+    until then {"forming_until": the window's end}, never the range so far. No bar in the
+    window: {}."""
+    open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
+    end_dt = open_dt + timedelta(minutes=config.opening_range_minutes)
+    session_bars = [b for b in bars_norm if b["_dt"].date() == session_date and b["_dt"] >= open_dt]
+    orb_bars = [b for b in session_bars if b["_dt"] < end_dt]
     if not orb_bars:
         return {}
-    return {
-        "orb_high": max(b["high"] for b in orb_bars),
-        "orb_low": min(b["low"] for b in orb_bars),
-        "orb_mid": (max(b["high"] for b in orb_bars) + min(b["low"] for b in orb_bars)) / 2.0,
-    }
+    if max(b["_dt"] for b in session_bars) < end_dt - timedelta(minutes=1):
+        return {"forming_until": end_dt}
+    hi, lo = max(b["high"] for b in orb_bars), min(b["low"] for b in orb_bars)
+    return {"orb_high": hi, "orb_low": lo, "orb_mid": (hi + lo) / 2.0}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -314,14 +272,11 @@ def cluster_price_levels_into_zones(
     """
     if not levels:
         return []
-    prices = sorted(set(p for p, _ in levels if p and p > 0))
-    if not prices:
-        return []
+    prices = sorted(set(p for p, _ in levels))
 
     tag_map: dict[float, list[str]] = defaultdict(list)
     for p, tag in levels:
-        if p and p > 0:
-            tag_map[p].append(tag)
+        tag_map[p].append(tag)
 
     max_width = float_positive_or_none(getattr(config, "max_zone_width", None))
 
@@ -356,336 +311,74 @@ def cluster_price_levels_into_zones(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SNAPSHOT BUILDERS
+# ZONES
 # ─────────────────────────────────────────────────────────────────────────────
 
+#: the price-level snapshot's levels a zone is built from (its second VWAP bands are not)
+SESSION_ZONE_LEVELS = ("PDH", "PD_VAH", "PD_POC", "PD_VAL", "PDL", "ORB_HIGH", "ORB_MID", "ORB_LOW",
+                       "TODAY_VAH", "VWAP_P1", "VWAP", "TODAY_POC", "VWAP_M1", "TODAY_VAL")
 
-def build_premarket_snapshot(
-    ticker: str,
-    session_date: date,
+#: the levels that mark value rather than a bound of price -- a point of control, the VWAP and its
+#: first bands, a mid, the prior close, and the option levels that are neither a call nor a put
+#: level (server.TERRAIN_FUSION_LEVELS' tags). A zone made only of these is a pivot.
+VALUE_ZONE_LEVELS = frozenset({"PD_POC", "PDC", "ORB_MID", "VWAP", "VWAP_P1", "VWAP_M1", "TODAY_POC",
+                               "ABS_GAMMA", "NET_GEX_PEAK", "MAX_PAIN", "GAMMA_FLIP"})
+
+
+def build_zones(
+    canonical: "PriceLevelSnapshot",
     config: PlaybookConfig,
     *,
-    canonical: "PriceLevelSnapshot",
-) -> SnapshotOutput:
-    """Premarket: PDH/PDL/PDC, PD POC/VAH/VAL, overnight high/low. No same-day RTH.
+    spot: Optional[float],
+    extra_levels: list[tuple[float, str]],
+) -> list[Zone]:
+    """The ticker's zones: the snapshot's session levels and `extra_levels` ([(price, tag)]: the
+    prior close and the option levels) clustered by price (cluster_price_levels_into_zones).
 
-    The families are CARRIED from the one materialized snapshot (``canonical``); no level
-    helper runs here. Absent stays absent: a family missing from the snapshot is missing here,
-    never replaced by spot, zero or a neighbouring level (RC-68).
-    """
-    prev, over, _orb, _poc, _vah, _val, _vwap, _bands = _phase2a_families_from_canonical(canonical)
-
-    levels = []
-    if prev.get("pdh"):
-        levels.append((prev["pdh"], "PDH"))
-    if prev.get("pd_vah"):
-        levels.append((prev["pd_vah"], "PD_VAH"))
-    if prev.get("pd_poc"):
-        levels.append((prev["pd_poc"], "PD_POC"))
-    if prev.get("pd_val"):
-        levels.append((prev["pd_val"], "PD_VAL"))
-    if prev.get("pdl"):
-        levels.append((prev["pdl"], "PDL"))
-    if prev.get("pdc"):
-        levels.append((prev["pdc"], "PDC"))
-    if over.get("overnight_high"):
-        levels.append((over["overnight_high"], "OVERNIGHT_HIGH"))
-    if over.get("overnight_low"):
-        levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
-
-    clusters = cluster_price_levels_into_zones(levels, config)
-
+    A zone made only of value levels (VALUE_ZONE_LEVELS) is a pivot. Any other zone is support
+    when it lies below `spot` and resistance when it lies above it: a side is where the zone is
+    against the live price, never what its levels are called. With spot inside it, or no spot, it
+    has no side. Ordered nearest `spot` first; with no spot, by price, highest first. `spot` is
+    never a level."""
+    levels = [(canonical.price(lid), lid) for lid in SESSION_ZONE_LEVELS if canonical.price(lid) is not None]
     zones = []
-    for lo, hi, mid, tags, source_pairs in clusters:
-        zt = ZoneType.RESISTANCE_LIQUIDITY
-        if "PDL" in str(tags) or "PD_VAL" in str(tags) or "OVERNIGHT_LOW" in str(tags):
-            zt = ZoneType.SUPPORT_LIQUIDITY
-        elif "PD_POC" in str(tags) or "PDC" in str(tags):
+    for lo, hi, mid, tags, pairs in cluster_price_levels_into_zones(levels + list(extra_levels), config):
+        if all(t in VALUE_ZONE_LEVELS for t in tags):
             zt = ZoneType.PIVOT_VALUE
-        sl = [{"label": t, "value": round(p, 4)} for p, t in source_pairs]
-        z = Zone(
-            zone_type=zt,
-            zone_low=lo, zone_high=hi, zone_mid=mid,
-            source_levels=sl, source_tags=tags,
-            confluence_score=len(tags), snapshot_type=SnapshotType.PREMARKET,
-            interpretation_notes="",
-        )
-        zones.append(z)
+        elif spot is None or lo <= spot <= hi:
+            zt = ZoneType.STRUCTURE
+        else:
+            zt = ZoneType.SUPPORT_LIQUIDITY if hi < spot else ZoneType.RESISTANCE_LIQUIDITY
+        zones.append(Zone(zone_type=zt, zone_low=lo, zone_high=hi, zone_mid=mid,
+                          source_levels=[{"label": t, "value": p} for p, t in pairs],
+                          confluence_score=len(tags)))
+    if spot is None:
+        return sorted(zones, key=lambda z: -z.zone_high)
+    return sorted(zones, key=lambda z: (0.0 if z.zone_low <= spot <= z.zone_high
+                                        else min(abs(spot - z.zone_low), abs(spot - z.zone_high)),
+                                        -z.zone_high))
 
-    # Canonical taxonomy (RC-154, LP-01 Step 3): downside extremes -> low_extreme; PDL/VAL ->
-    # support_liquidity; POC/balance -> pivot_value; PDH/overnight high -> resistance_liquidity.
-    # The GEOMETRY of each branch is unchanged; only the claim attached to it is. Notes state
-    # WHERE the level came from — never that stops rest there or that price is drawn to it.
-    out_zones = []
-    if prev and over:
-        pdh, pdl = prev.get("pdh"), prev.get("pdl")
-        for z in zones:
-            tags_str = " ".join(z.source_tags)
-            if pdl is not None and z.zone_low < pdl * 0.995:
-                z.zone_type = ZoneType.LOW_EXTREME
-                z.interpretation_notes = "Extreme low, below the prior-day low"
-            elif "PDH" in tags_str or "OVERNIGHT_HIGH" in tags_str:
-                if "PD_POC" not in tags_str and "PDC" not in tags_str:
-                    z.zone_type = ZoneType.RESISTANCE_LIQUIDITY
-                    z.interpretation_notes = "Overhead structure at the prior-day high"
-            elif "OVERNIGHT_LOW" in tags_str and "PDL" not in tags_str and "PD_VAL" not in tags_str:
-                z.zone_type = ZoneType.LOW_EXTREME
-                z.interpretation_notes = "Extreme low of the overnight window"
-            elif "PDL" in tags_str or "PD_VAL" in tags_str:
-                if "PD_POC" not in tags_str and "PDC" not in tags_str:
-                    z.zone_type = ZoneType.SUPPORT_LIQUIDITY
-                    z.interpretation_notes = "Underside structure at the prior-day low"
-            elif "PD_POC" in tags_str or "PDC" in tags_str or "PD_VAL" in tags_str:
-                z.zone_type = ZoneType.PIVOT_VALUE
-                z.interpretation_notes = "Fair value reference from prior day POC/close"
-            elif pdh is not None and z.zone_high >= pdh * 0.998:
-                z.zone_type = ZoneType.RESISTANCE_LIQUIDITY
-                z.interpretation_notes = "Overhead structure, above the prior-day high"
-            elif pdl is not None and z.zone_low <= pdl * 1.002:
-                z.zone_type = ZoneType.SUPPORT_LIQUIDITY
-                z.interpretation_notes = "Underside structure at the prior-day low"
-            out_zones.append(z)
+
+def value_context(canonical: "PriceLevelSnapshot") -> ValueContext:
+    """Today's value against the prior day's, and the session VWAP against today's value area,
+    from the one snapshot. `value_state`: today's point of control against the prior day's,
+    shifted when it moved more than VALUE_SHIFT_MIN_FRACTION of it. `vwap_relation`: above the
+    value area high, below the value area low, or inside the value area. An input the snapshot
+    does not hold leaves that state absent, with the reason."""
+    poc, pd_poc = canonical.price("TODAY_POC"), canonical.price("PD_POC")
+    vwap, vah, val = canonical.price("VWAP"), canonical.price("TODAY_VAH"), canonical.price("TODAY_VAL")
+    value_state = value_why = vwap_relation = vwap_why = None
+    if poc is None or pd_poc is None:
+        value_why = "no point of control today" if poc is None else "no prior-day point of control"
     else:
-        out_zones = zones
-
-    raw = {"prev_day": prev, "overnight": over}
-    return SnapshotOutput(
-        ticker=ticker,
-        session_date=session_date.isoformat(),
-        snapshot_type=SnapshotType.PREMARKET,
-        zones=out_zones,
-        summary=None,
-        raw_levels=raw,
-    )
-
-
-def _classify_value_state_and_vwap_relation(
-    poc: Optional[float], prev_pd_poc: Optional[float], vwap: Optional[float],
-) -> tuple[str, str, str]:
-    """Value-area shift + VWAP-vs-value relation + auction interpretation — the ONE
-    classification shared by the midday/afternoon/live snapshots (was copy-pasted
-    identically three times)."""
-    value_state = "unchanged"
-    if poc and prev_pd_poc:
-        d = (poc - prev_pd_poc) / prev_pd_poc if prev_pd_poc else 0
-        if d > 0.002:
-            value_state = "shifted_higher"
-        elif d < -0.002:
-            value_state = "shifted_lower"
-
-    vwap_relation = "at_value"
-    if vwap and poc:
-        if vwap > poc * 1.001:
-            vwap_relation = "above_value"
-        elif vwap < poc * 0.999:
-            vwap_relation = "below_value"
-
-    auction_interp = ""
-    if value_state == "shifted_higher" and vwap_relation == "above_value":
-        auction_interp = "bullish_acceptance"
-    elif value_state == "shifted_lower" and vwap_relation == "below_value":
-        auction_interp = "bearish_acceptance"
-
-    return value_state, vwap_relation, auction_interp
-
-
-def _classify_live_cluster(tags: list[str], orb: dict) -> tuple[ZoneType, str]:
-    """Map clustered level tags to zone type + note (live / fused playbook)."""
-    ts = " ".join(tags)
-    opt_markers = (
-        "GAMMA_CALL", "GAMMA_PUT", "DELTA_CALL", "DELTA_PUT",
-        "OI_CALL", "OI_PUT", "GAMMA_PIN", "NET_GEX_PEAK", "MAX_PAIN", "GAMMA_FLIP",
-        "GAMMA_INFLECTION", "DELTA_INFLECTION", "OI_CENTER", "EM_UPPER", "EM_LOWER", "SYNTH_FWD",
-    )
-    has_opt = any(m in ts for m in opt_markers)
-    if "SPOT_LIVE" in ts:
-        return ZoneType.PIVOT_VALUE, "Live spot (from console cache)"
-    if has_opt:
-        up = any(x in ts for x in ("GAMMA_CALL", "DELTA_CALL", "OI_CALL", "EM_UPPER"))
-        dn = any(x in ts for x in ("GAMMA_PUT", "DELTA_PUT", "OI_PUT", "EM_LOWER"))
-        if up and not dn:
-            return ZoneType.RESISTANCE_LIQUIDITY, "Confluence: overhead positioning / supply"
-        if dn and not up:
-            return ZoneType.SUPPORT_LIQUIDITY, "Confluence: downside positioning / demand"
-        return ZoneType.PIVOT_VALUE, "Confluence: mixed positioning + session levels"
-
-    if "ORB_HIGH" in ts or "TODAY_VAH" in ts or "PDH" in ts or "OVERNIGHT_HIGH" in ts or "PD_VAH" in ts:
-        return ZoneType.RESISTANCE_LIQUIDITY, "Resistance / upper structure"
-    if "ORB_LOW" in ts or "TODAY_VAL" in ts or "PDL" in ts or "OVERNIGHT_LOW" in ts or "PD_VAL" in ts:
-        return ZoneType.SUPPORT_LIQUIDITY, "Support / lower structure"
-    if "TODAY_POC" in ts or "VWAP" in ts or "ORB_MID" in ts or "PD_POC" in ts or "PDC" in ts:
-        return ZoneType.PIVOT_VALUE, "Fair value / pivot"
-    # RC-155: the FALLTHROUGH note — no tag matched any branch above, so nothing is known about
-    # this cluster beyond the fact that it exists in this session. The retired wording named a
-    # pool mechanism precisely where the code had run out of classifications, and it reached the
-    # payload by RETURN TUPLE, which the first note-sweep (assignments only) could not see.
-    return ZoneType.PIVOT_VALUE, "Unclassified session zone"
-
-
-def _phase2a_families_from_canonical(canonical: "PriceLevelSnapshot"):
-    """Unpack the canonical snapshot into the legacy family shapes, values UNCHANGED.
-
-    Absent stays absent: a level missing from the snapshot is missing here, never
-    replaced by zero, spot or a neighbouring level (RC-68).
-    """
-    p = canonical.price
-    prev = {k: v for k, v in (
-        ("pdh", p("PDH")), ("pdl", p("PDL")), ("pdc", p("PDC")),
-        ("pd_poc", p("PD_POC")), ("pd_vah", p("PD_VAH")), ("pd_val", p("PD_VAL")),
-    ) if v is not None}
-    over = {k: v for k, v in (
-        ("overnight_high", p("OVERNIGHT_HIGH")), ("overnight_low", p("OVERNIGHT_LOW")),
-    ) if v is not None}
-    orb = {k: v for k, v in (
-        ("orb_high", p("ORB_HIGH")), ("orb_low", p("ORB_LOW")), ("orb_mid", p("ORB_MID")),
-    ) if v is not None}
-    bands = (p("VWAP_P1"), p("VWAP_M1"), p("VWAP_P2"), p("VWAP_M2"))
-    return (prev, over, orb, p("TODAY_POC"), p("TODAY_VAH"), p("TODAY_VAL"),
-            p("VWAP"), bands)
-
-
-def build_live_snapshot(
-    ticker: str,
-    config: PlaybookConfig,
-    *,
-    canonical: "PriceLevelSnapshot",
-    now: datetime,
-    extra_levels: Optional[list[tuple[float, str]]] = None,
-) -> SnapshotOutput:
-    """
-    The session's zones from the one materialized price-level snapshot (``canonical``), with
-    optional ``extra_levels`` (the option levels and spot) fused in; no level helper runs here.
-    Before the session's RTH open it is the premarket shape. The cutoff shown is min(now, the
-    day's close) -- the market calendar's, early closes included.
-    """
-    session_date = canonical.session_date
-    open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
-    close = rth_close(session_date)
-    close_dt = datetime.combine(session_date, close, tzinfo=ET) if close is not None else open_dt
-    if now < open_dt:
-        return build_premarket_snapshot(ticker, session_date, config, canonical=canonical)
-    cutoff = min(now, close_dt)
-    prev, over, orb, poc, vah, val, vwap, (vwap_p1, vwap_m1, vwap_p2, vwap_m2) = (
-        _phase2a_families_from_canonical(canonical))
-
-    levels: list[tuple[float, str]] = []
-    if prev.get("pdh"):
-        levels.append((prev["pdh"], "PDH"))
-    if prev.get("pd_vah"):
-        levels.append((prev["pd_vah"], "PD_VAH"))
-    if prev.get("pd_poc"):
-        levels.append((prev["pd_poc"], "PD_POC"))
-    if orb.get("orb_high"):
-        levels.append((orb["orb_high"], "ORB_HIGH"))
-    if orb.get("orb_mid"):
-        levels.append((orb["orb_mid"], "ORB_MID"))
-    if orb.get("orb_low"):
-        levels.append((orb["orb_low"], "ORB_LOW"))
-    if vah:
-        levels.append((vah, "TODAY_VAH"))
-    if vwap_p1:
-        levels.append((vwap_p1, "VWAP_P1"))
-    if vwap is not None:
-        levels.append((vwap, "VWAP"))
-    if poc:
-        levels.append((poc, "TODAY_POC"))
-    if vwap_m1:
-        levels.append((vwap_m1, "VWAP_M1"))
-    if val:
-        levels.append((val, "TODAY_VAL"))
-    if prev.get("pd_val"):
-        levels.append((prev["pd_val"], "PD_VAL"))
-    if prev.get("pdl"):
-        levels.append((prev["pdl"], "PDL"))
-    if over.get("overnight_high"):
-        levels.append((over["overnight_high"], "OVERNIGHT_HIGH"))
-    if over.get("overnight_low"):
-        levels.append((over["overnight_low"], "OVERNIGHT_LOW"))
-
-    for pair in extra_levels or []:
-        if len(pair) < 2:
-            continue
-        p, tag = pair[0], pair[1]
-        try:
-            pf = float(p)
-            if pf > 0:
-                levels.append((pf, str(tag)))
-        except (TypeError, ValueError):
-            continue
-
-    clusters = cluster_price_levels_into_zones(levels, config)
-
-    value_state, vwap_relation, auction_interp = _classify_value_state_and_vwap_relation(
-        poc, prev.get("pd_poc"), vwap
-    )
-
-    zones: list[Zone] = []
-    for lo, hi, mid, tags, source_pairs in clusters:
-        zt, notes = _classify_live_cluster(tags, orb)
-        sl = [{"label": t, "value": round(p, 4)} for p, t in source_pairs]
-        zones.append(
-            Zone(
-                zone_type=zt,
-                zone_low=lo,
-                zone_high=hi,
-                zone_mid=mid,
-                source_levels=sl,
-                source_tags=tags,
-                confluence_score=len(tags),
-                snapshot_type=SnapshotType.LIVE,
-                interpretation_notes=notes,
-            )
-        )
-
-    vwap_bands = None
-    if vwap is not None:
-        vwap_bands = {
-            "vwap": vwap,
-            "plus1": vwap_p1,
-            "minus1": vwap_m1,
-            "plus2": vwap_p2,
-            "minus2": vwap_m2,
-        }
-    raw = {
-        "prev": prev,
-        "overnight": over,
-        "orb": orb,
-        "poc": poc,
-        "vah": vah,
-        "val": val,
-        "vwap": vwap,
-        "vwap_bands": vwap_bands,
-        "cutoff_et": cutoff.isoformat(),
-        # which snapshot generation these numbers ARE, in the payload
-        "semantic_scope": "session_rth",
-        "level_generation": canonical.generation,
-        "level_snapshot_as_of_ts_utc": canonical.as_of_ts_utc,
-    }
-    summary = SnapshotSummary(
-        value_state=value_state,
-        vwap_relation=vwap_relation,
-        auction_interpretation=auction_interp,
-        notes=[
-            "Live zones: volume/VWAP/OR/prior day through cutoff; options fused when cache hit.",
-        ],
-    )
-    return SnapshotOutput(
-        ticker=ticker,
-        session_date=session_date.isoformat(),
-        snapshot_type=SnapshotType.LIVE,
-        zones=zones,
-        summary=summary,
-        raw_levels=raw,
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PLAYBOOK STATE
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-
-
+        floor = abs(pd_poc) * VALUE_SHIFT_MIN_FRACTION
+        value_state = (VALUE_SHIFTED_HIGHER if poc - pd_poc > floor
+                       else VALUE_SHIFTED_LOWER if pd_poc - poc > floor else VALUE_UNCHANGED)
+    if vwap is None or vah is None or val is None:
+        vwap_why = "no session VWAP" if vwap is None else "no value area today"
+    else:
+        vwap_relation = VWAP_ABOVE_VALUE if vwap > vah else VWAP_BELOW_VALUE if vwap < val else VWAP_AT_VALUE
+    return ValueContext(value_state, value_why, vwap_relation, vwap_why)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -712,12 +405,9 @@ def build_live_snapshot(
 PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
     "PDH": ("prior_day", "prior_rth_session", "price_fact"),
     "PDL": ("prior_day", "prior_rth_session", "price_fact"),
-    "PDC": ("prior_day", "prior_rth_session", "price_fact"),
     "PD_POC": ("prior_day", "prior_rth_session", "derived_certified"),
     "PD_VAH": ("prior_day", "prior_rth_session", "derived_certified"),
     "PD_VAL": ("prior_day", "prior_rth_session", "derived_certified"),
-    "OVERNIGHT_HIGH": ("overnight", "overnight_window", "price_fact"),
-    "OVERNIGHT_LOW": ("overnight", "overnight_window", "price_fact"),
     "ORB_HIGH": ("opening_range", "session_rth", "price_fact"),
     "ORB_LOW": ("opening_range", "session_rth", "price_fact"),
     "ORB_MID": ("opening_range", "session_rth", "price_fact"),
@@ -732,9 +422,7 @@ PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
 }
 
 #: The engine helpers that ARE the Phase 2A computation. `build_price_level_snapshot`
-#: is the only production call site; the static guard
-#: (tools/check_institutional_correctness.check_phase2a_single_level_computation)
-#: enforces that, alias-resolved, so a second invocation under another name still fires.
+#: is the only production call site (no check enforces it).
 #: This module's own name, read rather than spelled: RC-154's Step-3 lock bans the
 #: literal "liquidity" in any non-docstring engine string, and a provenance stamp is
 #: not a market claim — reading __name__ keeps the stamp honest and the lock intact.
@@ -751,7 +439,6 @@ _PRODUCER_NS: str = __name__
 _SESSION_SCOPE_OF: dict[str, str] = {
     "prior_rth_session": "RTH",
     "session_rth": "RTH",
-    "overnight_window": "extended",
 }
 
 
@@ -807,31 +494,28 @@ class PriceLevelSnapshot:
     """The ONE materialized result for (ticker, session scope, generation). `input_fingerprint`
     is set by materialize_price_level_snapshot, which decides the generation from it."""
 
-    __slots__ = ("ticker", "session_date", "generation", "bar_source", "as_of_ts_utc",
-                 "produced_ts_utc", "levels", "vwap_path", "vwap_series",
-                 "families_absent", "degraded", "input_fingerprint", "bars_used",
-                 "session_rth_positive_volume_bars", "volume_profile")
+    __slots__ = ("ticker", "session_date", "generation", "bar_source", "as_of_ts_utc", "minutes",
+                 "levels", "vwap_series", "families_absent", "degraded", "input_fingerprint",
+                 "volume_profile")
 
     def __init__(self, *, ticker: str, session_date: date, generation: int,
-                 bar_source: str, as_of_ts_utc: Optional[float], produced_ts_utc: float,
-                 levels: dict, vwap_path: list, families_absent: list,
-                 degraded: list, bars_used: int,
+                 bar_source: str, as_of_ts_utc: Optional[float], minutes: tuple,
+                 levels: dict, families_absent: list, degraded: list,
                  vwap_series: Optional[list] = None,
-                 session_rth_positive_volume_bars: int = 0,
                  volume_profile: Optional[VolumeProfile] = None) -> None:
         self.ticker = ticker
         self.session_date = session_date
         self.generation = generation
         self.bar_source = bar_source
-        self.as_of_ts_utc = as_of_ts_utc
-        self.produced_ts_utc = produced_ts_utc
+        self.as_of_ts_utc = as_of_ts_utc        # the end of the newest bar the levels are built from
+        #: the session date's minutes they are built from: (how many, the newest one's start or
+        #: None, their set's digest, live_price_rows.minutes_digest), compared with the daemon's
+        #: held minutes (server.price_level_staleness)
+        self.minutes = minutes
         self.levels = levels                    # level_id -> PriceLevelValue
-        self.vwap_path = vwap_path              # [(epoch_sec, vwap)]
         self.vwap_series = vwap_series or []    # [(epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)]
-        self.families_absent = families_absent
-        self.degraded = degraded
-        self.bars_used = bars_used
-        self.session_rth_positive_volume_bars = int(session_rth_positive_volume_bars)
+        self.families_absent = families_absent  # [{family, reason}]
+        self.degraded = degraded                # [{family, reason}]
         self.volume_profile = volume_profile    # the session's profile the value area is read from
 
     def price(self, level_id: str) -> Optional[float]:
@@ -842,7 +526,8 @@ class PriceLevelSnapshot:
 
 
 def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list,
-                                bar_source: str) -> tuple:
+                                bar_source: str, prior_day: Optional[dict],
+                                prior_day_absent_reason: Optional[str]) -> tuple:
     """Identity of the INPUT. Same fingerprint ⇒ same generation ⇒ same result object.
 
     Bar identity, not wall-clock: re-asking within a generation must return the very
@@ -858,7 +543,7 @@ def _snapshot_input_fingerprint(ticker: str, session_date: date, bars_norm: list
     """
     h = hashlib.blake2b(digest_size=16)
     h.update(f"{ticker}\x1f{session_date.isoformat()}\x1f{bar_source}\x1f"
-             f"{len(bars_norm)}".encode())
+             f"{len(bars_norm)}\x1f{sorted((prior_day or {}).items())!r}\x1f{prior_day_absent_reason}".encode())
     for b in bars_norm:
         h.update(b"\x1e")
         h.update(repr((b["timestamp"], b["open"], b["high"], b["low"], b["close"], b["volume"])).encode())
@@ -871,11 +556,15 @@ def build_price_level_snapshot(
     bars_norm: list,
     *,
     bar_source: str,
+    prior_day: Optional[dict],
+    prior_day_absent_reason: Optional[str],
     config: Optional[PlaybookConfig] = None,
     generation: int = 0,
 ) -> PriceLevelSnapshot:
-    """THE Phase 2A producer, from normalized bars (_bars_to_list). The only production caller
-    of the canonical helpers.
+    """THE Phase 2A producer, from normalized bars (_bars_to_list) and Schwab's daily candle of
+    the prior trading day (`prior_day`, a served daily bar {t, o, h, l, c}: the prior day's high
+    and low are Schwab's own, never the range of its minutes; None: not received, with
+    `prior_day_absent_reason`). The only production caller of the canonical helpers.
 
     Absent input stays absent: a family with no bars in its window is declared in
     `families_absent` and its ids are simply not present. Nothing substitutes spot,
@@ -884,14 +573,14 @@ def build_price_level_snapshot(
     """
     cfg = config or PlaybookConfig()
     tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
-    produced_ts = datetime.now(tz=ET).timestamp()
     levels: dict[str, PriceLevelValue] = {}
     families_absent: list[dict] = []
     degraded: list[dict] = []
-    vwap_path: list[tuple[float, float]] = []
-    vwap_series: list[tuple] = []
 
-    as_of: Optional[float] = max((b["_dt"].timestamp() for b in bars_norm), default=None)
+    # the levels are as of the end of the newest 1-minute bar
+    as_of: Optional[float] = max((b["_dt"].timestamp() + 60.0 for b in bars_norm), default=None)
+    today = [b["_dt"].timestamp() for b in bars_norm if b["_dt"].date() == session_date]
+    minutes = (len(today), max(today, default=None), minutes_digest(today))
 
     basis = f"1m bars ({bar_source}); Schwab streamed bars"
 
@@ -909,6 +598,13 @@ def build_price_level_snapshot(
         )
 
     # ── prior day ────────────────────────────────────────────────────────────
+    # its high and low: Schwab's daily candle (operator 2026-10-01: "lets use what schwab gives us")
+    if prior_day is None:
+        families_absent.append({"family": "prior_day_range", "reason": prior_day_absent_reason})
+    else:
+        day_window = f"{trading_date_label(prior_day['t'])} (Schwab's daily candle)"
+        _put("PDH", prior_day["h"], producer=PRIOR_DAY_SOURCE, window=day_window)
+        _put("PDL", prior_day["l"], producer=PRIOR_DAY_SOURCE, window=day_window)
     eng = get_previous_day_levels(bars_norm, session_date, cfg)
     prior_date = eng.get("prior_date")
     if prior_date is None:
@@ -918,28 +614,28 @@ def build_price_level_snapshot(
         })
     else:
         window = f"{prior_date.isoformat()} RTH (most recent prior RTH session)"
-        for lid, key in (("PDH", "pdh"), ("PDL", "pdl"), ("PDC", "pdc"),
-                         ("PD_POC", "pd_poc"), ("PD_VAH", "pd_vah"), ("PD_VAL", "pd_val")):
+        for lid, key in (("PD_POC", "pd_poc"), ("PD_VAH", "pd_vah"), ("PD_VAL", "pd_val")):
             _put(lid, eng.get(key),
                  producer=f"{_PRODUCER_NS}.get_previous_day_levels", window=window)
+        if eng["pd_poc"] is None:
+            families_absent.append({"family": "prior_day_value_area", "reason": (
+                f"the prior session's ({prior_date}) bars carry no volume for a volume profile")})
         if eng["rth_bars"] < LEVELS_PRIOR_SESSION_MIN_BARS:
-            degraded.append({"family": "prior_day", "last_good_ts_utc": None, "reason": (
+            degraded.append({"family": "prior_day", "reason": (
                 f"prior session {prior_date} holds only {eng['rth_bars']} of >= "
                 f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; prior-day levels derive from a partial tape")})
 
     sess_window = f"{session_date.isoformat()} RTH (canonical snapshot over {bar_source})"
+    families_absent.append({"family": "overnight", "reason": overnight_absent_reason(session_date)})
 
     if not bars_norm:
-        for fam in ("vwap", "opening_range", "overnight", "value_area"):
+        for fam in ("vwap", "opening_range", "value_area"):
             families_absent.append({
                 "family": fam, "reason": f"no bars available (source {bar_source})"})
         return PriceLevelSnapshot(
             ticker=tk, session_date=session_date, generation=generation,
-            bar_source=bar_source, as_of_ts_utc=as_of, produced_ts_utc=produced_ts,
-            levels=levels, vwap_path=vwap_path, vwap_series=vwap_series,
-            families_absent=families_absent, degraded=degraded,
-            bars_used=0, session_rth_positive_volume_bars=0,
-        )
+            bar_source=bar_source, as_of_ts_utc=as_of, minutes=minutes, levels=levels,
+            families_absent=families_absent, degraded=degraded)
 
     # ── vwap + bands (one accumulation: the series IS the scalars' source) ───
     session_rth_vol_n = count_session_rth_positive_volume_bars(bars_norm, session_date)
@@ -958,29 +654,21 @@ def build_price_level_snapshot(
         for lid, val in (("VWAP_P1", p1), ("VWAP_M1", m1), ("VWAP_P2", p2), ("VWAP_M2", m2)):
             _put(lid, val,
                  producer=f"{_PRODUCER_NS}.compute_session_vwap_series", window=sess_window)
-    vwap_path = [(t, w) for t, w, _a, _b, _c, _d in vwap_series]
 
     # ── opening range ────────────────────────────────────────────────────────
     orb = compute_opening_range(bars_norm, session_date, cfg)
     if not orb:
         families_absent.append({
             "family": "opening_range", "reason": "no ORB bars in available tape for session"})
+    elif "forming_until" in orb:
+        families_absent.append({"family": "opening_range", "reason": (
+            f"the opening range is still forming: its first {cfg.opening_range_minutes} minutes end "
+            f"{ct_label(orb['forming_until'].timestamp())}, and no later bar has arrived")})
     else:
         orb_window = f"{session_date.isoformat()} first {cfg.opening_range_minutes}m RTH"
         for lid, key in (("ORB_HIGH", "orb_high"), ("ORB_LOW", "orb_low"), ("ORB_MID", "orb_mid")):
             _put(lid, orb.get(key),
                  producer=f"{_PRODUCER_NS}.compute_opening_range", window=orb_window)
-
-    # ── overnight ────────────────────────────────────────────────────────────
-    overnight = get_overnight_levels(bars_norm, session_date, prior_date)
-    if not overnight:
-        families_absent.append({
-            "family": "overnight", "reason": "no overnight-window bars in available tape"})
-    else:
-        for lid, key in (("OVERNIGHT_HIGH", "overnight_high"), ("OVERNIGHT_LOW", "overnight_low")):
-            _put(lid, overnight.get(key),
-                 producer=f"{_PRODUCER_NS}.get_overnight_levels",
-                 window="prior RTH close -> session RTH open (RC-153)")
 
     # ── current-session value area ───────────────────────────────────────────
     profile = compute_volume_profile_levels(bars_norm, session_date, cfg)
@@ -997,11 +685,9 @@ def build_price_level_snapshot(
 
     return PriceLevelSnapshot(
         ticker=tk, session_date=session_date, generation=generation,
-        bar_source=bar_source, as_of_ts_utc=as_of, produced_ts_utc=produced_ts,
-        levels=levels, vwap_path=vwap_path, vwap_series=vwap_series,
+        bar_source=bar_source, as_of_ts_utc=as_of, minutes=minutes,
+        levels=levels, vwap_series=vwap_series,
         families_absent=families_absent, degraded=degraded,
-        bars_used=len(bars_norm),
-        session_rth_positive_volume_bars=session_rth_vol_n,
         volume_profile=profile,
     )
 
@@ -1020,17 +706,20 @@ def materialize_price_level_snapshot(
     bars_norm: list,
     *,
     bar_source: str,
+    prior_day: Optional[dict],
+    prior_day_absent_reason: Optional[str],
     config: Optional[PlaybookConfig] = None,
 ) -> PriceLevelSnapshot:
-    """Materialize once per generation from normalized bars (_bars_to_list); return the SAME
-    object within a generation.
+    """Materialize once per generation from normalized bars (_bars_to_list) and Schwab's prior
+    daily candle (build_price_level_snapshot); return the SAME object within a generation.
 
-    A new market generation (the bar input changed) invokes the producer exactly once.
+    A new market generation (the input changed) invokes the producer exactly once.
     Every later ask in that generation is a read, never a recomputation.
     """
     tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
     key = (tk, session_date.isoformat())
-    fingerprint = _snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source)
+    fingerprint = _snapshot_input_fingerprint(tk, session_date, bars_norm, bar_source, prior_day,
+                                              prior_day_absent_reason)
     # RC-324: the read, the generation decision, the build and the write-back are ONE
     # critical section. Unguarded, this is a check-then-act: Cursor proved two concurrent
     # callers both observed `existing is None`, both computed generation 1, and produced two
@@ -1042,8 +731,8 @@ def materialize_price_level_snapshot(
             return existing
         generation = 1 if existing is None else existing.generation + 1
         snap = build_price_level_snapshot(
-            tk, session_date, bars_norm, bar_source=bar_source, config=config,
-            generation=generation,
+            tk, session_date, bars_norm, bar_source=bar_source, prior_day=prior_day,
+            prior_day_absent_reason=prior_day_absent_reason, config=config, generation=generation,
         )
         snap.input_fingerprint = fingerprint
         _MATERIALIZED_SNAPSHOTS[key] = snap

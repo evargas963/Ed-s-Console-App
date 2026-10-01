@@ -467,6 +467,27 @@
     return '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(' · ') + '</span>';
   }
 
+  // The one badge for every /api/chain panel (Chain, Strike Detail), from what the route serves:
+  // the chain's scope, its age, and its one served state (levels_state: live, stale with its
+  // reason, or closed with the time the chain is as of). The badge prints that state; a complete
+  // chain is not thereby a live one.
+  function chainBadge(d, prefix) {
+    var sc = d && d.scope, kind = sc && sc.kind;
+    if (!kind) return '';
+    if (kind === 'unavailable') {
+      return asOfBadge({ label: prefix + 'unavailable', stale: true, reason: 'chain scope: unavailable' + (sc.reason ? ' — ' + sc.reason : '') });
+    }
+    return asOfBadge(Object.assign(levelsBadgeState(d), {
+      label: prefix + (kind === 'complete_single_expiry' ? 'complete (ALL)' : kind) + (d.levels_state === 'closed' && d.levels_as_of ? ' · as of ' + d.levels_as_of : ''),
+      title: 'chain scope: ' + kind }));
+  }
+  // a served levels_state (server.terrain_staleness) as the as-of badge prints it
+  function levelsBadgeState(d) {
+    var s = d.levels_state;
+    return { ageSec: s === 'closed' ? null : d.levels_age_sec, reason: d.levels_stale_reason,
+      stale: s === 'stale', ref: s === 'closed', live: s === 'live' };
+  }
+
   // ================= watchlist (editable foundation, localStorage) =================
   function loadWL() {
     // An explicitly saved EMPTY list (every ticker removed) must stay empty — only an
@@ -668,7 +689,6 @@
   }
 
   // ================= header live data (single coordinated poll; degrades honestly) =================
-  function fmt(n, d) { return (n === null || n === undefined || isNaN(n)) ? '—' : Number(n).toFixed(d === undefined ? 2 : d); }
   function setFeed(cls, label, age) {
     var dot = document.getElementById('hFeedDot'), f = document.getElementById('hFeed'), a = document.getElementById('hAge');
     if (dot) dot.className = 'dot' + (cls ? ' ' + cls : '');
@@ -680,13 +700,9 @@
   //      app/market_data/schwab/streaming/live_ui.py) -- the finished row (live_price_rows.
   //      price_row) the instant a Schwab message changes it, plus a feed verdict every second.
   //      No web server is in this path, so no analytics load can delay a price. It is the
-  //      ONLY source of the header quote and the watchlist rows (operator rule 2026-09-23: no
-  //      fallbacks): when it is not delivering, the header says so -- nothing polls a quote. ----
-  // Operator directive (2026-09-14, spot 360 audit): the source that answered THIS number
-  // was already on every payload (quote_ingestion / _quote_authority) but never surfaced —
-  // a hover tooltip, not new chrome, so the next divergence (if the plane/REST hierarchy
-  // ever disagrees again) is diagnosable on the spot the operator is already looking at,
-  // not something that needs a screenshot comparison to notice.
+  //      only source of the header quote and the watchlist rows: when it is not delivering,
+  //      the header says so -- nothing polls a quote. ----
+  // The source that answered the number (quote_ingestion), shown as a hover tooltip.
   var QUOTE_INGESTION_LABEL = {
     schwab_streaming_level_one: 'streaming', rest_tier_a: 'REST (header bootstrap)',
     rest_watchlist_batch: 'REST (watchlist batch)', live_market_plane: 'streaming plane',
@@ -698,22 +714,25 @@
       if (state === 'unavailable' || (q.spot == null && !q.spot_disp)) {
         px.textContent = 'UNAVAILABLE';
       } else {
-        px.textContent = q.spot_disp || fmt(q.spot);
+        px.textContent = q.spot_disp;
         if (state === 'stale') px.textContent += ' STALE';
       }
       var srcLbl = q.quoteIngestion ? (QUOTE_INGESTION_LABEL[q.quoteIngestion] || q.quoteIngestion) : '';
       if (state) srcLbl = (srcLbl ? srcLbl + ' · ' : '') + state;
       px.title = srcLbl ? ('spot source: ' + srcLbl) : '';
     }
-    if (ba) ba.textContent = fmt(q.bid) + ' × ' + fmt(q.ask);
+    // Schwab's bid and ask exactly as sent, each with Schwab's own time of it (served text), or
+    // the served sentence when Schwab sends none for the instrument
+    function withTime(text, when) { return (text || '—') + (when ? ' · ' + when : ''); }
+    if (ba) ba.textContent = q.quoteText || (withTime(q.bidText, q.bidAsOf) + ' × ' + withTime(q.askText, q.askAsOf));
     // Schwab's two change percents, each labelled: the regular session's and the last price's
-    // (extended hours included). Formatting only; absent reads "—".
-    [[document.getElementById('hChgReg'), 'REG ', q.chgPctRegular], [chg, 'EXT ', q.chgPct]].forEach(function (c) {
+    // (extended hours included), each exactly as sent, with the time it came and its direction
+    // (served). Absent reads "—".
+    [[document.getElementById('hChgReg'), 'REG ', q.chgPctRegularText, q.chgPctRegularAsOf, q.chgPctRegularSign],
+     [chg, 'EXT ', q.chgPctText, q.chgPctAsOf, q.chgPctSign]].forEach(function (c) {
       if (!c[0]) return;
-      if (c[2] != null) {
-        c[0].textContent = c[1] + (c[2] >= 0 ? '+' : '') + fmt(c[2]) + '%';
-        c[0].className = 'chg mono ' + (c[2] >= 0 ? 'pos' : 'neg');
-      } else { c[0].textContent = c[1] + '—'; c[0].className = 'chg mono'; }
+      c[0].textContent = c[1] + withTime(c[2], c[3]);
+      c[0].className = 'chg mono' + (c[4] ? ' ' + c[4] : '');
     });
     setFeed(q.feedCls, q.feedLabel, q.ageLabel);
     // paintQuote owns the header display only; watchlist rows are written by setWlRow from
@@ -722,17 +741,15 @@
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
   // quote_tick handler (and markWlDegraded). A null field CLEARS to "—" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
-  function setWlRow(sym, spot, chgPct, spotState, closedDisp) {
+  // spotText: the served live price text, or the last trade with its time; chg: the served change
+  // percent {text, sign, asOf}, or null
+  function setWlRow(sym, spotText, chg) {
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
-    if (pe) {
-      if (closedDisp) pe.textContent = closedDisp + ' CLOSED';
-      else if (spotState === 'unavailable' || spot == null) pe.textContent = 'UNAVAILABLE';
-      else pe.textContent = fmt(spot) + (spotState === 'stale' ? ' STALE' : '');
-    }
+    if (pe) pe.textContent = spotText || 'UNAVAILABLE';
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]');
     if (ce) {
-      if (chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
-      else { ce.textContent = '—'; ce.className = 'wl-chg'; }
+      ce.textContent = chg && chg.text ? chg.text + (chg.asOf ? ' · ' + chg.asOf : '') : '—';
+      ce.className = 'wl-chg' + (chg && chg.sign ? ' ' + chg.sign : '');
     }
   }
   // A silent price push withdraws every row to UNAVAILABLE and marks the list degraded with
@@ -740,7 +757,7 @@
   function markWlDegraded(reason) {
     var host = document.getElementById('watchlist');
     if (host) host.classList.add('wl-degraded');
-    loadWL().forEach(function (sym) { setWlRow(sym, null, null, 'unavailable'); });
+    loadWL().forEach(function (sym) { setWlRow(sym, null, null); });
     wlNotify(reason);
   }
   function markWlHealthy() {
@@ -783,9 +800,15 @@
     loadWL().forEach(function (s) { s = String(s).toUpperCase(); if (out.indexOf(s) === -1) out.push(s); });
     return out;
   }
-  function subscribePrices() {
+  // the daemon's time of the last beat this page had (feed.ts): the first subscribe after a drop
+  // carries it, and the daemon answers with the gap in the live bars (`ed:bars_gap`); no bar
+  // received in the gap is resent
+  var _lastBeatTs = null;
+  function subscribePrices(disconnectedSince) {
     if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
-    try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() })); } catch (e) {}
+    var req = { op: 'subscribe', symbols: priceSymbols() };
+    if (disconnectedSince != null) req.disconnected_since = disconnectedSince;
+    try { _priceWs.send(JSON.stringify(req)); } catch (e) {}
   }
   function openPriceSocket() {
     var url = priceSocketUrl();
@@ -794,11 +817,21 @@
     try { ws = new WebSocket(url); } catch (e) { schedulePriceReconnect(); return; }
     _priceWs = ws;   // (_priceSubTs is set by a ticker change only: a reconnect during an
                      //  outage keeps reading OFFLINE, not WAITING)
-    ws.onopen = function () { _priceRetry = 0; subscribePrices(); };
+    ws.onopen = function () { _priceRetry = 0; subscribePrices(_lastBeatTs); };
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
+      // a completed Schwab minute: the chart bar it makes at every timeframe, for the charts
+      if (msg && msg.type === 'bars' && Array.isArray(msg.bars)) {
+        msg.bars.forEach(function (b) { window.dispatchEvent(new CustomEvent('ed:bar', { detail: b })); });
+        return;
+      }
+      if (msg && msg.type === 'bars_gap' && msg.gap) {
+        window.dispatchEvent(new CustomEvent('ed:bars_gap', { detail: msg.gap }));
+        return;
+      }
       if (!msg || !Array.isArray(msg.rows)) return;
+      if (msg.type === 'feed' && msg.feed && msg.feed.ts != null) _lastBeatTs = msg.feed.ts;
       _priceUp = true; _lastPriceTs = Date.now();
       msg.rows.forEach(ingestPriceRow);
     };
@@ -830,25 +863,31 @@
     if (!q || !q.ticker) return;
     if (q.ticker === state.key) {
       var live = q.spot_state === 'live' && q.spot != null;
-      var closed = q.spot_state === 'closed' && q.closed_last;   // the last trade, labelled
+      // the last trade Schwab sent when it is not live, shown with Schwab's served trade time
+      // (operator 2026-10-01: "if we have it we display it")
+      var closed = !live && q.closed_last;
       // painted NOW, not on requestAnimationFrame: the browser slows or pauses rAF for a
       // window it considers covered (measured 2026-09-24: row in at 6 ms, rAF paint at 773 ms).
       // The daemon already conflates to the newest row per symbol, so there is no burst to
       // throttle -- a few text writes per second.
-      paintQuote({ spot_disp: closed ? q.closed_last.spot_disp + ' CLOSED' : q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
-        chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
-        spotState: q.spot_state,
+      paintQuote({ spot_disp: closed ? q.closed_last.spot_disp : q.spot_disp, spot: q.spot,
+        bidText: q.bid_text, askText: q.ask_text, bidAsOf: q.bid_as_of, askAsOf: q.ask_as_of, quoteText: q.quote_text,
+        chgPctText: q.chg_pct_text, chgPctSign: q.chg_pct_sign, chgPctAsOf: q.chg_pct_as_of,
+        chgPctRegularText: q.chg_pct_regular_text, chgPctRegularSign: q.chg_pct_regular_sign,
+        chgPctRegularAsOf: q.chg_pct_regular_as_of, quoteIngestion: q.quote_ingestion,
+        spotState: closed ? 'past' : q.spot_state,
         feedCls: live ? '' : 'stale',
-        feedLabel: live ? 'LIVE' : (q.spot_state === 'closed' ? 'MARKET CLOSED' : (q.feed_live ? 'NO TRADE YET' : 'UNAVAILABLE')),
+        feedLabel: live ? 'LIVE' : (q.spot_state === 'closed' ? 'MARKET CLOSED' : (q.feed_live ? 'NO TRADE YET' : 'NOT LIVE')),
         ageLabel: closed ? ('last trade ' + q.closed_last.as_of)
           : q.trade_age_sec != null ? ('last trade ' + Math.round(q.trade_age_sec) + 's')
-          : (live ? 'live' : (q.feed_live ? 'feed live · no trade this session' : 'no live feed')) });
+          : (live ? 'live' : (q.feed_live ? 'feed live · no trade this session' : (q.unavailable_reason || 'no live feed'))) });
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
-      setWlRow(wlSym, q.spot_state === 'live' ? q.spot : null,
-        q.spot_state === 'live' ? q.chg_pct : null,
-        q.spot_state || 'unavailable', q.spot_state === 'closed' && q.closed_last ? q.closed_last.spot_disp : null);
+      // Schwab's change as sent, beside the live price or its last trade (with Schwab's trade time)
+      setWlRow(wlSym, q.spot_state === 'live' ? q.spot_disp
+        : q.closed_last ? q.closed_last.spot_disp + ' · ' + q.closed_last.as_of : null,
+        { text: q.chg_pct_text, sign: q.chg_pct_sign, asOf: q.chg_pct_as_of });
       markWlHealthy();
     });
     try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
@@ -863,19 +902,42 @@
   }
 
   // ---- the console's push: which of this ticker's values changed, and the session label.
-  // Each panel reloads on `ed:changed` for the kinds it shows: levels, flow, liquidity. ----
+  // Each panel reloads on `ed:changed` for the kinds it shows: levels, chain, flow. (Bars come
+  // on the daemon's push: `ed:bar`.) ----
   var _changes = null;
+  // this page load's id: its push connection carries it, and the console holds the view's
+  // option-contract demand (ed-stream.js) for as long as the view has a connection open
+  var VIEW_ID = (window.crypto && typeof window.crypto.randomUUID === 'function')
+    ? window.crypto.randomUUID()
+    : 'view-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  // On a ticker change the open connection is kept until the new ticker's opens, so the view is
+  // never without one and the console keeps its demand. `_viewLost`: the view was without a
+  // connection (the first one, or one that dropped), so what it declared is gone; the next
+  // connection to open says so (`ed:push_open`) and the demand is declared again.
+  var _kept = null, _viewLost = true;
   function openChangeStream(tk) {
-    if (_changes) { try { _changes.close(); } catch (e) {} }
-    _changes = null;
     if (typeof EventSource === 'undefined') return;
-    try { _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk)); }
-    catch (e) { return; }
-    _changes.onopen = function () { _wlDeclared = null; declareWatchlistStream(loadWL()); };
-    _changes.onerror = function () { paintSession(null, 'session unknown: the console push is down'); };
-    _changes.addEventListener('session', function (ev) { paintSession(ev.data); });
-    ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
-      _changes.addEventListener(kind, function () {
+    if (_changes) {
+      if (_changes.readyState === EventSource.OPEN && !_kept) _kept = _changes; else _changes.close();
+    }
+    if (!_kept) _viewLost = true;
+    var es = _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk) + '&view=' + VIEW_ID);
+    es.onopen = function () {
+      if (_kept) { _kept.close(); _kept = null; }
+      _wlDeclared = null; declareWatchlistStream(loadWL());
+      if (_viewLost) { _viewLost = false; document.dispatchEvent(new CustomEvent('ed:push_open')); }
+    };
+    es.onerror = function () {
+      _viewLost = true;
+      if (es === _kept) { es.close(); _kept = null; }   // never reconnects on the ticker left
+      if (es === _changes) paintSession(null, 'session unknown: the console push is down');
+    };
+    // a kept connection is the ticker left: only the current one paints
+    es.addEventListener('session', function (ev) { if (es === _changes) paintSession(ev.data); });
+    es.addEventListener('sign_in', function (ev) { if (es === _changes) paintSignIn(JSON.parse(ev.data)); });
+    ['levels', 'chain', 'flow'].forEach(function (kind) {
+      es.addEventListener(kind, function () {
+        if (es !== _changes) return;
         if (kind === 'levels' && _expiriesPending) loadExpiries(state.ticker);
         emit('ed:changed', { kind: kind });
       });
@@ -890,14 +952,24 @@
     el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why || '';
   }
 
+  // the Schwab sign-in (served with the session): shown from the day the server warns, with the
+  // time it ends and what to run; nothing to show while it is ok
+  function paintSignIn(s) {
+    var box = document.getElementById('hSignIn'), el = document.getElementById('hSignInV'); if (!box || !el) return;
+    box.hidden = !s || s.urgency === 'ok';
+    el.textContent = !s ? '' : s.expires ? 'ends ' + s.expires : 'unknown';
+    el.className = 'signin ' + ((s && s.urgency) || '');
+    box.title = (s && s.note) || '';
+  }
+
   // The push is not delivering: withdraw the quote instead of leaving the last one on screen
-  // (and instead of polling for it -- operator rule 2026-09-23: no fallbacks). The session
+  // (and instead of polling for it). The session
   // label is not a live quote and keeps its own slow read.
   function markHeaderPushDown() {
     // just asked for this ticker (page load or a ticker change): the row is on its way
     // (WAITING); otherwise the push itself is down (OFFLINE)
     var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
-    paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
+    paintQuote({ spot: null, spot_disp: null,
       spotState: 'unavailable', feedCls: 'stale',
       feedLabel: connecting ? 'WAITING' : 'OFFLINE',
       ageLabel: connecting ? 'no push yet' : 'live push down' });
@@ -1020,10 +1092,10 @@
   // expose for view modules + tests (no trading logic here)
   window.EdShell = { getState: function () { return Object.assign({}, state); }, setTicker: setTicker,
     addSymbol: addSymbol, setWorkspace: setWorkspace, setStrike: setStrike,
-    setTheme: applyTheme,
+    setTheme: applyTheme, viewId: VIEW_ID,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
-    scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
+    scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, chainBadge: chainBadge, levelsBadgeState: levelsBadgeState, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     setSubview: setSubview };

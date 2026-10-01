@@ -27,10 +27,11 @@ _CHAINS = {"$SPX": (_SPX["contracts"], _SPX["spot"]),
 def _published(monkeypatch, pin_clock):
     pin_clock(2026, 8, 30, 12, 0)                        # before every fixture chain's expiry
     spots = {tk: spot for tk, (_c, spot) in _CHAINS.items()}
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (spots.get(tk), "stub", 1.0))
+    # stand-in (named): the live price
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (spots.get(tk), server.SPOT_SOURCE_PLANE, 1.0))
     monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk, listed=None: {})
     for tk, (chain, _spot) in _CHAINS.items():
-        server._publish_levels(tk, [dict(c) for c in chain], time.time())
+        server._publish_levels(tk, [dict(c) for c in chain], time.time(), now=time.time())
     yield
     with server._terrain_cache_lock:
         for tk in _CHAINS:
@@ -60,15 +61,15 @@ def test_the_streamed_contract_follows_the_ticker_by_the_same_rule(monkeypatch):
     name alike; a contract already desired for the ticker is kept (an SPXW contract for $SPX)."""
     chosen = []
     monkeypatch.setattr(ofs, "set_active_option_contract", lambda sym: chosen.append(sym) or True)
-    monkeypatch.setattr(server.lmp, "daemon_status", lambda: None)
+    monkeypatch.setattr(server.lmp, "daemon_status", lambda now: None)
     for tk in _CHAINS:
         ofs._active_option_contract = None
-        server._ensure_default_option_contract(tk)
+        server._ensure_default_option_contract(tk, time.time())
         with server._terrain_cache_lock:
             want = server._terrain_cache[tk]["_default_contract"]
         assert want and chosen[-1] == want and server._contract_is_for(want, tk)
     weekly = next(c["symbol"] for c in _SPX["contracts"] if c["symbol"].startswith("SPXW"))
     ofs._active_option_contract = weekly
     n = len(chosen)
-    server._ensure_default_option_contract("$SPX")
+    server._ensure_default_option_contract("$SPX", time.time())
     assert len(chosen) == n                               # kept: it is $SPX's

@@ -11,12 +11,14 @@ The one stand-in is the live price: no stream runs in a test, so resolve_spot re
 price, LIVE, to tell the live price apart from the capture's own."""
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 import server
 from terrain_engine import compute_terrain
+from time_et import ET
 
 _REAL = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
                    .read_text(encoding="utf-8"))
@@ -32,21 +34,25 @@ def _at_capture(pin_clock):
     return pin_clock(2026, 9, 2, 10, 5)    # the chain's own capture time
 
 
+def _at_capture_ts() -> float:
+    return datetime(2026, 9, 2, 10, 5, tzinfo=ET).timestamp()
+
+
 @pytest.fixture
 def held(monkeypatch):
     snap = compute_terrain(TK, _CONTRACTS, PUBLISHED)
     surface = server.project_gamma_surface(_CONTRACTS, snap.books)
-    surface.update(spot=PUBLISHED, spot_source="chain", spot_as_of_ts_utc=time.time())
+    surface.update(spot=PUBLISHED, spot_source=server.SPOT_SOURCE_PLANE, spot_as_of_ts_utc=time.time())
     payload = snap.to_dict()
     payload.update({"computed_ts_utc": time.time(), "_per_strike": snap.per_strike,
                     "_vanna_rows": server._vanna_rows(snap), "_charm_rows": server._charm_rows(snap),
                     "_chain": _CONTRACTS, "_chain_fetched_ts": time.time(), "_gamma_surface": surface})
-    monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (LIVE, "live_quote", time.time()))
-    monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk: None)
+    monkeypatch.setattr(server, "terrain_cache_get", lambda tk, now: payload)
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (LIVE, server.SPOT_SOURCE_PLANE, time.time()))
+    monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk, now: None)
     monkeypatch.setattr(server, "last_capture_per_day", lambda *a, **k: [])
     monkeypatch.setattr(server, "_gamma_surface_contracts_with_stream_overlay",
-                        lambda t, cts, newer_than_ts=None: (cts, 0, None))
+                        lambda t, cts, now: (cts, 0, None))
     return payload
 
 
@@ -63,13 +69,18 @@ def test_every_route_serves_the_live_spot_and_names_the_computed_one(held, route
     assert body["priced_at_spot"] == PUBLISHED
 
 
-def test_strike_side_sums_split_at_the_live_spot(held):
+def test_strike_side_sums_are_the_publications_split_at_its_own_price(held):
+    """S-23: the route summed the rows again, at the live price, and left out every strike whose
+    volume Schwab had not reported. The sums are the levels producer's, over every row, split at
+    the price the rows were computed at (DATA_FLOW: everything computed from spot is computed in
+    the one publication at that publication's price); the route carries them."""
     rows = held["_per_strike"]["all"]
-    below = [r for r in rows if r[0] < LIVE]
-    above = [r for r in rows if r[0] > LIVE]
-    assert below and above, "the real chain has strikes on both sides of the live price"
+    below = [r for r in rows if r[0] < PUBLISHED]
+    above = [r for r in rows if r[0] > PUBLISHED]
+    assert below and above, "the real chain has strikes on both sides of its price"
     sums = json.loads(server.get_terrain_strikes(ticker=TK).body)["today_side_sums"]
-    assert sums["spot_basis"] == LIVE
+    assert sums == held["_per_strike"]["side_sums"]
+    assert sums["spot_basis"] == PUBLISHED != LIVE
     assert sums["gex_below"] == pytest.approx(sum(r[1] for r in below), abs=0.1)
     assert sums["gex_above"] == pytest.approx(sum(r[1] for r in above), abs=0.1)
 
@@ -129,7 +140,7 @@ def test_days_to_expiry_are_schwabs_as_sent(held):
 
 def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
     body = json.loads(server.get_expiries(ticker="ZZNOLEVELS").body)
-    assert body["expiries"] == [] and body["reason"] == server.terrain_staleness(None, "ZZNOLEVELS")["levels_stale_reason"]
+    assert body["expiries"] == [] and body["reason"] == server.terrain_staleness(None, "ZZNOLEVELS", time.time())["levels_stale_reason"]
 
 
 @pytest.mark.parametrize("route", [
@@ -161,7 +172,7 @@ def test_levels_are_served_in_ladder_order_with_distance(monkeypatch):
                     .read_text(encoding="utf-8"))
     spot = fx["bars"][-1]["close"]                               # the session's last real close
     monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, server.SPOT_SOURCE_PLANE, time.time()))
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
     server._publish_price_levels("SPY")                          # as the bar writer does
     body = json.loads(server.get_levels(ticker="SPY").body)
@@ -185,7 +196,7 @@ def test_the_volume_profile_the_value_area_is_read_from_is_served(monkeypatch):
     fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
                     .read_text(encoding="utf-8"))
     monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (fx["bars"][-1]["close"], "live_quote", time.time()))
+    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (fx["bars"][-1]["close"], server.SPOT_SOURCE_PLANE, time.time()))
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
     server._publish_price_levels("SPY")                          # as the bar writer does
     body = json.loads(server.get_levels(ticker="SPY").body)
@@ -217,7 +228,8 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served(held, monkeyp
     assert surf["stream_by_expiry"][EXPIRY] == "partial"          # one live leg in the column
     ages = [c["stream"][0]["age_sec"] for c in surf["cells"] if c["stream"][0] and c["stream"][0]["age_sec"] is not None]
     assert ages and max(ages) == pytest.approx(90, abs=1)
-    body = json.loads(server.get_options_gamma_surface(ticker=TK).body)
+    # judged at the one instant the route is given: the chain's capture time
+    body = json.loads(server.options_gamma_surface(TK, _at_capture_ts()).body)
     assert body["front_expiry"] == EXPIRY
 
 
@@ -241,19 +253,26 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_is(mon
     cts = [dict(c) for c in fx["contracts"]]
     cts[0]["nonStandard"] = True                      # stand-in: Schwab marking one contract
     payload = {"_chain": cts, "_chain_fetched_ts": time.time(), "computed_ts_utc": time.time()}
-    monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (fx["spot"], "live_quote", time.time()))
-    monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk: None)
+    monkeypatch.setattr(server, "terrain_cache_get", lambda tk, now: payload)
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (fx["spot"], server.SPOT_SOURCE_PLANE, time.time()))
+    monkeypatch.setattr(server, "_price_stored_chain_when_closed", lambda tk, now: None)
     monkeypatch.setattr(server, "_gamma_surface_contracts_with_stream_overlay",
-                        lambda t, c, newer_than_ts=None: (c, 0, None))
+                        lambda t, c, now: (c, 0, None))
     body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
     assert body["adjusted_deliverable_symbols"] == [cts[0]["symbol"]]
 
 
-def test_the_largest_gex_strike_is_served(held):
+def test_the_largest_strike_of_each_profile_is_the_producers(held):
+    """The route picked each profile's largest strike itself. The GEX profile's is the published
+    net_gex_peak level; the DEX and OI profiles' are published with their rows."""
     rows = held["_per_strike"]["all"]
     body = json.loads(server.get_terrain_strikes(ticker=TK).body)
-    assert body["max_abs_strike"] == max(rows, key=lambda r: abs(r[1]))[0]
+    assert body["max_abs_strike"] == held["net_gex_peak"] == max(rows, key=lambda r: abs(r[1]))[0]
+    for m in ("dex", "oi"):
+        served = body["measures"][m]
+        assert served["rows"] == held["_per_strike"][m]
+        assert served["max_abs_strike"] == held["_per_strike"]["peak"][m]
+        assert served["max_abs_strike"] == max(served["rows"], key=lambda r: abs(r[1]))[0]
 
 
 def test_on_a_closed_market_the_last_trade_is_a_labelled_past_observation(monkeypatch):
@@ -263,13 +282,11 @@ def test_on_a_closed_market_the_last_trade_is_a_labelled_past_observation(monkey
     market's last trade with its time, and it is no spot."""
     import live_market_plane as lmp
     import live_price_rows
-    from tests.feed_live_helper import mark_feed_live
-    monkeypatch.setattr(lmp, "is_capturable_session", lambda: False)
-    monkeypatch.setattr(live_price_rows, "is_capturable_session", lambda: False)
-    mark_feed_live("SPY")
+    from tests.feed_live_helper import CLOSED_NOW, mark_feed_live
+    mark_feed_live("SPY", now=CLOSED_NOW)
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
-                                     received_ts=time.time())
-    row = live_price_rows.price_row("SPY")
+                                     received_ts=CLOSED_NOW)
+    row = live_price_rows.price_row("SPY", CLOSED_NOW)
     assert (row["spot"], row["spot_state"]) == (None, "closed")
     assert row["closed_last"] == {"price": 772.04, "spot_disp": "772.04", "as_of": "Fri 09/25 06:59 PM CT"}
     assert server.resolve_spot("SPY")[0] is None
@@ -286,17 +303,15 @@ def test_on_a_closed_market_the_levels_are_ordered_from_the_last_trade(monkeypat
     import live_price_rows
     import time_et as te
     from app.options.order_flow import streaming
-    from tests.feed_live_helper import mark_feed_live
+    from tests.feed_live_helper import CLOSED_NOW, mark_feed_live
     fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
                     .read_text(encoding="utf-8"))
     monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
     monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
-    monkeypatch.setattr(lmp, "is_capturable_session", lambda: False)
-    monkeypatch.setattr(live_price_rows, "is_capturable_session", lambda: False)
-    mark_feed_live("SPY")
+    mark_feed_live("SPY", now=CLOSED_NOW)
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
-                                     received_ts=time.time())
-    monkeypatch.setitem(streaming._price_rows, "SPY", live_price_rows.price_row("SPY"))
+                                     received_ts=CLOSED_NOW)
+    monkeypatch.setitem(streaming._price_rows, "SPY", live_price_rows.price_row("SPY", CLOSED_NOW))
     server._publish_price_levels("SPY")                          # as the bar writer does
     body = json.loads(server.get_levels(ticker="SPY").body)
     priced = [r for r in body["levels"] if r["price"] is not None]

@@ -1,5 +1,5 @@
 {
-  "_comment": "Hook wiring only. Each guard file IS its own authority and documents why it exists; this file decides which guards run on which event. tools/hook_chain.py runs the listed guards in one process from THIS checkout; nothing is remembered between events (RC-544).",
+  "_comment": "Hook wiring only: which guards run on which event. tools/hook_chain.py runs the listed guards in one process from this checkout; nothing is remembered between events.",
   "hooks": {
     "PreToolUse": [
       {

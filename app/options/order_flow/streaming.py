@@ -1,21 +1,12 @@
 """
-Live-plane feed for the single active UI ticker — READ-ONLY consumer of the canonical
-capture daemon (app.market_data.schwab.streaming.capture), never a second Schwab session.
+Live-plane feed for the single active UI ticker: a read-only consumer of the capture daemon
+(app.market_data.schwab.streaming.capture). It opens no Schwab connection.
 
-SINGLE-STREAM-AUTHORITY LAW (root-fixed here): this module used to own its own
-`schwab.streaming.StreamClient`, logging into Schwab independently of the canonical
-capture daemon — two authenticated sockets on one account, racing each other for the
-same market truth. It now opens ZERO Schwab connections. The daemon is the one producer.
-
-LIVE PUSH (2026-09-23): the daemon forwards every Schwab stream message to this module over
-a local WebSocket (app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8799) the
-moment it arrives, and this module applies it to the in-process planes
-(`app.options.order_flow.state`, `live_market_plane`). The database is NOT in the live
-path: it used to be -- this module polled `stream_capture.db` every 0.5s -- which put a
-disk write, a commit and a poll between Schwab and the screen. stream_capture.db stays the
-permanent record (options history reads it); nothing live reads it. If the push connection
-drops, the live values go stale and the screen says so; nothing falls back to the database
-(operator rule 2026-09-23: no fallbacks).
+The daemon forwards each Schwab book, option-quote, news and bar message to this module over a
+local WebSocket (app.market_data.schwab.streaming.live_push, ws://127.0.0.1:8799) the moment it
+arrives, and this module applies it to the in-process planes (`app.options.order_flow.state`,
+`live_market_plane`). Nothing here reads `stream_capture.db`. If the push connection drops, the
+live values go stale and the screen says so.
 
 What to stream is decided HERE and sent to the daemon over the same socket, as one
 complete list per Schwab service (current_wanted(); {"op": "wanted", ...}). Every change to
@@ -56,6 +47,7 @@ from app.options.order_flow.state import (
 )
 
 import live_market_plane as _lmp
+from time_et import ct_label
 
 log = logging.getLogger(__name__)
 
@@ -75,6 +67,25 @@ _price_rows: "dict[str, dict]" = {}
 
 def price_row(ticker: str) -> "dict | None":
     return _price_rows.get(ticker_storage_key(ticker) or "")
+
+
+#: The daemon's verdict on each symbol's 1-minute bars (barstate.SYM, live_ui.publish_states):
+#: whether today's minutes are covered through now. Carried as pushed; dropped when the push is
+#: gone. The currency of every value the console builds from today's bars.
+_bar_states: "dict[str, dict]" = {}
+
+
+def bar_state(ticker: str) -> "dict | None":
+    return _bar_states.get(ticker_storage_key(ticker) or "")
+
+
+#: Schwab's daily candles of the days before today per symbol, as the daemon pushed them
+#: (bardays.SYM: candles, or none with its problem). Dropped when the push is gone.
+_bar_days: "dict[str, dict]" = {}
+
+
+def bar_days(ticker: str) -> "dict | None":
+    return _bar_days.get(ticker_storage_key(ticker) or "")
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
 PUSH_RECONNECT_SEC = 1.0
@@ -157,12 +168,12 @@ def _tick(sym: str) -> None:
                         sym, _tick_callback_failures, e)
 
 
-def _service_feed(symbol: "str | None", service: str) -> dict:
-    """One Schwab service's feed for `symbol`, as the page shows it: LIVE by the one live rule
-    (live_market_plane.feed_live_for), and how long ago the daemon last received anything on
-    that service (its own report)."""
-    health = ((_lmp.daemon_status() or {}).get("health") or {}).get(service) or {}
-    return {"state": "LIVE" if _lmp.feed_live_for(symbol, service) else "NOT LIVE",
+def _service_feed(symbol: "str | None", service: str, now: float) -> dict:
+    """One Schwab service's feed for `symbol` at `now`, as the page shows it: LIVE by the one
+    live rule (live_market_plane.feed_live_for), and how long ago the daemon last received
+    anything on that service (its own report)."""
+    health = ((_lmp.daemon_status(now) or {}).get("health") or {}).get(service) or {}
+    return {"state": "LIVE" if _lmp.feed_live_for(symbol, service, now) else "NOT LIVE",
             "age_sec": health.get("age_sec")}
 
 
@@ -182,18 +193,30 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     time for it -- never the time this console processed it (a delayed message must not
     read as fresh; 2026-09-23 audit P0).
 
-      quote.SYM    LEVELONE_EQUITIES -> order-flow state (the tape); the live price is the
-                   daemon's price row (_rows_loop), never rebuilt here
       book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book; OPTIONS_BOOK -> the option
                    contract's book
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
 
+    An equity's quote is the daemon's price row (_rows_loop); the console receives no other copy.
     Every option quote carrying GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME is passed to the
     tick callback (an equity's tick is its price row's arrival). A message missing its symbol, its
     receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
     part."""
     global _option_streaming_last_update_ts
     if not isinstance(msg, dict):
+        return None
+    if topic.startswith("barstate.") and msg.get("symbol"):
+        _bar_states[ticker_storage_key(msg["symbol"])] = msg      # the daemon's verdict, carried
+        return None
+    if topic.startswith("bardays.") and msg.get("symbol"):
+        _bar_days[ticker_storage_key(msg["symbol"])] = msg        # Schwab's daily candles, carried
+        # the price levels take the prior day's high and low from them: the bar writer, the one
+        # trigger of a levels build, rebuilds this symbol's
+        streamed_bars.put({"symbol": msg["symbol"], "levels_input": "bardays"})
+        return None
+    if topic.startswith("barheld."):       # the daemon's held day, sent on connect: backfill only
+        for bar in msg.get("bars") or ():
+            streamed_bars.put({**bar, "backfill": True})
         return None
     sym = msg.get("symbol")
     ts = msg.get("ts_recv")
@@ -204,12 +227,9 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     if kind == "bar1m":
         streamed_bars.put(msg)
         return None
-    if kind == "quote":
-        item = msg.get("native")
-        if not isinstance(item, dict):
-            return None
-        push_level_one(sym, item, ts_recv=ts)
-        push_changes.changed(sym, push_changes.FLOW)
+    if kind == "barhist":                  # one price-history reply: each minute to the bar writer
+        for bar in msg.get("bars") or ():
+            streamed_bars.put(bar)
         return None
     if kind == "book":
         content = msg.get("content")
@@ -260,6 +280,8 @@ async def _rows_loop() -> None:
                         _price_rows[row["ticker"]] = row
                         if msg.get("type") == "quotes":
                             _tick(row["ticker"])
+                            # the row carries the top of book the order-flow panels show
+                            push_changes.changed(row["ticker"], push_changes.FLOW)
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
@@ -276,7 +298,11 @@ async def _feed_loop() -> None:
     Each frame is one Schwab stream message; it is applied the moment it arrives
     (_ingest_pushed) -- no poll interval, no database read. A dropped connection is retried
     every PUSH_RECONNECT_SEC; while it is down, the live values age out through their own
-    freshness checks and the screen shows them stale. There is no second source."""
+    freshness checks and the screen shows them stale. There is no second source. On reconnect
+    the daemon sends current state only (books, option quote fields, bar verdicts, daily candles)
+    and its held minutes of the day (barheld), which backfill the store insert-only: the 1-minute
+    bars Schwab sent while it was down are not received as bar events, and that span is named
+    (PUSH_GAP)."""
     global _feed_running
     from websockets.asyncio.client import connect
 
@@ -295,12 +321,19 @@ async def _feed_loop() -> None:
                 continue
             _ingest_pushed(str(env.get("topic") or ""), env.get("msg"))
     rows = asyncio.create_task(_rows_loop(), name="daemon-price-rows")
+    down_since = None          # when the push dropped, until it is back
     try:
         while _feed_running:
             try:
                 async with connect(LIVE_PUSH_URL, max_size=None, open_timeout=5,
                                    ping_interval=20, ping_timeout=20) as ws:
                     _log_stream("PUSH_CONNECTED", url=LIVE_PUSH_URL)
+                    if down_since is not None:
+                        _log_stream("PUSH_GAP", note=(
+                            f"no 1-minute bars received from {ct_label(down_since)} to "
+                            f"{ct_label(time.time())} as bar events; the daemon's held minutes of "
+                            f"the day backfill the store"))
+                        down_since = None
                     sender = asyncio.create_task(_send_wanted(ws))
                     try:
                         await _consume(ws)
@@ -313,12 +346,17 @@ async def _feed_loop() -> None:
                 log.info("live push unavailable (%s: %s); retrying in %.1fs",
                          type(e).__name__, e, PUSH_RECONNECT_SEC)
             _lmp.record_feed_down()        # no daemon, no live price -- visible at once
+            _bar_states.clear()            # nor its verdict on any symbol's bars
+            _bar_days.clear()
+            down_since = time.time() if down_since is None else down_since
             if _feed_running:
                 await asyncio.sleep(PUSH_RECONNECT_SEC)
     finally:
         rows.cancel()
         await asyncio.gather(rows, return_exceptions=True)
         _price_rows.clear()
+        _bar_states.clear()
+        _bar_days.clear()
         _lmp.record_feed_down()
         _log_stream("FEED_LOOP_STOP_DONE")
 
@@ -357,8 +395,9 @@ def clear_active_option_contract(*, reason: str) -> None:
     _wanted_changed()
 
 
-#: Which stocks/indexes a screen shows a live price for, by source. The daemon streams its
-#: fixed --symbols roster only; everything else is requested here (the no-fallback rule
+#: Which stocks/indexes a screen shows a live price for, by source. The daemon streams the
+#: board it read at its start (capture.standing_roster) and never unsubscribes an equity on a
+#: connection; everything else is requested here (the no-fallback rule
 #: means an unstreamed symbol reads UNAVAILABLE, so every shown symbol must be requested).
 #: The market context every page's header shows beside the selected ticker (Trade Desk,
 #: operator 2026-09-25). Standing demand: measured 2026-09-25, a page whose watchlist did not
@@ -576,17 +615,28 @@ _OVER_BUDGET_REASON_PREFIX = "not admitted: outside the live-stream budget"
 #: this used to be one last-writer-wins slot, so two views (a 0DTE ladder and the
 #: all-expiry grid) replaced each other's set on every render and the daemon swapped ~200
 #: contracts on the shared Schwab socket every few seconds until the socket died.
-#: A declaration is a lease: a live view re-declares every 30 s (DEMAND_REFRESH_MS in
-#: static/js/ed-stream.js), and one not refreshed within OPTION_DEMAND_LEASE_SEC -- a closed
-#: or crashed tab -- stops counting at the next declaration from any view.
-OPTION_DEMAND_LEASE_SEC = 90.0
+#: A view's demand lives as long as the view's push connection (/api/changes,
+#: push_changes.view_open): declared only while it is open, released when its last one closes
+#: (release_option_contract_demand). The page declares again each time the connection opens.
 _option_demand_by_client: "dict[str, dict]" = {}
 _option_demand_lock = threading.Lock()
 
 
+class ViewNotConnectedError(RuntimeError):
+    """A view with no open push connection declared demand: nothing would ever release it."""
+
+
+def _stream_demand_union() -> int:
+    """Stream the union of every view's demand; how many views hold any. Caller holds
+    _option_demand_lock."""
+    live = [v["symbols"] for v in _option_demand_by_client.values() if v["symbols"]]
+    set_active_option_contracts(sorted(set().union(*live)) if live else [])
+    return len(live)
+
+
 def declare_option_contract_demand(client_id: str, contract_symbols: "list[str]", *,
-                                   seq: int, now: "float | None" = None) -> dict:
-    """Record one view's demand and stream the union of every live view's demand.
+                                   seq: int) -> dict:
+    """Record one view's demand and stream the union of every view's demand.
 
     `seq` orders ONE client's declarations (a late, older request from the same view never
     overwrites a newer one: StaleOptionCommandError). Different clients never supersede each
@@ -595,23 +645,28 @@ def declare_option_contract_demand(client_id: str, contract_symbols: "list[str]"
     cid = str(client_id or "").strip()
     if not cid:
         raise ValueError("client_id is required: demand is declared per view")
-    t = time.time() if now is None else float(now)
     requested = sorted({ticker_storage_key(s) for s in (contract_symbols or [])  # caps-ok: a view declaring no contracts is an empty declaration, which releases its demand
                         if ticker_storage_key(s)})
     with _option_demand_lock:
+        if not push_changes.view_open(cid):
+            raise ViewNotConnectedError(f"view {cid} has no open push connection")
         prior = _option_demand_by_client.get(cid)
         if prior is not None and seq <= prior["seq"]:
             raise StaleOptionCommandError(
                 f"demand {requested} from view {cid} (seq {seq}) was superseded by that "
                 f"view's newer declaration (seq {prior['seq']})")
-        _option_demand_by_client[cid] = {"symbols": requested, "seq": seq, "ts": t}
-        for other in [k for k, v in _option_demand_by_client.items()
-                      if t - v["ts"] > OPTION_DEMAND_LEASE_SEC]:
-            del _option_demand_by_client[other]
-        live = [v["symbols"] for v in _option_demand_by_client.values() if v["symbols"]]
-        union = sorted(set().union(*live)) if live else []
-        set_active_option_contracts(union)
-    return {"requested": requested, "demand_views": len(live)}
+        _option_demand_by_client[cid] = {"symbols": requested, "seq": seq}
+        views = _stream_demand_union()
+    return {"requested": requested, "demand_views": views}
+
+
+def release_option_contract_demand(client_id: str) -> None:
+    """A push connection of the view closed: with none left open, its demand ends."""
+    with _option_demand_lock:
+        if push_changes.view_open(client_id) or client_id not in _option_demand_by_client:
+            return
+        del _option_demand_by_client[client_id]
+        _stream_demand_union()
 
 
 def get_active_option_contracts() -> "list[str]":
@@ -683,30 +738,21 @@ def set_active_option_contracts(contract_symbols: "list[str]") -> bool:
 OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 
 
-def _read_producer_option_contracts() -> dict[str, list[str]]:
-    """What Schwab holds per option service, from the daemon's status; empty when that status
-    is missing or stale (unknown is never confirmation)."""
-    held = (_lmp.daemon_status() or {}).get("held") or {}
+def read_producer_admitted_option_contracts(now: float) -> "dict[str, list[str]]":
+    """What Schwab holds per option service, from the daemon's status at `now`; empty when that
+    status is missing or stale (unknown is never confirmation)."""
+    held = (_lmp.daemon_status(now) or {}).get("held") or {}
     return {s: sorted(held.get(s) or []) for s in OPTION_PRODUCER_SERVICES}
 
 
-def read_producer_admitted_option_contracts() -> "dict[str, list[str]]":
-    """Public wrapper for `_read_producer_option_contracts` (2026-09-16, independent-review
-    follow-up: server.py needs the PRODUCER-confirmed admitted set by name, not the
-    underscore-private one, to distinguish 'admitted' from merely 'desired' when disclosing
-    per-contract subscription state). See that function's own docstring — this is the exact
-    same read, exposed under a name a consumer outside this module is meant to call."""
-    return _read_producer_option_contracts()
+def is_option_producer_daemon_available(now: float) -> bool:
+    """True while the daemon's status is fresh at `now`."""
+    return _lmp.daemon_status(now) is not None
 
 
-def is_option_producer_daemon_available() -> bool:
-    """True while the daemon's status is fresh."""
-    return _lmp.daemon_status() is not None
-
-
-def read_producer_rejected_option_contracts() -> "dict[str, str]":
+def read_producer_rejected_option_contracts(now: float) -> "dict[str, str]":
     """{symbol: Schwab's reason} for option contracts Schwab refused, from the daemon's status."""
-    refused = (_lmp.daemon_status() or {}).get("refused") or {}
+    refused = (_lmp.daemon_status(now) or {}).get("refused") or {}
     return dict(refused.get("LEVELONE_OPTIONS") or {})
 
 
@@ -730,7 +776,7 @@ def _pick_producer_contract(symbols: "list[str]", queried: Optional[str]) -> Opt
 
 
 def get_option_contract_streaming_diagnostics(
-    for_contract: Optional[str] = None,
+    for_contract: Optional[str], now: float,
 ) -> dict[str, Any]:
     """FRESHNESS/HEALTH for the option-contract feed. Answers
     "is the daemon actually subscribed and receiving data for this contract", distinct
@@ -750,8 +796,7 @@ def get_option_contract_streaming_diagnostics(
     health FAILS CLOSED — there is no live evidence about A while the feed is bound
     to B, and absence of evidence must never render as healthy. `for_contract=None`
     (no caller-specified subject) keeps the historical whole-plane answer, with
-    `contract_match` left None rather than fabricated."""
-    now = time.time()
+    `contract_match` left None rather than fabricated. `now`: epoch seconds."""
     queried = ticker_storage_key(for_contract) if for_contract else None
     # RC-UI-3 finding #4 (2026-09-12), REPRODUCED: `last`/`stale_ms` used to read ONLY the
     # single global `_option_streaming_last_update_ts`, which every contract's rows (primary
@@ -764,7 +809,7 @@ def get_option_contract_streaming_diagnostics(
     # the one live rule (live_market_plane.feed_live_for): the daemon's heartbeat is current,
     # its Schwab socket is open, and it holds this contract
     subject = queried or _active_option_contract
-    healthy = bool(_feed_running and subject and _lmp.feed_live_for(subject, "LEVELONE_OPTIONS"))
+    healthy = bool(_feed_running and subject and _lmp.feed_live_for(subject, "LEVELONE_OPTIONS", now))
 
     # Contract binding: compare on the SAME canonical key set_active_option_contract
     # stores (ticker_storage_key), so a caller passing the raw chain "symbol" string
@@ -777,7 +822,7 @@ def get_option_contract_streaming_diagnostics(
     # requested state alone would green B during exactly that window. Producer truth is
     # read from the CANONICAL open coverage epochs in the same stream DB, and a full
     # contract match now requires requested AND both producer services to agree.
-    producer = _read_producer_option_contracts()
+    producer = read_producer_admitted_option_contracts(now)
     contract_match: Optional[bool] = None
     if queried:
         # Independent-review finding (2026-09-12): this used to recognize ONLY the
@@ -827,8 +872,8 @@ def get_option_contract_streaming_diagnostics(
         "streaming_staleness_ms": stale_ms,
         "streaming_healthy": healthy,
         "feed_health": {"replay": "not connected" if not _feed_running else "healthy" if healthy else "stale",
-                        "l1": _service_feed(subject, "LEVELONE_OPTIONS"),
-                        "book": _service_feed(subject, "OPTIONS_BOOK")},
+                        "l1": _service_feed(subject, "LEVELONE_OPTIONS", now),
+                        "book": _service_feed(subject, "OPTIONS_BOOK", now)},
     }
 
 

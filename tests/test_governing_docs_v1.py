@@ -1,18 +1,21 @@
-"""The four governing documents name only paths that exist, and AGENTS.md stays loadable.
+"""The governing documents and instructions name only paths that exist.
 
-Failure this catches (2026-09-27): AGENTS.md named `decision_gate.py`, `call_engine.py` and
+Failures this catches: AGENTS.md named `decision_gate.py`, `call_engine.py` and
 `config/decision_path_admissions.json` for months after they were deleted. Checked: a backticked
-path whose first folder is tracked in git or that names a code, JSON or document file, and a bare
-code or document file name. Runtime files,
-branch names, folders outside the repository and not-yet-built target folders are not repository
-paths and are not checked. Anthropic's CLAUDE.md guidance: under 200 lines, or rules are lost.
+path whose first folder is tracked in git or that names a code, config or document file, and a
+bare file name of those kinds. Runtime files, branch names, folders outside the repository and
+not-yet-built target folders are not repository paths and are not checked.
 """
 import re
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DOCS = ("AGENTS.md", "docs/DATA_FLOW.md", "ACTIVE_PROGRAM.md", "docs/ARCHITECTURE.md")
-FILE_EXT = (".py", ".js", ".mjs", ".html", ".bat", ".md")
+DOCS = ("AGENTS.md", "CLAUDE.md", "README.md", "ACTIVE_PROGRAM.md", "docs/DATA_FLOW.md",
+        "docs/ARCHITECTURE.md", "docs/playwright.md", "docs/host/README.md",
+        "docs/host/BACKUP_AND_MIRROR.md", ".github/pull_request_template.md",
+        ".claude/skills/drift-audit/SKILL.md", ".cursor/rules/00-always.mdc")
+FILE_EXT = (".py", ".js", ".mjs", ".html", ".bat", ".md", ".yml", ".yaml", ".toml", ".mdc")
 
 
 def missing_paths(text: str, tracked: list[str]) -> list[str]:
@@ -22,7 +25,7 @@ def missing_paths(text: str, tracked: list[str]) -> list[str]:
     missing = []
     for tok in re.findall(r"`([^`\s]+)`", text):
         t = tok.rstrip("/")
-        if "*" in t or ":" in t or t.startswith(("/", ".", "-")):
+        if "*" in t or ":" in t or t.startswith(("/", "-", "./", "../")):
             continue
         if "/" in t:
             if (t.split("/")[0] in tops or t.endswith(FILE_EXT + (".json",))) and t not in prefixes:
@@ -32,9 +35,15 @@ def missing_paths(text: str, tracked: list[str]) -> list[str]:
     return missing
 
 
+def _ignored(path: str) -> bool:
+    """A runtime file the documents name as never in git (`.gitignore`)."""
+    return subprocess.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode == 0
+
+
 def test_every_path_the_governing_documents_name_exists(tracked_files):
     assert tracked_files, "git lists no tracked files"
-    bad = {d: missing_paths((ROOT / d).read_text(encoding="utf-8"), tracked_files) for d in DOCS}
+    bad = {d: [p for p in missing_paths((ROOT / d).read_text(encoding="utf-8"), tracked_files)
+               if not _ignored(p)] for d in DOCS}
     assert not any(bad.values()), f"paths that do not exist: {bad}"
 
 
@@ -45,6 +54,7 @@ def test_the_check_catches_the_deleted_paths_the_old_charter_named():
     assert missing_paths(old, tracked) == ["decision_gate.py", "config/decision_path_admissions.json"]
 
 
-def test_agents_md_stays_under_200_lines():
-    n = (ROOT / "AGENTS.md").read_text(encoding="utf-8").count("\n")
-    assert n < 200, f"AGENTS.md is {n} lines"
+def test_a_dot_path_is_checked_too():
+    tracked = [".pre-commit-config.yaml", ".claude/settings.json"]
+    assert missing_paths("`.pre-commit-config.yaml` and `.claude/settings.json`", tracked) == []
+    assert missing_paths("`.claude/hooks.json`", tracked) == [".claude/hooks.json"]

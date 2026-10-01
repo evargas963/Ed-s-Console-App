@@ -21,16 +21,15 @@ TRUSTED = GAMMA_FLIP_TRUSTED
 
 
 def test_above_flip_is_long_gamma_and_fades() -> None:
-    r = build_terrain_read(spot=750.0, flip=740.0, flip_confidence=TRUSTED,
-                           put_wall=735.0, call_wall=760.0, gamma_at_spot=2.5e8)
+    r = build_terrain_read(spot=750.0, flip=740.0, flip_confidence=TRUSTED, gamma_at_spot=2.5e8)
     assert r.regime == REGIME_LONG_GAMMA
     assert r.posture == POSTURE_FADE
     assert "do not chase" in r.headline.lower()
+    assert (r.regime_reason, r.flip_caveat) == ("", "")
 
 
 def test_below_flip_is_short_gamma_and_follows() -> None:
-    r = build_terrain_read(spot=743.29, flip=745.61, flip_confidence=TRUSTED,
-                           put_wall=740.0, call_wall=745.0, gamma_at_spot=-1.1e8)
+    r = build_terrain_read(spot=743.29, flip=745.61, flip_confidence=TRUSTED, gamma_at_spot=-1.1e8)
     assert r.regime == REGIME_SHORT_GAMMA
     assert r.posture == POSTURE_FOLLOW
     assert "do not fade" in r.headline.lower()
@@ -42,9 +41,9 @@ def test_regime_is_the_signed_gamma_at_spot_only() -> None:
     """T-07 (2026-09-24): no spot-vs-flip fallback. No signed gamma, or exactly zero (spot
     AT the flip), is no regime -- not a side picked from the flip."""
     for g in (None, 0.0):
-        r = build_terrain_read(spot=750.0, flip=740.0, flip_confidence=TRUSTED,
-                               put_wall=735.0, call_wall=760.0, gamma_at_spot=g)
+        r = build_terrain_read(spot=750.0, flip=740.0, flip_confidence=TRUSTED, gamma_at_spot=g)
         assert r.regime not in (REGIME_LONG_GAMMA, REGIME_SHORT_GAMMA), g
+        assert r.regime_reason == "Dealer gamma at spot is zero or unknown, so the regime cannot be determined."
 
 
 
@@ -58,6 +57,7 @@ def test_missing_inputs_fail_closed() -> None:
         r = build_terrain_read(spot=spot, flip=flip, flip_confidence=conf)
         assert r.regime == REGIME_UNAVAILABLE
         assert r.posture == POSTURE_STAND_ASIDE
+        assert r.regime_reason, "no regime is never issued without its reason"
 
 
 def test_the_regime_is_read_by_one_rule_for_every_instrument(pin_clock):

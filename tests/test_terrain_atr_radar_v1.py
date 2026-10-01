@@ -51,9 +51,9 @@ def test_bars1m_endpoint_serves_canonical_bars_shape(monkeypatch):
     body = json.loads(srv.get_bars1m(ticker="SPY", limit=5, tf="1").body)
     assert body["ticker"] == "SPY" and len(body["bars"]) == 5
     row = body["bars"][-1]
-    # each bar carries its served change (live_price_rows.with_change: the bar change is served,
-    # the page computes nothing)
-    assert set(row) == {"t", "o", "h", "l", "c", "v", "chg", "chg_pct"}
+    # each bar carries its served change, its label and its volume's text (live_price_rows.
+    # served_bar: the page computes and formats nothing; the volume text since 2026-10-01)
+    assert set(row) == {"t", "o", "h", "l", "c", "v", "v_text", "chg", "chg_pct", "label"}
     assert (row["t"], row["c"]) == (rows[-1][0], rows[-1][4])
     ts = [b["t"] for b in body["bars"]]
     assert ts == sorted(ts), "bars must be newest-last (ascending time)"
@@ -62,113 +62,42 @@ def test_bars1m_endpoint_serves_canonical_bars_shape(monkeypatch):
     assert [(b["t"], b["o"], b["h"], b["l"], b["c"], b["v"]) for b in full] == rows
 
 
-def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
-    """Flip-drift row (register, due 2026-07-31): each terrain compute appends one
-    JSONL row; flip=None is absence and appends nothing. Drives the REAL logger."""
-    import json as _json
-
-    import server as srv
-
-    # RC-58: the timestamp must be a REAL trading session. The question this log answers is
-    # INTRADAY flip drift, and its first week was 784 of 784 rows from one SUNDAY window (spot
-    # frozen), which measured a median 0.023% move and would have been read as "the flip is
-    # stable intraday". 1784296800.0 = Fri 2026-07-17 10:00 ET, a covered trading day.
-    RTH_TS = 1784296800.0
-    NON_TRADING_TS = 1784383200.0          # Sat 2026-07-18 10:00 ET
-
-    p = tmp_path / "flip_drift_log.jsonl"
-    monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", p)
-    srv._log_flip_drift("SPY", {"gamma_flip": 745.25, "spot": 746.1,
-                                "confidence": "TRUSTED",
-                                "computed_ts_utc": RTH_TS})
-    srv._log_flip_drift("QQQ", {"gamma_flip": None, "spot": 500.0})
-    # Market-closed computes must NOT be logged — they manufacture a false "flip is stable".
-    srv._log_flip_drift("IWM", {"gamma_flip": 222.0, "spot": 223.0,
-                                "confidence": "TRUSTED",
-                                "computed_ts_utc": NON_TRADING_TS})
-    lines = p.read_text(encoding="utf-8").strip().splitlines()
-    assert len(lines) == 1, "None flip and market-closed rows must not be logged"
-    row = _json.loads(lines[0])
-    assert row["ticker"] == "SPY" and row["flip"] == 745.25
-    assert row["spot"] == 746.1 and row["confidence"] == "TRUSTED"
-    assert row["ts_utc"] == RTH_TS
-
-
-def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
-    """Seam: _terrain_refresh_one must call the logger AFTER a successful cache
-    write; a TypeError inside the logger must not turn ok: into error:."""
-    import server as srv
-    monkeypatch.setattr(srv, "_is_loggable_session", lambda: True)   # an open-market test
-    # its own cache: the SPY levels it publishes (a non-numeric flip below) must not reach
-    # another test's /api/levels (they did, 2026-09-28, under CI's file-to-worker split)
-    monkeypatch.setattr(srv, "_terrain_cache", {})
-
-    calls: list = []
-    real = srv._log_flip_drift
-
-    def _spy(tk, payload):
-        calls.append((tk, payload.get("gamma_flip")))
-        real(tk, payload)
-
-    # This test proves the logger is WIRED into the refresh seam; the session POLICY is covered
-    # separately by test_flip_drift_logger_appends_real_jsonl. _log_flip_drift stamps time.time()
-    # when the payload carries no computed_ts_utc, so without pinning the calendar authority this
-    # assertion would pass or fail depending on the day the suite happens to run (RC-58).
-    import time_et as _te
-    monkeypatch.setattr(_te, "is_tradable_session_ts_utc", lambda _ts: True)
-    monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", tmp_path / "flip.jsonl")
-    monkeypatch.setattr(srv, "_log_flip_drift", _spy)
-    monkeypatch.setattr(srv, "get_client", lambda: object())
-
-    class _Resp:
-        status_code = 200
-
-        def json(self):
-            return {}
-
-    monkeypatch.setattr(srv, "_gated_safe_get_chain", lambda *_a, **_k: (_Resp(), 0, 0))
-    monkeypatch.setattr(srv, "flatten_chain_contracts", lambda _j: [])
-    monkeypatch.setattr(srv, "resolve_spot", lambda _tk, **_kw: (100.0, "test", 1.0))
-
-    from terrain_engine import TerrainSnapshot
-
-    monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: TerrainSnapshot(
-        ticker="SPY", spot=100.0, gamma_flip=99.5, confidence="TRUSTED"))
-    from terrain_atr import AtrPair
-    monkeypatch.setattr(srv, "_atr_pair", lambda _tk: AtrPair(1.0, 0.2))
-
-    out = srv._terrain_refresh_one("SPY")
-    assert out == "ok:TRUSTED"
-    assert calls == [("SPY", 99.5)], "logger must run on the terrain refresh seam"
-    assert (tmp_path / "flip.jsonl").is_file()
-
-    # Fail-soft: non-numeric flip would raise inside float() — terrain must stay ok:
-    monkeypatch.setattr(srv, "_log_flip_drift", real)
-
-    monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: TerrainSnapshot(
-        ticker="SPY", spot=100.0, gamma_flip="not-a-number", confidence="TRUSTED"))
-    out2 = srv._terrain_refresh_one("SPY")
-    assert out2 == "ok:TRUSTED", "flip-drift failure must stay fail-soft"
-
-
-def test_terrain_strikes_endpoint_shape_and_scopes():
+def test_terrain_strikes_endpoint_shape_and_scopes(monkeypatch, pin_clock):
     """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three
-    expiry scopes for today + prior capture, sorted by strike, read-only."""
+    expiry scopes for today + prior capture, sorted by strike, read-only. The real SPY 0DTE chain
+    is published first (the test used to read an empty cache and skip every row assertion).
+    Stand-in (named): the live price, the chain's own underlying price."""
+    import json
+    import time
+    from pathlib import Path
+
     import server as srv
     from fastapi.testclient import TestClient
 
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_0dte_chain.json")
+                    .read_text(encoding="utf-8"))
+    pin_clock(2026, 9, 22, 12, 46)                                   # the chain's capture
+    monkeypatch.setattr(srv, "_terrain_cache", {})
+    monkeypatch.setattr(srv, "last_capture_per_day", lambda *a, **k: [])
+    monkeypatch.setattr(srv, "resolve_spot", lambda t, **k: (float(fx["spot"]), srv.SPOT_SOURCE_PLANE, time.time()))
+    srv._publish_levels("SPY", [dict(c) for c in fx["chain"]], time.time(), now=time.time())
     client = TestClient(srv.app)
     r = client.get("/api/terrain/strikes?ticker=SPY")
     assert r.status_code == 200
     body = r.json()
     assert body["ticker"] == "SPY"
-    for side in ("today", "prior"):
-        assert set(body[side]) == {"all", "near", "far"}
+    # today's and the prior day's rows have one shape: the scopes, the count of contracts whose
+    # settlement cannot be determined (in no row) and, with no rows, why -- the reason the
+    # per-strike gamma panel prints (the fourth review restored it: the page had its own words).
+    # No prior capture here: the prior rows are absent with their reason and no count
+    shape = {"all", "near", "far", "expiry_unknown", "absent_reason"}
+    assert set(body["today"]) == shape and body["today"]["expiry_unknown"] == 0 and body["today"]["absent_reason"] is None
+    assert set(body["prior"]) == shape and body["prior"]["expiry_unknown"] is None
+    assert body["prior"]["absent_reason"] == "no chain capture from the market day before the chain's"
     rows = body["today"]["all"]
-    if rows:
-        assert all(len(x) == 3 for x in rows)
-        ks = [x[0] for x in rows]
-        assert ks == sorted(ks), "strikes must be ascending"
-        # near+far partition the chain: no scope may exceed ALL
-        assert len(body["today"]["near"]) <= len(rows)
-        assert len(body["today"]["far"]) <= len(rows)
+    assert rows and all(len(x) == 3 for x in rows)
+    ks = [x[0] for x in rows]
+    assert ks == sorted(ks), "strikes must be ascending"
+    # near+far partition the chain: no scope may exceed ALL
+    assert len(body["today"]["near"]) <= len(rows)
+    assert len(body["today"]["far"]) <= len(rows)

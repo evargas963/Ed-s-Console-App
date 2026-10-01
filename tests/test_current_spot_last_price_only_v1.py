@@ -37,8 +37,10 @@ def test_plane_mark_only_tick_never_creates_current_spot() -> None:
         {"key": "MARKNEVER", "MARK": 20.95, "BID_PRICE": 20.9, "ASK_PRICE": 21.1},
         received_ts=time.time(),
     )
-    assert ok is False
-    assert L.get_quote("MARKNEVER") is None
+    # the row is published (its bid and ask are Schwab's quote, shown -- operator 2026-10-01), but
+    # MARK never becomes its spot
+    assert ok is True
+    assert L.get_quote("MARKNEVER")["spot"] is None
     spot, source, _ts = server.resolve_spot("MARKNEVER")
     assert spot is None
     assert source == "none"

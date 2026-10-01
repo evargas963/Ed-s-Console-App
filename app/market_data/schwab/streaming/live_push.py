@@ -9,17 +9,34 @@ not in the live path.
 
 What is forwarded -- Schwab only, by each message's `src` (anything else published on
 the same topics is refused):
-  quote.SYM    src "schwab_l1"          LEVELONE_EQUITIES
   book.SYM     src "schwab_book"        NASDAQ_BOOK / NYSE_BOOK / OPTIONS_BOOK (by `service`)
   optquote.SYM src "schwab_options_l1"  LEVELONE_OPTIONS
+  news.SYM     src "schwab_news"        NEWS_HEADLINE
+  bar1m.SYM    src "schwab_chart"       CHART_EQUITY
+  barhist.SYM  src "schwab_pricehistory" one reply of Schwab's 1-minute price history (live_ui),
+                                        for the console's bar writer to backfill
+  barstate.SYM src "live_ui"            the daemon's verdict on the symbol's bars: today's
+                                        minutes covered through now or not (with the reason);
+                                        state, so the last one is sent on connect
+  bardays.SYM  src "schwab_pricehistory_daily"  Schwab's daily candles of the days before today
+                                        (live_ui), for the daily chart and the daily ATR; state,
+                                        so the last one is sent on connect
+  barheld.SYM  src "live_ui_held"       the daemon's held minutes of the day, each with its own
+                                        source, for the console's bar writer to backfill what it
+                                        missed while away (insert-only); read from live_ui and sent
+                                        once on connect, never published, never as bar events
+An equity's quote (quote.SYM, LEVELONE_EQUITIES) is not forwarded: the daemon turns it into the
+price row it pushes on live_ui, which the console reads like a browser does.
 
 On connect a client first receives the CURRENT STATE, then every new message live. Schwab's
 LEVELONE services send only the fields that changed, so "the last message" is not the state:
-it usually lacks LAST_PRICE, CLOSE_PRICE or the Greeks. For quote.* and optquote.* the server
-therefore keeps, per symbol, the latest message that carried each field (FieldHistory) and
-replays those messages in receive order -- every field arrives exactly as streamed, with the
-receive time of the message that actually carried it, so no old value is made to look new.
-book.* messages are whole books, so the last one is the state.
+it usually lacks the Greeks or a price. For optquote.* the server therefore keeps, per
+contract, the latest message that carried each field (FieldHistory) and replays those
+messages in receive order -- every field arrives exactly as streamed, with the receive time
+of the message that actually carried it, so no old value is made to look new. book.* messages
+are whole books, so the last one is the state. A 1-minute bar (bar1m.*) or a headline (news.*)
+is an event, not state: a console that connects or reconnects gets only the ones published
+after it connected.
 
 Wire format: one JSON text frame per message, {"topic": str, "msg": {...}}.
 """
@@ -40,23 +57,25 @@ LIVE_PUSH_HOST = "127.0.0.1"
 #: receive the real daemon's live data.
 LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: operator port config with its declared default, not market data
 
-#: topic prefix -> the only `src` forwarded for it
-_FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwab_options_l1",
-              "news.": "schwab_news", "bar1m.": "schwab_chart"}
+#: topic prefix -> the only `src`es forwarded for it
+_FORWARDED = {"book.": ("schwab_book",), "optquote.": ("schwab_options_l1",),
+              "news.": ("schwab_news",), "bar1m.": ("schwab_chart",),
+              "barhist.": ("schwab_pricehistory",), "barstate.": ("live_ui",),
+              "bardays.": ("schwab_pricehistory_daily",)}
 
 
 def is_forwarded(topic: str, msg) -> bool:
     if not isinstance(msg, dict):
         return False
-    for prefix, src in _FORWARDED.items():
+    for prefix, srcs in _FORWARDED.items():
         if topic.startswith(prefix):
-            return msg.get("src") == src
+            return msg.get("src") in srcs
     return False
 
 
 class FieldHistory:
-    """Per symbol: the latest message that carried each field. `replay()` returns those
-    messages (deduplicated) in receive order."""
+    """Per option contract: the latest message that carried each field. `replay()` returns
+    those messages (deduplicated) in receive order."""
 
     def __init__(self) -> None:
         self._by_topic: "dict[str, dict[str, tuple[float, int]]]" = {}
@@ -66,15 +85,10 @@ class FieldHistory:
         self._refs: "dict[int, int]" = {}
         self._seq = 0
 
-    @staticmethod
-    def payload(topic: str, msg: dict) -> "dict | None":
-        body = msg.get("native") if topic.startswith("quote.") else msg.get("content")
-        return body if isinstance(body, dict) else None
-
     def record(self, topic: str, msg: dict) -> None:
-        body = self.payload(topic, msg)
+        body = msg.get("content")
         ts = msg.get("ts_recv")
-        if body is None or not isinstance(ts, (int, float)):
+        if not isinstance(body, dict) or not isinstance(ts, (int, float)):
             return
         self._seq += 1
         sid = self._seq
@@ -107,7 +121,7 @@ class FieldHistory:
 
 
 def is_field_delta_topic(topic: str) -> bool:
-    return topic.startswith("quote.") or topic.startswith("optquote.")
+    return topic.startswith("optquote.")
 
 
 def encode(topic: str, msg: dict) -> str:
@@ -119,7 +133,7 @@ HEARTBEAT_SEC = 1.0
 
 
 async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
-                        heartbeat_fn=None, on_wanted=None) -> None:
+                        heartbeat_fn=None, on_wanted=None, held_fn=None) -> None:
     """Send the last values, then every live message, until the connection closes.
 
     The send loop runs as its own task and this handler waits on the CONNECTION: a loop
@@ -129,13 +143,18 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
     stats["clients"] += 1
 
     async def _pump() -> None:
-        # current state first: field-delta topics from their field history, books from
-        # the bus's last value (a book message is a whole book)
+        # current state first: option quote fields from their field history, books and bar states
+        # from the bus's last value (each message is the whole state). A bar or a headline is a
+        # past event, not state: never resent.
         for topic, msg in history.replay():
             await ws.send(encode(topic, msg))
         for topic, msg in list(bus.snapshot().items()):
-            if not is_field_delta_topic(topic) and is_forwarded(topic, msg):
+            if topic.startswith(("book.", "barstate.", "bardays.")) and is_forwarded(topic, msg):
                 await ws.send(encode(topic, msg))
+        # the daemon's held minutes of the day, read once now that this connection's queue exists
+        # (live_ui.held_minutes: every bar published before it is held, every later one is in it)
+        for topic, msg in (await held_fn()) if held_fn is not None else ():
+            await ws.send(encode(topic, msg))
         loop = asyncio.get_running_loop()
         next_beat = loop.time()
         while True:
@@ -186,8 +205,10 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
 async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
                           host: str = LIVE_PUSH_HOST, port: int = LIVE_PUSH_PORT,
                           stats: "dict | None" = None, heartbeat_fn=None,
-                          on_wanted=None) -> None:
-    """Run the push server until `stop` is set. `stats` (mutated) reports clients/sent/dropped."""
+                          on_wanted=None, held_fn=None) -> None:
+    """Run the push server until `stop` is set. `stats` (mutated) reports clients/sent/dropped.
+    `held_fn`: the daemon's held minutes of the day (live_ui.LiveUiServer.held_minutes), sent to
+    each console once on its connect."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
@@ -205,7 +226,7 @@ async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
                 history.record(topic, msg)
 
     async def handler(ws):
-        await _serve_client(ws, bus, stats, history, heartbeat_fn, on_wanted)
+        await _serve_client(ws, bus, stats, history, heartbeat_fn, on_wanted, held_fn)
 
     tracker = asyncio.create_task(_track())
     try:

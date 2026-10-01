@@ -481,10 +481,11 @@
       // above), so a column's tooltip only ever distinguishes expired vs the real
       // accept/observed/rejected outcome (demandTitle), never a client-guessed capacity cut.
       var streamed = !!demandColSet[j];
-      var dte = expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
+      var unknown = e.settlement_unknown_reason;   // served: its settlement cannot be determined
+      var dte = expired ? 'EXPIRED' : unknown ? 'SETTLES ?' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
       var title = expired
         ? 'this expiration has already expired — a prior-session column kept for reference, not current structure'
-        : demandTitle(streamed, (surface.stream_by_expiry || {})[e.expiry]);
+        : unknown || demandTitle(streamed, (surface.stream_by_expiry || {})[e.expiry]);
       tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') + (streamed ? ' stream-demand' : '') + '"' +
         ' data-col="' + j + '" title="' + escapeHtml(title) + '"' +
         '><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
@@ -535,8 +536,11 @@
         var liveState = cellState ? cellState.state : null;
         var st = cellStyle(v, maxAbs, heat);
         var priorKey = row.strike + '|' + exps[j2].expiry;
-        var justChanged = _priorSurfaceForFlash &&
-          Object.prototype.hasOwnProperty.call(priorValues, priorKey) && priorValues[priorKey] !== v;
+        // a change starts the cell's flash; any rebuild while it runs (a repaint of the same
+        // surface, a refetch with no change) keeps it, so a rebuild never cuts it short
+        if (_priorSurfaceForFlash && Object.prototype.hasOwnProperty.call(priorValues, priorKey)
+            && priorValues[priorKey] !== v) _flashUntil[priorKey] = Date.now() + FLASH_MS;
+        var justChanged = (_flashUntil[priorKey] || 0) > Date.now();
         // "Never mislabel snapshot data as live": a non-live cell's title discloses exactly
         // that, with its own last-confirmed age when one is known -- the SAME per-leg
         // ts_recv/age_sec the API already carries, never fabricated here.
@@ -659,6 +663,8 @@
 
   // ---- fetch + render, guarded (latest-wins) ----
   var _lastSurface = null, _lastRevision = null;
+  // per cell ("strike|expiry"), when its just-changed flash ends (the CSS animation's length)
+  var _flashUntil = {}, FLASH_MS = 900;
   // Streaming-demand confirmation state (2026-09-13) — see the demand-dispatch block in
   // renderSurface for why this exists: `demandCols` is only a REQUEST, not a guarantee.
   //
@@ -716,8 +722,7 @@
     if (!live || stale) {
       var warming = !live && surface.warming === true;
       var requested = !live && !warming && surface.requested === true;
-      // No reference surface exists (operator rule 2026-09-23: no fallbacks) -- a surface that is
-      // not live is simply absent; the state says why.
+      // A surface that is not live is absent; the state says why.
       // WHERE the live surface stands (state)
       var stateLabel = warming ? 'LIVE SURFACE WARMING'
         : requested ? 'LIVE SURFACE REQUESTED'

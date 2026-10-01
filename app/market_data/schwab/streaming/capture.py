@@ -12,7 +12,9 @@ It does four things, in one loop:
   2. SYNC    Every SYNC_SEC it compares wanted with what Schwab has accepted on this
              connection and sends the difference: UNSUBS for what is no longer wanted, then
              SUBS (the first request of a service) or ADD (every later one -- a repeated SUBS
-             can replace the whole set). Requests are split so none exceeds Schwab's 64 KB
+             can replace the whole set). The equity services (EQUITY_SERVICES) also want the
+             board (standing_roster, read at the daemon's start) and are only added to on a
+             connection: the console's list adds symbols on top, never removes one. Requests are split so none exceeds Schwab's 64 KB
              message limit (measured 2026-09-22: a 71 KB request closed the socket).
              Schwab's answer to every request goes to the stream_subscriptions table. A symbol
              Schwab refused is not asked for again until the console's list changes.
@@ -34,14 +36,22 @@ import asyncio
 import json
 import logging
 import os
+import sqlite3
 import sys
 import time
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
+from calibration.complete_chain_capture import board_tickers  # noqa: E402
+from db_authority import canonical_console_db_path  # noqa: E402
 from stream_spine import (  # noqa: E402
+    CONNECTION,
+    CONNECTION_CLOSED,
+    CONNECTION_LOSS,
     COUNT_DROPS,
     CaptureWriter,
     HealthRegistry,
@@ -54,6 +64,7 @@ from stream_spine import (  # noqa: E402
     resolve_stream_db_path,
     subscription_msg,
 )
+from time_et import ET, ct_label  # noqa: E402
 
 log = logging.getLogger("capture")
 
@@ -115,14 +126,44 @@ def save_wanted(path: Path, wanted: "dict[str, frozenset[str]]") -> None:
     os.replace(tmp, path)
 
 
+#: The equity services: the daemon's standing board roster plus the console's demand, only ever
+#: added to on a connection -- a console (re)connect, its partial first list or a page closing
+#: never unsubscribes one, so no symbol's stream (its 1-minute bars) is cut and re-added.
+EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
+
+
+@dataclass(frozen=True)
+class StandingRoster:
+    """The board's equity symbols the daemon streams whatever the console's list says, or none
+    with the reason they could not be read (`problem`)."""
+    symbols: "frozenset[str]"
+    problem: "str | None" = None
+
+
+def standing_roster(db_path: "Path | str") -> StandingRoster:
+    """The board (the console's logging_universe table), read once, at the daemon's start (the
+    database is read at startup only). Unreadable: the daemon still starts and streams the
+    console's list; the roster is unavailable with the reason (logged, and in every status)
+    until the daemon's next start."""
+    try:
+        return StandingRoster(frozenset(board_tickers(db_path)))
+    except (sqlite3.Error, OSError) as e:
+        problem = f"the board could not be read from {db_path} ({type(e).__name__}: {e}); streaming the console's list only"
+        log.error("standing roster unavailable: %s", problem)
+        return StandingRoster(frozenset(), problem)
+
+
 def plan(wanted: "dict[str, frozenset[str]]", held: "dict[str, frozenset[str]]",
-         refused: "dict[str, dict[str, str]]") -> "list[tuple[str, str, list[str]]]":
+         refused: "dict[str, dict[str, str]]", standing: "frozenset[str]") -> "list[tuple[str, str, list[str]]]":
     """The Schwab requests that turn `held` into `wanted`: [(service, command, symbols)].
-    Per service: UNSUBS what is held but not wanted, then SUBS (nothing held yet) or ADD the
-    wanted symbols not held and not refused. Pure function -- the whole sync decision."""
+    Per service: UNSUBS what is held but not wanted (never on an equity service: it wants what
+    it holds and the `standing` roster too), then SUBS (nothing held yet) or ADD the wanted
+    symbols not held and not refused. Pure function -- the whole sync decision."""
     out: "list[tuple[str, str, list[str]]]" = []
     for svc in SERVICES:
         want, have = wanted.get(svc, frozenset()), held.get(svc, frozenset())
+        if svc in EQUITY_SERVICES:
+            want = want | standing | have
         drop = sorted(have - want)
         add = sorted(want - have - set(refused.get(svc, {})))
         if drop:
@@ -249,14 +290,20 @@ def _connection_lost(e: BaseException) -> bool:
 # ---------------------------------------------------------------------------- the daemon
 
 class Daemon:
-    def __init__(self, bus: MessageBus, health: HealthRegistry, path: Path) -> None:
+    def __init__(self, bus: MessageBus, health: HealthRegistry, path: Path, roster: StandingRoster) -> None:
         self.bus = bus
         self.health = health
         self.path = path
         self.wanted = load_wanted(path)
+        #: the board's equity symbols, streamed whatever the console's list says (standing_roster)
+        self.roster = roster
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
+        #: the daemon's one Schwab client (the stream's, also every price-history request's), or
+        #: None with the reason it could not be built (`client_problem`: Schwab's own message)
+        self.client = None
+        self.client_problem = "the daemon has not signed in to Schwab yet"
 
     def set_wanted(self, raw) -> None:
         """The console's list (live_push calls this for every {"op": "wanted"} frame)."""
@@ -280,10 +327,11 @@ class Daemon:
                 "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "refused": {k: dict(v) for k, v in self.refused.items() if v},
+                "standing_roster": {"symbols": len(self.roster.symbols), "problem": self.roster.problem},
                 "health": self.health.report(now)}
 
     async def sync(self) -> None:
-        for svc, cmd, symbols in plan(self.wanted, self.held, self.refused):
+        for svc, cmd, symbols in plan(self.wanted, self.held, self.refused, self.roster.symbols):
             for chunk in split_request(symbols):
                 try:
                     await _request(self.stream, svc, cmd, chunk)
@@ -321,6 +369,10 @@ class Daemon:
     async def disconnect(self) -> None:
         s, self.stream = self.stream, None
         self.held = {k: frozenset() for k in SERVICES}
+        # every subscription ended with the socket: what the stream covered ends here (live_ui)
+        self.bus.publish(f"sub.{CONNECTION}", subscription_msg(
+            service=CONNECTION, command=CONNECTION_CLOSED, symbols=[], code=0,
+            reason="the Schwab socket closed"))
         if s is not None:
             try:
                 await asyncio.wait_for(s.logout(), timeout=5)
@@ -341,6 +393,10 @@ class Daemon:
                 if _connection_lost(e):
                     raise
                 log.warning("schwab: skipped a frame (%s: %s)", type(e).__name__, str(e)[:250])
+                # whose messages it held cannot be told: every stream may have lost a minute (live_ui)
+                self.bus.publish(f"sub.{CONNECTION}", subscription_msg(
+                    service=CONNECTION, command=CONNECTION_LOSS, symbols=[], code=0,
+                    reason=f"a Schwab frame could not be read ({type(e).__name__})"))
 
     async def run_connection(self, client, stop: asyncio.Event) -> None:
         """One connection's life: sync, read, repeat -- until it dies or stop is set."""
@@ -362,7 +418,9 @@ class Daemon:
             try:
                 state = make_client()
                 if not state.ok or state.client is None:
-                    raise ConnectionError(f"Schwab client: {state.message}")
+                    self.client, self.client_problem = None, f"Schwab client: {state.message}"
+                    raise ConnectionError(self.client_problem)
+                self.client, self.client_problem = state.client, None
                 await self.run_connection(state.client, stop)
             except Exception as e:  # noqa: BLE001 -- every failure is a reconnect
                 log.warning("schwab: connection ended (%s: %s)", type(e).__name__, str(e)[:350])
@@ -467,7 +525,6 @@ async def capture_chains(make_client, stop: asyncio.Event) -> None:
     """The chain history (DATA_FLOW decision 7): at each capture time the full chain of every
     board ticker is fetched and written, in a thread so the stream never waits."""
     from calibration.complete_chain_capture import capture_round, next_capture_ts
-    from db_authority import canonical_console_db_path
     db_path = canonical_console_db_path()
     while True:
         try:
@@ -484,10 +541,95 @@ async def capture_chains(make_client, stop: asyncio.Event) -> None:
             log.exception("chain capture failed")
 
 
+#: Schwab answering HTTP 429 (too many requests) holds every price-history request back for this
+#: long, doubling on each further 429 up to the cap; a reply resets it
+RATE_LIMIT_BACKOFF_FIRST_SEC, RATE_LIMIT_BACKOFF_MAX_SEC = 5.0, 300.0
+
+
+def rate_hold_path(db_path: "Path | str | None" = None) -> Path:
+    return resolve_stream_db_path(db_path).with_name("schwab_rate_hold.json")
+
+
+class HeldBack(Exception):
+    """A request not sent: Schwab's rate limit holds every request back (RateHold)."""
+
+
+class RateHold:
+    """Schwab's HTTP 429 answer to a price-history request holds every one back
+    (RATE_LIMIT_BACKOFF_*), kept at `path` ({"until", "sec"}) so a restart keeps it. The one
+    check of the daemon's price-history requests (schwab_minutes, schwab_days)."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.until, self.sec = float("-inf"), 0.0
+        try:
+            held = json.loads(path.read_text(encoding="utf-8"))
+            self.until, self.sec = float(held["until"]), float(held["sec"])
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            log.warning("schwab: the rate-limit hold at %s cannot be read (%s); none is held", path, e)
+
+    def check(self, now: float) -> None:
+        if now < self.until:
+            raise HeldBack(f"Schwab answered 429 (too many requests): no request until {ct_label(self.until)}")
+
+    def answered(self, status: int, now: float) -> None:
+        """Schwab's HTTP status for a request sent at `now`: 429 holds every request back, any
+        other answer ends the doubling -- both kept at `path` (the end once, after a hold), so a
+        restart neither drops a hold nor resumes a doubling Schwab has ended."""
+        if status != 429:
+            if self.sec:
+                self.sec = 0.0
+                self.path.write_text(json.dumps({"until": self.until, "sec": self.sec}), encoding="utf-8")
+            return
+        self.sec = min(max(self.sec * 2, RATE_LIMIT_BACKOFF_FIRST_SEC), RATE_LIMIT_BACKOFF_MAX_SEC)
+        self.until = now + self.sec
+        self.path.write_text(json.dumps({"until": self.until, "sec": self.sec}), encoding="utf-8")
+        log.warning("schwab: price history answered 429 (too many requests): no request for %.0f s, until %s",
+                    self.sec, ct_label(self.until))
+
+
+def schwab_minutes(daemon: "Daemon", hold: RateHold, clock):
+    """Schwab's 1-minute price history (get_price_history_every_minute, extended hours: the
+    collect window opens at 09:15 ET), as a function (symbol, start, end epoch seconds) -> the
+    candles Schwab sent, asked with the daemon's one Schwab client unless its rate limit holds
+    requests back (`hold`, judged at `clock()`). The daemon is the only caller of Schwab; a failed
+    request raises, and with no client the reason is the client's own (a missing or expired
+    sign-in)."""
+    def fetch(symbol: str, start: float, end: float) -> list:
+        if daemon.client is None:
+            raise ConnectionError(daemon.client_problem)
+        hold.check(clock())
+        r = daemon.client.get_price_history_every_minute(
+            symbol, start_datetime=datetime.fromtimestamp(start, ET),
+            end_datetime=datetime.fromtimestamp(end, ET), need_extended_hours_data=True)
+        hold.answered(r.status_code, clock())
+        r.raise_for_status()
+        return r.json()["candles"]
+    return fetch
+
+
+def schwab_days(daemon: "Daemon", hold: RateHold, clock):
+    """Schwab's daily price history (get_price_history_every_day): (symbol, start, end epoch
+    seconds) -> the daily candles Schwab sent, asked with the daemon's one Schwab client and
+    rate-limit hold, the same way as schwab_minutes."""
+    def fetch(symbol: str, start: float, end: float) -> list:
+        if daemon.client is None:
+            raise ConnectionError(daemon.client_problem)
+        hold.check(clock())
+        r = daemon.client.get_price_history_every_day(
+            symbol, start_datetime=datetime.fromtimestamp(start, ET), end_datetime=datetime.fromtimestamp(end, ET))
+        hold.answered(r.status_code, clock())
+        r.raise_for_status()
+        return r.json()["candles"]
+    return fetch
+
+
 async def run() -> int:
     """The whole daemon: writer, the two local sockets, and the Schwab connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
-    from app.market_data.schwab.streaming.live_ui import serve_live_ui
+    from app.market_data.schwab.streaming.live_ui import LiveUiServer, serve_live_ui
     from config import build_config, load_dotenv_file
     from schwab_client import build_client_from_token
     load_dotenv_file()
@@ -500,21 +642,39 @@ async def run() -> int:
     stop = asyncio.Event()
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
-    daemon = Daemon(bus, health, wanted_path())
+    daemon = Daemon(bus, health, wanted_path(), standing_roster(canonical_console_db_path()))
     wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")
+    hold = RateHold(rate_hold_path())
+    ui = LiveUiServer(bus, daemon.status, {}, clock=time.time, history_fn=schwab_minutes(daemon, hold, time.time),
+                      daily_fn=schwab_days(daemon, hold, time.time))
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(capture_chains(make_client, stop)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
-                                                 on_wanted=daemon.set_wanted)),
-             asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]
+                                                 on_wanted=daemon.set_wanted, held_fn=ui.held_minutes)),
+             asyncio.create_task(serve_live_ui(ui, stop))]
+    return await run_until_a_part_ends(daemon.run(make_client, stop), tasks, stop)
+
+
+async def run_until_a_part_ends(connection, parts: "list[asyncio.Task]", stop: asyncio.Event) -> int:
+    """Run the Schwab `connection` with the daemon's other `parts` until stop -- or until any part
+    ends first, which stops the whole daemon (exit 1, so start_capture_daemon.bat restarts it):
+    a daemon missing a part (its browser push, its record) must not go on looking whole."""
+    main = asyncio.create_task(connection)
     try:
         await asyncio.sleep(0)                    # servers subscribe before the first message
-        await daemon.run(make_client, stop)
+        done, _ = await asyncio.wait({main, *parts}, return_when=asyncio.FIRST_COMPLETED)
+        ended = [t for t in done if t is not main]
+        for t in ended:
+            log.error("capture daemon: %s ended (%r); stopping so it is restarted", t.get_coro().__name__,
+                      "cancelled" if t.cancelled() else t.exception())
+        if ended:
+            return 1
+        main.result()                             # the connection's own failure, raised as before
+        return 0
     finally:
         stop.set()
-        await asyncio.gather(*tasks, return_exceptions=True)
-    return 0
+        await asyncio.gather(main, *parts, return_exceptions=True)
 
 
 def main() -> int:

@@ -104,6 +104,11 @@
     if (!sorted.length) return stage(2, 'td-accent-green', 'Frame — liquidity levels', 'No priced levels', '', 0, [], null);
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) { return [r.label || r.id, num(r.price), r.evidence_tier]; });
+    // the session levels' one served state (server.price_level_staleness), printed: current, the
+    // newest bar's age; otherwise the state's served reason
+    var sl = levelsD.session_levels;
+    if (sl && sl.state === 'current' && levelsD.snapshot_age_sec != null) rows.push(['Session levels', window.EdShell.fmtAge(levelsD.snapshot_age_sec) + ' old']);
+    else if (sl && sl.reason) rows.push(['Session levels', (sl.stale ? 'STALE — ' : '') + sl.reason]);
     var heroVal = (nearest.label || nearest.id) + ' ' + num(nearest.price);
     var heroUnit = nearest.side === 'AT' ? 'at spot' : nearest.side === 'ABOVE' ? num(nearest.distance) + ' above spot'
       : nearest.side === 'BELOW' ? num(-nearest.distance) + ' below spot' : '';
@@ -117,13 +122,22 @@
     var rows = [
       ['Posture', d.posture || '—'], ['Confidence', d.confidence || '—'],
       ['Call wall', num(d.call_wall)], ['Put wall', num(d.put_wall)],
-      ['Gamma flip', num(d.gamma_flip)],
+      ['Gamma flip', d.gamma_flip != null ? num(d.gamma_flip) : (d.gamma_flip_reason || '—')],   // served reason
+    ].concat(d.gamma_flip_caveat ? [['Flip note', d.gamma_flip_caveat]] : []).concat([
       // max pain is per expiry: label it with the expiry the server computed it on (front)
       ['Max pain' + (d.max_pain_dte != null ? ' (' + d.max_pain_dte + 'DTE)' : ''), num(d.max_pain)],
       ['Net GEX @ spot', d.net_gex_at_spot != null ? (Number(d.net_gex_at_spot) / 1e6).toFixed(1) + 'M' : '—'],
-    ];
-    return stage(3, 'td-accent-amber', 'Confirm — options regime', d.regime || '—', '', 0, rows, d.confidence || null,
-      d.confidence === 'TRUSTED' ? 'live' : 'warn');
+      // whether the regime is current, as served: stale with its reason, a past observation
+      // with its time after the close, or its age
+      ['Levels', d.levels_state === 'stale' ? (d.levels_stale_reason || 'stale') : d.levels_state === 'closed' ? 'as of ' + (d.levels_as_of || '—')
+        : d.levels_state === 'live' && d.levels_age_sec != null ? window.EdShell.fmtAge(d.levels_age_sec) + ' old' : '—'],
+      // why no regime is issued, or what every regime rests on (both served)
+      d.regime_reason ? ['No regime', d.regime_reason] : ['Basis', d.regime_basis || '—'],
+    ]);
+    // a stale regime is badged STALE, never by its confidence alone
+    return stage(3, 'td-accent-amber', 'Confirm — options regime', d.regime || '—', '', 0, rows,
+      d.levels_state === 'stale' ? 'STALE' : (d.confidence || null),
+      d.levels_state === 'stale' ? 'stale' : d.confidence === 'TRUSTED' ? 'live' : 'warn');
   }
 
   // ---- Context Summary: plain-English arrangement of the SAME 4 responses. Classifies
@@ -147,8 +161,11 @@
       if (loc.below) parts.push(esc(loc.below.zone_label) + ' zone below at ' + num(loc.below.zone_high) + ' (confluence ' + loc.below.confluence_score + ')');
       lines.push(['Location', parts.length ? 'Between zones — ' + parts.join(', ') : 'No scored zone nearby']);
     }
-    if (terrain && terrain.dist_to_put_wall != null && terrain.dist_to_call_wall != null) {   // served
-      lines.push(['Box', num(terrain.dist_to_put_wall) + ' above put wall, ' + num(terrain.dist_to_call_wall) + ' below call wall']);
+    if (terrain && terrain.dist_to_put_wall != null && terrain.dist_to_call_wall != null) {
+      // the distance to each wall and the side of it spot is on, both served
+      var side = { ABOVE: ' above ', BELOW: ' below ', AT: ' at ' };
+      lines.push(['Walls', num(terrain.dist_to_put_wall) + side[terrain.put_wall_relation] + 'put wall, ' +
+        num(terrain.dist_to_call_wall) + side[terrain.call_wall_relation] + 'call wall']);
     }
     if (!lines.length) return '';
     return '<div class="td-context"><h4>Context summary</h4>' +
@@ -347,8 +364,8 @@
     var totVol = mig ? mig.volume_total : null;   // served: the scope's session volume
     var volNote = '';
     if (totVol === 0) {
-      volNote = strikesD.levels_stale
-        ? '<div class="mig-vol-note stale">zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source badge above</div>'
+      volNote = strikesD.levels_state === 'stale'
+        ?'<div class="mig-vol-note stale">zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source badge above</div>'
         : '<div class="mig-vol-note">no option volume yet this session — the counter resets at the new session and fills from the open</div>';
     }
     // Wiring itself must wait until this HTML is actually in the DOM (loadImpl assigns
@@ -397,15 +414,8 @@
     ]).then(function (results) {
       if (!stillRightNow(tk)) return;
       var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
-      // Independent-review finding, REPRODUCED: this used to fall back to terrain.spot when
-      // levelsD was absent -- both endpoints resolve spot via the same server-side
-      // resolve_spot() authority today (server.py's get_levels/_reprice_cached_terrain), so
-      // it never disagreed in practice, but the shape is exactly what tools/spot_binding_lock.py
-      // exists to ban (RC-225: a spot value chosen from whichever of two independent responses
-      // happened to be present). /api/levels is server.py's own documented canonical serving
-      // contract for spot ("every other surface carries the values out of the same snapshot");
-      // a failed /api/levels now reads as honest absence (blank, see isFinite(spot) below)
-      // instead of silently substituting a second source.
+      // the spot is /api/levels' alone: a failed /api/levels reads as absent (blank, see
+      // isFinite(spot) below), never another response's spot
       // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
       var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
       h.innerHTML =

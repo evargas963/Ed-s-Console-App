@@ -1,15 +1,10 @@
-"""Operating-process mechanical lock (RC-217): two predicates, one owner each.
+"""Operating-process mechanical lock: two predicates, one owner each.
 
-  (a) index≠WT parity on the enforcement paths, at the `operating-process` pre-commit hook —
-      a pre-commit stash strip (RC-215) once committed a checker the working tree did not hold;
-  (b) tree-destructive git — THE one owner of that class, universal hard forms included —
-      and pipe-masked commits (RC-234), consumed by tools/process_lock_guard.py at PreToolUse.
-
-DELETED 2026-09-10 (KEEP/MERGE/DELETE): the re-date rule (`RE-DATED old->new: BLOCKED_ON_*`
-lineage on ledger rows — prose policing of a bookkeeping field; an overdue row is already
-visible debt to `check_root_cause_log`), the orphan-patch heuristic (blocked commits on
-stale pre-commit cache files), and the PreToolUse copy of the index-parity check (the
-pre-commit hook in the target tree is the one owner).
+  (a) index≠WT parity on the enforcement paths (`index_worktree_mismatches`); no hook runs it
+      today;
+  (b) the tree-destructive git actions (`git reset`, `git stash`, `checkout --`, `clean -f`,
+      force push) and pipe-masked commits, consumed by tools/process_lock_guard.py at
+      PreToolUse. The rules live in `AGENTS.md` § Authority.
 """
 from __future__ import annotations
 
@@ -57,10 +52,8 @@ PROTECTED_PATHS: tuple[str, ...] = ENFORCEMENT_PATHS
 #: only flags, not a flag WITH its argument; `git push -f` passed because only the long
 #: spelling was named; `git restore --staged x && git reset --mixed HEAD~1` passed because the
 #: safe list was searched across the WHOLE command, so one safe statement exempted everything
-#: chained after it; and `git reset --soft`, which moves HEAD and leaves index and worktree
-#: untouched, was refused although the repository's own merge authority runs it. The globals
-#: prefix admits an option with its argument; the push clause admits flags after the refspec
-#: and the short `-f`; the class rule is judged PER SEGMENT (below); `--soft` is safe.
+#: chained after it. The globals prefix admits an option with its argument; the push clause
+#: admits flags after the refspec and the short `-f`; the class rule is judged PER SEGMENT.
 _GIT_GLOBAL_WITH_ARG: tuple[str, ...] = (
     "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env")
 _GIT_GLOBALS = (
@@ -68,10 +61,11 @@ _GIT_GLOBALS = (
     + r")(?:=\S+|\s+\S+)\s+|-\S+\s+)*")
 _UNIVERSAL_DESTRUCTIVE_RE = __import__("re").compile(
     r"\bgit\s+" + _GIT_GLOBALS + r"(?:"
-    r"reset\s+--hard"
+    r"reset\b"
+    r"|stash\b(?!\s+(?:list|show)\b)"
     r"|checkout\s+--\s"
     r"|clean\s+-[a-z]*f"
-    r"|push\s+(?:[^|;&]*\s)?(?:--force(?!-with-lease)|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$))"
+    r"|push\s+(?:[^|;&]*\s)?(?:--force|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$))"
     r")",
     __import__("re").I)
 _RESET_GUARD_RE = __import__("re").compile(
@@ -80,7 +74,7 @@ _RESET_GUARD_RE = __import__("re").compile(
     __import__("re").I)
 _RESET_GUARD_SAFE_RE = __import__("re").compile(
     r"\bgit\s+" + _GIT_GLOBALS
-    + r"(reset\s+--soft\b|restore\s+--staged\b(?!.*--worktree)|stash\s+list\b|checkout\s+-b\b"
+    + r"(restore\s+--staged\b(?!.*--worktree)|stash\s+(?:list|show)\b|checkout\s+-b\b"
     r"|clean\s+(?:-\S*n\S*\b|--dry-run\b))",
     __import__("re").I)
 
@@ -157,35 +151,29 @@ def _reset_class_violation(seg: str) -> list[str]:
     bare = not any(tok in seg for tok in (" -- ", ".py", ".html", ".json"))
     if touched or bare:
         return [
-            "RESET_GUARD (LOCK-2/RC-231): tree-destructive git "
+            "RESET_GUARD: tree-destructive git "
             f"({'paths: ' + ', '.join(sorted(set(touched))[:4]) if touched else 'bare/whole-tree form'}) "
-            "— three 2026-08-03 wipes used exactly this class. Not subject-disableable "
-            "(Architecture A / RC-450)."
+            "is refused (AGENTS.md § Authority)."
         ]
     return []
 
 
 def reset_guard_violations(command: str) -> list[str]:
-    """LOCK-2: BLOCK tree-destructive git — the ONE owner of that question (RC-231/RC-252).
+    """Refuse tree-destructive git; the one owner of that question.
 
-    Two clauses, one predicate. The HARD forms (`reset --hard`, `checkout -- <any path>`,
-    `clean -f`, `push --force`/`-f`) discard work whatever they name, so they refuse on sight,
-    on ANY target (host-wide; the checkout in front of the command is irrelevant — RC-258 kept
-    these unscoped on purpose). The CLASS forms (the wider reset/restore/checkout--/clean/stash
-    family) refuse when they touch a protected/product path or take a bare whole-tree shape,
-    judged PER STATEMENT (RC-525) so a safe first statement cannot launder a later one.
-
-    Not subject-disableable (RC-450): no env token or repo file can authorize a wipe.
-    `git reset --soft`, `git restore --staged` (index-only), `git stash list`,
-    `git checkout -b` and `push --force-with-lease` stay legal.
+    Two clauses, one predicate. The hard forms (every `git reset`, every `git stash` but
+    `list`/`show`, `checkout -- <any path>`, `clean -f`, every force push, `--force-with-lease`
+    included) refuse on sight, on any target. The class forms (the wider
+    reset/restore/checkout--/clean/stash family) refuse when they touch a protected or product
+    path or take a bare whole-tree shape, judged per statement so a safe first statement cannot
+    launder a later one. No env token or repo file disables it. `git restore --staged`
+    (index-only) and `git checkout -b` stay legal.
     """
     cmd = _strip_command_payloads(command or "")
     if _UNIVERSAL_DESTRUCTIVE_RE.search(cmd):
         return [
-            "RESET_GUARD (LOCK-2/RC-231): destructive git can discard operator work — "
-            "reset --hard / checkout -- <path> / clean -f / push --force or -f are refused on "
-            "any target (`--force-with-lease` is the safe form). Hand it to the operator. Not "
-            "subject-disableable (RC-450)."
+            "RESET_GUARD: git reset, stash, checkout -- <path>, clean -f and every force push "
+            "are refused on any target (AGENTS.md § Authority)."
         ]
     for seg in _judged_segments(cmd):
         hit = _reset_class_violation(seg)
@@ -301,12 +289,6 @@ def index_worktree_mismatches(
     return out
 
 
-# The enforced-check ROSTER has ONE static reader: tools/check_delta_adds_no_debt.py (the
-# required hardening check compares base vs candidate roster there). The second parser of
-# the same CHECKS literal that lived here had no caller but the measure report — removed
-# 2026-09-10 (KEEP/MERGE/DELETE).
-
-
 _QUOTED_STRING_RE = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'")
 
 
@@ -329,9 +311,9 @@ def commit_pipe_violations(cmd: str) -> list[str]:
     for seg in re.split(r"&&|;|\n", stripped):
         if re.search(r"\bgit\s+commit\b", seg, re.I) and masking_filter.search(seg):
             return [
-                "PIPE_MASKED_COMMIT: `git commit` piped into a filter — the filter's exit "
-                "code replaces the commit's and hook failures vanish (RC-234). Run the "
-                "commit UNPIPED (background task for long hooks), then verify via "
+                "PIPE_MASKED_COMMIT: `git commit` piped into a filter: the filter's exit "
+                "code replaces the commit's and hook failures vanish. Run the commit "
+                "unpiped (a background task for long hooks), then verify with "
                 "`git show --stat`. Escape: '# pipe-ok: <reason>'."
             ]
     return []

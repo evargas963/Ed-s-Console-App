@@ -81,6 +81,9 @@
   .live .dot.warn{background:var(--ed-warn)} .live .dot.stale{background:var(--ed-stale)}
   .sess{font-family:var(--ed-mono);font-size:11px;font-weight:600;letter-spacing:.06em}
   .sess.rth{color:var(--ed-live)} .sess.pre{color:var(--ed-warn)} .sess.ah{color:var(--ed-accent-2)} .sess.closed{color:var(--ed-ink-3)}
+  .hkv[hidden]{display:none}
+  .signin{font-family:var(--ed-sans);font-size:13px;font-weight:600}
+  .signin.warn,.signin.unknown{color:var(--ed-warn)} .signin.red{color:var(--ed-alert)}
   .search{margin-left:auto;display:flex;align-items:center;gap:7px;background:var(--ed-panel);
     border:1px solid var(--ed-edge);border-radius:var(--ed-r);padding:6px 11px;width:280px;color:var(--ed-ink-3)}
   .search input{flex:1;background:none;border:none;outline:none;color:var(--ed-ink);font-family:var(--ed-sans);font-size:12px}
@@ -377,6 +380,8 @@
   /* key levels rail rows — operator rail; roomy rows fill the rail, strong numeric alignment */
   .kl-row{display:flex;align-items:baseline;justify-content:space-between;padding:3.5px 0;border-bottom:1px solid var(--ed-edge-soft)}
   .kl-row:last-child{border-bottom:none}
+  .kl-note{font-size:11.5px;line-height:1.4;color:var(--ed-warn);padding:2px 0 5px;border-bottom:1px solid var(--ed-edge-soft)}
+  .kl-note[hidden]{display:none}
   .kl-row .k{font-size:13px;color:var(--ed-ink-2);letter-spacing:.01em}
   .kl-row .k .kl-scope{font-size:10px;color:var(--ed-ink-4);margin-left:6px;letter-spacing:.02em}   /* per-row scope disclosure (e.g. the expiry a ratio is scoped to) */
   .kl-row .v{font-family:var(--ed-sans);font-size:15.5px;font-weight:700;color:var(--ed-ink);font-variant-numeric:tabular-nums}
@@ -646,7 +651,7 @@
   .lv-row{cursor:pointer}.lv-row:hover{background:var(--ed-panel-2)}
   .lv-row.lv-sel{outline:1px solid var(--ed-accent);outline-offset:-1px;background:var(--ed-accent-bg)}
   .lv-foot{display:flex;flex-wrap:wrap;gap:12px;font-family:var(--ed-sans);font-size:10.5px;color:var(--ed-ink-4);padding:10px 2px 0}
-  .lv-foot .lv-absent{color:var(--ed-stale)}
+  .lv-why{font-family:var(--ed-sans);font-size:11.5px;color:var(--ed-stale);padding:8px 2px 0;line-height:1.5}
   /* Options Flow — reference card structure; truthful empty state inside the table */
   .of{width:100%;height:100%;border-collapse:collapse;font-family:var(--ed-sans);font-size:12px;font-variant-numeric:tabular-nums}
   .of th{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ed-ink-3);text-align:right;
@@ -655,15 +660,10 @@
   .of .of-empty td{text-align:center;padding:26px 12px;vertical-align:middle}
   .of .oe-sub{font-size:11px;color:var(--ed-ink-4);margin-top:10px;max-width:44ch;margin-left:auto;margin-right:auto;line-height:1.5}
   .of .notproven{display:inline-block}
-  /* Options Flow tape rows (operator field-inventory audit, 2026-09-13) — native trade
-     prints; classification is a mechanical bid/ask comparison, never an aggressor side. */
+  /* Options Flow tape rows: native trade prints; no side is inferred for a print. */
   .of td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--ed-edge-soft);color:var(--ed-ink)}
   .of td:first-child,.of td.of-sym{text-align:left}
   .of td.of-sym{font-weight:600}
-  .of-cls{font-size:9.5px;letter-spacing:.02em;padding:1px 5px;border-radius:3px;color:var(--ed-ink-4)}
-  .of-cls.at_bid{color:var(--ed-neg-ink);background:var(--ed-neg-bg,transparent)}
-  .of-cls.at_ask{color:var(--ed-pos-ink);background:var(--ed-pos-bg,transparent)}
-  .of-cls.outside_spread_low,.of-cls.outside_spread_high{color:var(--ed-warn)}
 
   /* AI drawer */
   #aidrawer{position:fixed;top:0;right:0;bottom:0;width:380px;background:var(--ed-panel);
@@ -723,6 +723,7 @@
     <div class="hkv"><span class="k">Data age</span><span class="v" id="hAge">—</span></div>
     <div class="hsep"></div>
     <div class="hkv"><span class="k">Session</span><span class="sess" id="hSession">—</span></div>
+    <div class="hkv" id="hSignIn" hidden><span class="k">Schwab sign-in</span><span class="signin" id="hSignInV"></span></div>
     <div class="hsep"></div>
     <div class="hkv"><span class="k" id="hClockDate">—</span><span class="v" id="hClock">--:--:-- CT</span></div>
     <div class="search">
@@ -822,9 +823,10 @@
               <div class="kl-sec">Levels</div>
               <div class="kl-row"><span class="k">Spot</span><span class="v" id="klSpot">—</span></div>
               <div class="kl-row"><span class="k">Gamma Flip</span><span class="v" id="klFlip">—</span></div>
+              <div class="kl-note" id="klFlipNote" hidden></div>
               <div class="kl-row"><span class="k">Call Wall</span><span class="v" id="klCall">—</span></div>
               <div class="kl-row"><span class="k">Put Wall</span><span class="v" id="klPut">—</span></div>
-              <div class="kl-row"><span class="k">Absolute γ (pin)</span><span class="v" id="klAbs">—</span></div>
+              <div class="kl-row"><span class="k">Absolute γ</span><span class="v" id="klAbs">—</span></div>
               <div class="kl-row"><span class="k">Net GEX peak</span><span class="v" id="klPeak">—</span></div>
               <div class="kl-row"><span class="k muted">Zero Gamma</span><span class="notproven">NOT PROVEN</span></div>
               <div class="kl-row"><span class="k muted">Volatility Trigger</span><span class="notproven">NOT PROVEN</span></div>
@@ -837,7 +839,7 @@
               <div class="kl-regime-box">
                 <span class="rlab">Dealer Regime</span>
                 <span class="rval" id="klRegime">—</span>
-                <span class="rsub" id="klRegimeSub">dealer-sign gated per ticker</span>
+                <span class="rsub" id="klRegimeSub"></span>
               </div>
             </div>
           </div>
@@ -853,14 +855,14 @@
               <div class="panel-b" id="gbsBody"><div class="placeholder"><div class="sm">Per-strike net GEX$ around spot from /api/terrain/strikes.</div></div></div>
             </div>
             <div class="panel">
-              <div class="panel-h"><span class="t">Options Flow</span><span class="sub">tape · desired contracts</span>
+              <div class="panel-h"><span class="t">Options Flow</span><span class="sub">last trade as streamed, not every trade · selected contracts</span>
                 <div class="r"><span id="ofSrc"></span><span class="prov native">NATIVE · NO AGGRESSOR SIDE</span></div></div>
               <div class="panel-b" id="ofBody">
                 <table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>
                   <th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>
-                  <th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead>
+                  <th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th></tr></thead>
                   <tbody><tr class="of-empty"><td colspan="14">
-                    <div class="oe-sub">Select a Call or Put contract in Chain — the tape shows its real native trade prints.</div>
+                    <div class="oe-sub">Select a Call or Put contract in Chain — the tape shows each change of its last trade as Schwab streams it.</div>
                   </td></tr></tbody></table>
               </div>
             </div>
@@ -1002,14 +1004,14 @@
           <div class="panel">
             <div class="panel-h"><span class="hticker" id="liqmTicker">—</span><span class="t">Liquidity Map</span><span class="sub">confluence-scored zones · reference levels · spot</span>
               <div class="r"><span class="prov derived">LIQUIDITY SNAPSHOT</span></div></div>
-            <div class="panel-b" id="liqmBody"><div class="placeholder"><div class="sm">A visual price map from /api/liquidity-snapshot's own confluence-scored support/resistance zones, plus prior-day/overnight reference levels and spot — never a fabricated line.</div></div></div>
+            <div class="panel-b" id="liqmBody"><div class="placeholder"><div class="sm">A visual price map from /api/liquidity-snapshot's own confluence-scored zones, each placed against the live price, plus the prior-day levels — never a fabricated line.</div></div></div>
           </div>
         </div>
         <div class="sub-pane" data-sub-pane="levels">
           <div class="panel">
-            <div class="panel-h"><span class="hticker" id="lvlTicker">—</span><span class="t">Liquidity Levels</span><span class="sub">prior day · overnight · session</span>
+            <div class="panel-h"><span class="hticker" id="lvlTicker">—</span><span class="t">Liquidity Levels</span><span class="sub">prior day · session</span>
               <div class="r"><span class="prov native">LEVELS</span></div></div>
-            <div class="panel-b" id="lvlBody"><div class="placeholder"><div class="sm">Canonical price levels from /api/levels (PDH/PDL/PDC, POC/VAH/VAL, overnight, VWAP±σ) — vendor-derived, never a fabricated line.</div></div></div>
+            <div class="panel-b" id="lvlBody"><div class="placeholder"><div class="sm">Canonical price levels from /api/levels (PDH/PDL, Schwab's prior close, POC/VAH/VAL, opening range, VWAP±σ); each absent family is listed with its reason.</div></div></div>
           </div>
         </div>
       </section>

@@ -1,6 +1,6 @@
 """The live quote path and the order-flow engine read the stream only -- no stand-ins.
 
-2026-09-24 (operator rule: no fallbacks; full compliance). Measured facts these pin:
+Measured facts these pin:
   * Schwab LEVELONE_EQUITIES sends changed fields only (4,039 captured messages: 11% carried
     bid+ask+last together) -- so the plane holds each field's latest value with its own age.
   * NET_CHANGE_PERCENT arrives with every LAST_PRICE; CHANGE_PERCENT is never sent.
@@ -42,6 +42,10 @@ def test_the_regular_session_percent_is_its_own_field_absent_until_schwab_sends_
 
 
 def test_mark_is_the_streamed_mark_only():
-    from app.options.order_flow.engine import _resolve_quote_mark
-    assert _resolve_quote_mark({"top": {"mark": 10.05, "bid_size": 5}}) == (10.05, "streaming.MARK")
-    assert _resolve_quote_mark({"quote": {"mark": 10.05}}) == (None, None)
+    """The spread as a fraction of MARK uses the streamed top of book's MARK; a REST quote block's
+    mark is not read."""
+    from app.options.order_flow.engine import compute_book_microstructure
+    streamed = {"top": {"bid": 10.0, "ask": 10.1, "mark": 10.05}}
+    assert compute_book_microstructure(streamed, now_ts=1.0)["spread_frac"] == round(0.1 / 10.05, 6)
+    rest_only = {"top": {"bid": 10.0, "ask": 10.1}, "quote": {"mark": 10.05}}
+    assert compute_book_microstructure(rest_only, now_ts=1.0)["spread_frac"] is None

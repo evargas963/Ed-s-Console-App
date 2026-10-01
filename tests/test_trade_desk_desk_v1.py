@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 
+import live_price_rows
 import server as srv
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +26,7 @@ def _bars(start: datetime, minutes: int) -> list[dict]:
 
 
 def test_thirty_minute_rollup_is_first_open_max_high_min_low_last_close():
-    out = srv.aggregate_bars(_bars(datetime(2026, 9, 25, 9, 30, tzinfo=ET), 60), "30")
+    out = live_price_rows.aggregate_bars(_bars(datetime(2026, 9, 25, 9, 30, tzinfo=ET), 60), "30")
     assert len(out) == 2
     first, second = out
     assert (first["o"], first["h"], first["l"], first["c"], first["v"]) == (100, 129.5, 99.5, 129.25, 300)
@@ -53,13 +54,13 @@ def test_market_context_indices_are_always_requested_and_subscribed():
     assert admitted[:5] == ["NVDA", "$SPX", "$NDX", "$VIX", "AAPL"]
 
 
-def test_equity_microstructure_serves_the_engines_tick_rule_flow_labelled_proxy():
+def test_equity_microstructure_serves_no_trade_side():
+    """docs/DATA_FLOW.md decision 9: Schwab sends no aggressor, so no tick-rule tape pressure or
+    delta is served beside the book."""
     client = TestClient(srv.app)
     d = client.get("/api/order-flow/microstructure", params={"ticker": "SPY", "venue": "NYSE_BOOK"}).json()
-    flow = d["flow"]
-    assert set(flow) >= {"tape_pressure_30s", "tape_pressure_2m", "tape_pressure_5m", "cum_delta_proxy"}
-    assert flow["classification"]["tape_pressure_5m"] == "PROXY"
-    assert flow["native_aggressor_available"] is False
+    assert "flow" not in d and "top_book_pressure" in d
+    assert not [k for k in d["classification"] if "tape" in k or "delta" in k]
 
 
 def test_every_shipped_page_script_parses():

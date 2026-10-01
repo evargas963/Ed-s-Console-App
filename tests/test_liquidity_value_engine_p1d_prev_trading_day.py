@@ -2,7 +2,9 @@
 
 Pre-fix defect: session_date-1 on Mondays/post-holiday sessions produced an
 empty window, and the fallback swept EVERY prior bar in the buffer
-(multi-day, extended-hours included) into PDH/PDL/PDC.
+(multi-day, extended-hours included) into PDH/PDL. The prior day's high and low are Schwab's
+daily candle since 2026-10-01 (operator: "lets use what schwab gives us"); what the bars still
+build is the prior session's value area, from that session's regular-session bars only.
 """
 
 from __future__ import annotations
@@ -41,9 +43,8 @@ def test_monday_uses_friday_not_weekend_calendar_walk():
         _bar(friday, 14, 0, 101, 106, 96, 102),
     ]
     out = get_previous_day_levels(bars, monday, _cfg())
-    assert out["pdh"] == 106
-    assert out["pdl"] == 95
-    assert out["pdc"] == 102
+    assert (out["prior_date"], out["rth_bars"]) == (friday, 2)
+    assert "pdc" not in out and "pdh" not in out, "the prior close, high and low are Schwab's, never a bar's"
 
 
 def test_extended_hours_bars_never_enter_prev_day_levels():
@@ -55,8 +56,7 @@ def test_extended_hours_bars_never_enter_prev_day_levels():
         _bar(prev, 17, 0, 100, 998, 2, 100),    # after-hours outlier — must be excluded
     ]
     out = get_previous_day_levels(bars, today, _cfg())
-    assert out["pdh"] == 105
-    assert out["pdl"] == 95
+    assert (out["prior_date"], out["rth_bars"]) == (prev, 1)
 
 
 def test_multi_day_buffer_selects_only_most_recent_trading_day():
@@ -66,9 +66,7 @@ def test_multi_day_buffer_selects_only_most_recent_trading_day():
         _bar(d2, 11, 0, 100, 110, 90, 105),
     ]
     out = get_previous_day_levels(bars, today, _cfg())
-    assert out["pdh"] == 110
-    assert out["pdl"] == 90
-    assert out["pdc"] == 105
+    assert (out["prior_date"], out["rth_bars"]) == (d2, 1)
 
 
 def test_no_prior_rth_bars_fails_closed_empty():
@@ -101,21 +99,22 @@ def _et(b):
 
 def test_the_prior_session_ends_at_the_calendars_close_on_an_early_close_day(monkeypatch):
     """ONE-10: the levels engine fixed the regular session at 09:30-16:00, so on an early close
-    (13:00) its prior-day high, low and close took in three hours of after-hours trading. The
+    (13:00) its prior-day levels took in three hours of after-hours trading. The
     close is the market calendar's (time_et). Real SPY bars; stand-in: 2026-09-24 declared a
     13:00 early close in the calendar (no early close is in the stored bars yet)."""
     import time_et
+    from liquidity_models import volume_profile
     bars = _real_spy_bars()
     prior, today = date(2026, 9, 24), date(2026, 9, 25)
     session = [b for b in bars if _et(b).date() == prior and dtime(9, 30) <= _et(b).time() < dtime(13, 0)]
     full = [b for b in bars if _et(b).date() == prior and dtime(9, 30) <= _et(b).time() < dtime(16, 0)]
-    assert max(b["high"] for b in full) != max(b["high"] for b in session) or \
-        full[-1]["close"] != session[-1]["close"], "the stand-in day must differ after 13:00"
+    want, whole_day = volume_profile(session, ndigits=4), volume_profile(full, ndigits=4)
+    assert (want.poc, want.vah, want.val) != (whole_day.poc, whole_day.vah, whole_day.val), \
+        "the stand-in day must differ after 13:00"
     monkeypatch.setitem(time_et.US_EQUITY_EARLY_CLOSE_MINS_ET, prior.isoformat(), time_et.EARLY_CLOSE_MINS)
     out = get_previous_day_levels(bars, today, _cfg())
-    assert out["pdh"] == max(b["high"] for b in session)
-    assert out["pdl"] == min(b["low"] for b in session)
-    assert out["pdc"] == session[-1]["close"]
+    assert out["rth_bars"] == len(session) == 210
+    assert (out["pd_poc"], out["pd_vah"], out["pd_val"]) == (want.poc, want.vah, want.val)
 
 
 def test_a_holiday_has_no_session_whatever_bars_it_carries(monkeypatch):

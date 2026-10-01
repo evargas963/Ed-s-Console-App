@@ -70,7 +70,7 @@ def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
 # ── PR C: server-side bar roll-up; quote_tick carries the screen's numbers; heatmap demand ──
 
 def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
-    import server as srv
+    import live_price_rows as srv   # the roll-up's one owner (the console and the daemon)
     t0 = 1_700_000_100.0                                    # a 5-minute boundary: 1_700_000_100 % 300 == 100? use floor
     base = t0 - (t0 % 300)
     m = [{"t": base + 60 * i, "o": 10 + i, "h": 11 + i, "l": 9 + i, "c": 10.5 + i, "v": 100} for i in range(7)]
@@ -85,7 +85,7 @@ def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
 
 
 def test_daily_roll_up_is_keyed_on_the_et_trading_date():
-    import server as srv
+    import live_price_rows as srv   # the roll-up's one owner (the console and the daemon)
     # 2026-09-24 19:59 ET and 20:01 ET are the same ET date; 00:01 ET next day is not
     d1a, d1b, d2 = 1_790_294_340.0, 1_790_294_460.0, 1_790_308_860.0
     out = srv.aggregate_bars([{"t": d1a, "o": 1, "h": 2, "l": 0.5, "c": 1.5, "v": 1},
@@ -95,27 +95,25 @@ def test_daily_roll_up_is_keyed_on_the_et_trading_date():
 
 
 def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar(monkeypatch):
-    import time as _t
-
     import live_market_plane as lmp
     import live_price_rows
     import server as srv
-    from tests.feed_live_helper import mark_feed_live
+    from tests.feed_live_helper import SESSION_NOW, mark_feed_live
 
-    mark_feed_live("ZZQF")
-    now = _t.time()
+    now = SESSION_NOW
+    mark_feed_live("ZZQF", now=now)
     lmp.record_from_level_one_equity("ZZQF", {"LAST_PRICE": 42.0, "TRADE_TIME_MILLIS": int((now - 7) * 1000)},
                                      received_ts=now)
-    ev = live_price_rows.price_row("ZZQF")
+    ev = live_price_rows.price_row("ZZQF", now)
     assert ev["feed_live"] is True and ev["spot"] == 42.0 and ev["spot_source"] == srv.SPOT_SOURCE_PLANE
-    assert 6.0 <= ev["trade_age_sec"] <= 9.0
+    assert ev["trade_age_sec"] == 7.0
     assert "forming_1m" not in ev
-    held_no_trade = live_price_rows.price_row("ZZNOTRADE")
+    held_no_trade = live_price_rows.price_row("ZZNOTRADE", now)
     assert held_no_trade["spot"] is None
 
 
 def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch, view):
-    monkeypatch.setattr("server._is_loggable_session", lambda: True)   # an open-market test
+    monkeypatch.setattr("server._is_loggable_session", lambda now: True)   # an open-market test
     import threading
     import server as srv
     ran, done = [], threading.Event()

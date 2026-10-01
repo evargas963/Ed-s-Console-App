@@ -64,7 +64,9 @@ def _published(tmp_path, monkeypatch, ticker: str, n_bars: int):
 
 def test_thin_banked_prior_session_is_stamped_degraded(tmp_path, monkeypatch):
     snap = _published(tmp_path, monkeypatch, "THIN", 180)
-    assert snap.price("PDH") is not None, "the thin tape still serves — the defect was silence, not existence"
+    # the prior day's value area is built from its minutes (its high and low are Schwab's daily
+    # candle since 2026-10-01): the thin tape still serves it, stamped
+    assert snap.price("PD_POC") is not None, "the thin tape still serves — the defect was silence, not existence"
     stamps = [d for d in snap.degraded if d.get("family") == "prior_day"]
     assert stamps and "prior session 2026-08-21" in stamps[0]["reason"], snap.degraded
     assert "partial tape" in stamps[0]["reason"], stamps
@@ -73,5 +75,5 @@ def test_thin_banked_prior_session_is_stamped_degraded(tmp_path, monkeypatch):
 
 def test_full_banked_prior_session_carries_no_stamp(tmp_path, monkeypatch):
     snap = _published(tmp_path, monkeypatch, "FULL", 390)
-    assert snap.bars_used == 390
+    assert snap.price("PD_POC") is not None
     assert [d for d in snap.degraded if d.get("family") == "prior_day"] == []

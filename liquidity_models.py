@@ -1,7 +1,7 @@
 """
 liquidity_models.py — Data models for Liquidity & Value Playbook Engine
 ========================================================================
-Enums and dataclasses for structural snapshots, zones, and price levels.
+The volume profile, and the records of the zones and the value context.
 Ticker-agnostic; works for any instrument.
 """
 
@@ -129,108 +129,55 @@ def volume_profile(
         bars=len(bars), bars_without_volume=no_volume)
 
 
-class SnapshotType(str, Enum):
-    """The shape of the served zones: before the session's open (premarket) or during it (live)."""
-    PREMARKET = "premarket"
-    LIVE = "live"
-
-
 class ZoneType(str, Enum):
-    """
-    Canonical zone types for structure/value mapping.
-
-    LP-01 Step 3 (RC-154) — `sell_side_liquidity` / `buy_side_liquidity` are RETIRED. Those
-    names make an SMC claim: that resting stop orders pool beyond a prior extreme and that
-    price is drawn to them. We have measured no such thing. There is no equal-extreme
-    stop-cluster detector in this repo, no touch study, and no forward test — the zones were
-    built from ordinary session extremes (overnight low, prior-day low, below the opening
-    range) and then given a name that asserts a mechanism.
-
-    What we can honestly say is geometric: this is the LOW extreme of the prior session /
-    overnight window, or the HIGH one. `low_extreme` / `high_extreme` say exactly that and
-    nothing more. If stop-cluster levels are ever built and proven, they earn their own type.
-
-    Taxonomy: low_extreme | support_liquidity | pivot_value | breakdown_trigger |
-    breakout_trigger | resistance_liquidity | high_extreme
-    """
-    LOW_EXTREME = "low_extreme"
+    """What a zone is against the live price: support (below it), resistance (above it), a
+    pivot (only value levels, whichever side it is on), or structure (the price is inside it,
+    or there is no live price to place it against). No zone is a measured pool of resting
+    orders, so none is named as one."""
     SUPPORT_LIQUIDITY = "support_liquidity"
     PIVOT_VALUE = "pivot_value"
-    BREAKDOWN_TRIGGER = "breakdown_trigger"
-    BREAKOUT_TRIGGER = "breakout_trigger"
     RESISTANCE_LIQUIDITY = "resistance_liquidity"
-    HIGH_EXTREME = "high_extreme"
+    STRUCTURE = "structure"
 
 
-def zone_class_for_type(zone_type: ZoneType) -> str:
-    """Return zone_class from zone_type: structure | trigger | value.
-
-    RC-154: the `liquidity` CLASS is retired with the two types that carried it. No zone in
-    this taxonomy is a measured liquidity pool, so no zone may be classed as one — a class is
-    read as a category of evidence, and there is no evidence in that category yet.
-    """
-    _class_map = {
-        ZoneType.LOW_EXTREME: "structure",
-        ZoneType.HIGH_EXTREME: "structure",
-        ZoneType.SUPPORT_LIQUIDITY: "structure",
-        ZoneType.RESISTANCE_LIQUIDITY: "structure",
-        ZoneType.BREAKDOWN_TRIGGER: "trigger",
-        ZoneType.BREAKOUT_TRIGGER: "trigger",
-        ZoneType.PIVOT_VALUE: "value",
-    }
-    return _class_map[zone_type]
-
-
-#: each zone type's name on screen and the side of price it is drawn as: support, resistance or
-#: value (neither)
-ZONE_DISPLAY: dict[ZoneType, tuple[str, str]] = {
-    ZoneType.LOW_EXTREME: ("Low extreme", "support"),
+#: each zone type's name on screen and the side of price it is drawn as: support, resistance, or
+#: neither (value; none for a zone with no side)
+ZONE_DISPLAY: dict[ZoneType, tuple[str, Optional[str]]] = {
     ZoneType.SUPPORT_LIQUIDITY: ("Support", "support"),
-    ZoneType.BREAKDOWN_TRIGGER: ("Breakdown trigger", "support"),
     ZoneType.PIVOT_VALUE: ("Pivot / value", "value"),
-    ZoneType.BREAKOUT_TRIGGER: ("Breakout trigger", "resistance"),
     ZoneType.RESISTANCE_LIQUIDITY: ("Resistance", "resistance"),
-    ZoneType.HIGH_EXTREME: ("High extreme", "resistance"),
+    ZoneType.STRUCTURE: ("Structure", None),
 }
 
 
 @dataclass
 class Zone:
-    """Clustered zone built from one or more price levels."""
+    """Clustered zone built from one or more price levels. `confluence_score`: how many
+    different levels it holds."""
     zone_type: ZoneType
     zone_low: float
     zone_high: float
     zone_mid: float
     source_levels: list[dict] = field(default_factory=list)   # [{"label": str, "value": float}]
-    source_tags: list[str] = field(default_factory=list)
     confluence_score: int = 0
-    snapshot_type: SnapshotType = SnapshotType.PREMARKET
-    interpretation_notes: str = ""
-
-    @property
-    def zone_class(self) -> str:
-        """Derived: liquidity | structure | trigger | value."""
-        return zone_class_for_type(self.zone_type)
 
 
-@dataclass
-class SnapshotSummary:
-    """Readable auction context interpretation."""
-    value_state: str = ""           # "shifted_higher" | "shifted_lower" | "unchanged"
-    vwap_relation: str = ""         # "above_value" | "below_value" | "at_value"
-    auction_interpretation: str = ""  # "bullish_acceptance" | "bearish_acceptance" | etc.
-    notes: list[str] = field(default_factory=list)
+VALUE_SHIFTED_HIGHER, VALUE_SHIFTED_LOWER, VALUE_UNCHANGED = "shifted_higher", "shifted_lower", "unchanged"
+VWAP_ABOVE_VALUE, VWAP_BELOW_VALUE, VWAP_AT_VALUE = "above_value", "below_value", "at_value"
+#: today's point of control reads as shifted when it is more than this fraction of the prior
+#: day's away from it. The figure's origin is not recorded (ACTIVE_PROGRAM.md VALUE-SHIFT).
+VALUE_SHIFT_MIN_FRACTION: float = 0.002
 
 
-@dataclass
-class SnapshotOutput:
-    """Full structural snapshot output."""
-    ticker: str
-    session_date: str
-    snapshot_type: SnapshotType
-    zones: list[Zone] = field(default_factory=list)
-    summary: Optional[SnapshotSummary] = None
-    raw_levels: dict = field(default_factory=dict)  # for debugging/audit
+@dataclass(frozen=True)
+class ValueContext:
+    """Today's value against the prior day's (`value_state`: VALUE_*) and the session VWAP against
+    today's value area (`vwap_relation`: VWAP_*). Each is None with its reason when an input
+    is absent."""
+    value_state: Optional[str]
+    value_state_reason: Optional[str]
+    vwap_relation: Optional[str]
+    vwap_relation_reason: Optional[str]
 
 
 @dataclass

@@ -106,8 +106,9 @@ def test_option_contract_l1_lands_in_order_flow_state(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
     _push_option_l1(_SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=time.time())
 
-    items = ofls.get_content_for_symbol(_SPY_CONTRACT)
-    assert any(i.get("LAST_PRICE") == 1.27 for i in items)
+    assert ofls.option_top(_SPY_CONTRACT) == {"bid": 1.26, "ask": 1.28, "bid_size": 458, "ask_size": 209}
+    assert ofls.option_contract_type(_SPY_CONTRACT) == "C"
+    assert ofls.get_stream_greeks(_SPY_CONTRACT)["open_interest"] == 2097
 
 
 def test_option_contract_book_lands_verbatim(tmp_path, monkeypatch):
@@ -244,14 +245,14 @@ def test_dropping_an_additional_contract_not_also_primary_still_clears_it(monkey
         ofs._active_option_contracts = []
 
 
-def test_feed_loop_applies_the_ticker_and_every_option_contract_from_one_push(tmp_path, monkeypatch):
-    """The equity ticker, a primary contract and an additional contract all arrive on the
-    daemon's ONE push connection and each lands in its own state -- nothing is filtered by
-    which slot asked for it (the daemon only streams what was requested)."""
+def test_feed_loop_applies_every_option_contract_from_one_push(tmp_path, monkeypatch):
+    """A primary contract and an additional contract both arrive on the daemon's ONE push
+    connection and each lands in its own state -- nothing is filtered by which slot asked for
+    it (the daemon only streams what was requested)."""
     import socket
 
     from app.market_data.schwab.streaming import live_push
-    from stream_spine import MessageBus, quote_msg
+    from stream_spine import MessageBus
 
     _reset(tmp_path, monkeypatch)
     sock = socket.socket()
@@ -263,9 +264,7 @@ def test_feed_loop_applies_the_ticker_and_every_option_contract_from_one_push(tm
     qqq = {**_REAL_LEVELONE_OPTIONS_CONTENT, "key": _QQQ_CONTRACT, "UNDERLYING": "QQQ"}
 
     def _landed():
-        return (any(i.get("LAST_PRICE") == 450.0 for i in ofls.get_content_for_symbol("SPY"))
-                and any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_CONTRACT))
-                and any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_QQQ_CONTRACT)))
+        return all((ofls.option_top(c) or {}).get("bid") == 1.26 for c in (_SPY_CONTRACT, _QQQ_CONTRACT))
 
     async def go():
         bus = MessageBus()
@@ -279,8 +278,6 @@ def test_feed_loop_applies_the_ticker_and_every_option_contract_from_one_push(tm
             while stats.get("clients") != 1 and time.monotonic() < deadline:
                 await asyncio.sleep(0.02)
             now = time.time()
-            bus.publish("quote.SPY", quote_msg(symbol="SPY", last=450.0, src="schwab_l1",
-                                               ts_recv=now, native={"key": "SPY", "LAST_PRICE": 450.0}))
             bus.publish(f"optquote.{_SPY_CONTRACT}", options_quote_msg(
                 symbol=_SPY_CONTRACT, content=_REAL_LEVELONE_OPTIONS_CONTENT,
                 src="schwab_options_l1", ts_recv=now))
@@ -327,7 +324,7 @@ def test_option_contract_streaming_diagnostics_healthy_on_recent_tick():
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()
 
-    diag = ofs.get_option_contract_streaming_diagnostics()
+    diag = ofs.get_option_contract_streaming_diagnostics(None, time.time())
     assert diag["streaming_connected"] is True
     assert diag["option_contract"] == _SPY_CONTRACT
     assert diag["streaming_healthy"] is True
@@ -345,7 +342,7 @@ def test_a_quiet_contract_on_a_live_feed_reads_healthy_with_its_own_staleness():
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time() - 30.0
 
-    diag = ofs.get_option_contract_streaming_diagnostics()
+    diag = ofs.get_option_contract_streaming_diagnostics(None, time.time())
     assert diag["streaming_healthy"] is True
     assert diag["streaming_staleness_ms"] >= 30_000.0
 
@@ -360,7 +357,7 @@ def test_a_just_subscribed_contract_the_daemon_does_not_hold_is_not_healthy():
     ofs._feed_running = True
     assert ofs.set_active_option_contract(contract) is True
 
-    diag = ofs.get_option_contract_streaming_diagnostics()
+    diag = ofs.get_option_contract_streaming_diagnostics(None, time.time())
     assert diag["option_contract"] == contract
     assert diag["streaming_healthy"] is False
     assert diag["streaming_staleness_ms"] is None
@@ -375,7 +372,7 @@ def test_a_just_subscribed_contract_the_daemon_holds_is_healthy():
     ofs._feed_running = True
     assert ofs.set_active_option_contract(contract) is True
 
-    diag = ofs.get_option_contract_streaming_diagnostics(for_contract=contract)
+    diag = ofs.get_option_contract_streaming_diagnostics(contract, time.time())
     assert diag["contract_match"] is True
     assert diag["streaming_healthy"] is True
     assert diag["streaming_staleness_ms"] is None
@@ -387,7 +384,7 @@ def test_option_contract_streaming_diagnostics_unhealthy_when_feed_not_running()
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()
 
-    diag = ofs.get_option_contract_streaming_diagnostics()
+    diag = ofs.get_option_contract_streaming_diagnostics(None, time.time())
     assert diag["streaming_connected"] is False
     assert diag["streaming_healthy"] is False
 
@@ -402,5 +399,5 @@ def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()
 
-    assert lmp.feed_live_for("SPY", "LEVELONE_EQUITIES") is False
-    assert ofs.get_option_contract_streaming_diagnostics()["streaming_healthy"] is True
+    assert lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time.time()) is False
+    assert ofs.get_option_contract_streaming_diagnostics(None, time.time())["streaming_healthy"] is True

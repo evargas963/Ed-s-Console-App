@@ -56,3 +56,26 @@ test('the Book panel shows each served wall candidate size', async ({ page }) =>
   await expect(page.locator('#obBody')).toContainText('bid @ 440.50');
   await expect(page.locator('#obBody')).toContainText('12500');
 });
+
+test('the Book panel prints the book-shape values and the wall rule the server serves', async ({ page }) => {
+  // the engine computed the book's slope, the share at the touch, top-book pressure, the crossed
+  // flag and the wall rule on every request, and no screen read them. The payload is the real
+  // producer's (tests/e2e/fixtures/options_microstructure_payload.json, held to the route by
+  // test_flow_e2e_fixture_is_the_route_contract): both book routes serve this one shape.
+  const BOOK = require(path.join(__dirname, 'fixtures', 'options_microstructure_payload.json'));
+  await page.route('**/api/**', (route) => {
+    const url = route.request().url();
+    const body = url.includes('/api/order-flow/microstructure') ? BOOK : { available: false };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'TSLA'); localStorage.setItem('ed_ws', 'order-flow'); localStorage.setItem('ed_sub', 'book'); } catch (e) {} });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const ob = page.locator('#obBody');
+  const row = (k) => ob.locator('.fl-row', { hasText: k }).locator('.v');
+  await expect(row('Slope bid / ask')).toHaveText(Math.round(BOOK.book_slope.bid) + ' / ' + Math.round(BOOK.book_slope.ask));
+  await expect(row('At the touch bid / ask')).toHaveText(BOOK.liquidity_concentration.bid.toFixed(2) + ' / ' + BOOK.liquidity_concentration.ask.toFixed(2));
+  await expect(row('Top-book pressure')).toHaveText(BOOK.top_book_pressure.toFixed(3));
+  await expect(row('Crossed')).toHaveText('no');
+  await expect(row('Levels bid / ask')).toHaveText(BOOK.provenance.n_bid_levels + ' / ' + BOOK.provenance.n_ask_levels);
+  await expect(ob).toContainText('Wall candidates — ' + BOOK.wall_method.basis);
+});

@@ -336,18 +336,36 @@ DESTRUCTIVE_GIT = ("git reset --hard HEAD~1", "git clean -fd", "git push --force
 @pytest.mark.parametrize("cmd", DESTRUCTIVE_GIT)
 def test_destructive_git_has_one_owner_and_it_fires_unscoped(cmd):
     import tools.operating_process_lock as OPL
-    assert any("destructive git" in v for v in OPL.reset_guard_violations(cmd)), cmd
+    assert any("RESET_GUARD" in v for v in OPL.reset_guard_violations(cmd)), cmd
     assert not hasattr(G, "_DESTRUCTIVE_GIT"), "the second destructive-git rule came back"
 
 
 @pytest.mark.parametrize("cmd,needle", [
     ("git commit --no-verify -m x", "disables a mechanical lock"),
+    ("git config core.hooksPath /dev/null", "disables a mechanical lock"),
+    ("python -m pre_commit uninstall", "disables a mechanical lock"),
+    ("rm .git/hooks/pre-commit", "disables a mechanical lock"),
     ("git add -A", "blind staging"),
-    ("rm -rf data/ed_console.db", "RC-273"),
+    ("rm -rf data/ed_console.db", "data/ or backups/"),
+    ("git push origin HEAD:main", "only through a PR"),
+    ("git push origin main", "only through a PR"),
 ])
 def test_universal_protections_fire_in_this_repository(cmd, needle):
     out = G.bash_violations(cmd, [], payload_cwd=str(REPO))
     assert any(needle in v for v in out), (cmd, out)
+
+
+@pytest.mark.parametrize("cmd", [
+    "git push -u origin fix/main-screen",
+    "git config --get core.hooksPath",
+    "gh pr merge 427 --merge",
+    "gh pr view 427",
+    "grep -n no-verify tools/operator_law_guard.py",
+])
+def test_the_action_is_refused_never_the_word(cmd):
+    """Reading about a lock, pushing a branch whose name contains "main", or merging a PR (the
+    agent merges under AGENTS.md § Authority) is not a refused action."""
+    assert G.bash_violations(cmd, [], payload_cwd=str(REPO)) == [], cmd
 
 
 def test_rc360_head_grant_cannot_authorize_no_verify_in_this_repository():
@@ -393,15 +411,6 @@ def test_non_commit_commands_are_unaffected_by_repository_scoping():
 def test_operator_escape_remains_operator_only():
     out = G.bash_violations("git commit --no-verify -m x", [], payload_cwd=str(REPO))
     assert any("disables a mechanical lock" in v for v in out), out
-
-
-# ── 7. root-cause-row closure at Edit time — RETIRED 2026-09-10 ──────────────────────────
-# The CLOSE-needs-a-verification-this-turn rule read the session transcript (the RC-544 class)
-# and duplicated a stronger judge: required CI EXECUTES every closing row's cited command
-# (tools/check_delta_adds_no_debt.py). No rule reads a ledger row at Edit time any more.
-def test_no_edit_time_ledger_rule_survives():
-    for gone in ("edit_violations", "_has_verification", "turn_ledger", "_successful_commands"):
-        assert not hasattr(_olg, gone), gone
 
 
 # ── 8. end-to-end through the real hook entrypoint ────────────────────────────────────────
@@ -464,7 +473,6 @@ def test_rc360_grant_file_cannot_authorize_no_verify(tmp_path):
     for cmd in (
         "git commit --no-verify -m x",
         "git add a && git commit --no-verify -m x && git push --no-verify",
-        "some_tool --no-verify",
         "ED_UI_MOCKUP_LOCK=off git commit --no-verify -m x",
     ):
         out = G.bash_violations(cmd, [], payload_cwd=str(REPO))

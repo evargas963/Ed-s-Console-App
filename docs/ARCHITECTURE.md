@@ -1,10 +1,8 @@
 # Ed Console — Architecture
 
 Where the code lives. The structure it moves to follows the data flow (`docs/DATA_FLOW.md`): one
-folder per process, plus what they share and the page. Nothing else. A file belongs to the process
-that runs it; a function exists in one place. §1 is the target (none of its process folders exists
-yet); §2 is today's files and where each goes. This document is updated in the same change as
-every move.
+folder per process, plus what they share and the page. §1 is the target (none of its process
+folders exists yet); §2 is today's files and where each goes.
 
 ## 1. The target structure
 
@@ -40,7 +38,7 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 | `db.py` (the parts that stay: bars, level history, enrollment, connection), `db_authority.py`, `db_safety.py`, `json_blob_codec.py` | `daemon/` (writes) — the console opens the database read-only |
 | `terrain_engine.py`, `terrain_read.py`, `terrain_atr.py`, `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `math_volatility.py` | `producer/` |
 | `liquidity_value_engine.py`, `liquidity_models.py` | `producer/` |
-| `app/options/order_flow/`, `app/options/contracts/`, `l1_trade_observation.py`, `micro_structure.py` | `producer/` |
+| `app/options/order_flow/`, `app/options/contracts/`, `micro_structure.py` | `producer/` |
 | From `server.py`: the levels loop, `_publish_levels`, `_publish_price_levels`, the gamma-surface projection | `producer/` |
 | From `server.py`: the routes, startup; `push_changes.py` (the `/api/changes` push) | `console/` |
 | `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `production_universe.py`, `numeric_contract.py` | `shared/` |
@@ -75,10 +73,11 @@ still starts and serves; the Schwab-dependent panels say they are unavailable, a
 filled in from elsewhere. The app refuses to start only when it cannot run at all (a broken Python
 environment, core code that will not load).
 
-## 5. Runtime state lives outside the source
+## 5. Runtime state
 
 The database, the Schwab token, logs and diagnostics are runtime state, not source.
 `runtime_layout.py` is the one owner of where they live: `ED_RUNTIME_ROOT` moves them; unset, a
 standalone checkout uses itself and a linked worktree uses the primary checkout's runtime (it
-reads, and never starts a live console or daemon on it). Source changes never touch runtime state,
-and runtime output never lands in the source tree.
+reads, and never starts a live console or daemon on it). Source changes never touch runtime state.
+Today it sits inside the production checkout (`data/`, `logs/`, the token), gitignored; moving it
+out is `ACTIVE_PROGRAM.md` RUNTIME-SEPARATION.

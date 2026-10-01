@@ -28,14 +28,6 @@ def _mk_bar(dt: datetime, o: float, h: float, l: float, c: float, vol: float = 1
 
 
 
-def test_imports():
-    """All liquidity modules import cleanly."""
-    from liquidity_models import SnapshotType, ZoneType
-    assert SnapshotType.PREMARKET.value == "premarket"
-    assert SnapshotType.LIVE.value == "live"
-    assert ZoneType.RESISTANCE_LIQUIDITY.value == "resistance_liquidity"
-
-
 def test_bars_normalization():
     """Engine accepts list of dicts and produces correct internal format."""
     from liquidity_value_engine import _bars_to_list
@@ -181,165 +173,12 @@ def test_volume_profile_wide_bar_stays_bounded_and_still_distributed():
     assert MAX_BINS_PER_BAR > 0
 
 
-def _bar(d: date, hh: int, mm: int, high: float, low: float, close: float = None,
-         volume: float = 1000.0) -> dict:
-    """One 1m bar at an explicit ET wall-clock time."""
-    from datetime import datetime as _dt
-    from time_et import ET as _ET
-    ts = _dt(d.year, d.month, d.day, hh, mm, tzinfo=_ET)
-    return {"timestamp": int(ts.timestamp() * 1000), "open": low,
-            "high": high, "low": low, "close": close if close is not None else high,
-            "volume": volume}
-
-
-def _overnight(bars: list, session_date: date) -> dict:
-    """The engine's overnight range as its producer gets it: bars normalized once, the prior
-    session found once."""
-    from liquidity_value_engine import _bars_to_list, get_overnight_levels, prior_trading_session_date
-    norm = _bars_to_list(bars)
-    return get_overnight_levels(norm, session_date, prior_trading_session_date(norm, session_date))
-
-
-def test_overnight_window_monday_reaches_back_to_friday():
-    """LP-01 Step 2 (RC-153): Monday's overnight starts at FRIDAY's 16:00 close. The old code
-    used session_date - 1 day = SUNDAY, a day with no close and no bars, so Friday's entire
-    post-16:00 tape was dropped and OVERNIGHT_HIGH/LOW described only Monday's pre-open."""
-    friday, monday = date(2026, 7, 24), date(2026, 7, 27)
-    bars = [
-        _bar(friday, 10, 0, 100.0, 99.0),      # Friday RTH — establishes the prior session
-        _bar(friday, 15, 59, 101.0, 100.0),    # Friday RTH, before the close
-        _bar(friday, 17, 30, 108.0, 107.0),    # Friday AFTER 16:00 — inside the overnight
-        _bar(monday, 4, 30, 96.0, 95.0),       # Monday pre-open — inside the overnight
-        _bar(monday, 10, 0, 120.0, 90.0),      # Monday RTH — must NOT be in the overnight
-    ]
-    out = _overnight(bars, monday)
-    assert out["overnight_high"] == 108.0, (
-        f"Friday's post-close high is missing from Monday's overnight: {out}"
-    )
-    assert out["overnight_low"] == 95.0, f"overnight low wrong: {out}"
-    assert out["overnight_high"] != 96.0, "overnight collapsed to Monday's pre-open only"
-
-
-def test_overnight_window_midweek_uses_the_immediately_prior_session():
-    """Tuesday's overnight starts at Monday's 16:00 — and Monday's RTH body stays out of it."""
-    monday, tuesday = date(2026, 7, 27), date(2026, 7, 28)
-    bars = [
-        _bar(monday, 10, 0, 130.0, 70.0),      # Monday RTH — wide, must be EXCLUDED
-        _bar(monday, 18, 0, 104.0, 103.0),     # Monday post-close — included
-        _bar(tuesday, 8, 0, 99.0, 98.0),       # Tuesday pre-open — included
-        _bar(tuesday, 9, 30, 140.0, 60.0),     # Tuesday RTH open bar — must be EXCLUDED
-    ]
-    out = _overnight(bars, tuesday)
-    assert out["overnight_high"] == 104.0 and out["overnight_low"] == 98.0, (
-        f"midweek overnight leaked an RTH bar: {out}"
-    )
-
-
-def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
-    """A closed day has no close for a range to start from. With Thursday shut, Friday's
-    overnight must reach back to WEDNESDAY's 16:00 and include the Thursday bars in between —
-    the interval is continuous, not two hand-picked calendar dates."""
-    from liquidity_value_engine import prior_trading_session_date
-    from liquidity_value_engine import _bars_to_list
-    wed, thu, fri = date(2026, 7, 22), date(2026, 7, 23), date(2026, 7, 24)
-    bars = [
-        _bar(wed, 10, 0, 100.0, 99.0),         # Wednesday RTH — the real prior session
-        _bar(wed, 17, 0, 106.0, 105.0),        # Wednesday post-close
-        # The holiday itself: bars exist but NONE in RTH — a closed day trades no session.
-        # (Placing one at 12:00 would make Thursday a real session, which is what the code
-        # should conclude from that evidence; the fixture must mean what it claims.)
-        _bar(thu, 3, 0, 111.0, 94.0),          # holiday extended-hours bar INSIDE the window
-        _bar(fri, 8, 0, 97.0, 96.0),           # Friday pre-open
-        _bar(fri, 10, 0, 200.0, 10.0),         # Friday RTH — excluded
-    ]
-    assert prior_trading_session_date(_bars_to_list(bars), fri) == wed, (
-        "a day with no RTH bars was treated as the prior trading session"
-    )
-    out = _overnight(bars, fri)
-    assert out["overnight_high"] == 111.0 and out["overnight_low"] == 94.0, (
-        f"the holiday gap was skipped instead of spanned: {out}"
-    )
-
-
-def test_overnight_empty_is_empty_never_fabricated():
-    """No bars in the window -> {}. Absence reads as absence."""
-    tuesday = date(2026, 7, 28)
-    only_rth = [_bar(date(2026, 7, 27), 11, 0, 100.0, 99.0),
-                _bar(tuesday, 10, 0, 101.0, 98.0)]
-    assert _overnight(only_rth, tuesday) == {}, "an overnight range was invented"
-    assert _overnight([], tuesday) == {}
-
-
-def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
-    """Fail-closed: with no prior RTH session in the buffer the interval has no start, so only
-    this session's pre-open is used — never widened into a guess that sweeps older days."""
-    tuesday = date(2026, 7, 28)
-    bars = [
-        _bar(date(2026, 7, 27), 20, 0, 300.0, 290.0),   # prior-day AFTER hours, no RTH anywhere
-        _bar(tuesday, 8, 0, 99.0, 98.0),
-    ]
-    out = _overnight(bars, tuesday)
-    assert out == {"overnight_high": 99.0, "overnight_low": 98.0}, (
-        f"an unbounded window swept bars from a session that was never established: {out}"
-    )
-
-
-# ── LP-01 Step 3 (RC-154): no liquidity-pool claim on untested extremes ──────────────────
-_POOL_WORDS = ("liquidity", "pool", "sweep", "stop hunt", "stop-hunt", "magnet")
-
-
-def _step3_bars(session_date: date) -> list:
-    """Bars that drive the taxonomy branch: a prior session, an overnight leg that undercuts
-    the prior low, and an RTH open — i.e. exactly the shape that used to be labelled
-    'sell-side liquidity'."""
-    prev = date.fromordinal(session_date.toordinal() - 1)
-    return [
-        _bar(prev, 10, 0, 105.0, 100.0, close=104.0),
-        _bar(prev, 15, 0, 106.0, 101.0, close=102.0),
-        _bar(prev, 17, 0, 103.0, 99.0, close=99.5),      # after the close
-        _bar(session_date, 6, 0, 100.0, 95.0, close=96.0),   # overnight UNDER the prior low
-        _bar(session_date, 9, 45, 101.0, 96.0, close=100.0),  # RTH
-    ]
-
-
-def _step3_zones(session_date: date):
-    from liquidity_models import PlaybookConfig
-    from liquidity_value_engine import _bars_to_list, build_premarket_snapshot, build_price_level_snapshot
-    snap = build_price_level_snapshot("SPY", session_date, _bars_to_list(_step3_bars(session_date)), bar_source="test")
-    return build_premarket_snapshot("SPY", session_date, PlaybookConfig(), canonical=snap).zones
-
-
-def test_no_liquidity_pool_claim_in_zone_taxonomy():
-    """RC-154: these zones are session EXTREMES. Presenting them as sell/buy-side liquidity is
-    an SMC pool claim we have not measured — no equal-extreme stop-cluster detection exists and
-    no touch study has run. The wire must not assert what nothing has proven."""
-    from liquidity_models import ZoneType, zone_class_for_type
-    values = {z.value for z in ZoneType}
-    assert not any("side_liquidity" in v for v in values), (
-        f"zone taxonomy still claims liquidity pools: {sorted(values)}"
-    )
-    classes = {zone_class_for_type(z) for z in ZoneType}
-    assert "liquidity" not in classes, (
-        f"a zone_class still asserts 'liquidity': {sorted(classes)}"
-    )
-
-
-def test_no_pool_language_in_rendered_zone_payload():
-    """Behaviour-bound: build the snapshot that used to produce 'Sell-side liquidity at
-    overnight low' and assert no operator-facing field claims a pool."""
-    session = date(2026, 7, 28)
-    zones = _step3_zones(session)
-    assert zones, "fixture produced no zones — the assertion would be vacuous"
-    for z in zones:
-        zt = str(getattr(z.zone_type, "value", z.zone_type))
-        notes = (z.interpretation_notes or "").lower()
-        assert "side_liquidity" not in zt, f"zone_type claims a pool: {zt}"
-        assert z.zone_class != "liquidity", f"zone_class claims a pool: {z.zone_class}"
-        for w in _POOL_WORDS:
-            assert w not in notes, (
-                f"interpretation_notes asserts {w!r} on an untested extreme: "
-                f"{z.interpretation_notes!r} (zone_type={zt})"
-            )
+def test_no_zone_name_on_screen_claims_a_pool_of_orders():
+    """No zone is a measured pool of resting orders: no name the screen shows says so."""
+    from liquidity_models import ZONE_DISPLAY, ZoneType
+    assert set(ZONE_DISPLAY) == set(ZoneType)
+    for label, _side in ZONE_DISPLAY.values():
+        assert not [w for w in ("liquidity", "pool", "sweep", "stop", "magnet") if w in label.lower()], label
 
 
 def test_cluster_price_levels():
@@ -361,12 +200,12 @@ def test_cluster_price_levels():
 
 
 
-def test_no_lookahead_premarket():
-    """Premarket snapshot does not use same-day RTH data."""
-    from liquidity_value_engine import _bars_to_list, build_premarket_snapshot, build_price_level_snapshot
+def test_before_the_open_the_zones_hold_the_prior_days_levels_only():
+    """With no bar of today's session, no level of today's exists to build a zone from.
+    Stand-in (named): 100 hand-built bars of the prior day."""
+    from liquidity_value_engine import _bars_to_list, build_price_level_snapshot, build_zones
     from liquidity_models import PlaybookConfig
     session = date(2026, 3, 13)
-    # Only previous day bars
     from datetime import timedelta
     prev_date = session - timedelta(days=1)
     bars = []
@@ -374,20 +213,10 @@ def test_no_lookahead_premarket():
         dt = datetime(prev_date.year, prev_date.month, prev_date.day, 10, 0 + i % 60, tzinfo=ET)
         bars.append(_mk_bar(dt, 500, 501, 499, 500, 1000))
     cfg = PlaybookConfig()
-    snap = build_price_level_snapshot("SPY", session, _bars_to_list(bars), bar_source="test", config=cfg)
-    out = build_premarket_snapshot("SPY", session, cfg, canonical=snap)
-    assert out.raw_levels.get("prev_day")
-    # No today POC/VAH/VAL in premarket raw: every "poc"-shaped key inside prev_day
-    # must be the pd_-prefixed previous-day form, not an unprefixed today value that
-    # leaked in. TEST_SYSTEM_REHAB_V2: was `"poc" not in prev_day or "pd_" in
-    # raw_levels` -- the second arm checked ANY "pd_" occurrence anywhere in the
-    # whole payload, satisfied unconditionally since prev_day always has pd_ keys,
-    # so a leaked unprefixed "today_poc" inside prev_day would never be caught.
-    prev_day = out.raw_levels.get("prev_day", {})
-    poc_keys = [k for k in prev_day if "poc" in str(k).lower()]
-    assert poc_keys, "prev_day carries no poc-shaped key at all"
-    assert all(str(k).lower().startswith("pd_") for k in poc_keys), (
-        f"prev_day contains a non-pd_-prefixed poc key: {poc_keys}")
+    snap = build_price_level_snapshot("SPY", session, _bars_to_list(bars), bar_source="test", config=cfg,
+                                      prior_day=None, prior_day_absent_reason="no Schwab daily candle in this test")
+    tags = {s["label"] for z in build_zones(snap, cfg, spot=None, extra_levels=[]) for s in z.source_levels}
+    assert tags and tags <= {"PDH", "PDL", "PD_POC", "PD_VAH", "PD_VAL"}
 
 
 

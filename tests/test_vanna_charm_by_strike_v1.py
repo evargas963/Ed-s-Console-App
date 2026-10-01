@@ -68,8 +68,9 @@ def test_charm_by_strike_unavailable_with_no_cached_chain():
 
 def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_vanna(monkeypatch):
     _put_live_chain()
-    from math_exposure_core import compute_exposures_by_strike as cebs
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (_SPOT + 1.0, "live", time.time()))
+    from math_exposure_core import bucket_metric, compute_exposures_by_strike as cebs
+    # stand-in (named): the live price, $1 above the price the chain was captured at
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (_SPOT + 1.0, server.SPOT_SOURCE_PLANE, time.time()))
 
     body = json.loads(server.get_vanna_by_strike(ticker="CRWD").body)
     assert body["available"] is True
@@ -86,17 +87,12 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     exposures, _ = cebs(_CONTRACTS, spot=_SPOT)
     checked = 0
     for k, b in exposures.items():
-        # has_oi=False (2026-09-14 SPX honest-absence fix): a bucket can exist in
-        # compute_exposures_by_strike's own output with every accumulator still at its pre-initialized
-        # 0.0 -- not a real computed value, so the endpoint's own has_oi gate correctly
-        # omits it from `rows` instead of reporting this bucket's fabricated 0.0.
-        if not b.get("has_oi"):
+        # a strike with no valid vanna (its accumulators still at their 0.0 start) has no row
+        net = bucket_metric(b, "net_vanna")
+        if net is None:
+            assert round(float(k), 2) not in rows
             continue
-        cv, pv = b.get("call_vanna"), b.get("put_vanna")
-        if cv is None and pv is None:
-            continue
-        expected = round((cv or 0.0) - (pv or 0.0), 2)
-        assert abs(rows[round(float(k), 2)] - expected) < 0.1
+        assert abs(rows[round(float(k), 2)] - round(net, 2)) < 0.1
         checked += 1
     assert checked > 5
 

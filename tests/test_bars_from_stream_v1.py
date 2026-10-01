@@ -57,10 +57,47 @@ def test_the_feed_hands_each_streamed_bar_to_the_writer():
     assert ofs.streamed_bars.get_nowait()["bar_start_ms"] == int(T0 * 1000)
 
 
+def test_a_stored_stream_bar_survives_the_held_day_backfill_unchanged():
+    """A console's reconnect backfills its store from the daemon's held day (barheld): a minute
+    the store already holds as streamed is never overwritten, even where the daemon's minute
+    differs (its price-history minute for it). A real SPY minute of 2026-09-25 as streamed; the
+    daemon's differing price-history minute for it (its close 0.05 higher) is the stand-in."""
+    import sqlite3
+
+    real = json.loads(FIXTURE.read_text(encoding="utf-8"))["bars"][200]
+    start = real["timestamp"] / 1000.0
+    streamed = _bar(start, o=real["open"], h=real["high"], lo=real["low"], c=real["close"], v=real["volume"])
+    assert server._write_streamed_bar(streamed)
+    while not ofs.streamed_bars.empty():
+        ofs.streamed_bars.get_nowait()
+    held = [dict(streamed, src="schwab_pricehistory", close=real["close"] + 0.05),   # the daemon's differs
+            dict(streamed, close=real["close"] + 0.05)]                             # and as its stream
+    for one in held:
+        ofs._ingest_pushed(f"barheld.{TK}", {"symbol": TK, "src": "live_ui_held", "ts": start + 600, "bars": [one]})
+    server._write_streamed_bars([ofs.streamed_bars.get_nowait() for _ in range(len(held))])
+    (b,) = server._bars_1m(TK)
+    assert (b.ts, b.open, b.high, b.low, b.close, b.volume) == (
+        start, real["open"], real["high"], real["low"], real["close"], real["volume"])
+    con = sqlite3.connect(server.get_db().db_path)
+    try:
+        assert con.execute("SELECT source FROM price_bars_1m WHERE ticker=?", (TK,)).fetchall() == [
+            ("schwab_chart_equity",)]
+    finally:
+        con.close()
+
+
 def test_a_streamed_bar_is_written_and_read_back_exactly():
     assert server._write_streamed_bar(_bar(T0, o=10.0, h=11.0, lo=9.5, c=10.5, v=100.0))
     (b,) = server._bars_1m(TK)
     assert (b.ts, b.open, b.high, b.low, b.close, b.volume) == (T0, 10.0, 11.0, 9.5, 10.5, 100.0)
+    # the stored row names its source: Schwab's CHART_EQUITY bar (it said "accumulator")
+    import sqlite3
+    con = sqlite3.connect(server.get_db().db_path)
+    try:
+        assert con.execute("SELECT source FROM price_bars_1m WHERE ticker=?", (TK,)).fetchall() == [
+            ("schwab_chart_equity",)]
+    finally:
+        con.close()
 
 
 def test_a_bar_missing_a_field_is_not_written():
@@ -69,14 +106,14 @@ def test_a_bar_missing_a_field_is_not_written():
 
 
 def test_a_price_that_is_not_a_number_is_not_written():
-    """AGENTS.md rule 2: -999, text, NaN and infinity are not numbers."""
+    """A Schwab price sent as -999, text, NaN or infinity is not a number."""
     for bad in (-999, "10.0", float("nan"), float("inf")):
         assert not server._write_streamed_bar(dict(_bar(T0), low=bad)), bad
     assert server._bars_1m(TK) == []
 
 
 def test_a_reported_zero_is_written_as_sent():
-    """Operator ruling 2026-09-27: take what Schwab sends; a 0 price or volume is 0."""
+    """A price or volume Schwab reports as 0 is 0."""
     assert server._write_streamed_bar(_bar(T0, lo=0.0, v=0.0))
     (b,) = server._bars_1m(TK)
     assert (b.low, b.volume) == (0.0, 0.0)

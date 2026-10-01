@@ -183,6 +183,25 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveClass(/rth|pre|ah|closed/);
   });
 
+  test('the header shows the Schwab sign-in when the server warns it is ending, and nothing while it is ok', async ({ page }) => {
+    // the warning was computed and served inside /api/terrain and no screen read it: the sign-in
+    // ended with no notice on the page. It is pushed with the session and printed in the header.
+    const ending = { urgency: 'red', expires: 'Wed 09/30 02:36 PM CT',
+      note: 'Schwab sign-in ends Wed 09/30 02:36 PM CT; run: python reauth_schwab.py --manual' };
+    const renewed = { urgency: 'ok', expires: 'Wed 10/07 02:40 PM CT', note: '' };
+    // the first connection is told the sign-in is ending; the page's reconnects, that it was renewed
+    let connections = 0;
+    await page.route('**/api/changes**', (route) => route.fulfill({ status: 200, contentType: 'text/event-stream',
+      body: 'event: session\ndata: RTH\n\nevent: sign_in\ndata: ' + JSON.stringify(++connections === 1 ? ending : renewed) + '\n\n' }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hSignIn')).toBeVisible();
+    await expect(page.locator('#hSignInV')).toHaveText('ends ' + ending.expires);
+    await expect(page.locator('#hSignInV')).toHaveClass(/red/);
+    await expect(page.locator('#hSignIn')).toHaveAttribute('title', ending.note);
+    await expect(page.locator('#hSignIn')).toBeHidden({ timeout: 15000 });   // renewed: nothing to show
+    expect(connections).toBeGreaterThan(1);
+  });
+
   test('a streamed-only surface update still triggers a re-render even when every REST field is unchanged (RC-UI-2 finding #1)', async ({ page }) => {
     // Independent-review finding (2026-09-12), REPRODUCED: server.py's eager
     // _publish_levels changes _gamma_surface's CELL VALUES without ever
@@ -223,11 +242,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // "the table was rebuilt" from "this specific value just moved", so a real, correct
     // change could go unnoticed on a busy grid. Two strikes: 583's value genuinely
     // changes between fetches, 586's does not -- only 583's cell may flash, and neither
-    // may flash on the very FIRST render (nothing to compare against yet).
-    let call = 0;
+    // may flash on the very FIRST render (nothing to compare against yet). The value changes when
+    // the test says so, not by fetch count: the page also refetches on the console's own levels
+    // pushes, and a second fetch returning the new value flashed the cell before the test's first
+    // check (seen 2026-10-01: data-gex 2000 with flash-update at line 267).
+    let call = 0, changedValue = 1000;
     await page.route('**/api/options/gamma-surface**', (route) => {
       call += 1;
-      const changedValue = call === 1 ? 1000 : 2000;
       route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify(Object.assign({}, SURFACE, {
@@ -248,10 +269,42 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(changedCell).not.toHaveClass(/flash-update/);
     await expect(unchangedCell).not.toHaveClass(/flash-update/);
 
+    changedValue = 2000;
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
     await expect(changedCell).toHaveText('$2.0K');
     await expect(changedCell).toHaveClass(/flash-update/);
     await expect(unchangedCell).not.toHaveClass(/flash-update/);
+  });
+
+  test('a rebuild of the same values while a cell flashes does not cut its flash short', async ({ page }) => {
+    // The grid is rebuilt on every publication; a second publication with the same values right
+    // after a change (the levels push comes again) rebuilt the changed cell without its flash, so
+    // the change could go unseen and the test above could miss it. The flash runs its length
+    // (900 ms, .hcell.flash-update) across rebuilds.
+    let call = 0, value = 1000;   // changed when the test says so, never by fetch count
+    await page.route('**/api/options/gamma-surface**', (route) => {
+      call += 1;
+      route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify(Object.assign({}, SURFACE, { strikes: [583, 586], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+          cells: [{ strike: 583, gex: [value] }, { strike: 586, gex: [-50000] }], surface_seq: call })) });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const sel = '.hcell[data-strike="583"][data-expiry="2026-09-11"]';
+    await expect(page.locator(sel)).toHaveText('$1.0K');
+    value = 2000;
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    await expect(page.locator(sel)).toHaveClass(/flash-update/);
+    // the same values again, at once: the cell is rebuilt, and still flashing
+    const after = await page.evaluate(async (s) => {
+      const before = document.querySelector(s);
+      document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } }));
+      const t0 = Date.now();
+      while (document.querySelector(s) === before && Date.now() - t0 < 600) await new Promise((r) => setTimeout(r, 5));
+      const el = document.querySelector(s);
+      return { rebuilt: el !== before, flashing: el.classList.contains('flash-update') };
+    }, sel);
+    expect(after).toEqual({ rebuilt: true, flashing: true });
+    await expect(page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]')).not.toHaveClass(/flash-update/);
   });
 
   test('a levels push on /api/changes reloads the heatmap, with no manual event dispatch', async ({ page }) => {
@@ -438,6 +491,26 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(col.nth(0)).toHaveAttribute('title', /streaming updates observed/);
     await expect(col.nth(1)).toHaveAttribute('title', /requested .* awaiting the first observed update/);
     await expect(col.nth(2)).toHaveAttribute('title', /vendor refused/);
+  });
+
+  test('a column whose settlement is unknown prints its served reason, never EXPIRED', async ({ page }) => {
+    // server.project_gamma_surface serves settlement_unknown_reason for an expiry the calendar
+    // cannot settle; it is not expired and not the front column. The header prints the reason.
+    const surf = surfaceWithContracts(3, 3);
+    const e = surf.expirations.map((x) => x.expiry);
+    const why = 'settlement unknown: ' + e[1] + ' has no session close in the market calendar (a holiday or an unreadable date); its contracts are in no cell';
+    surf.front_expiry = e[0];
+    surf.expirations = surf.expirations.map((x, i) => Object.assign({}, x, { expired: false,
+      settlement_unknown_reason: i === 1 ? why : null }));
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surf) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const col = page.locator('.heat thead th.hexp');
+    await expect(col).toHaveCount(3);
+    await expect(col.nth(1).locator('.dte')).toHaveText('SETTLES ?');
+    await expect(col.nth(1)).toHaveAttribute('title', why);
+    await expect(page.locator('.heat thead th.hexp.expired')).toHaveCount(0);
+    await expect(col.nth(0)).toHaveClass(/col-front/);
   });
 
   test('Wider and All scope declare real streaming demand for what they display, not zero (2026-09-13, operator-directed)', async ({ page }) => {
@@ -736,7 +809,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a surface that is not live is shown as absent -- never as a reference', async ({ page }) => {
-    // Operator rule 2026-09-23 (no fallbacks): the server no longer serves a banked morning chain
+    // The server serves no banked morning chain
     // in place of the live surface; the heatmap says it is unavailable and why.
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
@@ -778,6 +851,22 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klPcrVolScope')).toContainText('volume');
   });
 
+  test('key levels: the regime prints what it rests on, a flip caveat or a no-regime reason as served', async ({ page }) => {
+    // 2026-09-30 audit: the rail printed a fixed "dealer-sign gated per ticker" under every regime
+    // and nothing when the flip was only approximate or the curve disagreed with it
+    let t = Object.assign({}, TERRAIN, { regime_basis: 'side of the gamma flip', regime_reason: '',
+      gamma_flip_caveat: 'flip level approximate' });
+    await page.route('**/api/terrain?**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(t) }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klFlipNote')).toHaveText('flip level approximate');
+    await expect(page.locator('#klRegimeSub')).toHaveText('side of the gamma flip');
+    t = Object.assign({}, TERRAIN, { regime_basis: 'side of the gamma flip', regime_reason: 'no gamma flip in the prices searched',
+      gamma_flip_caveat: '' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klRegimeSub')).toHaveText('no gamma flip in the prices searched');
+    await expect(page.locator('#klFlipNote')).toBeHidden();
+  });
+
   test('PCR: the selected expiry re-scopes the ratio; an expiry the chain has no ratio for shows none', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#klPcr')).toHaveText('1.02');
@@ -799,19 +888,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   // REAL-DATA VIEWPORT PROOF (2026-09-10 visual FAIL on the running candidate): the fixture is the
   // REAL /api/options/gamma-surface response captured from the candidate at 06:35 CDT — SPY, 116
-  // strikes x 16 expirations, banked_morning_reference from 2026-09-09 — plus the two fields the
-  // server now stamps (session_date_et / prior_session / per-expiration expired; the pre-fix capture
+  // strikes x 16 expirations, banked_morning_reference from 2026-09-09 — plus the fields the
+  // server now stamps (session_date_et / per-expiration expired; the pre-fix capture
   // predates them). Nothing else is altered. The proof: the canonical population is intact and
   // disclosed, Auto selects a legible viewport, Wider widens it, All available exposes everything at
   // the same row height, and an expired prior-session column is never dressed as current structure.
   test('REAL-DATA VIEWPORT: 116x16 canonical surface -> Auto 11 rows x <=11 unexpired columns; Wider 23; All 116x16 legible + EXPIRED labelled; no data loss', async ({ page }) => {
     const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
-    // The captured population is served as a LIVE surface here: the server no longer serves any
-    // banked reference (operator rule 2026-09-23), and this test is about viewport layout over a
-    // real 116x16 population, not about the retired reference path.
+    // The captured population is served as a LIVE surface here: the server serves no banked
+    // reference, and this test is about viewport layout over a real 116x16 population.
     const stamped = Object.assign({}, REAL, {
       source: 'terrain_live_cache', live: true, stale: false, degraded: null,
-      session_date_et: '2026-09-10', prior_session: false, spot_strike: 764, front_expiry: '2026-09-10',
+      session_date_et: '2026-09-10', spot_strike: 764, front_expiry: '2026-09-10',
       expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10' })),
     });
     expect(stamped.strikes.length).toBe(116); expect(stamped.expirations.length).toBe(16);
@@ -923,21 +1011,30 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('header paints the daemon price row the moment it arrives', async ({ page }) => {
     // Stage 1 of the live-UI architecture: the capture daemon pushes the finished row
     // (live_price_rows.price_row) straight to the page; the console is not in the path.
-    await mockPriceSocket(page, [priceRow('SPY', 601.23, { bid: 601.20, ask: 601.25, chg_pct: 0.5,
-      chg_pct_regular: 0.4, quote_ingestion: 'schwab_streaming_level_one' })]);
+    // Every number is the served text, exactly as Schwab sent it (operator 2026-10-01: "no rounding,
+    // use the exact data that schwab gives us everywhere"), each with its served time. Stand-in
+    // values in the server's text (numeric_contract, live_price_rows.price_row).
+    await mockPriceSocket(page, [priceRow('SPY', 601.23, { bid_text: '601.2', ask_text: '601.25',
+      bid_as_of: 'as of Thu 10/01 08:30:00 AM CT', ask_as_of: 'as of Thu 10/01 08:30:01 AM CT',
+      chg_pct_text: '+0.5%', chg_pct_sign: 'pos', chg_pct_as_of: 'as of Thu 10/01 08:30:02 AM CT',
+      chg_pct_regular_text: '+0.4%', chg_pct_regular_sign: 'pos', chg_pct_regular_as_of: 'as of Thu 10/01 08:29:59 AM CT',
+      quote_ingestion: 'schwab_streaming_level_one' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
     await expect(page.locator('#hFeed')).toContainText('LIVE');
-    await expect(page.locator('#hBidAsk')).toHaveText('601.20 × 601.25');
-    // Schwab's two change percents, each under its own label
-    await expect(page.locator('#hChgReg')).toHaveText('REG +0.40%');
-    await expect(page.locator('#hChg')).toHaveText('EXT +0.50%');
+    await expect(page.locator('#hBidAsk')).toHaveText('601.2 · as of Thu 10/01 08:30:00 AM CT × 601.25 · as of Thu 10/01 08:30:01 AM CT');
+    // Schwab's two change percents, each under its own label, with its time and served direction
+    await expect(page.locator('#hChgReg')).toHaveText('REG +0.4% · as of Thu 10/01 08:29:59 AM CT');
+    await expect(page.locator('#hChg')).toHaveText('EXT +0.5% · as of Thu 10/01 08:30:02 AM CT');
+    await expect(page.locator('#hChg')).toHaveClass(/\bpos\b/);
   });
 
-  test('before the session the regular-session percent reads absent, the extended one live', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23, { chg_pct: -0.495313, chg_pct_regular: null })]);
+  test('before the session the regular-session percent reads absent, the extended one as sent', async ({ page }) => {
+    await mockPriceSocket(page, [priceRow('SPY', 601.23, { chg_pct_text: '-0.495313%', chg_pct_sign: 'neg',
+      chg_pct_regular_text: '—' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#hChg')).toHaveText('EXT -0.50%');
+    await expect(page.locator('#hChg')).toHaveText('EXT -0.495313%');   // every digit Schwab sent
+    await expect(page.locator('#hChg')).toHaveClass(/\bneg\b/);
     await expect(page.locator('#hChgReg')).toHaveText('REG —');
   });
 
@@ -949,11 +1046,14 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct: -1.25 })]);
+    await mockPriceSocket(page, [priceRow('SPY', 601.23), priceRow('AMD', 150.5, { chg_pct_text: '-1.25%',
+      chg_pct_sign: 'neg', chg_pct_as_of: 'as of Thu 10/01 08:30:02 AM CT' })]);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
-    await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.50');
-    await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveText('-1.25%');
+    // the served texts, exactly as sent, the change with its time (operator 2026-10-01: no rounding)
+    await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText('150.5');
+    await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveText('-1.25% · as of Thu 10/01 08:30:02 AM CT');
+    await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveClass(/\bneg\b/);
   });
 
   test('theme A/B: explicit dark and light selections persist across reload', async ({ page }) => {
@@ -1962,6 +2062,18 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klFlip')).toHaveText('590.00');
   });
 
+  test('Key Levels shows the served reason when there is no gamma flip', async ({ page }) => {
+    // 2026-09-30: 11 of 43 tickers showed a bare dash. The server says what was searched
+    // (terrain gamma_flip_reason, as MTA's 2026-09-29 close capture gives it); the page prints it.
+    await page.route('**/api/terrain?**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(Object.assign({}, TERRAIN, { gamma_flip: null, gamma_flip_reason: 'none in 8.18–11.06' })),
+    }));
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#klFlip')).toHaveText('none in 8.18–11.06');
+    await expect(page.locator('#klCall')).toHaveText('586.00');   // the other levels are untouched
+  });
+
   test('Key Levels Spot is the header price, not the levels fetch', async ({ page }) => {
     await page.route('**/api/terrain?**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
@@ -2053,6 +2165,89 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.clock.fastForward(60000);
     await page.waitForTimeout(300);
     expect(reads.slice(settled)).toEqual([]);
+  });
+
+  test('option demand rides the push connection: declared under its view id, never re-posted on a timer', async ({ page }) => {
+    // the page re-posted its demand every 30 s to keep a 90 s lease alive; the console now holds
+    // it for as long as the view's /api/changes connection is open
+    await page.clock.install();
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(16, 3)),
+    }));
+    const views = [], posts = [];
+    page.on('request', (r) => {
+      const u = new URL(r.url());
+      if (u.pathname === '/api/changes') views.push(u.searchParams.get('view'));
+    });
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      posts.push(body);
+      route.fulfill({ status: 200, contentType: 'application/json', body: demandAck(body) });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => posts.filter((p) => p.contracts.length).length).toBeGreaterThan(0);
+    await page.waitForTimeout(300);   // hydration settles
+    expect(views[0]).toBeTruthy();
+    expect(posts.map((p) => p.client_id)).toEqual(posts.map(() => views[0]));
+    const settled = posts.length;
+    await page.clock.fastForward(95000);
+    await page.waitForTimeout(300);
+    expect(posts.length).toBe(settled);
+  });
+
+  test('when the push connection opens again, the view declares its option demand again', async ({ page }) => {
+    // the console released the view's demand when the connection closed
+    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(16, 3)),
+    }));
+    // each connection delivers the session and ends; the page's EventSource opens the next
+    let connections = 0;
+    await page.route('**/api/changes**', (route) => { connections += 1;
+      return route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'event: session\ndata: RTH\n\n' }); });
+    const posts = [];
+    await page.route('**/api/streaming/active-option-contracts', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');
+      if (body.contracts.length) posts.push(body.contracts.slice().sort().join());
+      route.fulfill({ status: 200, contentType: 'application/json', body: demandAck(body) });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => posts.length).toBeGreaterThan(0);
+    await expect.poll(() => connections, { timeout: 20000 }).toBeGreaterThan(2);
+    await expect.poll(() => posts.length).toBeGreaterThan(1);
+    expect(posts.every((p) => p === posts[0])).toBe(true);   // the same demand, declared again
+  });
+
+  test('closing a page ends its option demand on the console (the real endpoint and connection)', async ({ page, context }) => {
+    // a page showing contracts, whose declarations reach the console; `sink` takes what the
+    // console answered each one: demand_views, how many views hold demand
+    const open = async (p, sink) => {
+      await p.route('**/api/options/gamma-surface**', (route) => route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(16, 3)),
+      }));
+      await p.route('**/api/streaming/active-option-contracts', (route) => route.continue());
+      p.on('response', async (r) => {
+        if (r.request().method() !== 'POST' || !r.url().includes('/api/streaming/active-option-contracts')) return;
+        try { const body = await r.json(); if (body.ok) sink.push(body.demand_views); } catch (e) {}
+      });
+      await p.goto('/', { waitUntil: 'domcontentloaded' });
+    };
+    const a = [], b = [];
+    await open(page, a);
+    await expect.poll(() => a.length).toBeGreaterThan(0);
+    const second = await context.newPage();
+    await intercept(second);
+    await second.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
+    await open(second, b);
+    await expect.poll(() => b.length).toBeGreaterThan(0);
+    const both = b[b.length - 1];
+    expect(both).toBeGreaterThan(1);
+    await page.close();
+    // the second page declares a changed set; the console no longer counts the closed page
+    let n = 0;
+    await expect.poll(async () => {
+      await second.evaluate((i) => window.EdStream.setAdditionalContracts(['PROBE' + i], 'probe'), n++);
+      return b[b.length - 1];
+    }).toBe(both - 1);
   });
 
   test('a late push on the PREVIOUS ticker\'s connection never paints the new ticker\'s cells', async ({ page }) => {

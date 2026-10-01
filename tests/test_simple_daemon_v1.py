@@ -11,42 +11,52 @@ import sqlite3
 import sys
 import time
 from collections import defaultdict
+from datetime import datetime
 
 import pytest
 
+import live_market_plane as lmp
+import live_price_rows
 import stream_spine as ss
 from app.market_data.schwab.streaming import capture as cap
 from app.market_data.schwab.streaming.live_push import serve_live_push
+from time_et import ET
 
 
 def _wanted(**kw):
     return {s: frozenset(kw.get(s, ())) for s in cap.SERVICES}
 
 
+#: a daemon with no board roster
+NO_ROSTER = cap.StandingRoster(frozenset())
+
+
 # ------------------------------------------------------------------ the sync decision
 
 def test_first_request_of_a_service_is_subs_later_ones_add():
     empty = _wanted()
-    assert cap.plan(_wanted(NYSE_BOOK=["SPY"]), empty, {}) == [("NYSE_BOOK", "SUBS", ["SPY"])]
+    assert cap.plan(_wanted(NYSE_BOOK=["SPY"]), empty, {}, frozenset()) == [("NYSE_BOOK", "SUBS", ["SPY"])]
     held = _wanted(NYSE_BOOK=["SPY"])
-    assert cap.plan(_wanted(NYSE_BOOK=["SPY", "QQQ"]), held, {}) == [("NYSE_BOOK", "ADD", ["QQQ"])]
+    assert cap.plan(_wanted(NYSE_BOOK=["SPY", "QQQ"]), held, {}, frozenset()) == [("NYSE_BOOK", "ADD", ["QQQ"])]
 
 
 def test_dropped_symbols_are_unsubscribed_before_new_ones_are_added():
-    held = _wanted(LEVELONE_EQUITIES=["SPY", "AAPL"])
-    got = cap.plan(_wanted(LEVELONE_EQUITIES=["SPY", "MSFT"]), held, {})
-    assert got == [("LEVELONE_EQUITIES", "UNSUBS", ["AAPL"]), ("LEVELONE_EQUITIES", "ADD", ["MSFT"])]
+    # a book service (an equity service is never unsubscribed on a connection: W-09, observed
+    # 2026-09-29 -- the console's partial list cut every board ticker's stream)
+    held = _wanted(NYSE_BOOK=["SPY", "AAPL"])
+    got = cap.plan(_wanted(NYSE_BOOK=["SPY", "MSFT"]), held, {}, frozenset())
+    assert got == [("NYSE_BOOK", "UNSUBS", ["AAPL"]), ("NYSE_BOOK", "ADD", ["MSFT"])]
 
 
 def test_replacing_everything_held_starts_the_service_over_with_subs():
     held = _wanted(NYSE_BOOK=["SPY"])
-    got = cap.plan(_wanted(NYSE_BOOK=["NVDA"]), held, {})
+    got = cap.plan(_wanted(NYSE_BOOK=["NVDA"]), held, {}, frozenset())
     assert got == [("NYSE_BOOK", "UNSUBS", ["SPY"]), ("NYSE_BOOK", "SUBS", ["NVDA"])]
 
 
 def test_refused_symbols_are_not_asked_for_again_and_nothing_to_do_is_nothing():
     want = _wanted(LEVELONE_OPTIONS=["A", "B"])
-    assert cap.plan(want, _wanted(LEVELONE_OPTIONS=["A"]), {"LEVELONE_OPTIONS": {"B": "no"}}) == []
+    assert cap.plan(want, _wanted(LEVELONE_OPTIONS=["A"]), {"LEVELONE_OPTIONS": {"B": "no"}}, frozenset()) == []
 
 
 def test_requests_are_split_under_schwabs_message_limit():
@@ -61,10 +71,10 @@ def test_requests_are_split_under_schwabs_message_limit():
 
 def test_the_wanted_list_survives_a_restart_and_a_change_clears_that_services_refusals(tmp_path):
     bus, health = ss.MessageBus(), ss.HealthRegistry()
-    d = cap.Daemon(bus, health, tmp_path / "w.json")
+    d = cap.Daemon(bus, health, tmp_path / "w.json", NO_ROSTER)
     assert d.wanted == _wanted(), "no built-in symbol list: the console decides"
     d.set_wanted({"LEVELONE_EQUITIES": ["spy"], "NYSE_BOOK": ["SPY"], "BOGUS": ["X"]})
-    assert cap.Daemon(bus, health, tmp_path / "w.json").wanted == _wanted(
+    assert cap.Daemon(bus, health, tmp_path / "w.json", NO_ROSTER).wanted == _wanted(
         LEVELONE_EQUITIES=["SPY"], NYSE_BOOK=["SPY"])
     d.refused = {s: {} for s in cap.SERVICES}
     d.refused["NYSE_BOOK"] = {"SPY": "x"}
@@ -89,10 +99,10 @@ class FakeSchwab:
             raise RuntimeError("code 19 REACHED_SYMBOL_LIMIT")
 
 
-def _daemon(tmp_path, monkeypatch, fake, **wanted):
+def _daemon(tmp_path, monkeypatch, fake, standing=frozenset(), **wanted):
     bus = ss.MessageBus()
     log = bus.subscribe("sub.", maxsize=100)
-    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json")
+    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json", cap.StandingRoster(standing))
     d.set_wanted({k: list(v) for k, v in wanted.items()})
     d.stream = object()
     monkeypatch.setattr(cap, "_request", fake.request)
@@ -109,6 +119,83 @@ def test_sync_subscribes_the_difference_and_logs_every_answer(tmp_path, monkeypa
     fake.calls.clear()
     asyncio.run(d.sync())
     assert fake.calls == [], "nothing changed, nothing sent"
+
+
+#: a board (the console's logging_universe), the stand-in for the production roster
+BOARD = ["$SPX", "$VIX", "AAPL", "AMD", "META", "MSFT", "MU", "NVDA", "QQQ", "SPY", "TSLA"]
+_EQUITY = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
+
+
+def test_a_console_reconnect_with_a_partial_list_never_unsubscribes_a_board_symbol(tmp_path, monkeypatch):
+    """W-09, observed 2026-09-29: CHART_EQUITY was UNSUBS'd for 41 symbols at 11:25:00 ET and 42
+    at 12:19:14 ET and re-added 1.5-2 minutes later, every ticker losing those minutes -- a
+    restarted console's first list holds only what it knows yet (the market context and the
+    active ticker), and the daemon unsubscribed everything else. The board is the daemon's own
+    standing roster: the console's list only adds to it; a partial list removes nothing, and a
+    daemon that starts with a partial saved list still subscribes the board."""
+    fake = FakeSchwab()
+    whole = {svc: BOARD for svc in _EQUITY}
+    d, _ = _daemon(tmp_path, monkeypatch, fake, standing=frozenset(BOARD), **whole)
+    asyncio.run(d.sync())
+    fake.calls.clear()
+    d.set_wanted({svc: ["$SPX", "$NDX", "$VIX", "SPY"] for svc in _EQUITY})   # the restarted console's first list
+    asyncio.run(d.sync())
+    assert [c for c in fake.calls if c[1] == "UNSUBS"] == []
+    assert fake.calls == [(svc, "ADD", ["$NDX"]) for svc in _EQUITY]
+    assert all(d.held[svc] >= set(BOARD) for svc in _EQUITY)
+    fake.calls.clear()                                    # the daemon restarts on that saved list
+    d2 = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json", cap.StandingRoster(frozenset(BOARD)))
+    d2.stream = object()
+    asyncio.run(d2.sync())
+    assert all(d2.held[svc] == set(BOARD) | {"$NDX"} for svc in _EQUITY)
+
+
+def test_a_demand_list_that_alternates_does_not_churn_a_symbol(tmp_path, monkeypatch):
+    """A viewed ticker off the board (2026-09-29: SNDK, UNSUBS/ADD at 12:47, 13:40, 14:17,
+    14:20, 15:47, 15:49, 15:51 and 15:52 ET) leaves the console's list whenever its page's push
+    connection closes and returns when it opens: each time its stream was cut and its minutes
+    lost. On a connection an equity symbol is added once and never unsubscribed; a board symbol
+    is never touched."""
+    fake = FakeSchwab()
+    d, _ = _daemon(tmp_path, monkeypatch, fake, standing=frozenset(BOARD), **{svc: BOARD for svc in _EQUITY})
+    asyncio.run(d.sync())
+    fake.calls.clear()
+    for k in range(10):
+        d.set_wanted({svc: BOARD + (["SNDK"] if k % 2 == 0 else []) for svc in _EQUITY})
+        asyncio.run(d.sync())
+    assert fake.calls == [(svc, "ADD", ["SNDK"]) for svc in _EQUITY]
+
+
+def test_a_daemon_that_cannot_read_the_board_still_streams_the_consoles_list_and_says_why(tmp_path, monkeypatch, caplog):
+    """The board is read once, at the daemon's start (the database is read at startup only).
+    Without the console's database the daemon still starts and streams the console's list; the
+    roster is unavailable with the reason, logged and in every status, until its next start."""
+    roster = cap.standing_roster(tmp_path / "missing" / "ed_console.db")
+    assert roster.symbols == frozenset() and "could not be read" in roster.problem
+    assert [r.getMessage() for r in caplog.records if "standing roster unavailable" in r.getMessage()]
+    fake = FakeSchwab()
+    d, _ = _daemon(tmp_path, monkeypatch, fake, LEVELONE_EQUITIES=["SPY"])
+    d.roster = roster
+    asyncio.run(d.sync())
+    assert fake.calls == [("LEVELONE_EQUITIES", "SUBS", ["SPY"])]
+    d.stream = None                                       # the status as reported between connections
+    assert d.status()["standing_roster"] == {"symbols": 0, "problem": roster.problem}
+
+
+def test_a_symbol_schwab_refuses_for_its_limit_reads_unavailable_with_schwabs_reason(tmp_path, monkeypatch):
+    """Schwab's symbol limit per subscription is not in its documents. When it refuses a newly
+    viewed ticker (code 19 REACHED_SYMBOL_LIMIT; the fake Schwab's answer is the stand-in), the
+    ticker's price row reads unavailable with Schwab's own reason, never a bare "no live feed"."""
+    monkeypatch.setattr(lmp, "_feed", {"rx": None, "status": None, "held": {}})
+    fake = FakeSchwab(refuse={"SNDK"})
+    d, _ = _daemon(tmp_path, monkeypatch, fake, LEVELONE_EQUITIES=["SNDK"])
+    asyncio.run(d.sync())
+    now = datetime(2026, 9, 30, 11, 0, tzinfo=ET).timestamp()        # in session
+    d.stream = None
+    lmp.record_feed_heartbeat({**d.status(), "schwab_socket_open": True}, now)
+    row = live_price_rows.price_row("SNDK", now)
+    assert row["spot_state"] == "unavailable"
+    assert row["unavailable_reason"] == "Schwab refused this symbol's stream: RuntimeError: code 19 REACHED_SYMBOL_LIMIT"
 
 
 def test_a_refused_symbol_is_recorded_and_retried_only_after_the_list_changes(tmp_path, monkeypatch):
@@ -234,7 +321,7 @@ def test_a_dying_connection_is_replaced_and_everything_wanted_is_resubscribed(tm
     fake = FakeSchwab()
     monkeypatch.setattr(cap, "_request", fake.request)
     bus = ss.MessageBus()
-    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json")
+    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json", NO_ROSTER)
     d.set_wanted({"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["SPY"]})
     stop = asyncio.Event()
 
@@ -258,7 +345,7 @@ def test_silence_from_schwab_ends_the_connection(tmp_path, monkeypatch):
     monkeypatch.setattr(cap, "_open_stream", FakeStream)
     monkeypatch.setattr(cap, "DEAD_SEC", 0.2)
     monkeypatch.setattr(cap, "_request", FakeSchwab().request)
-    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json")
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json", NO_ROSTER)
 
     async def go():
         await d.run_connection(object(), asyncio.Event())
@@ -355,7 +442,6 @@ def console(monkeypatch):
     monkeypatch.setattr(ofs, "_active_option_contracts", [])
     monkeypatch.setattr(ofs, "_equity_demand", {"context": list(ofs.MARKET_CONTEXT_SYMBOLS),
                                                 "watchlist": [], "board": []})
-    import live_market_plane as lmp
     lmp.record_feed_down()
     return ofs
 
@@ -398,29 +484,30 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(cons
     so one moment could read live on one card and dead on the next. One rule now: the daemon's
     heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
     symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes)."""
-    import live_market_plane as lmp
     ofs = console
     status = {"schwab_socket_open": True,
               "health": {"OPTIONS_BOOK": {"age_sec": 45.0}},
               "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]},
               "refused": {"LEVELONE_OPTIONS": {"C": "code 19"}}}
 
+    now = time.time()        # every reader is judged at this one instant
+
     def readers():
-        return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES"), lmp.feed_live_for("A", "LEVELONE_OPTIONS"),
-                ofs._service_feed("A", "OPTIONS_BOOK")["state"], ofs.is_option_producer_daemon_available())
+        return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES", now), lmp.feed_live_for("A", "LEVELONE_OPTIONS", now),
+                ofs._service_feed("A", "OPTIONS_BOOK", now)["state"], ofs.is_option_producer_daemon_available(now))
 
     assert readers() == (False, False, "NOT LIVE", False)
     limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
-    lmp.record_feed_heartbeat(status, time.time() - limit + 0.5)
+    lmp.record_feed_heartbeat(status, now - limit + 0.5)
     assert readers() == (True, True, "LIVE", True)
-    assert ofs._service_feed("A", "OPTIONS_BOOK")["age_sec"] == 45.0
-    assert not lmp.feed_live_for("B", "OPTIONS_BOOK")               # held on L1 only
-    assert ofs.read_producer_admitted_option_contracts() == {"LEVELONE_OPTIONS": ["A", "B"], "OPTIONS_BOOK": ["A"]}
-    assert ofs.read_producer_rejected_option_contracts() == {"C": "code 19"}
-    lmp.record_feed_heartbeat(status, time.time() - limit - 0.5)
+    assert ofs._service_feed("A", "OPTIONS_BOOK", now)["age_sec"] == 45.0
+    assert not lmp.feed_live_for("B", "OPTIONS_BOOK", now)          # held on L1 only
+    assert ofs.read_producer_admitted_option_contracts(now) == {"LEVELONE_OPTIONS": ["A", "B"], "OPTIONS_BOOK": ["A"]}
+    assert ofs.read_producer_rejected_option_contracts(now) == {"C": "code 19"}
+    lmp.record_feed_heartbeat(status, now - limit - 0.5)
     assert readers() == (False, False, "NOT LIVE", False)
-    assert ofs.read_producer_admitted_option_contracts() == {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}
-    lmp.record_feed_heartbeat({**status, "schwab_socket_open": False}, time.time())
+    assert ofs.read_producer_admitted_option_contracts(now) == {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}
+    lmp.record_feed_heartbeat({**status, "schwab_socket_open": False}, now)
     assert readers() == (False, False, "NOT LIVE", True)             # the daemon is up, Schwab is not
 
 

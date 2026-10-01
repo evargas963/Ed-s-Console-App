@@ -94,6 +94,9 @@ class ExposureDiagnostics:
     contracts_total: int
     contracts_used: int
     greeks_missing: int
+    #: contracts whose settlement cannot be determined (no readable expiry, or an expiry date
+    #: with no session close): in no book, counted here
+    expiry_unknown: int
     note: str
 
 
@@ -102,8 +105,8 @@ class ExposureDiagnostics:
 def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dict:
     if strike not in exposures_by_strike:
         exposures_by_strike[strike] = {
-            # has_oi: a contract at this strike reported openInterest (a reported 0 counts:
-            # operator ruling 2026-09-27, take what Schwab sends). Every accumulator below starts
+            # has_oi: a contract at this strike reported openInterest (a reported 0 counts).
+            # Every accumulator below starts
             # at 0.0; a consumer checks has_oi before reading one as computed.
             "has_oi": False,
             # Contracts at this strike whose openInterest was NOT REPORTED (absent, -999, text);
@@ -111,6 +114,9 @@ def _strike_bucket(exposures_by_strike: Dict[float, dict], strike: float) -> dic
             "oi_unreported": 0,
             # Same discipline for totalVolume: an unreported one is UNKNOWN, never zero.
             "volume_unreported": 0,
+            # Contracts at this strike whose settlement cannot be determined (no readable expiry,
+            # or an expiry date with no session close): their OI and greeks are in no book.
+            "expiry_unknown": 0,
             # Operator directive (2026-09-15, canonical input-validity rules): has_oi answers
             # "did any contract clear the OI gate"; has_valid_gamma answers the INDEPENDENT
             # question "did any contract that cleared it ALSO report genuine, vendor-
@@ -183,6 +189,7 @@ def compute_exposures_by_strike(
     total = 0
     used = 0
     missing = 0
+    expiry_unknown = 0
 
     # RC-345 / F13: T for the BS-vanna faucet comes from the ONE valuation-T authority,
     # time_et.time_to_expiry_years (intraday ACT/365 to session close), NOT a local
@@ -191,14 +198,16 @@ def compute_exposures_by_strike(
     # valuation instant when given (a replay of a stored chain must price at the snapshot's
     # time -- 2026-09-25: compute_terrain(now=...) priced gamma at the snapshot but vanna at
     # the wall clock, so the same stored chain gave a different vanna on every run), else now.
-    from time_et import time_to_expiry_years as _tte, now_et as _now_et
+    from time_et import settlement_et as _settles, time_to_expiry_years as _tte, now_et as _now_et
     _tte_now = now if now is not None else _now_et()
-    _tte_cache: dict[tuple, float | None] = {}
+    _tte_cache: dict[tuple, tuple[bool, float | None]] = {}
 
-    def _tte_memo(ct: dict) -> float | None:
+    def _tte_memo(ct: dict) -> tuple[bool, float | None]:
+        """(whether the contract's settlement is known, its time to expiry: None once settled)"""
         key = (str(ct.get("expirationDate")), ct.get("settlementType"))
         if key not in _tte_cache:
-            _tte_cache[key] = _tte(key[0], now=_tte_now, settlement_type=key[1])
+            _tte_cache[key] = (_settles(key[0], key[1]) is not None,
+                               _tte(key[0], now=_tte_now, settlement_type=key[1]))
         return _tte_cache[key]
 
     for ct in contracts:
@@ -224,6 +233,18 @@ def compute_exposures_by_strike(
         else:
             k = "call_volume" if side == "CALL" else "put_volume"
             b[k] = vol if b[k] is None else float(b[k]) + vol
+
+        # A contract at or past its settlement is not open exposure: its volume traded, its open
+        # interest and greeks are in no book. The same rule the gamma profile prices by
+        # (math_levels._contract_inputs). One whose settlement cannot be determined is in no book
+        # either, and is counted.
+        settles_known, t_years = _tte_memo(ct)
+        if not settles_known:
+            expiry_unknown += 1
+            b["expiry_unknown"] += 1
+            continue
+        if t_years is None:
+            continue
 
         if oi is None:
             missing += 1
@@ -266,15 +287,14 @@ def compute_exposures_by_strike(
                 # independently FD-verified). The prior vega/(S*sigma) shortcut dropped the
                 # -d2 factor: always positive, wrong sign below spot, wrong magnitude.
                 _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
-                _T = _tte_memo(ct)
-                if _iv_ok and _T is not None and _T > 0:
+                if _iv_ok:
                     from math_levels import bs_vanna as _bsv
                     # Cursor-audit F7: route through the ONE IV-conversion authority instead of an
                     # inline _iv/100.0. Charm (compute_net_charm) and levels (_contract_inputs)
                     # already use schwab_iv_to_sigma; vanna alone re-encoded the raw conversion,
                     # breaking the single-authority guarantee and lacking the >3.0 units-flip guard.
                     _sig = schwab_iv_to_sigma(iv)
-                    _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
+                    _vn = _bsv(spt, float(strike), t_years, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["call_vanna"] += _vn * 0.01 * oi * mult   # per 1 vol point
                         b["has_valid_vanna"] = vanna_priced = True
@@ -297,17 +317,16 @@ def compute_exposures_by_strike(
                 # RC-211: same exact-vanna faucet as the CALL side (vanna is IDENTICAL for
                 # calls and puts at a strike/expiry — any split comes from OI, never math).
                 _iv_ok = iv is not None and iv > 0 and iv != MISSING_GREEK_SENTINEL and math.isfinite(iv)
-                _T = _tte_memo(ct)
-                if _iv_ok and _T is not None and _T > 0:
+                if _iv_ok:
                     from math_levels import bs_vanna as _bsv
                     # Cursor-audit F7: single IV-conversion authority (see CALL side above).
                     _sig = schwab_iv_to_sigma(iv)
-                    _vn = _bsv(spt, float(strike), _T, _sig) if _sig is not None else None
+                    _vn = _bsv(spt, float(strike), t_years, _sig) if _sig is not None else None
                     if _vn is not None:
                         b["put_vanna"] += _vn * 0.01 * oi * mult    # per 1 vol point
                         b["has_valid_vanna"] = vanna_priced = True
         # a settled contract (no time to expiry) carries no vanna and leaves none unknown
-        if spot is not None and oi > 0 and not vanna_priced and _T is not None and _T > 0:
+        if spot is not None and oi > 0 and not vanna_priced and t_years > 0:
             b[f"{leg}_vanna_unreported"] += 1
 
     for strike, b in exposures.items():
@@ -324,10 +343,10 @@ def compute_exposures_by_strike(
         b["net_dex_dollars"] = b.get("call_dex_dollars", 0.0) - b.get("put_dex_dollars", 0.0)
         b["net_gex_1pct"] = b.get("call_gex_1pct", 0.0) - b.get("put_gex_1pct", 0.0)
 
-    return exposures, _diagnostics(total, used, missing)
+    return exposures, _diagnostics(total, used, missing, expiry_unknown)
 
 
-def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
+def _diagnostics(total: int, used: int, missing: int, expiry_unknown: int) -> ExposureDiagnostics:
     note = "OK"
     if used == 0:
         note = "No usable contracts (OI filtered or chain empty)."
@@ -335,7 +354,7 @@ def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
         note = ("All greeks missing (Schwab sent -999, or no quote came back). You will still get "
                 "OI center; gamma/delta pin/inf may be N/A until RTH.")
     return ExposureDiagnostics(contracts_total=total, contracts_used=used,
-                               greeks_missing=missing, note=note)
+                               greeks_missing=missing, expiry_unknown=expiry_unknown, note=note)
 
 
 def exposure_books(contracts: List[dict], *, spot: float | None, now=None
@@ -358,11 +377,12 @@ def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics
     order): every bucket field is a per-contract sum or an OR of a per-contract flag, and a
     leg no contract reported stays None (None + x = x)."""
     merged: Dict[float, dict] = {}
-    total = used = missing = 0
+    total = used = missing = expiry_unknown = 0
     for exposures, diag in books:
         total += diag.contracts_total
         used += diag.contracts_used
         missing += diag.greeks_missing
+        expiry_unknown += diag.expiry_unknown
         for strike, bucket in exposures.items():
             cur = merged.get(strike)
             if cur is None:
@@ -374,7 +394,7 @@ def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics
                 elif v is not None:
                     c = cur.get(k)
                     cur[k] = v if c is None else c + v
-    return merged, _diagnostics(total, used, missing)
+    return merged, _diagnostics(total, used, missing, expiry_unknown)
 
 
 #: The per-strike bucket fields that are flags (OR-ed when books merge); every other field is
@@ -414,7 +434,8 @@ def overlay_streamed_contract_fields(
     however long ago it arrived -- it is never compared with the chain's quote time (ONE-05,
     2026-09-28: that comparison dropped every streamed value after each chain download, and the
     heatmap flipped to all-stale while the feed was live). A field the stream has not sent keeps
-    the chain's value; every other contract keeps the chain's values.
+    the chain's value; a field it last sent as not a number (held as None) is unavailable, not
+    the chain's older value; every other contract keeps the chain's values.
 
     Pure: `contracts` and its dicts are never mutated; only a contract that gets a field is
     copied. Returns (new_contracts, overlaid_count).
@@ -433,12 +454,11 @@ def overlay_streamed_contract_fields(
             continue
         new_ct = None
         for streamed_key, chain_key in _STREAMED_GREEK_FIELDS:
-            val = streamed.get(streamed_key)
-            if val is None:
+            if streamed_key not in streamed:
                 continue
             if new_ct is None:
                 new_ct = dict(ct)
-            new_ct[chain_key] = val
+            new_ct[chain_key] = streamed[streamed_key]
         if new_ct is not None:
             overlaid += 1
             out.append(new_ct)
@@ -618,37 +638,6 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
     net_shares_per_volpt = sum(nets)                 # the book is already per vol point
     return {"net_vanna_dollars_per_volpt": round(net_shares_per_volpt * float(spot), 2),
             "net_vanna_shares_per_volpt": round(net_shares_per_volpt, 2)}
-
-
-def compute_zero_dte_gamma_share(
-    exposures_all: dict, exposures_0dte: dict
-) -> float | None:
-    """RC-357: % of the dealer gamma book from SAME-DAY expiry — the level-persistence read.
-
-    share = sum(|net_gex_1pct|) over the 0DTE book / sum(|net_gex_1pct|) over the full book,
-    BOTH books from the ONE producer (compute_exposures_by_strike; the 0DTE book merges
-    exposure_books' same-day groups). High share
-    means today's walls/flip decay into the close (0DTE gamma dies at 4pm); low share means
-    the levels are carried by dated gamma and persist. FAIL-CLOSED: None when the full book
-    is empty or has no measurable gamma — never a fabricated 0%.
-    """
-    if not exposures_all:
-        return None
-    # RC-369: a bucket MISSING its net-GEX field must not contribute a fabricated zero
-    # weight to a share-of-book ratio — absence WITHHOLDS the whole metric.
-    total = 0.0
-    for v in exposures_all.values():
-        x = bucket_metric(v, "net_gex_1pct")
-        if x is not None:
-            total += abs(x)
-    if total <= 0:
-        return None
-    zero = 0.0
-    for v in (exposures_0dte or {}).values():
-        x = bucket_metric(v, "net_gex_1pct")
-        if x is not None:
-            zero += abs(x)
-    return round(100.0 * zero / total, 1)
 
 
 def total_gamma_raw_at_strike(bucket: dict) -> float | None:

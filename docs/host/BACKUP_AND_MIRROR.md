@@ -8,7 +8,7 @@ app writes at runtime is on the host only.
 | Category | Paths | Backup |
 |----------|-------|--------|
 | Secrets | `.env`, `schwab_token.json`, `*.key`, `*.pem` | Secure store only |
-| Databases | `data/ed_console.db`, `data/stream_capture.db` | Copies under `backups/db/`; no scheduled backup job exists |
+| Databases | `data/ed_console.db`, `data/stream_capture.db` | Manual copies under `backups/db/`, same disk, never restored; no scheduled backup, no retention (`ACTIVE_PROGRAM.md` OPS-HOST) |
 | Runtime output | `data/*`, `*.log`, `logs/`, `.runtime/`, `reports/` | None |
 | Local agent state | `.claude/settings.local.json`, `.claude/scheduled_tasks.lock` | Machine-specific |
 

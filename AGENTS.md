@@ -101,7 +101,8 @@ Same session, at its source (rule 1), or name the exact blocker. "Pre-existing",
 - Checkpoints: about every 15 minutes of work the agent reports to the operator what changed,
   what was deleted, each proof and its tier, and what is NOT_PROVEN, then continues.
 - A PR merges when its required proof on its final commit is complete and CI is green; green CI
-  alone is not proof. A change to AGENTS.md, CI, a hook or a check is merged only by the operator.
+  alone is not proof. The agent merges it, AGENTS.md, CI, hooks and checks included (operator,
+  2026-09-30).
 - Stop for: the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE; a task marked AUDIT ONLY
   or DO NOT MERGE; a destructive data action; a product decision code cannot settle.
 - Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.

@@ -35,7 +35,6 @@ def _isolated_contaminated_parent() -> dict[str, str]:
         "ED_CONSOLE_ALLOW_NONCANONICAL_DB": "1",
         "SCHWAB_API_KEY": _TEST_SENTINEL,
         "SCHWAB_APP_SECRET": _TEST_SENTINEL,
-        "ED_OPS_RUNNER": "1",
         "PATH": "/usr/bin",
     }
 
@@ -68,11 +67,9 @@ def test_sanitize_does_not_strip_db_harness_or_live_authority():
     env["SCHWAB_TOKEN_PATH"] = "C:\\live\\schwab_token.json"
     cleared = vars_to_unset(env)
     assert "ED_CONSOLE_ALLOW_NONCANONICAL_DB" not in cleared
-    assert "ED_OPS_RUNNER" not in cleared
     assert "SCHWAB_TOKEN_PATH" not in cleared
     apply_sanitize(env)
     assert env["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] == "1"
-    assert env["ED_OPS_RUNNER"] == "1"
     assert env["SCHWAB_TOKEN_PATH"] == "C:\\live\\schwab_token.json"
     assert "PATH" in env
 
@@ -83,7 +80,6 @@ def test_sanitize_does_not_erase_legitimate_live_schwab_credentials():
     env = {
         "SCHWAB_API_KEY": _LIVE_KEY,
         "SCHWAB_APP_SECRET": _LIVE_SECRET,
-        "ED_OPS_RUNNER": "1",
     }
     apply_sanitize(env)
     assert env["SCHWAB_API_KEY"] == _LIVE_KEY
@@ -100,9 +96,8 @@ def test_child_uvicorn_env_has_no_ci_test_contamination():
     assert inherited.get("CI") in (None, "")
     assert inherited.get("SCHWAB_API_KEY") in (None, "")
     assert inherited.get("SCHWAB_APP_SECRET") in (None, "")
-    # harness / ops flags survive so we did not wipe the parent indiscriminately
+    # the harness flag survives so we did not wipe the parent indiscriminately
     assert inherited["ED_CONSOLE_ALLOW_NONCANONICAL_DB"] == "1"
-    assert inherited["ED_OPS_RUNNER"] == "1"
 
 
 def test_contamination_remaining_after_sanitize_blocks(monkeypatch):
