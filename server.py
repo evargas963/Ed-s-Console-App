@@ -763,15 +763,18 @@ def _bar_dict(c: "Candle") -> dict:
 
 
 def _write_streamed_bar(msg: dict) -> bool:
-    """Write one streamed 1-minute bar (Schwab CHART_EQUITY) to price_bars_1m: the chart's bar
-    (live_price_rows.minute_bar, the one the daemon pushes to the screen); False when it is not
-    one (then nothing is written)."""
+    """Write one 1-minute bar the daemon forwards to price_bars_1m: the chart's bar
+    (live_price_rows.minute_bar, the one the daemon pushes to the screen), with its source -- a
+    streamed bar (Schwab CHART_EQUITY) stands over any stored one; a price-history bar (the day's
+    earlier minutes, live_ui) only fills a minute the store does not have. False when it is not a
+    chart bar (then nothing is written)."""
     b = _lpr.minute_bar(msg)
     if b is None:
         log.debug("streamed bar for %s is not a chart bar, not written: %s", msg.get("symbol"), msg)
         return False
     get_db().upsert_1m_bars(msg["symbol"], [Candle(ts=b["t"], open=b["o"], high=b["h"], low=b["l"],
-                                                   close=b["c"], volume=b["v"])])
+                                                   close=b["c"], volume=b["v"])],
+                            backfill=msg.get("src") == "schwab_pricehistory")
     return True
 
 

@@ -183,7 +183,7 @@
       var bars = (d && d.bars) || [];
       S.bars = bars; S.barsAnswered = gen;
       // the Order Flow card's hour of 1-minute bars, served whole with the history (recent_1m)
-      S.flowBars = d ? d.recent_1m || [] : null; paintCards();
+      S.flowBars = d ? d.recent_1m || [] : null; S.flowReason = null; paintCards();
       S.chart.setBars(bars, tf, shown(), d && d.last_bar && d.last_bar.label);
       $('tdmChartEmpty').hidden = bars.length > 0;
       $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
@@ -197,12 +197,14 @@
   function takeBar(b) {
     if (!S.chart || b.ticker !== st().key || S.barsAnswered !== S.gen) return;
     var had = S.bars.length;
+    S.chart.setUnavailable(b.tf[S.tf] ? null : b.unavailable);      // the served reason, if any
     if (b.tf[S.tf]) {
       S.chart.pushBar(b.tf[S.tf], b.last_bar && b.last_bar.label);   // the chart library places it
       S.bars = S.chart.bars();
       if (!had) { $('tdmChartEmpty').hidden = true; paintChartOverlays(); }
     }
-    S.flowBars = b.recent_1m; paintCards();                        // the daemon's served hour, whole
+    // the daemon's served hour, whole, or none with the served reason
+    S.flowBars = b.recent_1m; S.flowReason = b.unavailable; paintCards();
   }
   function loadSlow() { return Promise.all([loadPerTf(), loadPerTicker()]); }
   // the timeframe's levels (VWAP per chart bar) and event window, each drawn as it arrives
@@ -495,7 +497,7 @@
       spark(c, [{ ys: fb.map(function (b) { return b.v; }), kind: 'bars', color: P.ink3,
         colors: fb.map(function (b) { return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down; }) }],
         'Volume per 1-minute bar, last hour · green up, red down',
-        S.flowBars === undefined ? 'loading…' : 'no 1-minute bars for this symbol');
+        S.flowBars === undefined ? 'loading…' : S.flowReason || 'no 1-minute bars for this symbol');
     }
     if ((c = $('tdmCardOpt'))) {
       var pcr = (t && t.pcr_by_expiry) || {};

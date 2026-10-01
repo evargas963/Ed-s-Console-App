@@ -435,11 +435,13 @@ class EdDB:
             except sqlite3.OperationalError as exc:
                 log.warning("drop confluence_log failed: %s", exc)
 
-    def upsert_1m_bars(self, ticker: str, bars: list) -> int:
-        """Write Schwab's streamed 1m bars to price_bars_1m. `bars` are Candle objects from
+    def upsert_1m_bars(self, ticker: str, bars: list, *, backfill: bool = False) -> int:
+        """Write Schwab's 1m bars to price_bars_1m. `bars` are Candle objects from
         server._write_streamed_bar: ts is the bar start in epoch seconds, OHLC already read with
         schwab_number. A bar off the minute grid is refused and counted. Only bars ending in the
-        RC-183 collect window are persisted. Returns the rows written."""
+        RC-183 collect window are persisted. A streamed bar (source schwab_chart_equity) stands
+        over a stored one; `backfill` bars (Schwab's price history, source schwab_pricehistory)
+        are written only where the store has no bar for the minute. Returns the rows written."""
         tkr = ticker_storage_key(ticker)
         rows = []
         off_grid = 0
@@ -461,25 +463,18 @@ class EdDB:
         if not rows:
             return 0
 
+        insert = ("INSERT INTO price_bars_1m (ticker, bar_start_ts_utc, bar_end_ts_utc, open, high, low, "
+                  "close, volume, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ")
+        on_conflict = ("ON CONFLICT(ticker, bar_start_ts_utc) DO NOTHING" if backfill else
+                       "ON CONFLICT(ticker, bar_start_ts_utc) DO UPDATE SET "
+                       "bar_end_ts_utc = excluded.bar_end_ts_utc, open = excluded.open, "
+                       "high = excluded.high, low = excluded.low, close = excluded.close, "
+                       "volume = excluded.volume, source = excluded.source")
+        source = "schwab_pricehistory" if backfill else "schwab_chart_equity"
+
         def _do() -> int:
             with self._connect() as conn:
-                conn.executemany(
-                    """
-                    INSERT INTO price_bars_1m (ticker, bar_start_ts_utc, bar_end_ts_utc,
-                        open, high, low, close, volume, source)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'schwab_chart_equity')
-                    ON CONFLICT(ticker, bar_start_ts_utc) DO UPDATE SET
-                        bar_end_ts_utc = excluded.bar_end_ts_utc,
-                        open = excluded.open,
-                        high = excluded.high,
-                        low = excluded.low,
-                        close = excluded.close,
-                        volume = excluded.volume,
-                        source = excluded.source
-                    """,
-                    rows,
-                )
-            return len(rows)
+                return conn.executemany(insert + on_conflict, [r + (source,) for r in rows]).rowcount
 
         return self._tier1_snapshot_write("upsert_1m_bars", tkr, _do)
 

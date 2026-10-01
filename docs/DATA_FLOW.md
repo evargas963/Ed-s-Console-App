@@ -107,14 +107,20 @@ opens no second streaming socket).
   console restart) the page declares its demand again when the next opens (`ed:push_open`).
   No timer keeps it alive.
 - **1-minute bar.** Schwab → daemon bus → (a) the daemon's browser push (`live_ui`): the
-  symbol's minutes of the day in the daemon's memory (the day's stored minutes of the daemon's
-  CHART_EQUITY symbols are read from `price_bars_1m` once, at the daemon's startup, and never
-  after: from then on a symbol's minutes are only the ones Schwab streams, so a symbol added
-  after startup starts with the minutes Schwab sends it and its higher-timeframe bars are
-  partial -- where those earlier minutes should come from is the operator's open question,
-  `ACTIVE_PROGRAM.md` LIVE-ROLLUP (a); owner `capture.run` through
-  `live_ui.day_minutes`; if that read fails the daemon exits and `start_capture_daemon.bat`
-  starts it again) → for each new minute, the chart bar it makes at every
+  symbol's minutes of the day in the daemon's memory: when the daemon starts streaming a
+  symbol (its first streamed minute of the day, at startup or when the symbol is added) it asks
+  Schwab's 1-minute price history for the day's earlier minutes, from the collect window's first
+  minute to now (`capture.schwab_minutes`, extended hours; the daemon is the only caller of
+  Schwab), then holds each minute Schwab streams; each minute keeps its source (stream or price
+  history), and where both give a minute the streamed one stands, a difference counted and
+  logged with both (`live_ui._hold`). No live bar reads the database. Until the earlier minutes
+  are received, only the 1-minute bar is pushed and every bar above it and the Order Flow hour
+  are unavailable with the reason ("today's earlier minutes not received from Schwab", with the
+  failure); the symbol's next streamed minute asks again. The price-history minutes are
+  published to the console's one bar writer, which writes the ones the store lacks (source
+  `schwab_pricehistory`) and never overwrites a stored bar; a streamed bar stands over a stored
+  one. Decided by the operator, 2026-09-30: "we can get all the bars that we need for the day
+  right? and then those bars can backfill the db if the db needs to be backfilled?" → for each new minute, the chart bar it makes at every
   timeframe (`live_price_rows.bar_update`), with the symbol's newest hour of 1-minute bars
   whole (`recent_1m`, the Trade Desk Order Flow card's) → the browsers subscribed to the symbol,
   whose charts draw it (`ed:bar`) with no read: the chart library places it (`series.update`:

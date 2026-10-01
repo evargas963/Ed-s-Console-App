@@ -79,7 +79,8 @@ async def _run(body, feed=None):
     stats: dict = {}
     feed = feed if feed is not None else _Feed()
     server = asyncio.create_task(live_ui.serve_live_ui(
-        bus, stop, heartbeat_fn=feed, clock=_now, host="127.0.0.1", port=port, stats=stats))
+        bus, stop, heartbeat_fn=feed, clock=_now, host="127.0.0.1", port=port, stats=stats,
+        history_fn=lambda *a: []))                     # no bar here: Schwab's history unused
     end = time.monotonic() + 5
     while not stats.get("listening") and time.monotonic() < end:
         await asyncio.sleep(0.01)

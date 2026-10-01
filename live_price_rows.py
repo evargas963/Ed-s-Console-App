@@ -113,11 +113,15 @@ def recent_1m(minutes: list[dict]) -> list[dict[str, Any]]:
     return [served_bar(dict(m), "1") for m in minutes[-RECENT_1M_BARS:]]
 
 
-def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float) -> dict[str, Any]:
+def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float,
+               unavailable: Optional[str] = None) -> dict[str, Any]:
     """What the daemon pushes for one 1-minute `bar`: for each chart timeframe, the chart bar that
     contains it (roll_bucket) when that is the chart's newest bar, from `minutes` -- the ticker's
     minutes of `bar`'s ET trading day, oldest first, `bar` among them; the "D" bar is all of them
-    -- with the daemon's receive time of Schwab's message and `recent_1m`.
+    -- with the daemon's receive time of Schwab's message and `recent_1m`. `unavailable`: why the
+    day's earlier minutes are not held (not received from Schwab): then only the 1-minute bar is
+    served, every bar above it and `recent_1m` are absent with that reason (`unavailable`),
+    never a partial bar served as complete.
 
     A chart's push is only ever its newest bar: a chart places it with the library's own update,
     which replaces the newest bar or adds a newer one, and a bar's time is its bucket's start, so
@@ -130,7 +134,7 @@ def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float) -> d
     by_tf: dict[str, Any] = {}
     for tf in CHART_TFS:
         key = tf_bucket_key(bar["t"], tf)
-        if key != tf_bucket_key(newest, tf):
+        if key != tf_bucket_key(newest, tf) or (unavailable is not None and tf != "1"):
             continue
         lo, hi = i, i + 1
         while lo and tf_bucket_key(minutes[lo - 1]["t"], tf) == key:
@@ -139,7 +143,8 @@ def bar_update(ticker: str, minutes: list[dict], bar: dict, ts_recv: float) -> d
             hi += 1
         by_tf[tf] = served_bar(roll_bucket(minutes[lo:hi], tf), tf)
     return {"ticker": ticker_storage_key(ticker), "ts_recv": ts_recv, "last_bar": last_bar(newest),
-            "tf": by_tf, "recent_1m": recent_1m(minutes)}
+            "tf": by_tf, "recent_1m": None if unavailable is not None else recent_1m(minutes),
+            "unavailable": unavailable}
 
 
 def live_spot(ticker: str, now: float) -> Optional[float]:

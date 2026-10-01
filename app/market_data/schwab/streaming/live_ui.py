@@ -6,7 +6,8 @@ whether the feed is alive (the daemon's own heartbeat, applied every HEARTBEAT_S
 pushes the FINISHED displayed row (live_price_rows.price_row -- the one producer) to every
 browser that asked for the symbol, the moment a Schwab message changes it. It keeps each
 symbol's 1-minute bars of the day (Schwab CHART_EQUITY, live_price_rows.minute_bar; the day's
-stored minutes of its symbols are loaded once, at startup) and pushes, for each new bar,
+earlier minutes from Schwab's price history when the symbol starts streaming) and pushes, for
+each new bar,
 the chart bar it completes or extends at every chart timeframe (live_price_rows.bar_update).
 
 No web server sits in this path, so no analytics load can delay a price.
@@ -47,16 +48,15 @@ import asyncio
 import json
 import logging
 import os
-import sqlite3
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 
 import live_market_plane as lmp
 import live_price_rows
 from instrument_identity import display_symbol, ticker_storage_key
-from stream_spine import COUNT_DROPS, MessageBus
-from time_et import ET, ct_label
+from stream_spine import COUNT_DROPS, MessageBus, bar_msg
+from time_et import COLLECT_WINDOW_START_MINS, ET, ct_label
 
 log = logging.getLogger(__name__)
 
@@ -70,26 +70,29 @@ HEARTBEAT_SEC = 1.0
 MAX_SYMBOLS_PER_CLIENT = 200
 
 
+#: where a held minute came from: Schwab's stream (CHART_EQUITY) or Schwab's 1-minute price
+#: history (the day's earlier minutes, asked when the daemon starts streaming the symbol). The
+#: stream's minute stands wherever both exist.
+SRC_STREAM, SRC_PRICEHISTORY = "schwab_chart", "schwab_pricehistory"
+#: the state of a symbol's earlier minutes of the day from Schwab's price history
+EARLIER_NOT_RECEIVED, EARLIER_ASKED, EARLIER_RECEIVED = "not_received", "asked", "received"
+#: why a symbol's bars above 1 minute and its Order Flow hour are not served yet
+EARLIER_MINUTES_UNAVAILABLE = "today's earlier minutes not received from Schwab"
+
+
 def _et_day_start(t: float) -> float:
     return datetime.fromtimestamp(t, ET).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
 
 
-def day_minutes(db_path: "str | Path", symbols, now: float) -> dict[str, tuple[float, dict[float, dict]]]:
-    """The minutes the daemon starts with: the stored 1-minute bars (price_bars_1m) of `symbols`
-    on `now`'s ET day, as {symbol: (that day's start, {bar start: chart bar})}. Read once, at the
-    daemon's startup (capture.run), read-only; a read that fails stops the startup."""
-    day, keys = _et_day_start(now), sorted({ticker_storage_key(s) for s in symbols})
-    con = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True, timeout=10)
-    try:
-        rows = con.execute("SELECT ticker, bar_start_ts_utc, open, high, low, close, volume FROM price_bars_1m "
-                           f"WHERE ticker IN ({','.join('?' * len(keys))}) AND bar_start_ts_utc>=?",
-                           (*keys, day)).fetchall()
-    finally:
-        con.close()
-    out: dict[str, tuple[float, dict[float, dict]]] = {}
-    for tk, t, o, h, lo, c, v in rows:
-        out.setdefault(tk, (day, {}))[1][t] = {"t": t, "o": o, "h": h, "l": lo, "c": c, "v": v}
-    return out
+@dataclass
+class _Day:
+    """One symbol's minutes of one ET day: each minute with its source, and the state of the day's
+    earlier minutes from Schwab's price history (`reason`: why they are not received)."""
+    start: float
+    minutes: dict[float, dict] = field(default_factory=dict)
+    source: dict[float, str] = field(default_factory=dict)
+    earlier: str = EARLIER_NOT_RECEIVED
+    reason: "str | None" = None
 
 
 class _Client:
@@ -106,19 +109,23 @@ class _Client:
 
 
 class LiveUiServer:
-    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict, *, clock,
-                 minutes: "dict[str, tuple[float, dict[float, dict]]] | None" = None) -> None:
+    def __init__(self, bus: MessageBus, heartbeat_fn, stats: dict, *, clock, history_fn) -> None:
         self.bus = bus
         self.heartbeat_fn = heartbeat_fn
         #: the entry point's clock (epoch seconds): every row, beat and gap is judged at its time
         self.clock = clock
+        #: Schwab's 1-minute price history: (streamed symbol, start, end epoch seconds) -> its
+        #: candles as sent (capture.schwab_minutes); blocking, run off the event loop
+        self.history_fn = history_fn
         self.stats = stats
         self.clients: set[_Client] = set()
-        #: each symbol's minutes of one ET day: (that day's start, {bar start: bar}); the day's
-        #: stored minutes as loaded at startup, then only the ones Schwab streams
-        self.minutes: dict[str, tuple[float, dict[float, dict]]] = minutes if minutes is not None else {}
+        #: each symbol's minutes of the current ET day: the day's earlier minutes from Schwab's
+        #: price history, then each minute Schwab streams. Nothing here reads the database.
+        self.days: dict[str, _Day] = {}
+        self._asks: set[asyncio.Task] = set()
         stats.update(clients=0, rows_sent=0, frames_sent=0, ingest_failures=0,
-                     beat_send_failures=0, listening=None, last_send_ms=None, bars_sent=0)
+                     beat_send_failures=0, listening=None, last_send_ms=None, bars_sent=0,
+                     bar_source_mismatches=0, earlier_minutes_failures=0)
 
     # -- plane side -------------------------------------------------------------------
 
@@ -143,21 +150,74 @@ class LiveUiServer:
                 c.wake.set()
 
     def on_bar(self, msg) -> None:
-        """One daemon bar message -> the symbol's minutes of the day -> the chart bar it makes at
-        every timeframe, for every browser watching the symbol. A symbol's first bar of a day it
-        holds no minutes for starts that day's minutes: no stored minute is read here."""
-        if not isinstance(msg, dict) or not msg.get("symbol"):
+        """One streamed minute (a bus bar message) -> the symbol's minutes of the day -> the chart
+        bar it makes at every timeframe, for every browser watching the symbol. Until the day's
+        earlier minutes are received from Schwab's price history (asked on the symbol's first
+        streamed minute of the day, and again on each later one until received), only its 1-minute
+        bar is pushed and the rest are unavailable with the reason. A price-history message on the
+        bus is this server's own, published for the store: already held."""
+        if not isinstance(msg, dict) or not msg.get("symbol") or msg.get("src") == SRC_PRICEHISTORY:
             return
         bar = live_price_rows.minute_bar(msg)
         if bar is None:
             return
-        sym, day = ticker_storage_key(msg["symbol"]), _et_day_start(bar["t"])
-        held = self.minutes.get(sym)
-        if held is None or held[0] != day:
-            held = self.minutes[sym] = (day, {})
-        held[1][bar["t"]] = bar
-        update = live_price_rows.bar_update(sym, sorted(held[1].values(), key=lambda m: m["t"]), bar,
-                                            float(msg["ts_recv"]))
+        sym = ticker_storage_key(msg["symbol"])
+        day = self.days.get(sym)
+        if day is None or day.start != _et_day_start(bar["t"]):
+            day = self.days[sym] = _Day(_et_day_start(bar["t"]))
+        self._hold(sym, day, bar, SRC_STREAM)
+        if day.earlier == EARLIER_NOT_RECEIVED:
+            day.earlier = EARLIER_ASKED
+            task = asyncio.get_running_loop().create_task(self._ask_earlier(msg["symbol"], sym, day))
+            self._asks.add(task)
+            task.add_done_callback(self._asks.discard)
+        self._push(sym, day, bar, float(msg["ts_recv"]))
+
+    def _hold(self, sym: str, day: _Day, bar: dict, src: str) -> None:
+        """Hold one minute with its source. The stream's minute stands: a price-history minute
+        never replaces it, and a difference between the two is counted and logged with both."""
+        prev, prev_src = day.minutes.get(bar["t"]), day.source.get(bar["t"])
+        if prev is not None and prev_src != src and prev != bar:
+            self.stats["bar_source_mismatches"] += 1
+            stream, history = (prev, bar) if prev_src == SRC_STREAM else (bar, prev)
+            log.warning("%s %s: the streamed bar %s and Schwab's price-history bar %s differ; the "
+                        "streamed bar stands", sym, ct_label(bar["t"]), stream, history)
+        if prev is None or src == SRC_STREAM or prev_src == SRC_PRICEHISTORY:
+            day.minutes[bar["t"]], day.source[bar["t"]] = bar, src
+
+    async def _ask_earlier(self, symbol: str, sym: str, day: _Day) -> None:
+        """Ask Schwab's price history for `sym`'s minutes of `day` from the collect window's first
+        minute (09:15 ET) to now; hold each completed one, publish it for the store (the console's
+        bar writer backfills what it lacks), and push the symbol's bars, now whole. A failed
+        request leaves the day's earlier minutes not received, with its reason; the symbol's next
+        streamed minute asks again."""
+        now = self.clock()
+        try:
+            candles = await asyncio.to_thread(self.history_fn, symbol,
+                                              day.start + COLLECT_WINDOW_START_MINS * 60, now)
+        except Exception as e:  # noqa: BLE001 -- counted, served as the reason; asked again
+            self.stats["earlier_minutes_failures"] += 1
+            day.earlier, day.reason = EARLIER_NOT_RECEIVED, f"{EARLIER_MINUTES_UNAVAILABLE}: {type(e).__name__}: {e}"
+            log.warning("live ui: %s %s", sym, day.reason)
+            return
+        received = self.clock()
+        for c in candles:
+            msg = bar_msg(symbol=symbol, bar_start_ms=c.get("datetime"), open=c.get("open"), high=c.get("high"),
+                          low=c.get("low"), close=c.get("close"), volume=c.get("volume"),
+                          src=SRC_PRICEHISTORY, ts_recv=received)
+            bar = live_price_rows.minute_bar(msg)
+            if bar is None or bar["t"] + 60.0 > now or _et_day_start(bar["t"]) != day.start:
+                continue                       # not a chart bar, not completed, or another day
+            self._hold(sym, day, bar, SRC_PRICEHISTORY)
+            self.bus.publish(f"bar1m.{symbol}", msg)
+        day.earlier, day.reason = EARLIER_RECEIVED, None
+        if self.days.get(sym) is day and day.minutes:
+            self._push(sym, day, day.minutes[max(day.minutes)], received)
+
+    def _push(self, sym: str, day: _Day, bar: dict, ts_recv: float) -> None:
+        update = live_price_rows.bar_update(
+            sym, sorted(day.minutes.values(), key=lambda m: m["t"]), bar, ts_recv,
+            None if day.earlier == EARLIER_RECEIVED else (day.reason or EARLIER_MINUTES_UNAVAILABLE))
         for c in self.clients:
             if sym in c.symbols:
                 c.bars.append(update)
@@ -286,17 +346,16 @@ class LiveUiServer:
 
 async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn, clock,
                         host: str = LIVE_UI_HOST, port: int = LIVE_UI_PORT,
-                        stats: "dict | None" = None,
-                        minutes: "dict[str, tuple[float, dict[float, dict]]] | None" = None) -> None:
+                        stats: "dict | None" = None, history_fn) -> None:
     """Run until `stop` is set. Start it BEFORE the Schwab connection so the plane sees the
     first messages (Schwab sends each field once, then only changes). `clock`: the entry
-    point's clock (epoch seconds), the time every row, beat and gap is judged at. `minutes`:
-    the day's stored minutes the daemon read at startup (day_minutes); after them a symbol's
-    minutes are only the ones Schwab streams. Nothing here reads the database."""
+    point's clock (epoch seconds), the time every row, beat and gap is judged at. `history_fn`:
+    Schwab's 1-minute price history (capture.schwab_minutes), the day's earlier minutes of each
+    symbol when it starts streaming. Nothing here reads the database."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    srv = LiveUiServer(bus, heartbeat_fn, stats, clock=clock, minutes=minutes)
+    srv = LiveUiServer(bus, heartbeat_fn, stats, clock=clock, history_fn=history_fn)
     for topic, msg in list(bus.snapshot().items()):         # whatever arrived before we started
         if topic.startswith("quote."):
             srv.ingest(msg)
@@ -328,6 +387,7 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn, c
             log.info("live ui: serving price rows to browsers on ws://%s:%s", host, port)
             await stop.wait()
     finally:
+        tasks += list(srv._asks)               # the price-history requests still out
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

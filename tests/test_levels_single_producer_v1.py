@@ -165,7 +165,7 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monk
     # first, then each ticker's levels are published from its bars
     last = raw[-1]
     order, upsert, publish = [], db.upsert_1m_bars, srv._publish_price_levels
-    monkeypatch.setattr(db, "upsert_1m_bars", lambda tk, bars: order.append(("bar", tk)) or upsert(tk, bars))
+    monkeypatch.setattr(db, "upsert_1m_bars", lambda tk, bars, **kw: order.append(("bar", tk)) or upsert(tk, bars, **kw))
     monkeypatch.setattr(srv, "_publish_price_levels", lambda tk: order.append(("levels", tk)) or publish(tk))
     srv._write_streamed_bars([
         {"symbol": "SPY", "bar_start_ms": last["timestamp"], "open": last["open"], "high": last["high"],

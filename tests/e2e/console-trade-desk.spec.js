@@ -504,6 +504,28 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Market Map: before the day\'s earlier minutes arrive, the bars above 1m read unavailable with the served reason', async ({ page }) => {
+    // the daemon pushes only the 1-minute bar until Schwab's price history for the day's earlier
+    // minutes is received (live_price_rows.bar_update `unavailable`): no partial bar is drawn
+    const errs = watchErrors(page);
+    await intercept(page);
+    const daemon = await mockPriceSocket(page, []);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => page.evaluate(() => window.EdShell.getState().key)).toBe('SPY');
+    const chartBars = () => page.evaluate(() => window.EdTradeDeskMap.state().chart.bars);
+    await expect.poll(chartBars).toBe(BARS.bars.length);
+    const why = "today's earlier minutes not received from Schwab: RuntimeError: HTTP 429 Too Many Requests";
+    const minute = { t: 1790343720, o: 772, h: 772.5, l: 771.9, c: 772.4, v: 10, chg: 0.4, chg_pct: 0.05, label: 'Fri 09/25 09:22 AM CT' };
+    daemon.send({ type: 'bars', bars: [{ ticker: 'SPY', ts_recv: 1790343782.7, last_bar: { t: 1790343720, label: 'Fri 09/25 09:22 AM CT' },
+      tf: { '1': minute }, recent_1m: null, unavailable: why }] });
+    const legend = page.locator('#tdmChart .tvc-legend');
+    await expect(legend).toContainText(why);                          // the desk's 30m chart
+    await expect(page.locator('#tdmCardFlow .tdm-plot')).toContainText(why);   // the Order Flow hour
+    expect(await chartBars()).toBe(BARS.bars.length);                  // no partial bar drawn
+    expect(errs).toEqual([]);
+  });
+
   test('Market Map: back from a price-socket drop, the chart names the gap in its live bars and draws no bar for it', async ({ page }) => {
     // live bars are only the ones Schwab sends while the page is connected: after a drop the
     // chart's missing time is named, never filled from the daemon's memory

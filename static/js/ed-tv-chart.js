@@ -512,7 +512,8 @@
       var tfLbl = S.tf === 'D' ? '1D' : (S.tf === '60' ? '1h' : S.tf + 'm');
       legend.innerHTML = '<span class="tvc-sym">' + esc(S.symbol) + '</span><span class="tvc-tf">' + tfLbl + '</span>' + ohlcHtml(b) +
         (S.lastBarLabel ? '<span>Last completed bar ' + esc(S.lastBarLabel) + '</span>' : '') +
-        (S.gapNote ? '<span class="tvc-gap">' + esc(S.gapNote) + '</span>' : '');
+        (S.gapNote ? '<span class="tvc-gap">' + esc(S.gapNote) + '</span>' : '') +
+        (S.unavailable ? '<span class="tvc-gap tvc-unavailable">' + esc(S.unavailable) + '</span>' : '');
     }
     function paintPin() {
       if (!S.pinned) { pinBox.hidden = true; return; }
@@ -722,7 +723,7 @@
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
         api.setVolume(S.bars);
         if (changed) {
-          S.gapNote = null;
+          S.gapNote = S.unavailable = null;
           api.setLivePrice(null);
           S.pinned = null; paintPin();
           var dk = 'ed.tvc.draw.' + symbol;
@@ -746,6 +747,9 @@
       },
       // the bars the chart holds, as served and pushed
       bars: function () { return S.bars.slice(); },
+      // why the daemon pushed no bar for this chart's timeframe (served: the day's earlier minutes
+      // not received from Schwab), shown until a push carries the bar; null clears it
+      setUnavailable: function (note) { S.unavailable = note || null; paintLegend(); },
       _volPoint: function (b) {
         return b.v == null ? { time: b.t } : { time: b.t, value: b.v, color: alpha(b.chg >= 0 ? P.up : P.down, 0.7) };
       },

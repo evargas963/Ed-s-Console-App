@@ -13,6 +13,8 @@ the same topics is refused):
   optquote.SYM src "schwab_options_l1"  LEVELONE_OPTIONS
   news.SYM     src "schwab_news"        NEWS_HEADLINE
   bar1m.SYM    src "schwab_chart"       CHART_EQUITY
+               src "schwab_pricehistory" the day's earlier minutes from Schwab's price history
+                                        (live_ui), for the console's bar writer to backfill
 An equity's quote (quote.SYM, LEVELONE_EQUITIES) is not forwarded: the daemon turns it into the
 price row it pushes on live_ui, which the console reads like a browser does.
 
@@ -45,17 +47,17 @@ LIVE_PUSH_HOST = "127.0.0.1"
 #: receive the real daemon's live data.
 LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: operator port config with its declared default, not market data
 
-#: topic prefix -> the only `src` forwarded for it
-_FORWARDED = {"book.": "schwab_book", "optquote.": "schwab_options_l1",
-              "news.": "schwab_news", "bar1m.": "schwab_chart"}
+#: topic prefix -> the only `src`es forwarded for it
+_FORWARDED = {"book.": ("schwab_book",), "optquote.": ("schwab_options_l1",),
+              "news.": ("schwab_news",), "bar1m.": ("schwab_chart", "schwab_pricehistory")}
 
 
 def is_forwarded(topic: str, msg) -> bool:
     if not isinstance(msg, dict):
         return False
-    for prefix, src in _FORWARDED.items():
+    for prefix, srcs in _FORWARDED.items():
         if topic.startswith(prefix):
-            return msg.get("src") == src
+            return msg.get("src") in srcs
     return False
 
 
