@@ -48,8 +48,6 @@ test.describe('#8 Gamma panel maximize', () => {
     await expect(page.locator('.p-levels')).toBeHidden();
     await expect(page.locator('.p-bottom')).toBeHidden();
     await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();   // heatmap still there, filling
-    await page.setViewportSize({ width: 1672, height: 941 });
-    await page.screenshot({ path: 'test-results/gamma-maximized-1672x941.png', fullPage: false });
     await page.keyboard.press('Escape');
     await expect(page.locator('.gamma-grid.maxed')).toHaveCount(0);
     await expect(page.locator('.p-levels')).toBeVisible();

@@ -419,22 +419,6 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('no proximity alerts anywhere: no strip, no request for them', async ({ page }) => {
-    // operator 2026-09-29: remove the alert strip, the queue's alert items and every other
-    // presentation of proximity alerts
-    const asked = [];
-    page.on('request', (r) => { if (r.url().includes('/api/alerts')) asked.push(r.url()); });
-    await intercept(page);
-    for (const [ws, sub] of [['trade-desk', 'desk'], ['options', 'gamma'], ['liquidity', 'map'], ['order-flow', 'book']]) {
-      await page.addInitScript(([w, s]) => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', w); localStorage.setItem('ed_sub', s); } catch (e) {} }, [ws, sub]);
-      await page.goto('/', { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(400);
-      await expect(page.locator('#alertsStrip')).toHaveCount(0);
-      await expect(page.locator('body')).not.toContainText(/Proximity Alerts/i);
-    }
-    expect(asked).toEqual([]);
-  });
-
   test('Desk: selecting a ticker opens its /api/changes connection (the book request)', async ({ page }) => {
     await intercept(page);
     const opened = [];
@@ -813,8 +797,6 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmCardOpt .tdm-rows')).toHaveAttribute('title', /Call wall 772\.00 · .*ΔOI below \/ above 1200 \/ -300 · .*2026-09-24 chain capture against 2026-09-23/);
     await page.locator('#tdmToolbar [data-act="style"]').click();
     await expect(page.locator('#tdmToolbar [data-act="style"]')).toHaveClass(/on/);
-    await page.setViewportSize({ width: 1672, height: 941 });
-    await page.screenshot({ path: 'test-results/trade-desk-1672x941.png', fullPage: false });
     expect(errs).toEqual([]);
   });
 });

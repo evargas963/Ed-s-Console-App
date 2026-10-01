@@ -87,13 +87,11 @@ test.describe('#3 Gamma presentation-scope (view-window disclosure)', () => {
     // rows keep a legible height at real strike counts (never shrunk to fit)
     const rowH = await gbs.locator('.gbs-row').first().evaluate((el) => el.getBoundingClientRect().height);
     expect(rowH).toBeGreaterThanOrEqual(24);
-    await page.screenshot({ path: 'test-results/gamma-scope-auto.png', fullPage: false });
     // ALL AVAILABLE: every canonical strike, no clip warning
     await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
     await expect(note).toContainText('41 of 41 strikes');
     await expect(gbs.locator('.scope-note .clip')).toHaveCount(0);
     await expect(gbs.locator('.gbs-row')).toHaveCount(41);
-    await page.screenshot({ path: 'test-results/gamma-scope-all.png', fullPage: false });
     // ALL AVAILABLE keeps the same row height and SCROLLS the complete population
     const allRowH = await gbs.locator('.gbs-row').first().evaluate((el) => el.getBoundingClientRect().height);
     expect(allRowH).toBeGreaterThanOrEqual(24);

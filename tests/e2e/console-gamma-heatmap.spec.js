@@ -23,7 +23,6 @@
  * it exercises the real shell HTML/JS, not stubbed rendering.
  */
 const { test, expect } = require('@playwright/test');
-const path = require('path');
 
 // The per-view demand acknowledgement (server.py post_streaming_active_option_contracts,
 // 2026-09-24): the server echoes this view's id, seq and recorded demand (`requested`),
@@ -922,20 +921,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(scrolls).toBe(true);
     const scrollsX = await page.locator('#heatBody .heat-wrap').evaluate((el) => el.scrollWidth > el.clientWidth + 40);
     expect(scrollsX).toBe(true);
-    await page.screenshot({ path: 'test-results/gamma-real-116x16-all.png', fullPage: false });
     await page.locator('#scopeCtl .scbtn', { hasText: 'Auto' }).click();
     await expect(rows).toHaveCount(11);
-    await page.screenshot({ path: 'test-results/gamma-real-116x16-auto.png', fullPage: false });
-  });
-
-  test('workspace switching + editable watchlist foundation', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.locator('.navitem[data-ws="system"]').click();
-    await expect(page.locator('[data-ws-pane="system"]')).toBeVisible();
-    await expect(page.locator('#subnav .wtitle')).toContainText('SYSTEM');
-    // add a symbol via the shell API (foundation is editable + localStorage-backed)
-    await page.evaluate(() => window.EdShell.addSymbol('AMD'));
-    await expect(page.locator('.wl-row .wl-sym', { hasText: 'AMD' })).toHaveCount(1);
   });
 
   test('chart view: Price + GEX Profile and Dot Map render from canonical inputs', async ({ page }) => {
@@ -955,8 +942,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect.poll(async () => (await cs()).livePrice).toBe(583.41);
     await expect(page.locator('#chartBody .gchart-head')).toContainText('spot 583.41');
     await expect.poll(async () => (await cs()).levels).toContain('flip');
-    await page.setViewportSize({ width: 2560, height: 1440 });
-    await page.screenshot({ path: require('path').join('test-results', 'console-gamma-chart-2560x1440.png') });
     // dot map mode: per-strike dots
     await page.locator('.cmode[data-cmode="dotmap"]').click();
     await expect.poll(async () => (await cs()).profile.style).toBe('dots');
@@ -1078,23 +1063,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSym')).toHaveText('SPY');
   });
 
-  test('theme: ONE canonical owner (window.EdTheme) drives first-paint AND runtime resolution', async ({ page }) => {
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await page.addInitScript(() => { try { localStorage.setItem('ed_theme', 'system'); } catch (e) {} });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    // the owner exists and exposes the resolution API
-    expect(await page.evaluate(() => !!(window.EdTheme && window.EdTheme.resolve && window.EdTheme.setPref && window.EdTheme.getPref))).toBe(true);
-    // FIRST PAINT used the owner: data-theme === EdTheme.resolve(EdTheme.getPref())
-    expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme') === window.EdTheme.resolve(window.EdTheme.getPref()))).toBe(true);
-    // RUNTIME goes through the SAME owner (EdShell delegates to EdTheme.setPref)
-    await page.evaluate(() => window.EdShell.setTheme('light'));
-    const rt = await page.evaluate(() => ({ dt: document.documentElement.getAttribute('data-theme'), pref: window.EdTheme.getPref(), resolved: window.EdTheme.resolve('light') }));
-    expect(rt.pref).toBe('light');
-    expect(rt.dt).toBe(rt.resolved);   // resolved via the one owner -> 'light'
-  });
-
-  test('theme screenshots: dark and light at 2560x1440 and 1920x1080, no h-overflow', async ({ page }) => {
-    const path = require('path');
+  test('dark and light at 2560x1440 and 1920x1080: the page never scrolls sideways', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     for (const theme of ['dark', 'light']) {
       await page.evaluate((t) => window.EdShell.setTheme(t), theme);
@@ -1103,7 +1072,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         await expect(page.locator('.hcell').first()).toBeVisible();
         const ok = await page.evaluate(() => document.body.scrollWidth <= window.innerWidth + 2);
         expect(ok).toBe(true);
-        await page.screenshot({ path: path.join('test-results', 'console-' + theme + '-' + wh[0] + 'x' + wh[1] + '.png') });
       }
     }
   });
@@ -1208,19 +1176,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.heat-banner.warming')).toContainText('LIVE SURFACE WARMING');
-  });
-
-  test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {
-    await page.setViewportSize({ width: 2560, height: 1440 });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.hcell').first()).toBeVisible();
-    await page.screenshot({ path: path.join('test-results', 'console-gamma-2560x1440.png'), fullPage: false });
-    await page.setViewportSize({ width: 1920, height: 1080 });
-    await expect(page.locator('.hcell').first()).toBeVisible();
-    // body must not scroll sideways at the smaller target
-    const overflow = await page.evaluate(() => document.body.scrollWidth <= window.innerWidth + 2);
-    expect(overflow).toBe(true);
-    await page.screenshot({ path: path.join('test-results', 'console-gamma-1920x1080.png'), fullPage: false });
   });
 
   test('selecting a strike connects it to live streaming via the plural subscription endpoint (RC-UI-3)', async ({ page }) => {

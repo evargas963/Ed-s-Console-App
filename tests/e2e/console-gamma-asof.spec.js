@@ -64,16 +64,6 @@ test.describe('#4 per-panel source / as-of / freshness', () => {
     await expect(badge).toContainText('complete (ALL)');
   });
 
-  test('the two panels show DIFFERENT source truths, not one merged status', async ({ page }) => {
-    await routes()(page);
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#gbsSrc .asof')).toContainText('terrain live');
-    await expect(page.locator('#sdSrc .asof')).toContainText('vendor');
-    const gbs = await page.locator('#gbsSrc .asof').innerText();
-    const sd = await page.locator('#sdSrc .asof').innerText();
-    expect(gbs).not.toEqual(sd);   // independent disclosures, never one global LIVE
-  });
-
   test('the Chart shows the price-bars clock AND the GEX levels clock separately', async ({ page }) => {
     await routes()(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });

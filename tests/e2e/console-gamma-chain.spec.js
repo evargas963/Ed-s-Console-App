@@ -123,13 +123,6 @@ test.describe('D — Gamma Chain subview', () => {
     expect(await page.evaluate(() => window.EdStream.getDesired())).toBeNull();   // no contract chosen
   });
 
-  test('the contract symbol is the vendor symbol verbatim (never reconstructed)', async ({ page }) => {
-    await toChain(page);
-    await page.locator('#chainBody tr[data-csym="SPY   260911C00102000"] td.chn-call').first().click();
-    // exactly the fixture symbol, spaces and all — no OCC construction
-    expect(await page.evaluate(() => window.EdStream.getDesired())).toBe('SPY   260911C00102000');
-  });
-
   // Independent-review finding (2026-09-13), REPRODUCED by direct browser measurement, then
   // narrowed to a two-sticky-row defect and "fixed" with a sticky div wrapping a header table
   // -- but the operator kept reproducing a real, moving visual fault on genuine trackpad

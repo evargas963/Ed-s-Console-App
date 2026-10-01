@@ -64,8 +64,6 @@ test.describe('D — Gamma Levels view', () => {
     await expect(lv.locator('.lv-why').nth(0)).toContainText('PDC: CLOSE_PRICE is not streaming live');
     await expect(lv.locator('.lv-why').nth(1)).toContainText('prior_day: prior session holds only 180 RTH bars');
     await expect(lv).not.toContainText('[object Object]');
-    await page.setViewportSize({ width: 1672, height: 941 });
-    await page.screenshot({ path: 'test-results/gamma-levels-1672x941.png', fullPage: false });
   });
 
   test('a level click highlights locally but NEVER writes selStrike (a level price is not a strike)', async ({ page }) => {
