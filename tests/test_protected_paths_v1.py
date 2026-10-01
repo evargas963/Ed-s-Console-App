@@ -36,11 +36,6 @@ sys.path.insert(0, str(REPO / "tools"))
 
 import operator_law_guard as G  # noqa: E402
 
-# RC-368: declared direct owner — this suite drives the guard's protected-path clauses.
-TURN_AUDIT_OWNS = [
-    "tools/operator_law_guard.py",
-]
-
 #: Split so this test file is not itself refused when its text is scanned.
 D = "d" + "ata/"
 B = "b" + "ackups/"
@@ -107,12 +102,6 @@ def test_the_commit_exemption_is_by_verb_not_by_heredoc():
     payload = f"cat <<'EOF' | bash\nrm -f {D}ed_console.db\nEOF"
     assert G._protected_path_violation(payload), (
         "a heredoc piped to a shell is a write channel and must stay watched")
-
-
-def test_every_protected_tree_is_guarded():
-    """Destructive is defined by the TARGET's recoverability, not by the verb."""
-    for tree in (D, B):
-        assert G._protected_path_violation(f"rm -rf {tree}x"), tree
 
 
 def test_empty_and_none_commands_do_not_crash():

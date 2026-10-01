@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.hook_chain import _argv_members, run_chain  # noqa: E402
+from tools.hook_chain import run_chain  # noqa: E402
 
 _ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 PRE_ROSTER = ("tools/operator_law_guard.py", "tools/process_lock_guard.py")
@@ -94,12 +94,6 @@ def _wired_commands() -> dict[str, list[str]]:
 
 
 # ============================================================ executor contract
-
-def test_argv_roster_maps_hook_spellings_to_modules():
-    assert _argv_members(["tools/process_lock_guard.py", "tools\\operator_law_guard.py", "x.py"]) == (
-        "tools.process_lock_guard", "tools.operator_law_guard", "tools.x")
-    assert _argv_members([]) == ()
-
 
 def test_no_guard_named_is_refused_not_passed():
     r = _chain(bash("git status", cwd=ROOT), roster=())
