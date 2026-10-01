@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
-from time_et import (ET, now_et, RTH_OPEN_MINS, ct_label, is_capturable_session, et_date_str_from_ts_utc,
+from time_et import (ET, now_et, RTH_OPEN_MINS, COLLECT_WINDOW_START_MINS, ct_label, is_capturable_session,
+                     et_date_str_from_ts_utc,
                      et_minute_total_from_ts_utc, is_collect_window_bar_end_ts_utc,
                      is_trading_day_et, session_close_mins_for_et_date, session_label, settlement_et)
 from math_exposure_core import bucket_metric, merge_exposure_books
@@ -2647,13 +2648,20 @@ def get_terrain_strikes(ticker: str = Query(...)):
         log.debug("terrain strikes live read failed %s: %s", tk, e)
     prior, prior_src = _snap.get("_prior_strikes") or (None, None)
 
+    def _rows(rows: "dict | None", why: str) -> dict:
+        """One shape for today's and the prior day's rows: the three scopes, the count of
+        contracts in no row (expiry_unknown) and, when there are no rows, why (absent_reason)."""
+        if rows:
+            return {**rows, "absent_reason": None}
+        return {"all": [], "near": [], "far": [], "expiry_unknown": None, "absent_reason": why}
+
     peak = (_ps.get("peak") or {}) if isinstance(_ps, dict) else {}
     live_spot, live_src, _live_ts = resolve_spot(tk)   # the one spot on every screen
     return JSONResponse({
         "ticker": tk, "spot": live_spot,
         "spot_source": live_src,
         "priced_at_spot": spot_used,
-        "today": today or {"all": [], "near": [], "far": []},
+        "today": _rows(today, "no levels published for this ticker yet"),
         # the Chart view's DEX and OI profiles: each measure's rows (terrain_engine
         # _per_strike_measure_rows), its strike nearest the live price (the window's centre) and
         # its largest-magnitude strike, as published (per_strike_view `peak`)
@@ -2679,7 +2687,7 @@ def get_terrain_strikes(ticker: str = Query(...)):
         # window (16:30 ET) and nothing said so. Naming the right source proves only that the
         # right tap was opened, never that anything is still coming out of it.
         **terrain_staleness(_snap.get("computed_ts_utc") if isinstance(_snap, dict) else None, tk, now),
-        "prior": prior or {"all": [], "near": [], "far": []},
+        "prior": _rows(prior, "no chain capture from the market day before the chain's"),
         "prior_source": prior_src,
     })
 
@@ -3419,9 +3427,11 @@ async def get_changes(ticker: str = Query(...), view: str = Query(..., min_lengt
     _get_route_offload_executor().submit(lambda: (set_streaming_active_ticker(t),
                                                   _ensure_default_option_contract(t, time.time())))
 
-    def status() -> str:
-        sign_in = json.dumps(schwab_sign_in_status(_schwab_token_creation_ts(), time.time()))
-        return f"event: session\ndata: {session_label(now_et())}\n\nevent: sign_in\ndata: {sign_in}\n\n"
+    def status(now: float) -> str:
+        """The session and sign-in frame, both judged at `now` (epoch seconds)."""
+        sign_in = json.dumps(schwab_sign_in_status(_schwab_token_creation_ts(), now))
+        return (f"event: session\ndata: {session_label(datetime.fromtimestamp(now, ET))}\n\n"
+                f"event: sign_in\ndata: {sign_in}\n\n")
 
     async def event_generator():
         # subscribed only once the response is being sent, so every subscription is closed
@@ -3431,7 +3441,7 @@ async def get_changes(ticker: str = Query(...), view: str = Query(..., min_lengt
         try:
             while True:
                 if clock() >= status_due:
-                    yield status()
+                    yield status(time.time())          # the frame's one clock read
                     status_due = clock() + CHANGES_SESSION_SEC
                 kinds = await push_changes.next_changes(client, status_due - clock())
                 for k in sorted(kinds):
@@ -3954,6 +3964,7 @@ def canonical_price_level_snapshot(ticker: str):
 #: the states of a session price level at serving time (price_level_staleness)
 PRICE_LEVEL_CURRENT, PRICE_LEVEL_STALE = "current", "stale"
 PRICE_LEVEL_SESSION_ENDED, PRICE_LEVEL_PRIOR_SESSION = "session_ended", "prior_session"
+PRICE_LEVEL_SESSION_NOT_STARTED = "session_not_started"
 
 
 def price_level_staleness(semantic_scope: str, newest_bar_end: "float | None", now: float) -> dict:
@@ -3961,12 +3972,18 @@ def price_level_staleness(semantic_scope: str, newest_bar_end: "float | None", n
     the 1-minute bars it was built from, whose newest ends at `newest_bar_end`. A prior session's
     level is a complete fact. Inside the collect window a bar is due one minute after its minute
     ends (Schwab sends it about 2.7 s after): a level whose newest bar ends before the minute
-    preceding the last completed one is stale, with the reason. After the window the levels are
-    the session's, as of their newest bar. {state, stale, reason}."""
+    preceding the last completed one is stale, with the reason. Before the window on a trading day
+    the session has not started; after it the levels are the session's, as of their newest bar.
+    {state, stale, reason}."""
     if semantic_scope == "prior_rth_session":
         return {"state": PRICE_LEVEL_PRIOR_SESSION, "stale": False,
                 "reason": "the prior session's level: its session is complete"}
     last_end = now // 60 * 60                      # the end of the last completed minute
+    if (is_trading_day_et(et_date_str_from_ts_utc(last_end))
+            and et_minute_total_from_ts_utc(last_end) <= COLLECT_WINDOW_START_MINS):
+        first_end = last_end + (COLLECT_WINDOW_START_MINS + 1 - et_minute_total_from_ts_utc(last_end)) * 60
+        return {"state": PRICE_LEVEL_SESSION_NOT_STARTED, "stale": False,
+                "reason": f"today's session has not started: its first 1-minute bar ends {ct_label(first_end)}"}
     if not is_collect_window_bar_end_ts_utc(last_end):
         return {"state": PRICE_LEVEL_SESSION_ENDED, "stale": False,
                 "reason": "the session's bars have ended" + (
@@ -3980,7 +3997,7 @@ def price_level_staleness(semantic_scope: str, newest_bar_end: "float | None", n
 
 
 #: why a route serves no price levels for a ticker
-NO_PRICE_LEVELS_REASON =("no price levels published for this ticker today yet (they are built from its "
+NO_PRICE_LEVELS_REASON = ("no price levels published for this ticker today yet (they are built from its "
                           "1-minute bars on each new bar and at the console's start)")
 
 PRIOR_CLOSE_SOURCE = "Schwab LEVELONE_EQUITIES CLOSE_PRICE (the daemon's price row)"

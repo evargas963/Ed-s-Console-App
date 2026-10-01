@@ -52,6 +52,26 @@ def test_the_console_pushes_the_sign_in_with_the_session(monkeypatch):
     assert not [k for k in server.terrain_staleness(None, "SPY", time.time()) if "token" in k]
 
 
+def test_one_status_frame_is_judged_at_one_instant(monkeypatch):
+    """The frame's sign-in was judged at time.time() and its session label at a second clock read
+    (now_et()), so one frame could carry two instants. The clock is read once per frame and both
+    are judged at it. Stated instant: Wednesday 2026-09-30 05:00 ET (pre-market), a stand-in."""
+    from time_et import ET
+    at = datetime(2026, 9, 30, 5, 0, tzinfo=ET).timestamp()
+    monkeypatch.setattr(server, "_schwab_token_creation_ts", lambda: MADE)
+    monkeypatch.setattr(server.time, "time", lambda: at)
+
+    async def first_frame():
+        resp = await server.get_changes(ticker="SPY", view="test-view")
+        try:
+            return await resp.body_iterator.__anext__()
+        finally:
+            await resp.body_iterator.aclose()
+    events = dict(block.split("\ndata: ", 1) for block in asyncio.run(first_frame()).strip().split("\n\n"))
+    assert events["event: session"] == "Pre-Market"
+    assert json.loads(events["event: sign_in"]) == server.schwab_sign_in_status(MADE, at)
+
+
 def test_the_status_keeps_its_own_clock_while_changes_keep_coming(monkeypatch):
     """Measured on the running app 2026-09-30 11:43-12:02 ET (TSLA): 1,238 pushes in 1,124 s,
     never 5 s apart, and the session was sent once, on connect: the status was sent only after

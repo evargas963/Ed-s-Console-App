@@ -117,6 +117,19 @@ def test_the_session_levels_go_stale_when_their_bars_stop(monkeypatch, pin_clock
     assert ended["session_levels"]["state"] == srv.PRICE_LEVEL_SESSION_ENDED and ended["session_levels"]["stale"] is False
 
 
+def test_before_the_sessions_first_bar_the_levels_say_it_has_not_started():
+    """At a premarket instant the session levels read "the session's bars have ended", as if the
+    day were over. Before today's first bar the session has not started, and the reason says when
+    its first bar ends. Stated instant: Wednesday 2026-09-30 08:00 ET; the newest bar the levels
+    hold is the prior session's last (Tuesday 16:15 ET), a stand-in."""
+    now = datetime(2026, 9, 30, 8, 0, tzinfo=ET).timestamp()
+    st = srv.price_level_staleness("session_rth", datetime(2026, 9, 29, 16, 15, tzinfo=ET).timestamp(), now)
+    assert st == {"state": srv.PRICE_LEVEL_SESSION_NOT_STARTED, "stale": False,
+                  "reason": "today's session has not started: its first 1-minute bar ends Wed 09/30 08:16 AM CT"}
+    # the collect window's first bar ends 09:16 ET; at 09:18 with no bar today the levels are stale
+    assert srv.price_level_staleness("session_rth", None, now + 78 * 60)["state"] == srv.PRICE_LEVEL_STALE
+
+
 def test_a_rolled_up_bar_cut_by_the_limit_is_not_served(monkeypatch, tmp_path):
     """`limit` counts 1-minute bars. The newest 20 of these end 10:29, so they start 10:10: the
     10:00 fifteen-minute bar was served built from 10:10-10:14 alone, with 10:10's open as its

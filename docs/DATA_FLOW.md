@@ -508,7 +508,8 @@ Each value's definition.
 - *Current when:* in the collect window, its newest bar ends no earlier than the minute before
   the last completed one (a bar is due one minute after its minute ends;
   `server.price_level_staleness`, at the route's instant). A prior session's level is a complete
-  fact; after the window the session's levels are served as of their newest bar.
+  fact; before the window on a trading day the session has not started (the reason names when
+  its first bar ends); after the window the session's levels are served as of their newest bar.
 - *Otherwise:* stale, with the reason (`/api/levels` `session_levels` and each session level's
   `staleness`; the Trade Desk prints STALE and the reason); each level with no value absent with
   its reason; a window not yet ended is absent with the time it ends.
