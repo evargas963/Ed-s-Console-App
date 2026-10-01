@@ -751,8 +751,10 @@ def _read_bars_1m(tk: str, limit: int) -> list:
 
 
 def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> "list[Candle]":
-    """`tk`'s completed 1-minute bars, oldest first, from price_bars_1m -- which only Schwab's
-    streamed CHART_EQUITY bars write (_bar_writer). A minute the stream did not deliver is
+    """`tk`'s completed 1-minute bars, oldest first, from price_bars_1m -- written only by the
+    bar writer (_bar_writer) from what the capture daemon forwards: Schwab's streamed
+    CHART_EQUITY bars, its 1-minute price history for the spans the stream did not cover, and the
+    daemon's held minutes sent on the console's connect. A minute none of them delivered is
     absent, never filled in."""
     return [Candle(ts=float(r[0]), open=r[1], high=r[2], low=r[3], close=r[4], volume=r[5])
             for r in _read_bars_1m(tk, limit)]
@@ -799,21 +801,28 @@ _store_problems: "dict[str, str]" = {}
 
 def _write_streamed_bars(msgs: list) -> None:
     """Write forwarded bars, one write per (symbol, backfill, source) group (_bar_groups: the
-    daemon's held day after a reconnect is hundreds of minutes per symbol), then build the price
-    levels of each ticker written: every bar is written before any level is built (a minute's
-    bars for the whole board arrive together)."""
-    written = []
-    for (sym, backfill, source), candles in _bar_groups(msgs).items():
+    daemon's held day after a reconnect is hundreds of minutes per symbol); a group whose write
+    fails is written minute by minute, so only a bad minute fails, logged and kept as its
+    ticker's levels' reason. Then build the price levels of each ticker written, and of each whose
+    daily candles arrived (`levels_input`, streaming's ingest of bardays): every bar is written
+    before any level is built (a minute's bars for the whole board arrive together)."""
+    rebuild = [m["symbol"] for m in msgs if m.get("levels_input")]
+    for (sym, backfill, source), candles in _bar_groups([m for m in msgs if not m.get("levels_input")]).items():
+        rebuild.append(sym)
         try:
             get_db().upsert_1m_bars(sym, candles, backfill=backfill, source=source)
-            written.append(sym)
-        except Exception as e:  # noqa: BLE001 -- logged and kept as the levels' reason; the next group is still written
-            log.warning("bars for %s not written: %s", sym, e)
-            span = ct_label(candles[0].ts) + ("" if len(candles) == 1 else f" – {ct_label(candles[-1].ts)}")
-            _store_problems[ticker_storage_key(sym)] = (
-                f"the {'bar' if len(candles) == 1 else 'bars'} of {span} "
-                f"{'was' if len(candles) == 1 else 'were'} not written to the store: {type(e).__name__}: {e}")
-    for tk in dict.fromkeys(written):
+            continue
+        except Exception as e:  # noqa: BLE001 -- logged; the group is written minute by minute
+            log.warning("bars for %s not written together (%s: %s): writing them one by one", sym,
+                        type(e).__name__, e)
+        for c in candles:
+            try:
+                get_db().upsert_1m_bars(sym, [c], backfill=backfill, source=source)
+            except Exception as e:  # noqa: BLE001 -- logged and kept as the levels' reason; the next minute is still written
+                log.warning("the bar of %s for %s not written: %s", ct_label(c.ts), sym, e)
+                _store_problems[ticker_storage_key(sym)] = (
+                    f"the bar of {ct_label(c.ts)} was not written to the store: {type(e).__name__}: {e}")
+    for tk in dict.fromkeys(rebuild):
         _publish_price_levels(tk)
 
 
@@ -2568,15 +2577,26 @@ def _atr_pair(ticker: str, now: float) -> "AtrPair":
         hit = _atr_cache.get(tk)
     if hit is not None and now - hit[0] < ATR_TTL_SEC:
         return hit[1]
-    from app.options.order_flow.streaming import bar_days
-    days = bar_days(tk)
-    held = days.get("candles") if days and days.get("candles") else None
-    pair = compute_atr_pair(str(get_db().db_path), tk, datetime.fromtimestamp(now, ET), held,
-                            None if held else (days or {}).get("problem")
-                            or "Schwab's daily candles have not come from the capture daemon")
+    d = datetime.fromtimestamp(now, ET).date()
+    prior, why = _prior_daily_candles(tk, datetime(d.year, d.month, d.day, tzinfo=ET).timestamp())
+    pair = compute_atr_pair(str(get_db().db_path), tk, datetime.fromtimestamp(now, ET), prior, why)
     with _atr_lock:
         _atr_cache[tk] = (now, pair)
     return pair
+
+
+def _prior_daily_candles(tk: str, day: float) -> "tuple[list[dict] | None, str | None]":
+    """Schwab's daily candles of the days before `day` (00:00 ET) as the daemon pushed them
+    (streaming.bar_days), oldest first, when their newest is the previous trading session's
+    (live_price_rows.daily_history_gap); otherwise None with why. The one reader for the prior
+    day's high and low and the daily ATR."""
+    from app.options.order_flow.streaming import bar_days
+    days = bar_days(tk)
+    if not (days and days.get("candles")):
+        return None, (days or {}).get("problem") or "Schwab's daily candles have not come from the capture daemon"
+    prior = [c for c in days["candles"] if c["t"] < day]
+    why = _lpr.daily_history_gap(prior, day)
+    return (prior, None) if why is None else (None, why)
 
 
 def _atr_fields(tk: str, now: float) -> dict:
@@ -2748,11 +2768,20 @@ def get_bars1m(ticker: str = Query(...),
             "recent_1m": _lpr.recent_1m(bars)}
     if tf == "D":
         days = bar_days(tk)
-        today = ((price_row(tk) or {}).get("day") or {}).get("bar")
+        row = price_row(tk)
+        # today's candle, or why there is none: the price row's day (live_price_rows.day_candle)
+        now = time.time()
+        d = datetime.fromtimestamp(now, ET).date()
+        body["today"] = (row or {}).get("day") or {
+            "t": datetime(d.year, d.month, d.day, tzinfo=ET).timestamp(), "bar": None,
+            "unavailable": "No daily candle today: the capture daemon has sent no price row for this symbol"}
+        today = body["today"]["bar"]
         out = list((days or {}).get("candles") or []) + ([today] if today else [])
-        body["days_absent_reason"] = (None if days and days.get("candles") else
-                                      (days or {}).get("problem") or
-                                      "Schwab's daily candles have not come from the capture daemon")
+        # why the daily history is missing or not whole (the daemon's: a failed request, or its
+        # newest candle not yet the previous trading session's)
+        body["days_absent_reason"] = ((days or {}).get("problem") or
+                                      (None if days and days.get("candles") else
+                                       "Schwab's daily candles have not come from the capture daemon"))
     else:
         rolled = _lpr.aggregate_bars(bars, tf)
         if tf != "1" and len(bars) == int(limit):
@@ -3968,7 +3997,7 @@ def _publish_price_levels(ticker: str) -> None:
     session date). The routes read what it published (canonical_price_level_snapshot). A failed
     build is logged; the routes serve the last published snapshot with its as-of time, or say
     the levels are absent."""
-    from app.options.order_flow.streaming import bar_days, bar_state
+    from app.options.order_flow.streaming import bar_state
     from liquidity_value_engine import _bars_to_list, materialize_price_level_snapshot
     from time_et import now_et
 
@@ -3976,21 +4005,18 @@ def _publish_price_levels(ticker: str) -> None:
     before = canonical_price_level_snapshot(tk)
     today = now_et().date()
     start = datetime(today.year, today.month, today.day, tzinfo=ET).timestamp()
-    days = bar_days(tk)
-    prior = [c for c in (days or {}).get("candles") or () if c["t"] < start]   # Schwab's, oldest first
+    prior, why = _prior_daily_candles(tk, start)   # the previous trading session's candle, or why not
     try:
         snap = materialize_price_level_snapshot(
             tk, today, _bars_to_list(_liquidity_1m_bars(tk)), bar_source="price_bars_1m",
-            prior_day=prior[-1] if prior else None,
-            prior_day_absent_reason=None if prior else (days or {}).get("problem")
-            or "Schwab's daily candles have not come from the capture daemon",
+            prior_day=prior[-1] if prior else None, prior_day_absent_reason=why,
             config=PlaybookConfig())
     except Exception as e:  # noqa: BLE001 -- logged and kept as the levels' reason; the ticker's next bar builds them
         log.warning("price levels for %s not built: %s", tk, e)
         _store_problems[tk] = f"the levels were not built from the newest bars: {type(e).__name__}: {e}"
         return
     verdict = bar_state(tk)
-    if verdict is not None and snap.minutes == (verdict["minutes"], verdict["newest"]):
+    if verdict is not None and snap.minutes[2] == verdict["digest"]:
         _store_problems.pop(tk, None)        # built from every minute the daemon holds: no failure stands
     if snap is not before:   # the same object when its bars did not change
         push_changes.changed(tk, push_changes.LEVELS)
@@ -4030,9 +4056,10 @@ def price_level_staleness(semantic_scope: str, snap, now: float, bar_state: "dic
     complete fact. Before the collect window on a trading day the session has not started.
     Otherwise the level is stale, with the reason, while the daemon's verdict is missing or older
     than its beat allows (lmp.FEED_HEARTBEAT_MAX_AGE_SEC), a minute of the day is not covered, or
-    the snapshot was not built from every minute the daemon holds (the console's store lacks
-    some: `store_problem`, the last failure writing them or building the levels, when there was
-    one); after the window it is the session's. {state, stale, reason}."""
+    the snapshot was not built from exactly the minutes the daemon holds (the same set, by
+    digest: the console's store lacks some -- `store_problem`, the last failure writing them or
+    building the levels, when there was one -- or holds some the daemon does not); after the
+    window it is the session's. {state, stale, reason}."""
     if semantic_scope == "prior_rth_session":
         return {"state": PRICE_LEVEL_PRIOR_SESSION, "stale": False,
                 "reason": "the prior session's level: its session is complete"}
@@ -4051,13 +4078,16 @@ def price_level_staleness(semantic_scope: str, snap, now: float, bar_state: "dic
             f"{ct_label(bar_state['ts'], seconds=True)}; it reports every second")}
     if bar_state.get("coverage") != _lpr.COVERAGE_CURRENT:
         return {"state": PRICE_LEVEL_STALE, "stale": True, "reason": bar_state.get("coverage_reason") or ""}
-    built, newest = snap.minutes
-    if (built, newest) != (bar_state["minutes"], bar_state["newest"]):
+    built, newest, digest = snap.minutes
+    if digest != bar_state["digest"]:
         through = "no bar" if newest is None else f"bars through {ct_label(newest)}"
+        held = (f"the capture daemon holds {bar_state['minutes']} of today's minutes"
+                f"{'' if bar_state['newest'] is None else ' through ' + ct_label(bar_state['newest'])}")
         return {"state": PRICE_LEVEL_STALE, "stale": True, "reason": (
-            f"levels built from {built} {through}; the capture daemon holds {bar_state['minutes']} of today's "
-            f"minutes{'' if bar_state['newest'] is None else ' through ' + ct_label(bar_state['newest'])}: "
-            f"the minutes not in the store are missing"
+            f"levels built from {built} {through}; {held}: " + (
+                "the minutes not in the store are missing" if built < bar_state["minutes"] else
+                "the store holds minutes the capture daemon does not, so the levels are not built from "
+                "the daemon's minutes")
             + ("" if store_problem is None else f" ({store_problem})"))}
     if not is_collect_window_bar_end_ts_utc(last_end):
         return {"state": PRICE_LEVEL_SESSION_ENDED, "stale": False,

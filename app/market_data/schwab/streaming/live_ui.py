@@ -128,7 +128,8 @@ class _Day:
 @dataclass
 class _Daily:
     """One symbol's daily candles of the days before `day` (00:00 ET), Schwab's daily price
-    history as served (`candles`), or none with why (`problem`); `asking`/`asked_at` as _Day's."""
+    history as served (`candles`), and why they are not whole for the day or none came
+    (`problem`); `asking`/`asked_at` as _Day's."""
     day: float
     candles: "list[dict] | None" = None
     problem: "str | None" = None
@@ -228,7 +229,8 @@ class LiveUiServer:
         held = self.daily.get(sym)
         if held is None or held.day != today:
             held = self.daily[sym] = _Daily(today)
-        if held.candles is not None or held.asking or now - held.asked_at < PRICE_HISTORY_RETRY_SEC:
+        if ((held.candles is not None and held.problem is None) or held.asking
+                or now - held.asked_at < PRICE_HISTORY_RETRY_SEC):
             return
         held.asking, held.asked_at = True, now
         task = asyncio.get_running_loop().create_task(self._ask_days(sym, held))
@@ -237,7 +239,9 @@ class LiveUiServer:
 
     async def _ask_days(self, sym: str, held: _Daily) -> None:
         """One daily price-history request (DAILY_HISTORY_DAYS before today): its candles held and
-        published (bardays.SYM, as served daily bars), or the failure's reason."""
+        published (bardays.SYM, as served daily bars), or the failure's reason. A reply whose
+        newest candle is not the previous trading session's is held with that reason
+        (live_price_rows.daily_history_gap) and asked again (tick) until it is."""
         try:
             async with self._in_flight:
                 try:
@@ -246,7 +250,8 @@ class LiveUiServer:
                 except Exception as e:  # noqa: BLE001 -- counted, its reason served; asked again
                     held.problem = self._failed(sym, e)
                     return
-            held.candles, held.problem = live_price_rows.daily_candles(candles, held.day), None
+            held.candles = live_price_rows.daily_candles(candles, held.day)
+            held.problem = live_price_rows.daily_history_gap(held.candles, held.day)
         finally:
             held.asking = False
             self.bus.publish(f"bardays.{sym}", bar_days_msg(symbol=sym, candles=held.candles or [],
@@ -444,7 +449,7 @@ class LiveUiServer:
                 reason = f"{reason} ({day.problem})"
             self.bus.publish(f"barstate.{sym}", bar_state_msg(
                 symbol=sym, coverage=state, coverage_reason=reason, minutes=len(day.minutes),
-                newest=max(day.minutes, default=None), ts=now))
+                newest=max(day.minutes, default=None), digest=live_price_rows.minutes_digest(day.minutes), ts=now))
 
     @staticmethod
     def bars_gap(since: float, now: float) -> dict:

@@ -654,7 +654,8 @@ class _Unreadable:
 
 
 def _replay(minutes: list[dict], first: int, cuts: dict, away: dict,
-            ack_after: "frozenset[int]" = frozenset(), subscribed_at: "float | None" = None) -> "tuple[list, list]":
+            ack_after: "frozenset[int]" = frozenset(), subscribed_at: "float | None" = None,
+            held_out: "list | None" = None) -> "tuple[list, list]":
     """Stream `minutes` (real SPY CHART_EQUITY minutes of 2026-09-25) from index `first` (the
     daemon started then; Schwab acknowledged its subscription at `subscribed_at`, or as that
     minute began) to the daemon's browser push, each at its receive time, with Schwab's price
@@ -665,7 +666,7 @@ def _replay(minutes: list[dict], first: int, cuts: dict, away: dict,
     separate bus queues). The socket's close and a frame the daemon could not read are the
     daemon's own messages (capture.Daemon.disconnect, read_for). Returns, per streamed minute k,
     the updates a browser was sent once the requests that minute made were answered, and every
-    request (start, end)."""
+    request (start, end); `held_out`, when given, receives the daemon's held minutes at the end."""
     truth, asked, faults, clock = _schwab({"SPY": minutes}), [], [], {"now": 0.0}
 
     def history(symbol, start, end):
@@ -721,6 +722,8 @@ def _replay(minutes: list[dict], first: int, cuts: dict, away: dict,
                 ack = False
             steps.append((k, list(c.bars)))
             c.bars.clear()
+        if held_out is not None:                      # the daemon's whole held day at the end
+            held_out.extend(sorted(srv_ui.days["SPY"].minutes.values(), key=lambda m: m["t"]))
         return steps
     return asyncio.run(main()), asked
 
@@ -772,12 +775,17 @@ def test_a_day_cut_at_random_never_serves_a_bar_missing_a_minute_and_ends_whole(
                 if rng.random() < 0.5:
                     ack_after.add(k + away[k])
         why = f"seed {seed} run {run} first {first} cuts {cuts} away {away} ack after {sorted(ack_after)}"
-        steps, _asked = _replay(FRIDAY, first, cuts, away, frozenset(ack_after))
+        held: list = []
+        steps, _asked = _replay(FRIDAY, first, cuts, away, frozenset(ack_after), held_out=held)
         assert _check(steps, FRIDAY, why), why
         last = steps[-1][1][-1]
         assert last["unavailable"] == {}, why
         for tf in live_price_rows.INTRADAY_TFS:
             assert last["tf"][tf] == route[tf]["bars"][-1], (why, tf)
+            # the whole day from 09:15 ET: the daemon's held minutes roll up to every bar the route
+            # serves at every timeframe (the daily candle is Schwab's own, test_day_candle_v1)
+            whole_day = [live_price_rows.served_bar(b, tf) for b in live_price_rows.aggregate_bars(held, tf)]
+            assert whole_day == route[tf]["bars"], (why, tf)
         assert last["recent_1m"] == route["30"]["recent_1m"], why
 
 
@@ -1032,12 +1040,43 @@ def test_an_uncovered_span_is_asked_again_on_the_daemons_clock_and_a_429_holds_e
     held_back = [r.getMessage() for r in caplog.records if "429" in r.getMessage() and "no request for" in r.getMessage()]
     assert len(held_back) == 2 and "for 5 s" in held_back[0] and "for 10 s" in held_back[1]
     restarted = RateHold(path)                                   # the daemon restarted at t0 + 65
-    assert (restarted.until, restarted.sec) == (t0 + 71, 10.0)
+    # the hold's end kept; its doubling ended by the answer at t0 + 122 (kept too, 2026-10-01)
+    assert (restarted.until, restarted.sec) == (t0 + 71, 0.0)
     try:
         restarted.check(t0 + 65)
         raise AssertionError("a restart dropped Schwab's 429 hold")
     except HeldBack:
         pass
+
+
+def test_a_restart_after_schwab_answered_again_starts_a_fresh_hold(tmp_path):
+    """The 429 hold's end was not kept: after seven 429s (the 300 s cap) and an answer, a daemon
+    restarted a day later loaded the doubled 300 s and held its next 429 for 300 s. The end of
+    the doubling is kept too, so the next 429 holds for 5 s. Schwab's client the stand-in."""
+    t0, statuses = RESTART, [429] * 7 + [200]
+    clock = {"now": t0}
+
+    class _Client:
+        def get_price_history_every_minute(self, symbol, **kw):
+            return _Response(statuses.pop(0) if statuses else 429, [])
+
+    daemon = Daemon(MessageBus(), None, Path("unused_wanted.json"), StandingRoster(frozenset()))
+    daemon.client = _Client()
+    path = tmp_path / "schwab_rate_hold.json"
+    fetch = schwab_minutes(daemon, RateHold(path), lambda: clock["now"])
+    for k in range(8):                                  # seven 429s, each after its hold, then an answer
+        clock["now"] = t0 + 1000 * k
+        try:
+            fetch("SPY", t0, clock["now"])
+        except _TooManyRequests:
+            pass
+    restarted = RateHold(path)                          # a day later
+    clock["now"] = t0 + 86400
+    try:
+        schwab_minutes(daemon, restarted, lambda: clock["now"])("SPY", t0, clock["now"])
+    except _TooManyRequests:
+        pass
+    assert restarted.until - clock["now"] == 5.0
 
 
 def test_the_stream_covers_from_the_first_minute_after_its_acknowledgement():

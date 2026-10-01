@@ -13,15 +13,16 @@ only derivations are the live verdict, the trade age, a bar's change and the rol
 """
 from __future__ import annotations
 
+import hashlib
 from bisect import bisect_left
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
 from numeric_contract import price_text, schwab_count, schwab_number, volume_text
-from time_et import (COLLECT_WINDOW_START_MINS, ET, ct_label, et_date_str_from_ts_utc,
-                     et_minute_total_from_ts_utc, is_collect_window_bar_end_ts_utc,
+from time_et import (COLLECT_WINDOW_START_MINS, ET, RTH_START_MINS, ct_label, et_date_str_from_ts_utc,
+                     et_minute_total_from_ts_utc, is_collect_window_bar_end_ts_utc, is_trading_day_et,
                      session_close_mins_for_et_date, trading_date_label)
 
 SPOT_SOURCE = "streaming_plane"
@@ -50,6 +51,16 @@ def minute_bar(msg: dict[str, Any]) -> Optional[dict[str, Any]]:
     if t % 60 != 0 or not is_collect_window_bar_end_ts_utc(t + 60.0):
         return None
     return {"t": t, "o": o, "h": h, "l": lo, "c": c, "v": schwab_count(msg.get("volume"))}
+
+
+def minutes_digest(starts) -> str:
+    """One fixed-width identity of a set of minutes (their starts, epoch seconds): the daemon's
+    held minutes (its bar verdict) and the minutes a price-level snapshot is built from compare by
+    it, so two sets of the same size and newest minute never read as equal."""
+    h = hashlib.blake2b(digest_size=16)
+    for t in sorted(int(s) for s in starts):
+        h.update(t.to_bytes(8, "big"))
+    return h.hexdigest()
 
 
 def tf_bucket_key(t: float, tf: str):
@@ -239,32 +250,57 @@ def day_candle(ticker: str, now: float) -> dict[str, Any]:
     REGULAR_MARKET_LAST_PRICE, the regular session's last (2026-09-30: SPY 762.63, Schwab's
     daily candle close) -- and volume TOTAL_VOLUME (the day's, pre- and post-market included,
     p.16). Never built from minutes: Schwab's minute volumes sum to about 68% of TOTAL_VOLUME
-    (SPY 2026-09-30). A field counts for today only when received since 00:00 ET today (until
-    Schwab resets it, it holds the prior day's); while the market is in session only from a live
-    feed. Not sent today, or one Schwab's definition excludes (OPEN_PRICE 0 before the regular
-    session, HIGH/LOW 0 before its first trade): absent with the reason, never filled from
-    minutes. {bar: the served daily bar (o, h, l and c all present) or None, volume, absent:
-    {field: reason}, as_of, source}."""
+    (SPY 2026-09-30). The day fields are today's only when the same quote shows a trade in
+    today's session (TRADE_TIME_MILLIS on today's session day, lmp.session_day; sessions start
+    04:00 ET) and each field was received in it: after midnight Schwab re-sends the prior day's
+    values with a new receive time (SPY 2026-09-08 00:02 ET: Friday 09-04's high, low, open and
+    34,054,199 shares; IWM 2026-09-28 01:47 ET: Friday's 22,613,925), and zeroes HIGH/LOW/OPEN at
+    about 01:30 ET and TOTAL_VOLUME at about 04:05 ET. The open, high and low also need today's
+    regular session to have opened (Schwab's open is blank before it, its high and low come from
+    regular-session trades). While the market is in session a field counts only from a live
+    feed. Otherwise absent with the reason, never filled from minutes. {t: the day's bar time,
+    bar: the served daily bar (o, h, l and c all present) or None, volume, absent: {field:
+    reason}, unavailable: the chart's text when there is no bar, as_of, source}."""
     tk = ticker_storage_key(ticker)
     d = datetime.fromtimestamp(now, ET).date()
     day_start = datetime(d.year, d.month, d.day, tzinfo=ET).timestamp()
     close = session_close_mins_for_et_date(d.isoformat())
     if close is None:
-        return {"bar": None, "volume": None, "volume_text": volume_text(None),
-                "absent": {"day": f"{d.isoformat()} is not a trading day"},
+        why = f"{d.isoformat()} is not a trading day"
+        return {"t": day_start, "bar": None, "volume": None, "volume_text": volume_text(None),
+                "absent": {"day": why}, "unavailable": f"No daily candle today: {why}",
                 "as_of": None, "source": DAY_SOURCE}
     fields = lmp.day_fields(tk)
     stale = lmp.in_session(now) and not lmp.feed_live_for(tk, "LEVELONE_EQUITIES", now)
-    closed = et_minute_total_from_ts_utc(now) >= close
+    minute = et_minute_total_from_ts_utc(now)
+    closed = minute >= close
+    trade = fields.get("TRADE_TIME_MILLIS")
+    if lmp.session_day(now) != d:
+        not_today = ("today's session starts at 04:00 ET: Schwab's day fields before then are the prior "
+                     "day's")
+    elif trade is None:
+        not_today = "Schwab has not sent this symbol's last trade time (TRADE_TIME_MILLIS) in today's session"
+    elif lmp.session_day(trade[0]) != d:
+        not_today = (f"no trade in today's session yet: Schwab's last trade is from {ct_label(trade[0])}, "
+                     f"so its day fields are that session's")
+    else:
+        not_today = None
     absent: dict[str, str] = {}
     used: list[float] = []
 
-    def take(key: str, name: str, zero_means: Optional[str] = None) -> Optional[float]:
+    def take(key: str, name: str, zero_means: Optional[str] = None, regular: bool = False) -> Optional[float]:
         if stale:
             absent[key] = "Schwab's LEVELONE feed for this symbol is not live"
             return None
-        if name not in fields or fields[name][1] < day_start:
-            absent[key] = f"Schwab has not sent {name} today"
+        if not_today is not None:
+            absent[key] = not_today
+            return None
+        if regular and minute < RTH_START_MINS:
+            absent[key] = (f"today's regular session has not opened: Schwab's {name} comes from "
+                           f"regular-session trades (Streamer Guide p.17-18)")
+            return None
+        if name not in fields or lmp.session_day(fields[name][1]) != d:
+            absent[key] = f"Schwab has not sent {name} in today's session"
             return None
         value, received = fields[name]
         if zero_means is not None and value == 0:
@@ -273,14 +309,20 @@ def day_candle(ticker: str, now: float) -> dict[str, Any]:
         used.append(received)
         return value
 
-    o = take("o", "OPEN_PRICE", "Schwab's OPEN_PRICE is blank (0) until the regular session opens (Streamer Guide p.18)")
-    h = take("h", "HIGH_PRICE", "Schwab's HIGH_PRICE is 0 until the regular session's first trade (Streamer Guide p.17)")
-    lo = take("l", "LOW_PRICE", "Schwab's LOW_PRICE is 0 until the regular session's first trade (Streamer Guide p.17)")
+    o = take("o", "OPEN_PRICE", "Schwab's OPEN_PRICE is blank (0) until the regular session opens (Streamer Guide p.18)",
+             regular=True)
+    h = take("h", "HIGH_PRICE", "Schwab's HIGH_PRICE is 0 until the regular session's first trade (Streamer Guide p.17)",
+             regular=True)
+    lo = take("l", "LOW_PRICE", "Schwab's LOW_PRICE is 0 until the regular session's first trade (Streamer Guide p.17)",
+              regular=True)
     c = take("c", "REGULAR_MARKET_LAST_PRICE" if closed else "LAST_PRICE")
     v = take("v", "TOTAL_VOLUME")
     bar = (served_bar({"t": day_start, "o": o, "h": h, "l": lo, "c": c, "v": v}, "D")
            if None not in (o, h, lo, c) else None)
-    return {"bar": bar, "volume": v, "volume_text": volume_text(v), "absent": absent,
+    return {"t": day_start, "bar": bar, "volume": v, "volume_text": volume_text(v), "absent": absent,
+            # the daily chart's line when it draws no candle today: each served reason once
+            "unavailable": None if bar else "No daily candle today: " + "; ".join(
+                dict.fromkeys(absent[k] for k in ("o", "h", "l", "c") if k in absent)),
             "as_of": ct_label(max(used)) if used else None, "source": DAY_SOURCE}
 
 
@@ -299,6 +341,18 @@ def daily_candles(candles: list[dict], before: float) -> list[dict[str, Any]]:
         if t < before:
             out.append(served_bar({"t": t, "o": o, "h": h, "l": lo, "c": cl, "v": schwab_count(c.get("volume"))}, "D"))
     return sorted(out, key=lambda b: b["t"])
+
+
+def daily_history_gap(candles: list[dict[str, Any]], day: float) -> Optional[str]:
+    """Why Schwab's daily candles (daily_candles, oldest first) are not yet whole for the day
+    starting at `day` (00:00 ET): their newest is not the previous trading session's (the market
+    calendar's), so the prior day's high and low and the daily ATR would be an older day's. None
+    when it is."""
+    d = datetime.fromtimestamp(day, ET).date() - timedelta(days=1)
+    while not is_trading_day_et(d.isoformat()):
+        d -= timedelta(days=1)
+    newest = datetime.fromtimestamp(candles[-1]["t"], ET).date() if candles else None
+    return None if newest == d else f"Schwab's daily history does not yet include {d.isoformat()}"
 
 
 def live_spot(ticker: str, now: float) -> Optional[float]:

@@ -56,6 +56,7 @@
     var side = { support: P.up, resistance: P.down, value: P.ink3 };
     var zones = (snap && snap.zones) || [];
     c.setBars((barsD && barsD.bars) || [], (barsD && barsD.tf) || _tf, st().display || tk, barsD && barsD.last_bar && barsD.last_bar.label);
+    if (barsD && barsD.today) c.setToday(barsD.today);   // the daily chart's today, as served
     c.setZones(zones.map(function (z) {
       return { lo: z.zone_low, hi: z.zone_high, color: side[z.zone_side] || P.ink3, label: z.zone_label + ' · ' + z.confluence_score + '×' };
     }));
@@ -128,10 +129,11 @@
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || q.ticker !== st().key) return;
       _liveQuote = q;
-      // the daily chart's today: Schwab's day fields on the price row (q.day.bar), as served
-      if (_tf === 'D' && q.day && q.day.bar && _chart && _last.barsFor === ticker() + '|D' && isMap()) {
-        _chart.pushBar(q.day.bar);
-        _last.bars = Object.assign({}, _last.bars, { bars: _chart.bars() });
+      // the daily chart's today: Schwab's day fields on the price row (q.day), as served -- its
+      // candle, or its removal with the served reason
+      if (_tf === 'D' && q.day && _chart && _last.barsFor === ticker() + '|D' && isMap()) {
+        _chart.setToday(q.day);
+        _last.bars = Object.assign({}, _last.bars, { bars: _chart.bars(), today: q.day });
       }
       if (isMap()) paintLive();
     });

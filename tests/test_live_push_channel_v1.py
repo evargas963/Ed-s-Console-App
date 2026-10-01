@@ -333,7 +333,8 @@ def test_a_reconnecting_console_backfills_every_minute_the_daemon_holds_and_its_
             stop.set()
             await asyncio.gather(client, server, daemon, return_exceptions=True)
     got, held, levels = asyncio.run(run())
-    assert got and all(m.get("backfill") is True for m in got)                 # history only, no bar event
+    minutes = [m for m in got if "levels_input" not in m]           # beside the daily candles' rebuild
+    assert minutes and all(m.get("backfill") is True for m in minutes)         # history only, no bar event
     with db._connect() as conn:
         stored = conn.execute("SELECT bar_start_ts_utc, source FROM price_bars_1m WHERE ticker = 'SPY'").fetchall()
     assert sorted(t for t, _s in stored) == sorted(held.minutes)               # every minute the daemon holds

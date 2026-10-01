@@ -513,7 +513,8 @@
       legend.innerHTML = '<span class="tvc-sym">' + esc(S.symbol) + '</span><span class="tvc-tf">' + tfLbl + '</span>' + ohlcHtml(b) +
         (S.lastBarLabel ? '<span>Last completed bar ' + esc(S.lastBarLabel) + '</span>' : '') +
         (S.gapNote ? '<span class="tvc-gap">' + esc(S.gapNote) + '</span>' : '') +
-        (S.unavailable ? '<span class="tvc-gap tvc-unavailable">' + esc(S.unavailable) + '</span>' : '');
+        (S.unavailable ? '<span class="tvc-gap tvc-unavailable">' + esc(S.unavailable) + '</span>' : '') +
+        (S.today ? '<span class="tvc-gap tvc-today">' + esc(S.today) + '</span>' : '');
     }
     function paintPin() {
       if (!S.pinned) { pinBox.hidden = true; return; }
@@ -723,7 +724,7 @@
         closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
         api.setVolume(S.bars);
         if (changed) {
-          S.gapNote = S.unavailable = null;
+          S.gapNote = S.unavailable = S.today = null;
           api.setLivePrice(null);
           S.pinned = null; paintPin();
           var dk = 'ed.tvc.draw.' + symbol;
@@ -744,6 +745,24 @@
         volume.update(api._volPoint(b));
         S.bars = candles.data().map(function (d) { return d.customValues; });
         if (lastBarLabel !== undefined) S.lastBarLabel = lastBarLabel || null;
+        paintLegend(); if (S.pinned) paintPin(); syncButtons(); scheduleLevels();
+      },
+      // the daily chart's today, the price row's served `day`: its candle drawn when served,
+      // otherwise the candle at its time (day.t) removed and its served reason (day.unavailable)
+      // shown -- never a candle the server no longer serves
+      setToday: function (day) {
+        if (day.bar) {
+          S.today = null;
+          api.pushBar(day.bar);
+          return;
+        }
+        S.today = day.unavailable || null;
+        if (S.bars.some(function (b) { return b.t === day.t; })) {
+          S.bars = S.bars.filter(function (b) { return b.t !== day.t; });
+          candles.setData(S.bars.map(candle));
+          closeLine.setData(S.bars.map(function (b) { return { time: b.t, value: b.c }; }));
+          api.setVolume(S.bars);
+        }
         paintLegend(); if (S.pinned) paintPin(); syncButtons(); scheduleLevels();
       },
       // the bars the chart holds, as served and pushed

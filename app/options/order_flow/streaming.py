@@ -210,6 +210,9 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         return None
     if topic.startswith("bardays.") and msg.get("symbol"):
         _bar_days[ticker_storage_key(msg["symbol"])] = msg        # Schwab's daily candles, carried
+        # the price levels take the prior day's high and low from them: the bar writer, the one
+        # trigger of a levels build, rebuilds this symbol's
+        streamed_bars.put({"symbol": msg["symbol"], "levels_input": "bardays"})
         return None
     if topic.startswith("barheld."):       # the daemon's held day, sent on connect: backfill only
         for bar in msg.get("bars") or ():

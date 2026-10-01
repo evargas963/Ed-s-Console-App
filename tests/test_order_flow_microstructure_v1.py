@@ -478,13 +478,12 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
     """O-01: /api/order-flow/microstructure takes the equity top of book from the daemon's price
     row (the header's) while its quote is live, and has none when the feed is down. Stand-in
     quote (named): bid 10.00 x 3, ask 10.02 x 5."""
-    import time
     import live_market_plane as lmp
     import server
-    from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
+    from tests.feed_live_helper import SESSION_NOW, mark_feed_live, publish_daemon_rows
     mark_feed_live("ZZTB")
     lmp.record_from_level_one_equity("ZZTB", {"LAST_PRICE": 10.01, "BID_PRICE": 10.0, "ASK_PRICE": 10.02,
-                                              "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01}, received_ts=time.time())
+                                              "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01}, received_ts=SESSION_NOW)
     publish_daemon_rows("ZZTB")
     body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
     assert body["top_book_pressure"] == (3 - 5) / 8

@@ -135,10 +135,12 @@ opens no second streaming socket).
   one Schwab client, two requests in flight at most, `live_ui.HISTORY_IN_FLIGHT`; the daemon is
   the only caller of Schwab), on each streamed minute and on the daemon's clock once a minute
   per symbol (`live_ui.tick`, PRICE_HISTORY_RETRY_SEC), until covered; Schwab's HTTP 429 holds
-  every price-history request back for 5 s, doubling on each further 429 to 300 s, logged,
+  every price-history request back for 5 s, doubling on each further 429 to 300 s, logged; the
+  next answer that is not a 429 ends the doubling (the next 429 holds for 5 s again). It is
   checked once where the daemon calls Schwab (`capture.RateHold`, `schwab_minutes`,
-  `schwab_days`) and kept in `schwab_rate_hold.json` beside the stream database so a restart
-  keeps it; each request held back fails with that reason, which its symbol's verdict names.
+  `schwab_days`), and the hold and the end of its doubling are kept in `schwab_rate_hold.json`
+  beside the stream database, so a restart neither drops a hold nor resumes a doubling Schwab
+  has ended; each request held back fails with that reason, which its symbol's verdict names.
   A reply covers from its request's start through its newest completed minute: one reaching the
   stream's resumption covers the whole span (a thin ticker's 09:15 ET to its first trade, a quiet
   stretch); an empty reply covers nothing. A stream's minutes after its last bar are covered only
@@ -203,11 +205,20 @@ opens no second streaming socket).
   producer, Schwab's LEVELONE_EQUITIES day fields as sent (`live_price_rows.day_candle`, the
   price row's `day`): OPEN_PRICE, HIGH_PRICE, LOW_PRICE (regular-session trades, Streamer Guide
   p.17-18), LAST_PRICE (after the regular close REGULAR_MARKET_LAST_PRICE, the regular session's
-  last) and TOTAL_VOLUME (the day's volume, pre- and post-market included, p.16). A field counts
-  for today only when received since 00:00 ET (until Schwab resets it, it holds the prior day's),
-  and while the market is in session only from a live feed; not sent today, or one Schwab's
-  definition excludes (OPEN_PRICE 0 before the regular session, HIGH/LOW 0 before its first
-  trade), it is absent with the reason, never filled from minutes. An index's HIGH_PRICE and
+  last) and TOTAL_VOLUME (the day's volume, pre- and post-market included, p.16). The day fields
+  are today's only when the same quote shows a trade in today's session (TRADE_TIME_MILLIS on
+  today's session day; sessions start 04:00 ET, `live_market_plane.session_day`) and each field
+  was received in it: after midnight Schwab re-sends the prior day's values with a new receive
+  time (SPY 2026-09-08 00:02 ET re-sent Friday 09-04's open, high, low and 34,054,199 shares,
+  served as Tuesday's until this rule; IWM 2026-09-28 01:47 ET Friday's 22,613,925), and it zeroes
+  HIGH/LOW/OPEN at about 01:30 ET and TOTAL_VOLUME at about 04:05 ET. A field received in an
+  earlier session is dropped by the first message of a new one (W-01, closed). The open, high and
+  low also need today's regular session to have opened (Schwab's open is blank before it, its
+  high and low come from regular-session trades). While the market is in session a field counts
+  only from a live feed. Otherwise it is absent with the reason, never filled from minutes; with
+  no candle the row's `day` carries the chart's line (`unavailable`) and the day's bar time, and
+  the daily chart removes any candle it drew for the day and prints it (`ed-tv-chart.setToday`;
+  `/api/bars1m` `tf=D` serves the same as `today`). An index's HIGH_PRICE and
   LOW_PRICE are not the regular session's: on 2026-09-30 $VIX's were non-zero from 04:14 ET and
   $NDX's from 04:36 ET (its first message that day), while $SPX's were 0 until 09:30 (read-only
   from `stream_capture.db`); they are shown as Schwab sends them. Measured 2026-09-30 for SPY:
@@ -217,12 +228,17 @@ opens no second streaming socket).
   763.31 / 46.3M, wrong on four of five (`test_day_candle_v1`). Every screen showing a day value
   reads it: the Trade Desk's session volume and the daily chart's today (the chart places the
   row's candle on each price push). The days before today are Schwab's daily price history: the
-  daemon asks it once a day per streamed symbol (`live_ui._ask_daily`, DAILY_HISTORY_DAYS, the
-  same client, two in flight and rate limit as the minutes; asked again every minute while it
-  fails) and pushes it (`bardays.SYM`); the console carries it (`streaming.bar_days`, dropped
-  when the push is gone) for the daily chart's history (`/api/bars1m` `tf=D`, with
-  `days_absent_reason` when not held), the daily ATR and the prior day's high and low (PDH /
-  PDL, §6.6). VOLUME (CHART_EQUITY) is one minute's volume, TOTAL_VOLUME (LEVELONE) the day's:
+  daemon asks it on each new day per streamed symbol (`live_ui._ask_daily`, DAILY_HISTORY_DAYS,
+  the same client, two in flight and rate limit as the minutes; asked again every minute while
+  it fails or its newest candle is not yet the previous trading session's,
+  `live_price_rows.daily_history_gap`) and pushes it (`bardays.SYM`); the console carries it
+  (`streaming.bar_days`, dropped when the push is gone) for the daily chart's history
+  (`/api/bars1m` `tf=D`, with `days_absent_reason` when not held or not whole), the daily ATR and
+  the prior day's high and low (PDH / PDL, §6.6; `server._prior_daily_candles`, absent with
+  "Schwab's daily history does not yet include <date>" until it reaches the previous session),
+  and rebuilds the price levels when it arrives (the bar writer). Schwab stamps a daily candle
+  00:00 CT of its date (its SPY history captured 2026-08-20: 2026-08-19 01:00 ET,
+  `tests/fixtures/real_spy_daily_candles_2026_08_19.json`). VOLUME (CHART_EQUITY) is one minute's volume, TOTAL_VOLUME (LEVELONE) the day's:
   Schwab's minute volumes sum to about 68% of its daily total (SPY 2026-09-30), and the two are
   not reconciled.
   Schwab sends each minute's bar once, about 2.7 s after the minute ends (median of 1,962 bars,
@@ -660,11 +676,18 @@ send.
   daemon's daily price-history request (`live_ui._ask_daily`, `capture.schwab_days`), carried by
   the console (`streaming.bar_days`).
 - *Times:* each field's receive time (`as_of`); a daily candle's ET date.
-- *Current when:* received today and, in session, from a live feed.
-- *Otherwise:* each field absent with Schwab's reason (OPEN_PRICE blank before the regular
-  session, HIGH/LOW 0 before its first trade, not sent today, no live feed); the daily history
-  absent with the request's failure (`days_absent_reason`, the daily ATR's and PDH/PDL's
-  reasons). Never filled from minutes.
-- *Consumers:* the daily chart (`/api/bars1m` `tf=D`, and the price row's candle pushed onto it),
-  the Trade Desk's session volume, the daily ATR, PDH / PDL.
-- *Tests:* `test_day_candle_v1`, `test_phase2a_price_level_snapshot_v1`.
+- *Current when:* the quote shows a trade in today's session (TRADE_TIME_MILLIS on today's
+  session day, from 04:00 ET), the field was received in that session and, in session, from a
+  live feed; the open, high and low also once today's regular session has opened. The daily
+  history: its newest candle is the previous trading session's.
+- *Otherwise:* each field absent with the reason (today's session not started; no trade in it
+  yet, naming the last trade's time; the regular session not opened; OPEN_PRICE blank, HIGH/LOW
+  0; not sent in today's session; no live feed), and the daily chart removes today's candle and
+  prints why; the daily history absent with the request's failure or "Schwab's daily history
+  does not yet include <date>" (`days_absent_reason`, the daily ATR's and PDH/PDL's reasons),
+  asked again until whole. Never filled from minutes.
+- *Consumers:* the daily chart (`/api/bars1m` `tf=D` with `today`, and the price row's `day`
+  pushed onto it), the Trade Desk's session volume, the daily ATR, PDH / PDL (rebuilt when the
+  daily candles arrive).
+- *Tests:* `test_day_candle_v1`, `test_daily_candles_levels_v1`,
+  `test_live_market_plane_streaming`, `test_phase2a_price_level_snapshot_v1`.

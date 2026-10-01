@@ -161,8 +161,8 @@ def test_the_session_levels_take_their_currency_from_the_daemons_coverage(monkey
     assert served()["session_levels"]["state"] == srv.PRICE_LEVEL_STALE
 
 
-def _desk(monkeypatch, pin_clock, stored):
-    """The daemon's real live_ui streaming every one of BARS for SPY (subscribed at 09:00 ET) and
+def _desk(monkeypatch, pin_clock, stored, streamed=BARS):
+    """The daemon's real live_ui streaming `streamed` (every one of BARS) for SPY (subscribed at 09:00 ET) and
     the console: its levels published from `stored` (the bars its store holds), its ingest of the
     daemon's pushed verdicts. Returns (tick(h, m, s): the daemon's beat at that ET instant, the
     verdicts delivered to the console; served(h, m, s): /api/levels at that instant)."""
@@ -182,7 +182,7 @@ def _desk(monkeypatch, pin_clock, stored):
     async def stream():
         ui.on_subscription(subscription_msg(service="CHART_EQUITY", command="SUBS", symbols=["SPY"], code=0,
                                             reason="ok", ts=_at(9, 0)))
-        for b in BARS:
+        for b in streamed:
             clock["now"] = b["timestamp"] / 1000.0 + 62.7
             ui.on_bar(bar_msg(symbol="SPY", bar_start_ms=b["timestamp"], open=b["open"], high=b["high"],
                               low=b["low"], close=b["close"], volume=b["volume"], src="schwab_chart",
@@ -221,6 +221,21 @@ def test_levels_built_without_minutes_the_daemon_holds_are_stale(monkeypatch, pi
     assert served(10, 45) == {"state": srv.PRICE_LEVEL_STALE, "stale": True, "reason": (
         f"levels built from {len(stored)} bars through Tue 09/29 09:00 AM CT; the capture daemon holds "
         f"{len(BARS)} of today's minutes through Tue 09/29 09:29 AM CT: the minutes not in the store are missing")}
+
+
+def test_levels_built_from_a_different_set_of_the_same_size_and_newest_are_stale(monkeypatch, pin_clock):
+    """The minute check compared only the count and the newest minute: a store lacking one minute
+    the daemon holds and holding one it does not read current. The sets are compared (by digest)
+    and the reason says the store holds minutes the daemon does not. Real SPY bars of 2026-09-29
+    09:15-10:29 ET; the daemon without 09:40 ET and the store without 09:50 ET, stand-ins."""
+    daemon = [b for b in BARS if b["timestamp"] / 1000.0 != _at(9, 40)]
+    stored = [b for b in BARS if b["timestamp"] / 1000.0 != _at(9, 50)]
+    tick, served = _desk(monkeypatch, pin_clock, stored, streamed=daemon)
+    tick(10, 45)
+    assert served(10, 45) == {"state": srv.PRICE_LEVEL_STALE, "stale": True, "reason": (
+        f"levels built from {len(stored)} bars through Tue 09/29 09:29 AM CT; the capture daemon holds "
+        f"{len(daemon)} of today's minutes through Tue 09/29 09:29 AM CT: the store holds minutes the capture "
+        f"daemon does not, so the levels are not built from the daemon's minutes")}
 
 
 def test_a_bar_the_store_failed_to_write_makes_the_levels_stale_with_the_failure(monkeypatch, pin_clock):

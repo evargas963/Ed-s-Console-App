@@ -576,9 +576,12 @@ class RateHold:
 
     def answered(self, status: int, now: float) -> None:
         """Schwab's HTTP status for a request sent at `now`: 429 holds every request back, any
-        other answer ends the doubling."""
+        other answer ends the doubling -- both kept at `path` (the end once, after a hold), so a
+        restart neither drops a hold nor resumes a doubling Schwab has ended."""
         if status != 429:
-            self.sec = 0.0
+            if self.sec:
+                self.sec = 0.0
+                self.path.write_text(json.dumps({"until": self.until, "sec": self.sec}), encoding="utf-8")
             return
         self.sec = min(max(self.sec * 2, RATE_LIMIT_BACKOFF_FIRST_SEC), RATE_LIMIT_BACKOFF_MAX_SEC)
         self.until = now + self.sec

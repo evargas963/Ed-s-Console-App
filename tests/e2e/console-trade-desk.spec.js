@@ -558,7 +558,7 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Market Map: the session volume and the daily candle show the one served day volume', async ({ page }) => {
+  test('Market Map: the session volume and the daily candle show the one served day volume, and an absent day removes the candle with its reason', async ({ page }) => {
     // the day's values are Schwab's day fields on the price row (`day`, live_price_rows.day_candle,
     // operator 2026-10-01): the Order Flow card's session volume and the daily chart's candle
     // read the same served value. Schwab's SPY daily candle of 2026-09-30 (TOTAL_VOLUME 62,110,041,
@@ -566,7 +566,7 @@ test.describe('Trade Desk renders served values', () => {
     // (the stand-in for "today", so the chart places it as its newest).
     const errs = watchErrors(page);
     await intercept(page);
-    const day = { bar: { t: 1790395200, o: 766.45, h: 769.41, l: 762.18, c: 762.63, v: 62110041, chg: -3.82,
+    const day = { t: 1790395200, unavailable: null, bar: { t: 1790395200, o: 766.45, h: 769.41, l: 762.18, c: 762.63, v: 62110041, chg: -3.82,
       chg_pct: -0.4984, label: 'Sat 09/26/2026', v_text: '62.11M' }, volume: 62110041, volume_text: '62.11M',
       absent: {}, as_of: 'Fri 09/25 07:59 PM CT', source: 'Schwab LEVELONE_EQUITIES day fields' };
     const daemon = await mockPriceSocket(page, []);
@@ -581,6 +581,13 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(BARS.bars.length + 1);
     await expect(page.locator('#tdmCardFlow .tdm-hero')).toContainText('62.11M');           // the session volume
     await expect(page.locator('#tdmChart .tvc-legend')).toContainText('Vol 62.11M');       // the daily candle's
+    // today's candle turns absent (the served day has no bar): the chart removes it and prints the
+    // served reason -- it never keeps a candle the server no longer serves
+    const why = "No daily candle today: no trade in today's session yet: Schwab's last trade is from Fri 09/04 06:59 PM CT, so its day fields are that session's";
+    daemon.send({ type: 'quotes', rows: [priceRow('SPY', 762.63, { day: { t: day.bar.t, bar: null, volume: null,
+      volume_text: '—', absent: {}, unavailable: why, as_of: null, source: day.source } })] });
+    await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.bars)).toBe(BARS.bars.length);
+    await expect(page.locator('#tdmChart .tvc-legend')).toContainText(why);
     expect(errs).toEqual([]);
   });
 

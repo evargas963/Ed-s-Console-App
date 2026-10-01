@@ -190,6 +190,7 @@
       S.flowBars = d ? d.recent_1m || [] : null; S.flowReason = null; paintCards();
       S.chart.setBars(bars, tf, shown(), d && d.last_bar && d.last_bar.label);
       if (d && d.days_absent_reason) S.chart.setUnavailable(d.days_absent_reason);   // the daily history's, served
+      if (d && d.today) S.chart.setToday(d.today);                                   // the daily chart's today, served
       $('tdmChartEmpty').hidden = bars.length > 0;
       $('tdmChartEmpty').textContent = bars.length ? '' : (!d ? 'The bars request failed for ' + shown() + ' (' + (TFS.filter(function (x) { return x.id === tf; })[0] || {}).lbl + ').'
         : 'No bars for ' + shown() + (d.days_absent_reason ? ' — ' + d.days_absent_reason : d.error ? ' — ' + d.error
@@ -620,7 +621,7 @@
     });
     window.addEventListener('ed:bar', function (e) { if (e.detail && S.ticker) takeBar(e.detail); });
     // Every streamed price row: header + indices. An intraday chart moves only on a completed bar;
-    // the daily chart's today is Schwab's day fields on the row (q.day.bar), as served.
+    // the daily chart's today is Schwab's day fields on the row (q.day), as served.
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || !q.ticker) return;
       S.quotes[q.ticker] = q;
@@ -628,8 +629,8 @@
       paintHeader();
       if (q.ticker === st().key) {
         paintTrust();
-        if (S.chart && S.tf === 'D' && S.barsAnswered === S.gen && q.day && q.day.bar) {
-          S.chart.pushBar(q.day.bar); S.bars = S.chart.bars();
+        if (S.chart && S.tf === 'D' && S.barsAnswered === S.gen && q.day) {
+          S.chart.setToday(q.day); S.bars = S.chart.bars();   // its candle, or its removal with the reason
         }
         if (S.chart) S.chart.setLivePrice(q.spot_state === 'live' ? q.spot : null, q.trade_age_sec);
         if (Date.now() - (S.cardsPaintedMs || 0) > 1000) { S.cardsPaintedMs = Date.now(); paintCards(); }   // the Order Flow card's Schwab fields

@@ -171,6 +171,45 @@ def test_a_value_that_is_not_a_number_clears_the_field():
         row = lmp.get_quote("CLR")
         assert row["bid"] is None and row["ask"] == 10.1, bad
 
+def test_a_new_session_shows_nothing_from_the_last_until_schwab_sends_it():
+    """The daemon runs for days: at 04:00 ET yesterday's last price, change, volume and range
+    read LIVE (measured: PCG 12.14 from 19:56 ET, +1.59%, 46,270,430 shares, 'live' at 04:00:05)
+    until Schwab sent each field again. Real PCG messages, 2026-09-29 19:55 ET to 2026-09-30
+    04:01 ET, including Schwab's overnight snapshots and day roll. Stand-in (named): the daemon's
+    heartbeat, live and holding PCG at each instant judged. Ported from the parked branch
+    fix/session-boundary-freshness (W-01), its day fields now read from the row's `day`."""
+    import json
+    from datetime import datetime
+
+    import live_price_rows
+    from time_et import ET
+    fx = json.loads((ROOT / "tests" / "fixtures" / "real_pcg_l1_session_roll_2026_09_29_30.json")
+                    .read_text(encoding="utf-8"))["messages"]
+    with lmp._lock:
+        lmp._by_ticker.pop("PCG", None)
+        lmp._fields_by_ticker.pop("PCG", None)
+
+    def at(h, m, s, day):
+        now = datetime(2026, 9, day, h, m, s, tzinfo=ET).timestamp()
+        for msg in [x for x in fx if x["ts_recv"] <= now and not x.get("_done")]:
+            lmp.record_from_level_one_equity("PCG", msg["content"], received_ts=msg["ts_recv"])
+            msg["_done"] = True
+        lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["PCG"]}}, now)
+        return live_price_rows.price_row("PCG", now)
+
+    evening = at(19, 59, 0, 29)
+    assert (evening["spot"], evening["spot_state"], evening["chg_pct"]) == (12.14, "live", 1.589958)
+    first = at(4, 0, 5, 30)            # a new session: Schwab has sent a bid and ask, no trade yet
+    assert (first["spot"], first["spot_state"]) == (None, "unavailable")
+    assert all(first[k] is None for k in ("chg_pct", "prior_close", "bid", "ask"))
+    assert first["day"]["bar"] is None and first["day"]["volume"] is None
+    traded = at(4, 0, 10, 30)          # its first trade
+    assert (traded["spot"], traded["spot_state"], traded["chg_pct"], traded["day"]["volume"]) == (
+        12.18, "live", 0.412201, 3.0)
+    # sent overnight or yesterday, not again this session: unknown, never yesterday's
+    assert traded["day"]["bar"] is None and traded["prior_close"] is None
+
+
 def test_record_from_level_one_rejects_mark_as_current_spot():
     ok = _rec(
         "MARKONLY",

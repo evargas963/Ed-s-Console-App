@@ -38,6 +38,7 @@ from liquidity_models import (
 
 log = logging.getLogger(__name__)
 
+from live_price_rows import minutes_digest
 from time_et import (
     ET,
     RTH_OPEN_MINS,
@@ -506,7 +507,8 @@ class PriceLevelSnapshot:
         self.bar_source = bar_source
         self.as_of_ts_utc = as_of_ts_utc        # the end of the newest bar the levels are built from
         #: the session date's minutes they are built from: (how many, the newest one's start or
-        #: None), compared with the daemon's held minutes (server.price_level_staleness)
+        #: None, their set's digest, live_price_rows.minutes_digest), compared with the daemon's
+        #: held minutes (server.price_level_staleness)
         self.minutes = minutes
         self.levels = levels                    # level_id -> PriceLevelValue
         self.vwap_series = vwap_series or []    # [(epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)]
@@ -576,7 +578,7 @@ def build_price_level_snapshot(
     # the levels are as of the end of the newest 1-minute bar
     as_of: Optional[float] = max((b["_dt"].timestamp() + 60.0 for b in bars_norm), default=None)
     today = [b["_dt"].timestamp() for b in bars_norm if b["_dt"].date() == session_date]
-    minutes = (len(today), max(today, default=None))
+    minutes = (len(today), max(today, default=None), minutes_digest(today))
 
     basis = f"1m bars ({bar_source}); Schwab streamed bars"
 
