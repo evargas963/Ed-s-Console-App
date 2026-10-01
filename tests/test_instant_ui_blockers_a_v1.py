@@ -1,26 +1,6 @@
-"""Audit of #280, blockers fixed in PR A -- behavioural tests on the real daemon/server code.
-
-- a service is marked alive only by a frame that parsed and published (it beat BEFORE parsing,
-  so a frame shape failing on every message kept LEVELONE "RUNNING" with nothing delivered);
-- a sustained run of skipped frames ends the pump (-> the watchdog recycles), while isolated
-  bad frames between good ones do not;
-- terrain rotation happens only inside the contention window (collection mandate).
-"""
+"""Behavioural tests on the real daemon and server code: terrain rotation, token refresh, bar
+roll-ups, the price row and the spot-gamma reprice."""
 from __future__ import annotations
-
-
-import app.market_data.schwab.streaming.capture as cap
-from stream_spine import HealthRegistry, MessageBus
-
-
-def _handler():
-    bus, health, stats = MessageBus(), HealthRegistry(), cap.CaptureStats()
-    h = cap.make_handler("LEVELONE_EQUITIES", cap.LEVELONE_FIELDS, "quote", bus, health, stats)
-    return h, health
-
-
-
-
 
 
 def test_terrain_rotates_only_inside_the_contention_window():
