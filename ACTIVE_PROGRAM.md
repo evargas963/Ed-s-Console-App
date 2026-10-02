@@ -29,7 +29,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 | ENF-10 | QUEUED | Typed records across module boundaries: a check of cross-module dict payloads. |
 | ENF-11 | QUEUED | Imports at the top (ruff E402) and one formatter per format. |
 | ENF-12 | QUEUED | The agent practices that no machine can see (claims cite output, proof reproducible, read another agent's work, checkpoints, stop words, deploy means restarted and checked in market hours, `&&` chains): listed in `AGENTS.md`, each enforced by the operator's review until a check exists. |
-| ENF-13 | QUEUED | Governance files (`AGENTS.md`, `docs/DATA_FLOW.md`, CI, hooks, checks) merged only by the operator: a CODEOWNERS file and a required review on those paths. |
+| ENF-13 | QUEUED | Governance files (`AGENTS.md`, `docs/DATA_FLOW.md`, CI, hooks, checks) merged only by the operator. No CODEOWNERS file (operator's ruling). No machine check: the operator merges them. |
 | ENF-14 | QUEUED | No source edits through a script: an agent hook that refuses shell writes to tracked source. |
 | ENF-15 | QUEUED | Pushed at every hop, nothing polls (`docs/DATA_FLOW.md` §1): the page draws pushed values instead of re-reading routes after a push (P2-3). |
 | ENF-16 | QUEUED | Operator decisions 2–6, 8, 9 in `docs/DATA_FLOW.md` §6: each gets a test when it is built. |
