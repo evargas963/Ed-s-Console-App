@@ -222,6 +222,10 @@ def _log_stream(phase: str, **kwargs: Any) -> None:
         log.info("STREAM_DIAG %s", phase)
 
 
+#: the option quote fields the levels are priced from: a message carrying one reprices
+_REPRICE_FIELDS = ("GAMMA", "DELTA", "OPEN_INTEREST", "TOTAL_VOLUME", "VOLUME")
+
+
 def _ingest_pushed(topic: str, msg: Any) -> None:
     """Apply ONE daemon-pushed Schwab stream message to the live planes.
 
@@ -257,11 +261,12 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     if kind == "bar1m":
         streamed_bars.put(msg)
         return None
+    received = {f: stamp[1] for f, stamp in msg["field_ts"].items()} if "field_ts" in msg else None
     if kind == "quote":
         item = msg.get("native")
         if not isinstance(item, dict):
             return None
-        push_level_one(sym, item, ts_recv=ts)
+        push_level_one(sym, item, ts_recv=ts, field_received=received)
         push_changes.changed(sym, push_changes.FLOW)
         return None
     if kind == "book":
@@ -279,12 +284,13 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         content = msg.get("content")
         if not isinstance(content, dict):
             return None
-        push_level_one(sym, content, ts_recv=ts)
+        push_level_one(sym, content, ts_recv=ts, field_received=received)
         push_option_top(sym, content)
         _option_streaming_last_update_ts = ts
         _option_contract_last_update_ts[sym] = ts
-        if ("GAMMA" in content or "DELTA" in content or "OPEN_INTEREST" in content
-                or "TOTAL_VOLUME" in content or "VOLUME" in content):
+        # a tick when the newest message carried a value the levels use (a merged record holds
+        # the last of each field; only one this message brought is new)
+        if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
             _tick(sym)
     return None
 
@@ -351,7 +357,7 @@ async def _feed_loop() -> None:
             if not isinstance(env, dict):
                 continue
             if env.get("topic") == "daemon.heartbeat":
-                _lmp.record_feed_heartbeat(env.get("msg"), time.time())
+                _lmp.record_feed_heartbeat(env.get("msg"))
                 continue
             _ingest_pushed(str(env.get("topic") or ""), env.get("msg"))
     rows = asyncio.create_task(_rows_loop(), name="daemon-price-rows")

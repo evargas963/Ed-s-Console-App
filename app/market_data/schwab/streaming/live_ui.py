@@ -38,7 +38,7 @@ import time
 import live_market_plane as lmp
 import live_price_rows
 from instrument_identity import display_symbol, ticker_storage_key
-from stream_spine import COUNT_DROPS, MessageBus
+from stream_spine import LATEST, MessageBus
 
 log = logging.getLogger(__name__)
 
@@ -73,14 +73,16 @@ class LiveUiServer:
     # -- plane side -------------------------------------------------------------------
 
     def ingest(self, msg) -> None:
-        """One daemon quote message -> the plane (per-field state, the daemon's receive time)."""
+        """One quote's current record -> the plane (each field with the daemon's receive time of
+        the message that carried it)."""
         if not isinstance(msg, dict):
             return
         sym, ts, item = msg.get("symbol"), msg.get("ts_recv"), msg.get("native")
         if not sym or not isinstance(ts, (int, float)) or not isinstance(item, dict):
             return
+        received = {f: stamp[1] for f, stamp in msg["field_ts"].items()}
         try:
-            lmp.record_from_level_one_equity(sym, item, received_ts=float(ts))
+            lmp.record_from_level_one_equity(sym, item, received_ts=float(ts), field_received=received)
         except Exception as e:  # noqa: BLE001 -- counted; one malformed item never ends the feed
             self.stats["ingest_failures"] += 1
             log.warning("live ui ingest %s: %s: %s", sym, type(e).__name__, e)
@@ -94,7 +96,7 @@ class LiveUiServer:
 
     def beat(self) -> dict:
         hb = self.heartbeat_fn()
-        lmp.record_feed_heartbeat(hb, time.time())
+        lmp.record_feed_heartbeat(hb)
         return {"ts": hb.get("ts"), "schwab_socket_open": hb.get("schwab_socket_open") is True}
 
     # -- browser side -----------------------------------------------------------------
@@ -197,10 +199,7 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
 
     stats = stats if stats is not None else {}
     srv = LiveUiServer(bus, heartbeat_fn, stats)
-    for topic, msg in list(bus.snapshot().items()):         # whatever arrived before we started
-        if topic.startswith("quote."):
-            srv.ingest(msg)
-    sub = bus.subscribe("quote.", policy=COUNT_DROPS, name="live_ui")
+    sub = bus.subscribe("quote.", policy=LATEST)         # starts with every quote already held
     lmp.add_row_listener(srv.on_row)
 
     async def _track() -> None:

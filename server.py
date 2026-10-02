@@ -265,11 +265,12 @@ def _install_signal_handlers() -> None:
 def resolve_spot(ticker: str) -> tuple[float | None, str, float | None]:
     """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
     trade time, at any hour -- the value the header shows; (None, "none", None) until Schwab has
-    sent one."""
+    sent one, and while the feed that sent it is not live: a price from a feed that is down is
+    not the current price (docs/DATA_FLOW.md §2 D5)."""
     from app.options.order_flow.streaming import price_row
 
     row = price_row(ticker)
-    if not row or row.get("spot") is None:
+    if not row or row.get("spot") is None or row.get("feed_live") is not True:
         return None, "none", None
     return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
 

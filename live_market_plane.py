@@ -49,7 +49,7 @@ def _read_stream_field(name: str, raw: Any) -> Optional[float]:
 
 
 def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
-                                 received_ts: float) -> bool:
+                                 received_ts: float, field_received: "dict[str, float] | None" = None) -> bool:
     """
     Ingest one Schwab streaming LEVELONE_EQUITIES content item into the plane.
     Returns True when a plane row was (re)published.
@@ -62,7 +62,8 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
     age of the last LAST_PRICE message, never of the bid/ask tick arriving now.
 
     `received_ts` is REQUIRED: the capture daemon's own receive time for this message --
-    what every freshness check judges (2026-09-23 audit P0).
+    what every freshness check judges. A current record merged from several messages (the
+    daemon's bus) carries each field's own receive time in `field_received`.
     """
     if not item or not isinstance(item, dict):
         return False
@@ -81,7 +82,7 @@ def record_from_level_one_equity(ticker: str, item: dict[str, Any], *,
             if v is None:
                 fs.pop(name, None)       # not a number (-999, text, NaN): cleared
             else:
-                fs[name] = (v, rts)
+                fs[name] = (v, rts if field_received is None else float(field_received[name]))
         snapshot = dict(fs)
     if not seen:
         return False
@@ -190,19 +191,21 @@ def plane_spot_is_last_price(row: dict[str, Any] | None) -> bool:
 #: only while the latest one is younger than this (console clock). The one liveness limit.
 FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 
-#: The daemon's latest status (its heartbeat), when it was received, and the symbols it
-#: holds per Schwab service. Written by record_feed_heartbeat / record_feed_down only.
+#: The daemon's latest status (its heartbeat), the time the daemon stamped it, and the symbols
+#: it holds per Schwab service. Written by record_feed_heartbeat / record_feed_down only.
 _feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
 
 
-def record_feed_heartbeat(msg: dict[str, Any], received_at: float) -> None:
-    """Apply one daemon heartbeat (topic ``daemon.heartbeat``)."""
-    if not isinstance(msg, dict):
+def record_feed_heartbeat(msg: dict[str, Any]) -> None:
+    """Apply one daemon heartbeat (topic ``daemon.heartbeat``), judged by the time the daemon
+    stamped it (`ts`), never by when it arrived: a status that waited is as old as it is
+    (docs/DATA_FLOW.md §2 D5). A status without its time is not applied."""
+    if not isinstance(msg, dict) or not isinstance(msg.get("ts"), (int, float)):
         return
     held = {svc: frozenset(ticker_storage_key(s) for s in syms)
             for svc, syms in (msg.get("held") or {}).items() if isinstance(syms, list)}
     with _lock:
-        _feed.update(rx=float(received_at), status=msg, held=held)
+        _feed.update(rx=float(msg["ts"]), status=msg, held=held)
 
 
 def record_feed_down() -> None:

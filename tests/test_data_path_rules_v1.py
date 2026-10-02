@@ -20,7 +20,7 @@ from websockets.asyncio.client import connect
 
 from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import chain_messages
-from stream_spine import CaptureWriter, HealthRegistry, MessageBus
+from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
 
 FX = Path(__file__).resolve().parent / "fixtures"
 _OPT = json.loads((FX / "real_options_stream_history_samples.json").read_text(encoding="utf-8"))
@@ -85,10 +85,13 @@ async def _daemon_then_console(publish, *, read_for: float = 1.0,
 
 
 def _values(obj) -> list:
-    """Every (key, value) pair anywhere inside a received message."""
+    """Every (key, value) pair anywhere inside a received message, but the times the daemon
+    keeps for each field (`field_ts`), which are not Schwab's fields."""
     out = []
     if isinstance(obj, dict):
         for k, v in obj.items():
+            if k == "field_ts":
+                continue
             out.append((k, v))
             out.extend(_values(v))
     elif isinstance(obj, list):
@@ -189,7 +192,7 @@ def test_d3_an_older_chain_never_waits_behind_a_newer_one():
 
 async def _chains_then_console(contracts, fetched) -> list[dict]:
     """A connected console, then the daemon's chain sweep publishing `fetched` chains on the
-    daemon's bus as it does (capture.run_chains: chain_messages, publish_event) before the
+    daemon's bus as it does (capture.run_chains: chain_messages, each part published) before the
     console reads."""
     bus, stop, stats, port = MessageBus(), asyncio.Event(), {}, _port()
     server = asyncio.create_task(live_push.serve_live_push(
@@ -207,7 +210,7 @@ async def _chains_then_console(contracts, fetched) -> list[dict]:
                 await asyncio.sleep(0.01)
             for ts in fetched:
                 for topic, msg in chain_messages("SPY", contracts, ts):
-                    bus.publish_event(topic, msg)
+                    bus.publish(topic, msg)
             got = []
             end = time.monotonic() + 3.0
             while time.monotonic() < end:
@@ -234,7 +237,7 @@ def test_d4_the_one_writer_records_every_message_schwab_sends(tmp_path):
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
-        task = asyncio.create_task(writer.run(bus.subscribe("", name="db_writer"), stop=stop))
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         h = capture._publisher("LEVELONE_OPTIONS", bus, health)
         for e in _EVENTS:
             h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"].get("QUOTE_TIME_MILLIS", 0)))
@@ -274,8 +277,8 @@ def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
     judges it by the daemon's own time, not by when it arrived."""
     import live_market_plane as lmp
     old = time.time() - 120
-    lmp.record_feed_heartbeat({"ts": old, "schwab_socket_open": True,
-                               "held": {"LEVELONE_EQUITIES": ["SPY"]}}, time.time())
+    lmp.record_feed_heartbeat({"ts": old, "schwab_socket_open": True,         # arrives now
+                               "held": {"LEVELONE_EQUITIES": ["SPY"]}})
     try:
         assert lmp.daemon_status() is None, "a two-minute-old daemon status counted as live"
     finally:
@@ -285,11 +288,23 @@ def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
 # ── D6. No live screen reads the database ───────────────────────────────────────────────────
 
 def test_d6_no_live_route_opens_a_database(monkeypatch):
-    """Every live GET route of the console, with SQLite made to refuse: none opens a database.
-    The routes are read from the app itself; /api/changes is the push stream (it never ends)."""
+    """Every live GET route of the console, with both databases present and holding SPY's data
+    (the stream database written by the real writer: a captured SPY book and the captured option
+    quote; the console database), then SQLite made to refuse: none opens a database. The routes
+    are read from the app itself; /api/changes is the push stream (it never ends)."""
     from fastapi.routing import APIRoute
     from fastapi.testclient import TestClient
     import server
+    from db import get_db
+    from stream_spine import book_msg, options_quote_msg
+    books = json.loads((FX / "real_spy_nyse_nasdaq_books.json").read_text(encoding="utf-8"))["books"]
+    writer = CaptureWriter()                                 # the canonical stream database
+    for service, b in books.items():
+        writer.insert("book.SPY", book_msg(symbol="SPY", service=service, content=b["content"],
+                                           src="schwab_book", ts_recv=time.time()))
+    writer.insert(f"optquote.{_CONTRACT}", options_quote_msg(
+        symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_options_l1", ts_recv=time.time()))
+    get_db()                                                 # the console database
     opened: list = []
 
     def refuse(*a, **k):
@@ -300,10 +315,14 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
     routes = [r.path for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods
               and r.path.startswith("/api/") and "{" not in r.path and r.path != "/api/changes"]
     assert routes
-    readers = []
+    # what the page sends: every route must run, not answer "invalid request"
+    params = {"ticker": "SPY", "contract": _CONTRACT, "venue": "NYSE_BOOK", "tf": "5", "minutes": "60"}
+    readers, refused = [], []
     for path in routes:
         opened.clear()
-        client.get(path, params={"ticker": "SPY", "contract": _CONTRACT})
+        if client.get(path, params=params).status_code == 422:
+            refused.append(path)
         if opened:
             readers.append(path)
+    assert not refused, f"routes the test did not run (invalid request): {refused}"
     assert not readers, f"live routes that read the database: {readers}"
