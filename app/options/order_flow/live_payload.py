@@ -52,7 +52,7 @@ def options_live_payload(contract: str, now: float) -> dict[str, Any]:
     # session, the values as of the close while Closed (docs/DATA_FLOW.md §2 D5); whether the
     # book feed delivers now is book_live
     top_outage = lmp.outage(contract, "LEVELONE_OPTIONS", now)
-    of = OrderFlowEngine().compute({"content": items or [],
+    of = OrderFlowEngine().compute({"content": items,
                                     "top": option_top(contract) if top_outage is None else None,
                                     "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK")},
                                    now=now, ticker=contract)
