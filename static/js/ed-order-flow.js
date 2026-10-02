@@ -24,7 +24,6 @@
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillBook(tk)) return;
-    h.setAttribute('aria-busy', 'true');
     return fetch('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillBook(tk)) render(h, tk, d); })

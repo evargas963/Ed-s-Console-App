@@ -57,7 +57,6 @@
   function loadImpl(desired, signal) {
     var h = host();
     if (!h || !stillFlow(desired)) return;
-    h.setAttribute('aria-busy', 'true');
     return fetch('/api/order-flow/options-microstructure?contract=' + encodeURIComponent(desired), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillFlow(desired)) render(h, desired, d); })

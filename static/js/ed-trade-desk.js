@@ -85,12 +85,8 @@
     var heroVal = (imb == null || isNaN(imb)) ? '—' : (imb >= 0 ? '+' : '') + num(imb, 3);
     var side = dep(5, 'side');   // served: BID / ASK / EVEN by the imbalance's sign
     var heroUnit = side == null ? '' : (side === 'BID' ? 'bid-heavy' : side === 'ASK' ? 'ask-heavy' : 'balanced') + ' (' + esc(d.venue) + ', depth 5)';
-    // Operator-reproduced defect (2026-09-14): this badge was hardcoded 'LIVE' regardless of
-    // book_age_sec -- a book observation aged to 3,600s still rendered LIVE. ages.book_stale is
-    // server-computed (app.options.order_flow.engine.compute_book_microstructure), the SAME
-    // freshness boundary the rest of that engine already applies to top-of-book fields; this
-    // only reads the verdict, it does not invent its own threshold.
-    // LIVE only on the server's explicit "not stale"; an unknown book age is not live
+    // LIVE only on the server's explicit "not stale" (ages.book_stale, compute_book_microstructure);
+    // an unknown book age is not live
     var bs = ages.book_stale;
     return stage(1, 'td-accent-blue', 'Detect — book microstructure', heroVal, heroUnit, side === 'BID' ? 1 : side === 'ASK' ? -1 : 0,
       rows, bs === false ? 'LIVE' : bs === true ? 'STALE' : 'AGE UNKNOWN', bs === false ? 'live' : 'stale');
@@ -243,7 +239,7 @@
     var cw = terrain && terrain.call_wall, pw = terrain && terrain.put_wall;
     var rows = '';
     win.forEach(function (r) {
-      // a strike with no GEX value is unknown, not a zero bar (audit of #280)
+      // a strike with no GEX value is unknown, not a zero bar
       var k = r[0], gx = r[1], vol = r[2], gy = prior(k);
       var hasGy = gy != null && gx != null;
       var pos = gx != null && gx >= 0, wToday = gx == null || gx === 0 ? 0 : Math.abs(gx) / maxAbs * 100;
@@ -269,10 +265,8 @@
     var scopeChips = '<div class="mig-chips">' + MIG_SCOPES.map(function (s) {
       return '<span class="mig-chip' + (s[0] === _migScope ? ' on' : '') + '" data-mig-scope="' + s[0] + '">' + s[1] + '</span>';
     }).join('') + '<span class="mig-chip' + (_migGhost ? ' on' : '') + '" data-mig-ghost="1">GHOST</span></div>';
-    // A zero here has TWO different causes and they are not the same fact: the session has
-    // genuinely traded nothing yet, or the chain behind these rows was read before it started
-    // trading and hasn't refreshed since (ported verbatim from the former /chart page's drawGamma,
-    // same /api/terrain/strikes staleness fields GEX-by-Strike's own badge already reads).
+    // A zero here has two causes: the session has traded nothing yet, or the chain behind these
+    // rows is stale (the served levels_stale)
     var totVol = mig ? mig.volume_total : null;   // served: the scope's session volume
     var volNote = '';
     if (totVol === 0) {
@@ -291,11 +285,8 @@
       '</div>';
   }
 
-  // Chip clicks re-trigger through the SAME coalesced loader as a ticker switch or refresh tick
-  // (see loadPcr()'s identical key-composition convention in ed-gamma-panels.js) -- a direct
-  // loadImpl(tk) call here would run a second, uncoalesced fetch alongside whatever the loader
-  // already has in flight, and whichever one resolved last would win regardless of which was
-  // actually the newest request.
+  // a chip click is a new read through the page's one loader, never a second fetch beside the
+  // one in flight (whichever landed last would draw)
   function wireMigrationChips(h, tk) {
     h.querySelectorAll('[data-mig-scope]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -310,7 +301,6 @@
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillRightNow(tk)) return;
-    h.setAttribute('aria-busy', 'true');
     return Promise.all([
       fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
       fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
@@ -358,7 +348,6 @@
     document.addEventListener('ed:book_venue', load);
     document.addEventListener('ed:changed', load);
     document.addEventListener('ed:scope', load);   // a new scope is a new window
-    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
-    // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
+    // the first read comes from ed-core.js's ed:ticker/ed:view dispatch at init
   }
 })();
