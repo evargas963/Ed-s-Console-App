@@ -1,7 +1,7 @@
 """One producer for a ticker's levels, per-strike rows and gamma-surface grid: _publish_levels
 prices the chain once (overlaid with fresher streamed greeks, at the current spot) and publishes
-all three together; _on_stream_tick reprices a viewed ticker, at most once per
-LEVELS_REPRICE_MIN_INTERVAL_SEC, always pricing the last tick of a burst. Proven on a REAL
+all three together; _on_stream_tick reprices a viewed ticker, back to back, always pricing the
+last tick of a burst. Proven on a REAL
 captured Schwab chain (tests/fixtures/real_crwd_complete_chain_quarter.json)."""
 from __future__ import annotations
 
@@ -242,7 +242,7 @@ def test_every_ticker_keeps_its_chain_and_heatmap_so_a_switch_shows_at_once(monk
 
 
 def test_a_stored_capture_and_a_live_chain_publish_the_same_fields(monkeypatch):
-    """2026-09-28 audit: ATR was set only after a live download (_terrain_refresh_one), so every
+    """2026-09-28 audit: ATR was set only after a live download (then the console's fetch), so every
     publication from a stored capture (startup, a closed market) served it absent for every
     ticker, and the chain basis carried two labels for the same full chain ("full" live, the
     capture's own label stored). The one producer sets them all."""
@@ -324,19 +324,14 @@ def _wait_idle(tk, timeout=10.0):
     raise AssertionError("reprice worker did not finish")
 
 
-def test_a_ticker_put_on_screen_reprices_from_its_kept_chain_without_a_fetch(monkeypatch):
+def test_a_ticker_put_on_screen_reprices_from_its_kept_chain(monkeypatch):
     """Switching tickers: the ticker's chain is already held (every publication keeps it), so its
-    first tick reprices it at once; a fetch happens only for a ticker the levels loop has not
-    reached yet."""
-    monkeypatch.setattr(server, "LEVELS_REPRICE_MIN_INTERVAL_SEC", 0.05)
-    fetched = []
-    monkeypatch.setattr(server, "_terrain_refresh_one", lambda tk, priority=False: fetched.append((tk, priority)))
+    first tick reprices it at once. The console fetches nothing: the chain comes from the daemon."""
     _stream({}, monkeypatch)
     server._publish_levels(TK, _CONTRACTS, time.time())                 # published while not viewed
     push_changes.subscribe(TK)                                           # the operator switches to it
     server._on_stream_tick(TK)
     _wait_idle(TK)
-    assert fetched == []
     assert _cached()["_gamma_surface"] is not None
 
 
@@ -346,13 +341,16 @@ def test_the_console_serves_while_the_stored_levels_load(monkeypatch):
     2.8 s for SPY, 5.4 s for $SPX, measured) ran before the app served its first request. It runs
     on the levels loop's own thread now; starting the loop returns at once."""
     import threading as _th
+    import live_market_plane as lmp
     release, started, finished = _th.Event(), _th.Event(), _th.Event()
 
-    def slow_load():
+    def slow_load(board):
         started.set()
         release.wait(2)
         finished.set()
         return 0
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": [TK]}, time.time())
+    monkeypatch.setattr(server, "_publish_missing_price_levels", lambda board: None)
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(server, "_load_stored_levels", slow_load)
     monkeypatch.setattr(server, "_terrain_loop_running", False)
@@ -373,20 +371,32 @@ def test_a_tick_on_an_unviewed_ticker_reprices_nothing(monkeypatch):
     assert calls == []
 
 
-def test_a_burst_of_ticks_reprices_at_most_once_per_interval_and_prices_the_last(monkeypatch):
-    monkeypatch.setattr(server, "LEVELS_REPRICE_MIN_INTERVAL_SEC", 0.2)
-    calls = _count_publishes(monkeypatch)
+def test_a_burst_of_ticks_reprices_back_to_back_and_prices_the_last(monkeypatch):
+    """No wait between reprices (operator 2026-10-01: no throttling): the ticks that arrive
+    while one reprice runs are all in the next, which starts the moment it ends."""
+    calls = []
+
+    def slow_publish(tk, *a):
+        calls.append(("start", time.monotonic()))
+        time.sleep(0.05)                                 # a reprice takes time
+        calls.append(("end", time.monotonic()))
+        return True
+    monkeypatch.setattr(server, "_publish_levels", slow_publish)
     push_changes.subscribe("ZZBURST")
     for _ in range(50):
         server._on_stream_tick("ZZBURST")
         time.sleep(0.002)
+    last_tick = time.monotonic()
     _wait_idle("ZZBURST")
-    assert len(calls) == 2          # the first tick at once, the rest of the burst once, after
-    assert calls[1][1] - calls[0][1] >= 0.2 - 0.01
+    starts = [t for k, t in calls if k == "start"]
+    ends = [t for k, t in calls if k == "end"]
+    assert 2 <= len(starts) < 50, "a burst is coalesced into the reprices it overlaps"
+    assert all(s >= e for s, e in zip(starts[1:], ends)), "one reprice at a time"
+    assert all(s - e < 0.02 for s, e in zip(starts[1:], ends)), "the next starts at once"
+    assert starts[-1] >= last_tick - 0.01, "a reprice begins after the burst's last tick"
 
 
 def test_an_option_tick_reprices_its_underlying(monkeypatch):
-    monkeypatch.setattr(server, "LEVELS_REPRICE_MIN_INTERVAL_SEC", 0.05)
     calls = _count_publishes(monkeypatch)
     _put_chain()
     server._on_stream_tick(_A)
@@ -447,12 +457,11 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
     from db import EdDB
     edb = EdDB(db)
     monkeypatch.setattr(server, "get_db", lambda: edb)
-    monkeypatch.setattr(server, "_logger_tickers", [TK])
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
 
-    assert server._load_stored_levels() == 1
+    assert server._load_stored_levels([TK]) == 1
     loaded = _cached()
     assert loaded["computed_ts_utc"] == taken
     assert loaded["spot"] == _SPOT and loaded["spot_source"] == server.SPOT_SOURCE_CAPTURE
@@ -464,13 +473,13 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
 
 def test_old_levels_are_stale_with_their_reason_at_any_hour(monkeypatch, pin_clock):
     """A closed market used to call levels of any age current ("market closed", not stale;
-    ACTIVE_PROGRAM S-08). The loop refreshes at any hour, so levels older than two of its cycles
-    are stale with the reason, on a Saturday as in session."""
+    ACTIVE_PROGRAM S-08). The daemon fetches chains at any hour, so levels older than two of its
+    rounds are stale with the reason, on a Saturday as in session."""
     pin_clock(2026, 9, 26, 12, 0)
     fri_close = datetime(2026, 9, 25, 16, 29, tzinfo=ZoneInfo("America/New_York")).timestamp()
     st = server.terrain_staleness(fri_close, TK)
     assert st["levels_stale"] is True and "levels_market_closed" not in st
-    assert "the refresh loop is running but has not reached this ticker" in st["levels_stale_reason"]
+    assert "the daemon's chain sweep has not delivered this ticker" in st["levels_stale_reason"]
 
 
 def test_a_reprice_on_a_kept_chain_keeps_the_chains_time(monkeypatch):
@@ -515,22 +524,138 @@ def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
     assert "Short gamma" not in r.headline and "Long gamma" not in r.headline
 
 
-def test_a_restarted_console_declares_the_boards_streams_before_its_start_up_work(monkeypatch):
-    """The daemon drops a console's streams when it disconnects and streams only what the
-    console declares. The board was re-declared only in the levels loop's first cycle, after
-    the start-up builds (2026-09-29: 30 tickers' 11:19 CT bar was never streamed). The loop
-    declares the board before any start-up work."""
-    class _Stop(Exception):
-        pass
-    seen = []
+# ── the chains the daemon delivers ─────────────────────────────────────────────────────────────
 
-    def first_start_up_work(tickers):
-        seen.append(list(ofs._equity_demand["board"]))
-        raise _Stop
+def _board_is(board):
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": list(board)},
+                              time.time())
 
-    monkeypatch.setattr(server, "_logger_tickers", ["SPY", "XLE", "QQQ"])
-    monkeypatch.setitem(ofs._equity_demand, "board", [])
-    monkeypatch.setattr(server, "_publish_missing_price_levels", first_start_up_work)
-    with pytest.raises(_Stop):
-        server._terrain_loop()
-    assert seen == [["SPY", "XLE", "QQQ"]]
+
+def test_an_older_chain_never_replaces_newer_levels():
+    """2026-10-01 audit: the startup load of the stored capture ran beside the daemon's chains,
+    so yesterday's 16:15 capture could replace a chain priced at 10:00:05, and the ticks then
+    repriced yesterday's chain at the live spot. A chain older than the one held is not
+    published, whatever its source."""
+    now = time.time()
+    server._publish_levels(TK, _CONTRACTS, now)
+    assert server._publish_levels(TK, _CONTRACTS[:10], now - 3600) is None
+    assert server._publish_levels(TK, captures=[{"contracts": _CONTRACTS[:10], "ts_utc": now - 86400,
+                                                 "spot": _SPOT, "basis": "x", "et_date": "2026-09-01"}]) is None
+    held = _cached()
+    assert held["_chain_fetched_ts"] == held["computed_ts_utc"] == now
+    assert len(held["_chain"]) == len(_CONTRACTS)
+
+
+def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker(monkeypatch):
+    """2026-10-01 audit: the pricing queue had no bound -- a sweep faster than pricing grew it
+    without end. One chain per ticker waits; a newer one replaces it."""
+    _board_is([TK])
+    priced: list = []
+    real = server._publish_levels
+    monkeypatch.setattr(server, "_publish_levels", lambda tk, c=None, ts=None, **k: priced.append(ts) or real(tk, c, ts, **k))
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 10)                 # the pricing thread is busy
+    now = time.time()
+    for i in range(3):
+        server._on_chain(TK, _CONTRACTS, now + i)
+    gate.set()
+    server._chain_pricing.submit(lambda: None).result(timeout=60)
+    assert priced == [now + 2]
+
+
+def test_a_viewed_tickers_chain_is_priced_before_the_others_waiting(monkeypatch):
+    """The active ticker first (operator 2026-10-01): the pricing thread takes a viewed ticker's
+    chain ahead of board chains that arrived before it."""
+    priced: list = []
+    monkeypatch.setattr(server, "_price_chain", lambda tk, c, ts: priced.append(tk))
+    push_changes.subscribe(TK)                                   # a page open on CRWD
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 10)                 # the pricing thread is busy
+    now = time.time()
+    for tk in ("ZZA", "ZZB", TK):
+        server._on_chain(tk, _CONTRACTS, now)
+    gate.set()
+    server._chain_pricing.submit(lambda: None).result(timeout=60)
+    assert priced == [TK, "ZZA", "ZZB"]
+
+
+def test_the_active_ticker_follows_the_open_pages(monkeypatch):
+    """2026-10-01 audit: nothing cleared the active ticker when its page closed, so the last
+    ticker shown was fetched back to back, and its books streamed, without end."""
+    monkeypatch.setattr(ofs, "_active_ticker", None)
+    monkeypatch.setattr(server, "_ensure_default_option_contract", lambda tk: None)
+    a = push_changes.subscribe("AAA")
+    b = push_changes.subscribe("BBB")
+    ofs.set_streaming_active_ticker("BBB")
+    push_changes.unsubscribe("BBB", b)
+    server._active_ticker_left("BBB")
+    assert ofs.current_wanted()["NYSE_BOOK"] == ["AAA"], "another open page's ticker"
+    push_changes.unsubscribe("AAA", a)
+    server._active_ticker_left("AAA")
+    assert ofs.current_wanted()["NYSE_BOOK"] == [], "no page open: no active ticker"
+
+
+def test_a_page_makes_its_ticker_active_in_order_with_the_closes(monkeypatch):
+    """2026-10-01 audit: the open set the active ticker on a worker pool while the close ran
+    elsewhere, so a quick A->B->A switch could leave B active under a screen showing A. Both
+    happen on the event loop, in order: the ticker is active when the open returns."""
+    import asyncio
+
+    class _NeverRuns:                                   # work handed off the loop never runs here
+        def submit(self, *a, **k):
+            pass
+    monkeypatch.setattr(server, "_get_route_offload_executor", lambda: _NeverRuns())
+    monkeypatch.setattr(ofs, "_active_ticker", None)
+    contracts: list = []
+    monkeypatch.setattr(server, "_ensure_default_option_contract", contracts.append)
+
+    async def go():
+        await server.get_changes(ticker="AAA")              # the page opens on AAA ...
+        b = await server.get_changes(ticker="BBB")          # ... a second page on BBB
+        assert ofs.current_wanted()["NYSE_BOOK"] == ["BBB"]
+        await b.body_iterator.__anext__()
+        await b.body_iterator.aclose()                      # the BBB page closes
+        assert ofs.current_wanted()["NYSE_BOOK"] == ["AAA"]
+    asyncio.run(go())
+    assert contracts == ["AAA", "BBB", "AAA"], "the option contract follows in the same order"
+
+
+def test_a_manual_contract_admitted_before_a_ticker_switch_is_superseded(monkeypatch):
+    """2026-10-01 audit: the operator's contract POST for one ticker, landing after the screen
+    moved to another, installed the old ticker's contract under the new one."""
+    _stream({}, monkeypatch)
+    server._publish_levels(TK, _CONTRACTS, time.time())         # TK's chain: its default contract
+    ofs._active_option_contract = None
+    manual = ofs.begin_option_contract_command()                # a POST admitted for another ticker
+    server._ensure_default_option_contract(TK)                  # then the screen moves to TK
+    chosen = ofs.get_active_option_contract()
+    assert server._contract_is_for(chosen, TK)
+    with pytest.raises(ofs.StaleOptionCommandError):
+        ofs.set_active_option_contract("SPY   261120C00875000", command_generation=manual)
+    assert ofs.get_active_option_contract() == chosen
+
+
+def test_a_ticker_opened_before_its_chain_gets_its_contract_when_the_chain_comes(monkeypatch):
+    """2026-10-01 audit: a ticker opened before its chain was held got no option contract, and
+    none was chosen when the chain arrived, until the page reopened."""
+    import asyncio
+    _stream({}, monkeypatch)
+    monkeypatch.setattr(ofs, "_active_ticker", None)
+    ofs._active_option_contract = None
+
+    async def go():
+        page = await server.get_changes(ticker="CRWD")
+        await page.body_iterator.__anext__()                    # the page is open; no chain yet
+        assert ofs.get_active_option_contract() is None
+        server._publish_levels(TK, _CONTRACTS, time.time())     # the daemon's chain is priced
+        push_changes._mark(TK, push_changes.CHAIN)
+        await page.body_iterator.__anext__()
+        assert server._contract_is_for(ofs.get_active_option_contract(), TK)
+        await page.body_iterator.aclose()
+    asyncio.run(go())
+
+
+def test_an_unknown_board_is_said_so():
+    """2026-10-01 audit: with the daemon's heartbeat late, the board is unknown, never empty."""
+    lmp.record_feed_down()
+    assert "BOARD UNKNOWN" in server._status_line()

@@ -94,15 +94,14 @@ def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):
     assert row["ts_utc"] == RTH_TS
 
 
-def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
-    """Seam: _terrain_refresh_one must call the logger AFTER a successful cache
-    write; a TypeError inside the logger must not turn ok: into error:."""
+def test_pricing_a_chain_wires_flip_drift_logger(monkeypatch, tmp_path):
+    """Seam: pricing a chain the daemon delivered (_price_chain) must call the logger AFTER a
+    successful cache write; a TypeError inside the logger must not fail the pricing."""
     import server as srv
-    # no hold from another test's failed fetches of SPY in this process
-    monkeypatch.setattr(srv, "_terrain_quarantine_blocks", lambda t: False)
     # its own cache: the SPY levels it publishes (a non-numeric flip below) must not reach
     # another test's /api/levels (they did, 2026-09-28, under CI's file-to-worker split)
     monkeypatch.setattr(srv, "_terrain_cache", {})
+    monkeypatch.setattr(srv, "_terrain_refresh_last_error", {})
 
     calls: list = []
     real = srv._log_flip_drift
@@ -119,16 +118,6 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     monkeypatch.setattr(_te, "is_tradable_session_ts_utc", lambda _ts: True)
     monkeypatch.setattr(srv, "_FLIP_DRIFT_LOG_PATH", tmp_path / "flip.jsonl")
     monkeypatch.setattr(srv, "_log_flip_drift", _spy)
-    monkeypatch.setattr(srv, "get_client", lambda: object())
-
-    class _Resp:
-        status_code = 200
-
-        def json(self):
-            return {}
-
-    monkeypatch.setattr(srv, "_gated_safe_get_chain", lambda *_a, **_k: (_Resp(), 0, 0))
-    monkeypatch.setattr(srv, "flatten_chain_contracts", lambda _j: [])
     monkeypatch.setattr(srv, "resolve_spot", lambda _tk, **_kw: (100.0, "test", 1.0))
 
     from terrain_engine import TerrainSnapshot
@@ -138,18 +127,20 @@ def test_terrain_refresh_one_wires_flip_drift_logger(monkeypatch, tmp_path):
     from terrain_atr import AtrPair
     monkeypatch.setattr(srv, "_atr_pair", lambda _tk: AtrPair(1.0, 0.2))
 
-    out = srv._terrain_refresh_one("SPY")
-    assert out == "ok:TRUSTED"
-    assert calls == [("SPY", 99.5)], "logger must run on the terrain refresh seam"
+    rth_ts = 1784296800.0                  # a regular-session instant, the chain's fetch time
+    srv._price_chain("SPY", [], rth_ts)
+    assert srv.terrain_cache_get("SPY")["confidence"] == "TRUSTED"
+    assert calls == [("SPY", 99.5)], "logger must run on the pricing seam"
     assert (tmp_path / "flip.jsonl").is_file()
+    assert "SPY" not in srv._terrain_refresh_last_error
 
-    # Fail-soft: non-numeric flip would raise inside float() — terrain must stay ok:
+    # Fail-soft: non-numeric flip would raise inside float() — the pricing must stand
     monkeypatch.setattr(srv, "_log_flip_drift", real)
 
     monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: TerrainSnapshot(
         ticker="SPY", spot=100.0, gamma_flip="not-a-number", confidence="TRUSTED"))
-    out2 = srv._terrain_refresh_one("SPY")
-    assert out2 == "ok:TRUSTED", "flip-drift failure must stay fail-soft"
+    srv._price_chain("SPY", [], rth_ts)
+    assert "SPY" not in srv._terrain_refresh_last_error, "flip-drift failure must stay fail-soft"
 
 
 def test_terrain_strikes_endpoint_shape_and_scopes():

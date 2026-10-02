@@ -14,14 +14,17 @@ full chain: if it is ever narrowed back to a window, its levels stop matching an
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
+import calibration.complete_chain_capture as cch
 import server
 import time_et
-from schwab_client import FullChainResponse
+from app.options.order_flow import streaming as ofs
+from schwab_client import FullChainResponse, flatten_chain_contracts
 from terrain_engine import compute_terrain
 
 _FX = json.loads((Path(__file__).resolve().parent / "fixtures"
@@ -31,7 +34,7 @@ _SPOT = float(_FX["full"]["underlying"]["last"])
 
 
 def _contracts(payload: dict) -> list[dict]:
-    return server.flatten_chain_contracts(payload)
+    return flatten_chain_contracts(payload)
 
 
 def _levels(snap) -> dict:
@@ -64,26 +67,29 @@ def test_the_window_gives_different_levels_than_the_full_chain(at_capture):
     assert full["gamma_flip"] is not None, "the full chain has a flip for MRVL"
 
 
-def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture):
-    """The one producer (_terrain_refresh_one), with its real compute_terrain, must publish the
-    full chain's levels -- not the window's."""
+def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture, tmp_path):
+    """The one fetcher (the daemon's chain sweep) asks for the whole chain, every expiry, and the
+    one producer prices what reaches the console, with its real compute_terrain: the full chain's
+    levels -- not the window's."""
     requested = []
 
-    def fake_fetch(client, ticker, get, quote, *, expiry=None):
+    def fake_fetch(client, ticker, get, quote, *, expiry=None):    # Schwab's answer: the full chain
         requested.append((ticker, expiry))
         return FullChainResponse(200, json.loads(json.dumps(_FX["full"])), parts=1)
 
-    monkeypatch.setattr(server, "fetch_full_chain", fake_fetch)
-    monkeypatch.setattr(server, "_terrain_quarantine_blocks", lambda t: False)
-    monkeypatch.setattr(server, "get_client", lambda: object())
+    monkeypatch.setattr(cch, "fetch_full_chain", fake_fetch)
     monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (_SPOT, "fixture", 0.0))
     monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
-    monkeypatch.setattr(server, "_note_terrain_success", lambda t: None)
+    monkeypatch.setattr(ofs, "_on_chain_callback", server._on_chain)
 
     tk = server.ticker_storage_key("MRVL")
-    status = server._terrain_refresh_one(tk)
-    assert status.startswith("ok"), status
-    assert requested == [(tk, None)], "the producer asks for the whole chain, every expiry"
+    sqlite3.connect(tmp_path / "ed.db").close()           # the daemon's database exists
+    sweep = cch.ChainSweep(tmp_path / "ed.db", [tk],
+                           lambda topic, msg: ofs._ingest_pushed(topic, json.loads(msg["frame"])["msg"]),
+                           clock=lambda: _FX["captured_utc"])
+    sweep.fetch_one(object(), tk)
+    server._chain_pricing.submit(lambda: None).result(timeout=120)      # the chain is priced
+    assert requested == [(tk, None)], "the fetcher asks for the whole chain, every expiry"
     published = server.terrain_cache_get(tk) or {}
     full = _levels(compute_terrain("MRVL", _contracts(_FX["full"]), _SPOT, now=at_capture))
     window = _levels(compute_terrain("MRVL", _contracts(_FX["window"]), _SPOT, now=at_capture))

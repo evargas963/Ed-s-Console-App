@@ -12,6 +12,9 @@ the same topics is refused):
   quote.SYM    src "schwab_l1"          LEVELONE_EQUITIES
   book.SYM     src "schwab_book"        NASDAQ_BOOK / NYSE_BOOK / OPTIONS_BOOK (by `service`)
   optquote.SYM src "schwab_options_l1"  LEVELONE_OPTIONS
+  news.SYM     src "schwab_news"        NEWS_HEADLINE
+  bar1m.SYM    src "schwab_chart"       CHART_EQUITY
+  chain.TK     src "schwab_chain"       the REST option chain, in parts (the daemon's chain sweep)
 
 On connect a client first receives the CURRENT STATE, then every new message live. Schwab's
 LEVELONE services send only the fields that changed, so "the last message" is not the state:
@@ -42,7 +45,7 @@ LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: op
 
 #: topic prefix -> the only `src` forwarded for it
 _FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwab_options_l1",
-              "news.": "schwab_news", "bar1m.": "schwab_chart"}
+              "news.": "schwab_news", "bar1m.": "schwab_chart", "chain.": "schwab_chain"}
 
 
 def is_forwarded(topic: str, msg) -> bool:
@@ -111,6 +114,10 @@ def is_field_delta_topic(topic: str) -> bool:
 
 
 def encode(topic: str, msg: dict) -> str:
+    """The wire frame. A chain part arrives with its frame already built, off the event loop
+    (complete_chain_capture.chain_messages)."""
+    if topic.startswith("chain."):
+        return msg["frame"]
     return json.dumps({"topic": topic, "msg": msg}, separators=(",", ":"))
 
 
@@ -125,7 +132,7 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
     The send loop runs as its own task and this handler waits on the CONNECTION: a loop
     blocked on `sub.get()` would otherwise never notice a closed socket, and server
     shutdown (which waits for every handler to return) would hang behind it."""
-    sub = bus.subscribe("", policy=COUNT_DROPS, maxsize=16384, name="push_client")
+    sub = bus.subscribe("", policy=COUNT_DROPS, name="push_client")
     stats["clients"] += 1
 
     async def _pump() -> None:
@@ -134,7 +141,10 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
         for topic, msg in history.replay():
             await ws.send(encode(topic, msg))
         for topic, msg in list(bus.snapshot().items()):
-            if not is_field_delta_topic(topic) and is_forwarded(topic, msg):
+            # a chain's last part is not its chain: a console gets each chain when it is next
+            # fetched, and loads the stored captures at its startup
+            if (not is_field_delta_topic(topic) and not topic.startswith("chain.")
+                    and is_forwarded(topic, msg)):
                 await ws.send(encode(topic, msg))
         loop = asyncio.get_running_loop()
         next_beat = loop.time()
@@ -157,8 +167,9 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
                 stats["sent"] += 1
 
     async def _read() -> None:
-        """The console's frames: {"op": "wanted", "wanted": {service: [symbols]}} -- the whole
-        list of what it wants streamed (capture.Daemon.set_wanted). Ends when the socket closes."""
+        """The console's frames: {"op": "wanted", "wanted": {service: [symbols]}} -- the books
+        and option contracts its screens show (capture.Daemon.set_wanted). Ends when the socket
+        closes."""
         async for frame in ws:
             try:
                 req = json.loads(frame)
@@ -196,7 +207,7 @@ async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
     for topic, msg in list(bus.snapshot().items()):        # whatever arrived before we started
         if is_field_delta_topic(topic) and is_forwarded(topic, msg):
             history.record(topic, msg)
-    hsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=65536, name="push_history")
+    hsub = bus.subscribe("", policy=COUNT_DROPS, name="push_history")
 
     async def _track() -> None:
         while True:

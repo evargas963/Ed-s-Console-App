@@ -48,8 +48,6 @@ LIVE_UI_HOST = os.environ.get("ED_LIVE_UI_HOST", "0.0.0.0")  # caps-ok: operator
 LIVE_UI_PORT = int(os.environ.get("ED_LIVE_UI_PORT", "8800"))  # caps-ok: operator port config with its declared default, not market data
 #: feed verdict + row beat cadence (the heartbeat that keeps "live" honest)
 HEARTBEAT_SEC = 1.0
-#: a browser may watch at most this many symbols (the daemon holds ~50)
-MAX_SYMBOLS_PER_CLIENT = 200
 
 
 class _Client:
@@ -132,7 +130,7 @@ class LiveUiServer:
             if not isinstance(raw, list):
                 continue
             keys, identity = [], []
-            for s in raw[:MAX_SYMBOLS_PER_CLIENT]:
+            for s in raw:
                 k = ticker_storage_key(s) if isinstance(s, str) else ""
                 if not k:
                     continue
@@ -202,7 +200,7 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
     for topic, msg in list(bus.snapshot().items()):         # whatever arrived before we started
         if topic.startswith("quote."):
             srv.ingest(msg)
-    sub = bus.subscribe("quote.", policy=COUNT_DROPS, maxsize=65536, name="live_ui")
+    sub = bus.subscribe("quote.", policy=COUNT_DROPS, name="live_ui")
     lmp.add_row_listener(srv.on_row)
 
     async def _track() -> None:
@@ -212,7 +210,7 @@ async def serve_live_ui(bus: MessageBus, stop: asyncio.Event, *, heartbeat_fn,
 
     tasks = [asyncio.create_task(_track()), asyncio.create_task(srv.beat_loop())]
     try:
-        async with serve(srv.serve_client, host, port, max_size=65536, compression=None,
+        async with serve(srv.serve_client, host, port, max_size=None, compression=None,
                          ping_interval=20, ping_timeout=20):
             stats["listening"] = f"ws://{host}:{port}"
             log.info("live ui: serving price rows to browsers on ws://%s:%s", host, port)

@@ -7,7 +7,7 @@ Rules (code-grounded, conservative):
 - Uppercase/strip.
 - Reject empty.
 - No name list: whether a well-formed symbol is real is Schwab's answer (a symbol Schwab refuses
-  is held off the levels loop, server._terrain_quarantine_blocks).
+  shows Schwab's answer as its reason, from the daemon's chain sweep and stream).
 - Allow broker-index storage keys like '$SPX' / '$VIX' (see instrument_identity.BROKER_INDEX_BARE_ROOTS).
 - Allow 1-5 upper-case characters (Schwab equity tickers are short; longer symbols exist but are
   not supported by this validator — enroll via a supported symbol).

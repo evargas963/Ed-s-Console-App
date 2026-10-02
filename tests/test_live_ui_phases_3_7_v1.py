@@ -32,7 +32,7 @@ def test_the_console_takes_the_daemons_price_row_and_ticks_on_it(monkeypatch):
     s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
     hits: list[str] = []
     monkeypatch.setattr(ofs, "_on_tick_callback", lambda sym: hits.append(sym))
-    monkeypatch.setattr(ofs, "_equity_demand", {"watchlist": ["BBB"], "board": []})
+    monkeypatch.setattr(ofs, "_watchlist", ["BBB"])
     monkeypatch.setattr(ofs, "LIVE_UI_URL", f"ws://127.0.0.1:{port}")
     monkeypatch.setattr(ofs, "_price_rows", {})
     monkeypatch.setattr(ofs, "_feed_running", True)

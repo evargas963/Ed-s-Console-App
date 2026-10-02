@@ -22,6 +22,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { projectPython } from "./project-python.mjs";
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -112,7 +113,7 @@ const invokedDirectly =
 
 if (invokedDirectly) {
   const args = ["-m", "pytest", "-n", "auto", "--dist", "loadfile", "--durations=20", ...process.argv.slice(2)];
-  const code = runWithFileSink("pytest", "python", args, {
+  const code = runWithFileSink("pytest", projectPython(root), args, {
     logPath: path.join(logDir(), "test_pytest_last.log"),
   });
   process.exit(code);

@@ -225,14 +225,14 @@ def test_every_expiry_carries_its_atm_iv_by_the_one_rule(pin_clock) -> None:
     applied to the front expiry only (the implied move); it is one function for every expiry, and
     the implied move reads its front entry. Real MRVL full chain, 21 expiries, valued at its
     capture (tests/fixtures/real_mrvl_full_chain_vs_strike_window.json)."""
-    import server
     import time_et
     from datetime import datetime
+    from schwab_client import flatten_chain_contracts
     fx = json.loads((Path(__file__).parent / "fixtures" / "real_mrvl_full_chain_vs_strike_window.json")
                     .read_text(encoding="utf-8"))
     at = datetime.fromtimestamp(fx["captured_utc"], time_et.ET)
     pin_clock(at.year, at.month, at.day, at.hour, at.minute)
-    chain, spot = server.flatten_chain_contracts(fx["full"]), float(fx["full"]["underlying"]["last"])
+    chain, spot = flatten_chain_contracts(fx["full"]), float(fx["full"]["underlying"]["last"])
     snap = compute_terrain("MRVL", chain, spot)
     by_exp = snap.atm_iv_pct_by_expiry
     assert list(by_exp) == sorted({c["expirationDate"][:10] for c in chain})

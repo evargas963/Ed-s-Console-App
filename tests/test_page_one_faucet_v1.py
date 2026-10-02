@@ -6,7 +6,7 @@ price `priced_at_spot`. Strike Detail's Net GEX is the heatmap's own cell, and O
 totals are served, not summed in the browser.
 
 Real data only: Schwab's CRWD chain as captured 2026-09-02 (tests/fixtures), run through the real
-producer (compute_terrain -> project_gamma_surface), assembled the way _terrain_refresh_one does.
+producer (compute_terrain -> project_gamma_surface), assembled the way _publish_levels does.
 The one stand-in is the live price: no stream runs in a test, so resolve_spot returns a second
 price, LIVE, to tell the live price apart from the capture's own."""
 import json

@@ -99,52 +99,7 @@ CREATE TABLE IF NOT EXISTS stream_feed_status (
 CREATE INDEX IF NOT EXISTS idx_sfs_ts ON stream_feed_status(ts);
 """
 
-#: Most equities the console asks the daemon to stream on LEVELONE_EQUITIES (ranked by the
-#: console: the active ticker, then the market context, then the watchlist, then the board).
-EQUITY_SYMBOLS_MAX_HELD = 150
-#: Most option contracts on LEVELONE_OPTIONS (measured 2026-09-23: 510-1,080 contracts on the
-#: one socket caused 4-9 socket deaths an hour; 200 held clean).
-OPTION_CONTRACTS_MAX_HELD = 200
-
 WAL_SIZE_LIMIT_BYTES = 256 * 1024 * 1024
-
-
-def rank_option_contracts(requested, contract_inputs: "dict[str, dict]",
-                          budget: int = OPTION_CONTRACTS_MAX_HELD,
-                          ) -> "tuple[list[str], dict[str, str]]":
-    """(admitted, {not_admitted_symbol: reason}) -- which contracts fit the budget, ranked by
-    expirationDate, then |strikePrice - spot|, then symbol (Schwab's own fields; a contract
-    missing any of them is not admitted and says which). An expired contract is never admitted:
-    it ranked FIRST by date, so on a weekend the budget filled with Friday's expired contracts
-    (measured 2026-09-27: 200 DELL 2026-09-25 contracts subscribed)."""
-    from numeric_contract import float_finite_or_none, schwab_number
-    from time_et import now_et
-    today = now_et().date().isoformat()
-
-    not_admitted: "dict[str, str]" = {}
-    rankable = []
-    for sym in sorted({str(s).upper().strip() for s in requested or ()} - {""}):
-        inp = contract_inputs.get(sym)
-        if inp is None:
-            not_admitted[sym] = "not admitted: contract not in the console's current Schwab chain"
-            continue
-        strike = schwab_number(inp.get("strikePrice"))
-        spot = float_finite_or_none(inp.get("spot"))
-        missing = [k for k, v in (("expirationDate", inp.get("expirationDate")),
-                                  ("strikePrice", strike), ("spot", spot)) if v is None]
-        if missing:
-            not_admitted[sym] = f"not admitted: no {', '.join(missing)}"
-            continue
-        expiry = str(inp["expirationDate"])[:10]
-        if expiry < today:
-            not_admitted[sym] = f"not admitted: expired {expiry}"
-            continue
-        rankable.append((str(inp["expirationDate"]), abs(strike - spot), sym))
-    rankable.sort()
-    admitted = [sym for _e, _d, sym in rankable[:max(budget, 0)]]
-    for _e, _d, sym in rankable[max(budget, 0):]:
-        not_admitted[sym] = f"not admitted: outside the live-stream budget ({budget})"
-    return admitted, not_admitted
 
 
 # ---------------------------------------------------------------------------- message shapes
@@ -242,9 +197,10 @@ class MessageBus:
         self.cache: dict[str, Any] = {}
         self.published = 0
 
-    def subscribe(self, prefix: str, *, policy: str = COUNT_DROPS, maxsize: int = 2048,
+    def subscribe(self, prefix: str, *, policy: str = COUNT_DROPS, maxsize: int = 0,
                   name: str | None = None) -> Subscription:
-        """`name` identifies the consumer in drop_counts (default: the prefix)."""
+        """`name` identifies the consumer in drop_counts (default: the prefix). The queue is
+        unbounded unless `maxsize` is given: no message is dropped because a reader is behind."""
         sub = Subscription(prefix=prefix, policy=policy, queue=asyncio.Queue(maxsize=maxsize))
         self._sub_names[id(sub)] = name if name is not None else prefix
         self._subs.append(sub)

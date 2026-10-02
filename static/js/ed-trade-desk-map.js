@@ -568,7 +568,7 @@
       if (q.ticker === st().key) {
         paintTrust();
         if (S.chart) S.chart.setLivePrice(q.spot, q.trade_age_sec);
-        if (Date.now() - (S.cardsPaintedMs || 0) > 1000) { S.cardsPaintedMs = Date.now(); paintCards(); }   // the Order Flow card's Schwab fields
+        paintCards();   // the Order Flow card's Schwab fields, on every row
       }
     });
     $('tdmQueue').addEventListener('click', function (e) {

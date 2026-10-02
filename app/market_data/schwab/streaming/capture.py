@@ -2,14 +2,24 @@
 
     python -m app.market_data.schwab.streaming.capture          (start_capture_daemon.bat)
 
+It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
+(run_chains) fetches full option chains on its own threads, without end: the ticker on screen
+first, back to back, and every board ticker in turn.
+
+  0. BOARD   The background tickers (the logging_universe table), read at startup: each is
+             streamed on LEVELONE_EQUITIES, CHART_EQUITY and NEWS_HEADLINE and its chain is
+             fetched in turn.
+
 It does four things, in one loop:
 
-  1. WANTED  The console sends the complete list of what it wants streamed, per Schwab
-             service, over the local console socket (live_push, ws://127.0.0.1:8799):
+  1. WANTED  The console sends everything its screens show, per Schwab service, over the
+             local console socket (live_push, ws://127.0.0.1:8799):
                {"op": "wanted", "wanted": {"LEVELONE_EQUITIES": ["SPY", ...], ...}}
+             The ticker whose books it asks for is the one on screen: the chain sweep's
+             active ticker.
              The daemon keeps the last list on disk (stream_wanted.json) so a restart
              resumes it before the console reconnects.
-  2. SYNC    Every SYNC_SEC it compares wanted with what Schwab has accepted on this
+  2. SYNC    When the list changes, and every SYNC_SEC, it compares wanted with what Schwab has accepted on this
              connection and sends the difference: UNSUBS for what is no longer wanted, then
              SUBS (the first request of a service) or ADD (every later one -- a repeated SUBS
              can replace the whole set). Requests are split so none exceeds Schwab's 64 KB
@@ -35,6 +45,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -54,11 +65,12 @@ from stream_spine import (  # noqa: E402
     resolve_stream_db_path,
     subscription_msg,
 )
+from calibration.complete_chain_capture import CHAIN_WORKERS, ChainSweep, board_tickers  # noqa: E402
 
 log = logging.getLogger("capture")
 
-#: Seconds between wanted-vs-held comparisons. It is also the debounce: a burst of console
-#: updates inside one interval becomes one set of Schwab requests.
+#: The longest the connection reads Schwab's frames before comparing wanted with held again (a
+#: change to the console's list is compared at once).
 SYNC_SEC = 0.25
 #: No frame at all from Schwab (data or heartbeat) for this long -> the connection is dead.
 DEAD_SEC = 30.0
@@ -248,18 +260,29 @@ def _connection_lost(e: BaseException) -> bool:
 
 # ---------------------------------------------------------------------------- the daemon
 
+#: The services every board ticker is streamed on, beside whatever the console's screens show.
+BOARD_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
+
+
 class Daemon:
-    def __init__(self, bus: MessageBus, health: HealthRegistry, path: Path) -> None:
+    def __init__(self, bus: MessageBus, health: HealthRegistry, path: Path,
+                 board: "list[str] | None" = None) -> None:
         self.bus = bus
         self.health = health
         self.path = path
         self.wanted = load_wanted(path)
+        self.wanted_changed = asyncio.Event()
+        #: the board: the tickers fetched and streamed in the background (the logging_universe
+        #: table, read at startup)
+        self.board: "list[str]" = list(board or [])
+        self.chains = None                  # the ChainSweep: its round time, its active ticker
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
 
     def set_wanted(self, raw) -> None:
-        """The console's list (live_push calls this for every {"op": "wanted"} frame)."""
+        """The console's list (live_push calls this for every {"op": "wanted"} frame): what its
+        screens show. The ticker on screen (its books) is the chain sweep's active ticker."""
         new = normalize_wanted(raw)
         if new == self.wanted:
             return
@@ -267,10 +290,24 @@ class Daemon:
             if new[svc] != self.wanted[svc]:
                 self.refused[svc] = {}
         self.wanted = new
+        self.wanted_changed.set()                  # the connection syncs now
+        if self.chains is not None:
+            self.chains.set_active(self.active_ticker())
         try:
             save_wanted(self.path, new)
         except OSError as e:
             log.warning("could not save %s: %s", self.path.name, e)
+
+    def active_ticker(self) -> "str | None":
+        """The ticker on the console's screen: the one whose books it asks for."""
+        return next(iter(sorted(self.wanted["NYSE_BOOK"])), None)
+
+    def all_wanted(self) -> "dict[str, frozenset[str]]":
+        """Everything streamed: the console's list, and every board ticker on BOARD_SERVICES."""
+        out = dict(self.wanted)
+        for svc in BOARD_SERVICES:
+            out[svc] = out.get(svc, frozenset()) | frozenset(self.board)
+        return out
 
     def status(self) -> dict:
         """What the console and browsers are told every second (live_push / live_ui)."""
@@ -278,12 +315,14 @@ class Daemon:
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
         return {"ts": now,
                 "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
+                "board": list(self.board),
+                "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "refused": {k: dict(v) for k, v in self.refused.items() if v},
                 "health": self.health.report(now)}
 
     async def sync(self) -> None:
-        for svc, cmd, symbols in plan(self.wanted, self.held, self.refused):
+        for svc, cmd, symbols in plan(self.all_wanted(), self.held, self.refused):
             for chunk in split_request(symbols):
                 try:
                     await _request(self.stream, svc, cmd, chunk)
@@ -305,7 +344,9 @@ class Daemon:
 
     async def connect(self, client) -> None:
         stream = _open_stream(client)
-        await stream.login()
+        # every message Schwab sends, whatever its size: the websockets library caps a received
+        # message at 1 MiB by default, and nothing of ours does
+        await stream.login(websocket_connect_args={"max_size": None})
         for svc, add in (("LEVELONE_EQUITIES", stream.add_level_one_equity_handler),
                          ("CHART_EQUITY", stream.add_chart_equity_handler),
                          ("NYSE_BOOK", stream.add_nyse_book_handler),
@@ -328,18 +369,23 @@ class Daemon:
                 log.info("schwab: logout of the old session failed (%s: %s)", type(e).__name__, e)
 
     async def read_for(self, seconds: float) -> None:
-        """Handle Schwab frames for `seconds`. One task does both reading and requesting, so
-        a request never waits behind a reader holding schwab-py's lock (websockets' recv is
-        safe to cancel, so the timeout never loses a frame)."""
+        """Handle Schwab frames for `seconds`, or until the console's list changes. One task does
+        both reading and requesting, so a request never waits behind a reader holding schwab-py's
+        lock (websockets' recv is safe to cancel, so ending early never loses a frame)."""
         end = time.monotonic() + seconds
-        while (left := end - time.monotonic()) > 0:
-            try:
-                await asyncio.wait_for(self.stream.handle_message(), timeout=left)
-            except asyncio.TimeoutError:
+        while (left := end - time.monotonic()) > 0 and not self.wanted_changed.is_set():
+            frame = asyncio.ensure_future(self.stream.handle_message())
+            change = asyncio.ensure_future(self.wanted_changed.wait())
+            await asyncio.wait({frame, change}, timeout=left, return_when=asyncio.FIRST_COMPLETED)
+            change.cancel()
+            if not frame.done():
+                frame.cancel()
+                await asyncio.gather(frame, return_exceptions=True)
                 return
-            except Exception as e:  # noqa: BLE001
+            e = frame.exception()
+            if e is not None:
                 if _connection_lost(e):
-                    raise
+                    raise e
                 log.warning("schwab: skipped a frame (%s: %s)", type(e).__name__, str(e)[:250])
 
     async def run_connection(self, client, stop: asyncio.Event) -> None:
@@ -349,6 +395,7 @@ class Daemon:
             while not stop.is_set():
                 if time.time() - self.stream.last_frame_ts > DEAD_SEC:
                     raise ConnectionError(f"no frame from Schwab for {DEAD_SEC:.0f} s")
+                self.wanted_changed.clear()
                 await self.sync()
                 await self.read_for(SYNC_SEC)
         finally:
@@ -463,32 +510,30 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
             pass
 
 
-async def capture_chains(make_client, stop: asyncio.Event) -> None:
-    """The chain history (DATA_FLOW decision 7): at each capture time the full chain of every
-    board ticker is fetched and written, in a thread so the stream never waits."""
-    from calibration.complete_chain_capture import capture_round, next_capture_ts
-    from db_authority import canonical_console_db_path
-    db_path = canonical_console_db_path()
-    while True:
-        try:
-            await asyncio.wait_for(stop.wait(), timeout=max(0.0, next_capture_ts(time.time()) - time.time()))
-            return
-        except asyncio.TimeoutError:
-            pass
-        started = time.monotonic()
-        try:
-            result = await asyncio.to_thread(capture_round, make_client().client, db_path)
-            log.info("chain capture: %d tickers written in %.0fs, failed %s",
-                     result["written"], time.monotonic() - started, result["failed"])
-        except Exception:
-            log.exception("chain capture failed")
+async def run_chains(daemon: "Daemon", db_path, make_client, stop: asyncio.Event) -> None:
+    """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own threads, so the
+    stream never waits on a chain; each chain message is published on the event loop."""
+    loop = asyncio.get_running_loop()
+    halt = threading.Event()
+    sweep = ChainSweep(db_path, daemon.board,
+                       lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg))
+    daemon.chains = sweep
+    sweep.set_active(daemon.active_ticker())        # the last one on screen, before a restart
+    workers = [loop.run_in_executor(None, sweep.work, make_client, halt) for _ in range(CHAIN_WORKERS)]
+    try:
+        await stop.wait()
+    finally:
+        halt.set()
+        await asyncio.gather(*workers, return_exceptions=True)
 
 
 async def run() -> int:
-    """The whole daemon: writer, the two local sockets, and the Schwab connection."""
+    """The whole daemon: writer, the two local sockets, the chain sweep and the Schwab
+    connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
     from app.market_data.schwab.streaming.live_ui import serve_live_ui
     from config import build_config, load_dotenv_file
+    from db_authority import canonical_console_db_path
     from schwab_client import build_client_from_token
     load_dotenv_file()
     cfg = build_config()
@@ -500,10 +545,11 @@ async def run() -> int:
     stop = asyncio.Event()
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
-    daemon = Daemon(bus, health, wanted_path())
-    wsub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192, name="db_writer")
+    db_path = canonical_console_db_path()
+    daemon = Daemon(bus, health, wanted_path(), board=board_tickers(db_path))
+    wsub = bus.subscribe("", policy=COUNT_DROPS, name="db_writer")
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
-             asyncio.create_task(capture_chains(make_client, stop)),
+             asyncio.create_task(run_chains(daemon, db_path, make_client, stop)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, heartbeat_fn=daemon.status,
                                                  on_wanted=daemon.set_wanted)),

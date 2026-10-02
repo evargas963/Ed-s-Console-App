@@ -2,65 +2,46 @@
 
 The capture daemon has no built-in symbol list (operator 2026-09-23: universality). With spot
 = streamed LAST_PRICE only (no REST fallback), a symbol nobody asked the daemon to stream
-would read UNAVAILABLE forever. The console now ranks the symbols it shows (active
-ticker, watchlist, gamma board), writes them to stream_equity_symbols.json, and the daemon
-ADDs/UNSUBSes LEVELONE_EQUITIES to match.
+would read UNAVAILABLE forever. The console sends every symbol its screens show (the active
+ticker, the header's context, the watchlist) in the wanted list, with no cap (operator
+2026-10-01); the daemon streams the board itself.
 """
 from __future__ import annotations
 
-import asyncio
-
+import time
 
 import app.options.order_flow.streaming as ofs
-from app.market_data.schwab.streaming import capture
+import live_market_plane as lmp
 
 
-# ── console: ranking ──────────────────────────────────────────────────────────────────
-
-def test_ranking_is_active_then_watchlist_then_board_each_once():
-    admitted, not_admitted = ofs.rank_equity_symbols(
-        "tsla", {"watchlist": ["AAPL", "TSLA", "spy"], "board": ["NVDA", "AAPL", "SPX"]}, budget=10)
-    assert admitted == ["TSLA", "AAPL", "SPY", "NVDA", "$SPX"]
-    assert not_admitted == {}
+def test_every_symbol_shown_is_asked_for_each_once():
+    watchlist = ["AAPL", "TSLA", "spy", "SPX"] + [f"Z{i:03d}" for i in range(400)]
+    assert ofs.equity_symbols("tsla", watchlist) == [
+        "TSLA", *ofs.MARKET_CONTEXT_SYMBOLS, "AAPL", "SPY"] + [f"Z{i:03d}" for i in range(400)]
 
 
-def test_everything_past_the_budget_is_named_never_silently_cut():
-    admitted, not_admitted = ofs.rank_equity_symbols(
-        "TSLA", {"watchlist": ["AAPL", "MSFT"], "board": ["NVDA", "AMD"]}, budget=3)
-    assert admitted == ["TSLA", "AAPL", "MSFT"]
-    assert set(not_admitted) == {"NVDA", "AMD"}
-    assert all("outside the live equity budget (3)" in r for r in not_admitted.values())
+def test_the_board_is_the_daemons_list_never_copied_into_the_consoles(monkeypatch):
+    """2026-10-01 audit: the console copied the daemon's board into its own wanted list, so a
+    ticker taken off the table was still streamed after a daemon restart (the daemon reloads the
+    console's last list). The console holds the board's price rows, read from the daemon's
+    heartbeat, and asks for none of them."""
+    monkeypatch.setattr(ofs, "_active_ticker", None)
+    monkeypatch.setattr(ofs, "_watchlist", ["AAPL"])
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": ["MU", "AAPL"]},
+                              time.time())
+    assert "MU" not in ofs.current_wanted()["LEVELONE_EQUITIES"]
+    assert ofs._rows_wanted() == [*ofs.MARKET_CONTEXT_SYMBOLS, "AAPL", "MU"]
 
 
-# ── daemon: add/drop to match ─────────────────────────────────────────────────────────
-
-
-
-def _apply(monkeypatch, requested, held, stream, roster=("BOOT1", "BOOT2")):
-    monkeypatch.setattr(capture, "read_equity_symbols_signal", lambda: list(requested))
-    status: dict = {}
-    out = asyncio.run(capture._apply_equity_symbol_subs(stream, list(roster), frozenset(held), status))
-    return out, status
-
-
-# ── route ─────────────────────────────────────────────────────────────────────────────
-
-def test_watchlist_route_declares_and_names_the_unstreamed(monkeypatch):
+def test_the_watchlist_route_declares_the_browsers_watchlist(monkeypatch):
     from fastapi.testclient import TestClient
 
     import server
 
-    seen = {}
-
-    def _declare(kind, syms):
-        seen[kind] = syms
-        return {"ZZZ": "not streamed: outside the live equity budget (150)"}
-    monkeypatch.setattr(ofs, "declare_equity_symbols", _declare)
+    seen = []
+    monkeypatch.setattr(ofs, "declare_watchlist", seen.append)
     client = TestClient(server.app)
     r = client.post("/api/streaming/watchlist-symbols", json={"symbols": ["AAPL", "ZZZ"]})
-    assert r.status_code == 200
-    assert seen == {"watchlist": ["AAPL", "ZZZ"]}
-    assert r.json()["not_streamed"] == {"ZZZ": "not streamed: outside the live equity budget (150)"}
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    assert seen == [["AAPL", "ZZZ"]]
     assert client.post("/api/streaming/watchlist-symbols", json={"symbols": "AAPL"}).status_code == 400
-
-

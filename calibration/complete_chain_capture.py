@@ -1,23 +1,30 @@
-"""The chain history (DATA_FLOW decision 7): every 30 minutes from 9:30 to the close (ET), and once
-more 15 minutes after the close (the day's close capture), on market days, the capture daemon fetches the full chain (every expiry, every strike) of each
-ticker on the board and writes it here, one row per expiry, compressed, with Schwab's own
-underlying price. Schwab has no past option chains, so a chain not saved is gone. Nothing is
-captured while the market is closed (weekend chains blank open interest). Research reads this
-table; the console loads the newest capture per ticker at startup.
+"""The board and the option chains (DATA_FLOW decisions 1 and 7), run by the capture daemon.
+
+The board (the logging_universe table) is the background tickers. The daemon fetches the full
+chain (every expiry, every strike) of the ticker on screen back to back and of every board ticker
+in turn, without end (ChainSweep), and hands each chain to the console for the levels. The chain history: the first chain of each ticker fetched in
+each capture window -- every 30 minutes from 9:30 to the close (ET), and 15 minutes after the close
+(the day's close capture), on market days -- is written here, one row per expiry, compressed, with
+Schwab's own underlying price. Schwab has no past option chains, so a chain not saved is gone.
+Nothing is written while the market is closed (weekend chains blank open interest). Research reads
+this table; the console loads the newest capture per ticker at startup.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import sqlite3
+import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
+from production_universe import is_valid_production_ticker
 from schwab_client import fetch_full_chain, flatten_chain_contracts, safe_get_chain, safe_get_quotes
 from time_et import ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date
 
@@ -110,62 +117,234 @@ def persist_complete_chain_capture(
             "n_contracts": len(clean), "completeness_basis": completeness_basis}
 
 
-def next_capture_ts(now_ts: float) -> float:
-    """The next capture time after `now_ts`: 9:30, 10:00, ... through the close (13:00 on an
-    early close) ET, then the close capture 15 minutes after the close, on market days only
-    (the one market calendar, time_et)."""
+def capture_slot(now_ts: float) -> float | None:
+    """The capture time a chain fetched at `now_ts` is written for: the latest of 9:30, 10:00, ...
+    through the close (13:00 on an early close) ET, and the close capture 15 minutes after the
+    close, that is at most CAPTURE_EVERY_MIN minutes before `now_ts`, on a market day (the one
+    market calendar, time_et). None outside those windows: nothing is written."""
     now = datetime.fromtimestamp(now_ts, ET)
-    for add in range(15):
-        day = (now + timedelta(days=add)).date()
-        if not is_trading_day_et(day.isoformat()):
-            continue
-        close = session_close_mins_for_et_date(day.isoformat())
-        for m in [*range(RTH_START_MINS, close + 1, CAPTURE_EVERY_MIN),
-                  close + CLOSE_CAPTURE_AFTER_MIN]:
-            ts = datetime(day.year, day.month, day.day, m // 60, m % 60, tzinfo=ET).timestamp()
-            if ts > now_ts:
-                return ts
-    raise RuntimeError(f"no market day within 15 days of {now:%Y-%m-%d} (calendar not covered)")
+    day = now.date().isoformat()
+    if not is_trading_day_et(day):
+        return None
+    close = session_close_mins_for_et_date(day)
+    slots = [datetime(now.year, now.month, now.day, m // 60, m % 60, tzinfo=ET).timestamp()
+             for m in [*range(RTH_START_MINS, close + 1, CAPTURE_EVERY_MIN),
+                       close + CLOSE_CAPTURE_AFTER_MIN]]
+    past = [s for s in slots if s <= now_ts]
+    if not past or now_ts - past[-1] >= CAPTURE_EVERY_MIN * 60:
+        return None
+    return past[-1]
 
 
 def board_tickers(db_path: Path | str) -> list[str]:
-    """Every ticker on the board (the logging_universe table), read-only."""
+    """Every ticker on the board (the logging_universe table), read-only. The daemon reads it at
+    startup and holds it."""
+    if not Path(db_path).is_file():
+        log.warning("board: %s does not exist yet (the console creates it); the board is empty", db_path)
+        return []
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
     try:
-        return [r[0] for r in conn.execute("SELECT ticker FROM logging_universe ORDER BY ticker")]
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='logging_universe'").fetchone():
+            log.warning("board: %s has no logging_universe table yet (the console creates it); "
+                        "the board is empty", db_path)
+            return []
+        rows = [r[0] for r in conn.execute("SELECT ticker FROM logging_universe")]
     finally:
         conn.close()
+    keys = {ticker_storage_key(t) for t in rows}
+    bad = sorted(t for t in rows if not is_valid_production_ticker(ticker_storage_key(t)))
+    if bad:
+        log.warning("board: rows that are not a symbol are not on the board: %s", bad)
+    return sorted(k for k in keys if is_valid_production_ticker(k))          # each row as its key
 
 
-def capture_round(client, db_path: Path | str) -> dict[str, Any]:
-    """Fetch and write the full chain of every board ticker. A ticker Schwab does not answer is
-    logged and skipped until the next capture; nothing is filled in."""
-    written, failed = 0, []
-    for tk in board_tickers(db_path):
-        resp = fetch_full_chain(client, tk, lambda **d: safe_get_chain(
-            client, tk, strike_range="ALL", **d), lambda symbols: safe_get_quotes(client, symbols))
+#: contracts per chain message to the console: one message is encoded and decoded whole, so a
+#: whole chain in one ($SPX, 29,394 contracts: 40.7 MB, 924 ms to encode, measured 2026-10-01)
+#: would hold the daemon's event loop; 500 contracts take tens of milliseconds
+CHAIN_PART_CONTRACTS = 500
+#: the threads fetching chains: one for the active ticker, back to back, the rest for the board
+CHAIN_WORKERS = 8
+#: after Schwab answers 429, no chain request for this long
+RATE_LIMITED_PAUSE_SEC = 10.0
+#: after a request fails outright (no client, auth refused, the network down), no chain request
+#: for this long, so a failure is not retried at once across the whole board
+FAILED_PAUSE_SEC = 5.0
+
+
+def chain_messages(ticker: str, contracts: list[dict], fetched_ts: float) -> list[tuple[str, dict]]:
+    """A fetched chain as its bus messages, each carrying its finished wire frame: part i of n,
+    CHAIN_PART_CONTRACTS contracts each, all with the fetch's time. The console assembles the
+    parts; a chain missing a part is never priced."""
+    parts = [contracts[i:i + CHAIN_PART_CONTRACTS]
+             for i in range(0, len(contracts), CHAIN_PART_CONTRACTS)] or [[]]
+    out = []
+    for i, part in enumerate(parts):
+        msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": fetched_ts,
+               "part": i, "parts": len(parts), "contracts": part}
+        out.append((f"chain.{ticker}", {**msg, "frame": json.dumps(
+            {"topic": f"chain.{ticker}", "msg": msg}, separators=(",", ":"))}))
+    return out
+
+
+def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dict]:
+    msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": ts, "failed": reason}
+    return f"chain.{ticker}", {**msg, "frame": json.dumps(
+        {"topic": f"chain.{ticker}", "msg": msg}, separators=(",", ":"))}
+
+
+class ChainSweep:
+    """The one fetcher of option chains, on CHAIN_WORKERS threads sharing one Schwab client (the
+    daemon's event loop never waits on it); a ticker is fetched by one worker at a time. The
+    active ticker (the one on the operator's screen, set_active) is fetched back to back, ahead
+    of everything; every board ticker is fetched in turn, without end, by the other workers.
+    Each chain is published to the console in parts (chain_messages); a failure is published
+    with Schwab's answer. The first fetch of a ticker begun inside a capture window
+    (capture_slot) is also written to the chain history."""
+
+    def __init__(self, db_path: Path | str, board: "list[str]", publish: "callable",
+                 clock: "callable" = time.time) -> None:
+        self.db_path = db_path
+        self.board = list(board)        # the daemon's board, read at its start
+        self.publish = publish          # (topic, msg) -> None, safe from any thread
+        self.clock = clock              # when a fetch begins, and when its chain is received
+        self._lock = threading.RLock()
+        self._changed = threading.Condition(self._lock)
+        self._active: str | None = None
+        self._round: list[str] = []
+        self._round_started: float | None = None
+        self.round_sec: float | None = None
+        self._fetching: set[str] = set()
+        self._written: dict[str, float] = {}
+        self._paused_until = 0.0
+        self._client = None
+        self._client_lock = threading.Lock()
+
+    def set_active(self, ticker: str | None) -> None:
+        """The ticker on the operator's screen (None: none)."""
+        with self._changed:
+            self._active = ticker
+            self._changed.notify_all()      # an idle worker takes it now
+
+    def _next(self, now: float) -> str | None:
+        """The next ticker to fetch, taken by the caller: the active ticker whenever no worker is
+        fetching it, else the round's next. A ticker being fetched by another worker now is
+        skipped."""
+        with self._lock:
+            if self._active is not None and self._active not in self._fetching:
+                self._fetching.add(self._active)
+                return self._active
+            if not self._round:
+                if self._fetching - {self._active}:
+                    return None             # the round ends when its last fetch is done
+                if self._round_started is not None:
+                    self.round_sec = now - self._round_started
+                self._round = sorted(self.board)
+                self._round_started = now if self._round else None
+            while self._round:
+                tk = self._round.pop(0)
+                if tk not in self._fetching:
+                    self._fetching.add(tk)
+                    return tk
+            return None
+
+    def fetch_one(self, client, ticker: str) -> None:
+        started = self.clock()
+        resp = fetch_full_chain(client, ticker, lambda **d: safe_get_chain(
+            client, ticker, strike_range="ALL", **d), lambda symbols: safe_get_quotes(client, symbols))
+        now = self.clock()
         if resp.status_code != 200:
-            failed.append(tk)
-            log.warning("chain capture %s: %s", tk, resp.reason or f"HTTP {resp.status_code}")
-            continue
-        ts = time.time()
+            if resp.status_code == 429:
+                with self._lock:
+                    self._paused_until = now + RATE_LIMITED_PAUSE_SEC
+            reason = resp.reason or f"HTTP {resp.status_code}"
+            log.warning("chain %s: %s", ticker, reason)
+            self.publish(*chain_failure_message(ticker, reason, now))
+            return
         payload = resp.json()
-        spot = payload.get("underlyingPrice")          # Schwab's field, as sent
-        if spot == -999:
-            spot = None
-        by_expiry: dict[str, list[dict]] = {}
-        for ct in flatten_chain_contracts(payload):
-            by_expiry.setdefault(str(ct.get("expirationDate") or "")[:10], []).append(ct)
-        for expiry, contracts in by_expiry.items():
-            persist_complete_chain_capture(
-                db_path, ticker=tk, expiry=expiry, contracts=contracts, spot=spot,
-                completeness_basis=CAPTURE_BASIS, ts_utc=ts)
-        written += 1
-    return {"written": written, "failed": failed}
+        contracts = flatten_chain_contracts(payload)
+        for topic, msg in chain_messages(ticker, contracts, now):
+            self.publish(topic, msg)
+        try:
+            self._write_history(ticker, payload, contracts, started, now)
+        except Exception as e:  # noqa: BLE001 -- the chain was delivered; only its history write failed
+            log.warning("chain history for %s not written: %s: %s", ticker, type(e).__name__, e)
+
+    def _write_history(self, ticker: str, payload: dict, contracts: list[dict],
+                       started: float, now: float) -> None:
+        """The chain history: a fetch begun inside a capture window, the first one of the window
+        for this ticker (a fetch begun before 16:15 is not the close capture, whenever it ends)."""
+        slot = capture_slot(started)
+        if slot is None:
+            return
+        if ticker not in self._written:
+            newest = newest_capture_ts(self.db_path, ticker) or 0.0
+            with self._lock:
+                self._written.setdefault(ticker, newest)
+        with self._lock:                                   # claim the window for this ticker
+            before = self._written[ticker]
+            if before >= slot:
+                return
+            self._written[ticker] = slot
+        try:
+            spot = payload.get("underlyingPrice")          # Schwab's field, as sent
+            if spot == -999:
+                spot = None
+            by_expiry: dict[str, list[dict]] = {}
+            for ct in contracts:
+                by_expiry.setdefault(str(ct.get("expirationDate") or "")[:10], []).append(ct)
+            for expiry, cts in by_expiry.items():
+                persist_complete_chain_capture(self.db_path, ticker=ticker, expiry=expiry, contracts=cts,
+                                               spot=spot, completeness_basis=CAPTURE_BASIS, ts_utc=now)
+        except Exception:
+            with self._lock:                               # unwritten: the window's next fetch tries
+                self._written[ticker] = before
+            raise
+
+    def _shared_client(self, make_client):
+        """The workers' one Schwab client, built when there is none (under its own lock: the
+        daemon's event loop takes self._lock, never this one)."""
+        with self._client_lock:
+            if self._client is None:
+                state = make_client()
+                if not state.ok or state.client is None:
+                    raise ConnectionError(f"no Schwab client ({state.message})")
+                self._client = state.client
+            return self._client
+
+    def work(self, make_client, stop: threading.Event) -> None:
+        """One worker thread's life: the next ticker, its chain, until `stop`. A request that
+        fails outright pauses every chain request FAILED_PAUSE_SEC and rebuilds the client."""
+        while not stop.is_set():
+            wait = self._paused_until - self.clock()
+            if wait > 0:
+                stop.wait(wait)
+                continue
+            with self._changed:
+                ticker = self._next(self.clock())
+                if ticker is None:
+                    # woken the moment a fetch ends or the active ticker changes; the timeout
+                    # only looks at `stop`
+                    self._changed.wait(1.0)
+                    continue
+            try:
+                self.fetch_one(self._shared_client(make_client), ticker)
+            except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the sweep goes on
+                log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
+                self.publish(*chain_failure_message(ticker, f"{type(e).__name__}: {e}", self.clock()))
+                with self._client_lock:
+                    self._client = None                   # a broken client is rebuilt
+                with self._lock:
+                    self._paused_until = self.clock() + FAILED_PAUSE_SEC
+            finally:
+                with self._changed:
+                    self._fetching.discard(ticker)
+                    self._changed.notify_all()
 
 
 def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
-    """When the ticker's newest full capture was taken."""
+    """When the ticker's newest full capture was taken; None when there is none."""
+    if not Path(db_path).is_file():
+        return None
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
     try:
         if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "

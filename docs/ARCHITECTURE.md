@@ -35,8 +35,7 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 |---|---|
 | `app/market_data/schwab/streaming/` (capture, live_push, live_ui), `stream_spine.py`, `live_market_plane.py`, `live_price_rows.py` | `daemon/` |
 | `schwab_client.py` (Schwab REST calls) | `daemon/` |
-| From `server.py`: the chain gate (`_gated_safe_get_chain`; the chain download itself is `schwab_client.fetch_full_chain`) | `daemon/` |
-| `calibration/complete_chain_capture.py` (the chain history, DATA_FLOW decision 7) | `daemon/` |
+| `calibration/complete_chain_capture.py` (the board, the chain sweep and the chain history, DATA_FLOW decisions 1 and 7) | `daemon/` |
 | `db.py` (the parts that stay: bars, level history, enrollment, connection), `db_authority.py`, `db_safety.py`, `json_blob_codec.py` | `daemon/` (writes) — the console opens the database read-only |
 | `terrain_engine.py`, `terrain_read.py`, `terrain_atr.py`, `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `math_volatility.py` | `producer/` |
 | `liquidity_value_engine.py`, `liquidity_models.py` | `producer/` |
@@ -58,7 +57,6 @@ connection. The console stops writing (DATA_FLOW decision 5); its writes go to t
 writer, into `ed_console.db`.
 
 **server.py.**
-- To `daemon/`: the chain fetch and chain captures.
 - To `producer/`: the levels loop, `_publish_levels`, `_publish_price_levels`, the gamma-surface
   projection and its stream-state stamping.
 - To `console/`: the routes (grouped by what they serve) and startup.

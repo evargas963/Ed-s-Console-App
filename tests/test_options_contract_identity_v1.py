@@ -59,7 +59,7 @@ def test_the_streamed_contract_follows_the_ticker_by_the_same_rule(monkeypatch):
     """The page's ticker gets its front expiry's at-the-money call, for an index and a single
     name alike; a contract already desired for the ticker is kept (an SPXW contract for $SPX)."""
     chosen = []
-    monkeypatch.setattr(ofs, "set_active_option_contract", lambda sym: chosen.append(sym) or True)
+    monkeypatch.setattr(ofs, "set_active_option_contract", lambda sym, **kw: chosen.append(sym) or True)
     monkeypatch.setattr(server.lmp, "daemon_status", lambda: None)
     for tk in _CHAINS:
         ofs._active_option_contract = None
