@@ -64,6 +64,7 @@ def _clean(monkeypatch):
         server._terrain_cache.pop(TK, None)                              # this test's levels only
     with server._chains_waiting_lock:
         server._chains_delivered.discard(TK)                             # no chain delivered yet
+    monkeypatch.setattr(server, "_screen_priced_last", False)           # no pricing yet
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
@@ -285,28 +286,41 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot(monkeypatch):
     assert vanna["available"] and vanna["rows"]
 
 
-# ── one at a time per ticker ─────────────────────────────────────────────────────────────────
+# ── one at a time ────────────────────────────────────────────────────────────────────────────
 
-def test_publications_for_one_ticker_never_overlap(monkeypatch):
+def _drain():
+    """Wait until the pricing thread has priced everything waiting, ticks it queued included."""
+    while True:
+        server._chain_pricing.submit(lambda: None).result(timeout=60)
+        with server._chains_waiting_lock:
+            if not server._chains_waiting:
+                return
+
+
+def test_publications_never_overlap(monkeypatch):
+    """Ticks and delivered chains, from the event loop and any thread, are priced one at a time."""
     _stream({}, monkeypatch)
     _put_chain()
+    push_changes.subscribe(TK)
     active, peak = [0], [0]
     real = server.compute_terrain
 
     def slow(*a, **k):
         active[0] += 1
         peak[0] = max(peak[0], active[0])
-        time.sleep(0.05)
+        time.sleep(0.02)
         try:
             return real(*a, **k)
         finally:
             active[0] -= 1
     monkeypatch.setattr(server, "compute_terrain", slow)
-    ts = [threading.Thread(target=server._publish_levels, args=(TK,)) for _ in range(4)]
+    ts = [threading.Thread(target=server._on_stream_tick, args=(TK,)) for _ in range(4)]
+    ts.append(threading.Thread(target=server._on_chain, args=(TK, _CONTRACTS, time.time())))
     for t in ts:
         t.start()
     for t in ts:
         t.join(10)
+    _drain()
     assert peak[0] == 1
 
 
@@ -319,16 +333,6 @@ def _count_publishes(monkeypatch):
     return calls
 
 
-def _wait_idle(tk, timeout=10.0):
-    end = time.time() + timeout
-    while time.time() < end:
-        with server._reprice_guard:
-            if tk not in server._reprice_running:
-                return
-        time.sleep(0.01)
-    raise AssertionError("reprice worker did not finish")
-
-
 def test_a_ticker_put_on_screen_reprices_from_its_kept_chain(monkeypatch):
     """Switching tickers: the ticker's chain is already held (every publication keeps it), so its
     first tick reprices it at once. The console fetches nothing: the chain comes from the daemon."""
@@ -336,7 +340,7 @@ def test_a_ticker_put_on_screen_reprices_from_its_kept_chain(monkeypatch):
     server._publish_levels(TK, _CONTRACTS, time.time())                 # published while not viewed
     push_changes.subscribe(TK)                                           # the operator switches to it
     server._on_stream_tick(TK)
-    _wait_idle(TK)
+    _drain()
     assert _cached()["_gamma_surface"] is not None
 
 
@@ -377,8 +381,8 @@ def test_a_tick_on_an_unviewed_ticker_reprices_nothing(monkeypatch):
 
 
 def test_a_burst_of_ticks_reprices_back_to_back_and_prices_the_last(monkeypatch):
-    """No wait between reprices (operator 2026-10-01: no throttling): the ticks that arrive
-    while one reprice runs are all in the next, which starts the moment it ends."""
+    """No wait between reprices: the ticks that arrive while one reprice runs are all in the
+    next, which starts the moment it ends."""
     calls = []
 
     def slow_publish(tk, *a):
@@ -392,7 +396,7 @@ def test_a_burst_of_ticks_reprices_back_to_back_and_prices_the_last(monkeypatch)
         server._on_stream_tick("ZZBURST")
         time.sleep(0.002)
     last_tick = time.monotonic()
-    _wait_idle("ZZBURST")
+    _drain()
     starts = [t for k, t in calls if k == "start"]
     ends = [t for k, t in calls if k == "end"]
     assert 2 <= len(starts) < 50, "a burst is coalesced into the reprices it overlaps"
@@ -404,8 +408,9 @@ def test_a_burst_of_ticks_reprices_back_to_back_and_prices_the_last(monkeypatch)
 def test_an_option_tick_reprices_its_underlying(monkeypatch):
     calls = _count_publishes(monkeypatch)
     _put_chain()
+    push_changes.subscribe(TK)
     server._on_stream_tick(_A)
-    _wait_idle(TK)
+    _drain()
     assert calls and calls[0][0] == TK
 
 
@@ -586,12 +591,12 @@ def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker(monkeyp
     assert priced == [now + 2]
 
 
-def test_the_ticker_on_screens_chain_is_priced_before_the_others_waiting(monkeypatch):
-    """The ticker on screen first, the same ticker the daemon fetches first: the pricing thread
-    takes its chain ahead of chains that arrived before it, a page open on another ticker
-    included."""
+def test_the_ticker_on_screens_chain_takes_the_next_turn(monkeypatch):
+    """The ticker on screen, the same ticker the daemon fetches first, takes the next turn when it
+    did not take the last: its chain is priced ahead of chains that arrived before it, a page open
+    on another ticker included."""
     priced: list = []
-    monkeypatch.setattr(server, "_price_chain", lambda tk, c, ts: priced.append(tk))
+    monkeypatch.setattr(server, "_price_chain", lambda tk, what, c, ts: priced.append(tk))
     push_changes.subscribe("ZZA")                                # an older page on ZZA
     push_changes.subscribe(TK)                                   # the newest page: CRWD on screen
     gate = threading.Event()
@@ -604,11 +609,46 @@ def test_the_ticker_on_screens_chain_is_priced_before_the_others_waiting(monkeyp
     assert priced == [TK, "ZZA", "ZZB"]
 
 
+def test_a_ticker_repriced_on_every_tick_takes_every_other_turn(monkeypatch):
+    """In market hours the ticker on screen is ticked faster than it can be repriced (every
+    equity quote moves it). The chains the daemon delivers for the others are priced between its
+    reprices, never behind them: before, its reprices held the console's one core and every
+    other ticker's levels fell minutes behind."""
+    priced: list = []
+
+    def price(tk, what, c, ts):
+        priced.append((tk, what))
+        if tk == TK and len(priced) < 12:
+            server._on_stream_tick(TK)                           # the next quote, mid-reprice
+    monkeypatch.setattr(server, "_price_chain", price)
+    push_changes.subscribe(TK)                                   # CRWD on screen
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 10)                 # the pricing thread is busy
+    server._on_stream_tick(TK)
+    for tk in ("ZZA", "ZZB", "ZZC"):
+        server._on_chain(tk, _CONTRACTS, time.time())
+    gate.set()
+    _drain()
+    R, D = server.REPRICE, server.DELIVERED
+    assert priced[:6] == [(TK, R), ("ZZA", D), (TK, R), ("ZZB", D), (TK, R), ("ZZC", D)]
+
+
+def test_a_failed_reprice_keeps_the_chains_own_reason(monkeypatch):
+    """A reprice of the held chain that fails is logged; the ticker's reason stays the one its
+    chain gave (here: the daemon's fetch failed), never replaced by the reprice's."""
+    def boom(tk, *a, **k):
+        raise RuntimeError("reprice boom")
+    monkeypatch.setattr(server, "_publish_levels", boom)
+    monkeypatch.setitem(server._terrain_refresh_last_error, TK, "chain fetch failed (HTTP 429)")
+    server._price_chain(TK, server.REPRICE, None, None)
+    assert server._terrain_refresh_last_error[TK] == "chain fetch failed (HTTP 429)"
+
+
 def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting(monkeypatch):
     """The startup load queues every board ticker's stored captures at once; a chain the daemon
     delivers meanwhile, for a ticker off screen, is priced ahead of them, not behind the load."""
     priced: list = []
-    monkeypatch.setattr(server, "_price_chain", lambda tk, c, ts: priced.append((tk, c is not None)))
+    monkeypatch.setattr(server, "_price_chain", lambda tk, what, c, ts: priced.append((tk, what == server.DELIVERED)))
     for tk in ("ZZC", "ZZD"):
         server._chains_delivered.discard(tk)
     gate = threading.Event()

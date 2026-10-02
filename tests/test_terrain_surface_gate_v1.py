@@ -43,7 +43,7 @@ def _stub_terrain(monkeypatch, proj):
 
 def _deliver(tk, fetched_ts=None):
     """The daemon's chain of `tk`, priced as the console prices every chain it is delivered."""
-    server._price_chain(tk, [dict(ct) for ct in _REAL_CHAIN],
+    server._price_chain(tk, server.DELIVERED, [dict(ct) for ct in _REAL_CHAIN],
                         time.time() if fetched_ts is None else fetched_ts)
 
 

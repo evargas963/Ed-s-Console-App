@@ -734,7 +734,7 @@ def _gamma_surface_wanted(tk: str) -> bool:
 
 
 #: Per-ticker revision of `_gamma_surface`, bumped on every publication; written only by
-#: _publish_levels under the ticker's levels lock (the page redraws its table for a new one).
+#: _publish_levels on the pricing thread (the page redraws its table for a new one).
 #: It counts on from the console's start time, so a page that drew a publication of the console
 #: before a restart sees every publication of the new one as new.
 _gamma_surface_seq: dict[str, int] = {}
@@ -742,7 +742,6 @@ _GAMMA_SURFACE_SEQ_START = int(time.time() * 1000)
 
 
 def _next_gamma_surface_seq(tk: str) -> int:
-    """Caller holds the ticker's _levels_lock."""
     n = _gamma_surface_seq.get(tk, _GAMMA_SURFACE_SEQ_START) + 1
     _gamma_surface_seq[tk] = n
     return n
@@ -1067,13 +1066,6 @@ def _surface_view(surf: dict, spot_strike, scope: str, centre, shift: int, cols:
                     "max_abs": max_abs, "missing_expiry": expiry if expiry and not picked else None}
 
 
-_levels_locks: "dict[str, threading.Lock]" = {}
-_levels_locks_guard = threading.Lock()
-_reprice_dirty: "set[str]" = set()
-_reprice_running: "set[str]" = set()
-_reprice_guard = threading.Lock()
-
-
 def _contract_is_for(sym: "str | None", tk: str) -> bool:
     """An option contract belongs to `tk` when Schwab listed it in `tk`'s chain -- the same rule
     for every instrument, whatever the contract's root (SPXW and SPX are both $SPX's)."""
@@ -1122,95 +1114,90 @@ push_changes.on_screen_change(_contract_on_screen_change)
 push_changes.on_change(_contract_on_chain)
 
 
-def _levels_lock(tk: str) -> threading.Lock:
-    with _levels_locks_guard:
-        return _levels_locks.setdefault(tk, threading.Lock())
-
-
 def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
                     *, captures: "list | None" = None) -> "TerrainSnapshot | None":
     """THE producer of a ticker's levels, per-strike rows and gamma-surface grid.
 
     Prices the ticker's chain once -- overlaid with any fresher streamed option greeks, at the
     current spot -- and publishes all three together, so the heatmap, Strike Detail and Key
-    Levels always show one computation. The terrain loop passes a newly fetched chain; a tick on
-    a viewed ticker passes none and the kept chain is repriced. One call at a time per ticker:
-    each publication is computed from inputs read after the one it replaces. `captures` (startup
+    Levels always show one computation. A delivered chain is passed in; a tick on a viewed ticker
+    passes none and the kept chain is repriced. Called only on the one pricing thread
+    (_price_chain), so each publication is computed from inputs read after the one it replaces.
+    `captures` (startup
     and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
     read once: the newest is priced with Schwab's underlying price from that capture, valued and
     dated at its own time, and both feed the forces and prior-day rows. Returns the snapshot, or
     None when there is no chain to price."""
     from app.options.order_flow.streaming import (
         read_producer_rejected_option_contracts, is_option_producer_daemon_available)
-    with _levels_lock(tk):
-        with _terrain_cache_lock:
-            payload = dict(_terrain_cache.get(tk) or {})
-        capture = captures[0] if captures else None
-        if capture is not None:
-            chain, fetched_ts = capture["contracts"], capture["ts_utc"]
-        new_chain = chain is not None
-        if chain is None:
-            chain, fetched_ts = payload.get("_chain"), payload.get("_chain_fetched_ts")
-            if not chain:
-                return None
-        if capture is not None:
-            spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
-        else:
-            spot, spot_source, spot_ts = resolve_spot(tk)
-        prev_spot = payload.get("spot")
-        if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
-            payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")),
-                           _default_contract=front_atm_call(chain, spot))
-        listed = payload.get("_contract_symbols") or frozenset()
-        streamed = _desired_stream_greeks_for_ticker(listed)
-        # each field the newest Schwab sent: a streamed value received after this chain, else the chain's
-        priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
-        live_syms = _overlaid_symbols(chain, priced)
-        snap = compute_terrain(tk, priced, spot, now=(
-            datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
-        payload.update(snap.to_dict())
-        payload.update({
-            # as of the chain they were computed from: a reprice on a kept chain does not make
-            # the levels newer, so a chain that stops arriving shows as stale
-            "computed_ts_utc": fetched_ts,
-            "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
-            "chain_basis": capture["basis"] if capture is not None else CAPTURE_BASIS,
-            "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
-            **_atr_fields(tk),
-            "_per_strike": snap.per_strike, "_gamma_surface": None,
-            "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
-            # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
-            "_chain": chain, "_chain_fetched_ts": fetched_ts,
-        })
-        # the values read from the stored chain captures (forces, the prior day's per-strike rows)
-        # change only with a new capture or a new chain day: computed then, once, for all readers
-        if new_chain:
-            captures_key = (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(float(fetched_ts)))
-            if payload.get("_captures_key") != captures_key:
-                stored = captures if captures is not None else last_capture_per_day(get_db().db_path, tk, 2)
-                payload.update(_forces=_forces_from_captures(tk, stored),
-                               _prior_strikes=_prior_strikes(stored, fetched_ts),
-                               _captures_key=captures_key)
-        if spot is not None and snap.books:
-            surface = project_gamma_surface(priced, snap.books)
-            surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts,
-                           stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
-                           stream_overlay_computed_ts_utc=time.time())
-            _stamp_gamma_surface_cell_stream_state(
-                surface, streamed, {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS")},
-                read_producer_rejected_option_contracts(),
-                set(_desired_option_symbols_for_ticker(listed)),
-                daemon_available=is_option_producer_daemon_available())
-            surface["surface_seq"] = _next_gamma_surface_seq(tk)
-            payload["_gamma_surface"] = surface
-        with _terrain_cache_lock:
-            _terrain_cache[tk] = payload
-        push_changes.changed(tk, push_changes.LEVELS)
-        if new_chain:
-            push_changes.changed(tk, push_changes.CHAIN)
-        if capture is None:
-            _log_level_crosses(tk, prev_spot, snap)
-        return snap
+    with _terrain_cache_lock:
+        payload = dict(_terrain_cache.get(tk) or {})
+    capture = captures[0] if captures else None
+    if capture is not None:
+        chain, fetched_ts = capture["contracts"], capture["ts_utc"]
+    new_chain = chain is not None
+    if chain is None:
+        chain, fetched_ts = payload.get("_chain"), payload.get("_chain_fetched_ts")
+        if not chain:
+            return None
+    if capture is not None:
+        spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
+    else:
+        spot, spot_source, spot_ts = resolve_spot(tk)
+    prev_spot = payload.get("spot")
+    if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
+        payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")),
+                       _default_contract=front_atm_call(chain, spot))
+    listed = payload.get("_contract_symbols") or frozenset()
+    streamed = _desired_stream_greeks_for_ticker(listed)
+    # each field the newest Schwab sent: a streamed value received after this chain, else the chain's
+    priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
+    live_syms = _overlaid_symbols(chain, priced)
+    snap = compute_terrain(tk, priced, spot, now=(
+        datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
+    payload.update(snap.to_dict())
+    payload.update({
+        # as of the chain they were computed from: a reprice on a kept chain does not make
+        # the levels newer, so a chain that stops arriving shows as stale
+        "computed_ts_utc": fetched_ts,
+        "levels_source": LEVELS_SOURCE_WIDE_CHAIN,
+        "chain_basis": capture["basis"] if capture is not None else CAPTURE_BASIS,
+        "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
+        **_atr_fields(tk),
+        "_per_strike": snap.per_strike, "_gamma_surface": None,
+        "_vanna_rows": _vanna_rows(snap), "_charm_rows": _charm_rows(snap),
+        # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
+        "_chain": chain, "_chain_fetched_ts": fetched_ts,
+    })
+    # the values read from the stored chain captures (forces, the prior day's per-strike rows)
+    # change only with a new capture or a new chain day: computed then, once, for all readers
+    if new_chain:
+        captures_key = (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(float(fetched_ts)))
+        if payload.get("_captures_key") != captures_key:
+            stored = captures if captures is not None else last_capture_per_day(get_db().db_path, tk, 2)
+            payload.update(_forces=_forces_from_captures(tk, stored),
+                           _prior_strikes=_prior_strikes(stored, fetched_ts),
+                           _captures_key=captures_key)
+    if spot is not None and snap.books:
+        surface = project_gamma_surface(priced, snap.books)
+        surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts,
+                       stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
+                       stream_overlay_computed_ts_utc=time.time())
+        _stamp_gamma_surface_cell_stream_state(
+            surface, streamed, {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS")},
+            read_producer_rejected_option_contracts(),
+            set(_desired_option_symbols_for_ticker(listed)),
+            daemon_available=is_option_producer_daemon_available())
+        surface["surface_seq"] = _next_gamma_surface_seq(tk)
+        payload["_gamma_surface"] = surface
+    with _terrain_cache_lock:
+        _terrain_cache[tk] = payload
+    push_changes.changed(tk, push_changes.LEVELS)
+    if new_chain:
+        push_changes.changed(tk, push_changes.CHAIN)
+    if capture is None:
+        _log_level_crosses(tk, prev_spot, snap)
+    return snap
 
 
 #: the levels whose crossing by spot is recorded, with their display names
@@ -1262,45 +1249,28 @@ def _on_stream_tick(sym: str) -> None:
     option quote carrying greeks, open interest or volume. Queues a reprice of the symbol's
     ticker when someone is viewing it, and returns at once."""
     tk = _tick_ticker(sym)
-    if not tk or not _gamma_surface_wanted(tk):
-        return
-    with _reprice_guard:
-        _reprice_dirty.add(tk)
-        if tk in _reprice_running:
-            return
-        _reprice_running.add(tk)
-    threading.Thread(target=_reprice_worker, args=(tk,), name=f"reprice-{tk}", daemon=True).start()
+    if tk and _gamma_surface_wanted(tk):
+        _wait_to_price(tk, REPRICE)
 
 
-def _reprice_worker(tk: str) -> None:
-    """Reprice `tk` while ticks keep arriving, back to back: the ticks that arrive during one
-    reprice are all in the next. A ticker with no chain yet is priced when the daemon delivers
-    its chain (_on_chain)."""
-    while True:
-        with _reprice_guard:
-            if tk not in _reprice_dirty:
-                _reprice_running.discard(tk)
-                return
-            _reprice_dirty.discard(tk)
-        try:
-            _publish_levels(tk)
-        except Exception as e:  # noqa: BLE001 -- logged; the next tick or chain reprices
-            log.warning("levels reprice failed for %s: %s", tk, e)
-
-
-#: prices the chains the daemon delivers, off the event loop that received them, one at a time
+#: prices every ticker's levels, off the event loop, one at a time
 _chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pricing")
-#: ticker -> the newest chain to price: one the daemon delivered (contracts, fetched time), or
-#: (None, None): the ticker's stored captures, read when it is priced, for a ticker the daemon has
-#: not delivered yet. A newer one replaces it, so the queue holds at most one per ticker however
-#: far pricing falls behind the sweep. Priced first: the ticker on screen's, then the delivered
-#: chains, then the stored ones. Every pricing runs on the one pricing thread, so each ticker's
-#: chains are priced in the order they were fetched.
-_chains_waiting: "dict[str, tuple]" = {}
+#: what waits to be priced for a ticker: a chain the daemon DELIVERED, the ticker's STORED
+#: captures (startup, for a ticker the daemon has not delivered yet), or a REPRICE of its held
+#: chain (a streamed tick on a viewed ticker)
+DELIVERED, STORED, REPRICE = "delivered", "stored", "reprice"
+#: ticker -> (what, contracts, fetched time): at most one per ticker however far pricing falls
+#: behind; a delivered chain replaces what waits, and whatever waits already prices the newest
+#: ticks. Every pricing runs on the one pricing thread, so each ticker's chains are priced in the
+#: order they were fetched.
+_chains_waiting: "dict[str, tuple[str, list | None, float | None]]" = {}
 _chains_waiting_lock = threading.Lock()
 #: the tickers the daemon has delivered a chain for since the console started: their stored
 #: capture is older and is never priced
 _chains_delivered: "set[str]" = set()
+#: whether the last pricing was the ticker on screen's: it takes every other turn, so a ticker
+#: repriced on every tick never holds the thread (written on the pricing thread only)
+_screen_priced_last = False
 
 
 def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | None" = None) -> None:
@@ -1311,43 +1281,55 @@ def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | N
     if contracts is None:
         _terrain_refresh_last_error[tk] = f"chain fetch failed ({reason})"
         return
-    _wait_to_price(tk, contracts, ts)
+    _wait_to_price(tk, DELIVERED, contracts, ts)
 
 
-def _wait_to_price(tk: str, contracts: "list | None", ts: "float | None") -> bool:
-    """Queue a ticker's chain for the pricing thread: a delivered chain (`contracts`) replaces
-    whatever waits for the ticker; its stored captures (None) wait only for a ticker with nothing
-    delivered and nothing waiting. Returns whether it was queued."""
+def _wait_to_price(tk: str, what: str, contracts: "list | None" = None, ts: "float | None" = None) -> bool:
+    """Queue a ticker's pricing (DELIVERED, STORED or REPRICE) for the pricing thread: a delivered
+    chain replaces whatever waits for the ticker; anything else waits only for a ticker with
+    nothing waiting, and stored captures only for one with nothing delivered. Returns whether it
+    was queued."""
     with _chains_waiting_lock:
-        if contracts is None and (tk in _chains_delivered or tk in _chains_waiting):
+        held = _chains_waiting.get(tk)
+        if what != DELIVERED and (held is not None or (what == STORED and tk in _chains_delivered)):
             return False
-        if contracts is not None:
+        if what == DELIVERED:
             _chains_delivered.add(tk)
-        queued = tk in _chains_waiting
-        _chains_waiting[tk] = (contracts, ts)
-    if not queued:
+        _chains_waiting[tk] = (what, contracts, ts)
+    if held is None:
         _chain_pricing.submit(_price_waiting_chain)
     return True
 
 
 def _price_waiting_chain() -> None:
-    """Price one waiting chain: the ticker on screen's first (the one the daemon fetches first),
-    then the delivered chains, then the stored ones, each the longest waiting first."""
+    """Price one waiting ticker: the ticker on screen's (the one the daemon fetches first) every
+    other turn, else the longest waiting of the others, stored captures last."""
+    global _screen_priced_last
     first = push_changes.on_screen()
     with _chains_waiting_lock:
-        tk = first if first in _chains_waiting else next(
-            (t for t, (contracts, _ts) in _chains_waiting.items() if contracts is not None),
-            next(iter(_chains_waiting)))
-        contracts, ts = _chains_waiting.pop(tk)
-    _price_chain(tk, contracts, ts)
+        others = [t for t in _chains_waiting if t != first]
+        if first in _chains_waiting and not (_screen_priced_last and others):
+            tk = first
+        else:
+            tk = next((t for t in others if _chains_waiting[t][0] != STORED), others[0])
+        what, contracts, ts = _chains_waiting.pop(tk)
+    _screen_priced_last = tk == first
+    _price_chain(tk, what, contracts, ts)
 
 
-def _price_chain(tk: str, contracts: "list | None", fetched_ts: "float | None") -> None:
-    """THE producer of a ticker's levels from a newly fetched chain (_publish_levels), with the
-    chain's own fetch time as its as-of: an older streamed value never overrides it; or, with no
-    `contracts`, from the ticker's newest stored captures (DATA_FLOW decision 7)."""
+def _price_chain(tk: str, what: str, contracts: "list | None", fetched_ts: "float | None") -> None:
+    """THE producer of a ticker's levels (_publish_levels): from a newly fetched chain, with the
+    chain's own fetch time as its as-of (an older streamed value never overrides it); from the
+    held chain with the newest streamed values (REPRICE); or from the ticker's newest stored
+    captures (STORED, DATA_FLOW decision 7)."""
+    if what == REPRICE:     # the held chain: the ticker's reason stays the chain's own
+        try:
+            _publish_levels(tk)
+        except Exception as e:  # noqa: BLE001 -- logged; the next tick or chain reprices
+            log.warning("levels reprice failed for %s: %s", tk, e)
+        return
     try:
-        if contracts is None:
+        if what == STORED:
             captures = last_capture_per_day(get_db().db_path, tk, 2)
             if captures:
                 _publish_levels(tk, captures=captures)
@@ -1443,7 +1425,7 @@ def _load_stored_levels(board: "list[str]") -> int:
     decision 7), so a restart, a weekend or the close shows the last reading with its time: queued
     for the pricing thread behind every delivered chain (_wait_to_price), never for a ticker the
     daemon already delivered a chain for. Returns how many tickers were queued."""
-    return sum(_wait_to_price(tk, None, None) for tk in board)
+    return sum(_wait_to_price(tk, STORED) for tk in board)
 
 
 def start_terrain_loop() -> None:
