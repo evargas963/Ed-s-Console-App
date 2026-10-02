@@ -15,8 +15,8 @@ from terrain_atr import AtrPair
 
 def _daemon_holds(*symbols):
     """The daemon's heartbeat: Schwab socket open, these contracts held on LEVELONE_OPTIONS."""
-    lmp.record_feed_heartbeat({"schwab_socket_open": True,
-                               "held": {"LEVELONE_OPTIONS": list(symbols)}}, time.time())
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+                               "held": {"LEVELONE_OPTIONS": list(symbols)}})
 
 
 #: A REAL complete Schwab capture (native rows verbatim): the chain the daemon delivers.

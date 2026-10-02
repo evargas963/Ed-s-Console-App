@@ -264,13 +264,16 @@ def _install_signal_handlers() -> None:
 
 def resolve_spot(ticker: str) -> tuple[float | None, str, float | None]:
     """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
-    trade time, at any hour -- the value the header shows; (None, "none", None) until Schwab has
-    sent one, and while the feed that sent it is not live: a price from a feed that is down is
-    not the current price (docs/DATA_FLOW.md §2 D5)."""
+    trade time -- the value the header shows. In an open session with the feed down it is
+    absent and `source` is the outage reason; while Closed the price as of the close stands
+    (docs/DATA_FLOW.md §2 D5); (None, "none", None) until Schwab has sent one."""
     from app.options.order_flow.streaming import price_row
 
+    outage = lmp.outage(ticker, "LEVELONE_EQUITIES", time.time())
+    if outage is not None:
+        return None, outage, None
     row = price_row(ticker)
-    if not row or row.get("spot") is None or row.get("feed_live") is not True:
+    if not row or row.get("spot") is None:
         return None, "none", None
     return row["spot"], SPOT_SOURCE_PLANE, row.get("trade_ts")
 
@@ -323,28 +326,58 @@ from calibration.complete_chain_capture import (
 _BAR_TEXT = " || ' ' || ".join(f"quote({f})" for f in ("bar_start_ts_utc", "open", "high", "low", "close", "volume"))
 
 
-def _read_bars_1m(tk: str, limit: int) -> list:
-    """The newest `limit` rows of price_bars_1m for `tk`, oldest first:
-    (bar_start_ts_utc, open, high, low, close, volume). Read in one SQLite step: a row-by-row read
-    hands the interpreter lock back at every row and waits for it behind the option pricing."""
+#: every ticker's completed 1-minute bars, oldest first, the newest BARS_KEPT (the ATR's ~23
+#: sessions): loaded from price_bars_1m once, the terrain loop's first step (_load_bars), then
+#: each streamed bar as the bar writer writes it (_keep_bar). Every live reader reads this, never
+#: the database (docs/DATA_FLOW.md §2 D6).
+BARS_KEPT = 24_000
+_bars: "dict[str, list[Candle]]" = {}
+_bars_lock = threading.Lock()
+
+
+def _load_bars() -> None:
+    """Each ticker's newest BARS_KEPT bars of price_bars_1m, read in one SQLite step per ticker
+    (a row-by-row read hands the interpreter lock back at every row). The one database read of
+    the bars, the terrain loop's first step; a bar streamed before it stays the newest."""
     import sqlite3 as _sq
     con = _sq.connect(f"file:{get_db().db_path}?mode=ro", uri=True, timeout=10.0)
     try:
-        (text,) = con.execute(
-            f"SELECT group_concat({_BAR_TEXT}, ';' ORDER BY bar_start_ts_utc) FROM (SELECT * FROM "
-            "price_bars_1m WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?)",
-            (ticker_storage_key(tk), int(limit))).fetchone()
+        for (tk,) in con.execute("SELECT DISTINCT ticker FROM price_bars_1m").fetchall():
+            (text,) = con.execute(
+                f"SELECT group_concat({_BAR_TEXT}, ';' ORDER BY bar_start_ts_utc) FROM (SELECT * FROM "
+                "price_bars_1m WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?)",
+                (tk, BARS_KEPT)).fetchone()
+            rows = [[None if v == "NULL" else float(v) for v in r.split(" ")] for r in text.split(";")] if text else []
+            with _bars_lock:
+                held = _bars.setdefault(tk, [])
+                held[:0] = [Candle(ts=r[0], open=r[1], high=r[2], low=r[3], close=r[4], volume=r[5])
+                            for r in rows if not held or r[0] < held[0].ts]
+                del held[:-BARS_KEPT]
     finally:
         con.close()
-    return [tuple(None if v == "NULL" else float(v) for v in row.split(" ")) for row in text.split(";")] if text else []
+
+
+def _keep_bar(tk: str, bar: "Candle") -> None:
+    """A streamed bar into `tk`'s bars: a minute already held is replaced (Schwab's newest bar for
+    it), a new one takes its place in time; the oldest beyond BARS_KEPT leave."""
+    with _bars_lock:
+        held = _bars.setdefault(tk, [])
+        i = len(held)                       # bars arrive in time order: found at once
+        while i and held[i - 1].ts > bar.ts:
+            i -= 1
+        if i and held[i - 1].ts == bar.ts:
+            held[i - 1] = bar
+        else:
+            held.insert(i, bar)
+        del held[:-BARS_KEPT]
 
 
 def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> "list[Candle]":
-    """`tk`'s completed 1-minute bars, oldest first, from price_bars_1m -- which only Schwab's
-    streamed CHART_EQUITY bars write (_bar_writer). A minute the stream did not deliver is
-    absent, never filled in."""
-    return [Candle(ts=float(r[0]), open=r[1], high=r[2], low=r[3], close=r[4], volume=r[5])
-            for r in _read_bars_1m(tk, limit)]
+    """`tk`'s completed 1-minute bars, oldest first: Schwab's streamed CHART_EQUITY bars as the
+    bar writer keeps them. A minute the stream did not deliver is absent, never filled in."""
+    key = ticker_storage_key(tk)
+    with _bars_lock:
+        return list(_bars[key][-int(limit):]) if key in _bars else []
 
 
 def _bar_dict(c: "Candle") -> dict:
@@ -361,8 +394,10 @@ def _write_streamed_bar(msg: dict) -> bool:
         # not a number (AGENTS.md rule 2): absent, -999, text, NaN or infinity
         log.warning("streamed bar for %s lacks a valid field, not written: %s", msg.get("symbol"), msg)
         return False
-    get_db().upsert_1m_bars(msg["symbol"], [Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo,
-                                                   close=c, volume=schwab_count(msg.get("volume")))])
+    bar = Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo, close=c,
+                 volume=schwab_count(msg.get("volume")))
+    get_db().upsert_1m_bars(msg["symbol"], [bar])              # the history
+    _keep_bar(ticker_storage_key(msg["symbol"]), bar)          # what every live reader reads
     push_changes.changed(msg["symbol"], push_changes.LIQUIDITY)
     return True
 
@@ -382,8 +417,8 @@ def _write_streamed_bars(msgs: list) -> None:
 
 
 def _bar_writer() -> None:
-    """The price_bars_1m writer: every streamed bar the capture daemon pushes, as it arrives,
-    with the bars already waiting behind it."""
+    """The bar writer: every streamed bar the capture daemon pushes, as it arrives, with the bars
+    already waiting behind it."""
     from app.options.order_flow.streaming import streamed_bars
     while True:
         msgs = [streamed_bars.get()]
@@ -559,12 +594,31 @@ def favicon():
 _CROSS_WORD = {"up": "above", "down": "below"}
 
 
-def _merged_recent_crosses(edb, ticker: str, n: int) -> "list[dict]":
+#: every ticker's newest CROSSES_KEPT level crosses, newest last, as stored rows: loaded from
+#: level_crosses once the board is known (_load_crosses), then each cross as it is recorded
+#: (_log_level_crosses). Every live reader reads this, never the database (DATA_FLOW §2 D6).
+CROSSES_KEPT = 1600
+_crosses: "dict[str, list[dict]]" = {}
+_crosses_lock = threading.Lock()
+
+
+def _load_crosses(board: "list[str]") -> None:
+    """The one database read of the level crosses, at startup."""
+    for tk in board:
+        rows = get_db().get_recent_crosses(ticker=tk, n=CROSSES_KEPT)
+        with _crosses_lock:
+            held = _crosses.setdefault(tk, [])     # a cross recorded before the load stays newest
+            held[:0] = rows[::-1]
+            del held[:-CROSSES_KEPT]
+
+
+def _merged_recent_crosses(ticker: str, n: int) -> "list[dict]":
     """The newest `n` level crosses, each (time, value, direction) one event carrying every
     level named there in `level_names`. The one reader of level crosses for every route.
     Price crossing one strike writes one stored row per named level sitting there; they are
     merged here, at the read, so the stored history keeps its per-level rows."""
-    raw = edb.get_recent_crosses(ticker=ticker, n=max(int(n) * 8, 64))
+    with _crosses_lock:
+        raw = _crosses[ticker][::-1][:max(int(n) * 8, 64)] if ticker in _crosses else []
     merged: list[dict] = []
     seen: dict[tuple, dict] = {}
     for r in raw:
@@ -1211,9 +1265,14 @@ def _log_level_crosses(tk: str, prev_spot: "float | None", snap: "TerrainSnapsho
     """Record each level spot moved through between the previous publication and this one."""
     levels = [(getattr(snap, k), name) for k, name in CROSS_LEVELS if getattr(snap, k) is not None]
     now = time.time()
-    get_db().detect_and_log_level_crosses(
+    logged = get_db().detect_and_log_level_crosses(
         ticker=tk, prev_spot=prev_spot, cur_spot=snap.spot, levels=levels, ts_utc=now,
         ts_et=now_et().strftime("%Y-%m-%d %H:%M:%S ET"))
+    if logged:
+        with _crosses_lock:
+            held = _crosses.setdefault(tk, [])
+            held.extend(logged)
+            del held[:-CROSSES_KEPT]
 
 
 def _vanna_rows(snap: "TerrainSnapshot") -> list:
@@ -1399,9 +1458,11 @@ def _terrain_loop() -> None:
     delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged
     and the price levels of a new session date or a new ticker are published. The chains arrive
     from the daemon (_on_chain)."""
+    _load_bars()                      # the bars before any level is built from them
     while _terrain_loop_running and _board() is None:
         time.sleep(0.5)
     board = _board() or []
+    _load_crosses(board)
     _publish_missing_price_levels(board)
     queued = _load_stored_levels(board)
     log.info("Ready: the stored levels of %d of %d board tickers are queued to price (session: %s); "
@@ -1456,14 +1517,14 @@ ATR_TTL_SEC: float = 900.0
 
 
 def _atr_pair(ticker: str) -> "AtrPair":
-    """The ticker's (daily, 15-minute) ATR from price_bars_1m, recomputed at most every
-    ATR_TTL_SEC. Too few bars reads as None, never a vendor stand-in."""
+    """The ticker's (daily, 15-minute) ATR from its 1-minute bars (_bars_1m), recomputed at most
+    every ATR_TTL_SEC. Too few bars reads as None, never a vendor stand-in."""
     tk = ticker_storage_key(ticker)
     with _atr_lock:
         hit = _atr_cache.get(tk)
     if hit is not None and time.time() - hit[0] < ATR_TTL_SEC:
         return hit[1]
-    pair = compute_atr_pair(str(get_db().db_path), tk)
+    pair = compute_atr_pair(_bars_1m(tk, BARS_KEPT))
     with _atr_lock:
         _atr_cache[tk] = (time.time(), pair)
     return pair
@@ -1790,9 +1851,9 @@ def get_options_tape(ticker: str = Query(...),
     """Discrete option TRADE prints (operator field-inventory audit, 2026-09-13) — the
     Options Flow tape, locked to the operator's own required schema: Time/Symbol/Expiry/
     Type/Strike/Bid x Size/Ask x Size/Trade/Size/Premium/Volume/OI/IV/Delta/provenance.
-    Sourced from app.options.order_flow.history.tape_rows_for_symbol, which reads the
-    ALREADY-CAPTURED native LEVELONE_OPTIONS ticks in stream_options_quotes_raw verbatim —
-    no new capture, no derived/estimated field, no fabricated buy/sell aggressor side.
+    Sourced from app.options.order_flow.history.TAPE, the prints the console builds from
+    Schwab's LEVELONE_OPTIONS as the daemon pushes them — no derived/estimated field, no
+    fabricated buy/sell aggressor side.
 
     `contract`, when given, scopes to exactly that vendor symbol. Otherwise scopes to every
     CURRENTLY DESIRED contract for `ticker` (the primary + additional option contracts the
@@ -1801,7 +1862,7 @@ def get_options_tape(ticker: str = Query(...),
     `limit` across the whole merge, not per-contract."""
     from app.options.order_flow.streaming import (
         get_active_option_contract, get_active_option_contracts)
-    from app.options.order_flow.history import tape_rows_for_symbol
+    from app.options.order_flow.history import TAPE
 
     tk = ticker_storage_key(_required_ticker(ticker))
     try:
@@ -1829,16 +1890,15 @@ def get_options_tape(ticker: str = Query(...),
 
     rows: list[dict] = []
     for sym in symbols:
-        rows.extend(tape_rows_for_symbol(sym, since_ts=0.0, limit=bounded_limit))
+        rows.extend(TAPE.rows(sym, bounded_limit))
     rows.sort(key=lambda r: r["ts_recv"], reverse=True)
     rows = rows[:bounded_limit]
     return JSONResponse({
         "ticker": tk, "available": bool(rows), "symbols": symbols, "rows": rows,
-        "reason": None if rows else "no trade prints captured yet for the selected contract(s)",
-        "method": ("stream_options_quotes_raw (native LEVELONE_OPTIONS capture, already "
-                   "retained) -> tape_rows_for_symbol (de-duplicated genuine trade prints, "
-                   "context carried forward) -> merged newest-first across every currently "
-                   "desired contract for this ticker"),
+        "reason": None if rows else "no trade prints for the selected contract(s) since the console started",
+        "method": ("the contracts' trade prints in the console's memory (history.TAPE: Schwab's "
+                   "LEVELONE_OPTIONS as pushed, genuine new prints, contract details carried "
+                   "forward) -> merged newest-first across every currently desired contract"),
     })
 
 
@@ -1846,14 +1906,10 @@ def get_options_tape(ticker: str = Query(...),
 def get_order_flow_book_heatmap(ticker: str = Query(...),
                                 venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
                                 minutes: float = Query(default=60.0)):
-    """Historical book-depth heatmap for one of the ticker's Schwab books, `venue` (operator
-    field-inventory audit, 2026-09-13: "we don't have an order flow heatmap"). SERIALIZER, not a
-    second producer: delegates entirely to app.options.order_flow.history.book_heatmap_for_ticker,
-    which bins the SAME persisted stream_book_raw rows the live /api/order-flow/microstructure
-    ladder already reads into a time x price grid. Genuinely historical (a real time axis), which
-    the live ladder's one-snapshot view cannot show. The window always ends at the latest row
-    actually captured for this ticker, never wall-clock now — see that function's own docstring
-    for why. `minutes` is clamped to [5, 240] to bound one request's cost."""
+    """Book-depth heatmap for one of the ticker's Schwab books, `venue`: delegates to
+    app.options.order_flow.history.book_heatmap_for_ticker, which bins the venue's recent books
+    in the console's memory into a time x price grid. The window ends at the newest book, never
+    wall-clock now. `minutes` is clamped to [5, 240], the books the console keeps."""
     from app.options.order_flow.history import book_heatmap_for_ticker
 
     tk = ticker_storage_key(_required_ticker(ticker))
@@ -2249,7 +2305,7 @@ def get_desk_events(ticker: str = Query(...),
     numbers and orders nothing."""
     tk = ticker_storage_key(_required_ticker(ticker))
     start = _desk_window_start(tf, now_et())
-    crosses = _merged_recent_crosses(get_db(), tk, 200)
+    crosses = _merged_recent_crosses(tk, 200)
     in_window = sorted((c for c in crosses if c.get("ts_utc") is not None and c["ts_utc"] >= start),
                        key=lambda c: c["ts_utc"])
     items = []
@@ -2364,9 +2420,12 @@ def api_order_flow_microstructure(ticker: str = Query(...),
             data["content"] = _content
     except Exception as e:  # streaming state optional — fail closed to 'no_book', never fabricate
         log.debug("microstructure content build failed for %s: %s", t, e)
-    # top of book: the daemon's price row (each field the last Schwab sent)
+    # top of book: the daemon's price row; absent with the outage reason when its feed is down
+    # in an open session, the values as of the close while Closed (docs/DATA_FLOW.md §2 D5)
     from app.options.order_flow.streaming import price_row
-    _row = price_row(t)
+    now = time.time()
+    top_outage = lmp.outage(t, "LEVELONE_EQUITIES", now)
+    _row = price_row(t) if top_outage is None else None
     if _row and _row.get("quote_ts") is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = ({k: _row.get(k) for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
@@ -2374,8 +2433,8 @@ def api_order_flow_microstructure(ticker: str = Query(...),
     data["book_live"] = lmp.feed_live_for(t, venue)
     from app.options.order_flow.engine import compute_book_microstructure
     # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent recompute.
-    now = time.time()
     payload = compute_book_microstructure(data, now_ts=now, ticker=t)
+    payload["top_outage"] = top_outage
     # The trade-side read the Trade Desk's Order Flow card shows: tick-rule PROXY flow from the
     # same OrderFlowEngine the option book uses (no second classifier).
     try:

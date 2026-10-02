@@ -7,10 +7,12 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from datetime import datetime
 from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, schwab_count, schwab_number
+from time_et import ET, session_label
 
 log = logging.getLogger(__name__)
 
@@ -239,5 +241,16 @@ def feed_live_for(symbol: str | None, service: str) -> bool:
         return False
     with _lock:
         return t in _feed["held"].get(service, ())
+
+
+def outage(symbol: str | None, service: str, now: float) -> str | None:
+    """Why `symbol`'s values from Schwab `service` are not current at `now`, or None when they
+    are (docs/DATA_FLOW.md §2 D5): in an open session (Pre-Market, RTH, After-Hours) a value is
+    current only while its feed delivers it; while Closed, the values as of the close stand,
+    the feed up or down."""
+    session = session_label(datetime.fromtimestamp(now, ET))
+    if session == "Closed" or feed_live_for(symbol, service):
+        return None
+    return f"Schwab {service} feed down during {session}"
 
 

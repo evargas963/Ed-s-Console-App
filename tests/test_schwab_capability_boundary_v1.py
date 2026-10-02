@@ -166,12 +166,12 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     assert payload["logger_tickers"] is None
 
     now = time.time()
-    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": False, "board": ["SPY", "$SPX"]}, now)
+    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": False, "board": ["SPY", "$SPX"]})
     payload = server.health()
     assert payload["capabilities"] == {
         "schwab": "UNAVAILABLE", "schwab_reason": "the capture daemon's Schwab socket is not open"}
 
-    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "board": ["SPY", "$SPX"]}, now)
+    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "board": ["SPY", "$SPX"]})
     payload = server.health()
     assert payload["status"] == "ok"
     assert payload["capabilities"] == {"schwab": "AVAILABLE"}

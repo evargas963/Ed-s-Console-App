@@ -40,6 +40,7 @@ from typing import Any, Callable, Optional
 
 from instrument_identity import ticker_storage_key
 import push_changes
+from app.options.order_flow import history as recent
 
 from app.options.order_flow.state import (
     clear_all_live_state,
@@ -278,6 +279,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
             _option_streaming_last_update_ts = ts
             _option_contract_last_update_ts[sym] = ts
         else:
+            recent.BOOKS.record(sym, msg["service"], content, ts)
             push_changes.changed(sym, push_changes.FLOW)
         return None
     if kind == "optquote":
@@ -286,6 +288,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
             return None
         push_level_one(sym, content, ts_recv=ts, field_received=received)
         push_option_top(sym, content)
+        recent.TAPE.record(sym, content, ts)
         _option_streaming_last_update_ts = ts
         _option_contract_last_update_ts[sym] = ts
         # a tick when the newest message carried a value the levels use (a merged record holds

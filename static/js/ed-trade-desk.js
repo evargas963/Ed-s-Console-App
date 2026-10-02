@@ -77,7 +77,7 @@
     var imb = dep(5, 'imbalance');
     var ages = d.ages || {};
     var rows = [
-      ['Bid × Ask', num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
+      ['Bid × Ask', d.top_outage || num(tob.bid) + ' × ' + num(tob.ask), classOf(cls, 'top_of_book.bid')],
       ['Spread (pts)', num(d.spread_pts), classOf(cls, 'spread_pts')],
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), classOf(cls, 'depth.*.imbalance')],
       ['Book age', ages.book_age_sec != null ? Math.round(ages.book_age_sec) + 's' : '—', classOf(cls, 'ages.book_age_sec')],

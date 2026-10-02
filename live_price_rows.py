@@ -6,10 +6,11 @@ the browser (app/market_data/schwab/streaming/live_ui.py), and by the console, w
 read the same function -- so a price on screen and a price in a calculation can never come
 from two different rules.
 
-Nothing here computes a market value: every number is a Schwab field or its receive time, at
-any hour, with Schwab's own trade time; the only derivations are the trade age and its label.
-Whether the feed is delivering the symbol now (`feed_live`) is stated beside the values, never
-in place of them.
+Nothing here computes a market value: every number is a Schwab field or its receive time, with
+Schwab's own trade time; the only derivations are the trade age and its label. Whether the feed
+is delivering the symbol now (`feed_live`) is stated beside the values; in an open session a
+down feed leaves them absent with the reason (`outage`), and while Closed the values as of the
+close stand (docs/DATA_FLOW.md §2 D5).
 """
 from __future__ import annotations
 
@@ -41,12 +42,14 @@ def _trade_age_sec(trade_ts: Optional[float], now: float) -> Optional[float]:
 
 def price_row(ticker: str) -> dict[str, Any]:
     """The finished row the screen paints for one symbol, as it is this instant: each field the
-    last value Schwab sent for it, whatever the hour."""
+    last value Schwab sent for it, unless its feed is down in an open session (`outage`, the
+    reason the values are absent; docs/DATA_FLOW.md §2 D5)."""
     tk = ticker_storage_key(ticker)
-    row = lmp.get_quote(tk) if tk else None
-    streamed = bool(row) and lmp.plane_row_is_streamed(row)
-    spot = float(row["spot"]) if streamed and lmp.plane_spot_is_last_price(row) else None
     now = time.time()
+    outage = lmp.outage(tk, "LEVELONE_EQUITIES", now)
+    row = lmp.get_quote(tk) if tk else None
+    streamed = bool(row) and lmp.plane_row_is_streamed(row) and outage is None
+    spot = float(row["spot"]) if streamed and lmp.plane_spot_is_last_price(row) else None
 
     def field(name: str):
         return row.get(name) if streamed else None
@@ -57,8 +60,9 @@ def price_row(ticker: str) -> dict[str, Any]:
         "spot": spot,
         "spot_disp": f"{spot:.2f}" if spot is not None else None,
         "spot_source": SPOT_SOURCE if spot is not None else None,
-        # the feed itself (heartbeat, socket open, symbol held): stated, never a gate
+        # the feed itself (heartbeat, socket open, symbol held), and why the values are absent
         "feed_live": lmp.feed_live_for(tk, "LEVELONE_EQUITIES"),
+        "outage": outage,
         "bid": field("bid"),
         "ask": field("ask"),
         "bid_size": field("bid_size"),

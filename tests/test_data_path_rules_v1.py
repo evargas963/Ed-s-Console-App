@@ -253,23 +253,76 @@ def test_d4_the_one_writer_records_every_message_schwab_sends(tmp_path):
         assert all(_holds(row, k, v) for k, v in e["content"].items())
 
 
-# ── D5. Nothing old is served as current ────────────────────────────────────────────────────
+# ── D5. Live while the market is open; the close stands while it is closed ──────────────────
 
-def test_d5_a_price_whose_feed_is_down_is_not_served_as_the_current_price(monkeypatch):
-    """SPY's last price from the daemon's price row, its feed no longer live (no daemon
-    heartbeat): the console's one spot (server.resolve_spot) serves no current price."""
+#: Wednesday 2026-09-30, 11:00 ET (RTH) and 22:00 ET (Closed), as epoch seconds
+_RTH = 1790780400.0
+_CLOSED = 1790820000.0
+
+
+def _served_at(monkeypatch, now: float, feed_live: bool) -> dict:
+    """At `now` (the clock pinned), SPY's last trade and a captured option quote of the contract
+    in the daemon's memory, the feed live or not (the daemon's heartbeat holding both symbols, or
+    none): what the header row, the console's one spot, the equity book's top and the option
+    book's top serve."""
     import live_market_plane as lmp
     import live_price_rows
     import server
+    from app.options.order_flow import live_payload
     from app.options.order_flow import streaming as ofs
-    then = time.time() - 600
-    lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 767.39, "TRADE_TIME_MILLIS": int(then * 1000),
+    from app.options.order_flow.state import push_option_top
+    monkeypatch.setattr(time, "time", lambda: now)
+    then = now - 600
+    lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 767.39, "BID_PRICE": 767.38, "ASK_PRICE": 767.40,
+                                             "TRADE_TIME_MILLIS": int(then * 1000),
                                              "QUOTE_TIME_MILLIS": int(then * 1000)}, received_ts=then)
-    row = live_price_rows.price_row("SPY")
-    assert row["feed_live"] is False
-    monkeypatch.setitem(ofs._price_rows, "SPY", row)
-    spot, _source, _ts = server.resolve_spot("SPY")
-    assert spot is None, "a price from a feed that is down was served as the current price"
+    push_option_top(_CONTRACT, _EVENTS[0]["content"])
+    if feed_live:
+        lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True,
+                                   "held": {"LEVELONE_EQUITIES": ["SPY"], "LEVELONE_OPTIONS": [_CONTRACT]}})
+    else:
+        lmp.record_feed_down()
+    try:
+        row = live_price_rows.price_row("SPY")
+        monkeypatch.setitem(ofs._price_rows, "SPY", row)
+        return {"row": row, "spot": server.resolve_spot("SPY"),
+                "equity_book": json.loads(server.api_order_flow_microstructure("SPY", "NYSE_BOOK").body),
+                "option_book": live_payload.options_live_payload(_CONTRACT, now)}
+    finally:
+        lmp.record_feed_down()
+
+
+def test_d5_a_feed_down_in_an_open_session_is_an_outage_shown_absent_with_its_reason(monkeypatch):
+    """RTH, the feed down: the price, the equity top of book and the option top of book are
+    absent, each with the outage reason; no last value stands in for a live one."""
+    s = _served_at(monkeypatch, _RTH, feed_live=False)
+    assert s["row"]["spot"] is None and s["row"]["bid"] is None
+    assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
+    assert s["spot"] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
+    assert s["equity_book"]["top_of_book"]["bid"] is None
+    assert s["equity_book"]["top_outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
+    assert s["option_book"]["top_of_book"]["ask"] is None
+    assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during RTH"
+
+
+def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down(monkeypatch):
+    """22:00 ET, the feed down: the last price and both tops of book Schwab sent are served,
+    with no outage."""
+    s = _served_at(monkeypatch, _CLOSED, feed_live=False)
+    assert s["row"]["spot"] == 767.39 and s["row"]["outage"] is None
+    assert s["spot"][0] == 767.39
+    assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
+    assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
+    assert s["option_book"]["top_outage"] is None
+
+
+def test_d5_a_live_feed_in_an_open_session_serves_the_newest_values(monkeypatch):
+    """RTH, the feed live: the newest price and tops of book Schwab sent are served."""
+    s = _served_at(monkeypatch, _RTH, feed_live=True)
+    assert s["row"]["spot"] == 767.39 and s["row"]["outage"] is None
+    assert s["spot"][0] == 767.39
+    assert s["equity_book"]["top_of_book"]["bid"] == 767.38 and s["equity_book"]["top_outage"] is None
+    assert s["option_book"]["top_of_book"]["ask"] == _EVENTS[0]["content"]["ASK_PRICE"]
 
 
 def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():

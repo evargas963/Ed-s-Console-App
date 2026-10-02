@@ -95,8 +95,8 @@
       '</span><span>microprice ' + num(d.microprice) + '</span></div>';
 
     var rowsTob = [
-      ['Bid × size', num(tob.bid) + ' × ' + int(tob.bid_size), bk('top_of_book.bid')],
-      ['Ask × size', num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
+      ['Bid × size', d.top_outage || num(tob.bid) + ' × ' + int(tob.bid_size), bk('top_of_book.bid')],
+      ['Ask × size', d.top_outage || num(tob.ask) + ' × ' + int(tob.ask_size), bk('top_of_book.ask')],
     ];
     var rowsImb = [
       ['Depth 1 imbalance', num(dep(1, 'imbalance'), 3), bk('depth.*.imbalance')],

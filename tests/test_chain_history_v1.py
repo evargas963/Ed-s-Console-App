@@ -381,11 +381,13 @@ def test_the_daemon_task_stops_when_told():
     assert task.done() and task.exception() is None
 
 
-def test_the_daemons_chain_parts_are_delivered_and_never_kept(tmp_path, schwab):
-    """A chain part is an event, not a topic's state: the daemon's bus delivers each part to its
-    readers and keeps none, so a console that connects later is never replayed a part."""
+def test_the_daemons_chain_is_the_current_record_whole_once_all_parts_are_in(tmp_path, schwab, monkeypatch):
+    """The daemon's chain sweep publishes a fetch in parts on its bus; the chain becomes SPY's
+    current record only once every part is in, and a console that connects later starts with
+    that whole chain (docs/DATA_FLOW.md §2 D3), every part in order -- never a partial one."""
     from app.market_data.schwab.streaming import capture
-    from stream_spine import MessageBus
+    from stream_spine import LATEST, MessageBus
+    monkeypatch.setattr(cch, "CHAIN_PART_CONTRACTS", 100)
     sqlite3.connect(tmp_path / "ed_console.db").close()
 
     class _Daemon:
@@ -394,15 +396,19 @@ def test_the_daemons_chain_parts_are_delivered_and_never_kept(tmp_path, schwab):
 
     async def go():
         stop = asyncio.Event()
-        sub = _Daemon.bus.subscribe("")
+        sub = _Daemon.bus.subscribe("chain.", policy=LATEST)
         task = asyncio.create_task(capture.run_chains(_Daemon(), tmp_path / "ed_console.db", _built, stop))
-        topic, _msg = await asyncio.wait_for(sub.get(), timeout=30)
+        topic, record = await asyncio.wait_for(sub.get(), timeout=30)
         stop.set()
         await asyncio.wait_for(task, timeout=30)
-        return topic
-    topic = asyncio.run(go())
-    assert topic                                              # a part was delivered
-    assert _Daemon.bus.snapshot() == {}, "no chain part is kept for replay"
+        late = _Daemon.bus.subscribe("chain.", policy=LATEST)
+        return topic, record, await asyncio.wait_for(late.get(), timeout=5)
+    topic, record, (late_topic, late_record) = asyncio.run(go())
+    assert topic == late_topic == "chain.SPY"
+    assert [m["part"] for m in record] == list(range(record[0]["parts"])) and len(record) > 1
+    assert [m["part"] for m in late_record] == list(range(late_record[0]["parts"]))
+    (tk, contracts, _ts_, reason), = _assembled([(late_topic, m) for m in late_record])
+    assert tk == "SPY" and reason is None and len(contracts) == len(_FX["chain"])
 
 
 def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):

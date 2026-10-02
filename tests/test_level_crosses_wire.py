@@ -33,8 +33,8 @@ def test_detect_logs_upward_cross(tmp_path: Path) -> None:
     assert crosses[0]["direction"] == "up"
     assert crosses[0]["level_name"] == "VWAP"
     assert crosses[0]["spot_at_cross"] == 502.0
-    rows = edb.get_recent_crosses("SPY", n=10)
-    assert len(rows) == 1
+    # a cross recorded live and the same cross loaded at startup are the same row, cross_id included
+    assert edb.get_recent_crosses("SPY", n=10) == crosses
 
 
 def test_detect_logs_downward_cross(tmp_path: Path) -> None:
@@ -177,11 +177,11 @@ def test_multiple_levels_in_one_tick(tmp_path: Path) -> None:
     assert names == ["Call g-Wall", "PDH", "VWAP"]
 
 
-def test_levels_crossed_together_are_one_event_naming_every_level():
+def test_levels_crossed_together_are_one_event_naming_every_level(monkeypatch) -> None:
     """RC-88: one price crossing a strike where several levels sit is stored as one row per level.
     The one reader (server._merged_recent_crosses) serves one event per (time, value, direction)
     that names every level. Real SPY rows, tests/fixtures/real_spy_level_crosses.json: 400 rows,
-    243 events, up to 6 levels on one event."""
+    243 events, up to 6 levels on one event, loaded as the console's start loads them."""
     import json
 
     import server
@@ -194,6 +194,9 @@ def test_levels_crossed_together_are_one_event_naming_every_level():
             return rows[:n]
 
     assert len(rows) == 400
-    events = server._merged_recent_crosses(_Stored(), "SPY", 400)
+    monkeypatch.setattr(server, "get_db", lambda: _Stored())
+    monkeypatch.setattr(server, "_crosses", {})
+    server._load_crosses(["SPY"])
+    events = server._merged_recent_crosses("SPY", 400)
     assert len(events) == 243
     assert max(len(e["level_names"]) for e in events) == 6

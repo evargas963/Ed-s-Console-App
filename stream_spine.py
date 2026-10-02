@@ -174,11 +174,14 @@ _FIELD_DELTA = {"quote": "native", "optquote": "content"}
 
 
 def current_key(topic: str, msg: Any) -> str:
-    """A topic's key in the current state: a book also by its service (NYSE_BOOK and NASDAQ_BOOK
+    """A topic's key in the current state, by its source (`src`: a message from elsewhere is
+    never merged into Schwab's record) and, for a book, its service (NYSE_BOOK and NASDAQ_BOOK
     are two books of one symbol)."""
-    if topic.startswith("book.") and isinstance(msg, dict):
-        return f"{topic}@{msg.get('service')}"
-    return topic
+    if not isinstance(msg, dict):
+        return topic
+    if topic.startswith("book."):
+        return f"{topic}@{msg.get('service')}#{msg.get('src')}"
+    return f"{topic}#{msg.get('src')}"
 
 
 def _older(t: "float | None", than: "float | None") -> bool:
@@ -248,7 +251,7 @@ class MessageBus:
     def publish(self, topic: str, msg: Any) -> None:
         key = current_key(topic, msg)
         chain = topic.startswith("chain.")
-        changed = self._chain(topic, msg) if chain else self._newest(key, topic, msg)
+        changed = self._chain(key, topic, msg) if chain else self._newest(key, topic, msg)
         for sub in self._subs:
             if not topic.startswith(sub.prefix):
                 continue
@@ -288,20 +291,20 @@ class MessageBus:
         self.current[key] = (topic, {**top, body_key: merged, "field_ts": stamps})
         return True
 
-    def _chain(self, topic: str, msg: dict) -> bool:
+    def _chain(self, key: str, topic: str, msg: dict) -> bool:
         """A chain part (or a failed fetch, which has no parts): the newest fetch of the ticker
         is kept; once all its parts are in it replaces the current chain whole."""
         ts, part = msg.get("ts_recv"), msg.get("part")
-        held = self._chains.get(topic)
+        held = self._chains.get(key)
         if held is not None and ts < held[0]:
             return False                                      # an older fetch: never current
         if held is None or ts > held[0]:
             held = (ts, {}, msg.get("parts") if part is not None else 1)
-            self._chains[topic] = held
+            self._chains[key] = held
         held[1][part if part is not None else 0] = msg
         if len(held[1]) < held[2]:
             return False
-        self.current[topic] = (topic, [held[1][i] for i in sorted(held[1])])
+        self.current[key] = (topic, [held[1][i] for i in sorted(held[1])])
         return True
 
 

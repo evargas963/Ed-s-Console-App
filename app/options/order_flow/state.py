@@ -41,7 +41,6 @@ class OrderFlowState:
         self._top: dict[str, dict] = {}
         self._prev_trade: dict[str, dict] = {}
         self._receive_seq: dict[str, int] = {}
-        self._receive_log: dict[str, deque] = {}
         self._stream_greeks: dict[str, dict] = {}
 
     def _get_book(self, symbol: str) -> deque:
@@ -55,12 +54,6 @@ class OrderFlowState:
             if symbol not in self._tape:
                 self._tape[symbol] = deque(maxlen=MAX_TAPE_PRINTS)
             return self._tape[symbol]
-
-    def _get_receive_log(self, symbol: str) -> deque:
-        with self._lock:
-            if symbol not in self._receive_log:
-                self._receive_log[symbol] = deque(maxlen=MAX_TAPE_PRINTS)
-            return self._receive_log[symbol]
 
     def push_book(self, symbol: str, content_item: dict, service: str) -> None:
         """Apply one Schwab book observation (from `service`: NYSE_BOOK, NASDAQ_BOOK or
@@ -158,7 +151,9 @@ class OrderFlowState:
             return
 
         curr_key = vendor_triple(trade_ms, last_price, last_size)
-        received_ts = float(ts_recv)   # the daemon receive time, not the console's clock
+        # the daemon's receive time of the message that carried the trade, not the console's
+        # clock, and not a later tick merged into the same record
+        received_ts = float(received("LAST_PRICE"))
         with self._lock:
             seq = self._receive_seq.get(sym, 0) + 1
             self._receive_seq[sym] = seq
@@ -179,7 +174,6 @@ class OrderFlowState:
                 "completeness": TAPE_COMPLETENESS,
                 "native_event_id": False,
             }
-            self._get_receive_log(sym).append(dict(receipt))
             if restatement:
                 return
             self._prev_trade[sym] = {
@@ -218,8 +212,6 @@ class OrderFlowState:
             values.clear()
         self._prev_trade.clear()
         self._receive_seq.clear()
-        for values in self._receive_log.values():
-            values.clear()
         self._stream_greeks.clear()
 
     def forget_unsubscribed_symbols(self, old: list[str], new: list[str]) -> None:
@@ -242,8 +234,6 @@ class OrderFlowState:
             self._top.pop(sym, None)
             self._prev_trade.pop(sym, None)
             self._receive_seq.pop(sym, None)
-            if sym in self._receive_log:
-                self._receive_log[sym].clear()
             self._stream_greeks.pop(sym, None)
 
 

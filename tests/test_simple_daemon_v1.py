@@ -124,7 +124,7 @@ class FakeSchwab:
 
 def _daemon(tmp_path, monkeypatch, fake, board=(), **wanted):
     bus = ss.MessageBus()
-    log = bus.subscribe("sub.", maxsize=100)
+    log = bus.subscribe("sub.", policy=ss.LOG)
     d = cap.Daemon(bus, ss.HealthRegistry(), board=list(board))
     d.set_wanted({k: list(v) for k, v in wanted.items()})
     d.stream = object()
@@ -317,7 +317,7 @@ def test_silence_from_schwab_ends_the_connection(tmp_path, monkeypatch):
 
 def test_every_service_is_published_verbatim_and_only_delivered_data_counts_as_alive():
     bus, health = ss.MessageBus(), ss.HealthRegistry()
-    sub = bus.subscribe("", maxsize=100)
+    sub = bus.subscribe("", policy=ss.LOG)
     item = {"key": "SPY", "BID_PRICE": 1.0, "LAST_PRICE": 2.0, "LAST_MIC_ID": "XADF", "TOTAL_VOLUME": 9}
     cap._publisher("LEVELONE_EQUITIES", bus, health)({"content": [item]})
     topic, q = sub.queue.get_nowait()
@@ -476,16 +476,16 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(cons
 
     assert readers() == (False, False, "NOT LIVE", False)
     limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
-    lmp.record_feed_heartbeat(status, time.time() - limit + 0.5)
+    lmp.record_feed_heartbeat({**status, "ts": time.time() - limit + 0.5})
     assert readers() == (True, True, "LIVE", True)
     assert diag("A")["feed_health"]["book"]["age_sec"] == 45.0
     assert not lmp.feed_live_for("B", "OPTIONS_BOOK")               # held on L1 only
     assert held("B") == ("B", "A")                                  # B held on L1, the book holds A
     assert ofs.read_producer_rejected_option_contracts() == {"C": "code 19"}
-    lmp.record_feed_heartbeat(status, time.time() - limit - 0.5)
+    lmp.record_feed_heartbeat({**status, "ts": time.time() - limit - 0.5})
     assert readers() == (False, False, "NOT LIVE", False)
     assert held("B") == (None, None)
-    lmp.record_feed_heartbeat({**status, "schwab_socket_open": False}, time.time())
+    lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": time.time()})
     assert readers() == (False, False, "NOT LIVE", True)             # the daemon is up, Schwab is not
 
 

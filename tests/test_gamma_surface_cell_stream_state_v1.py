@@ -246,8 +246,8 @@ def teardown_function(_fn):
 
 def _daemon_holds(*symbols):
     """The daemon's heartbeat: Schwab socket open, these contracts held on LEVELONE_OPTIONS."""
-    lmp.record_feed_heartbeat({"schwab_socket_open": True,
-                               "held": {"LEVELONE_OPTIONS": list(symbols)}}, time.time())
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+                               "held": {"LEVELONE_OPTIONS": list(symbols)}})
 
 
 def test_a_fresh_tick_marks_the_ticking_contracts_own_cell_live(monkeypatch, view):

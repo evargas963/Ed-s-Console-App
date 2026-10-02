@@ -36,12 +36,13 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 4. **The UI computes nothing.** Page code formats and draws. Every number, total, choice,
    comparison and date the page shows is served.
    Enforced by: no machine check — ENF-03.
-5. **No substitute paths.** Input missing, invalid, or stale for its use: no current value, shown
-   absent with its reason. A valid past observation may be shown with its source, time and a label
-   saying so; it never substitutes for a current value or feeds current logic. No fallback,
-   default, estimate, proxy, carry-forward, interpolation or synthetic value. Test: when the source
-   cannot produce the value now, the screen shows it absent with its reason, or a labeled past
-   observation, never a value from elsewhere.
+5. **No substitute paths.** Like a bank balance: live while the market is open, and the balance as
+   of the close while it is closed. In an open session a value whose feed is down, or whose input
+   is missing or invalid, has no current value: it is shown absent with its reason. While Closed,
+   the values as of the close stand until the next session. No value is labeled "past"; no
+   fallback, default, estimate, proxy, carry-forward, interpolation or synthetic value. Test: when
+   the source cannot produce the value now in an open session, the screen shows it absent with its
+   reason, never a value from elsewhere.
    Enforced by: `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`,
    `tests/test_gamma_exposure_honest_absence_v1.py`, and `docs/DATA_FLOW.md` §2 D5.
 6. **One path.** Schwab → daemon memory → pushed to the screen. The database is history: one

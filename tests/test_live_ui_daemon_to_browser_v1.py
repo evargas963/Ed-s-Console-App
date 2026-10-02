@@ -9,7 +9,8 @@ no database. Proves:
     Schwab trade age, and no bar (charts show Schwab's completed bars only);
   * a symbol nobody subscribed to is never sent;
   * the feed verdict rides every beat: a closed Schwab socket reads feed_live False within one
-    beat, with no message needed from Schwab, beside the values Schwab last sent;
+    beat, with no message needed from Schwab; in session the values go absent with the outage
+    reason, while Closed the values Schwab last sent stand (docs/DATA_FLOW.md §2 D5);
   * a slow browser gets the newest row per symbol, never a backlog of stale ones;
   * shutdown is not held up by a connected browser.
 """
@@ -175,21 +176,39 @@ def test_an_index_typed_bare_is_served_under_its_storage_key():
     asyncio.run(_run(body, feed=_Feed(held=("$SPX",))))
 
 
-def test_a_closed_schwab_socket_reads_feed_down_within_one_beat_and_keeps_what_schwab_sent():
-    """The feed's state is stated beside Schwab's last values, never in place of them (operator
-    2026-10-01: "From Schwab's mouth to our UI's ears. Period.")."""
+#: Wednesday 2026-09-30, 11:00 ET (RTH) and 22:00 ET (Closed), as epoch seconds
+_RTH, _CLOSED = 1790780400.0, 1790820000.0
+
+
+def _clock_from(monkeypatch, start: float) -> None:
+    """The wall clock running from `start` (the session the test is in); time still passes."""
+    real, offset = time.time, start - time.time()
+    monkeypatch.setattr(time, "time", lambda: real() + offset)
+
+
+@pytest.mark.parametrize("start, served", [(_RTH, (None, None)),
+                                           (_CLOSED, (583.41, pytest.approx(583.40)))],
+                         ids=["rth", "closed"])
+def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(monkeypatch, start, served):
+    """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): during RTH the row's
+    values are absent with the outage reason; while Closed the values Schwab last sent stand."""
+    _clock_from(monkeypatch, start)
+
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         bus.publish("quote.SPY", _trade("SPY", 583.41, time.time()))
         await _next_row(ws, "SPY", lambda r: r["feed_live"] is True)
-        feed.open = False                      # nothing from Schwab; only the beat knows
+        feed.open = False
         msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False, timeout=1.0)
         assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
-        assert row["spot"] == 583.41 and row["bid"] == pytest.approx(583.40)
+        assert (row["spot"], row["bid"]) == served
+        assert (row["outage"] is None) == (served[0] is not None)
     asyncio.run(_run(body))
 
 
-def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live():
+def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live(monkeypatch):
+    _clock_from(monkeypatch, _CLOSED)
+
     async def body(bus, ws, feed, stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["TSLA"]}))
         bus.publish("quote.TSLA", _trade("TSLA", 400.0, time.time()))

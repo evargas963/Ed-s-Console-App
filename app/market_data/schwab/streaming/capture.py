@@ -151,32 +151,33 @@ def split_request(symbols: "list[str]", max_bytes: int = MAX_REQUEST_BYTES) -> "
 
 # ---------------------------------------------------------------------------- Schwab messages
 
-#: the bus topic kind each Schwab service's items are published under
-SERVICE_KIND = {"LEVELONE_EQUITIES": "quote", "CHART_EQUITY": "bar1m", "LEVELONE_OPTIONS": "optquote",
-                "NEWS_HEADLINE": "news", "NYSE_BOOK": "book", "NASDAQ_BOOK": "book",
-                "OPTIONS_BOOK": "book"}
+#: each Schwab service's bus topic kind and the source its messages carry
+SERVICE_TOPIC = {"LEVELONE_EQUITIES": ("quote", "schwab_l1"), "CHART_EQUITY": ("bar1m", "schwab_chart"),
+                 "LEVELONE_OPTIONS": ("optquote", "schwab_options_l1"),
+                 "NEWS_HEADLINE": ("news", "schwab_news"), "NYSE_BOOK": ("book", "schwab_book"),
+                 "NASDAQ_BOOK": ("book", "schwab_book"), "OPTIONS_BOOK": ("book", "schwab_book")}
 
 
 def _current_key(service: str, sym: str) -> str:
     """The bus's current-record key of `sym` on `service` (stream_spine.current_key)."""
-    return current_key(f"{SERVICE_KIND[service]}.{sym}", {"service": service})
+    kind, src = SERVICE_TOPIC[service]
+    return current_key(f"{kind}.{sym}", {"service": service, "src": src})
 
 
 def _message(service: str, sym: str, item: dict, schwab_ts: "int | None") -> "tuple[str, dict]":
     """(topic kind, bus message) for one Schwab item, with the timestamp of Schwab's frame."""
+    kind, src = SERVICE_TOPIC[service]
     if service == "LEVELONE_EQUITIES":
         flat = {name: item.get(k) for k, name in LEVELONE_FIELDS.items()}
-        return "quote", quote_msg(symbol=sym, src="schwab_l1", native=item, schwab_ts=schwab_ts, **flat)
+        return kind, quote_msg(symbol=sym, src=src, native=item, schwab_ts=schwab_ts, **flat)
     if service == "CHART_EQUITY":
         flat = {name: item.get(k) for k, name in CHART_FIELDS.items()}
-        return "bar1m", bar_msg(symbol=sym, src="schwab_chart", native=item, schwab_ts=schwab_ts, **flat)
+        return kind, bar_msg(symbol=sym, src=src, native=item, schwab_ts=schwab_ts, **flat)
     if service == "LEVELONE_OPTIONS":
-        return "optquote", options_quote_msg(symbol=sym, content=item, src="schwab_options_l1",
-                                             schwab_ts=schwab_ts)
+        return kind, options_quote_msg(symbol=sym, content=item, src=src, schwab_ts=schwab_ts)
     if service == "NEWS_HEADLINE":
-        return "news", news_msg(symbol=sym, content=item, src="schwab_news", schwab_ts=schwab_ts)
-    return "book", book_msg(symbol=sym, service=service, content=item, src="schwab_book",
-                            schwab_ts=schwab_ts)
+        return kind, news_msg(symbol=sym, content=item, src=src, schwab_ts=schwab_ts)
+    return kind, book_msg(symbol=sym, service=service, content=item, src=src, schwab_ts=schwab_ts)
 
 
 def _publisher(service: str, bus: MessageBus, health: HealthRegistry):

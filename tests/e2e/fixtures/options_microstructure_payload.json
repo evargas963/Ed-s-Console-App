@@ -1,7 +1,7 @@
 {
   "ages": {
-    "book_age_sec": 1532774.006,
-    "book_stale": true,
+    "book_age_sec": 0.0,
+    "book_stale": false,
     "quote_age_sec": null
   },
   "book_slope": {
@@ -128,36 +128,36 @@
     "exchange_quote_ts": null,
     "n_ask_levels": 3,
     "n_bid_levels": 3,
-    "server_received_ts": 1790532774.005764,
+    "server_received_ts": 1789000000.0,
     "top_of_book_ask_leaf": "streaming.ASK_PRICE",
     "top_of_book_bid_leaf": "streaming.BID_PRICE"
   },
   "put_call": null,
   "spread_frac": null,
-  "spread_pts": 0.05,
+  "spread_pts": 0.050000000000000044,
   "status": "ok",
   "streaming_plane": {
     "contract_match": false,
     "feed_health": {
       "book": {
         "age_sec": null,
-        "state": "NOT LIVE"
+        "state": "LIVE"
       },
       "l1": {
         "age_sec": null,
-        "state": "NOT LIVE"
+        "state": "LIVE"
       },
       "replay": "not connected"
     },
     "option_contract": null,
-    "producer_book_contract": null,
-    "producer_l1_contract": null,
+    "producer_book_contract": "SPY   260911C00100000",
+    "producer_l1_contract": "SPY   260911C00100000",
     "queried_contract": "SPY   260911C00100000",
     "server_requested_contract": null,
     "streaming_connected": false,
     "streaming_healthy": false,
-    "streaming_last_update_ts": null,
-    "streaming_staleness_ms": null,
+    "streaming_last_update_ts": 1789000000.0,
+    "streaming_staleness_ms": 0.0,
     "subscription_state": "PENDING"
   },
   "top_of_book": {
@@ -166,6 +166,7 @@
     "bid": 1.2,
     "bid_size": 40
   },
+  "top_outage": null,
   "wall_candidates": [],
   "wall_method": {
     "basis": "displayed level TOTAL_VOLUME >= mult x median top-N level size",

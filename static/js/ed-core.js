@@ -827,13 +827,13 @@
       // painted NOW, not on requestAnimationFrame: the browser slows or pauses rAF for a
       // window it considers covered (measured 2026-09-24: row in at 6 ms, rAF paint at 773 ms).
       // The daemon already conflates to the newest row per symbol, so there is no burst to
-      // throttle -- a few text writes per second. The price is Schwab's last trade at any hour,
-      // with Schwab's trade time; the feed state is stated beside it.
+      // throttle -- a few text writes per second. The price is Schwab's last trade with Schwab's
+      // trade time, or absent with the served outage reason; the feed state is stated beside it.
       paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
         chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
         feedCls: q.feed_live ? '' : 'stale',
         feedLabel: q.feed_live ? 'LIVE' : 'FEED DOWN',
-        ageLabel: q.trade_time_ct != null ? ('last trade ' + q.trade_time_ct) : 'no trade sent' });
+        ageLabel: q.outage || (q.trade_time_ct != null ? ('last trade ' + q.trade_time_ct) : 'no trade sent') });
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;

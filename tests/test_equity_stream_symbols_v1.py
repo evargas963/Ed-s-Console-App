@@ -29,7 +29,7 @@ def test_the_board_is_the_daemons_list_never_copied_into_the_consoles(monkeypatc
     monkeypatch.setattr(push_changes, "_open", [])
     monkeypatch.setattr(ofs, "_watchlist", ["AAPL"])
     lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": ["MU", "AAPL"],
-                               "held": {"LEVELONE_EQUITIES": ["MU", "AAPL", "$SPX"]}}, time.time())
+                               "held": {"LEVELONE_EQUITIES": ["MU", "AAPL", "$SPX"]}})
     assert "MU" not in ofs.current_wanted()["LEVELONE_EQUITIES"]
     assert ofs._rows_wanted() == ["$SPX", "AAPL", "MU"]
 

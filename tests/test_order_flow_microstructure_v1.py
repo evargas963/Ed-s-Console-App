@@ -461,8 +461,7 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
 
     seen = []
     monkeypatch.setattr(ofs, "push_level_one",
-                        lambda sym, item, *, ts_recv: seen.append((sym, ts_recv)))
-    monkeypatch.setattr(ofs._lmp, "record_from_level_one_equity", lambda *a, **k: False)
+                        lambda sym, item, *, ts_recv, field_received: seen.append((sym, ts_recv)))
     ofs._ingest_pushed("quote.SIZEG", quote_msg(
         symbol="SIZEG", src="schwab_l1", ts_recv=1234.5, native={"LAST_PRICE": 1.0}))
     ofs._ingest_pushed("optquote.SIZEG  260918C00001000", options_quote_msg(
@@ -485,11 +484,10 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
     assert (bid, ask, bid_leaf, ask_leaf) == (None, None, None, None)
 
 
-def test_an_option_contracts_top_is_what_schwab_sent_whatever_the_feed_state():
-    """The option top of book is the value Schwab last sent, whether or not the daemon still
-    holds the contract (operator 2026-10-01: "we use what schwab gives us and we display it"; it
-    used to be dropped when the feed was not live). Real TSLA 260831C00367500 ticks
-    (tests/fixtures)."""
+def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
+    """The option top of book is the newest value Schwab sent, merged per field, while the
+    daemon holds the contract (a feed down: docs/DATA_FLOW.md §2 D5,
+    tests/test_data_path_rules_v1.py). Real TSLA 260831C00367500 ticks (tests/fixtures)."""
     import time
     import live_market_plane as lmp
     from app.options.order_flow import state
@@ -500,31 +498,29 @@ def test_an_option_contracts_top_is_what_schwab_sent_whatever_the_feed_state():
         if ev["kind"] == "l1":
             state.push_option_top(sym, ev["content"])
     try:
-        lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}}, time.time())
-        assert lmp.feed_live_for(sym, "LEVELONE_OPTIONS")
-        assert options_live_payload(sym, time.time())["flow"]["top_book_pressure"] is not None
-        held = options_live_payload(sym, time.time())["flow"]["top_book_pressure"]
-        lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": []}}, time.time())
-        assert options_live_payload(sym, time.time())["flow"]["top_book_pressure"] == held
+        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+                                   "held": {"LEVELONE_OPTIONS": [sym]}})
+        payload = options_live_payload(sym, time.time())
+        assert payload["flow"]["top_book_pressure"] is not None and payload["top_outage"] is None
     finally:
+        lmp.record_feed_down()
         state.clear_all_live_state()
 
 
 def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
     """O-01: /api/order-flow/microstructure takes the equity top of book from the daemon's price
-    row (the header's): the quote Schwab last sent, the feed up or down. Stand-in quote (named):
-    bid 10.00 x 3, ask 10.02 x 5."""
+    row (the header's): the newest quote Schwab sent, its feed live (a feed down: docs/DATA_FLOW.md
+    §2 D5, tests/test_data_path_rules_v1.py). Stand-in quote (named): bid 10.00 x 3, ask 10.02 x 5."""
     import time
     import live_market_plane as lmp
     import server
     from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
     mark_feed_live("ZZTB")
-    lmp.record_from_level_one_equity("ZZTB", {"LAST_PRICE": 10.01, "BID_PRICE": 10.0, "ASK_PRICE": 10.02,
-                                              "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01}, received_ts=time.time())
-    publish_daemon_rows("ZZTB")
-    body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
-    assert body["flow"]["top_book_pressure"] == (3 - 5) / 8
-    lmp.record_feed_down()
-    publish_daemon_rows("ZZTB")
-    body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
-    assert body["flow"]["top_book_pressure"] == (3 - 5) / 8
+    try:
+        lmp.record_from_level_one_equity("ZZTB", {"LAST_PRICE": 10.01, "BID_PRICE": 10.0, "ASK_PRICE": 10.02,
+                                                  "BID_SIZE": 3, "ASK_SIZE": 5, "MARK": 10.01}, received_ts=time.time())
+        publish_daemon_rows("ZZTB")
+        body = json.loads(server.api_order_flow_microstructure(ticker="ZZTB", venue="NYSE_BOOK").body)
+        assert body["flow"]["top_book_pressure"] == (3 - 5) / 8 and body["top_outage"] is None
+    finally:
+        lmp.record_feed_down()

@@ -398,13 +398,13 @@
     if (c) {
       var q = S.quotes[st().key], tob = m && m.top_of_book;
       var cc = (S.events && S.events.cross_counts) || null;   // served for the window
-      // Schwab's values at any hour, with Schwab's trade time; the feed state is stated beside them
+      // Schwab's values with Schwab's trade time, or the served outage reason; the feed state beside them
       state(c, !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : 'FEED DOWN', q && q.feed_live ? '' : 'warn');
       c.querySelector('.tdm-hero').innerHTML = q && q.total_volume != null ? fmtVol(q.total_volume) + ' <small>shares, Schwab TOTAL_VOLUME</small>' : '';
-      src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : q.trade_time_ct != null ? 'last trade ' + esc(q.trade_time_ct) : 'no trade sent'));
+      src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : q.outage ? esc(q.outage) : q.trade_time_ct != null ? 'last trade ' + esc(q.trade_time_ct) : 'no trade sent'));
       c.querySelector('.tdm-rows').innerHTML =
         row('Last trade size', q && q.last_size != null ? fmtVol(q.last_size) : '—') +
-        row('Top of book', tob ? (tob.bid_size != null ? fmtVol(tob.bid_size) : '—') + ' × ' + (tob.ask_size != null ? fmtVol(tob.ask_size) : '—') : '—') +
+        row('Top of book', m && m.top_outage ? esc(m.top_outage) : tob ? (tob.bid_size != null ? fmtVol(tob.bid_size) : '—') + ' × ' + (tob.ask_size != null ? fmtVol(tob.ask_size) : '—') : '—') +
         row('Crosses (' + esc(windowLabel()) + ')', cc ? cc.up + ' up · ' + cc.down + ' down' : '—');
     }
     // OPTIONS POSITIONING — full-chain terrain

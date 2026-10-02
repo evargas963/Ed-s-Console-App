@@ -76,8 +76,8 @@ def _stream(values: dict, monkeypatch, held=None):
     """Streamed option values, and the daemon's heartbeat holding `held` (default: every
     streamed contract) on LEVELONE_OPTIONS -- what a live daemon streaming them reports."""
     monkeypatch.setattr("app.options.order_flow.state.get_stream_greeks", lambda sym: values.get(sym))
-    lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {
-        "LEVELONE_OPTIONS": list(values if held is None else held)}}, time.time())
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {
+        "LEVELONE_OPTIONS": list(values if held is None else held)}})
 
 
 # ── one computation behind every view ────────────────────────────────────────────────────────
@@ -358,7 +358,7 @@ def test_the_console_serves_while_the_stored_levels_load(monkeypatch):
         release.wait(2)
         finished.set()
         return 0
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": [TK]}, time.time())
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": [TK]})
     monkeypatch.setattr(server, "_publish_missing_price_levels", lambda board: None)
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setattr(server, "_load_stored_levels", slow_load)
@@ -382,27 +382,25 @@ def test_a_tick_on_an_unviewed_ticker_reprices_nothing(monkeypatch):
 
 def test_a_burst_of_ticks_reprices_back_to_back_and_prices_the_last(monkeypatch):
     """No wait between reprices: the ticks that arrive while one reprice runs are all in the
-    next, which starts the moment it ends."""
+    next, which is already waiting when it ends (the pricing thread takes it at once)."""
     calls = []
 
     def slow_publish(tk, *a):
-        calls.append(("start", time.monotonic()))
-        time.sleep(0.05)                                 # a reprice takes time
-        calls.append(("end", time.monotonic()))
+        n = sum(1 for c in calls if c[0] == "start")
+        calls.append(("start", n))
+        if n < 3:                                        # quotes arrive while it reprices
+            for _ in range(10):
+                server._on_stream_tick("ZZBURST")
+        with server._chains_waiting_lock:
+            calls.append(("end", tk in server._chains_waiting))
         return True
     monkeypatch.setattr(server, "_publish_levels", slow_publish)
     push_changes.subscribe("ZZBURST")
-    for _ in range(50):
-        server._on_stream_tick("ZZBURST")
-        time.sleep(0.002)
-    last_tick = time.monotonic()
+    server._on_stream_tick("ZZBURST")
     _drain()
-    starts = [t for k, t in calls if k == "start"]
-    ends = [t for k, t in calls if k == "end"]
-    assert 2 <= len(starts) < 50, "a burst is coalesced into the reprices it overlaps"
-    assert all(s >= e for s, e in zip(starts[1:], ends)), "one reprice at a time"
-    assert all(s - e < 0.02 for s, e in zip(starts[1:], ends)), "the next starts at once"
-    assert starts[-1] >= last_tick - 0.01, "a reprice begins after the burst's last tick"
+    assert calls == [("start", 0), ("end", True), ("start", 1), ("end", True),
+                     ("start", 2), ("end", True), ("start", 3), ("end", False)], \
+        "each reprice's ten ticks are one next reprice, already waiting when it ends"
 
 
 def test_an_option_tick_reprices_its_underlying(monkeypatch):
@@ -538,8 +536,7 @@ def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
 # ── the chains the daemon delivers ─────────────────────────────────────────────────────────────
 
 def _board_is(board):
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": list(board)},
-                              time.time())
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": list(board)})
 
 
 @pytest.mark.parametrize("delivered_first", [True, False])

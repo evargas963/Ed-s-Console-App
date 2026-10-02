@@ -57,8 +57,8 @@ def _streamed(symbol, fields_by_ts):
     heartbeat holding the contract on LEVELONE_OPTIONS."""
     prior = ofs._active_option_contract, ofs._active_option_contracts
     ofs._active_option_contract, ofs._active_option_contracts = symbol, []
-    lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [symbol]}},
-                              time.time())
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+                               "held": {"LEVELONE_OPTIONS": [symbol]}})
     try:
         for ts, fields in fields_by_ts:
             push_level_one(symbol, {"key": symbol, "assetMainType": "OPTION", "UNDERLYING": "TSLA",

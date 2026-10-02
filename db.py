@@ -14,7 +14,7 @@ from db_authority import (
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
 )
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 from typing import Callable, Optional, TypeVar
 
 from instrument_identity import ticker_storage_key
@@ -538,22 +538,16 @@ class EdDB:
                 zone_after=zone_after,
                 timeframe=str(timeframe),
             )
-            self.log_level_cross(event)
-            logged.append(
-                {
-                    "level_name": name,
-                    "level_value": value,
-                    "direction": direction,
-                    "spot_at_cross": float(cur_spot),
-                }
-            )
+            cross_id = self.log_level_cross(event)
+            logged.append({**asdict(event), "cross_id": cross_id})     # the stored row
         return logged
 
     def get_recent_crosses(self, ticker: str, n: int = 20) -> list:
-        """Return most recent level crossing events."""
+        """The most recent level crosses, each the row detect_and_log_level_crosses returns."""
+        cols = ", ".join(["cross_id", *(f.name for f in fields(LevelCrossEvent))])
         with self._connect() as conn:
-            rows = conn.execute("""
-                SELECT * FROM level_crosses
+            rows = conn.execute(f"""
+                SELECT {cols} FROM level_crosses
                 WHERE ticker = ?
                 ORDER BY ts_utc DESC
                 LIMIT ?
