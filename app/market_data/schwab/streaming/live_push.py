@@ -66,11 +66,7 @@ def frames(topic: str, record) -> "list[str]":
     return [json.dumps({"topic": topic, "msg": record}, separators=(",", ":"))]
 
 
-#: seconds between daemon heartbeats on every push connection
-HEARTBEAT_SEC = 1.0
-
-
-async def _serve_client(ws, bus: MessageBus, stats: dict, heartbeat_fn=None, on_wanted=None) -> None:
+async def _serve_client(ws, bus: MessageBus, stats: dict, on_wanted=None) -> None:
     """Send every current record, then each one that changes, until the connection closes.
 
     The send loop runs as its own task and this handler waits on the CONNECTION: a loop
@@ -80,22 +76,8 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, heartbeat_fn=None, on_
     stats["clients"] += 1
 
     async def _pump() -> None:
-        loop = asyncio.get_running_loop()
-        next_beat = loop.time()
         while True:
-            if heartbeat_fn is not None and loop.time() >= next_beat:
-                # the daemon's own report of the feed (Schwab socket open, equities held),
-                # sent on this one send path so it can never interleave a frame
-                await ws.send(frames("daemon.heartbeat", heartbeat_fn())[0])
-                next_beat = loop.time() + HEARTBEAT_SEC
-            try:
-                if heartbeat_fn is None:
-                    topic, record = await sub.get()
-                else:
-                    topic, record = await asyncio.wait_for(
-                        sub.get(), timeout=max(0.0, next_beat - loop.time()))
-            except asyncio.TimeoutError:
-                continue
+            topic, record = await sub.get()
             if is_forwarded(topic, record):
                 for frame in frames(topic, record):
                     await ws.send(frame)
@@ -132,8 +114,7 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, heartbeat_fn=None, on_
 
 async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
                           host: str = LIVE_PUSH_HOST, port: int = LIVE_PUSH_PORT,
-                          stats: "dict | None" = None, heartbeat_fn=None,
-                          on_wanted=None) -> None:
+                          stats: "dict | None" = None, on_wanted=None) -> None:
     """Run the push server until `stop` is set. `stats` (mutated) reports clients and sent."""
     from websockets.asyncio.server import serve
 
@@ -141,7 +122,7 @@ async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
     stats.update(clients=0, sent=0, listening=None)
 
     async def handler(ws):
-        await _serve_client(ws, bus, stats, heartbeat_fn, on_wanted)
+        await _serve_client(ws, bus, stats, on_wanted)
 
     async with serve(handler, host, port, max_size=None, ping_interval=20, ping_timeout=20):
         stats["listening"] = f"ws://{host}:{port}"

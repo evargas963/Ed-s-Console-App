@@ -51,9 +51,7 @@ async def _daemon_then_console(publish, *, read_for: float = 1.0,
     Schwab frames, with a console connected before (`connected`) or connecting after; return
     every message the console receives within `read_for` s: [{"topic": ..., "msg": ...}]."""
     bus, health, stop, stats, port = MessageBus(), HealthRegistry(), asyncio.Event(), {}, _port()
-    server = asyncio.create_task(live_push.serve_live_push(
-        bus, stop, port=port, stats=stats,
-        heartbeat_fn=lambda: {"ts": time.time(), "schwab_socket_open": True, "held": {}}))
+    server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
     try:
         for _ in range(500):
             if stats.get("listening"):
@@ -75,9 +73,7 @@ async def _daemon_then_console(publish, *, read_for: float = 1.0,
                     frame = await asyncio.wait_for(ws.recv(), timeout=end - time.monotonic())
                 except (asyncio.TimeoutError, TimeoutError):
                     break
-                m = json.loads(frame)
-                if m.get("topic") != "daemon.heartbeat":
-                    got.append(m)
+                got.append(json.loads(frame))
         return got
     finally:
         stop.set()
@@ -195,9 +191,7 @@ async def _chains_then_console(contracts, fetched) -> list[dict]:
     daemon's bus as it does (capture.run_chains: chain_messages, each part published) before the
     console reads."""
     bus, stop, stats, port = MessageBus(), asyncio.Event(), {}, _port()
-    server = asyncio.create_task(live_push.serve_live_push(
-        bus, stop, port=port, stats=stats,
-        heartbeat_fn=lambda: {"ts": time.time(), "schwab_socket_open": True, "held": {}}))
+    server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
     try:
         for _ in range(500):
             if stats.get("listening"):
@@ -218,9 +212,7 @@ async def _chains_then_console(contracts, fetched) -> list[dict]:
                     frame = await asyncio.wait_for(ws.recv(), timeout=end - time.monotonic())
                 except (asyncio.TimeoutError, TimeoutError):
                     break
-                m = json.loads(frame)
-                if m.get("topic") != "daemon.heartbeat":
-                    got.append(m)
+                got.append(json.loads(frame))
             return got
     finally:
         stop.set()
