@@ -407,6 +407,31 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Right Now re-reads only what a push changed', async ({ page }) => {
+    await intercept(page);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    const reads = [];
+    page.on('request', (r) => {
+      const p = new URL(r.url()).pathname;
+      if (['/api/order-flow/microstructure', '/api/levels', '/api/terrain', '/api/liquidity-snapshot', '/api/terrain/strikes'].includes(p)) reads.push(p);
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const body = page.locator('#tdBody');
+    await expect(body).toContainText('Max pain 770.00');
+    const push = async (kind) => {
+      await page.waitForTimeout(300);                    // the first read has settled
+      reads.length = 0;
+      await page.evaluate((k) => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: k } })), kind);
+      await expect.poll(() => reads.length).toBeGreaterThan(0);
+      await page.waitForTimeout(300);                    // every read that push makes has gone out
+      return [...new Set(reads)].sort();
+    };
+    expect(await push('flow')).toEqual(['/api/order-flow/microstructure']);
+    expect(await push('liquidity')).toEqual(['/api/liquidity-snapshot']);
+    expect(await push('levels')).toEqual(['/api/levels', '/api/terrain', '/api/terrain/strikes']);
+    await expect(body).toContainText('Max pain 770.00');  // the parts not re-read are still drawn
+  });
+
   test('Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split', async ({ page }) => {
     const errs = watchErrors(page);
     const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', };

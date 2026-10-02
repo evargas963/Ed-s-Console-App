@@ -60,6 +60,8 @@ def _clean(monkeypatch):
     monkeypatch.setattr(push_changes, "_loop", None)                     # changes recorded, not delivered
     ofs._active_option_contract = _A
     ofs._active_option_contracts = [_B]
+    with server._terrain_cache_lock:
+        server._terrain_cache.pop(TK, None)                              # this test's levels only
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
@@ -532,16 +534,21 @@ def _board_is(board):
                               time.time())
 
 
-def test_an_older_chain_never_replaces_newer_levels():
-    """2026-10-01 audit: the startup load of the stored capture ran beside the daemon's chains,
-    so yesterday's 16:15 capture could replace a chain priced at 10:00:05, and the ticks then
-    repriced yesterday's chain at the live spot. A chain older than the one held is not
-    published, whatever its source."""
+def test_the_stored_capture_loads_before_any_delivered_chain_is_priced():
+    """The startup load of the stored capture runs before the daemon's chains are priced: a
+    chain delivered while it runs waits, so yesterday's capture never replaces a newer chain and
+    the ticks never reprice yesterday's chain."""
     now = time.time()
-    server._publish_levels(TK, _CONTRACTS, now)
-    assert server._publish_levels(TK, _CONTRACTS[:10], now - 3600) is None
-    assert server._publish_levels(TK, captures=[{"contracts": _CONTRACTS[:10], "ts_utc": now - 86400,
-                                                 "spot": _SPOT, "basis": "x", "et_date": "2026-09-01"}]) is None
+    server._close_chains()                                     # the console starts: the load runs
+    try:
+        server._on_chain(TK, _CONTRACTS, now)                  # a live chain arrives meanwhile
+        server._chain_pricing.submit(lambda: None).result(timeout=60)
+        assert TK not in server._terrain_cache, "a delivered chain waits for the startup load"
+        server._publish_levels(TK, captures=[{"contracts": _CONTRACTS[:10], "ts_utc": now - 86400,
+                                              "spot": _SPOT, "basis": "x", "et_date": "2026-09-01"}])
+    finally:
+        server._open_chains()                                  # the load is done
+    server._chain_pricing.submit(lambda: None).result(timeout=60)
     held = _cached()
     assert held["_chain_fetched_ts"] == held["computed_ts_utc"] == now
     assert len(held["_chain"]) == len(_CONTRACTS)

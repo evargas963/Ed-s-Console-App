@@ -734,16 +734,13 @@ def _gamma_surface_wanted(tk: str) -> bool:
 
 
 #: Per-ticker revision of `_gamma_surface`, bumped on every publication; written only by
-#: _publish_levels under the ticker's levels lock. Each console counts on from its start time (ms),
-#: so a page that drew a publication of the console before a restart (`since`) is behind every
-#: publication of the new one.
+#: _publish_levels under the ticker's levels lock (the page redraws its table for a new one).
 _gamma_surface_seq: dict[str, int] = {}
-_GAMMA_SURFACE_SEQ_START = int(time.time() * 1000)
 
 
 def _next_gamma_surface_seq(tk: str) -> int:
     """Caller holds the ticker's _levels_lock."""
-    n = _gamma_surface_seq.get(tk, _GAMMA_SURFACE_SEQ_START) + 1
+    n = _gamma_surface_seq.get(tk, 0) + 1
     _gamma_surface_seq[tk] = n
     return n
 
@@ -790,15 +787,13 @@ def _desired_option_symbols_for_ticker(tk: str, listed: "frozenset | None" = Non
     from "never desired at all" (UNAVAILABLE)."""
     from app.options.order_flow.streaming import (
         get_active_option_contract, get_active_option_contracts)
-    out: "list[str]" = []
-    candidates = list(get_active_option_contracts())
-    primary = get_active_option_contract()
-    if primary:
-        candidates.append(primary)
-    for sym in candidates:
-        if sym and sym not in out and (sym in listed if listed is not None else _contract_is_for(sym, tk)):
-            out.append(sym)
-    return out
+    if listed is None:
+        with _terrain_cache_lock:
+            listed = (_terrain_cache.get(tk) or {}).get("_contract_symbols") or frozenset()
+    # every view's contracts and the primary, once each, in order: thousands with the heatmap on
+    # All, so membership is a set (a list scan here held the console's CPU)
+    return [sym for sym in dict.fromkeys([*get_active_option_contracts(), get_active_option_contract()])
+            if sym and sym in listed]
 
 
 def _overlaid_symbols(pre: list, post: list) -> list[str]:
@@ -1015,40 +1010,6 @@ def _measure_values(cell: dict, measure: str) -> list:
     return list(cell.get(measure) or [])
 
 
-def _mark_changed(surface: dict, previous: "dict | None") -> None:
-    """The surface's `changes`: {(measure, strike, expiry): the `surface_seq` of the publication in
-    which that cell's value last changed}, for the cells that have changed since they first
-    appeared, carried from `previous` (the ticker's last publication). _surface_view turns it into
-    the page's flash for the publications the page has not drawn yet."""
-    changes = dict((previous or {}).get("changes") or {})   # none recorded: none to carry
-    if previous:
-        seq = surface["surface_seq"]
-        exps = [e.get("expiry") for e in surface.get("expirations") or []]
-        before_exps = [e.get("expiry") for e in previous.get("expirations") or []]
-        before = {cell.get("strike"): cell for cell in previous.get("cells") or []}
-        for cell in surface.get("cells") or []:
-            k = cell.get("strike")
-            old = before.get(k)
-            if old is None:
-                continue                                  # a new strike: nothing to compare
-            for m in HEAT_MEASURES:
-                now_v, was_v = _measure_values(cell, m), _measure_values(old, m)
-                if exps == before_exps:
-                    if now_v == was_v:
-                        continue                          # the row is unchanged (most rows)
-                    pairs = zip(exps, now_v, was_v)
-                else:
-                    was = dict(zip(before_exps, was_v))
-                    pairs = ((e, v, was[e]) for e, v in zip(exps, now_v) if e in was)
-                for e, v, w in pairs:
-                    if v != w:
-                        changes[(m, k, e)] = seq
-    # only cells of this publication keep a record: one that left and comes back starts afresh
-    strikes, cols = {c.get("strike") for c in surface.get("cells") or []}, \
-        {e.get("expiry") for e in surface.get("expirations") or []}
-    surface["changes"] = {key: s for key, s in changes.items() if key[1] in strikes and key[2] in cols}
-
-
 #: why a strike window is not around the price
 WINDOW_NO_PRICE = "no live price: the middle strikes of the chain"
 
@@ -1064,14 +1025,12 @@ def _window(strikes, spot_strike, scope: str, centre, shift: int) -> "tuple[int,
 
 
 def _surface_view(surf: dict, spot_strike, scope: str, centre, shift: int, cols: "int | None",
-                  expiry: "str | None", since: "int | None") -> "tuple[dict, dict]":
+                  expiry: "str | None") -> "tuple[dict, dict]":
     """The heatmap the page draws: (the surface cut to its window, the view). Rows: _window.
     Columns: the selected `expiry` alone; else for Auto the nearest `cols` (as many as the page
     fits) that have not expired, for Wider twice that, expired ones after, for All every one;
     with none unexpired, the expired ones (drawn labelled EXPIRED, a past observation). Each cell:
-    `spot` (the row at the price) and, on a row with a change, `changed` (per measure, per column:
-    its value changed in a publication after `since`, the one the page last drew). The view: the window's centre and
-    note, the coverage and the contracts to stream (the unexpired columns drawn, column by column),
+    `spot` (the row at the price). The view: the window's centre and note, the coverage and the contracts to stream (the unexpired columns drawn, column by column),
     each measure's largest |value| drawn (the colour scale), and `missing_expiry` when the
     selected expiry is not in the surface."""
     exps = surf.get("expirations") or []
@@ -1091,18 +1050,8 @@ def _surface_view(surf: dict, spot_strike, scope: str, centre, shift: int, cols:
         if isinstance(v, dict):                      # absent: a column list per measure
             return {m: pick(a) for m, a in v.items()}
         return [v[j] for j in picked if j < len(v)] if isinstance(v, list) else v
-    # a surface that recorded no changes (one built outside _publish_levels) has none to flash
-    changes = surf.get("changes") or {}
-    cols = [exps[j].get("expiry") for j in picked]
-    cells = []
-    for cell in (surf.get("cells") or [])[lo:hi + 1]:
-        row = {k: pick(v) for k, v in cell.items()}
-        changed = {m: [since is not None and changes.get((m, cell.get("strike"), e), since) > since
-                       for e in cols] for m in HEAT_MEASURES}
-        if any(any(flags) for flags in changed.values()):
-            row["changed"] = changed                 # only a row with a change carries it
-        row["spot"] = cell.get("strike") == spot_strike
-        cells.append(row)
+    cells = [{**{k: pick(v) for k, v in cell.items()}, "spot": cell.get("strike") == spot_strike}
+             for cell in (surf.get("cells") or [])[lo:hi + 1]]
     streams = [i for i, j in enumerate(picked) if exps[j].get("expired") is not True]
     demand = list(dict.fromkeys(pair[side] for i in streams for cell in cells
                                 for pair in (cell.get("contracts") or [])[i:i + 1]
@@ -1111,8 +1060,7 @@ def _surface_view(surf: dict, spot_strike, scope: str, centre, shift: int, cols:
     for m in HEAT_MEASURES:
         known = [abs(v) for cell in cells for v in _measure_values(cell, m) if v is not None]
         max_abs[m] = max(known) if known else None
-    window = {**{k: v for k, v in surf.items() if k != "changes"},
-              "strikes": (surf.get("strikes") or [])[lo:hi + 1],
+    window = {**surf, "strikes": (surf.get("strikes") or [])[lo:hi + 1],
               "expirations": [exps[j] for j in picked], "cells": cells}
     return window, {**view, "scope": scope, "coverage": _stream_coverage(cells, streams, bool(picked) and not streams), "demand": demand,
                     "max_abs": max_abs, "missing_expiry": expiry if expiry and not picked else None}
@@ -1200,9 +1148,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         if capture is not None:
             chain, fetched_ts = capture["contracts"], capture["ts_utc"]
         new_chain = chain is not None
-        held_ts = payload.get("_chain_fetched_ts")
-        if new_chain and held_ts is not None and fetched_ts < held_ts:
-            return None             # a chain older than the one held never replaces it
         if chain is None:
             chain, fetched_ts = payload.get("_chain"), payload.get("_chain_fetched_ts")
             if not chain:
@@ -1222,7 +1167,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         live_syms = _overlaid_symbols(chain, priced)
         snap = compute_terrain(tk, priced, spot, now=(
             datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
-        previous_surface = payload.get("_gamma_surface")
         payload.update(snap.to_dict())
         payload.update({
             # as of the chain they were computed from: a reprice on a kept chain does not make
@@ -1257,7 +1201,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                 set(_desired_option_symbols_for_ticker(tk, listed)),
                 daemon_available=is_option_producer_daemon_available())
             surface["surface_seq"] = _next_gamma_surface_seq(tk)
-            _mark_changed(surface, previous_surface)
             payload["_gamma_surface"] = surface
         with _terrain_cache_lock:
             _terrain_cache[tk] = payload
@@ -1351,6 +1294,10 @@ _chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pri
 #: screen's chain is priced before the others waiting.
 _chains_waiting: "dict[str, tuple[list, float]]" = {}
 _chains_waiting_lock = threading.Lock()
+#: whether the delivered chains are priced: closed while the startup load prices the stored
+#: captures (start_terrain_loop .. _open_chains), so a stored capture is always priced before
+#: any chain the daemon delivers, and the chains are priced in the order they were fetched
+_chains_open = True
 
 
 def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | None" = None) -> None:
@@ -1364,7 +1311,25 @@ def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | N
     with _chains_waiting_lock:
         queued = tk in _chains_waiting
         _chains_waiting[tk] = (contracts, ts)
-    if not queued:
+        price_now = _chains_open and not queued
+    if price_now:
+        _chain_pricing.submit(_price_waiting_chain)
+
+
+def _close_chains() -> None:
+    """The startup load is about to run: delivered chains wait (_on_chain keeps them)."""
+    global _chains_open
+    with _chains_waiting_lock:
+        _chains_open = False
+
+
+def _open_chains() -> None:
+    """The startup load is done: the chains that waited are priced, and every later one."""
+    global _chains_open
+    with _chains_waiting_lock:
+        _chains_open = True
+        waiting = len(_chains_waiting)
+    for _ in range(waiting):
         _chain_pricing.submit(_price_waiting_chain)
 
 
@@ -1382,8 +1347,7 @@ def _price_chain(tk: str, contracts: list, fetched_ts: float) -> None:
     """THE producer of a ticker's levels from a newly fetched chain (_publish_levels), with the
     chain's own fetch time as its as-of: an older streamed value never overrides it."""
     try:
-        if _publish_levels(tk, contracts, fetched_ts) is None:
-            return                  # older than the chain held: nothing published
+        _publish_levels(tk, contracts, fetched_ts)
         with _terrain_cache_lock:
             payload = _terrain_cache[tk]
         _log_flip_drift(tk, payload)
@@ -1443,14 +1407,18 @@ def _status_line() -> str:
 
 
 def _terrain_loop() -> None:
-    """The board's stored levels once the daemon has said what the board is; then every
+    """The board's stored levels once the daemon has said what the board is, and then the chains
+    the daemon delivers (_on_chain; they wait until the stored levels are loaded); then every
     STATUS_EVERY_SEC the status line is logged and the price levels of a new session date or a
-    new ticker are published. The chains arrive from the daemon (_on_chain)."""
-    while _terrain_loop_running and _board() is None:
-        time.sleep(0.5)
-    board = _board() or []
-    _publish_missing_price_levels(board)
-    loaded = _load_stored_levels(board)
+    new ticker are published."""
+    try:
+        while _terrain_loop_running and _board() is None:
+            time.sleep(0.5)
+        board = _board() or []
+        _publish_missing_price_levels(board)
+        loaded = _load_stored_levels(board)
+    finally:
+        _open_chains()
     log.info("Ready: levels for %d of %d board tickers loaded (session: %s). The daemon's chains "
              "price them from here.", loaded, len(board), session_label(now_et()))
     next_status = time.monotonic() + STATUS_EVERY_SEC
@@ -1490,6 +1458,7 @@ def start_terrain_loop() -> None:
     if _terrain_loop_running:
         return
     _terrain_loop_running = True
+    _close_chains()                 # the stored levels load first (_terrain_loop opens them)
     _terrain_loop_thread = threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True)
     _terrain_loop_thread.start()
 
@@ -2149,13 +2118,12 @@ def _stamp_columns(surface: dict) -> dict:
 @app.get("/api/options/gamma-surface")
 def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "auto", centre: CentreQuery = None,
                               shift: ShiftQuery = 0, cols: Annotated[Optional[int], Query(ge=1)] = None,
-                              expiry: Annotated[Optional[str], Query()] = None,
-                              since: Annotated[Optional[int], Query()] = None):
+                              expiry: Annotated[Optional[str], Query()] = None):
     """The heatmap: the strike x expiration surface the levels producer projected (cell =
     net_gex_1pct, compute_exposures_by_strike), cut to the window the page draws (_surface_view:
     `scope`, the panned `centre` and a drag's `shift`, the `cols` the page fits, the selected
-    `expiry`; `since`, the `surface_seq` the page last drew, for the changed cells), with its
-    `view`: the centre, the coverage words, the contracts to stream and the colour scale. With no live surface the answer is "unavailable" with the reason; there is no
+    `expiry`), with its `view`: the centre, the coverage words, the contracts to stream and the
+    colour scale. With no live surface the answer is "unavailable" with the reason; there is no
     second source. Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale
     visibly."""
 
@@ -2172,8 +2140,7 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
         spot_strike = nearest_strike(surf.get("strikes"), _surface_live_spot[0])
         # `live` means sourced from the live levels; whether the cells on screen are streaming is
         # the view's coverage
-        window, view = _surface_view(_stamp_columns(surf), spot_strike, scope, centre, shift, cols, expiry,
-                                     since)
+        window, view = _surface_view(_stamp_columns(surf), spot_strike, scope, centre, shift, cols, expiry)
         return JSONResponse({
             # every cell Schwab listed is drawn: a cell without a value says why (absent)
             "ticker": tk, "symbol": tk, "available": True, "reason": None,

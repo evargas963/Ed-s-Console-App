@@ -113,8 +113,10 @@ Schwab sends is taken as sent (rule 2), never computed.
   parts → the console (`streaming.assemble_chain_part`: a chain is priced only with every part;
   one that arrived incomplete, or a fetch that failed, keeps the last levels with that reason) →
   `_on_chain` → priced on one pricing thread (`_price_chain`; at most one chain of each ticker
-  waits, the newest, and the ticker on screen's is priced before the others waiting; a chain older
-  than the one held is never published, whether delivered or stored). The sweep runs on
+  waits, the newest, and the ticker on screen's is priced before the others waiting; while the
+  startup load prices the stored captures the delivered chains wait, so the chains are priced in
+  the order they were fetched, after the stored ones). The chain's parts are events on the
+  daemon's bus (delivered, never kept as a topic's last value or replayed). The sweep runs on
   `CHAIN_WORKERS` (8) threads sharing one Schwab client, one fetch of a ticker at a time, at any
   hour: the active ticker (the wanted frame's `active`: the ticker on screen, on or off the
   board) is fetched back to back, taken again the moment its last fetch ends; the other
@@ -161,8 +163,9 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
   chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
   a new chain arrived) → the browser reads `/api/terrain` and four other slice routes. Not stored; at startup they are computed from the
-  newest chain capture of each board ticker (once the daemon's heartbeat says what the board is) until the daemon delivers the ticker's chain, on the levels loop's thread while the console already serves the
-  page (each ticker's levels appear as they are priced). The values read from the stored captures (forces: ΔOI, DEX and
+  newest chain capture of each board ticker (once the daemon's heartbeat says what the board is), on the levels loop's thread while the console already serves the
+  page (each ticker's levels appear as they are priced); the daemon's chains delivered meanwhile
+  are priced right after. The values read from the stored captures (forces: ΔOI, DEX and
   charm by side; the prior day's per-strike rows) are computed by the same producer only when the
   ticker's newest capture or its chain's day changes; `/api/forces` and `/api/terrain/strikes`
   serve that result and read no stored chain. The same publication carries each strike's net
@@ -214,18 +217,15 @@ Schwab sends is taken as sent (rule 2), never computed.
   an expired column is a past observation, drawn labelled EXPIRED, and with none unexpired Auto
   draws the expired ones so labelled), marks the row at the price and the front column, names
   the unexpired columns' contracts drawn (the page streams exactly these), names a selected
-  expiry the surface lacks (`missing_expiry`: nothing drawn or streamed), flashes each cell whose
-  value changed in a publication after `since`, the `surface_seq` the page last drew
-  (`_mark_changed` records the publication of each change, for the cells of each publication: a
-  strike or column that leaves and comes back starts afresh, as a new one does), and counts the unexpired cells drawn
+  expiry the surface lacks (`missing_expiry`: nothing drawn or streamed), and counts the unexpired cells drawn
   that are streaming (`_stream_coverage`): the header chip's words, ALL STREAMING only when every
   one is, N% STREAMING (the share rounded down; "<1%" under one), EXPIRED (every column drawn has
   expired) or WARMING, with a one-line tooltip. The page is served the words for each cell's and
   column's streaming state (meta `ed-stream-words`, `server.STREAM_WORDS`) and the scopes and
-  their words (meta `ed-scopes`); the volume profile serves its scale (`max_volume`). A
-  publication's `surface_seq` counts on from the console's start time, so `since` from before a
-  console restart is behind every new publication. The page sends the scope, its pan, the columns it fits
-  and the publication it drew; it picks, counts and compares nothing.
+  their words (meta `ed-scopes`); the volume profile serves its scale (`max_volume`). Each cell
+  shows the number of the newest publication the page read; no cell flashes (operator: the
+  moving number is the signal). The page sends the scope, its pan and the columns it fits; it
+  picks, counts and compares nothing.
 - **Live.** Every value is the last one Schwab sent, served at any hour with Schwab's own time
   (the price with its TRADE_TIME, `trade_time_ct`); no clock of ours calls a value live or the
   market closed (operator 2026-10-01: "From Schwab's mouth to our UI's ears. Period."). Whether
@@ -260,7 +260,10 @@ Schwab sends is taken as sent (rule 2), never computed.
   connection gets each change the moment it is marked (changes marked while one is sent go in
   the next). The console down: the page's session label reads
   `—` and no panel reloads until the browser's EventSource reconnects. A Trade Desk timeframe
-  switch asks only for that timeframe's bars, levels and event window.
+  switch asks only for that timeframe's bars, levels and event window. Each panel re-reads only
+  for the kinds it shows; Right Now re-reads only the reads of the kind pushed (flow: the
+  microstructure; levels and chain: the levels, terrain and per-strike rows; liquidity: the
+  liquidity snapshot).
 
 ### 3.5 Where today breaks the design
 

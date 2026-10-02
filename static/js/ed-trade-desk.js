@@ -322,20 +322,32 @@
     if (gh) gh.addEventListener('click', function () { _migGhost = !_migGhost; retrigger(); });
   }
 
+  // The page's five reads, each re-read only when what it serves changed: a push names the kind
+  // (flow, levels, chain, liquidity), and only that kind's reads run again; a new ticker, view or
+  // venue reads what it changes. The others are drawn as last read.
+  var PART_URL = {
+    detect: function (tk) { return '/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue; },
+    levelsD: function (tk) { return '/api/levels?ticker=' + encodeURIComponent(tk); },
+    terrain: function (tk) { return '/api/terrain?ticker=' + encodeURIComponent(tk); },
+    snap: function (tk) { return '/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk); },
+    strikesD: migStrikesUrl,   // the migration/volume section's window of the per-strike rows
+  };
+  var PARTS_BY_KIND = { flow: ['detect'], levels: ['levelsD', 'terrain', 'strikesD'],
+    chain: ['levelsD', 'terrain', 'strikesD'], liquidity: ['snap'] };
+  var _read = { tk: null, parts: {} }, _due = {};
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillRightNow(tk)) return;
+    if (_read.tk !== tk) { _read = { tk: tk, parts: {} }; Object.keys(PART_URL).forEach(function (p) { _due[p] = true; }); }
+    var parts = Object.keys(_due);
+    _due = {};
     h.setAttribute('aria-busy', 'true');
-    return Promise.all([
-      fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
-      fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
-      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
-      // the migration/volume section's window of the per-strike rows
-      fetchJson(migStrikesUrl(tk), signal),
-    ]).then(function (results) {
+    return Promise.all(parts.map(function (p) { return fetchJson(PART_URL[p](tk), signal); })).then(function (got) {
+      if (signal && signal.aborted) { parts.forEach(function (p) { _due[p] = true; }); return; }   // read again
+      parts.forEach(function (p, i) { _read.parts[p] = got[i]; });
       if (!stillRightNow(tk)) return;
-      var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
+      var r = _read.parts;
+      var detect = r.detect, levelsD = r.levelsD, terrain = r.terrain, snap = r.snap, strikesD = r.strikesD;
       // Independent-review finding, REPRODUCED: this used to fall back to terrain.spot when
       // levelsD was absent -- both endpoints resolve spot via the same server-side
       // resolve_spot() authority today (server.py's get_levels/_reprice_cached_terrain), so
@@ -373,17 +385,19 @@
   // fetch for the OLD toggle state instead of aborting it (the exact bug class this session's
   // audit found in loadStructures()/the order-flow heatmap's minute-range toggle).
   function _loadKey() { return ticker() + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0); }
-  function retrigger() { if (isRightNow()) _loader.trigger(_loadKey()); }
-  function load() {
-    if (!isRightNow()) return;
+  function readAgain(parts) {
+    if (!isRightNow() || !parts.length) return;
+    parts.forEach(function (p) { _due[p] = true; });
     _loader.trigger(_loadKey());
   }
+  function retrigger() { readAgain(['strikesD']); }   // the migration section's own toggles
+  function load() { readAgain(Object.keys(PART_URL)); }
 
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:book_venue', load);
-    document.addEventListener('ed:changed', load);
+    document.addEventListener('ed:book_venue', function () { readAgain(['detect']); });
+    document.addEventListener('ed:changed', function (e) { readAgain(PARTS_BY_KIND[e.detail.kind] || []); });
     document.addEventListener('ed:scope', reloadMigration);   // a new scope is a new window
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.

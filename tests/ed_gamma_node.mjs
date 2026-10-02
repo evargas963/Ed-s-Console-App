@@ -79,7 +79,7 @@ const strikes = [763, 764, 765];
 function surface(ticker) {
   return { available: true, ticker, spot: 764, strikes, live: true, stale: false,
     expirations: [{ expiry: '2026-09-11', dte: 0, expired: false }],
-    cells: strikes.map((k) => ({ strike: k, gex: [1000], spot: k === 764, changed: { gex: [false] },
+    cells: strikes.map((k) => ({ strike: k, gex: [1000], spot: k === 764,
       contracts: [{ call: ticker + 'C' + k, put: ticker + 'P' + k }] })),
     view: { centre: 764, scope: 'auto', note: null, coverage: null, max_abs: { gex: 1000 }, missing_expiry: null,
       demand: strikes.flatMap((k) => [ticker + 'C' + k, ticker + 'P' + k]) } };

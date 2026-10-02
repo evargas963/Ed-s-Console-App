@@ -215,7 +215,12 @@ class MessageBus:
                 self._retired_drops[name] = self._retired_drops.get(name, 0) + sub.dropped
 
     def publish(self, topic: str, msg: Any) -> None:
+        """A message that is its topic's latest state: kept (snapshot) and delivered."""
         self.cache[topic] = msg
+        self.publish_event(topic, msg)
+
+    def publish_event(self, topic: str, msg: Any) -> None:
+        """A message that is one event, not a state (a part of a chain): delivered, not kept."""
         self.published += 1
         for sub in self._subs:
             if topic.startswith(sub.prefix):
