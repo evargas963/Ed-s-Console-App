@@ -1,7 +1,7 @@
 /* Ed Console — Trade Desk / "Right Now" subview. PRESENTATION ONLY, computes nothing.
    The architectural home console.html has preserved verbatim since the rebuild started:
    "Detect -> Frame -> Confirm -> Execute reasoning flow." This module builds the first three
-   stages from FOUR already-canonical endpoints other workspaces already own -- one page, zero
+   stages from five already-canonical endpoints other workspaces already own -- one page, zero
    new math, zero new producers:
      DETECT  <- /api/order-flow/microstructure  (same engine the Order Flow > Book/DOM tab reads)
      FRAME   <- /api/levels + /api/liquidity-snapshot (same contracts Liquidity > Levels/Map read)
@@ -30,10 +30,11 @@
     var hook = (String(c).toLowerCase().match(/^[a-z0-9-]+/) || ['unknown'])[0];
     return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + '</span>';
   }
+  // a read that failed is absent (null); a read cut short by a newer one rejects, so it never draws
   function fetchJson(url, signal) {
     return fetch(url, { cache: 'no-store', signal: signal })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .catch(function () { return null; });
+      .catch(function (e) { if (e && e.name === 'AbortError') throw e; return null; });
   }
   var usd = function (n) {
     if (n == null || isNaN(n)) return '—';
@@ -200,8 +201,12 @@
   // operator's pan on its strike labels: EdShell.wireStrikeAxis). A pan or a new scope is a new
   // read of the page (its key carries both), so no push redraws an older window.
   var _migPan = window.EdShell.newPan(), _migPanTicker = null;
-  function migStrikesUrl(tk) {
+  function migPan(tk) {   // the pan is the ticker's: a new ticker follows the price
     if (_migPanTicker !== tk) { _migPan.centre = null; _migPan.shift = 0; _migPanTicker = tk; }
+    return _migPan;
+  }
+  function migStrikesUrl(tk) {
+    migPan(tk);
     return '/api/terrain/strikes?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(_migPan);
   }
   function wireMigration(panel, tk) {
@@ -316,16 +321,7 @@
     ]).then(function (results) {
       if (!stillRightNow(tk)) return;
       var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
-      // Independent-review finding, REPRODUCED: this used to fall back to terrain.spot when
-      // levelsD was absent -- both endpoints resolve spot via the same server-side
-      // resolve_spot() authority today (server.py's get_levels/_reprice_cached_terrain), so
-      // it never disagreed in practice, but the shape is exactly what tools/spot_binding_lock.py
-      // exists to ban (RC-225: a spot value chosen from whichever of two independent responses
-      // happened to be present). /api/levels is server.py's own documented canonical serving
-      // contract for spot ("every other surface carries the values out of the same snapshot");
-      // a failed /api/levels now reads as honest absence (blank, see isFinite(spot) below)
-      // instead of silently substituting a second source.
-      // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
+      // the spot is /api/levels' alone; a failed read or a null/'' spot is absent, never 0
       var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
       h.innerHTML =
         '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
@@ -339,22 +335,17 @@
       var migEl = document.getElementById('tdMigration');
       if (migEl) wireMigration(migEl, tk);
     }).catch(function (e) {
-      // Every sibling loader in this file (ed-order-flow.js, ed-order-flow-heatmap.js,
-      // ed-liquidity-map.js) ends in a .catch() that renders an honest fallback; this one
-      // didn't, so an exception while building the stage cards left the panel stuck on
-      // aria-busy/stale content with no visible failure state.
-      if (e && e.name === 'AbortError') return;
+      if (e && e.name === 'AbortError') return;   // the newer read draws
       if (stillRightNow(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">no console serving Right Now — one of its endpoints failed to render</div></div>';
     });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  // Every dimension that makes this "a different request" must be in the key -- ticker AND the
-  // migration section's own scope/ghost toggles -- or a toggle click queues behind an in-flight
-  // fetch for the OLD toggle state instead of aborting it (the exact bug class this session's
-  // audit found in loadStructures()/the order-flow heatmap's minute-range toggle).
+  // every input of the read is in its key, so a change aborts the read in flight instead of
+  // queueing behind it: the ticker, the venue, the migration chips, the Gamma scope and the pan
   function _loadKey() {
-    return ticker() + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0) + '|scope=' + st().scope +
-      '|pan=' + _migPan.centre + ',' + _migPan.shift;
+    var tk = ticker(), pan = migPan(tk);
+    return tk + '|venue=' + st().bookVenue + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0) +
+      '|scope=' + st().scope + '|pan=' + pan.centre + ',' + pan.shift;
   }
   function load() {
     if (!isRightNow()) return;
