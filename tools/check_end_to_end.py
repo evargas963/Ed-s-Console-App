@@ -117,6 +117,7 @@ def main(argv: "list[str] | None" = None) -> int:
     a = ap.parse_args(argv)
     body = Path(a.body_file).read_text(encoding="utf-8") if a.body_file else None
     found = violations(Path.cwd(), a.base, body)
+    sys.stdout.reconfigure(encoding="utf-8")       # the section names carry "→"
     for v in found:
         print(v)
     return 1 if found else 0
