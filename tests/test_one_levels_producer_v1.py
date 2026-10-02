@@ -609,6 +609,24 @@ def test_the_ticker_on_screen_is_the_newest_open_page(monkeypatch):
     assert ofs.current_wanted()["active"] is None and ofs.current_wanted()["NYSE_BOOK"] == []
 
 
+def test_a_page_whose_open_fails_is_closed(monkeypatch):
+    """A listener of the open failing (2026-10-01 review) still closes the page: it is not left
+    the ticker on screen with no client."""
+    import asyncio
+    monkeypatch.setattr(push_changes, "_open", [])
+
+    def broken():
+        raise RuntimeError("listener failed")
+    monkeypatch.setattr(server, "_follow_screen_contract", broken)
+
+    async def go():
+        stream = (await server.get_changes(ticker="AAA")).body_iterator
+        with pytest.raises(RuntimeError):
+            await stream.__anext__()
+    asyncio.run(go())
+    assert push_changes.on_screen() is None
+
+
 def test_a_listener_registered_again_replaces_its_own(monkeypatch):
     """2026-10-01: a second import of server registered its listeners again, and every change of
     the ticker on screen then ran them twice."""

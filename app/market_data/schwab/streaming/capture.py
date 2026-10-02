@@ -16,8 +16,8 @@ It does four things, in one loop:
              local console socket (live_push, ws://127.0.0.1:8799):
                {"op": "wanted", "wanted": {"active": "SPY", "LEVELONE_EQUITIES": ["SPY", ...], ...}}
              `active` is its ticker on screen: the chain sweep fetches it first.
-             The daemon keeps the last list on disk (stream_wanted.json) so a restart
-             resumes it before the console reconnects.
+             The list lives in memory only: a daemon that starts streams the board until the
+             console says what its screens show.
   2. SYNC    When the list changes, and every SYNC_SEC, it compares wanted with what Schwab has accepted on this
              connection and sends the difference: UNSUBS for what is no longer wanted, then
              SUBS (the first request of a service) or ADD (every later one -- a repeated SUBS
@@ -40,7 +40,6 @@ code 11 (not available) -- there is no trade-by-trade tape and no trade side.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import sys
@@ -98,10 +97,6 @@ NEWS_FIELDS = tuple(range(0, 11))
 
 # ---------------------------------------------------------------------------- the wanted list
 
-def wanted_path(db_path: "Path | str | None" = None) -> Path:
-    return resolve_stream_db_path(db_path).with_name("stream_wanted.json")
-
-
 def normalize_wanted(raw) -> "dict[str, frozenset[str]]":
     """{service: frozenset(symbols)} for the known services; anything else is ignored."""
     out: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
@@ -117,21 +112,6 @@ def wanted_active(raw) -> "str | None":
     """The console's ticker on screen, as its wanted list names it (`active`); None for none."""
     a = raw.get("active") if isinstance(raw, dict) else None
     return (a.strip().upper() or None) if isinstance(a, str) else None
-
-
-def load_wanted(path: Path):
-    """The last wanted list saved (stream_wanted.json), or None."""
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-
-
-def save_wanted(path: Path, wanted: "dict[str, frozenset[str]]", active: "str | None") -> None:
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"active": active, **{s: sorted(v) for s, v in wanted.items()}}),
-                   encoding="utf-8")
-    os.replace(tmp, path)
 
 
 def plan(wanted: "dict[str, frozenset[str]]", held: "dict[str, frozenset[str]]",
@@ -272,15 +252,14 @@ BOARD_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
 
 
 class Daemon:
-    def __init__(self, bus: MessageBus, health: HealthRegistry, path: Path,
+    def __init__(self, bus: MessageBus, health: HealthRegistry,
                  board: "list[str] | None" = None) -> None:
         self.bus = bus
         self.health = health
-        self.path = path
-        saved = load_wanted(path)
-        self.wanted = normalize_wanted(saved)
+        #: what the console's screens show, as it last said (none until it says)
+        self.wanted = normalize_wanted(None)
         #: the console's ticker on screen: its chain is fetched first (ChainSweep.set_active)
-        self.active = wanted_active(saved)
+        self.active: "str | None" = None
         self.wanted_changed = asyncio.Event()
         #: the board: the tickers fetched and streamed in the background (the logging_universe
         #: table, read at startup)
@@ -303,10 +282,6 @@ class Daemon:
         self.wanted_changed.set()                  # the connection syncs now
         if self.chains is not None:
             self.chains.set_active(active)
-        try:
-            save_wanted(self.path, new, active)
-        except OSError as e:
-            log.warning("could not save %s: %s", self.path.name, e)
 
     def all_wanted(self) -> "dict[str, frozenset[str]]":
         """Everything streamed: the console's list, and every board ticker on BOARD_SERVICES."""
@@ -524,7 +499,7 @@ async def run_chains(daemon: "Daemon", db_path, make_client, stop: asyncio.Event
     sweep = ChainSweep(db_path, daemon.board,
                        lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg))
     daemon.chains = sweep
-    sweep.set_active(daemon.active)                 # the last one on screen, before a restart
+    sweep.set_active(daemon.active)                 # the ticker on screen, if the console said one
     workers = [loop.run_in_executor(None, sweep.work, make_client, halt) for _ in range(CHAIN_WORKERS)]
     try:
         await stop.wait()
@@ -552,7 +527,7 @@ async def run() -> int:
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
-    daemon = Daemon(bus, health, wanted_path(), board=board_tickers(db_path))
+    daemon = Daemon(bus, health, board=board_tickers(db_path))
     wsub = bus.subscribe("", policy=COUNT_DROPS, name="db_writer")
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(run_chains(daemon, db_path, make_client, stop)),

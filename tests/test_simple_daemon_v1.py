@@ -60,13 +60,21 @@ def test_requests_are_split_under_schwabs_message_limit():
 
 # ------------------------------------------------------------------ the wanted list
 
-def test_the_wanted_list_survives_a_restart_and_a_change_clears_that_services_refusals(tmp_path):
+def test_the_wanted_list_is_the_consoles_now_and_a_change_clears_that_services_refusals():
+    """The list is what the console says now: a daemon starts with none (2026-10-01 review: a
+    restarted daemon streamed the books and contracts last asked for before any console said
+    so), and a list withdrawn (the console gone) is none."""
     bus, health = ss.MessageBus(), ss.HealthRegistry()
-    d = cap.Daemon(bus, health, tmp_path / "w.json")
-    assert d.wanted == _wanted(), "no built-in symbol list: the console decides"
-    d.set_wanted({"NYSE_BOOK": ["spy"], "LEVELONE_OPTIONS": ["SPY   261120C00875000"], "BOGUS": ["X"]})
-    assert cap.Daemon(bus, health, tmp_path / "w.json").wanted == _wanted(
-        NYSE_BOOK=["SPY"], LEVELONE_OPTIONS=["SPY   261120C00875000"])
+    d = cap.Daemon(bus, health)
+    assert d.wanted == _wanted() and d.active is None, "no built-in symbol list: the console decides"
+    d.set_wanted({"active": "spy", "NYSE_BOOK": ["spy"], "LEVELONE_OPTIONS": ["SPY   261120C00875000"],
+                  "BOGUS": ["X"]})
+    assert d.wanted == _wanted(NYSE_BOOK=["SPY"], LEVELONE_OPTIONS=["SPY   261120C00875000"])
+    assert d.active == "SPY"
+    assert cap.Daemon(bus, health).wanted == _wanted(), "a daemon that starts holds no earlier list"
+    d.set_wanted(None)                                   # the console's connection ended
+    assert d.wanted == _wanted() and d.active is None
+    d.set_wanted({"NYSE_BOOK": ["spy"], "LEVELONE_OPTIONS": ["SPY   261120C00875000"]})
     d.refused = {s: {} for s in cap.SERVICES}
     d.refused["NYSE_BOOK"] = {"SPY": "x"}
     d.refused["LEVELONE_OPTIONS"] = {"ZZZ": "x"}
@@ -78,7 +86,7 @@ def test_every_board_ticker_and_every_equity_the_screens_show_is_streamed(tmp_pa
     """Every board ticker is streamed on LEVELONE_EQUITIES, CHART_EQUITY and NEWS_HEADLINE beside
     every equity the console's screens show (the watchlist, the header's context, the ticker on
     screen)."""
-    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json", board=["$SPX", "SPY"])
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), board=["$SPX", "SPY"])
     d.set_wanted({"LEVELONE_EQUITIES": ["AMD"], "CHART_EQUITY": ["AMD"], "NEWS_HEADLINE": ["AMD"],
                   "NYSE_BOOK": ["SPY"]})
     w = d.all_wanted()
@@ -90,14 +98,13 @@ def test_every_board_ticker_and_every_equity_the_screens_show_is_streamed(tmp_pa
 def test_the_ticker_on_screen_is_the_chain_sweeps_active_ticker(tmp_path):
     """Operator 2026-10-01: the ticker on screen's chain is fetched ahead of the board. The
     console names it (`active`); the daemon never works it out from another list (2026-10-01
-    audit: it was read back out of the books list), and keeps it across its own restart."""
-    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json", board=["SPY"])
+    audit: it was read back out of the books list)."""
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), board=["SPY"])
     d.chains = cap.ChainSweep(tmp_path / "x.db", d.board, lambda t, m: None)
     d.set_wanted({"active": "MU", "NYSE_BOOK": ["MU"], "NASDAQ_BOOK": ["MU"]})
     assert d.chains._next(0.0) == "MU"
     d.set_wanted({"active": "TSLA", "NYSE_BOOK": ["AAPL"], "NASDAQ_BOOK": ["AAPL"]})
     assert d.chains._next(0.0) == "TSLA", "the named ticker, not the books"
-    assert cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json").active == "TSLA"
 
 
 # ------------------------------------------------------------------ sync against a fake Schwab
@@ -119,7 +126,7 @@ class FakeSchwab:
 def _daemon(tmp_path, monkeypatch, fake, board=(), **wanted):
     bus = ss.MessageBus()
     log = bus.subscribe("sub.", maxsize=100)
-    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json", board=list(board))
+    d = cap.Daemon(bus, ss.HealthRegistry(), board=list(board))
     d.set_wanted({k: list(v) for k, v in wanted.items()})
     d.stream = object()
     monkeypatch.setattr(cap, "_request", fake.request)
@@ -265,7 +272,7 @@ def test_a_dying_connection_is_replaced_and_everything_wanted_is_resubscribed(tm
     fake = FakeSchwab()
     monkeypatch.setattr(cap, "_request", fake.request)
     bus = ss.MessageBus()
-    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json", board=["SPY"])
+    d = cap.Daemon(bus, ss.HealthRegistry(), board=["SPY"])
     d.set_wanted({"NYSE_BOOK": ["SPY"]})
     stop = asyncio.Event()
 
@@ -298,7 +305,7 @@ def test_silence_from_schwab_ends_the_connection(tmp_path, monkeypatch):
     monkeypatch.setattr(cap, "_open_stream", FakeStream)
     monkeypatch.setattr(cap, "DEAD_SEC", 0.2)
     monkeypatch.setattr(cap, "_request", FakeSchwab().request)
-    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json")
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry())
 
     async def go():
         await d.run_connection(object(), asyncio.Event())
@@ -382,7 +389,7 @@ def test_the_console_socket_carries_the_wanted_list_in_and_the_status_out():
         return env
     env = asyncio.run(go())
     assert env == {"topic": "daemon.heartbeat", "msg": {"schwab_socket_open": True}}
-    assert got == [{"NYSE_BOOK": ["SPY"]}]
+    assert got == [{"NYSE_BOOK": ["SPY"]}, None]           # withdrawn when the console's connection ended
 
 
 # ------------------------------------------------------------------ the console side

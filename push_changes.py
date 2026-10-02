@@ -42,8 +42,10 @@ def on_change(fn) -> None:
 
 
 def on_screen() -> str | None:
-    """The ticker on screen: the newest open page's; None when no page is open."""
-    return _open[-1][0] if _open else None
+    """The ticker on screen: the newest open page's; None when no page is open. Read from any
+    thread (one slice of the list, which the event loop replaces whole)."""
+    newest = _open[-1:]
+    return newest[0][0] if newest else None
 
 
 def watched() -> list[str]:
@@ -51,9 +53,10 @@ def watched() -> list[str]:
     return list(dict.fromkeys(tk for tk, _c in list(_open)))
 
 
-def subscribe(tk: str) -> Client:
-    """A page opened on `tk` (on the event loop)."""
-    c = Client()
+def subscribe(tk: str, c: "Client | None" = None) -> Client:
+    """A page opened on `tk` (on the event loop), as connection `c` (a new one when not given:
+    a caller that must close it whatever happens creates it first)."""
+    c = Client() if c is None else c
     old = on_screen()
     _open.append((tk, c))
     _screen_moved(old)

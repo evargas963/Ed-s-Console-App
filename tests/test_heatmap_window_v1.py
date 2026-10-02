@@ -148,6 +148,8 @@ def test_expired_columns_are_drawn_labelled_and_never_streamed_or_counted(pin_cl
     assert not expired & set(every["view"]["demand"]) and every["view"]["demand"]
     only = _heat(expiry="2026-10-14")                              # the expired column alone
     assert only["view"]["demand"] == [] and only["view"]["coverage"]["cells"] == 0
+    # the chip says the columns have expired, not that no cell has a contract (2026-10-01 review)
+    assert (only["view"]["coverage"]["state"], only["view"]["coverage"]["label"]) == (server.COVERAGE_EXPIRED, "EXPIRED")
 
 
 def test_every_per_strike_panel_is_served_its_window_and_scale():

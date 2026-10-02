@@ -734,13 +734,16 @@ def _gamma_surface_wanted(tk: str) -> bool:
 
 
 #: Per-ticker revision of `_gamma_surface`, bumped on every publication; written only by
-#: _publish_levels under the ticker's levels lock.
+#: _publish_levels under the ticker's levels lock. Each console counts on from its start time (ms),
+#: so a page that drew a publication of the console before a restart (`since`) is behind every
+#: publication of the new one.
 _gamma_surface_seq: dict[str, int] = {}
+_GAMMA_SURFACE_SEQ_START = int(time.time() * 1000)
 
 
 def _next_gamma_surface_seq(tk: str) -> int:
     """Caller holds the ticker's _levels_lock."""
-    n = _gamma_surface_seq.get(tk, 0) + 1
+    n = _gamma_surface_seq.get(tk, _GAMMA_SURFACE_SEQ_START) + 1
     _gamma_surface_seq[tk] = n
     return n
 
@@ -963,15 +966,15 @@ STREAM_WORDS = {
 #: live (operator 2026-09-15: "every visible heatmap cell must correspond to an exact option
 #: contract actively receiving streamed Schwab updates"). Never the bare word LIVE: that is the
 #: price feed's word in the header.
-COVERAGE_LIVE, COVERAGE_PARTIAL, COVERAGE_WARMING = "live", "partial", "warming"
+COVERAGE_LIVE, COVERAGE_PARTIAL, COVERAGE_WARMING, COVERAGE_EXPIRED = "live", "partial", "warming", "expired"
 
 
-def _stream_coverage(cells: list, cols: "list[int]") -> dict:
+def _stream_coverage(cells: list, cols: "list[int]", expired_only: bool) -> dict:
     """How many of the heatmap's `cells` (the window on screen, _surface_view) are live, over the
-    columns `cols` that can stream (an expired column's contracts never will). Only cells with a
-    contract count (a strike an expiry does not list was never a data point). Returns the counts
-    by cell state, the share live rounded down (100 only when every cell is live), and the
-    header's words: `state`, `label`, `title`."""
+    columns `cols` that can stream (an expired column's contracts never will; `expired_only`:
+    every column drawn has expired). Only cells with a contract count (a strike an expiry does
+    not list was never a data point). Returns the counts by cell state, the share live rounded
+    down (100 only when every cell is live), and the header's words: `state`, `label`, `title`."""
     counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "daemon_unavailable": 0,
               "rejected": 0, "unavailable": 0}
     for cell in cells:
@@ -985,7 +988,9 @@ def _stream_coverage(cells: list, cols: "list[int]") -> dict:
             counts[state if state in counts else "unavailable"] += 1
     cells_n = sum(counts.values())
     live_pct = 100 * counts["live"] // cells_n if cells_n else None
-    if not cells_n:
+    if not cells_n and expired_only:
+        state, label, title = COVERAGE_EXPIRED, "EXPIRED", "every column on screen has expired: none streams"
+    elif not cells_n:
         state, label, title = COVERAGE_WARMING, "WARMING", "no cell on screen has a contract yet"
     elif counts["live"] == cells_n:
         state, label, title = COVERAGE_LIVE, "ALL STREAMING", f"all {cells_n} cells streaming"
@@ -1015,25 +1020,29 @@ def _mark_changed(surface: dict, previous: "dict | None") -> None:
     which that cell's value last changed}, for the cells that have changed since they first
     appeared, carried from `previous` (the ticker's last publication). _surface_view turns it into
     the page's flash for the publications the page has not drawn yet."""
-    before = {}
+    changes = dict((previous or {}).get("changes") or {})   # none recorded: none to carry
     if previous:
-        exps = [e.get("expiry") for e in previous.get("expirations") or []]
-        for cell in previous.get("cells") or []:
+        seq = surface["surface_seq"]
+        exps = [e.get("expiry") for e in surface.get("expirations") or []]
+        before_exps = [e.get("expiry") for e in previous.get("expirations") or []]
+        before = {cell.get("strike"): cell for cell in previous.get("cells") or []}
+        for cell in surface.get("cells") or []:
+            k = cell.get("strike")
+            old = before.get(k)
+            if old is None:
+                continue                                  # a new strike: nothing to compare
             for m in HEAT_MEASURES:
-                for e, v in zip(exps, _measure_values(cell, m)):
-                    before[(m, cell.get("strike"), e)] = v
-    carried = (previous or {}).get("changes") or {}   # none recorded: none to carry
-    seq = surface["surface_seq"]
-    exps = [e.get("expiry") for e in surface.get("expirations") or []]
-    changes = {}
-    for cell in surface.get("cells") or []:
-        for m in HEAT_MEASURES:
-            for e, v in zip(exps, _measure_values(cell, m)):
-                key = (m, cell.get("strike"), e)
-                if key in before and before[key] != v:
-                    changes[key] = seq
-                elif key in carried:
-                    changes[key] = carried[key]
+                now_v, was_v = _measure_values(cell, m), _measure_values(old, m)
+                if exps == before_exps:
+                    if now_v == was_v:
+                        continue                          # the row is unchanged (most rows)
+                    pairs = zip(exps, now_v, was_v)
+                else:
+                    was = dict(zip(before_exps, was_v))
+                    pairs = ((e, v, was[e]) for e, v in zip(exps, now_v) if e in was)
+                for e, v, w in pairs:
+                    if v != w:
+                        changes[(m, k, e)] = seq
     surface["changes"] = changes
 
 
@@ -1102,7 +1111,7 @@ def _surface_view(surf: dict, spot_strike, scope: str, centre, shift: int, cols:
     window = {**{k: v for k, v in surf.items() if k != "changes"},
               "strikes": (surf.get("strikes") or [])[lo:hi + 1],
               "expirations": [exps[j] for j in picked], "cells": cells}
-    return window, {**view, "scope": scope, "coverage": _stream_coverage(cells, streams), "demand": demand,
+    return window, {**view, "scope": scope, "coverage": _stream_coverage(cells, streams, bool(picked) and not streams), "demand": demand,
                     "max_abs": max_abs, "missing_expiry": expiry if expiry and not picked else None}
 
 
@@ -2197,7 +2206,8 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
     # REQUESTED: a page shows this ticker. WARMING: its chain is coming -- it is the ticker on
     # screen (fetched first) or on the board (fetched in turn). The reason is that state's own.
     _requested = _gamma_surface_wanted(tk)
-    _warming = tk == push_changes.on_screen() or tk in (_board() or [])
+    _board_now = _board()                      # None: the daemon's heartbeat is not current
+    _warming = tk == push_changes.on_screen() or tk in (_board_now or [])
     _state = terrain_staleness((live or {}).get("computed_ts_utc"), tk)
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
                      "live": False, "stale": True, "warming": _requested and _warming,
@@ -2205,6 +2215,8 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
                      "reason": _state["levels_stale_reason"] or (
                          "the surface is projected when the daemon delivers this ticker's chain"
                          if _warming else
+                         "the capture daemon is not reporting (no current heartbeat): its board is unknown"
+                         if _board_now is None else
                          "no chain is fetched for this ticker: it is not on screen or on the board")}
     return JSONResponse(payload)
 
@@ -2352,10 +2364,11 @@ async def get_changes(ticker: str = Query(...)):
     t = ticker_storage_key(_required_ticker(ticker))
 
     async def event_generator():
-        # the page is open while this stream runs: it opens here and closes in `finally`, so a
-        # connection that never starts streaming never opens one
-        client = push_changes.subscribe(t)
+        # the page is open while this stream runs: it opens here and closes in `finally` (even when
+        # a listener of the open fails), so a connection that never starts streaming opens none
+        client = push_changes.Client()
         try:
+            push_changes.subscribe(t, client)
             yield f"event: session\ndata: {session_label(now_et())}\n\n"
             while True:
                 kinds = await push_changes.next_changes(client, CHANGES_SESSION_SEC)

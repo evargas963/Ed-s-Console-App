@@ -359,7 +359,7 @@
   #heatScope.cov::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ed-quiet)}
   #heatScope.cov-live::before{background:var(--ed-live);box-shadow:0 0 6px var(--ed-live)}
   #heatScope.cov-partial::before{background:var(--ed-warn)}
-  #heatScope.cov-warming::before{background:var(--ed-stale)}
+  #heatScope.cov-warming::before, #heatScope.cov-expired::before{background:var(--ed-stale)}
   .panel-h #klSrc{font-size:10px;color:var(--ed-ink-4)}
   .panel-h .r{margin-left:auto;display:flex;align-items:center;gap:7px}
   /* #4: compact per-panel source/as-of badge - each panel discloses ITS OWN canonical freshness,
@@ -760,7 +760,7 @@
           <option value="gex">GEX</option><option value="dex">DEX</option>
           <option value="oi">Open Interest</option><option value="volume">Volume</option>
         </select><span class="cv"></span></label>
-        <div class="scope" id="scopeCtl" hidden title="View window around spot for the chart / GEX-by-strike panels — presentation only, never changes a value">
+        <div class="scope" id="scopeCtl" hidden title="How many strikes around the price every per-strike panel shows">
           <span class="cap">View</span>
         </div>
         <button class="aibtn" id="aiOpen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3a4 4 0 0 1 4 4c2 1 3 3 3 5a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5c0-2 1-4 3-5a4 4 0 0 1 4-4z"/><path d="M9 20h6"/></svg>Analyst</button>

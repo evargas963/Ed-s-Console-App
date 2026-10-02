@@ -21,7 +21,7 @@ def _daemon_reading(db):
     from app.market_data.schwab.streaming import capture
     from calibration.complete_chain_capture import board_tickers
     from stream_spine import HealthRegistry, MessageBus
-    d = capture.Daemon(MessageBus(), HealthRegistry(), db.parent / "w.json", board=board_tickers(db))
+    d = capture.Daemon(MessageBus(), HealthRegistry(), board=board_tickers(db))
     lmp.record_feed_heartbeat(d.status(), time.time())
     return d
 

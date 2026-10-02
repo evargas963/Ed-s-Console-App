@@ -49,7 +49,7 @@ Schwab sends is taken as sent (rule 2), never computed.
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
 | Schwab → daemon | Schwab REST | full option chains, each with its contracts' quotes (their Greeks, §3.4 Option chain) |
 | daemon → console | local WebSocket 127.0.0.1:8799 | every Schwab message as sent, on connect the current state first; each chain in parts of 500 contracts (`chain.TK`: part i of n, with its fetch time; a failed fetch with Schwab's answer); the heartbeat every second, carrying the board and the chain sweep's last round time |
-| console → daemon | same socket | the "wanted" list, every symbol per Schwab service, no cap: the equities its screens show (the ticker on screen, the header's context `streaming.MARKET_CONTEXT_SYMBOLS`, the browser's watchlist; the daemon streams the board itself), the books of the ticker on screen, `active`: the ticker on screen (`push_changes.on_screen`, the newest open page's; the chain sweep's active ticker, kept in `stream_wanted.json` across a restart; when no page shows a ticker, none), and the option contracts its views ask for (the primary contract only from a chain the console holds, refused otherwise (409)). Sent the moment it changes; the daemon compares it with what Schwab holds at once |
+| console → daemon | same socket | the "wanted" list, every symbol per Schwab service, no cap: the equities its screens show (the ticker on screen, the header's context `streaming.MARKET_CONTEXT_SYMBOLS`, the browser's watchlist; the daemon streams the board itself), the books of the ticker on screen, `active`: the ticker on screen (`push_changes.on_screen`, the newest open page's; the chain sweep's active ticker; when no page shows a ticker, none). The daemon holds the list in memory only, for the connection that sent it: when that connection ends, and after the daemon's restart, it streams the board alone until the console sends the list again, and the option contracts its views ask for (the primary contract only from a chain the console holds, refused otherwise (409)). Sent the moment it changes; the daemon compares it with what Schwab holds at once |
 | daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
 | daemon → console | the same :8800 push | the same price rows, for every equity the daemon holds on Schwab (`streaming._rows_wanted`: the heartbeat's held LEVELONE_EQUITIES, the console's wanted ones and the board as Schwab accepted them): the console's only live price |
 | console → browser | HTTP `/api/*` | everything else, on request |
@@ -185,9 +185,10 @@ Schwab sends is taken as sent (rule 2), never computed.
   (the chain sweep fetches it first, its books stream), its chain is priced before the others
   waiting, and its option contract follows it (`server._follow_screen_contract`). When that owner
   fails (no page streaming, the console down), no ticker is on screen: no books, no chain ahead
-  of the board, no option contract; the daemon keeps the last `active` across its own restart
-  (`stream_wanted.json`) until the console says otherwise. A viewed ticker's heatmap reads
-  "warming" until its first chain is priced. Levels older
+  of the board, no option contract; the daemon drops the console's list when the console's
+  connection to it ends, and starts with none. A viewed ticker that is on screen or on the board
+  reads "warming" until its first chain is priced; any other reads why no chain is fetched.
+  Levels older
   than two of the sweep's delivered rounds are stale with the reason (the daemon's last answer
   for its chain, or not delivered), whatever the hour.
   Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`); the
@@ -215,10 +216,12 @@ Schwab sends is taken as sent (rule 2), never computed.
   value changed in a publication after `since`, the `surface_seq` the page last drew
   (`_mark_changed` records the publication of each change), and counts the unexpired cells drawn
   that are streaming (`_stream_coverage`): the header chip's words, ALL STREAMING only when every
-  one is, N% STREAMING (the share rounded down; "<1%" under one) or WARMING, with a one-line
-  tooltip; the surface serves the words for each cell's and column's streaming state
-  (`stream_words`). The scopes and their words are served in the page (meta `ed-scopes`), the
-  volume profile its scale (`max_volume`). The page sends the scope, its pan, the columns it fits
+  one is, N% STREAMING (the share rounded down; "<1%" under one), EXPIRED (every column drawn has
+  expired) or WARMING, with a one-line tooltip. The page is served the words for each cell's and
+  column's streaming state (meta `ed-stream-words`, `server.STREAM_WORDS`) and the scopes and
+  their words (meta `ed-scopes`); the volume profile serves its scale (`max_volume`). A
+  publication's `surface_seq` counts on from the console's start time, so `since` from before a
+  console restart is behind every new publication. The page sends the scope, its pan, the columns it fits
   and the publication it drew; it picks, counts and compares nothing.
 - **Live.** Every value is the last one Schwab sent, served at any hour with Schwab's own time
   (the price with its TRADE_TIME, `trade_time_ct`); no clock of ours calls a value live or the

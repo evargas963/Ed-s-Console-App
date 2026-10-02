@@ -26,7 +26,6 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 - S-22 `_prior_strikes` and `terrain_engine.per_strike_view` each define the 7-DTE near/far split.
 - S-23 `_side_sums` leaves a row's missing strike, gamma or volume out of its sum without counting them; its sums use the live spot while the rows were priced at the snapshot's.
 - S-38 `_publish_levels` reads the database (`newest_capture_ts`) on every new chain to learn whether a newer capture exists; the daemon, which writes the captures, could carry that time on the chain it delivers.
-- S-39 the daemon reloads `stream_wanted.json` at its start and streams the option contracts and the active ticker last asked for until the console reconnects.
 - S-24 live screens read the database: `/api/bars1m` and the price levels (`_read_bars_1m`), `/api/options/tape` (`tape_rows_for_symbol`), the book heatmap, `/api/desk/events` (level crosses), the ATR (with ONE-04/05/06).
 - S-30 the equity microstructure route (`flow`), the options one (`streaming_plane`) and the microstructure content build return None/{} after an exception with no reason.
 - S-35 `get_levels` expected-move levels: live spot ± the chain-time move, stamped with the terrain's time and stale flag, computed in the route.
@@ -88,7 +87,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 
 **Page code (static/js)**
 - P-02 ages formatted and thresholded on the page (`fmtAge`, `Math.round(trade_age_sec)`); the push-silence verdict is the page's clock (`PRICE_SILENCE_MS`).
-- P-09 an absent `live` reads live; first-of and "undefined" reasons; stale cells drawn as normal values; a column-0 default; every error relabelled "no console serving".
+- P-09 an absent `live` reads live; first-of and "undefined" reasons; stale cells drawn as normal values; every error relabelled "no console serving".
 - P-10 six or more page formatters for dollars and volume with different precision.
 - P-12 Strike Detail matches contracts by tolerance, substitutes the put for the call, uses a UTC date and reads the raw contracts (a -999 prints).
 - P-13 Key Levels: a fallback age formatter and a page-computed live badge.

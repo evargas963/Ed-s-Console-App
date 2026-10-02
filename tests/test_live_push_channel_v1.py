@@ -179,6 +179,31 @@ def test_a_connecting_console_receives_the_last_values_first(feed):
     asyncio.run(run())
 
 
+def test_a_consoles_wanted_list_is_withdrawn_when_its_connection_ends(feed):
+    """What the console's screens show is the console's now: when its connection ends, the
+    daemon holds no list from it (2026-10-01 review: the books, the contracts and the chain asked
+    for first stayed with no console to show them)."""
+    import json as _json
+
+    from websockets.asyncio.client import connect
+    said: list = []
+
+    async def run():
+        stop = asyncio.Event()
+        stats: dict = {}
+        server = asyncio.create_task(live_push.serve_live_push(MessageBus(), stop, port=feed, stats=stats,
+                                                               on_wanted=said.append))
+        assert await _until(lambda: stats.get("listening"))
+        async with connect(f"ws://127.0.0.1:{feed}") as ws:
+            await ws.send(_json.dumps({"op": "wanted", "wanted": {"active": "SPY", "NYSE_BOOK": ["SPY"]}}))
+            assert await _until(lambda: said)
+        assert await _until(lambda: len(said) == 2)
+        stop.set()
+        await asyncio.gather(server, return_exceptions=True)
+    asyncio.run(run())
+    assert said == [{"active": "SPY", "NYSE_BOOK": ["SPY"]}, None]
+
+
 def test_option_l1_and_book_update_the_contract_and_report_greeks(feed, monkeypatch):
     seen: list = []
     monkeypatch.setattr(ofs, "_on_tick_callback", seen.append)

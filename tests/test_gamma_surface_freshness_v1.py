@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import live_market_plane as lmp
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from db import EdDB
@@ -151,6 +152,19 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(_fresh, monk
     assert server._gamma_surface_wanted(tk)
     push_changes.unsubscribe(tk, client)            # the page closed or changed ticker
     assert not server._gamma_surface_wanted(tk)
+
+
+def test_with_the_daemon_silent_a_ticker_off_screen_says_the_board_is_unknown(_fresh, view):
+    """2026-10-01 review: with no current heartbeat the board is unknown, so a viewed ticker that is
+    not on screen must not read "not on the board"."""
+    view(_OFF, _BOARD)                              # _OFF open on an older page; _BOARD on screen
+    with server._terrain_cache_lock:
+        server._terrain_cache[_OFF] = {"computed_ts_utc": time.time(), "spot": 100.0}   # levels, no surface
+    lmp.record_feed_heartbeat({"ts": time.time() - 100, "schwab_socket_open": True, "board": [_OFF]},
+                              time.time() - 100)    # the daemon's last heartbeat is old
+    d = _call(_OFF)
+    assert d["warming"] is False
+    assert d["reason"] == "the capture daemon is not reporting (no current heartbeat): its board is unknown"
 
 
 def test_a_chain_schwab_refused_says_schwabs_answer(_fresh, view):
