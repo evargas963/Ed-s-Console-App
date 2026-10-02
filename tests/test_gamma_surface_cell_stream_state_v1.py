@@ -316,9 +316,8 @@ def _call(tk, expiry=None):
 
 
 def test_endpoint_reads_all_streaming_when_every_cell_on_screen_is_live():
-    """2026-09-16 audit finding #6: ALL STREAMING requires 100% of cells WITH a contract
-    identity to be live -- a single-cell surface where that one cell is live is the trivial
-    case where the bar and the old (wrong) >=1 threshold coincide."""
+    """ALL STREAMING requires every cell with a contract on screen to be live; here the one cell
+    is."""
     tk = ticker_storage_key("ZZZTEST1")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
             "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]}],
@@ -355,8 +354,7 @@ def test_endpoint_reads_zero_streaming_when_no_cell_is_live():
 
 
 def test_endpoint_reads_partial_when_only_some_cells_are_live():
-    """The core of audit finding #6: MORE than zero live cells, but not ALL of them, is never
-    ALL STREAMING -- the exact case the old >=1-cell threshold got wrong."""
+    """Some cells live but not all is never ALL STREAMING."""
     tk = ticker_storage_key("ZZZTEST_PARTIAL")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
             "cells": [

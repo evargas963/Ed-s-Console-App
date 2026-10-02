@@ -3,8 +3,7 @@ ears. Period."; "shouldn't be a dash should be 0").
 
 A listed contract with open interest 0 holds no position: its GEX is gamma x 0 = 0, whatever its
 Greeks (Schwab sends -999 Greeks for a contract that has not traded). The cell is 0, drawn "$0".
-A strike with no contract listed in an expiry is served as "-" and drawn so (operator, 2026-10-01:
-"i don't like that message in the heatmap cells or anywhere else, just use a - instead").
+A strike with no contract listed in an expiry is served as "-" and drawn so: a dash, no words.
 
 Real data, one column each:
 - SPY 2026-10-14 as the production console held it on 2026-10-01 08:59:47 ET
