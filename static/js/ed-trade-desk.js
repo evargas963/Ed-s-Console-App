@@ -285,7 +285,8 @@
       '</div>';
   }
 
-  // a chip click is a new read of the page through its one loader
+  // a chip click is a new read through the page's one loader, never a second fetch beside the
+  // one in flight (whichever landed last would draw)
   function wireMigrationChips(h, tk) {
     h.querySelectorAll('[data-mig-scope]').forEach(function (b) {
       b.addEventListener('click', function () {

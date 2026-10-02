@@ -453,18 +453,27 @@ test.describe('Trade Desk renders served values', () => {
     await expect(strikes).toHaveText(['792', '791', '790']);          // the window asked for, not the old one
   });
 
-  test('no panel stays marked busy once it has drawn', async ({ page }) => {
+  test('no panel stays marked busy once its read has landed', async ({ page }) => {
     await intercept(page);
-    const panels = [['trade-desk', 'right-now', '', '#tdBody'], ['options', 'gamma', 'heatmap', '#heatBody'],
-      ['options', 'gamma', 'levels', '#levelsBody'], ['options', 'chain', '', '#chainBody'],
-      ['options', 'flow', '', '#flowBody'], ['order-flow', 'book', '', '#obBody']];
-    for (const [ws, sub, view, host] of panels) {
+    const CONTRACT = 'SPY   261002C00768000';
+    await page.route('**/api/streaming/active-option-contract', (route) => route.fulfill({ status: 200,
+      contentType: 'application/json', body: JSON.stringify({ ok: true, contract: CONTRACT }) }));
+    // each panel and the read it makes; Flow reads only once a contract is chosen and accepted
+    const panels = [['trade-desk', 'right-now', '', '/api/order-flow/microstructure'],
+      ['options', 'gamma', 'heatmap', '/api/options/gamma-surface'], ['options', 'gamma', 'levels', '/api/levels'],
+      ['options', 'chain', '', '/api/chain'], ['options', 'flow', '', '/api/order-flow/options-microstructure'],
+      ['order-flow', 'book', '', '/api/order-flow/microstructure']];
+    for (const [ws, sub, view, read] of panels) {
       await page.addInitScript(([w, s, v]) => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', w);
         localStorage.setItem('ed_sub', s); if (v) localStorage.setItem('ed_view', v); } catch (e) {} }, [ws, sub, view]);
+      const landed = page.waitForResponse((r) => new URL(r.url()).pathname === read);
       await page.goto('/', { waitUntil: 'domcontentloaded' });
-      await expect(page.locator(host)).not.toBeEmpty();
-      await page.waitForTimeout(500);                                // its reads have landed and drawn
-      expect(await page.locator('[aria-busy="true"]').count(), host).toBe(0);
+      if (sub === 'flow') {
+        await page.evaluate((c) => window.EdStream.setActiveContract(c), CONTRACT);
+        await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:contract')));
+      }
+      await landed;                                                  // the read began, and so set its flag, before this
+      expect(await page.locator('[aria-busy="true"]').count(), sub + ' ' + view).toBe(0);
     }
   });
 
