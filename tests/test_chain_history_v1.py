@@ -266,17 +266,6 @@ def test_an_idle_worker_takes_a_new_active_ticker_at_once(tmp_path, schwab):
     assert "SPY" in schwab.chains and took < 0.5, took
 
 
-def test_a_request_waiting_for_a_connection_never_times_out(tmp_path):
-    """Every request of a chain is sent at once (operator 2026-10-01), more than the client's
-    100 connections: one that waits for a connection must not fail on httpx's 5 s pool timer;
-    Schwab's own answer keeps its 5 s limit."""
-    state = _built()
-    sweep, _published, _clock = _sweep(tmp_path, [], "2026-09-30 15:31:57")
-    client = sweep._shared_client(lambda: state)
-    assert client.session.timeout.pool is None
-    assert client.session.timeout.read == client.session.timeout.connect == 5.0
-
-
 def test_no_ticker_is_fetched_twice_at_once(tmp_path, schwab):
     """2026-10-01 audit: two workers could fetch one ticker at the same time (a one-ticker
     board, or the active one)."""

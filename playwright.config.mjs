@@ -4,6 +4,8 @@ import { defineConfig } from '@playwright/test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { projectPython } from './scripts/project-python.mjs';
 
 // RC-515 + RC-534 reconciled: this is the one E2E process boundary. The web server
 // receives no live runtime path, token, or credentials from its parent. RC-534 disabled the
@@ -48,7 +50,7 @@ export default defineConfig({
     storageState: 'tests/e2e/fixtures/operator_chose_spy.storage.json',
   },
   webServer: {
-    command: 'python -m uvicorn server:app --host 127.0.0.1 --port 8765',
+    command: `"${projectPython(path.dirname(fileURLToPath(import.meta.url)))}" -m uvicorn server:app --host 127.0.0.1 --port 8765`,
     url: 'http://127.0.0.1:8765/',
     timeout: 120000,
     reuseExistingServer: false,

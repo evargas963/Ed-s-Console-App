@@ -22,8 +22,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import httpx
-
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from production_universe import is_valid_production_ticker
@@ -310,11 +308,6 @@ class ChainSweep:
                 state = make_client()
                 if not state.ok or state.client is None:
                     raise ConnectionError(f"no Schwab client ({state.message})")
-                # every request is sent at once, more than the client's 100 connections: one
-                # waiting for a connection waits (httpx's pool wait is 5 s by default). An
-                # answer, once sent, keeps httpx's default 5 s limit, so a hung request frees
-                # its worker; a slower answer fails the chain with that reason (SPEED)
-                state.client.set_timeout(httpx.Timeout(5.0, pool=None))
                 self._client = state.client
             return self._client
 

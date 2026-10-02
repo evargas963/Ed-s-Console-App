@@ -14,8 +14,12 @@ from datetime import date
 from typing import Optional
 from urllib.parse import urlparse
 
+import httpx
 from authlib.common.errors import AuthlibBaseError
+from authlib.integrations.httpx_client import OAuth2Client
 from schwab import auth
+from schwab.client import Client
+from schwab.debug import register_redactions
 
 from time_et import now_et
 import logging
@@ -104,12 +108,19 @@ def _token_read_func(resolved: str):
 
 def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str, *,
                                   enforce_enums: bool = False):
-    """schwab-py client from the token file, with ATOMIC token refresh writes. Use this, never
-    auth.client_from_token_file (its writer rewrites the file in place)."""
+    """schwab-py's client from the token file, built as auth.client_from_access_functions builds
+    it, with two differences: every token refresh is written atomically (schwab-py's writer
+    rewrites the file in place), and the session holds as many connections at once as there
+    are requests (httpx's default is 100, and schwab-py passes it nothing)."""
     resolved = _resolve_token_path(token_path)
-    return auth.client_from_access_functions(
-        api_key, app_secret, _token_read_func(resolved), _token_update_func(resolved),
-        enforce_enums=enforce_enums)
+    metadata = auth.TokenMetadata.from_loaded_token(_token_read_func(resolved)(),
+                                                     _token_update_func(resolved))
+    register_redactions(metadata.token)
+    session = OAuth2Client(api_key, client_secret=app_secret, token=metadata.token,
+                           token_endpoint=auth.TOKEN_ENDPOINT,
+                           update_token=metadata.wrapped_token_write_func(), leeway=300,
+                           limits=httpx.Limits(max_connections=None, max_keepalive_connections=None))
+    return Client(api_key, session, token_metadata=metadata, enforce_enums=enforce_enums)
 
 
 def inspect_token_file(token_path: str) -> TokenInspectionResult:

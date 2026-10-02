@@ -28,30 +28,69 @@ def _handler():
 
 
 
-def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
-    """The client schwab-py builds refreshes through OUR writer (temp + replace), never
-    open(path, 'w') in place (audit of #280: the atomic helper had no production caller)."""
+def _token_file(tmp_path):
+    """A token file in schwab-py's shape (the stand-in for schwab_token.json), valid for an hour."""
     import json
-    import schwab_client as sc
-    from schwab import auth
-
+    import time
     tok = tmp_path / "schwab_token.json"
-    tok.write_text(json.dumps({"creation_timestamp": 1, "token": {"access_token": "a"}}))
-    seen = {}
+    tok.write_text(json.dumps({"creation_timestamp": int(time.time()), "token": {
+        "access_token": "a", "refresh_token": "r", "token_type": "Bearer",
+        "expires_in": 3600, "expires_at": int(time.time()) + 3600}}))
+    return tok
 
-    def fake_access_functions(api_key, app_secret, read, write, **kw):
-        seen["read"] = read()
-        write({"creation_timestamp": 2, "token": {"access_token": "b"}})
-        return "client"
-    monkeypatch.setattr(auth, "client_from_access_functions", fake_access_functions)
-    replaced = []
+
+def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
+    """The client we build refreshes through OUR writer (temp + replace), never open(path, 'w')
+    in place (audit of #280: the atomic helper had no production caller)."""
+    import json
     import os as _os
+    import schwab_client as sc
+
+    tok = _token_file(tmp_path)
+    replaced = []
     real_replace = _os.replace
     monkeypatch.setattr(_os, "replace", lambda a, b: (replaced.append((a, b)), real_replace(a, b))[1])
-    assert sc.client_from_token_file_atomic(str(tok), "k", "s") == "client"
-    assert seen["read"]["token"]["access_token"] == "a"
+    client = sc.client_from_token_file_atomic(str(tok), "k", "s")
+    assert client.session.token["access_token"] == "a"
+    client.session.update_token({"access_token": "b", "refresh_token": "r"})   # a refresh
     assert json.loads(tok.read_text())["token"]["access_token"] == "b"
     assert replaced and str(replaced[0][1]) == str(tok), "the refresh must land via os.replace"
+
+
+def test_the_client_holds_every_request_open_at_once(tmp_path):
+    """Operator 2026-10-01: no caps. httpx holds 100 connections at once by default; the client
+    we build sends 150 requests at once and all 150 reach the server together (the server
+    answers none until all have arrived)."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    import schwab_client as sc
+    n = 150
+    together = threading.Barrier(n, timeout=20)
+
+    class Held(BaseHTTPRequestHandler):
+        def do_GET(self):
+            together.wait()
+            self.send_response(200)
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *a):
+            pass
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Held)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        client = sc.client_from_token_file_atomic(str(_token_file(tmp_path)), "k", "s")
+        client.set_timeout(30.0)
+        url = f"http://127.0.0.1:{srv.server_address[1]}/"
+        with ThreadPoolExecutor(max_workers=n) as pool:
+            codes = list(pool.map(lambda _: client.session.get(url).status_code, range(n)))
+        assert codes == [200] * n
+    finally:
+        srv.shutdown()
 
 
 
