@@ -152,6 +152,24 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
     asyncio.run(_run(feed, body))
 
 
+def test_a_chain_part_is_delivered_once_and_never_kept():
+    """A chain part is an event: delivered to whoever listens now, never held as a topic's last
+    value (the daemon kept the last part of every ticker's chain, megabytes each, for a replay
+    that had to skip them)."""
+    from calibration.complete_chain_capture import chain_messages
+
+    async def run():
+        bus = MessageBus()
+        sub = bus.subscribe("chain.")
+        for topic, msg in chain_messages("SPY", [{"symbol": "X"}], 1.0):
+            bus.publish_event(topic, msg)
+        got = sub.queue.get_nowait()
+        return got, bus.snapshot()
+    (topic, msg), kept = asyncio.run(run())
+    assert topic == "chain.SPY" and live_push.encode(topic, msg) == msg["frame"]
+    assert kept == {}
+
+
 def test_a_connecting_console_receives_the_last_values_first(feed):
     ts = time.time()
 

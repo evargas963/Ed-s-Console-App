@@ -1,6 +1,6 @@
 """The heatmap the server serves is the one the page draws: the strike rows of the scope around the
 price (or the panned centre), the columns the page fits, the row at the price, the contracts to
-stream, each measure's colour scale and the cells whose value changed since the last publication.
+stream and each measure's colour scale.
 Real data: three SPY chain captures, one expiry each (10-14, 10-15, 11-20), published as one chain
 (no single capture spans three expiries); the live price is a stand-in, the 10-15 capture's spot."""
 from __future__ import annotations
@@ -28,7 +28,7 @@ TK = "SPY"
 def _published(monkeypatch, pin_clock):
     pin_clock(2026, 10, 1, 12, 0)                 # the captures' day, before every expiry
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
-    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk, listed=None: {})
+    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda listed: {})
     with server._terrain_cache_lock:              # this test's chain, never one an earlier test left
         server._terrain_cache.pop(TK, None)
     assert server._publish_levels(TK, copy.deepcopy(_CHAIN), 1.0) is not None
@@ -38,7 +38,7 @@ def _published(monkeypatch, pin_clock):
 
 
 def _heat(**kw):
-    args = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None, "since": None, **kw}
+    args = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None, **kw}
     return json.loads(server.get_options_gamma_surface(TK, **args).body)
 
 
@@ -99,32 +99,22 @@ def test_the_view_serves_the_colour_scale_and_the_contracts_drawn():
     assert set(d["view"]["demand"]) <= listed
 
 
-def _marked(d, measure):
-    return [(c["strike"], d["expirations"][j]["expiry"]) for c in d["cells"] if "changed" in c
-            for j, f in enumerate(c["changed"][measure]) if f]
-
-
-def test_a_cell_flashes_when_its_value_changed_after_the_publication_the_page_drew():
-    """`changed` is relative to `since`, the surface_seq the page last drew: a change in a
-    publication the page never read still flashes, and a redraw of what it has seen does not."""
+def test_a_new_publication_serves_the_new_number():
+    """The number moves: a publication with a changed value serves that value, as a new
+    publication (surface_seq), so the page redraws it."""
     first = _heat(scope="all")
-    assert not _marked(first, "oi")                               # the first draw: nothing to flash
-    drawn = first["surface_seq"]
     target = next(c for c in _CHAIN if c["expirationDate"].startswith("2026-11-20") and c["openInterest"] > 0)
+    k = float(target["strikePrice"])
+
+    def oi(d):
+        col = [e["expiry"] for e in d["expirations"]].index("2026-11-20")
+        return next(c for c in d["cells"] if c["strike"] == k)["oi"][col]["total"]
     chain = copy.deepcopy(_CHAIN)
     next(c for c in chain if c["symbol"] == target["symbol"])["openInterest"] += 1000
-    server._publish_levels(TK, chain, 2.0)                         # the OI changes ...
-    server._publish_levels(TK, copy.deepcopy(chain), 3.0)          # ... and a publication the page skips
-    want = [(float(target["strikePrice"]), "2026-11-20")]
-    assert _marked(_heat(scope="all", since=drawn), "oi") == want
-    latest = _heat(scope="all")["surface_seq"]
-    assert latest == drawn + 2
-    assert not _marked(_heat(scope="all", since=latest), "oi")    # drawn already: no flash again
-    # a strike that leaves the chain and comes back starts afresh: its earlier change is not flashed
-    k = float(target["strikePrice"])
-    server._publish_levels(TK, [c for c in chain if float(c["strikePrice"]) != k], 4.0)
-    server._publish_levels(TK, copy.deepcopy(chain), 5.0)
-    assert not _marked(_heat(scope="all", since=drawn), "oi")
+    server._publish_levels(TK, chain, 2.0)
+    now = _heat(scope="all")
+    assert oi(now) == oi(first) + 1000
+    assert now["surface_seq"] == first["surface_seq"] + 1
 
 
 def test_with_no_live_price_the_window_says_it_is_not_around_the_price(monkeypatch):

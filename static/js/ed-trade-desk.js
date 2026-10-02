@@ -1,7 +1,7 @@
 /* Ed Console — Trade Desk / "Right Now" subview. PRESENTATION ONLY, computes nothing.
    The architectural home console.html has preserved verbatim since the rebuild started:
    "Detect -> Frame -> Confirm -> Execute reasoning flow." This module builds the first three
-   stages from FOUR already-canonical endpoints other workspaces already own -- one page, zero
+   stages from five already-canonical endpoints other workspaces already own -- one page, zero
    new math, zero new producers:
      DETECT  <- /api/order-flow/microstructure  (same engine the Order Flow > Book/DOM tab reads)
      FRAME   <- /api/levels + /api/liquidity-snapshot (same contracts Liquidity > Levels/Map read)
@@ -30,10 +30,11 @@
     var hook = (String(c).toLowerCase().match(/^[a-z0-9-]+/) || ['unknown'])[0];
     return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + '</span>';
   }
+  // a read that failed is absent (null); a read cut short by a newer one rejects, so it never draws
   function fetchJson(url, signal) {
     return fetch(url, { cache: 'no-store', signal: signal })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .catch(function () { return null; });
+      .catch(function (e) { if (e && e.name === 'AbortError') throw e; return null; });
   }
   var usd = function (n) {
     if (n == null || isNaN(n)) return '—';
@@ -197,41 +198,25 @@
 
 
   // The migration panel's strikes are the window the server sends (the Gamma scope, and the
-  // operator's pan on its strike labels: EdShell.wireStrikeAxis). A pan or a new scope re-reads
-  // only this panel's window, with the section's other inputs kept from the last full read.
+  // operator's pan on its strike labels: EdShell.wireStrikeAxis). A pan or a new scope is a new
+  // read of the page (its key carries both), so no push redraws an older window.
   var _migPan = window.EdShell.newPan(), _migPanTicker = null;
-  var _lastMig = null;   // { terrain, spot, tk }: the section's other inputs
-  function migStrikesUrl(tk) {
+  function migPan(tk) {   // the pan is the ticker's: a new ticker follows the price
     if (_migPanTicker !== tk) { _migPan.centre = null; _migPan.shift = 0; _migPanTicker = tk; }
+    return _migPan;
+  }
+  function migStrikesUrl(tk) {
+    migPan(tk);
     return '/api/terrain/strikes?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(_migPan);
-  }
-  function placeMigration(strikesD) {   // the section, from a window read, into the page
-    var m = _lastMig, el = document.getElementById('tdMigration');
-    if (!m || !el) return;
-    var tmp = document.createElement('div');
-    tmp.innerHTML = migrationSection(strikesD, m.terrain, m.spot, m.tk);
-    var fresh = tmp.firstElementChild;
-    if (fresh) { el.replaceWith(fresh); wireMigration(fresh, m.tk); }
-  }
-  var _migLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) {
-    var m = _lastMig;
-    if (!m || !isRightNow() || ticker() !== m.tk) return;
-    return fetchJson(migStrikesUrl(m.tk), signal).then(function (strikesD) {
-      if (isRightNow() && ticker() === m.tk) placeMigration(strikesD);
-    }).catch(function () {});
-  });
-  function reloadMigration() {
-    if (_lastMig) _migLoader.trigger(_lastMig.tk + '|' + st().scope + '|' + _migPan.centre + '|' + _migPan.shift);
   }
   function wireMigration(panel, tk) {
     wireMigrationChips(panel, tk);
     var firstRow = panel.querySelector('.gbs-row');
     window.EdShell.wireStrikeAxis(panel.querySelectorAll('.gbs-k'), panel.querySelector('.gbs-scroll'), _migPan,
-      firstRow ? firstRow.getBoundingClientRect().height : 0, reloadMigration);
+      firstRow ? firstRow.getBoundingClientRect().height : 0, load);
   }
 
   function migrationSection(strikesD, terrain, spot, tk) {
-    _lastMig = { terrain: terrain, spot: spot, tk: tk };
     if (!strikesD) return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
       '<div class="placeholder"><div class="sm">no per-strike gamma for this symbol yet</div></div></div>';
     var todayAll = (strikesD.today && strikesD.today[_migScope]) || [];
@@ -315,11 +300,11 @@
     h.querySelectorAll('[data-mig-scope]').forEach(function (b) {
       b.addEventListener('click', function () {
         var s = b.getAttribute('data-mig-scope'); if (s === _migScope) return;
-        _migScope = s; retrigger();
+        _migScope = s; load();
       });
     });
     var gh = h.querySelector('[data-mig-ghost]');
-    if (gh) gh.addEventListener('click', function () { _migGhost = !_migGhost; retrigger(); });
+    if (gh) gh.addEventListener('click', function () { _migGhost = !_migGhost; load(); });
   }
 
   function loadImpl(tk, signal) {
@@ -336,16 +321,7 @@
     ]).then(function (results) {
       if (!stillRightNow(tk)) return;
       var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
-      // Independent-review finding, REPRODUCED: this used to fall back to terrain.spot when
-      // levelsD was absent -- both endpoints resolve spot via the same server-side
-      // resolve_spot() authority today (server.py's get_levels/_reprice_cached_terrain), so
-      // it never disagreed in practice, but the shape is exactly what tools/spot_binding_lock.py
-      // exists to ban (RC-225: a spot value chosen from whichever of two independent responses
-      // happened to be present). /api/levels is server.py's own documented canonical serving
-      // contract for spot ("every other surface carries the values out of the same snapshot");
-      // a failed /api/levels now reads as honest absence (blank, see isFinite(spot) below)
-      // instead of silently substituting a second source.
-      // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
+      // the spot is /api/levels' alone; a failed read or a null/'' spot is absent, never 0
       var spot = (levelsD && levelsD.spot != null && levelsD.spot !== '') ? Number(levelsD.spot) : NaN;
       h.innerHTML =
         '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' + esc(tk) +
@@ -359,21 +335,18 @@
       var migEl = document.getElementById('tdMigration');
       if (migEl) wireMigration(migEl, tk);
     }).catch(function (e) {
-      // Every sibling loader in this file (ed-order-flow.js, ed-order-flow-heatmap.js,
-      // ed-liquidity-map.js) ends in a .catch() that renders an honest fallback; this one
-      // didn't, so an exception while building the stage cards left the panel stuck on
-      // aria-busy/stale content with no visible failure state.
-      if (e && e.name === 'AbortError') return;
+      if (e && e.name === 'AbortError') return;   // the newer read draws
       if (stillRightNow(tk)) h.innerHTML = '<div class="placeholder"><div class="sm">no console serving Right Now — one of its endpoints failed to render</div></div>';
     });
   }
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(ticker(), signal); });
-  // Every dimension that makes this "a different request" must be in the key -- ticker AND the
-  // migration section's own scope/ghost toggles -- or a toggle click queues behind an in-flight
-  // fetch for the OLD toggle state instead of aborting it (the exact bug class this session's
-  // audit found in loadStructures()/the order-flow heatmap's minute-range toggle).
-  function _loadKey() { return ticker() + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0); }
-  function retrigger() { if (isRightNow()) _loader.trigger(_loadKey()); }
+  // every input of the read is in its key, so a change aborts the read in flight instead of
+  // queueing behind it: the ticker, the venue, the migration chips, the Gamma scope and the pan
+  function _loadKey() {
+    var tk = ticker(), pan = migPan(tk);
+    return tk + '|venue=' + st().bookVenue + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0) +
+      '|scope=' + st().scope + '|pan=' + pan.centre + ',' + pan.shift;
+  }
   function load() {
     if (!isRightNow()) return;
     _loader.trigger(_loadKey());
@@ -384,7 +357,7 @@
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:book_venue', load);
     document.addEventListener('ed:changed', load);
-    document.addEventListener('ed:scope', reloadMigration);   // a new scope is a new window
+    document.addEventListener('ed:scope', load);   // a new scope is a new window
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }

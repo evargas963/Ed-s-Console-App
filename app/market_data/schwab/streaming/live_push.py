@@ -140,11 +140,8 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
         # the bus's last value (a book message is a whole book)
         for topic, msg in history.replay():
             await ws.send(encode(topic, msg))
-        for topic, msg in list(bus.snapshot().items()):
-            # a chain's last part is not its chain: a console gets each chain when it is next
-            # fetched, and loads the stored captures at its startup
-            if (not is_field_delta_topic(topic) and not topic.startswith("chain.")
-                    and is_forwarded(topic, msg)):
+        for topic, msg in list(bus.snapshot().items()):     # events (chain parts) are not kept
+            if not is_field_delta_topic(topic) and is_forwarded(topic, msg):
                 await ws.send(encode(topic, msg))
         loop = asyncio.get_running_loop()
         next_beat = loop.time()

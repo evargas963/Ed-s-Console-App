@@ -407,6 +407,114 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
+  test('Right Now re-reads all five reads on every push', async ({ page }) => {
+    await intercept(page);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    const reads = [];
+    page.on('request', (r) => {
+      const p = new URL(r.url()).pathname;
+      if (['/api/order-flow/microstructure', '/api/levels', '/api/terrain', '/api/liquidity-snapshot', '/api/terrain/strikes'].includes(p)) reads.push(p);
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const body = page.locator('#tdBody');
+    await expect(body).toContainText('Max pain 770.00');
+    const push = async (kind) => {
+      await page.waitForTimeout(300);                    // the first read has settled
+      reads.length = 0;
+      await page.evaluate((k) => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: k } })), kind);
+      await expect.poll(() => reads.length).toBeGreaterThan(0);
+      await page.waitForTimeout(300);                    // every read that push makes has gone out
+      return [...new Set(reads)].sort();
+    };
+    // each read serves values the server derives at read time (the live price, each level's
+    // distance, the staleness of the chain), so a push of any kind re-reads every one
+    const all = ['/api/levels', '/api/liquidity-snapshot', '/api/order-flow/microstructure', '/api/terrain', '/api/terrain/strikes'];
+    for (const kind of ['flow', 'liquidity', 'levels', 'chain']) expect(await push(kind)).toEqual(all);
+    await expect(body).toContainText('Max pain 770.00');
+  });
+
+  test('Right Now: a new scope\'s strike window stays drawn through the next push', async ({ page }) => {
+    await intercept(page);
+    const wider = Object.assign({}, STRIKES, { spot_strike: 791,
+      today: { all: [[790, 500000, 1000], [791, 900000, 5000], [792, -200000, 3000]] },
+      views: { all: { centre: 791, max_abs: 900000, max_abs_with_prior: 900000 } } });
+    await page.route('**/api/terrain/strikes?**', (route) => route.request().url().includes('scope=wider')
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(wider) })
+      : route.fallback());
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'right-now'); localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const strikes = page.locator('#tdMigration .gbs-k');
+    await expect(strikes).toHaveText(['772', '771', '770']);
+    await page.evaluate(() => window.EdShell.setScope('wider'));
+    await expect(strikes).toHaveText(['792', '791', '790']);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+    await page.waitForTimeout(600);                                   // the push's reads have landed
+    await expect(strikes).toHaveText(['792', '791', '790']);          // the window asked for, not the old one
+  });
+
+  test('Right Now: a read cut short by a venue switch never draws the old venue', async ({ page }) => {
+    await intercept(page);
+    let slow = false, inFlight = 0;
+    await page.route('**/api/order-flow/microstructure?**', async (route) => {
+      const venue = new URL(route.request().url()).searchParams.get('venue');
+      if (slow && venue === 'NYSE_BOOK') { inFlight += 1; await new Promise((r) => setTimeout(r, 800)); }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, MICRO, { venue: venue })) });
+    });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'right-now'); localStorage.setItem('ed_book_venue', 'NYSE_BOOK'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const body = page.locator('#tdBody');
+    await expect(body).toContainText('(NYSE_BOOK, depth 5)');
+    await page.evaluate(() => {          // the venue each draw from here on shows
+      window.__draws = [];
+      new MutationObserver(() => window.__draws.push((document.getElementById('tdBody').textContent.match(/\((NYSE|NASDAQ)_BOOK/) || [''])[0]))
+        .observe(document.getElementById('tdBody'), { childList: true });
+    });
+    slow = true;
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+    await expect.poll(() => inFlight).toBe(1);
+    await page.evaluate(() => document.querySelector('.bookvenue [data-venue="NASDAQ_BOOK"]').click());   // ... cut short
+    await expect(body).toContainText('(NASDAQ_BOOK, depth 5)');
+    await page.waitForTimeout(1200);                                 // the cut-short read would have landed
+    expect(await page.evaluate(() => window.__draws)).toEqual(['(NASDAQ_BOOK']);
+  });
+
+  test('Right Now: a read cut short by a scope change never draws', async ({ page }) => {
+    await intercept(page);
+    const wider = Object.assign({}, STRIKES, { spot_strike: 791,
+      today: { all: [[790, 500000, 1000], [791, 900000, 5000], [792, -200000, 3000]] },
+      views: { all: { centre: 791, max_abs: 900000, max_abs_with_prior: 900000 } } });
+    await page.route('**/api/terrain/strikes?**', (route) => route.request().url().includes('scope=wider')
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(wider) })
+      : route.fallback());
+    let slow = false, inFlight = 0;
+    await page.route('**/api/levels?**', async (route) => {
+      if (slow) { inFlight += 1; await new Promise((r) => setTimeout(r, 800)); }   // the push's read is in flight ...
+      route.fallback();
+    });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'right-now'); localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['772', '771', '770']);
+    await page.evaluate(() => {          // every draw of the page from here on: its strikes and its spot
+      window.__draws = [];
+      new MutationObserver(() => {
+        const ks = [...document.querySelectorAll('#tdMigration .gbs-k')].map((e) => e.textContent).join(',');
+        const meta = document.querySelector('#tdBody .fl-meta');
+        window.__draws.push(ks + ' | ' + (meta ? meta.textContent : ''));
+      }).observe(document.getElementById('tdBody'), { childList: true });
+    });
+    slow = true;
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+    await expect.poll(() => inFlight).toBe(1);
+    slow = false;
+    await page.evaluate(() => window.EdShell.setScope('wider'));     // ... and the scope change cuts it short
+    await expect(page.locator('#tdMigration .gbs-k')).toHaveText(['792', '791', '790']);
+    await page.waitForTimeout(1200);                                 // the cut-short read would have landed
+    expect(await page.evaluate(() => window.__draws)).toEqual(['792,791,790 | spot 771.30']);
+  });
+
   test('Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split', async ({ page }) => {
     const errs = watchErrors(page);
     const far = { id: 'grc', price: 837.58, family: 'gamma', label: 'GRC', short: 'GRC', evidence_tier: 'DERIVED', distance: 66.28, side: 'ABOVE', };

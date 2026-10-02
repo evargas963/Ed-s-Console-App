@@ -40,7 +40,8 @@ def held(monkeypatch):
     payload = snap.to_dict()
     payload.update({"computed_ts_utc": time.time(), "_per_strike": snap.per_strike,
                     "_vanna_rows": server._vanna_rows(snap), "_charm_rows": server._charm_rows(snap),
-                    "_chain": _CONTRACTS, "_chain_fetched_ts": time.time(), "_gamma_surface": surface})
+                    "_chain": _CONTRACTS, "_chain_fetched_ts": time.time(), "_gamma_surface": surface,
+                    "_contract_symbols": frozenset(c["symbol"] for c in _CONTRACTS)})
     monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (LIVE, "live_quote", time.time()))
     monkeypatch.setattr(server, "last_capture_per_day", lambda *a, **k: [])
@@ -252,7 +253,8 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_is(mon
                     .read_text(encoding="utf-8"))
     cts = [dict(c) for c in fx["contracts"]]
     cts[0]["nonStandard"] = True                      # stand-in: Schwab marking one contract
-    payload = {"_chain": cts, "_chain_fetched_ts": time.time(), "computed_ts_utc": time.time()}
+    payload = {"_chain": cts, "_chain_fetched_ts": time.time(), "computed_ts_utc": time.time(),
+               "_contract_symbols": frozenset(c["symbol"] for c in cts)}
     monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (fx["spot"], "live_quote", time.time()))
     body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)

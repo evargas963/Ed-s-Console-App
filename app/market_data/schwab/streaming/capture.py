@@ -500,11 +500,12 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
 
 async def run_chains(daemon: "Daemon", db_path, make_client, stop: asyncio.Event) -> None:
     """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own threads, so the
-    stream never waits on a chain; each chain message is published on the event loop."""
+    stream never waits on a chain; each chain message is published on the event loop, as an event
+    (a part of one chain, never a topic's state to replay)."""
     loop = asyncio.get_running_loop()
     halt = threading.Event()
     sweep = ChainSweep(db_path, daemon.board,
-                       lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg))
+                       lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish_event, topic, msg))
     daemon.chains = sweep
     sweep.set_active(daemon.active)                 # the ticker on screen, if the console said one
     workers = [loop.run_in_executor(None, sweep.work, make_client, halt) for _ in range(CHAIN_WORKERS)]

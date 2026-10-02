@@ -123,7 +123,7 @@ def _fresh(monkeypatch, tmp_path, view):
     _board_is([_BOARD])
     monkeypatch.setattr(server, "_terrain_cache", {})
     monkeypatch.setattr(server, "_terrain_refresh_last_error", {})
-    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk, listed=None: {})
+    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda listed: {})
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **k: (_CRWD["spot"], "stub", _CAPTURED))
     return edb
 

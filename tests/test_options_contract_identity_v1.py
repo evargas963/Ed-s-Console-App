@@ -28,7 +28,7 @@ def _published(monkeypatch, pin_clock):
     pin_clock(2026, 8, 30, 12, 0)                        # before every fixture chain's expiry
     spots = {tk: spot for tk, (_c, spot) in _CHAINS.items()}
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (spots.get(tk), "stub", 1.0))
-    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk, listed=None: {})
+    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda listed: {})
     for tk, (chain, _spot) in _CHAINS.items():
         server._publish_levels(tk, [dict(c) for c in chain], time.time())
     yield

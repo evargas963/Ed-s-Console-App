@@ -2,7 +2,7 @@
    Reads GET /api/options/gamma-surface with the window it wants (scope, the columns it fits, the
    selected expiry, a pan) and draws exactly the cells the server sends: the server picks the
    strikes and expiries (server._surface_view), counts the cells streaming, names the contracts to
-   stream, marks the spot row, the front column and the cells that just changed, and sends each
+   stream, marks the spot row and the front column, and sends each
    measure's colour scale. This module positions cells, formats each value, maps sign to colour and
    shade to the served scale. Pure helpers are exposed on globalThis.EdGamma for node tests. */
 (function () {
@@ -86,9 +86,6 @@
   var _pan = window.EdShell.newPan();
   var _panTicker = null;
   var _lastSurface = null, _lastRevision = null, _pendingTicker = null;
-  // the surface_seq of the publication on screen, sent back as `since`: the server marks the cells
-  // that changed in the publications after it (they flash once)
-  var _drawnSeq = null;
 
   function paintChip(cov) {   // the header's coverage chip: the served words
     var el = document.getElementById('heatScope'); if (!el) return;
@@ -117,9 +114,8 @@
     paintChip(surface.view.coverage);
   }
 
-  // ---- render the window the server sent (no math on its values). `fresh`: a new read, whose
-  // changed cells flash; a redraw of the read on screen (theme, measure) flashes nothing ----
-  function renderSurface(host, surface, fresh) {
+  // ---- render the window the server sent (no math on its values) ----
+  function renderSurface(host, surface) {
     var tk = _pendingTicker || (surface && surface.ticker);
     if (!surface || surface.available === false) {
       // every exit states the heatmap's demand, "none" included
@@ -147,7 +143,6 @@
     // the table is rebuilt only for a new publication or a new window, else its status refreshes
     var rev = [surface.ticker, surface.surface_seq, view.scope, view.centre, measure,
       (surface.expirations || []).map(function (e) { return e.expiry; }).join(',')].join('|');
-    if (fresh) _drawnSeq = surface.surface_seq;
     if (rev === _lastRevision && host.querySelector('.heat')) {
       applyStatus(host, surface); applyStrikeHighlight(host);
       return;
@@ -168,8 +163,7 @@
     });
     tbl += '</tr></thead><tbody>';
     cells.slice().reverse().forEach(function (row) {   // highest strike at the top
-      // only a row with a change carries `changed`; a redraw flashes nothing
-      var mrow = _measureRow(row, measure), changed = fresh && row.changed ? row.changed[measure] : [];
+      var mrow = _measureRow(row, measure);
       tbl += '<tr' + (row.spot ? ' class="spotrow"' : '') + '><th class="hstrike' + (row.spot ? ' spot' : '') + '">' +
         fmtStrike(row.strike) + '</th>';
       exps.forEach(function (e, j) {
@@ -178,7 +172,7 @@
         var reason = liveState === 'rejected' ? ((cellState.call || {}).rejected_reason || (cellState.put || {}).rejected_reason) : null;
         var stateTitle = (words.cell[liveState] || '') + (reason ? ' (' + reason + ')' : '');
         tbl += '<td class="hcell' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') +
-          (changed[j] ? ' flash-update' : '') + (liveState ? ' state-' + liveState : '') +
+          (liveState ? ' state-' + liveState : '') +
           '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
           (liveState ? 'data-cell-state="' + liveState + '" ' : '') +
           (stateTitle ? 'title="' + escapeHtml(stateTitle) + '" ' : '') +
@@ -260,8 +254,7 @@
     var expiry = window.EdShell.getExpiry();
     return '/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker) +
       window.EdShell.windowQuery(_pan) + '&cols=' + autoColCount(host) +
-      (expiry ? '&expiry=' + encodeURIComponent(expiry) : '') +
-      (_drawnSeq != null ? '&since=' + _drawnSeq : '');
+      (expiry ? '&expiry=' + encodeURIComponent(expiry) : '');
   }
   // only the network fetch is coalesced (keyed on ticker: a newer ticker aborts the older read)
   function loadImpl(ticker, signal) {
@@ -270,7 +263,7 @@
     host.setAttribute('aria-busy', 'true');
     return fetch(surfaceUrl(ticker, host), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d, true); })
+      .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
       .catch(function (e) {
         if (e && e.name === 'AbortError') return;   // superseded by a newer read -- that one renders
         if (stillCurrent(ticker)) renderSurface(host, { available: false, ticker: ticker, reason: 'no console serving /api/options/gamma-surface' });
@@ -291,7 +284,7 @@
     if (_pendingTicker && _pendingTicker !== nextTicker) {
       window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker));   // the ticker just left
     }
-    if (_panTicker !== nextTicker) { _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker; _drawnSeq = null; }
+    if (_panTicker !== nextTicker) { _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker; }
     _pendingTicker = nextTicker;
     _loader.trigger(_pendingTicker);
   }

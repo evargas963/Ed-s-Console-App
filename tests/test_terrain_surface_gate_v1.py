@@ -96,7 +96,6 @@ def test_producer_projects_every_tickers_heatmap(monkeypatch, view):
         "stream_overlay_symbols": [], "surface_seq": server._GAMMA_SURFACE_SEQ_START + 1,
         "spot": 100.0, "spot_source": "stub", "spot_as_of_ts_utc": 0.0,
         "stream_by_expiry": {},          # each column's served streaming state (none: no columns)
-        "changes": {},                   # no cell has changed: its first publication
     }
 
 
@@ -176,8 +175,8 @@ def test_each_publication_carries_its_own_surface_seq(monkeypatch, view):
         seqs.append(server.terrain_cache_get(tk)["_gamma_surface"]["surface_seq"])
     with server._terrain_cache_lock:
         server._terrain_cache.pop(tk, None)
-    assert seqs[1] == seqs[0] + 1
     assert seqs[0] > server._GAMMA_SURFACE_SEQ_START          # counted on from this console's start
+    assert seqs[1] == seqs[0] + 1
 
 
 def test_a_stream_observation_after_the_chain_fetch_is_admitted_and_one_before_is_not(monkeypatch, view):

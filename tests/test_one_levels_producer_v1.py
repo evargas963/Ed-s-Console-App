@@ -60,6 +60,10 @@ def _clean(monkeypatch):
     monkeypatch.setattr(push_changes, "_loop", None)                     # changes recorded, not delivered
     ofs._active_option_contract = _A
     ofs._active_option_contracts = [_B]
+    with server._terrain_cache_lock:
+        server._terrain_cache.pop(TK, None)                              # this test's levels only
+    with server._chains_waiting_lock:
+        server._chains_delivered.discard(TK)                             # no chain delivered yet
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
@@ -208,7 +212,7 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain(monkeypatch):
     ofs._active_option_contracts = [ofs.ticker_storage_key(foreign)]
     _put_chain(fetched_ts=time.time() - 5.0)
     _stream({foreign: {"gamma": 0.99, "gamma_ts_recv": time.time()}}, monkeypatch)
-    assert server._desired_stream_greeks_for_ticker(TK) == {}
+    assert server._desired_stream_greeks_for_ticker(_cached()["_contract_symbols"]) == {}
     server._publish_levels(TK)
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
 
@@ -463,6 +467,7 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
         server._terrain_cache.pop(TK, None)
 
     assert server._load_stored_levels([TK]) == 1
+    server._chain_pricing.submit(lambda: None).result(timeout=60)      # priced on the pricing thread
     loaded = _cached()
     assert loaded["computed_ts_utc"] == taken
     assert loaded["spot"] == _SPOT and loaded["spot_source"] == server.SPOT_SOURCE_CAPTURE
@@ -532,19 +537,36 @@ def _board_is(board):
                               time.time())
 
 
-def test_an_older_chain_never_replaces_newer_levels():
-    """2026-10-01 audit: the startup load of the stored capture ran beside the daemon's chains,
-    so yesterday's 16:15 capture could replace a chain priced at 10:00:05, and the ticks then
-    repriced yesterday's chain at the live spot. A chain older than the one held is not
-    published, whatever its source."""
-    now = time.time()
-    server._publish_levels(TK, _CONTRACTS, now)
-    assert server._publish_levels(TK, _CONTRACTS[:10], now - 3600) is None
-    assert server._publish_levels(TK, captures=[{"contracts": _CONTRACTS[:10], "ts_utc": now - 86400,
-                                                 "spot": _SPOT, "basis": "x", "et_date": "2026-09-01"}]) is None
+@pytest.mark.parametrize("delivered_first", [True, False])
+def test_a_stored_capture_never_replaces_a_delivered_chain(monkeypatch, tmp_path, _at_capture, delivered_first):
+    """The startup load queues the stored capture on the one pricing thread, and only for a
+    ticker the daemon has delivered no chain for: delivered first, the capture is not queued;
+    queued first and still waiting, the delivered chain replaces it. Either way the delivered
+    chain is what is held, and no live chain waits behind the whole stored load."""
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+    from db import EdDB
+    db, taken = tmp_path / "ed_console.db", _at_capture.timestamp()
+    by_expiry: dict = {}
+    for ct in _CONTRACTS:
+        by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
+    for expiry, cts in by_expiry.items():
+        persist_complete_chain_capture(db, ticker=TK, expiry=expiry, contracts=cts, spot=_SPOT,
+                                       completeness_basis=CAPTURE_BASIS, ts_utc=taken - 86400)
+    edb = EdDB(db)
+    monkeypatch.setattr(server, "get_db", lambda: edb)
+    live = taken
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 10)                 # the pricing thread is busy
+    if delivered_first:
+        server._on_chain(TK, _CONTRACTS, live)
+        assert server._load_stored_levels([TK]) == 0
+    else:
+        assert server._load_stored_levels([TK]) == 1
+        server._on_chain(TK, _CONTRACTS, live)                  # arrives while the capture waits
+    gate.set()
+    server._chain_pricing.submit(lambda: None).result(timeout=60)
     held = _cached()
-    assert held["_chain_fetched_ts"] == held["computed_ts_utc"] == now
-    assert len(held["_chain"]) == len(_CONTRACTS)
+    assert held["_chain_fetched_ts"] == held["computed_ts_utc"] == live
 
 
 def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker(monkeypatch):
@@ -580,6 +602,22 @@ def test_the_ticker_on_screens_chain_is_priced_before_the_others_waiting(monkeyp
     gate.set()
     server._chain_pricing.submit(lambda: None).result(timeout=60)
     assert priced == [TK, "ZZA", "ZZB"]
+
+
+def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting(monkeypatch):
+    """The startup load queues every board ticker's stored captures at once; a chain the daemon
+    delivers meanwhile, for a ticker off screen, is priced ahead of them, not behind the load."""
+    priced: list = []
+    monkeypatch.setattr(server, "_price_chain", lambda tk, c, ts: priced.append((tk, c is not None)))
+    for tk in ("ZZC", "ZZD"):
+        server._chains_delivered.discard(tk)
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 10)                 # the pricing thread is busy
+    assert server._load_stored_levels(["ZZC", "ZZD"]) == 2
+    server._on_chain(TK, _CONTRACTS, time.time())               # CRWD is not on screen
+    gate.set()
+    server._chain_pricing.submit(lambda: None).result(timeout=60)
+    assert priced == [(TK, True), ("ZZC", False), ("ZZD", False)]
 
 
 def test_the_ticker_on_screen_is_the_newest_open_page(monkeypatch):

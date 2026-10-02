@@ -231,40 +231,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveText('$2.0K');
   });
 
-  test('the cells the server marks changed flash; the others do not', async ({ page }) => {
-    // The server marks each cell whose value differs from the previous publication
-    // (server.py _mark_changed); the page flashes exactly those. Two strikes: 583's value
-    // changes between publications, 586's does not; nothing is marked on the first.
-    let call = 0;
-    await page.route('**/api/options/gamma-surface**', (route) => {
-      call += 1;
-      const changedValue = call === 1 ? 1000 : 2000;
-      route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify(Object.assign({}, SURFACE, {
-          strikes: [583, 586], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [
-            { strike: 583, gex: [changedValue], changed: { gex: [call > 1] } },
-            { strike: 586, gex: [-50000], changed: { gex: [false] } },   // identical on every fetch
-          ],
-          surface_seq: call,
-        })),
-      });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const changedCell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
-    const unchangedCell = page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]');
-    await expect(changedCell).toHaveText('$1.0K');
-    // First render: no prior state exists to compare against -- must not flash anything.
-    await expect(changedCell).not.toHaveClass(/flash-update/);
-    await expect(unchangedCell).not.toHaveClass(/flash-update/);
-
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
-    await expect(changedCell).toHaveText('$2.0K');
-    await expect(changedCell).toHaveClass(/flash-update/);
-    await expect(unchangedCell).not.toHaveClass(/flash-update/);
-  });
-
   test('a levels push on /api/changes reloads the heatmap, with no manual event dispatch', async ({ page }) => {
     // Delivery, not rendering: the browser's own EventSource parses the pushed `levels` event.
     let surfaceCalls = 0;
