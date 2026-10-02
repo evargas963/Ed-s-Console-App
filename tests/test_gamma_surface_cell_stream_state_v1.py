@@ -385,8 +385,8 @@ def test_endpoint_reads_partial_when_only_some_cells_are_live():
 
 @pytest.mark.parametrize("live, words", [(299, "99% STREAMING"), (1, "<1% STREAMING")])
 def test_the_chip_never_claims_more_or_less_than_streams(live, words):
-    """2026-10-01 review: rounded, 299 of 300 live cells read "100% STREAMING" (as if all were)
-    and 1 of 300 read "0%" (as if none were)."""
+    """299 of 300 live cells are not "100%" (as if all were) and 1 of 300 is not "0%" (as if none
+    were)."""
     tk = ticker_storage_key("ZZZTEST_SHARE")
     syms = [f"S{i}" for i in range(300)]
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [float(i) for i in range(300)],

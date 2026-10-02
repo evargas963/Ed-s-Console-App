@@ -616,7 +616,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveAttribute('data-cell-state', 'stale');
     await expect(cell).toHaveAttribute('data-gex', '12345');
     await expect(cell).toHaveClass(/state-stale/);
-    // the label in the operator's fewer words (2026-10-01: no 'structure' notes on the UI)
     await expect(cell).toHaveAttribute('title', 'this cell has stopped streaming');
     // never mislabelled as live
     const cls = await cell.getAttribute('class');
@@ -781,7 +780,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(rows).toHaveCount(116);
     const fits = Number(asked[0].get('cols'));
     expect(fits).toBeGreaterThanOrEqual(3); expect(fits).toBeLessThanOrEqual(11);
-    // highest strike at the top (operator decision 2026-09-11), the price row marked
+    // highest strike at the top, the price row marked
     await expect(rows.first().locator('.hstrike')).toHaveText(String(REAL.strikes[REAL.strikes.length - 1]));
     await expect(page.locator('#heatBody tr.spotrow .hstrike')).toHaveText('764');
     const cellFont = await page.locator('#heatBody .hcell').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
@@ -1944,7 +1943,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('the header chip shows the served coverage of the window; the page counts nothing', async ({ page }) => {
-    // operator rule 4 (2026-10-01): the server counts the cells of the window it serves
+    // the server counts the cells of the window it serves
     // (server.py _stream_coverage); the page draws its words
     const surf = surfaceWithStreamState([{ call: 'live' }, { call: 'stale' }]);
     surf.view = view({ max_abs: { gex: 12345 },

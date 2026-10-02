@@ -82,7 +82,7 @@ test.describe('the Gamma presentation scope', () => {
       // rows keep a legible height at every count (never shrunk to fit)
       const rowH = await gbs.locator('.gbs-row').first().evaluate((el) => el.getBoundingClientRect().height);
       expect(rowH).toBeGreaterThanOrEqual(24);
-      await expect(gbs.locator('.scope-note')).toHaveCount(0);   // no structure notes (operator 2026-10-01)
+      await expect(gbs.locator('.scope-note')).toHaveCount(0);   // no structure notes
     }
   });
 
@@ -96,8 +96,8 @@ test.describe('the Gamma presentation scope', () => {
   });
 
   test('a drag that ends while a read is in flight settles where the drag ended', async ({ page }) => {
-    // 2026-10-01 review: a read answered mid-drag reset the pan to its window, and the read still
-    // held behind it then asked for that window, so a fast drag snapped back.
+    // a read answered mid-drag must not reset the pan, or the read held behind it asks for the
+    // earlier window and the drag snaps back
     const reads = [];
     await page.route('**/api/terrain/strikes**', async (route) => {
       const q = new URL(route.request().url()).searchParams;

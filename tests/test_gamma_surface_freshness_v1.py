@@ -154,21 +154,20 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(_fresh, monk
     assert not server._gamma_surface_wanted(tk)
 
 
-def test_with_the_daemon_silent_a_ticker_off_screen_says_the_board_is_unknown(_fresh, view):
-    """2026-10-01 review: with no current heartbeat the board is unknown, so a viewed ticker that is
-    not on screen must not read "not on the board"."""
+def test_with_the_daemon_silent_every_ticker_says_so_first(_fresh, view):
+    """With no current heartbeat no chain is coming and the board is unknown: no ticker reads
+    warming, and each reason starts with the daemon not reporting, whatever else it says."""
+    silent = "the capture daemon is not reporting (no current heartbeat): its board is unknown"
     view(_OFF, _BOARD)                              # _OFF open on an older page; _BOARD on screen
     with server._terrain_cache_lock:
         server._terrain_cache[_OFF] = {"computed_ts_utc": time.time(), "spot": 100.0}   # levels, no surface
     lmp.record_feed_heartbeat({"ts": time.time() - 100, "schwab_socket_open": True, "board": [_OFF]},
                               time.time() - 100)    # the daemon's last heartbeat is old
     d = _call(_OFF)
-    assert d["warming"] is False
-    assert d["reason"] == "the capture daemon is not reporting (no current heartbeat): its board is unknown"
-    with server._terrain_cache_lock:
-        server._terrain_cache[_BOARD] = {"computed_ts_utc": time.time(), "spot": 100.0}
-    on_screen = _call(_BOARD)                       # the ticker on screen: no chain is coming either
-    assert on_screen["warming"] is False and on_screen["reason"] == d["reason"]
+    assert d["warming"] is False and d["reason"] == silent
+    first = _call(_BOARD)                           # on screen, its first view: no levels yet
+    assert first["warming"] is False
+    assert first["reason"] == silent + " — no terrain snapshot has been computed yet"
 
 
 def test_a_chain_schwab_refused_says_schwabs_answer(_fresh, view):

@@ -565,10 +565,9 @@ def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker(monkeyp
 
 
 def test_the_ticker_on_screens_chain_is_priced_before_the_others_waiting(monkeypatch):
-    """The ticker on screen first (operator 2026-10-01), the same ticker the daemon fetches first
-    (2026-10-01 audit: pricing put every viewed ticker first, the daemon only the active one):
-    the pricing thread takes its chain ahead of chains that arrived before it, a page open on
-    another ticker included."""
+    """The ticker on screen first, the same ticker the daemon fetches first: the pricing thread
+    takes its chain ahead of chains that arrived before it, a page open on another ticker
+    included."""
     priced: list = []
     monkeypatch.setattr(server, "_price_chain", lambda tk, c, ts: priced.append(tk))
     push_changes.subscribe("ZZA")                                # an older page on ZZA
@@ -584,9 +583,8 @@ def test_the_ticker_on_screens_chain_is_priced_before_the_others_waiting(monkeyp
 
 
 def test_the_ticker_on_screen_is_the_newest_open_page(monkeypatch):
-    """One rule (2026-10-01 audit: page open, page close and the daemon each had their own): the
-    ticker on screen is the newest page still open, and the books, the chain fetched first and
-    the option contract all follow it, in the order the pages open and close."""
+    """One rule: the ticker on screen is the newest page still open, and the books, the chain
+    fetched first and the option contract all follow it, in the order the pages open and close."""
     import asyncio
     followed: list = []
     monkeypatch.setattr(server, "_follow_screen_contract", lambda: followed.append(push_changes.on_screen()))
@@ -610,8 +608,8 @@ def test_the_ticker_on_screen_is_the_newest_open_page(monkeypatch):
 
 
 def test_a_page_whose_open_fails_is_closed(monkeypatch):
-    """A listener of the open failing (2026-10-01 review) still closes the page: it is not left
-    the ticker on screen with no client."""
+    """A listener of the open failing still closes the page: it is not left the ticker on screen
+    with no client."""
     import asyncio
     monkeypatch.setattr(push_changes, "_open", [])
 
@@ -628,8 +626,8 @@ def test_a_page_whose_open_fails_is_closed(monkeypatch):
 
 
 def test_a_listener_registered_again_replaces_its_own(monkeypatch):
-    """2026-10-01: a second import of server registered its listeners again, and every change of
-    the ticker on screen then ran them twice."""
+    """A module that registers its listener again (a second import of server) replaces it: every
+    change of the ticker on screen runs it once."""
     monkeypatch.setattr(push_changes, "_open", [])
     monkeypatch.setattr(push_changes, "_screen_listeners", {})
     heard: list = []

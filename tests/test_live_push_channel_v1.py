@@ -181,8 +181,8 @@ def test_a_connecting_console_receives_the_last_values_first(feed):
 
 def test_a_consoles_wanted_list_is_withdrawn_when_its_connection_ends(feed):
     """What the console's screens show is the console's now: when its connection ends, the
-    daemon holds no list from it (2026-10-01 review: the books, the contracts and the chain asked
-    for first stayed with no console to show them)."""
+    daemon holds no list from it (no books, contracts or chain asked for with no console to show
+    them)."""
     import json as _json
 
     from websockets.asyncio.client import connect

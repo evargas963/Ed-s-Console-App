@@ -168,8 +168,7 @@ def test_the_selected_ticker_gets_its_books_a_change_replaces_them_and_a_restart
 
 def test_a_connection_that_never_streams_never_opens_a_page(monkeypatch):
     """The page is open while its /api/changes stream runs: a request whose client went away
-    before the stream started leaves no page open (2026-10-01 review: it stayed the ticker on
-    screen, with its books and chain first, after its client was gone)."""
+    before the stream started leaves no page open, so it is never the ticker on screen."""
     import asyncio
 
     import push_changes

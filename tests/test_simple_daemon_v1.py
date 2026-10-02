@@ -61,9 +61,9 @@ def test_requests_are_split_under_schwabs_message_limit():
 # ------------------------------------------------------------------ the wanted list
 
 def test_the_wanted_list_is_the_consoles_now_and_a_change_clears_that_services_refusals():
-    """The list is what the console says now: a daemon starts with none (2026-10-01 review: a
-    restarted daemon streamed the books and contracts last asked for before any console said
-    so), and a list withdrawn (the console gone) is none."""
+    """The list is what the console says now: a daemon starts with none (it never streams books or
+    contracts no console asked for since it started), and a list withdrawn (the console gone) is
+    none."""
     bus, health = ss.MessageBus(), ss.HealthRegistry()
     d = cap.Daemon(bus, health)
     assert d.wanted == _wanted() and d.active is None, "no built-in symbol list: the console decides"
@@ -96,9 +96,8 @@ def test_every_board_ticker_and_every_equity_the_screens_show_is_streamed(tmp_pa
 
 
 def test_the_ticker_on_screen_is_the_chain_sweeps_active_ticker(tmp_path):
-    """Operator 2026-10-01: the ticker on screen's chain is fetched ahead of the board. The
-    console names it (`active`); the daemon never works it out from another list (2026-10-01
-    audit: it was read back out of the books list)."""
+    """The ticker on screen's chain is fetched ahead of the board. The console names it
+    (`active`); the daemon never works it out from another list (such as the books)."""
     d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), board=["SPY"])
     d.chains = cap.ChainSweep(tmp_path / "x.db", d.board, lambda t, m: None)
     d.set_wanted({"active": "MU", "NYSE_BOOK": ["MU"], "NASDAQ_BOOK": ["MU"]})
@@ -364,10 +363,10 @@ def _free_port() -> int:
 
 def test_the_console_socket_carries_the_wanted_list_in_and_the_status_out():
     """The daemon holds the list of the connection that sent it last; that connection ending
-    withdraws it, and another connection ending does not (2026-10-01 review: an old connection
-    noticed closed after the console reconnected wiped the live console's list)."""
+    withdraws it, and another connection ending (an old one noticed closed after the console
+    reconnected) does not."""
     from websockets.asyncio.client import connect
-    port = _free_port()
+    port, stats = _free_port(), {}
     d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry())
 
     async def until(cond):
@@ -380,7 +379,7 @@ def test_the_console_socket_carries_the_wanted_list_in_and_the_status_out():
     async def go():
         stop = asyncio.Event()
         server = asyncio.create_task(serve_live_push(
-            ss.MessageBus(), stop, port=port, heartbeat_fn=lambda: {"schwab_socket_open": True},
+            ss.MessageBus(), stop, port=port, stats=stats, heartbeat_fn=lambda: {"schwab_socket_open": True},
             on_wanted=d.set_wanted))
         for _ in range(100):
             try:
@@ -395,7 +394,7 @@ def test_the_console_socket_carries_the_wanted_list_in_and_the_status_out():
         await b.send(json.dumps({"op": "wanted", "wanted": {"active": "MU", "NYSE_BOOK": ["MU"]}}))
         await until(lambda: d.active == "MU")
         await a.close()                                           # the old connection's end is noticed
-        await asyncio.sleep(0.3)
+        await until(lambda: stats["clients"] == 1)                # the server has handled it
         kept = (d.active, d.wanted["NYSE_BOOK"])
         await b.close()                                           # the console's own connection ends
         await until(lambda: d.active is None)

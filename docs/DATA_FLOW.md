@@ -187,7 +187,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   fails (no page streaming, the console down), no ticker is on screen: no books, no chain ahead
   of the board, no option contract; the daemon drops the console's list when the connection that
   sent it ends, and starts with none. With the daemon not reporting (no current heartbeat), no
-  ticker reads "warming": its reason says the daemon is not reporting. A viewed ticker that is on screen or on the board
+  ticker reads "warming": its reason says first that the daemon is not reporting, then any
+  other reason (no levels yet, stale levels). A viewed ticker that is on screen or on the board
   reads "warming" until its first chain is priced; any other reads why no chain is fetched.
   Levels older
   than two of the sweep's delivered rounds are stale with the reason (the daemon's last answer
@@ -215,7 +216,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   the unexpired columns' contracts drawn (the page streams exactly these), names a selected
   expiry the surface lacks (`missing_expiry`: nothing drawn or streamed), flashes each cell whose
   value changed in a publication after `since`, the `surface_seq` the page last drew
-  (`_mark_changed` records the publication of each change), and counts the unexpired cells drawn
+  (`_mark_changed` records the publication of each change, for the cells of each publication: a
+  strike or column that leaves and comes back starts afresh, as a new one does), and counts the unexpired cells drawn
   that are streaming (`_stream_coverage`): the header chip's words, ALL STREAMING only when every
   one is, N% STREAMING (the share rounded down; "<1%" under one), EXPIRED (every column drawn has
   expired) or WARMING, with a one-line tooltip. The page is served the words for each cell's and

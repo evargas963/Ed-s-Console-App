@@ -963,8 +963,8 @@ STREAM_WORDS = {
 
 
 #: The heatmap header's chip, per coverage state: ALL STREAMING only when every cell on screen is
-#: live (operator 2026-09-15: "every visible heatmap cell must correspond to an exact option
-#: contract actively receiving streamed Schwab updates"). Never the bare word LIVE: that is the
+#: live (every visible heatmap cell is an exact option contract receiving streamed Schwab
+#: updates). Never the bare word LIVE: that is the
 #: price feed's word in the header.
 COVERAGE_LIVE, COVERAGE_PARTIAL, COVERAGE_WARMING, COVERAGE_EXPIRED = "live", "partial", "warming", "expired"
 
@@ -2025,7 +2025,7 @@ CELL_EXPOSURE_NOT_SENT = "exposure_not_sent"
 CELL_OI_NOT_SENT = "oi_not_sent"
 CELL_VOLUME_NOT_SENT = "volume_not_sent"
 CELL_ABSENT_REASONS = {
-    CELL_NOT_LISTED: "-",            # operator 2026-10-01: a dash, no words
+    CELL_NOT_LISTED: "-",            # a dash, no words
     # a contract here sent no open interest or multiplier, or has open interest and no Greek
     CELL_EXPOSURE_NOT_SENT: "Schwab sent no Greek/OI",
     CELL_OI_NOT_SENT: "Schwab sent no OI",
@@ -2213,17 +2213,19 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
     # a chain is coming only while the daemon reports: for the ticker on screen (fetched first)
     # or a board ticker (fetched in turn)
     _warming = _board_now is not None and (tk == push_changes.on_screen() or tk in _board_now)
-    _state = terrain_staleness((live or {}).get("computed_ts_utc"), tk)
-    payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-                     "live": False, "stale": True, "warming": _requested and _warming,
-                     "requested": _requested,
-                     "reason": _state["levels_stale_reason"] or (
-                         "the surface is projected when the daemon delivers this ticker's chain"
-                         if _warming else
-                         "the capture daemon is not reporting (no current heartbeat): its board is unknown"
-                         if _board_now is None else
-                         "no chain is fetched for this ticker: it is not on screen or on the board")}
-    return JSONResponse(payload)
+    _levels_why = terrain_staleness((live or {}).get("computed_ts_utc"), tk)["levels_stale_reason"]
+    if _board_now is None:     # the daemon not reporting is the cause of every other absence: first
+        _why = ["the capture daemon is not reporting (no current heartbeat): its board is unknown",
+                _levels_why]
+    elif _levels_why:
+        _why = [_levels_why]
+    elif _warming:
+        _why = ["the surface is projected when the daemon delivers this ticker's chain"]
+    else:
+        _why = ["no chain is fetched for this ticker: it is not on screen or on the board"]
+    return JSONResponse({"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
+                         "live": False, "stale": True, "warming": _requested and _warming,
+                         "requested": _requested, "reason": " — ".join(r for r in _why if r)})
 
 
 # RC-UI-1's dev route (/console) converged into `/` here (operator directive 2026-09-14):
