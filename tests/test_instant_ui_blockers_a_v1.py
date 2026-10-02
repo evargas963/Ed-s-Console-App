@@ -143,19 +143,11 @@ def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar(monkeypatch):
 
 
 def test_spot_gamma_reprice_runs_only_for_a_viewed_heatmap(monkeypatch, view):
-    import threading
     import server as srv
-    ran, done = [], threading.Event()
-
-    def worker(tk):
-        ran.append(tk)
-        with srv._reprice_guard:
-            srv._reprice_dirty.discard(tk)
-            srv._reprice_running.discard(tk)
-        done.set()
-    monkeypatch.setattr(srv, "_reprice_worker", worker)
+    ran = []
+    monkeypatch.setattr(srv, "_price_chain", lambda tk, what, c, ts: ran.append((tk, what)))
     view("ZZVIEW")
     srv._on_stream_tick("ZZNOTVIEWED")
     srv._on_stream_tick("ZZVIEW")
-    assert done.wait(5)
-    assert ran == ["ZZVIEW"]
+    srv._chain_pricing.submit(lambda: None).result(timeout=10)
+    assert ran == [("ZZVIEW", srv.REPRICE)]

@@ -112,9 +112,11 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Option chain.** Schwab REST → the daemon's chain sweep (`ChainSweep`) → the 8799 socket, in
   parts → the console (`streaming.assemble_chain_part`: a chain is priced only with every part;
   one that arrived incomplete, or a fetch that failed, keeps the last levels with that reason) →
-  `_on_chain` → priced on one pricing thread (`_price_chain`; at most one chain of each ticker
-  waits, the newest; the ticker on screen's is priced first, then the delivered chains, then the
-  stored ones; the startup load queues a ticker's stored captures, read from the database when
+  `_on_chain` → priced on one pricing thread (`_price_chain`, the only caller of
+  `_publish_levels`: delivered chains, stored captures and the tick reprices all wait in one
+  queue, at most one entry per ticker; the ticker on screen's takes every other turn, so its
+  reprices on every quote never hold the thread, then the delivered chains and reprices, longest
+  waiting first, then the stored ones; the startup load queues a ticker's stored captures, read from the database when
   priced, only while the daemon has delivered no chain of that ticker, and a chain delivered while
   they wait replaces them, so a stored capture never replaces a delivered chain and no delivered
   chain waits behind a stored one). The chain's parts are events on the
@@ -184,8 +186,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   15-minute periods of bars exist; ATR(14) needs 15). None of these rules names a ticker; the
   board decides only which tickers are fetched and priced while no screen shows them. A viewed
   ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
-  stream runs): it is repriced on every streamed tick, back to back with no interval (the ticks
-  that arrive during one reprice are all in the next), and pushed to the page the moment it
+  stream runs): every streamed tick queues a reprice on the pricing thread (the ticks that arrive
+  while one waits or runs are all in the next), and it is pushed to the page the moment it
   changes. The ticker on screen is the newest open page's (owner `push_changes.on_screen`;
   listeners register by name, once each): it goes to the daemon as the wanted frame's `active`
   (the chain sweep fetches it first, its books stream), its chain is priced before the others

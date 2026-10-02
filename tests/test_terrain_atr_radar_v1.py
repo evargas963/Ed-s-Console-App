@@ -128,7 +128,7 @@ def test_pricing_a_chain_wires_flip_drift_logger(monkeypatch, tmp_path):
     monkeypatch.setattr(srv, "_atr_pair", lambda _tk: AtrPair(1.0, 0.2))
 
     rth_ts = 1784296800.0                  # a regular-session instant, the chain's fetch time
-    srv._price_chain("SPY", [], rth_ts)
+    srv._price_chain("SPY", srv.DELIVERED, [], rth_ts)
     assert srv.terrain_cache_get("SPY")["confidence"] == "TRUSTED"
     assert calls == [("SPY", 99.5)], "logger must run on the pricing seam"
     assert (tmp_path / "flip.jsonl").is_file()
@@ -139,7 +139,7 @@ def test_pricing_a_chain_wires_flip_drift_logger(monkeypatch, tmp_path):
 
     monkeypatch.setattr(srv, "compute_terrain", lambda *_a, **_k: TerrainSnapshot(
         ticker="SPY", spot=100.0, gamma_flip="not-a-number", confidence="TRUSTED"))
-    srv._price_chain("SPY", [], rth_ts)
+    srv._price_chain("SPY", srv.DELIVERED, [], rth_ts)
     assert "SPY" not in srv._terrain_refresh_last_error, "flip-drift failure must stay fail-soft"
 
 
