@@ -44,14 +44,12 @@ def feed(monkeypatch):
     monkeypatch.setattr(ofs, "LIVE_PUSH_URL", f"ws://127.0.0.1:{port}")
     monkeypatch.setattr(ofs, "PUSH_RECONNECT_SEC", 0.05)
     ofs._feed_running = False
-    ofs._active_ticker = "SPY"
     ofs._option_streaming_last_update_ts = None
     ofs._option_contract_last_update_ts.clear()
     ofls.clear_all_live_state()
     monkeypatch.setattr(lmp, "_by_ticker", {})
     yield port
     ofs._feed_running = False
-    ofs._active_ticker = None
 
 
 def _spy_trade(last: float, ts: float) -> dict:

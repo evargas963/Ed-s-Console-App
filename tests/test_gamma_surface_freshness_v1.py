@@ -50,13 +50,11 @@ def test_live_terrain_surface_is_preferred_and_discloses_coverage(monkeypatch):
     try:
         d = _call(tk)
         assert d["source"] == "terrain_live_cache" and d["live"] is True
-        assert d["cells"] == _SURF["cells"]     # served verbatim
+        assert [{"strike": c["strike"], "gex": c["gex"]} for c in d["cells"]] == _SURF["cells"]  # served verbatim
+        assert [c["spot"] for c in d["cells"]] == [False, True, False]   # the live 584 is nearest the 583 row
         # the live price, and the price the cells were computed at, each named
         assert d["spot"] == 584.0 and d["priced_at_spot"] == 583.41
         assert d["provenance"]["spot_basis"] == "live_resolve_spot"
-        # coverage: the levels' chain is every expiry, strike_range=ALL (fetch_full_chain)
-        assert d["coverage"]["strike_count"] == 3 and d["coverage"]["strike_min"] == 580.0
-        assert "strike_range=all" in d["coverage"]["note"].lower()
     finally:
         _clear(tk)
 
@@ -201,7 +199,8 @@ def test_surface_session_identity_is_stamped_by_the_server_clock():
         assert d["session_date_et"] == today
         assert [e["expired"] for e in d["expirations"]] == [True, False]
         assert d["prior_session"] is False                     # a live surface is this session's
-        assert d["cells"] == _SURF["cells"]                    # values untouched
+        assert [{"strike": c["strike"], "gex": c["gex"]} for c in d["cells"]] == _SURF["cells"]  # values untouched
+        assert not any(c["spot"] for c in d["cells"])   # no live price here: no row is marked as the price
     finally:
         _clear(tk)
     # a banked reference from an earlier trading day is a PRIOR-session reference

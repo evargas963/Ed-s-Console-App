@@ -391,7 +391,7 @@ def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
         server._terrain_cache["CRWD"] = {"ticker": "CRWD", "spot": snap.spot, "computed_ts_utc": time.time(),
                                          "_per_strike": snap.per_strike}
     try:
-        measures = json.loads(server.get_terrain_strikes(ticker="CRWD").body)["measures"]
+        measures = json.loads(server.get_terrain_strikes(ticker="CRWD", scope="all").body)["measures"]
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop("CRWD", None)
@@ -402,4 +402,3 @@ def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
             row = [r for r in surface["cells"] if r["strike"] == strike][0]
             cells = [cell_value(c) for c in row[m] if c is not None and cell_value(c) is not None]
             assert cells and abs(sum(cells) - value) <= 0.5 * cols + 0.1, (m, strike, value, cells)
-        assert measures[m]["spot_strike"] is None   # no live price here: no window centre is served

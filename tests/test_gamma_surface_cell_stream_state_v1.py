@@ -4,13 +4,10 @@
 (never desired -- covers unsubscribed, missing, and mismatched-identity contracts alike), rolled
 up into a cell-level 'live' / 'partial' / 'stale' / 'unavailable' aggregate.
 
-Proven directly against `_stamp_gamma_surface_cell_stream_state` /
-`_gamma_surface_cell_state_counts` (the pure, in-place annotation functions — RC-80: they never
-touch a cell's already-computed exposure value, only annotate it), against the real end-to-end
-`_publish_levels` path with a REAL captured chain fixture (matching this
-repo's existing gamma-surface test convention, not invented contracts), and against
-`/api/options/gamma-surface`'s own served JSON for both the live and banked-morning-reference
-branches."""
+Proven directly against `_stamp_gamma_surface_cell_stream_state` (it never touches a cell's
+computed exposure value, only annotates it) and `_stream_coverage` (the header's count of a
+window's cells), against the real end-to-end `_publish_levels` path with a REAL captured chain
+fixture, and against `/api/options/gamma-surface`'s served view."""
 from __future__ import annotations
 
 import pytest
@@ -23,7 +20,7 @@ import live_market_plane as lmp
 import server
 from server import (
     _stamp_gamma_surface_cell_stream_state,
-    _gamma_surface_cell_state_counts,
+    _stream_coverage,
     get_options_gamma_surface,
     _publish_levels,
     ticker_storage_key,
@@ -38,7 +35,7 @@ TK = ticker_storage_key("CRWD")
 
 
 # ---------------------------------------------------------------------------
-# Unit-level: _stamp_gamma_surface_cell_stream_state / _gamma_surface_cell_state_counts
+# Unit-level: _stamp_gamma_surface_cell_stream_state / _stream_coverage
 # ---------------------------------------------------------------------------
 
 
@@ -49,7 +46,13 @@ def _at_capture(pin_clock):
     return pin_clock(2026, 9, 2, 10, 5)
 
 def _surface(*rows):
-    return {"cells": [{"strike": float(i), "contracts": [row]} for i, row in enumerate(rows)]}
+    return {"expirations": [{"expiry": "2026-09-11"}],
+            "cells": [{"strike": float(i), "contracts": [row]} for i, row in enumerate(rows)]}
+
+
+def _states(cov):
+    return {k: cov[k] for k in ("live", "partial", "stale", "pending", "daemon_unavailable",
+                                "rejected", "unavailable")}
 
 
 def test_live_leg_requires_membership_in_overlay_symbols_this_cycle():
@@ -186,7 +189,7 @@ def test_cell_state_counts_tallies_across_cells_and_columns():
     streamed = {"AAA": {"gamma_ts_recv": time.time()}, "BBB": {"gamma_ts_recv": time.time()},
                 "CCC": {"gamma_ts_recv": time.time() - 99}}
     _stamp_gamma_surface_cell_stream_state(surf, streamed, {"AAA", "BBB"})
-    counts = _gamma_surface_cell_state_counts(surf)
+    counts = _states(_stream_coverage(surf["cells"]))
     # cell0: live (both legs live). cell1: stale (CCC desired, not overlaid). cell2: unavailable (DDD never desired).
     assert counts == {"live": 1, "partial": 0, "stale": 1, "pending": 0,
                        "daemon_unavailable": 0, "rejected": 0, "unavailable": 1}
@@ -274,7 +277,7 @@ def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monke
     _publish_levels(TK)
     surface = _published_surface()
     assert surface["stream_overlay_contracts"] == 1   # the newest value Schwab sent
-    counts = _gamma_surface_cell_state_counts(surface)
+    counts = _stream_coverage(surface["cells"])
     assert counts["live"] == 0
     assert counts["stale"] > 0
 
@@ -287,23 +290,26 @@ def test_dropped_contract_becomes_unavailable_not_lingering_stale(monkeypatch, v
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
     _publish_levels(TK)
-    counts = _gamma_surface_cell_state_counts(_published_surface())
+    counts = _stream_coverage(_published_surface()["cells"])
     assert counts["live"] == 0 and counts["stale"] == 0
     assert counts["unavailable"] > 0
 
 
 # ---------------------------------------------------------------------------
-# Endpoint: /api/options/gamma-surface exposes cell_stream_state_counts / stream_coverage
+# Endpoint: /api/options/gamma-surface's view.coverage (the heatmap header's chip)
 # ---------------------------------------------------------------------------
 
-def _call(tk):
-    return json.loads(get_options_gamma_surface(tk).body)
+def _call(tk, expiry=None):
+    """The coverage of every strike drawn (scope All) in every column, or the one `expiry`."""
+    body = json.loads(get_options_gamma_surface(tk, scope="all", centre=None, shift=0, cols=None,
+                                                expiry=expiry).body)
+    return body["view"]["coverage"]
 
 
-def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is_live():
-    """2026-09-16 audit finding #6: LIVE requires 100% of cells WITH a contract identity to
-    be live -- a single-cell, single-contract surface where that one cell is live is the
-    trivial case where the bar and the old (wrong) >=1 threshold happen to coincide."""
+def test_endpoint_reads_all_streaming_when_every_cell_on_screen_is_live():
+    """2026-09-16 audit finding #6: ALL STREAMING requires 100% of cells WITH a contract
+    identity to be live -- a single-cell surface where that one cell is live is the trivial
+    case where the bar and the old (wrong) >=1 threshold coincide."""
     tk = ticker_storage_key("ZZZTEST1")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
             "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]}],
@@ -314,17 +320,14 @@ def test_endpoint_reports_meets_live_requirement_true_when_every_visible_cell_is
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
-        assert "stream_confirmed_live" not in d, (
-            "the dead, misleadingly-named field must be removed, not merely superseded")
-        assert d["stream_coverage"]["meets_live_requirement"] is True
-        assert d["stream_coverage"]["live_pct"] == 100.0
-        assert d["cell_stream_state_counts"]["live"] == 1
+        assert d["state"] == server.COVERAGE_LIVE and d["live_pct"] == 100 and d["live"] == 1
+        assert d["label"] == "ALL STREAMING" and d["title"] == "all 1 cells streaming"
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
 
 
-def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
+def test_endpoint_reads_zero_streaming_when_no_cell_is_live():
     tk = ticker_storage_key("ZZZTEST2")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0],
             "cells": [{"strike": 10.0, "gex": [1.0], "contracts": [{"call": "X", "put": None}]}],
@@ -335,18 +338,16 @@ def test_endpoint_reports_meets_live_requirement_false_when_no_cell_is_live():
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
-        assert d["stream_coverage"]["meets_live_requirement"] is False
-        assert d["stream_coverage"]["live_pct"] == 0.0
-        assert d["cell_stream_state_counts"]["unavailable"] == 1
+        assert d["state"] == server.COVERAGE_PARTIAL and d["live_pct"] == 0
+        assert d["unavailable"] == 1 and d["label"] == "0% STREAMING"
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
 
 
-def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverage():
-    """The core of audit finding #6: MORE than zero live cells, but not ALL of them, must
-    still report meets_live_requirement=False -- the exact case the old >=1-cell threshold
-    got wrong (it would have reported confirmed-live here)."""
+def test_endpoint_reads_partial_when_only_some_cells_are_live():
+    """The core of audit finding #6: MORE than zero live cells, but not ALL of them, is never
+    ALL STREAMING -- the exact case the old >=1-cell threshold got wrong."""
     tk = ticker_storage_key("ZZZTEST_PARTIAL")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
             "cells": [
@@ -362,14 +363,12 @@ def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverag
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
-        d = _call(tk)
-        cov = d["stream_coverage"]
-        assert cov["total_visible_cells"] == 2
+        cov = _call(tk)
+        assert cov["cells"] == 2
         assert cov["live"] == 1 and cov["stale"] == 1
-        assert cov["live_pct"] == 50.0
-        assert cov["meets_live_requirement"] is False, (
-            "one live cell out of two must NOT satisfy the LIVE requirement"
-        )
+        assert cov["live_pct"] == 50 and cov["state"] == server.COVERAGE_PARTIAL
+        assert cov["label"] == "50% STREAMING" and cov["title"] == "1 of 2 cells streaming · 1 stale"
+        assert _call(tk, expiry="2026-09-11")["live_pct"] == 50
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
@@ -378,8 +377,8 @@ def test_endpoint_reports_meets_live_requirement_false_when_only_partial_coverag
 def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live():
     """Operator follow-up mandate (2026-09-16): coverage disclosure must count live/
     partial/stale/PENDING/rejected/unavailable cells distinctly -- a pending contract
-    (requested, no tick yet) must never count toward meets_live_requirement, and must
-    never be silently folded into the unavailable bucket the client cannot act on."""
+    (requested, no tick yet) never counts as streaming, and is never silently folded into
+    the unavailable bucket."""
     tk = ticker_storage_key("ZZZTEST_PENDING")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
             "cells": [
@@ -394,14 +393,11 @@ def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live(
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
-        d = _call(tk)
-        cov = d["stream_coverage"]
-        assert cov["total_visible_cells"] == 2
+        cov = _call(tk)
+        assert cov["cells"] == 2
         assert cov["live"] == 1 and cov["pending"] == 1
-        assert cov.get("unavailable", 0) == 0, "the pending leg must not also be counted as unavailable"
-        assert cov["meets_live_requirement"] is False, (
-            "a pending (not-yet-confirmed) cell must NOT satisfy the LIVE requirement")
-        assert d["cell_stream_state_counts"]["pending"] == 1
+        assert cov["unavailable"] == 0, "the pending leg must not also be counted as unavailable"
+        assert cov["state"] == server.COVERAGE_PARTIAL
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
@@ -409,10 +405,9 @@ def test_endpoint_reports_pending_coverage_distinctly_and_excludes_it_from_live(
 
 def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
     """Independent-review finding (2026-09-16, follow-up mandate): a desired-but-untouched
-    contract while the capture daemon itself is unreachable must count in its OWN bucket,
-    distinct from 'pending' (daemon alive, outcome merely not yet known) -- both must be
-    excluded from meets_live_requirement, but conflating them hides an operator-actionable
-    fact (restart the daemon) behind one that implies nothing is wrong (just wait)."""
+    contract while the capture daemon itself is unreachable counts in its OWN bucket,
+    distinct from 'pending' (daemon alive, outcome merely not yet known) -- neither streams,
+    but conflating them hides an operator-actionable fact (restart the daemon)."""
     tk = ticker_storage_key("ZZZTEST_DAEMON_DOWN")
     surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [10.0, 11.0],
             "cells": [
@@ -427,13 +422,12 @@ def test_endpoint_reports_daemon_unavailable_coverage_distinctly_from_pending():
         server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0,
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
-        d = _call(tk)
-        cov = d["stream_coverage"]
+        cov = _call(tk)
         assert cov["live"] == 1 and cov["daemon_unavailable"] == 1
-        assert cov.get("pending", 0) == 0, "a daemon-down symbol must not also count as pending"
-        assert cov.get("unavailable", 0) == 0, "a daemon-down symbol must not also count as unavailable"
-        assert cov["meets_live_requirement"] is False
-        assert d["cell_stream_state_counts"]["daemon_unavailable"] == 1
+        assert cov["pending"] == 0, "a daemon-down symbol must not also count as pending"
+        assert cov["unavailable"] == 0, "a daemon-down symbol must not also count as unavailable"
+        assert cov["state"] == server.COVERAGE_PARTIAL
+        assert cov["title"] == "1 of 2 cells streaming · 1 daemon unavailable"
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
@@ -455,9 +449,7 @@ def test_rejected_contract_reports_a_distinct_state_not_generic_unavailable():
                                       "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
-        assert d["cell_stream_state_counts"]["rejected"] == 1
-        assert d["stream_coverage"]["rejected"] == 1
-        assert d["stream_coverage"]["meets_live_requirement"] is False
+        assert d["rejected"] == 1 and d["state"] == server.COVERAGE_PARTIAL
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)

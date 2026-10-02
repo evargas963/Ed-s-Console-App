@@ -155,7 +155,8 @@ from config import build_config, load_dotenv_file
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
 from numeric_contract import schwab_number
-from terrain_engine import (TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike, positioning_migration)
+from terrain_engine import (SCOPES, TerrainSnapshot, chain_ladder, compute_terrain, nearest_strike,
+                            positioning_migration, strike_window)
 from terrain_atr import AtrPair, compute_atr_pair
 
 from db import get_db
@@ -440,7 +441,7 @@ async def _app_lifespan(app):
     # quote and option greeks/OI/volume quote -> _on_stream_tick, which reprices a viewed
     # ticker; every chain the daemon fetched -> _on_chain, which prices it.
     from app.options.order_flow.streaming import start_order_flow_stream
-    start_order_flow_stream(None, None, None, on_tick_callback=_on_stream_tick,
+    start_order_flow_stream(on_tick_callback=_on_stream_tick,
                             on_chain_callback=_on_chain)
 
     push_changes.bind(asyncio.get_running_loop())
@@ -788,59 +789,6 @@ def _desired_option_symbols_for_ticker(tk: str, listed: "frozenset | None" = Non
     return out
 
 
-def _option_contract_admission_summary(tk: str) -> dict:
-    """Per-symbol admitted/observed/active/pending/rejected accounting for `tk`'s desired
-    option contracts, sourced ENTIRELY from PRODUCER acknowledgements (2026-09-16,
-    independent-review follow-up mandate item 1: "expose the exact admitted, active,
-    pending and rejected contracts"). Every bucket answers a materially different
-    question about a desired symbol:
-      'active'   — has produced a tick and is live now (live_market_plane.feed_live_for,
-                   LEVELONE_OPTIONS -- the rule the overlay and the 'live' cell state use).
-      'observed' — has produced a tick but is not live now: a past observation.
-      'admitted' — the DAEMON's own durable, heartbeat-confirmed open coverage epoch names
-                   this symbol (streaming.read_producer_admitted_option_contracts,
-                   LEVELONE_OPTIONS service) but no tick has EVER arrived — the vendor
-                   subscription itself is confirmed, only the first observation is still
-                   outstanding.
-      'pending'  — desired, the daemon is CONFIRMED alive, but neither a tick nor a
-                   confirmed admission has landed yet — requested, outcome not yet known.
-      'rejected' — {symbol: vendor_error} for every desired symbol the vendor's most
-                   recent batched subscribe attempt explicitly refused.
-    A desired symbol that fits none of the above (daemon unreachable) is simply omitted
-    from every bucket — unknown is never fabricated as any of these five claims; the
-    `daemon_available` flag on the returned dict is how a caller tells "genuinely nothing
-    to report yet" apart from "cannot know right now". `active` and `observed` are
-    mutually exclusive (a symbol is one or the other, never both), and a REJECTED symbol
-    is reported ONLY in `rejected` — never also counted as `active`/`observed`/`admitted`/
-    `pending`, so a caller cannot mistake "the vendor refused this" for any flavor of
-    success by unioning buckets carelessly."""
-    from app.options.order_flow.streaming import (
-        read_producer_admitted_option_contracts, read_producer_rejected_option_contracts,
-        is_option_producer_daemon_available)
-    desired = _desired_option_symbols_for_ticker(tk)
-    daemon_available = is_option_producer_daemon_available()
-    rejected_all = read_producer_rejected_option_contracts()
-    admitted_l1 = set((read_producer_admitted_option_contracts() or {}).get("LEVELONE_OPTIONS") or [])
-    streamed = _desired_stream_greeks_for_ticker(tk)
-    admitted, active, observed, pending = [], [], [], []
-    rejected: "dict[str, str]" = {}
-    for sym in desired:
-        if sym in rejected_all:
-            rejected[sym] = rejected_all[sym]
-        elif sym in streamed:
-            (active if lmp.feed_live_for(sym, "LEVELONE_OPTIONS") else observed).append(sym)
-        elif sym in admitted_l1:
-            admitted.append(sym)
-        elif daemon_available:
-            pending.append(sym)
-        # else: daemon unavailable -- genuinely unknown, omitted from every bucket
-    return {
-        "daemon_available": daemon_available,
-        "admitted": sorted(admitted), "active": sorted(active), "observed": sorted(observed),
-        "pending": sorted(pending), "rejected": rejected,
-    }
-
-
 def _overlaid_symbols(pre: list, post: list) -> list[str]:
     """Which contracts' own dicts `overlay_streamed_contract_fields` actually replaced with a
     freshened copy -- that function's own contract is "sparse, non-destructive... a contract
@@ -989,97 +937,109 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
         for j, e in enumerate(exps)}
 
 
-def _gamma_surface_cell_state_counts(surface: dict) -> dict:
-    """Tally the per-cell 'state' _stamp_gamma_surface_cell_stream_state already attached into
-    cheap surface-level counts — a client or test's one-field check instead of scanning every
-    cell. The seven states are mutually exclusive per cell (see that function's docstring)."""
+#: The heatmap header's chip, per coverage state: ALL STREAMING only when every cell on screen is
+#: live (operator 2026-09-15: "every visible heatmap cell must correspond to an exact option
+#: contract actively receiving streamed Schwab updates"). Never the bare word LIVE: that is the
+#: price feed's word in the header.
+COVERAGE_LIVE, COVERAGE_PARTIAL, COVERAGE_WARMING = "live", "partial", "warming"
+
+
+def _stream_coverage(cells: list) -> dict:
+    """How many of the heatmap's `cells` (the window on screen, _surface_view) are live. Only
+    cells with a contract count (a strike an expiry does not list was never a data point).
+    Returns the counts by cell state, the share live, and the header's words: `state`, `label`,
+    `title`."""
     counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "daemon_unavailable": 0,
               "rejected": 0, "unavailable": 0}
-    for cell in (surface.get("cells") or []):
-        for col in (cell.get("stream") or []):
-            if isinstance(col, dict) and col.get("state") in counts:
-                counts[col["state"]] += 1
-    return counts
-
-
-def _gamma_surface_coverage_summary(surface: dict) -> dict:
-    """The CANONICAL-SURFACE coverage verdict for a projected surface — every strike x
-    every expiry the server projected, not merely whichever subset the client happens to
-    be scrolled/scoped to (2026-09-16, audit finding #6; independent-review CORRECTION,
-    follow-up mandate: this field's scope must be named honestly, because it is NOT the
-    same thing as "coverage of what the operator is currently looking at").
-
-    Independent-review finding (2026-09-16): Auto/Wider/All strike-count windowing
-    (EdShell.scopeSelect) and expiry-column windowing (ed-gamma.js's own viewCols) are
-    BOTH decided entirely client-side and never communicated to the server — the server
-    has no way to know which strikes/expiries are actually rendered right now. Computing
-    `meets_live_requirement` over this whole canonical surface therefore answers "is the
-    full projected book fully live", which can be STRICTER than what the mandate's own
-    "every VISIBLE cell" language asks for (a narrower Auto-scoped view could be 100% live
-    while a distant, invisible strike this field still counts is merely 'pending'). This
-    field stays a genuinely useful, correctly-labelled canonical/diagnostic metric — the
-    CLIENT's own "LIVE" word is gated on a SEPARATE, DOM-derived visible-scope computation
-    (ed-gamma.js's `_visibleCellCoverage`, counting only the `.hcell` elements this exact
-    render painted) which this field must never be mistaken for. The `scope` key on the
-    returned dict makes that explicit in the wire payload itself, not only in this
-    docstring.
-
-    Coverage is judged only over cells that HAVE a real contract identity (at least one of
-    call/put resolved to an actual OSI symbol) — a strike/expiry combination with no
-    contract at all was never a viewable data point, and counting it against the bar would
-    make `meets_live_requirement` false on nearly every real chain (different expiries
-    legitimately cover different strike ranges) for a reason that has nothing to do with
-    streaming health.
-
-    `meets_live_requirement` implements the operator's own already-recorded directive
-    (2026-09-15, "always-live heatmap mandate"): "every visible heatmap cell must
-    correspond to an exact option contract actively receiving streamed Schwab updates" —
-    literally 100% of cells-with-a-contract must be 'live', not merely "at least one cell
-    is" — over THIS field's own canonical scope; the client's visible-scope computation is
-    the actual authority for the on-screen LIVE word.
-
-    `pending` (2026-09-16, operator's follow-up mandate) is counted and reported distinctly
-    from `unavailable`: a cell whose contract has been REQUESTED of the vendor but has not
-    yet ticked (or been rejected) is materially different from one nobody asked for at all,
-    and both the mandate's coverage-disclosure requirement and a fair 'not yet live' verdict
-    need that distinction on screen, not folded into the same bucket. `daemon_unavailable`
-    (2026-09-16, follow-up mandate) is likewise counted distinctly from `pending`: the
-    capture daemon itself being unreachable is a materially different, more actionable fact
-    than a contract merely queued behind a live daemon's own poll cycle."""
-    counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "daemon_unavailable": 0,
-              "rejected": 0, "unavailable": 0}
-    relevant = 0
-    for cell in (surface.get("cells") or []):
-        contracts_row = cell.get("contracts") or []
-        stream_row = cell.get("stream") or []
-        for j, col in enumerate(stream_row):
-            if not isinstance(col, dict):
-                continue          # no contract identity at all -- never a viewable data cell
-            pair = contracts_row[j] if j < len(contracts_row) else None
-            has_identity = bool(isinstance(pair, dict) and (pair.get("call") or pair.get("put")))
-            if not has_identity:
+    for cell in cells:
+        stream = cell.get("stream") or []
+        for j, pair in enumerate(cell.get("contracts") or []):
+            if not (isinstance(pair, dict) and (pair.get("call") or pair.get("put"))):
                 continue
-            relevant += 1
-            state = col.get("state")
-            if state in counts:
-                counts[state] += 1
-            else:
-                counts["unavailable"] += 1
-    live_pct = round(100.0 * counts["live"] / relevant, 1) if relevant else 0.0
-    return {
-        # Independent-review finding (2026-09-16): explicit, machine-readable scope
-        # disclosure, not just a docstring comment -- this whole dict describes the
-        # CANONICAL surface (every projected strike x expiry), never the client's current
-        # Auto/Wider/All-windowed view. A consumer that needs the on-screen LIVE verdict
-        # must use the client's own visible-scope computation, not this field.
-        "scope": "canonical_surface",
-        "total_visible_cells": relevant,
-        "live": counts["live"], "partial": counts["partial"], "stale": counts["stale"],
-        "pending": counts["pending"], "daemon_unavailable": counts["daemon_unavailable"],
-        "rejected": counts["rejected"], "unavailable": counts["unavailable"],
-        "live_pct": live_pct,
-        "meets_live_requirement": relevant > 0 and counts["live"] == relevant,
-    }
+            col = stream[j] if j < len(stream) else None
+            state = col.get("state") if isinstance(col, dict) else None
+            counts[state if state in counts else "unavailable"] += 1
+    cells_n = sum(counts.values())
+    live_pct = round(100.0 * counts["live"] / cells_n) if cells_n else None
+    if not cells_n:
+        state, label, title = COVERAGE_WARMING, "WARMING", "no cell on screen has a contract yet"
+    elif counts["live"] == cells_n:
+        state, label, title = COVERAGE_LIVE, "ALL STREAMING", f"all {cells_n} cells streaming"
+    else:
+        rest = ", ".join(f"{n} {k.replace('_', ' ')}" for k, n in counts.items() if n and k != "live")
+        state, label = COVERAGE_PARTIAL, f"{live_pct}% STREAMING"
+        title = f"{counts['live']} of {cells_n} cells streaming · {rest}"
+    return {"cells": cells_n, **counts, "live_pct": live_pct,
+            "state": state, "label": label, "title": title}
+
+
+#: the heatmap's measures: GEX and DEX are a value per cell, OI and volume {call, put, total}
+HEAT_MEASURES = ("gex", "dex", "oi", "volume")
+
+
+def _measure_values(cell: dict, measure: str) -> list:
+    """One heatmap row's values of `measure`, a value or None per column."""
+    if measure in ("oi", "volume"):
+        return [cp.get("total") if isinstance(cp, dict) else None for cp in cell.get(measure) or []]
+    return list(cell.get(measure) or [])
+
+
+def _mark_changed(surface: dict, previous: "dict | None") -> None:
+    """Each cell's `changed`: per measure, per column, whether its value differs from the same
+    strike and expiry in the previous publication (the page flashes it). Nothing is marked on a
+    ticker's first publication."""
+    before = {}
+    if previous:
+        exps = [e.get("expiry") for e in previous.get("expirations") or []]
+        for cell in previous.get("cells") or []:
+            for m in HEAT_MEASURES:
+                for e, v in zip(exps, _measure_values(cell, m)):
+                    before[(m, cell.get("strike"), e)] = v
+    exps = [e.get("expiry") for e in surface.get("expirations") or []]
+    for cell in surface.get("cells") or []:
+        cell["changed"] = {m: [(m, cell.get("strike"), e) in before and before[(m, cell.get("strike"), e)] != v
+                               for e, v in zip(exps, _measure_values(cell, m))] for m in HEAT_MEASURES}
+
+
+def _surface_view(surf: dict, spot_strike, scope: str, centre, shift: int, cols: "int | None",
+                  expiry: "str | None") -> "tuple[dict, dict]":
+    """The heatmap the page draws: (the surface cut to its window, the view). Rows: strike_window
+    (the scope's strikes around `centre`, else the strike nearest the price, moved `shift` rows).
+    Columns: the selected `expiry` alone; else for Auto the nearest `cols` (as many as the page
+    fits) that have not expired, for Wider twice that, expired ones after, for All every one. The
+    view: its centre strike, the cells' coverage (_stream_coverage), the contracts to stream (every
+    contract drawn, column by column) and each measure's largest |value| drawn (the colour
+    scale); `missing_expiry` when the selected expiry is not in the surface."""
+    exps = surf.get("expirations") or []
+    every = list(range(len(exps)))
+    unexpired = [j for j in every if exps[j].get("expired") is not True]
+    if expiry:
+        picked = [j for j in every if exps[j].get("expiry") == expiry]
+    elif scope == "all" or cols is None:
+        picked = every
+    elif scope == "wider":
+        picked = sorted((unexpired + [j for j in every if j not in unexpired])[:2 * cols])
+    else:
+        picked = (unexpired or every)[:cols]
+    lo, hi, c = strike_window(surf.get("strikes"), spot_strike if centre is None else centre, scope, shift)
+
+    def pick(v):
+        if isinstance(v, dict):                      # absent, changed: a column list per measure
+            return {m: pick(a) for m, a in v.items()}
+        return [v[j] for j in picked if j < len(v)] if isinstance(v, list) else v
+    cells = [{**{k: pick(v) for k, v in cell.items()}, "spot": cell.get("strike") == spot_strike}
+             for cell in (surf.get("cells") or [])[lo:hi + 1]]
+    demand = list(dict.fromkeys(pair[side] for j in range(len(picked)) for cell in cells
+                                for pair in (cell.get("contracts") or [])[j:j + 1]
+                                if isinstance(pair, dict) for side in ("call", "put") if pair.get(side)))
+    max_abs = {}
+    for m in HEAT_MEASURES:
+        known = [abs(v) for cell in cells for v in _measure_values(cell, m) if v is not None]
+        max_abs[m] = max(known) if known else None
+    window = {**surf, "strikes": (surf.get("strikes") or [])[lo:hi + 1],
+              "expirations": [exps[j] for j in picked], "cells": cells}
+    return window, {"centre": c, "scope": scope, "coverage": _stream_coverage(cells), "demand": demand,
+                    "max_abs": max_abs, "missing_expiry": expiry if expiry and not picked else None}
 
 
 _levels_locks: "dict[str, threading.Lock]" = {}
@@ -1102,26 +1062,31 @@ def _contract_ticker(sym: str) -> "str | None":
         return next((tk for tk, p in _terrain_cache.items() if sym in (p.get("_contract_symbols") or ())), None)
 
 
-def _ensure_default_option_contract(tk: str) -> None:
-    """The option contract whose OPTIONS_BOOK streams follows the page's ticker: the one already
-    desired or held by the daemon when it is this ticker's, else the at-the-money call of the
-    ticker's front expiry; cleared when the ticker has none. The operator's POST
-    /api/streaming/active-option-contract still wins until the ticker changes; one admitted
-    before this choice is refused as superseded (its command generation is older). Called on
-    the event loop: when a page opens or closes, and when the ticker's chain arrives."""
+def _follow_screen_contract() -> None:
+    """The option contract whose OPTIONS_BOOK streams follows the ticker on screen
+    (push_changes.on_screen): the one already chosen when it is that ticker's (the operator's
+    POST /api/streaming/active-option-contract holds until the ticker changes), else the
+    at-the-money call of the ticker's front expiry from its published chain; none without a
+    ticker or a chain. Runs on the event loop when the ticker on screen changes and when its chain
+    is published (push_changes listeners), so each choice lands in the order those happen; a
+    POST admitted before it is refused as superseded (its command generation is older)."""
     from app.options.order_flow.streaming import (
         begin_option_contract_command, clear_active_option_contract, get_active_option_contract,
         set_active_option_contract)
-    if _contract_is_for(get_active_option_contract(), tk):
+    tk = push_changes.on_screen()
+    if tk is not None and _contract_is_for(get_active_option_contract(), tk):
         return
-    held = ((lmp.daemon_status() or {}).get("held") or {}).get("OPTIONS_BOOK") or []
     with _terrain_cache_lock:
-        default = (_terrain_cache.get(tk) or {}).get("_default_contract")
-    sym = held[0] if held and _contract_is_for(held[0], tk) else default
-    if sym:
-        set_active_option_contract(sym, command_generation=begin_option_contract_command())
+        default = (_terrain_cache.get(tk) or {}).get("_default_contract") if tk else None
+    if default:
+        set_active_option_contract(default, command_generation=begin_option_contract_command())
     elif get_active_option_contract():
-        clear_active_option_contract(reason="no_contract_for_ticker")
+        clear_active_option_contract(reason="no contract for the ticker on screen")
+
+
+push_changes.on_screen_change(lambda _old, _new: _follow_screen_contract())
+push_changes.on_change(lambda tk, kind: _follow_screen_contract()
+                       if kind == push_changes.CHAIN and tk == push_changes.on_screen() else None)
 
 
 def _levels_lock(tk: str) -> threading.Lock:
@@ -1173,6 +1138,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         live_syms = _overlaid_symbols(chain, priced)
         snap = compute_terrain(tk, priced, spot, now=(
             datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
+        previous_surface = payload.get("_gamma_surface")
         payload.update(snap.to_dict())
         payload.update({
             # as of the chain they were computed from: a reprice on a kept chain does not make
@@ -1206,6 +1172,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                 read_producer_rejected_option_contracts(),
                 set(_desired_option_symbols_for_ticker(tk, listed)),
                 daemon_available=is_option_producer_daemon_available())
+            _mark_changed(surface, previous_surface)
             payload["_gamma_surface"] = surface
         with _terrain_cache_lock:
             if payload["_gamma_surface"] is not None:
@@ -1297,8 +1264,8 @@ def _reprice_worker(tk: str) -> None:
 #: prices the chains the daemon delivers, off the event loop that received them, one at a time
 _chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pricing")
 #: ticker -> the newest delivered chain not yet priced; a newer one replaces it, so the queue
-#: holds at most one chain per ticker however far pricing falls behind the sweep. A viewed
-#: ticker's chain is priced before the others waiting.
+#: holds at most one chain per ticker however far pricing falls behind the sweep. The ticker on
+#: screen's chain is priced before the others waiting.
 _chains_waiting: "dict[str, tuple[list, float]]" = {}
 _chains_waiting_lock = threading.Lock()
 
@@ -1319,10 +1286,11 @@ def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | N
 
 
 def _price_waiting_chain() -> None:
-    """Price one waiting chain: a viewed ticker's first, else the longest waiting."""
-    viewed = push_changes.watched()
+    """Price one waiting chain: the ticker on screen's first (the one the daemon fetches first),
+    else the longest waiting."""
+    first = push_changes.on_screen()
     with _chains_waiting_lock:
-        tk = next((t for t in _chains_waiting if t in viewed), next(iter(_chains_waiting)))
+        tk = first if first in _chains_waiting else next(iter(_chains_waiting))
         contracts, ts = _chains_waiting.pop(tk)
     _price_chain(tk, contracts, ts)
 
@@ -1526,8 +1494,37 @@ def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str |
     return None, None
 
 
+#: a per-strike panel's window request: Auto / Wider / All, the operator's panned centre strike
+#: (none: the strike nearest the price) and the rows a drag moved from it
+ScopeQuery = Annotated[str, Query(pattern="^(" + "|".join(SCOPES) + ")$")]
+CentreQuery = Annotated[Optional[float], Query()]
+ShiftQuery = Annotated[int, Query()]
+
+
+def _max_abs_row(rows) -> "list | None":
+    """The row ([strike, value, ...]) with the largest |value| of every strike; None with no
+    known value."""
+    known = [r for r in rows or [] if r[1] is not None]
+    return max(known, key=lambda r: abs(r[1])) if known else None
+
+
+def _windowed(rows: list, spot_strike, scope: str, centre, shift: int) -> "tuple[list, dict]":
+    """`rows` ([strike, value, ...], ascending) as a panel draws them: the window strike_window
+    picks, with its view {centre, max_abs}: the centre strike (send it back to pan from it) and the
+    largest |value| in the window (the bar and colour scale), None when no value is known."""
+    lo, hi, c = strike_window([r[0] for r in rows], spot_strike if centre is None else centre, scope, shift)
+    win = rows[lo:hi + 1]
+    known = [abs(r[1]) for r in win if r[1] is not None]
+    return win, {"centre": c, "max_abs": max(known) if known else None}
+
+
 @app.get("/api/terrain/strikes")
-def get_terrain_strikes(ticker: str = Query(...)):
+def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", centre: CentreQuery = None,
+                        shift: ShiftQuery = 0):
+    """The per-strike rows of the published levels, each list windowed for its panel (_windowed):
+    today's GEX and volume (all, near, far expiries), the Chart view's DEX and OI, with each
+    list's view; the side sums, the largest-GEX strike and the day-over-day migration are of every
+    strike."""
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
 
     today_src, prior_src = None, None
@@ -1600,25 +1597,36 @@ def get_terrain_strikes(ticker: str = Query(...)):
                 "spot_basis": float(s)}
 
     live_spot, live_src, _live_ts = resolve_spot(tk)   # the one spot on every screen
+    today = today or {"all": [], "near": [], "far": []}
+    migration = {sc: positioning_migration(today.get(sc), (prior or {}).get(sc),
+                                           _snap.get("call_wall"), _snap.get("put_wall"))
+                 for sc in ("all", "near", "far")}
+    lists = {**today, **measures}
+    windows = {name: _windowed(rows, nearest_strike([r[0] for r in rows], live_spot), scope, centre, shift)
+               for name, rows in lists.items()}
+    for sc in ("all", "near", "far"):      # the migration panel scales today's and the prior day's bars
+        drawn = {r[0] for r in windows[sc][0]}
+        both = [abs(v) for r in migration[sc].get("rows") or [] if r[0] in drawn
+                for v in (r[1], r[2]) if v is not None]
+        both += [windows[sc][1]["max_abs"]] if windows[sc][1]["max_abs"] is not None else []
+        windows[sc][1]["max_abs_with_prior"] = max(both) if both else None
     return JSONResponse({
         "ticker": tk, "spot": live_spot,
         "spot_source": live_src,
         "priced_at_spot": spot_used,
-        "today": today or {"all": [], "near": [], "far": []},
-        # the Chart view's DEX and OI profiles: each measure's rows (terrain_engine
-        # _per_strike_measure_rows), its strike nearest the live price (the window's centre) and
-        # its largest-magnitude strike
-        "measures": {m: {"rows": rows,
-                         "spot_strike": nearest_strike([r[0] for r in rows], live_spot),
-                         "max_abs_strike": max(rows, key=lambda r: abs(r[1]), default=[None])[0]}
+        "today": {sc: windows[sc][0] for sc in ("all", "near", "far")},
+        # the Chart view's DEX and OI profiles: each measure's window (terrain_engine
+        # _per_strike_measure_rows) and its largest-magnitude row, on screen or not (the label)
+        "measures": {m: {"rows": windows[m][0], "view": windows[m][1], "max_abs_row": _max_abs_row(rows)}
                      for m, rows in measures.items()},
-        "today_side_sums": _side_sums((today or {}).get("all"), live_spot),
-        "spot_strike": nearest_strike([r[0] for r in (today or {}).get("all") or []], live_spot),
-        # the strike with the largest net GEX magnitude (the chart labels it)
-        "max_abs_strike": max(((today or {}).get("all") or []), key=lambda r: abs(r[1]), default=[None])[0],
-        "migration": {sc: positioning_migration((today or {}).get(sc), (prior or {}).get(sc),
-                                                _snap.get("call_wall"), _snap.get("put_wall"))
-                      for sc in ("all", "near", "far")},
+        # each list's window: its centre strike and the largest |value| drawn
+        "views": {name: windows[name][1] for name in lists},
+        "scope": scope,
+        "today_side_sums": _side_sums(today.get("all"), live_spot),
+        "spot_strike": nearest_strike([r[0] for r in today.get("all") or []], live_spot),
+        # the row with the largest net GEX magnitude, on screen or not (the chart labels it)
+        "max_abs_row": _max_abs_row(today.get("all")),
+        "migration": migration,
         "today_source": today_src,
         # RC-68: every consumer must be able to render an AGE on the panel's face. A number with
         # no age is how a 2.1-hour-old volume histogram sat under the label "TODAY'S OPTION VOLUME".
@@ -1706,40 +1714,40 @@ def aggregate_bars(bars: list[dict], tf: str) -> list[dict]:
     return out
 
 
-@app.get("/api/options/vanna-by-strike")
-def get_vanna_by_strike(ticker: str = Query(...)):
-    """Per-strike dealer VANNA exposure from the published levels (net_vanna = call_vanna -
-    put_vanna, aggregated across every expiry; no per-expiry surface yet)."""
-    tk = ticker_storage_key(_required_ticker(ticker))
+def _strike_bar_payload(tk: str, key: str, scope: str, centre, shift: int, method: str):
+    """A per-strike bar panel's answer (vanna, charm): the published rows `key`, windowed for the
+    panel (_windowed), with the live price and the strike nearest it."""
     payload = terrain_cache_get(tk) or {}
-    if "_vanna_rows" not in payload:
+    if key not in payload:
         return JSONResponse({"ticker": tk, "available": False,
                              "reason": "no levels published for this ticker yet"})
+    rows = payload[key]
     spot = resolve_spot(tk)[0]
-    return JSONResponse({"ticker": tk, "available": True, "spot": spot,
-                         "priced_at_spot": payload.get("spot"),
-                         "rows": payload["_vanna_rows"],
-                         "spot_strike": nearest_strike([r[0] for r in payload["_vanna_rows"]], spot),
-                         "method": "the published levels' exposure book -> call_vanna - put_vanna"})
+    spot_strike = nearest_strike([r[0] for r in rows], spot)
+    win, view = _windowed(rows, spot_strike, scope, centre, shift)
+    return JSONResponse({"ticker": tk, "available": bool(rows), "spot": spot,
+                         "priced_at_spot": payload.get("spot"), "spot_strike": spot_strike,
+                         "rows": win, "view": view, "scope": scope,
+                         "reason": None if rows else "no usable strikes for this chain",
+                         "method": method})
+
+
+@app.get("/api/options/vanna-by-strike")
+def get_vanna_by_strike(ticker: str = Query(...), scope: ScopeQuery = "auto", centre: CentreQuery = None,
+                        shift: ShiftQuery = 0):
+    """Per-strike dealer VANNA exposure from the published levels (net_vanna = call_vanna -
+    put_vanna, aggregated across every expiry; no per-expiry surface yet)."""
+    return _strike_bar_payload(ticker_storage_key(_required_ticker(ticker)), "_vanna_rows", scope, centre,
+                               shift, "the published levels' exposure book -> call_vanna - put_vanna")
 
 
 @app.get("/api/options/charm-by-strike")
-def get_charm_by_strike(ticker: str = Query(...)):
+def get_charm_by_strike(ticker: str = Query(...), scope: ScopeQuery = "auto", centre: CentreQuery = None,
+                        shift: ShiftQuery = 0):
     """Per-strike dealer CHARM exposure from the published levels' charm map (the charm walls'
     own): net_charm = call_charm - put_charm per strike, delta-shares/day."""
-    tk = ticker_storage_key(_required_ticker(ticker))
-    payload = terrain_cache_get(tk) or {}
-    if "_charm_rows" not in payload:
-        return JSONResponse({"ticker": tk, "available": False,
-                             "reason": "no levels published for this ticker yet"})
-    rows = payload["_charm_rows"]
-    spot = resolve_spot(tk)[0]
-    return JSONResponse({"ticker": tk, "available": bool(rows), "spot": spot,
-                         "priced_at_spot": payload.get("spot"),
-                         "rows": rows,
-                         "spot_strike": nearest_strike([r[0] for r in rows], spot),
-                         "reason": None if rows else "charm_by_strike produced no usable strikes for this chain",
-                         "method": "the published levels' charm map -> call_charm - put_charm"})
+    return _strike_bar_payload(ticker_storage_key(_required_ticker(ticker)), "_charm_rows", scope, centre,
+                               shift, "the published levels' charm map -> call_charm - put_charm")
 
 
 @app.get("/api/options/tape")
@@ -1933,7 +1941,7 @@ CELL_EXPOSURE_NOT_SENT = "exposure_not_sent"
 CELL_OI_NOT_SENT = "oi_not_sent"
 CELL_VOLUME_NOT_SENT = "volume_not_sent"
 CELL_ABSENT_REASONS = {
-    CELL_NOT_LISTED: "no contract listed",
+    CELL_NOT_LISTED: "-",            # operator 2026-10-01: a dash, no words
     # a contract here sent no open interest or multiplier, or has open interest and no Greek
     CELL_EXPOSURE_NOT_SENT: "Schwab sent no Greek/OI",
     CELL_OI_NOT_SENT: "Schwab sent no OI",
@@ -2060,19 +2068,21 @@ def _stamp_surface_session(surface: dict, *, reference_date: Optional[str]) -> d
     live_cols = [e for e in out["expirations"] if not e["expired"] and e.get("dte") is not None]
     # the front column: the nearest expiry that has not expired, by Schwab's daysToExpiration
     out["front_expiry"] = min(live_cols, key=lambda e: e["dte"])["expiry"] if live_cols else None
+    out["expirations"] = [dict(e, front=e.get("expiry") == out["front_expiry"]) for e in out["expirations"]]
     return out
 
 
 @app.get("/api/options/gamma-surface")
-def get_options_gamma_surface(ticker: str = Query(...)):
-    """Strike × expiration signed GEX$ surface (cell = net_gex_1pct) through the ONE canonical
-    faucet compute_exposures_by_strike.
-
-    ONE source: the LIVE surface _publish_levels (the single levels producer) projects from the
-    full chain the daemon delivers and the live spot (source=terrain_live_cache).
-    With no live surface the answer is "unavailable" with the reason -- there is no second source
-    (operator rule 2026-09-23: no fallbacks; the banked MORNING wide chain used to stand in).
-    Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale visibly."""
+def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "auto", centre: CentreQuery = None,
+                              shift: ShiftQuery = 0, cols: Annotated[Optional[int], Query(ge=1)] = None,
+                              expiry: Annotated[Optional[str], Query()] = None):
+    """The heatmap: the strike x expiration surface the levels producer projected (cell =
+    net_gex_1pct, compute_exposures_by_strike), cut to the window the page draws (_surface_view:
+    `scope`, the panned `centre` and a drag's `shift`, the `cols` the page fits, the selected
+    `expiry`), with its `view`: the centre, the coverage words, the contracts to stream and the
+    colour scale. With no live surface the answer is "unavailable" with the reason; there is no
+    second source. Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale
+    visibly."""
 
     tk = ticker_storage_key(_required_ticker(ticker))
 
@@ -2084,52 +2094,21 @@ def get_options_gamma_surface(ticker: str = Query(...)):
         # ONE freshness authority: terrain_staleness (RC-424) already merged onto the cache by
         # terrain_cache_get — serialize it verbatim, never a second age policy for the same truth.
         stale = bool(live.get("levels_stale"))
-        strikes = surf.get("strikes") or []
-        # Always-live heatmap mandate (2026-09-15): `"live": True` above means "sourced from the
-        # live terrain pathway", NOT "currently backed by a confirmed-fresh Schwab stream tick"
-        # (a cold-stream surface still reaches here with cells stamped 'stale'/'unavailable' by
-        # _publish_levels).
-        #
-        # Audit finding #6 (2026-09-16), FIXED: `stream_confirmed_live` used to mean "at least
-        # one cell is live" (true with 1 of hundreds), and the field the UI actually rendered
-        # a "LIVE" label from (this response's own `source`/`live` above) required NO per-cell
-        # coverage at all -- a trader could see "LIVE" over a mostly stale/unavailable grid.
-        # `stream_confirmed_live` is REMOVED (dead, misleadingly named, never consumed) and
-        # replaced by `stream_coverage`, the ONE coverage verdict
-        # (_gamma_surface_coverage_summary) with exact live/partial/stale/rejected/unavailable
-        # counts and percentages, and `meets_live_requirement` gating the ONLY honest "LIVE"
-        # claim: 100% of cells carrying a real contract identity, not source-path identity or
-        # one live cell.
-        _coverage = _gamma_surface_coverage_summary(surf)
-        try:
-            # Independent-review finding (2026-09-16, follow-up mandate item 1): "expose the
-            # exact admitted, active, pending and rejected contracts" — a symbol-level
-            # accounting, distinct from the per-cell disclosure above. Best-effort: a
-            # diagnostic field must never take down the surface it is attached to.
-            _contract_admission = _option_contract_admission_summary(tk)
-        except Exception as _ca_e:  # institutional-swallow-ok: diagnostic-only, never load-bearing
-            log.debug("contract admission summary skipped for %s: %s", tk, _ca_e)
-            _contract_admission = None
+        spot_strike = nearest_strike(surf.get("strikes"), _surface_live_spot[0])
+        # `live` means sourced from the live levels; whether the cells on screen are streaming is
+        # the view's coverage
+        window, view = _surface_view(_stamp_surface_session(surf, reference_date=None), spot_strike,
+                                     scope, centre, shift, cols, expiry)
         return JSONResponse({
             # every cell Schwab listed is drawn: a cell without a value says why (absent)
             "ticker": tk, "symbol": tk, "available": True, "reason": None,
             "source": "terrain_live_cache", "live": True, "stale": stale,
-            "cell_stream_state_counts": _gamma_surface_cell_state_counts(surf),
-            "stream_coverage": _coverage,
-            "contract_admission": _contract_admission,
             "degraded": live.get("levels_stale_reason") if stale else None,
             "chain_as_of_ts_utc": live.get("computed_ts_utc"),
             "age_sec": live.get("levels_age_sec"),            # terrain's canonical age
             "chain_basis": live.get("chain_basis"),
-            "coverage": {
-                "chain_basis": live.get("chain_basis"),
-                "strike_count": len(strikes),
-                "strike_min": (strikes[0] if strikes else None),
-                "strike_max": (strikes[-1] if strikes else None),
-                "expiry_count": len(surf.get("expirations") or []),
-                "note": "every expiry and every strike Schwab listed (strike_range=ALL)",
-            },
-            **_stamp_surface_session(surf, reference_date=None),
+            **window,
+            "view": view,
             # one spot on every screen (2026-09-27): the live price, the header's own rule, after
             # the surface's own keys so its stamp cannot overwrite it. The
             # price this surface's cells were computed at is named on its own (operator directive
@@ -2138,7 +2117,7 @@ def get_options_gamma_surface(ticker: str = Query(...)):
             "spot_source": _surface_live_spot[1],
             "spot_as_of_ts_utc": _surface_live_spot[2],
             "priced_at_spot": surf.get("spot"),
-            "spot_strike": nearest_strike(surf.get("strikes"), _surface_live_spot[0]),
+            "spot_strike": spot_strike,
             "priced_at_spot_as_of_ts_utc": surf.get("spot_as_of_ts_utc"),
             "provenance": {
                 "producer": "math_exposure_core.compute_exposures_by_strike",
@@ -2152,15 +2131,18 @@ def get_options_gamma_surface(ticker: str = Query(...)):
         })
 
     # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----
-    # REQUESTED (and warming): this ticker is viewed, so the daemon is fetching its chain ahead
-    # of every other. The reason is that state's own.
+    # REQUESTED: a page shows this ticker. WARMING: its chain is coming -- it is the ticker on
+    # screen (fetched first) or on the board (fetched in turn). The reason is that state's own.
     _requested = _gamma_surface_wanted(tk)
+    _warming = tk == push_changes.on_screen() or tk in (_board() or [])
     _state = terrain_staleness((live or {}).get("computed_ts_utc"), tk)
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-                     "live": False, "stale": True, "warming": _requested, "requested": _requested,
+                     "live": False, "stale": True, "warming": _requested and _warming,
+                     "requested": _requested,
                      "reason": _state["levels_stale_reason"] or (
                          "the surface is projected when the daemon delivers this ticker's chain"
-                         if _requested else "no gamma surface for this ticker's published levels")}
+                         if _warming else
+                         "no chain is fetched for this ticker: it is not on screen or on the board")}
     return JSONResponse(payload)
 
 
@@ -2296,41 +2278,15 @@ DESK_MARKERS = 6
 CHANGES_SESSION_SEC = 5.0
 
 
-def _active_ticker_left(t: str) -> None:
-    """A page closed `t`: when no page still shows it and it is the active ticker, the active
-    ticker is another ticker a page shows, or none (no books, nothing fetched ahead of the
-    board), with its option contract. Called on the event loop, in order with the opens
-    (get_changes)."""
-    from app.options.order_flow.streaming import (
-        clear_active_option_contract, clear_streaming_active_ticker, get_streaming_active_ticker,
-        set_streaming_active_ticker)
-    shown = push_changes.watched()
-    if t in shown or get_streaming_active_ticker() != t:
-        return
-    if shown:
-        set_streaming_active_ticker(shown[-1])
-        _ensure_default_option_contract(shown[-1])
-    else:
-        clear_streaming_active_ticker()
-        clear_active_option_contract(reason="no page open")
-
-
 @app.get("/api/changes")
 async def get_changes(ticker: str = Query(...)):
     """The console's push to the page: `levels`, `flow` or `liquidity` when that value of the
     ticker changed (the page reloads it), and `session` with the market session label. Prices
-    and bars come from the daemon's own push. Opening it makes the ticker the active one, whose
-    NYSE_BOOK and NASDAQ_BOOK the daemon streams and whose chain it fetches first; closing the
-    last one on it hands that to another open page's ticker, or to none (_active_ticker_left).
-    Every page reconnects after a console restart, so the books follow the page with no
-    separate request."""
-    from app.options.order_flow.streaming import get_streaming_active_ticker, set_streaming_active_ticker
-
+    and bars come from the daemon's own push. The open connection is the page: the newest open
+    one is the ticker on screen (push_changes.on_screen), whose books the daemon streams and
+    whose chain it fetches first. Every page reconnects after a console restart, so all of that
+    follows the pages with no separate request."""
     t = ticker_storage_key(_required_ticker(ticker))
-    # the active ticker and its option contract change here and at close, on the event loop
-    # (memory only), so they apply in the order the pages open and close
-    set_streaming_active_ticker(t)
-    _ensure_default_option_contract(t)
     client = push_changes.subscribe(t)
 
     async def event_generator():
@@ -2338,15 +2294,12 @@ async def get_changes(ticker: str = Query(...)):
             yield f"event: session\ndata: {session_label(now_et())}\n\n"
             while True:
                 kinds = await push_changes.next_changes(client, CHANGES_SESSION_SEC)
-                if push_changes.CHAIN in kinds and get_streaming_active_ticker() == t:
-                    _ensure_default_option_contract(t)    # a ticker opened before its chain came
                 for k in sorted(kinds):
                     yield f"event: {k}\ndata: {t}\n\n"
                 if not kinds:
                     yield f"event: session\ndata: {session_label(now_et())}\n\n"
         finally:
             push_changes.unsubscribe(t, client)
-            _active_ticker_left(t)
 
     return StreamingResponse(
         event_generator(),
@@ -2963,6 +2916,8 @@ def get_levels(ticker: str = Query(...),
             "bars": vp.bars, "bars_without_volume": vp.bars_without_volume, "tick_size": vp.tick_size,
             # [price, volume, inside the value area]
             "bins": [[p, v, vp.val <= p <= vp.vah] for p, v in vp.bins],
+            # the largest bin's volume: the profile's scale
+            "max_volume": max((v for _p, v in vp.bins), default=None),
             "poc": vp.poc, "vah": vp.vah, "val": vp.val},
         "tf": tf,
         "families_absent": families_absent,

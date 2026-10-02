@@ -69,8 +69,15 @@ class _Schwab:
                            for s in symbols if s in _QUOTED and s not in self.withheld})
 
 
+@pytest.fixture(autouse=True)
+def _network(monkeypatch):
+    """schwab_client's chain and quotes requests reach the `_Schwab` passed as the client."""
+    monkeypatch.setattr(sc, "safe_get_chain", lambda client, ticker, **kw: client.chain(**kw))
+    monkeypatch.setattr(sc, "safe_get_quotes", lambda client, symbols: client.quote(symbols))
+
+
 def _fetched(schwab: _Schwab) -> "list[dict]":
-    resp = sc.fetch_full_chain(schwab, "SPY", schwab.chain, schwab.quote)
+    resp = sc.fetch_full_chain(schwab, "SPY")
     assert resp.status_code == 200
     return sc.flatten_chain_contracts(resp.json())
 
@@ -158,7 +165,7 @@ def test_a_refused_quotes_batch_fails_the_chain():
     (a book missing a batch of Greeks published as the book flipped the regime and walls in the
     PR #431 review). Every batch is asked at once (operator 2026-10-01)."""
     schwab = _Schwab(refused=429)
-    resp = sc.fetch_full_chain(schwab, "SPY", schwab.chain, schwab.quote)
+    resp = sc.fetch_full_chain(schwab, "SPY")
     assert resp.status_code == 429
     assert "returned HTTP 429" in resp.reason
 

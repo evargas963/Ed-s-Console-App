@@ -9,12 +9,17 @@
 const { test, expect } = require('@playwright/test');
 
 const EXPS = ['2026-09-11', '2026-09-12', '2026-09-18'];
-function surfaceFor(tk, spot) {
+// the served window: every column, or the selected expiry's alone (server.py _surface_view)
+function surfaceFor(tk, spot, expiry) {
+  const gex = [-90000, 958600, -264500];
+  const cols = EXPS.map(function (e, i) { return i; }).filter(function (i) { return !expiry || EXPS[i] === expiry; });
   return { ticker: tk, symbol: tk, available: true, spot: spot, source: 'terrain_live_cache',
     live: true, stale: false, age_sec: 5, chain_basis: 'full', complete: false,
-    expirations: EXPS.map(function (e, i) { return { expiry: e, dte: [2, 3, 9][i] }; }),
+    expirations: cols.map(function (i) { return { expiry: EXPS[i], dte: [2, 3, 9][i], front: i === 0 }; }),
     strikes: [spot - 2, spot, spot + 2],
-    cells: [spot - 2, spot, spot + 2].map(function (k) { return { strike: k, gex: [-90000, 958600, -264500] }; }) };
+    cells: [spot - 2, spot, spot + 2].map(function (k) {
+      return { strike: k, gex: cols.map(function (i) { return gex[i]; }), spot: k === spot }; }),
+    view: { centre: spot, scope: 'auto', coverage: null, demand: [], max_abs: { gex: 958600 }, missing_expiry: null } };
 }
 const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, absolute_gamma_strike: 100,
   net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_stale: false, levels_age_sec: 10 };
@@ -29,7 +34,7 @@ async function intercept(page) {
     const dec = decodeURIComponent(tk);
     const spot = dec === 'QQQ' ? 480 : 100;
     let body = { available: false };
-    if (url.includes('/api/options/gamma-surface')) body = surfaceFor(dec, spot);
+    if (url.includes('/api/options/gamma-surface')) body = surfaceFor(dec, spot, new URL(url).searchParams.get('expiry'));
     else if (url.includes('/api/terrain/strikes')) body = Object.assign({}, STRIKES, { spot: spot });
     else if (url.includes('/api/terrain')) body = Object.assign({}, TERRAIN, { spot: spot });
     else if (url.includes('/api/bars1m')) body = BARS;

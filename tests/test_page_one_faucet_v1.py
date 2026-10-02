@@ -260,7 +260,7 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_is(mon
 def test_the_largest_gex_strike_is_served(held):
     rows = held["_per_strike"]["all"]
     body = json.loads(server.get_terrain_strikes(ticker=TK).body)
-    assert body["max_abs_strike"] == max(rows, key=lambda r: abs(r[1]))[0]
+    assert body["max_abs_row"] == max(rows, key=lambda r: abs(r[1]))
 
 
 def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time(monkeypatch):

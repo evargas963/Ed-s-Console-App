@@ -30,11 +30,12 @@ function gexAt(k, ci) {
 const SURFACE = {
   ticker: '$SPX', symbol: '$SPX', available: true, spot: SPOT, source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 4, chain_basis: 'full', complete: false,
-  coverage: { window: 'live_near_money', chain_basis: 'full', strike_count: STRIKE_LIST.length,
-    note: 'near-money LIVE window (strike_count-bounded terrain chain) — NOT the full strike_range=ALL book' },
   chain_as_of_ts_utc: 1757000200, spot_as_of_ts_utc: 1757000200, spot_source: 'last',
   expirations: EXPS, strikes: STRIKE_LIST,
-  cells: STRIKE_LIST.map(function (k) { return { strike: k, gex: EXPS.map(function (_e, ci) { return gexAt(k, ci); }) }; }),
+  cells: STRIKE_LIST.map(function (k) {
+    return { strike: k, gex: EXPS.map(function (_e, ci) { return gexAt(k, ci); }), spot: k === SPOT }; }),
+  // the served view; the colour scale is a stand-in at least every |gexAt| (peak 7.6e6 x 1.24)
+  view: { centre: SPOT, scope: 'auto', coverage: null, demand: [], max_abs: { gex: 1e7 }, missing_expiry: null },
   provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
 };
 const TERRAIN = { ticker: '$SPX', spot: SPOT, gamma_flip: 4992.4, call_wall: 5100, put_wall: 4900,

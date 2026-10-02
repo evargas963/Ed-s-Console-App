@@ -73,8 +73,8 @@ def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture
     levels -- not the window's."""
     requested = []
 
-    def fake_fetch(client, ticker, get, quote, *, expiry=None):    # Schwab's answer: the full chain
-        requested.append((ticker, expiry))
+    def fake_fetch(client, ticker):    # Schwab's answer: the full chain
+        requested.append(ticker)
         return FullChainResponse(200, json.loads(json.dumps(_FX["full"])), parts=1)
 
     monkeypatch.setattr(cch, "fetch_full_chain", fake_fetch)
@@ -89,7 +89,7 @@ def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture
                            clock=lambda: _FX["captured_utc"])
     sweep.fetch_one(object(), tk)
     server._chain_pricing.submit(lambda: None).result(timeout=120)      # the chain is priced
-    assert requested == [(tk, None)], "the fetcher asks for the whole chain, every expiry"
+    assert requested == [tk], "the fetcher asks for the ticker's whole chain"
     published = server.terrain_cache_get(tk) or {}
     full = _levels(compute_terrain("MRVL", _contracts(_FX["full"]), _SPOT, now=at_capture))
     window = _levels(compute_terrain("MRVL", _contracts(_FX["window"]), _SPOT, now=at_capture))

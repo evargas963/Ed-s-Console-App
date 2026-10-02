@@ -71,7 +71,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     from math_exposure_core import bucket_metric, compute_exposures_by_strike as cebs
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (_SPOT + 1.0, "live", time.time()))
 
-    body = json.loads(server.get_vanna_by_strike(ticker="CRWD").body)
+    body = json.loads(server.get_vanna_by_strike(ticker="CRWD", scope="all").body)
     assert body["available"] is True
     # spot is the live price (the header's own); the rows were computed at priced_at_spot
     assert body["spot"] == _SPOT + 1.0 and body["priced_at_spot"] == _SPOT
@@ -99,7 +99,7 @@ def test_charm_by_strike_matches_the_same_canonical_faucet_compute_charm_by_stri
     _put_live_chain()
     from math_levels import compute_charm_by_strike as ccs
 
-    body = json.loads(server.get_charm_by_strike(ticker="CRWD").body)
+    body = json.loads(server.get_charm_by_strike(ticker="CRWD", scope="all").body)
     assert body["available"] is True
     rows = {r[0]: r[1] for r in body["rows"]}
     assert rows, "a real chain must yield at least one charm row"

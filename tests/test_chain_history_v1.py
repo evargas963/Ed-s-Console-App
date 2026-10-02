@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 import calibration.complete_chain_capture as cch
+import schwab_client as sc
 from app.options.order_flow import streaming as ofs
 from json_blob_codec import decode_json_blob
 from time_et import ET
@@ -101,8 +102,8 @@ class _Schwab:
 @pytest.fixture
 def schwab(monkeypatch):
     net = _Schwab()
-    monkeypatch.setattr(cch, "safe_get_chain", net.chain)
-    monkeypatch.setattr(cch, "safe_get_quotes", net.quote)
+    monkeypatch.setattr(sc, "safe_get_chain", net.chain)
+    monkeypatch.setattr(sc, "safe_get_quotes", net.quote)
     return net
 
 
@@ -306,8 +307,8 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
     (tk, contracts, _t, reason), = _assembled(published)
     assert contracts is not None and reason is None
     monkeypatch.undo()
-    monkeypatch.setattr(cch, "safe_get_chain", schwab.chain)
-    monkeypatch.setattr(cch, "safe_get_quotes", schwab.quote)
+    monkeypatch.setattr(sc, "safe_get_chain", schwab.chain)
+    monkeypatch.setattr(sc, "safe_get_quotes", schwab.quote)
     clock["now"] += 120                                    # the same window's next fetch
     sweep.fetch_one(object(), "SPY")
     with sqlite3.connect(tmp_path / "ed_console.db") as c:
@@ -367,9 +368,7 @@ def test_the_daemon_task_stops_when_told():
     class _Daemon:
         board, chains = [], None
         bus = None
-
-        def active_ticker(self):
-            return None
+        active = None
 
     async def go():
         stop = asyncio.Event()

@@ -24,13 +24,14 @@ def test_the_board_is_the_daemons_list_never_copied_into_the_consoles(monkeypatc
     """2026-10-01 audit: the console copied the daemon's board into its own wanted list, so a
     ticker taken off the table was still streamed after a daemon restart (the daemon reloads the
     console's last list). The console holds the board's price rows, read from the daemon's
-    heartbeat, and asks for none of them."""
-    monkeypatch.setattr(ofs, "_active_ticker", None)
+    heartbeat: every equity the daemon streams (what it holds), and asks for none of them."""
+    import push_changes
+    monkeypatch.setattr(push_changes, "_open", [])
     monkeypatch.setattr(ofs, "_watchlist", ["AAPL"])
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": ["MU", "AAPL"]},
-                              time.time())
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": ["MU", "AAPL"],
+                               "held": {"LEVELONE_EQUITIES": ["MU", "AAPL", "$SPX"]}}, time.time())
     assert "MU" not in ofs.current_wanted()["LEVELONE_EQUITIES"]
-    assert ofs._rows_wanted() == [*ofs.MARKET_CONTEXT_SYMBOLS, "AAPL", "MU"]
+    assert ofs._rows_wanted() == ["$SPX", "AAPL", "MU"]
 
 
 def test_the_watchlist_route_declares_the_browsers_watchlist(monkeypatch):

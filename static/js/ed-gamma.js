@@ -1,9 +1,10 @@
-/* Ed Console — Options/Gamma heatmap view (RC-UI-1). PRESENTATION ONLY.
-   Consumes GET /api/options/gamma-surface (canonical projection of compute_exposures_by_strike)
-   and renders the strike × expiry grid. This module performs NO exposure math: it positions
-   cells, formats the signed dollar value verbatim, maps sign->colour, and derives visual shade
-   from the ABSOLUTE DISPLAYED magnitude only. The number shown equals the API value after
-   formatting. Pure helpers are exposed on globalThis.EdGamma for node tests (invariants D/E). */
+/* Ed Console — Options/Gamma heatmap view. PRESENTATION ONLY.
+   Reads GET /api/options/gamma-surface with the window it wants (scope, the columns it fits, the
+   selected expiry, a pan) and draws exactly the cells the server sends: the server picks the
+   strikes and expiries (server._surface_view), counts the cells streaming, names the contracts to
+   stream, marks the spot row, the front column and the cells that just changed, and sends each
+   measure's colour scale. This module positions cells, formats each value, maps sign to colour and
+   shade to the served scale. Pure helpers are exposed on globalThis.EdGamma for node tests. */
 (function () {
   'use strict';
 
@@ -18,11 +19,7 @@
     else s = a.toFixed(0);
     return sign + '$' + s;
   }
-
-  // ---- compact CONTRACT COUNT (1.0K, 23.1K) — no $ sign: Open Interest and Volume are
-  // contract counts, not dollars, and formatting them through formatUsd (operator
-  // field-inventory audit, 2026-09-13 — reproduced live: the Open Interest heatmap showed
-  // "$1.0K" for 1,206 contracts) misrepresents the unit, not just the label. ----
+  // ---- compact contract count (1.0K, 23.1K): open interest and volume are counts, not dollars ----
   function formatCount(n) {
     if (n === null || n === undefined || isNaN(n)) return '';
     var v = Number(n), a = Math.abs(v), sign = v < 0 ? '-' : '';
@@ -42,10 +39,7 @@
     return (surface.absent_reasons || {})[code];
   }
 
-  // ---- theme-aware colour: sign -> green/red, |value|/maxAbs -> intensity, ~0 -> recede.
-  //      Fills are SOLID, interpolated from the active theme's heat tokens (zero -> pos/neg), so a
-  //      cell reads correctly on ANY background — never dark-mode rgba re-used over a light canvas.
-  //      Text contrast is picked from the resulting fill's luminance, so it is legible in both themes. ----
+  // ---- theme-aware colour: sign -> green/red, shade -> |value| against the served scale ----
   var DEFAULT_HEAT = { pos: [35, 192, 107], neg: [229, 72, 77], zero: [18, 26, 37] };  // dark defaults (node/test)
   function _hex(h) {
     h = String(h || '').trim(); if (h.charAt(0) === '#') h = h.slice(1);
@@ -58,10 +52,10 @@
   function _lum(c) { return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; }
   function cellStyle(n, maxAbs, colors) {
     colors = colors || DEFAULT_HEAT;
-    if (n === null || n === undefined || isNaN(n)) return { bg: 'transparent', fg: 'var(--ed-ink-4)', empty: true };
+    if (n === null || n === undefined || isNaN(n)) return { bg: 'transparent', fg: 'var(--ed-ink-3)', empty: true };
     var v = Number(n);
-    if (Math.abs(v) < 1) return { bg: _rgb(colors.zero), fg: 'var(--ed-ink-3)', empty: false };
-    var t = maxAbs > 0 ? Math.min(1, Math.abs(v) / maxAbs) : 0;
+    if (v === 0) return { bg: _rgb(colors.zero), fg: 'var(--ed-ink-3)', empty: false };
+    var t = Math.abs(v) / maxAbs;   // the served scale is at least every |value| drawn
     var intensity = Math.pow(t, 0.34);   // cube-root-ish so small-but-real cells stay visible
     var mixed = _mix(colors.zero, (v > 0 ? colors.pos : colors.neg), intensity);
     var fg = _lum(mixed) < 140 ? '#f4f7fb' : '#0a0e17';
@@ -75,471 +69,136 @@
     } catch (e) {}
     return DEFAULT_HEAT;
   }
-
-  // The real vendor OSI symbols backing a set of VISIBLE (strike-row, expiry-column)
-  // cells -- read straight off the surface's own per-cell `contracts` field (server.py's
-  // project_gamma_surface), never invented or reconstructed here. Returns ONE ENTRY PER
-  // COLUMN (not a flattened symbol list) so a caller enforcing a request-size ceiling can cap
-  // by dropping whole trailing COLUMNS, never by slicing partway through one -- a flat cutoff
-  // over an interleaved column-major list can otherwise exclude one column's contracts for a
-  // strike while keeping the other column's contracts for that SAME strike (independent-
-  // review finding, 2026-09-13, REPRODUCED: at 244 visible contracts a plain 240-slice cut
-  // through the last row's second column instead of dropping a whole column cleanly).
-  //
-  // `rows` groups each column's own symbols by strike row, in the same order `symbols` lists
-  // them.
-  function _heatmapVisibleContractsByColumn(cells, rowSel, cols) {
-    return cols.map(function (j) {
-      var seen = {}, symbols = [], rows = [];
-      rowSel.idx.forEach(function (i) {
-        var row = cells[i]; if (!row) return;
-        var c = (row.contracts || [])[j];
-        if (!c) return;
-        var rowSyms = [];
-        [c.call, c.put].forEach(function (sym) {
-          if (sym && !seen[sym]) { seen[sym] = true; symbols.push(sym); rowSyms.push(sym); }
-        });
-        if (rowSyms.length) rows.push(rowSyms);
-      });
-      return { col: j, symbols: symbols, rows: rows };
-    });
-  }
-
-
-  // Operator field-inventory audit (2026-09-13): the ONE canonical strike x expiry
-  // projection (server.py project_gamma_surface) carries dex/oi/volume per cell alongside
-  // gex, computed by the SAME faucet every gex cell already comes from -- no second
-  // computation. This is the ONE place that picks which of those a render actually reads,
-  // so every consumer (maxAbs, the cell loop, the just-updated flash map) agrees on the
-  // same measure the operator selected, never a mix of measures across the same render.
-  // oi/volume are {call, put, total} per cell (unlike gex/dex, which are signed dealer-net
-  // dollars) -- the heatmap colours by the server's total (call + put; unknown when either
-  // side is), since OI/volume concentration, not a net dealer sign, is the question.
+  // the selected measure's value per column: GEX/DEX a value, OI/volume the server's total
   function _measureRow(row, measure) {
     if (measure === 'oi' || measure === 'volume') {
       return (row[measure] || []).map(function (cp) { return cp ? cp.total : null; });
     }
-    // NEVER fall back to a different measure's own array here -- a row whose `dex` field is
-    // genuinely absent/null for this strike (an absence the projection reports on purpose, see
-    // project_gamma_surface's own "absent from one expiry's own slice reports null, not zero"
-    // contract) must render as absent, not silently repaint that strike with its GEX dollars
-    // under a "Delta Exposure (DEX)" title -- a real, reproduced cross-measure mix an earlier
-    // `|| row.gex` fallback here allowed.
     return row[measure] || [];
   }
+  // each cell's streaming state in words (the served state)
+  var STATE_TITLE = {
+    partial: 'one side of this cell is streaming',
+    stale: 'this cell has stopped streaming',
+    pending: 'streaming requested, no update yet',
+    daemon_unavailable: 'the capture daemon is not reachable',
+    rejected: 'Schwab refused this contract’s stream',
+    unavailable: 'not streaming',
+  };
+  // each column's streaming state in words (the served stream_by_expiry)
+  var COLUMN_TITLE = {
+    live: 'streaming', partial: 'partly streaming', stale: 'stopped streaming',
+    pending: 'streaming requested', daemon_unavailable: 'the capture daemon is not reachable',
+    rejected: 'Schwab refused the stream', unavailable: 'not streaming',
+  };
 
-  // The per-(strike, expiry) value a PRIOR rendered surface reported, for the
-  // just-updated flash below -- {} (nothing "changed") on the very first render, when
-  // there is no real prior state to compare against.
-  function _priorValueMap(priorSurface, measure) {
-    var map = {};
-    if (!priorSurface) return map;
-    var priorExps = priorSurface.expirations || [], priorCells = priorSurface.cells || [];
-    priorCells.forEach(function (row) {
-      _measureRow(row, measure).forEach(function (v, j) {
-        var e = priorExps[j];
-        if (e) map[row.strike + '|' + e.expiry] = v;
-      });
-    });
-    return map;
-  }
-
-  // ---- Repo-wide chart interaction standard, adapted for this surface's real shape ----
-  // ed-gamma-chart.js (SVG) and ed-order-flow-heatmap.js (canvas) both have a continuous
-  // price axis, so "axis-drag rescales, plot-drag pans, scroll zooms" maps onto a numeric
-  // view range. This grid is a plain DOM <table> with a CATEGORICAL expiry axis (columns are
-  // discrete dates, not a zoomable range) and a strike axis that is already governed by ONE
-  // canonical, shared, 3-level scope policy (EdShell scope: Auto/Wider/All -- every windowed
-  // gamma panel uses it, always centred on spot). Copy-pasting the canvas pattern here would
-  // fight that existing, already-validated design (RC comment above: a raw pixel/percent
-  // zoom collapsed the approved workstation once already). The genuinely missing capability
-  // is PAN: today the strike window always re-centres on live spot every render, with no way
-  // to look away from it. Wheel reuses the existing canonical scope levels (real zoom, no
-  // second parallel mechanism); drag on the strike axis pans the window to a manual centre
-  // that persists until reset -- the same persist-until-reset contract as _view elsewhere.
-  var _panAnchor = null, _panTicker = null;
-  var _dragState = null, _gridInteractionInstalled = false;
-  function installGridInteractionOnce() {
-    if (_gridInteractionInstalled || typeof document === 'undefined') return;
-    _gridInteractionInstalled = true;
-    document.addEventListener('mousemove', function (e) {
-      if (!_dragState) return;
-      var dy = e.clientY - _dragState.startY;
-      if (Math.abs(dy) > 3) _dragState.moved = true;
-      var rowsDelta = Math.round(dy / _dragState.rowPx);
-      if (rowsDelta === _dragState.lastRowsDelta) return;
-      _dragState.lastRowsDelta = rowsDelta;
-      var strikes = _dragState.strikes;
-      // Highest strike renders at the TOP (see the reversed row-order comment below), so
-      // dragging DOWN (grabbing a high strike and pulling it down) must reveal STILL HIGHER
-      // strikes -- the same "content follows the cursor" feel wireHeatmapInteraction uses.
-      var newIdx = Math.min(strikes.length - 1, Math.max(0, _dragState.startIdx + rowsDelta));
-      _panAnchor = strikes[newIdx];
-      _panTicker = _dragState.ticker;
-      rerenderGridFromCache();
-    });
-    document.addEventListener('mouseup', function () { _dragState = null; });
-  }
-  function rerenderGridFromCache() {
-    var h = document.getElementById('heatBody');
-    if (!h || !_lastSurface) return;
-    // A pan/reset changes nothing about the fetched surface, so its own revision key can
-    // coincidentally match what is already on screen (e.g. resetting back to a window spot
-    // hasn't actually moved away from) -- the SAME reason ed:theme/ed:expiry/ed:scope below
-    // already null this out before a presentation-only re-render, to bypass renderSurface's
-    // "rev === _lastRevision -> skip rebuild" fast path (REPRODUCED: double-click reset set
-    // _panAnchor back to null in memory but the table never visibly rebuilt without this).
-    _lastRevision = null;
-    renderSurface(h, _lastSurface);
-  }
-  function wireGridInteraction(host, strikes, rowSel, tk) {
-    installGridInteractionOnce();
-    var centerIdx = rowSel.idx.length ? rowSel.idx[Math.floor(rowSel.idx.length / 2)] : 0;
-    var rowPx = 24;
-    var firstRow = host.querySelector('tbody tr');
-    if (firstRow) { var r = firstRow.getBoundingClientRect(); if (r.height) rowPx = r.height; }
-    host.querySelectorAll('.hstrike, .hcorner').forEach(function (el) {
-      el.style.cursor = 'ns-resize';
-      el.setAttribute('draggable', 'false');
-      el.addEventListener('dragstart', function (e) { e.preventDefault(); });
-      el.addEventListener('mousedown', function (e) {
-        _dragState = { startY: e.clientY, rowPx: rowPx, strikes: strikes, startIdx: centerIdx,
-          lastRowsDelta: 0, moved: false, ticker: tk };
-        e.preventDefault();
-        e.stopPropagation();   // consistency with the GBS/Vanna/Charm/Migration copies of this
-                                // same pattern -- no click-to-select listener sits on .hstrike/
-                                // .hcorner today, but this defends the same way they already do
-                                // if one is ever added (independent-review finding).
-      });
-      el.addEventListener('dblclick', function (e) {
-        _panAnchor = null; _panTicker = null; rerenderGridFromCache(); e.stopPropagation();
-      });
-    });
-    var wrap = host.querySelector('.heat-wrap');
-    if (wrap) {
-      wrap.addEventListener('wheel', function (e) {
-        // .heat-wrap is itself overflow:auto (Wider/All available legitimately overflow it --
-        // console.html:406) so a plain wheel must keep scrolling it normally. Zoom only on
-        // ctrl/cmd+wheel, the same convention most chart tools use for exactly this reason.
-        if (!e.ctrlKey && !e.metaKey) return;
-        var ES = window.EdShell;
-        if (!ES || !ES.setScope || !ES.getScope) return;
-        e.preventDefault();
-        var order = ['auto', 'wider', 'all'];
-        var cur = order.indexOf(ES.getScope()); if (cur === -1) cur = 0;
-        var next = e.deltaY > 0 ? Math.min(order.length - 1, cur + 1) : Math.max(0, cur - 1);
-        if (next !== cur) ES.setScope(order[next]);   // dispatches ed:scope -> this module's own listener re-renders
-      }, { passive: false });
-    }
-  }
-
-  // Every heatmap streamed-contract demand call below is keyed 'heatmap:<ticker>', not a
-  // single shared 'heatmap' slot (2026-09-21, universal-ticker-scope fix, operator mandate:
-  // "all tickers need to work... we are ticker agnostic... everything needs to work
-  // universally"). Before this, EVERY ticker's heatmap demand shared one owner key in
-  // EdStream's union (see ed-stream.js _additionalDemandByOwner), so viewing ticker B's
-  // heatmap silently overwrote ticker A's still-legitimate streamed-contract demand --
-  // reproduced live: after switching to META, SPY's gamma-surface showed 0/1330 cells with
-  // any stream freshness and fell back to a 4.8-day-old banked morning reference. Scoping
-  // the owner key by ticker lets EdStream's existing union mechanism (already built for
-  // Strike Detail vs Heatmap coexistence) also keep distinct tickers' demand from
-  // clobbering each other.
-  //
-  // Every call site passes `_pendingTicker` first, falling back to `surface.ticker` only
-  // when `_pendingTicker` is unset (CI E2E finding, 2026-09-21, caught by
-  // console-gamma-heatmap.spec.js's "view superseded" test): the ESTABLISHING call
-  // (inside renderSurface) originally keyed off `surface.ticker` -- the API response's
-  // OWN echoed identity -- while the LEAVING/SWITCHING call (inside load()) keys off
-  // `_pendingTicker` -- the REQUESTED ticker. These are the same value in the common case
-  // (the API echoes back whatever ticker it was asked for), but a fixture (or a real
-  // canonical-identity divergence, e.g. an alias resolving to a different echoed root) can
-  // make them differ -- and when they do, the leaving call clears a DIFFERENT owner key
-  // than the one demand was ever established under, so EdStream's union never actually
-  // changes and no new request is ever sent at all (not merely a wrong ownerKey string --
-  // a silently swallowed clear). `_pendingTicker` is the single source of truth every
-  // other call site in this module already keys off; establishing calls now match it.
+  // the heatmap's streamed-contract demand is kept per ticker ('heatmap:<ticker>'), so one ticker's
+  // demand never replaces another's in EdStream's union
   function _heatmapOwnerKey(tk) { return 'heatmap:' + (tk || ''); }
 
-  // ---- render the grid from a canonical surface payload (no math) ----
+  var _pan = (window.EdShell && window.EdShell.newPan) ? window.EdShell.newPan() : { centre: null, shift: 0, served: null };
+  var _panTicker = null;
+  var _lastSurface = null, _lastRevision = null, _pendingTicker = null;
+
+  function paintChip(cov) {   // the header's coverage chip: the served words
+    var el = document.getElementById('heatScope'); if (!el) return;
+    el.textContent = cov ? cov.label : '';
+    el.title = cov ? cov.title : '';
+    el.className = 'sub cov' + (cov ? ' cov-' + cov.state : '');
+  }
+  function buildBanner(surface) {
+    var live = surface.live !== false, stale = !!surface.stale;
+    if (live && !stale) return '';
+    var warming = !live && surface.warming === true;
+    var requested = !live && !warming && surface.requested === true;
+    var stateLabel = warming ? 'LIVE SURFACE WARMING' : requested ? 'LIVE SURFACE REQUESTED' : (live ? 'STALE' : '');
+    var cls = (warming || requested) ? 'warming' : (live ? 'stale' : '');
+    var brief = !live ? 'no live surface for this symbol' : 'live surface is stale';
+    var detail = surface.degraded || surface.reason || brief;
+    return '<div class="heat-banner ' + cls + '" title="' + escapeHtml(detail) + '"><span class="hb-main">' +
+      (stateLabel ? stateLabel + ' · ' : '') + brief + '</span><span class="hb-more" aria-label="details">details</span></div>';
+  }
+  function applyStatus(host, surface) {   // refresh status WITHOUT rebuilding the table
+    Array.prototype.slice.call(host.querySelectorAll('.heat-banner')).forEach(function (n) { n.remove(); });
+    var b = buildBanner(surface);
+    if (b) host.insertAdjacentHTML('afterbegin', b);
+    var wrap = host.querySelector('.heat-wrap');
+    if (wrap) wrap.classList.toggle('recede', surface.live === false || !!surface.stale);
+    paintChip((surface.view || {}).coverage);
+  }
+
+  // ---- render the window the server sent (no math on its values) ----
   function renderSurface(host, surface) {
-    // Independent-review finding (2026-09-12, state-authority review): "actual Schwab
-    // updates visibly change the appropriate values and colors" -- a full unconditional
-    // table rebuild on every update changes the DOM correctly but gives a trader no cue
-    // WHICH cell just moved; on a busy grid a real, correct update can go unnoticed.
-    // Captured here, before `_lastSurface` below is overwritten with the incoming
-    // surface, so the diff below compares against what was actually on screen a moment
-    // ago, not the surface currently being rendered.
-    var _priorSurfaceForFlash = _lastSurface;
+    var tk = _pendingTicker || (surface && surface.ticker);
     if (!surface || surface.available === false) {
-      // Independent-review finding (2026-09-13), REPRODUCED: an unavailable result (no
-      // chain, delisted, not on board) never cleared the heatmap's own streamed-contract
-      // demand, so a ticker that stops being available kept the LAST successful render's
-      // contracts subscribed indefinitely. Every exit from this function states demand,
-      // including "none" -- same discipline Strike Detail's renderStrike already applies.
-      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker || (surface && surface.ticker)));
-      // Independent-review finding (2026-09-13), REPRODUCED ("unavailable heatmap
-      // lifecycle"): _lastSurface/_lastRevision used to survive an unavailable result
-      // untouched (this branch returned before either was ever assigned), so a LATER
-      // presentation-only event -- ed:theme, or the "else load()" branches missing entirely
-      // -- reused the LAST AVAILABLE surface as if it were still current: ed:theme's
-      // `if (h && _lastSurface) renderSurface(h, _lastSurface)` repainted the stale data as
-      // available AND reissued its streamed-contract demand, resurrecting exactly the
-      // subscription this branch just cleared. Fixed by invalidating the cache here too --
-      // a presentation-only re-render has nothing left to reuse and correctly falls back to
-      // a fresh load() instead of resurrecting stale state.
+      // every exit states the heatmap's demand, "none" included
+      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(tk));
       _lastSurface = null; _lastRevision = null;
-      // Independent-review finding, REPRODUCED: this branch invalidates every other piece of
-      // render state for the reason stated above, but left _panAnchor/_panTicker untouched --
-      // pan a strike, ticker goes briefly unavailable (delisted tick, no chain), becomes
-      // available again for the SAME ticker, and the stale manual pan silently reapplies
-      // instead of the window re-centering on live spot like every other invalidated field.
-      _panAnchor = null; _panTicker = null;
-      // even with no surface to draw, the served collection status is shown (buildBanner).
-      var b = surface ? buildBanner(surface) : '';
-      // Operator directive (2026-09-14, live SPX reproduction): buildBanner is gated on
-      // `!live || stale` -- a LIVE, non-stale surface that is unavailable because its chain
-      // genuinely has no usable open interest (surface.available === false with live === true)
-      // fell through buildBanner with nothing shown, leaving only the bare reason string with
-      // no indication of WHICH source produced it or WHEN it was observed. Stated explicitly
-      // here instead, using the same fields the live banner already carries.
-      var srcNote = (surface && surface.available === false && surface.live !== false)
-        ? '<div class="sm">source: ' + escapeHtml(surface.source || 'unknown') +
-          (surface.chain_as_of_ts_utc != null ? ' · chain as of ' + new Date(surface.chain_as_of_ts_utc * 1000).toLocaleTimeString() : '') +
-          (surface.spot_as_of_ts_utc != null ? ' · spot as of ' + new Date(surface.spot_as_of_ts_utc * 1000).toLocaleTimeString() : '') +
-          '</div>'
-        : '';
-      host.innerHTML = b + '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
-        '<div class="sm">' + escapeHtml((surface && surface.reason) || 'no console / no live surface for this symbol') +
-        '</div>' + srcNote + '</div>';
+      paintChip(null);
+      host.innerHTML = buildBanner(surface || { live: false }) + '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
+        '<div class="sm">' + escapeHtml((surface && surface.reason) || 'no console / no live surface for this symbol') + '</div></div>';
       return;
     }
-    var exps = surface.expirations || [], strikes = surface.strikes || [], cells = surface.cells || [];
-    // Independent review, 2026-09-16 (CORRECTED): Number(surface.spot) fabricates a real,
-    // finite 0 when surface.spot is explicitly null (Number(null) === 0), which then passes
-    // the isFinite(spot) guard below as if it were a genuine price (see ed-gamma-chart.js's
-    // identical fix). Absence checked explicitly before numeric conversion.
-    var spot = surface.spot == null ? NaN : Number(surface.spot);
-    // A manual strike-axis pan persists across re-renders of the SAME ticker (same contract
-    // as _view/_pin elsewhere); switching tickers has nothing meaningful to persist against.
-    if (_panTicker !== surface.ticker) { _panAnchor = null; _panTicker = surface.ticker; }
-    var ES = window.EdShell;
-    // #5: expiry filter (from the canonical /api/expiries dropdown) is PRESENTATION — it selects which
-    // already-computed expiry column(s) to show; it never recomputes a value.
-    var expFilter = (ES && ES.getExpiry) ? ES.getExpiry() : null;
-    var scope = (ES && ES.getScope) ? ES.getScope() : 'auto';
-    // Operator field-inventory audit (2026-09-13): which of the SAME surface's own
-    // gex/dex/oi/volume fields this render presents -- see _measureRow's own comment.
-    var measure = (ES && ES.getMeasure) ? ES.getMeasure() : 'gex';
-    // VIEWPORT (real-data repair 2026-09-10): the canonical surface is served complete (the live SPY
-    // reference is 116 strikes x 16 expirations) and the heatmap used to draw ALL of it, collapsing
-    // the approved ~11-row workstation into an unreadable dump. The display now SELECTS a viewport:
-    //   rows    = the ONE shell scope policy (EdShell.scopeSelect: Auto 11 strikes around spot,
-    //             Wider 23, All available = every canonical strike, scrolled at the same row height);
-    //   columns = the expiry filter's column, else in Auto the nearest UNEXPIRED expirations that fit
-    //             legibly (server-stamped `expired`; a prior session's 0DTE is never shown as current
-    //             structure), else every canonical column with expired ones labelled EXPIRED.
-    // Selection only: every cell value is the API value; nothing is dropped from the payload, and the
-    // counts (canonical vs shown) are disclosed in the header and the scope note.
-    var rowSel = (ES && ES.scopeSelect) ? ES.scopeSelect(strikes, _panAnchor != null ? _panAnchor : surface.spot_strike)
-      : { idx: strikes.map(function (_s, i) { return i; }), shown: strikes.length, total: strikes.length };
-    var allCols = exps.map(function (_e, ix) { return ix; });
-    var unexpired = allCols.filter(function (ix) { return exps[ix].expired !== true; });
-    var viewCols, expiredHidden = 0, filterMissing = false;
-    if (expFilter) {
-      viewCols = allCols.filter(function (ix) { return exps[ix].expiry === expFilter; });
-      filterMissing = !viewCols.length;
-    } else if (scope === 'auto') {
-      var pool = unexpired.length ? unexpired : allCols;      // nothing unexpired: show what exists, labelled
-      viewCols = pool.slice(0, autoColCount(host));
-      expiredHidden = allCols.length - unexpired.length;
-    } else if (scope === 'wider') {
-      // twice the Auto column budget: nearest unexpired first, then expired (labelled); the grid scrolls
-      var expiredCols = allCols.filter(function (ix) { return exps[ix].expired === true; });
-      viewCols = unexpired.concat(expiredCols).slice(0, 2 * autoColCount(host)).sort(function (a, b) { return a - b; });
-    } else {
-      viewCols = allCols;                                       // every canonical column, scrolled at legible width
-    }
-    // Independent-review finding (2026-09-13), REPRODUCED, then a FOURTH review overturned the
-    // first fix: falling back to `viewCols = allCols` avoided a blank grid, but the operator's
-    // own requirement is that a selected expiry absent from the surface reads UNAVAILABLE for
-    // THAT expiry, with its streaming demand cleared -- not silently substituted with every
-    // other expiry's data (and, worse, that substitute set kept demanding streamed contracts
-    // for expiries the operator never asked to watch). Fixed at the root: this state now
-    // renders an honest "not available" placeholder instead of the grid, and clears demand
-    // exactly like the surface.available===false branch above does, so nothing is ever
-    // streamed for an expiry the operator did not select. Recovery is automatic: the next
-    // surface poll that DOES include the requested expiry takes the normal path below (the
-    // `_lastRevision` cache key is bumped by `filterMissing` requesting its own render skip
-    // below, so a real column set arriving next paints immediately).
-    if (filterMissing) {
-      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker || surface.ticker));
-      _lastSurface = surface;
-      _lastRevision = 'filter-missing:' + expFilter;   // never matches a real column set's rev
-      host.innerHTML = '<div class="placeholder"><div class="big">Expiry ' + escapeHtml(expFilter) +
-        ' unavailable</div><div class="sm">not present in this surface (' + exps.length +
-        ' expiration' + (exps.length === 1 ? '' : 's') + ' available) — choose another expiry, ' +
-        'or All Expirations, from the dropdown above</div></div>';
+    var view = surface.view || {};
+    if (window.EdShell && window.EdShell.panServed) window.EdShell.panServed(_pan, view.centre);
+    if (view.missing_expiry) {   // the selected expiry is not in this surface: nothing is drawn or streamed
+      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(tk));
+      _lastSurface = surface; _lastRevision = null;
+      paintChip(null);
+      host.innerHTML = '<div class="placeholder"><div class="big">Expiry ' + escapeHtml(view.missing_expiry) +
+        ' unavailable</div><div class="sm">not in this surface — choose another expiry, or All Expirations</div></div>';
       return;
     }
-    // C: emphasise the front column -- the nearest unexpired expiry, served as front_expiry
-    var frontCol = exps.map(function (e) { return e.expiry; }).indexOf(surface.front_expiry);
-    // The heatmap's own stream demand (EdStream owner 'heatmap', unioned with Strike Detail's):
-    // every contract of every column on screen, declared on every render.
-    var demandCols = viewCols;
-    // every visible contract is asked for (the stream takes what Schwab admits; per-symbol
-    // outcomes come back as the cells' served stream states)
-    var frontDemand = [];
-    if (demandCols.length) {
-      var byCol = _heatmapVisibleContractsByColumn(cells, rowSel, demandCols);
-      var seen = {};
-      for (var _bc = 0; _bc < byCol.length; _bc++) {
-        byCol[_bc].symbols.forEach(function (s) { if (!seen[s]) { seen[s] = true; frontDemand.push(s); } });
-      }
-    }
-    // ask the stream for the visible contracts; each column's streaming status comes back on the
-    // surface itself (stream_by_expiry), never worked out here
-    window.EdStream.setAdditionalContracts(frontDemand, _heatmapOwnerKey(_pendingTicker || surface.ticker));
-    _lastSurface = surface;   // cached so a theme switch can re-render without a refetch
-    // #1: skip the full table rebuild when the canonical surface REVISION (and the viewport choice)
-    // is unchanged (only the age advances between terrain revisions). A theme switch clears
-    // _lastRevision so the recolour still rebuilds.
-    var rev = surfaceRevision(surface) + '|' + scope + '|' + viewCols.length + '|' + measure;
+    // stream every contract drawn (the served list); each cell's outcome comes back as its state
+    window.EdStream.setAdditionalContracts(view.demand || [], _heatmapOwnerKey(tk));
+    var measure = (window.EdShell && window.EdShell.getMeasure) ? window.EdShell.getMeasure() : 'gex';
+    _lastSurface = surface;
+    // the table is rebuilt only for a new publication or a new window, else its status refreshes
+    var rev = [surface.ticker, surface.surface_seq, view.scope, view.centre, measure,
+      (surface.expirations || []).map(function (e) { return e.expiry; }).join(',')].join('|');
     if (rev === _lastRevision && host.querySelector('.heat')) {
-      applyStatus(host, surface); applyStrikeHighlight(host);   // data unchanged: refresh status only
+      applyStatus(host, surface); applyStrikeHighlight(host);
       return;
     }
     _lastRevision = rev;
-    var heat = readHeatColors();
-    // maxAbs over DISPLAYED cells — visual normalisation only, not a semantic value
-    var maxAbs = 0;
-    rowSel.idx.forEach(function (i) { var r = cells[i] || {}; var mr = _measureRow(r, measure); viewCols.forEach(function (j) { var v = mr[j]; if (v != null && Math.abs(v) > maxAbs) maxAbs = Math.abs(v); }); });
-
-    var spotIdx = surface.spot_strike == null ? -1 : strikes.map(Number).indexOf(Number(surface.spot_strike));
-    // freshness / source — fail stale visibly (RC-UI-1 live-source rewire)
+    var exps = surface.expirations || [], cells = surface.cells || [];
+    var maxAbs = view.max_abs[measure], heat = readHeatColors();
     var live = surface.live !== false, stale = !!surface.stale;
-    var banner = buildBanner(surface);   // status banners (warming/requested/stale/ref + narrowed)
-    // B: a STALE / REFERENCE surface visually recedes (in addition to the banner)
-    var recede = (!live || stale) ? ' recede' : '';
     var tbl = '<table class="heat"><thead><tr><th class="hcorner">Strike</th>';
-    // Coverage disclosure (mandate: "coverage limitations must be visible... never silently
-    // become a narrower definition of completion"): only the column(s) in `demandCols`
-    // above actually receive sub-second streaming updates; every OTHER column -- including
-    // every column when Wider/All is selected with no expiry filter -- still refreshes on
-    // the ~60s REST cadence only. This states that distinction on the column itself rather
-    // than leaving the visual col-front highlight to imply a meaning it never spelled out.
-    var demandColSet = {}; demandCols.forEach(function (dc) { demandColSet[dc] = true; });
-    viewCols.forEach(function (j) {
-      var e = exps[j], expired = e.expired === true;
-      // Always-live heatmap mandate (2026-09-15, operator directive), FINAL: every visible
-      // column is demanded in full (no cap, no partial-coverage carve-out -- see demandCols
-      // above), so a column's tooltip only ever distinguishes expired vs the real
-      // accept/observed/rejected outcome (demandTitle), never a client-guessed capacity cut.
-      var streamed = !!demandColSet[j];
-      var dte = expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
-      var title = expired
-        ? 'this expiration has already expired — a prior-session column kept for reference, not current structure'
-        : demandTitle(streamed, (surface.stream_by_expiry || {})[e.expiry]);
-      tbl += '<th class="hexp' + (j === frontCol ? ' col-front' : '') + (expired ? ' expired' : '') + (streamed ? ' stream-demand' : '') + '"' +
-        ' data-col="' + j + '" title="' + escapeHtml(title) + '"' +
-        '><span class="d">' + escapeHtml((e.expiry || '').slice(5)) + '</span><span class="dte">' + dte + '</span></th>';
+    exps.forEach(function (e, j) {
+      var dte = e.expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
+      var title = e.expired ? 'expired: a prior-session column, not current structure'
+        : (COLUMN_TITLE[(surface.stream_by_expiry || {})[e.expiry]] || '');
+      tbl += '<th class="hexp' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') + '" data-col="' + j +
+        '" title="' + escapeHtml(title) + '"><span class="d">' + escapeHtml((e.expiry || '').slice(5)) +
+        '</span><span class="dte">' + dte + '</span></th>';
     });
     tbl += '</tr></thead><tbody>';
-    // Just-updated flash (state-authority review, 2026-09-12): a cell whose value
-    // genuinely differs from what THIS SAME (strike, expiry) showed a moment ago gets a
-    // one-shot CSS highlight (see .hcell.flash-update in console.html) -- the ONLY signal
-    // that separates "this table was rebuilt" from "this specific value just moved" on a
-    // grid otherwise indistinguishable before and after a live tick. Never flashes on the
-    // very first render (no real prior state exists yet to compare against).
-    var priorValues = _priorValueMap(_priorSurfaceForFlash, measure);
-    // Operator finding (2026-09-11): rowSel.idx is ascending-index order into the
-    // ascending `strikes` array (scopeSelect's own contract — shared by GEX-by-Strike
-    // and other consumers, so it stays ascending there). The heatmap specifically must
-    // read like a real strike ladder: highest strike at the top, lowest at the bottom.
-    // Reversed here, in the render loop only -- a presentation-only iteration order, not
-    // a mutation of rowSel.idx (still ascending for maxAbs above and any other reader)
-    // or of any row's own strike/expiry/gex/isSpot binding, which is looked up by index
-    // `i` exactly as before.
-    rowSel.idx.slice().reverse().forEach(function (i) {
-      var row = cells[i] || { strike: strikes[i], gex: [] }, isSpot = (i === spotIdx);
-      var mrow = _measureRow(row, measure);
-      tbl += '<tr' + (isSpot ? ' class="spotrow"' : '') + '>' +
-        '<th class="hstrike' + (isSpot ? ' spot' : '') + '">' + fmtStrike(row.strike) + '</th>';
-      for (var jj = 0; jj < viewCols.length; jj++) {
-        var j2 = viewCols[jj];
-        // `data-gex` kept as the DOM attribute name for back-compat with existing tests/
-        // tooling that read a heatmap cell's value -- it now holds whichever measure is
-        // selected (gex/dex/oi/volume), not literally GEX specifically.
-        var v = mrow[j2];
-        // Always-live heatmap mandate (2026-09-15, operator directive), FINAL: "Always
-        // display the best valid data available... Never blank valid data, narrow the view,
-        // or choose what I am allowed to inspect." `row.stream[j2]` (server.py's
-        // _stamp_gamma_surface_cell_stream_state) is per-cell disclosure metadata ONLY -- it
-        // never decides whether a value is shown, only how it is LABELLED: 'live' (the feed
-        // delivers every existing leg now), 'partial' (at least one leg, not all), 'stale' (the
-        // feed is not delivering it now), 'unavailable' (never desired yet). `v` itself (the
-        // served value) decides whether a number or the served reason it has none renders --
-        // streaming state is disclosed BESIDE that value, never in place of it.
-        // `liveState` is null only for a synthetic/legacy surface that never carries `stream`
-        // at all (see the file header comment); such a payload renders exactly as it always
-        // has, unlabelled.
-        var cellState = (row.stream || [])[j2];
-        var liveState = cellState ? cellState.state : null;
-        var st = cellStyle(v, maxAbs, heat);
-        var priorKey = row.strike + '|' + exps[j2].expiry;
-        var justChanged = _priorSurfaceForFlash &&
-          Object.prototype.hasOwnProperty.call(priorValues, priorKey) && priorValues[priorKey] !== v;
-        // "Never mislabel snapshot data as live": a non-live cell's title discloses exactly
-        // that, with its own last-confirmed age when one is known -- the SAME per-leg
-        // ts_recv/age_sec the API already carries, never fabricated here.
-        var snapshotAge = cellState ? cellState.age_sec : null;   // served: the cell's oldest confirmed leg
-        // Audit finding #6 (2026-09-16): a vendor-rejected contract must fail its cell
-        // VISIBLY, not read as indistinguishable from "simply never requested yet" --
-        // rejected_reason is the vendor's own error, carried on whichever leg was refused.
-        var rejectedReason = liveState === 'rejected'
-          ? ((cellState.call || {}).rejected_reason || (cellState.put || {}).rejected_reason) : null;
-        var stateTitle = liveState === 'live' ? ''
-          : liveState === 'partial' ? 'PARTIAL: only one side of this cell is confirmed live-streamed; the value shown is still the full computed figure'
-          : liveState === 'stale' ? ('SNAPSHOT: not currently confirmed live-streamed' +
-              (snapshotAge != null ? ' (last confirmed ' + Math.round(snapshotAge) + 's ago)' : '') + ' -- most recent valid computed value shown')
-          : liveState === 'pending' ? 'PENDING: contract requested from the vendor, awaiting first confirmed tick -- most recent valid computed value shown'
-          : liveState === 'daemon_unavailable' ? 'DAEMON UNAVAILABLE: the capture daemon is unreachable, so this request cannot even be attempted yet -- most recent valid computed value shown'
-          : liveState === 'rejected' ? ('REJECTED: the vendor refused this contract\'s subscription' +
-              (rejectedReason ? ' (' + rejectedReason + ')' : '') + ' -- most recent valid computed value shown')
-          : liveState === 'unavailable' ? 'SNAPSHOT: streaming not yet confirmed for this contract -- most recent valid computed value shown'
-          : '';
-        tbl += '<td class="hcell' + (j2 === frontCol ? ' col-front' : '') + (exps[j2].expired === true ? ' expired' : '') +
-          (justChanged ? ' flash-update' : '') + (liveState ? ' state-' + liveState : '') +
+    cells.slice().reverse().forEach(function (row) {   // highest strike at the top
+      var mrow = _measureRow(row, measure), changed = (row.changed || {})[measure] || [];
+      tbl += '<tr' + (row.spot ? ' class="spotrow"' : '') + '><th class="hstrike' + (row.spot ? ' spot' : '') + '">' +
+        fmtStrike(row.strike) + '</th>';
+      exps.forEach(function (e, j) {
+        var v = mrow[j], st = cellStyle(v, maxAbs, heat);
+        var cellState = (row.stream || [])[j], liveState = cellState ? cellState.state : null;
+        var reason = liveState === 'rejected' ? ((cellState.call || {}).rejected_reason || (cellState.put || {}).rejected_reason) : null;
+        var stateTitle = (STATE_TITLE[liveState] || '') + (reason ? ' (' + reason + ')' : '');
+        tbl += '<td class="hcell' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') +
+          (changed[j] ? ' flash-update' : '') + (liveState ? ' state-' + liveState : '') +
           '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
           (liveState ? 'data-cell-state="' + liveState + '" ' : '') +
           (stateTitle ? 'title="' + escapeHtml(stateTitle) + '" ' : '') +
-          'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(exps[j2].expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
-          // a cell with no value draws the served reason for it (row.absent, worded by the
-          // surface's absent_reasons): "no contract listed", or what Schwab did not send
-          (st.empty ? '<span class="absent">' + escapeHtml(absentText(surface, row, measure, j2)) + '</span>'
+          'data-strike="' + row.strike + '" data-expiry="' + escapeHtml(e.expiry) + '" data-gex="' + (v == null ? '' : v) + '">' +
+          // no value: the served word ("-" where no contract is listed, or what Schwab did not send)
+          (st.empty ? '<span class="absent">' + escapeHtml(absentText(surface, row, measure, j)) + '</span>'
             : formatMeasureValue(v, measure)) + '</td>';
-      }
+      });
       tbl += '</tr>';
     });
     tbl += '</tbody></table>';
-    // #3: the ONE disclosure line — how many canonical strikes / expirations are on screen.
-    // Always-live heatmap mandate (2026-09-15, operator directive), FINAL: the former
-    // "streaming demand capped at 240 contracts" disclosure is retired along with the cap
-    // itself (demandCols above) -- every visible column is demanded in full; per-cell
-    // live/partial/stale/unavailable disclosure (the render loop above) is now the honest
-    // signal for what is and is not actually confirmed live, not a client-guessed ceiling.
-    var colsTxt = viewCols.length + ' of ' + exps.length + ' expirations' +
-      (expiredHidden ? ' (' + expiredHidden + ' expired hidden in Auto)' : '') +
-      // A manual pan is never silent: the strike window is not following live spot until the
-      // operator double-clicks the strike axis (or switches ticker) to resume auto-centring.
-      (_panAnchor != null ? ' · PANNED to ' + fmtStrike(_panAnchor) + ' — not following spot; double-click the strike axis to resume' : '');
-    var note = (ES && ES.scopeNote) ? ES.scopeNote({ total: strikes.length, shown: rowSel.shown, extra: colsTxt }) : '';
-    // the grid fills the panel; a compact vertical magnitude legend sits at its right edge (the
-    // dollar value is printed in every cell — shade = |GEX$|), matching the approved reference.
-    // Measure-adaptive legend labels: gex/dex are signed dealer-net measures (call-side
-    // high at top, put-side high at bottom, matching net_gex_1pct/net_dex_dollars' own
-    // +call/-put sign convention); oi/volume are unsigned magnitudes (call+put), so the
-    // legend reads "High"/"Low" concentration instead of a call/put polarity that does
-    // not exist for those two measures.
+    // a pan is never silent: the strikes stop following the price until a double-click
+    var note = _pan.centre != null ? '<div class="heat-pan">Panned to ' + fmtStrike(_pan.served) +
+      ' · double-click the strikes to follow the price</div>' : '';
     var MEASURE_LEGEND = {
       gex: ['High<br>Call<br>GEX', 'High<br>Put<br>GEX'],
       dex: ['High<br>Call<br>DEX', 'High<br>Put<br>DEX'],
@@ -551,29 +210,30 @@
     var vlegend = '<div class="heat-vlegend' + unsignedCls + '"><span class="bar"></span>' +
       '<span class="caps"><span class="t">' + legendPair[0] + '</span><span class="m">0</span>' +
       '<span class="b">' + legendPair[1] + '</span></span></div>';
-    host.innerHTML = banner + note +
-      '<div class="heat-host"><div class="heat-main"><div class="heat-wrap' + recede + '">' +
+    host.innerHTML = buildBanner(surface) + note +
+      '<div class="heat-host"><div class="heat-main"><div class="heat-wrap' + ((!live || stale) ? ' recede' : '') + '">' +
       tbl + '</div></div>' + vlegend + '</div>';
 
-    // scroll spot into view; presentation-only cell selection -> strike detail
     var srow = host.querySelector('.spotrow');
     if (srow && srow.scrollIntoView) srow.scrollIntoView({ block: 'center' });
     host.querySelectorAll('.hcell').forEach(function (c) {
-      c.addEventListener('click', function () {
-        // A: route through the shared selection so every panel syncs to this strike
+      c.addEventListener('click', function () {   // the shared selection: every panel follows this strike
         if (window.EdShell) window.EdShell.setStrike(Number(c.getAttribute('data-strike')), c.getAttribute('data-expiry'));
       });
     });
-    wireGridInteraction(host, strikes, rowSel, surface.ticker);
-    // default the shared selection to the spot strike on first load, so Strike Detail and the
-    // GEX-by-strike highlight are populated on arrival (like the approved reference) instead of an
-    // empty placeholder. Never overrides a selection the operator has already made.
-    if (window.EdShell && window.EdShell.getState().selStrike == null && strikes.length && spotIdx >= 0) {
-      var _fe = expFilter || (exps[frontCol >= 0 ? frontCol : 0] || {}).expiry || null;
-      window.EdShell.setStrike(strikes[spotIdx], _fe);
+    var firstRow = host.querySelector('tbody tr');
+    var rowPx = firstRow && firstRow.getBoundingClientRect ? firstRow.getBoundingClientRect().height : 0;
+    if (window.EdShell && window.EdShell.wireStrikeAxis) {
+      window.EdShell.wireStrikeAxis(host.querySelectorAll('.hstrike, .hcorner'), host.querySelector('.heat-wrap'), _pan, rowPx, load);
+    }
+    // the shared selection starts on the spot strike and the front expiry (never over a choice made)
+    var spotRow = cells.filter(function (c) { return c.spot; })[0];
+    var front = exps.filter(function (e) { return e.front; })[0] || exps[0];
+    if (window.EdShell && window.EdShell.getState().selStrike == null && spotRow) {
+      window.EdShell.setStrike(spotRow.strike, (window.EdShell.getExpiry && window.EdShell.getExpiry()) || (front || {}).expiry || null);
     }
     applyStrikeHighlight(host);
-    updateScope(surface);
+    paintChip(view.coverage);
   }
 
   function applyStrikeHighlight(host) {
@@ -584,9 +244,8 @@
     host.querySelectorAll('.hcell[data-strike="' + sel + '"]').forEach(function (n) { n.classList.add('sel-strike'); });
   }
 
-  // Auto column budget: the nearest expirations that stay legible at the approved cell width. The
-  // approved workstation shows ~11 columns at 1672px; a column narrower than MIN_COL_PX collapses
-  // the header and the signed value, so the count is capped by width, never the other way round.
+  // how many expiry columns fit the panel at a legible width (a measurement of the page, sent with
+  // the read; the server picks which columns)
   var MIN_COL_PX = 84, MAX_AUTO_COLS = 11, MIN_AUTO_COLS = 3;
   function autoColCount(host) {
     var w = (host && host.clientWidth) || 0;
@@ -598,249 +257,67 @@
   function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
-  // ---- fetch + render, guarded (latest-wins) ----
-  var _lastSurface = null, _lastRevision = null;
-  // Streaming-demand confirmation state (2026-09-13) — see the demand-dispatch block in
-  // renderSurface for why this exists: `demandCols` is only a REQUEST, not a guarantee.
-  //
-  // A FOURTH independent review (2026-09-13), REPRODUCED: 'confirmed' fired, and the tooltip
-  // claimed "sub-second streaming updates ACTIVE", the instant `setAdditionalContracts`
-  // resolved with the server's own subscribe-request ACK (res.accepted) -- a successful
-  // control-plane POST, never checked against whether the producer has delivered even one
-  // real observation for any contract in the set. 'accepted' now names exactly that (a
-  // request the server acknowledged) and stays the ceiling until a LATER surface poll's own
-  // `stream_overlay_contracts` count (server.py: how many contracts THIS surface actually
-  // carries a genuinely-overlaid streamed field for -- real evidence, not a request outcome)
-  // is greater than zero while this demand is still live -- only then does the state become
-  // 'observed', and only then does the tooltip claim streaming is actually active.
-  // A SIXTH independent review (2026-09-13), REPRODUCED: `_demandState` was ONE global
-  // string shared by every demanded column -- the instant `stream_overlay_contracts` (a
-  // single surface-wide COUNT) went nonzero for ANY reason, EVERY currently-'accepted'
-  // column was promoted to 'observed' together, even a column for a completely different
-  // expiry than whatever actually got freshened. Concretely reproduced: two accepted
-  // columns A and B; only B's contract genuinely streams; A's own tooltip still claimed
-  // "sub-second streaming updates observed" with zero real evidence for A specifically.
-  // Fixed: state and the demanded symbol set are now BOTH keyed by column, and promotion
-  // to 'observed' requires THIS column's own demanded symbols to intersect the surface's
-  // `stream_overlay_symbols` (server.py's _overlaid_symbols) -- real, identity-bound
-  // evidence for that specific column, never a peer column's.
-  function demandTitle(streamed, state) {
-    if (!streamed) return 'REST-cadence only (refreshes ~60s) — not sub-second streamed; Auto shows one streamed column at a time';
-    if (state === 'live' || state === 'partial') return 'sub-second streaming updates observed for this column';
-    if (state === 'pending') return 'streaming subscription requested for this column — awaiting the first observed update';
-    if (state === 'stale') return 'streamed contracts in this column have gone quiet — most recent valid computed values shown';
-    if (state === 'rejected') return 'the vendor refused the streaming subscription for this column — REST-cadence values shown';
-    if (state === 'daemon_unavailable') return 'the capture daemon is unreachable — this column cannot stream until it is back';
-    return 'streaming not yet confirmed for this column — REST-cadence values shown';
-  }
-
-  // server-owned revision identity — the cells are identical while these are unchanged, so we can
-  // skip the full table rebuild. Not a semantic client fingerprint of the data; just the canonical
-  // as-of / source / basis / freshness fields the server already stamps.
-  function surfaceRevision(s) {
-    // DATA revision only — decides whether the expensive TABLE rebuilds. Status (live/stale/warming/
-    // age) is deliberately NOT here; it is refreshed every time via applyStatus. et_date discriminates
-    // banked captures (whose chain/spot as-of are null) so a new morning capture cannot reuse the grid.
-    if (!s || s.available === false) return 'unavailable|' + (s && s.source);
-    // ticker + expiry filter are part of WHICH cells are shown: a symbol change or an expiry-column
-    // change must always rebuild the grid, never reuse a prior symbol's/expiry's table.
-    var expFilter = (window.EdShell && window.EdShell.getExpiry) ? window.EdShell.getExpiry() : null;
-    // surface_seq changes on every publication; spot_as_of_ts_utc is the live price's time and
-    // must not rebuild the grid
-    return [s.ticker || s.symbol, s.source, s.chain_as_of_ts_utc, s.priced_at_spot_as_of_ts_utc, s.chain_basis, s.et_date, expFilter, s.surface_seq].join('|');
-  }
-  // lightweight STATUS: banner (warming/requested/stale/reference/degraded) + recede dimming + scope
-  // age — always refreshed, even when the DATA revision is unchanged, so nothing is left frozen.
-  function buildBanner(surface) {
-    var live = surface.live !== false, stale = !!surface.stale, out = '';
-    if (!live || stale) {
-      var warming = !live && surface.warming === true;
-      var requested = !live && !warming && surface.requested === true;
-      // No reference surface exists (operator rule 2026-09-23: no fallbacks) -- a surface that is
-      // not live is simply absent; the state says why.
-      // WHERE the live surface stands (state)
-      var stateLabel = warming ? 'LIVE SURFACE WARMING'
-        : requested ? 'LIVE SURFACE REQUESTED'
-        : (live ? 'STALE' : '');
-      var cls = (warming || requested) ? 'warming' : (live ? 'stale' : '');
-      // CONCISE primary line; the full reason is disclosed in the tooltip (title) — never a paragraph
-      // that consumes the analytical panel.
-      var brief = !live ? 'no live surface for this symbol' : 'live surface is stale';
-      var detail = surface.degraded || (requested ? 'awaiting next eligible terrain refresh' : brief);
-      var text = [stateLabel].filter(Boolean).join(' — ') + (stateLabel ? ' · ' : '') + brief;
-      out += '<div class="heat-banner ' + cls + '" title="' + escapeHtml(detail) + '"><span class="hb-main">' + text +
-        '</span><span class="hb-more" aria-label="details">details</span></div>';
-    }
-    return out;
-  }
-  function applyStatus(host, surface) {   // refresh status WITHOUT rebuilding the table
-    Array.prototype.slice.call(host.querySelectorAll('.heat-banner')).forEach(function (n) { n.remove(); });
-    var b = buildBanner(surface);
-    if (b) host.insertAdjacentHTML('afterbegin', b);
-    var wrap = host.querySelector('.heat-wrap');
-    if (wrap) wrap.classList.toggle('recede', surface.live === false || !!surface.stale);
-    updateScope(surface);
-  }
-  // Independent-review finding (2026-09-16, follow-up mandate): server.py's stream_coverage
-  // is computed over the WHOLE canonical surface (every strike x every expiry with a real
-  // contract identity), never the Auto/Wider/All-windowed subset the operator is actually
-  // LOOKING AT (rowSel.idx x viewCols, decided entirely client-side and never sent to the
-  // server) -- so a "LIVE" verdict keyed on it answers "is the canonical surface fully
-  // live", not the mandate's own "does every VISIBLE cell meet the requirement". Computed
-  // here instead, directly from the DOM this exact render just painted (`data-cell-state`,
-  // stamped on every rendered .hcell by the SAME per-cell state the server already
-  // disclosed) -- an exact match to what is on screen by construction, never a second,
-  // independently-derived windowing calculation that could drift from the real one.
-  function _visibleCellCoverage() {
-    var host = document.getElementById('heatBody');
-    var counts = { live: 0, partial: 0, stale: 0, pending: 0, daemon_unavailable: 0, rejected: 0, unavailable: 0 };
-    var cells = host ? host.querySelectorAll('.hcell[data-cell-state]') : [];
-    for (var i = 0; i < cells.length; i++) {
-      var st = cells[i].getAttribute('data-cell-state');
-      if (Object.prototype.hasOwnProperty.call(counts, st)) counts[st]++;
-    }
-    var total = cells.length;
-    return {
-      total_visible_cells: total,
-      live: counts.live, partial: counts.partial, stale: counts.stale,
-      pending: counts.pending, daemon_unavailable: counts.daemon_unavailable,
-      rejected: counts.rejected, unavailable: counts.unavailable,
-      live_pct: total ? Math.round(1000 * counts.live / total) / 10 : 0,
-      meets_live_requirement: total > 0 && counts.live === total,
-    };
-  }
-
-  function updateScope(surface) {   // lightweight: only the age/scope tag in the panel header
-    // Independent review, 2026-09-16 (CORRECTED): see the identical fix in the sibling render
-    // function above -- Number(surface.spot) fabricates a real, finite 0 when surface.spot is
-    // explicitly null, which then passes the isFinite(spot) guard below as if it were real.
-    var strikes = surface.strikes || [], exps = surface.expirations || [],
-        priced = surface.priced_at_spot == null ? NaN : Number(surface.priced_at_spot);
-    // Audit finding #6 (2026-09-16), FIXED, THEN CORRECTED (follow-up mandate): "LIVE" used
-    // to mean only "surface.source == terrain_live_cache" -- true for nearly every live-
-    // pathway surface with NO per-cell coverage requirement at all. Gating it on coverage
-    // over the WHOLE canonical surface (the first fix) was itself still wrong scope -- see
-    // _visibleCellCoverage's own comment. The word "LIVE" (in ANY form, including a
-    // percentage-qualified one) never renders below 100% visible coverage: a partial cover
-    // reads "OPT CELLS·NN%" (option-cell overlay, not the equity feed), a wholly
-    // unconfirmed one "WARMING" -- neither contains the literal word LIVE, so a
-    // viewer scanning for that one word can never mistake a partial reading for a
-    // complete one.
-    var cov = _visibleCellCoverage();
-    var liveWord;
-    if (cov.total_visible_cells === 0) {
-      liveWord = 'WARMING';                       // no visible cell has confirmed identity yet
-    } else if (cov.meets_live_requirement) {
-      // option-cell coverage, never the bare word LIVE -- that word belongs to the equity feed
-      // in the header, and a heatmap reading "LIVE" was read as the price feed (audit of #280)
-      liveWord = 'OPT CELLS·100%';
-    } else {
-      liveWord = 'OPT CELLS·' + cov.live_pct.toFixed(0) + '%';
-    }
-    var srcLabel = surface.source === 'terrain_live_cache' ? liveWord : (surface.source || '');
-    var age = surface.age_sec != null ? ' ' + Math.round(surface.age_sec) + 's' : '';
-    var basis = (surface.coverage && surface.coverage.chain_basis) ? ' ' + surface.coverage.chain_basis : '';
-    var el = document.getElementById('heatScope');
-    if (el) {
-      var shownRows = document.querySelectorAll('#heatBody .heat tbody tr').length;
-      var shownCols = document.querySelectorAll('#heatBody .heat thead .hexp').length;
-      var shown = (shownRows && shownCols) ? ' · ' + shownRows + '×' + shownCols + ' shown' : '';
-      el.textContent = strikes.length + '×' + exps.length + ' canonical' + shown + ' · priced at ' + (isFinite(priced) ? priced.toFixed(2) : '—') + ' · ' + srcLabel + age + basis;
-      // Exact coverage breakdown on hover -- counts and percentages for live/partial/
-      // stale/pending/daemon-unavailable/rejected/unavailable of the VISIBLE cells
-      // specifically (not the canonical surface's own, possibly much larger, cell count).
-      el.title = cov.total_visible_cells
-        ? ('visible coverage: ' + cov.live + ' live, ' + cov.partial + ' partial, ' + cov.stale +
-           ' stale, ' + cov.pending + ' pending, ' + cov.daemon_unavailable + ' daemon-unavailable, ' +
-           cov.rejected + ' rejected, ' +
-           cov.unavailable + ' unavailable of ' +
-           cov.total_visible_cells + ' visible cells (' + cov.live_pct + '% live)')
-        : ((surface.coverage && surface.coverage.note) || '');
-    }
-  }
   // gamma, dex and oi are the same heatmap pane under three subview ids
   function _isGammaFamilySubview(sv) { return sv === 'gamma' || sv === 'dex' || sv === 'oi'; }
   function stillCurrent(ticker) {
     var s = (window.EdShell && window.EdShell.getState()) || {};
     return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && (s.ticker || '') === ticker;
   }
-  // Only the actual network fetch is coalesced. The "leaving the heatmap" cleanup below is
-  // synchronous and state-authority-visible (it releases streamed-contract demand) -- it must
-  // run the INSTANT the view changes, every time load() is called, never deferred behind a
-  // stale/hung fetch the coalescing loader happens to still be waiting on (state-authority
-  // review, 2026-09-13: reproduced exactly this way in ed-gamma-flow.js's analogous "clear
-  // intent" branch — see that file's stillFlow fix for the identical class of bug).
-  // ROUND 8 (2026-09-13, independent-review finding, REPRODUCED): the round-7 coalescing
-  // loader merged EVERY trigger into the same in-flight slot, so a held/slow fetch for an
-  // ABANDONED ticker blocked the newly-selected ticker from ever loading. Fixed by keying
-  // the loader on ticker (makeCoalescedLoader now aborts+restarts immediately on a key
-  // change instead of waiting) and passing the fetch its AbortSignal.
+  function surfaceUrl(ticker, host) {
+    var ES = window.EdShell;
+    var expiry = (ES && ES.getExpiry) ? ES.getExpiry() : null;
+    return '/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker) +
+      (ES && ES.windowQuery ? ES.windowQuery(_pan) : '') + '&cols=' + autoColCount(host) +
+      (expiry ? '&expiry=' + encodeURIComponent(expiry) : '');
+  }
+  // only the network fetch is coalesced (keyed on ticker: a newer ticker aborts the older read)
   function loadImpl(ticker, signal) {
     var host = document.getElementById('heatBody');
     if (!host || !stillCurrent(ticker)) return;
     host.setAttribute('aria-busy', 'true');
-    return fetch('/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker), { cache: 'no-store', signal: signal })
+    return fetch(surfaceUrl(ticker, host), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
       .catch(function (e) {
-        if (e && e.name === 'AbortError') return;   // superseded by a newer ticker -- that load renders instead
+        if (e && e.name === 'AbortError') return;   // superseded by a newer read -- that one renders
         if (stillCurrent(ticker)) renderSurface(host, { available: false, ticker: ticker, reason: 'no console serving /api/options/gamma-surface' });
       });
   }
-  var _pendingTicker = null;
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingTicker, signal); });
   function load() {
     var host = document.getElementById('heatBody');
     if (!host) return;
     var st = (window.EdShell && window.EdShell.getState()) || {};
     if (st.workspace !== 'options' || !_isGammaFamilySubview(st.subview) || st.view !== 'heatmap') {
-      // Leaving the heatmap: clear demand for whichever ticker was last shown HERE
-      // specifically (never any other ticker's demand -- see _heatmapOwnerKey). Runs
-      // immediately -- never coalesced behind an in-flight/hung surface fetch.
+      // leaving the heatmap: its demand is cleared at once, never behind an in-flight read
       window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker));
       _pendingTicker = null;
       return;
     }
     var nextTicker = st.ticker || '';
     if (_pendingTicker && _pendingTicker !== nextTicker) {
-      // Switching ticker WITHIN the heatmap view: the ticker just left is no longer being
-      // watched here -- release its own demand (2026-09-21) so coverage does not grow
-      // unbounded across every ticker ever browsed to in one session; a different ticker
-      // still shown in another panel (Strike Detail, etc.) keeps its own separate owner key
-      // and is completely unaffected.
-      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker));
+      window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker));   // the ticker just left
     }
+    if (_panTicker !== nextTicker) { _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker; }
     _pendingTicker = nextTicker;
     _loader.trigger(_pendingTicker);
+  }
+  function rerender() {   // a presentation change on the window on screen: no read needed
+    var h = document.getElementById('heatBody'); if (!h) return;
+    _lastRevision = null;
+    if (_lastSurface) renderSurface(h, _lastSurface); else load();
   }
 
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels') load(); });
-    document.addEventListener('ed:strike', function () { applyStrikeHighlight(); });   // A: cross-panel sync
-    document.addEventListener('ed:theme', function () {   // recolour: force a rebuild (revision is unchanged but the palette changed)
-      var h = document.getElementById('heatBody'); if (h && _lastSurface) { _lastRevision = null; renderSurface(h, _lastSurface); }
-    });
-    document.addEventListener('ed:expiry', function () {   // #5: re-window columns to the selected expiry (client-side; same canonical surface)
-      var h = document.getElementById('heatBody'); if (!h) return; _lastRevision = null;
-      if (_lastSurface) renderSurface(h, _lastSurface); else load();
-    });
-    document.addEventListener('ed:scope', function () {    // #3: Auto / Wider / All available re-selects the viewport (same canonical surface)
-      var h = document.getElementById('heatBody'); if (!h) return; _lastRevision = null;
-      if (_lastSurface) renderSurface(h, _lastSurface); else load();
-    });
-    // A direct #measureSel change (not a subview switch, which already re-renders via
-    // ed:view) -- the SAME already-fetched surface, presenting a different one of its own
-    // gex/dex/oi/volume fields (see _measureRow's own comment). No refetch needed.
-    document.addEventListener('ed:measure', function () {
-      var h = document.getElementById('heatBody'); if (!h) return; _lastRevision = null;
-      if (_lastSurface) renderSurface(h, _lastSurface); else load();
-    });
-    // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
-    // deferred ed:ticker/ed:view dispatch (see its own init() comment) -- this module's
-    // former self-call here duplicated that ownership and only avoided a double-fetch by
-    // the coincidence that ed-core's dispatch fired too early to reach this listener.
+    document.addEventListener('ed:strike', function () { applyStrikeHighlight(); });
+    document.addEventListener('ed:theme', rerender);
+    document.addEventListener('ed:measure', rerender);
+    document.addEventListener('ed:expiry', load);   // a new window: the server picks it
+    document.addEventListener('ed:scope', load);
+    if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', load);
   }
 
   var _root = (typeof window !== 'undefined') ? window : (typeof globalThis !== 'undefined' ? globalThis : this);

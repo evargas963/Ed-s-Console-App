@@ -43,7 +43,7 @@ def _put_chain(*, fetched_ts=None, viewed=True):
         server._terrain_cache[TK] = {"_chain": _CONTRACTS,
                                      "_contract_symbols": frozenset(c["symbol"] for c in _CONTRACTS),
                                      "_chain_fetched_ts": time.time() if fetched_ts is None else fetched_ts}
-    push_changes._clients.pop(TK, None)
+    push_changes._open[:] = [(t, c) for t, c in push_changes._open if t != TK]
     if viewed:
         push_changes.subscribe(TK)                  # a page open on the ticker
 
@@ -56,7 +56,7 @@ def _cached():
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", 1.0))
-    monkeypatch.setattr(push_changes, "_clients", {})                    # no page open
+    monkeypatch.setattr(push_changes, "_open", [])                       # no page open
     monkeypatch.setattr(push_changes, "_loop", None)                     # changes recorded, not delivered
     ofs._active_option_contract = _A
     ofs._active_option_contracts = [_B]
@@ -146,6 +146,7 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale(monkeypatch):
     now = time.time()
     chain = [dict(_CONTRACTS[0], quoteTimeInLong=int(now * 1000))] + _CONTRACTS[1:]   # a fresh chain
     push_changes.subscribe(TK)                                                         # a page open on it
+    ofs._active_option_contract = _A                                                   # the operator's contract
     _stream({_A: {"gamma": 0.9, "gamma_ts_recv": now - 60.0}}, monkeypatch)          # last change a minute ago
     server._publish_levels(TK, chain, now)
     surface = _cached()["_gamma_surface"]
@@ -273,10 +274,10 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot(monkeypatch):
     _stream({}, monkeypatch)
     _put_chain()
     snap = server._publish_levels(TK)
-    charm = json.loads(server.get_charm_by_strike(TK).body)
+    charm = json.loads(server.get_charm_by_strike(TK, scope="all").body)
     assert charm["available"] and charm["spot"] == snap.spot
     assert len(charm["rows"]) == sum(1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None)
-    vanna = json.loads(server.get_vanna_by_strike(TK).body)
+    vanna = json.loads(server.get_vanna_by_strike(TK, scope="all").body)
     assert vanna["available"] and vanna["rows"]
 
 
@@ -563,12 +564,15 @@ def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker(monkeyp
     assert priced == [now + 2]
 
 
-def test_a_viewed_tickers_chain_is_priced_before_the_others_waiting(monkeypatch):
-    """The active ticker first (operator 2026-10-01): the pricing thread takes a viewed ticker's
-    chain ahead of board chains that arrived before it."""
+def test_the_ticker_on_screens_chain_is_priced_before_the_others_waiting(monkeypatch):
+    """The ticker on screen first (operator 2026-10-01), the same ticker the daemon fetches first
+    (2026-10-01 audit: pricing put every viewed ticker first, the daemon only the active one):
+    the pricing thread takes its chain ahead of chains that arrived before it, a page open on
+    another ticker included."""
     priced: list = []
     monkeypatch.setattr(server, "_price_chain", lambda tk, c, ts: priced.append(tk))
-    push_changes.subscribe(TK)                                   # a page open on CRWD
+    push_changes.subscribe("ZZA")                                # an older page on ZZA
+    push_changes.subscribe(TK)                                   # the newest page: CRWD on screen
     gate = threading.Event()
     server._chain_pricing.submit(gate.wait, 10)                 # the pricing thread is busy
     now = time.time()
@@ -579,45 +583,25 @@ def test_a_viewed_tickers_chain_is_priced_before_the_others_waiting(monkeypatch)
     assert priced == [TK, "ZZA", "ZZB"]
 
 
-def test_the_active_ticker_follows_the_open_pages(monkeypatch):
-    """2026-10-01 audit: nothing cleared the active ticker when its page closed, so the last
-    ticker shown was fetched back to back, and its books streamed, without end."""
-    monkeypatch.setattr(ofs, "_active_ticker", None)
-    monkeypatch.setattr(server, "_ensure_default_option_contract", lambda tk: None)
-    a = push_changes.subscribe("AAA")
-    b = push_changes.subscribe("BBB")
-    ofs.set_streaming_active_ticker("BBB")
-    push_changes.unsubscribe("BBB", b)
-    server._active_ticker_left("BBB")
-    assert ofs.current_wanted()["NYSE_BOOK"] == ["AAA"], "another open page's ticker"
-    push_changes.unsubscribe("AAA", a)
-    server._active_ticker_left("AAA")
-    assert ofs.current_wanted()["NYSE_BOOK"] == [], "no page open: no active ticker"
-
-
-def test_a_page_makes_its_ticker_active_in_order_with_the_closes(monkeypatch):
-    """2026-10-01 audit: the open set the active ticker on a worker pool while the close ran
-    elsewhere, so a quick A->B->A switch could leave B active under a screen showing A. Both
-    happen on the event loop, in order: the ticker is active when the open returns."""
+def test_the_ticker_on_screen_is_the_newest_open_page(monkeypatch):
+    """One rule (2026-10-01 audit: page open, page close and the daemon each had their own): the
+    ticker on screen is the newest page still open, and the books, the chain fetched first and
+    the option contract all follow it, in the order the pages open and close."""
     import asyncio
-
-    class _NeverRuns:                                   # work handed off the loop never runs here
-        def submit(self, *a, **k):
-            pass
-    monkeypatch.setattr(server, "_get_route_offload_executor", lambda: _NeverRuns())
-    monkeypatch.setattr(ofs, "_active_ticker", None)
-    contracts: list = []
-    monkeypatch.setattr(server, "_ensure_default_option_contract", contracts.append)
+    followed: list = []
+    monkeypatch.setattr(server, "_follow_screen_contract", lambda: followed.append(push_changes.on_screen()))
 
     async def go():
-        await server.get_changes(ticker="AAA")              # the page opens on AAA ...
+        await server.get_changes(ticker="AAA")              # a page opens on AAA ...
         b = await server.get_changes(ticker="BBB")          # ... a second page on BBB
-        assert ofs.current_wanted()["NYSE_BOOK"] == ["BBB"]
+        assert ofs.current_wanted()["active"] == "BBB" and ofs.current_wanted()["NYSE_BOOK"] == ["BBB"]
         await b.body_iterator.__anext__()
         await b.body_iterator.aclose()                      # the BBB page closes
-        assert ofs.current_wanted()["NYSE_BOOK"] == ["AAA"]
+        assert ofs.current_wanted()["active"] == "AAA"
     asyncio.run(go())
-    assert contracts == ["AAA", "BBB", "AAA"], "the option contract follows in the same order"
+    assert followed == ["AAA", "BBB", "AAA"], "the option contract follows in the same order"
+    monkeypatch.setattr(push_changes, "_open", [])
+    assert ofs.current_wanted()["active"] is None and ofs.current_wanted()["NYSE_BOOK"] == []
 
 
 def test_a_manual_contract_admitted_before_a_ticker_switch_is_superseded(monkeypatch):
@@ -627,7 +611,7 @@ def test_a_manual_contract_admitted_before_a_ticker_switch_is_superseded(monkeyp
     server._publish_levels(TK, _CONTRACTS, time.time())         # TK's chain: its default contract
     ofs._active_option_contract = None
     manual = ofs.begin_option_contract_command()                # a POST admitted for another ticker
-    server._ensure_default_option_contract(TK)                  # then the screen moves to TK
+    push_changes.subscribe(TK)                                  # then the screen moves to TK
     chosen = ofs.get_active_option_contract()
     assert server._contract_is_for(chosen, TK)
     with pytest.raises(ofs.StaleOptionCommandError):
@@ -638,21 +622,13 @@ def test_a_manual_contract_admitted_before_a_ticker_switch_is_superseded(monkeyp
 def test_a_ticker_opened_before_its_chain_gets_its_contract_when_the_chain_comes(monkeypatch):
     """2026-10-01 audit: a ticker opened before its chain was held got no option contract, and
     none was chosen when the chain arrived, until the page reopened."""
-    import asyncio
     _stream({}, monkeypatch)
-    monkeypatch.setattr(ofs, "_active_ticker", None)
     ofs._active_option_contract = None
-
-    async def go():
-        page = await server.get_changes(ticker="CRWD")
-        await page.body_iterator.__anext__()                    # the page is open; no chain yet
-        assert ofs.get_active_option_contract() is None
-        server._publish_levels(TK, _CONTRACTS, time.time())     # the daemon's chain is priced
-        push_changes._mark(TK, push_changes.CHAIN)
-        await page.body_iterator.__anext__()
-        assert server._contract_is_for(ofs.get_active_option_contract(), TK)
-        await page.body_iterator.aclose()
-    asyncio.run(go())
+    push_changes.subscribe(TK)                                  # the page is open; no chain yet
+    assert ofs.get_active_option_contract() is None
+    server._publish_levels(TK, _CONTRACTS, time.time())         # the daemon's chain is priced
+    push_changes._mark(TK, push_changes.CHAIN)                  # (on the event loop)
+    assert server._contract_is_for(ofs.get_active_option_contract(), TK)
 
 
 def test_an_unknown_board_is_said_so():

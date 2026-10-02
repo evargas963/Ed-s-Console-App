@@ -348,8 +348,14 @@
   .panel-h .t{font-size:17px;font-weight:700;text-transform:uppercase;font-stretch:var(--ed-title-stretch);
     letter-spacing:var(--ed-title-spacing);color:var(--ed-ink)}
   .panel-h .sub{font-family:var(--ed-sans);font-size:11px;color:var(--ed-ink-3)}
-  /* provenance/telemetry is REQUIRED truth but must not compete with panel titles — demote it */
-  #heatScope{font-size:9.5px;color:var(--ed-ink-4);font-weight:400}
+  /* the heatmap's coverage chip: how many cells on screen stream (words from the server) */
+  #heatScope.cov{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:600;
+    letter-spacing:.08em;color:var(--ed-ink-2);cursor:help}
+  #heatScope.cov:empty{display:none}
+  #heatScope.cov::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ed-quiet)}
+  #heatScope.cov-live::before{background:var(--ed-live);box-shadow:0 0 6px var(--ed-live)}
+  #heatScope.cov-partial::before{background:var(--ed-warn)}
+  #heatScope.cov-warming::before{background:var(--ed-stale)}
   .panel-h #klSrc{font-size:10px;color:var(--ed-ink-4)}
   .panel-h .r{margin-left:auto;display:flex;align-items:center;gap:7px}
   /* #4: compact per-panel source/as-of badge - each panel discloses ITS OWN canonical freshness,
@@ -499,16 +505,6 @@
     padding:3px 8px;border:1px solid var(--ed-edge);border-radius:var(--ed-r);cursor:pointer;background:none}
   .scbtn:hover{color:var(--ed-ink);border-color:var(--ed-edge-strong)}
   .scbtn.on{color:var(--ed-accent-2);background:var(--ed-accent-bg);border-color:var(--ed-accent-edge)}
-  /* #3: per-panel window disclosure line — never let a clip be silent. Sticky so it stays visible
-     when the panel body auto-scrolls the spot strike into view.
-     Independent-review finding (2026-09-13), REPRODUCED: this purely informational, never-
-     clickable note (no click handler anywhere binds to it) could still sit over the Chart
-     panel's SVG marks below it and intercept real pointer clicks meant for them.
-     pointer-events:none makes it visual-only, as it always functionally was. */
-  .scope-note{position:sticky;top:0;z-index:2;background:var(--ed-panel);font-family:var(--ed-mono);
-    font-size:10px;color:var(--ed-ink-3);padding:4px 0 6px;margin:-2px 0 2px;display:flex;gap:8px;
-    align-items:baseline;flex-wrap:wrap;border-bottom:1px solid var(--ed-edge);pointer-events:none}
-  .scope-note .clip{color:var(--ed-warn)}
   .chart-legend{display:flex;gap:14px;font-family:var(--ed-mono);font-size:10px;color:var(--ed-ink-3);padding:2px 0 6px}
   .chart-asof{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:0 0 6px}
   .chart-legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:4px}
@@ -605,7 +601,7 @@
   .heat .hexp.expired .d{color:var(--ed-ink-4);text-decoration:line-through}
   .heat .hexp.expired .dte{color:var(--ed-stale);font-weight:700}
   .heat .hcell.expired{opacity:.42;filter:saturate(.35)}
-  #heatBody .scope-note{position:static;padding:0 0 6px}
+  .heat-pan{font-size:11px;color:var(--ed-warn);padding:0 0 6px}
   /* concise status banner: one line, details in the tooltip */
   .heat-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:help;white-space:nowrap;overflow:hidden}
   .heat-banner .hb-main{overflow:hidden;text-overflow:ellipsis}
@@ -784,7 +780,7 @@
               <span class="hticker" id="mvTicker">—</span>
               <span class="t" id="mvTitle">Gamma Exposure Heatmap</span>
               <div class="r">
-                <span class="sub" id="heatScope">strike × expiration</span>
+                <span class="sub cov" id="heatScope"></span>
                 <span class="chart-modes" id="chartModes" hidden>
                   <button class="cmode on" data-cmode="profile">Profile</button>
                   <button class="cmode" data-cmode="dotmap">Dot Map</button>

@@ -14,9 +14,8 @@ It does four things, in one loop:
 
   1. WANTED  The console sends everything its screens show, per Schwab service, over the
              local console socket (live_push, ws://127.0.0.1:8799):
-               {"op": "wanted", "wanted": {"LEVELONE_EQUITIES": ["SPY", ...], ...}}
-             The ticker whose books it asks for is the one on screen: the chain sweep's
-             active ticker.
+               {"op": "wanted", "wanted": {"active": "SPY", "LEVELONE_EQUITIES": ["SPY", ...], ...}}
+             `active` is its ticker on screen: the chain sweep fetches it first.
              The daemon keeps the last list on disk (stream_wanted.json) so a restart
              resumes it before the console reconnects.
   2. SYNC    When the list changes, and every SYNC_SEC, it compares wanted with what Schwab has accepted on this
@@ -114,16 +113,24 @@ def normalize_wanted(raw) -> "dict[str, frozenset[str]]":
     return out
 
 
-def load_wanted(path: Path) -> "dict[str, frozenset[str]]":
+def wanted_active(raw) -> "str | None":
+    """The console's ticker on screen, as its wanted list names it (`active`); None for none."""
+    a = raw.get("active") if isinstance(raw, dict) else None
+    return (a.strip().upper() or None) if isinstance(a, str) else None
+
+
+def load_wanted(path: Path):
+    """The last wanted list saved (stream_wanted.json), or None."""
     try:
-        return normalize_wanted(json.loads(path.read_text(encoding="utf-8")))
+        return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return normalize_wanted(None)
+        return None
 
 
-def save_wanted(path: Path, wanted: "dict[str, frozenset[str]]") -> None:
+def save_wanted(path: Path, wanted: "dict[str, frozenset[str]]", active: "str | None") -> None:
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({s: sorted(v) for s, v in wanted.items()}), encoding="utf-8")
+    tmp.write_text(json.dumps({"active": active, **{s: sorted(v) for s, v in wanted.items()}}),
+                   encoding="utf-8")
     os.replace(tmp, path)
 
 
@@ -270,7 +277,10 @@ class Daemon:
         self.bus = bus
         self.health = health
         self.path = path
-        self.wanted = load_wanted(path)
+        saved = load_wanted(path)
+        self.wanted = normalize_wanted(saved)
+        #: the console's ticker on screen: its chain is fetched first (ChainSweep.set_active)
+        self.active = wanted_active(saved)
         self.wanted_changed = asyncio.Event()
         #: the board: the tickers fetched and streamed in the background (the logging_universe
         #: table, read at startup)
@@ -282,25 +292,21 @@ class Daemon:
 
     def set_wanted(self, raw) -> None:
         """The console's list (live_push calls this for every {"op": "wanted"} frame): what its
-        screens show. The ticker on screen (its books) is the chain sweep's active ticker."""
-        new = normalize_wanted(raw)
-        if new == self.wanted:
+        screens show, and `active`, its ticker on screen, which the chain sweep fetches first."""
+        new, active = normalize_wanted(raw), wanted_active(raw)
+        if new == self.wanted and active == self.active:
             return
         for svc in SERVICES:                       # a changed list gets one fresh try
             if new[svc] != self.wanted[svc]:
                 self.refused[svc] = {}
-        self.wanted = new
+        self.wanted, self.active = new, active
         self.wanted_changed.set()                  # the connection syncs now
         if self.chains is not None:
-            self.chains.set_active(self.active_ticker())
+            self.chains.set_active(active)
         try:
-            save_wanted(self.path, new)
+            save_wanted(self.path, new, active)
         except OSError as e:
             log.warning("could not save %s: %s", self.path.name, e)
-
-    def active_ticker(self) -> "str | None":
-        """The ticker on the console's screen: the one whose books it asks for."""
-        return next(iter(sorted(self.wanted["NYSE_BOOK"])), None)
 
     def all_wanted(self) -> "dict[str, frozenset[str]]":
         """Everything streamed: the console's list, and every board ticker on BOARD_SERVICES."""
@@ -518,7 +524,7 @@ async def run_chains(daemon: "Daemon", db_path, make_client, stop: asyncio.Event
     sweep = ChainSweep(db_path, daemon.board,
                        lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg))
     daemon.chains = sweep
-    sweep.set_active(daemon.active_ticker())        # the last one on screen, before a restart
+    sweep.set_active(daemon.active)                 # the last one on screen, before a restart
     workers = [loop.run_in_executor(None, sweep.work, make_client, halt) for _ in range(CHAIN_WORKERS)]
     try:
         await stop.wait()

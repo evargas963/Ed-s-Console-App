@@ -262,6 +262,7 @@
     var P = S.chart.palette(), alpha = window.EdTvChart.alpha;
     S.chart.setVolumeProfile(vp ? vp.bins.map(function (b) {
       return { price: b[0], value: b[1], color: b[2] ? alpha(P.accent, 0.38) : alpha(P.ink3, 0.2) }; }) : [],
+      vp ? vp.max_volume : null,
       vp && vp.poc != null ? { price: vp.poc, label: 'POC est ' + num(vp.poc), color: P.warn } : null);
     S.chart.setVwap(S.fam.vwap && S.levels ? S.levels.vwap_series : []);
     var T = S.fam.gamma !== 0 && S.terrain;
