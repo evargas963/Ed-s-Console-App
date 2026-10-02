@@ -453,6 +453,33 @@ test.describe('Trade Desk renders served values', () => {
     await expect(strikes).toHaveText(['792', '791', '790']);          // the window asked for, not the old one
   });
 
+  test('Right Now: a read cut short by a venue switch never draws the old venue', async ({ page }) => {
+    await intercept(page);
+    let slow = false, inFlight = 0;
+    await page.route('**/api/order-flow/microstructure?**', async (route) => {
+      const venue = new URL(route.request().url()).searchParams.get('venue');
+      if (slow && venue === 'NYSE_BOOK') { inFlight += 1; await new Promise((r) => setTimeout(r, 800)); }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, MICRO, { venue: venue })) });
+    });
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'right-now'); localStorage.setItem('ed_book_venue', 'NYSE_BOOK'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const body = page.locator('#tdBody');
+    await expect(body).toContainText('(NYSE_BOOK, depth 5)');
+    await page.evaluate(() => {          // the venue each draw from here on shows
+      window.__draws = [];
+      new MutationObserver(() => window.__draws.push((document.getElementById('tdBody').textContent.match(/\((NYSE|NASDAQ)_BOOK/) || [''])[0]))
+        .observe(document.getElementById('tdBody'), { childList: true });
+    });
+    slow = true;
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+    await expect.poll(() => inFlight).toBe(1);
+    await page.evaluate(() => document.querySelector('.bookvenue [data-venue="NASDAQ_BOOK"]').click());   // ... cut short
+    await expect(body).toContainText('(NASDAQ_BOOK, depth 5)');
+    await page.waitForTimeout(1200);                                 // the cut-short read would have landed
+    expect(await page.evaluate(() => window.__draws)).toEqual(['(NASDAQ_BOOK']);
+  });
+
   test('Right Now: a read cut short by a scope change never draws', async ({ page }) => {
     await intercept(page);
     const wider = Object.assign({}, STRIKES, { spot_strike: 791,
