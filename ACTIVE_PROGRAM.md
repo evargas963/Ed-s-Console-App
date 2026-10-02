@@ -7,6 +7,33 @@ design, with nothing kept that has no job.
 
 Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 
+## Data path rebuild (operator 2026-10-02: one rule the whole way through, end to end)
+
+| ID | Status | Work item |
+|---|---|---|
+| PATH-1 | IN PROGRESS | **Make `docs/DATA_FLOW.md` §2 D1–D6 true, end to end, in one change**, until `tests/test_data_path_rules_v1.py` passes. Measured in production 2026-10-02 in market hours: every daemon queue kept every message (`stream_spine` COUNT_DROPS, unbounded), so old quotes and whole old chains waited in front of new ones; the daemon's memory grew ~0.6 GB/min to 10–15 GB and the page went dead; the console's levels fell 5–8 min behind. Nothing compared Schwab's timestamps; Schwab's frame timestamp was dropped; the daemon replayed old quotes and books on every console reconnect; live routes read the database (options tape, book heatmap, bars, level crosses). Until it lands, the daemon is restarted when its memory passes 8 GB. |
+
+## Enforcement owed (each requirement in `AGENTS.md` and `docs/DATA_FLOW.md` with no machine check names its item here)
+
+| ID | Status | Work item |
+|---|---|---|
+| ENF-01 | QUEUED | No patches, end to end only (AGENTS rule 1): a check that a PR changing the data path (daemon, console intake, pricing, routes, page) also changes a test that runs the whole path, Schwab message to served value. |
+| ENF-02 | QUEUED | One authority (rule 3), the second producers found 2026-10-02: `/api/chain` re-overlays the chain the publication already priced; the book microstructure is extracted twice per request; the tape prints are computed six times per request; exposures are merged three times per publication; `terrain_staleness` runs twice per route; LEVELS is pushed by two producers. Each removed at its source, each with a test. |
+| ENF-03 | QUEUED | The UI computes nothing (rule 4): the page review of 2026-10-02 found freshness math on the browser clock, client-side scales and maxima, strike matching by tolerance, the regime colour from a regex, the DTE label, and two different dollar formatters. A browser test that fails when page code computes a shown value. |
+| ENF-04 | QUEUED | Nothing without a job (rule 7): the readerless pieces found 2026-10-02 (the contracts copy in each chain part, the console's receive log, news frames, nine terrain fields no screen shows, dead CSS and JS); a check that finds served fields and code with no reader. |
+| ENF-05 | QUEUED | All tickers (rule 8): measurements and reports cover the whole board; a check of the report scripts. |
+| ENF-06 | QUEUED | The UI shows Central Time (rule 9): a browser test of every shown time. |
+| ENF-07 | QUEUED | Real data (rule 10): a check that each behavior test reads `tests/fixtures/` captured data or names its stand-in. |
+| ENF-08 | QUEUED | The "Before writing code" practices (trace each value, name the lifecycle owner, new checks fail on old code, tests drive real code): a PR template whose sections a check requires. |
+| ENF-09 | QUEUED | Time is an input: a check that no function below an entry point reads the clock. |
+| ENF-10 | QUEUED | Typed records across module boundaries: a check of cross-module dict payloads. |
+| ENF-11 | QUEUED | Imports at the top (ruff E402) and one formatter per format. |
+| ENF-12 | QUEUED | The agent practices that no machine can see (claims cite output, proof reproducible, read another agent's work, checkpoints, stop words, deploy means restarted and checked in market hours, `&&` chains): listed in `AGENTS.md`, each enforced by the operator's review until a check exists. |
+| ENF-13 | QUEUED | Governance files (`AGENTS.md`, `docs/DATA_FLOW.md`, CI, hooks, checks) merged only by the operator: a CODEOWNERS file and a required review on those paths. |
+| ENF-14 | QUEUED | No source edits through a script: an agent hook that refuses shell writes to tracked source. |
+| ENF-15 | QUEUED | Pushed at every hop, nothing polls (`docs/DATA_FLOW.md` §1): the page draws pushed values instead of re-reading routes after a push (P2-3). |
+| ENF-16 | QUEUED | Operator decisions 2–6, 8, 9 in `docs/DATA_FLOW.md` §6: each gets a test when it is built. |
+
 ## Phase 1 — restore and stabilize
 
 | ID | Status | Work item |
