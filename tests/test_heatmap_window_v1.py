@@ -120,6 +120,11 @@ def test_a_cell_flashes_when_its_value_changed_after_the_publication_the_page_dr
     latest = _heat(scope="all")["surface_seq"]
     assert latest == drawn + 2
     assert not _marked(_heat(scope="all", since=latest), "oi")    # drawn already: no flash again
+    # a strike that leaves the chain and comes back starts afresh: its earlier change is not flashed
+    k = float(target["strikePrice"])
+    server._publish_levels(TK, [c for c in chain if float(c["strikePrice"]) != k], 4.0)
+    server._publish_levels(TK, copy.deepcopy(chain), 5.0)
+    assert not _marked(_heat(scope="all", since=drawn), "oi")
 
 
 def test_with_no_live_price_the_window_says_it_is_not_around_the_price(monkeypatch):

@@ -363,33 +363,49 @@ def _free_port() -> int:
 
 
 def test_the_console_socket_carries_the_wanted_list_in_and_the_status_out():
+    """The daemon holds the list of the connection that sent it last; that connection ending
+    withdraws it, and another connection ending does not (2026-10-01 review: an old connection
+    noticed closed after the console reconnected wiped the live console's list)."""
     from websockets.asyncio.client import connect
-    got, port = [], _free_port()
+    port = _free_port()
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry())
+
+    async def until(cond):
+        for _ in range(250):
+            if cond():
+                return
+            await asyncio.sleep(0.02)
+        raise AssertionError("not reached")
 
     async def go():
         stop = asyncio.Event()
         server = asyncio.create_task(serve_live_push(
             ss.MessageBus(), stop, port=port, heartbeat_fn=lambda: {"schwab_socket_open": True},
-            on_wanted=got.append))
+            on_wanted=d.set_wanted))
         for _ in range(100):
             try:
-                ws = await connect(f"ws://127.0.0.1:{port}")
+                a = await connect(f"ws://127.0.0.1:{port}")
                 break
             except OSError:
                 await asyncio.sleep(0.05)
-        async with ws:
-            await ws.send(json.dumps({"op": "wanted", "wanted": {"NYSE_BOOK": ["SPY"]}}))
-            env = json.loads(await asyncio.wait_for(ws.recv(), 5))
-            for _ in range(50):
-                if got:
-                    break
-                await asyncio.sleep(0.02)
+        env = json.loads(await asyncio.wait_for(a.recv(), 5))
+        await a.send(json.dumps({"op": "wanted", "wanted": {"active": "SPY", "NYSE_BOOK": ["SPY"]}}))
+        await until(lambda: d.active == "SPY")
+        b = await connect(f"ws://127.0.0.1:{port}")               # the console reconnects
+        await b.send(json.dumps({"op": "wanted", "wanted": {"active": "MU", "NYSE_BOOK": ["MU"]}}))
+        await until(lambda: d.active == "MU")
+        await a.close()                                           # the old connection's end is noticed
+        await asyncio.sleep(0.3)
+        kept = (d.active, d.wanted["NYSE_BOOK"])
+        await b.close()                                           # the console's own connection ends
+        await until(lambda: d.active is None)
         stop.set()
         await asyncio.wait_for(server, 5)
-        return env
-    env = asyncio.run(go())
+        return env, kept
+    env, kept = asyncio.run(go())
     assert env == {"topic": "daemon.heartbeat", "msg": {"schwab_socket_open": True}}
-    assert got == [{"NYSE_BOOK": ["SPY"]}, None]           # withdrawn when the console's connection ended
+    assert kept == ("MU", frozenset({"MU"})), "another connection's end leaves the live list"
+    assert d.wanted["NYSE_BOOK"] == frozenset(), "withdrawn when the connection that sent it ended"
 
 
 # ------------------------------------------------------------------ the console side

@@ -165,6 +165,10 @@ def test_with_the_daemon_silent_a_ticker_off_screen_says_the_board_is_unknown(_f
     d = _call(_OFF)
     assert d["warming"] is False
     assert d["reason"] == "the capture daemon is not reporting (no current heartbeat): its board is unknown"
+    with server._terrain_cache_lock:
+        server._terrain_cache[_BOARD] = {"computed_ts_utc": time.time(), "spot": 100.0}
+    on_screen = _call(_BOARD)                       # the ticker on screen: no chain is coming either
+    assert on_screen["warming"] is False and on_screen["reason"] == d["reason"]
 
 
 def test_a_chain_schwab_refused_says_schwabs_answer(_fresh, view):

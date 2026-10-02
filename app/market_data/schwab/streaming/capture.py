@@ -260,6 +260,8 @@ class Daemon:
         self.wanted = normalize_wanted(None)
         #: the console's ticker on screen: its chain is fetched first (ChainSweep.set_active)
         self.active: "str | None" = None
+        #: the console connection whose list this is (live_push's socket)
+        self.sender = None
         self.wanted_changed = asyncio.Event()
         #: the board: the tickers fetched and streamed in the background (the logging_universe
         #: table, read at startup)
@@ -269,9 +271,14 @@ class Daemon:
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
 
-    def set_wanted(self, raw) -> None:
-        """The console's list (live_push calls this for every {"op": "wanted"} frame): what its
-        screens show, and `active`, its ticker on screen, which the chain sweep fetches first."""
+    def set_wanted(self, raw, sender=None) -> None:
+        """The console's list from connection `sender` (live_push calls this for every
+        {"op": "wanted"} frame): what its screens show, and `active`, its ticker on screen, which
+        the chain sweep fetches first. `raw` None: that connection ended, and withdraws the list
+        only if the list is its own (another connection's later list stands)."""
+        if raw is None and sender is not self.sender:
+            return
+        self.sender = None if raw is None else sender
         new, active = normalize_wanted(raw), wanted_active(raw)
         if new == self.wanted and active == self.active:
             return

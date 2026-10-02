@@ -166,20 +166,17 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
                 await ws.send(encode(topic, msg))
                 stats["sent"] += 1
 
-    said = []      # this connection sent a wanted list: it is withdrawn when the connection ends
-
     async def _read() -> None:
         """The console's frames: {"op": "wanted", "wanted": {service: [symbols]}} -- the books
-        and option contracts its screens show (capture.Daemon.set_wanted). Ends when the socket
-        closes."""
+        and option contracts its screens show, from this connection (capture.Daemon.set_wanted).
+        Ends when the socket closes."""
         async for frame in ws:
             try:
                 req = json.loads(frame)
             except (TypeError, ValueError):
                 continue
             if isinstance(req, dict) and req.get("op") == "wanted" and on_wanted is not None:
-                on_wanted(req.get("wanted"))
-                said[:] = [True]
+                on_wanted(req.get("wanted"), ws)
 
     pump = asyncio.create_task(_pump())
     closed = asyncio.create_task(_read())
@@ -195,8 +192,8 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
         bus.unsubscribe(sub)
         stats["clients"] -= 1
         stats["dropped"] += sub.dropped
-        if said:               # the console that said what its screens show is gone: nothing is shown
-            on_wanted(None)
+        if on_wanted is not None:   # this connection is gone: its list (if it holds one) is withdrawn
+            on_wanted(None, ws)
 
 
 async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,

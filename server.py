@@ -1043,7 +1043,10 @@ def _mark_changed(surface: dict, previous: "dict | None") -> None:
                 for e, v, w in pairs:
                     if v != w:
                         changes[(m, k, e)] = seq
-    surface["changes"] = changes
+    # only cells of this publication keep a record: one that left and comes back starts afresh
+    strikes, cols = {c.get("strike") for c in surface.get("cells") or []}, \
+        {e.get("expiry") for e in surface.get("expirations") or []}
+    surface["changes"] = {key: s for key, s in changes.items() if key[1] in strikes and key[2] in cols}
 
 
 #: why a strike window is not around the price
@@ -2207,7 +2210,9 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
     # screen (fetched first) or on the board (fetched in turn). The reason is that state's own.
     _requested = _gamma_surface_wanted(tk)
     _board_now = _board()                      # None: the daemon's heartbeat is not current
-    _warming = tk == push_changes.on_screen() or tk in (_board_now or [])
+    # a chain is coming only while the daemon reports: for the ticker on screen (fetched first)
+    # or a board ticker (fetched in turn)
+    _warming = _board_now is not None and (tk == push_changes.on_screen() or tk in _board_now)
     _state = terrain_staleness((live or {}).get("computed_ts_utc"), tk)
     payload: dict = {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
                      "live": False, "stale": True, "warming": _requested and _warming,

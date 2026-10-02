@@ -43,7 +43,7 @@ def on_change(fn) -> None:
 
 def on_screen() -> str | None:
     """The ticker on screen: the newest open page's; None when no page is open. Read from any
-    thread (one slice of the list, which the event loop replaces whole)."""
+    thread: one slice of the list (which the event loop changes) is the whole read."""
     newest = _open[-1:]
     return newest[0][0] if newest else None
 

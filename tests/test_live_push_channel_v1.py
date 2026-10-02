@@ -192,7 +192,7 @@ def test_a_consoles_wanted_list_is_withdrawn_when_its_connection_ends(feed):
         stop = asyncio.Event()
         stats: dict = {}
         server = asyncio.create_task(live_push.serve_live_push(MessageBus(), stop, port=feed, stats=stats,
-                                                               on_wanted=said.append))
+                                                               on_wanted=lambda raw, _ws: said.append(raw)))
         assert await _until(lambda: stats.get("listening"))
         async with connect(f"ws://127.0.0.1:{feed}") as ws:
             await ws.send(_json.dumps({"op": "wanted", "wanted": {"active": "SPY", "NYSE_BOOK": ["SPY"]}}))
