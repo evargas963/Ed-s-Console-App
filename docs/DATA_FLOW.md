@@ -22,7 +22,8 @@ operator.
 - The database is history, written in the background by one writer. Nothing on screen waits on it.
   Enforced by: D4 and D6 below.
 - At startup the in-memory state is loaded once from the latest stored values, so a restart, a
-  weekend or the close shows the last reading with its time, labeled as past.
+  weekend or the close shows the values as of the close with their time, the session shown
+  Closed (§2 D5); no value is labeled past.
   Enforced by: `tests/test_one_levels_producer_v1.py` (the stored load) and D5 below.
 
 ## 2. The rules
