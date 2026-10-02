@@ -53,7 +53,8 @@ from Schwab to the screen (daemon, console, page), are these:
   value as live. In an open session (Pre-Market, RTH, After-Hours, `time_et.session_label`) a value
   is current only while its feed delivers it (`live_market_plane.feed_live_for`); a feed down in
   session is an outage: the value is absent and the screen shows the reason
-  (`live_market_plane.outage`, the one rule; the price row's `outage`, the books' `top_outage`).
+  (`live_market_plane.outage`, the one rule; the price row's `outage`, the books' `top_outage`;
+  a contract's streamed Greeks stop pricing over the chain, `server._current_stream_greeks`).
   While Closed, the values as of the close stand, the feed up or down, with the session shown as
   Closed, until the next session opens. No value is labeled "past" (`AGENTS.md` rule 5).
   Enforced by: `tests/test_data_path_rules_v1.py`.

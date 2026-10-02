@@ -803,24 +803,9 @@ def _next_gamma_surface_seq(tk: str) -> int:
 
 
 def _desired_stream_greeks_for_ticker(listed: frozenset) -> dict:
-    """Every currently-live streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME entry for a
-    contract belonging to `tk` — the PRIMARY/pinned contract AND every ADDITIONALLY-
-    desired contract (RC-UI-3 multi-contract coverage), gathered FRESH on every call.
-
-    Independent-review finding (2026-09-12), root cause of the "refreshing B loses A's
-    update" defect: the two callers below used to build a single-entry
-    `{contract_symbol: greeks}` map for whichever ONE contract triggered that particular
-    refresh, then overlay it onto the untouched REST baseline — so refreshing B always
-    discarded A's already-fresh streamed value, because the baseline itself carries no
-    memory of a prior overlay. Fixed at the root by never relying on such memory: this
-    reconstructs the FULL multi-contract streamed set from scratch every call.
-    `get_stream_greeks` IS the live per-symbol store (app.options.order_flow.state),
-    cleared exactly when a symbol's coverage genuinely ends (clear_symbol) — so
-    re-querying it for every currently-desired symbol on every refresh, no matter which
-    one triggered it, always reconstructs every symbol's latest known state, and a symbol
-    whose coverage has ended is correctly absent (never lingers as a stale entry here).
-    A contract is the ticker's when Schwab listed it in the ticker's chain: `listed`, the
-    symbols of that chain."""
+    """The newest streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME of every contract the console
+    streams of the ticker's chain (`listed`, the symbols Schwab listed in it), gathered whole on
+    every call."""
     from app.options.order_flow.state import get_stream_greeks
     out: dict = {}
     for sym in _desired_option_symbols_for_ticker(listed):
@@ -828,6 +813,13 @@ def _desired_stream_greeks_for_ticker(listed: frozenset) -> dict:
         if greeks:
             out[sym] = greeks
     return out
+
+
+def _current_stream_greeks(streamed: dict, now: float) -> dict:
+    """The streamed values that are current at `now`, the ones that may price over the chain: a
+    contract whose LEVELONE_OPTIONS feed is down in an open session has none, and the chain's own
+    values stand (docs/DATA_FLOW.md §2 D5)."""
+    return {s: g for s, g in streamed.items() if lmp.outage(s, "LEVELONE_OPTIONS", now) is None}
 
 
 def _desired_option_symbols_for_ticker(listed: frozenset) -> "list[str]":
@@ -1205,8 +1197,10 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                        _default_contract=front_atm_call(chain, spot))
     listed = payload.get("_contract_symbols") or frozenset()
     streamed = _desired_stream_greeks_for_ticker(listed)
-    # each field the newest Schwab sent: a streamed value received after this chain, else the chain's
-    priced, n_live = overlay_streamed_contract_fields(chain, streamed, fetched_ts)
+    # each field the newest Schwab sent: a current streamed value received after this chain, else
+    # the chain's
+    priced, n_live = overlay_streamed_contract_fields(
+        chain, _current_stream_greeks(streamed, time.time()), fetched_ts)
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=(
         datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
@@ -2631,7 +2625,8 @@ def get_chain(ticker: str = Query(...),
     fetched_ts = held.get("_chain_fetched_ts")
     # each field the newest Schwab sent (the levels' own rule, _publish_levels)
     response_contracts, overlay_n = overlay_streamed_contract_fields(
-        contracts, _desired_stream_greeks_for_ticker(held["_contract_symbols"]), fetched_ts)
+        contracts, _current_stream_greeks(_desired_stream_greeks_for_ticker(held["_contract_symbols"]),
+                                          time.time()), fetched_ts)
     live_spot, _src, _ts = resolve_spot(t)       # the one spot on every screen
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)
     # this expiry's net GEX per strike, as the heatmap publishes it (its column of the surface):

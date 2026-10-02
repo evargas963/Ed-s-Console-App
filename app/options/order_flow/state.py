@@ -10,6 +10,7 @@ import logging
 import threading
 from collections import deque
 from typing import Optional
+from app.options.order_flow import history
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
 from l1_trade_observation import (
@@ -224,8 +225,10 @@ class OrderFlowState:
 
 
     def clear_symbol(self, symbol: str) -> None:
-        """Clear all state for one symbol."""
+        """Clear all state for one symbol, its recent prints and books included."""
         sym = ticker_storage_key(symbol)
+        history.TAPE.forget(sym)
+        history.BOOKS.forget(sym)
         with self._lock:
             if sym in self._book:
                 self._book[sym].clear()

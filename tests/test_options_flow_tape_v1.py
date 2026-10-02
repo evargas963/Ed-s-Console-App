@@ -130,3 +130,17 @@ def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
     assert tape.rows("SPY   260918P00600000", 50) == []
     assert tape.rows("", 50) == []
     assert len(tape.rows(SYM, 50)) == 1
+
+
+def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
+    """The console's intake records a print, then the contract leaves the stream (the state's
+    clear_symbol, as streaming calls it): its prints and its books are gone from memory."""
+    from app.options.order_flow import history, state
+    from app.options.order_flow.streaming import _ingest_pushed
+    _ingest_pushed(f"optquote.{SYM}", {"symbol": SYM, "ts_recv": 1000.0, "content": _full_context(
+        TRADE_TIME_MILLIS=1000, LAST_PRICE=1.17, LAST_SIZE=1)})
+    history.BOOKS.record("SPY", "NYSE_BOOK", {"BIDS": [{"BID_PRICE": 600.0, "TOTAL_VOLUME": 5}]}, 1000.0)
+    assert len(history.TAPE.rows(SYM, 50)) == 1 and history.BOOKS.window("SPY", "NYSE_BOOK", 5)
+    state.clear_symbol(SYM)
+    state.clear_symbol("SPY")
+    assert history.TAPE.rows(SYM, 50) == [] and history.BOOKS.window("SPY", "NYSE_BOOK", 5) == []

@@ -50,6 +50,14 @@ class RecentTape:
             self._prints.setdefault(sym, deque(maxlen=TAPE_KEPT)).append(
                 _print_row(sym, item, p, dict(context), float(ts_recv)))
 
+    def forget(self, contract: str) -> None:
+        """Drop the contract's prints, when the console stops streaming it."""
+        sym = ticker_storage_key(contract)
+        with self._lock:
+            self._prints.pop(sym, None)
+            self._context.pop(sym, None)
+            self._last.pop(sym, None)
+
     def rows(self, contract: str, limit: int) -> "list[dict[str, Any]]":
         """The contract's newest `limit` prints, newest first."""
         sym = ticker_storage_key(contract)
@@ -164,6 +172,13 @@ class RecentBooks:
                 held.append(book)
             while held[0][0] < book[0] - BOOKS_KEPT_SEC:
                 held.popleft()
+
+    def forget(self, ticker: str) -> None:
+        """Drop the ticker's books on every venue, when the console stops streaming them."""
+        sym = ticker_storage_key(ticker)
+        with self._lock:
+            for key in [k for k in self._books if k[0] == sym]:
+                del self._books[key]
 
     def window(self, ticker: str, venue: str, minutes: float) -> "list[tuple]":
         """The books of the `minutes` ending at the newest one, oldest first."""
