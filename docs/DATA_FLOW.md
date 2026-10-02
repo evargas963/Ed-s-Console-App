@@ -264,11 +264,9 @@ Schwab sends is taken as sent (rule 2), never computed.
   the next). The console down: the page's session label reads
   `—` and no panel reloads until the browser's EventSource reconnects. A Trade Desk timeframe
   switch asks only for that timeframe's bars, levels and event window. Each panel re-reads only
-  for the kinds it shows; Right Now re-reads only the reads of the kind pushed (flow: the
-  microstructure, and the levels and liquidity snapshot, which serve the live price and each
-  level's distance from it; levels and chain: the levels, terrain, per-strike rows and the liquidity
-  snapshot, which carries the live price and the option levels; liquidity: the liquidity
-  snapshot).
+  for the kinds it shows; Right Now re-reads all five of its reads on every push, because each
+  serves values derived at read time (the live price, each level's distance, the chain's
+  staleness), and a pan or scope change in its migration panel is a new read of the same five.
 
 ### 3.5 Where today breaks the design
 

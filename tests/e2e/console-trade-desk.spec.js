@@ -407,7 +407,7 @@ test.describe('Trade Desk renders served values', () => {
     expect(errs).toEqual([]);
   });
 
-  test('Right Now re-reads only what a push changed', async ({ page }) => {
+  test('Right Now re-reads all five reads on every push', async ({ page }) => {
     await intercept(page);
     await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
     const reads = [];
@@ -426,12 +426,11 @@ test.describe('Trade Desk renders served values', () => {
       await page.waitForTimeout(300);                    // every read that push makes has gone out
       return [...new Set(reads)].sort();
     };
-    // a quote moves the live price: the levels' distances and the snapshot are read with it
-    expect(await push('flow')).toEqual(['/api/levels', '/api/liquidity-snapshot', '/api/order-flow/microstructure']);
-    expect(await push('liquidity')).toEqual(['/api/liquidity-snapshot']);
-    // the liquidity snapshot carries the live price and the option levels: read with the levels
-    expect(await push('levels')).toEqual(['/api/levels', '/api/liquidity-snapshot', '/api/terrain', '/api/terrain/strikes']);
-    await expect(body).toContainText('Max pain 770.00');  // the parts not re-read are still drawn
+    // each read serves values the server derives at read time (the live price, each level's
+    // distance, the staleness of the chain), so a push of any kind re-reads every one
+    const all = ['/api/levels', '/api/liquidity-snapshot', '/api/order-flow/microstructure', '/api/terrain', '/api/terrain/strikes'];
+    for (const kind of ['flow', 'liquidity', 'levels', 'chain']) expect(await push(kind)).toEqual(all);
+    await expect(body).toContainText('Max pain 770.00');
   });
 
   test('Right Now: a new scope\'s strike window stays drawn through the next push', async ({ page }) => {

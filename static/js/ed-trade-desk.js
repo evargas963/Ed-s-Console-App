@@ -197,8 +197,8 @@
 
 
   // The migration panel's strikes are the window the server sends (the Gamma scope, and the
-  // operator's pan on its strike labels: EdShell.wireStrikeAxis). A pan or a new scope re-reads
-  // only this panel's window (strikesD), through the page's one read.
+  // operator's pan on its strike labels: EdShell.wireStrikeAxis). A pan or a new scope is a new
+  // read of the page (its key carries both), so no push redraws an older window.
   var _migPan = window.EdShell.newPan(), _migPanTicker = null;
   function migStrikesUrl(tk) {
     if (_migPanTicker !== tk) { _migPan.centre = null; _migPan.shift = 0; _migPanTicker = tk; }
@@ -208,7 +208,7 @@
     wireMigrationChips(panel, tk);
     var firstRow = panel.querySelector('.gbs-row');
     window.EdShell.wireStrikeAxis(panel.querySelectorAll('.gbs-k'), panel.querySelector('.gbs-scroll'), _migPan,
-      firstRow ? firstRow.getBoundingClientRect().height : 0, retrigger);
+      firstRow ? firstRow.getBoundingClientRect().height : 0, load);
   }
 
   function migrationSection(strikesD, terrain, spot, tk) {
@@ -295,47 +295,27 @@
     h.querySelectorAll('[data-mig-scope]').forEach(function (b) {
       b.addEventListener('click', function () {
         var s = b.getAttribute('data-mig-scope'); if (s === _migScope) return;
-        _migScope = s; retrigger();
+        _migScope = s; load();
       });
     });
     var gh = h.querySelector('[data-mig-ghost]');
-    if (gh) gh.addEventListener('click', function () { _migGhost = !_migGhost; retrigger(); });
+    if (gh) gh.addEventListener('click', function () { _migGhost = !_migGhost; load(); });
   }
 
-  // The page's five reads, each re-read only when what it serves changed: a push names the kind
-  // (flow, levels, chain, liquidity), and only that kind's reads run again; a new ticker, view or
-  // venue reads what it changes. The others are drawn as last read.
-  var PART_URL = {
-    detect: function (tk) { return '/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue; },
-    levelsD: function (tk) { return '/api/levels?ticker=' + encodeURIComponent(tk); },
-    terrain: function (tk) { return '/api/terrain?ticker=' + encodeURIComponent(tk); },
-    snap: function (tk) { return '/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk); },
-    strikesD: migStrikesUrl,   // the migration/volume section's window of the per-strike rows
-  };
-  // the liquidity snapshot carries the live price and the option levels too: it is re-read with them
-  // a quote moves the live price, which /api/levels and the snapshot serve with each read
-  var PARTS_BY_KIND = { flow: ['detect', 'levelsD', 'snap'], levels: ['levelsD', 'terrain', 'strikesD', 'snap'],
-    chain: ['levelsD', 'terrain', 'strikesD', 'snap'], liquidity: ['snap'] };
-  // _due: each read that must run again, with the mark it was given; a read is no longer due once a
-  // read begun after its last mark has landed, so a read aborted by a newer one stays due
-  var _read = { tk: null, parts: {} }, _due = {}, _mark = 0;
-  function markDue(parts) { parts.forEach(function (p) { _due[p] = ++_mark; }); }
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillRightNow(tk)) return;
-    if (_read.tk !== tk) { _read = { tk: tk, parts: {} }; markDue(Object.keys(PART_URL)); }
-    var taken = {}, parts = Object.keys(_due);
-    parts.forEach(function (p) { taken[p] = _due[p]; });
     h.setAttribute('aria-busy', 'true');
-    return Promise.all(parts.map(function (p) { return fetchJson(PART_URL[p](tk), signal); })).then(function (got) {
-      if (signal && signal.aborted) return;   // still due: the newer read takes it
-      parts.forEach(function (p, i) {
-        _read.parts[p] = got[i];
-        if (_due[p] === taken[p]) delete _due[p];
-      });
+    return Promise.all([
+      fetchJson('/api/order-flow/microstructure?ticker=' + encodeURIComponent(tk) + '&venue=' + st().bookVenue, signal),
+      fetchJson('/api/levels?ticker=' + encodeURIComponent(tk), signal),
+      fetchJson('/api/terrain?ticker=' + encodeURIComponent(tk), signal),
+      fetchJson('/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk), signal),
+      // the migration/volume section's window of the per-strike rows
+      fetchJson(migStrikesUrl(tk), signal),
+    ]).then(function (results) {
       if (!stillRightNow(tk)) return;
-      var r = _read.parts;
-      var detect = r.detect, levelsD = r.levelsD, terrain = r.terrain, snap = r.snap, strikesD = r.strikesD;
+      var detect = results[0], levelsD = results[1], terrain = results[2], snap = results[3], strikesD = results[4];
       // Independent-review finding, REPRODUCED: this used to fall back to terrain.spot when
       // levelsD was absent -- both endpoints resolve spot via the same server-side
       // resolve_spot() authority today (server.py's get_levels/_reprice_cached_terrain), so
@@ -376,20 +356,17 @@
     return ticker() + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0) + '|scope=' + st().scope +
       '|pan=' + _migPan.centre + ',' + _migPan.shift;
   }
-  function readAgain(parts) {
-    if (!isRightNow() || !parts.length) return;
-    markDue(parts);
+  function load() {
+    if (!isRightNow()) return;
     _loader.trigger(_loadKey());
   }
-  function retrigger() { readAgain(['strikesD']); }   // the migration section's toggles, pan and scope
-  function load() { readAgain(Object.keys(PART_URL)); }
 
   if (typeof document !== 'undefined') {
     document.addEventListener('ed:view', load);
     document.addEventListener('ed:ticker', load);
-    document.addEventListener('ed:book_venue', function () { readAgain(['detect']); });
-    document.addEventListener('ed:changed', function (e) { readAgain(PARTS_BY_KIND[e.detail.kind] || []); });
-    document.addEventListener('ed:scope', retrigger);   // a new scope is a new window
+    document.addEventListener('ed:book_venue', load);
+    document.addEventListener('ed:changed', load);
+    document.addEventListener('ed:scope', load);   // a new scope is a new window
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }
