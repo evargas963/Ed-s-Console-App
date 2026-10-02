@@ -212,7 +212,7 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain(monkeypatch):
     ofs._active_option_contracts = [ofs.ticker_storage_key(foreign)]
     _put_chain(fetched_ts=time.time() - 5.0)
     _stream({foreign: {"gamma": 0.99, "gamma_ts_recv": time.time()}}, monkeypatch)
-    assert server._desired_stream_greeks_for_ticker(TK) == {}
+    assert server._desired_stream_greeks_for_ticker(_cached()["_contract_symbols"]) == {}
     server._publish_levels(TK)
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
 
@@ -591,7 +591,7 @@ def test_the_ticker_on_screens_chain_is_priced_before_the_others_waiting(monkeyp
     takes its chain ahead of chains that arrived before it, a page open on another ticker
     included."""
     priced: list = []
-    monkeypatch.setattr(server, "_price_chain", lambda tk, c, ts, caps: priced.append(tk))
+    monkeypatch.setattr(server, "_price_chain", lambda tk, c, ts: priced.append(tk))
     push_changes.subscribe("ZZA")                                # an older page on ZZA
     push_changes.subscribe(TK)                                   # the newest page: CRWD on screen
     gate = threading.Event()
@@ -602,6 +602,22 @@ def test_the_ticker_on_screens_chain_is_priced_before_the_others_waiting(monkeyp
     gate.set()
     server._chain_pricing.submit(lambda: None).result(timeout=60)
     assert priced == [TK, "ZZA", "ZZB"]
+
+
+def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting(monkeypatch):
+    """The startup load queues every board ticker's stored captures at once; a chain the daemon
+    delivers meanwhile, for a ticker off screen, is priced ahead of them, not behind the load."""
+    priced: list = []
+    monkeypatch.setattr(server, "_price_chain", lambda tk, c, ts: priced.append((tk, c is not None)))
+    for tk in ("ZZC", "ZZD"):
+        server._chains_delivered.discard(tk)
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 10)                 # the pricing thread is busy
+    assert server._load_stored_levels(["ZZC", "ZZD"]) == 2
+    server._on_chain(TK, _CONTRACTS, time.time())               # CRWD is not on screen
+    gate.set()
+    server._chain_pricing.submit(lambda: None).result(timeout=60)
+    assert priced == [(TK, True), ("ZZC", False), ("ZZD", False)]
 
 
 def test_the_ticker_on_screen_is_the_newest_open_page(monkeypatch):

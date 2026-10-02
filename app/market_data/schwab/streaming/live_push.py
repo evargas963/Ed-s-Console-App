@@ -114,9 +114,11 @@ def is_field_delta_topic(topic: str) -> bool:
 
 
 def encode(topic: str, msg: dict) -> str:
-    """The wire frame: the one its producer built (`frame`: a message built off the event loop,
-    complete_chain_capture.chain_messages), else built here."""
-    return msg["frame"] if "frame" in msg else json.dumps({"topic": topic, "msg": msg}, separators=(",", ":"))
+    """The wire frame. A chain part arrives with its frame already built, off the event loop
+    (complete_chain_capture.chain_messages)."""
+    if topic.startswith("chain."):
+        return msg["frame"]
+    return json.dumps({"topic": topic, "msg": msg}, separators=(",", ":"))
 
 
 #: seconds between daemon heartbeats on every push connection

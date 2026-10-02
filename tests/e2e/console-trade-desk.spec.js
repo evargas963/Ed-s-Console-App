@@ -426,11 +426,32 @@ test.describe('Trade Desk renders served values', () => {
       await page.waitForTimeout(300);                    // every read that push makes has gone out
       return [...new Set(reads)].sort();
     };
-    expect(await push('flow')).toEqual(['/api/order-flow/microstructure']);
+    // a quote moves the live price: the levels' distances and the snapshot are read with it
+    expect(await push('flow')).toEqual(['/api/levels', '/api/liquidity-snapshot', '/api/order-flow/microstructure']);
     expect(await push('liquidity')).toEqual(['/api/liquidity-snapshot']);
     // the liquidity snapshot carries the live price and the option levels: read with the levels
     expect(await push('levels')).toEqual(['/api/levels', '/api/liquidity-snapshot', '/api/terrain', '/api/terrain/strikes']);
     await expect(body).toContainText('Max pain 770.00');  // the parts not re-read are still drawn
+  });
+
+  test('Right Now: a new scope\'s strike window stays drawn through the next push', async ({ page }) => {
+    await intercept(page);
+    const wider = Object.assign({}, STRIKES, { spot_strike: 791,
+      today: { all: [[790, 500000, 1000], [791, 900000, 5000], [792, -200000, 3000]] },
+      views: { all: { centre: 791, max_abs: 900000, max_abs_with_prior: 900000 } } });
+    await page.route('**/api/terrain/strikes?**', (route) => route.request().url().includes('scope=wider')
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(wider) })
+      : route.fallback());
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
+      localStorage.setItem('ed_sub', 'right-now'); localStorage.setItem('ed_scope', 'auto'); } catch (e) {} });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const strikes = page.locator('#tdMigration .gbs-k');
+    await expect(strikes).toHaveText(['772', '771', '770']);
+    await page.evaluate(() => window.EdShell.setScope('wider'));
+    await expect(strikes).toHaveText(['792', '791', '790']);
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'flow' } })));
+    await page.waitForTimeout(600);                                   // the push's reads have landed
+    await expect(strikes).toHaveText(['792', '791', '790']);          // the window asked for, not the old one
   });
 
   test('Right Now: a read cut short by a newer one is read again', async ({ page }) => {

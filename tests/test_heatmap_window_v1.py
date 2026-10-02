@@ -1,6 +1,6 @@
 """The heatmap the server serves is the one the page draws: the strike rows of the scope around the
 price (or the panned centre), the columns the page fits, the row at the price, the contracts to
-stream, each measure's colour scale and the cells whose value changed since the last publication.
+stream and each measure's colour scale.
 Real data: three SPY chain captures, one expiry each (10-14, 10-15, 11-20), published as one chain
 (no single capture spans three expiries); the live price is a stand-in, the 10-15 capture's spot."""
 from __future__ import annotations
@@ -28,7 +28,7 @@ TK = "SPY"
 def _published(monkeypatch, pin_clock):
     pin_clock(2026, 10, 1, 12, 0)                 # the captures' day, before every expiry
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
-    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda tk, listed=None: {})
+    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda listed: {})
     with server._terrain_cache_lock:              # this test's chain, never one an earlier test left
         server._terrain_cache.pop(TK, None)
     assert server._publish_levels(TK, copy.deepcopy(_CHAIN), 1.0) is not None

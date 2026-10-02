@@ -198,40 +198,20 @@
 
   // The migration panel's strikes are the window the server sends (the Gamma scope, and the
   // operator's pan on its strike labels: EdShell.wireStrikeAxis). A pan or a new scope re-reads
-  // only this panel's window, with the section's other inputs kept from the last full read.
+  // only this panel's window (strikesD), through the page's one read.
   var _migPan = window.EdShell.newPan(), _migPanTicker = null;
-  var _lastMig = null;   // { terrain, spot, tk }: the section's other inputs
   function migStrikesUrl(tk) {
     if (_migPanTicker !== tk) { _migPan.centre = null; _migPan.shift = 0; _migPanTicker = tk; }
     return '/api/terrain/strikes?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(_migPan);
-  }
-  function placeMigration(strikesD) {   // the section, from a window read, into the page
-    var m = _lastMig, el = document.getElementById('tdMigration');
-    if (!m || !el) return;
-    var tmp = document.createElement('div');
-    tmp.innerHTML = migrationSection(strikesD, m.terrain, m.spot, m.tk);
-    var fresh = tmp.firstElementChild;
-    if (fresh) { el.replaceWith(fresh); wireMigration(fresh, m.tk); }
-  }
-  var _migLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) {
-    var m = _lastMig;
-    if (!m || !isRightNow() || ticker() !== m.tk) return;
-    return fetchJson(migStrikesUrl(m.tk), signal).then(function (strikesD) {
-      if (isRightNow() && ticker() === m.tk) placeMigration(strikesD);
-    }).catch(function () {});
-  });
-  function reloadMigration() {
-    if (_lastMig) _migLoader.trigger(_lastMig.tk + '|' + st().scope + '|' + _migPan.centre + '|' + _migPan.shift);
   }
   function wireMigration(panel, tk) {
     wireMigrationChips(panel, tk);
     var firstRow = panel.querySelector('.gbs-row');
     window.EdShell.wireStrikeAxis(panel.querySelectorAll('.gbs-k'), panel.querySelector('.gbs-scroll'), _migPan,
-      firstRow ? firstRow.getBoundingClientRect().height : 0, reloadMigration);
+      firstRow ? firstRow.getBoundingClientRect().height : 0, retrigger);
   }
 
   function migrationSection(strikesD, terrain, spot, tk) {
-    _lastMig = { terrain: terrain, spot: spot, tk: tk };
     if (!strikesD) return '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
       '<div class="placeholder"><div class="sm">no per-strike gamma for this symbol yet</div></div></div>';
     var todayAll = (strikesD.today && strikesD.today[_migScope]) || [];
@@ -333,7 +313,8 @@
     strikesD: migStrikesUrl,   // the migration/volume section's window of the per-strike rows
   };
   // the liquidity snapshot carries the live price and the option levels too: it is re-read with them
-  var PARTS_BY_KIND = { flow: ['detect'], levels: ['levelsD', 'terrain', 'strikesD', 'snap'],
+  // a quote moves the live price, which /api/levels and the snapshot serve with each read
+  var PARTS_BY_KIND = { flow: ['detect', 'levelsD', 'snap'], levels: ['levelsD', 'terrain', 'strikesD', 'snap'],
     chain: ['levelsD', 'terrain', 'strikesD', 'snap'], liquidity: ['snap'] };
   // _due: each read that must run again, with the mark it was given; a read is no longer due once a
   // read begun after its last mark has landed, so a read aborted by a newer one stays due
@@ -391,13 +372,16 @@
   // migration section's own scope/ghost toggles -- or a toggle click queues behind an in-flight
   // fetch for the OLD toggle state instead of aborting it (the exact bug class this session's
   // audit found in loadStructures()/the order-flow heatmap's minute-range toggle).
-  function _loadKey() { return ticker() + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0); }
+  function _loadKey() {
+    return ticker() + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0) + '|scope=' + st().scope +
+      '|pan=' + _migPan.centre + ',' + _migPan.shift;
+  }
   function readAgain(parts) {
     if (!isRightNow() || !parts.length) return;
     markDue(parts);
     _loader.trigger(_loadKey());
   }
-  function retrigger() { readAgain(['strikesD']); }   // the migration section's own toggles
+  function retrigger() { readAgain(['strikesD']); }   // the migration section's toggles, pan and scope
   function load() { readAgain(Object.keys(PART_URL)); }
 
   if (typeof document !== 'undefined') {
@@ -405,7 +389,7 @@
     document.addEventListener('ed:ticker', load);
     document.addEventListener('ed:book_venue', function () { readAgain(['detect']); });
     document.addEventListener('ed:changed', function (e) { readAgain(PARTS_BY_KIND[e.detail.kind] || []); });
-    document.addEventListener('ed:scope', reloadMigration);   // a new scope is a new window
+    document.addEventListener('ed:scope', retrigger);   // a new scope is a new window
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }
