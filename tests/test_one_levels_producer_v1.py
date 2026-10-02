@@ -591,10 +591,10 @@ def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker(monkeyp
     assert priced == [now + 2]
 
 
-def test_the_ticker_on_screens_chain_is_priced_before_the_others_waiting(monkeypatch):
-    """The ticker on screen first, the same ticker the daemon fetches first: the pricing thread
-    takes its chain ahead of chains that arrived before it, a page open on another ticker
-    included."""
+def test_the_ticker_on_screens_chain_takes_the_next_turn(monkeypatch):
+    """The ticker on screen, the same ticker the daemon fetches first, takes the next turn when it
+    did not take the last: its chain is priced ahead of chains that arrived before it, a page open
+    on another ticker included."""
     priced: list = []
     monkeypatch.setattr(server, "_price_chain", lambda tk, what, c, ts: priced.append(tk))
     push_changes.subscribe("ZZA")                                # an older page on ZZA
@@ -631,6 +631,17 @@ def test_a_ticker_repriced_on_every_tick_takes_every_other_turn(monkeypatch):
     _drain()
     R, D = server.REPRICE, server.DELIVERED
     assert priced[:6] == [(TK, R), ("ZZA", D), (TK, R), ("ZZB", D), (TK, R), ("ZZC", D)]
+
+
+def test_a_failed_reprice_keeps_the_chains_own_reason(monkeypatch):
+    """A reprice of the held chain that fails is logged; the ticker's reason stays the one its
+    chain gave (here: the daemon's fetch failed), never replaced by the reprice's."""
+    def boom(tk, *a, **k):
+        raise RuntimeError("reprice boom")
+    monkeypatch.setattr(server, "_publish_levels", boom)
+    monkeypatch.setitem(server._terrain_refresh_last_error, TK, "chain fetch failed (HTTP 429)")
+    server._price_chain(TK, server.REPRICE, None, None)
+    assert server._terrain_refresh_last_error[TK] == "chain fetch failed (HTTP 429)"
 
 
 def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting(monkeypatch):

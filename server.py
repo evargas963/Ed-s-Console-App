@@ -1066,8 +1066,6 @@ def _surface_view(surf: dict, spot_strike, scope: str, centre, shift: int, cols:
                     "max_abs": max_abs, "missing_expiry": expiry if expiry and not picked else None}
 
 
-
-
 def _contract_is_for(sym: "str | None", tk: str) -> bool:
     """An option contract belongs to `tk` when Schwab listed it in `tk`'s chain -- the same rule
     for every instrument, whatever the contract's root (SPXW and SPX are both $SPX's)."""
@@ -1324,14 +1322,17 @@ def _price_chain(tk: str, what: str, contracts: "list | None", fetched_ts: "floa
     chain's own fetch time as its as-of (an older streamed value never overrides it); from the
     held chain with the newest streamed values (REPRICE); or from the ticker's newest stored
     captures (STORED, DATA_FLOW decision 7)."""
+    if what == REPRICE:     # the held chain: the ticker's reason stays the chain's own
+        try:
+            _publish_levels(tk)
+        except Exception as e:  # noqa: BLE001 -- logged; the next tick or chain reprices
+            log.warning("levels reprice failed for %s: %s", tk, e)
+        return
     try:
         if what == STORED:
             captures = last_capture_per_day(get_db().db_path, tk, 2)
             if captures:
                 _publish_levels(tk, captures=captures)
-            return
-        if what == REPRICE:
-            _publish_levels(tk)
             return
         _publish_levels(tk, contracts, fetched_ts)
         with _terrain_cache_lock:

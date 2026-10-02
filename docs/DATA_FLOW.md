@@ -190,8 +190,8 @@ Schwab sends is taken as sent (rule 2), never computed.
   while one waits or runs are all in the next), and it is pushed to the page the moment it
   changes. The ticker on screen is the newest open page's (owner `push_changes.on_screen`;
   listeners register by name, once each): it goes to the daemon as the wanted frame's `active`
-  (the chain sweep fetches it first, its books stream), its chain is priced before the others
-  waiting, and its option contract follows it (`server._follow_screen_contract`). When that owner
+  (the chain sweep fetches it first, its books stream), it takes every other turn on the
+  pricing thread, and its option contract follows it (`server._follow_screen_contract`). When that owner
   fails (no page streaming, the console down), no ticker is on screen: no books, no chain ahead
   of the board, no option contract; the daemon drops the console's list when the connection that
   sent it ends, and starts with none. With the daemon not reporting (no current heartbeat), no
