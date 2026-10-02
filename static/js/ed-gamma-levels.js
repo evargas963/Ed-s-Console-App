@@ -27,7 +27,6 @@
     var hostId = activeHostId();
     var host = hostId && document.getElementById(hostId);
     if (!host || !stillLevels(tk)) return;
-    host.setAttribute('aria-busy', 'true');
     return fetch('/api/levels?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillLevels(tk)) render(host, d); })

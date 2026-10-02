@@ -453,6 +453,21 @@ test.describe('Trade Desk renders served values', () => {
     await expect(strikes).toHaveText(['792', '791', '790']);          // the window asked for, not the old one
   });
 
+  test('no panel stays marked busy once it has drawn', async ({ page }) => {
+    await intercept(page);
+    const panels = [['trade-desk', 'right-now', '', '#tdBody'], ['options', 'gamma', 'heatmap', '#heatBody'],
+      ['options', 'gamma', 'levels', '#levelsBody'], ['options', 'chain', '', '#chainBody'],
+      ['options', 'flow', '', '#flowBody'], ['order-flow', 'book', '', '#obBody']];
+    for (const [ws, sub, view, host] of panels) {
+      await page.addInitScript(([w, s, v]) => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', w);
+        localStorage.setItem('ed_sub', s); if (v) localStorage.setItem('ed_view', v); } catch (e) {} }, [ws, sub, view]);
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await expect(page.locator(host)).not.toBeEmpty();
+      await page.waitForTimeout(500);                                // its reads have landed and drawn
+      expect(await page.locator('[aria-busy="true"]').count(), host).toBe(0);
+    }
+  });
+
   test('Right Now: a read cut short by a venue switch never draws the old venue', async ({ page }) => {
     await intercept(page);
     let slow = false, inFlight = 0;

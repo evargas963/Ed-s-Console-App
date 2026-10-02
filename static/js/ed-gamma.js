@@ -260,7 +260,6 @@
   function loadImpl(ticker, signal) {
     var host = document.getElementById('heatBody');
     if (!host || !stillCurrent(ticker)) return;
-    host.setAttribute('aria-busy', 'true');
     return fetch(surfaceUrl(ticker, host), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
