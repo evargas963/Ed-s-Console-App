@@ -62,6 +62,8 @@ def _clean(monkeypatch):
     ofs._active_option_contracts = [_B]
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)                              # this test's levels only
+    with server._chains_waiting_lock:
+        server._chains_delivered.discard(TK)                             # no chain delivered yet
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
@@ -465,6 +467,7 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
         server._terrain_cache.pop(TK, None)
 
     assert server._load_stored_levels([TK]) == 1
+    server._chain_pricing.submit(lambda: None).result(timeout=60)      # priced on the pricing thread
     loaded = _cached()
     assert loaded["computed_ts_utc"] == taken
     assert loaded["spot"] == _SPOT and loaded["spot_source"] == server.SPOT_SOURCE_CAPTURE
@@ -534,24 +537,36 @@ def _board_is(board):
                               time.time())
 
 
-def test_the_stored_capture_loads_before_any_delivered_chain_is_priced():
-    """The startup load of the stored capture runs before the daemon's chains are priced: a
-    chain delivered while it runs waits, so yesterday's capture never replaces a newer chain and
-    the ticks never reprice yesterday's chain."""
-    now = time.time()
-    server._close_chains()                                     # the console starts: the load runs
-    try:
-        server._on_chain(TK, _CONTRACTS, now)                  # a live chain arrives meanwhile
-        server._chain_pricing.submit(lambda: None).result(timeout=60)
-        assert TK not in server._terrain_cache, "a delivered chain waits for the startup load"
-        server._publish_levels(TK, captures=[{"contracts": _CONTRACTS[:10], "ts_utc": now - 86400,
-                                              "spot": _SPOT, "basis": "x", "et_date": "2026-09-01"}])
-    finally:
-        server._open_chains()                                  # the load is done
+@pytest.mark.parametrize("delivered_first", [True, False])
+def test_a_stored_capture_never_replaces_a_delivered_chain(monkeypatch, tmp_path, _at_capture, delivered_first):
+    """The startup load queues the stored capture on the one pricing thread, and only for a
+    ticker the daemon has delivered no chain for: delivered first, the capture is not queued;
+    queued first and still waiting, the delivered chain replaces it. Either way the delivered
+    chain is what is held, and no live chain waits behind the whole stored load."""
+    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
+    from db import EdDB
+    db, taken = tmp_path / "ed_console.db", _at_capture.timestamp()
+    by_expiry: dict = {}
+    for ct in _CONTRACTS:
+        by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
+    for expiry, cts in by_expiry.items():
+        persist_complete_chain_capture(db, ticker=TK, expiry=expiry, contracts=cts, spot=_SPOT,
+                                       completeness_basis=CAPTURE_BASIS, ts_utc=taken - 86400)
+    edb = EdDB(db)
+    monkeypatch.setattr(server, "get_db", lambda: edb)
+    live = taken
+    gate = threading.Event()
+    server._chain_pricing.submit(gate.wait, 10)                 # the pricing thread is busy
+    if delivered_first:
+        server._on_chain(TK, _CONTRACTS, live)
+        assert server._load_stored_levels([TK]) == 0
+    else:
+        assert server._load_stored_levels([TK]) == 1
+        server._on_chain(TK, _CONTRACTS, live)                  # arrives while the capture waits
+    gate.set()
     server._chain_pricing.submit(lambda: None).result(timeout=60)
     held = _cached()
-    assert held["_chain_fetched_ts"] == held["computed_ts_utc"] == now
-    assert len(held["_chain"]) == len(_CONTRACTS)
+    assert held["_chain_fetched_ts"] == held["computed_ts_utc"] == live
 
 
 def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker(monkeypatch):
@@ -576,7 +591,7 @@ def test_the_ticker_on_screens_chain_is_priced_before_the_others_waiting(monkeyp
     takes its chain ahead of chains that arrived before it, a page open on another ticker
     included."""
     priced: list = []
-    monkeypatch.setattr(server, "_price_chain", lambda tk, c, ts: priced.append(tk))
+    monkeypatch.setattr(server, "_price_chain", lambda tk, c, ts, caps: priced.append(tk))
     push_changes.subscribe("ZZA")                                # an older page on ZZA
     push_changes.subscribe(TK)                                   # the newest page: CRWD on screen
     gate = threading.Event()

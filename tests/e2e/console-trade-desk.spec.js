@@ -428,8 +428,31 @@ test.describe('Trade Desk renders served values', () => {
     };
     expect(await push('flow')).toEqual(['/api/order-flow/microstructure']);
     expect(await push('liquidity')).toEqual(['/api/liquidity-snapshot']);
-    expect(await push('levels')).toEqual(['/api/levels', '/api/terrain', '/api/terrain/strikes']);
+    // the liquidity snapshot carries the live price and the option levels: read with the levels
+    expect(await push('levels')).toEqual(['/api/levels', '/api/liquidity-snapshot', '/api/terrain', '/api/terrain/strikes']);
     await expect(body).toContainText('Max pain 770.00');  // the parts not re-read are still drawn
+  });
+
+  test('Right Now: a read cut short by a newer one is read again', async ({ page }) => {
+    await intercept(page);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'right-now'); } catch (e) {} });
+    let slow = false;
+    const levelsReads = [];
+    await page.route('**/api/levels?**', async (route) => {
+      levelsReads.push(Date.now());
+      if (slow) await new Promise((r) => setTimeout(r, 800));    // the push's read is in flight ...
+      route.fallback();
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#tdBody')).toContainText('Max pain 770.00');
+    await page.waitForTimeout(300);
+    slow = true;
+    const before = levelsReads.length;
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
+    await expect.poll(() => levelsReads.length).toBe(before + 1);
+    slow = false;
+    await page.locator('[data-mig-scope]').last().click();          // ... and a toggle cuts it short
+    await expect.poll(() => levelsReads.length).toBeGreaterThan(before + 1);   // the levels are read again
   });
 
   test('Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split', async ({ page }) => {

@@ -735,12 +735,15 @@ def _gamma_surface_wanted(tk: str) -> bool:
 
 #: Per-ticker revision of `_gamma_surface`, bumped on every publication; written only by
 #: _publish_levels under the ticker's levels lock (the page redraws its table for a new one).
+#: It counts on from the console's start time, so a page that drew a publication of the console
+#: before a restart sees every publication of the new one as new.
 _gamma_surface_seq: dict[str, int] = {}
+_GAMMA_SURFACE_SEQ_START = int(time.time() * 1000)
 
 
 def _next_gamma_surface_seq(tk: str) -> int:
     """Caller holds the ticker's _levels_lock."""
-    n = _gamma_surface_seq.get(tk, 0) + 1
+    n = _gamma_surface_seq.get(tk, _GAMMA_SURFACE_SEQ_START) + 1
     _gamma_surface_seq[tk] = n
     return n
 
@@ -1289,15 +1292,16 @@ def _reprice_worker(tk: str) -> None:
 
 #: prices the chains the daemon delivers, off the event loop that received them, one at a time
 _chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pricing")
-#: ticker -> the newest delivered chain not yet priced; a newer one replaces it, so the queue
-#: holds at most one chain per ticker however far pricing falls behind the sweep. The ticker on
-#: screen's chain is priced before the others waiting.
-_chains_waiting: "dict[str, tuple[list, float]]" = {}
+#: ticker -> the newest chain to price: one the daemon delivered (contracts, fetched time), or the
+#: stored captures the startup load found for a ticker the daemon has not delivered yet. A newer
+#: one replaces it, so the queue holds at most one per ticker however far pricing falls behind
+#: the sweep, and the ticker on screen's is priced before the others waiting. Every pricing runs on
+#: the one pricing thread, so each ticker's chains are priced in the order they were fetched.
+_chains_waiting: "dict[str, tuple]" = {}
 _chains_waiting_lock = threading.Lock()
-#: whether the delivered chains are priced: closed while the startup load prices the stored
-#: captures (start_terrain_loop .. _open_chains), so a stored capture is always priced before
-#: any chain the daemon delivers, and the chains are priced in the order they were fetched
-_chains_open = True
+#: the tickers the daemon has delivered a chain for since the console started: their stored
+#: capture is older and is never priced
+_chains_delivered: "set[str]" = set()
 
 
 def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | None" = None) -> None:
@@ -1308,29 +1312,23 @@ def _on_chain(ticker: str, contracts: "list | None", ts: float, reason: "str | N
     if contracts is None:
         _terrain_refresh_last_error[tk] = f"chain fetch failed ({reason})"
         return
+    _wait_to_price(tk, (contracts, ts, None), delivered=True)
+
+
+def _wait_to_price(tk: str, entry: tuple, *, delivered: bool) -> bool:
+    """Queue `entry` (contracts, fetched time, stored captures) for the pricing thread: a
+    delivered chain replaces whatever waits for the ticker; stored captures wait only for a
+    ticker with nothing delivered and nothing waiting. Returns whether it was queued."""
     with _chains_waiting_lock:
+        if not delivered and (tk in _chains_delivered or tk in _chains_waiting):
+            return False
+        if delivered:
+            _chains_delivered.add(tk)
         queued = tk in _chains_waiting
-        _chains_waiting[tk] = (contracts, ts)
-        price_now = _chains_open and not queued
-    if price_now:
+        _chains_waiting[tk] = entry
+    if not queued:
         _chain_pricing.submit(_price_waiting_chain)
-
-
-def _close_chains() -> None:
-    """The startup load is about to run: delivered chains wait (_on_chain keeps them)."""
-    global _chains_open
-    with _chains_waiting_lock:
-        _chains_open = False
-
-
-def _open_chains() -> None:
-    """The startup load is done: the chains that waited are priced, and every later one."""
-    global _chains_open
-    with _chains_waiting_lock:
-        _chains_open = True
-        waiting = len(_chains_waiting)
-    for _ in range(waiting):
-        _chain_pricing.submit(_price_waiting_chain)
+    return True
 
 
 def _price_waiting_chain() -> None:
@@ -1339,14 +1337,19 @@ def _price_waiting_chain() -> None:
     first = push_changes.on_screen()
     with _chains_waiting_lock:
         tk = first if first in _chains_waiting else next(iter(_chains_waiting))
-        contracts, ts = _chains_waiting.pop(tk)
-    _price_chain(tk, contracts, ts)
+        contracts, ts, captures = _chains_waiting.pop(tk)
+    _price_chain(tk, contracts, ts, captures)
 
 
-def _price_chain(tk: str, contracts: list, fetched_ts: float) -> None:
+def _price_chain(tk: str, contracts: "list | None", fetched_ts: "float | None",
+                 captures: "list | None" = None) -> None:
     """THE producer of a ticker's levels from a newly fetched chain (_publish_levels), with the
-    chain's own fetch time as its as-of: an older streamed value never overrides it."""
+    chain's own fetch time as its as-of: an older streamed value never overrides it; or from the
+    stored `captures` the startup load found (DATA_FLOW decision 7)."""
     try:
+        if captures is not None:
+            _publish_levels(tk, captures=captures)
+            return
         _publish_levels(tk, contracts, fetched_ts)
         with _terrain_cache_lock:
             payload = _terrain_cache[tk]
@@ -1407,20 +1410,17 @@ def _status_line() -> str:
 
 
 def _terrain_loop() -> None:
-    """The board's stored levels once the daemon has said what the board is, and then the chains
-    the daemon delivers (_on_chain; they wait until the stored levels are loaded); then every
-    STATUS_EVERY_SEC the status line is logged and the price levels of a new session date or a
-    new ticker are published."""
-    try:
-        while _terrain_loop_running and _board() is None:
-            time.sleep(0.5)
-        board = _board() or []
-        _publish_missing_price_levels(board)
-        loaded = _load_stored_levels(board)
-    finally:
-        _open_chains()
-    log.info("Ready: levels for %d of %d board tickers loaded (session: %s). The daemon's chains "
-             "price them from here.", loaded, len(board), session_label(now_et()))
+    """The board's stored levels once the daemon has said what the board is (queued behind no
+    delivered chain: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged
+    and the price levels of a new session date or a new ticker are published. The chains arrive
+    from the daemon (_on_chain)."""
+    while _terrain_loop_running and _board() is None:
+        time.sleep(0.5)
+    board = _board() or []
+    _publish_missing_price_levels(board)
+    queued = _load_stored_levels(board)
+    log.info("Ready: the stored levels of %d of %d board tickers are being priced (session: %s); "
+             "the daemon's chains price them from here.", queued, len(board), session_label(now_et()))
     next_status = time.monotonic() + STATUS_EVERY_SEC
     while _terrain_loop_running:
         time.sleep(1.0)
@@ -1438,12 +1438,13 @@ def _terrain_loop() -> None:
 
 def _load_stored_levels(board: "list[str]") -> int:
     """At startup, each board ticker's newest full chain capture is priced once (DATA_FLOW
-    decision 7), so a restart, a weekend or the close shows the last reading with its time.
-    Returns how many tickers were loaded."""
+    decision 7), so a restart, a weekend or the close shows the last reading with its time: queued
+    for the pricing thread (_wait_to_price), never for a ticker the daemon already delivered a
+    chain for. Returns how many tickers were queued."""
     n = 0
     for tk in board:
         caps = last_capture_per_day(get_db().db_path, tk, 2)
-        if caps and _publish_levels(tk, captures=caps) is not None:
+        if caps and _wait_to_price(tk, (None, None, caps), delivered=False):
             n += 1
     return n
 
@@ -1458,7 +1459,6 @@ def start_terrain_loop() -> None:
     if _terrain_loop_running:
         return
     _terrain_loop_running = True
-    _close_chains()                 # the stored levels load first (_terrain_loop opens them)
     _terrain_loop_thread = threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True)
     _terrain_loop_thread.start()
 

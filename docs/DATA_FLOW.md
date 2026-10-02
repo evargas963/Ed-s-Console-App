@@ -113,9 +113,10 @@ Schwab sends is taken as sent (rule 2), never computed.
   parts → the console (`streaming.assemble_chain_part`: a chain is priced only with every part;
   one that arrived incomplete, or a fetch that failed, keeps the last levels with that reason) →
   `_on_chain` → priced on one pricing thread (`_price_chain`; at most one chain of each ticker
-  waits, the newest, and the ticker on screen's is priced before the others waiting; while the
-  startup load prices the stored captures the delivered chains wait, so the chains are priced in
-  the order they were fetched, after the stored ones). The chain's parts are events on the
+  waits, the newest, and the ticker on screen's is priced before the others waiting; the startup
+  load queues a ticker's stored captures on the same thread only while the daemon has delivered
+  no chain of that ticker, and a chain delivered while they wait replaces them, so a stored
+  capture never replaces a delivered chain and no delivered chain waits on the whole load). The chain's parts are events on the
   daemon's bus (delivered, never kept as a topic's last value or replayed). The sweep runs on
   `CHAIN_WORKERS` (8) threads sharing one Schwab client, one fetch of a ticker at a time, at any
   hour: the active ticker (the wanted frame's `active`: the ticker on screen, on or off the
@@ -163,9 +164,9 @@ Schwab sends is taken as sent (rule 2), never computed.
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
   chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
   a new chain arrived) → the browser reads `/api/terrain` and four other slice routes. Not stored; at startup they are computed from the
-  newest chain capture of each board ticker (once the daemon's heartbeat says what the board is), on the levels loop's thread while the console already serves the
-  page (each ticker's levels appear as they are priced); the daemon's chains delivered meanwhile
-  are priced right after. The values read from the stored captures (forces: ΔOI, DEX and
+  newest chain capture of each board ticker the daemon has not yet delivered a chain for (once the
+  daemon's heartbeat says what the board is), queued on the pricing thread while the console
+  already serves the page (each ticker's levels appear as they are priced). The values read from the stored captures (forces: ΔOI, DEX and
   charm by side; the prior day's per-strike rows) are computed by the same producer only when the
   ticker's newest capture or its chain's day changes; `/api/forces` and `/api/terrain/strikes`
   serve that result and read no stored chain. The same publication carries each strike's net
@@ -262,8 +263,9 @@ Schwab sends is taken as sent (rule 2), never computed.
   `—` and no panel reloads until the browser's EventSource reconnects. A Trade Desk timeframe
   switch asks only for that timeframe's bars, levels and event window. Each panel re-reads only
   for the kinds it shows; Right Now re-reads only the reads of the kind pushed (flow: the
-  microstructure; levels and chain: the levels, terrain and per-strike rows; liquidity: the
-  liquidity snapshot).
+  microstructure; levels and chain: the levels, terrain, per-strike rows and the liquidity
+  snapshot, which carries the live price and the option levels; liquidity: the liquidity
+  snapshot).
 
 ### 3.5 Where today breaks the design
 

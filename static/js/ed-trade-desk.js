@@ -332,19 +332,26 @@
     snap: function (tk) { return '/api/liquidity-snapshot?ticker=' + encodeURIComponent(tk); },
     strikesD: migStrikesUrl,   // the migration/volume section's window of the per-strike rows
   };
-  var PARTS_BY_KIND = { flow: ['detect'], levels: ['levelsD', 'terrain', 'strikesD'],
-    chain: ['levelsD', 'terrain', 'strikesD'], liquidity: ['snap'] };
-  var _read = { tk: null, parts: {} }, _due = {};
+  // the liquidity snapshot carries the live price and the option levels too: it is re-read with them
+  var PARTS_BY_KIND = { flow: ['detect'], levels: ['levelsD', 'terrain', 'strikesD', 'snap'],
+    chain: ['levelsD', 'terrain', 'strikesD', 'snap'], liquidity: ['snap'] };
+  // _due: each read that must run again, with the mark it was given; a read is no longer due once a
+  // read begun after its last mark has landed, so a read aborted by a newer one stays due
+  var _read = { tk: null, parts: {} }, _due = {}, _mark = 0;
+  function markDue(parts) { parts.forEach(function (p) { _due[p] = ++_mark; }); }
   function loadImpl(tk, signal) {
     var h = host();
     if (!h || !stillRightNow(tk)) return;
-    if (_read.tk !== tk) { _read = { tk: tk, parts: {} }; Object.keys(PART_URL).forEach(function (p) { _due[p] = true; }); }
-    var parts = Object.keys(_due);
-    _due = {};
+    if (_read.tk !== tk) { _read = { tk: tk, parts: {} }; markDue(Object.keys(PART_URL)); }
+    var taken = {}, parts = Object.keys(_due);
+    parts.forEach(function (p) { taken[p] = _due[p]; });
     h.setAttribute('aria-busy', 'true');
     return Promise.all(parts.map(function (p) { return fetchJson(PART_URL[p](tk), signal); })).then(function (got) {
-      if (signal && signal.aborted) { parts.forEach(function (p) { _due[p] = true; }); return; }   // read again
-      parts.forEach(function (p, i) { _read.parts[p] = got[i]; });
+      if (signal && signal.aborted) return;   // still due: the newer read takes it
+      parts.forEach(function (p, i) {
+        _read.parts[p] = got[i];
+        if (_due[p] === taken[p]) delete _due[p];
+      });
       if (!stillRightNow(tk)) return;
       var r = _read.parts;
       var detect = r.detect, levelsD = r.levelsD, terrain = r.terrain, snap = r.snap, strikesD = r.strikesD;
@@ -387,7 +394,7 @@
   function _loadKey() { return ticker() + '|mig=' + _migScope + '|ghost=' + (_migGhost ? 1 : 0); }
   function readAgain(parts) {
     if (!isRightNow() || !parts.length) return;
-    parts.forEach(function (p) { _due[p] = true; });
+    markDue(parts);
     _loader.trigger(_loadKey());
   }
   function retrigger() { readAgain(['strikesD']); }   // the migration section's own toggles

@@ -381,6 +381,30 @@ def test_the_daemon_task_stops_when_told():
     assert task.done() and task.exception() is None
 
 
+def test_the_daemons_chain_parts_are_delivered_and_never_kept(tmp_path, schwab):
+    """A chain part is an event, not a topic's state: the daemon's bus delivers each part to its
+    readers and keeps none, so a console that connects later is never replayed a part."""
+    from app.market_data.schwab.streaming import capture
+    from stream_spine import MessageBus
+    sqlite3.connect(tmp_path / "ed_console.db").close()
+
+    class _Daemon:
+        board, chains, active = ["SPY"], None, None
+        bus = MessageBus()
+
+    async def go():
+        stop = asyncio.Event()
+        sub = _Daemon.bus.subscribe("")
+        task = asyncio.create_task(capture.run_chains(_Daemon(), tmp_path / "ed_console.db", _built, stop))
+        topic, _msg = await asyncio.wait_for(sub.get(), timeout=30)
+        stop.set()
+        await asyncio.wait_for(task, timeout=30)
+        return topic
+    topic = asyncio.run(go())
+    assert topic                                              # a part was delivered
+    assert _Daemon.bus.snapshot() == {}, "no chain part is kept for replay"
+
+
 def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
     db = tmp_path / "ed_console.db"
     # institutional-synthetic-ok: the reader returns stored contracts verbatim; none is priced.
