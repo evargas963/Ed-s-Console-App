@@ -184,9 +184,9 @@ def test_a_refresh_publishes_the_same_fields_for_any_ticker(_fresh, monkeypatch,
 
 def test_surface_session_identity_is_stamped_by_the_server_clock():
     """Real-data repair 2026-09-10: a banked 2026-09-09 reference viewed on 2026-09-10 rendered its
-    expired 0DTE column as current structure. The server (the ONE ET clock) now stamps today's
-    session date, per-expiration `expired`, and `prior_session` for a reference from an earlier
-    day; presentation reads these, never a browser clock. Cell values are untouched."""
+    expired 0DTE column as current structure. The server (the ONE ET clock) stamps each column
+    `expired` and the nearest unexpired one `front`; presentation reads these, never a browser
+    clock. Cell values are untouched."""
     tk = ticker_storage_key("SPY")
     surf = dict(_SURF, expirations=[{"expiry": "2000-01-03", "dte": 0}, {"expiry": "2999-01-15", "dte": 9}])
     _clear(tk)
@@ -195,19 +195,12 @@ def test_surface_session_identity_is_stamped_by_the_server_clock():
                                      "spot_source": "last", "spot_as_of_ts_utc": time.time(), "chain_basis": "full"}
     try:
         d = _call(tk)
-        today = server.now_et().strftime("%Y-%m-%d")
-        assert d["session_date_et"] == today
         assert [e["expired"] for e in d["expirations"]] == [True, False]
-        assert d["prior_session"] is False                     # a live surface is this session's
+        assert [e["front"] for e in d["expirations"]] == [False, True]
         assert [{"strike": c["strike"], "gex": c["gex"]} for c in d["cells"]] == _SURF["cells"]  # values untouched
         assert not any(c["spot"] for c in d["cells"])   # no live price here: no row is marked as the price
     finally:
         _clear(tk)
-    # a banked reference from an earlier trading day is a PRIOR-session reference
-    stamped = server._stamp_surface_session(surf, reference_date="2000-01-03")
-    assert stamped["prior_session"] is True
-    assert stamped["cells"] == surf["cells"] and stamped["strikes"] == surf["strikes"]
-    assert server._stamp_surface_session(surf, reference_date=today)["prior_session"] is False
 
 
 def test_fallback_is_labelled_not_live_never_intraday():

@@ -548,7 +548,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // shows that expiry's net GEX at the strike -- the heatmap's own cell, served on the same
     // /api/chain response. It used to read GEX-by-Strike's rows (every expiry summed).
     await page.route('**/api/terrain/strikes**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ ticker: '$SPX', spot: 583.41, today: { all: [[583, 777000, 5400]] } }) }));
+      body: JSON.stringify({ ticker: '$SPX', spot: 583.41, today: { all: [[583, 777000, 5400]] },
+        views: { all: { centre: 583, note: null, max_abs: 777000 } } }) }));
     await page.route('**/api/chain**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, CHAIN, { net_gex_by_strike: [[583, 3000]] })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });

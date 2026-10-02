@@ -136,11 +136,15 @@ def test_the_selected_ticker_gets_its_books_a_change_replaces_them_and_a_restart
     import server
     from app.market_data.schwab.streaming.capture import normalize_wanted, plan
 
+    loop, pages = asyncio.new_event_loop(), []           # the console's loop: the pages stay open on it
+
+    async def open_page(tk):
+        stream = (await server.get_changes(ticker=tk)).body_iterator
+        await stream.__anext__()                          # the page's connection is streaming
+        return stream
+
     def select(tk):
-        asyncio.run(server.get_changes(ticker=tk))       # the page opens its connection
-        end = time.monotonic() + 5
-        while time.monotonic() < end and ofs.current_wanted()["NYSE_BOOK"] != [tk.upper()]:
-            time.sleep(0.02)
+        pages.append(loop.run_until_complete(open_page(tk)))   # the page opens its connection
         return normalize_wanted(ofs.current_wanted())
 
     def book_requests(wanted, held):
@@ -157,6 +161,22 @@ def test_the_selected_ticker_gets_its_books_a_change_replaces_them_and_a_restart
     assert normalize_wanted(ofs.current_wanted())["NYSE_BOOK"] == frozenset()
     w = select("spy")                                     # the page reconnects: SPY's books again
     assert w["NYSE_BOOK"] == w["NASDAQ_BOOK"] == frozenset({"SPY"})
+    for page in pages:
+        loop.run_until_complete(page.aclose())
+    loop.close()
+
+
+def test_a_connection_that_never_streams_never_opens_a_page(monkeypatch):
+    """The page is open while its /api/changes stream runs: a request whose client went away
+    before the stream started leaves no page open (2026-10-01 review: it stayed the ticker on
+    screen, with its books and chain first, after its client was gone)."""
+    import asyncio
+
+    import push_changes
+    import server
+    monkeypatch.setattr(push_changes, "_open", [])
+    asyncio.run(server.get_changes(ticker="MU"))          # answered, never streamed
+    assert push_changes.on_screen() is None
 
 
 def test_the_ticker_on_screen_is_named_in_the_wanted_list(tmp_path, monkeypatch):

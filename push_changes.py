@@ -16,8 +16,10 @@ LEVELS, CHAIN, FLOW, LIQUIDITY = "levels", "chain", "flow", "liquidity"
 _loop: asyncio.AbstractEventLoop | None = None
 #: (ticker, connection) of every open page, oldest first
 _open: "list[tuple[str, Client]]" = []
-_screen_listeners: list = []      # fn(old, new) when the ticker on screen changes
-_change_listeners: list = []      # fn(ticker, kind) when a value of an open ticker changes
+#: the listeners, each by its function's module and name: one per function, so a module that
+#: registers again replaces its own
+_screen_listeners: dict = {}      # fn(old, new) when the ticker on screen changes
+_change_listeners: dict = {}      # fn(ticker, kind) when a value of an open ticker changes
 
 
 class Client:
@@ -32,11 +34,11 @@ def bind(loop: asyncio.AbstractEventLoop) -> None:
 
 
 def on_screen_change(fn) -> None:
-    _screen_listeners.append(fn)
+    _screen_listeners[f"{fn.__module__}.{fn.__qualname__}"] = fn
 
 
 def on_change(fn) -> None:
-    _change_listeners.append(fn)
+    _change_listeners[f"{fn.__module__}.{fn.__qualname__}"] = fn
 
 
 def on_screen() -> str | None:
@@ -68,7 +70,7 @@ def unsubscribe(tk: str, c: Client) -> None:
 def _screen_moved(old: str | None) -> None:
     new = on_screen()
     if new != old:
-        for fn in list(_screen_listeners):
+        for fn in list(_screen_listeners.values()):
             fn(old, new)
 
 
@@ -83,7 +85,7 @@ def _mark(tk: str, kind: str) -> None:
         if t == tk:
             c.kinds.add(kind)
             c.wake.set()
-    for fn in list(_change_listeners):
+    for fn in list(_change_listeners.values()):
         fn(tk, kind)
 
 

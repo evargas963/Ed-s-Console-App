@@ -43,7 +43,8 @@ const TERRAIN = { ticker: '$SPX', spot: SPOT, gamma_flip: 4992.4, call_wall: 510
   levels_stale: false, levels_age_sec: 4 };
 const STRIKES = { ticker: '$SPX', spot: SPOT, today_source: 'terrain_live_cache', today_age_sec: 4,
   levels_stale: false, levels_age_sec: 4,
-  today: { all: STRIKE_LIST.map(function (k) { return [k, gexAt(k, 0), 1000 + (k % 500)]; }) } };
+  today: { all: STRIKE_LIST.map(function (k) { return [k, gexAt(k, 0), 1000 + (k % 500)]; }) },
+  views: { all: { centre: SPOT, note: null, max_abs: 1e7 } } };   // scale: a stand-in at least every |gexAt|
 const BARS = { ticker: '$SPX', bars: Array.from({ length: 80 }, function (_v, i) {
   const c = SPOT - 12 + Math.sin(i / 6) * 9 + i * 0.12;
   return { t: 1757000000 + i * 60, o: c - 1, h: c + 2, l: c - 2, c: c, v: 1000 + i }; }) };

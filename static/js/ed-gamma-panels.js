@@ -173,7 +173,8 @@
     window.EdShell.panServed(pan, view.centre);
     var maxAbs = view.max_abs;   // at least |v| for every v drawn
     var note = (opts.top || '') + (pan.centre != null ? '<div class="gbs-allexp">Panned to ' +
-      px(pan.served, pan.served % 1 ? 2 : 0) + ' · double-click a strike to follow the price</div>' : '');
+      px(pan.served, pan.served % 1 ? 2 : 0) + ' · double-click a strike to follow the price</div>' : '') +
+      (view.note ? '<div class="gbs-allexp">' + esc(view.note) + '</div>' : '');   // why not around the price
     var bars = '';
     rows.slice().reverse().forEach(function (r) {
       // a strike with no value is unknown: no bar, '—' (never a $0 bar)
@@ -217,7 +218,7 @@
     var chg = {}, mig = d.migration && d.migration.all;
     ((mig && mig.compared && mig.rows) || []).forEach(function (m) { chg[m[0]] = m[3]; });
     // rows: [strike, net_gex_1pct$, session volume]; the volume is a count, never coloured
-    drawStrikeBars(host, rows, (d.views || {}).all || {}, _gbsPan, d.spot_strike, loadGbs, {
+    drawStrikeBars(host, rows, d.views.all, _gbsPan, d.spot_strike, loadGbs, {
       top: expOn ? '<div class="gbs-allexp">all expiries</div>' : '',
       attrs: function (r) { return ' data-volume="' + (r[2] == null ? '' : r[2]) + '"'; },
       cells: function (r) {
@@ -388,7 +389,7 @@
           (d && d.reason ? esc(d.reason) : ('no console serving ' + endpoint)) + '</div></div>';
         return;
       }
-      drawStrikeBars(host, d.rows, d.view || {}, pan, d.spot_strike, load);
+      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, load);
     }
     function impl(tk, signal) {
       var host = document.getElementById(hostId);

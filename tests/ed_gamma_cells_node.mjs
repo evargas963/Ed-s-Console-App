@@ -18,6 +18,8 @@ const ctx = {
     documentElement: {},
     getElementById: (id) => (id === 'heatBody' ? host : null),
     querySelectorAll: () => [],
+    // the page's served metas: the streaming-state words (none needed for the cell text)
+    querySelector: () => ({ getAttribute: () => '{"cell": {}, "column": {}}' }),
     addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
   },
   getComputedStyle: () => ({ getPropertyValue: () => '' }),
@@ -26,7 +28,13 @@ const ctx = {
 };
 ctx.window = ctx;
 ctx.globalThis = ctx;
-ctx.EdShell = { getState: () => ({ workspace: 'options', subview: 'gamma', view: 'heatmap', ticker: surface.ticker }) };
+// the shell (ed-core.js) as the heatmap uses it: the view, no pan, no expiry selected
+ctx.EdShell = {
+  getState: () => ({ workspace: 'options', subview: 'gamma', view: 'heatmap', ticker: surface.ticker }),
+  getMeasure: () => 'gex', getExpiry: () => null, setStrike: () => {},
+  newPan: () => ({ centre: null, shift: 0, served: null }), panServed: (pan, c) => { pan.served = c; },
+  windowQuery: () => '&scope=all', wireStrikeAxis: () => {},
+};
 ctx.EdStream = { setAdditionalContracts: () => Promise.resolve({ accepted: true }) };
 vm.createContext(ctx);
 vm.runInContext(readFileSync(join(ROOT, 'static/js/l1_sse_guards.js'), 'utf8'), ctx, { filename: 'l1_sse_guards.js' });

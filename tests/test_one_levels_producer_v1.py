@@ -591,17 +591,37 @@ def test_the_ticker_on_screen_is_the_newest_open_page(monkeypatch):
     followed: list = []
     monkeypatch.setattr(server, "_follow_screen_contract", lambda: followed.append(push_changes.on_screen()))
 
+    async def open_page(tk):
+        stream = (await server.get_changes(ticker=tk)).body_iterator
+        await stream.__anext__()                            # the page's connection is streaming
+        return stream
+
     async def go():
-        await server.get_changes(ticker="AAA")              # a page opens on AAA ...
-        b = await server.get_changes(ticker="BBB")          # ... a second page on BBB
+        a = await open_page("AAA")                          # a page opens on AAA ...
+        b = await open_page("BBB")                          # ... a second page on BBB
         assert ofs.current_wanted()["active"] == "BBB" and ofs.current_wanted()["NYSE_BOOK"] == ["BBB"]
-        await b.body_iterator.__anext__()
-        await b.body_iterator.aclose()                      # the BBB page closes
+        await b.aclose()                                    # the BBB page closes
         assert ofs.current_wanted()["active"] == "AAA"
-    asyncio.run(go())
-    assert followed == ["AAA", "BBB", "AAA"], "the option contract follows in the same order"
+        await a.aclose()                                    # the last page closes
     monkeypatch.setattr(push_changes, "_open", [])
+    asyncio.run(go())
+    assert followed == ["AAA", "BBB", "AAA", None], "the option contract follows in the same order"
     assert ofs.current_wanted()["active"] is None and ofs.current_wanted()["NYSE_BOOK"] == []
+
+
+def test_a_listener_registered_again_replaces_its_own(monkeypatch):
+    """2026-10-01: a second import of server registered its listeners again, and every change of
+    the ticker on screen then ran them twice."""
+    monkeypatch.setattr(push_changes, "_open", [])
+    monkeypatch.setattr(push_changes, "_screen_listeners", {})
+    heard: list = []
+
+    def listener(old, new):
+        heard.append(new)
+    push_changes.on_screen_change(listener)
+    push_changes.on_screen_change(listener)
+    push_changes.subscribe("AAA")
+    assert heard == ["AAA"]
 
 
 def test_a_manual_contract_admitted_before_a_ticker_switch_is_superseded(monkeypatch):

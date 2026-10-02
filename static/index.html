@@ -7,6 +7,10 @@
 <meta name="ed-live-ui-port" content="">
 <!-- the market-context symbols the page always shows, [{key, display}]: filled in by the console -->
 <meta name="ed-market-context" content="">
+<!-- the strike-window scopes, [{key, label}]: filled in by the console -->
+<meta name="ed-scopes" content="">
+<!-- the words for each streaming state, {cell, column}: filled in by the console -->
+<meta name="ed-stream-words" content="">
 <title>Ed Console</title>
 <!-- Carried forward from legacy static/index.html during the /console cutover (operator
      directive 2026-09-14): the PWA manifest and icons are a real, currently-served capability
@@ -758,9 +762,6 @@
         </select><span class="cv"></span></label>
         <div class="scope" id="scopeCtl" hidden title="View window around spot for the chart / GEX-by-strike panels — presentation only, never changes a value">
           <span class="cap">View</span>
-          <button class="scbtn on" data-scope="auto">Auto</button>
-          <button class="scbtn" data-scope="wider">Wider</button>
-          <button class="scbtn" data-scope="all">All available</button>
         </div>
         <button class="aibtn" id="aiOpen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3a4 4 0 0 1 4 4c2 1 3 3 3 5a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5c0-2 1-4 3-5a4 4 0 0 1 4-4z"/><path d="M9 20h6"/></svg>Analyst</button>
       </div>

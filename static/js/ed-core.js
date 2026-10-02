@@ -76,13 +76,14 @@
   function _ls(k, d) { try { var v = localStorage.getItem(k); return (v == null || v === '') ? d : v; } catch (e) { return d; } }
   function _lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   // D: persist UI navigation state (client state, not market truth)
-  // #3: ONE presentation-scope for the Gamma workspace. The chart/GEX-by-strike panels window the
-  // canonical strikes around spot for readability; this is the SINGLE control of that window, shared
-  // by every windowed panel so nothing is silently clipped. Modes: AUTO (each panel's near-money
-  // base), WIDER (2x that base), ALL (every strike in the current canonical input). Presentation
-  // only — the window never changes any value, only which canonical strikes are on screen.
-  var SCOPE_MODES = ['auto', 'wider', 'all'];
-  function _lsScope() { var v = _ls('ed_scope', 'auto'); return SCOPE_MODES.indexOf(v) !== -1 ? v : 'auto'; }
+  // The strike-window scopes, served in the page (meta ed-scopes, from terrain_engine.SCOPES):
+  // [{key, label}], the first the default. The server picks each panel's strikes for the scope.
+  var SCOPES = (function () {
+    var m = document.querySelector('meta[name="ed-scopes"]');
+    try { return JSON.parse(m ? m.getAttribute('content') : '[]') || []; } catch (e) { return []; }
+  })();
+  var SCOPE_MODES = SCOPES.map(function (s) { return s.key; });
+  function _lsScope() { var v = _ls('ed_scope', SCOPE_MODES[0]); return SCOPE_MODES.indexOf(v) !== -1 ? v : SCOPE_MODES[0]; }
   // every asked-for symbol's served identity, {requested: {requested, key, display}} (ingestIdentity)
   var _served = {};
   var state = {
@@ -391,7 +392,7 @@
   }
   // The strikes a per-strike panel shows are the server's choice (terrain_engine.strike_window):
   // every panel sends this with its read -- the scope, and while the operator has panned, the
-  // centre strike the server last served it and the rows a drag has moved from that centre.
+  // centre strike the drag began on and the rows it moved from there.
   function windowQuery(pan) {
     return '&scope=' + encodeURIComponent(state.scope) +
       (pan && pan.centre != null ? '&centre=' + encodeURIComponent(pan.centre) + '&shift=' + (pan.shift | 0) : '');
@@ -415,19 +416,17 @@
     });
     document.addEventListener('mouseup', function () { _axisDrag = null; });
   }
-  // A read's view arrived: its centre is the window on screen, and once no drag is under way a
-  // panned panel keeps asking for exactly that window.
-  function panServed(pan, centre) {
-    pan.served = centre;
-    if (pan.centre != null && !(_axisDrag && _axisDrag.pan === pan)) { pan.centre = centre; pan.shift = 0; }
-  }
+  // A read's view arrived: its centre is the window on screen (the next drag starts from it). The
+  // pan the operator asked for (`centre`, `shift`) is kept as asked, so a read still held behind a
+  // drag asks for where the drag ended.
+  function panServed(pan, centre) { pan.served = centre; }
   function wireStrikeAxis(axisEls, wheelEl, pan, rowPx, reload) {
     Array.prototype.forEach.call(axisEls, function (el) {
       el.style.cursor = 'ns-resize';
       el.setAttribute('draggable', 'false');
       el.addEventListener('dragstart', function (e) { e.preventDefault(); });
       el.addEventListener('mousedown', function (e) {
-        _axisDrag = { startY: e.clientY, rowPx: rowPx || 24, pan: pan, base: pan.served, reload: reload };
+        _axisDrag = { startY: e.clientY, rowPx: rowPx, pan: pan, base: pan.served, reload: reload };
         e.preventDefault(); e.stopPropagation();
       });
       el.addEventListener('dblclick', function (e) {
@@ -919,11 +918,15 @@
     document.querySelectorAll('.navitem[data-ws]').forEach(function (n) {
       n.addEventListener('click', function () { setWorkspace(n.getAttribute('data-ws')); });
     });
-    // #3: presentation-scope control (one control for every windowed Gamma panel)
+    // the scope control: one button per served scope (one control for every per-strike panel)
     var scopeCtl = document.getElementById('scopeCtl');
-    if (scopeCtl) scopeCtl.querySelectorAll('.scbtn').forEach(function (b) {
-      b.addEventListener('click', function () { setScope(b.getAttribute('data-scope')); });
+    if (scopeCtl) SCOPES.forEach(function (s) {
+      var b = document.createElement('button');
+      b.className = 'scbtn'; b.setAttribute('data-scope', s.key); b.textContent = s.label;
+      b.addEventListener('click', function () { setScope(s.key); });
+      scopeCtl.appendChild(b);
     });
+    reflectScope();
     document.querySelectorAll('.bookvenue .scbtn').forEach(function (b) {
       b.addEventListener('click', function () { setBookVenue(b.getAttribute('data-venue')); });
     });

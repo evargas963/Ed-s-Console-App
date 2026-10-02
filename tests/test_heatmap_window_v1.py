@@ -38,7 +38,7 @@ def _published(monkeypatch, pin_clock):
 
 
 def _heat(**kw):
-    args = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None, **kw}
+    args = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None, "since": None, **kw}
     return json.loads(server.get_options_gamma_surface(TK, **args).body)
 
 
@@ -99,13 +99,82 @@ def test_the_view_serves_the_colour_scale_and_the_contracts_drawn():
     assert set(d["view"]["demand"]) <= listed
 
 
-def test_a_cell_is_marked_changed_only_where_its_value_changed_since_the_last_publication():
-    assert not any(any(flags) for c in _heat(scope="all")["cells"] for flags in c["changed"].values())
+def _marked(d, measure):
+    return [(c["strike"], d["expirations"][j]["expiry"]) for c in d["cells"] if "changed" in c
+            for j, f in enumerate(c["changed"][measure]) if f]
+
+
+def test_a_cell_flashes_when_its_value_changed_after_the_publication_the_page_drew():
+    """`changed` is relative to `since`, the surface_seq the page last drew: a change in a
+    publication the page never read still flashes, and a redraw of what it has seen does not."""
+    first = _heat(scope="all")
+    assert not _marked(first, "oi")                               # the first draw: nothing to flash
+    drawn = first["surface_seq"]
     target = next(c for c in _CHAIN if c["expirationDate"].startswith("2026-11-20") and c["openInterest"] > 0)
     chain = copy.deepcopy(_CHAIN)
     next(c for c in chain if c["symbol"] == target["symbol"])["openInterest"] += 1000
-    server._publish_levels(TK, chain, 2.0)
-    d = _heat(scope="all")
-    col = [e["expiry"] for e in d["expirations"]].index("2026-11-20")
-    marked = [(c["strike"], j) for c in d["cells"] for j, f in enumerate(c["changed"]["oi"]) if f]
-    assert marked == [(float(target["strikePrice"]), col)]
+    server._publish_levels(TK, chain, 2.0)                         # the OI changes ...
+    server._publish_levels(TK, copy.deepcopy(chain), 3.0)          # ... and a publication the page skips
+    want = [(float(target["strikePrice"]), "2026-11-20")]
+    assert _marked(_heat(scope="all", since=drawn), "oi") == want
+    latest = _heat(scope="all")["surface_seq"]
+    assert latest == drawn + 2
+    assert not _marked(_heat(scope="all", since=latest), "oi")    # drawn already: no flash again
+
+
+def test_with_no_live_price_the_window_says_it_is_not_around_the_price(monkeypatch):
+    """No price and no pan: the rows are the middle of the chain, served with the reason (no row
+    is marked as the price), on the heatmap and on every per-strike panel."""
+    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
+    d = _heat()
+    assert d["view"]["note"] == server.WINDOW_NO_PRICE and not any(c["spot"] for c in d["cells"])
+    strikes = json.loads(server.get_terrain_strikes(TK, scope="auto", centre=None, shift=0).body)
+    assert {v["note"] for v in strikes["views"].values() if v["centre"] is not None} == {server.WINDOW_NO_PRICE}
+    every = _every_strike()
+    panned = _heat(centre=every[3])                                # the operator's pan: no reason needed
+    assert panned["view"]["note"] is None and panned["view"]["centre"] == every[3]
+
+
+def test_expired_columns_are_drawn_labelled_and_never_streamed_or_counted(pin_clock):
+    """On 2026-10-15 the 10-14 column has expired: Auto draws the unexpired columns, Wider and All
+    draw it labelled, and its contracts are neither streamed nor counted in the coverage."""
+    pin_clock(2026, 10, 15, 12, 0)
+    auto = _heat(cols=3)
+    assert [e["expiry"] for e in auto["expirations"]] == ["2026-10-15", "2026-11-20"]
+    every = _heat(scope="all")
+    assert [(e["expiry"], e["expired"], e["front"]) for e in every["expirations"]] == [
+        ("2026-10-14", True, False), ("2026-10-15", False, True), ("2026-11-20", False, False)]
+    expired = {c["symbol"] for c in _CHAIN if c["expirationDate"].startswith("2026-10-14")}
+    assert not expired & set(every["view"]["demand"]) and every["view"]["demand"]
+    only = _heat(expiry="2026-10-14")                              # the expired column alone
+    assert only["view"]["demand"] == [] and only["view"]["coverage"]["cells"] == 0
+
+
+def test_every_per_strike_panel_is_served_its_window_and_scale():
+    """GEX by strike (today: all, near, far), the chart's DEX and OI, the migration's scale with the
+    prior day, vanna and charm: each list is the scope's rows around the price or the pan, with
+    the largest |value| drawn as its scale."""
+    def lists(body):
+        return {**{sc: body["today"][sc] for sc in ("all", "near", "far")},
+                **{m: body["measures"][m]["rows"] for m in ("dex", "oi")}}
+    body = json.loads(server.get_terrain_strikes(TK, scope="auto", centre=None, shift=0).body)
+    every = lists(json.loads(server.get_terrain_strikes(TK, scope="all", centre=None, shift=0).body))
+    assert every["all"] and every["dex"] and every["oi"]
+    for name, rows in lists(body).items():
+        view = body["views"][name]
+        assert len(rows) == min(SCOPE_ROWS["auto"], len(every[name])), name
+        assert all(r in every[name] for r in rows), name                # rows of the list, as published
+        known = [abs(r[1]) for r in rows if r[1] is not None]
+        assert view["max_abs"] == (max(known) if known else None), name
+        assert view["note"] is None or not rows, name
+    # no prior day is stored here: the migration's scale is today's
+    assert body["views"]["all"]["max_abs_with_prior"] == body["views"]["all"]["max_abs"] is not None
+    assert body["views"]["near"]["max_abs_with_prior"] is None                  # no near-term rows
+    assert body["measures"]["dex"]["view"] == body["views"]["dex"]
+    for route in (server.get_vanna_by_strike, server.get_charm_by_strike):
+        d = json.loads(route(TK, scope="auto", centre=None, shift=0).body)
+        rows = [r[0] for r in d["rows"]]
+        panned = json.loads(route(TK, scope="auto", centre=d["view"]["centre"], shift=2).body)
+        every = [r[0] for r in json.loads(route(TK, scope="all", centre=None, shift=0).body)["rows"]]
+        assert panned["view"]["centre"] == every[every.index(d["view"]["centre"]) + 2]
+        assert [r[0] for r in panned["rows"]] != rows and len(panned["rows"]) == len(rows)

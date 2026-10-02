@@ -442,21 +442,27 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(cons
               "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]},
               "refused": {"LEVELONE_OPTIONS": {"C": "code 19"}}}
 
+    def diag(sym):     # the served option-contract diagnostics for `sym`
+        return ofs.get_option_contract_streaming_diagnostics(sym)
+
     def readers():
         return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES"), lmp.feed_live_for("A", "LEVELONE_OPTIONS"),
-                ofs._service_feed("A", "OPTIONS_BOOK")["state"], ofs.is_option_producer_daemon_available())
+                diag("A")["feed_health"]["book"]["state"], ofs.is_option_producer_daemon_available())
+
+    def held(sym):
+        return diag(sym)["producer_l1_contract"], diag(sym)["producer_book_contract"]
 
     assert readers() == (False, False, "NOT LIVE", False)
     limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
     lmp.record_feed_heartbeat(status, time.time() - limit + 0.5)
     assert readers() == (True, True, "LIVE", True)
-    assert ofs._service_feed("A", "OPTIONS_BOOK")["age_sec"] == 45.0
+    assert diag("A")["feed_health"]["book"]["age_sec"] == 45.0
     assert not lmp.feed_live_for("B", "OPTIONS_BOOK")               # held on L1 only
-    assert ofs._read_producer_option_contracts() == {"LEVELONE_OPTIONS": ["A", "B"], "OPTIONS_BOOK": ["A"]}
+    assert held("B") == ("B", "A")                                  # B held on L1, the book holds A
     assert ofs.read_producer_rejected_option_contracts() == {"C": "code 19"}
     lmp.record_feed_heartbeat(status, time.time() - limit - 0.5)
     assert readers() == (False, False, "NOT LIVE", False)
-    assert ofs._read_producer_option_contracts() == {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}
+    assert held("B") == (None, None)
     lmp.record_feed_heartbeat({**status, "schwab_socket_open": False}, time.time())
     assert readers() == (False, False, "NOT LIVE", True)             # the daemon is up, Schwab is not
 

@@ -15,7 +15,8 @@ const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, sour
 const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, absolute_gamma_strike: 100,
   net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_stale: false, levels_age_sec: 10 };
 const STRIKES = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 10, levels_stale: false,
-  today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] } };
+  today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
+  views: { all: { centre: 100, note: null, max_abs: 958600 } } };
 const CHAIN = { spot: 100, expiry: '2026-09-11', status: 'ok', scope: { kind: 'complete_single_expiry' },
   contracts: [{ putCall: 'CALL', strikePrice: 100, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.5, volatility: 12, expirationDate: '2026-09-11' },
     { putCall: 'PUT', strikePrice: 100, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12, expirationDate: '2026-09-11' }] };

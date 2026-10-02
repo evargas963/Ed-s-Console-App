@@ -64,8 +64,7 @@ def test_build_config_fail_closed_without_secrets(monkeypatch: pytest.MonkeyPatc
 
 
 def test_server_import_does_not_build_client_or_run_login_flow() -> None:
-    """`import server` in a fresh interpreter (a second import in this one would register the
-    module's push_changes listeners twice) builds no client and runs no login flow."""
+    """`import server` in a fresh interpreter builds no client and runs no login flow."""
     code = (
         "from unittest.mock import patch\n"
         "with patch('schwab_client.build_client_from_token') as b, patch('schwab_client.run_login_flow') as lf:\n"

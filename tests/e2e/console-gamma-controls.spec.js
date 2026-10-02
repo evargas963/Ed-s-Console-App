@@ -24,7 +24,8 @@ function surfaceFor(tk, spot, expiry) {
 const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, absolute_gamma_strike: 100,
   net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_stale: false, levels_age_sec: 10 };
 const STRIKES = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 10, levels_stale: false,
-  today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] } };
+  today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
+  views: { all: { centre: 100, note: null, max_abs: 958600 } } };
 const BARS = { bars: [{ t: 1757000000, o: 99, h: 101, l: 98, c: 100, v: 1000 }] };
 
 async function intercept(page) {

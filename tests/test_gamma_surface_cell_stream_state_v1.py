@@ -5,9 +5,9 @@
 up into a cell-level 'live' / 'partial' / 'stale' / 'unavailable' aggregate.
 
 Proven directly against `_stamp_gamma_surface_cell_stream_state` (it never touches a cell's
-computed exposure value, only annotates it) and `_stream_coverage` (the header's count of a
-window's cells), against the real end-to-end `_publish_levels` path with a REAL captured chain
-fixture, and against `/api/options/gamma-surface`'s served view."""
+computed exposure value, only annotates it), against the real end-to-end `_publish_levels` path
+with a REAL captured chain fixture, and through `/api/options/gamma-surface`'s served view (the
+header's count of the window's cells)."""
 from __future__ import annotations
 
 import pytest
@@ -20,7 +20,6 @@ import live_market_plane as lmp
 import server
 from server import (
     _stamp_gamma_surface_cell_stream_state,
-    _stream_coverage,
     get_options_gamma_surface,
     _publish_levels,
     ticker_storage_key,
@@ -189,7 +188,17 @@ def test_cell_state_counts_tallies_across_cells_and_columns():
     streamed = {"AAA": {"gamma_ts_recv": time.time()}, "BBB": {"gamma_ts_recv": time.time()},
                 "CCC": {"gamma_ts_recv": time.time() - 99}}
     _stamp_gamma_surface_cell_stream_state(surf, streamed, {"AAA", "BBB"})
-    counts = _states(_stream_coverage(surf["cells"]))
+    surf["strikes"] = [c["strike"] for c in surf["cells"]]
+    surf["cells"].sort(key=lambda c: c["strike"])
+    surf["strikes"].sort()
+    tk = ticker_storage_key("ZZZTALLY")
+    with server._terrain_cache_lock:
+        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0}
+    try:
+        counts = _states(_call(tk))
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
     # cell0: live (both legs live). cell1: stale (CCC desired, not overlaid). cell2: unavailable (DDD never desired).
     assert counts == {"live": 1, "partial": 0, "stale": 1, "pending": 0,
                        "daemon_unavailable": 0, "rejected": 0, "unavailable": 1}
@@ -277,7 +286,7 @@ def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monke
     _publish_levels(TK)
     surface = _published_surface()
     assert surface["stream_overlay_contracts"] == 1   # the newest value Schwab sent
-    counts = _stream_coverage(surface["cells"])
+    counts = _call(TK)
     assert counts["live"] == 0
     assert counts["stale"] > 0
 
@@ -290,7 +299,7 @@ def test_dropped_contract_becomes_unavailable_not_lingering_stale(monkeypatch, v
     monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
 
     _publish_levels(TK)
-    counts = _stream_coverage(_published_surface()["cells"])
+    counts = _call(TK)
     assert counts["live"] == 0 and counts["stale"] == 0
     assert counts["unavailable"] > 0
 
@@ -369,6 +378,26 @@ def test_endpoint_reads_partial_when_only_some_cells_are_live():
         assert cov["live_pct"] == 50 and cov["state"] == server.COVERAGE_PARTIAL
         assert cov["label"] == "50% STREAMING" and cov["title"] == "1 of 2 cells streaming · 1 stale"
         assert _call(tk, expiry="2026-09-11")["live_pct"] == 50
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+
+
+@pytest.mark.parametrize("live, words", [(299, "99% STREAMING"), (1, "<1% STREAMING")])
+def test_the_chip_never_claims_more_or_less_than_streams(live, words):
+    """2026-10-01 review: rounded, 299 of 300 live cells read "100% STREAMING" (as if all were)
+    and 1 of 300 read "0%" (as if none were)."""
+    tk = ticker_storage_key("ZZZTEST_SHARE")
+    syms = [f"S{i}" for i in range(300)]
+    surf = {"expirations": [{"expiry": "2026-09-11", "dte": 2}], "strikes": [float(i) for i in range(300)],
+            "cells": [{"strike": float(i), "gex": [1.0], "contracts": [{"call": s, "put": None}]}
+                      for i, s in enumerate(syms)]}
+    _stamp_gamma_surface_cell_stream_state(surf, {s: {"gamma_ts_recv": time.time()} for s in syms}, set(syms[:live]))
+    with server._terrain_cache_lock:
+        server._terrain_cache[tk] = {"_gamma_surface": surf, "computed_ts_utc": time.time(), "spot": 10.0}
+    try:
+        cov = _call(tk)
+        assert (cov["live"], cov["cells"], cov["label"]) == (live, 300, words)
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)

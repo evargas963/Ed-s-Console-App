@@ -246,12 +246,13 @@
     var mig = (strikesD.migration || {})[_migScope] || null;
     var migRow = {}; ((mig && mig.rows) || []).forEach(function (r) { migRow[r[0]] = r; });
     function prior(k) { return migRow[k] ? migRow[k][2] : null; }
-    var view = (strikesD.views || {})[_migScope] || {};
+    var view = strikesD.views[_migScope];
     window.EdShell.panServed(_migPan, view.centre);
     var win = todayAll.slice().reverse();   // the served window, high strikes on top
     // a pan is never silent: the strikes stop following the price until a double-click
-    var note = _migPan.centre != null ? '<div class="gbs-allexp">Panned to ' + num(_migPan.served, _migPan.served % 1 ? 2 : 0) +
-      ' · double-click a strike to follow the price</div>' : '';
+    var note = (_migPan.centre != null ? '<div class="gbs-allexp">Panned to ' + num(_migPan.served, _migPan.served % 1 ? 2 : 0) +
+      ' · double-click a strike to follow the price</div>' : '') +
+      (view.note ? '<div class="gbs-allexp">' + esc(view.note) + '</div>' : '');   // why not around the price
     var maxAbs = view.max_abs_with_prior;   // served: today's and the prior day's bars, one scale
     var spotStrike = strikesD.spot_strike;   // served: the listed strike nearest the live price
     var cw = terrain && terrain.call_wall, pw = terrain && terrain.put_wall;

@@ -205,6 +205,8 @@ def test_the_volume_profile_the_value_area_is_read_from_is_served(monkeypatch):
     prices = [b[0] for b in vp["bins"]]
     assert prices == sorted(prices) and len(prices) > 100
     assert all(b[2] == (vp["val"] <= b[0] <= vp["vah"]) for b in vp["bins"])
+    # the profile's scale is served: the POC bin's volume, the largest
+    assert vp["max_volume"] == max(b[1] for b in vp["bins"]) == next(b[1] for b in vp["bins"] if b[0] == vp["poc"])
     at = [(_dt.fromtimestamp(b["timestamp"] / 1000, te.ET), b) for b in fx["bars"]]
     rth = [b for d, b in at if d.date().isoformat() == "2026-09-25" and te.session_label(d) == "RTH"]
     # every RTH bar's volume is in the profile; the 15:59 bar sent no volume, cannot be placed, and
@@ -228,7 +230,7 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served(held, monkeyp
     ages = [c["stream"][0]["age_sec"] for c in surf["cells"] if c["stream"][0] and c["stream"][0]["age_sec"] is not None]
     assert ages and max(ages) == pytest.approx(90, abs=1)
     body = json.loads(server.get_options_gamma_surface(ticker=TK).body)
-    assert body["front_expiry"] == EXPIRY
+    assert [e["expiry"] for e in body["expirations"] if e["front"]] == [EXPIRY]
 
 
 def test_chain_flags_are_served(held):

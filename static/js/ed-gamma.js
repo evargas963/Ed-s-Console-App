@@ -76,29 +76,19 @@
     }
     return row[measure] || [];
   }
-  // each cell's streaming state in words (the served state)
-  var STATE_TITLE = {
-    partial: 'one side of this cell is streaming',
-    stale: 'this cell has stopped streaming',
-    pending: 'streaming requested, no update yet',
-    daemon_unavailable: 'the capture daemon is not reachable',
-    rejected: 'Schwab refused this contract’s stream',
-    unavailable: 'not streaming',
-  };
-  // each column's streaming state in words (the served stream_by_expiry)
-  var COLUMN_TITLE = {
-    live: 'streaming', partial: 'partly streaming', stale: 'stopped streaming',
-    pending: 'streaming requested', daemon_unavailable: 'the capture daemon is not reachable',
-    rejected: 'Schwab refused the stream', unavailable: 'not streaming',
-  };
-
   // the heatmap's streamed-contract demand is kept per ticker ('heatmap:<ticker>'), so one ticker's
   // demand never replaces another's in EdStream's union
   function _heatmapOwnerKey(tk) { return 'heatmap:' + (tk || ''); }
 
-  var _pan = (window.EdShell && window.EdShell.newPan) ? window.EdShell.newPan() : { centre: null, shift: 0, served: null };
+  // the words for each cell's and column's streaming state, served in the page (meta
+  // ed-stream-words, server.STREAM_WORDS)
+  var WORDS = JSON.parse(document.querySelector('meta[name="ed-stream-words"]').getAttribute('content'));
+  var _pan = window.EdShell.newPan();
   var _panTicker = null;
   var _lastSurface = null, _lastRevision = null, _pendingTicker = null;
+  // the surface_seq of the publication on screen, sent back as `since`: the server marks the cells
+  // that changed in the publications after it (they flash once)
+  var _drawnSeq = null;
 
   function paintChip(cov) {   // the header's coverage chip: the served words
     var el = document.getElementById('heatScope'); if (!el) return;
@@ -124,11 +114,12 @@
     if (b) host.insertAdjacentHTML('afterbegin', b);
     var wrap = host.querySelector('.heat-wrap');
     if (wrap) wrap.classList.toggle('recede', surface.live === false || !!surface.stale);
-    paintChip((surface.view || {}).coverage);
+    paintChip(surface.view.coverage);
   }
 
-  // ---- render the window the server sent (no math on its values) ----
-  function renderSurface(host, surface) {
+  // ---- render the window the server sent (no math on its values). `fresh`: a new read, whose
+  // changed cells flash; a redraw of the read on screen (theme, measure) flashes nothing ----
+  function renderSurface(host, surface, fresh) {
     var tk = _pendingTicker || (surface && surface.ticker);
     if (!surface || surface.available === false) {
       // every exit states the heatmap's demand, "none" included
@@ -139,8 +130,8 @@
         '<div class="sm">' + escapeHtml((surface && surface.reason) || 'no console / no live surface for this symbol') + '</div></div>';
       return;
     }
-    var view = surface.view || {};
-    if (window.EdShell && window.EdShell.panServed) window.EdShell.panServed(_pan, view.centre);
+    var view = surface.view;
+    window.EdShell.panServed(_pan, view.centre);
     if (view.missing_expiry) {   // the selected expiry is not in this surface: nothing is drawn or streamed
       window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(tk));
       _lastSurface = surface; _lastRevision = null;
@@ -150,17 +141,19 @@
       return;
     }
     // stream every contract drawn (the served list); each cell's outcome comes back as its state
-    window.EdStream.setAdditionalContracts(view.demand || [], _heatmapOwnerKey(tk));
+    window.EdStream.setAdditionalContracts(view.demand, _heatmapOwnerKey(tk));
     var measure = (window.EdShell && window.EdShell.getMeasure) ? window.EdShell.getMeasure() : 'gex';
     _lastSurface = surface;
     // the table is rebuilt only for a new publication or a new window, else its status refreshes
     var rev = [surface.ticker, surface.surface_seq, view.scope, view.centre, measure,
       (surface.expirations || []).map(function (e) { return e.expiry; }).join(',')].join('|');
+    if (fresh) _drawnSeq = surface.surface_seq;
     if (rev === _lastRevision && host.querySelector('.heat')) {
       applyStatus(host, surface); applyStrikeHighlight(host);
       return;
     }
     _lastRevision = rev;
+    var words = WORDS;
     var exps = surface.expirations || [], cells = surface.cells || [];
     var maxAbs = view.max_abs[measure], heat = readHeatColors();
     var live = surface.live !== false, stale = !!surface.stale;
@@ -168,21 +161,22 @@
     exps.forEach(function (e, j) {
       var dte = e.expired ? 'EXPIRED' : (e.dte === 0) ? '0DTE' : (e.dte != null ? e.dte + 'DTE' : '');
       var title = e.expired ? 'expired: a prior-session column, not current structure'
-        : (COLUMN_TITLE[(surface.stream_by_expiry || {})[e.expiry]] || '');
+        : (words.column[(surface.stream_by_expiry || {})[e.expiry]] || '');
       tbl += '<th class="hexp' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') + '" data-col="' + j +
         '" title="' + escapeHtml(title) + '"><span class="d">' + escapeHtml((e.expiry || '').slice(5)) +
         '</span><span class="dte">' + dte + '</span></th>';
     });
     tbl += '</tr></thead><tbody>';
     cells.slice().reverse().forEach(function (row) {   // highest strike at the top
-      var mrow = _measureRow(row, measure), changed = (row.changed || {})[measure] || [];
+      // only a row with a change carries `changed`; a redraw flashes nothing
+      var mrow = _measureRow(row, measure), changed = fresh && row.changed ? row.changed[measure] : [];
       tbl += '<tr' + (row.spot ? ' class="spotrow"' : '') + '><th class="hstrike' + (row.spot ? ' spot' : '') + '">' +
         fmtStrike(row.strike) + '</th>';
       exps.forEach(function (e, j) {
         var v = mrow[j], st = cellStyle(v, maxAbs, heat);
         var cellState = (row.stream || [])[j], liveState = cellState ? cellState.state : null;
         var reason = liveState === 'rejected' ? ((cellState.call || {}).rejected_reason || (cellState.put || {}).rejected_reason) : null;
-        var stateTitle = (STATE_TITLE[liveState] || '') + (reason ? ' (' + reason + ')' : '');
+        var stateTitle = (words.cell[liveState] || '') + (reason ? ' (' + reason + ')' : '');
         tbl += '<td class="hcell' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') +
           (changed[j] ? ' flash-update' : '') + (liveState ? ' state-' + liveState : '') +
           '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
@@ -197,8 +191,9 @@
     });
     tbl += '</tbody></table>';
     // a pan is never silent: the strikes stop following the price until a double-click
-    var note = _pan.centre != null ? '<div class="heat-pan">Panned to ' + fmtStrike(_pan.served) +
-      ' · double-click the strikes to follow the price</div>' : '';
+    var note = (_pan.centre != null ? '<div class="heat-pan">Panned to ' + fmtStrike(_pan.served) +
+      ' · double-click the strikes to follow the price</div>' : '') +
+      (view.note ? '<div class="heat-pan">' + escapeHtml(view.note) + '</div>' : '');   // why not around the price
     var MEASURE_LEGEND = {
       gex: ['High<br>Call<br>GEX', 'High<br>Put<br>GEX'],
       dex: ['High<br>Call<br>DEX', 'High<br>Put<br>DEX'],
@@ -223,14 +218,12 @@
     });
     var firstRow = host.querySelector('tbody tr');
     var rowPx = firstRow && firstRow.getBoundingClientRect ? firstRow.getBoundingClientRect().height : 0;
-    if (window.EdShell && window.EdShell.wireStrikeAxis) {
-      window.EdShell.wireStrikeAxis(host.querySelectorAll('.hstrike, .hcorner'), host.querySelector('.heat-wrap'), _pan, rowPx, load);
-    }
+    window.EdShell.wireStrikeAxis(host.querySelectorAll('.hstrike, .hcorner'), host.querySelector('.heat-wrap'), _pan, rowPx, load);
     // the shared selection starts on the spot strike and the front expiry (never over a choice made)
     var spotRow = cells.filter(function (c) { return c.spot; })[0];
-    var front = exps.filter(function (e) { return e.front; })[0] || exps[0];
-    if (window.EdShell && window.EdShell.getState().selStrike == null && spotRow) {
-      window.EdShell.setStrike(spotRow.strike, (window.EdShell.getExpiry && window.EdShell.getExpiry()) || (front || {}).expiry || null);
+    var front = exps.filter(function (e) { return e.front; })[0];
+    if (window.EdShell.getState().selStrike == null && spotRow) {
+      window.EdShell.setStrike(spotRow.strike, window.EdShell.getExpiry() || (front ? front.expiry : null));
     }
     applyStrikeHighlight(host);
     paintChip(view.coverage);
@@ -264,11 +257,11 @@
     return s.workspace === 'options' && _isGammaFamilySubview(s.subview) && s.view === 'heatmap' && (s.ticker || '') === ticker;
   }
   function surfaceUrl(ticker, host) {
-    var ES = window.EdShell;
-    var expiry = (ES && ES.getExpiry) ? ES.getExpiry() : null;
+    var expiry = window.EdShell.getExpiry();
     return '/api/options/gamma-surface?ticker=' + encodeURIComponent(ticker) +
-      (ES && ES.windowQuery ? ES.windowQuery(_pan) : '') + '&cols=' + autoColCount(host) +
-      (expiry ? '&expiry=' + encodeURIComponent(expiry) : '');
+      window.EdShell.windowQuery(_pan) + '&cols=' + autoColCount(host) +
+      (expiry ? '&expiry=' + encodeURIComponent(expiry) : '') +
+      (_drawnSeq != null ? '&since=' + _drawnSeq : '');
   }
   // only the network fetch is coalesced (keyed on ticker: a newer ticker aborts the older read)
   function loadImpl(ticker, signal) {
@@ -277,7 +270,7 @@
     host.setAttribute('aria-busy', 'true');
     return fetch(surfaceUrl(ticker, host), { cache: 'no-store', signal: signal })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d); })
+      .then(function (d) { if (stillCurrent(ticker)) renderSurface(host, d, true); })
       .catch(function (e) {
         if (e && e.name === 'AbortError') return;   // superseded by a newer read -- that one renders
         if (stillCurrent(ticker)) renderSurface(host, { available: false, ticker: ticker, reason: 'no console serving /api/options/gamma-surface' });
@@ -298,7 +291,7 @@
     if (_pendingTicker && _pendingTicker !== nextTicker) {
       window.EdStream.setAdditionalContracts([], _heatmapOwnerKey(_pendingTicker));   // the ticker just left
     }
-    if (_panTicker !== nextTicker) { _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker; }
+    if (_panTicker !== nextTicker) { _pan.centre = null; _pan.shift = 0; _panTicker = nextTicker; _drawnSeq = null; }
     _pendingTicker = nextTicker;
     _loader.trigger(_pendingTicker);
   }

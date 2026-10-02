@@ -95,6 +95,30 @@ test.describe('the Gamma presentation scope', () => {
     await expect.poll(rows).toBe(WINDOW.all.length);
   });
 
+  test('a drag that ends while a read is in flight settles where the drag ended', async ({ page }) => {
+    // 2026-10-01 review: a read answered mid-drag reset the pan to its window, and the read still
+    // held behind it then asked for that window, so a fast drag snapped back.
+    const reads = [];
+    await page.route('**/api/terrain/strikes**', async (route) => {
+      const q = new URL(route.request().url()).searchParams;
+      reads.push({ centre: q.get('centre'), shift: q.get('shift') });
+      if (q.get('centre') != null) await new Promise((r) => setTimeout(r, 400));   // a slow answer
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(strikesFor(q.get('scope'))) });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const label = page.locator('#gbsBody .gbs-row.spot .gbs-k');      // the row at the price, in view
+    await expect(label).toBeVisible();
+    const box = await label.boundingBox();
+    const rowH = await page.locator('#gbsBody .gbs-row').first().evaluate((el) => el.getBoundingClientRect().height);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    for (let i = 1; i <= 3; i++) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + i * rowH);
+    await page.mouse.up();
+    await expect.poll(() => reads[reads.length - 1], { timeout: 5000 }).toEqual({ centre: '100', shift: '3' });
+    await page.waitForTimeout(1000);                                 // every held read has run
+    expect(reads[reads.length - 1]).toEqual({ centre: '100', shift: '3' });
+  });
+
   test('the scope choice persists across reloads (ed_scope)', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
