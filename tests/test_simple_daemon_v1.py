@@ -14,6 +14,7 @@ from collections import defaultdict
 
 import pytest
 
+import push_changes
 import stream_spine as ss
 from app.market_data.schwab.streaming import capture as cap
 from app.market_data.schwab.streaming.live_push import serve_live_push
@@ -59,13 +60,21 @@ def test_requests_are_split_under_schwabs_message_limit():
 
 # ------------------------------------------------------------------ the wanted list
 
-def test_the_wanted_list_survives_a_restart_and_a_change_clears_that_services_refusals(tmp_path):
+def test_the_wanted_list_is_the_consoles_now_and_a_change_clears_that_services_refusals():
+    """The list is what the console says now: a daemon starts with none (it never streams books or
+    contracts no console asked for since it started), and a list withdrawn (the console gone) is
+    none."""
     bus, health = ss.MessageBus(), ss.HealthRegistry()
-    d = cap.Daemon(bus, health, tmp_path / "w.json")
-    assert d.wanted == _wanted(), "no built-in symbol list: the console decides"
-    d.set_wanted({"NYSE_BOOK": ["spy"], "LEVELONE_OPTIONS": ["SPY   261120C00875000"], "BOGUS": ["X"]})
-    assert cap.Daemon(bus, health, tmp_path / "w.json").wanted == _wanted(
-        NYSE_BOOK=["SPY"], LEVELONE_OPTIONS=["SPY   261120C00875000"])
+    d = cap.Daemon(bus, health)
+    assert d.wanted == _wanted() and d.active is None, "no built-in symbol list: the console decides"
+    d.set_wanted({"active": "spy", "NYSE_BOOK": ["spy"], "LEVELONE_OPTIONS": ["SPY   261120C00875000"],
+                  "BOGUS": ["X"]})
+    assert d.wanted == _wanted(NYSE_BOOK=["SPY"], LEVELONE_OPTIONS=["SPY   261120C00875000"])
+    assert d.active == "SPY"
+    assert cap.Daemon(bus, health).wanted == _wanted(), "a daemon that starts holds no earlier list"
+    d.set_wanted(None)                                   # the console's connection ended
+    assert d.wanted == _wanted() and d.active is None
+    d.set_wanted({"NYSE_BOOK": ["spy"], "LEVELONE_OPTIONS": ["SPY   261120C00875000"]})
     d.refused = {s: {} for s in cap.SERVICES}
     d.refused["NYSE_BOOK"] = {"SPY": "x"}
     d.refused["LEVELONE_OPTIONS"] = {"ZZZ": "x"}
@@ -77,7 +86,7 @@ def test_every_board_ticker_and_every_equity_the_screens_show_is_streamed(tmp_pa
     """Every board ticker is streamed on LEVELONE_EQUITIES, CHART_EQUITY and NEWS_HEADLINE beside
     every equity the console's screens show (the watchlist, the header's context, the ticker on
     screen)."""
-    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json", board=["$SPX", "SPY"])
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), board=["$SPX", "SPY"])
     d.set_wanted({"LEVELONE_EQUITIES": ["AMD"], "CHART_EQUITY": ["AMD"], "NEWS_HEADLINE": ["AMD"],
                   "NYSE_BOOK": ["SPY"]})
     w = d.all_wanted()
@@ -87,14 +96,14 @@ def test_every_board_ticker_and_every_equity_the_screens_show_is_streamed(tmp_pa
 
 
 def test_the_ticker_on_screen_is_the_chain_sweeps_active_ticker(tmp_path):
-    """Operator 2026-10-01: the active ticker's chain is fetched ahead of the board. The ticker
-    whose books the console asks for is the one on screen."""
-    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json", board=["SPY"])
+    """The ticker on screen's chain is fetched ahead of the board. The console names it
+    (`active`); the daemon never works it out from another list (such as the books)."""
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), board=["SPY"])
     d.chains = cap.ChainSweep(tmp_path / "x.db", d.board, lambda t, m: None)
-    d.set_wanted({"NYSE_BOOK": ["MU"], "NASDAQ_BOOK": ["MU"]})
+    d.set_wanted({"active": "MU", "NYSE_BOOK": ["MU"], "NASDAQ_BOOK": ["MU"]})
     assert d.chains._next(0.0) == "MU"
-    d.set_wanted({"NYSE_BOOK": ["TSLA"], "NASDAQ_BOOK": ["TSLA"]})
-    assert d.chains._next(0.0) == "TSLA"
+    d.set_wanted({"active": "TSLA", "NYSE_BOOK": ["AAPL"], "NASDAQ_BOOK": ["AAPL"]})
+    assert d.chains._next(0.0) == "TSLA", "the named ticker, not the books"
 
 
 # ------------------------------------------------------------------ sync against a fake Schwab
@@ -116,7 +125,7 @@ class FakeSchwab:
 def _daemon(tmp_path, monkeypatch, fake, board=(), **wanted):
     bus = ss.MessageBus()
     log = bus.subscribe("sub.", maxsize=100)
-    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json", board=list(board))
+    d = cap.Daemon(bus, ss.HealthRegistry(), board=list(board))
     d.set_wanted({k: list(v) for k, v in wanted.items()})
     d.stream = object()
     monkeypatch.setattr(cap, "_request", fake.request)
@@ -262,7 +271,7 @@ def test_a_dying_connection_is_replaced_and_everything_wanted_is_resubscribed(tm
     fake = FakeSchwab()
     monkeypatch.setattr(cap, "_request", fake.request)
     bus = ss.MessageBus()
-    d = cap.Daemon(bus, ss.HealthRegistry(), tmp_path / "w.json", board=["SPY"])
+    d = cap.Daemon(bus, ss.HealthRegistry(), board=["SPY"])
     d.set_wanted({"NYSE_BOOK": ["SPY"]})
     stop = asyncio.Event()
 
@@ -295,7 +304,7 @@ def test_silence_from_schwab_ends_the_connection(tmp_path, monkeypatch):
     monkeypatch.setattr(cap, "_open_stream", FakeStream)
     monkeypatch.setattr(cap, "DEAD_SEC", 0.2)
     monkeypatch.setattr(cap, "_request", FakeSchwab().request)
-    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), tmp_path / "w.json")
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry())
 
     async def go():
         await d.run_connection(object(), asyncio.Event())
@@ -353,33 +362,49 @@ def _free_port() -> int:
 
 
 def test_the_console_socket_carries_the_wanted_list_in_and_the_status_out():
+    """The daemon holds the list of the connection that sent it last; that connection ending
+    withdraws it, and another connection ending (an old one noticed closed after the console
+    reconnected) does not."""
     from websockets.asyncio.client import connect
-    got, port = [], _free_port()
+    port, stats = _free_port(), {}
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry())
+
+    async def until(cond):
+        for _ in range(250):
+            if cond():
+                return
+            await asyncio.sleep(0.02)
+        raise AssertionError("not reached")
 
     async def go():
         stop = asyncio.Event()
         server = asyncio.create_task(serve_live_push(
-            ss.MessageBus(), stop, port=port, heartbeat_fn=lambda: {"schwab_socket_open": True},
-            on_wanted=got.append))
+            ss.MessageBus(), stop, port=port, stats=stats, heartbeat_fn=lambda: {"schwab_socket_open": True},
+            on_wanted=d.set_wanted))
         for _ in range(100):
             try:
-                ws = await connect(f"ws://127.0.0.1:{port}")
+                a = await connect(f"ws://127.0.0.1:{port}")
                 break
             except OSError:
                 await asyncio.sleep(0.05)
-        async with ws:
-            await ws.send(json.dumps({"op": "wanted", "wanted": {"NYSE_BOOK": ["SPY"]}}))
-            env = json.loads(await asyncio.wait_for(ws.recv(), 5))
-            for _ in range(50):
-                if got:
-                    break
-                await asyncio.sleep(0.02)
+        env = json.loads(await asyncio.wait_for(a.recv(), 5))
+        await a.send(json.dumps({"op": "wanted", "wanted": {"active": "SPY", "NYSE_BOOK": ["SPY"]}}))
+        await until(lambda: d.active == "SPY")
+        b = await connect(f"ws://127.0.0.1:{port}")               # the console reconnects
+        await b.send(json.dumps({"op": "wanted", "wanted": {"active": "MU", "NYSE_BOOK": ["MU"]}}))
+        await until(lambda: d.active == "MU")
+        await a.close()                                           # the old connection's end is noticed
+        await until(lambda: stats["clients"] == 1)                # the server has handled it
+        kept = (d.active, d.wanted["NYSE_BOOK"])
+        await b.close()                                           # the console's own connection ends
+        await until(lambda: d.active is None)
         stop.set()
         await asyncio.wait_for(server, 5)
-        return env
-    env = asyncio.run(go())
+        return env, kept
+    env, kept = asyncio.run(go())
     assert env == {"topic": "daemon.heartbeat", "msg": {"schwab_socket_open": True}}
-    assert got == [{"NYSE_BOOK": ["SPY"]}]
+    assert kept == ("MU", frozenset({"MU"})), "another connection's end leaves the live list"
+    assert d.wanted["NYSE_BOOK"] == frozenset(), "withdrawn when the connection that sent it ended"
 
 
 # ------------------------------------------------------------------ the console side
@@ -387,7 +412,7 @@ def test_the_console_socket_carries_the_wanted_list_in_and_the_status_out():
 @pytest.fixture
 def console(monkeypatch):
     from app.options.order_flow import streaming as ofs
-    monkeypatch.setattr(ofs, "_active_ticker", None)
+    monkeypatch.setattr(push_changes, "_open", [])
     monkeypatch.setattr(ofs, "_active_option_contract", None)
     monkeypatch.setattr(ofs, "_active_option_contracts", [])
     import live_market_plane as lmp
@@ -397,13 +422,13 @@ def console(monkeypatch):
 
 def test_the_console_wants_the_tickers_equity_book_and_contracts(console):
     ofs = console
-    ofs._active_ticker = "NVDA"
+    push_changes.subscribe("NVDA")                       # a page open on NVDA
     ofs._active_option_contract = "NVDA  261016C00200000"
     ofs._active_option_contracts = ["NVDA  261016C00210000"]
     w = ofs.current_wanted()
     assert w["LEVELONE_EQUITIES"] == w["CHART_EQUITY"] == w["NEWS_HEADLINE"]
     assert w["LEVELONE_EQUITIES"][:4] == ["NVDA", *ofs.MARKET_CONTEXT_SYMBOLS]
-    assert w["NYSE_BOOK"] == w["NASDAQ_BOOK"] == ["NVDA"]
+    assert w["active"] == "NVDA" and w["NYSE_BOOK"] == w["NASDAQ_BOOK"] == ["NVDA"]
     assert w["OPTIONS_BOOK"] == ["NVDA  261016C00200000"]
     assert w["LEVELONE_OPTIONS"] == ["NVDA  261016C00200000", "NVDA  261016C00210000"]
 
@@ -419,7 +444,7 @@ def test_every_desired_state_change_is_sent_once(console):
     async def go():
         t = asyncio.create_task(ofs._send_wanted(WS()))
         await asyncio.sleep(0.05)
-        ofs.set_streaming_active_ticker("AMD")
+        push_changes.subscribe("AMD")                    # a page opens on AMD
         await asyncio.sleep(0.05)
         t.cancel()
     asyncio.run(go())
@@ -439,21 +464,27 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(cons
               "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]},
               "refused": {"LEVELONE_OPTIONS": {"C": "code 19"}}}
 
+    def diag(sym):     # the served option-contract diagnostics for `sym`
+        return ofs.get_option_contract_streaming_diagnostics(sym)
+
     def readers():
         return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES"), lmp.feed_live_for("A", "LEVELONE_OPTIONS"),
-                ofs._service_feed("A", "OPTIONS_BOOK")["state"], ofs.is_option_producer_daemon_available())
+                diag("A")["feed_health"]["book"]["state"], ofs.is_option_producer_daemon_available())
+
+    def held(sym):
+        return diag(sym)["producer_l1_contract"], diag(sym)["producer_book_contract"]
 
     assert readers() == (False, False, "NOT LIVE", False)
     limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
     lmp.record_feed_heartbeat(status, time.time() - limit + 0.5)
     assert readers() == (True, True, "LIVE", True)
-    assert ofs._service_feed("A", "OPTIONS_BOOK")["age_sec"] == 45.0
+    assert diag("A")["feed_health"]["book"]["age_sec"] == 45.0
     assert not lmp.feed_live_for("B", "OPTIONS_BOOK")               # held on L1 only
-    assert ofs.read_producer_admitted_option_contracts() == {"LEVELONE_OPTIONS": ["A", "B"], "OPTIONS_BOOK": ["A"]}
+    assert held("B") == ("B", "A")                                  # B held on L1, the book holds A
     assert ofs.read_producer_rejected_option_contracts() == {"C": "code 19"}
     lmp.record_feed_heartbeat(status, time.time() - limit - 0.5)
     assert readers() == (False, False, "NOT LIVE", False)
-    assert ofs.read_producer_admitted_option_contracts() == {"LEVELONE_OPTIONS": [], "OPTIONS_BOOK": []}
+    assert held("B") == (None, None)
     lmp.record_feed_heartbeat({**status, "schwab_socket_open": False}, time.time())
     assert readers() == (False, False, "NOT LIVE", True)             # the daemon is up, Schwab is not
 

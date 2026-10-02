@@ -39,7 +39,7 @@ Schwab sends is taken as sent (rule 2), never computed.
 | Process | Started by | What it does |
 |---|---|---|
 | **Capture daemon** | `start_capture_daemon.bat` (its own window, restarts itself) | The only part that talks to Schwab. Holds the board, the background tickers (the `logging_universe` table, read at its start, each row as its storage key, a row that is not a symbol left off and logged; no database yet is an empty board; the screen does not edit it). Holds the one Schwab WebSocket: streams every board ticker's quotes, 1-minute bars and news, and every symbol the console asks for. Fetches full option chains over REST (`ChainSweep`, `calibration/complete_chain_capture.py`, on its own threads): the active ticker (the one on screen) back to back, ahead of everything, and every board ticker in turn without end; hands each chain to the console. Every Schwab message goes once onto its in-memory message bus, and from there to its database writer, the console and the browser's price socket. Keeps the latest equity quote per symbol in memory to build the price row the browser shows. Writes the first chain of each ticker fetched in each capture window to the chain history in `ed_console.db` (decision 7). |
-| **Console** | `start_ed_console.bat` (`uvicorn server:app`, port 8000) | Makes no Schwab call. Receives the daemon's messages (books, option quotes, the equity tape, the chains) and finished price rows, and the board on its heartbeat; it keeps no price of its own. Prices each chain the daemon delivers into the levels (a viewed ticker's first) and keeps them in memory. Writes the 1-minute bars and level crosses to its own database. Serves the page and every `/api` route. Tells the daemon every symbol and option contract its screens show. |
+| **Console** | `start_ed_console.bat` (`uvicorn server:app`, port 8000) | Makes no Schwab call. Receives the daemon's messages (books, option quotes, the equity tape, the chains) and finished price rows, and the board on its heartbeat; it keeps no price of its own. Prices each chain the daemon delivers into the levels (the ticker on screen's first) and keeps them in memory. Writes the 1-minute bars and level crosses to its own database. Serves the page and every `/api` route. Tells the daemon every symbol and option contract its screens show. |
 | **Browser** | the operator | Loads one page from the console. Gets prices pushed from the daemon for the symbols it shows (its own watchlist, the header's context, the ticker on screen); gets change signals (levels, chain, flow, liquidity) and the session label pushed from the console; reads everything else from the console's `/api` routes. |
 
 ### 3.2 How they talk
@@ -49,9 +49,9 @@ Schwab sends is taken as sent (rule 2), never computed.
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
 | Schwab → daemon | Schwab REST | full option chains, each with its contracts' quotes (their Greeks, §3.4 Option chain) |
 | daemon → console | local WebSocket 127.0.0.1:8799 | every Schwab message as sent, on connect the current state first; each chain in parts of 500 contracts (`chain.TK`: part i of n, with its fetch time; a failed fetch with Schwab's answer); the heartbeat every second, carrying the board and the chain sweep's last round time |
-| console → daemon | same socket | the "wanted" list, every symbol per Schwab service, no cap: the equities its screens show (the ticker on screen, the header's context `streaming.MARKET_CONTEXT_SYMBOLS`, the browser's watchlist; the daemon streams the board itself), the books of the ticker on screen (which makes it the chain sweep's active ticker; when no page shows a ticker, none), and the option contracts its views ask for (the primary contract only from a chain the console holds, refused otherwise (409)). Sent the moment it changes; the daemon compares it with what Schwab holds at once |
+| console → daemon | same socket | the "wanted" list, every symbol per Schwab service, no cap: the equities its screens show (the ticker on screen, the header's context `streaming.MARKET_CONTEXT_SYMBOLS`, the browser's watchlist; the daemon streams the board itself), the books of the ticker on screen, `active`: the ticker on screen (`push_changes.on_screen`, the newest open page's; the chain sweep's active ticker; when no page shows a ticker, none), and the option contracts its views ask for (the primary contract only from a chain the console holds, refused otherwise (409)). Sent on every connect and the moment it changes; the daemon compares it with what Schwab holds at once. The daemon holds the last list it was sent, in memory only, with the connection that sent it: when that connection ends (another connection ending leaves it), and after the daemon's restart, it streams the board alone until the console sends the list again |
 | daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
-| daemon → console | the same :8800 push | the same price rows, for the equities the console wants streamed and the board (`streaming._rows_wanted`, the board read from the heartbeat): the console's only live price |
+| daemon → console | the same :8800 push | the same price rows, for every equity the daemon holds on Schwab (`streaming._rows_wanted`: the heartbeat's held LEVELONE_EQUITIES, the console's wanted ones and the board as Schwab accepted them): the console's only live price |
 | console → browser | HTTP `/api/*` | everything else, on request |
 | console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`, `liquidity`) and the session label |
 
@@ -113,11 +113,11 @@ Schwab sends is taken as sent (rule 2), never computed.
   parts → the console (`streaming.assemble_chain_part`: a chain is priced only with every part;
   one that arrived incomplete, or a fetch that failed, keeps the last levels with that reason) →
   `_on_chain` → priced on one pricing thread (`_price_chain`; at most one chain of each ticker
-  waits, the newest, and a viewed ticker's is priced before the others waiting; a chain older
+  waits, the newest, and the ticker on screen's is priced before the others waiting; a chain older
   than the one held is never published, whether delivered or stored). The sweep runs on
   `CHAIN_WORKERS` (8) threads sharing one Schwab client, one fetch of a ticker at a time, at any
-  hour: the active ticker (the one whose books the console asks for: the ticker on screen, on or
-  off the board) is fetched back to back, taken again the moment its last fetch ends; the other
+  hour: the active ticker (the wanted frame's `active`: the ticker on screen, on or off the
+  board) is fetched back to back, taken again the moment its last fetch ends; the other
   workers fetch every board ticker in turn without end; no time of day removes a ticker from a
   round. Every request of one chain is sent at once: its date-range parts together, then its
   quote batches together (`fetch_full_chain`); each chain's contracts, parts, quote requests and
@@ -177,10 +177,20 @@ Schwab sends is taken as sent (rule 2), never computed.
   An ATR leg that cannot be computed is served absent with its reason (how many trading days or
   15-minute periods of bars exist; ATR(14) needs 15). None of these rules names a ticker; the
   board decides only which tickers are fetched and priced while no screen shows them. A viewed
-  ticker (a page has it open: its `/api/changes` connection, on any workspace; the one viewing
-  signal) is the daemon's active ticker, is repriced on every streamed tick, back to back with
-  no interval (the ticks that arrive during one reprice are all in the next), and is pushed to
-  the page the moment it changes; its heatmap reads "warming" until its first chain is priced. Levels older
+  ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
+  stream runs): it is repriced on every streamed tick, back to back with no interval (the ticks
+  that arrive during one reprice are all in the next), and pushed to the page the moment it
+  changes. The ticker on screen is the newest open page's (owner `push_changes.on_screen`;
+  listeners register by name, once each): it goes to the daemon as the wanted frame's `active`
+  (the chain sweep fetches it first, its books stream), its chain is priced before the others
+  waiting, and its option contract follows it (`server._follow_screen_contract`). When that owner
+  fails (no page streaming, the console down), no ticker is on screen: no books, no chain ahead
+  of the board, no option contract; the daemon drops the console's list when the connection that
+  sent it ends, and starts with none. With the daemon not reporting (no current heartbeat), no
+  ticker reads "warming": its reason says first that the daemon is not reporting, then any
+  other reason (no levels yet, stale levels). A viewed ticker that is on screen or on the board
+  reads "warming" until its first chain is priced; any other reads why no chain is fetched.
+  Levels older
   than two of the sweep's delivered rounds are stale with the reason (the daemon's last answer
   for its chain, or not delivered), whatever the hour.
   Its `spot` is the price the levels were computed at (`spot_source`, `spot_as_of_ts_utc`); the
@@ -188,10 +198,34 @@ Schwab sends is taken as sent (rule 2), never computed.
   with its reason.
 - **Heatmap cells.** Every strike Schwab listed in any expiry is a row; a cell is the book's
   value for its strike and expiry, exact. A cell with no value carries the code saying why
-  (`absent`, worded by the surface's `absent_reasons`, drawn by the page): no contract listed at
-  that strike in that expiry, or a contract there sent no open interest, multiplier or (with open
-  interest above 0) Greek, or no open interest or volume. The surface is served whenever the
-  levels projected one; no count of cells withholds it.
+  (`absent`, worded by the surface's `absent_reasons`, drawn by the page): "-" where no contract
+  is listed at that strike in that expiry, or that a contract there sent no open interest,
+  multiplier or (with open interest above 0) Greek, or no open interest or volume. The surface
+  is served whenever the levels projected one; no count of cells withholds it.
+- **Strike windows.** Every per-strike panel (the heatmap, GEX by strike, the chart's profiles,
+  vanna, charm, the migration) shows the window the server sends: `terrain_engine.strike_window`
+  picks the scope's strikes (Auto 11, Wider 23, All every one) around the strike nearest the
+  live price, or around the strike the operator panned to (`centre`, moved `shift` rows by a
+  drag), and each answer carries its `view`: the centre, the largest |value| drawn (the bar and
+  colour scale) and `note`: with no live price and no pan the rows are the middle of the chain,
+  and the note says so (`WINDOW_NO_PRICE`, drawn on the panel; no row is marked as the price).
+  The heatmap's view (`server._surface_view`) also picks the columns (the selected expiry
+  alone; for Auto the nearest unexpired the page fits, `cols`; Wider twice that; All every one;
+  an expired column is a past observation, drawn labelled EXPIRED, and with none unexpired Auto
+  draws the expired ones so labelled), marks the row at the price and the front column, names
+  the unexpired columns' contracts drawn (the page streams exactly these), names a selected
+  expiry the surface lacks (`missing_expiry`: nothing drawn or streamed), flashes each cell whose
+  value changed in a publication after `since`, the `surface_seq` the page last drew
+  (`_mark_changed` records the publication of each change, for the cells of each publication: a
+  strike or column that leaves and comes back starts afresh, as a new one does), and counts the unexpired cells drawn
+  that are streaming (`_stream_coverage`): the header chip's words, ALL STREAMING only when every
+  one is, N% STREAMING (the share rounded down; "<1%" under one), EXPIRED (every column drawn has
+  expired) or WARMING, with a one-line tooltip. The page is served the words for each cell's and
+  column's streaming state (meta `ed-stream-words`, `server.STREAM_WORDS`) and the scopes and
+  their words (meta `ed-scopes`); the volume profile serves its scale (`max_volume`). A
+  publication's `surface_seq` counts on from the console's start time, so `since` from before a
+  console restart is behind every new publication. The page sends the scope, its pan, the columns it fits
+  and the publication it drew; it picks, counts and compares nothing.
 - **Live.** Every value is the last one Schwab sent, served at any hour with Schwab's own time
   (the price with its TRADE_TIME, `trade_time_ct`); no clock of ours calls a value live or the
   market closed (operator 2026-10-01: "From Schwab's mouth to our UI's ears. Period."). Whether

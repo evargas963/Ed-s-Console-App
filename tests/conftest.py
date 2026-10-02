@@ -226,7 +226,7 @@ def view(monkeypatch):
     event loop is bound, so a change is recorded for the page but not delivered (another test's
     loop may be closed)."""
     import push_changes
-    monkeypatch.setattr(push_changes, "_clients", {})
+    monkeypatch.setattr(push_changes, "_open", [])
     monkeypatch.setattr(push_changes, "_loop", None)
 
     def open_(*tickers):

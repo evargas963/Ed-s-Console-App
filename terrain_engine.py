@@ -340,6 +340,30 @@ def nearest_strike(strikes, spot) -> float | None:
     return min(ks, key=lambda k: abs(k - float(spot)))
 
 
+#: The strikes a panel shows per scope: Auto and Wider a count centred on the price, All every one.
+SCOPES = ("auto", "wider", "all")
+SCOPE_ROWS = {"auto": 11, "wider": 23}
+
+
+def strike_window(strikes, centre, scope: str, shift: int = 0) -> "tuple[int, int, float | None]":
+    """The rows a per-strike panel shows, for every panel and the heatmap alike: (first index,
+    last index, the centre strike) into `strikes` (ascending). `scope`'s count of strikes centred
+    on the listed strike nearest `centre` (the operator's panned strike, else the price) moved
+    `shift` rows (a drag), held inside the list; every strike for "all"; the middle of the list
+    when there is no centre (no price). (0, -1, None) for no strikes."""
+    ks = [float(k) for k in strikes or []]
+    if not ks:
+        return 0, -1, None
+    n = None if scope == "all" else SCOPE_ROWS[scope]
+    k = nearest_strike(ks, centre)
+    c = ks.index(k) if k is not None else len(ks) // 2
+    c = min(len(ks) - 1, max(0, c + int(shift)))
+    if n is None or n >= len(ks):
+        return 0, len(ks) - 1, ks[c]
+    lo = min(max(0, c - (n - 1) // 2), len(ks) - n)
+    return lo, lo + n - 1, ks[c]
+
+
 def chain_ladder(contracts, spot) -> tuple[list[dict], int]:
     """One expiry's chain as the ladder draws it, and how many contracts it could not place (no
     strike, or a putCall other than CALL/PUT). Strikes high to low; per strike one row per listed

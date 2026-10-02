@@ -56,19 +56,20 @@ def test_a_contract_is_no_other_tickers_and_a_ticker_with_no_chain_has_none():
 
 
 def test_the_streamed_contract_follows_the_ticker_by_the_same_rule(monkeypatch):
-    """The page's ticker gets its front expiry's at-the-money call, for an index and a single
+    """The ticker on screen gets its front expiry's at-the-money call, for an index and a single
     name alike; a contract already desired for the ticker is kept (an SPXW contract for $SPX)."""
     chosen = []
     monkeypatch.setattr(ofs, "set_active_option_contract", lambda sym, **kw: chosen.append(sym) or True)
-    monkeypatch.setattr(server.lmp, "daemon_status", lambda: None)
+    monkeypatch.setattr(server.push_changes, "_open", [])
     for tk in _CHAINS:
         ofs._active_option_contract = None
-        server._ensure_default_option_contract(tk)
+        server.push_changes.subscribe(tk)                 # a page opens on the ticker
         with server._terrain_cache_lock:
             want = server._terrain_cache[tk]["_default_contract"]
         assert want and chosen[-1] == want and server._contract_is_for(want, tk)
     weekly = next(c["symbol"] for c in _SPX["contracts"] if c["symbol"].startswith("SPXW"))
     ofs._active_option_contract = weekly
     n = len(chosen)
-    server._ensure_default_option_contract("$SPX")
+    server.push_changes.subscribe("$SPX")
+    server._follow_screen_contract()
     assert len(chosen) == n                               # kept: it is $SPX's

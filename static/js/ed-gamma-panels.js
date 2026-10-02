@@ -135,8 +135,10 @@
   function loadGbsImpl(tk, _signal) {
     var host = document.getElementById('gbsBody');
     if (!stillGbsCtx(tk)) return;
-    // shared with ed-gamma-chart.js's read of the same endpoint: one network call
-    return window.EdL1SseGuards.sharedFetchJson('/api/terrain/strikes?ticker=' + encodeURIComponent(tk))
+    if (_gbsPanTicker !== tk) { _gbsPan.centre = null; _gbsPan.shift = 0; _gbsPanTicker = tk; }
+    // shared with ed-gamma-chart.js's read of the same window: one network call
+    return window.EdL1SseGuards.sharedFetchJson('/api/terrain/strikes?ticker=' + encodeURIComponent(tk) +
+        window.EdShell.windowQuery(_gbsPan))
       .then(function (d) { if (stillGbsCtx(tk)) renderGbs(host, d, tk); })
       .catch(function () {
         if (stillGbsCtx(tk)) renderGbs(host, null, tk);
@@ -161,153 +163,71 @@
           live: (d.today_source === 'terrain_live_cache' && d.levels_stale === false) })
       : '';
   }
-  // ---- Repo-wide chart interaction standard, adapted for this surface's real shape ----
-  // Same reasoning as ed-gamma.js's heatmap grid (see its own comment): a scrollable list of
-  // diverging bars has no continuous zoomable axis, and the strike window is already governed
-  // by the ONE canonical, shared scope policy (Auto/Wider/All, centred on spot). The missing
-  // capability is PAN: dragging the strike-label column (.gbs-k) sets a manual centre that
-  // persists until reset, without touching the existing whole-row click-to-select behaviour.
-  var _gbsPanAnchor = null, _gbsPanTicker = null;
-  var _gbsDragState = null, _gbsInteractionInstalled = false;
-  function installGbsInteractionOnce() {
-    if (_gbsInteractionInstalled || typeof document === 'undefined') return;
-    _gbsInteractionInstalled = true;
-    document.addEventListener('mousemove', function (e) {
-      if (!_gbsDragState) return;
-      var dy = e.clientY - _gbsDragState.startY;
-      if (Math.abs(dy) > 3) _gbsDragState.moved = true;
-      var rowsDelta = Math.round(dy / _gbsDragState.rowPx);
-      if (rowsDelta === _gbsDragState.lastRowsDelta) return;
-      _gbsDragState.lastRowsDelta = rowsDelta;
-      var strikes = _gbsDragState.strikes;
-      // GEX by Strike renders highest strike at the top (win is sorted b-a before the render
-      // loop below) -- same "content follows the cursor" direction as the heatmap grid.
-      var newIdx = Math.min(strikes.length - 1, Math.max(0, _gbsDragState.startIdx + rowsDelta));
-      _gbsPanAnchor = strikes[newIdx];
-      _gbsPanTicker = _gbsDragState.ticker;
-      rerenderGbsFromCache();
+  // A per-strike bar list (GEX, vanna, charm by strike): the window of `rows` the server sent
+  // ([strike, value, ...], ascending), drawn highest strike first, each bar's length its |value|
+  // against the served scale (view.max_abs). The strike labels pan the window (wireStrikeAxis ->
+  // `reload`); a pan is never silent. `opts`: `top` html above the list, `attrs(r)` and `cells(r)`
+  // a row's extra attributes and cells.
+  function drawStrikeBars(host, rows, view, pan, spotStrike, reload, opts) {
+    opts = opts || {};
+    window.EdShell.panServed(pan, view.centre);
+    var maxAbs = view.max_abs;   // at least |v| for every v drawn
+    var note = (opts.top || '') + (pan.centre != null ? '<div class="gbs-allexp">Panned to ' +
+      px(pan.served, pan.served % 1 ? 2 : 0) + ' · double-click a strike to follow the price</div>' : '') +
+      (view.note ? '<div class="gbs-allexp">' + esc(view.note) + '</div>' : '');   // why not around the price
+    var bars = '';
+    rows.slice().reverse().forEach(function (r) {
+      // a strike with no value is unknown: no bar, '—' (never a $0 bar)
+      var k = r[0], v = r[1] == null ? null : Number(r[1]);
+      var w = v == null || v === 0 ? 0 : Math.abs(v) / maxAbs * 100, pos = v != null && v >= 0;
+      bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '"' +
+        (opts.attrs ? opts.attrs(r) : '') + '>' +
+        '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
+        '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
+        '<span class="gbs-v ' + (v == null ? '' : pos ? 'pos' : 'neg') + '">' + (v == null ? '—' : usd(v)) + '</span>' +
+        (opts.cells ? opts.cells(r) : '') + '</div>';
     });
-    document.addEventListener('mouseup', function () { _gbsDragState = null; });
-  }
-  var _lastGbsPayload = null, _lastGbsPayloadTicker = null;
-  function rerenderGbsFromCache() {
-    var host = document.getElementById('gbsBody');
-    if (!host || _lastGbsPayloadTicker == null) return;   // nothing has rendered yet -- nothing to redraw from cache
-    renderGbs(host, _lastGbsPayload, _lastGbsPayloadTicker);
-  }
-  function wireGbsInteraction(host, ascStrikes, win, tk) {
-    installGbsInteractionOnce();
-    var centerStrike = win.length ? win[Math.floor(win.length / 2)][0] : null;
-    var centerIdx = Math.max(0, ascStrikes.indexOf(centerStrike));
-    var rowPx = 24;
+    // the bars scroll in their own area; the -/0/+ axis is pinned at the foot
+    host.innerHTML = '<div class="gbs-top">' + note + '</div>' +
+      '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
+      '<div class="gbs-scale"><span class="neg">−</span><span>0</span><span class="pos">+</span></div>';
+    host.querySelectorAll('.gbs-row').forEach(function (rr) {   // click a strike: every panel follows it
+      rr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
+    });
     var firstRow = host.querySelector('.gbs-row');
-    if (firstRow) { var r = firstRow.getBoundingClientRect(); if (r.height) rowPx = r.height; }
-    host.querySelectorAll('.gbs-k').forEach(function (el) {
-      el.style.cursor = 'ns-resize';
-      el.setAttribute('draggable', 'false');
-      el.addEventListener('dragstart', function (e) { e.preventDefault(); });
-      el.addEventListener('mousedown', function (e) {
-        _gbsDragState = { startY: e.clientY, rowPx: rowPx, strikes: ascStrikes, startIdx: centerIdx,
-          lastRowsDelta: 0, moved: false, ticker: tk };
-        e.preventDefault();
-        e.stopPropagation();   // never let this reach the row's own click-to-select listener
-      });
-      el.addEventListener('dblclick', function (e) {
-        _gbsPanAnchor = null; _gbsPanTicker = null; rerenderGbsFromCache(); e.stopPropagation();
-      });
-    });
-    var scroll = host.querySelector('.gbs-scroll');
-    if (scroll) {
-      scroll.addEventListener('wheel', function (e) {
-        // .gbs-scroll is itself overflow:auto (Wider/All available legitimately overflow it)
-        // so a plain wheel must keep scrolling it normally. Zoom only on ctrl/cmd+wheel, the
-        // same convention the heatmap grid uses for the identical reason.
-        if (!e.ctrlKey && !e.metaKey) return;
-        var ES = window.EdShell;
-        if (!ES || !ES.setScope || !ES.getScope) return;
-        e.preventDefault();
-        var order = ['auto', 'wider', 'all'];
-        var cur = order.indexOf(ES.getScope()); if (cur === -1) cur = 0;
-        var next = e.deltaY > 0 ? Math.min(order.length - 1, cur + 1) : Math.max(0, cur - 1);
-        if (next !== cur) ES.setScope(order[next]);
-      }, { passive: false });
-    }
+    window.EdShell.wireStrikeAxis(host.querySelectorAll('.gbs-k'), host.querySelector('.gbs-scroll'), pan,
+      firstRow ? firstRow.getBoundingClientRect().height : 0, reload);
+    var sr = host.querySelector('.gbs-row.spot');
+    if (sr && sr.scrollIntoView) sr.scrollIntoView({ block: 'center' });
   }
 
+  // GEX by Strike shows the window the server sends (scope, and the operator's pan)
+  var _gbsPan = window.EdShell.newPan(), _gbsPanTicker = null;
+
   function renderGbs(host, d, tk) {
-    _lastGbsPayload = d; _lastGbsPayloadTicker = tk;
-    // A manual pan persists across re-renders of the SAME ticker only (same contract as the
-    // heatmap grid's _panAnchor) -- switching tickers has nothing meaningful to persist against.
-    if (_gbsPanTicker !== tk) { _gbsPanAnchor = null; _gbsPanTicker = tk; }
     setGbsAsOf(d);
-    // Independent review, 2026-09-16 (CORRECTED): Number(d && d.spot) / Number(d.spot)
-    // fabricate a real, finite 0 whenever d is absent or d.spot is explicitly null
-    // (Number(null) === 0) -- absence must be checked before numeric conversion, not left to
-    // whatever Number() happens to do with it (see ed-gamma-chart.js's identical fix).
-    var _gbsSpotRaw = d ? d.spot : null;
-    var gbsSpot = (_gbsSpotRaw == null) ? NaN : Number(_gbsSpotRaw);
     var rows = d && d.today && d.today.all;
     if (!rows || !rows.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' +
         (d ? 'no banked per-strike gamma for this symbol' : 'no console serving /api/terrain/strikes') + '</div></div>';
       return;
     }
-    var spot = gbsSpot;
-    // #3: window around spot for readability (presentation), high strikes on top. The window is the
-    // ONE shared Gamma scope policy (EdShell.scopeSelect: Auto 11 strikes around spot / Wider / All
-    // available) — a COUNT, never a percentage (real SPY terrain is 216 strikes at $1 spacing; a
-    // ±6% window kept 92 of them and crushed the panel). `rows` is the current canonical input, so
-    // the disclosure below states exactly how many of them are on screen vs clipped; All available
-    // scrolls the complete population at the same row height.
-    var asc = rows;   // served in strike order
-    var ascStrikes = asc.map(function (r) { return r[0]; });
-    var sel = (window.EdShell && window.EdShell.scopeSelect)
-      ? window.EdShell.scopeSelect(ascStrikes, _gbsPanAnchor != null ? _gbsPanAnchor : d.spot_strike)
-      : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
-    var win = sel.idx.map(function (i) { return asc[i]; }).reverse();   // high strikes on top
-    var note = (window.EdShell && window.EdShell.scopeNote)
-      ? window.EdShell.scopeNote({ total: rows.length, shown: win.length }) : '';
-    // A manual pan is never silent (same discipline the heatmap grid's own note uses).
-    if (_gbsPanAnchor != null) note += '<div class="gbs-allexp">PANNED to ' + px(_gbsPanAnchor, _gbsPanAnchor % 1 ? 2 : 0) +
-      ' — not following spot; double-click a strike label to resume</div>';
-    // #5: /api/terrain/strikes is aggregate across expiries; if the workspace filters to one expiry,
-    // disclose that this ladder is still all-exp (per-expiry GEX-by-strike is not canonical here).
+    // /api/terrain/strikes is aggregate across expiries; with one expiry selected, say so
     var expOn = window.EdShell && window.EdShell.getExpiry && window.EdShell.getExpiry();
-    if (expOn) note += '<div class="gbs-allexp">ALL-EXP terrain · per-expiry GEX-by-strike not canonical here</div>';
-    var maxAbs = win.reduce(function (m, r) { return Math.max(m, Math.abs(Number(r[1]) || 0)); }, 0) || 1;
-    var spotStrike = d.spot_strike;   // served: the listed strike nearest the live price
     // yesterday's change per strike, served (migration.all.rows: [strike, today, prior, change])
     var chg = {}, mig = d.migration && d.migration.all;
     ((mig && mig.compared && mig.rows) || []).forEach(function (m) { chg[m[0]] = m[3]; });
-    var bars = '';
-    win.forEach(function (r) {
-      // r = [strike, net_gex_1pct$, session_volume] -- terrain_engine._per_strike_rows' own
-      // shape (server.py's _publish_levels keeps it, streamed or not).
-      // Independent-review finding (2026-09-12): r[2] (volume) reached this row and was never
-      // rendered. It is a MAGNITUDE (native totalVolume), never signed/colored like GEX$.
-      // a strike with no value is unknown: no bar, '—' (never a $0 bar)
-      var k = r[0], v = r[1] == null ? null : Number(r[1]), vol = r[2], w = v == null ? 0 : Math.min(100, Math.abs(v) / maxAbs * 100);
-      var pos = v != null && v >= 0;
-      bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '" data-volume="' + (vol == null ? '' : vol) + '">' +
-        '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
-        '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
-        '<span class="gbs-v ' + (v == null ? '' : pos ? 'pos' : 'neg') + '">' + (v == null ? '—' : usd(v)) + '</span>' +
-        '<span class="gbs-vol" title="session volume">' + fmtVol(vol) + '</span>' +
-        '<span class="gbs-chg" title="net GEX change vs the previous session">' +
-        (chg[k] == null ? '—' : usd(chg[k])) + '</span></div>';
+    // rows: [strike, net_gex_1pct$, session volume]; the volume is a count, never coloured
+    drawStrikeBars(host, rows, d.views.all, _gbsPan, d.spot_strike, loadGbs, {
+      top: expOn ? '<div class="gbs-allexp">all expiries</div>' : '',
+      attrs: function (r) { return ' data-volume="' + (r[2] == null ? '' : r[2]) + '"'; },
+      cells: function (r) {
+        return '<span class="gbs-vol" title="session volume">' + fmtVol(r[2]) + '</span>' +
+          '<span class="gbs-chg" title="net GEX change vs the previous session">' +
+          (chg[r[0]] == null ? '—' : usd(chg[r[0]])) + '</span>';
+      },
     });
-    // the bars scroll in their own area; the -/0/+ magnitude axis is PINNED at the foot so it is
-    // always visible without scrolling (reference behaviour).
-    host.innerHTML = '<div class="gbs-top">' + note + '</div>' +
-      '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
-      '<div class="gbs-scale"><span class="neg">−</span><span>0</span><span class="pos">+</span></div>';
-    host.querySelectorAll('.gbs-row').forEach(function (rr) {   // A: click a strike -> sync all panels
-      rr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
-    });
-    wireGbsInteraction(host, ascStrikes, win, tk);
     applyGbsHighlight(host);
-    var sr = host.querySelector('.gbs-row.spot');
-    if (sr && sr.scrollIntoView) sr.scrollIntoView({ block: 'center' });
   }
   function applyGbsHighlight(host) {
     host = host || document.getElementById('gbsBody'); if (!host) return;
@@ -454,142 +374,38 @@
     _setAdditionalContractsDemand([]);
   }
 
-  // ---------- Vanna / Charm by strike (operator field-inventory audit, 2026-09-13) ----------
-  // Both reuse the EXACT diverging-bar grammar GEX by Strike already uses (same CSS classes,
-  // same spot-centred scope window, same click-a-strike-to-select behavior) against the two
-  // new by-strike endpoints -- neither computes anything: /api/options/vanna-by-strike and
-  // /api/options/charm-by-strike both wrap already-canonical, already-tested faucets
-  // (math_exposure_core's call_vanna/put_vanna, math_levels.compute_charm_by_strike). No
-  // volume column (these endpoints carry none) and no Strike-Detail cross-sync (unlike GEX,
-  // neither panel is a value Strike Detail's own Net cell reads).
+  // ---------- Vanna / Charm by strike: the same bar list (drawStrikeBars), each its own pan ----------
   function _mkStrikeBar(kind, endpoint, hostId, srcId) {
     function inSub() {
       var s = (window.EdShell && window.EdShell.getState()) || {};
       return s.workspace === 'options' && s.subview === kind;
     }
     function stillCtx(tk) { var host = document.getElementById(hostId); return inSub() && !!host && ticker() === tk; }
-    // Independent-review finding (2026-09-14, operator audit): this factory emits the EXACT
-    // same .gbs-row/.gbs-k/.gbs-scroll grammar renderGbs (GEX by Strike) does, but the
-    // repo-wide chart interaction standard (drag-to-pan the strike window, ctrl/cmd+wheel to
-    // cycle the canonical scope, double-click reset) was only ever wired onto renderGbs -- a
-    // SECOND instance of the identical bar-list surface, missed because it lives in its own
-    // closure under a different name. Vanna and Charm by Strike each get their OWN pan state
-    // (one _mkStrikeBar call per kind), the same isolation _view has per canvas/SVG chart.
-    var _panAnchor = null, _panTicker = null;
-    var _dragState = null, _interactionInstalled = false;
-    function installInteractionOnce() {
-      if (_interactionInstalled || typeof document === 'undefined') return;
-      _interactionInstalled = true;
-      document.addEventListener('mousemove', function (e) {
-        if (!_dragState) return;
-        var dy = e.clientY - _dragState.startY;
-        if (Math.abs(dy) > 3) _dragState.moved = true;
-        var rowsDelta = Math.round(dy / _dragState.rowPx);
-        if (rowsDelta === _dragState.lastRowsDelta) return;
-        _dragState.lastRowsDelta = rowsDelta;
-        var strikes = _dragState.strikes;
-        var newIdx = Math.min(strikes.length - 1, Math.max(0, _dragState.startIdx + rowsDelta));
-        _panAnchor = strikes[newIdx];
-        _panTicker = _dragState.ticker;
-        rerenderFromCache();
-      });
-      document.addEventListener('mouseup', function () { _dragState = null; });
-    }
-    var _lastPayload = null, _lastTicker = null;
-    function rerenderFromCache() {
-      var host = document.getElementById(hostId);
-      if (!host || _lastTicker == null) return;
-      renderIt(host, _lastPayload, _lastTicker);
-    }
-    function wireInteraction(host, ascStrikes, win, tk) {
-      installInteractionOnce();
-      var centerStrike = win.length ? win[Math.floor(win.length / 2)][0] : null;
-      var centerIdx = Math.max(0, ascStrikes.indexOf(centerStrike));
-      var rowPx = 24;
-      var firstRow = host.querySelector('.gbs-row');
-      if (firstRow) { var r = firstRow.getBoundingClientRect(); if (r.height) rowPx = r.height; }
-      host.querySelectorAll('.gbs-k').forEach(function (el) {
-        el.style.cursor = 'ns-resize';
-        el.setAttribute('draggable', 'false');
-        el.addEventListener('dragstart', function (e) { e.preventDefault(); });
-        el.addEventListener('mousedown', function (e) {
-          _dragState = { startY: e.clientY, rowPx: rowPx, strikes: ascStrikes, startIdx: centerIdx,
-            lastRowsDelta: 0, moved: false, ticker: tk };
-          e.preventDefault();
-          e.stopPropagation();
-        });
-        el.addEventListener('dblclick', function (e) {
-          _panAnchor = null; _panTicker = null; rerenderFromCache(); e.stopPropagation();
-        });
-      });
-      var scroll = host.querySelector('.gbs-scroll');
-      if (scroll) {
-        scroll.addEventListener('wheel', function (e) {
-          if (!e.ctrlKey && !e.metaKey) return;
-          var ES = window.EdShell;
-          if (!ES || !ES.setScope || !ES.getScope) return;
-          e.preventDefault();
-          var order = ['auto', 'wider', 'all'];
-          var cur = order.indexOf(ES.getScope()); if (cur === -1) cur = 0;
-          var next = e.deltaY > 0 ? Math.min(order.length - 1, cur + 1) : Math.max(0, cur - 1);
-          if (next !== cur) ES.setScope(order[next]);
-        }, { passive: false });
-      }
-    }
-    function renderIt(host, d, tk) {
-      _lastPayload = d; _lastTicker = tk;
-      if (_panTicker !== tk) { _panAnchor = null; _panTicker = tk; }
+    var pan = window.EdShell.newPan(), panTicker = null;
+    function renderIt(host, d) {
       var src = document.getElementById(srcId); if (src) src.textContent = '';
       if (!d || !d.available || !d.rows || !d.rows.length) {
         host.innerHTML = '<div class="placeholder"><div class="sm">' +
           (d && d.reason ? esc(d.reason) : ('no console serving ' + endpoint)) + '</div></div>';
         return;
       }
-      // null/'' spot is ABSENT: Number(null) is 0, which drew 'spot 0.00' (audit P0, 2026-09-23)
-      var spot = (d.spot == null || d.spot === '') ? NaN : Number(d.spot);
-      var asc = d.rows;   // served in strike order
-      var ascStrikes = asc.map(function (r) { return r[0]; });
-      var sel = (window.EdShell && window.EdShell.scopeSelect)
-        ? window.EdShell.scopeSelect(ascStrikes, _panAnchor != null ? _panAnchor : d.spot_strike)
-        : { idx: asc.map(function (_r, i) { return i; }), shown: asc.length, total: asc.length };
-      var win = sel.idx.map(function (i) { return asc[i]; }).reverse();   // high strikes on top
-      var note = (window.EdShell && window.EdShell.scopeNote)
-        ? window.EdShell.scopeNote({ total: d.rows.length, shown: win.length }) : '';
-      if (_panAnchor != null) note += '<div class="gbs-allexp">PANNED to ' + px(_panAnchor, _panAnchor % 1 ? 2 : 0) +
-        ' — not following spot; double-click a strike label to resume</div>';
-      var maxAbs = win.reduce(function (m, r) { return Math.max(m, Math.abs(Number(r[1]) || 0)); }, 0) || 1;
-      var spotStrike = d.spot_strike;   // served: the listed strike nearest the live price
-      var bars = '';
-      win.forEach(function (r) {
-        var k = r[0], v = r[1] == null ? null : Number(r[1]), w = v == null ? 0 : Math.min(100, Math.abs(v) / maxAbs * 100), pos = v != null && v >= 0;
-        bars += '<div class="gbs-row' + (k === spotStrike ? ' spot' : '') + '" data-strike="' + k + '">' +
-          '<span class="gbs-k">' + px(k, k % 1 ? 2 : 0) + '</span>' +
-          '<span class="gbs-track"><i class="gbs-bar ' + (pos ? 'pos' : 'neg') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
-          '<span class="gbs-v ' + (v == null ? '' : pos ? 'pos' : 'neg') + '">' + (v == null ? '—' : usd(v)) + '</span></div>';
-      });
-      host.innerHTML = '<div class="gbs-top">' + note + '</div>' +
-        '<div class="gbs-scroll"><div class="gbs">' + bars + '</div></div>' +
-        '<div class="gbs-scale"><span class="neg">−</span><span>0</span><span class="pos">+</span></div>';
-      host.querySelectorAll('.gbs-row').forEach(function (rr) {
-        rr.addEventListener('click', function () { if (window.EdShell) window.EdShell.setStrike(Number(rr.getAttribute('data-strike'))); });
-      });
-      wireInteraction(host, ascStrikes, win, tk);
-      var sr = host.querySelector('.gbs-row.spot');
-      if (sr && sr.scrollIntoView) sr.scrollIntoView({ block: 'center' });
+      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, load);
     }
     function impl(tk, signal) {
       var host = document.getElementById(hostId);
       if (!stillCtx(tk)) return;
-      return fetch(endpoint + '?ticker=' + encodeURIComponent(tk), { cache: 'no-store', signal: signal })
+      if (panTicker !== tk) { pan.centre = null; pan.shift = 0; panTicker = tk; }
+      return fetch(endpoint + '?ticker=' + encodeURIComponent(tk) + window.EdShell.windowQuery(pan), { cache: 'no-store', signal: signal })
         .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-        .then(function (d) { if (stillCtx(tk)) renderIt(host, d, tk); })
+        .then(function (d) { if (stillCtx(tk)) renderIt(host, d); })
         .catch(function (e) {
           if (e && e.name === 'AbortError') return;
-          if (stillCtx(tk)) renderIt(host, null, tk);
+          if (stillCtx(tk)) renderIt(host, null);
         });
     }
     var loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return impl(ticker(), signal); });
-    return function load() { if (inSub()) loader.trigger(ticker()); };
+    function load() { if (inSub()) loader.trigger(ticker()); }
+    return load;
   }
   var loadVanna = _mkStrikeBar('vanna', '/api/options/vanna-by-strike', 'vnBody', 'vnSrc');
   var loadCharm = _mkStrikeBar('charm', '/api/options/charm-by-strike', 'chmBody', 'chmSrc');
@@ -745,7 +561,8 @@
     txt('klSpot', q.spot_disp != null ? q.spot_disp : '—');
   });
   document.addEventListener('ed:view', loadAll);
-  document.addEventListener('ed:scope', loadGbs);   // #3: re-window the GEX-by-strike panel only
+  // a new scope is a new window: every per-strike panel re-reads it from the server
+  document.addEventListener('ed:scope', function () { loadGbs(); loadVanna(); loadCharm(); });
   document.addEventListener('ed:changed', function (e) {
     if (e.detail.kind === 'flow') { loadOf(); return; }
     if (e.detail.kind !== 'levels') return;

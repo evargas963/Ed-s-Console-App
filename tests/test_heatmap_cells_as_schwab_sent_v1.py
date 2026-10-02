@@ -3,7 +3,7 @@ ears. Period."; "shouldn't be a dash should be 0").
 
 A listed contract with open interest 0 holds no position: its GEX is gamma x 0 = 0, whatever its
 Greeks (Schwab sends -999 Greeks for a contract that has not traded). The cell is 0, drawn "$0".
-A strike with no contract listed in an expiry is served as "no contract listed" and drawn so.
+A strike with no contract listed in an expiry is served as "-" and drawn so: a dash, no words.
 
 Real data, one column each:
 - SPY 2026-10-14 as the production console held it on 2026-10-01 08:59:47 ET
@@ -14,7 +14,7 @@ Real data, one column each:
   (tests/fixtures/real_spy_2026_10_15_chain_oi_zero.json): 30 strikes, every contract open
   interest 0 (the live surface at 08:59 drew all 30 "--").
 - SPY 2026-11-20 (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json, captured 2026-09-30).
-A strike listed in one column and not another is that column's "no contract listed" cell.
+A strike listed in one column and not another is that column's "-" cell.
 """
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ def test_every_strike_listing_only_open_interest_zero_is_a_computed_zero():
 
 def test_a_strike_with_no_contract_listed_is_served_as_such():
     surface = _surface()
-    assert surface["absent_reasons"][server.CELL_NOT_LISTED] == "no contract listed"
+    assert surface["absent_reasons"][server.CELL_NOT_LISTED] == "-"
     for expiry, contracts in _COLUMNS.items():
         listed = _by_strike(contracts)
         col = _column(surface, expiry)
@@ -97,13 +97,20 @@ def test_a_strike_with_no_contract_listed_is_served_as_such():
             assert col[k][3] != server.CELL_NOT_LISTED, (expiry, k)
 
 
-def test_the_page_draws_zero_as_zero_and_an_unlisted_strike_as_no_contract_listed(tmp_path):
+def test_the_page_draws_zero_as_zero_and_an_unlisted_strike_as_a_dash(tmp_path):
     """Through the page's own render (static/js/ed-gamma.js), the server's surface drawn: every
-    open-interest-zero strike of 10/14 and 10/15 reads "$0", every unlisted one "no contract
-    listed", none "--"."""
+    open-interest-zero strike of 10/14 and 10/15 reads "$0", every unlisted one "-", none "—"."""
     node = shutil.which("node")
     assert node, "Node.js is required on PATH (the same prerequisite as Playwright E2E)"
-    surface = _surface()
+    with server._terrain_cache_lock:
+        server._terrain_cache["SPY"] = {"_gamma_surface": _surface(), "spot": _SPOT, "spot_source": "last",
+                                        "computed_ts_utc": _OCT14["chain_as_of_ts_utc"], "chain_basis": "full"}
+    try:   # what the route serves for every strike and column
+        surface = json.loads(server.get_options_gamma_surface(
+            "SPY", scope="all", centre=None, shift=0, cols=None, expiry=None).body)
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop("SPY", None)
     path = tmp_path / "surface.json"
     path.write_text(json.dumps(surface), encoding="utf-8")
     r = subprocess.run([node, str(Path(__file__).parent / "ed_gamma_cells_node.mjs"), str(path)],
@@ -113,5 +120,5 @@ def test_the_page_draws_zero_as_zero_and_an_unlisted_strike_as_no_contract_liste
     for expiry in ("2026-10-14", "2026-10-15"):
         unlisted = set(surface["strikes"]) - set(_by_strike(_COLUMNS[expiry]))
         assert {drawn[(k, expiry)] for k in _open_interest_zero(expiry)} == {"$0"}, expiry
-        assert {drawn[(k, expiry)] for k in unlisted} == {"no contract listed"}, expiry
+        assert {drawn[(k, expiry)] for k in unlisted} == {"-"}, expiry
     assert "—" not in drawn.values()

@@ -27,7 +27,6 @@ def _isolate_stream_capture_env(monkeypatch):
 
 def _reset(tmp_path):
     ofs._feed_running = False
-    ofs._active_ticker = None
     ofls.clear_all_live_state()
     return tmp_path / "stream_capture.db"
 
@@ -120,7 +119,6 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
     SPY's."""
     _reset(tmp_path)
     monkeypatch.setattr(lmp, "_by_ticker", {})
-    ofs._active_ticker = "SPY"
     _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time.time())
 
     assert not any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("SPY"))
@@ -138,39 +136,58 @@ def test_the_selected_ticker_gets_its_books_a_change_replaces_them_and_a_restart
     import server
     from app.market_data.schwab.streaming.capture import normalize_wanted, plan
 
+    loop, pages = asyncio.new_event_loop(), []           # the console's loop: the pages stay open on it
+
+    async def open_page(tk):
+        stream = (await server.get_changes(ticker=tk)).body_iterator
+        await stream.__anext__()                          # the page's connection is streaming
+        return stream
+
     def select(tk):
-        asyncio.run(server.get_changes(ticker=tk))       # the page opens its connection
-        end = time.monotonic() + 5
-        while time.monotonic() < end and ofs.current_wanted()["NYSE_BOOK"] != [tk.upper()]:
-            time.sleep(0.02)
+        pages.append(loop.run_until_complete(open_page(tk)))   # the page opens its connection
         return normalize_wanted(ofs.current_wanted())
 
     def book_requests(wanted, held):
         return [r for r in plan(wanted, held, {}) if r[0] in ("NYSE_BOOK", "NASDAQ_BOOK")]
 
-    monkeypatch.setattr(push_changes, "_clients", {})
-    monkeypatch.setattr(ofs, "_active_ticker", None)
+    monkeypatch.setattr(push_changes, "_open", [])
     w = select("mu")                                      # select MU
     assert book_requests(w, {}) == [("NYSE_BOOK", "SUBS", ["MU"]), ("NASDAQ_BOOK", "SUBS", ["MU"])]
     held = {"NYSE_BOOK": frozenset({"MU"}), "NASDAQ_BOOK": frozenset({"MU"})}
     w = select("spy")                                     # change to SPY: MU's books replaced
     assert book_requests(w, held) == [("NYSE_BOOK", "UNSUBS", ["MU"]), ("NYSE_BOOK", "SUBS", ["SPY"]),
                                       ("NASDAQ_BOOK", "UNSUBS", ["MU"]), ("NASDAQ_BOOK", "SUBS", ["SPY"])]
-    monkeypatch.setattr(ofs, "_active_ticker", None)     # a console restart forgets it
+    monkeypatch.setattr(push_changes, "_open", [])       # a console restart: no page connected
     assert normalize_wanted(ofs.current_wanted())["NYSE_BOOK"] == frozenset()
     w = select("spy")                                     # the page reconnects: SPY's books again
     assert w["NYSE_BOOK"] == w["NASDAQ_BOOK"] == frozenset({"SPY"})
+    for page in pages:
+        loop.run_until_complete(page.aclose())
+    loop.close()
 
 
-def test_set_active_ticker_puts_its_book_in_the_wanted_list(tmp_path, monkeypatch):
+def test_a_connection_that_never_streams_never_opens_a_page(monkeypatch):
+    """The page is open while its /api/changes stream runs: a request whose client went away
+    before the stream started leaves no page open, so it is never the ticker on screen."""
+    import asyncio
+
+    import push_changes
+    import server
+    monkeypatch.setattr(push_changes, "_open", [])
+    asyncio.run(server.get_changes(ticker="MU"))          # answered, never streamed
+    assert push_changes.on_screen() is None
+
+
+def test_the_ticker_on_screen_is_named_in_the_wanted_list(tmp_path, monkeypatch):
     """The wanted list is the ONLY channel by which this module influences the daemon's
-    subscriptions -- the active ticker's book must be in it (its quote streams because it is on
-    the board)."""
-    monkeypatch.setattr(ofs, "_active_ticker", None)
+    subscriptions: the ticker on screen (push_changes.on_screen) is its `active` field, with its
+    books, and a change is sent."""
+    import push_changes
+    monkeypatch.setattr(push_changes, "_open", [])
     before = ofs._wanted_version
-    ofs.set_streaming_active_ticker("spy")
+    push_changes.subscribe("SPY")                        # a page opens on SPY
     w = ofs.current_wanted()
-    assert w["NYSE_BOOK"] == w["NASDAQ_BOOK"] == ["SPY"]
+    assert w["active"] == "SPY" and w["NYSE_BOOK"] == w["NASDAQ_BOOK"] == ["SPY"]
     assert ofs._wanted_version > before, "the feed loop sends the change"
 
 

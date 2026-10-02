@@ -76,13 +76,14 @@
   function _ls(k, d) { try { var v = localStorage.getItem(k); return (v == null || v === '') ? d : v; } catch (e) { return d; } }
   function _lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   // D: persist UI navigation state (client state, not market truth)
-  // #3: ONE presentation-scope for the Gamma workspace. The chart/GEX-by-strike panels window the
-  // canonical strikes around spot for readability; this is the SINGLE control of that window, shared
-  // by every windowed panel so nothing is silently clipped. Modes: AUTO (each panel's near-money
-  // base), WIDER (2x that base), ALL (every strike in the current canonical input). Presentation
-  // only — the window never changes any value, only which canonical strikes are on screen.
-  var SCOPE_MODES = ['auto', 'wider', 'all'];
-  function _lsScope() { var v = _ls('ed_scope', 'auto'); return SCOPE_MODES.indexOf(v) !== -1 ? v : 'auto'; }
+  // The strike-window scopes, served in the page (meta ed-scopes, from terrain_engine.SCOPES):
+  // [{key, label}], the first the default. The server picks each panel's strikes for the scope.
+  var SCOPES = (function () {
+    var m = document.querySelector('meta[name="ed-scopes"]');
+    try { return JSON.parse(m ? m.getAttribute('content') : '[]') || []; } catch (e) { return []; }
+  })();
+  var SCOPE_MODES = SCOPES.map(function (s) { return s.key; });
+  function _lsScope() { var v = _ls('ed_scope', SCOPE_MODES[0]); return SCOPE_MODES.indexOf(v) !== -1 ? v : SCOPE_MODES[0]; }
   // every asked-for symbol's served identity, {requested: {requested, key, display}} (ingestIdentity)
   var _served = {};
   var state = {
@@ -278,14 +279,8 @@
   }
 
   function reflectScopeVisibility() {
-    // #3: the scope control lives in the global view-controls bar. It governs the windowed Gamma
-    // panels — the Chart main view AND the GEX-by-strike side panel, which is on screen for every
-    // gamma view (heatmap included). So it shows for the whole gamma subview; the heatmap main view
-    // itself ignores scope (it serves the server's strike_count-bounded window whole). Hidden
-    // entirely outside options/gamma-family (dex/oi share this exact pane and are windowed the
-    // same way -- reuses MEASURE_BY_SUBVIEW as the one place that family is named, rather than
-    // hardcoding 'gamma'/'dex'/'oi' a further time; this control stayed hidden on dex/oi before,
-    // leaving no way to see or change an in-effect scope window there).
+    // The scope control shows on the gamma-family subviews (MEASURE_BY_SUBVIEW), whose panels the
+    // server windows by it.
     var scp = document.getElementById('scopeCtl'); if (!scp) return;
     scp.hidden = !(state.workspace === 'options' && !!MEASURE_BY_SUBVIEW[state.subview]);
     if (!scp.hidden) reflectScope();
@@ -374,7 +369,6 @@
   }
 
   // #3: presentation-scope — one control, one state, one event for every windowed Gamma panel.
-  var SCOPE_LABEL = { auto: 'Auto', wider: 'Wider', all: 'All available' };
   function reflectScope() {
     var ctl = document.getElementById('scopeCtl');
     if (ctl) ctl.querySelectorAll('.scbtn').forEach(function (b) {
@@ -396,44 +390,56 @@
     state.bookVenue = v; _lsSet('ed_book_venue', v); reflectBookVenue();
     emit('ed:book_venue', { venue: v });
   }
-  // The ONE scope policy is a COUNT of canonical strikes around spot — never a percentage.
-  // MEASURED 2026-09-10 on the live SPY reference surface (116 strikes at $1 spacing, spot 764):
-  // a ±4% window kept 61 strikes and the heatmap rendered all 116, collapsing the approved ~11-row
-  // workstation into an unreadable dump. Auto = the approved workstation density; Wider = a larger
-  // window; All available = every canonical strike (scrolled at the same row height, never shrunk).
-  // This selects WHICH canonical rows are displayed; no value is computed or changed here.
-  var SCOPE_ROWS = { auto: 11, wider: 23 };
-  function scopeRows() { return state.scope === 'all' ? Infinity : (SCOPE_ROWS[state.scope] || SCOPE_ROWS.auto); }
-  // Indices into an ASCENDING strike array: scopeRows() strikes centred on `center` -- the served
-  // spot_strike, or a strike the operator panned to -- clamped to the array's ends (so a centre
-  // near the edge still shows a full window). ALL -> every index. Pure presentation selection: the
-  // page never works out which strike is nearest spot (the server serves spot_strike).
-  function scopeSelect(strikes, center) {
-    var total = strikes.length, n = scopeRows();
-    if (!total) return { idx: [], shown: 0, total: 0 };
-    if (!isFinite(n) || n >= total) return { idx: strikes.map(function (_s, i) { return i; }), shown: total, total: total };
-    var c = center == null ? -1 : strikes.map(Number).indexOf(Number(center));
-    if (c < 0) c = Math.floor(total / 2);   // no centre served: the middle, never a guess
-    var lo = c - Math.floor((n - 1) / 2), hi = lo + n - 1;
-    if (lo < 0) { hi -= lo; lo = 0; }
-    if (hi > total - 1) { lo -= (hi - (total - 1)); hi = total - 1; if (lo < 0) lo = 0; }
-    var idx = []; for (var i = lo; i <= hi; i++) idx.push(i);
-    return { idx: idx, shown: idx.length, total: total };
+  // The strikes a per-strike panel shows are the server's choice (terrain_engine.strike_window):
+  // every panel sends this with its read -- the scope, and while the operator has panned, the
+  // centre strike the drag began on and the rows it moved from there.
+  function windowQuery(pan) {
+    return '&scope=' + encodeURIComponent(state.scope) +
+      (pan && pan.centre != null ? '&centre=' + encodeURIComponent(pan.centre) + '&shift=' + (pan.shift | 0) : '');
   }
-  // #3: the ONE disclosure line every windowed panel prints — states the mode, the window, and how
-  // many of the canonical strikes are on screen vs clipped. A clip is NEVER silent: when strikes are
-  // outside the window the count is shown with how to widen. total/shown are canonical-input counts;
-  // `extra` lets a panel add its own second dimension (the heatmap's expiration columns).
-  function scopeNote(opts) {
-    opts = opts || {};
-    var total = opts.total | 0, shown = opts.shown | 0, hidden = Math.max(0, total - shown);
-    var n = scopeRows();
-    var winTxt = isFinite(n) ? (n + ' strikes around spot') : 'all available strikes';
-    var main = (SCOPE_LABEL[state.scope] || state.scope) + ' · ' + winTxt + ' · ' +
-      shown + ' of ' + total + ' strikes' + (opts.extra ? ' · ' + opts.extra : '');
-    var clip = hidden > 0
-      ? '<span class="clip">' + hidden + ' outside view — widen with Wider / All available</span>' : '';
-    return '<div class="scope-note"><span>' + main + '</span>' + clip + '</div>';
+  // A panel's pan state: {centre, shift, served}. `served` is the centre of the window on screen
+  // (the view the server sent); `centre`/`shift` are what the next read asks for (none: follow
+  // the price).
+  function newPan() { return { centre: null, shift: 0, served: null }; }
+  // The strike axis of a per-strike panel: dragging the strike labels pans (rows of movement
+  // become `shift` from the centre the drag began on), a double-click follows the price again,
+  // ctrl/cmd+wheel over `wheelEl` steps the scope (Auto -> Wider -> All). `reload` re-reads the
+  // panel with the pan state as it now is.
+  var _axisDrag = null;
+  if (typeof document !== 'undefined') {
+    document.addEventListener('mousemove', function (e) {
+      var d = _axisDrag; if (!d) return;
+      var rows = Math.round((e.clientY - d.startY) / d.rowPx);
+      if (rows === d.pan.shift && d.pan.centre === d.base) return;
+      d.pan.centre = d.base; d.pan.shift = rows;
+      d.reload();
+    });
+    document.addEventListener('mouseup', function () { _axisDrag = null; });
+  }
+  // A read's view arrived: its centre is the window on screen (the next drag starts from it). The
+  // pan the operator asked for (`centre`, `shift`) is kept as asked, so a read still held behind a
+  // drag asks for where the drag ended.
+  function panServed(pan, centre) { pan.served = centre; }
+  function wireStrikeAxis(axisEls, wheelEl, pan, rowPx, reload) {
+    Array.prototype.forEach.call(axisEls, function (el) {
+      el.style.cursor = 'ns-resize';
+      el.setAttribute('draggable', 'false');
+      el.addEventListener('dragstart', function (e) { e.preventDefault(); });
+      el.addEventListener('mousedown', function (e) {
+        _axisDrag = { startY: e.clientY, rowPx: rowPx, pan: pan, base: pan.served, reload: reload };
+        e.preventDefault(); e.stopPropagation();
+      });
+      el.addEventListener('dblclick', function (e) {
+        pan.centre = null; pan.shift = 0; reload(); e.stopPropagation();
+      });
+    });
+    if (wheelEl) wheelEl.addEventListener('wheel', function (e) {
+      if (!e.ctrlKey && !e.metaKey) return;   // a plain wheel scrolls the panel
+      e.preventDefault();
+      var cur = SCOPE_MODES.indexOf(state.scope); if (cur === -1) cur = 0;
+      var next = e.deltaY > 0 ? Math.min(SCOPE_MODES.length - 1, cur + 1) : Math.max(0, cur - 1);
+      if (next !== cur) setScope(SCOPE_MODES[next]);
+    }, { passive: false });
   }
 
   // #4: format a compact per-panel source/as-of badge. This ONLY formats server-owned fields
@@ -912,11 +918,15 @@
     document.querySelectorAll('.navitem[data-ws]').forEach(function (n) {
       n.addEventListener('click', function () { setWorkspace(n.getAttribute('data-ws')); });
     });
-    // #3: presentation-scope control (one control for every windowed Gamma panel)
+    // the scope control: one button per served scope (one control for every per-strike panel)
     var scopeCtl = document.getElementById('scopeCtl');
-    if (scopeCtl) scopeCtl.querySelectorAll('.scbtn').forEach(function (b) {
-      b.addEventListener('click', function () { setScope(b.getAttribute('data-scope')); });
+    if (scopeCtl) SCOPES.forEach(function (s) {
+      var b = document.createElement('button');
+      b.className = 'scbtn'; b.setAttribute('data-scope', s.key); b.textContent = s.label;
+      b.addEventListener('click', function () { setScope(s.key); });
+      scopeCtl.appendChild(b);
     });
+    reflectScope();
     document.querySelectorAll('.bookvenue .scbtn').forEach(function (b) {
       b.addEventListener('click', function () { setBookVenue(b.getAttribute('data-venue')); });
     });
@@ -1006,7 +1016,7 @@
     setTheme: applyTheme,
     marketContext: function () { return MARKET_CONTEXT.slice(); },   // served [{key, display}]
     setScope: setScope, getScope: function () { return state.scope; },
-    scopeSelect: scopeSelect, scopeNote: scopeNote, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
+    windowQuery: windowQuery, newPan: newPan, panServed: panServed, wireStrikeAxis: wireStrikeAxis, asOfBadge: asOfBadge, fmtAge: fmtAge, chainEmptyText: chainEmptyText,
     setExpiry: setExpiry, getExpiry: function () { return state.expiryFilter; },
     getMeasure: function () { return state.measure; },
     setSubview: setSubview };

@@ -259,8 +259,7 @@ def test_feed_loop_applies_the_ticker_and_every_option_contract_from_one_push(tm
     port = sock.getsockname()[1]
     sock.close()
     monkeypatch.setattr(ofs, "LIVE_PUSH_URL", f"ws://127.0.0.1:{port}")
-    ofs._active_ticker = "SPY"
-    qqq = {**_REAL_LEVELONE_OPTIONS_CONTENT, "key": _QQQ_CONTRACT, "UNDERLYING": "QQQ"}
+    qqq ={**_REAL_LEVELONE_OPTIONS_CONTENT, "key": _QQQ_CONTRACT, "UNDERLYING": "QQQ"}
 
     def _landed():
         return (any(i.get("LAST_PRICE") == 450.0 for i in ofls.get_content_for_symbol("SPY"))
@@ -397,7 +396,6 @@ def test_option_contract_streaming_diagnostics_independent_of_equity_slot():
     does not hold must not drag down a healthy option contract."""
     _reset_option_feed_globals()
     _daemon_heartbeat(_SPY_CONTRACT)
-    ofs._active_ticker = "SPY"
     ofs._feed_running = True
     ofs._active_option_contract = _SPY_CONTRACT
     ofs._option_streaming_last_update_ts = time.time()

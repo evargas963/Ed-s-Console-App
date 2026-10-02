@@ -1,43 +1,13 @@
 """Schwab import boundary — CI-safe module load without live auth or network."""
 from __future__ import annotations
 
-import importlib
+import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-
-
-@pytest.fixture(autouse=True)
-def _restore_server_module_binding():
-    """Put `sys.modules["server"]` back exactly as found.
-
-    `_reload_server_module` below pops `server` and re-imports it, which is the point of
-    these tests. It never restored the original, so every suite that ran afterwards in the
-    same process saw a DIFFERENT module object than the one it had imported — its
-    module-level caches and any references captured at import time belonged to the discarded
-    copy. MEASURED: `test_server_quote_source_contract.py` passes alone (8 passed) and this
-    file passes alone (9 passed), but run in this order two of its tests fail; that pair is
-    exactly the failure the authoritative turn audit reported twice. A test may reload a
-    module; it may not leave the interpreter holding a different one than it found.
-    """
-    had = "server" in sys.modules
-    original = sys.modules.get("server")
-    try:
-        yield
-    finally:
-        if had:
-            sys.modules["server"] = original
-        else:
-            sys.modules.pop("server", None)
-
-
-def _reload_server_module() -> object:
-    sys.modules.pop("server", None)
-    return importlib.import_module("server")
 
 
 def test_schwab_py_package_importable() -> None:
@@ -94,13 +64,15 @@ def test_build_config_fail_closed_without_secrets(monkeypatch: pytest.MonkeyPatc
 
 
 def test_server_import_does_not_build_client_or_run_login_flow() -> None:
-    with patch("schwab_client.build_client_from_token") as mock_build, patch(
-        "schwab_client.run_login_flow"
-    ) as mock_login:
-        srv = _reload_server_module()
-        mock_build.assert_not_called()
-        mock_login.assert_not_called()
-        assert srv.app is not None
+    """`import server` in a fresh interpreter builds no client and runs no login flow."""
+    code = (
+        "from unittest.mock import patch\n"
+        "with patch('schwab_client.build_client_from_token') as b, patch('schwab_client.run_login_flow') as lf:\n"
+        "    import server\n"
+        "    b.assert_not_called(); lf.assert_not_called()\n"
+        "    assert server.app is not None\n")
+    r = subprocess.run([sys.executable, "-c", code], cwd=REPO, capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stdout + r.stderr
 
 
 def test_the_console_makes_no_schwab_call(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -147,6 +119,8 @@ def test_the_console_makes_no_schwab_call(monkeypatch: pytest.MonkeyPatch) -> No
                 client.get(route.path, params={"ticker": "SPY", "contract": "SPY   261120C00875000"})
     assert calls == []
     assert server.terrain_cache_get("SPY") is not None, "the daemon's chain was priced"
+    with server._terrain_cache_lock:             # the levels this test priced leave with it
+        server._terrain_cache.pop("SPY", None)
 
 
 def test_adversarial_tests_can_import_server() -> None:

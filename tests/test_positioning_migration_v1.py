@@ -84,6 +84,12 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
     assert body["prior_source"] == "chain_capture:2026-09-24"
     m = body["migration"]["all"]
     assert m["compared"] and sum(1 for r in m["rows"] if r[3]) > 10       # real changes, not self vs self
+    # the migration panel's one scale: the largest |GEX| today or the prior day among the strikes
+    # drawn (every today bar too, whether or not the prior day lists its strike)
+    drawn = {r[0] for r in body["today"]["all"]}
+    both = [abs(v) for r in m["rows"] if r[0] in drawn for v in (r[1], r[2]) if v is not None]
+    both += [abs(r[1]) for r in body["today"]["all"] if r[1] is not None]
+    assert body["views"]["all"]["max_abs_with_prior"] == max(both)
     # the stored chains are read by the producer once per new capture, never by a page request
     reads = []
     monkeypatch.setattr(server, "last_capture_per_day", lambda *a, **k: reads.append(a) or [])

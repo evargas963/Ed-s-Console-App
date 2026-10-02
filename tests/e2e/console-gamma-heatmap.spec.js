@@ -38,20 +38,27 @@ function confirmedIs(page, set) {
   return page.evaluate((s) => window.EdStream.setAdditionalContracts(s), set).then((r) => r.unchanged === true);
 }
 
+// The served window (server.py _surface_view): the cells to draw, each with `spot` (the row at
+// the price) and the `view` -- the centre, the coverage words, the contracts to stream and each
+// measure's colour scale. The page draws these; it picks and counts nothing.
+const WARMING = { state: 'warming', label: 'WARMING', title: 'no cell on screen has a contract yet' };
+function view(over) {
+  return Object.assign({ centre: 583, scope: 'auto', coverage: WARMING, demand: [],
+    max_abs: { gex: 958600, dex: null, oi: null, volume: null }, missing_expiry: null }, over || {});
+}
 const SURFACE = {
-  ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41, spot_strike: 583, front_expiry: '2026-09-11',
+  ticker: '$SPX', symbol: '$SPX', available: true, spot: 583.41, front_expiry: '2026-09-11',
   source: 'terrain_live_cache', live: true, stale: false, age_sec: 3, chain_basis: 'full',
   complete: false,
-  coverage: { window: 'live_near_money', chain_basis: 'full', strike_count: 3,
-    note: 'near-money LIVE window (strike_count-bounded terrain chain) — NOT the full strike_range=ALL book' },
   chain_as_of_ts_utc: 1757000200, spot_as_of_ts_utc: 1757000200, spot_source: 'last',
-  expirations: [{ expiry: '2026-09-11', dte: 2 }, { expiry: '2026-09-18', dte: 9 }],
+  expirations: [{ expiry: '2026-09-11', dte: 2, front: true }, { expiry: '2026-09-18', dte: 9, front: false }],
   strikes: [580, 583, 586],
   cells: [
-    { strike: 580, gex: [-90000, null] },
-    { strike: 583, gex: [958600, 300000] },
-    { strike: 586, gex: [-264500, 120000] },
+    { strike: 580, gex: [-90000, null], spot: false },
+    { strike: 583, gex: [958600, 300000], spot: true },
+    { strike: 586, gex: [-264500, 120000], spot: false },
   ],
+  view: view(),
   provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
 };
 // A surface WITH real per-cell vendor contract identity (server.py's project_gamma_surface
@@ -76,7 +83,13 @@ function surfaceWithContracts(nExps, nStrikes) {
       }),
     };
   });
-  return Object.assign({}, SURFACE, { expirations: expirations, strikes: strikes, cells: cells });
+  // the served demand: every contract drawn, column by column
+  var demand = [];
+  expirations.forEach(function (exp) {
+    strikes.forEach(function (k) { demand.push('C' + k + 'X' + exp.expiry, 'P' + k + 'X' + exp.expiry); });
+  });
+  return Object.assign({}, SURFACE, { expirations: expirations, strikes: strikes, cells: cells,
+    view: view({ centre: strikes[0], demand: demand, max_abs: { gex: 1000 } }) });
 }
 // Always-live heatmap mandate (2026-09-15): a surface carrying the real per-cell `stream`
 // field server.py's _stamp_gamma_surface_cell_stream_state now stamps unconditionally on
@@ -106,8 +119,9 @@ function surfaceWithStreamState(perCol) {
   });
   return Object.assign({}, SURFACE, {
     expirations: expirations, strikes: [strike],
-    cells: [{ strike: strike, gex: perCol.map(function () { return 12345; }),
+    cells: [{ strike: strike, gex: perCol.map(function () { return 12345; }), spot: true,
               contracts: contracts, stream: stream }],
+    view: view({ max_abs: { gex: 12345 } }),
   });
 }
 const TERRAIN = {
@@ -119,7 +133,8 @@ const TERRAIN = {
   pcr_all: 1.02, pcr_volume_all: 0.93,
 };
 const STRIKES = {
-  ticker: '$SPX', spot: 583.41, spot_strike: 583, max_abs_strike: 583,
+  ticker: '$SPX', spot: 583.41, spot_strike: 583, max_abs_row: [583, 958600, 5400],
+  views: { all: { centre: 583, max_abs: 958600 } },
   today: { all: [[586, -264500, 1200], [583, 958600, 5400], [580, -90000, 900]] },
 };
 const BARS = {
@@ -216,14 +231,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveText('$2.0K');
   });
 
-  test('a cell whose value actually changed gets a one-shot visual flash; an unchanged cell does not (state-authority review)', async ({ page }) => {
-    // Independent-review finding (2026-09-12, state-authority review): "actual Schwab
-    // updates visibly change the appropriate values and colors" -- the pre-fix renderer
-    // did a full, unconditional table rebuild on every update with no cue distinguishing
-    // "the table was rebuilt" from "this specific value just moved", so a real, correct
-    // change could go unnoticed on a busy grid. Two strikes: 583's value genuinely
-    // changes between fetches, 586's does not -- only 583's cell may flash, and neither
-    // may flash on the very FIRST render (nothing to compare against yet).
+  test('the cells the server marks changed flash; the others do not', async ({ page }) => {
+    // The server marks each cell whose value differs from the previous publication
+    // (server.py _mark_changed); the page flashes exactly those. Two strikes: 583's value
+    // changes between publications, 586's does not; nothing is marked on the first.
     let call = 0;
     await page.route('**/api/options/gamma-surface**', (route) => {
       call += 1;
@@ -233,8 +244,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
         body: JSON.stringify(Object.assign({}, SURFACE, {
           strikes: [583, 586], expirations: [{ expiry: '2026-09-11', dte: 2 }],
           cells: [
-            { strike: 583, gex: [changedValue] },
-            { strike: 586, gex: [-50000] },   // identical on every fetch
+            { strike: 583, gex: [changedValue], changed: { gex: [call > 1] } },
+            { strike: 586, gex: [-50000], changed: { gex: [false] } },   // identical on every fetch
           ],
           surface_seq: call,
         })),
@@ -433,79 +444,23 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.route('**/api/streaming/active-option-contracts', (route) => route.fulfill({
       status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const col = page.locator('.heat thead th.hexp.stream-demand');
+    const col = page.locator('.heat thead th.hexp');
     await expect(col).toHaveCount(3);
-    await expect(col.nth(0)).toHaveAttribute('title', /streaming updates observed/);
-    await expect(col.nth(1)).toHaveAttribute('title', /requested .* awaiting the first observed update/);
-    await expect(col.nth(2)).toHaveAttribute('title', /vendor refused/);
+    await expect(col.nth(0)).toHaveAttribute('title', 'partly streaming');
+    await expect(col.nth(1)).toHaveAttribute('title', 'streaming requested');
+    await expect(col.nth(2)).toHaveAttribute('title', 'Schwab refused the stream');
   });
 
-  test('Wider and All scope declare real streaming demand for what they display, not zero (2026-09-13, operator-directed)', async ({ page }) => {
-    // Independent-review finding (2026-09-13), operator-directed: Wider/All used to demand
-    // ZERO contracts unconditionally, regardless of what they actually displayed --
-    // "vendor-capacity uncertainty does not explain away that application behavior." They
-    // now demand exactly the columns they display, the same rule an explicit expiry filter
-    // already used; Auto's own measured front-column-only policy is unchanged.
-    // 16 unexpired expirations x 3 strikes: enough columns that Auto (front column only,
-    // 1 col x 3 strikes x 2 sides = 6 symbols) and Wider (min(2*autoColCount,16) columns)
-    // genuinely differ in how many contracts they cover.
-    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(16, 3)),
-    }));
-    const demandCalls = [];
-    await page.route('**/api/streaming/active-option-contracts', (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      demandCalls.push(body.contracts || []);
-      route.fulfill({ status: 200, contentType: 'application/json', body: demandAck(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
-    const autoContracts = demandCalls[demandCalls.length - 1].length;
-
-    demandCalls.length = 0;
-    await page.evaluate(() => window.EdShell.setScope('wider'));
-    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
-    const widerContracts = demandCalls[demandCalls.length - 1].length;
-    expect(widerContracts).toBeGreaterThan(autoContracts);
-
-    demandCalls.length = 0;
-    await page.evaluate(() => window.EdShell.setScope('all'));
-    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
-    const allContracts = demandCalls[demandCalls.length - 1].length;
-    expect(allContracts).toBeGreaterThanOrEqual(widerContracts);
-  });
-
-  test('a levels push re-renders the CURRENTLY SELECTED scope, never reverts to Auto', async ({ page }) => {
-    // real 116-strike x 16-expiration surface: Auto (11 rows) and Wider (23 rows) differ
-    const REAL_RAW = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
-    // This banked-morning fixture (like the real /api/options/gamma-surface response it was
-    // captured from) carries per-cell vendor contract identity -- synthesized here only
-    // because the checked-in JSON snapshot predates that field; without it every cell's
-    // demand would be empty and this test could not tell "no push happened" apart from
-    // "the surface never carried contracts to demand in the first place".
-    const REAL = Object.assign({}, REAL_RAW, {
-      spot_strike: 764, front_expiry: '2026-09-10',
-      cells: REAL_RAW.cells.map((c) => Object.assign({}, c, {
-        contracts: REAL_RAW.expirations.map((e) => ({
-          call: 'C' + c.strike + 'X' + e.expiry, put: 'P' + c.strike + 'X' + e.expiry,
-        })),
-      })),
-    });
-    let surfaceCalls = 0;
-    const pushedGex = -999000000;   // a value nothing in the baseline fixture already has
+  test('each scope reads its window from the server and streams the contracts it serves', async ({ page }) => {
+    // The server picks the window for the scope and names its contracts (server.py
+    // _surface_view; tests/test_heatmap_window_v1.py); the page asks with the scope and streams
+    // exactly the served list.
+    const byScope = { auto: surfaceWithContracts(1, 3), wider: surfaceWithContracts(2, 3), all: surfaceWithContracts(16, 3) };
+    const asked = [];
     await page.route('**/api/options/gamma-surface**', (route) => {
-      surfaceCalls += 1;
-      if (surfaceCalls === 1) {
-        route.fulfill({
-          status: 200, contentType: 'application/json',
-          body: JSON.stringify(Object.assign({}, REAL, { surface_seq: 1 })),
-        });
-        return;
-      }
-      const pushed = JSON.parse(JSON.stringify(REAL));
-      pushed.cells.find((c) => c.strike === 764.0).gex[2] = pushedGex;   // strike 764 / 2026-09-11 column
-      pushed.surface_seq = 2;
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(pushed) });
+      const scope = new URL(route.request().url()).searchParams.get('scope');
+      asked.push(scope);
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(byScope[scope]) });
     });
     const demandCalls = [];
     await page.route('**/api/streaming/active-option-contracts', (route) => {
@@ -513,35 +468,35 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       demandCalls.push(body.contracts || []);
       route.fulfill({ status: 200, contentType: 'application/json', body: demandAck(body) });
     });
-    let pushes = 0;
-    await page.route('**/api/changes**', async (route) => {
-      pushes += 1;
-      await new Promise((r) => setTimeout(r, 1500));   // after the scope switch below
-      route.fulfill({ status: 200, contentType: 'text/event-stream',
-        body: pushes === 1 ? 'event: levels\ndata: SPY\n\n' : 'event: session\ndata: RTH\n\n' });
-    });
-    await page.setViewportSize({ width: 1672, height: 941 });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const rows = page.locator('#heatBody .heat tbody tr');
-    await expect(rows).toHaveCount(11);   // Auto, sanity
+    for (const scope of ['auto', 'wider', 'all']) {
+      await page.evaluate((s) => window.EdShell.setScope(s), scope);
+      await expect.poll(() => asked[asked.length - 1]).toBe(scope);
+      await expect.poll(() => [...(demandCalls[demandCalls.length - 1] || [])].sort())
+        .toEqual([...byScope[scope].view.demand].sort());
+      await expect(page.locator('#heatBody .heat thead .hexp')).toHaveCount(byScope[scope].expirations.length);
+    }
+  });
 
+  test('a levels push re-reads the scope on screen, never Auto', async ({ page }) => {
+    const asked = [];
+    await page.route('**/api/options/gamma-surface**', (route) => {
+      const scope = new URL(route.request().url()).searchParams.get('scope');
+      asked.push(scope);
+      const value = asked.length > 2 ? 2000 : 1000;   // the push's publication has a new value
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Object.assign({}, SURFACE, {
+        strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
+        cells: [{ strike: 583, gex: [value], spot: true }], surface_seq: asked.length, view: view({ scope }) })) });
+    });
+    await routeOneLevelsPush(page, 1500);              // after the scope switch below
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => asked[0]).toBe('auto');
     await page.locator('#scopeCtl .scbtn', { hasText: 'Wider' }).click();
-    await expect(rows).toHaveCount(23);
-    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
-    const widerContractsBeforePush = demandCalls[demandCalls.length - 1].length;
+    await expect.poll(() => asked[1]).toBe('wider');
+    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
+    await expect(cell).toHaveText('$2.0K', { timeout: 5000 });   // the push's read landed
+    expect(asked.slice(2)).toEqual(asked.slice(2).map(() => 'wider'));
     expect(await page.evaluate(() => window.EdShell.getScope())).toBe('wider');
-
-    const pushedCell = page.locator('.hcell[data-strike="764"][data-expiry="2026-09-11"]');
-    await expect(pushedCell).toHaveText('-$999.0M', { timeout: 3000 });   // the live push landed
-    await expect(rows).toHaveCount(23);   // still Wider -- the push must never silently revert scope
-    expect(await page.evaluate(() => window.EdShell.getScope())).toBe('wider');
-    // The new generation carries the identical strike/expiry population (only a GEX value
-    // changed), so the recomputed demand set is byte-identical to what is already confirmed
-    // -- ed-stream.js's own dedup (see its "cacheTrustworthy" short-circuit) correctly sends
-    // NO redundant POST here. Proving that requires a genuinely NEW population, covered by
-    // the scope-switch assertions above; what this push must never do is drop back to
-    // Auto's demand shape while still labelled Wider.
-    expect(widerContractsBeforePush).toBeGreaterThan(0);
   });
 
   test('GEX-by-strike displays each row\'s own session volume, not just signed GEX$ (RC-UI-2 finding #5a)', async ({ page }) => {
@@ -593,7 +548,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // shows that expiry's net GEX at the strike -- the heatmap's own cell, served on the same
     // /api/chain response. It used to read GEX-by-Strike's rows (every expiry summed).
     await page.route('**/api/terrain/strikes**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ ticker: '$SPX', spot: 583.41, today: { all: [[583, 777000, 5400]] } }) }));
+      body: JSON.stringify({ ticker: '$SPX', spot: 583.41, today: { all: [[583, 777000, 5400]] },
+        views: { all: { centre: 583, note: null, max_abs: 777000 } } }) }));
     await page.route('**/api/chain**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(Object.assign({}, CHAIN, { net_gex_by_strike: [[583, 3000]] })) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -660,7 +616,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(cell).toHaveAttribute('data-cell-state', 'stale');
     await expect(cell).toHaveAttribute('data-gex', '12345');
     await expect(cell).toHaveClass(/state-stale/);
-    await expect(cell).toHaveAttribute('title', /SNAPSHOT/);
+    await expect(cell).toHaveAttribute('title', 'this cell has stopped streaming');
     // never mislabelled as live
     const cls = await cell.getAttribute('class');
     expect(cls).not.toMatch(/state-live/);
@@ -675,7 +631,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveText('$12.3K');
     await expect(cell).toHaveAttribute('data-cell-state', 'unavailable');
-    await expect(cell).toHaveAttribute('title', /SNAPSHOT/);
+    await expect(cell).toHaveAttribute('title', 'not streaming');
   });
 
   test('a cell with no value draws the served reason, whatever its stream state', async ({ page }) => {
@@ -684,13 +640,13 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const surf = surfaceWithStreamState([{ call: 'live', put: 'live' }]);
     surf.cells[0].gex = [null];
     surf.cells[0].absent = { gex: ['not_listed'] };
-    surf.absent_reasons = { not_listed: 'no contract listed' };
+    surf.absent_reasons = { not_listed: '-' };
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(surf),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
-    await expect(cell).toHaveText('no contract listed');
+    await expect(cell).toHaveText('-');
     await expect(cell).toHaveAttribute('data-cell-state', 'live');   // stream state is beside the value
   });
 
@@ -733,7 +689,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
     await expect(cell).toHaveAttribute('data-cell-state', 'stale');
     await expect(cell).toHaveText('$12.3K');   // the same valid value -- never blanked
-    await expect(cell).toHaveAttribute('title', /SNAPSHOT/);   // relabelled, not silently kept as live
+    await expect(cell).toHaveAttribute('title', 'this cell has stopped streaming');   // relabelled, not kept as live
   });
 
   test('a surface that is not live is shown as absent -- never as a reference', async ({ page }) => {
@@ -798,66 +754,41 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#klPcr')).toHaveText('—');
   });
 
-  // REAL-DATA VIEWPORT PROOF (2026-09-10 visual FAIL on the running candidate): the fixture is the
-  // REAL /api/options/gamma-surface response captured from the candidate at 06:35 CDT — SPY, 116
-  // strikes x 16 expirations, banked_morning_reference from 2026-09-09 — plus the two fields the
-  // server now stamps (session_date_et / prior_session / per-expiration expired; the pre-fix capture
-  // predates them). Nothing else is altered. The proof: the canonical population is intact and
-  // disclosed, Auto selects a legible viewport, Wider widens it, All available exposes everything at
-  // the same row height, and an expired prior-session column is never dressed as current structure.
-  test('REAL-DATA VIEWPORT: 116x16 canonical surface -> Auto 11 rows x <=11 unexpired columns; Wider 23; All 116x16 legible + EXPIRED labelled; no data loss', async ({ page }) => {
+  // A real 116-strike x 16-expiration surface (SPY, captured 2026-09-10 06:35 CDT; 2026-09-09
+  // expired), served whole as the All window (a stand-in for the server's window, which
+  // tests/test_heatmap_window_v1.py proves): every cell is drawn at a legible size, the grid
+  // scrolls rather than shrinks, and the expired column is labelled.
+  test('REAL-DATA: the 116x16 All window is drawn whole, legible, EXPIRED labelled; the page asks for the columns it fits', async ({ page }) => {
     const REAL = require('./fixtures/real_spy_gamma_surface_116x16_premarket_20260910.json');
-    // The captured population is served as a LIVE surface here: the server no longer serves any
-    // banked reference (operator rule 2026-09-23), and this test is about viewport layout over a
-    // real 116x16 population, not about the retired reference path.
     const stamped = Object.assign({}, REAL, {
       source: 'terrain_live_cache', live: true, stale: false, degraded: null,
-      session_date_et: '2026-09-10', prior_session: false, spot_strike: 764, front_expiry: '2026-09-10',
-      expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10' })),
+      session_date_et: '2026-09-10', prior_session: false,
+      expirations: REAL.expirations.map((e) => Object.assign({}, e, { expired: e.expiry < '2026-09-10', front: e.expiry === '2026-09-10' })),
+      cells: REAL.cells.map((c) => Object.assign({}, c, { spot: c.strike === 764 })),
+      view: view({ centre: 764, scope: 'all', max_abs: { gex: 1e9 } }),
     });
     expect(stamped.strikes.length).toBe(116); expect(stamped.expirations.length).toBe(16);
-    expect(stamped.expirations.filter((e) => e.expired).map((e) => e.expiry)).toEqual(['2026-09-09']);
-    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(stamped) }));
+    const asked = [];
+    await page.route('**/api/options/gamma-surface**', (route) => {
+      asked.push(new URL(route.request().url()).searchParams);
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(stamped) });
+    });
     await page.setViewportSize({ width: 1672, height: 941 });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const rows = page.locator('#heatBody .heat tbody tr');
     const cols = page.locator('#heatBody .heat thead .hexp');
-    // canonical population disclosed; Auto viewport = 11 rows centred on spot 764.15 -> 759..769,
-    // rendered highest strike first (operator decision 2026-09-11: "highest strike at the top,
-    // lowest at the bottom" -- static/js/ed-gamma.js renderSurface reverses presentation order
-    // only; the shared ascending scopeSelect() contract other consumers rely on is untouched).
-    await expect(page.locator('#heatScope')).toContainText('116×16 canonical');
-    await expect(rows).toHaveCount(11);
-    await expect(page.locator('#heatBody .scope-note')).toContainText('11 of 116 strikes');
-    await expect(page.locator('#heatBody .scope-note .clip')).toContainText('105 outside view');
-    await expect(rows.first().locator('.hstrike')).toHaveText('769');
-    await expect(rows.last().locator('.hstrike')).toHaveText('759');
+    await expect(rows).toHaveCount(116);
+    const fits = Number(asked[0].get('cols'));
+    expect(fits).toBeGreaterThanOrEqual(3); expect(fits).toBeLessThanOrEqual(11);
+    // highest strike at the top, the price row marked
+    await expect(rows.first().locator('.hstrike')).toHaveText(String(REAL.strikes[REAL.strikes.length - 1]));
     await expect(page.locator('#heatBody tr.spotrow .hstrike')).toHaveText('764');
-    const nCols = await cols.count();
-    expect(nCols).toBeGreaterThanOrEqual(3); expect(nCols).toBeLessThanOrEqual(11);
-    await expect(page.locator('#heatBody .heat thead .hexp.expired')).toHaveCount(0);       // the expired 09-09 column is not current structure
-    await expect(page.locator('#heatBody .scope-note')).toContainText('1 expired hidden in Auto');
-    await expect(page.locator('#heatBody .scope-note')).toContainText(nCols + ' of 16 expirations');
-    // legible density: rows at the approved height, cell text at the workstation size
-    const rowH = await rows.first().evaluate((el) => el.getBoundingClientRect().height);
-    expect(rowH).toBeGreaterThanOrEqual(30);
     const cellFont = await page.locator('#heatBody .hcell').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     expect(cellFont).toBeGreaterThanOrEqual(13);
     await expect(page.locator('#heatBody')).not.toContainText('REFERENCE');   // no reference surface exists
-    // WIDER: 23 rows, up to twice the Auto column budget (nearest unexpired first, expired labelled)
-    await page.locator('#scopeCtl .scbtn', { hasText: 'Wider' }).click();
-    await expect(rows).toHaveCount(23);
-    await expect(page.locator('#heatBody .scope-note')).toContainText('23 of 116 strikes');
-    const widerCols = await cols.count();
-    expect(widerCols).toBeGreaterThanOrEqual(nCols); expect(widerCols).toBeLessThanOrEqual(2 * nCols);
-    // ALL AVAILABLE: the complete population, every column (expired one labelled), same row height, scrolls
-    await page.locator('#scopeCtl .scbtn', { hasText: 'All available' }).click();
-    await expect(rows).toHaveCount(116);
     await expect(cols).toHaveCount(16);
     await expect(page.locator('#heatBody .heat thead .hexp.expired')).toHaveCount(1);
     await expect(page.locator('#heatBody .heat thead .hexp.expired .dte')).toHaveText('EXPIRED');
-    await expect(page.locator('#heatBody .scope-note')).toContainText('116 of 116 strikes');
-    await expect(page.locator('#heatBody .scope-note .clip')).toHaveCount(0);
     expect(await page.locator('#heatBody .hcell').count()).toBe(116 * 16);                  // no data loss
     const allRowH = await rows.first().evaluate((el) => el.getBoundingClientRect().height);
     expect(allRowH).toBeGreaterThanOrEqual(30);                                              // never shrunk to fit
@@ -870,9 +801,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     const scrollsX = await page.locator('#heatBody .heat-wrap').evaluate((el) => el.scrollWidth > el.clientWidth + 40);
     expect(scrollsX).toBe(true);
     await page.screenshot({ path: 'test-results/gamma-real-116x16-all.png', fullPage: false });
-    await page.locator('#scopeCtl .scbtn', { hasText: 'Auto' }).click();
-    await expect(rows).toHaveCount(11);
-    await page.screenshot({ path: 'test-results/gamma-real-116x16-auto.png', fullPage: false });
   });
 
   test('workspace switching + editable watchlist foundation', async ({ page }) => {
@@ -1102,7 +1030,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
     served.s = { available: true, source: 'terrain_live_cache', live: true, spot: 600, complete: false,
-      coverage: { chain_basis: 'full' }, expirations: exps, strikes, cells };   // 200 strikes x 20 expiries
+      expirations: exps, strikes, cells, view: view({ centre: 600, scope: 'all', max_abs: { gex: 50000 } }) };   // 200 strikes x 20 expiries
     // the page's own reload (a levels push); the time runs from the push to the drawn table
     const before = await page.locator('#heatBody .hcell').count();
     const r = await page.evaluate((n0) => new Promise((resolve) => {
@@ -1123,22 +1051,25 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('#1 revision: DATA change rebuilds; STATUS change updates without rebuild (A-D)', async ({ page }) => {
     const live = (age, stale) => ({ available: true, source: 'terrain_live_cache', live: true, stale: !!stale, warming: false, spot: 583.41,
       complete: false, chain_as_of_ts_utc: 1000, spot_as_of_ts_utc: 1000, chain_basis: 'full', age_sec: age,
-      coverage: { chain_basis: 'full' }, expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600] }] });
-    const served = { s: live(3) };
+      expirations: [{ expiry: '2026-09-11', dte: 2 }], strikes: [583], cells: [{ strike: 583, gex: [958600], spot: true }],
+      view: view({ coverage: served.cov }) });
+    const served = { cov: { state: 'partial', label: '50% STREAMING', title: '1 of 2 cells streaming · 1 stale' } };
+    served.s = live(3);
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served.s) }));
     const reload = () => page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
     const mark = () => page.evaluate(() => document.querySelector('#heatBody .hcell').setAttribute('data-marker', '1'));
     const marked = () => page.locator('#heatBody .hcell[data-marker="1"]');
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#heatBody .hcell').first()).toBeVisible();
-    // A: same live DATA revision, age changes -> table preserved, scope age updates
+    await expect(page.locator('#heatScope')).toHaveText('50% STREAMING');
+    // A: same live DATA revision, coverage changes -> table preserved, the chip updates
     await mark();
-    served.s = live(99); await reload();
-    await expect(page.locator('#heatScope')).toContainText('99s');
+    served.cov = { state: 'live', label: 'ALL STREAMING', title: 'all 2 cells streaming' };
+    served.s = live(3); await reload();
+    await expect(page.locator('#heatScope')).toHaveText('ALL STREAMING');
+    await expect(page.locator('#heatScope')).toHaveClass(/cov-live/);
     await expect(marked()).toHaveCount(1);
     // D: stale flips with no cell change -> no rebuild, but the STALE banner appears (not frozen)
-    served.s = live(3); await reload();
-    await expect(page.locator('#heatScope')).not.toContainText('99s');
     await mark();
     served.s = live(3, true); await reload();
     await expect(page.locator('#heatBody .heat-banner')).toContainText('STALE');
@@ -1230,15 +1161,20 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // used (see the "Wider and All scope declare real streaming demand" test above).
     const surfaceWithContracts = Object.assign({}, SURFACE, {
       cells: [
-        { strike: 580, gex: [-90000, null],
+        { strike: 580, gex: [-90000, null], spot: false,
           contracts: [{ call: 'SPXW  260911C00580000', put: 'SPXW  260911P00580000' }, { call: null, put: null }] },
-        { strike: 583, gex: [958600, 300000],
+        { strike: 583, gex: [958600, 300000], spot: true,
           contracts: [{ call: 'SPXW  260911C00583000', put: 'SPXW  260911P00583000' },
                       { call: 'SPXW  260918C00583000', put: 'SPXW  260918P00583000' }] },
-        { strike: 586, gex: [-264500, 120000],
+        { strike: 586, gex: [-264500, 120000], spot: false,
           contracts: [{ call: 'SPXW  260911C00586000', put: 'SPXW  260911P00586000' },
                       { call: 'SPXW  260918C00586000', put: 'SPXW  260918P00586000' }] },
       ],
+      // the served demand: every contract drawn, column by column (server.py _surface_view)
+      view: view({ demand: [
+        'SPXW  260911C00580000', 'SPXW  260911P00580000', 'SPXW  260911C00583000', 'SPXW  260911P00583000',
+        'SPXW  260911C00586000', 'SPXW  260911P00586000', 'SPXW  260918C00583000', 'SPXW  260918P00583000',
+        'SPXW  260918C00586000', 'SPXW  260918P00586000'] }),
     });
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts),
@@ -1746,10 +1682,16 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   // requirement is that this state reads UNAVAILABLE for the requested expiry, with demand
   // cleared, never a silent substitution. This test enforces the CORRECTED requirement; the
   // superseded "fell back to both real columns" assertion is gone.
+  // the server's answer for a selected expiry the surface does not have: no columns, and the
+  // expiry named (server.py _surface_view `missing_expiry`)
+  const MISSING_0925 = Object.assign({}, SURFACE, { expirations: [],
+    cells: SURFACE.cells.map((c) => Object.assign({}, c, { gex: [] })), view: view({ missing_expiry: '2026-09-25' }) });
   test('a selected expiry absent from the surface reads unavailable and clears demand (no substitute expiries)', async ({ page }) => {
     let demandCalls = [];
     await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
+    await page.route('**/api/options/gamma-surface*', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(new URL(route.request().url()).searchParams.get('expiry') === '2026-09-25' ? MISSING_0925 : SURFACE) }));
     await page.route('**/api/streaming/active-option-contracts', (route) => {
       let body = {}; try { body = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
       demandCalls.push(body.contracts || []);
@@ -1771,21 +1713,21 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('recovers automatically once the requested expiry appears in a later surface poll', async ({ page }) => {
-    let currentSurface = SURFACE;   // SURFACE only has 2026-09-11/2026-09-18 -- 09-25 is initially missing
+    let missing = MISSING_0925;   // SURFACE only has 2026-09-11/2026-09-18 -- 09-25 is initially missing
     await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
-    await page.route('**/api/options/gamma-surface*', (route) => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(currentSurface) }));
+    await page.route('**/api/options/gamma-surface*', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify(new URL(route.request().url()).searchParams.get('expiry') === '2026-09-25' ? missing : SURFACE) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();
 
     await page.locator('#expSel').selectOption('2026-09-25');
     await expect(page.locator('#heatBody')).toContainText('Expiry 2026-09-25 unavailable');
 
-    // The surface now genuinely includes the requested expiry -- a real vendor-side recovery.
-    currentSurface = Object.assign({}, SURFACE, {
-      expirations: SURFACE.expirations.concat([{ expiry: '2026-09-25', dte: 16 }]),
-      cells: SURFACE.cells.map((c) => Object.assign({}, c, { gex: c.gex.concat([777000]) })),
+    // The surface now genuinely includes the requested expiry: the server serves its one column.
+    missing = Object.assign({}, SURFACE, {
+      expirations: [{ expiry: '2026-09-25', dte: 16 }],
+      cells: SURFACE.cells.map((c) => Object.assign({}, c, { gex: [777000] })), surface_seq: 2,
     });
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
     await expect(page.locator('#heatBody .hexp')).toHaveCount(1);
@@ -1835,7 +1777,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       (ths) => ths.map((th) => th.getAttribute('title')));
     expect(colTitles.length).toBe(2);
     colTitles.forEach((t) => expect(t || '').not.toMatch(/PARTIALLY|excluded|safety limit/));
-    await expect(page.locator('#heatBody .scope-note')).not.toContainText('capped');
   });
 
   // ---------------------------------------------------------------------------
@@ -2001,26 +1942,20 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     expect(chainCalls).toBe(afterEntry);   // exactly one hydration on entry, not a burst
   });
 
-  test('audit #6: the header never reads the word LIVE (in any form) when visible coverage is only partial', async ({ page }) => {
-    // Two visible cells, one genuinely live-streaming and one merely stale -- 50% coverage
-    // must read as a disclosed percentage, never a source-path-only check that ignores
-    // per-cell coverage, and never a label containing the word LIVE at all (follow-up
-    // mandate independent-review finding: "LIVE·50%" still contains the literal word LIVE,
-    // which a viewer scanning for that one word could mistake for a complete reading).
-    // No stream_coverage is set on the payload at all -- the header's LIVE/STREAMING word is
-    // computed client-side from the DOM's own data-cell-state attributes (visible-scope
-    // coverage), never from this canonical-surface, server-computed field.
+  test('the header chip shows the served coverage of the window; the page counts nothing', async ({ page }) => {
+    // the server counts the cells of the window it serves
+    // (server.py _stream_coverage); the page draws its words
     const surf = surfaceWithStreamState([{ call: 'live' }, { call: 'stale' }]);
-    surf.source = 'terrain_live_cache';
+    surf.view = view({ max_abs: { gex: 12345 },
+      coverage: { state: 'partial', label: '50% STREAMING', title: '1 of 2 cells streaming · 1 stale' } });
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(surf),
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.hcell').first()).toBeVisible();
-    const scopeText = await page.locator('#heatScope').textContent();
-    expect(scopeText).toMatch(/OPT CELLS·50%/);
-    expect(scopeText).not.toMatch(/LIVE/);   // the literal word must never appear below 100%
-    await expect(page.locator('#heatScope')).toHaveAttribute('title', /1 live, 0 partial, 1 stale, 0 pending, 0 daemon-unavailable, 0 rejected, 0 unavailable of 2 visible/);
+    await expect(page.locator('#heatScope')).toHaveText('50% STREAMING');
+    await expect(page.locator('#heatScope')).toHaveAttribute('title', '1 of 2 cells streaming · 1 stale');
+    await expect(page.locator('#heatScope')).toHaveClass(/cov-partial/);
   });
 
   test('audit #6: a vendor-rejected contract renders a distinct, visibly-failed cell', async ({ page }) => {
@@ -2037,7 +1972,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
     await expect(cell).toHaveClass(/state-rejected/);
-    await expect(cell).toHaveAttribute('title', /REJECTED.*vendor refused/);
+    await expect(cell).toHaveAttribute('title', 'Schwab refused this contract’s stream (vendor refused)');
   });
 
   test('no page timer reads /api: a minute with no push makes no request', async ({ page }) => {

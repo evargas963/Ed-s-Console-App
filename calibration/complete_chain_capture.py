@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import sqlite3
 import threading
 import time
@@ -24,8 +23,9 @@ from typing import Any
 
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
+from numeric_contract import schwab_number
 from production_universe import is_valid_production_ticker
-from schwab_client import fetch_full_chain, flatten_chain_contracts, safe_get_chain, safe_get_quotes
+from schwab_client import fetch_full_chain, flatten_chain_contracts
 from time_et import ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date
 
 log = logging.getLogger("chain_history")
@@ -105,9 +105,7 @@ def persist_complete_chain_capture(
             "INSERT OR REPLACE INTO complete_chain_captures "
             "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source) "
             "VALUES (?,?,?,?,?,?,?,?)",
-            (tk, exp, ts,
-             float(spot) if spot is not None and math.isfinite(float(spot)) else None,
-             len(clean), str(completeness_basis),
+            (tk, exp, ts, spot, len(clean), str(completeness_basis),
              encode_json_blob(clean, default=str), str(source)),
         )
         conn.commit()
@@ -249,8 +247,7 @@ class ChainSweep:
 
     def fetch_one(self, client, ticker: str) -> None:
         started = self.clock()
-        resp = fetch_full_chain(client, ticker, lambda **d: safe_get_chain(
-            client, ticker, strike_range="ALL", **d), lambda symbols: safe_get_quotes(client, symbols))
+        resp = fetch_full_chain(client, ticker)
         now = self.clock()
         if resp.status_code != 200:
             if resp.status_code == 429:
@@ -286,9 +283,7 @@ class ChainSweep:
                 return
             self._written[ticker] = slot
         try:
-            spot = payload.get("underlyingPrice")          # Schwab's field, as sent
-            if spot == -999:
-                spot = None
+            spot = schwab_number(payload.get("underlyingPrice"))
             by_expiry: dict[str, list[dict]] = {}
             for ct in contracts:
                 by_expiry.setdefault(str(ct.get("expirationDate") or "")[:10], []).append(ct)

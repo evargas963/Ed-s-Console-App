@@ -92,15 +92,15 @@
   }
   // Values at prices on the price axis, drawn from the pane's right edge (a GEX profile: signed
   // bars, or dots sized by magnitude) or its left edge (the volume profile). rows: [{price,
-  // value, color}]; with `fit` the rows' prices join the auto-fit so every row is on screen.
-  // Scaling to the pane is drawing; the values are served.
+  // value, color}] and `scale`, the served largest |value| (the full band); with `fit` the rows'
+  // prices join the auto-fit so every row is on screen. Scaling to the pane is drawing; the values
+  // and the scale are served.
   function ProfilePrimitive(side, frac, fit, z) {
     var self = this;
-    this._series = null; this._req = null; this.rows = []; this.style = 'bars'; this.frac = frac; this.sel = null; this.mark = null;
-    function maxAbs() { return self.rows.reduce(function (m, r) { return Math.max(m, Math.abs(r.value)); }, 0) || 1; }
+    this._series = null; this._req = null; this.rows = []; this.scale = null; this.style = 'bars'; this.frac = frac; this.sel = null; this.mark = null;
     var renderer = { draw: function (target) {
-      if (!self._series || !self.rows.length) return;
-      var mx = maxAbs();
+      if (!self._series || !self.rows.length || !self.scale) return;
+      var mx = self.scale;
       target.useBitmapCoordinateSpace(function (s) {
         var c = s.context, hr = s.horizontalPixelRatio, vr = s.verticalPixelRatio, W = s.bitmapSize.width, band = W * self.frac;
         var ys = self.rows.map(function (r) { return self._series.priceToCoordinate(r.price); });
@@ -145,7 +145,9 @@
       var ps = self.rows.map(function (r) { return r.price; });
       return { priceRange: { minValue: Math.min.apply(null, ps), maxValue: Math.max.apply(null, ps) } };
     };
-    this.set = function (rows, style, mark) { self.rows = rows || []; if (style) self.style = style; self.mark = mark || null; if (self._req) self._req(); };
+    this.set = function (rows, scale, style, mark) {
+      self.rows = rows || []; self.scale = scale; if (style) self.style = style; self.mark = mark || null; if (self._req) self._req();
+    };
     this.select = function (price) { self.sel = price; if (self._req) self._req(); };
     // the row nearest a pane point, when the point is inside the profile band
     this.rowAt = function (x, y, paneWidth) {
@@ -827,9 +829,10 @@
         var y = candles.priceToCoordinate(price), r = plot.getBoundingClientRect();
         return y == null ? null : { x: r.left + chart.timeScale().width() * (1 - profile.frac / 2), y: r.top + y };
       },
-      setProfile: function (rows, style) { profile.set(rows, style); },
+      // the rows and the served scale (largest |value|) of each profile
+      setProfile: function (rows, scale, style) { profile.set(rows, scale, style); },
       // the volume profile's rows, and optionally one marked price {price, label, color} (its POC)
-      setVolumeProfile: function (rows, mark) { vprofile.set(rows, 'bars', mark); },
+      setVolumeProfile: function (rows, scale, mark) { vprofile.set(rows, scale, 'bars', mark); },
       // the default view starts at this served time (e.g. the session's open); null: the newest bars
       setViewFrom: function (ts) { S.viewFrom = ts == null ? null : Number(ts); showRecent(); },
       setZones: function (list) { zones.set(list); },

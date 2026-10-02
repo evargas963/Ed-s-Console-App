@@ -10,11 +10,13 @@ const { test, expect } = require('@playwright/test');
 const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, source: 'terrain_live_cache',
   live: true, stale: false, age_sec: 5, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-11', dte: 2 }, { expiry: '2026-09-18', dte: 9 }],
-  strikes: [98, 100, 102], cells: [98, 100, 102].map(function (k) { return { strike: k, gex: [-90000, 120000] }; }) };
+  strikes: [98, 100, 102], cells: [98, 100, 102].map(function (k) { return { strike: k, gex: [-90000, 120000], spot: k === 100 }; }),
+  view: { centre: 100, scope: 'auto', coverage: null, demand: [], max_abs: { gex: 120000 }, missing_expiry: null } };
 const TERRAIN = { spot: 100, gamma_flip: 99.5, call_wall: 102, put_wall: 98, absolute_gamma_strike: 100,
   net_gex_peak: 100, net_gex_at_spot: 5e8, regime: 'LONG_GAMMA_CHOP', levels_stale: false, levels_age_sec: 10 };
 const STRIKES = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 10, levels_stale: false,
-  today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] } };
+  today: { all: [[98, -90000, 10], [100, 958600, 50], [102, -264500, 12]] },
+  views: { all: { centre: 100, note: null, max_abs: 958600 } } };
 const CHAIN = { spot: 100, expiry: '2026-09-11', status: 'ok', scope: { kind: 'complete_single_expiry' },
   contracts: [{ putCall: 'CALL', strikePrice: 100, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.5, volatility: 12, expirationDate: '2026-09-11' },
     { putCall: 'PUT', strikePrice: 100, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12, expirationDate: '2026-09-11' }] };

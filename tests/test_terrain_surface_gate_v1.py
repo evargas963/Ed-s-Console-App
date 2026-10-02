@@ -93,9 +93,10 @@ def test_producer_projects_every_tickers_heatmap(monkeypatch, view):
     # the spot that priced this generation travels with it; no contract was streaming
     assert surf == {
         "expirations": [], "strikes": [], "cells": [], "stream_overlay_contracts": 0,
-        "stream_overlay_symbols": [], "surface_seq": 1,
+        "stream_overlay_symbols": [], "surface_seq": server._GAMMA_SURFACE_SEQ_START + 1,
         "spot": 100.0, "spot_source": "stub", "spot_as_of_ts_utc": 0.0,
         "stream_by_expiry": {},          # each column's served streaming state (none: no columns)
+        "changes": {},                   # no cell has changed: its first publication
     }
 
 
@@ -150,7 +151,7 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     surf = _cached_surface(tk)
     assert surf["_overlaid_gamma"] == 0.777, "project_gamma_surface must see the overlaid gamma"
     assert surf["stream_overlay_contracts"] == 1
-    assert surf["surface_seq"] == 1
+    assert surf["surface_seq"] == server._GAMMA_SURFACE_SEQ_START + 1
 
     assert priced["snap"].contracts[0]["gamma"] == 0.777, "the levels are priced from the overlay too"
     cached = server.terrain_cache_get(tk)
@@ -158,57 +159,25 @@ def test_producer_overlays_the_active_streaming_contract_before_projecting(monke
     assert cached["_chain_fetched_ts"] <= cached["computed_ts_utc"]
 
 
-def test_surface_seq_publication_is_atomic_with_the_cache_write(monkeypatch, view):
-    """The seq bump and the cache write happen under one lock acquisition, so no reader sees
-    a new surface_seq with the previous payload."""
+def test_each_publication_carries_its_own_surface_seq(monkeypatch, view):
+    """The surface is published with its seq already on it, so no reader sees a new surface_seq
+    with the previous payload: each delivered chain's surface carries the next number."""
     tk = server.ticker_storage_key("SPY")
     server._gamma_surface_seq.pop(tk, None)
-
-    class _CountingLockWrapper:
-        def __init__(self, real):
-            self._real = real
-            self.enter_count = 0
-
-        def __enter__(self):
-            self.enter_count += 1
-            return self._real.__enter__()
-
-        def __exit__(self, *a):
-            return self._real.__exit__(*a)
-
-    wrapper = _CountingLockWrapper(server._terrain_cache_lock)
-    monkeypatch.setattr(server, "_terrain_cache_lock", wrapper)
-
-    seen = {"seq_call_enter_n": None, "cache_write_enter_n": None}
-    real_next_seq = server._next_gamma_surface_seq
-
-    def spy_next_seq(tk_):
-        seen["seq_call_enter_n"] = wrapper.enter_count
-        return real_next_seq(tk_)
-    monkeypatch.setattr(server, "_next_gamma_surface_seq", spy_next_seq)
-
-    class _WatchedCache(dict):
-        def __setitem__(self, key, value):
-            if key == tk:
-                seen["cache_write_enter_n"] = wrapper.enter_count
-            return super().__setitem__(key, value)
-    monkeypatch.setattr(server, "_terrain_cache", _WatchedCache())
 
     def proj(contracts, books):
         return {"expirations": [], "strikes": [], "cells": []}
 
     _stub_terrain(monkeypatch, proj)
     view(tk)
-    _deliver(tk)
-
-    assert seen["seq_call_enter_n"] is not None, "the surface-seq path was not exercised"
-    assert seen["cache_write_enter_n"] is not None, "the cache write for this ticker never happened"
-    assert seen["seq_call_enter_n"] == seen["cache_write_enter_n"], (
-        f"the seq bump (lock __enter__ #{seen['seq_call_enter_n']}) and the cache write "
-        f"(lock __enter__ #{seen['cache_write_enter_n']}) happened under DIFFERENT lock "
-        f"acquisitions -- a concurrent reader could acquire the lock in the gap between "
-        f"them and observe the new surface_seq with the old cached payload"
-    )
+    seqs = []
+    for i in range(2):
+        _deliver(tk, fetched_ts=1000.0 + i)
+        seqs.append(server.terrain_cache_get(tk)["_gamma_surface"]["surface_seq"])
+    with server._terrain_cache_lock:
+        server._terrain_cache.pop(tk, None)
+    assert seqs[1] == seqs[0] + 1
+    assert seqs[0] > server._GAMMA_SURFACE_SEQ_START          # counted on from this console's start
 
 
 def test_a_stream_observation_after_the_chain_fetch_is_admitted_and_one_before_is_not(monkeypatch, view):

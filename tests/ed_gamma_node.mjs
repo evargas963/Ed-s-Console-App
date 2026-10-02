@@ -26,6 +26,8 @@ const ctx = {
     documentElement: {},
     getElementById: (id) => (id === 'heatBody' ? host : null),
     querySelectorAll: () => [],
+    // the page's served metas: the streaming-state words
+    querySelector: () => ({ getAttribute: () => '{"cell": {}, "column": {}}' }),
     addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
   },
   getComputedStyle: () => ({ getPropertyValue: () => '' }),
@@ -37,7 +39,12 @@ const ctx = {
 };
 ctx.window = ctx;
 ctx.globalThis = ctx;
-ctx.EdShell = { getState: () => state };
+// the shell (ed-core.js) as the heatmap uses it: no pan, no expiry selected
+ctx.EdShell = {
+  getState: () => state, getMeasure: () => 'gex', getExpiry: () => null, setStrike: () => {},
+  newPan: () => ({ centre: null, shift: 0, served: null }), panServed: (pan, c) => { pan.served = c; },
+  windowQuery: () => '&scope=auto', wireStrikeAxis: () => {},
+};
 ctx.EdStream = {
   setAdditionalContracts: (symbols, ownerKey) => {
     demandCalls.push({ symbols: symbols.slice(), ownerKey });
@@ -72,7 +79,10 @@ const strikes = [763, 764, 765];
 function surface(ticker) {
   return { available: true, ticker, spot: 764, strikes, live: true, stale: false,
     expirations: [{ expiry: '2026-09-11', dte: 0, expired: false }],
-    cells: strikes.map((k) => ({ strike: k, gex: [1000], contracts: [{ call: ticker + 'C' + k, put: ticker + 'P' + k }] })) };
+    cells: strikes.map((k) => ({ strike: k, gex: [1000], spot: k === 764, changed: { gex: [false] },
+      contracts: [{ call: ticker + 'C' + k, put: ticker + 'P' + k }] })),
+    view: { centre: 764, scope: 'auto', note: null, coverage: null, max_abs: { gex: 1000 }, missing_expiry: null,
+      demand: strikes.flatMap((k) => [ticker + 'C' + k, ticker + 'P' + k]) } };
 }
 const settle = () => new Promise((r) => setTimeout(r, 20));
 const fire = (ev) => (listeners[ev] || []).forEach((fn) => fn({ detail: {} }));

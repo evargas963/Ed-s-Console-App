@@ -541,13 +541,10 @@ QUOTES_BATCH_MAX = 300
 GREEK_FIELDS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
 
 
-def fetch_full_chain(client, ticker: str, get, quote, *,
-                     expiry: "date | None" = None) -> FullChainResponse:
-    """EVERY strike of every listed expiry (or of the one `expiry`) -- the chain all level
-    math is computed from -- with each contract's Greeks as Schwab's quotes send them.
-    `get(**dates)` makes one strike_range=ALL request for `ticker` and `quote(symbols)` one
-    quotes request; each returns Schwab's response (the console passes its gated requests, the
-    daemon plain ones).
+def fetch_full_chain(client, ticker: str) -> FullChainResponse:
+    """EVERY strike of every listed expiry -- the chain all level math is computed from -- with
+    each contract's Greeks as Schwab's quotes send them: strike_range=ALL chain requests
+    (safe_get_chain) and quotes requests (safe_get_quotes) on `client`.
 
     MEASURED 2026-09-25 across the 42 board tickers: levels computed from the old strike
     window disagreed with the same code run on the full chain -- gamma flip missing for 10
@@ -560,7 +557,7 @@ def fetch_full_chain(client, ticker: str, get, quote, *,
     whole chain (its status and reason), like a missing chain part: a book missing a batch of
     Greeks is not the book. Each fetch logs its contracts, requests and their times."""
     t0 = time.perf_counter()
-    resp = _whole_chain(client, ticker, get, expiry=expiry)
+    resp = _whole_chain(client, ticker)
     if resp.status_code != 200:
         return resp
     t_chain = time.perf_counter() - t0
@@ -572,7 +569,7 @@ def fetch_full_chain(client, ticker: str, get, quote, *,
     batches = [symbols[i:i + QUOTES_BATCH_MAX] for i in range(0, len(symbols), QUOTES_BATCH_MAX)]
     t1 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=max(1, len(batches))) as pool:
-        replies = list(pool.map(quote, batches))
+        replies = list(pool.map(lambda batch: safe_get_quotes(client, batch), batches))
     quoted: dict = {}
     for batch, reply in zip(batches, replies):
         if reply.status_code != 200:
@@ -594,7 +591,7 @@ def fetch_full_chain(client, ticker: str, get, quote, *,
     return resp
 
 
-def _whole_chain(client, ticker: str, get, *, expiry: "date | None" = None) -> FullChainResponse:
+def _whole_chain(client, ticker: str) -> FullChainResponse:
     """The chain of `fetch_full_chain`. One request when Schwab answers it. When the vendor
     answers that the request covers too much, the listed expiries are split into contiguous
     date ranges, all requested at once, halving any range that is itself refused; the part count
@@ -602,14 +599,8 @@ def _whole_chain(client, ticker: str, get, *, expiry: "date | None" = None) -> F
     response (the reason names it), never a partial chain."""
 
     def _get(**dates):
-        resp = get(**dates)
+        resp = safe_get_chain(client, ticker, strike_range="ALL", **dates)
         return resp, resp.status_code
-
-    if expiry is not None:
-        resp, code = _get(from_date=expiry, to_date=expiry)
-        if code != 200:
-            return FullChainResponse(code, reason=f"chain for {expiry} returned HTTP {code}")
-        return FullChainResponse(200, resp.json(), parts=1)
 
     with _full_chain_parts_lock:
         known_parts = _full_chain_parts.get(ticker, 1)
