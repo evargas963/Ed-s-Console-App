@@ -11,6 +11,7 @@ import pytest
 
 import server
 import time_et
+from instrument_identity import ticker_storage_key
 from terrain_engine import compute_terrain
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -39,9 +40,12 @@ def test_the_tape_side_is_served():
 
 
 def _desk_events(monkeypatch, ticker, crosses, now, tf):
-    """/api/desk/events on real crosses, at `now`."""
+    """/api/desk/events on real crosses, at `now`: the stored crosses loaded as the console's
+    start loads them (server._load_crosses)."""
     newest_first = sorted(crosses, key=lambda r: r["ts_utc"], reverse=True)       # as db.get_recent_crosses reads
     monkeypatch.setattr(server.get_db(), "get_recent_crosses", lambda ticker, n=20: newest_first[:n])
+    monkeypatch.setattr(server, "_crosses", {})
+    server._load_crosses([ticker_storage_key(ticker)])
     monkeypatch.setattr(time_et, "now_et", lambda: now)
     monkeypatch.setattr(server, "now_et", lambda: now)
     monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (None, "none", None))

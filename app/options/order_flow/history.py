@@ -1,121 +1,102 @@
-"""Stored stream observations read for the options tape and the book heatmap."""
+"""The recent option trade prints (the options tape) and the recent books (the book heatmap), in
+the console's memory: fed by the console's intake as the daemon pushes each record
+(app.options.order_flow.streaming), never read from the database (docs/DATA_FLOW.md §2 D6).
+The database keeps the whole history."""
 from __future__ import annotations
 
-import json
-import sqlite3
-from pathlib import Path
+import threading
+from collections import deque
 from typing import Any
 
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import extract_vendor_print, is_adjacent_restatement, vendor_triple
 from numeric_contract import schwab_count, schwab_number
-from stream_spine import resolve_stream_db_path
+
+#: the newest prints kept per contract (the tape route serves up to 500)
+TAPE_KEPT = 500
+#: how long a venue's books are kept (the heatmap route's longest window)
+BOOKS_KEPT_SEC = 240 * 60
+#: the contract details Schwab sends once and then only when they change: carried forward
+_CONTEXT = ("STRIKE_TYPE", "CONTRACT_TYPE", "EXPIRATION_YEAR", "EXPIRATION_MONTH",
+            "EXPIRATION_DAY", "MULTIPLIER", "UNDERLYING")
 
 
-def tape_rows_for_symbol(
-    contract: str,
-    *,
-    since_ts: float,
-    db_path: str | Path | None = None,
-    limit: int = 200,
-) -> list[dict[str, Any]]:
-    """Discrete TRADE prints for one contract from the native LEVELONE_OPTIONS capture —
-    each row is one genuinely NEW (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE) triple, never a
-    re-emitted duplicate of the same trade caused by an unrelated field (e.g. a Greek)
-    updating on the same underlying tick. Static per-contract context (expiry/strike/type/
-    multiplier) is carried forward from the most recent tick that actually reported it — the
-    vendor does not repeat that context on every partial update, and this must not silently
-    read as if the contract identity were unknown on ticks that omit it.
+class RecentTape:
+    """Per option contract: its newest TAPE_KEPT trade prints. A print is a genuinely NEW
+    (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE) triple, never a repeat of the same trade sent again
+    with an unrelated field (l1_trade_observation's rule, the live tape's); the contract's details
+    are carried forward from the newest message that sent them."""
 
-    Ordered newest-first (tape convention: most recent print on top), bounded by `limit`.
-    Fails closed to `[]` on any read/parse error — a tape that cannot be proven is empty,
-    never a stale or partial one presented as complete."""
-    sym = ticker_storage_key(contract)   # canonical key only -- no raw-string stand-in
-    if not sym:
-        return []
-    try:
-        bounded_limit = max(0, int(limit))
-        lower_bound = float(since_ts)
-    except (TypeError, ValueError):
-        return []
-    if bounded_limit == 0:
-        return []
-    path = resolve_stream_db_path(db_path)
-    if not path.is_file():
-        return []
-    try:
-        con = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
-    except sqlite3.Error:
-        return []
-    try:
-        con.execute("PRAGMA query_only=ON")
-        # Read newest-first is not sufficient by itself: a genuinely-new trade must be
-        # detected against whatever CAME BEFORE it chronologically (oldest-first), so the
-        # scan runs oldest-to-newest and the final list is reversed for display only.
-        rows = con.execute(
-            "SELECT ts_recv, native_json FROM stream_options_quotes_raw "
-            "WHERE symbol = ? AND ts_recv >= ? ORDER BY ts_recv ASC, rowid ASC",
-            (sym, lower_bound),
-        ).fetchall()
-    except sqlite3.Error:
-        return []
-    finally:
-        con.close()
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._prints: dict[str, deque] = {}
+        self._context: dict[str, dict] = {}
+        self._last: dict[str, tuple] = {}
 
-    context: dict[str, Any] = {}
-    last_trade_key: tuple[Any, Any, Any] | None = None
-    out: list[dict[str, Any]] = []
-    for ts_recv, native_json in rows:
-        try:
-            item = json.loads(native_json)
-        except (TypeError, ValueError):
-            continue
-        if not isinstance(item, dict):
-            continue
-        for k in ("STRIKE_TYPE", "CONTRACT_TYPE", "EXPIRATION_YEAR", "EXPIRATION_MONTH",
-                  "EXPIRATION_DAY", "MULTIPLIER", "UNDERLYING"):
-            if item.get(k) is not None:
-                context[k] = item[k]
-        # a trade print and its identity are l1_trade_observation's (the live tape's): no
-        # LAST_PRICE is no print; an adjacent repeat of the same vendor triple is not a new one
-        p = extract_vendor_print(item)
-        if p is None:
-            continue
-        trade_key = vendor_triple(p["time_millis"], p["price"], p["size"])
-        if is_adjacent_restatement(last_trade_key, trade_key):
-            continue
-        last_trade_key = trade_key
-        strike = schwab_number(context.get("STRIKE_TYPE"))
-        side = put_call_side(context.get("CONTRACT_TYPE"))
-        y, m, d = context.get("EXPIRATION_YEAR"), context.get("EXPIRATION_MONTH"), context.get("EXPIRATION_DAY")
-        expiry = f"{y:04d}-{m:02d}-{d:02d}" if (y and m and d) else None
-        mult = schwab_number(context.get("MULTIPLIER"))
-        trade, size = p["price"], p["size"]
-        premium = (trade * size * mult
-                   if (trade is not None and size is not None and mult is not None) else None)
-        bid, ask = schwab_number(item.get("BID_PRICE")), schwab_number(item.get("ASK_PRICE"))
-        classification = "unknown"
-        if trade is not None and bid is not None and ask is not None:
-            if trade <= bid:
-                classification = "at_bid" if trade == bid else "outside_spread_low"
-            elif trade >= ask:
-                classification = "at_ask" if trade == ask else "outside_spread_high"
-            else:
-                classification = "inside_spread"
-        out.append({
-            "ts_recv": float(ts_recv), "symbol": sym, "underlying": context.get("UNDERLYING"),
-            "expiry": expiry, "type": side, "strike": strike,
-            "bid": bid, "bid_size": schwab_count(item.get("BID_SIZE")),
-            "ask": ask, "ask_size": schwab_count(item.get("ASK_SIZE")),
-            "trade": trade, "size": size, "premium": premium,
-            "volume": schwab_count(item.get("TOTAL_VOLUME")), "oi": schwab_count(item.get("OPEN_INTEREST")),
-            "iv": schwab_number(item.get("VOLATILITY")), "delta": schwab_number(item.get("DELTA")),
-            "multiplier": mult, "classification": classification,
-        })
-        if len(out) > bounded_limit:
-            out.pop(0)   # keep only the most recent `bounded_limit` — cheaper than re-slicing every append
-    out.reverse()   # newest-first for display
-    return out
+    def record(self, contract: str, item: dict, ts_recv: float) -> None:
+        sym = ticker_storage_key(contract)
+        if not sym or not isinstance(item, dict):
+            return
+        with self._lock:
+            context = self._context.setdefault(sym, {})
+            context.update({k: item[k] for k in _CONTEXT if item.get(k) is not None})
+            p = extract_vendor_print(item)
+            if p is None:
+                return
+            key = vendor_triple(p["time_millis"], p["price"], p["size"])
+            if is_adjacent_restatement(self._last.get(sym), key):
+                return
+            self._last[sym] = key
+            self._prints.setdefault(sym, deque(maxlen=TAPE_KEPT)).append(
+                _print_row(sym, item, p, dict(context), float(ts_recv)))
+
+    def forget(self, contract: str) -> None:
+        """Drop the contract's prints, when the console stops streaming it."""
+        sym = ticker_storage_key(contract)
+        with self._lock:
+            self._prints.pop(sym, None)
+            self._context.pop(sym, None)
+            self._last.pop(sym, None)
+
+    def rows(self, contract: str, limit: int) -> "list[dict[str, Any]]":
+        """The contract's newest `limit` prints, newest first."""
+        sym = ticker_storage_key(contract)
+        with self._lock:
+            held = list(self._prints[sym]) if sym in self._prints else []
+        return held[::-1][:max(0, int(limit))]
+
+
+def _print_row(sym: str, item: dict, p: dict, context: dict, ts_recv: float) -> "dict[str, Any]":
+    """One trade print in the Options Flow tape's schema: Schwab's values as sent; premium =
+    trade x size x Schwab's multiplier; `classification` only where the trade landed against
+    the same message's bid and ask (no aggressor side)."""
+    strike = schwab_number(context.get("STRIKE_TYPE"))
+    side = put_call_side(context.get("CONTRACT_TYPE"))
+    y, m, d = context.get("EXPIRATION_YEAR"), context.get("EXPIRATION_MONTH"), context.get("EXPIRATION_DAY")
+    expiry = f"{y:04d}-{m:02d}-{d:02d}" if (y and m and d) else None
+    mult = schwab_number(context.get("MULTIPLIER"))
+    trade, size = p["price"], p["size"]
+    premium = (trade * size * mult
+               if (trade is not None and size is not None and mult is not None) else None)
+    bid, ask = schwab_number(item.get("BID_PRICE")), schwab_number(item.get("ASK_PRICE"))
+    classification = "unknown"
+    if trade is not None and bid is not None and ask is not None:
+        if trade <= bid:
+            classification = "at_bid" if trade == bid else "outside_spread_low"
+        elif trade >= ask:
+            classification = "at_ask" if trade == ask else "outside_spread_high"
+        else:
+            classification = "inside_spread"
+    return {
+        "ts_recv": ts_recv, "symbol": sym, "underlying": context.get("UNDERLYING"),
+        "expiry": expiry, "type": side, "strike": strike,
+        "bid": bid, "bid_size": schwab_count(item.get("BID_SIZE")),
+        "ask": ask, "ask_size": schwab_count(item.get("ASK_SIZE")),
+        "trade": trade, "size": size, "premium": premium,
+        "volume": schwab_count(item.get("TOTAL_VOLUME")), "oi": schwab_count(item.get("OPEN_INTEREST")),
+        "iv": schwab_number(item.get("VOLATILITY")), "delta": schwab_number(item.get("DELTA")),
+        "multiplier": mult, "classification": classification,
+    }
 
 
 def put_call_side(contract_type) -> "str | None":
@@ -151,134 +132,97 @@ def _display_window(cells: list[dict]) -> tuple[float, float]:
     return lo, max(hi, lo + 0.01)
 
 
-def book_heatmap_for_ticker(
-    ticker: str,
-    venue: str,
-    *,
-    minutes: float = 60.0,
-    max_rows: int = 20000,
-    db_path: str | Path | None = None,
-) -> dict[str, Any]:
-    """Historical book-depth heatmap for one underlying ticker's own book (operator field-
-    inventory audit, 2026-09-13 — "we don't have an order flow heatmap"). Bins the SAME
-    persisted `stream_book_raw` rows of one Schwab book, `venue` (NYSE_BOOK or NASDAQ_BOOK;
-    the two are never merged), into a time x price grid, cell
-    value = the LAST observed native TOTAL_VOLUME at that price within the bucket -- NOT a sum
-    across every captured tick (NASDAQ_BOOK/NYSE_BOOK messages are full-book snapshots, so an
-    unchanged resting level is re-transmitted every time any OTHER level moves; summing would
-    make brightness track retransmission frequency instead of actual displayed size). This is
-    genuinely historical (a real time dimension), which the live ladder's single current
-    snapshot cannot show — the Bookmap-style view.
+def _levels(item: dict, leaf: str, price_key: str) -> "tuple[tuple[float, int], ...]":
+    """One side of a Schwab book as (price, size) pairs; a single level can arrive as one bare
+    object rather than a list. A level without a number for both is not a level."""
+    levels = item.get(leaf)
+    if not isinstance(levels, list):
+        levels = [levels] if levels else []
+    out = []
+    for lvl in levels:
+        if isinstance(lvl, dict):
+            px, vol = schwab_number(lvl.get(price_key)), schwab_count(lvl.get("TOTAL_VOLUME"))
+            if px is not None and vol is not None:
+                out.append((px, vol))
+    return tuple(out)
 
-    The window ends at the LATEST row actually captured for this ticker, never wall-clock
-    `now()`: outside RTH (weekends, after-hours with no fresh ticks) "now" would show an
-    honestly-empty grid even though real historical data exists a few hours earlier. Anchoring
-    to the data's own latest timestamp means a viewer always sees the most recent REAL
-    session's shape, labelled with its own real as-of time — never a fabricated live illusion.
-    Fails closed (available:false + a plain reason) at every stage; never returns a synthetic
-    or interpolated cell.
-    """
-    sym = ticker_storage_key(ticker)   # canonical key only -- no raw-string stand-in
+
+class RecentBooks:
+    """Per (ticker, venue): its books for BOOKS_KEPT_SEC, one per second (the newest in that
+    second), each as (receive time, bid levels, ask levels). A book with no level (after the
+    close Schwab keeps sending empty ones) is not kept, so the window ends at the last real one."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._books: dict[tuple[str, str], deque] = {}
+
+    def record(self, ticker: str, venue: str, item: dict, ts_recv: float) -> None:
+        sym = ticker_storage_key(ticker)
+        if not sym or not isinstance(item, dict):
+            return
+        bids, asks = _levels(item, "BIDS", "BID_PRICE"), _levels(item, "ASKS", "ASK_PRICE")
+        if not bids and not asks:
+            return
+        book = (float(ts_recv), bids, asks)
+        with self._lock:
+            held = self._books.setdefault((sym, venue), deque())
+            if held and int(held[-1][0]) == int(book[0]):
+                held[-1] = book
+            else:
+                held.append(book)
+            while held[0][0] < book[0] - BOOKS_KEPT_SEC:
+                held.popleft()
+
+    def forget(self, ticker: str) -> None:
+        """Drop the ticker's books on every venue, when the console stops streaming them."""
+        sym = ticker_storage_key(ticker)
+        with self._lock:
+            for key in [k for k in self._books if k[0] == sym]:
+                del self._books[key]
+
+    def window(self, ticker: str, venue: str, minutes: float) -> "list[tuple]":
+        """The books of the `minutes` ending at the newest one, oldest first."""
+        key = (ticker_storage_key(ticker), venue)
+        with self._lock:
+            held = list(self._books[key]) if key in self._books else []
+        return [b for b in held if b[0] >= held[-1][0] - max(1.0, float(minutes)) * 60.0] if held else []
+
+
+#: the recent prints and books, fed by the console's intake
+TAPE = RecentTape()
+BOOKS = RecentBooks()
+
+
+def book_heatmap_for_ticker(ticker: str, venue: str, *, minutes: float = 60.0,
+                            books: RecentBooks = BOOKS) -> dict[str, Any]:
+    """Book-depth heatmap for one Schwab book of a ticker, `venue` (NYSE_BOOK or NASDAQ_BOOK; the
+    two are never merged): its recent books binned into a time x price grid, a cell the LAST
+    observed size at that price within the bucket -- never a sum (a book is a full snapshot, so
+    an unchanged resting level comes again with every other change). The window ends at the
+    newest book, never the wall clock, so outside market hours the last real session shows with
+    its own time. No interpolated cell."""
+    sym = ticker_storage_key(ticker)
     if not sym:
         return {"ticker": ticker, "available": False, "reason": "empty ticker"}
-    path = resolve_stream_db_path(db_path)
-    if not path.is_file():
-        return {"ticker": sym, "available": False, "reason": "no stream capture database"}
-    try:
-        con = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
-    except sqlite3.Error:
-        return {"ticker": sym, "available": False, "reason": "database unavailable"}
-    try:
-        con.execute("PRAGMA query_only=ON")
-        # the newest message that carries a price level: after the close Schwab keeps sending
-        # empty book snapshots, and anchoring on those showed an empty grid all weekend
-        # (measured 2026-09-27: SPY and TSLA blank, their last populated book on 2026-09-25)
-        latest = con.execute(
-            "SELECT MAX(ts_recv) FROM stream_book_raw WHERE symbol = ? AND service = ? "
-            "AND (native_json LIKE '%\"BID_PRICE\"%' OR native_json LIKE '%\"ASK_PRICE\"%')",
-            (sym, venue),
-        ).fetchone()
-        latest_ts = latest[0] if latest else None
-        if latest_ts is None:
-            any_row = con.execute(
-                "SELECT 1 FROM stream_book_raw WHERE symbol = ? AND service = ? LIMIT 1",
-                (sym, venue),
-            ).fetchone()
-            return {"ticker": sym, "available": False,
-                    "reason": ("captured rows carried no populated price levels in this window" if any_row
-                               else "no book history captured for this ticker")}
-        lower_bound = float(latest_ts) - max(1.0, float(minutes)) * 60.0
-        # DESC + LIMIT keeps the NEWEST max_rows rows in the window, then reversed below to
-        # oldest-first for the binning loop -- an earlier ASC+LIMIT form kept the OLDEST rows
-        # instead whenever a window's row count exceeded max_rows, silently pulling `until_ts`
-        # (and every rendered cell) well short of `latest_captured_ts` even though the payload's
-        # own metadata still correctly reported the true latest tick -- the exact "fabricated
-        # live illusion" this function's docstring says it must never produce.
-        # LIMIT max_rows+1: whether a (max_rows+1)-th row exists is what actually distinguishes
-        # "the window had exactly max_rows rows" from "more existed and were cut off" -- the
-        # earlier `len(rows) >= max_rows` check could never tell those apart (LIMIT already
-        # guarantees len(rows) <= max_rows, so it degenerates to `== max_rows`) and reported
-        # rows_capped:true on a window with no truncation at all.
-        rows = con.execute(
-            "SELECT ts_recv, native_json FROM stream_book_raw "
-            "WHERE symbol = ? AND service = ? AND ts_recv >= ? AND ts_recv <= ? "
-            "ORDER BY ts_recv DESC LIMIT ?",
-            (sym, venue, lower_bound, float(latest_ts), int(max_rows) + 1),
-        ).fetchall()
-        rows_capped = len(rows) > int(max_rows)
-        rows = rows[:int(max_rows)]
-        rows.reverse()
-    except sqlite3.Error:
-        return {"ticker": sym, "available": False, "reason": "database read failed"}
-    finally:
-        con.close()
+    rows = books.window(sym, venue, minutes)
     if not rows:
-        return {"ticker": sym, "available": False, "reason": "no book rows in the requested window"}
+        return {"ticker": sym, "available": False,
+                "reason": f"no {venue} book with a price level since the console started"}
 
-    t0 = float(rows[0][0])
-    span = float(rows[-1][0]) - t0   # binning floors at 1s below; no invented span
+    t0 = rows[0][0]
+    span = rows[-1][0] - t0   # binning floors at 1s below; no invented span
     n_buckets = 90
     bucket_sec = max(1.0, span / n_buckets)
 
     cells: dict[tuple[int, float], dict[str, float]] = {}
     prices_seen: set[float] = set()
-    for ts_recv, native_json in rows:
-        try:
-            item = json.loads(native_json)
-        except (TypeError, ValueError):
-            continue
-        if not isinstance(item, dict):
-            continue
-        bucket = min(n_buckets - 1, int((float(ts_recv) - t0) / bucket_sec))
-        for leaf, price_key, side in (("BIDS", "BID_PRICE", "bid"), ("ASKS", "ASK_PRICE", "ask")):
-            levels = item.get(leaf)
-            # This vendor field is not reliably a list -- app.options.order_flow.state.
-            # push_book already normalizes the identical BIDS/ASKS leaf the same way for
-            # exactly this reason (a single-level book can arrive as one bare object).
-            if not isinstance(levels, list):
-                levels = [levels] if levels else []
-            for lvl in levels:
-                if not isinstance(lvl, dict):
-                    continue
-                px, vol = schwab_number(lvl.get(price_key)), schwab_count(lvl.get("TOTAL_VOLUME"))
-                if px is None or vol is None:
-                    continue
+    for ts_recv, bids, asks in rows:
+        bucket = min(n_buckets - 1, int((ts_recv - t0) / bucket_sec))
+        for levels, side in ((bids, "bid"), (asks, "ask")):
+            for px, vol in levels:
                 # a side Schwab sent no level for at this price stays absent, never 0
-                cell = cells.setdefault((bucket, px), {"bid": None, "ask": None})
-                # Operator-reproduced defect (2026-09-14): NASDAQ_BOOK/NYSE_BOOK messages are
-                # full-book snapshots, not deltas -- an UNCHANGED 100-share resting level gets
-                # re-transmitted (and re-captured into stream_book_raw) every time ANY other
-                # level in the book moves. Accumulating with `+=` turned "the same 100 shares,
-                # observed 10 times" into a displayed 1,000 -- brightness measured how often a
-                # level was retransmitted, not how much size actually sat there. `rows` is
-                # already oldest-to-newest (see the DESC+LIMIT+reverse() above), so a plain
-                # overwrite leaves each cell holding the LAST observed size at that price within
-                # the bucket -- a real captured value, never a sum across repeated observations.
-                cell[side] = vol
+                cells.setdefault((bucket, px), {"bid": None, "ask": None})[side] = vol
                 prices_seen.add(px)
-
-    if not prices_seen:
-        return {"ticker": sym, "available": False, "reason": "captured rows carried no populated price levels in this window"}
 
     def _dominant(bid, ask) -> str:
         """The displayed side at this price and bucket (the cell's colour): the one Schwab sent,
@@ -297,18 +241,16 @@ def book_heatmap_for_ticker(
     display_lo, display_hi = _display_window(cell_list)
     return {
         "ticker": sym, "venue": venue, "available": True,
-        "since_ts": t0, "until_ts": float(rows[-1][0]), "latest_captured_ts": float(latest_ts),
+        "since_ts": t0, "until_ts": rows[-1][0], "latest_captured_ts": rows[-1][0],
         "n_buckets": n_buckets, "bucket_sec": round(bucket_sec, 2),
         "price_min": min(prices_seen), "price_max": max(prices_seen),
         # the default price window, and the largest displayed size (the colour scale's top)
         "display_lo": display_lo, "display_hi": display_hi,
         "max_size": max(v for c in cell_list for v in (c["bid"], c["ask"]) if v is not None),
-        "rows_scanned": len(rows), "rows_capped": rows_capped,
+        "rows_scanned": len(rows),
         "cells": cell_list,
-        "method": ("stream_book_raw NASDAQ_BOOK+NYSE_BOOK rows for this ticker, oldest-to-newest in "
-                   "the window ending at the data's own latest captured tick, binned into n_buckets "
-                   "time columns x native BID_PRICE/ASK_PRICE rows; cell value = the LAST observed "
-                   "native TOTAL_VOLUME at that price within the bucket (displayed size only, both "
-                   "venues merged) -- never summed across repeated observations of the same resting "
-                   "size, which would measure retransmission frequency, not liquidity."),
+        "method": ("the venue's books in the console's memory, one per second, in the window "
+                   "ending at the newest, binned into n_buckets time columns x Schwab's BID_PRICE/"
+                   "ASK_PRICE rows; cell value = the LAST observed TOTAL_VOLUME at that price within "
+                   "the bucket -- never summed across repeated observations of the same resting size."),
     }

@@ -104,8 +104,9 @@ def test_strikes_payload_carries_server_side_sums(monkeypatch):
 def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monkeypatch, tmp_path):
     """t12 (RC-227 residual): the PDL must be the min of the WHOLE prior session. Measured
     live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH/PDC
-    matched. price_bars_1m (written only from Schwab's streamed bars) is now the one bar
-    source, so the full prior session there must set every prior-day level."""
+    matched. price_bars_1m (written only from Schwab's streamed bars) is the one bar history,
+    loaded into the console's memory at startup (server._load_bars), so the full prior session
+    there must set every prior-day level."""
     import json
     import sqlite3
     from datetime import datetime as _dt
@@ -134,7 +135,9 @@ def test_api_levels_prior_day_low_is_the_full_session_min_of_price_bars_1m(monke
     class _Db:
         db_path = str(dbf)
     monkeypatch.setattr(srv, "get_db", lambda: _Db())
+    monkeypatch.setattr(srv, "_bars", {})
 
+    srv._load_bars()                                  # the console's start
     srv._publish_price_levels("SPY")                  # as the bar writer does
     payload = json.loads(bytes(srv.get_levels(ticker="SPY").body))
     by_id = {lv["id"]: lv for lv in payload["levels"]}
@@ -174,11 +177,13 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them(monk
     monkeypatch.setattr(push_changes, "watched", lambda: set())            # no page is open
     monkeypatch.delitem(_MATERIALIZED_SNAPSHOTS, ("SPY", "2026-09-25"), raising=False)
     monkeypatch.delitem(_MATERIALIZED_SNAPSHOTS, ("QQQ", "2026-09-25"), raising=False)
+    monkeypatch.setattr(srv, "_bars", {})
     db.upsert_1m_bars("SPY", [Candle(ts=b["timestamp"] / 1000.0, open=b["open"], high=b["high"], low=b["low"],
                                      close=b["close"], volume=b["volume"]) for b in raw[:-1]])
+    srv._load_bars()                                                       # the console's start
     reads = []
-    real_read = srv._read_bars_1m
-    monkeypatch.setattr(srv, "_read_bars_1m", lambda tk, limit: reads.append(tk) or real_read(tk, limit))
+    real_read = srv._bars_1m
+    monkeypatch.setattr(srv, "_bars_1m", lambda tk, limit: reads.append(tk) or real_read(tk, limit))
 
     # nothing published yet: the levels are absent with their reason, and the route read no bar
     none_yet = json.loads(srv.get_levels(ticker="SPY").body)

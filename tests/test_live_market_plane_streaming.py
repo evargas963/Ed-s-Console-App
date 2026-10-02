@@ -92,23 +92,29 @@ def test_received_ts_is_required_and_is_what_freshness_judges():
     assert row["server_received_ts"] == old and row["spot_received_ts"] == old
 
 
-def test_a_carried_last_price_is_served_with_its_own_time_whatever_the_feed_state():
-    """The unchanged LAST_PRICE keeps its own receive time; the price row serves it and the quote
-    as Schwab last sent them, with the feed's state beside them -- never blanked by it (operator
-    2026-10-01: "we use what schwab gives us and we display it")."""
+def test_a_carried_last_price_is_the_current_price_on_a_live_feed(monkeypatch):
+    """The unchanged LAST_PRICE keeps its own receive time; with the feed live the price row
+    carries it and the quote as Schwab last sent them, and it is the console's spot. (A feed down:
+    docs/DATA_FLOW.md §2 D5, tests/test_data_path_rules_v1.py.)"""
     import live_price_rows
-    from tests.feed_live_helper import mark_feed_down, mark_feed_live
+    import server
+    from app.options.order_flow import streaming as ofs
+    from tests.feed_live_helper import mark_feed_down, mark_feed_live, publish_daemon_rows
+    monkeypatch.setattr(ofs, "_price_rows", {})
     t_trade = time.time() - 45.0
     _rec("CARRY", {"key": "CARRY", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1},
          received_ts=t_trade)
     _rec("CARRY", {"key": "CARRY", "BID_PRICE": 9.95, "ASK_PRICE": 10.05})
     row = lmp.get_quote("CARRY")
     assert row["spot"] == 10.0 and row["spot_received_ts"] == t_trade
-    for feed in (mark_feed_down, lambda: mark_feed_live("CARRY")):
-        feed()
+    mark_feed_live("CARRY")
+    try:
         price = live_price_rows.price_row("CARRY")
-        assert (price["spot"], price["bid"], price["ask"]) == (10.0, 9.95, 10.05)
-        assert price["feed_live"] is lmp.feed_live_for("CARRY", "LEVELONE_EQUITIES")
+        assert (price["spot"], price["bid"], price["ask"], price["feed_live"]) == (10.0, 9.95, 10.05, True)
+        publish_daemon_rows("CARRY")
+        assert server.resolve_spot("CARRY") == (10.0, server.SPOT_SOURCE_PLANE, price["trade_ts"])
+    finally:
+        mark_feed_down()
 
 
 def test_a_minus_999_last_price_clears_the_spot_and_the_quote_stays():

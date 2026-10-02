@@ -1,11 +1,22 @@
-"""Adversarial lock: MARK / close / chain / snapshot / bar-close cannot become current live spot."""
+"""Adversarial lock: MARK / close / chain / snapshot / bar-close cannot become current live spot,
+the feed live (a feed down in an open session is its own reason: test_data_path_rules_v1 D5)."""
 
 from __future__ import annotations
 
 import time
 
+import pytest
+
 import live_market_plane as L
 import server
+from tests.feed_live_helper import mark_feed_down, mark_feed_live
+
+
+@pytest.fixture(autouse=True)
+def _feed_live():
+    mark_feed_live("SPY", "MARKNEVER", "KEEPLAST", "ZZRESTROW")
+    yield
+    mark_feed_down()
 
 
 class _FakeResp:

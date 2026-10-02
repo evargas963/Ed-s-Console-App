@@ -78,7 +78,7 @@ def _reset(tmp_path, monkeypatch):
 def _live_daemon():
     """The daemon's status arriving on the console socket: health can only be confirmed
     while the daemon itself is alive."""
-    lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": {}, "health": {}}, time.time())
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {}, "health": {}})
 
 
 def _push_option_l1(symbol, content, ts_recv):
@@ -313,8 +313,8 @@ def _real_fixture_contract():
 def _daemon_heartbeat(*held_contracts):
     """The daemon's heartbeat as it arrives on the console socket, holding these contracts
     on both option services."""
-    lmp.record_feed_heartbeat({"schwab_socket_open": True, "health": {}, "held": {
-        "LEVELONE_OPTIONS": list(held_contracts), "OPTIONS_BOOK": list(held_contracts)}}, time.time())
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "health": {}, "held": {
+        "LEVELONE_OPTIONS": list(held_contracts), "OPTIONS_BOOK": list(held_contracts)}})
 
 
 def test_option_contract_streaming_diagnostics_healthy_on_recent_tick():

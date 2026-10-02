@@ -10,6 +10,7 @@ import logging
 import threading
 from collections import deque
 from typing import Optional
+from app.options.order_flow import history
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
 from l1_trade_observation import (
@@ -41,7 +42,6 @@ class OrderFlowState:
         self._top: dict[str, dict] = {}
         self._prev_trade: dict[str, dict] = {}
         self._receive_seq: dict[str, int] = {}
-        self._receive_log: dict[str, deque] = {}
         self._stream_greeks: dict[str, dict] = {}
 
     def _get_book(self, symbol: str) -> deque:
@@ -55,12 +55,6 @@ class OrderFlowState:
             if symbol not in self._tape:
                 self._tape[symbol] = deque(maxlen=MAX_TAPE_PRINTS)
             return self._tape[symbol]
-
-    def _get_receive_log(self, symbol: str) -> deque:
-        with self._lock:
-            if symbol not in self._receive_log:
-                self._receive_log[symbol] = deque(maxlen=MAX_TAPE_PRINTS)
-            return self._receive_log[symbol]
 
     def push_book(self, symbol: str, content_item: dict, service: str) -> None:
         """Apply one Schwab book observation (from `service`: NYSE_BOOK, NASDAQ_BOOK or
@@ -88,9 +82,12 @@ class OrderFlowState:
             self._get_book(sym).append(item)
 
     def push_level_one(
-        self, symbol: str, content_item: dict, ts_recv: Optional[float] = None
+        self, symbol: str, content_item: dict, ts_recv: Optional[float] = None,
+        field_received: Optional[dict] = None,
     ) -> None:
-        """Apply one Schwab L1 observation with canonical merge/freshness/tape semantics."""
+        """Apply one Schwab L1 observation with canonical merge/freshness/tape semantics. A
+        current record merged from several messages (the daemon's bus) carries each field's own
+        receive time in `field_received`; each value is stamped with it."""
         if not content_item or not isinstance(content_item, dict):
             return
         sym = ticker_storage_key(symbol or content_item.get("key"))
@@ -130,19 +127,22 @@ class OrderFlowState:
         oi = schwab_count(content_item.get("OPEN_INTEREST"))
         # VOLATILITY too: the model's input must be as fresh as the gamma beside it
         iv = schwab_number(content_item.get("VOLATILITY"))
+        def received(field: str) -> float:
+            return ts_recv if field_received is None else field_received[field]
+
         if gamma is not None or delta is not None or oi is not None or vf is not None or iv is not None:
             with self._lock:
                 g = self._stream_greeks.setdefault(sym, {})
                 if gamma is not None:
-                    g["gamma"], g["gamma_ts_recv"] = gamma, ts_recv
+                    g["gamma"], g["gamma_ts_recv"] = gamma, received("GAMMA")
                 if delta is not None:
-                    g["delta"], g["delta_ts_recv"] = delta, ts_recv
+                    g["delta"], g["delta_ts_recv"] = delta, received("DELTA")
                 if oi is not None:
-                    g["open_interest"], g["open_interest_ts_recv"] = oi, ts_recv
+                    g["open_interest"], g["open_interest_ts_recv"] = oi, received("OPEN_INTEREST")
                 if vf is not None:
-                    g["total_volume"], g["total_volume_ts_recv"] = vf, ts_recv
+                    g["total_volume"], g["total_volume_ts_recv"] = vf, received("TOTAL_VOLUME")
                 if iv is not None:
-                    g["volatility"], g["volatility_ts_recv"] = iv, ts_recv
+                    g["volatility"], g["volatility_ts_recv"] = iv, received("VOLATILITY")
 
 
         trade_ms = content_item.get("TRADE_TIME_MILLIS")
@@ -152,7 +152,9 @@ class OrderFlowState:
             return
 
         curr_key = vendor_triple(trade_ms, last_price, last_size)
-        received_ts = float(ts_recv)   # the daemon receive time, not the console's clock
+        # the daemon's receive time of the message that carried the trade, not the console's
+        # clock, and not a later tick merged into the same record
+        received_ts = float(received("LAST_PRICE"))
         with self._lock:
             seq = self._receive_seq.get(sym, 0) + 1
             self._receive_seq[sym] = seq
@@ -173,7 +175,6 @@ class OrderFlowState:
                 "completeness": TAPE_COMPLETENESS,
                 "native_event_id": False,
             }
-            self._get_receive_log(sym).append(dict(receipt))
             if restatement:
                 return
             self._prev_trade[sym] = {
@@ -212,8 +213,6 @@ class OrderFlowState:
             values.clear()
         self._prev_trade.clear()
         self._receive_seq.clear()
-        for values in self._receive_log.values():
-            values.clear()
         self._stream_greeks.clear()
 
     def forget_unsubscribed_symbols(self, old: list[str], new: list[str]) -> None:
@@ -226,8 +225,10 @@ class OrderFlowState:
 
 
     def clear_symbol(self, symbol: str) -> None:
-        """Clear all state for one symbol."""
+        """Clear all state for one symbol, its recent prints and books included."""
         sym = ticker_storage_key(symbol)
+        history.TAPE.forget(sym)
+        history.BOOKS.forget(sym)
         with self._lock:
             if sym in self._book:
                 self._book[sym].clear()
@@ -236,8 +237,6 @@ class OrderFlowState:
             self._top.pop(sym, None)
             self._prev_trade.pop(sym, None)
             self._receive_seq.pop(sym, None)
-            if sym in self._receive_log:
-                self._receive_log[sym].clear()
             self._stream_greeks.pop(sym, None)
 
 
@@ -297,10 +296,11 @@ def push_book(symbol: str, content_item: dict, service: str) -> None:
 
 
 def push_level_one(
-    symbol: str, content_item: dict, ts_recv: Optional[float] = None
+    symbol: str, content_item: dict, ts_recv: Optional[float] = None,
+    field_received: Optional[dict] = None,
 ) -> None:
     """Apply an L1 observation to the live singleton."""
-    _LIVE_STATE.push_level_one(symbol, content_item, ts_recv=ts_recv)
+    _LIVE_STATE.push_level_one(symbol, content_item, ts_recv=ts_recv, field_received=field_received)
 
 
 def get_content_for_symbol(symbol: str, venue: Optional[str] = None) -> list[dict]:

@@ -51,10 +51,11 @@ ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
 from stream_spine import (  # noqa: E402
-    COUNT_DROPS,
+    LOG,
     CaptureWriter,
     HealthRegistry,
     MessageBus,
+    current_key,
     bar_msg,
     book_msg,
     news_msg,
@@ -150,30 +151,45 @@ def split_request(symbols: "list[str]", max_bytes: int = MAX_REQUEST_BYTES) -> "
 
 # ---------------------------------------------------------------------------- Schwab messages
 
-def _message(service: str, sym: str, item: dict) -> "tuple[str, dict]":
-    """(topic kind, bus message) for one Schwab item."""
+#: each Schwab service's bus topic kind and the source its messages carry
+SERVICE_TOPIC = {"LEVELONE_EQUITIES": ("quote", "schwab_l1"), "CHART_EQUITY": ("bar1m", "schwab_chart"),
+                 "LEVELONE_OPTIONS": ("optquote", "schwab_options_l1"),
+                 "NEWS_HEADLINE": ("news", "schwab_news"), "NYSE_BOOK": ("book", "schwab_book"),
+                 "NASDAQ_BOOK": ("book", "schwab_book"), "OPTIONS_BOOK": ("book", "schwab_book")}
+
+
+def _current_key(service: str, sym: str) -> str:
+    """The bus's current-record key of `sym` on `service` (stream_spine.current_key)."""
+    kind, src = SERVICE_TOPIC[service]
+    return current_key(f"{kind}.{sym}", {"service": service, "src": src})
+
+
+def _message(service: str, sym: str, item: dict, schwab_ts: "int | None") -> "tuple[str, dict]":
+    """(topic kind, bus message) for one Schwab item, with the timestamp of Schwab's frame."""
+    kind, src = SERVICE_TOPIC[service]
     if service == "LEVELONE_EQUITIES":
         flat = {name: item.get(k) for k, name in LEVELONE_FIELDS.items()}
-        return "quote", quote_msg(symbol=sym, src="schwab_l1", native=item, **flat)
+        return kind, quote_msg(symbol=sym, src=src, native=item, schwab_ts=schwab_ts, **flat)
     if service == "CHART_EQUITY":
         flat = {name: item.get(k) for k, name in CHART_FIELDS.items()}
-        return "bar1m", bar_msg(symbol=sym, src="schwab_chart", **flat)
+        return kind, bar_msg(symbol=sym, src=src, native=item, schwab_ts=schwab_ts, **flat)
     if service == "LEVELONE_OPTIONS":
-        return "optquote", options_quote_msg(symbol=sym, content=item, src="schwab_options_l1")
+        return kind, options_quote_msg(symbol=sym, content=item, src=src, schwab_ts=schwab_ts)
     if service == "NEWS_HEADLINE":
-        return "news", news_msg(symbol=sym, content=item, src="schwab_news")
-    return "book", book_msg(symbol=sym, service=service, content=item, src="schwab_book")
+        return kind, news_msg(symbol=sym, content=item, src=src, schwab_ts=schwab_ts)
+    return kind, book_msg(symbol=sym, service=service, content=item, src=src, schwab_ts=schwab_ts)
 
 
 def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
-    """schwab-py handler for one service: every item -> the bus. The service counts as alive
-    only when a frame delivered data, not merely arrived (audit of #280)."""
+    """schwab-py handler for one service: every item -> the bus, with the timestamp Schwab put on
+    the frame. The service counts as alive only when a frame delivered data, not merely arrived."""
     def handler(msg: dict) -> None:
         published = False
+        schwab_ts = msg.get("timestamp")
         for item in msg.get("content") or []:
             sym = str(item.get("key") or "").upper() if isinstance(item, dict) else ""
             if sym:
-                kind, out = _message(service, sym, item)
+                kind, out = _message(service, sym, item, schwab_ts)
                 bus.publish(f"{kind}.{sym}", out)
                 published = True
         if published:
@@ -325,6 +341,9 @@ class Daemon:
                     held = set(self.held[svc])
                     held = held - set(chunk) if cmd == "UNSUBS" else held | set(chunk)
                     self.held[svc] = frozenset(held)
+                    if cmd == "UNSUBS":             # no longer held: no longer current
+                        for sym in chunk:
+                            self.bus.forget(_current_key(svc, sym))
                 else:
                     log.warning("%s %s refused (%d symbols): %s", svc, cmd, len(chunk), reason)
                     if cmd != "UNSUBS":
@@ -500,12 +519,12 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
 
 async def run_chains(daemon: "Daemon", db_path, make_client, stop: asyncio.Event) -> None:
     """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own threads, so the
-    stream never waits on a chain; each chain message is published on the event loop, as an event
-    (a part of one chain, never a topic's state to replay)."""
+    stream never waits on a chain; each chain part is published on the event loop, and the bus
+    keeps each ticker's newest whole chain (stream_spine.MessageBus._chain)."""
     loop = asyncio.get_running_loop()
     halt = threading.Event()
     sweep = ChainSweep(db_path, daemon.board,
-                       lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish_event, topic, msg))
+                       lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg))
     daemon.chains = sweep
     sweep.set_active(daemon.active)                 # the ticker on screen, if the console said one
     workers = [loop.run_in_executor(None, sweep.work, make_client, halt) for _ in range(CHAIN_WORKERS)]
@@ -536,7 +555,7 @@ async def run() -> int:
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
     daemon = Daemon(bus, health, board=board_tickers(db_path))
-    wsub = bus.subscribe("", policy=COUNT_DROPS, name="db_writer")
+    wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(run_chains(daemon, db_path, make_client, stop)),
              asyncio.create_task(record_feed_status(daemon, stop)),

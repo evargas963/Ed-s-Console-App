@@ -34,7 +34,7 @@
     empty.hidden = ok;
     empty.textContent = ok ? '' : !d ? 'the book heatmap request failed' : !d.available ? ((d.reason) || 'no book history for ' + tk)
       : 'rows were captured but carried no populated price levels';
-    h.querySelector('.ofh-foot').textContent = !ok ? '' : d.rows_scanned + (d.rows_capped ? '+ (capped)' : '') + ' book ticks · ' +
+    h.querySelector('.ofh-foot').textContent = !ok ? '' : d.rows_scanned + ' books · ' +
       fmtCT(d.since_ts) + '–' + fmtCT(d.until_ts) + ' CT · latest capture ' + fmtCT(d.latest_captured_ts) + ' CT — every cell is a captured book tick; nothing is interpolated between ticks.';
   }
 

@@ -8,7 +8,7 @@ prove the seam the 2026-09-23 transport change created:
   * a Schwab message published on the daemon's bus reaches the console's live-price plane
     with its OWN receive time (never the time the console processed it);
   * only Schwab-sourced messages are forwarded (any other src on the same topic is not);
-  * a connecting console first receives the bus's last values, then live messages;
+  * a connecting console first receives the bus's current records, then each that changes;
   * the live loop never opens the capture database;
   * with the push server down nothing is served, and the feed picks up when it returns.
 """
@@ -140,34 +140,26 @@ def test_a_closed_schwab_socket_is_not_live(feed):
 
 
 def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
+    """Neither the message nor any value it carried: the SPY record a client receives holds
+    only what Schwab sent (here, no CLOSE_PRICE -- only the non-Schwab message carried one)."""
+    import json as _json
+
+    from websockets.asyncio.client import connect
+
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
         bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=1.0, ask=1.1, last=1.05,
                                            src="not_schwab", ts_recv=time.time(),
-                                           native={"LAST_PRICE": 1.05}))
+                                           native={"LAST_PRICE": 1.05, "CLOSE_PRICE": 1.0}))
         ts = time.time()
         bus.publish("quote.SPY", _spy_trade(502.0, ts))
         assert await _until(_received(ts))
         assert stats["sent"] == 1
+        async with connect(f"ws://127.0.0.1:{feed}", max_size=None) as ws:   # a second client
+            while (m := _json.loads(await asyncio.wait_for(ws.recv(), 5)))["topic"] != "quote.SPY":
+                pass
+        assert "CLOSE_PRICE" not in m["msg"]["native"], "a non-Schwab value was forwarded as Schwab's"
     asyncio.run(_run(feed, body))
-
-
-def test_a_chain_part_is_delivered_once_and_never_kept():
-    """A chain part is an event: delivered to whoever listens now, never held as a topic's last
-    value (the daemon kept the last part of every ticker's chain, megabytes each, for a replay
-    that had to skip them)."""
-    from calibration.complete_chain_capture import chain_messages
-
-    async def run():
-        bus = MessageBus()
-        sub = bus.subscribe("chain.")
-        for topic, msg in chain_messages("SPY", [{"symbol": "X"}], 1.0):
-            bus.publish_event(topic, msg)
-        got = sub.queue.get_nowait()
-        return got, bus.snapshot()
-    (topic, msg), kept = asyncio.run(run())
-    assert topic == "chain.SPY" and live_push.encode(topic, msg) == msg["frame"]
-    assert kept == {}
 
 
 def test_a_connecting_console_receives_the_last_values_first(feed):
@@ -310,10 +302,12 @@ def test_daemon_shutdown_is_not_held_up_by_a_connected_console(feed):
     asyncio.run(run())
 
 
-def test_a_late_console_gets_every_message_with_the_time_it_really_arrived(feed):
+def test_a_late_console_gets_the_current_record_with_each_fields_own_time(feed):
     """Schwab LEVELONE sends only changed fields. A console connecting after a trade and a
-    later bid/ask tick still gets both messages -- each with the receive time the daemon gave
-    it -- not just the last (bid/ask-only) one."""
+    later bid/ask tick gets the current record (docs/DATA_FLOW.md §2 D3): the trade's fields
+    and the bid/ask together, each stamped with the receive time the daemon gave the message
+    that carried it -- the trade is not lost behind the later bid/ask-only tick, nor re-dated
+    to it."""
     async def run():
         bus = MessageBus()
         stop = asyncio.Event()
@@ -333,23 +327,11 @@ def test_a_late_console_gets_every_message_with_the_time_it_really_arrived(feed)
         ofs._feed_running = True
         client = asyncio.create_task(ofs._feed_loop())
         try:
-            assert await _until(_received(t_trade))    # the trade, not only the later bid/ask tick
+            assert await _until(_received(t_trade))    # the trade, at its own receive time
+            assert not _received(t_quote)(), "the trade was re-dated to the later bid/ask tick"
         finally:
             ofs._feed_running = False
             client.cancel()
             stop.set()
             await asyncio.gather(client, server, return_exceptions=True)
     asyncio.run(run())
-
-
-def test_field_history_keeps_only_the_latest_carrier_of_each_field():
-    h = live_push.FieldHistory()
-    m1 = quote_msg(symbol="X", src="schwab_l1", ts_recv=1.0, native={"LAST_PRICE": 1, "CLOSE_PRICE": 9})
-    m2 = quote_msg(symbol="X", src="schwab_l1", ts_recv=2.0, native={"LAST_PRICE": 2})
-    m3 = quote_msg(symbol="X", src="schwab_l1", ts_recv=3.0, native={"BID_PRICE": 1.5})
-    for m in (m1, m2, m3):
-        h.record("quote.X", m)
-    assert [m["ts_recv"] for _t, m in h.replay()] == [1.0, 2.0, 3.0]  # m1 still carries CLOSE_PRICE
-    h.record("quote.X", quote_msg(symbol="X", src="schwab_l1", ts_recv=4.0,
-                                  native={"CLOSE_PRICE": 9, "BID_PRICE": 1.6}))
-    assert [m["ts_recv"] for _t, m in h.replay()] == [2.0, 4.0]       # m1 and m3 superseded

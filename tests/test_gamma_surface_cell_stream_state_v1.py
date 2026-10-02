@@ -246,8 +246,8 @@ def teardown_function(_fn):
 
 def _daemon_holds(*symbols):
     """The daemon's heartbeat: Schwab socket open, these contracts held on LEVELONE_OPTIONS."""
-    lmp.record_feed_heartbeat({"schwab_socket_open": True,
-                               "held": {"LEVELONE_OPTIONS": list(symbols)}}, time.time())
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+                               "held": {"LEVELONE_OPTIONS": list(symbols)}})
 
 
 def test_a_fresh_tick_marks_the_ticking_contracts_own_cell_live(monkeypatch, view):
@@ -273,10 +273,13 @@ def test_a_fresh_tick_marks_the_ticking_contracts_own_cell_live(monkeypatch, vie
     assert found_live, "fixture must contain the streamed symbol on at least one cell"
 
 
-def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monkeypatch, view):
+@pytest.mark.parametrize("now, overlaid", [(1790780400.0, 0), (1790820000.0, 1)], ids=["rth", "closed"])
+def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monkeypatch, view, now, overlaid):
     # The contract is desired (primary slot, set in setup_function) and ticked a second ago, but
-    # the daemon no longer holds it: its leg reads stale (the feed is not delivering it), and its
-    # streamed gamma, newer than the chain, is still the value Schwab last sent.
+    # the daemon no longer holds it: its leg reads stale (the feed is not delivering it). Its
+    # streamed gamma, newer than the chain, prices the levels only while Closed (the value as of
+    # the close); during RTH the feed is down and the chain's value stands (DATA_FLOW §2 D5).
+    monkeypatch.setattr(time, "time", lambda: now)
     _put_chain(view, fetched_ts=time.time() - 10.0)
     _daemon_holds()
     live = {_CONTRACT_SYMBOL: {"gamma": 0.05, "gamma_ts_recv": time.time()}}
@@ -285,7 +288,7 @@ def test_a_desired_contract_the_daemon_no_longer_holds_is_stale_never_live(monke
 
     _publish_levels(TK)
     surface = _published_surface()
-    assert surface["stream_overlay_contracts"] == 1   # the newest value Schwab sent
+    assert surface["stream_overlay_contracts"] == overlaid
     counts = _call(TK)
     assert counts["live"] == 0
     assert counts["stale"] > 0

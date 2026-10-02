@@ -1,7 +1,7 @@
 # institutional-synthetic-ok: a crafted thin prior-session tape proves the banked coverage stamp fires.
 """Audit round 2 (2026-08-25) — the prior-session tape in price_bars_1m carries coverage
-honesty. (Since the bars-from-the-stream change, price_bars_1m -- written only from Schwab's
-streamed 1-minute bars -- is the ONE bar source, so this stamp now guards every level read.)
+honesty. (price_bars_1m -- written only from Schwab's streamed 1-minute bars -- is the ONE bar
+history, loaded into the console's memory at startup, so this stamp guards every level read.)
 
 WHAT WAS MEASURED: the >=LEVELS_PRIOR_SESSION_MIN_BARS floor existed only on the
 accumulator path (t12/RC-227), while the banked fallback fires precisely WHEN coverage
@@ -47,7 +47,7 @@ def _seed_thin_prior_db(tmp_path: Path, ticker: str, prior_day: datetime,
 
 def _published(tmp_path, monkeypatch, ticker: str, n_bars: int):
     """The price levels the producer publishes for Monday 2026-08-24 from a Friday tape of
-    `n_bars` RTH minutes in price_bars_1m."""
+    `n_bars` RTH minutes in price_bars_1m, loaded as the console's start loads it."""
     import server
     import time_et
 
@@ -57,7 +57,9 @@ def _published(tmp_path, monkeypatch, ticker: str, n_bars: int):
         db_path = str(dbp)
 
     monkeypatch.setattr(server, "get_db", lambda: _StubDB())
+    monkeypatch.setattr(server, "_bars", {})
     monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 8, 24, 12, 0, tzinfo=ET))
+    server._load_bars()                               # the console's start
     server._publish_price_levels(ticker)
     return server.canonical_price_level_snapshot(ticker)
 

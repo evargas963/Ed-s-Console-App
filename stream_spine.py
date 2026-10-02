@@ -1,8 +1,9 @@
 """The pieces the capture daemon and its readers share: the stream database path and schema,
 the message shapes, the in-process message bus, feed health, and the database writer.
 
-  - Every Schwab message is published once on the MessageBus; the writer, the console socket
-    and the browser socket each read their own bounded queue from it (drops are counted).
+  - Every Schwab message is published once on the MessageBus and becomes its topic's current
+    record (the newest by Schwab's time); the writer reads every message (LOG), the console
+    socket and the browser socket read each changed topic's current record (LATEST).
   - Raw stream data goes ONLY to stream_capture.db -- ed_console.db is never written here.
   - The writer runs on its own thread with its own SQLite connection, so a slow disk can
     never stall the Schwab socket (measured 2026-09-23: in-loop commits dropped 9,784 msgs).
@@ -29,9 +30,6 @@ def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
         return Path(default).resolve()
     return canonical_stream_db_path()
 
-
-COALESCE = "coalesce"
-COUNT_DROPS = "count_drops"
 
 STREAM_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS stream_quotes_raw (
@@ -109,12 +107,16 @@ def _now(ts_recv: "float | None") -> float:
     return ts_recv if ts_recv is not None else time.time()
 
 
+#: Every Schwab message carries `schwab_ts`: the timestamp (ms) Schwab put on the frame that
+#: delivered it. Which value is current is decided by it (docs/DATA_FLOW.md §2 D1).
+
 def quote_msg(*, symbol: str, bid=None, ask=None, last=None, bid_size=None, ask_size=None,
               last_size=None, total_volume=None, quote_time_ms=None, trade_time_ms=None,
-              src: str, ts_recv: float | None = None, native: dict | None = None) -> dict:
+              src: str, ts_recv: float | None = None, native: dict | None = None,
+              schwab_ts: int | None = None) -> dict:
     """quote.* (LEVELONE_EQUITIES). `native` is Schwab's item verbatim -- readers need fields
     the flat columns do not carry (BID_TIME_MILLIS, LAST_MIC_ID, ...)."""
-    return {"ts_recv": _now(ts_recv), "symbol": symbol,
+    return {"ts_recv": _now(ts_recv), "schwab_ts": schwab_ts, "symbol": symbol,
             "bid": bid, "ask": ask, "last": last, "bid_size": bid_size,
             "ask_size": ask_size, "last_size": last_size, "total_volume": total_volume,
             "quote_time_ms": quote_time_ms, "trade_time_ms": trade_time_ms, "src": src,
@@ -122,28 +124,33 @@ def quote_msg(*, symbol: str, bid=None, ask=None, last=None, bid_size=None, ask_
 
 
 def book_msg(*, symbol: str, service: str, content: dict, src: str,
-             ts_recv: float | None = None) -> dict:
+             ts_recv: float | None = None, schwab_ts: int | None = None) -> dict:
     """book.* (NYSE_BOOK / NASDAQ_BOOK / OPTIONS_BOOK), Schwab's item verbatim."""
-    return {"ts_recv": _now(ts_recv), "symbol": symbol, "service": service,
-            "content": content, "src": src}
+    return {"ts_recv": _now(ts_recv), "schwab_ts": schwab_ts, "symbol": symbol,
+            "service": service, "content": content, "src": src}
 
 
 def options_quote_msg(*, symbol: str, content: dict, src: str,
-                      ts_recv: float | None = None) -> dict:
+                      ts_recv: float | None = None, schwab_ts: int | None = None) -> dict:
     """optquote.* (LEVELONE_OPTIONS), Schwab's item verbatim."""
-    return {"ts_recv": _now(ts_recv), "symbol": symbol, "content": content, "src": src}
+    return {"ts_recv": _now(ts_recv), "schwab_ts": schwab_ts, "symbol": symbol,
+            "content": content, "src": src}
 
 
 def bar_msg(*, symbol: str, bar_start_ms=None, open=None, high=None, low=None, close=None,  # noqa: A002
-            volume=None, src: str, ts_recv: float | None = None) -> dict:
-    """bar1m.* (CHART_EQUITY)."""
-    return {"ts_recv": _now(ts_recv), "symbol": symbol, "bar_start_ms": bar_start_ms,
-            "open": open, "high": high, "low": low, "close": close, "volume": volume, "src": src}
+            volume=None, src: str, ts_recv: float | None = None, native: dict | None = None,
+            schwab_ts: int | None = None) -> dict:
+    """bar1m.* (CHART_EQUITY). `native` is Schwab's item verbatim (SEQUENCE, CHART_DAY, ...)."""
+    return {"ts_recv": _now(ts_recv), "schwab_ts": schwab_ts, "symbol": symbol,
+            "bar_start_ms": bar_start_ms, "open": open, "high": high, "low": low,
+            "close": close, "volume": volume, "src": src, "native": native}
 
 
-def news_msg(*, symbol: str, content: dict, src: str, ts_recv: float | None = None) -> dict:
+def news_msg(*, symbol: str, content: dict, src: str, ts_recv: float | None = None,
+             schwab_ts: int | None = None) -> dict:
     """news.* (NEWS_HEADLINE), Schwab's item verbatim."""
-    return {"ts_recv": _now(ts_recv), "symbol": symbol, "content": content, "src": src}
+    return {"ts_recv": _now(ts_recv), "schwab_ts": schwab_ts, "symbol": symbol,
+            "content": content, "src": src}
 
 
 def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: "int | None",
@@ -155,79 +162,150 @@ def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: 
 
 # ---------------------------------------------------------------------------- the bus
 
+#: How a reader takes the bus. LOG: every message, in order -- the database writer, the record of
+#: everything Schwab sent (docs/DATA_FLOW.md §2 D4). LATEST: for each topic that changed since
+#: its last read, that topic's current record -- every live reader: a newer value replaces an
+#: older one at once, nothing old waits, and what a reader holds is bounded by the number of
+#: topics, never by how fast Schwab sends (D3).
+LOG, LATEST = "log", "latest"
+#: the topics whose messages carry only the fields that changed (Schwab's LEVELONE services),
+#: by the key of the Schwab item in the message: their current record merges field by field
+_FIELD_DELTA = {"quote": "native", "optquote": "content"}
+
+
+def current_key(topic: str, msg: Any) -> str:
+    """A topic's key in the current state, by its source (`src`: a message from elsewhere is
+    never merged into Schwab's record) and, for a book, its service (NYSE_BOOK and NASDAQ_BOOK
+    are two books of one symbol)."""
+    if not isinstance(msg, dict):
+        return topic
+    if topic.startswith("book."):
+        return f"{topic}@{msg.get('service')}#{msg.get('src')}"
+    return f"{topic}#{msg.get('src')}"
+
+
+def _older(t: "float | None", than: "float | None") -> bool:
+    """`t` is older than `than` by Schwab's time; a message without one cannot be compared."""
+    return t is not None and than is not None and t < than
+
+
 @dataclass
 class Subscription:
     prefix: str
     policy: str
-    queue: asyncio.Queue
-    pending: dict[str, Any] = field(default_factory=dict)
-    dropped: int = 0
+    current: dict                                                     # the bus's current state
+    queue: asyncio.Queue = field(default_factory=asyncio.Queue)      # LOG: every message
+    changed: dict = field(default_factory=dict)                      # LATEST: keys, in order
+    wake: asyncio.Event = field(default_factory=asyncio.Event)
 
-    def deliver(self, topic: str, msg: Any) -> None:
-        if self.policy == COALESCE:
-            fresh = topic not in self.pending
-            self.pending[topic] = msg
-            if fresh:
-                try:
-                    self.queue.put_nowait(topic)
-                except asyncio.QueueFull:
-                    self.pending.pop(topic, None)
-                    self.dropped += 1
-            return
-        try:
+    def deliver(self, key: str, topic: str, msg: Any) -> None:
+        if self.policy == LOG:
             self.queue.put_nowait((topic, msg))
-        except asyncio.QueueFull:
-            self.dropped += 1
+        else:
+            self.changed[key] = None
+            self.wake.set()
 
     async def get(self) -> tuple[str, Any]:
-        item = await self.queue.get()
-        if self.policy == COALESCE:
-            topic = item
-            return topic, self.pending.pop(topic)
-        return item
+        """LOG: the next message. LATEST: (topic, current record) of the next changed topic; a
+        chain's record is its parts, in order."""
+        if self.policy == LOG:
+            return await self.queue.get()
+        while True:
+            while self.changed:
+                key = next(iter(self.changed))
+                del self.changed[key]
+                entry = self.current.get(key)
+                if entry is not None:
+                    return entry
+            self.wake.clear()
+            await self.wake.wait()
 
 
 class MessageBus:
-    """Topic pub/sub with a last-value cache written BEFORE publish (cache-then-publish)."""
+    """Every Schwab message is published once. It becomes its topic's current record -- the
+    newest by Schwab's time (`schwab_ts`, the frame's timestamp; a chain by its fetch time):
+    a LEVELONE message merged field by field, a book, bar or news item whole, a chain whole once
+    all its parts are in -- and each reader takes it by its policy (LOG or LATEST)."""
 
     def __init__(self) -> None:
         self._subs: list[Subscription] = []
-        self._sub_names: dict[int, str] = {}           # id(subscription) -> consumer name
-        self._retired_drops: dict[str, int] = {}       # drops of unsubscribed consumers, by name
-        self.cache: dict[str, Any] = {}
-        self.published = 0
+        #: key (current_key) -> (topic, record)
+        self.current: dict[str, tuple[str, Any]] = {}
+        #: chain topic -> (fetch time, {part: message}, parts): the newest fetch, filling
+        self._chains: dict[str, tuple[float, dict, int]] = {}
 
-    def subscribe(self, prefix: str, *, policy: str = COUNT_DROPS, maxsize: int = 0,
-                  name: str | None = None) -> Subscription:
-        """`name` identifies the consumer in drop_counts (default: the prefix). The queue is
-        unbounded unless `maxsize` is given: no message is dropped because a reader is behind."""
-        sub = Subscription(prefix=prefix, policy=policy, queue=asyncio.Queue(maxsize=maxsize))
-        self._sub_names[id(sub)] = name if name is not None else prefix
+    def subscribe(self, prefix: str, *, policy: str = LATEST) -> Subscription:
+        """A LATEST reader starts with every current record under `prefix` to read."""
+        sub = Subscription(prefix=prefix, policy=policy, current=self.current)
+        if policy == LATEST:
+            sub.changed.update((k, None) for k, (t, _r) in self.current.items() if t.startswith(prefix))
+            if sub.changed:
+                sub.wake.set()
         self._subs.append(sub)
         return sub
 
     def unsubscribe(self, sub: Subscription) -> None:
-        """Stop delivering to `sub`; its drop count is kept under its name."""
         if sub in self._subs:
             self._subs.remove(sub)
-            name = self._sub_names.pop(id(sub), sub.prefix)
-            if sub.dropped:
-                self._retired_drops[name] = self._retired_drops.get(name, 0) + sub.dropped
 
     def publish(self, topic: str, msg: Any) -> None:
-        """A message that is its topic's latest state: kept (snapshot) and delivered."""
-        self.cache[topic] = msg
-        self.publish_event(topic, msg)
-
-    def publish_event(self, topic: str, msg: Any) -> None:
-        """A message that is one event, not a state (a part of a chain): delivered, not kept."""
-        self.published += 1
+        key = current_key(topic, msg)
+        chain = topic.startswith("chain.")
+        changed = self._chain(key, topic, msg) if chain else self._newest(key, topic, msg)
         for sub in self._subs:
-            if topic.startswith(sub.prefix):
-                sub.deliver(topic, msg)
+            if not topic.startswith(sub.prefix):
+                continue
+            # a chain's record is its own history (the chain sweep writes it), never the log's
+            if (sub.policy == LOG and not chain) or (sub.policy == LATEST and changed):
+                sub.deliver(key, topic, msg)
 
-    def snapshot(self, prefix: str = "") -> dict[str, Any]:
-        return {t: v for t, v in self.cache.items() if t.startswith(prefix)}
+    def forget(self, key: str) -> None:
+        """The daemon stopped holding what `key` (current_key) names: its record is no longer
+        current and is never handed out again (D5)."""
+        self.current.pop(key, None)
+
+    def _newest(self, key: str, topic: str, msg: Any) -> bool:
+        """Make `msg` part of its topic's current record where it is the newest by Schwab's
+        time. Returns whether the record changed."""
+        held = self.current.get(key)
+        t = msg.get("schwab_ts") if isinstance(msg, dict) else None
+        body_key = _FIELD_DELTA.get(topic.split(".", 1)[0])
+        body = msg.get(body_key) if body_key is not None and isinstance(msg, dict) else None
+        if not isinstance(body, dict):                       # a whole record: replaced whole
+            if held is not None and isinstance(held[1], dict) and _older(t, held[1].get("schwab_ts")):
+                return False
+            self.current[key] = (topic, msg)
+            return True
+        stamp = (t, msg.get("ts_recv"))
+        if held is None:
+            self.current[key] = (topic, {**msg, body_key: dict(body), "field_ts": dict.fromkeys(body, stamp)})
+            return True
+        rec = held[1]
+        merged, stamps = dict(rec[body_key]), dict(rec["field_ts"])
+        took = [f for f in body if f not in stamps or not _older(t, stamps[f][0])]
+        if not took:
+            return False
+        for f in took:
+            merged[f], stamps[f] = body[f], stamp
+        top = rec if _older(t, rec.get("schwab_ts")) else msg   # the record's own time: its newest
+        self.current[key] = (topic, {**top, body_key: merged, "field_ts": stamps})
+        return True
+
+    def _chain(self, key: str, topic: str, msg: dict) -> bool:
+        """A chain part (or a failed fetch, which has no parts): the newest fetch of the ticker
+        is kept; once all its parts are in it replaces the current chain whole."""
+        ts, part = msg.get("ts_recv"), msg.get("part")
+        held = self._chains.get(key)
+        if held is not None and ts < held[0]:
+            return False                                      # an older fetch: never current
+        if held is None or ts > held[0]:
+            held = (ts, {}, msg.get("parts") if part is not None else 1)
+            self._chains[key] = held
+        held[1][part if part is not None else 0] = msg
+        if len(held[1]) < held[2]:
+            return False
+        self.current[key] = (topic, [held[1][i] for i in sorted(held[1])])
+        return True
 
 
 
@@ -252,30 +330,43 @@ class HealthRegistry:
 
 # ---------------------------------------------------------------------------- the writer
 
+#: columns added after a table was first made: (table, column, type)
+_ADDED_COLUMNS = (("stream_quotes_raw", "native_json", "TEXT"),
+                  ("stream_quotes_raw", "schwab_ts", "INTEGER"),
+                  ("stream_book_raw", "schwab_ts", "INTEGER"),
+                  ("stream_options_quotes_raw", "schwab_ts", "INTEGER"),
+                  ("stream_bars_raw", "schwab_ts", "INTEGER"),
+                  ("stream_bars_raw", "native_json", "TEXT"),
+                  ("stream_news_raw", "schwab_ts", "INTEGER"))
+
 _INSERTS = {
     "feedstatus": ("INSERT INTO stream_feed_status(ts,service,socket_open,schwab_last_frame_ts,"
                    "held,last_data_ts) VALUES(?,?,?,?,?,?)",
                    lambda m: (m["ts"], m["service"], int(m["socket_open"]),
                               m.get("schwab_last_frame_ts"), m["held"], m.get("last_data_ts"))),
     "quote": ("INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
-              "last_size,total_volume,quote_time_ms,trade_time_ms,src,native_json) "
-              "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              "last_size,total_volume,quote_time_ms,trade_time_ms,src,native_json,schwab_ts) "
+              "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
               lambda m: (m.get("ts_recv"), m.get("symbol"), m.get("bid"), m.get("ask"),
                          m.get("last"), m.get("bid_size"), m.get("ask_size"), m.get("last_size"),
                          m.get("total_volume"), m.get("quote_time_ms"), m.get("trade_time_ms"),
-                         m["src"], _json(m.get("native")))),
-    "book": ("INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src) VALUES(?,?,?,?,?)",
+                         m["src"], _json(m.get("native")), m.get("schwab_ts"))),
+    "book": ("INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src,schwab_ts) "
+             "VALUES(?,?,?,?,?,?)",
              lambda m: (m.get("ts_recv"), m.get("symbol"), m.get("service"),
-                        json.dumps(m["content"]), m["src"])),
-    "optquote": ("INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src) "
-                 "VALUES(?,?,?,?)",
-                 lambda m: (m.get("ts_recv"), m.get("symbol"), json.dumps(m["content"]), m["src"])),
+                        json.dumps(m["content"]), m["src"], m.get("schwab_ts"))),
+    "optquote": ("INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src,schwab_ts) "
+                 "VALUES(?,?,?,?,?)",
+                 lambda m: (m.get("ts_recv"), m.get("symbol"), json.dumps(m["content"]), m["src"],
+                            m.get("schwab_ts"))),
     "bar1m": ("INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
-              "volume,src) VALUES(?,?,?,?,?,?,?,?,?)",
+              "volume,src,native_json,schwab_ts) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
               lambda m: (m.get("ts_recv"), m.get("symbol"), m.get("bar_start_ms"), m.get("open"),
-                         m.get("high"), m.get("low"), m.get("close"), m.get("volume"), m["src"])),
-    "news": ("INSERT INTO stream_news_raw(ts_recv,symbol,native_json,src) VALUES(?,?,?,?)",
-             lambda m: (m.get("ts_recv"), m.get("symbol"), json.dumps(m["content"]), m["src"])),
+                         m.get("high"), m.get("low"), m.get("close"), m.get("volume"), m["src"],
+                         _json(m.get("native")), m.get("schwab_ts"))),
+    "news": ("INSERT INTO stream_news_raw(ts_recv,symbol,native_json,src,schwab_ts) VALUES(?,?,?,?,?)",
+             lambda m: (m.get("ts_recv"), m.get("symbol"), json.dumps(m["content"]), m["src"],
+                        m.get("schwab_ts"))),
     "sub": ("INSERT INTO stream_subscriptions(ts,service,command,symbols_json,code,reason) "
             "VALUES(?,?,?,?,?,?)",
             lambda m: (m.get("ts"), m.get("service"), m.get("command"),
@@ -311,9 +402,9 @@ class CaptureWriter:
             conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
             conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
             conn.executescript(STREAM_SCHEMA_SQL)
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(stream_quotes_raw)")}
-            if "native_json" not in cols:
-                conn.execute("ALTER TABLE stream_quotes_raw ADD COLUMN native_json TEXT")
+            for table, column, kind in _ADDED_COLUMNS:          # a database made before them
+                if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
             conn.commit()
         finally:
             conn.close()

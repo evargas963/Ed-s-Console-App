@@ -85,7 +85,7 @@ def _board_is(board):
     """The capture daemon's heartbeat, carrying its board (the console's one source for it)."""
     import live_market_plane as lmp
     now = time.time()
-    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "board": list(board)}, now)
+    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "board": list(board)})
 
 
 def test_a_viewed_ticker_warms_at_any_hour(monkeypatch, pin_clock, view):
@@ -161,8 +161,8 @@ def test_with_the_daemon_silent_every_ticker_says_so_first(_fresh, view):
     view(_OFF, _BOARD)                              # _OFF open on an older page; _BOARD on screen
     with server._terrain_cache_lock:
         server._terrain_cache[_OFF] = {"computed_ts_utc": time.time(), "spot": 100.0}   # levels, no surface
-    lmp.record_feed_heartbeat({"ts": time.time() - 100, "schwab_socket_open": True, "board": [_OFF]},
-                              time.time() - 100)    # the daemon's last heartbeat is old
+    lmp.record_feed_heartbeat({"ts": time.time() - 100,      # the daemon's last heartbeat is old
+                               "schwab_socket_open": True, "board": [_OFF]})
     d = _call(_OFF)
     assert d["warming"] is False and d["reason"] == silent
     first = _call(_BOARD)                           # on screen, its first view: no levels yet

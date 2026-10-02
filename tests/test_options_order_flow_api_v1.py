@@ -322,7 +322,7 @@ def _seed_producer_epochs(ofs, monkeypatch, tmp_path, *, l1=None, book=None):
             "OPTIONS_BOOK": [ofs.ticker_storage_key(book)] if book else []}
     import time as _t
     import live_market_plane as lmp
-    lmp.record_feed_heartbeat({"schwab_socket_open": True, "held": held, "health": {}}, _t.time())
+    lmp.record_feed_heartbeat({"ts": _t.time(), "schwab_socket_open": True, "held": held, "health": {}})
 
 
 def _seed_multi_contract_producer_epochs(ofs, monkeypatch, tmp_path, *,
@@ -333,8 +333,8 @@ def _seed_multi_contract_producer_epochs(ofs, monkeypatch, tmp_path, *,
     book = [ofs.ticker_storage_key(primary)] if primary and primary_book else []
     import time as _t
     import live_market_plane as lmp
-    lmp.record_feed_heartbeat({"schwab_socket_open": True, "health": {},
-                               "held": {"LEVELONE_OPTIONS": l1, "OPTIONS_BOOK": book}}, _t.time())
+    lmp.record_feed_heartbeat({"ts": _t.time(), "schwab_socket_open": True, "health": {},
+                               "held": {"LEVELONE_OPTIONS": l1, "OPTIONS_BOOK": book}})
 
 
 def _reset_option_plane(ofs):

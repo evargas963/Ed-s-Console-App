@@ -1,9 +1,11 @@
 """Bars come from one source: Schwab's streamed CHART_EQUITY 1-minute bars. The capture daemon
-forwards them, the console writes them to price_bars_1m (its one writer), every reader reads that
-table. Only completed bars are served. A minute the stream did not deliver stays missing."""
+forwards them, the console writes each to price_bars_1m (its one writer, the history) and keeps it
+in memory (server._bars, loaded from price_bars_1m once at startup); every live reader reads
+memory. Only completed bars are served. A minute the stream did not deliver stays missing."""
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 import time
 from pathlib import Path
@@ -28,13 +30,13 @@ def _bar(start: float, o=10.0, h=11.0, lo=9.5, c=10.5, v=100.0) -> dict:
 
 
 def _clear():
-    import sqlite3
     con = sqlite3.connect(server.get_db().db_path)
     try:
         con.execute("DELETE FROM price_bars_1m WHERE ticker=?", (TK,))
         con.commit()
     finally:
         con.close()
+    server._bars.pop(TK, None)
 
 
 def setup_function(_fn):
@@ -88,10 +90,11 @@ def test_a_minute_the_stream_did_not_deliver_stays_missing():
     assert [b.ts for b in server._bars_1m(TK)] == [T0, T0 + 60, T0 + 180]
 
 
-def test_bars_are_read_promptly_and_exactly_while_options_are_priced_in_the_same_process():
-    """The console prices option chains in the interpreter that serves the bars. Captured SPY bars
-    (one written without a volume) read beside a busy pure-Python thread, standing in for the option
-    pricing: every value comes back as stored, and the read does not wait on that thread per row."""
+def test_bars_are_loaded_promptly_and_exactly_while_options_are_priced_in_the_same_process():
+    """The console prices option chains in the interpreter that loads and serves the bars. Captured
+    SPY bars (one stored without a volume) in price_bars_1m, loaded at startup (server._load_bars)
+    and read beside a busy pure-Python thread, standing in for the option pricing: every value
+    comes back as stored, and the load does not wait on that thread per row."""
     bars = [Candle(ts=b["timestamp"] / 1000.0, open=b["open"], high=b["high"], low=b["low"], close=b["close"],
                    volume=b["volume"]) for b in json.loads(FIXTURE.read_text())["bars"]]
     bars[-1] = Candle(ts=bars[-1].ts, open=bars[-1].open, high=bars[-1].high, low=bars[-1].low,
@@ -109,6 +112,7 @@ def test_bars_are_read_promptly_and_exactly_while_options_are_priced_in_the_same
     t.start()
     try:
         t0 = time.perf_counter()
+        server._load_bars()
         read = server._bars_1m(TK, len(bars))
         took = time.perf_counter() - t0
     finally:

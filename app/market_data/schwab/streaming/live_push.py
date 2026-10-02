@@ -16,15 +16,13 @@ the same topics is refused):
   bar1m.SYM    src "schwab_chart"       CHART_EQUITY
   chain.TK     src "schwab_chain"       the REST option chain, in parts (the daemon's chain sweep)
 
-On connect a client first receives the CURRENT STATE, then every new message live. Schwab's
-LEVELONE services send only the fields that changed, so "the last message" is not the state:
-it usually lacks LAST_PRICE, CLOSE_PRICE or the Greeks. For quote.* and optquote.* the server
-therefore keeps, per symbol, the latest message that carried each field (FieldHistory) and
-replays those messages in receive order -- every field arrives exactly as streamed, with the
-receive time of the message that actually carried it, so no old value is made to look new.
-book.* messages are whole books, so the last one is the state.
+A client receives the CURRENT RECORD of each topic as the daemon's bus keeps it (the newest by
+Schwab's time; a LEVELONE record merged field by field, each field's times in `field_ts`; a
+chain whole): first every record the bus holds, then each record that changes, the moment the
+socket can take it. Nothing old waits in line behind a newer value (docs/DATA_FLOW.md §2 D1, D3).
 
-Wire format: one JSON text frame per message, {"topic": str, "msg": {...}}.
+Wire format: one JSON text frame per record, {"topic": str, "msg": {...}}; a chain is one frame
+per part.
 """
 from __future__ import annotations
 
@@ -33,7 +31,7 @@ import json
 import logging
 import os
 
-from stream_spine import COUNT_DROPS, MessageBus
+from stream_spine import LATEST, MessageBus
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +47,9 @@ _FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwa
 
 
 def is_forwarded(topic: str, msg) -> bool:
+    """A record that came from Schwab (a chain: its parts)."""
+    if isinstance(msg, list) and msg:
+        msg = msg[0]
     if not isinstance(msg, dict):
         return False
     for prefix, src in _FORWARDED.items():
@@ -57,110 +58,47 @@ def is_forwarded(topic: str, msg) -> bool:
     return False
 
 
-class FieldHistory:
-    """Per symbol: the latest message that carried each field. `replay()` returns those
-    messages (deduplicated) in receive order."""
-
-    def __init__(self) -> None:
-        self._by_topic: "dict[str, dict[str, tuple[float, int]]]" = {}
-        self._msgs: "dict[int, tuple[str, dict]]" = {}
-        #: how many (topic, field) entries point at each stored message; a message is
-        #: dropped the moment its count reaches 0
-        self._refs: "dict[int, int]" = {}
-        self._seq = 0
-
-    @staticmethod
-    def payload(topic: str, msg: dict) -> "dict | None":
-        body = msg.get("native") if topic.startswith("quote.") else msg.get("content")
-        return body if isinstance(body, dict) else None
-
-    def record(self, topic: str, msg: dict) -> None:
-        body = self.payload(topic, msg)
-        ts = msg.get("ts_recv")
-        if body is None or not isinstance(ts, (int, float)):
-            return
-        self._seq += 1
-        sid = self._seq
-        fields = self._by_topic.setdefault(topic, {})
-        refs = self._refs
-        taken = 0
-        for k in body:
-            prev = fields.get(k)
-            fields[k] = (float(ts), sid)
-            taken += 1
-            if prev is not None:
-                old = prev[1]
-                left = refs[old] - 1
-                if left:
-                    refs[old] = left
-                else:                                         # no field points at it any more
-                    del refs[old]
-                    del self._msgs[old]
-        if taken:
-            refs[sid] = taken
-            self._msgs[sid] = (topic, msg)
-        # Cost is the message's own field count. This used to rebuild a set of every field of
-        # every topic on EVERY message -- measured 2026-09-24 08:46 CT: the daemon's event loop
-        # was caught inside that rebuild (py-spy) while the whole feed went silent for seconds,
-        # every service read DEGRADED and new push clients timed out on the handshake.
-
-    def replay(self) -> "list[tuple[str, dict]]":
-        ids = sorted({(ts, sid) for f in self._by_topic.values() for ts, sid in f.values()})
-        return [self._msgs[sid] for _ts, sid in ids if sid in self._msgs]
-
-
-def is_field_delta_topic(topic: str) -> bool:
-    return topic.startswith("quote.") or topic.startswith("optquote.")
-
-
-def encode(topic: str, msg: dict) -> str:
-    """The wire frame. A chain part arrives with its frame already built, off the event loop
-    (complete_chain_capture.chain_messages)."""
+def frames(topic: str, record) -> "list[str]":
+    """The wire frames of one current record: a chain's parts arrive with their frames already
+    built, off the event loop (complete_chain_capture.chain_messages)."""
     if topic.startswith("chain."):
-        return msg["frame"]
-    return json.dumps({"topic": topic, "msg": msg}, separators=(",", ":"))
+        return [part["frame"] for part in record]
+    return [json.dumps({"topic": topic, "msg": record}, separators=(",", ":"))]
 
 
 #: seconds between daemon heartbeats on every push connection
 HEARTBEAT_SEC = 1.0
 
 
-async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
-                        heartbeat_fn=None, on_wanted=None) -> None:
-    """Send the last values, then every live message, until the connection closes.
+async def _serve_client(ws, bus: MessageBus, stats: dict, heartbeat_fn=None, on_wanted=None) -> None:
+    """Send every current record, then each one that changes, until the connection closes.
 
     The send loop runs as its own task and this handler waits on the CONNECTION: a loop
     blocked on `sub.get()` would otherwise never notice a closed socket, and server
     shutdown (which waits for every handler to return) would hang behind it."""
-    sub = bus.subscribe("", policy=COUNT_DROPS, name="push_client")
+    sub = bus.subscribe("", policy=LATEST)
     stats["clients"] += 1
 
     async def _pump() -> None:
-        # current state first: field-delta topics from their field history, books from
-        # the bus's last value (a book message is a whole book)
-        for topic, msg in history.replay():
-            await ws.send(encode(topic, msg))
-        for topic, msg in list(bus.snapshot().items()):     # events (chain parts) are not kept
-            if not is_field_delta_topic(topic) and is_forwarded(topic, msg):
-                await ws.send(encode(topic, msg))
         loop = asyncio.get_running_loop()
         next_beat = loop.time()
         while True:
             if heartbeat_fn is not None and loop.time() >= next_beat:
                 # the daemon's own report of the feed (Schwab socket open, equities held),
                 # sent on this one send path so it can never interleave a frame
-                await ws.send(encode("daemon.heartbeat", heartbeat_fn()))
+                await ws.send(frames("daemon.heartbeat", heartbeat_fn())[0])
                 next_beat = loop.time() + HEARTBEAT_SEC
             try:
                 if heartbeat_fn is None:
-                    topic, msg = await sub.get()
+                    topic, record = await sub.get()
                 else:
-                    topic, msg = await asyncio.wait_for(
+                    topic, record = await asyncio.wait_for(
                         sub.get(), timeout=max(0.0, next_beat - loop.time()))
             except asyncio.TimeoutError:
                 continue
-            if is_forwarded(topic, msg):
-                await ws.send(encode(topic, msg))
+            if is_forwarded(topic, record):
+                for frame in frames(topic, record):
+                    await ws.send(frame)
                 stats["sent"] += 1
 
     async def _read() -> None:
@@ -188,7 +126,6 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, history: FieldHistory,
         await asyncio.gather(pump, closed, return_exceptions=True)
         bus.unsubscribe(sub)
         stats["clients"] -= 1
-        stats["dropped"] += sub.dropped
         if on_wanted is not None:   # this connection is gone: its list (if it holds one) is withdrawn
             on_wanted(None, ws)
 
@@ -197,33 +134,16 @@ async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
                           host: str = LIVE_PUSH_HOST, port: int = LIVE_PUSH_PORT,
                           stats: "dict | None" = None, heartbeat_fn=None,
                           on_wanted=None) -> None:
-    """Run the push server until `stop` is set. `stats` (mutated) reports clients/sent/dropped."""
+    """Run the push server until `stop` is set. `stats` (mutated) reports clients and sent."""
     from websockets.asyncio.server import serve
 
     stats = stats if stats is not None else {}
-    stats.update(clients=0, sent=0, dropped=0, listening=None)
-    history = FieldHistory()
-    for topic, msg in list(bus.snapshot().items()):        # whatever arrived before we started
-        if is_field_delta_topic(topic) and is_forwarded(topic, msg):
-            history.record(topic, msg)
-    hsub = bus.subscribe("", policy=COUNT_DROPS, name="push_history")
-
-    async def _track() -> None:
-        while True:
-            topic, msg = await hsub.get()
-            if is_field_delta_topic(topic) and is_forwarded(topic, msg):
-                history.record(topic, msg)
+    stats.update(clients=0, sent=0, listening=None)
 
     async def handler(ws):
-        await _serve_client(ws, bus, stats, history, heartbeat_fn, on_wanted)
+        await _serve_client(ws, bus, stats, heartbeat_fn, on_wanted)
 
-    tracker = asyncio.create_task(_track())
-    try:
-        async with serve(handler, host, port, max_size=None, ping_interval=20, ping_timeout=20):
-            stats["listening"] = f"ws://{host}:{port}"
-            log.info("live push: serving Schwab stream messages on ws://%s:%s", host, port)
-            await stop.wait()
-    finally:
-        tracker.cancel()
-        await asyncio.gather(tracker, return_exceptions=True)
-        bus.unsubscribe(hsub)
+    async with serve(handler, host, port, max_size=None, ping_interval=20, ping_timeout=20):
+        stats["listening"] = f"ws://{host}:{port}"
+        log.info("live push: serving Schwab stream messages on ws://%s:%s", host, port)
+        await stop.wait()

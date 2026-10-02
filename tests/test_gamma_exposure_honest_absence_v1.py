@@ -154,7 +154,7 @@ def test_a_banked_chain_from_any_session_is_never_served_in_place_of_the_live_su
 
     import live_market_plane as lmp
     lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,     # both on the board
-                               "board": ["ZZTESTSTALE", "ZZTESTTODAY"]}, time.time())
+                               "board": ["ZZTESTSTALE", "ZZTESTTODAY"]})
     for name, et_date in (("ZZTESTSTALE", None), ("ZZTESTTODAY", now_et().strftime("%Y-%m-%d"))):
         tk = ticker_storage_key(name)
         _clear_gamma_surface(tk)

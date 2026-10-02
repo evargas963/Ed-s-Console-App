@@ -48,10 +48,15 @@ def flow_block(of: dict[str, Any]) -> dict[str, Any]:
 def options_live_payload(contract: str, now: float) -> dict[str, Any]:
     """Book microstructure + labeled PROXY flow for one option contract at `now`."""
     items = get_content_for_symbol(contract)
-    # the contract's top of book as Schwab last sent it; whether the feed delivers it now is book_live
-    of = OrderFlowEngine().compute({"content": items or [], "top": option_top(contract),
+    # the contract's top of book: absent with the outage reason when its feed is down in an open
+    # session, the values as of the close while Closed (docs/DATA_FLOW.md §2 D5); whether the
+    # book feed delivers now is book_live
+    top_outage = lmp.outage(contract, "LEVELONE_OPTIONS", now)
+    of = OrderFlowEngine().compute({"content": items,
+                                    "top": option_top(contract) if top_outage is None else None,
                                     "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK")},
                                    now=now, ticker=contract)
     book = dict(of["book_microstructure"])
     book["flow"] = flow_block(of)
+    book["top_outage"] = top_outage
     return book

@@ -15,14 +15,12 @@ def test_board_validity_is_the_symbols_form_never_a_list_of_names():
 def _daemon_reading(db):
     """The capture daemon as it starts: the board read from the table, carried on its heartbeat
     to the console."""
-    import time
-
     import live_market_plane as lmp
     from app.market_data.schwab.streaming import capture
     from calibration.complete_chain_capture import board_tickers
     from stream_spine import HealthRegistry, MessageBus
     d = capture.Daemon(MessageBus(), HealthRegistry(), board=board_tickers(db))
-    lmp.record_feed_heartbeat(d.status(), time.time())
+    lmp.record_feed_heartbeat(d.status())
     return d
 
 
@@ -71,7 +69,7 @@ def test_a_heartbeat_with_no_board_is_an_unknown_board_never_an_empty_one():
 
     import live_market_plane as lmp
     import server
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True}, time.time())
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True})
     assert server._board() is None
 
 
@@ -108,7 +106,6 @@ def test_the_console_status_line_counts_live_prices_across_the_board(monkeypatch
     import live_market_plane as lmp
     import server
     live = {"$SPX": 7690.19, "QQQ": None, "MU": 161.2, "ZZQX": None}
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": list(live)},
-                              time.time())
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": list(live)})
     monkeypatch.setattr(server, "resolve_spot", lambda tk: (live[tk], "plane", None))
     assert "live prices: 2 of 4 board tickers" in server._status_line()

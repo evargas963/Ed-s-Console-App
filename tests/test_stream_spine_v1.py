@@ -1,4 +1,4 @@
-"""CR-01 spine contracts: cache-then-publish, bounded queues, RC-6 guard, health states."""
+"""CR-01 spine contracts: current record before delivery, LATEST readers, RC-6 guard."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import pytest
 import json
 
 from stream_spine import (
-    COALESCE,
-    COUNT_DROPS,
+    LATEST,
+    LOG,
     CaptureWriter,
     MessageBus,
     bar_msg,
@@ -21,33 +21,35 @@ from stream_spine import (
 )
 
 
-def test_cache_written_before_subscribers_and_snapshot_hydrates():
+def test_current_record_set_before_readers_and_a_late_reader_starts_with_it():
     async def go():
         bus = MessageBus()
-        seen_at_delivery = {}
-
-        sub = bus.subscribe("quote.", policy=COUNT_DROPS)
-        bus.publish("quote.SPY", {"last": 747.63})
-        # cache-then-publish: by the time the message is readable, the cache has it
+        sub = bus.subscribe("quote.", policy=LOG)
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", last=747.63, src="schwab_l1",
+                                           native={"key": "SPY", "LAST_PRICE": 747.63},
+                                           schwab_ts=1000))
+        # by the time the message is readable, it is the topic's current record
         topic, msg = await sub.get()
-        seen_at_delivery["cache"] = bus.cache.get("quote.SPY")
         assert topic == "quote.SPY" and msg["last"] == 747.63
-        assert seen_at_delivery["cache"] == {"last": 747.63}
-        # a late consumer hydrates from snapshot without any poll
-        assert bus.snapshot("quote.")["quote.SPY"]["last"] == 747.63
+        assert bus.current["quote.SPY#schwab_l1"][1]["native"]["LAST_PRICE"] == 747.63
+        # a reader that subscribes after starts with the current record, without any poll
+        late = bus.subscribe("quote.", policy=LATEST)
+        topic, record = await asyncio.wait_for(late.get(), timeout=1.0)
+        assert topic == "quote.SPY" and record["native"]["LAST_PRICE"] == 747.63
     asyncio.run(go())
 
 
-def test_coalesce_keeps_newest_only_and_counts_nothing_lost_as_drops():
+def test_latest_reader_gets_one_newest_record_per_topic():
     async def go():
         bus = MessageBus()
-        sub = bus.subscribe("quote.", policy=COALESCE, maxsize=4)
-        for px in (1.0, 2.0, 3.0):
-            bus.publish("quote.SPY", {"last": px})
-        topic, msg = await sub.get()
-        assert msg["last"] == 3.0, "coalesce must deliver the NEWEST pending quote"
-        assert sub.queue.empty(), "one topic key, not three"
-        assert sub.dropped == 0, "coalescing is not a drop"
+        sub = bus.subscribe("quote.", policy=LATEST)
+        for n, px in enumerate((1.0, 2.0, 3.0)):
+            bus.publish("quote.SPY", quote_msg(symbol="SPY", last=px, src="schwab_l1",
+                                               native={"key": "SPY", "LAST_PRICE": px},
+                                               schwab_ts=1000 + n))
+        topic, record = await sub.get()
+        assert record["native"]["LAST_PRICE"] == 3.0, "LATEST must deliver the NEWEST quote"
+        assert not sub.changed, "one topic, one record -- not three"
     asyncio.run(go())
 
 
@@ -203,7 +205,7 @@ def test_writer_drains_full_queue_on_stop(tmp_path):
     """Cursor review HIGH: stop must not vaporize buffered rows."""
     async def go():
         bus = MessageBus()
-        sub = bus.subscribe("", policy=COUNT_DROPS, maxsize=8192)
+        sub = bus.subscribe("", policy=LOG)
         w = CaptureWriter(tmp_path / "s.db", batch_rows=10_000, batch_sec=60.0)
         for i in range(50):
             bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=1.0, last_size=i, src="t"))
@@ -220,7 +222,7 @@ def test_writer_drains_full_queue_on_stop(tmp_path):
 def test_insert_failure_is_counted_never_kills_writer(tmp_path):
     async def go():
         bus = MessageBus()
-        sub = bus.subscribe("", policy=COUNT_DROPS)
+        sub = bus.subscribe("", policy=LOG)
         w = CaptureWriter(tmp_path / "s.db", batch_rows=10_000, batch_sec=60.0)
         bus.publish("quote.SPY", object())      # not a dict -> insert raises inside
         bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=2.0, src="t"))
