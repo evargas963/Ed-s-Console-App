@@ -210,15 +210,27 @@ def write_flow_e2e_fixture() -> None:
     print(f"wrote {path}")
 
 
+def _same(fixture, live):
+    """Every key and value equal; a float to 1e-6 relative (a least-squares slope, `np.polyfit`,
+    differs in its last digits between machines: CI 1.4999999816, Windows 1.4999999709)."""
+    if isinstance(fixture, dict) and isinstance(live, dict):
+        return fixture.keys() == live.keys() and all(_same(fixture[k], live[k]) for k in fixture)
+    if isinstance(fixture, list) and isinstance(live, list):
+        return len(fixture) == len(live) and all(_same(a, b) for a, b in zip(fixture, live))
+    if isinstance(fixture, float) and isinstance(live, float):
+        return live == pytest.approx(fixture, rel=1e-6)
+    return fixture == live
+
+
 def test_flow_e2e_fixture_is_the_route_contract():
-    """The committed Playwright fixture is exactly what the route serves for the replay, every
-    key and value -- so the Flow E2E proves the REAL API's output, not a shape the spec
-    invented or values the route no longer produces."""
+    """The committed Playwright fixture is what the route serves for the replay, every key and
+    value -- so the Flow E2E proves the REAL API's output, not a shape the spec invented or
+    values the route no longer produces."""
     path = _flow_e2e_fixture_path()
     assert path.exists(), f"missing {path}; regenerate with write_flow_e2e_fixture()"
     fixture = json.loads(path.read_text(encoding="utf-8"))
     live = build_flow_e2e_fixture_response()
-    assert fixture == live, "E2E fixture drifted from the route; regenerate with write_flow_e2e_fixture()"
+    assert _same(fixture, live), "E2E fixture drifted from the route; regenerate with write_flow_e2e_fixture()"
     # The defect this guards: flow fields live ONLY under `flow`, never flattened.
     for k in ("tape_pressure_30s", "tape_pressure_2m", "tape_pressure_5m",
               "cum_delta_proxy", "cum_delta_slope", "top_book_pressure",
