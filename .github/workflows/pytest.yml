@@ -137,7 +137,7 @@ jobs:
           set +e
           npm run test:e2e
           e2e_rc=$?
-          python -m pytest -n "$(nproc)" --dist loadfile --durations=20
+          python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs
           pytest_rc=$?
           set -e
           if [ "$e2e_rc" -ne 0 ]; then
