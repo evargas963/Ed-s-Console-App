@@ -19,11 +19,13 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
    existing owner cannot do, shown in the PR; an existing piece that cannot show one is removed.
    Enforced by: `tools/check_end_to_end.py` in the required `hardening` job
    (`.github/workflows/hardening.yml`) refuses every pull request that changes product code
-   without changing an end-to-end path test, that adds a patch shape (a catch-all or swallowing
-   except, a literal standing in for a missing value), or whose description lacks "Schwab →
-   screen:", "Deleted:" and "End-to-end test:" (`tests/test_check_end_to_end_v1.py`); the path
-   tests of `docs/DATA_FLOW.md` §2 fail any change that leaves the path broken; what no machine
-   can see (a restructure dressed as a fix) — ENF-01.
+   without adding a real line to an end-to-end path test, that adds a patch shape (a catch-all
+   or swallowing except, `contextlib.suppress`, a literal standing in for a missing value,
+   missing data repaired), or whose description lacks "Schwab → screen:", "Deleted:" or
+   "End-to-end test:" or leaves one empty (`tests/test_check_end_to_end_v1.py`). It checks code
+   shapes only. The path tests of `docs/DATA_FLOW.md` §2 fail any change that leaves the path
+   broken. What no machine can see (a design-level patch, a test that does not cover the change)
+   — ENF-01.
 2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value
    Schwab's own field definition excludes (a negative volume or size). Everything else is taken
    as sent; a reported 0 is 0. No other bounds, no substitution.
