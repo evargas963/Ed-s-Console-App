@@ -23,10 +23,10 @@ so a wrong number that looks right is worse than a blank with a reason.
    working. "Across the board" = every ticker on the board, not one.
 9. If rules conflict: correctness of what I see > my explicit yes > speed.
 
-Rules 5, 6 and 8 are also enforced by machine. A hook (tools/operator_yes_guard.py) refuses
-an edit of a test that exists on main, a restart of the daemon or console, a merge and a
-push to main, until I add a line dated today to .claude/operator_yes.txt. When it refuses,
-ask me in chat. A CI check (tools/check_fails_before.py) refuses a pull request that changes
+Rules 5, 6 and 8 are also enforced by machine. A hook (tools/operator_yes_guard.py) puts
+changing a test that exists on main, starting or stopping the daemon or console, a merge
+and a push to main to me as an Allow/Deny prompt; tell me in chat what it is for before you
+run it. A CI check (tools/check_fails_before.py) refuses a pull request that changes
 product code unless one of its changed tests fails on the old code.
 
 Every report ends like this example:

@@ -40,7 +40,6 @@ Thumbs.db
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/launch.json
-.claude/operator_yes.txt
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**

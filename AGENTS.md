@@ -142,10 +142,10 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 - Stop for: the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO; a task marked AUDIT
   ONLY or DO NOT MERGE; a destructive data action; a product decision code cannot settle; an
   operator setting (a count, a rate, a switch) is never changed without the operator's explicit
-  yes to that change. Enforced by: the agent hook `tools/operator_yes_guard.py` refuses a
-  restart of the daemon or console, a merge, a push to main and an edit of a test on main
-  without a dated yes in `.claude/operator_yes.txt` (`tests/test_operator_yes_guard_v1.py`);
-  the rest — ENF-12.
+  yes to that change. Enforced by: the agent hook `tools/operator_yes_guard.py` puts a start,
+  stop or restart of the daemon or console, a merge, a push to main and a change to a test on
+  main to the operator as an Allow/Deny prompt (`tests/test_operator_yes_guard_v1.py`); the
+  rest — ENF-12.
 - Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.
   Work in a worktree. Enforced by: the agent hook `tools/process_lock_guard.py` refuses an edit,
   a shell write or a git verb that moves it off main (`tests/test_operating_process_lock_v1.py`).
