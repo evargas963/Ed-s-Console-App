@@ -121,9 +121,10 @@ def _flow_e2e_fixture_path():
 def build_flow_e2e_fixture_response() -> dict:
     """The REAL /api/order-flow/options-microstructure response for one deterministic
     replayed book + L1 tape, produced by the same route handler production serves, at a
-    pinned clock (the book's time) with the daemon holding the contract. Inputs are Schwab
-    wire shapes handed to the console's own intake (streaming._ingest_pushed), as the
-    daemon pushes them."""
+    pinned clock (the book's time) with the daemon holding the contract, from a console whose
+    feed is not running and that has asked for no contract (whatever earlier tests in the same
+    process left in the streaming module's state). Inputs are Schwab wire shapes handed to the
+    console's own intake (streaming._ingest_pushed), as the daemon pushes them."""
     from unittest import mock
 
     import app.options.order_flow.state as ofls
@@ -135,7 +136,9 @@ def build_flow_e2e_fixture_response() -> dict:
     t0 = _FLOW_E2E_BOOK_TIME_MS
     now = t0 / 1000.0
     ofls.clear_all_live_state()
-    with mock.patch("time.time", lambda: now):
+    with mock.patch("time.time", lambda: now), mock.patch.multiple(
+            ofs, _feed_running=False, _active_option_contract=None,
+            _option_streaming_last_update_ts=None, _option_contract_last_update_ts={}):
         try:
             lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True,
                                        "held": {"LEVELONE_OPTIONS": [c], "OPTIONS_BOOK": [c]}})
