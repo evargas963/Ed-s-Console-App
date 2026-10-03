@@ -8,7 +8,9 @@ test covers the changed behavior; those are proven by behavior tests and review.
 2. The product lines it adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
-     assignment of None or a literal, or a call with no re-raise;
+     assignment of None or a literal, or a call with no re-raise. An except that logs the error
+     and carries on is not a patch (the operator's ruling): one whose body logs (`.debug`,
+     `.info`, `.warning`, `.error`, `.exception`, `.critical`, `.log`) is never refused;
    - `contextlib.suppress`;
    - a missing value replaced by a literal: `x or <literal>`, a None-check ternary or
      `if x is None:` that returns or assigns a literal, `.get(k, <literal>)` (positional or
@@ -42,6 +44,7 @@ END_TO_END = (re.compile(r"^tests/test_data_path_[^/]+\.py$"),
               re.compile(r"^tests/e2e/[^/]+\.spec\.js$"))
 BODY_SECTIONS = ("Schwab → screen:", "Deleted:", "End-to-end test:")
 CATCH_ALL = ("Exception", "BaseException")
+LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
 JS_LITERAL = r"(0(?!\w)|''|\"\"|\[\]|\{\}|null(?!\w))"
 JS_PATCH = re.compile(
     rf"\|\|\s*{JS_LITERAL}"
@@ -126,6 +129,13 @@ def _none_check(test: ast.AST) -> bool:
             and any(_is_none(c) for c in (test.left, *test.comparators)))
 
 
+def _logs(handler: ast.ExceptHandler) -> bool:
+    """The except logs the error and carries on: not a patch."""
+    return any(isinstance(s, ast.Expr) and isinstance(s.value, ast.Call)
+               and isinstance(s.value.func, ast.Attribute) and s.value.func.attr in LOG_METHODS
+               for s in handler.body)
+
+
 def _swallows(stmt: ast.stmt) -> bool:
     """The one statement of an except body turns the error into silence."""
     value = getattr(stmt, "value", None)
@@ -172,6 +182,8 @@ def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
             if node.lineno not in added:          # an old block with a line added inside it
                 continue
             if isinstance(node, ast.ExceptHandler):
+                if _logs(node):
+                    continue
                 if _catches_everything(node):
                     found.append((node.lineno, "an except that catches everything"))
                 if len(node.body) == 1 and _swallows(node.body[0]):

@@ -94,8 +94,10 @@ def test_a_patch_already_on_main_is_not_counted_against_a_pr_that_does_not_touch
     ("server.py", "def spot(x):\n    if x is None:\n        return 0\n    return x\n", "(`if x is None:` then a literal)"),
     ("server.py", "def spot(s):\n    try:\n        x = float(s)\n    except ValueError:\n        x = 0\n    return x\n",
      "an except that swallows the error"),
-    ("server.py", "def spot(s):\n    try:\n        return float(s)\n    except ValueError:\n        log(s)\n",
+    ("server.py", "def spot(s):\n    try:\n        return float(s)\n    except ValueError:\n        cleanup(s)\n",
      "an except that swallows the error"),
+    ("server.py", "def spot(s):\n    try:\n        return float(s)\n    except Exception:\n        pass\n",
+     "an except that catches everything"),
     ("server.py", "from contextlib import suppress\n\n\ndef spot(d):\n    with suppress(KeyError):\n        return d['k']\n",
      "an error swallowed (`contextlib.suppress`)"),
     ("server.py", "def spot(df):\n    return df.fillna(0)\n", "missing data repaired (`.fillna(...)`)"),
@@ -115,6 +117,11 @@ def test_each_patch_shape_a_pr_adds_is_refused(tmp_path, path, text, what):
     "def spot(held, tk, bar):\n    held.setdefault(tk, []).append(bar)\n    return held.setdefault(tk, {})\n",
     # a missing value served as missing
     "def spot(x):\n    if x is None:\n        return None\n    return x or None\n",
+    # an except that logs and carries on: a retry loop, a failed reprice (the operator's ruling)
+    "def loop():\n    while True:\n        try:\n            connect()\n        except OSError as e:\n"
+    "            log.info('retrying: %s', e)\n",
+    "def reprice(tk):\n    try:\n        publish(tk)\n    except Exception as e:\n"
+    "        log.warning('reprice failed for %s: %s', tk, e)\n",
 ])
 def test_what_is_not_a_patch_passes(tmp_path, text):
     assert _found(tmp_path, {"server.py": text}) == []
