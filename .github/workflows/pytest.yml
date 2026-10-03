@@ -145,3 +145,13 @@ jobs:
             exit "$e2e_rc"
           fi
           exit "$pytest_rc"
+
+      - name: A changed test fails on the old code (CLAUDE.md rule 8)
+        if: github.event_name == 'pull_request'
+        env:
+          ED_CI_OFFLINE: "1"
+          ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
+          SCHWAB_API_KEY: "ci-not-live-placeholder"
+          SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+          BASE_REF: ${{ github.base_ref }}
+        run: python tools/check_fails_before.py --base "origin/$BASE_REF"

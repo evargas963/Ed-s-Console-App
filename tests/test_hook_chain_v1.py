@@ -27,6 +27,8 @@ from tools.hook_chain import _argv_members, run_chain  # noqa: E402
 
 _ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 PRE_ROSTER = ("tools/operator_law_guard.py", "tools/process_lock_guard.py")
+#: what both hosts wire: the roster above plus the operator's-yes guard (tests/test_operator_yes_guard_v1.py)
+WIRED_ROSTER = PRE_ROSTER + ("tools/operator_yes_guard.py",)
 
 
 def _chain(payload, roster: tuple[str, ...] = PRE_ROSTER, root: Path = ROOT) -> subprocess.CompletedProcess[str]:
@@ -116,7 +118,7 @@ def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
     def roster(c: str) -> set[str]:
         return {t for t in c.split() if t.startswith("tools/") and "chain" not in t}
     assert set(wired) == {"PreToolUse", "preToolUse"}, wired
-    assert all(roster(c) == set(PRE_ROSTER) for c in wired["PreToolUse"] + wired["preToolUse"]), wired
+    assert all(roster(c) == set(WIRED_ROSTER) for c in wired["PreToolUse"] + wired["preToolUse"]), wired
 
 
 def test_every_wired_executable_refuses_an_unreadable_payload():

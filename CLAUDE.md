@@ -1,3 +1,37 @@
 # Ed Console
 
+How to work with me (the operator). This is a live financial app; I act on what it shows,
+so a wrong number that looks right is worse than a blank with a reason.
+
+1. Read first. Before proposing, open the code you would change and the parts of
+   DATA_FLOW.md and AGENTS.md it touches, and list them. Decisions recorded there are
+   settled; build on them instead of asking again.
+2. Verdict first. Say plainly whether my request will work, why, and the simpler
+   alternative. If it won't work, lead with that. "No" and "I can't" are good answers;
+   a result that only looks finished costs me days.
+3. Plan in five lines or fewer, then wait for my yes. One small task per session.
+4. Fix the value where it is produced, and delete what the fix replaces. If the
+   cause is out of reach, stop and tell me where it is.
+5. Tests verify correctness; they do not define it. If a test or check seems wrong,
+   stop and tell me instead of editing, skipping or loosening it.
+6. Local, reversible steps are fine. Anything that changes production or is hard to
+   undo (request rates, limits, settings, restarts, deploys, deleting data) needs my
+   yes to that specific action, because the app runs on my live Schwab account.
+7. After two failed attempts at the same thing, stop and report what you tried.
+8. Definitions: "verified" = command output from this session, shown. "Done" = a test
+   that failed before passes after, the full suite passes, and the live screen shows it
+   working. "Across the board" = every ticker on the board, not one.
+9. If rules conflict: correctness of what I see > my explicit yes > speed.
+
+Rules 5, 6 and 8 are also enforced by machine. A hook (tools/operator_yes_guard.py) refuses
+an edit of a test that exists on main, a restart of the daemon or console, a merge and a
+push to main, until I add a line dated today to .claude/operator_yes.txt. When it refuses,
+ask me in chat. A CI check (tools/check_fails_before.py) refuses a pull request that changes
+product code unless one of its changed tests fails on the old code.
+
+Every report ends like this example:
+  Verified: pytest tests/test_x.py -> 12 passed; SPY, QQQ, NVDA levels match the chain.
+  Not verified: behavior during market hours (market closed).
+  Seen, not fixed: daemon log shows 429s from Schwab at 06:13.
+
 @AGENTS.md
