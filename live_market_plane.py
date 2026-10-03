@@ -199,7 +199,7 @@ _feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
 
 
 def record_feed_heartbeat(msg: dict[str, Any]) -> None:
-    """Apply one daemon heartbeat (topic ``daemon.heartbeat``), judged by the time the daemon
+    """Apply one daemon heartbeat (live_ui's ``feed`` beat), judged by the time the daemon
     stamped it (`ts`), never by when it arrived: a status that waited is as old as it is
     (docs/DATA_FLOW.md §2 D5). A status without its time is not applied."""
     if not isinstance(msg, dict) or not isinstance(msg.get("ts"), (int, float)):

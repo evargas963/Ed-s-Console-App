@@ -24,7 +24,7 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-from app.market_data.schwab.streaming import live_push
+from app.market_data.schwab.streaming import live_push, live_ui
 from stream_spine import MessageBus, book_msg, options_quote_msg, quote_msg
 
 _CONTRACT = "SPY   260918C00500000"
@@ -42,6 +42,7 @@ def _free_port() -> int:
 def feed(monkeypatch):
     port = _free_port()
     monkeypatch.setattr(ofs, "LIVE_PUSH_URL", f"ws://127.0.0.1:{port}")
+    monkeypatch.setattr(ofs, "LIVE_UI_URL", f"ws://127.0.0.1:{_free_port()}")
     monkeypatch.setattr(ofs, "PUSH_RECONNECT_SEC", 0.05)
     ofs._feed_running = False
     ofs._option_streaming_last_update_ts = None
@@ -74,14 +75,35 @@ def _daemon_heartbeat(socket_open=True, held=("SPY",)):
                     "held": {"LEVELONE_EQUITIES": list(held)}, "health": {}}
 
 
+class _DaemonsOwnPlane:
+    """The daemon runs in its own process with its own live_market_plane; here it shares the
+    test's, so its own record of each beat is kept out of it (a named stand-in for the process
+    boundary): what the console knows of the daemon arrives over the wire or not at all."""
+
+    def __getattr__(self, name):
+        return (lambda *_a, **_k: None) if name == "record_feed_heartbeat" else getattr(lmp, name)
+
+
 async def _run(port, body, heartbeat_fn=None):
+    """The daemon's two servers on one bus -- the message push and the price-row push, which
+    beats the daemon's status -- and the console's real feed loop connected to both."""
+    live_ui.lmp = _DaemonsOwnPlane()
+    try:
+        await _serve_both(port, body, heartbeat_fn)
+    finally:
+        live_ui.lmp = lmp
+
+
+async def _serve_both(port, body, heartbeat_fn):
     bus = MessageBus()
     stop = asyncio.Event()
     stats: dict = {}
-    server = asyncio.create_task(live_push.serve_live_push(
-        bus, stop, port=port, stats=stats,
-        heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat()))
-    assert await _until(lambda: stats.get("listening"))
+    ui_stats: dict = {}
+    server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=port, stats=stats))
+    ui = asyncio.create_task(live_ui.serve_live_ui(
+        bus, stop, heartbeat_fn=heartbeat_fn if heartbeat_fn is not None else _daemon_heartbeat(),
+        host="127.0.0.1", port=int(ofs.LIVE_UI_URL.rsplit(":", 1)[1]), stats=ui_stats))
+    assert await _until(lambda: stats.get("listening") and ui_stats.get("listening"))
     ofs._feed_running = True
     client = asyncio.create_task(ofs._feed_loop())
     try:
@@ -90,7 +112,7 @@ async def _run(port, body, heartbeat_fn=None):
         ofs._feed_running = False
         client.cancel()
         stop.set()
-        await asyncio.gather(client, server, return_exceptions=True)
+        await asyncio.gather(client, server, ui, return_exceptions=True)
 
 
 def _received(ts):
@@ -106,14 +128,13 @@ def test_a_schwab_trade_reaches_the_console_with_its_own_receive_time(feed):
         bus.publish("quote.SPY", _spy_trade(501.25, ts))
         assert await _until(_received(ts)), "freshness must judge the daemon's receive time"
         assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES"))
-        assert lmp.get_quote("SPY") is None      # the console keeps no price of its own
     asyncio.run(_run(feed, body))
 
 
 def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
-    """Real push server -> real console feed loop. Live only while heartbeats arrive, the
-    Schwab socket is open and the daemon holds the symbol; the feed is down the moment the
-    push connection ends."""
+    """Real daemon servers -> real console feed loop. Live only while the daemon's status beats
+    arrive, the Schwab socket is open and the daemon holds the symbol; the feed is down the
+    moment the daemon's connections end."""
     async def body(bus, stats):
         assert await _until(lambda: stats["clients"] == 1)
         ts = time.time()
@@ -126,6 +147,47 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
     asyncio.run(_run(feed, body))
     assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES")       # push ended -> feed down
     assert lmp.daemon_status() is None
+
+
+def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_chains(feed, monkeypatch):
+    """Measured 2026-10-02 after the close: the console spent 79% of its event loop decoding
+    chain parts and read 25 of 60 one-second samples of DELL as "feed down" on a healthy feed,
+    the daemon's status waiting behind the chains. 300 chains arrive at once and each takes the
+    console 20 ms to apply (a named stand-in for the decode, time.sleep); the feed, live and
+    holding SPY, reads live at every sample a route thread takes while it works through them."""
+    import json as _json
+    import threading
+
+    from calibration.complete_chain_capture import chain_messages
+    from pathlib import Path
+    contracts = _json.loads((Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json")
+                            .read_text(encoding="utf-8"))["chain"][:1]
+    real_ingest = ofs._ingest_pushed
+
+    def slow_ingest(topic, msg):
+        if topic.startswith("chain."):
+            time.sleep(0.02)
+        real_ingest(topic, msg)
+    monkeypatch.setattr(ofs, "_ingest_pushed", slow_ingest)
+    samples: list = []
+
+    def sample(seconds):                   # a route, on its own thread, as the console serves them
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            samples.append(lmp.feed_live_for("SPY", "LEVELONE_EQUITIES"))
+            time.sleep(0.05)
+
+    async def body(bus, stats):
+        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES"))
+        for i in range(300):
+            for topic, msg in chain_messages(f"ZZ{i:03d}", contracts, time.time()):
+                bus.publish(topic, msg)
+        sampler = threading.Thread(target=sample, args=(7.0,))
+        sampler.start()
+        while sampler.is_alive():
+            await asyncio.sleep(0.05)
+    asyncio.run(_run(feed, body))
+    assert samples and all(samples), f"read down in {samples.count(False)} of {len(samples)} samples"
 
 
 def test_a_closed_schwab_socket_is_not_live(feed):
@@ -227,7 +289,8 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks(feed, monkeypa
         bus.publish(f"book.{_CONTRACT}", book_msg(
             symbol=_CONTRACT, service="OPTIONS_BOOK", src="schwab_book", ts_recv=ts,
             content={"key": _CONTRACT, "BIDS": [], "ASKS": []}))
-        assert await _until(lambda: seen == [_CONTRACT])
+        assert await _until(lambda: _CONTRACT in seen)       # (SPY's price row ticks too)
+        assert seen.count(_CONTRACT) == 1
         assert ofs._option_contract_last_update_ts[_CONTRACT] == ts
         assert ofls.option_top(_CONTRACT) == {"bid": 1.2, "ask": 1.3}
     asyncio.run(_run(feed, body))

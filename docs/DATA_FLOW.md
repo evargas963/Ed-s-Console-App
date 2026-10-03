@@ -22,7 +22,8 @@ operator.
 - The database is history, written in the background by one writer. Nothing on screen waits on it.
   Enforced by: D4 and D6 below.
 - At startup the in-memory state is loaded once from the latest stored values, so a restart, a
-  weekend or the close shows the last reading with its time, labeled as past.
+  weekend or the close shows the values as of the close with their time, the session shown
+  Closed (§2 D5); no value is labeled past.
   Enforced by: `tests/test_one_levels_producer_v1.py` (the stored load) and D5 below.
 
 ## 2. The rules
@@ -78,10 +79,10 @@ from Schwab to the screen (daemon, console, page), are these:
 |---|---|---|
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
 | Schwab → daemon | Schwab REST | full option chains, each with its contracts' quotes (their Greeks, §3.4 Option chain) |
-| daemon → console | local WebSocket 127.0.0.1:8799 | each topic's current record the moment it changes (a quote merged field by field with each field's times in `field_ts`; a book, bar or news item whole), on connect every current record; never an older value behind a newer one (§2 D1, D3); each ticker's newest whole chain, in parts of 500 contracts (`chain.TK`: part i of n, with its fetch time; a failed fetch with Schwab's answer); the heartbeat every second, carrying the board and the chain sweep's last round time |
+| daemon → console | local WebSocket 127.0.0.1:8799 | each topic's current record the moment it changes (a quote merged field by field with each field's times in `field_ts`; a book, bar or news item whole), on connect every current record; never an older value behind a newer one (§2 D1, D3); each ticker's newest whole chain, in parts of 500 contracts (`chain.TK`: part i of n, with its fetch time; a failed fetch with Schwab's answer) |
 | console → daemon | same socket | the "wanted" list, every symbol per Schwab service, no cap: the equities its screens show (the ticker on screen, the header's context `streaming.MARKET_CONTEXT_SYMBOLS`, the browser's watchlist; the daemon streams the board itself), the books of the ticker on screen, `active`: the ticker on screen (`push_changes.on_screen`, the newest open page's; the chain sweep's active ticker; when no page shows a ticker, none), and the option contracts its views ask for (the primary contract only from a chain the console holds, refused otherwise (409)). Sent on every connect and the moment it changes; the daemon compares it with what Schwab holds at once. The daemon holds the last list it was sent, in memory only, with the connection that sent it: when that connection ends (another connection ending leaves it), and after the daemon's restart, it streams the board alone until the console sends the list again |
-| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
-| daemon → console | the same :8800 push | the same price rows, for every equity the daemon holds on Schwab (`streaming._rows_wanted`: the heartbeat's held LEVELONE_EQUITIES, the console's wanted ones and the board as Schwab accepted them): the console's only live price |
+| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, symbols held and refused per service, the board, the chain sweep's last round time, health). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
+| daemon → console | the same :8800 push | the same price rows, for every equity the daemon holds on Schwab (`streaming._rows_wanted`: the heartbeat's held LEVELONE_EQUITIES, the console's wanted ones and the board as Schwab accepted them): the console's only live price, and the daemon's heartbeat, the console's one record of the daemon's status. It carries no chain, so a beat never waits behind one (measured 2026-10-02 on the 8799 push: DELL read feed down in 25 of 60 samples on a healthy feed while the console worked through chain parts) |
 | console → browser | HTTP `/api/*` | everything else, on request |
 | console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`, `liquidity`) and the session label |
 
@@ -272,8 +273,10 @@ from Schwab to the screen (daemon, console, page), are these:
   symbol on that Schwab service (`live_market_plane.feed_live_for`; the header's LIVE / FEED DOWN,
   a book's `book_live`, a heatmap leg's state). A value's age is never the test: Schwab sends a
   field only when it changes. The daemon's status is read from the same heartbeat
-  (`live_market_plane.daemon_status`). Owner: the console's feed loop records each heartbeat;
-  when the daemon stops or the socket to it drops, every symbol reads feed down within 3 s. The
+  (`live_market_plane.daemon_status`). Owner: the console's price-row connection (`streaming._rows_loop`)
+  records each heartbeat; the message push yields after each frame, so a backlog of chain parts
+  never holds it. When the daemon stops or that connection drops or falls silent, every symbol
+  reads feed down within 3 s. The
   console's copy of the daemon's price rows is dropped after 3 s with no frame from the daemon
   (the connection is gone; the rows return when it reconnects).
 - **Tape.** The cumulative delta (PROXY, tick rule) sums every print the tape holds; no clock

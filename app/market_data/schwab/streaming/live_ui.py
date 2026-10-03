@@ -17,11 +17,12 @@ Protocol (JSON text frames):
   server  -> {"type": "quotes", "rows": [price_row, ...]}            (snapshot on subscribe,
                                                                      then every change)
   server  -> {"type": "feed", "feed": {...}, "rows": [...]}           (every HEARTBEAT_SEC:
-                                                                     the feed verdict and a
-                                                                     fresh row per symbol, so
-                                                                     a dead feed reads dead
+                                                                     the daemon's whole status
+                                                                     and a fresh row per symbol,
+                                                                     so a dead feed reads dead
                                                                      within FEED_HEARTBEAT_
-                                                                     MAX_AGE_SEC)
+                                                                     MAX_AGE_SEC; the console
+                                                                     takes its status from here)
 
 Delivery is latest-value-per-symbol per client (conflation, as Lightstreamer MERGE /
 LSEG conflated feeds do): a slow browser gets the newest row for each symbol it is behind
@@ -95,9 +96,11 @@ class LiveUiServer:
                 c.wake.set()
 
     def beat(self) -> dict:
+        """The daemon's whole status (Schwab socket, symbols held and refused per service, the
+        board, health), recorded here and sent with every beat: the console's one record of it."""
         hb = self.heartbeat_fn()
         lmp.record_feed_heartbeat(hb)
-        return {"ts": hb.get("ts"), "schwab_socket_open": hb.get("schwab_socket_open") is True}
+        return hb
 
     # -- browser side -----------------------------------------------------------------
 

@@ -379,15 +379,13 @@ def test_the_console_socket_carries_the_wanted_list_in_and_the_status_out():
     async def go():
         stop = asyncio.Event()
         server = asyncio.create_task(serve_live_push(
-            ss.MessageBus(), stop, port=port, stats=stats, heartbeat_fn=lambda: {"schwab_socket_open": True},
-            on_wanted=d.set_wanted))
+            ss.MessageBus(), stop, port=port, stats=stats, on_wanted=d.set_wanted))
         for _ in range(100):
             try:
                 a = await connect(f"ws://127.0.0.1:{port}")
                 break
             except OSError:
                 await asyncio.sleep(0.05)
-        env = json.loads(await asyncio.wait_for(a.recv(), 5))
         await a.send(json.dumps({"op": "wanted", "wanted": {"active": "SPY", "NYSE_BOOK": ["SPY"]}}))
         await until(lambda: d.active == "SPY")
         b = await connect(f"ws://127.0.0.1:{port}")               # the console reconnects
@@ -400,9 +398,8 @@ def test_the_console_socket_carries_the_wanted_list_in_and_the_status_out():
         await until(lambda: d.active is None)
         stop.set()
         await asyncio.wait_for(server, 5)
-        return env, kept
-    env, kept = asyncio.run(go())
-    assert env == {"topic": "daemon.heartbeat", "msg": {"schwab_socket_open": True}}
+        return kept
+    kept = asyncio.run(go())
     assert kept == ("MU", frozenset({"MU"})), "another connection's end leaves the live list"
     assert d.wanted["NYSE_BOOK"] == frozenset(), "withdrawn when the connection that sent it ended"
 
