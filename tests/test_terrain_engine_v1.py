@@ -214,6 +214,53 @@ def test_every_expiry_carries_its_atm_iv_by_the_one_rule(pin_clock) -> None:
     assert em is not None and by_exp[front_exp] == em["iv_pct_atm"]
 
 
+# ── RC-115: per-side wall ranges — gamma value area (Market-Profile POC expansion) ───────────
+
+def test_wall_value_area_expands_toward_the_heavier_neighbor() -> None:
+    """The CQG value-area rule verbatim: start at the POC, absorb the bigger neighbor each
+    step until 68.2% is enclosed."""
+    from terrain_engine import compute_wall_value_area
+    # institutional-synthetic-ok: algorithm verification requires known mass — the real-chain
+    # test below covers the live shape.
+    # side GEX$ mass on a dollarized book (T-05: raw gamma no longer stands in)
+    _f = {"dollarized": True}
+    exposures = {
+        700.0: {"put_gex_1pct": 100.0, **_f},
+        705.0: {"put_gex_1pct": 900.0, **_f},   # the wall (POC)
+        710.0: {"put_gex_1pct": 500.0, **_f},   # heavier neighbor — absorbed first
+        715.0: {"put_gex_1pct": 100.0, **_f},
+    }
+    raw_only = {k: {"put_gamma": v["put_gex_1pct"]} for k, v in exposures.items()}
+    assert compute_wall_value_area(raw_only, 705.0, "put") is None   # raw gamma: no range
+    rg = compute_wall_value_area(exposures, 705.0, "put")
+    assert rg is not None
+    assert rg["lo"] == 705.0 and rg["hi"] == 710.0, rg
+    assert rg["coverage_pct"] == 87.5, "900+500 of 1600 must be 87.5"
+    assert "value area" in rg["method"]
+
+
+def test_wall_value_area_fails_closed() -> None:
+    from terrain_engine import compute_wall_value_area
+    # institutional-synthetic-ok: fail-closed probes must feed degenerate inputs on purpose.
+    assert compute_wall_value_area({}, 705.0, "put") is None
+    assert compute_wall_value_area({700.0: {"put_gamma": 1.0}}, None, "put") is None
+    assert compute_wall_value_area({700.0: {"put_gamma": 1.0}}, 999.0, "put") is None, (
+        "a wall with no mass at its own strike must refuse, not invent a range"
+    )
+
+
+def test_real_chain_carries_per_side_wall_ranges() -> None:
+    chain, spot = _real_chain()
+    snap = compute_terrain("SPY", chain, spot)
+    for side, wall, rg in (("call", snap.call_wall, snap.call_wall_range),
+                           ("put", snap.put_wall, snap.put_wall_range)):
+        assert rg is not None, f"{side} range missing on the real chain"
+        assert rg["lo"] <= wall <= rg["hi"], f"{side} wall must sit inside its own range: {rg}"
+        assert rg["coverage_pct"] >= 68.2
+    d = snap.to_dict()
+    assert "call_wall_range" in d and "put_wall_range" in d, "the chart reads these"
+
+
 # ── RC-130: wall geometry state — the support/resistance claim is CONDITIONAL ────────────────
 # Live SPY 2026-07-29: put wall 740.0 sat ABOVE spot 735.13 while every surface said
 # "dealer support". Institutional standard (SpotGamma stats, GEXBoard): the picker stays at
