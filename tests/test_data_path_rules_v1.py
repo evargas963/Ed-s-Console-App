@@ -255,6 +255,63 @@ def test_d4_the_one_writer_records_every_message_schwab_sends(tmp_path):
         assert all(_holds(row, k, v) for k, v in e["content"].items())
 
 
+def test_d4_a_stored_minute_is_never_replaced_values_or_label():
+    """price_bars_1m keeps each minute as first stored: a later write for the same minute (a
+    streamed bar over a price-history row, a second receipt of a streamed bar) inserts nothing,
+    and the row keeps its source label (2026-10-04 audit: an upsert replaced the values and the
+    label on conflict, so live and history rows could not be told apart). Real values for SPY's
+    2026-08-18 09:30 bar as stored in production on 2026-10-04: Schwab's price history
+    (schwab_pricehistory) and the daemon's streamed bar (stream_bars_raw). Stand-in: ticker
+    ZZKEEP."""
+    tk, minute = "ZZKEEP", datetime(2026, 8, 18, 9, 30, tzinfo=ET).timestamp()
+    history = (768.7, 768.86, 767.9, 768.68, 674693.0)
+    streamed = (768.7, 768.86, 767.9, 768.68, 667855.0)
+
+    def stored():
+        con = sqlite3.connect(server.get_db().db_path)
+        try:
+            return con.execute("SELECT open, high, low, close, volume, source FROM price_bars_1m "
+                               "WHERE ticker=? AND bar_start_ts_utc=?", (tk, minute)).fetchall()
+        finally:
+            con.close()
+
+    def bar(values, at=minute):
+        o, h, lo, c, v = values
+        return {"symbol": tk, "bar_start_ms": int(at * 1000), "open": o, "high": h, "low": lo, "close": c,
+                "volume": v}
+
+    def forget():
+        con = sqlite3.connect(server.get_db().db_path)
+        try:
+            con.execute("DELETE FROM price_bars_1m WHERE ticker=?", (tk,))
+            con.commit()
+        finally:
+            con.close()
+        server._bars.pop(tk, None)
+
+    forget()
+    try:
+        # the row as the price-history backfill stored it (that writer is gone; written as it wrote)
+        con = sqlite3.connect(server.get_db().db_path)
+        con.execute("INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
+                    (tk, minute, minute + 60, *history, "schwab_pricehistory"))
+        con.commit()
+        con.close()
+        assert server._write_streamed_bar(bar(streamed))
+        assert stored() == [(*history, "schwab_pricehistory")], "the streamed bar replaced the history row"
+        # a second receipt of a streamed minute keeps the first
+        later = minute + 60
+        assert server._write_streamed_bar(bar(streamed, later))
+        assert server._write_streamed_bar(bar(history, later))
+        con = sqlite3.connect(server.get_db().db_path)
+        kept = con.execute("SELECT volume, source FROM price_bars_1m WHERE ticker=? AND bar_start_ts_utc=?",
+                           (tk, later)).fetchall()
+        con.close()
+        assert kept == [(667855.0, "schwab_1m_accumulator_sqlite")]
+    finally:
+        forget()
+
+
 # ── D5. Live while the market is open; the close stands while it is closed ──────────────────
 
 #: Wednesday 2026-09-30, 11:00 ET (RTH) and 22:00 ET (Closed), as epoch seconds

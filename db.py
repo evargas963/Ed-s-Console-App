@@ -404,7 +404,8 @@ class EdDB:
         """Write Schwab's streamed 1m bars to price_bars_1m. `bars` are Candle objects from
         server._write_streamed_bar: ts is the bar start in epoch seconds, OHLC already read with
         schwab_number. A bar off the minute grid is refused and counted. Only bars ending in the
-        RC-183 collect window are persisted. Returns the rows written."""
+        RC-183 collect window are persisted. A minute already stored is kept as it is, values and
+        source: a write inserts only where no row exists. Returns the bars in the window offered."""
         tkr = ticker_storage_key(ticker)
         rows = []
         off_grid = 0
@@ -433,14 +434,7 @@ class EdDB:
                     INSERT INTO price_bars_1m (ticker, bar_start_ts_utc, bar_end_ts_utc,
                         open, high, low, close, volume)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(ticker, bar_start_ts_utc) DO UPDATE SET
-                        bar_end_ts_utc = excluded.bar_end_ts_utc,
-                        open = excluded.open,
-                        high = excluded.high,
-                        low = excluded.low,
-                        close = excluded.close,
-                        volume = excluded.volume,
-                        source = excluded.source
+                    ON CONFLICT(ticker, bar_start_ts_utc) DO NOTHING
                     """,
                     rows,
                 )
