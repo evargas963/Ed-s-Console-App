@@ -153,8 +153,10 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   main to the operator as an Allow/Deny prompt (`tests/test_operator_yes_guard_v1.py`); the
   rest — ENF-12.
 - Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.
-  Work in a worktree. Enforced by: the agent hook `tools/process_lock_guard.py` refuses an edit,
-  a shell write or a git verb that moves it off main (`tests/test_operating_process_lock_v1.py`).
+  Work in a worktree; main itself moves only by a PR merged on GitHub. Enforced by: the agent hook
+  `tools/process_lock_guard.py` refuses an edit, a shell write or a git verb that moves it off
+  main (`tests/test_operating_process_lock_v1.py`), and a git command from any checkout that
+  writes `refs/heads/main` (`tests/test_hook_chain_v1.py`).
 - Never: `git reset`, `git checkout --`, `git stash`, force push. Enforced by: the agent hook
   `tools/process_lock_guard.py` (`tests/test_reset_guard_v1.py`).
 - Never: `--no-verify`, `git add -A` / `.`, deleting or moving anything under `data/` or
