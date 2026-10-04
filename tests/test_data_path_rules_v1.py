@@ -15,6 +15,7 @@ import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -25,9 +26,11 @@ from schwab.client import Client
 from websockets.asyncio.client import connect
 
 import schwab_client as sc
+import server
 from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import FAILED_PAUSE_SEC, ChainSweep, chain_messages
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
+from time_et import ET
 
 FX = Path(__file__).resolve().parent / "fixtures"
 _OPT = json.loads((FX / "real_options_stream_history_samples.json").read_text(encoding="utf-8"))
@@ -335,6 +338,90 @@ def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
         assert lmp.daemon_status() is None, "a two-minute-old daemon status counted as live"
     finally:
         lmp.record_feed_down()
+
+
+# ── D5 for the chains: the sweep paced by the session calendar ─────────────────────────────
+# The real ChainSweep, its clock an input; no network: each fetch the sweep hands out is ended
+# by the test (delivered or not), as a worker ends it.
+
+def _et(s: str) -> float:
+    return datetime.fromisoformat(s).replace(tzinfo=ET).timestamp()
+
+
+def _paced(board: "list[str]", at: str) -> "tuple[ChainSweep, dict]":
+    clock = {"now": _et(at)}
+    return ChainSweep("unused.db", board, lambda topic, msg: None, clock=lambda: clock["now"]), clock
+
+
+def _handed_out(sweep: ChainSweep, now: float, delivered: bool = True) -> "list[str]":
+    """Every ticker the sweep hands out at `now` until it hands out none; then each fetch ends."""
+    out = []
+    while (tk := sweep._next(now)) is not None:
+        out.append(tk)
+        assert len(out) < 50, "the sweep never stopped handing out tickers"
+    for tk in out:
+        sweep._done(tk, delivered)
+    return out
+
+
+@pytest.mark.parametrize("at", ["2026-10-01 05:00", "2026-10-01 10:00", "2026-10-01 17:00",
+                                "2026-11-27 14:00"],
+                         ids=["pre-market", "rth", "after-hours", "after-hours-of-an-early-close"])
+def test_d5_in_every_open_session_the_sweep_fetches_without_end(at):
+    sweep, clock = _paced(["AAA", "BBB"], at)
+    sweep.set_active("OFF")                              # on screen, off the board
+    assert _handed_out(sweep, clock["now"]) == ["OFF", "AAA", "BBB"]
+    assert _handed_out(sweep, clock["now"] + 1) == ["OFF", "AAA", "BBB"], "and again, without end"
+
+
+def test_d5_once_closed_every_board_ticker_is_fetched_once_then_nothing_until_the_next_session():
+    sweep, _ = _paced(["AAA", "BBB", "CCC"], "2026-10-02 19:59")
+    sweep.set_active("OFF")
+    assert sweep._next(_et("2026-10-02 19:59")) == "OFF"        # in flight when the market closes
+    assert _handed_out(sweep, _et("2026-10-02 20:00")) == ["AAA", "BBB", "CCC"]   # the close values
+    sweep._done("OFF", True)
+    for later in ("2026-10-02 20:01", "2026-10-03 12:00", "2026-10-04 23:59", "2026-10-05 03:59"):
+        assert sweep._next(_et(later)) is None, later
+    assert _handed_out(sweep, _et("2026-10-05 04:00")) == ["OFF", "AAA", "BBB", "CCC"], "Monday pre-market"
+
+
+@pytest.mark.parametrize("at", ["2026-10-03 12:00", "2026-11-26 12:00", "2026-10-01 02:00"],
+                         ids=["saturday", "thanksgiving", "a-weeknight"])
+def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_no_ticker_put_on_screen(at):
+    """A ticker put on screen while Closed is not fetched, whether its close values were fetched
+    (on the board) or not (off it): the close values stand, and none is made up."""
+    sweep, clock = _paced(["AAA", "BBB"], at)
+    assert _handed_out(sweep, clock["now"]) == ["AAA", "BBB"]
+    sweep.set_active("AAA")
+    assert sweep._next(clock["now"] + 60) is None
+    sweep.set_active("OFF")
+    assert sweep._next(clock["now"] + 120) is None
+
+
+def test_d5_a_close_fetch_that_fails_is_tried_again_after_the_pause_until_it_lands():
+    sweep, clock = _paced(["AAA", "BBB"], "2026-10-03 12:00")
+    sat = clock["now"]
+    assert _handed_out(sweep, sat, delivered=False) == ["AAA", "BBB"]
+    assert sweep._paused_until == sat + FAILED_PAUSE_SEC
+    assert _handed_out(sweep, sat + FAILED_PAUSE_SEC) == ["AAA", "BBB"]
+    assert sweep._next(sat + 60) is None
+
+
+def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_with_the_reason():
+    """Levels are as of the chain they were computed from (computed_ts_utc). Ticker ZZCLOSED has
+    no chain failure recorded."""
+    sat, monday_early = _et("2026-10-03 12:00"), _et("2026-10-05 03:00")
+    for now in (sat, monday_early):
+        st = server.terrain_staleness(_et("2026-10-02 20:00") + 30, "ZZCLOSED", now=now)
+        assert st["levels_stale"] is False and st["levels_stale_reason"] == "", st
+        st = server.terrain_staleness(_et("2026-10-02 15:59"), "ZZCLOSED", now=now)
+        assert st["levels_stale"] is True and st["levels_stale_reason"] == (
+            "the market is closed and this ticker's close values have not been fetched"), st
+        st = server.terrain_staleness(None, "ZZCLOSED", now=now)
+        assert st["levels_stale"] is True and st["levels_age_sec"] is None    # absent, not zero
+    st = server.terrain_staleness(_et("2026-10-01 10:00"), "ZZCLOSED", now=_et("2026-10-01 11:00"))
+    assert st["levels_stale"] is True and "has not delivered this ticker" in st["levels_stale_reason"], \
+        "in session, an hour-old chain is a gap"
 
 
 # ── D6. No live screen reads the database ───────────────────────────────────────────────────

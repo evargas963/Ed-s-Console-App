@@ -100,10 +100,11 @@ def test_the_ticker_on_screen_is_the_chain_sweeps_active_ticker(tmp_path):
     (`active`); the daemon never works it out from another list (such as the books)."""
     d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), board=["SPY"])
     d.chains = cap.ChainSweep(tmp_path / "x.db", d.board, lambda t, m: None)
+    rth = 1790863200.0                                   # 2026-10-01 10:00 ET, an open session
     d.set_wanted({"active": "MU", "NYSE_BOOK": ["MU"], "NASDAQ_BOOK": ["MU"]})
-    assert d.chains._next(0.0) == "MU"
+    assert d.chains._next(rth) == "MU"
     d.set_wanted({"active": "TSLA", "NYSE_BOOK": ["AAPL"], "NASDAQ_BOOK": ["AAPL"]})
-    assert d.chains._next(0.0) == "TSLA", "the named ticker, not the books"
+    assert d.chains._next(rth) == "TSLA", "the named ticker, not the books"
 
 
 # ------------------------------------------------------------------ sync against a fake Schwab

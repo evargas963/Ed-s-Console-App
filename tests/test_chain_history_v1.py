@@ -108,11 +108,11 @@ def schwab(monkeypatch):
 
 
 def _built():
-    """make_client's answer: schwab-py's own Client over a plain httpx session (the network
-    calls themselves are the `schwab` stand-in's)."""
+    """The daemon's one client (what capture.one_schwab_client hands the sweep): schwab-py's own
+    Client over a plain httpx session (the network calls themselves are the `schwab` stand-in's)."""
     import httpx
     from schwab.client import Client
-    return type("State", (), {"ok": True, "client": Client("key", httpx.Client()), "message": ""})()
+    return Client("key", httpx.Client())
 
 
 def _sweep(tmp_path, board, at):
@@ -252,9 +252,9 @@ def test_an_idle_worker_takes_a_new_active_ticker_at_once(tmp_path, schwab):
     on screen waited for it."""
     import threading
     sweep, _published, _clock = _sweep(tmp_path, [], "2026-09-30 15:31:57")
-    state = _built()
+    client = _built()
     halt = threading.Event()
-    worker = threading.Thread(target=sweep.work, args=(lambda: state, halt), daemon=True)
+    worker = threading.Thread(target=sweep.work, args=(lambda: client, halt), daemon=True)
     worker.start()
     time.sleep(0.1)                                     # the worker is idle: nothing to fetch
     put = time.monotonic()
@@ -337,29 +337,6 @@ def test_a_failing_schwab_client_pauses_the_sweep_instead_of_spinning(tmp_path, 
     for w in workers:
         w.join(5)
     assert 2 <= len(built) <= 12, len(built)               # about one try per pause, not thousands
-
-
-@pytest.mark.parametrize("at", ["2026-10-01 08:08", "2026-10-01 09:45", "2026-10-01 21:00",
-                                "2026-10-03 12:00"], ids=["pre-market", "the-open", "after-hours", "saturday"])
-def test_every_board_ticker_is_fetched_at_any_hour(tmp_path, schwab, at):
-    """2026-10-01 07:08 CT (08:08 ET): a restarted console fetched no chain pre-market -- its loop
-    sat behind an archival window. The daemon's sweep fetches every board ticker's chain whatever
-    the hour; only the history write keeps to the capture windows."""
-    import threading
-
-    board = ["SPY", "QQQ", "IWM", "$SPX", "MU"]
-    sweep, published, _clock = _sweep(tmp_path, board, at)
-    halt = threading.Event()
-    state = _built()
-    worker = threading.Thread(target=sweep.work, args=(lambda: state, halt), daemon=True)
-    worker.start()
-    deadline = time.monotonic() + 10
-    while set(board) - set(schwab.chains) and time.monotonic() < deadline:
-        halt.wait(0.02)
-    halt.set()
-    worker.join(5)
-    assert set(schwab.chains[:len(board)]) == set(board), "one round fetches the whole board"
-    assert {m["ticker"] for _t, m in published} >= set(board)
 
 
 def test_the_daemon_task_stops_when_told():

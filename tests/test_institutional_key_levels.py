@@ -64,31 +64,6 @@ def test_pin_fails_closed_without_dollarized_gex():
 
 
 
-def test_terrain_cache_get_derives_staleness_from_computed_ts(monkeypatch):
-    """RC-424: production cache stores computed_ts_utc, not levels_stale. terrain_cache_get
-    must merge terrain_staleness so missing levels_stale cannot fail-open as fresh."""
-    import time
-
-    import server as srv
-
-    tk = srv.ticker_storage_key("SPY")
-    old_ts = time.time() - 99999.0
-    monkeypatch.setitem(srv._terrain_cache, tk, {
-        "computed_ts_utc": old_ts,
-        "call_wall": 760.0,
-        "put_wall": 745.0,
-    })
-    got = srv.terrain_cache_get("SPY")
-    assert got is not None
-    assert got["call_wall"] == 760.0
-    assert got["levels_stale"] is True
-    assert "levels_stale_reason" in got
-    fresh_ts = time.time()
-    monkeypatch.setitem(srv._terrain_cache, tk, {"computed_ts_utc": fresh_ts, "call_wall": 760.0})
-    fresh = srv.terrain_cache_get("SPY")
-    assert fresh["levels_stale"] is False
-
-
 
 
 

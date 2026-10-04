@@ -17,6 +17,16 @@ operator.
 
 - One Schwab connection, owned by the daemon (Schwab allows one streamer connection per user).
   Enforced by: `tests/test_schwab_client_import_boundary.py` (the console makes no Schwab call).
+- One owner of the Schwab token: the daemon's one client (`capture.one_schwab_client`), used by
+  the stream and every chain request, built from `schwab_token.json` once and kept for the
+  daemon's life. Its session (`schwab_client.OneRefreshSession`) starts nothing else: it refreshes
+  the token when it is within 300 s of expiry, one request at a time (the others carry the token
+  it returned), and writes it to the token file atomically. A refresh Schwab refuses fails that
+  request; the chain sweep pauses and probes (§3.4 Option chain); the client is never rebuilt.
+  When the refresh token itself expires, nothing refreshes and every request fails until
+  `python reauth_schwab.py` and a daemon restart. Enforced by: `tests/test_data_path_rules_v1.py`
+  (`test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_token`,
+  `test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuilds_it`).
 - Data is pushed at every hop. Nothing polls. Enforced by: no machine check — ENF-15 (the page
   re-reads routes after each push today).
 - The database is history, written in the background by one writer. Nothing on screen waits on it.
@@ -154,17 +164,30 @@ from Schwab to the screen (daemon, console, page), are these:
   they wait replaces them, so a stored capture never replaces a delivered chain and no delivered
   chain waits behind a stored one). The daemon's bus keeps each ticker's newest whole chain:
   once all its parts are in it replaces the older one, which is never sent again. The sweep runs on
-  `CHAIN_WORKERS` (8) threads sharing one Schwab client, one fetch of a ticker at a time, at any
-  hour: the active ticker (the wanted frame's `active`: the ticker on screen, on or off the
-  board) is fetched back to back, taken again the moment its last fetch ends; the other
-  workers fetch every board ticker in turn without end; no time of day removes a ticker from a
-  round. Every request of one chain is sent at once: its date-range parts together, then its
+  `CHAIN_WORKERS` (8) threads sharing the daemon's one Schwab client (§1), one fetch of a ticker at a time, paced
+  by the session calendar (`time_et.session_label`). In every open session (Pre-Market, RTH,
+  After-Hours) the active ticker (the wanted frame's `active`: the ticker on screen, on or off
+  the board) is fetched back to back, taken again the moment its last fetch ends, and the other
+  workers fetch every board ticker in turn without end. Once Closed (from 20:00 ET, on a
+  weekend or a holiday, and when the daemon starts while Closed) every board ticker is fetched
+  once, its close values; a fetch that fails is tried again after `FAILED_PAUSE_SEC`. Then no
+  chain is requested until the next session opens: the close values stand (D5), and a ticker
+  put on screen while Closed is not fetched — it shows the close values already fetched, or,
+  with none, its levels absent with the reason (`server.terrain_staleness`: while Closed,
+  levels from a chain fetched after the close are current however old; older ones read "the
+  market is closed and this ticker's close values have not been fetched"), never a zero or a
+  value from elsewhere. Enforced by: `tests/test_data_path_rules_v1.py` (the D5 sweep and
+  staleness tests). Every request of one chain is sent at once: its date-range parts together, then its
   quote batches together (`fetch_full_chain`); each chain's contracts, parts, quote requests and
   their times are logged. No cap or interval of ours sits between Schwab and the screen
   (operator 2026-10-01: "we take what we get from schwab as fast as we can and we ask schwab for
   data as fast as we can"). After Schwab answers 429 no chain request is made for 10 s
-  (`RATE_LIMITED_PAUSE_SEC`); after a request fails outright (no client, auth refused, the
-  network down), 5 s (`FAILED_PAUSE_SEC`). The chain is always the full chain, every expiry and
+  (`RATE_LIMITED_PAUSE_SEC`). After Schwab refuses us (403: its edge, Akamai, denies access) or
+  a request fails outright (no client, auth or refresh refused, the network down), no chain
+  request is made for 5 s (`FAILED_PAUSE_SEC`), then one chain is fetched alone, and the sweep
+  goes on only once one lands. Enforced by: `tests/test_data_path_rules_v1.py`
+  (`test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until_one_lands`,
+  on Schwab's captured 403 page). The chain is always the full chain, every expiry and
   every strike: measured on the 38 board tickers' 2026-10-01 close captures, leaving out the
   farthest expiry changed a level (a wall, the flip, max pain) on 4 tickers, the two farthest on
   25, and 5 strikes off each side on 9. Every ticker's publication keeps its chain and its

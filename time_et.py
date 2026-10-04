@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
@@ -18,6 +18,9 @@ def ct_label(ts_utc: float) -> str:
 RTH_START_MINS = 570
 RTH_OPEN_MINS = RTH_START_MINS  # 9:30 AM ET (alias for cross-module authority)
 RTH_END_MINS = 960
+# The extended session (pre-market and after hours) 04:00–20:00 ET (minute-of-day).
+EXTENDED_START_MINS = 240
+EXTENDED_END_MINS = 1200
 
 
 def now_et() -> datetime:
@@ -139,11 +142,33 @@ def session_label(now: datetime) -> str:
         return "Closed"
     close = session_close_mins_for_et_date(now.strftime("%Y-%m-%d"))
     mins = now.hour * 60 + now.minute
-    if close is None or mins < 240 or mins >= 1200:
+    if close is None or mins < EXTENDED_START_MINS or mins >= EXTENDED_END_MINS:
         return "Closed"
     if mins < RTH_START_MINS:
         return "Pre-Market"
     return "RTH" if mins < close else "After-Hours"
+
+
+#: how far back closed_since looks for the last session (the longest closure on the calendar is
+#: a holiday weekend: four days)
+CLOSED_SINCE_LOOKBACK_DAYS = 14
+
+
+def closed_since(now: datetime) -> "datetime | None":
+    """While the market is Closed at `now` (session_label): when it closed, the end of the
+    newest session (20:00 ET of the newest trading day). None while a session is open. A
+    calendar with no session in the CLOSED_SINCE_LOOKBACK_DAYS before `now` (a year it does not
+    cover) has been closed for as long as it can tell: `now`."""
+    if session_label(now) != "Closed":
+        return None
+    day = now.astimezone(ET).date()
+    if now.astimezone(ET).hour * 60 + now.astimezone(ET).minute < EXTENDED_END_MINS:
+        day -= timedelta(days=1)                  # today's session, if any, has not ended
+    for _ in range(CLOSED_SINCE_LOOKBACK_DAYS):
+        if is_trading_day_et(day.isoformat()):
+            return datetime(day.year, day.month, day.day, tzinfo=ET) + timedelta(minutes=EXTENDED_END_MINS)
+        day -= timedelta(days=1)
+    return now
 
 
 def session_close_mins_for_et_date(et_date: str) -> int | None:
