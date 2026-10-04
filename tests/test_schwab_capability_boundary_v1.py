@@ -129,7 +129,7 @@ def test_absent_credentials_block_live_schwab(clean_env):
 
 
 def test_an_unavailable_capability_cannot_serve_live_data(clean_env):
-    """PROOF 4b. Fail closed at both existing refusal sites — no client, no call.
+    """PROOF 4b. Fail closed at the one refusal site — no client, so no call.
 
     Nothing may reach the money path from an unavailable capability: not a client, not a
     fabricated quote, not a stale substitute.
@@ -139,11 +139,6 @@ def test_an_unavailable_capability_cannot_serve_live_data(clean_env):
     state = schwab_client.build_client_from_token("nonexistent.json", "", "")
     assert state.ok is False and state.client is None, state
     assert "UNAVAILABLE" in state.message, state.message
-
-    with pytest.raises(RuntimeError) as exc:
-        schwab_client._block_live_schwab_in_ci_offline()
-    assert "UNAVAILABLE" in str(exc.value)
-    assert "No fabricated or stale substitute" in str(exc.value)
 
 
 

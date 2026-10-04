@@ -283,7 +283,7 @@ def test_a_dying_connection_is_replaced_and_everything_wanted_is_resubscribed(tm
             await asyncio.sleep(0.01)
 
     async def go():
-        client = type("State", (), {"ok": True, "client": object(), "message": ""})()
+        client = object()
         task = asyncio.create_task(d.run(lambda: client, stop))
         try:
             await until(lambda: FakeStream.logins >= 1 and d.held["NYSE_BOOK"])
