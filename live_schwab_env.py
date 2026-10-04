@@ -23,7 +23,7 @@ docs/ARCHITECTURE.md "Failure domains" separates application availability from c
 Schwab unavailable degrades the Schwab capability and fails Schwab-dependent exposure closed;
 it does not kill the application. So this now answers "is the Schwab CAPABILITY available",
 the launcher reports rather than aborts, and the fail-closed half lives where it always did —
-`config.schwab_live_blocked_for()` and the two refusal sites in `schwab_client`.
+`config.schwab_live_blocked_for()` and the one refusal site, `schwab_client.build_client_from_token`.
 """
 from __future__ import annotations
 

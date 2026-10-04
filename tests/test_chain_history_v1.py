@@ -108,11 +108,11 @@ def schwab(monkeypatch):
 
 
 def _built():
-    """make_client's answer: schwab-py's own Client over a plain httpx session (the network
-    calls themselves are the `schwab` stand-in's)."""
+    """The daemon's one client (what capture.one_schwab_client hands the sweep): schwab-py's own
+    Client over a plain httpx session (the network calls themselves are the `schwab` stand-in's)."""
     import httpx
     from schwab.client import Client
-    return type("State", (), {"ok": True, "client": Client("key", httpx.Client()), "message": ""})()
+    return Client("key", httpx.Client())
 
 
 def _sweep(tmp_path, board, at):
@@ -252,9 +252,9 @@ def test_an_idle_worker_takes_a_new_active_ticker_at_once(tmp_path, schwab):
     on screen waited for it."""
     import threading
     sweep, _published, _clock = _sweep(tmp_path, [], "2026-09-30 15:31:57")
-    state = _built()
+    client = _built()
     halt = threading.Event()
-    worker = threading.Thread(target=sweep.work, args=(lambda: state, halt), daemon=True)
+    worker = threading.Thread(target=sweep.work, args=(lambda: client, halt), daemon=True)
     worker.start()
     time.sleep(0.1)                                     # the worker is idle: nothing to fetch
     put = time.monotonic()
