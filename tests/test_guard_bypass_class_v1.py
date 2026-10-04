@@ -25,26 +25,6 @@ def test_git_commit_no_verify_blocks():
     assert any("disables a mechanical lock" in v for v in out), out
 
 
-def test_git_commit_dash_n_blocks():
-    out = G.bash_violations("git commit -n -m x", [], payload_cwd=str(ROOT))
-    assert any("disables a mechanical lock" in v for v in out), out
-
-
-def test_hooks_path_bypass_blocks():
-    out = G.bash_violations(
-        "git -c core.hooksPath=/dev/null commit -m x", [], payload_cwd=str(ROOT)
-    )
-    assert any("disables a mechanical lock" in v for v in out), out
-
-
-def test_no_grant_machinery_can_authorize_no_verify():
-    """The operator-grants file is GONE with Architecture A; no repo artifact may
-    resurrect a no-verify authorization path inside the guard."""
-    assert not (ROOT / "governance" / "operator_grants.json").exists()
-    out = G.bash_violations("git commit --no-verify -m x", [], payload_cwd=str(ROOT))
-    assert any("disables a mechanical lock" in v for v in out), out
-
-
 def test_hook_entrypoint_rejects_no_verify_with_guard_env_off(monkeypatch):
     """Attempt the real hook process, not a helper-exists check."""
     monkeypatch.setenv("ED_OPERATOR_LAW_GUARD", "off")

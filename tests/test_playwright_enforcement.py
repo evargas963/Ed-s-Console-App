@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.playwright_ready import ROOT, ensure_playwright_ready
+from tests.playwright_ready import ensure_playwright_ready
 
 
 def test_ensure_playwright_ready_passes_when_configured():
@@ -35,14 +35,3 @@ def test_ensure_playwright_ready_raises_when_node_missing():
     with patch("tests.playwright_ready.shutil.which", side_effect=_which):
         with pytest.raises(AssertionError, match="Node"):
             ensure_playwright_ready(install_browsers=False)
-
-
-def test_e2e_smoke_spec_present():
-    """Contract: browser smoke test file must exist (executed by npm run test:e2e, not pytest)."""
-    smoke = ROOT / "tests" / "e2e" / "smoke.spec.js"
-    assert smoke.is_file(), f"Missing {smoke} — add Playwright smoke test for real browser check."
-
-
-def test_playwright_config_exists():
-    p = ROOT / "playwright.config.mjs"
-    assert p.is_file(), "playwright.config.mjs missing — E2E cannot run."

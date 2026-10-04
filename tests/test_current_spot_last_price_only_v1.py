@@ -19,15 +19,6 @@ def _feed_live():
     mark_feed_down()
 
 
-class _FakeResp:
-    status_code = 200
-
-    def __init__(self, payload):
-        self._payload = payload
-
-    def json(self):
-        return self._payload
-
 
 
 

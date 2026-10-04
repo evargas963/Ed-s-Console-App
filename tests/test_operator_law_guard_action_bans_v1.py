@@ -21,29 +21,6 @@ from pathlib import Path
 # runs no git. The surviving git readers pin `encoding="utf-8"` at their own sites.
 
 
-def test_v2_payload_and_ps_constructed_writes_are_no_longer_banned():
-    """KEEP/MERGE/DELETE 2026-09-10: the -c payload / PowerShell constructed-write bans guarded
-    the retired mockup-approval registry and a mangling risk ruff and pytest already catch; the
-    Edit/Write tools remain the ordinary path, the bans are gone with no successor."""
-    from tools.operator_law_guard import bash_violations
-    formerly_blocked = (
-        "python -c \"p='x'+'y.json'; open(p,'w').write('1')\"",
-        "python -c \"open('.claude/zzz.json','w').write('1')\"",
-        "python -c \"open('static/chart.html','w').write('1')\"",
-        'Set-Content ("gov"+"ernance/x.json") 1',
-        "Out-File -FilePath $(Resolve-Path x) -InputObject 1",
-        "Copy-Item a.html static/b.html",
-    )
-    for cmd in formerly_blocked:
-        assert bash_violations(cmd, []) == [], cmd
-    legal = (
-        "python -c \"open('reports/x.jsonl','a').write('1')\"",
-        "python -c \"open('governance/root_cause_log.md','a').write('row')\"",
-        "python -c \"print(open('db.py').read())\"",
-    )
-    for cmd in legal:
-        assert bash_violations(cmd, []) == [], cmd
-
 
 def test_lock_disable_routes_are_git_and_precommits_own():
     """The lock-disable ban names the routes that actually bypass the battery — git's

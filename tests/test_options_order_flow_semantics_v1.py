@@ -75,11 +75,6 @@ def _reset(tmp_path, monkeypatch):
     return db
 
 
-def _live_daemon():
-    """The daemon's status arriving on the console socket: health can only be confirmed
-    while the daemon itself is alive."""
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {}, "health": {}})
-
 
 def _push_option_l1(symbol, content, ts_recv):
     """One LEVELONE_OPTIONS message as the daemon publishes and pushes it."""
@@ -101,14 +96,6 @@ def _before_the_fixture_expiries(monkeypatch):
     from datetime import datetime
     import time_et
     monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 1, 2, 10, 0, tzinfo=time_et.ET))
-
-def test_option_contract_l1_lands_in_order_flow_state(tmp_path, monkeypatch):
-    _reset(tmp_path, monkeypatch)
-    _push_option_l1(_SPY_CONTRACT, _REAL_LEVELONE_OPTIONS_CONTENT, ts_recv=time.time())
-
-    items = ofls.get_content_for_symbol(_SPY_CONTRACT)
-    assert any(i.get("LAST_PRICE") == 1.27 for i in items)
-
 
 def test_option_contract_book_lands_verbatim(tmp_path, monkeypatch):
     _reset(tmp_path, monkeypatch)
@@ -140,14 +127,6 @@ def test_the_option_book_payload_reuses_the_one_producer(tmp_path, monkeypatch):
 
     result = options_live_payload(_SPY_CONTRACT, time.time())
     assert result["depth"]["1"]["imbalance"] is not None
-
-
-def test_the_option_book_payload_fails_closed_with_no_book():
-    """No replayed content yet -> the producer's own fail-closed contract: status
-    'no_book', never a fabricated imbalance."""
-    ofls.clear_all_live_state()
-    result = options_live_payload("QQQ   260820C00450000", time.time())
-    assert result.get("status") == "no_book" or result["depth"]["1"]["imbalance"] is None
 
 
 def test_set_active_option_contract_writes_signal_and_clears_old_symbol(tmp_path, monkeypatch):

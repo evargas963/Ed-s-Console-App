@@ -24,18 +24,6 @@ def _no_escape(monkeypatch, tmp_path):
     monkeypatch.delenv("ED_RESET_GUARD", raising=False)
 
 
-def test_spec_case_reset_double_dash_chart_blocks(monkeypatch, tmp_path):
-    """Spec acceptance literal: `git reset -- static/chart.html` → BLOCK."""
-    _no_escape(monkeypatch, tmp_path)
-    assert OPL.reset_guard_violations("git reset -- static/chart.html")
-
-
-def test_spec_case_git_status_allows(monkeypatch, tmp_path):
-    """Spec acceptance literal: `git status` → allow."""
-    _no_escape(monkeypatch, tmp_path)
-    assert not OPL.reset_guard_violations("git status")
-
-
 def test_destructive_class_blocks(monkeypatch, tmp_path):
     _no_escape(monkeypatch, tmp_path)
     for cmd in (

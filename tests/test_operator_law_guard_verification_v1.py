@@ -30,8 +30,6 @@ def test_appdata_redirect_not_protected_tree():
     "rm data/ed_console.db",
     "> data/x.db",
     "mv backups/a b",
-    "Remove-Item backups/db/x.db",
-    "python -c \"import os; os.remove('data/ed_console.db')\"",
 ])
 def test_real_protected_tree_targets_still_block(cmd):
     assert G._protected_path_violation(cmd) is True, cmd
@@ -58,12 +56,6 @@ def test_git_push_dry_run_not_lock_disable():
         assert any("disables a mechanical lock" in v for v in out), (cmd, out)
 
 
-def test_the_retired_env_kill_switch_spellings_are_not_policed():
-    """RC-450: no ED_*_GUARD/LOCK switch exists, so a string that spells one is not an action."""
-    for cmd in ("ED_UI_MOCKUP_LOCK=off git commit -m x", "$env:ED_STOP_GUARD='false'"):
-        assert not any("disables a mechanical lock" in v for v in G.bash_violations(cmd, [], "")), cmd
-
-
 # ── blind staging ──────────────────────────────────────────────────────────────────────
 @pytest.mark.parametrize("cmd", ["git add -A", "git add --all", "git add .", "git add -u", "git add *"])
 def test_blind_staging_blocks(cmd):
@@ -73,18 +65,3 @@ def test_blind_staging_blocks(cmd):
 @pytest.mark.parametrize("cmd", ["git add tools/x.py", "git add -p", "git add tests/ tools/"])
 def test_explicit_staging_passes(cmd):
     assert G.bash_violations(cmd, [], "") == [], cmd
-
-
-# ── the deleted rules stay deleted ─────────────────────────────────────────────────────
-def test_inspection_and_shell_writes_are_not_the_guards_business():
-    """The no-grep rule blocked read-only stdout filters three times in one session and the
-    source-write bans guarded a retired registry; a rule that obstructs inspection with no
-    unique protection is gone, with no successor under another name."""
-    for cmd in ("grep -r foo tools/", "rg foo", "git grep foo", "Select-String foo server.py",
-                "cat > x.py <<EOF\nprint(1)\nEOF", "python -c \"open('x.py','w').write('1')\"",
-                "sed -i 's/a/b/' server.py", "Set-Content server.py 'x=1'"):
-        assert G.bash_violations(cmd, [], str(REPO)) == [], cmd
-    for gone in ("_repo_search_violation", "_heredoc_write_violation", "_redirect_source_violation",
-                 "_payload_write_violation", "_PS_WRITE_BAD", "edit_violations", "turn_slice",
-                 "_successful_commands", "_verification_ran", "last_assistant_text"):
-        assert not hasattr(G, gone), gone

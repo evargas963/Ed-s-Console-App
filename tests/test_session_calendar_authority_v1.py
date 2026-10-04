@@ -27,9 +27,6 @@ def _ts(y, mo, d, h, mi):
     return datetime(y, mo, d, h, mi, tzinfo=ET).timestamp()
 
 
-def _dt(y, mo, d, h, mi):
-    return datetime(y, mo, d, h, mi, tzinfo=ET)
-
 
 def test_normal_weekday_rth_minute_is_tradable():
     assert is_tradable_session_ts_utc(_ts(2026, 7, 22, 10, 0)) is True

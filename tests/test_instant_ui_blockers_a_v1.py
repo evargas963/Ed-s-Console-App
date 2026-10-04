@@ -8,16 +8,6 @@
 from __future__ import annotations
 
 
-import app.market_data.schwab.streaming.capture as cap
-from stream_spine import HealthRegistry, MessageBus
-
-
-def _handler():
-    bus, health, stats = MessageBus(), HealthRegistry(), cap.CaptureStats()
-    h = cap.make_handler("LEVELONE_EQUITIES", cap.LEVELONE_FIELDS, "quote", bus, health, stats)
-    return h, health
-
-
 
 
 

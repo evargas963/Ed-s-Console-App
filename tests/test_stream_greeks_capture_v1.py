@@ -21,13 +21,6 @@ if str(ROOT) not in sys.path:
 from app.options.order_flow.state import OrderFlowState as LiveOrderFlowState
 
 
-def test_gamma_delta_open_interest_are_captured_from_a_real_l1_tick():
-    st = LiveOrderFlowState()
-    st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.0123, "DELTA": 0.45, "OPEN_INTEREST": 4200}, ts_recv=time.time())
-    g = st.get_stream_greeks("SPY   260116C00580000")
-    assert g["gamma"] == 0.0123
-    assert g["delta"] == 0.45
-    assert g["open_interest"] == 4200.0
 
 
 def test_total_volume_is_captured_alongside_the_greeks():

@@ -161,7 +161,9 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   `backups/`. Enforced by: the agent hook `tools/operator_law_guard.py`
   (`tests/test_operator_law_guard_action_bans_v1.py`, `tests/test_protected_paths_v1.py`).
 - Never edit source through a script: edits are made one at a time, as written; a block too long
-  for one edit is removed in consecutive edits. Enforced by: no machine check — ENF-14.
+  for one edit is removed in consecutive edits. Enforced by: the agent hook
+  `tools/sed_edit_guard.py` refuses a sed that writes a file (`tests/test_sed_edit_guard_v1.py`);
+  the other in-place editors — ENF-14.
 - A file keeps its line endings (most are LF; some are CRLF). Enforced by: the commit hook
   `tools/check_eol_style_invariant.py` (`tests/test_eol_style_invariant_v1.py`).
 - No credential or operator-home path is committed. Enforced by: the commit hook

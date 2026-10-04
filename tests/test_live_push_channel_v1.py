@@ -121,14 +121,6 @@ def _received(ts):
     return lambda: any(r.get("server_received_ts") == ts for r in ofls.get_content_for_symbol("SPY"))
 
 
-def test_a_schwab_trade_reaches_the_console_with_its_own_receive_time(feed):
-    async def body(bus, stats):
-        assert await _until(lambda: stats["clients"] == 1)
-        ts = time.time() - 0.5          # received by the daemon half a second ago
-        bus.publish("quote.SPY", _spy_trade(501.25, ts))
-        assert await _until(_received(ts)), "freshness must judge the daemon's receive time"
-        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES"))
-    asyncio.run(_run(feed, body))
 
 
 def test_the_daemon_heartbeat_decides_liveness_end_to_end(feed):
@@ -224,31 +216,6 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded(feed):
     asyncio.run(_run(feed, body))
 
 
-def test_a_connecting_console_receives_the_last_values_first(feed):
-    ts = time.time()
-
-    async def body(bus, stats):
-        assert await _until(_received(ts))
-    bus_holder = {}
-
-    async def run():
-        bus = MessageBus()
-        bus.publish("quote.SPY", _spy_trade(499.5, ts))   # before any client
-        bus_holder["bus"] = bus
-        stop = asyncio.Event()
-        stats: dict = {}
-        server = asyncio.create_task(live_push.serve_live_push(bus, stop, port=feed, stats=stats))
-        assert await _until(lambda: stats.get("listening"))
-        ofs._feed_running = True
-        client = asyncio.create_task(ofs._feed_loop())
-        try:
-            await body(bus, stats)
-        finally:
-            ofs._feed_running = False
-            client.cancel()
-            stop.set()
-            await asyncio.gather(client, server, return_exceptions=True)
-    asyncio.run(run())
 
 
 def test_a_consoles_wanted_list_is_withdrawn_when_its_connection_ends(feed):

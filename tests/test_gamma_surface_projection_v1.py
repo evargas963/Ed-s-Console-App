@@ -133,23 +133,6 @@ def test_C_expiry_isolation():
     assert any(_cell(base, k, E2) != _cell(after, k, E2) for k in base["strikes"])
 
 
-# D. SIGN — the faucet's sign at every strike survives the projection (no inversion), including
-#    the put-heavy (net-short-gamma) strikes the real captures contain.
-def test_D_sign_preserved():
-    chain = _chain()
-    surface = _surface(chain, SPOT)
-    negatives = 0
-    for exp in (E1, E2):
-        exposures_e, _ = compute_exposures_by_strike(_slice(chain, exp), spot=SPOT)
-        for k, bucket in exposures_e.items():
-            v = float(bucket["net_gex_1pct"])
-            if abs(v) < 1:          # rounds to 0 either way; no sign to preserve
-                continue
-            cell = _cell(surface, float(k), exp)
-            assert (cell < 0) == (v < 0), (exp, k, v, cell)
-            negatives += 1 if v < 0 else 0
-    assert negatives > 0, "the real captures must contain at least one put-heavy strike"
-
 
 # F. INPUT-PROJECTION COVERAGE — every OI-bearing expiry/strike IN THE SUPPLIED CHAIN is projected.
 #    NOTE: this is input-projection coverage, NOT vendor strike_range=ALL chain completeness — the

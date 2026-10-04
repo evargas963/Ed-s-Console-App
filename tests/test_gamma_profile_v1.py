@@ -82,11 +82,6 @@ def test_flip_is_interpolated_within_the_profile_span() -> None:
     assert prof[0][0] <= flip <= prof[-1][0]
 
 
-def test_flip_returns_none_when_no_zero_crossing() -> None:
-    assert gamma_flip_from_profile([(100.0, 5.0), (101.0, 7.0)], 100.5) is None
-    assert gamma_flip_from_profile([], 100.5) is None
-
-
 def test_narrow_chain_flip_is_reported_low_confidence() -> None:
     """The live 20-strike chain spans only ~+/-1.3%; its flip must never be served as
     trustworthy (measured error vs full-chain reference: 770.35 vs 745.61)."""

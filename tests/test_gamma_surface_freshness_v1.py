@@ -88,9 +88,10 @@ def _board_is(board):
     lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "board": list(board)})
 
 
-def test_a_viewed_ticker_warms_at_any_hour(monkeypatch, pin_clock, view):
-    # WARMING: viewed. The daemon fetches the viewed ticker's chain at any hour, so a Saturday is
-    # warming too (it read "not warming" outside the archival window before).
+def test_while_closed_a_board_ticker_warms_and_an_off_board_one_on_screen_does_not(monkeypatch, pin_clock, view):
+    # WARMING while Closed (docs/DATA_FLOW.md §3.4): a board ticker's close values are fetched
+    # once, so it is warming until they arrive; a ticker put on screen off the board is not
+    # fetched, so it is not warming and says why. Saturday 2026-09-26.
     pin_clock(2026, 9, 26, 12, 0)
     tk = ticker_storage_key("SPY")
     with server._terrain_cache_lock:
@@ -103,6 +104,10 @@ def test_a_viewed_ticker_warms_at_any_hour(monkeypatch, pin_clock, view):
     finally:
         with server._terrain_cache_lock:
             server._terrain_cache.pop(tk, None)
+    view("ZZQX")                                                         # off the board, on screen
+    d = _call("ZZQX")
+    assert d["requested"] is True and d["warming"] is False
+    assert d["available"] is False and d["reason"], d
 
 
 # ── any viewed ticker, on the board or not (2026-09-28 audit) ────────────────────────────────
@@ -129,9 +134,10 @@ def _fresh(monkeypatch, tmp_path, view):
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_first_view_warms_any_ticker_on_or_off_the_board(_fresh, monkeypatch, view, tk):
-    """A viewed ticker is the daemon's active ticker, whose chain it fetches ahead of every
-    other, on the board or not (operator 2026-10-01)."""
+def test_first_view_warms_any_ticker_on_or_off_the_board(_fresh, monkeypatch, pin_clock, view, tk):
+    """In an open session a viewed ticker is the daemon's active ticker, whose chain it fetches
+    ahead of every other, on the board or not (operator 2026-10-01). Thursday 2026-10-01 10:00 ET."""
+    pin_clock(2026, 10, 1, 10, 0)
     view(tk)                                        # the page selects the ticker
     d = _call(tk)                                   # the first view: no levels published yet
     assert d["requested"] is True and d["warming"] is True

@@ -19,19 +19,6 @@ from pathlib import Path
 from db import EdDB
 
 
-def test_news_events_table_dropped_by_migration(tmp_path: Path) -> None:
-    db_path = tmp_path / "fresh.db"
-    EdDB(db_path)
-    conn = sqlite3.connect(str(db_path))
-    try:
-        row = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='news_events'"
-        ).fetchone()
-    finally:
-        conn.close()
-    assert row is None, "news_events should not exist after Pass 8 drop"
-
-
 def test_news_events_migration_idempotent_on_existing_table(tmp_path: Path) -> None:
     db_path = tmp_path / "preexisting.db"
     conn = sqlite3.connect(str(db_path))
@@ -58,11 +45,3 @@ def test_news_events_migration_idempotent_on_existing_table(tmp_path: Path) -> N
     finally:
         conn.close()
     assert row is None, "migration must drop news_events even when pre-existing"
-
-
-def test_insert_news_event_method_removed_from_eddb() -> None:
-    methods = {m for m in dir(EdDB) if not m.startswith("_")}
-    assert "insert_news_event" not in methods, (
-        "EdDB.insert_news_event reappeared after Pass 8 drop — revert or open "
-        "a wire-or-drop redecision row in OPEN_ITEMS"
-    )

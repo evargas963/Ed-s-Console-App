@@ -11,15 +11,10 @@ archive, and so a NaN vendor leaf can never enter the histogram as a value.
 """
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from terrain_engine import (
     TerrainSnapshot,
 )
 
-
-def _exp(**kw):
-    return SimpleNamespace(**kw)
 
 
 

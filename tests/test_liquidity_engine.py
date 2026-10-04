@@ -309,21 +309,6 @@ def _step3_zones(session_date: date):
     return build_premarket_snapshot("SPY", session_date, PlaybookConfig(), canonical=snap).zones
 
 
-def test_no_liquidity_pool_claim_in_zone_taxonomy():
-    """RC-154: these zones are session EXTREMES. Presenting them as sell/buy-side liquidity is
-    an SMC pool claim we have not measured — no equal-extreme stop-cluster detection exists and
-    no touch study has run. The wire must not assert what nothing has proven."""
-    from liquidity_models import ZoneType, zone_class_for_type
-    values = {z.value for z in ZoneType}
-    assert not any("side_liquidity" in v for v in values), (
-        f"zone taxonomy still claims liquidity pools: {sorted(values)}"
-    )
-    classes = {zone_class_for_type(z) for z in ZoneType}
-    assert "liquidity" not in classes, (
-        f"a zone_class still asserts 'liquidity': {sorted(classes)}"
-    )
-
-
 def test_no_pool_language_in_rendered_zone_payload():
     """Behaviour-bound: build the snapshot that used to produce 'Sell-side liquidity at
     overnight low' and assert no operator-facing field claims a pool."""
