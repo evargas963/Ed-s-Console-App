@@ -1,6 +1,7 @@
 """/api/levels and /api/terrain/strikes: what the level routes serve."""
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import threading
@@ -9,6 +10,7 @@ from datetime import datetime as _dt
 from pathlib import Path
 
 import live_market_plane as lmp
+import push_changes
 import server as srv
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
@@ -182,11 +184,37 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         assert none_yet["generation"] is None
         assert {"family": "price_levels", "reason": srv.NO_PRICE_LEVELS_REASON} in none_yet["families_absent"]
 
-        # a minute's bars arrive together (ZZWRITE, and ZZWRITE2 that no page views): each
-        # ticker's levels are published from its bars
-        srv._write_streamed_bars([
-            {"symbol": t, "bar_start_ms": last["timestamp"], "open": last["open"], "high": last["high"],
-             "low": last["low"], "close": last["close"], "volume": last["volume"]} for t in (tk, other)], now)
+        # a minute's bars arrive together (ZZWRITE, and ZZWRITE2): every bar is written first
+        # (each write is pushed as `liquidity`), then each ticker's levels are published from its
+        # bars (pushed as `levels`). The order is read from the push itself: its own listener,
+        # on a running event loop, with a page open on each ticker.
+        changes = []
+
+        def record(t, kind):
+            if t in (tk, other):
+                changes.append((kind, t))
+        loop = asyncio.new_event_loop()
+        runner = threading.Thread(target=loop.run_forever, daemon=True)
+        runner.start()
+        push_changes.bind(loop)
+        push_changes.on_change(record)
+        pages = [(t, push_changes.subscribe(t)) for t in (tk, other)]
+        try:
+            srv._write_streamed_bars([
+                {"symbol": t, "bar_start_ms": last["timestamp"], "open": last["open"], "high": last["high"],
+                 "low": last["low"], "close": last["close"], "volume": last["volume"]} for t in (tk, other)], now)
+            drained = threading.Event()
+            loop.call_soon_threadsafe(drained.set)
+            assert drained.wait(5)
+        finally:
+            for t, page in pages:
+                push_changes.unsubscribe(t, page)
+            del push_changes._change_listeners[f"{record.__module__}.{record.__qualname__}"]
+            push_changes.bind(None)
+            loop.call_soon_threadsafe(loop.stop)
+            runner.join(5)
+            loop.close()
+        assert changes == [("liquidity", tk), ("liquidity", other), ("levels", tk), ("levels", other)]
         served = srv.levels_payload(tk, "1", now)
         assert served["generation"] is not None
         assert served["snapshot_as_of_ts_utc"] == last["timestamp"] / 1000.0
@@ -213,8 +241,9 @@ def test_the_console_serves_while_the_levels_loop_waits_for_the_stored_bars():
     load ran before the app served its first request. The levels loop runs on its own thread and
     builds nothing until the bar writer has loaded the stored bars; the console serves
     meanwhile, and once the bars are loaded the loop publishes the board's levels. The real loop
-    and the real bar writer, on Schwab's SPY bars of 2026-09-24/25; the loop's run flag is set
-    as start_terrain_loop sets it (which refuses to start under pytest). Stand-in: board ticker
+    and the real bar writer, on Schwab's SPY bars of 2026-09-24/25. The loop is started as
+    start_terrain_loop starts it (its run flag set, then its thread; start_terrain_loop itself
+    refuses to start under pytest) and stopped by stop_terrain_loop. Stand-in: board ticker
     ZZBOARD carries the SPY bars."""
     tk = "ZZBOARD"
     raw = json.loads(_FIXTURE.read_text(encoding="utf-8"))["bars"]
@@ -238,7 +267,7 @@ def test_the_console_serves_while_the_levels_loop_waits_for_the_stored_bars():
         snap = srv.canonical_price_level_snapshot(tk, now_et())
         assert snap is not None and snap.levels["PDH"].price == _rth_high(raw, "2026-09-25")
     finally:
-        srv._terrain_loop_running = False
+        srv.stop_terrain_loop()
         if writer.is_alive():
             srv.stop_bar_writer(writer)
         loop.join(5)
