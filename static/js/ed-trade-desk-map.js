@@ -151,7 +151,7 @@
     if (!S.chart) return;
     S.chart.setBars([], S.tf, shown(), null);
     S.chart.setLevels([]); S.chart.setMarkers([]); S.chart.setVolumeProfile([]); S.chart.setVwap([]);
-    S.chart.setValueArea(null, null); S.chart.setWallBands(null, null);
+    S.chart.setValueArea(null, null);
     $('tdmChartEmpty').hidden = false;
     $('tdmChartEmpty').textContent = 'Loading ' + shown() + ' · ' + (TFS.filter(function (x) { return x.id === S.tf; })[0] || {}).lbl + '…';
   }
@@ -265,8 +265,6 @@
       vp ? vp.max_volume : null,
       vp && vp.poc != null ? { price: vp.poc, label: 'POC est ' + num(vp.poc), color: P.warn } : null);
     S.chart.setVwap(S.fam.vwap && S.levels ? S.levels.vwap_series : []);
-    var T = S.fam.gamma !== 0 && S.terrain;
-    S.chart.setWallBands(T ? T.call_wall_range : null, T ? T.put_wall_range : null);
   }
   function paintChartOverlays() {
     if (!S.chart || !S.bars.length) return;
