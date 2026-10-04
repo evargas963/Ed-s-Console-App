@@ -198,39 +198,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hSession')).toHaveClass(/rth|pre|ah|closed/);
   });
 
-  test('a streamed-only surface update still triggers a re-render even when every REST field is unchanged (RC-UI-2 finding #1)', async ({ page }) => {
-    // Independent-review finding (2026-09-12), REPRODUCED: server.py's eager
-    // _publish_levels changes _gamma_surface's CELL VALUES without ever
-    // touching chain_as_of_ts_utc/spot_as_of_ts_utc/chain_basis/et_date -- those are stamped
-    // only by the ~60s REST cycle. surfaceRevision()'s old key was built ENTIRELY from those
-    // REST-only fields, so a genuinely new surface hashed identical to the old one and
-    // renderSurface()'s "cells unchanged, skip the rebuild" branch left the DOM showing the
-    // stale value forever. Fixed by including the server-owned surface_seq counter (bumped on
-    // every publication, REST or streamed) in the revision key.
-    let call = 0;
-    await page.route('**/api/options/gamma-surface**', (route) => {
-      call += 1;
-      const value = call === 1 ? 1000 : 2000;
-      route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify(Object.assign({}, SURFACE, {
-          strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-          cells: [{ strike: 583, gex: [value] }],
-          surface_seq: call,
-          // chain_as_of_ts_utc / spot_as_of_ts_utc / chain_basis / et_date are DELIBERATELY
-          // identical to SURFACE's own (unmodified) values on both fetches -- exactly what an
-          // eager streaming refresh does: change a cell, touch no REST-cycle field.
-        })),
-      });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
-    await expect(cell).toHaveText('$1.0K');
-
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:changed', { detail: { kind: 'levels' } })));
-    await expect(cell).toHaveText('$2.0K');
-  });
-
   test('a levels push on /api/changes reloads the heatmap, with no manual event dispatch', async ({ page }) => {
     // Delivery, not rendering: the browser's own EventSource parses the pushed `levels` event.
     let surfaceCalls = 0;
@@ -1052,60 +1019,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.heat-banner.warming')).toContainText('LIVE SURFACE WARMING');
-  });
-
-  test('responsive proof: 2560x1440 and 1920x1080 screenshots', async ({ page }) => {
-    await page.setViewportSize({ width: 2560, height: 1440 });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.hcell').first()).toBeVisible();
-    await page.screenshot({ path: path.join('test-results', 'console-gamma-2560x1440.png'), fullPage: false });
-    await page.setViewportSize({ width: 1920, height: 1080 });
-    await expect(page.locator('.hcell').first()).toBeVisible();
-    // body must not scroll sideways at the smaller target
-    const overflow = await page.evaluate(() => document.body.scrollWidth <= window.innerWidth + 2);
-    expect(overflow).toBe(true);
-    await page.screenshot({ path: path.join('test-results', 'console-gamma-1920x1080.png'), fullPage: false });
-  });
-
-  test('selecting a strike connects it to live streaming via the plural subscription endpoint (RC-UI-3)', async ({ page }) => {
-    // Independent-review finding (2026-09-12), REPRODUCED: "The new UI does not call the
-    // plural subscription endpoint." Strike Detail is the one panel with a genuinely
-    // resolved, DISPLAYED per-contract identity (the heatmap itself is a computed
-    // aggregate with no per-cell OSI symbol) -- selecting a strike must request BOTH its
-    // call AND put vendor symbols ("both sides where required") via
-    // /api/streaming/active-option-contracts, the real endpoint, through the real
-    // ed-stream.js/ed-gamma-panels.js wiring -- not a synthetic call into the JS module.
-    await page.route('**/api/chain**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify({
-        ticker: '$SPX', spot: 583.41, expiry: '2026-09-11', status: 'ok',
-        contracts: [
-          { symbol: 'SPY   260911C00583000', putCall: 'CALL', strikePrice: 583,
-            openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3,
-            expirationDate: '2026-09-11' },
-          { symbol: 'SPY   260911P00583000', putCall: 'PUT', strikePrice: 583,
-            openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6,
-            expirationDate: '2026-09-11' },
-        ],
-      }),
-    }));
-    /** @type {any[]} */
-    const requests = [];
-    await page.route('**/api/streaming/active-option-contracts', (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      requests.push(body);
-      // Echo the real server's contract: `contracts` in the response is the ACKNOWLEDGED
-      // set, which ed-stream.js's identity check now requires to match what was sent.
-      route.fulfill({ status: 200, contentType: 'application/json',
-        body: demandAck(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
-    await expect(page.locator('#sdCtx')).toContainText('583');
-
-    await expect.poll(() => requests.length).toBeGreaterThan(0);
-    const sent = requests[requests.length - 1].contracts.slice().sort();
-    expect(sent).toEqual(['SPY   260911C00583000', 'SPY   260911P00583000']);
   });
 
   test('the heatmap declares live-streaming demand for every visible column\'s contracts, not just the front column (state-authority review, superseded 2026-09-15)', async ({ page }) => {

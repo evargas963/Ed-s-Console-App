@@ -2221,9 +2221,11 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
     # screen (fetched first) or on the board (fetched in turn). The reason is that state's own.
     _requested = _gamma_surface_wanted(tk)
     _board_now = _board()                      # None: the daemon's heartbeat is not current
-    # a chain is coming only while the daemon reports: for the ticker on screen (fetched first)
-    # or a board ticker (fetched in turn)
-    _warming = _board_now is not None and (tk == push_changes.on_screen() or tk in _board_now)
+    # a chain is coming only while the daemon reports: for a board ticker (fetched in turn; while
+    # Closed, once, its close values) or, in an open session, the ticker on screen (fetched
+    # first; while Closed it is not fetched, docs/DATA_FLOW.md §3.4)
+    _open = session_label(now_et()) != "Closed"
+    _warming = _board_now is not None and (tk in _board_now or (_open and tk == push_changes.on_screen()))
     _levels_why = terrain_staleness((live or {}).get("computed_ts_utc"), tk)["levels_stale_reason"]
     if _board_now is None:     # the daemon not reporting is the cause of every other absence: first
         _why = ["the capture daemon is not reporting (no current heartbeat): its board is unknown",
@@ -2232,6 +2234,8 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
         _why = [_levels_why]
     elif _warming:
         _why = ["the surface is projected when the daemon delivers this ticker's chain"]
+    elif not _open:
+        _why = ["the market is closed and this ticker's close values have not been fetched"]
     else:
         _why = ["no chain is fetched for this ticker: it is not on screen or on the board"]
     return JSONResponse({"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",

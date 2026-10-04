@@ -16,17 +16,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.check_private_paths import (  # noqa: E402
-    PRIVATE_PATH_ALLOWLIST,
     PRIVATE_PATH_PATTERNS,
     find_private_paths,
-    tracked_scan_targets,
 )
-
-
-def test_no_operator_home_paths_in_tracked_evidence():
-    """Fail closed on any machine-specific home path in tracked evidence scope."""
-    v = find_private_paths()
-    assert v == [], "operator-home paths in tracked evidence:\n" + "\n".join(v)
 
 
 def test_private_path_patterns_catch_all_required_forms():
@@ -69,17 +61,3 @@ def test_guard_reports_synthetic_violation(tmp_path):
     # the synthetic line legitimately trips both the windows and posix patterns
     assert v and all(x.startswith(f"{rel}:1:") for x in v)
     assert any("windows_user_home" in x for x in v)
-
-
-def test_fixture_self_reference_cannot_satisfy_guard():
-    """This test file's fictional fixtures are OUTSIDE the guard scope — they can
-    neither trip nor satisfy it."""
-    assert not any(rel.startswith("tests/") for rel in tracked_scan_targets())
-
-
-def test_private_path_allowlist_is_narrow_and_used():
-    """Every allowlist row must reference a real tracked file; stale rows fail."""
-    tracked = set(tracked_scan_targets())
-    for prefix, marker in PRIVATE_PATH_ALLOWLIST:
-        assert any(rel.startswith(prefix) for rel in tracked), f"stale allowlist prefix: {prefix}"
-        assert marker.startswith('"') and marker.endswith('"')

@@ -113,7 +113,6 @@
     "tape_pressure_2m": 0.5384615384615384,
     "tape_pressure_30s": 0.3333333333333333,
     "tape_pressure_5m": 0.4666666666666667,
-    "tape_side_5m": "BUY",
     "top_book_pressure": -0.15789473684210525
   },
   "liquidity_concentration": {

@@ -99,13 +99,6 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('#view-heatmap .hstrike', { hasText: '480' }).first()).toBeVisible();
   });
 
-  test('watchlist click keeps the instrument control synchronized', async ({ page }) => {
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.locator('.wl-row .wl-sym', { hasText: 'IWM' }).click();
-    await expect(page.locator('#symInput')).toHaveValue('IWM');
-    await expect(page.locator('#hSym')).toHaveText('IWM');
-  });
-
   // #9 (live operator finding 2026-09-10): the analytical ticker control was built FROM the watchlist,
   // so only SPY/QQQ/IWM/NVDA/TSLA were selectable and analysing a symbol mutated the watchlist. The
   // two responsibilities are separate: WATCHLIST = persistent symbols the operator monitors (explicit

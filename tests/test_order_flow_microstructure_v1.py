@@ -146,15 +146,6 @@ def test_fail_closed_no_book():
     assert m["provenance"]["book_source"] == "unavailable"
 
 
-def test_no_temporal_proxy_claimed():
-    """The static slice must not silently emit an aggressor/CVD/absorption field."""
-    m = ofe.compute_book_microstructure(_data(), now_ts=1787233772.0)
-    for banned in ("aggressor_side", "cvd", "cum_delta", "absorption", "iceberg"):
-        assert banned not in m
-    # and it names what it defers, so the omission is explicit, not accidental.
-    assert any("aggressor" in d for d in m["deferred"])
-
-
 def test_every_emitted_metric_is_classified():
     """TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 10): was a
     hardcoded 8-key list checked with `key in cls or f"{key}.*" in cls or

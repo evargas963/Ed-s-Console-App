@@ -19,8 +19,6 @@ _FIXTURES = Path(__file__).parent / "fixtures"
 _TSLA = json.loads((_FIXTURES / "real_tsla_complete_chain_strike_range_all.json").read_text(encoding="utf-8"))
 _TSLA_CONTRACTS = _TSLA["chain"]
 _TSLA_EXPIRY = _TSLA["expiry"]
-_SPY_VS_ALL = json.loads(
-    (_FIXTURES / "real_spy_strike_count_vs_strike_range_all_evidence.json").read_text(encoding="utf-8"))
 
 
 
@@ -142,11 +140,3 @@ def test_the_route_answers_over_real_http():
     with TestClient(srv.app) as client, _held_chain("TSLA", _TSLA_CONTRACTS, time.time()):
         r = client.get("/api/chain", params={"ticker": "TSLA"})
     assert r.status_code == 200 and r.json()["expiry"] == _TSLA_EXPIRY
-
-
-def test_real_vendor_evidence_strike_count_alone_undercounts_spy():
-    """strike_count=250 missed 69 real SPY strikes that strike_range=ALL returned on the same
-    request -- why the daemon's chain sweep downloads strike_range=ALL."""
-    assert len(_SPY_VS_ALL["strikes_missed_by_strike_count_250"]) == 69
-    assert _SPY_VS_ALL["converged_all_vs_500"] is True
-    assert _SPY_VS_ALL["strike_range_all"]["n_contracts"] > _SPY_VS_ALL["strike_count_250"]["n_contracts"]

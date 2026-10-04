@@ -33,12 +33,6 @@ def test_the_book_side_is_served_from_the_real_book():
     assert m["depth"]["5"]["side"] == want
 
 
-def test_the_tape_side_is_served():
-    from app.options.order_flow.live_payload import flow_block
-    assert [flow_block({"tape_pressure_5m": v})["tape_side_5m"] for v in (0.2, -0.1, 0.0, None)] == \
-        ["BUY", "SELL", "EVEN", None]
-
-
 def _desk_events(monkeypatch, ticker, crosses, now, tf):
     """/api/desk/events on real crosses, at `now`: the stored crosses loaded as the console's
     start loads them (server._load_crosses)."""

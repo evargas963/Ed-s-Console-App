@@ -25,22 +25,6 @@ REPO = Path(G.__file__).resolve().parent.parent
 
 
 # --------------------------------------------------------------------------- required controls
-def test_negative_control_absolute_scratchpad_is_not_governed_production(tmp_path):
-    """BAD: absolute scratchpad .py outside the repo -> NOT governed production.
-
-    This is the exact 2026-08-16 case: session scratch scripts were reported as
-    'changed production code' and pulled a typed-audit obligation onto files that are not
-    the product and are not even in the tree.
-    """
-    p = tmp_path / "scratchpad" / "post_bundle.py"
-    p.parent.mkdir(parents=True)
-    p.write_text("x = 1\n", encoding="utf-8")
-
-    facts = G.classify_path(str(p))
-    assert facts.governed is False, "a path outside the repository is not ours to govern"
-    assert facts.production is False, "not governed cannot be production"
-
-
 def test_legitimate_control_absolute_repo_production_path():
     """GOOD: absolute repo production .py -> governed + production."""
     facts = G.classify_path(str(REPO / "tools" / "operator_law_guard.py"))

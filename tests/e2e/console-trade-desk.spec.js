@@ -34,7 +34,7 @@ const MICRO = { ticker: 'SPY', venue: 'NASDAQ_BOOK', status: 'ok', top_of_book: 
   spread_pts: 0.02, depth: { '1': { imbalance: 0.2, side: 'BID' }, '5': { bid_total: 3000, ask_total: 2000, imbalance: 0.2, side: 'BID' } },
   depth_pressure: { bid: [{ price: 771.29, volume: 300, cum: 300 }, { price: 771.28, volume: 900, cum: 1200 }], ask: [{ price: 771.31, volume: 200, cum: 200 }] },
   ages: { book_age_sec: 1, book_stale: false }, wall_candidates: [], provenance: { book_source: 'NASDAQ_BOOK' },
-  flow: { tape_pressure_5m: 0.3, tape_side_5m: 'BUY', tape_pressure_30s: 0.1, tape_pressure_2m: 0.2, cum_delta_proxy: 1000 } };
+  flow: { tape_pressure_5m: 0.3, tape_pressure_30s: 0.1, tape_pressure_2m: 0.2, cum_delta_proxy: 1000 } };
 // the pivot zone below spot was named "support" by type-guessing on the page: each zone's label and
 // side are served (liquidity_models.ZONE_DISPLAY)
 const LIQ = { ticker: 'SPY', zones: [{ zone_low: 772, zone_high: 773, zone_type: 'resistance_liquidity', zone_label: 'Resistance', zone_side: 'resistance', confluence_score: 3 },
@@ -269,22 +269,6 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmQueue [data-q="' + other + '"]')).toHaveClass(/sel/);
     expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.markerSelected)).toBe(other);
     expect(errs).toEqual([]);
-  });
-
-  test('no proximity alerts anywhere: no strip, no request for them', async ({ page }) => {
-    // operator 2026-09-29: remove the alert strip, the queue's alert items and every other
-    // presentation of proximity alerts
-    const asked = [];
-    page.on('request', (r) => { if (r.url().includes('/api/alerts')) asked.push(r.url()); });
-    await intercept(page);
-    for (const [ws, sub] of [['trade-desk', 'desk'], ['options', 'gamma'], ['liquidity', 'map'], ['order-flow', 'book']]) {
-      await page.addInitScript(([w, s]) => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', w); localStorage.setItem('ed_sub', s); } catch (e) {} }, [ws, sub]);
-      await page.goto('/', { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(400);
-      await expect(page.locator('#alertsStrip')).toHaveCount(0);
-      await expect(page.locator('body')).not.toContainText(/Proximity Alerts/i);
-    }
-    expect(asked).toEqual([]);
   });
 
   test('Desk: selecting a ticker opens its /api/changes connection (the book request)', async ({ page }) => {

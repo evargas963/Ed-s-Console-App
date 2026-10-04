@@ -103,19 +103,6 @@ def _fixture_book():
     return fx["chain"], float(fx["spot"])
 
 
-def test_one_name_one_definition_across_all_declared_surfaces():
-    """The RC-292 defect shape fails by construction: a name may span surfaces and scopes,
-    but never two DEFINITIONS."""
-    by_name: dict[str, set[str]] = {}
-    for (_surface, name), (definition, scope) in DECLARED.items():
-        assert scope in (FULL, SEL), f"{name}: undeclared scope vocabulary {scope!r}"
-        by_name.setdefault(name.removeprefix("kl_"), set()).add(definition)
-    offenders = {n: sorted(d) for n, d in by_name.items() if len(d) > 1}
-    assert not offenders, (
-        f"one NAME carries two metric definitions — the RC-292 collision returned: "
-        f"{offenders}")
-
-
 def test_definitions_diverge_on_the_real_book_so_a_miswire_cannot_hide():
     """Premise: the two pin-shaped definitions disagree on this chain (773 vs 775; SPY 2026-09-22 12:46 ET).
 

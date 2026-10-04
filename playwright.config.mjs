@@ -39,7 +39,9 @@ export const e2eServerEnv = (() => {
 export default defineConfig({
   testDir: 'tests/e2e',
   timeout: 120000,
-  workers: 1,
+  // spec files run side by side; the tests within a file run in order. Every spec mocks its
+  // routes per page, so files share only the read-only console server.
+  workers: 4,
   fullyParallel: false,
   expect: { timeout: 30000 },
   use: {

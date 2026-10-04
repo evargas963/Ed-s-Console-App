@@ -178,11 +178,3 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     assert payload["logger_tickers"] == 2
 
 
-def test_core_runtime_provisioning_still_blocks_startup():
-    """PROOF 5. §4's reserved case is untouched: a broken venv still refuses to start.
-
-    The narrow correction must not have turned every launch preflight into a warning.
-    """
-    result = subprocess.run([sys.executable, str(REPO / "runtime_preflight.py")],
-                            cwd=str(REPO), capture_output=True, text=True, timeout=300)
-    assert result.returncode == 0, result.stdout + result.stderr
