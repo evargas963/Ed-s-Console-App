@@ -74,7 +74,9 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 - Page code: no arithmetic, sum, min/max, sort by value or date math on served data.
   Enforced by: no machine check — ENF-03.
 - A new check is a test of behavior, for a failure that happened; it fails on the old code; it
-  starts with no exceptions. Enforced by: no machine check — ENF-08.
+  starts with no exceptions. Enforced by: `tools/check_fails_before.py` in the required
+  `pytest-full` job refuses a PR that changes product code unless one of its changed tests fails
+  on the base (`tests/test_check_fails_before_v1.py`); the rest — ENF-08.
 - Time is an input: a function that depends on the clock takes `now`; only an entry point (a
   route, a loop, a stream handler) reads the clock. Enforced by: no machine check — ENF-09.
 - A value that crosses a module boundary is a typed record (dataclass), not a dict of string keys;
@@ -140,7 +142,10 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 - Stop for: the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO; a task marked AUDIT
   ONLY or DO NOT MERGE; a destructive data action; a product decision code cannot settle; an
   operator setting (a count, a rate, a switch) is never changed without the operator's explicit
-  yes to that change. Enforced by: no machine check — ENF-12.
+  yes to that change. Enforced by: the agent hook `tools/operator_yes_guard.py` puts a start,
+  stop or restart of the daemon or console, a merge, a push to main and a change to a test on
+  main to the operator as an Allow/Deny prompt (`tests/test_operator_yes_guard_v1.py`); the
+  rest — ENF-12.
 - Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.
   Work in a worktree. Enforced by: the agent hook `tools/process_lock_guard.py` refuses an edit,
   a shell write or a git verb that moves it off main (`tests/test_operating_process_lock_v1.py`).
