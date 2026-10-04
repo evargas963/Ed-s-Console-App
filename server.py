@@ -323,36 +323,59 @@ from calibration.complete_chain_capture import (
 )
 
 
-#: one bar as SQLite writes values in SQL (quote: every stored double exactly, NULL as NULL)
-_BAR_TEXT = " || ' ' || ".join(f"quote({f})" for f in ("bar_start_ts_utc", "open", "high", "low", "close", "volume"))
+#: one recorded bar as SQLite writes values in SQL (quote: every stored double exactly, NULL as NULL)
+_BAR_TEXT = " || ' ' || ".join(f"quote({f})" for f in ("bar_start_ms", "open", "high", "low", "close", "volume"))
 
 
 #: every ticker's completed 1-minute bars, oldest first, the newest BARS_KEPT (the ATR's ~23
-#: sessions). Owned by the bar writer (_bar_writer): loaded from price_bars_1m once, its first
-#: step (_load_bars), then each streamed bar as it writes it (_keep_bar). Every live reader reads
-#: this, never the database (docs/DATA_FLOW.md §2 D6).
+#: sessions): Schwab's CHART_EQUITY bars as sent, every hour Schwab sends them. Owned by the bar
+#: writer (_bar_writer): loaded once from the capture daemon's record of them, its first step
+#: (_load_bars), then each streamed bar as it arrives (_keep_bar). Every live reader reads this,
+#: never a database (docs/DATA_FLOW.md §2 D6).
 BARS_KEPT = 24_000
 _bars: "dict[str, list[Candle]]" = {}
 _bars_lock = threading.Lock()
-#: set once the bar writer has loaded the stored bars; the levels loop builds nothing before it
+#: set once the bar writer has loaded the recorded bars; the levels loop builds nothing before it
 _bars_loaded = threading.Event()
+#: where the bars come from, named in every level's provenance
+BAR_SOURCE = "Schwab CHART_EQUITY (stream_bars_raw)"
+
+
+def _schwab_bar(start_ms, o, h, lo, c, volume) -> "Candle | None":
+    """One Schwab CHART_EQUITY bar as a Candle, each field as Schwab sent it; None when its start
+    or a price is not a number (AGENTS.md rule 2: absent, -999, text, NaN or infinity). A volume
+    that is not a number, or negative, is absent."""
+    from numeric_contract import schwab_count, schwab_number
+    o, h, lo, c = (schwab_number(v) for v in (o, h, lo, c))
+    if None in (o, h, lo, c) or schwab_number(start_ms) is None:
+        return None
+    return Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo, close=c, volume=schwab_count(volume))
 
 
 def _load_bars() -> None:
-    """Each ticker's newest BARS_KEPT bars of price_bars_1m, read in one SQLite step per ticker
-    (a row-by-row read hands the interpreter lock back at every row). The one database read of
-    the bars, the bar writer's first step, before it takes any streamed bar."""
+    """Each ticker's newest BARS_KEPT minutes of Schwab's CHART_EQUITY bars as the capture daemon
+    recorded them (stream_capture.db stream_bars_raw, its one writer), Schwab's newest bar for each
+    minute, read in one SQLite step per symbol (a row-by-row read hands the interpreter lock back
+    at every row). The one database read of the bars, the bar writer's first step, before it takes
+    any streamed bar. With no record yet (the daemon has never run) there are no bars."""
     import sqlite3 as _sq
-    con = _sq.connect(f"file:{get_db().db_path}?mode=ro", uri=True, timeout=10.0)
+    from db_authority import canonical_stream_db_path
+    path = canonical_stream_db_path()
+    if not path.exists():
+        log.warning("bars: %s does not exist (the capture daemon writes it); no bars are loaded", path)
+        return
+    con = _sq.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=10.0)
     try:
-        for (tk,) in con.execute("SELECT DISTINCT ticker FROM price_bars_1m").fetchall():
+        for (sym,) in con.execute("SELECT DISTINCT symbol FROM stream_bars_raw").fetchall():
             (text,) = con.execute(
-                f"SELECT group_concat({_BAR_TEXT}, ';' ORDER BY bar_start_ts_utc) FROM (SELECT * FROM "
-                "price_bars_1m WHERE ticker=? ORDER BY bar_start_ts_utc DESC LIMIT ?)",
-                (tk, BARS_KEPT)).fetchone()
+                f"SELECT group_concat({_BAR_TEXT}, ';' ORDER BY bar_start_ms) FROM (SELECT * FROM "
+                "(SELECT *, ROW_NUMBER() OVER (PARTITION BY bar_start_ms ORDER BY ts_recv DESC) AS newest "
+                "FROM stream_bars_raw WHERE symbol=?) WHERE newest=1 ORDER BY bar_start_ms DESC LIMIT ?)",
+                (sym, BARS_KEPT)).fetchone()
             rows = [[None if v == "NULL" else float(v) for v in r.split(" ")] for r in text.split(";")] if text else []
+            bars = [b for b in (_schwab_bar(*r) for r in rows) if b is not None]
             with _bars_lock:
-                _bars[tk] = [Candle(ts=r[0], open=r[1], high=r[2], low=r[3], close=r[4], volume=r[5]) for r in rows]
+                _bars[ticker_storage_key(sym)] = bars
     finally:
         con.close()
 
@@ -385,18 +408,13 @@ def _bar_dict(c: "Candle") -> dict:
 
 
 def _write_streamed_bar(msg: dict) -> bool:
-    """Write one streamed 1-minute bar (Schwab CHART_EQUITY) to price_bars_1m; False when it
-    lacks a field (then nothing is written)."""
-    from numeric_contract import schwab_count, schwab_number
-    o, h, lo, c = (schwab_number(msg.get(k)) for k in ("open", "high", "low", "close"))
-    start_ms = msg.get("bar_start_ms")
-    if None in (o, h, lo, c, start_ms):
-        # not a number (AGENTS.md rule 2): absent, -999, text, NaN or infinity
-        log.warning("streamed bar for %s lacks a valid field, not written: %s", msg.get("symbol"), msg)
+    """Keep one streamed 1-minute bar (Schwab CHART_EQUITY, pushed by the capture daemon, which
+    records it) with the ticker's bars; False when it lacks a valid field (then it is not kept)."""
+    bar = _schwab_bar(msg.get("bar_start_ms"), msg.get("open"), msg.get("high"), msg.get("low"),
+                      msg.get("close"), msg.get("volume"))
+    if bar is None:
+        log.warning("streamed bar for %s lacks a valid field, not kept: %s", msg.get("symbol"), msg)
         return False
-    bar = Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo, close=c,
-                 volume=schwab_count(msg.get("volume")))
-    get_db().upsert_1m_bars(msg["symbol"], [bar])              # the history
     _keep_bar(ticker_storage_key(msg["symbol"]), bar)          # what every live reader reads
     push_changes.changed(msg["symbol"], push_changes.LIQUIDITY)
     return True
@@ -1769,11 +1787,8 @@ def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
     })
 
 
-# ── CR-03 pre-work (operator directive 2026-07-22 "we have plenty of time"):
-# the console's charts read canonical 1m bars via this endpoint.
-# Read-only, index-served (ticker+timeframe named — the idx_snap lesson applies to
-# price_bars_1m equally), no Schwab call, no model stack. The WS transport replaces
-# the page's polling when CR-CAP clears; this endpoint stays as the history hydrator.
+# The console's charts read the 1-minute bars the console holds (_bars_1m) here; no database, no
+# Schwab call.
 @app.get("/api/bars1m")
 def get_bars1m(ticker: str = Query(...),
                limit: int = Query(default=780, ge=1, le=12000),
@@ -2914,7 +2929,7 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
     before = canonical_price_level_snapshot(tk, now)
     try:
         snap = materialize_price_level_snapshot(tk, market_session_date(now), _bars_to_list(_liquidity_1m_bars(tk)),
-                                                bar_source="price_bars_1m", config=PlaybookConfig())
+                                                bar_source=BAR_SOURCE, config=PlaybookConfig())
     except Exception as e:  # noqa: BLE001 -- logged; the ticker's next bar builds them
         log.warning("price levels for %s not built: %s", tk, e)
         return
@@ -3096,8 +3111,7 @@ def _build_raw_levels_used(raw_levels: dict) -> list:
 
 
 def _liquidity_1m_bars(ticker: str) -> list[dict]:
-    """The ticker's completed Schwab 1-minute bars (price_bars_1m), in the liquidity engine's
-    shape."""
+    """The ticker's completed Schwab 1-minute bars (_bars_1m), in the liquidity engine's shape."""
     return [{"timestamp": int(float(c.ts) * 1000), "open": c.open, "high": c.high,
              "low": c.low, "close": c.close, "volume": c.volume} for c in _bars_1m(ticker, 2500)]
 
