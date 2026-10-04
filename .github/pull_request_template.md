@@ -5,7 +5,7 @@
 <!-- each value → source, its one producer, live and stored consumers, what each shows when it is missing; hops named -->
 
 ## Closed
-<!-- changed plan or behavior → affected docs, tests, checks and callers updated; superseded statements removed; ACTIVE_PROGRAM rows finished or changed; unverified paths listed NOT_PROVEN -->
+<!-- changed plan or behavior → affected docs, tests, checks and callers updated; superseded statements removed; ACTIVE_PROGRAM rows finished or changed; paths without proof on the final commit listed NOT_PROVEN -->
 
 ## Deleted
 <!-- what this replaces, removed in this PR -->

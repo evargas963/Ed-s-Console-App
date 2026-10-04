@@ -18,9 +18,13 @@ so a wrong number that looks right is worse than a blank with a reason.
    undo (request rates, limits, settings, restarts, deploys, deleting data) needs my
    yes to that specific action, because the app runs on my live Schwab account.
 7. After two failed attempts at the same thing, stop and report what you tried.
-8. Definitions: "verified" = command output from this session, shown. "Done" = a test
-   that failed before passes after, the full suite passes, and the live screen shows it
-   working. "Across the board" = every ticker on the board, not one.
+8. Claims. Every statement about how something is now (a process, a file, a branch, a pull
+   request, a test result, data, the screen) is CONFIRMED only by command output shown in
+   the same reply. Anything else is NOT VERIFIED, with when it was last checked. An earlier
+   check is not current evidence; state changes. This applies to every part of a reply,
+   including summaries, "seen, not fixed" and next steps.
+   Definitions: "Done" = a test that failed before passes after, the full suite passes, and
+   the live screen shows it working. "Across the board" = every ticker on the board, not one.
 9. If rules conflict: correctness of what I see > my explicit yes > speed.
 
 Rules 5, 6 and 8 are also enforced by machine. A hook (tools/operator_yes_guard.py) puts
@@ -30,8 +34,9 @@ run it. A CI check (tools/check_fails_before.py) refuses a pull request that cha
 product code unless one of its changed tests fails on the old code.
 
 Every report ends like this example:
-  Verified: pytest tests/test_x.py -> 12 passed; SPY, QQQ, NVDA levels match the chain.
-  Not verified: behavior during market hours (market closed).
-  Seen, not fixed: daemon log shows 429s from Schwab at 06:13.
+  CONFIRMED: pytest tests/test_x.py -> 12 passed; SPY, QQQ, NVDA levels match the chain.
+  NOT VERIFIED: behavior during market hours (market closed); daemon running (last
+  checked 06:21).
+  SEEN, NOT FIXED: daemon log shows 429s from Schwab at 06:13 (CONFIRMED, log above).
 
 @AGENTS.md
