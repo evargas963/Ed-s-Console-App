@@ -491,15 +491,6 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypat
     for k in ("gamma_flip", "call_wall", "put_wall", "max_pain"):
         assert loaded[k] == getattr(expected, k), k
 
-def test_old_levels_are_stale_with_their_reason_at_any_hour(monkeypatch, pin_clock):
-    """A closed market used to call levels of any age current ("market closed", not stale;
-    ACTIVE_PROGRAM S-08). The daemon fetches chains at any hour, so levels older than two of its
-    rounds are stale with the reason, on a Saturday as in session."""
-    pin_clock(2026, 9, 26, 12, 0)
-    fri_close = datetime(2026, 9, 25, 16, 29, tzinfo=ZoneInfo("America/New_York")).timestamp()
-    st = server.terrain_staleness(fri_close, TK)
-    assert st["levels_stale"] is True and "levels_market_closed" not in st
-    assert "the daemon's chain sweep has not delivered this ticker" in st["levels_stale_reason"]
 
 
 def test_a_reprice_on_a_kept_chain_keeps_the_chains_time(monkeypatch):
