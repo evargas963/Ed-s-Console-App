@@ -553,4 +553,38 @@ test.describe('Trade Desk renders served values', () => {
     await expect(page.locator('#tdmToolbar [data-act="style"]')).toHaveClass(/on/);
     expect(errs).toEqual([]);
   });
+
+  test('Market Map: no shaded wall band, whatever the terrain carries', async ({ page }) => {
+    // operator 2026-10-04: no shaded area on the chart. The call- and put-wall gamma ranges were
+    // drawn as green and red bands across the pane; a terrain that still carries ranges (as the
+    // server sent them before) draws exactly the same chart as one without them.
+    async function chartImage(terrain) {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+      await page.route('**/api/**', (route) => {
+        const url = route.request().url();
+        let body = { available: false };
+        if (url.includes('/api/desk/events')) body = EVENTS;
+        else if (url.includes('/api/terrain/strikes')) body = STRIKES;
+        else if (url.includes('/api/terrain')) body = terrain;
+        else if (url.includes('/api/levels')) body = LEVELS;
+        else if (url.includes('/api/order-flow/microstructure')) body = MICRO;
+        else if (url.includes('/api/liquidity-snapshot')) body = LIQ;
+        else if (url.includes('/api/bars1m')) body = BARS;
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      });
+      await Promise.all([page.waitForResponse((r) => /\/api\/terrain\?/.test(r.url())),
+        page.goto('/', { waitUntil: 'domcontentloaded' })]);
+      await expect.poll(() => page.evaluate(() => (window.EdTradeDeskMap.state().chart || {}).bars || 0)).toBeGreaterThan(0);
+      // the terrain's answer is painted on the next frames
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      await page.mouse.move(0, 0);
+      return page.locator('#tdmChart').screenshot({ animations: 'disabled' });
+    }
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); } catch (e) {} });
+    const plain = await chartImage(TERRAIN);
+    const withRanges = await chartImage(Object.assign({}, TERRAIN, {
+      call_wall_range: { lo: 700, hi: 800, coverage_pct: 70, method: 'gamma value area' },
+      put_wall_range: { lo: 700, hi: 800, coverage_pct: 70, method: 'gamma value area' } }));
+    expect(withRanges.equals(plain)).toBe(true);
+  });
 });
