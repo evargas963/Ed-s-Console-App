@@ -237,6 +237,29 @@ def test_6_a_dev_worktree_commits_freely_the_production_primary_refuses_moves_an
         assert r.returncode == 2, (command, r.stderr)
 
 
+def test_6b_a_linked_worktree_cannot_write_main_the_branch_production_runs(tmp_path):
+    """Every checkout shares refs/heads/main, so the production checkout's lock cannot protect
+    it by judging only commands run there. The commands are judged, never run."""
+    primary, linked = _primary_and_linked(tmp_path)
+    for command in ("git update-ref refs/heads/main HEAD", "git update-ref -d refs/heads/main",
+                    "git branch -f main HEAD", "git branch --force main HEAD", "git branch -D main",
+                    "git branch -d main", "git branch -m main old", "git branch -M dev main",
+                    "git branch -c dev main", "git fetch origin +dev:main", "git fetch . dev:refs/heads/main",
+                    "git push . HEAD:main", 'git -C "%s" update-ref refs/heads/main HEAD' % primary):
+        r = _chain(bash(command, cwd=linked), root=linked)
+        assert r.returncode == 2 and "MAIN_REF_LOCK" in r.stderr, (command, r.stderr)
+
+
+def test_6c_a_linked_worktree_still_deletes_and_moves_its_own_branches(tmp_path):
+    primary, linked = _primary_and_linked(tmp_path)
+    for command in ("git branch -d feature", "git branch -D feature", "git branch -f feature HEAD",
+                    "git branch -m feature other", "git update-ref refs/heads/feature HEAD",
+                    "git fetch origin main:feature", "git fetch origin main", "git push origin dev",
+                    "git branch --list main"):
+        r = _chain(bash(command, cwd=linked), root=linked)
+        assert r.returncode == 0, (command, r.stderr)
+
+
 def test_7_the_session_checkout_judges_and_says_so_no_other_tree_is_ever_chosen(tmp_path):
     """There is no delegation path: a copy of the chain in another checkout judges its own
     session and names itself; this checkout's run never names another tree."""

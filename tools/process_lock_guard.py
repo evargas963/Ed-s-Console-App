@@ -5,6 +5,12 @@
     a shell write (`cp`/`sed -i`/`tee`/redirect) into it, a linked worktree reaching into it,
     and any git verb that moves it off main are refused at the moment of the command
     (RC-350: the desk went down on a feature branch; RC-442: a side checkout edited the desk).
+  * MAIN REF: main is the branch the production checkout runs, and every checkout of the
+    repository shares it, so a git command that writes `refs/heads/main` is refused from ANY
+    checkout (`update-ref`, `branch -f/-d/-D/-m/-M/-c/-C` naming main, a fetch refspec into
+    main, a local `push . X:main`). main moves only by a PR merged on GitHub, then
+    `git pull --ff-only` in production. A push to GitHub's main is the operator's
+    (operator_yes_guard).
   * TREE-DESTRUCTIVE GIT (`operating_process_lock.reset_guard_violations`, the ONE owner):
     `reset --hard`, `checkout -- <path>`, `clean -f`, `push --force` on any target, and the
     restore/stash class on product paths — three wipes on 2026-08-03 used exactly these.
@@ -223,6 +229,35 @@ def prod_checkout_git_move_violations(cmd: str, payload_cwd: str = "") -> list[s
                 f"production updates by fast-forward to origin/main. See "
                 f"AGENTS.md.")
     return out
+
+
+_MAIN_REFS = ("main", "refs/heads/main")
+_BRANCH_WRITE_FLAGS = frozenset({"-f", "--force", "-d", "-D", "--delete", "-m", "-M", "--move",
+                                 "-c", "-C", "--copy"})
+
+
+def _writes_main(seg: str) -> bool:
+    """One git invocation writes refs/heads/main."""
+    sub, args = git_subcommand(seg)
+    refs = [a for a in args if not a.startswith("-")]
+    if sub == "update-ref":
+        return bool(refs) and refs[0] == "refs/heads/main"
+    if sub == "branch":
+        return any(a in _BRANCH_WRITE_FLAGS for a in args) and any(r in _MAIN_REFS for r in refs)
+    if sub in ("fetch", "push"):
+        if sub == "push" and refs[:1] != ["."]:
+            return False                 # a push to a remote: operator_yes_guard's
+        return any(r.split(":", 1)[1] in _MAIN_REFS for r in refs[1:] if ":" in r)
+    return False
+
+
+def main_ref_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
+    """A git command that writes refs/heads/main, from any checkout: every checkout shares the
+    branch the production checkout runs, so the checkout a command runs in cannot protect it."""
+    return [f"MAIN_REF_LOCK: `{seg.strip()}` writes refs/heads/main, the branch the production "
+            f"checkout runs, shared by every checkout. main moves only by a PR merged on GitHub, "
+            f"then `git pull --ff-only` in production."
+            for _target, seg in iter_git_invocations(cmd or "", payload_cwd or "") if _writes_main(seg)]
 
 
 def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
@@ -450,6 +485,7 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         # TARGETS the production checkout, at the moment of the command (not just at next launch).
         # Every git invocation in the chain is judged on its own — no laundering by a harmless first.
         out.extend(prod_checkout_git_move_violations(cmd, payload_cwd))
+        out.extend(main_ref_write_violations(cmd, payload_cwd))
         # Live-checkout invariant #4: a materially-equivalent SHELL write to production app code
         # (cp/mv/sed -i/tee/...) is blocked too, not only Edit/Write tool calls.
         out.extend(production_checkout_shell_app_write_violations(cmd, payload_cwd))
