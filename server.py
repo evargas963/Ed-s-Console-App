@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
-from time_et import ET, now_et, RTH_OPEN_MINS, ct_label, et_date_str_from_ts_utc, session_label
+from time_et import ET, now_et, RTH_OPEN_MINS, closed_since, ct_label, et_date_str_from_ts_utc, session_label
 from math_exposure_core import bucket_metric, merge_exposure_books, overlay_streamed_contract_fields
 
 import json
@@ -749,11 +749,15 @@ def _schwab_token_creation_ts() -> float | None:
         return None
 
 
-def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) -> dict:
-    """Whether the levels are current, and WHY NOT when they are not: the daemon's last answer
-    for the ticker's chain (a failed fetch, an incomplete delivery) outranks its age. The daemon
-    fetches every board ticker's chain at any hour, so age past two of its delivered rounds is a
-    gap, never a schedule."""
+def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, *,
+                      now: float | None = None) -> dict:
+    """Whether the levels are current at `now` (the clock when not given), and WHY NOT when they
+    are not: the daemon's last answer for the ticker's chain (a failed fetch, an incomplete
+    delivery) outranks its age. In an open session the daemon fetches every board ticker's chain
+    without end, so age past two of its delivered rounds is a gap, never a schedule. While
+    Closed the values as of the close stand (docs/DATA_FLOW.md §2 D5): levels from a chain
+    fetched after the market closed are current however old; older ones are not the close
+    values."""
     token = schwab_token_countdown(_schwab_token_creation_ts())   # RC-108: warn BEFORE death
     failure = str(_terrain_refresh_last_error.get(
         ticker_storage_key(ticker) if ticker else "", "") or "")
@@ -762,7 +766,17 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None) 
                 "levels_stale_reason": (f"no terrain snapshot has been computed yet — {failure}"
                                         if failure else "no terrain snapshot has been computed yet"),
                 "levels_failing": bool(failure), **token}
-    age = round(time.time() - float(computed_ts_utc), 1)
+    now = time.time() if now is None else now
+    age = round(now - float(computed_ts_utc), 1)
+    closed = closed_since(datetime.fromtimestamp(now, ET))
+    if closed is not None:
+        stale = float(computed_ts_utc) < closed.timestamp()
+        reason = ""
+        if stale:
+            reason = ("the market is closed and this ticker's close values have not been fetched"
+                      + (f" — {failure}" if failure else ""))
+        return {"levels_stale": stale, "levels_age_sec": age, "levels_stale_reason": reason,
+                "levels_failing": bool(stale and failure), **token}
     # judged against the round the daemon's chain sweep delivers (every board ticker once)
     round_sec = (lmp.daemon_status() or {}).get("chain_round_sec") or 0.0
     # Stale only past the floor *and* past two delivered rounds — one missed round is normal

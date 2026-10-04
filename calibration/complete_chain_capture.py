@@ -1,8 +1,10 @@
 """The board and the option chains (DATA_FLOW decisions 1 and 7), run by the capture daemon.
 
-The board (the logging_universe table) is the background tickers. The daemon fetches the full
-chain (every expiry, every strike) of the ticker on screen back to back and of every board ticker
-in turn, without end (ChainSweep), and hands each chain to the console for the levels. The chain history: the first chain of each ticker fetched in
+The board (the logging_universe table) is the background tickers. In every open session the
+daemon fetches the full chain (every expiry, every strike) of the ticker on screen back to back
+and of every board ticker in turn, without end (ChainSweep); once the market is Closed it fetches
+every board ticker once (the close values) and then nothing until the next session. Each chain
+is handed to the console for the levels. The chain history: the first chain of each ticker fetched in
 each capture window -- every 30 minutes from 9:30 to the close (ET), and 15 minutes after the close
 (the day's close capture), on market days -- is written here, one row per expiry, compressed, with
 Schwab's own underlying price. Schwab has no past option chains, so a chain not saved is gone.
@@ -26,7 +28,8 @@ from json_blob_codec import decode_json_blob, encode_json_blob
 from numeric_contract import schwab_number
 from production_universe import is_valid_production_ticker
 from schwab_client import fetch_full_chain, flatten_chain_contracts
-from time_et import ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date
+from time_et import (ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date,
+                     session_label)
 
 log = logging.getLogger("chain_history")
 
@@ -192,10 +195,14 @@ def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dic
 
 class ChainSweep:
     """The one fetcher of option chains, on CHAIN_WORKERS threads sharing one Schwab client (the
-    daemon's event loop never waits on it); a ticker is fetched by one worker at a time. The
-    active ticker (the one on the operator's screen, set_active) is fetched back to back, ahead
-    of everything; every board ticker is fetched in turn, without end, by the other workers.
-    Each chain is published to the console in parts (chain_messages); a failure is published
+    daemon's event loop never waits on it); a ticker is fetched by one worker at a time. In every
+    open session (time_et.session_label: Pre-Market, RTH, After-Hours) the active ticker (the one
+    on the operator's screen, set_active) is fetched back to back, ahead of everything, and every
+    board ticker in turn, without end, by the other workers. While Closed every board ticker is
+    fetched once, its close values (a failed fetch is tried again after FAILED_PAUSE_SEC), and
+    then nothing until the next session: the close values stand, and a ticker put on screen
+    while Closed is not fetched. Each chain is published to the console in parts
+    (chain_messages); a failure is published
     with Schwab's answer. The first fetch of a ticker begun inside a capture window
     (capture_slot) is also written to the chain history."""
 
@@ -214,6 +221,8 @@ class ChainSweep:
         self._fetching: set[str] = set()
         self._written: dict[str, float] = {}
         self._paused_until = 0.0
+        self._closed: "list[str] | None" = None    # while Closed: the board tickers whose close
+                                                    # values are not yet fetched; None while open
         self._client = None
         self._client_lock = threading.Lock()
 
@@ -226,8 +235,17 @@ class ChainSweep:
     def _next(self, now: float) -> str | None:
         """The next ticker to fetch, taken by the caller: the active ticker whenever no worker is
         fetching it, else the round's next. A ticker being fetched by another worker now is
-        skipped."""
+        skipped. While Closed: the next board ticker whose close values are not yet fetched."""
         with self._lock:
+            if session_label(datetime.fromtimestamp(now, ET)) == "Closed":
+                if self._closed is None:          # the market has just closed, or the daemon
+                    self._closed = sorted(self.board)   # started while it is Closed
+                tk = next((t for t in self._closed if t not in self._fetching), None)
+                if tk is not None:
+                    self._closed.remove(tk)
+                    self._fetching.add(tk)
+                return tk
+            self._closed = None
             if self._active is not None and self._active not in self._fetching:
                 self._fetching.add(self._active)
                 return self._active
@@ -245,7 +263,7 @@ class ChainSweep:
                     return tk
             return None
 
-    def fetch_one(self, client, ticker: str) -> None:
+    def fetch_one(self, client, ticker: str) -> bool:
         started = self.clock()
         resp = fetch_full_chain(client, ticker)
         now = self.clock()
@@ -256,7 +274,7 @@ class ChainSweep:
             reason = resp.reason or f"HTTP {resp.status_code}"
             log.warning("chain %s: %s", ticker, reason)
             self.publish(*chain_failure_message(ticker, reason, now))
-            return
+            return False
         payload = resp.json()
         contracts = flatten_chain_contracts(payload)
         for topic, msg in chain_messages(ticker, contracts, now):
@@ -265,6 +283,18 @@ class ChainSweep:
             self._write_history(ticker, payload, contracts, started, now)
         except Exception as e:  # noqa: BLE001 -- the chain was delivered; only its history write failed
             log.warning("chain history for %s not written: %s: %s", ticker, type(e).__name__, e)
+        return True
+
+    def _done(self, ticker: str, delivered: bool) -> None:
+        """A worker's fetch of `ticker` has ended. While Closed, a board ticker whose close
+        values were not delivered is fetched again, after FAILED_PAUSE_SEC."""
+        with self._changed:
+            self._fetching.discard(ticker)
+            if not delivered and self._closed is not None and ticker in self.board \
+                    and ticker not in self._closed:
+                self._closed.append(ticker)
+                self._paused_until = max(self._paused_until, self.clock() + FAILED_PAUSE_SEC)
+            self._changed.notify_all()
 
     def _write_history(self, ticker: str, payload: dict, contracts: list[dict],
                        started: float, now: float) -> None:
@@ -318,11 +348,12 @@ class ChainSweep:
                 ticker = self._next(self.clock())
                 if ticker is None:
                     # woken the moment a fetch ends or the active ticker changes; the timeout
-                    # only looks at `stop`
+                    # looks at `stop` and, while Closed, at whether the next session has opened
                     self._changed.wait(1.0)
                     continue
+            delivered = False
             try:
-                self.fetch_one(self._shared_client(make_client), ticker)
+                delivered = self.fetch_one(self._shared_client(make_client), ticker)
             except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the sweep goes on
                 log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
                 self.publish(*chain_failure_message(ticker, f"{type(e).__name__}: {e}", self.clock()))
@@ -331,9 +362,7 @@ class ChainSweep:
                 with self._lock:
                     self._paused_until = self.clock() + FAILED_PAUSE_SEC
             finally:
-                with self._changed:
-                    self._fetching.discard(ticker)
-                    self._changed.notify_all()
+                self._done(ticker, delivered)
 
 
 def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
