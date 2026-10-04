@@ -371,3 +371,53 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
             readers.append(path)
     assert not refused, f"routes the test did not run (invalid request): {refused}"
     assert not readers, f"live routes that read the database: {readers}"
+
+
+def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
+    """A Schwab error answer reaches the log with its status, body and headers, through the
+    client the daemon and the console build. Stand-ins: a local server answering as Schwab
+    does (the error body's shape is Schwab's documented {"errors": [...]}), and a token file."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import threading
+
+    import schwab_client as sc
+
+    class Schwab(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = (b'{"access_token": "never-logged"}' if "oauth" in self.path else
+                    b'{"errors": [{"id": "x1", "status": "403", "title": "Forbidden"}]}')
+            self.send_response(403)
+            self.send_header("Schwab-Client-CorrelId", "corr-123")
+            self.send_header("Set-Cookie", "session=never-logged")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Schwab)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    tok = tmp_path / "schwab_token.json"
+    tok.write_text(json.dumps({"creation_timestamp": int(time.time()), "token": {
+        "access_token": "secret-access", "refresh_token": "secret-refresh", "token_type": "Bearer",
+        "expires_in": 3600, "expires_at": int(time.time()) + 3600}}))
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        client = sc.client_from_token_file_atomic(str(tok), "k", "s")
+        with caplog.at_level("WARNING", logger="schwab_client"):
+            for _ in range(3):
+                client.session.get(f"{base}/marketdata/v1/chains?symbol=SPY")
+            client.session.get(f"{base}/trader/v1/accounts/HASH123/orders")
+            client.session.get(f"{base}/v1/oauth/token")
+    finally:
+        srv.shutdown()
+    lines = [r.getMessage() for r in caplog.records]
+    chain = [m for m in lines if "/marketdata/v1/chains?symbol=SPY" in m]
+    assert len(chain) == 1, "one line a minute per status and path"
+    assert "-> 403" in chain[0] and '"title": "Forbidden"' in chain[0]
+    assert "corr-123" in chain[0]
+    assert any("/trader/v1/accounts/(account)/orders" in m for m in lines)
+    assert any("/v1/oauth/token -> 403" in m and "not logged" in m for m in lines)
+    text = "\n".join(lines)
+    for secret in ("secret-access", "secret-refresh", "never-logged", "HASH123", "Bearer"):
+        assert secret not in text

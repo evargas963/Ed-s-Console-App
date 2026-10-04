@@ -5,6 +5,7 @@ Token path is always absolute.
 """
 import json
 import os
+import re
 import socket
 import threading
 import time
@@ -96,6 +97,8 @@ def _token_update_func(resolved: str):
     """schwab-py token_write_func: every refresh goes through write_token_file_atomically."""
     def update_token(t, *args, **kwargs):
         write_token_file_atomically(resolved, t)
+        log.info("schwab token refreshed and written; Schwab's expires_in: %s s",
+                 t["token"].get("expires_in"))
     return update_token
 
 
@@ -106,12 +109,48 @@ def _token_read_func(resolved: str):
     return load_token
 
 
+#: response headers never written to a log
+UNLOGGED_HEADERS = frozenset({"set-cookie", "cookie", "authorization", "proxy-authorization"})
+#: the longest error body logged, in characters
+ERROR_BODY_LOGGED = 2000
+#: (status, method, path) -> [minute last logged, answers since]
+_errors_logged: "dict[tuple, list]" = {}
+_errors_lock = threading.Lock()
+
+
+def log_schwab_error(response: httpx.Response) -> None:
+    """Every Schwab answer that is not a success, as Schwab sent it: the request (method, path;
+    the query on market-data paths), the status, the error body and the response headers, with
+    the time of the log line and Schwab's own Date header. The token endpoint's body carries
+    tokens and is never logged; request headers (the bearer token) never are. The same status
+    on the same path is logged once a minute, with how many answers came since the last line."""
+    if response.status_code < 400:
+        return
+    req = response.request
+    path = re.sub(r"(/accounts/)[^/]+", r"\1(account)", req.url.path)
+    response.read()
+    body = "(token endpoint: not logged)" if path.endswith("/oauth/token") else response.text[:ERROR_BODY_LOGGED]
+    query = req.url.query.decode() if path.startswith("/marketdata/") else ""
+    headers = {k: v for k, v in response.headers.items() if k.lower() not in UNLOGGED_HEADERS}
+    key = (response.status_code, req.method, path)
+    minute = int(time.time() // 60)
+    with _errors_lock:
+        seen = _errors_logged.setdefault(key, [None, 0])
+        if seen[0] == minute:
+            seen[1] += 1
+            return
+        since, seen[0], seen[1] = seen[1], minute, 0
+    log.warning("schwab answered %s %s%s -> %s (%d more since the last line) | body: %s | headers: %s",
+                req.method, path, f"?{query}" if query else "", response.status_code, since, body, headers)
+
+
 def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str, *,
                                   enforce_enums: bool = False):
     """schwab-py's client from the token file, built as auth.client_from_access_functions builds
-    it, with two differences: every token refresh is written atomically (schwab-py's writer
-    rewrites the file in place), and the session holds as many connections at once as there
-    are requests (httpx's default is 100, and schwab-py passes it nothing)."""
+    it, with three differences: every token refresh is written atomically (schwab-py's writer
+    rewrites the file in place), the session holds as many connections at once as there are
+    requests (httpx's default is 100, and schwab-py passes it nothing), and every answer that is
+    not a success is logged as Schwab sent it (log_schwab_error)."""
     resolved = _resolve_token_path(token_path)
     metadata = auth.TokenMetadata.from_loaded_token(_token_read_func(resolved)(),
                                                      _token_update_func(resolved))
@@ -119,7 +158,8 @@ def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str
     session = OAuth2Client(api_key, client_secret=app_secret, token=metadata.token,
                            token_endpoint=auth.TOKEN_ENDPOINT,
                            update_token=metadata.wrapped_token_write_func(), leeway=300,
-                           limits=httpx.Limits(max_connections=None, max_keepalive_connections=None))
+                           limits=httpx.Limits(max_connections=None, max_keepalive_connections=None),
+                           event_hooks={"response": [log_schwab_error]})
     return Client(api_key, session, token_metadata=metadata, enforce_enums=enforce_enums)
 
 
