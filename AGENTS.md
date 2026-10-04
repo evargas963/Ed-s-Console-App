@@ -96,8 +96,11 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   current with `main`; the pre-commit hooks run ruff on every commit.
 - Never kill a commit hook mid-run; a long one runs in the background. Enforced by: no machine
   check — ENF-12.
-- Every factual claim cites same-turn output, or is marked `[UNVERIFIED]`. Enforced by: no machine
-  check — ENF-12.
+- Claims. Every statement about how something is now (a process, a file, a branch, a pull
+  request, a test result, data, the screen) is CONFIRMED only by command output shown in the
+  same reply. Anything else is NOT VERIFIED, with when it was last checked. An earlier check
+  is not current evidence; state changes. This applies to every part of a reply, including
+  summaries, "seen, not fixed" and next steps. Enforced by: no machine check — ENF-12.
 - Proof is reproducible: a committed test or a command anyone can re-run. A scratch script is
   not proof. Enforced by: no machine check — ENF-12.
 - No hand-maintained counts, floors or lists that a check compares against; the check computes
@@ -112,16 +115,19 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 
 - A PR that changes code, a design, a plan or a sequence updates, in the same PR, every affected
   instruction, design, work item, check, test and caller; removes superseded statements and
-  paths; and lists each affected path it did not verify as NOT_PROVEN. A finished work item
+  paths; and lists each affected path without proof as NOT_PROVEN. A finished work item
   leaves `ACTIVE_PROGRAM.md` in the PR that finishes it. Enforced by:
   `tests/test_governing_docs_v1.py` (every path the documents name exists); the rest — ENF-12.
 
 ## Review verdicts (enforced)
 
-- **PASS**: every required condition proven. **FAIL**: any condition violated. **NOT_PROVEN**:
-  any condition without proof. Never PASS with a FAIL or NOT_PROVEN open. Each proof names its
-  tier: unit, integration, browser, deployed app, live market; one tier never stands in for
-  another. A check proves only the paths it covers. Enforced by: no machine check — ENF-12.
+- A verdict judges a change against its requirements; it is not a label on a statement (that is
+  "Claims", above). **PASS**: every required condition proven. **FAIL**: any condition violated.
+  **NOT_PROVEN**: any condition without proof. A proof is CONFIRMED evidence on the change's
+  final commit; evidence from an earlier commit or an earlier check proves nothing for it. Never
+  PASS with a FAIL or NOT_PROVEN open. Each proof names its tier: unit, integration, browser,
+  deployed app, live market; one tier never stands in for another. A check proves only the
+  paths it covers. Enforced by: no machine check — ENF-12.
 
 ## Found broken → fix it (enforced)
 
@@ -131,7 +137,7 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 ## Authority (enforced)
 
 - Checkpoints: about every 15 minutes of work the agent reports to the operator what changed,
-  what was deleted, each proof and its tier, and what is NOT_PROVEN, then continues.
+  what was deleted, each proof and its tier, and which requirements are NOT_PROVEN, then continues.
   Enforced by: no machine check — ENF-12.
 - A PR merges when its required proof on its final commit is complete and CI is green; green CI
   alone is not proof. Enforced by: GitHub branch protection requires the `pytest-full` job of
