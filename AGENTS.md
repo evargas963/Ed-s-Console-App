@@ -85,6 +85,11 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   the server. Enforced by: no machine check — ENF-11.
 - A test exercises behavior through the real code. It never reads source text or pins a private
   helper; a test whose subject is deleted is deleted with it. Enforced by: no machine check — ENF-08.
+- A test, fixture or helper a pull request adds or changes never patches the code it tests
+  (monkeypatch, mock.patch, a fixture that does, or a patching autouse fixture in its file);
+  the existing ones are cleaned as their files are touched. Enforced by:
+  `tools/check_no_new_patches.py` in the required `hardening` job
+  (`tests/test_check_no_new_patches_v1.py`); the existing ones — TEST-PATCHES.
 
 ## Before saying done (enforced)
 
