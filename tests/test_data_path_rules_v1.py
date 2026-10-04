@@ -25,12 +25,15 @@ import pytest
 from schwab.client import Client
 from websockets.asyncio.client import connect
 
+import app.options.order_flow.streaming as ofs
 import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import FAILED_PAUSE_SEC, ChainSweep, chain_messages
-from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
-from time_et import ET
+from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
+from micro_structure import Candle
+from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
+from time_et import ET, now_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
 _OPT = json.loads((FX / "real_options_stream_history_samples.json").read_text(encoding="utf-8"))
@@ -422,6 +425,82 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
     st = server.terrain_staleness(_et("2026-10-01 10:00"), "ZZCLOSED", now=_et("2026-10-01 11:00"))
     assert st["levels_stale"] is True and "has not delivered this ticker" in st["levels_stale_reason"], \
         "in session, an hour-old chain is a gap"
+
+
+_SPY_BARS = json.loads((FX / "real_spy_1m_bars_2026_09_24_25.json").read_text(encoding="utf-8"))["bars"]
+
+
+def _session_bars(day: str) -> list[dict]:
+    return [b for b in _SPY_BARS if datetime.fromtimestamp(b["timestamp"] / 1000, ET).date().isoformat() == day]
+
+
+def _candles(bars: list[dict]) -> list[Candle]:
+    return [Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"], close=b["close"],
+                   volume=b["volume"]) for b in bars]
+
+
+def _forget(tk: str) -> None:
+    """The stand-in ticker leaves no stored row, bar in memory or published level behind."""
+    con = sqlite3.connect(server.get_db().db_path)
+    try:
+        con.execute("DELETE FROM price_bars_1m WHERE ticker=?", (tk,))
+        con.commit()
+    finally:
+        con.close()
+    server._bars.pop(tk, None)
+    for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+        del _MATERIALIZED_SNAPSHOTS[key]
+
+
+def test_d5_while_closed_the_price_levels_are_the_last_sessions():
+    """Friday 2026-09-25's real SPY bars valued on Sunday the 27th: the levels served are Friday's
+    session's, its VWAP, value area and opening range, never an empty Sunday's (2026-10-04: every
+    ticker showed "no RTH volume" all weekend). Stand-in: ticker ZZSESSION carries the SPY bars."""
+    tk = "ZZSESSION"
+    _forget(tk)
+    try:
+        for bar in _candles(_SPY_BARS):
+            server._keep_bar(tk, bar)
+        sunday = datetime(2026, 9, 27, 12, 0, tzinfo=ET)
+        server._publish_price_levels(tk, sunday)
+        body = server.levels_payload(tk, "1", sunday)
+        served = {r["id"]: r["price"] for r in body["levels"]}
+        assert {"VWAP", "TODAY_POC", "TODAY_VAH", "TODAY_VAL", "ORB_HIGH", "ORB_LOW"} <= set(served), body["families_absent"]
+        assert not {"vwap", "value_area", "opening_range"} & {f["family"] for f in body["families_absent"]}
+        assert body["snapshot_as_of_ts_utc"] == _session_bars("2026-09-25")[-1]["timestamp"] / 1000
+        assert served["PDH"] == max(b["high"] for b in _session_bars("2026-09-24"))
+    finally:
+        _forget(tk)
+
+
+def test_d6_a_bar_pushed_before_the_stored_bars_load_builds_levels_on_the_whole_history():
+    """The console's start: the daemon pushes each ticker's current bar the moment the console
+    connects, before the stored bars are loaded. The bar writer loads them first, so the levels
+    built from that bar stand on the whole history (2026-10-04: 35 board tickers' levels were
+    built from their one pushed bar, every prior-day level absent). Real SPY bars 2026-09-24/25,
+    the last one pushed, the rest stored. Stand-in: ticker ZZLOAD carries the SPY bars."""
+    tk = "ZZLOAD"
+    _forget(tk)
+    while not ofs.streamed_bars.empty():
+        ofs.streamed_bars.get_nowait()
+    try:
+        server.get_db().upsert_1m_bars(tk, _candles(_SPY_BARS[:-1]))
+        last = _SPY_BARS[-1]
+        ofs._ingest_pushed(f"bar1m.{tk}", bar_msg(
+            symbol=tk, bar_start_ms=last["timestamp"], open=last["open"], high=last["high"], low=last["low"],
+            close=last["close"], volume=last["volume"], src="schwab_chart", ts_recv=last["timestamp"] / 1000 + 60))
+        writer = threading.Thread(target=server._bar_writer, daemon=True)
+        writer.start()
+        server.stop_bar_writer(writer)
+        assert not writer.is_alive()
+        snap = server.canonical_price_level_snapshot(tk, now_et())
+        friday = _session_bars("2026-09-25")
+        assert snap.as_of_ts_utc == last["timestamp"] / 1000
+        assert (snap.levels["PDL"].price, snap.levels["PDH"].price) == (
+            min(b["low"] for b in friday), max(b["high"] for b in friday))
+        assert snap.degraded == []
+    finally:
+        _forget(tk)
 
 
 # ── D6. No live screen reads the database ───────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
@@ -169,6 +169,13 @@ def closed_since(now: datetime) -> "datetime | None":
             return datetime(day.year, day.month, day.day, tzinfo=ET) + timedelta(minutes=EXTENDED_END_MINS)
         day -= timedelta(days=1)
     return now
+
+
+def market_session_date(now: datetime) -> date:
+    """The session the market's values belong to at `now` (ET): today's while a session is open
+    (Pre-Market, RTH, After-Hours), the newest session's while Closed, whose values stand until
+    the next session opens (docs/DATA_FLOW.md §2 D5)."""
+    return (closed_since(now) or now).astimezone(ET).date()
 
 
 def session_close_mins_for_et_date(et_date: str) -> int | None:

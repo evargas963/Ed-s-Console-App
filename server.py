@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
-from time_et import ET, now_et, RTH_OPEN_MINS, closed_since, ct_label, et_date_str_from_ts_utc, session_label
+from time_et import (ET, now_et, RTH_OPEN_MINS, closed_since, ct_label, et_date_str_from_ts_utc,
+                     market_session_date, session_label)
 from math_exposure_core import bucket_metric, merge_exposure_books, overlay_streamed_contract_fields
 
 import json
@@ -327,18 +328,20 @@ _BAR_TEXT = " || ' ' || ".join(f"quote({f})" for f in ("bar_start_ts_utc", "open
 
 
 #: every ticker's completed 1-minute bars, oldest first, the newest BARS_KEPT (the ATR's ~23
-#: sessions): loaded from price_bars_1m once, the terrain loop's first step (_load_bars), then
-#: each streamed bar as the bar writer writes it (_keep_bar). Every live reader reads this, never
-#: the database (docs/DATA_FLOW.md §2 D6).
+#: sessions). Owned by the bar writer (_bar_writer): loaded from price_bars_1m once, its first
+#: step (_load_bars), then each streamed bar as it writes it (_keep_bar). Every live reader reads
+#: this, never the database (docs/DATA_FLOW.md §2 D6).
 BARS_KEPT = 24_000
 _bars: "dict[str, list[Candle]]" = {}
 _bars_lock = threading.Lock()
+#: set once the bar writer has loaded the stored bars; the levels loop builds nothing before it
+_bars_loaded = threading.Event()
 
 
 def _load_bars() -> None:
     """Each ticker's newest BARS_KEPT bars of price_bars_1m, read in one SQLite step per ticker
     (a row-by-row read hands the interpreter lock back at every row). The one database read of
-    the bars, the terrain loop's first step; a bar streamed before it stays the newest."""
+    the bars, the bar writer's first step, before it takes any streamed bar."""
     import sqlite3 as _sq
     con = _sq.connect(f"file:{get_db().db_path}?mode=ro", uri=True, timeout=10.0)
     try:
@@ -349,10 +352,7 @@ def _load_bars() -> None:
                 (tk, BARS_KEPT)).fetchone()
             rows = [[None if v == "NULL" else float(v) for v in r.split(" ")] for r in text.split(";")] if text else []
             with _bars_lock:
-                held = _bars.setdefault(tk, [])
-                held[:0] = [Candle(ts=r[0], open=r[1], high=r[2], low=r[3], close=r[4], volume=r[5])
-                            for r in rows if not held or r[0] < held[0].ts]
-                del held[:-BARS_KEPT]
+                _bars[tk] = [Candle(ts=r[0], open=r[1], high=r[2], low=r[3], close=r[4], volume=r[5]) for r in rows]
     finally:
         con.close()
 
@@ -402,9 +402,10 @@ def _write_streamed_bar(msg: dict) -> bool:
     return True
 
 
-def _write_streamed_bars(msgs: list) -> None:
-    """Write streamed bars, then build the price levels of each ticker written: every bar is
-    written before any level is built (a minute's bars for the whole board arrive together)."""
+def _write_streamed_bars(msgs: list, now: datetime) -> None:
+    """Write streamed bars, then build the price levels of each ticker written for the market's
+    session at `now`: every bar is written before any level is built (a minute's bars for the
+    whole board arrive together)."""
     written = []
     for msg in msgs:
         try:
@@ -413,24 +414,46 @@ def _write_streamed_bars(msgs: list) -> None:
         except Exception as e:  # noqa: BLE001 -- logged; the next bar is still written
             log.warning("streamed bar for %s not written: %s", msg.get("symbol"), e)
     for tk in dict.fromkeys(written):
-        _publish_price_levels(tk)
+        _publish_price_levels(tk, now)
 
 
 def _bar_writer() -> None:
-    """The bar writer: every streamed bar the capture daemon pushes, as it arrives, with the bars
-    already waiting behind it."""
+    """The bar writer, the one owner of the bars in memory (_bars): the stored bars first
+    (_load_bars), then every streamed bar the capture daemon pushes, as it arrives, with the
+    bars already waiting behind it. The push queue holds the bars that arrive during the load,
+    so no level is ever built from a part of the history. Ends at stop_bar_writer's None, once
+    every bar queued before it is written."""
     from app.options.order_flow.streaming import streamed_bars
+    _load_bars()
+    _bars_loaded.set()
     while True:
         msgs = [streamed_bars.get()]
         while not streamed_bars.empty():
             msgs.append(streamed_bars.get_nowait())
-        _write_streamed_bars(msgs)
+        _write_streamed_bars([m for m in msgs if m is not None], now_et())
+        if None in msgs:
+            return
+
+
+_bar_writer_thread: "threading.Thread | None" = None
 
 
 def start_bar_writer() -> None:
+    global _bar_writer_thread
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return
-    threading.Thread(target=_bar_writer, name="bar-writer", daemon=True).start()
+    _bar_writer_thread = threading.Thread(target=_bar_writer, name="bar-writer", daemon=True)
+    _bar_writer_thread.start()
+
+
+def stop_bar_writer(thread: "threading.Thread | None" = None) -> None:
+    """Write every bar already queued, then end the bar writer (`thread`: the one started)."""
+    from app.options.order_flow.streaming import streamed_bars
+    thread = thread or _bar_writer_thread
+    if thread is None:
+        return
+    streamed_bars.put(None)
+    thread.join(timeout=10.0)
 
 
 def _board() -> "list[str] | None":
@@ -505,6 +528,7 @@ async def _app_lifespan(app):
         log.warning("Order flow streaming shutdown: %s", e)
 
     stop_terrain_loop()
+    stop_bar_writer()
     global _route_offload_executor
     if _route_offload_executor is not None:
         _route_offload_executor.shutdown(wait=True)
@@ -1462,16 +1486,17 @@ def _status_line() -> str:
 
 
 def _terrain_loop() -> None:
-    """The board's stored levels once the daemon has said what the board is (queued behind the
-    delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged
-    and the price levels of a new session date or a new ticker are published. The chains arrive
-    from the daemon (_on_chain)."""
-    _load_bars()                      # the bars before any level is built from them
+    """The board's stored levels once the bar writer has loaded the stored bars and the daemon
+    has said what the board is (queued behind the delivered chains: _load_stored_levels); then
+    every STATUS_EVERY_SEC the status line is logged and the price levels of a new session or a
+    new ticker are published. The chains arrive from the daemon (_on_chain)."""
+    while _terrain_loop_running and not _bars_loaded.wait(0.5):
+        pass
     while _terrain_loop_running and _board() is None:
         time.sleep(0.5)
     board = _board() or []
     _load_crosses(board)
-    _publish_missing_price_levels(board)
+    _publish_missing_price_levels(board, now_et())
     queued = _load_stored_levels(board)
     log.info("Ready: the stored levels of %d of %d board tickers are queued to price (session: %s); "
              "the daemon's chains price them from here.", queued, len(board), session_label(now_et()))
@@ -1484,7 +1509,7 @@ def _terrain_loop() -> None:
                 log.info(_status_line())
                 board = _board()
                 if board is not None:
-                    _publish_missing_price_levels(board)
+                    _publish_missing_price_levels(board, now_et())
         except Exception as e:  # noqa: BLE001 -- the status line says it failed, never silence
             log.warning("levels loop: %s: %s", type(e).__name__, e)
     log.info("Terrain loop stopped")
@@ -2875,20 +2900,20 @@ def api_build():
     }
 
 
-def _publish_price_levels(ticker: str) -> None:
-    """THE producer of a ticker's price-level snapshot (Phase 2A): materialized for today's
-    session from its completed Schwab 1m bars in price_bars_1m, by the bar writer after each of
-    the ticker's bars, and by the levels loop for a ticker with none yet today (a restart, a new
-    session date). The routes read what it published (canonical_price_level_snapshot). A failed
+def _publish_price_levels(ticker: str, now: datetime) -> None:
+    """THE producer of a ticker's price-level snapshot (Phase 2A): materialized for the market's
+    session at `now` (market_session_date: today's while a session is open, the newest one's
+    while Closed) from its completed Schwab 1m bars, by the bar writer after each of the
+    ticker's bars, and by the levels loop for a ticker with none yet for the session (a restart,
+    a new session). The routes read what it published (canonical_price_level_snapshot). A failed
     build is logged; the routes serve the last published snapshot with its as-of time, or say
     the levels are absent."""
     from liquidity_value_engine import PlaybookConfig, _bars_to_list, materialize_price_level_snapshot
-    from time_et import now_et
 
     tk = ticker_storage_key(_required_ticker(ticker))
-    before = canonical_price_level_snapshot(tk)
+    before = canonical_price_level_snapshot(tk, now)
     try:
-        snap = materialize_price_level_snapshot(tk, now_et().date(), _bars_to_list(_liquidity_1m_bars(tk)),
+        snap = materialize_price_level_snapshot(tk, market_session_date(now), _bars_to_list(_liquidity_1m_bars(tk)),
                                                 bar_source="price_bars_1m", config=PlaybookConfig())
     except Exception as e:  # noqa: BLE001 -- logged; the ticker's next bar builds them
         log.warning("price levels for %s not built: %s", tk, e)
@@ -2897,27 +2922,27 @@ def _publish_price_levels(ticker: str) -> None:
         push_changes.changed(tk, push_changes.LEVELS)
 
 
-def _publish_missing_price_levels(tickers) -> None:
-    """Build the price levels of each ticker with none published for today (the console's
-    start, a new session date)."""
+def _publish_missing_price_levels(tickers, now: datetime) -> None:
+    """Build the price levels of each ticker with none published for the market's session at
+    `now` (the console's start, a new session)."""
     for tk in tickers:
-        if canonical_price_level_snapshot(tk) is None:
-            _publish_price_levels(tk)
+        if canonical_price_level_snapshot(tk, now) is None:
+            _publish_price_levels(tk, now)
 
 
-def canonical_price_level_snapshot(ticker: str):
-    """The ticker's price-level snapshot for today as its producer published it
-    (_publish_price_levels), or None when none is published yet. Every server surface reads
-    this; none computes a level."""
+def canonical_price_level_snapshot(ticker: str, now: datetime):
+    """The ticker's price-level snapshot for the market's session at `now` (market_session_date)
+    as its producer published it (_publish_price_levels), or None when none is published yet.
+    Every server surface reads this; none computes a level."""
     from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
-    from time_et import now_et
 
-    return _MATERIALIZED_SNAPSHOTS.get((ticker_storage_key(_required_ticker(ticker)), now_et().date().isoformat()))
+    return _MATERIALIZED_SNAPSHOTS.get((ticker_storage_key(_required_ticker(ticker)),
+                                        market_session_date(now).isoformat()))
 
 
 #: why a route serves no price levels for a ticker
-NO_PRICE_LEVELS_REASON = ("no price levels published for this ticker today yet (they are built from its "
-                          "1-minute bars on each new bar and at the console's start)")
+NO_PRICE_LEVELS_REASON = ("no price levels published for this ticker for the market's session yet (they are "
+                          "built from its 1-minute bars on each new bar and at the console's start)")
 
 
 
@@ -2937,12 +2962,15 @@ GAMMA_LEVELS = (("call_wall", "Call wall"), ("put_wall", "Put wall"), ("gamma_fl
 def get_levels(ticker: str = Query(...),
                tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "1"):
     """Single levels contract (schema v1): id/price/family/evidence_tier/provenance/staleness."""
-    import time as _time
+    return JSONResponse(levels_payload(ticker_storage_key(_required_ticker(ticker)), tf, now_et()))
 
-    tk = ticker_storage_key(_required_ticker(ticker))
-    served_ts = _time.time()
+
+def levels_payload(tk: str, tf: str, now: datetime) -> dict:
+    """/api/levels at `now`: the published price-level snapshot for the market's session, the
+    terrain's levels carried beside it, each with its distance from the live price."""
+    served_ts = now.timestamp()
     spot, spot_source, spot_ts = resolve_spot(tk)
-    snap = canonical_price_level_snapshot(tk)
+    snap = canonical_price_level_snapshot(tk, now)
 
     levels: list[dict] = []
     for lid, value in (snap.levels.items() if snap is not None else ()):
@@ -2995,7 +3023,7 @@ def get_levels(ticker: str = Query(...),
         families_absent.append({"family": "expected_move", "reason": "no live price" if spot is None
                                 else "the terrain has no implied 1-day move"})
 
-    return JSONResponse({
+    return {
         "ticker": tk,
         "schema_version": 1,
         "served_ts_utc": served_ts,
@@ -3026,7 +3054,7 @@ def get_levels(ticker: str = Query(...),
         "tf": tf,
         "families_absent": families_absent,
         "degraded": list(snap.degraded) if snap is not None else [],
-    })
+    }
 
 
 def _build_raw_levels_used(raw_levels: dict) -> list:
@@ -3147,9 +3175,14 @@ def _spot_location(zones: list, spot) -> "dict | None":
 # setTimeout pollLiquiditySnapshot) and every 60s; it does a blocking Schwab bar fetch with
 # no await, so as async it stalled the event loop on each switch.
 def get_liquidity_snapshot(ticker: str = Query(...)):
-    """Today's liquidity & value zones for the ticker: built from the one price-level snapshot
-    (canonical_price_level_snapshot, the same values /api/levels serves) with the terrain's
-    option levels and the live price fused in. It computes no level of its own."""
+    return liquidity_snapshot(ticker, now_et())
+
+
+def liquidity_snapshot(ticker: str, now: datetime):
+    """The market session's liquidity & value zones for the ticker at `now`: built from the one
+    price-level snapshot (canonical_price_level_snapshot, the same values /api/levels serves)
+    with the terrain's option levels and the live price fused in. It computes no level of its
+    own."""
     try:
         from liquidity_value_engine import build_live_snapshot
         from liquidity_models import ZONE_DISPLAY, PlaybookConfig
@@ -3162,10 +3195,10 @@ def get_liquidity_snapshot(ticker: str = Query(...)):
         spot_for_zones, _, _ = resolve_spot(ticker_upper)
         if spot_for_zones is not None:
             extra = list(extra) + [(spot_for_zones, "SPOT_LIVE")]
-        _canon = canonical_price_level_snapshot(ticker_upper)
+        _canon = canonical_price_level_snapshot(ticker_upper, now)
         if _canon is None:
             return {"ticker": ticker_upper, "zones": [], "reason": NO_PRICE_LEVELS_REASON}
-        out = build_live_snapshot(ticker_upper, config, canonical=_canon, now=now_et(),
+        out = build_live_snapshot(ticker_upper, config, canonical=_canon, now=now,
                                   extra_levels=extra)
         snapshot_val = out.snapshot_type.value
         zones_payload = []

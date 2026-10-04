@@ -26,46 +26,42 @@ if str(REPO) not in sys.path:
 ET = ZoneInfo("America/New_York")
 
 
-def _seed_thin_prior_db(tmp_path: Path, ticker: str, prior_day: datetime,
-                        n_bars: int) -> Path:
-    dbp = tmp_path / "thin.db"
-    con = sqlite3.connect(dbp)
-    con.execute(
-        "CREATE TABLE price_bars_1m (ticker TEXT, bar_start_ts_utc REAL, open REAL, "
-        "high REAL, low REAL, close REAL, volume REAL)")
-    start = prior_day.replace(hour=9, minute=30, second=0, microsecond=0)
-    for i in range(n_bars):
-        ts = (start + timedelta(minutes=i)).timestamp()
-        con.execute(
-            "INSERT INTO price_bars_1m VALUES (?,?,?,?,?,?,?)",
-            (ticker, ts, 100.0 + i * 0.01, 100.2 + i * 0.01, 99.8 + i * 0.01,
-             100.1 + i * 0.01, 1000))
-    con.commit()
-    con.close()
-    return dbp
-
-
-def _published(tmp_path, monkeypatch, ticker: str, n_bars: int):
+def _published(ticker: str, n_bars: int):
     """The price levels the producer publishes for Monday 2026-08-24 from a Friday tape of
-    `n_bars` RTH minutes in price_bars_1m, loaded as the console's start loads it."""
+    `n_bars` RTH minutes in price_bars_1m, loaded as the console's start loads it. Stand-in
+    tickers ZZTHIN and ZZFULL carry the crafted tapes; nothing of them is left behind."""
     import server
-    import time_et
+    from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
+    from micro_structure import Candle
 
-    dbp = _seed_thin_prior_db(tmp_path, ticker, datetime(2026, 8, 21, tzinfo=ET), n_bars=n_bars)
+    start = datetime(2026, 8, 21, 9, 30, tzinfo=ET)
+    tape = [Candle(ts=(start + timedelta(minutes=i)).timestamp(), open=100.0 + i * 0.01, high=100.2 + i * 0.01,
+                   low=99.8 + i * 0.01, close=100.1 + i * 0.01, volume=1000) for i in range(n_bars)]
+    monday = datetime(2026, 8, 24, 12, 0, tzinfo=ET)
 
-    class _StubDB:
-        db_path = str(dbp)
+    def forget():
+        con = sqlite3.connect(server.get_db().db_path)
+        try:
+            con.execute("DELETE FROM price_bars_1m WHERE ticker=?", (ticker,))
+            con.commit()
+        finally:
+            con.close()
+        server._bars.pop(ticker, None)
+        for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == ticker]:
+            del _MATERIALIZED_SNAPSHOTS[key]
 
-    monkeypatch.setattr(server, "get_db", lambda: _StubDB())
-    monkeypatch.setattr(server, "_bars", {})
-    monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 8, 24, 12, 0, tzinfo=ET))
-    server._load_bars()                               # the console's start
-    server._publish_price_levels(ticker)
-    return server.canonical_price_level_snapshot(ticker)
+    forget()
+    try:
+        server.get_db().upsert_1m_bars(ticker, tape)
+        server._load_bars()                           # the console's start
+        server._publish_price_levels(ticker, monday)
+        return server.canonical_price_level_snapshot(ticker, monday)
+    finally:
+        forget()
 
 
-def test_thin_banked_prior_session_is_stamped_degraded(tmp_path, monkeypatch):
-    snap = _published(tmp_path, monkeypatch, "THIN", 180)
+def test_thin_banked_prior_session_is_stamped_degraded():
+    snap = _published("ZZTHIN", 180)
     assert snap.price("PDH") is not None, "the thin tape still serves — the defect was silence, not existence"
     stamps = [d for d in snap.degraded if d.get("family") == "prior_day"]
     assert stamps and "prior session 2026-08-21" in stamps[0]["reason"], snap.degraded
@@ -73,7 +69,7 @@ def test_thin_banked_prior_session_is_stamped_degraded(tmp_path, monkeypatch):
     assert "180" in stamps[0]["reason"], stamps
 
 
-def test_full_banked_prior_session_carries_no_stamp(tmp_path, monkeypatch):
-    snap = _published(tmp_path, monkeypatch, "FULL", 390)
+def test_full_banked_prior_session_carries_no_stamp():
+    snap = _published("ZZFULL", 390)
     assert snap.bars_used == 390
     assert [d for d in snap.degraded if d.get("family") == "prior_day"] == []

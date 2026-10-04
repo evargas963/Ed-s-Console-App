@@ -140,13 +140,19 @@ from Schwab to the screen (daemon, console, page), are these:
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
   generation from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
   → `/api/levels`, and the liquidity zones of `/api/liquidity-snapshot` are built from that same
-  snapshot (today only; no checkpoint or past-date path). Producer `_publish_price_levels`: the
-  bar writer (`_write_streamed_bars`) after each bar of every ticker, on its own thread, once
-  every bar waiting has been written and pushed as `liquidity` (a `levels` push when the
-  published snapshot changed); and the levels loop (`_publish_missing_price_levels`) for a
-  ticker with none yet today (the console's start, a new session date). It reads the console's
-  bars (`_bars_1m`: loaded once from `price_bars_1m` at startup, then each streamed bar) and
-  normalizes them once (`_bars_to_list`); every level function takes them.
+  snapshot (the market's session, `time_et.market_session_date`: today's while a session is
+  open, the newest session's while Closed, whose levels stand until the next session opens; no
+  checkpoint or past-date path). Producer `_publish_price_levels`: the bar writer
+  (`_write_streamed_bars`) after each bar of every ticker, on its own thread, once every bar
+  waiting has been written and pushed as `liquidity` (a `levels` push when the published
+  snapshot changed); and the levels loop (`_publish_missing_price_levels`) for a ticker with
+  none yet for the market's session (the console's start, a new session). It reads the
+  console's bars (`_bars_1m`), whose one owner is the bar writer (`_bar_writer`): it loads them
+  from `price_bars_1m` before it takes any streamed bar (the push queue holds the bars that
+  arrive meanwhile), then keeps each streamed bar, and stops at the console's shutdown once the
+  bars queued are written (`stop_bar_writer`). The levels loop builds nothing until that load is
+  done. If the load fails, no level is built and the console window shows the error. The bars
+  are normalized once (`_bars_to_list`); every level function takes them.
   The routes serve what it published and build nothing. `/api/levels` also serves the order the
   chart draws them in (`by_distance`): nearest the spot (Schwab's last trade under §2 D5, with
   its trade time `spot_as_of_ts_utc`), each level's distance and side from it,
