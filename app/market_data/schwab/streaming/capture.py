@@ -408,16 +408,14 @@ class Daemon:
         finally:
             await self.disconnect()
 
-    async def run(self, make_client, stop: asyncio.Event) -> None:
-        """Connect, and reconnect with backoff whenever the connection ends, until stop."""
+    async def run(self, schwab_client, stop: asyncio.Event) -> None:
+        """Connect, and reconnect with backoff whenever the connection ends, until stop, on the
+        daemon's one Schwab client (`schwab_client()`)."""
         failures = 0
         while not stop.is_set():
             started = time.time()
             try:
-                state = make_client()
-                if not state.ok or state.client is None:
-                    raise ConnectionError(f"Schwab client: {state.message}")
-                await self.run_connection(state.client, stop)
+                await self.run_connection(schwab_client(), stop)
             except Exception as e:  # noqa: BLE001 -- every failure is a reconnect
                 log.warning("schwab: connection ended (%s: %s)", type(e).__name__, str(e)[:350])
             if stop.is_set():
@@ -517,7 +515,7 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
             pass
 
 
-async def run_chains(daemon: "Daemon", db_path, make_client, stop: asyncio.Event) -> None:
+async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Event) -> None:
     """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own threads, so the
     stream never waits on a chain; each chain part is published on the event loop, and the bus
     keeps each ticker's newest whole chain (stream_spine.MessageBus._chain)."""
@@ -527,12 +525,32 @@ async def run_chains(daemon: "Daemon", db_path, make_client, stop: asyncio.Event
                        lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg))
     daemon.chains = sweep
     sweep.set_active(daemon.active)                 # the ticker on screen, if the console said one
-    workers = [loop.run_in_executor(None, sweep.work, make_client, halt) for _ in range(CHAIN_WORKERS)]
+    workers = [loop.run_in_executor(None, sweep.work, schwab_client, halt) for _ in range(CHAIN_WORKERS)]
     try:
         await stop.wait()
     finally:
         halt.set()
         await asyncio.gather(*workers, return_exceptions=True)
+
+
+def one_schwab_client(build) -> "callable":
+    """The daemon's one Schwab client, for the stream and every chain request, as a function
+    that returns it: built (`build()`, a SchwabClientState) when first asked for, then kept for
+    the daemon's life. Its session is the one owner of the token: it refreshes it (one refresh
+    at a time, schwab_client.OneRefreshSession) and writes it to the token file. A build that
+    fails raises, and the next ask builds again; a built client is never replaced."""
+    built: list = []
+    building = threading.Lock()
+
+    def schwab_client():
+        with building:
+            if not built:
+                state = build()
+                if not state.ok or state.client is None:
+                    raise ConnectionError(f"no Schwab client ({state.message})")
+                built.append(state.client)
+            return built[0]
+    return schwab_client
 
 
 async def run() -> int:
@@ -545,11 +563,8 @@ async def run() -> int:
     from schwab_client import build_client_from_token
     load_dotenv_file()
     cfg = build_config()
-
-    def make_client():
-        return build_client_from_token(api_key=cfg.api_key, app_secret=cfg.app_secret,
-                                       token_path=cfg.token_path)
-
+    schwab_client = one_schwab_client(lambda: build_client_from_token(
+        api_key=cfg.api_key, app_secret=cfg.app_secret, token_path=cfg.token_path))
     stop = asyncio.Event()
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
@@ -557,13 +572,13 @@ async def run() -> int:
     daemon = Daemon(bus, health, board=board_tickers(db_path))
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
-             asyncio.create_task(run_chains(daemon, db_path, make_client, stop)),
+             asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]
     try:
         await asyncio.sleep(0)                    # servers subscribe before the first message
-        await daemon.run(make_client, stop)
+        await daemon.run(schwab_client, stop)
     finally:
         stop.set()
         await asyncio.gather(*tasks, return_exceptions=True)

@@ -1,0 +1,19 @@
+{
+  "source": "Schwab's answer to one read-only GET of /marketdata/v1/quotes?symbols=SPY, 2026-10-03 19:54:14 CT (00:54:14 UTC), logged by schwab_client.log_schwab_error and kept in the session transcript; every logged header (set-cookie, cookie, authorization were not logged)",
+  "request": {
+    "method": "GET",
+    "path": "/marketdata/v1/quotes?symbols=SPY"
+  },
+  "status": 403,
+  "headers": {
+    "server": "AkamaiGHost",
+    "mime-version": "1.0",
+    "content-type": "text/html",
+    "content-length": "404",
+    "expires": "Sun, 04 Oct 2026 00:54:14 GMT",
+    "date": "Sun, 04 Oct 2026 00:54:14 GMT",
+    "connection": "close",
+    "strict-transport-security": "max-age=30"
+  },
+  "body": "<HTML><HEAD>\n<TITLE>Access Denied</TITLE>\n</HEAD><BODY>\n<H1>Access Denied</H1>\n \nYou don't have permission to access \"http&#58;&#47;&#47;api&#46;schwabapi&#46;com&#47;marketdata&#47;v1&#47;quotes&#63;\" on this server.<P>\nReference&#32;&#35;18&#46;f2b219b8&#46;1791075254&#46;77f0252f\n<P>https&#58;&#47;&#47;errors&#46;edgesuite&#46;net&#47;18&#46;f2b219b8&#46;1791075254&#46;77f0252f</P>\n</BODY>\n</HTML>\n"
+}

@@ -20,9 +20,6 @@ import pytest
 def test_safe_get_chain_raises_schwab_auth_error_on_invalid_grant(monkeypatch: pytest.MonkeyPatch):
     import schwab_client as sc
 
-    monkeypatch.setenv("SCHWAB_API_KEY", "unit-test-key-not-live")
-    monkeypatch.setenv("SCHWAB_APP_SECRET", "unit-test-secret-not-live")
-    monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
     sc._schwab_auth_failure_until_mono = 0.0
 
     from authlib.integrations.base_client.errors import OAuthError
@@ -40,9 +37,6 @@ def test_a_non_auth_failure_is_not_an_auth_error(monkeypatch: pytest.MonkeyPatch
     """A message that merely mentions a token or 401 is not an OAuth failure."""
     import schwab_client as sc
 
-    monkeypatch.setenv("SCHWAB_API_KEY", "unit-test-key-not-live")
-    monkeypatch.setenv("SCHWAB_APP_SECRET", "unit-test-secret-not-live")
-    monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
     sc._schwab_auth_failure_until_mono = 0.0
 
     class _FakeClient:
@@ -57,9 +51,6 @@ def test_a_non_auth_failure_is_not_an_auth_error(monkeypatch: pytest.MonkeyPatch
 def test_safe_get_chain_latched_skips_second_call(monkeypatch: pytest.MonkeyPatch):
     import schwab_client as sc
 
-    monkeypatch.setenv("SCHWAB_API_KEY", "unit-test-key-not-live")
-    monkeypatch.setenv("SCHWAB_APP_SECRET", "unit-test-secret-not-live")
-    monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
     sc._schwab_auth_failure_until_mono = sc.time.monotonic() + 60.0
     calls = {"n": 0}
 

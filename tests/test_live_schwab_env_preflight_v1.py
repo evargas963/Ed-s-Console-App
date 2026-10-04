@@ -18,8 +18,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parent.parent
 
 _LIVE_KEY = "live-desk-key-not-placeholder"
@@ -156,18 +154,6 @@ def test_preflight_never_emits_secret_values(monkeypatch, capsys):
     assert secret not in unsets.err
     assert "set ED_CI_OFFLINE=\n" in unsets.out
     assert "set SCHWAB_API_KEY=\n" not in unsets.out  # live value is not a sentinel
-
-
-def test_block_live_schwab_raises_under_ci_offline_no_arg_call(monkeypatch):
-    """Reproduce the exact RuntimeError analytics bg hit in production."""
-    monkeypatch.setenv("ED_CI_OFFLINE", "1")
-    monkeypatch.setenv("SCHWAB_API_KEY", _TEST_SENTINEL)
-    monkeypatch.setenv("SCHWAB_APP_SECRET", _TEST_SENTINEL)
-    import schwab_client as sc
-
-    # RC-514: same refusal, message widened to name every reason the capability is unavailable.
-    with pytest.raises(RuntimeError, match="UNAVAILABLE"):
-        sc._block_live_schwab_in_ci_offline()
 
 
 def test_preflight_refuses_contaminated_env_then_passes_after_isolated_sanitize(monkeypatch):

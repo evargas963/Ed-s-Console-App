@@ -164,8 +164,9 @@ CHAIN_PART_CONTRACTS = 500
 CHAIN_WORKERS = 8
 #: after Schwab answers 429, no chain request for this long
 RATE_LIMITED_PAUSE_SEC = 10.0
-#: after a request fails outright (no client, auth refused, the network down), no chain request
-#: for this long, so a failure is not retried at once across the whole board
+#: after Schwab refuses us (403: its edge, Akamai, denies access) or a request fails outright (no
+#: client, auth refused, the network down), no chain request for this long; then one chain is
+#: fetched alone, and the sweep goes on only once that fetch succeeds
 FAILED_PAUSE_SEC = 5.0
 
 
@@ -191,8 +192,9 @@ def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dic
 
 
 class ChainSweep:
-    """The one fetcher of option chains, on CHAIN_WORKERS threads sharing one Schwab client (the
-    daemon's event loop never waits on it); a ticker is fetched by one worker at a time. The
+    """The one fetcher of option chains, on CHAIN_WORKERS threads sharing the daemon's one Schwab
+    client (the daemon's event loop never waits on it); a ticker is fetched by one worker at a
+    time. After a refusal or a failure (FAILED_PAUSE_SEC) one chain is fetched alone. The
     active ticker (the one on the operator's screen, set_active) is fetched back to back, ahead
     of everything; every board ticker is fetched in turn, without end, by the other workers.
     Each chain is published to the console in parts (chain_messages); a failure is published
@@ -214,8 +216,8 @@ class ChainSweep:
         self._fetching: set[str] = set()
         self._written: dict[str, float] = {}
         self._paused_until = 0.0
-        self._client = None
-        self._client_lock = threading.Lock()
+        self._probing = False           # after a refusal or failure: one fetch at a time
+                                        # until one succeeds
 
     def set_active(self, ticker: str | None) -> None:
         """The ticker on the operator's screen (None: none)."""
@@ -226,8 +228,10 @@ class ChainSweep:
     def _next(self, now: float) -> str | None:
         """The next ticker to fetch, taken by the caller: the active ticker whenever no worker is
         fetching it, else the round's next. A ticker being fetched by another worker now is
-        skipped."""
+        skipped. While probing, nothing is taken while any fetch is in flight."""
         with self._lock:
+            if self._probing and self._fetching:
+                return None
             if self._active is not None and self._active not in self._fetching:
                 self._fetching.add(self._active)
                 return self._active
@@ -253,10 +257,14 @@ class ChainSweep:
             if resp.status_code == 429:
                 with self._lock:
                     self._paused_until = now + RATE_LIMITED_PAUSE_SEC
+            if resp.status_code == 403:
+                self._refused(now)
             reason = resp.reason or f"HTTP {resp.status_code}"
             log.warning("chain %s: %s", ticker, reason)
             self.publish(*chain_failure_message(ticker, reason, now))
             return
+        with self._lock:
+            self._probing = False
         payload = resp.json()
         contracts = flatten_chain_contracts(payload)
         for topic, msg in chain_messages(ticker, contracts, now):
@@ -295,20 +303,16 @@ class ChainSweep:
                 self._written[ticker] = before
             raise
 
-    def _shared_client(self, make_client):
-        """The workers' one Schwab client, built when there is none (under its own lock: the
-        daemon's event loop takes self._lock, never this one)."""
-        with self._client_lock:
-            if self._client is None:
-                state = make_client()
-                if not state.ok or state.client is None:
-                    raise ConnectionError(f"no Schwab client ({state.message})")
-                self._client = state.client
-            return self._client
+    def _refused(self, now: float) -> None:
+        """No chain request for FAILED_PAUSE_SEC, then one fetch at a time until one succeeds."""
+        with self._lock:
+            self._paused_until = now + FAILED_PAUSE_SEC
+            self._probing = True
 
-    def work(self, make_client, stop: threading.Event) -> None:
-        """One worker thread's life: the next ticker, its chain, until `stop`. A request that
-        fails outright pauses every chain request FAILED_PAUSE_SEC and rebuilds the client."""
+    def work(self, schwab_client, stop: threading.Event) -> None:
+        """One worker thread's life: the next ticker, its chain on the daemon's client
+        (`schwab_client()`), until `stop`. A request that fails outright is a refusal
+        (_refused)."""
         while not stop.is_set():
             wait = self._paused_until - self.clock()
             if wait > 0:
@@ -322,14 +326,11 @@ class ChainSweep:
                     self._changed.wait(1.0)
                     continue
             try:
-                self.fetch_one(self._shared_client(make_client), ticker)
+                self.fetch_one(schwab_client(), ticker)
             except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the sweep goes on
                 log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
                 self.publish(*chain_failure_message(ticker, f"{type(e).__name__}: {e}", self.clock()))
-                with self._client_lock:
-                    self._client = None                   # a broken client is rebuilt
-                with self._lock:
-                    self._paused_until = self.clock() + FAILED_PAUSE_SEC
+                self._refused(self.clock())
             finally:
                 with self._changed:
                     self._fetching.discard(ticker)

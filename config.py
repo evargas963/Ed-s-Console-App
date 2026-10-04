@@ -57,15 +57,13 @@ def schwab_live_blocked_for(
     RC-514: absent credentials block too, and did not before. That was the hole under the
     failure-domain architecture (docs/ARCHITECTURE.md "Failure domains").
     `schwab_credentials_are_ci_placeholders` returns False for an empty value, so with NO
-    credentials this returned False: `build_client_from_token` built a client and
-    `_block_live_schwab_in_ci_offline` waved calls through, and the capability presented itself
-    as live while failing one unauthenticated request at a time. The launcher compensated by
-    refusing to start the WHOLE application — the wrong boundary, and the reason a credential
-    fault took the desk down on 2026-09-03.
+    credentials this returned False: `build_client_from_token` built a client, and the
+    capability presented itself as live while failing one unauthenticated request at a time.
+    The launcher compensated by refusing to start the WHOLE application — the wrong boundary.
 
-    Blocking here is what lets the launcher stop doing that: the two existing fail-closed sites
-    in `schwab_client` then report the capability unavailable instead of pretending. No new
-    mechanism — the same gate, asked the question it should always have answered.
+    Blocking here is what lets the launcher stop doing that: the one fail-closed site,
+    `schwab_client.build_client_from_token`, then builds no client and reports the capability
+    unavailable instead of pretending; with no client, no Schwab call can be made.
     """
     if schwab_credentials_are_ci_placeholders(api_key, app_secret):
         return True
@@ -109,7 +107,7 @@ def build_config() -> AppConfig:
     # This is not a relaxation. That raise was a SECOND place deciding "can we do Schwab",
     # duplicating `schwab_live_blocked_for()` — which now blocks on absent credentials, so an
     # empty value here cannot reach a live call: `build_client_from_token` returns ok=False and
-    # `_block_live_schwab_in_ci_offline` raises. One gate decides, and it still fails closed.
+    # builds no client. One gate decides, and it still fails closed.
     api_key = (os.getenv("SCHWAB_API_KEY") or "").strip()
     app_secret = (os.getenv("SCHWAB_APP_SECRET") or "").strip()
     callback_url = os.getenv("SCHWAB_CALLBACK_URL", SCHWAB_CALLBACK_URL).strip()
