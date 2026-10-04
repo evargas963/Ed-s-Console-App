@@ -28,7 +28,8 @@ from tools.hook_chain import _argv_members, run_chain  # noqa: E402
 _ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 PRE_ROSTER = ("tools/operator_law_guard.py", "tools/process_lock_guard.py")
 #: what both hosts wire: the roster above plus the operator's-yes guard (tests/test_operator_yes_guard_v1.py)
-WIRED_ROSTER = PRE_ROSTER + ("tools/operator_yes_guard.py",)
+#: and the sed edit guard (tests/test_sed_edit_guard_v1.py)
+WIRED_ROSTER = PRE_ROSTER + ("tools/operator_yes_guard.py", "tools/sed_edit_guard.py")
 
 
 def _chain(payload, roster: tuple[str, ...] = PRE_ROSTER, root: Path = ROOT) -> subprocess.CompletedProcess[str]:
