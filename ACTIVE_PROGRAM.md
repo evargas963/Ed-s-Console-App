@@ -31,7 +31,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 | ENF-11 | QUEUED | Imports at the top (ruff E402) and one formatter per format. |
 | ENF-12 | QUEUED | The agent practices that no machine can see (claims cite output, proof reproducible, read another agent's work, checkpoints, stop words, deploy means restarted and checked in market hours, `&&` chains): listed in `AGENTS.md`, each enforced by the operator's review until a check exists. |
 | ENF-13 | QUEUED | Governance files (`AGENTS.md`, `docs/DATA_FLOW.md`, CI, hooks, checks) merged only by the operator. No CODEOWNERS file (operator's ruling). No machine check: the operator merges them. |
-| ENF-14 | QUEUED | No source edits through a script: an agent hook that refuses shell writes to tracked source. |
+| ENF-14 | QUEUED | No source edits through a script. sed is refused by `tools/sed_edit_guard.py` (#449). Open, a separate later change (operator 2026-10-04): the other in-place editors — `perl -i`, `awk`/`gawk -i inplace`, python/node scripts that write files, PowerShell `Set-Content`/`Out-File`/`Add-Content`, `tee`, `ed`/`ex`/`vim` batch edits, `truncate`, `dd`; and the sed guard's three gaps — a heredoc fed to a shell (`bash <<EOF`), sed's own `w` command, a backslash-escaped path (`Program\ Files/…/sed.exe`). |
 | ENF-15 | QUEUED | Pushed at every hop, nothing polls (`docs/DATA_FLOW.md` §1): the page draws pushed values instead of re-reading routes after a push (P2-3). |
 | ENF-16 | QUEUED | Operator decisions 2–6, 8, 9 in `docs/DATA_FLOW.md` §6: each gets a test when it is built. |
 
