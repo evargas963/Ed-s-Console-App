@@ -133,18 +133,25 @@ from Schwab to the screen (daemon, console, page), are these:
   instrument in the answer's `instruments` whose `symbol` is the ticker itself). Every answer
   is recorded by the daemon's writer (`stream_instruments_raw`: HTTP status and body as sent,
   `listed`), so a ticker that joined is read back as listed at every start; no separate list.
-  A ticker a screen shows joins once Schwab lists it. Schwab's HTTP 200 answer that does not
-  list a ticker takes it out (`Daemon.leave`: unsubscribed at the next sync unless a screen
+  A ticker a screen shows joins once Schwab lists it. Schwab's "not listed" -- an answer whose
+  `instruments` list does not hold the ticker -- takes it out for the daemon's run (a later read
+  of the stored tickers does not put it back) (`Daemon.leave`: unsubscribed at the next sync unless a screen
   still shows it, out of the chain sweep, its stored data as stored), and that answer is
   carried on the heartbeat (`not_joined`) and leads the ticker's reason on screen
   (`server.terrain_staleness`). This removal rests on Schwab's single-symbol symbol-search
   answer listing a real ticker, NOT_PROVEN live (a read-only capture needs the operator's
-  yes). A lookup with no answer (any other HTTP status, the network, no client, the token
+  yes). A lookup with no answer (any other HTTP status; an HTTP 200 whose body is not JSON or
+  carries no `instruments` list, such as Schwab's `{}`; the network, no client, the token
   refused: `capture.NO_ANSWER`) is an unknown: nothing changes (a stored ticker stays in, a
   shown one stays out with that reason shown) and it is asked again on the next connection to
   Schwab (`Daemon.reconnected`). Any other error is ours: the daemon's parts run under
   `capture.supervise`, which logs a failed part's traceback and ends the daemon (exit 1) so
-  `start_capture_daemon.bat` starts it again. Every universe ticker is streamed on LEVELONE_EQUITIES,
+  `start_capture_daemon.bat` starts it again. A failure that repeats on every start is a crash
+  loop: the bat restarts after a fixed 5 s with no backoff and no count, and each start logs in
+  to Schwab's streamer again, resubscribes everything, restarts the chain sweep and looks up
+  again every ticker no recorded answer lists; recording runs in pieces between the failures,
+  and not at all when the failing part is the writer. Whether to add a restart backoff is the
+  operator's setting (not built). Every universe ticker is streamed on LEVELONE_EQUITIES,
   CHART_EQUITY, NEWS_HEADLINE, NYSE_BOOK and NASDAQ_BOOK (`capture.UNIVERSE_SERVICES`) and its
   chain is fetched in turn (while Closed, a ticker that joins is fetched once, its close
   values). Schwab's answer to every subscription is recorded (`stream_subscriptions`): the
@@ -155,7 +162,11 @@ from Schwab to the screen (daemon, console, page), are these:
   §1.4), is not a refusal of each symbol: Schwab keeps up to its limit and discards the rest
   without naming which, so the request's symbols are held (unsubscribed when no longer wanted:
   no slot Schwab kept is left behind) and Schwab's message is the service's state on the
-  heartbeat (`limits`). A symbol Schwab refused is asked for again when
+  heartbeat (`limits`). It stays until the next connection to Schwab, even after unsubscribing
+  frees slots: the symbols held under it, the discarded ones among them, are not asked for again
+  on this connection. On screen, a heatmap cell whose contracts are wanted and held under the
+  limit, with no update, reads `limited` with Schwab's message (`server._stamp_contract_states`,
+  from `streaming.read_producer_option_limit`), never "pending". A symbol Schwab refused is asked for again when
   the console's list changes and in each new market session (`Daemon.new_session`, from
   `time_et.session_label`). The console learns the universe from the heartbeat (`universe`;
   `server._universe`, None while the heartbeat is not current): a heartbeat whose universe

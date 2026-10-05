@@ -419,9 +419,10 @@ def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_a_ti
 # that names no instrument; the daemon's recorded SPY and TSLA bars; Schwab's refusal of
 # 2026-10-04 (code 19). Stand-ins, named: the local server playing Schwab's host and its
 # streamer (every request answered code 0 unless a test says otherwise); for every symbol of
-# which no instrument answer was captured (TSLA, ZZZZ, $SPX, $NDX, $VIX) the stand-in answers
-# Schwab's `{}` of `SPY.*` -- an answer that lists nothing, not Schwab's answer about them; every
-# chain is the captured SPY 2026-11-20 chain.
+# which no instrument answer was captured the stand-in answers Schwab's `{}` of `SPY.*` (no
+# `instruments` list: no answer), or, where a test needs Schwab's "not listed", SPY's answer --
+# an `instruments` list without that symbol -- neither of them Schwab's answer about that
+# symbol; every chain is the captured SPY 2026-11-20 chain.
 
 _INSTRUMENTS = json.loads((FX / "real_schwab_instruments_2026_08_20.json").read_text(encoding="utf-8"))["answers"]
 _UNLISTED = _INSTRUMENTS["symbol_search_spy_pattern"]["body"]
@@ -437,8 +438,9 @@ def test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_
     over the daemon's socket. The daemon asks Schwab's instrument lookup once per ticker, on its
     one client (the same frame again asks nothing). SPY and QQQ, listed, are in the universe:
     held on every universe service through the daemon's streamer connection, chains fetched.
-    TSLA, answered "not listed", leaves: unsubscribed on every universe service, its stored bars
-    untouched; ZZZZ and the context, shown and not listed, never join. The console shows
+    TSLA, answered with an `instruments` list without it ("not listed"), leaves: unsubscribed on
+    every universe service, its stored bars untouched; ZZZZ and the context, shown and answered
+    `{}` (no answer), never join and are asked again on the next connection. The console shows
     Schwab's answer for each. The answers are recorded by the daemon's writer: a restart reads
     SPY and QQQ back as listed."""
     import push_changes
@@ -457,7 +459,8 @@ def test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_
 
     daemon = capture.Daemon(MessageBus(), HealthRegistry())
     schwab = _LocalSchwab(instruments={"SPY": _INSTRUMENTS["spy_fundamental"]["body"],
-                                       "QQQ": _INSTRUMENTS["qqq_fundamental"]["body"]}, unlisted=_UNLISTED)
+                                       "QQQ": _INSTRUMENTS["qqq_fundamental"]["body"],
+                                       "TSLA": _INSTRUMENTS["spy_fundamental"]["body"]}, unlisted=_UNLISTED)
     client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s", transport=schwab.transport)
     TestClient(server.app).post("/api/streaming/watchlist-symbols", json={"symbols": ["QQQ", "ZZZZ"]})
     page = push_changes.subscribe("ZZZZ")                          # a page open on ZZZZ
@@ -491,8 +494,10 @@ def test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_
                 while not there() and time.monotonic() < end:
                     await asyncio.sleep(0.05)
                 reached.append(there())
+                before = len(schwab.instruments_asked)
                 ofs.declare_watchlist(["QQQ", "ZZZZ"])                  # the same list again
                 await asyncio.sleep(0.5)
+                reached.append(len(schwab.instruments_asked) == before)  # asks nothing
                 console.cancel()
                 await asyncio.gather(console, return_exceptions=True)
         finally:
@@ -505,8 +510,8 @@ def test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_
         push_changes.unsubscribe("ZZZZ", page)
         ofs.declare_watchlist([])
 
-    assert reached == [True], (daemon.universe, daemon.not_joined, sorted(set(schwab.chains_asked)))
-    assert sorted(schwab.instruments_asked) == sorted({"SPY", "TSLA"} | shown), "each ticker asked once"
+    assert reached == [True, True], (daemon.universe, daemon.not_joined, sorted(set(schwab.chains_asked)))
+    assert set(schwab.instruments_asked) == {"SPY", "TSLA"} | shown
     assert sorted(daemon.status()["universe"]) == ["QQQ", "SPY"]
     asked_for = {s for s, c, keys in schwab.stream_requests if c in ("SUBS", "ADD") and "TSLA" in keys.split(",")}
     unsubscribed = {s for s, c, keys in schwab.stream_requests if c == "UNSUBS" and "TSLA" in keys.split(",")}
@@ -515,15 +520,16 @@ def test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_
         assert con.execute("SELECT COUNT(*) FROM stream_bars_raw WHERE symbol='TSLA'").fetchone() == (5,), \
             "its stored data stays as stored"
         rows = dict(con.execute("SELECT symbol, listed FROM stream_instruments_raw"))
-    assert rows == {"SPY": 1, "QQQ": 1, "TSLA": 0, "ZZZZ": 0, **{s: 0 for s in ofs.MARKET_CONTEXT_SYMBOLS}}
+    assert rows == {"SPY": 1, "QQQ": 1, "TSLA": 0, "ZZZZ": None, **{s: None for s in ofs.MARKET_CONTEXT_SYMBOLS}}
 
     status = daemon.status()
     lmp.record_feed_heartbeat(status)                          # the console's record of the daemon
     try:
         assert sorted(server._universe()) == ["QQQ", "SPY"]
-        for tk in ("ZZZZ", "TSLA"):
-            assert f"Schwab's instrument lookup does not list {tk} (HTTP 200: {{}})" in \
-                server.terrain_staleness(None, tk)["levels_stale_reason"], tk
+        assert "Schwab's instrument lookup does not list TSLA (HTTP 200: " in \
+            server.terrain_staleness(None, "TSLA")["levels_stale_reason"]
+        assert "Schwab's instrument lookup did not answer for ZZZZ (HTTP 200: {})" in \
+            server.terrain_staleness(None, "ZZZZ")["levels_stale_reason"]
     finally:
         lmp.record_feed_down()
     listed, unconfirmed = capture.recorded_tickers(console_db, stream_db)
@@ -531,17 +537,29 @@ def test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_
     assert "TSLA" in unconfirmed and "ZZZZ" in unconfirmed, "and asks Schwab about the others again"
 
 
-def test_a_stored_ticker_is_streamed_until_schwab_answers_and_only_not_listed_takes_it_out(tmp_path):
-    """Stored TSLA and SPY are streamed on every universe service from the first sync, their
-    lookups pending. A lookup with no answer (HTTP 429 from Schwab's host; stand-in) changes
-    nothing: SPY stays streamed and is asked again on the next connection. Schwab's answer that
-    does not list TSLA (HTTP 200 `{}`, the stand-in answer named above) takes TSLA out: it is
-    unsubscribed on every universe service at the next sync. INDUCED CONDITION: the 429."""
-    schwab = _LocalSchwab()
+_NO_ANSWERS = {
+    "a 200 that is not JSON": (200, "<html>Service Unavailable</html>"),     # INDUCED
+    "a 200 without an instruments list": (200, _UNLISTED),                    # Schwab's `{}` (SPY.*)
+    "a 429": (429, '{"errors": [{"status": "429"}]}'),                        # INDUCED
+}
+
+
+@pytest.mark.parametrize("answer", [*_NO_ANSWERS, "an instruments list without the ticker"])
+def test_a_stored_ticker_is_streamed_until_schwab_answers_and_only_not_listed_takes_it_out(tmp_path, answer):
+    """Stored TSLA is streamed on every universe service from the first sync, its lookup
+    pending. The lookup runs through the daemon's real instrument_answer on schwab-py's client.
+    An answer that is no answer -- a 200 that is not JSON, a 200 without an `instruments` list,
+    any other status -- changes nothing: TSLA stays streamed and is asked again on the next
+    connection. Only an `instruments` list without TSLA (SPY's answer, served for TSLA: the
+    stand-in named above) is Schwab's "not listed": TSLA is unsubscribed on every universe
+    service at the next sync, the answer is shown, and a later read of the stored tickers does
+    not put it back this run. INDUCED CONDITION: the non-JSON 200 and the 429."""
+    served = _NO_ANSWERS.get(answer, (200, _INSTRUMENTS["spy_fundamental"]["body"]))
+    schwab = _LocalSchwab(instruments={"TSLA": served})
     client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s", transport=schwab.transport)
     daemon = capture.Daemon(MessageBus(), HealthRegistry())
-    daemon.load([], ["SPY", "TSLA"])
-    assert [daemon.joins.get_nowait() for _ in range(2)] == ["SPY", "TSLA"]
+    daemon.load([], ["TSLA"])
+    assert daemon.joins.get_nowait() == "TSLA"
     held: list = []
 
     async def run() -> None:
@@ -549,10 +567,7 @@ def test_a_stored_ticker_is_streamed_until_schwab_answers_and_only_not_listed_ta
         try:
             await daemon.sync()
             held.append({svc: set(daemon.held[svc]) for svc in capture.UNIVERSE_SERVICES})
-            daemon.answered(capture.instrument_msg(symbol="SPY", http_status=429, body='{"errors": []}',
-                                                   listed=False, ts=time.time()))
-            daemon.answered(capture.instrument_msg(symbol="TSLA", http_status=200, body=_UNLISTED,
-                                                   listed=False, ts=time.time()))
+            daemon.answered(await asyncio.to_thread(capture.instrument_answer, client, "TSLA", time.time()))
             await daemon.sync()
             held.append({svc: set(daemon.held[svc]) for svc in capture.UNIVERSE_SERVICES})
         finally:
@@ -561,13 +576,19 @@ def test_a_stored_ticker_is_streamed_until_schwab_answers_and_only_not_listed_ta
         asyncio.run(run())
     finally:
         schwab.close()
-    assert held[0] == {svc: {"SPY", "TSLA"} for svc in capture.UNIVERSE_SERVICES}, "streamed while pending"
-    assert held[1] == {svc: {"SPY"} for svc in capture.UNIVERSE_SERVICES}
+    assert held[0] == {svc: {"TSLA"} for svc in capture.UNIVERSE_SERVICES}, "streamed while pending"
+    if answer in _NO_ANSWERS:
+        assert held[1] == held[0] and daemon.universe == ["TSLA"], "no answer changes nothing"
+        assert "TSLA" not in daemon.not_joined
+        daemon.reconnected()                                     # the next connection to Schwab
+        assert daemon.joins.get_nowait() == "TSLA", "asked again"
+        return
+    assert held[1] == {svc: set() for svc in capture.UNIVERSE_SERVICES}
     assert {s for s, c, keys in schwab.stream_requests if c == "UNSUBS"} == set(capture.UNIVERSE_SERVICES)
-    assert daemon.universe == ["SPY"] and "SPY" not in daemon.not_joined
-    assert daemon.not_joined["TSLA"] == "Schwab's instrument lookup does not list TSLA (HTTP 200: {})"
-    daemon.reconnected()                                         # the next connection to Schwab
-    assert daemon.joins.get_nowait() == "SPY" and daemon.joins.empty()
+    assert daemon.universe == []
+    assert daemon.not_joined["TSLA"].startswith("Schwab's instrument lookup does not list TSLA (HTTP 200: ")
+    daemon.load([], ["TSLA"])                                    # the stored tickers read again
+    assert daemon.universe == [], "Schwab's 'not listed' stands for the run"
 
 
 def test_with_the_daemon_silent_every_ticker_says_so_first():
@@ -647,7 +668,26 @@ def test_schwabs_refusal_of_a_subscription_is_recorded_with_its_own_code_and_mes
     assert sent[1] == sent[0] and sent[2] == sent[1] + 1
     assert state["held"] == set(contracts)
     assert "LEVELONE_OPTIONS" not in state["status"]["refused"]
-    assert state["status"]["limits"] == {"LEVELONE_OPTIONS": f"code 19: {_REFUSAL['schwab_msg']}"}
+    limit = f"code 19: {_REFUSAL['schwab_msg']}"
+    assert state["status"]["limits"] == {"LEVELONE_OPTIONS": limit}
+
+    # the screen: the console holds that status (its heartbeat); the views ask for the contracts;
+    # each heatmap cell's state comes from the console's one contract-state path. Stand-in: the
+    # heatmap's cells, one per contract, in the shape project_gamma_surface gives them.
+    surface = {"expirations": [{"expiry": "2026-12-18"}],
+               "cells": [{"strike": float(i), "contracts": [{"call": s, "put": None}]} for i, s in enumerate(contracts)]}
+    lmp.record_feed_heartbeat({**state["status"], "ts": time.time()})
+    ofs.set_active_option_contracts(contracts)
+    try:
+        server._stamp_contract_states(surface, {}, frozenset(contracts))
+        cells = [c["stream"][0] for c in surface["cells"]]
+        assert [c["state"] for c in cells] == ["limited"] * len(contracts), "never 'pending' forever"
+        assert all(c["limit_reason"] == limit for c in cells), "Schwab's message, as sent"
+        assert server._stream_coverage(surface["cells"], [0], False)["limited"] == len(contracts)
+        assert server.STREAM_WORDS["cell"]["limited"]
+    finally:
+        ofs.set_active_option_contracts([])
+        lmp.record_feed_down()
 
 
 @pytest.mark.parametrize("ahead", ["another request's answer", "a frame that is not JSON"])
@@ -1125,7 +1165,8 @@ class _LocalSchwab:
     captured SPY chain (or `chains[symbol]`, Schwab's payload as captured) and its quotes, or the
     captured 403 page while `refuse`. Every request is
     recorded: (time, method, path, Authorization). The instrument lookup answers
-    `instruments[symbol]`, or `unlisted` for any other symbol (each symbol asked is recorded in
+    `instruments[symbol]` (a body, HTTP 200, or (status, body)), or `unlisted` for any other
+    symbol (each symbol asked is recorded in
     `instruments_asked`). The user preferences name its streamer, a local WebSocket that answers
     every request code 0, except a SUBS or ADD of a service in `stream_refusal`: (code, msg); before answering a
     request of a service in `stream_before` it sends that service's frames (text) first; a
@@ -1223,8 +1264,9 @@ class _LocalSchwab:
                 if url.path == "/marketdata/v1/instruments":
                     symbol = parse_qs(url.query)["symbol"][0]
                     outer.instruments_asked.append(symbol)
-                    return self._send(200, "application/json",
-                                      outer.instruments.get(symbol, outer.unlisted).encode())
+                    answer = outer.instruments.get(symbol, outer.unlisted)
+                    status, body = answer if isinstance(answer, tuple) else (200, answer)
+                    return self._send(status, "application/json", body.encode())
                 if url.path == "/trader/v1/userPreference":
                     return self._send(200, "application/json", json.dumps({"streamerInfo": [{
                         "streamerSocketUrl": stream_url, "schwabClientCustomerId": "stand-in",

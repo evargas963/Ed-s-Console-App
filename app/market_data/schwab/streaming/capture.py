@@ -338,8 +338,10 @@ class Daemon:
         #: ticker with data stored, from load; every ticker a screen shows once Schwab lists it);
         #: the chain sweep reads this same list
         self.universe: "list[str]" = sorted(set(universe))
-        #: the tickers Schwab's instrument answer lists (recorded, or answered this run)
+        #: the tickers Schwab's instrument answer lists (recorded, or answered this run), and the
+        #: ones an answer this run did not list
         self.listed: "set[str]" = set()
+        self.not_listed: "set[str]" = set()
         #: the tickers to look up (run_joins takes them), each put once: `asked` holds every
         #: ticker put, until a lookup that got no answer from Schwab (then `unanswered`, asked
         #: again on the next connection to Schwab)
@@ -362,9 +364,9 @@ class Daemon:
         """The stored tickers (recorded_tickers), read after the daemon started: every one is in
         the universe from now -- its record goes on while its lookup is pending -- and each no
         recorded answer of Schwab's lists is looked up. Only Schwab's answer that does not list
-        a ticker takes it out (answered)."""
+        a ticker takes it out (answered); one already answered so this run stays out."""
         self.listed.update(listed)
-        for ticker in sorted(set(listed) | set(unconfirmed)):
+        for ticker in sorted((set(listed) | set(unconfirmed)) - self.not_listed):
             self.join(ticker)
         self.ask(unconfirmed)
 
@@ -412,22 +414,26 @@ class Daemon:
 
     def answered(self, msg: dict) -> None:
         """Schwab's instrument answer for a ticker looked up (instrument_answer), recorded.
-        Listed: the ticker is in the universe for good. HTTP 200 without it: Schwab does not list
-        it -- it leaves the universe (its stored data stays as stored) and the answer is what
-        the console shows for it. Any other status is no answer (no_answer): nothing changes."""
+        Listed: the ticker is in the universe for good. An `instruments` list without it:
+        Schwab does not list it -- it leaves the universe (its stored data stays as stored) and
+        the answer is what the console shows for it. Anything else (`listed` None: another
+        status, a body that is not JSON or carries no `instruments` list) is no answer
+        (no_answer): nothing changes."""
         ticker = msg["symbol"]
         self.bus.publish(f"instrument.{ticker}", msg)
-        if msg["listed"]:
-            self.listed.add(ticker)
-            self.not_joined.pop(ticker, None)
-            self.join(ticker)
-        elif msg["http_status"] == 200:
-            self.not_joined[ticker] = (f"Schwab's instrument lookup does not list {ticker} "
-                                       f"(HTTP 200: {msg['body'][:300]})")
-            self.leave(ticker)
-        else:
+        if msg["listed"] is None:
             self.no_answer(ticker, f"Schwab's instrument lookup did not answer for {ticker} "
                                    f"(HTTP {msg['http_status']}: {msg['body'][:300]})")
+        elif msg["listed"]:
+            self.listed.add(ticker)
+            self.not_listed.discard(ticker)
+            self.not_joined.pop(ticker, None)
+            self.join(ticker)
+        else:
+            self.not_listed.add(ticker)
+            self.not_joined[ticker] = (f"Schwab's instrument lookup does not list {ticker} "
+                                       f"(HTTP {msg['http_status']}: {msg['body'][:300]})")
+            self.leave(ticker)
 
     def no_answer(self, ticker: str, reason: str) -> None:
         """The lookup of `ticker` got no answer from Schwab: an unknown, so nothing changes -- a
@@ -729,18 +735,20 @@ def recorded_tickers(*db_paths: "Path | str") -> "tuple[list[str], list[str]]":
 def instrument_answer(client, symbol: str, now: float) -> dict:
     """Schwab's instrument lookup of `symbol` on the daemon's one client (schwab-py
     Client.get_instruments, projection SYMBOL_SEARCH: GET /marketdata/v1/instruments), as its
-    instrument message: the HTTP status and body as sent, and whether Schwab lists `symbol`
-    itself (an instrument whose `symbol` is exactly it, in the answer's `instruments`)."""
+    instrument message: the HTTP status and body as sent, and `listed`: True when the answer's
+    `instruments` list holds an instrument whose `symbol` is exactly `symbol`, False when it is
+    a list without it (Schwab does not list it), None for every other answer -- another
+    status, a body that is not JSON, or JSON without an `instruments` list: no answer."""
     resp = client.get_instruments(symbol, client.Instrument.Projection.SYMBOL_SEARCH)
     body = None
     if resp.status_code == 200:
         try:
             body = json.loads(resp.text)
-        except ValueError as e:                    # recorded as sent; it lists nothing
+        except ValueError as e:                    # recorded as sent; no answer
             log.warning("universe: Schwab's instrument answer for %s is not JSON: %s", symbol, e)
     instruments = body.get("instruments") if isinstance(body, dict) else None
-    listed = isinstance(instruments, list) and any(
-        isinstance(i, dict) and i.get("symbol") == symbol for i in instruments)
+    listed = (any(isinstance(i, dict) and i.get("symbol") == symbol for i in instruments)
+              if isinstance(instruments, list) else None)
     return instrument_msg(symbol=symbol, http_status=resp.status_code, body=resp.text, listed=listed, ts=now)
 
 

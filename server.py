@@ -943,7 +943,7 @@ def _leg_stream_ts_recv(greeks: dict | None) -> float | None:
     return max(candidates) if candidates else None
 
 
-_STREAM_STATE_ORDER = ("stale", "pending", "daemon_unavailable", "rejected")
+_STREAM_STATE_ORDER = ("stale", "pending", "limited", "daemon_unavailable", "rejected")
 
 
 def _stream_state_of(states: list) -> str:
@@ -961,7 +961,9 @@ def _stream_state_of(states: list) -> str:
 def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overlay_symbols: set,
                                            rejected_symbols: "dict[str, str] | None" = None,
                                            desired_symbols: "set[str] | None" = None, *,
-                                           daemon_available: bool = True) -> None:
+                                           daemon_available: bool = True,
+                                           limit_reason: "str | None" = None,
+                                           held_symbols: "frozenset[str]" = frozenset()) -> None:
     """Operator directive (2026-09-15, always-live heatmap mandate): attach per-leg (call/put)
     and per-cell aggregate STREAM state to an already-projected gamma surface's cells, in place.
 
@@ -999,6 +1001,10 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
       'daemon_unavailable'   — the symbol is desired but the daemon's own producer heartbeat is
                               stale or absent — the outcome cannot be pending, because nothing
                               is currently working on it.
+      'limited'              — the symbol is desired and held, no tick has landed, and Schwab
+                              answered its request with its symbol limit (code 19: it kept
+                              some and discarded the rest, naming none): Schwab's message
+                              (`limit_reason`) is carried on the cell.
       'rejected'             — the vendor explicitly refused this contract's subscription; its
                               own error is carried on the leg so the UI can disclose WHY.
       'unavailable'          — no symbol for this leg (missing contract), or a symbol never
@@ -1006,7 +1012,7 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                               identity alike.
 
     Cell aggregate, over whichever legs actually exist for this strike/expiry, checked in this
-    priority order (live > partial > stale > pending > daemon_unavailable > rejected >
+    priority order (live > partial > stale > pending > limited > daemon_unavailable > rejected >
     unavailable) — 'partial' requires at least one live leg, not all; every other aggregate is
     "no leg is any higher-priority state, at least one existing leg is this one"."""
     now = time.time()
@@ -1034,6 +1040,8 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                     leg_state = "rejected"
                 elif sym in desired_symbols and not daemon_available:
                     leg_state = "daemon_unavailable"
+                elif sym in desired_symbols and sym in held_symbols and limit_reason is not None:
+                    leg_state = "limited"           # Schwab kept or discarded it, not saying which
                 elif sym in desired_symbols:
                     leg_state = "pending"
                 else:
@@ -1048,6 +1056,8 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                     leg_out["rejected_reason"] = rejected_symbols.get(sym)
                 legs[side] = leg_out
             legs["state"] = _stream_state_of(leg_states)
+            if legs["state"] == "limited":
+                legs["limit_reason"] = limit_reason    # Schwab's message, as sent
             ages = [leg["age_sec"] for leg in legs.values() if isinstance(leg, dict) and leg["age_sec"] is not None]
             legs["age_sec"] = max(ages) if ages else None   # the cell's oldest confirmed leg
             state_row.append(legs)
@@ -1065,10 +1075,12 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
 STREAM_WORDS = {
     "cell": {"partial": "one side of this cell is streaming", "stale": "this cell has stopped streaming",
              "pending": "streaming requested, no update yet",
+             "limited": "Schwab's symbol limit: no update; Schwab does not say which contracts it discarded",
              "daemon_unavailable": "the capture daemon is not reachable",
              "rejected": "Schwab refused this contract’s stream", "unavailable": "not streaming"},
     "column": {"live": "streaming", "partial": "partly streaming", "stale": "stopped streaming",
-               "pending": "streaming requested", "daemon_unavailable": "the capture daemon is not reachable",
+               "pending": "streaming requested", "limited": "Schwab's symbol limit reached",
+               "daemon_unavailable": "the capture daemon is not reachable",
                "rejected": "Schwab refused the stream", "unavailable": "not streaming"},
 }
 
@@ -1086,7 +1098,7 @@ def _stream_coverage(cells: list, cols: "list[int]", expired_only: bool) -> dict
     every column drawn has expired). Only cells with a contract count (a strike an expiry does
     not list was never a data point). Returns the counts by cell state, the share live rounded
     down (100 only when every cell is live), and the header's words: `state`, `label`, `title`."""
-    counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "daemon_unavailable": 0,
+    counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "limited": 0, "daemon_unavailable": 0,
               "rejected": 0, "unavailable": 0}
     for cell in cells:
         contracts, stream = cell.get("contracts") or [], cell.get("stream") or []
@@ -1230,6 +1242,23 @@ push_changes.on_screen_change(_contract_on_screen_change)
 push_changes.on_change(_contract_on_chain)
 
 
+def _stamp_contract_states(surface: dict, streamed: dict, listed: frozenset) -> None:
+    """Each heatmap cell's stream state, from the daemon's status as the console holds it: the
+    contracts live now, Schwab's refusals, Schwab's symbol limit and the contracts held under
+    it, the contracts the views ask for, and whether the daemon reports
+    (_stamp_gamma_surface_cell_stream_state)."""
+    from app.options.order_flow.streaming import (
+        is_option_producer_daemon_available, read_producer_option_limit,
+        read_producer_rejected_option_contracts)
+    limit_reason, held = read_producer_option_limit()
+    _stamp_gamma_surface_cell_stream_state(
+        surface, streamed, {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS")},
+        read_producer_rejected_option_contracts(),
+        set(_desired_option_symbols_for_ticker(listed)),
+        daemon_available=is_option_producer_daemon_available(),
+        limit_reason=limit_reason, held_symbols=held)
+
+
 def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
                     *, captures: "list | None" = None) -> "TerrainSnapshot | None":
     """THE producer of a ticker's levels, per-strike rows and gamma-surface grid.
@@ -1244,8 +1273,6 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     read once: the newest is priced with Schwab's underlying price from that capture, valued and
     dated at its own time, and both feed the forces and prior-day rows. Returns the snapshot, or
     None when there is no chain to price."""
-    from app.options.order_flow.streaming import (
-        read_producer_rejected_option_contracts, is_option_producer_daemon_available)
     with _terrain_cache_lock:
         payload = dict(_terrain_cache.get(tk) or {})
     capture = captures[0] if captures else None
@@ -1301,11 +1328,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts,
                        stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
                        stream_overlay_computed_ts_utc=time.time())
-        _stamp_gamma_surface_cell_stream_state(
-            surface, streamed, {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS")},
-            read_producer_rejected_option_contracts(),
-            set(_desired_option_symbols_for_ticker(listed)),
-            daemon_available=is_option_producer_daemon_available())
+        _stamp_contract_states(surface, streamed, listed)
         surface["surface_seq"] = _next_gamma_surface_seq(tk)
         payload["_gamma_surface"] = surface
     with _terrain_cache_lock:

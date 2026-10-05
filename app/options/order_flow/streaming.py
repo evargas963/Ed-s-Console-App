@@ -660,6 +660,19 @@ def read_producer_rejected_option_contracts() -> "dict[str, str]":
     return dict(refused.get("LEVELONE_OPTIONS") or {})
 
 
+def read_producer_option_limit() -> "tuple[str | None, frozenset[str]]":
+    """(Schwab's symbol-limit message for LEVELONE_OPTIONS on the daemon's connection, the
+    contracts the daemon holds there), from the daemon's status: Schwab kept up to its limit
+    and discarded the rest without naming which (capture.REACHED_SYMBOL_LIMIT). (None, empty)
+    with no current status."""
+    st = _lmp.daemon_status()
+    limits = st.get("limits") if st is not None else None
+    held = st.get("held") if st is not None else None
+    message = limits.get("LEVELONE_OPTIONS") if isinstance(limits, dict) else None
+    contracts = held.get("LEVELONE_OPTIONS") if isinstance(held, dict) else None
+    return message, frozenset(contracts) if isinstance(contracts, list) else frozenset()
+
+
 def _pick_producer_contract(symbols: "list[str]", queried: Optional[str]) -> Optional[str]:
     """Reduce a service's list of currently-confirmed producer symbols to the single
     value the back-compat `producer_l1_contract`/`producer_book_contract` diagnostic

@@ -170,6 +170,7 @@
         var v = mrow[j], st = cellStyle(v, maxAbs, heat);
         var cellState = (row.stream || [])[j], liveState = cellState ? cellState.state : null;
         var reason = liveState === 'rejected' ? ((cellState.call || {}).rejected_reason || (cellState.put || {}).rejected_reason) : null;
+        if (liveState === 'limited') { reason = cellState.limit_reason; }   // Schwab's message, as served
         var stateTitle = (words.cell[liveState] || '') + (reason ? ' (' + reason + ')' : '');
         tbl += '<td class="hcell' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') +
           (liveState ? ' state-' + liveState : '') +

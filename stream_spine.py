@@ -86,15 +86,17 @@ CREATE TABLE IF NOT EXISTS stream_subscriptions (
     reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ssub_ts ON stream_subscriptions(ts);
--- Schwab's instrument lookup of each ticker a screen showed before it joined the universe
--- (capture.instrument_answer): the HTTP status and body as sent; listed = 1 where Schwab lists
--- the symbol itself, so the ticker joined and is read back at every start (recorded_universe).
+-- Schwab's instrument lookup of each ticker stored or shown that no answer listed yet
+-- (capture.instrument_answer): the HTTP status and body as sent; listed = 1 where the answer's
+-- instruments list holds the symbol itself (read back as listed at every start:
+-- capture.recorded_tickers), 0 where it is a list without it, NULL where the answer is no
+-- answer (another status, or no instruments list).
 CREATE TABLE IF NOT EXISTS stream_instruments_raw (
     ts REAL NOT NULL,
     symbol TEXT NOT NULL,
     http_status INTEGER NOT NULL,
     body TEXT NOT NULL,
-    listed INTEGER NOT NULL,
+    listed INTEGER,
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sinr_sym ON stream_instruments_raw(symbol);
@@ -172,8 +174,9 @@ def subscription_msg(*, service: str, command: str, symbols: "list[str]", code: 
             "symbols": list(symbols), "code": code, "reason": reason}
 
 
-def instrument_msg(*, symbol: str, http_status: int, body: str, listed: bool, ts: float) -> dict:
-    """instrument.* -- Schwab's instrument lookup of one symbol, its status and body as sent."""
+def instrument_msg(*, symbol: str, http_status: int, body: str, listed: "bool | None", ts: float) -> dict:
+    """instrument.* -- Schwab's instrument lookup of one symbol, its status and body as sent;
+    `listed` None: no answer (capture.instrument_answer)."""
     return {"ts": ts, "symbol": symbol, "http_status": http_status, "body": body,
             "listed": listed, "src": "schwab_instrument"}
 
@@ -391,7 +394,7 @@ _INSERTS = {
                        json.dumps(m.get("symbols") or []), m.get("code"), m.get("reason"))),
     "instrument": ("INSERT INTO stream_instruments_raw(ts,symbol,http_status,body,listed,src) "
                    "VALUES(?,?,?,?,?,?)",
-                   lambda m: (m["ts"], m["symbol"], m["http_status"], m["body"], int(m["listed"]),
+                   lambda m: (m["ts"], m["symbol"], m["http_status"], m["body"], m["listed"],   # bool: 1/0
                               m["src"])),
 }
 
