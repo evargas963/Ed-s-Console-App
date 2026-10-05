@@ -196,6 +196,9 @@ FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 #: The daemon's latest status (its heartbeat), the time the daemon stamped it, and the symbols
 #: it holds per Schwab service. Written by record_feed_heartbeat / record_feed_down only.
 _feed: dict[str, Any] = {"rx": None, "status": None, "held": {}}
+#: Set when a heartbeat carries a universe other than the last heartbeat's (a ticker joined, or
+#: the first heartbeat): the console's levels loop waits on it (server._terrain_loop).
+universe_changed = threading.Event()
 
 
 def record_feed_heartbeat(msg: dict[str, Any]) -> None:
@@ -207,7 +210,11 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
     held = {svc: frozenset(ticker_storage_key(s) for s in syms)
             for svc, syms in (msg.get("held") or {}).items() if isinstance(syms, list)}
     with _lock:
+        before, before_rx = _feed["status"], _feed["rx"]
         _feed.update(rx=float(msg["ts"]), status=msg, held=held)
+    if (before is None or float(msg["ts"]) - before_rx >= FEED_HEARTBEAT_MAX_AGE_SEC
+            or before.get("universe") != msg.get("universe")):
+        universe_changed.set()                     # first, after a silence, or changed
 
 
 def record_feed_down() -> None:

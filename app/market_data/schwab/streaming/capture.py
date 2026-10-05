@@ -6,13 +6,13 @@ It is the only part of Ed Console that talks to Schwab. Beside the loop below, i
 (run_chains) fetches full option chains on its own threads, without end: the ticker on screen
 first, back to back, and every universe ticker in turn.
 
-  0. UNIVERSE Every ticker recorded: at start, every ticker with data stored in the databases
-             (recorded_universe); then every equity the console's screens show (its watchlist,
-             the ticker on screen, the header's context) joins for good once Schwab's
-             instrument lookup lists it (run_joins; the answer is recorded, so the ticker has
-             data stored and is read again at the next start). Each is streamed on
-             UNIVERSE_SERVICES and its chain is fetched in turn. One that Schwab does not list
-             does not join; the console shows Schwab's answer (status "not_joined").
+  0. UNIVERSE Every ticker recorded, by one rule: a ticker with data stored in the databases
+             (recorded_tickers) or an equity the console's screens show (its watchlist, the
+             ticker on screen, the header's context) joins for good once Schwab's instrument
+             lookup lists it (run_joins; the answer is recorded, so at the next start the
+             ticker is read back as listed). Each is streamed on UNIVERSE_SERVICES and its chain
+             is fetched in turn. One that Schwab does not list does not join (its stored data
+             stays as stored); the console shows Schwab's answer (status "not_joined").
 
 It does four things, in one loop:
 
@@ -54,7 +54,9 @@ import threading
 import time
 from pathlib import Path
 
-from schwab.streaming import UnexpectedResponse, UnexpectedResponseCode
+import httpx
+from authlib.common.errors import AuthlibBaseError
+from schwab.streaming import UnparsableMessage
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
@@ -76,6 +78,7 @@ from stream_spine import (  # noqa: E402
 )
 from calibration.complete_chain_capture import CHAIN_WORKERS, ChainSweep  # noqa: E402
 from instrument_identity import vendor_option_root  # noqa: E402
+from time_et import now_et, session_label  # noqa: E402
 
 log = logging.getLogger("capture")
 
@@ -248,22 +251,50 @@ def _fields(stream, service: str) -> str:
     return ",".join(str(f) for f in sorted(int(x.value) for x in enum))
 
 
-async def _request(stream, service: str, command: str, symbols: "list[str]") -> None:
-    """One Schwab request; raises (schwab-py UnexpectedResponse / connection errors) unless
-    Schwab answers code 0. Every service goes through this one path, including NEWS_HEADLINE."""
+async def _request(stream, service: str, command: str, symbols: "list[str]") -> dict:
+    """One Schwab request and Schwab's answer to it: the `content` of the response whose
+    `requestid` is this request's ({"code": ..., "msg": ...}, as sent). Every service goes
+    through this one path, including NEWS_HEADLINE. Raises only when the connection fails or
+    Schwab does not answer in REQUEST_TIMEOUT_SEC."""
     params = {"keys": ",".join(symbols)}
     if command != "UNSUBS":
         params["fields"] = _fields(stream, service)
     req, rid = stream._make_request(service=service, command=command, parameters=params)
 
-    async def send_and_wait() -> None:
+    async def send_and_wait() -> dict:
         async with stream._lock:
             await stream._send({"requests": [req]})
-            await stream._await_response(rid, service, command)
+            return await _answer(stream, rid)
     try:
-        await asyncio.wait_for(send_and_wait(), timeout=REQUEST_TIMEOUT_SEC)
+        return await asyncio.wait_for(send_and_wait(), timeout=REQUEST_TIMEOUT_SEC)
     except asyncio.TimeoutError:
         raise ConnectionError(f"no answer to {service} {command} in {REQUEST_TIMEOUT_SEC:.0f} s") from None
+
+
+async def _answer(stream, request_id: int) -> dict:
+    """Read Schwab's frames until the response to request `request_id`; return its `content`.
+    A response to another request is not this request's answer: it is logged and passed over.
+    Data frames read meanwhile are handed back to schwab-py's queue for handle_message, in
+    order. A frame that is not JSON is logged with its text and passed over (schwab-py:
+    "This often happens with unknown symbols"); it never ends the connection."""
+    deferred = []
+    try:
+        while True:
+            try:
+                frame = await stream._receive()
+            except UnparsableMessage as e:
+                log.warning("schwab: a frame that is not JSON, passed over: %s", str(e.raw_msg)[:300])
+                continue
+            if "response" not in frame:
+                deferred.append(frame)
+                continue
+            for answer in frame["response"]:
+                if int(answer["requestid"]) == request_id:
+                    return answer["content"]
+                log.info("schwab: an answer to request %s (not %d), passed over: %s",
+                         answer["requestid"], request_id, json.dumps(answer)[:300])
+    finally:
+        stream._overflow_items.extendleft(deferred)
 
 
 def _connection_lost(e: BaseException) -> bool:
@@ -281,7 +312,11 @@ UNIVERSE_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE
 
 
 class Daemon:
-    def __init__(self, bus: MessageBus, health: HealthRegistry, universe: "tuple[str, ...] | list[str]" = ()) -> None:
+    def __init__(self, bus: MessageBus, health: HealthRegistry, universe: "tuple[str, ...] | list[str]" = (),
+                 unconfirmed: "tuple[str, ...] | list[str]" = ()) -> None:
+        """`universe`: the tickers Schwab's recorded instrument answer lists; `unconfirmed`: the
+        other tickers with data stored, each put to Schwab's instrument lookup (run_joins) like
+        a ticker a screen shows (recorded_tickers)."""
         self.bus = bus
         self.health = health
         #: what the console's screens show, as it last said (none until it says)
@@ -292,7 +327,8 @@ class Daemon:
         self.sender = None
         self.wanted_changed = asyncio.Event()
         #: the universe: every ticker streamed on UNIVERSE_SERVICES and fetched in turn, for good
-        #: (recorded_universe at start, then join); the chain sweep reads this same list
+        #: (Schwab listed it: recorded_tickers at start, then join); the chain sweep reads this
+        #: same list
         self.universe: "list[str]" = sorted(set(universe))
         #: the tickers to look up (run_joins takes them), each put once: `asked` holds every
         #: ticker put and not yet joined, until a lookup that got no answer from Schwab
@@ -304,6 +340,31 @@ class Daemon:
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
+        #: the market session the last sync ran in (time_et.session_label): a new one is a new try
+        self.session: "str | None" = None
+        #: the stored tickers no recorded answer of Schwab lists: looked up at start and, when
+        #: Schwab gave no answer, again each session
+        self.unconfirmed: "frozenset[str]" = frozenset(unconfirmed)
+        self.ask(self.unconfirmed)
+
+    def ask(self, tickers) -> None:
+        """Put each of `tickers` not in the universe and not already asked to Schwab's
+        instrument lookup (run_joins takes them in order)."""
+        for ticker in sorted(set(tickers) - set(self.universe) - self.asked):
+            self.asked.add(ticker)
+            self.joins.put_nowait(ticker)
+
+    def new_session(self, label: str) -> None:
+        """The market session is `label` (time_et.session_label, read by the connection's loop):
+        when it changes, every symbol Schwab refused is asked for again, and every stored ticker
+        Schwab gave no instrument answer for is looked up again -- every ticker gets the same
+        services, every session."""
+        if label == self.session:
+            return
+        self.session = label
+        self.refused = {s: {} for s in SERVICES}
+        self.ask(self.unconfirmed)
+        self.wanted_changed.set()
 
     def set_wanted(self, raw, sender=None) -> None:
         """The console's list from connection `sender` (live_push calls this for every
@@ -323,16 +384,14 @@ class Daemon:
         self.wanted_changed.set()                  # the connection syncs now
         if self.chains is not None:
             self.chains.set_active(active)
-        shown = set().union(*(new[svc] for svc in UNIVERSE_SERVICES)) | ({active} if active else set())
-        for ticker in sorted(shown - set(self.universe) - self.asked):
-            self.asked.add(ticker)
-            self.joins.put_nowait(ticker)          # run_joins looks it up
+        self.ask(set().union(*(new[svc] for svc in UNIVERSE_SERVICES)) | ({active} if active else set()))
 
     def answered(self, msg: dict) -> None:
-        """Schwab's instrument answer for a ticker the console showed (instrument_answer): it is
+        """Schwab's instrument answer for a ticker looked up (instrument_answer): it is
         recorded, and the ticker joins the universe when Schwab lists it; otherwise the answer
-        is what the console shows for it, and a ticker Schwab did not answer for (no HTTP 200)
-        is looked up again the next time the console's list names it."""
+        is what the console shows for it (a stored ticker's data stays as stored), and a ticker
+        Schwab did not answer for (no HTTP 200) is looked up again the next time the console's
+        list names it, or, stored, the next session."""
         self.bus.publish(f"instrument.{msg['symbol']}", msg)
         if msg["listed"]:
             self.join(msg["symbol"])
@@ -379,14 +438,8 @@ class Daemon:
     async def sync(self) -> None:
         for svc, cmd, symbols in plan(self.all_wanted(), self.held, self.refused):
             for chunk in split_request(symbols):
-                try:
-                    await _request(self.stream, svc, cmd, chunk)
-                    code, reason = 0, "ok"
-                except UnexpectedResponseCode as e:       # Schwab's refusal: its code, its message
-                    content = e.response["response"][0]["content"]
-                    code, reason = content["code"], content["msg"]
-                except UnexpectedResponse as e:           # Schwab's next answer was another request's
-                    code, reason = None, f"no answer to this request; Schwab sent: {json.dumps(e.response)}"[:600]
+                answer = await _request(self.stream, svc, cmd, chunk)   # Schwab's code, its message
+                code, reason = answer["code"], answer["msg"]
                 self.bus.publish(f"sub.{svc}", subscription_msg(
                     service=svc, command=cmd, symbols=chunk, code=code, reason=reason))
                 if code == 0:
@@ -455,6 +508,7 @@ class Daemon:
                 if time.time() - self.stream.last_frame_ts > DEAD_SEC:
                     raise ConnectionError(f"no frame from Schwab for {DEAD_SEC:.0f} s")
                 self.wanted_changed.clear()
+                self.new_session(session_label(now_et()))
                 await self.sync()
                 await self.read_for(SYNC_SEC)
         finally:
@@ -585,14 +639,17 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
         await asyncio.gather(*workers, return_exceptions=True)
 
 
-def recorded_universe(*db_paths: "Path | str") -> "list[str]":
-    """Every ticker with data stored in the databases `db_paths`, read-only: the distinct values
-    of every table's `ticker` or `symbol` column, each read through its index one value at a
-    time. Left out: an option contract's symbol (OSI form: a contract, not a ticker), an
-    instrument answer in which Schwab did not list the symbol (stream_instruments_raw.listed
-    0), and the `world_` tables (public datasets from other sources, not data recorded for a
-    ticker). A database that does not exist yet holds none."""
-    found: "set[str]" = set()
+def recorded_tickers(*db_paths: "Path | str") -> "tuple[list[str], list[str]]":
+    """(listed, unconfirmed), read-only from the databases `db_paths`. `listed`: every ticker
+    whose newest recorded instrument answer (stream_instruments_raw) lists it -- the universe at
+    start. `unconfirmed`: every other ticker with data stored -- the distinct values of every
+    table's `ticker` or `symbol` column, each read through its index one value at a time,
+    quarantine tables included (Records stand keeps them; their tickers pass the lookup like
+    every other) -- each to be looked up. Left out: an option contract's symbol (OSI form: a
+    contract, not a ticker) and the `world_` tables (public datasets from other sources, not
+    data recorded for a ticker). A database that does not exist yet holds none."""
+    stored: "set[str]" = set()
+    newest: "dict[str, int]" = {}
     for db in db_paths:
         if not Path(db).is_file():
             log.warning("universe: %s does not exist yet: no ticker stored there", db)
@@ -602,16 +659,20 @@ def recorded_universe(*db_paths: "Path | str") -> "list[str]":
             tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' "
                                                  "AND name NOT LIKE 'world\\_%' ESCAPE '\\'")]
             for table in tables:
-                listed = " AND listed = 1" if table == "stream_instruments_raw" else ""
+                if table == "stream_instruments_raw":
+                    newest.update(conn.execute("SELECT symbol, listed FROM stream_instruments_raw ORDER BY ts"))
+                    continue
                 for (col,) in conn.execute(f'SELECT name FROM pragma_table_info("{table}") '
                                            "WHERE name IN ('ticker', 'symbol')").fetchall():
-                    found.update(v for (v,) in conn.execute(
-                        f'WITH RECURSIVE s(v) AS (SELECT MIN("{col}") FROM "{table}" WHERE 1{listed} '
-                        f'UNION ALL SELECT (SELECT MIN("{col}") FROM "{table}" WHERE "{col}" > s.v{listed}) '
+                    stored.update(v for (v,) in conn.execute(
+                        f'WITH RECURSIVE s(v) AS (SELECT MIN("{col}") FROM "{table}" '
+                        f'UNION ALL SELECT (SELECT MIN("{col}") FROM "{table}" WHERE "{col}" > s.v) '
                         "FROM s WHERE s.v IS NOT NULL) SELECT v FROM s WHERE v IS NOT NULL"))
         finally:
             conn.close()
-    return sorted(t for t in found if isinstance(t, str) and t and not vendor_option_root(t))
+    listed = {t for t, yes in newest.items() if yes}
+    stored = {t for t in stored | set(newest) if isinstance(t, str) and t and not vendor_option_root(t)}
+    return sorted(listed), sorted(stored - listed)
 
 
 def instrument_answer(client, symbol: str, now: float) -> dict:
@@ -620,18 +681,30 @@ def instrument_answer(client, symbol: str, now: float) -> dict:
     instrument message: the HTTP status and body as sent, and whether Schwab lists `symbol`
     itself (an instrument whose `symbol` is exactly it, in the answer's `instruments`)."""
     resp = client.get_instruments(symbol, client.Instrument.Projection.SYMBOL_SEARCH)
-    body = json.loads(resp.text) if resp.status_code == 200 else None
+    body = None
+    if resp.status_code == 200:
+        try:
+            body = json.loads(resp.text)
+        except ValueError as e:                    # recorded as sent; it lists nothing
+            log.warning("universe: Schwab's instrument answer for %s is not JSON: %s", symbol, e)
     instruments = body.get("instruments") if isinstance(body, dict) else None
     listed = isinstance(instruments, list) and any(
         isinstance(i, dict) and i.get("symbol") == symbol for i in instruments)
     return instrument_msg(symbol=symbol, http_status=resp.status_code, body=resp.text, listed=listed, ts=now)
 
 
+#: what a lookup that got no answer from Schwab raises: the network (httpx), no client
+#: (one_schwab_client: ConnectionError), the token refused (authlib). Anything else is ours and
+#: ends run_joins with its traceback in the log.
+NO_ANSWER = (httpx.HTTPError, ConnectionError, AuthlibBaseError)
+
+
 async def run_joins(daemon: "Daemon", schwab_client, stop: asyncio.Event) -> None:
-    """The universe's joins: each ticker the console's list names that is not in the universe
-    (Daemon.set_wanted puts it), looked up with Schwab as it is put, on the daemon's one client
-    (`schwab_client()`), until stop. A lookup Schwab gave no answer to is logged, shown as the
-    ticker's reason, and tried again the next time the console's list names it."""
+    """The universe's joins: each ticker put to the lookup (Daemon.ask: a stored ticker no
+    recorded answer lists, at start and each session; a ticker the console's list names), looked
+    up with Schwab as it is put, on the daemon's one client (`schwab_client()`), until stop. A
+    lookup Schwab gave no answer to (NO_ANSWER) is logged, shown as the ticker's reason, and
+    tried again later (Daemon.answered)."""
     while not stop.is_set():
         took = asyncio.ensure_future(daemon.joins.get())
         stopped = asyncio.ensure_future(stop.wait())
@@ -643,7 +716,7 @@ async def run_joins(daemon: "Daemon", schwab_client, stop: asyncio.Event) -> Non
         ticker = took.result()
         try:
             daemon.answered(await asyncio.to_thread(instrument_answer, schwab_client(), ticker, time.time()))
-        except Exception as e:  # noqa: BLE001 -- no answer from Schwab: shown, and asked again later
+        except NO_ANSWER as e:
             log.warning("universe: no instrument answer for %s: %s: %s", ticker, type(e).__name__, e)
             daemon.not_joined[ticker] = (f"Schwab's instrument lookup did not answer for {ticker}: "
                                          f"{type(e).__name__}: {e}")
@@ -686,8 +759,10 @@ async def run() -> int:
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
-    daemon = Daemon(bus, health, universe=recorded_universe(db_path, writer.db_path))
-    log.info("universe: %d tickers with data stored", len(daemon.universe))
+    listed, unconfirmed = recorded_tickers(db_path, writer.db_path)
+    daemon = Daemon(bus, health, universe=listed, unconfirmed=unconfirmed)
+    log.info("universe: %d tickers Schwab listed; %d more with data stored, to look up",
+             len(listed), len(unconfirmed))
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop)),

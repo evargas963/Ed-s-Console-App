@@ -1,14 +1,32 @@
 {
- "source": "Schwab marketdata v1 GET /instruments, 2026-08-20 13:04:13 UTC, read-only (tools/schwab_field_inventory.py; raw files instruments_SPY_fundamental_20260820T130413Z.json and instruments_SPY_symbol_search_20260820T130413Z.json in the production checkout's schwab_field_inventory/instruments/raw). Each body is the file's text as the tool saved Schwab's JSON answer (re-serialized, 2-space indent): every key and value as sent.",
+ "source": "Schwab marketdata v1 GET /instruments, 2026-08-20 13:04:13 UTC, read-only, by the field inventory of that time (schwab_full_field_inventory.py, deleted in 2f23ff9a; its request per file is in git: `git show 2f23ff9a^:schwab_full_field_inventory.py`, lines 271-291). Raw files in the production checkout's schwab_field_inventory/instruments/raw. Each body is the file's text: Schwab's JSON answer as that tool saved it (re-serialized, 2-space indent), every key and value as sent.",
  "answers": {
-  "spy_listed": {
-   "projection": "fundamental",
+  "spy_fundamental": {
+   "request": {
+    "symbol": "SPY",
+    "projection": "fundamental"
+   },
    "http_status": 200,
+   "file": "instruments_SPY_fundamental_20260820T130413Z.json",
    "body": "{\n  \"instruments\": [\n    {\n      \"fundamental\": {\n        \"symbol\": \"SPY\",\n        \"high52\": 779.37,\n        \"low52\": 629.28,\n        \"dividendAmount\": 7.61406,\n        \"dividendYield\": 0.99213,\n        \"dividendDate\": \"2026-06-18 00:00:00.0\",\n        \"peRatio\": 7.47642,\n        \"pegRatio\": -0.23935,\n        \"pbRatio\": 0.99991,\n        \"prRatio\": 80.24665,\n        \"pcfRatio\": 0.0,\n        \"grossMarginTTM\": 100.0,\n        \"grossMarginMRQ\": 100.0,\n        \"netProfitMarginTTM\": 1269.2661,\n        \"netProfitMarginMRQ\": -277.0103,\n        \"operatingMarginTTM\": 1269.2661,\n        \"operatingMarginMRQ\": -277.0103,\n        \"returnOnEquity\": 16.8423,\n        \"returnOnAssets\": 13.11232,\n        \"returnOnInvestment\": 15.81568,\n        \"quickRatio\": 1.1517,\n        \"currentRatio\": 1.1517,\n        \"interestCoverage\": 0.0,\n        \"totalDebtToCapital\": 0.0,\n        \"ltDebtToEquity\": 0.0,\n        \"totalDebtToEquity\": 0.0,\n        \"epsTTM\": 102.86469,\n        \"epsChangePercentTTM\": -32.3704,\n        \"epsChangeYear\": 0.0,\n        \"epsChange\": 0.0,\n        \"revChangeYear\": 10.4892,\n        \"revChangeTTM\": 4.5641,\n        \"revChangeIn\": 0.0,\n        \"sharesOutstanding\": 1061782116.0,\n        \"marketCapFloat\": 0.0,\n        \"marketCap\": 814864684924.0,\n        \"bookValuePerShare\": 650.39667,\n        \"shortIntToFloat\": 0.0,\n        \"shortIntDayToCover\": 0.0,\n        \"divGrowthRate3Year\": 0.0,\n        \"dividendPayAmount\": 1.90352,\n        \"dividendPayDate\": \"2026-07-31 00:00:00.0\",\n        \"beta\": 1.0096,\n        \"vol1DayAvg\": 0.0,\n        \"vol10DayAvg\": 0.0,\n        \"vol3MonthAvg\": 0.0,\n        \"avg10DaysVolume\": 38114135,\n        \"avg1DayVolume\": 72533437,\n        \"avg3MonthVolume\": 51177610,\n        \"declarationDate\": \"2026-01-02 00:00:00.0\",\n        \"dividendFreq\": 4,\n        \"eps\": 99.72564,\n        \"dtnVolume\": 43920908,\n        \"nextDividendPayDate\": \"2026-11-02 00:00:00.0\",\n        \"nextDividendDate\": \"2026-09-18 00:00:00.0\",\n        \"fundLeverageFactor\": 100.0\n      },\n      \"cusip\": \"78462F103\",\n      \"symbol\": \"SPY\",\n      \"description\": \"State Street SPDR S&P 500 ETF Trust\",\n      \"exchange\": \"NYSE Arca\",\n      \"assetType\": \"ETF\"\n    }\n  ]\n}"
   },
-  "none_listed": {
-   "projection": "symbol-search",
+  "qqq_fundamental": {
+   "request": {
+    "symbol": "QQQ",
+    "projection": "fundamental"
+   },
    "http_status": 200,
+   "file": "instruments_QQQ_fundamental_20260820T130413Z.json",
+   "body": "{\n  \"instruments\": [\n    {\n      \"fundamental\": {\n        \"symbol\": \"QQQ\",\n        \"high52\": 748.65,\n        \"low52\": 555.6,\n        \"dividendAmount\": 3.25396,\n        \"dividendYield\": 0.45351,\n        \"dividendDate\": \"2026-06-22 00:00:00.0\",\n        \"peRatio\": 6.39034,\n        \"pegRatio\": -0.57744,\n        \"pbRatio\": 0.99988,\n        \"prRatio\": 158.25593,\n        \"pcfRatio\": 0.0,\n        \"grossMarginTTM\": 89.1269,\n        \"grossMarginMRQ\": 94.7691,\n        \"netProfitMarginTTM\": 2953.782,\n        \"netProfitMarginMRQ\": -1075.0419,\n        \"operatingMarginTTM\": 2953.782,\n        \"operatingMarginMRQ\": -1075.0419,\n        \"returnOnEquity\": 21.1562,\n        \"returnOnAssets\": 17.09848,\n        \"returnOnInvestment\": 18.5338,\n        \"quickRatio\": 2.00266,\n        \"currentRatio\": 2.00266,\n        \"interestCoverage\": 0.0,\n        \"totalDebtToCapital\": 0.0,\n        \"ltDebtToEquity\": 0.0,\n        \"totalDebtToEquity\": 0.0,\n        \"epsTTM\": 112.05662,\n        \"epsChangePercentTTM\": -11.2798,\n        \"epsChangeYear\": 0.0,\n        \"epsChange\": 0.0,\n        \"revChangeYear\": 7.1934,\n        \"revChangeTTM\": 7.1934,\n        \"revChangeIn\": 0.0,\n        \"sharesOutstanding\": 681400000.0,\n        \"marketCapFloat\": 0.0,\n        \"marketCap\": 488911314000.0,\n        \"bookValuePerShare\": 577.44117,\n        \"shortIntToFloat\": 0.0,\n        \"shortIntDayToCover\": 0.0,\n        \"divGrowthRate3Year\": 0.0,\n        \"dividendPayAmount\": 0.81349,\n        \"dividendPayDate\": \"2026-07-10 00:00:00.0\",\n        \"beta\": 1.23044,\n        \"vol1DayAvg\": 0.0,\n        \"vol10DayAvg\": 0.0,\n        \"vol3MonthAvg\": 0.0,\n        \"avg10DaysVolume\": 31308181,\n        \"avg1DayVolume\": 51742010,\n        \"avg3MonthVolume\": 42244427,\n        \"declarationDate\": \"2026-06-18 00:00:00.0\",\n        \"dividendFreq\": 4,\n        \"eps\": 112.05662,\n        \"dtnVolume\": 48997172,\n        \"nextDividendPayDate\": \"2026-10-12 00:00:00.0\",\n        \"nextDividendDate\": \"2026-09-22 00:00:00.0\",\n        \"fundLeverageFactor\": 100.0\n      },\n      \"cusip\": \"46090E103\",\n      \"symbol\": \"QQQ\",\n      \"description\": \"INVESCO QQQ TR\",\n      \"exchange\": \"NASDAQ\",\n      \"assetType\": \"ETF\"\n    }\n  ]\n}"
+  },
+  "symbol_search_spy_pattern": {
+   "request": {
+    "symbol": "SPY.*",
+    "projection": "symbol-search"
+   },
+   "http_status": 200,
+   "note": "the tool sent the pattern `SPY.*` (use_list False -> f'{sym}.*') to symbol-search, which takes symbols: no instrument is named `SPY.*`, and Schwab listed none",
+   "file": "instruments_SPY_symbol_search_20260820T130413Z.json",
    "body": "{}"
   }
  }

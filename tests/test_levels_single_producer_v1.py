@@ -277,3 +277,40 @@ def test_the_console_serves_while_the_levels_loop_waits_for_the_stored_bars():
         loop.join(5)
         forget_daemon_bars(_DAEMON_0929)
         _forget(*_PAIR)
+
+
+def test_a_ticker_that_joins_the_universe_has_its_levels_when_the_heartbeat_says_so():
+    """The daemon's heartbeat says SPY is in the universe, then that TSLA has joined: the
+    console's levels loop builds TSLA's price levels when that heartbeat arrives, not on its
+    STATUS_EVERY_SEC (60 s) tick. The real loop and bar writer on Schwab's SPY and TSLA bars of
+    2026-09-29/30 as the daemon recorded them."""
+    _forget(*_PAIR)
+    srv._bars_loaded.clear()
+    record_daemon_bars(_DAEMON_0929)
+    srv._terrain_loop_running = True
+    loop = threading.Thread(target=srv._terrain_loop, daemon=True)
+    writer = threading.Thread(target=srv._bar_writer, daemon=True)
+    published = lambda t: srv.canonical_price_level_snapshot(t, now_et()) is not None   # noqa: E731
+
+    def beat_until(universe: list, ticker: str, seconds: float) -> bool:
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "universe": universe})
+            if published(ticker):
+                return True
+            time.sleep(0.1)
+        return False
+    try:
+        loop.start()
+        writer.start()
+        assert beat_until(["SPY"], "SPY", 15), "SPY's levels"
+        assert not published("TSLA"), "TSLA is not in the universe yet"
+        assert beat_until(["SPY", "TSLA"], "TSLA", 5), "TSLA's levels when it joins, not a minute later"
+    finally:
+        srv.stop_terrain_loop()
+        if writer.is_alive():
+            srv.stop_bar_writer(writer)
+        loop.join(5)
+        lmp.record_feed_down()
+        forget_daemon_bars(_DAEMON_0929)
+        _forget(*_PAIR)

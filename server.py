@@ -1517,28 +1517,25 @@ def _status_line() -> str:
 
 
 def _terrain_loop() -> None:
-    """The universe's stored levels once the bar writer has loaded the stored bars and the
-    daemon has said what the universe is (queued behind the delivered chains:
-    _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged and the price
-    levels of a new session or a new ticker (one that joined the universe) are published. The
-    chains arrive from the daemon (_on_chain)."""
+    """Once the bar writer has loaded the stored bars: each universe ticker's stored crosses,
+    price levels and stored chain levels (queued behind the delivered chains:
+    _load_stored_levels), the moment a daemon heartbeat says it is in the universe (at the start
+    and when it joins: live_market_plane.universe_changed); every STATUS_EVERY_SEC the status
+    line is logged and the price levels of a new session are published. The chains arrive from
+    the daemon (_on_chain)."""
     while _terrain_loop_running and not _bars_loaded.wait(0.5):
         pass
-    universe = _universe()
-    while _terrain_loop_running and universe is None:
-        time.sleep(0.5)
-        universe = _universe()
-    if universe is None:                           # stopped before the daemon reported
-        return
-    _load_crosses(universe)
-    _publish_missing_price_levels(universe, now_et())
-    queued = _load_stored_levels(universe)
-    log.info("Ready: the stored levels of %d of %d universe tickers are queued to price (session: %s); "
-             "the daemon's chains price them from here.", queued, len(universe), session_label(now_et()))
+    loaded: "set[str]" = set()
     next_status = time.monotonic() + STATUS_EVERY_SEC
     while _terrain_loop_running:
-        time.sleep(1.0)
+        changed = lmp.universe_changed.wait(1.0)
         try:
+            if changed:
+                lmp.universe_changed.clear()
+                universe = _universe()
+                if universe is not None:
+                    _load_joined([tk for tk in universe if tk not in loaded])
+                    loaded.update(universe)
             if time.monotonic() >= next_status:
                 next_status = time.monotonic() + STATUS_EVERY_SEC
                 log.info(_status_line())
@@ -1548,6 +1545,18 @@ def _terrain_loop() -> None:
         except Exception as e:  # noqa: BLE001 -- the status line says it failed, never silence
             log.warning("levels loop: %s: %s", type(e).__name__, e)
     log.info("Terrain loop stopped")
+
+
+def _load_joined(tickers: "list[str]") -> None:
+    """Tickers new to the universe as the console knows it: their stored level crosses, their
+    price levels and their stored chain levels (queued to price)."""
+    if not tickers:
+        return
+    _load_crosses(tickers)
+    _publish_missing_price_levels(tickers, now_et())
+    queued = _load_stored_levels(tickers)
+    log.info("universe: %d tickers loaded (%d stored levels queued to price; session: %s)",
+             len(tickers), queued, session_label(now_et()))
 
 
 def _load_stored_levels(universe: "list[str]") -> int:

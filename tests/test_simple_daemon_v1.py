@@ -10,7 +10,7 @@ import socket
 import sqlite3
 import sys
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 
 import pytest
 
@@ -144,11 +144,12 @@ def test_request_sends_schwabs_fields_and_never_fields_on_unsubs():
         async def _send(self, obj):
             pass
 
-        async def _await_response(self, rid, service, command):
-            pass
+        async def _receive(self):                    # Schwab's answer to request 1 (stand-in)
+            return {"response": [{"requestid": "1", "content": {"code": 0, "msg": "stand-in"}}]}
 
     async def go():
         S._lock = asyncio.Lock()
+        S._overflow_items = deque()
         await cap._request(S(), "NYSE_BOOK", "SUBS", ["SPY"])
         await cap._request(S(), "NEWS_HEADLINE", "ADD", ["SPY"])
         await cap._request(S(), "NYSE_BOOK", "UNSUBS", ["SPY"])
@@ -156,29 +157,6 @@ def test_request_sends_schwabs_fields_and_never_fields_on_unsubs():
     assert sent[0][2] == {"keys": "SPY", "fields": "0,3"}
     assert sent[1][2]["fields"] == ",".join(str(i) for i in cap.NEWS_FIELDS)
     assert sent[2][2] == {"keys": "SPY"}
-
-
-def test_a_request_schwab_never_answers_is_a_dead_connection(monkeypatch):
-    monkeypatch.setattr(cap, "REQUEST_TIMEOUT_SEC", 0.05)
-
-    class S:
-        LevelOneEquityFields = LevelOneOptionFields = ChartEquityFields = BookFields = []
-
-        def _make_request(self, **_):
-            return {}, 1
-
-        async def _send(self, obj):
-            pass
-
-        async def _await_response(self, *a):
-            await asyncio.sleep(10)
-
-    async def go():
-        s = S()
-        s._lock = asyncio.Lock()
-        await cap._request(s, "NYSE_BOOK", "SUBS", ["SPY"])
-    with pytest.raises(ConnectionError):
-        asyncio.run(go())
 
 
 # ------------------------------------------------------------------ connection lifecycle

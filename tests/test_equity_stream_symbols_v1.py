@@ -4,7 +4,7 @@ The capture daemon has no built-in symbol list (operator 2026-09-23: universalit
 = streamed LAST_PRICE only (no REST fallback), a symbol nobody asked the daemon to stream
 would read UNAVAILABLE forever. The console sends every symbol its screens show (the active
 ticker, the header's context, the watchlist) in the wanted list, with no cap (operator
-2026-10-01); the daemon streams the board itself.
+2026-10-01); the daemon streams the universe itself.
 """
 from __future__ import annotations
 
@@ -20,18 +20,22 @@ def test_every_symbol_shown_is_asked_for_each_once():
         "TSLA", *ofs.MARKET_CONTEXT_SYMBOLS, "AAPL", "SPY"] + [f"Z{i:03d}" for i in range(400)]
 
 
-def test_the_board_is_the_daemons_list_never_copied_into_the_consoles(monkeypatch):
-    """2026-10-01 audit: the console copied the daemon's board into its own wanted list, so a
-    ticker taken off the table was still streamed after a daemon restart (the daemon reloads the
-    console's last list). The console holds the board's price rows, read from the daemon's
-    heartbeat: every equity the daemon streams (what it holds), and asks for none of them."""
+def test_the_universe_is_the_daemons_list_never_copied_into_the_consoles():
+    """The console never copies the daemon's universe into its own wanted list (2026-10-01: a
+    copy kept a ticker streamed after it left). The console holds the universe's price rows,
+    read from the daemon's heartbeat: every equity the daemon streams (what it holds), and asks
+    for none of them. No page is open on MU here."""
     import push_changes
-    monkeypatch.setattr(push_changes, "_open", [])
-    monkeypatch.setattr(ofs, "_watchlist", ["AAPL"])
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": ["MU", "AAPL"],
+    assert push_changes.on_screen() != "MU"
+    ofs.declare_watchlist(["AAPL"])
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "universe": ["MU", "AAPL"],
                                "held": {"LEVELONE_EQUITIES": ["MU", "AAPL", "$SPX"]}})
-    assert "MU" not in ofs.current_wanted()["LEVELONE_EQUITIES"]
-    assert ofs._rows_wanted() == ["$SPX", "AAPL", "MU"]
+    try:
+        assert "MU" not in ofs.current_wanted()["LEVELONE_EQUITIES"]
+        assert ofs._rows_wanted() == ["$SPX", "AAPL", "MU"]
+    finally:
+        ofs.declare_watchlist([])
+        lmp.record_feed_down()
 
 
 def test_the_watchlist_route_declares_the_browsers_watchlist(monkeypatch):

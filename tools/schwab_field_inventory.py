@@ -214,10 +214,10 @@ def main() -> int:
         print(state.message)
         return 1
     today = dt.date.today().isoformat()
-    from app.market_data.schwab.streaming.capture import recorded_universe
+    from app.market_data.schwab.streaming.capture import recorded_tickers
     from db_authority import canonical_console_db_path
-    roster = [t for t in recorded_universe(canonical_console_db_path(), canonical_stream_db_path())
-              if not t.startswith("$")]
+    listed, _unconfirmed = recorded_tickers(canonical_console_db_path(), canonical_stream_db_path())
+    roster = [t for t in listed if not t.startswith("$")]       # the daemon's universe at its start
     rest, endpoint_of, status = rest_rows(state.client, roster)
     stream_seen = captured_stream_paths(canonical_stream_db_path())
     documented = streaming_fields()

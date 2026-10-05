@@ -115,11 +115,11 @@ def _built():
     return Client("key", httpx.Client())
 
 
-def _sweep(tmp_path, board, at):
+def _sweep(tmp_path, universe, at):
     sqlite3.connect(tmp_path / "ed_console.db").close()          # the daemon's database exists
     published: list = []
     clock = {"now": _ts(at)}
-    sweep = cch.ChainSweep(tmp_path / "ed_console.db", board,
+    sweep = cch.ChainSweep(tmp_path / "ed_console.db", universe,
                            lambda topic, msg: published.append((topic, msg)), clock=lambda: clock["now"])
     return sweep, published, clock
 
