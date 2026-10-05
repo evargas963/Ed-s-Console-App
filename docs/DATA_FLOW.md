@@ -352,6 +352,202 @@ from Schwab to the screen (daemon, console, page), are these:
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 
+### 3.6 Canonical derived register
+
+Every value the screen shows is either a Schwab field passed through (the Schwab field list,
+`docs/schwab_fields.csv`) or a row of this register (`AGENTS.md` First gate). A row exists only
+where Schwab does not send the value, and the row cites that proof. The default is that Schwab sends
+what we need: a value whose proof is missing, or that Schwab is shown to send, is listed under
+**To be replaced** with the Schwab field that replaces it. Every use of our own clock is listed
+under **Clock uses**.
+
+Built at main 26ddc457 from the page code (`static/js`) back through each route to its producer, read
+for each row. Labels: **CONFIRMED** = command output or file:line read at 26ddc457 (the review's
+evidence notes E1–E11, given to the operator with the change that added this section);
+**HYPOTHESIS** = reasoned, not shown; **NOT_PROVEN** = neither. A formula reference marked *(ref.)*
+is named for the definition; its text was not re-read. Line numbers are as of 26ddc457.
+
+Proof keys: **G31/G32** Streamer Guide §3.1/§3.2 LEVELONE field tables; **G41** §4.1 book fields;
+**G51** §5.1 CHART_EQUITY (one-minute, no frequency parameter); **G33F** §3.3 futures Mark
+definition; **G13** §1.3 response types and §2.2 login `timestamp`; **CSV-0(x)** =
+`docs/schwab_fields.csv` has 0 field paths matching x and the Guide has 0 hits (E1); **PH** =
+pricehistory sends only OHLCV candles (CSV 3787–3797); **CH** = chain per-contract fields (CSV
+273–331, 344–402); **PY** = schwab-py 1.5.1 (installed in the project `.venv`, schwab/client/base.py) line numbers.
+
+#### 3.6.1 Registered derived values (Schwab does not send them)
+
+Gamma and options positioning — one producer: `server.py:1220` `_publish_levels` →
+`terrain_engine.py:714` `compute_terrain` on the chain the daemon delivers (inputs: Schwab
+`gamma`, `delta`, `openInterest`, `multiplier`, `volatility`, `totalVolume` per contract, CH).
+
+| # | Value (screen label) | Producer (file:line) | Definition and source | Proof Schwab does not send it | Status |
+|---|---|---|---|---|---|
+| R01 | Net GEX $ per 1% by strike (heatmap GEX cell, GEX by Strike bar, Strike Detail "GEX $" net row, Chart GEX profile) | `math_exposure_core.py:138-276` `compute_exposures_by_strike` (:242, :274) | Σ gamma·OI·multiplier·S²·0.01, +call −put (dealers long calls, short puts) — SqueezeMetrics GEX convention *(ref.)* | CSV-0(gex\|exposure); G32 sends per-contract GAMMA (29) only | CONFIRMED |
+| R02 | Net GEX at spot (Key Levels "Net GEX / 1%", Options card hero, Right Now "Net GEX @ spot") | `math_exposure_core.py:35-40` `book_net_gex` (via `terrain_engine.py:788`) | Σ of R01 over every strike | as R01 | CONFIRMED; second producer, see 3.6.3 D1 |
+| R03 | DEX $ by strike (heatmap DEX, Chart DEX profile) | `math_exposure_core.py:240, 273` | Σ delta·OI·multiplier·S, +call −put | CSV-0(exposure); G32 DELTA (28) per contract only | CONFIRMED |
+| R04 | Net dealer vanna by strike (Options > Vanna) | `math_exposure_core.py:243-254` → `math_levels.py:83-106` `bs_vanna`; rows `server.py:1328` | Black-Scholes vanna −e^(−qT)φ(d1)d2/σ ×0.01×OI×mult (Haug *(ref.)*), r = q = 0 | CSV-0(vanna); G32 fields 28–32 are delta, gamma, theta, vega, rho | CONFIRMED (inputs: see T07) |
+| R05 | Net dealer charm by strike (Options > Charm); Call / Put charm wall (Levels) | `math_levels.py:109-133` `bs_charm`, `:136-164` `compute_charm_by_strike`, `:167-179` walls (called `terrain_engine.py:812-813`) | calendar-time dDelta/dt (Haug *(ref.)*), r = 0, ×OI×mult/365; walls = strike of max \|call\| / \|put\| charm | CSV-0(charm); G32 has no charm | CONFIRMED (inputs T07; second producer D2) |
+| R06 | Call wall / Put wall | `math_exposure_core.py:743-752` `pick_gamma_wall_strikes` | strike of max \|call GEX $\| / \|put GEX $\| — SpotGamma call/put wall *(ref.)* | CSV-0(gex), CSV-0(flip) | CONFIRMED |
+| R07 | Absolute gamma strike "Abs Γ" (+ strength %) | `math_exposure_core.py:629-675` `pick_pin_and_strength` | strike of max \|call GEX$\|+\|put GEX$\|; strength = lead over runner-up — SpotGamma Absolute Gamma *(ref.)* | as R06 | CONFIRMED |
+| R08 | Net Γ peak | `math_exposure_core.py:678-689` | strike of max \|net GEX$\| | as R06 | CONFIRMED |
+| R09 | Key Δ strike; call / put delta walls (zone tags) | `math_exposure_core.py:692-711`, `:755-764` | strike of max \|call DEX$\|+\|put DEX$\|; max \|call\| / \|put\| DEX$ | CSV-0(exposure) | CONFIRMED |
+| R10 | HVP / LVP | `math_exposure_core.py:714-740` | strike of most negative / most positive net GEX$ | as R06 | CONFIRMED |
+| R11 | Gamma flip (Key Levels, chart line, Levels row, Options card) | `math_levels.py:286-315` `gamma_flip_from_profile` via `:624-700` `compute_gamma_flip_v2` | nearest-to-spot zero crossing of the net-GEX profile N(s), linear interpolation | CSV-0(flip) | CONFIRMED that the crossing is not sent; its input profile is T06 (proof missing) |
+| R12 | GSF / GRC | `math_levels.py:350-443` `compute_gamma_support_levels` | highest s<spot / lowest s>spot with N(s) ≤ 0.5·N(spot) on the same profile | CSV-0(flip\|gex) | CONFIRMED not sent; definition is in-house (no external standard, docstring says so); input T06 |
+| R13 | Pin candidate | `terrain_engine.py:641-711` `qualify_pin_candidate` | R07 strike only if long gamma at spot, within 0.5% of spot, front DTE ≤ 1, pin score above negligible | CSV-0(gex) | CONFIRMED; thresholds in-house |
+| R14 | Max pain (Levels, Options card, Right Now "(nDTE)") | `math_levels.py:713-764` `compute_max_pain` on the front-expiry book (`terrain_engine.py:804-808`) | settlement strike minimising Σ ITM payout to holders over the listed strikes *(ref.: common max-pain definition)* | CSV-0(max pain) | CONFIRMED |
+| R15 | Dealer regime, posture, confidence, headline / lines | `terrain_read.py:86-102, 139-256` `build_terrain_read`; flip coverage verdict `math_levels.py:624-700` | regime = sign of R02; posture by regime; confidence by chain span around spot | CSV-0(regime) | CONFIRMED; in-house labels |
+| R16 | Wall state / lean (BREACHED, DEALERS SELL/BUY, TWO-SIDED), flip relation ABOVE/BELOW ("GAMMA" cell), "Box" distances to walls | `terrain_engine.py:594-627`, `:881-883` | comparisons of R06/R11 with the publication's spot | CSV-0(flip), CSV-0(wall), CSV-0(distance); built from R06, R11 | CONFIRMED; uses the publication's spot (D8) |
+| R17 | Put/Call OI ratio (all, per expiry, Options card spark) | `math_exposure_core.py:475-482` | Σ put OI / Σ call OI of the book | CSV-0(pcr); SCREENER_OPTION (§6.1) is market-wide, not per underlying | CONFIRMED |
+| R18 | Put/Call volume ratio | `math_exposure_core.py:485-494` | Σ put volume / Σ call volume — Cboe convention (URL in code) | as R17 | CONFIRMED |
+| R19 | ATM IV % (Volatility card) and ATM IV by expiry spark | `terrain_engine.py:469-496` `atm_sigma_by_expiry` | mean of the call and put Schwab `volatility` at the strikes nearest spot, per expiry | CH sends per-contract `volatility` only; top-level `chains.volatility` (CSV 431) = 29.0 on SPY and QQQ = the analytical input default, not ATM IV (E5) | CONFIRMED |
+| R20 | Implied 1-day move ±points; ±1σ move lines | `terrain_engine.py:499-541`; lines `server.py:3007-3008` (live spot ± points) | S·σ_ATM·√(1/252), first expiry ≥ 1 day — SpotGamma implied move *(ref.)* | no expected-move field (E1: CSV has none) | CONFIRMED |
+| R21 | Session option volume per strike; heatmap OI and Volume cell totals | `math_exposure_core.py:443-459`; cells `server.py:2105-2108` `_legs` | call + put of Schwab `totalVolume` / `openInterest` at a strike | CH sends per contract only | CONFIRMED |
+| R22 | Positioning migration: GEX change vs prior session, ghost bars, drift UP/DOWN/FLAT, grew/shrank, busiest vs walls, scope volume | `terrain_engine.py:289-331` `positioning_migration`; prior rows `server.py:1603-1645` `_prior_strikes` | today's vs the prior capture's R01 rows; drift = GEX-weighted strike move > 0.15 strikes | CSV-0(migration); built from R01 | CONFIRMED; 0.15 origin NOT_PROVEN (code says so) |
+| R23 | Trade Desk forces: GEX below/above; ΔOI, DEX, charm below/above | `server.py:1714-1745` `_side_sums`; `server.py:1987-2060` `_forces_from_captures` | sums of R01 / R03 / R05 / OI change by strike side of spot | built from R01, R03, R05; CSV sends `openInterest` only (CSV 306, 377), CSV-0(open interest change) | CONFIRMED; two bases on one card (D9) |
+
+Price levels from bars — one producer: `liquidity_value_engine.py:868` `build_price_level_snapshot`
+(materialized `:1017`), served by `server.py:2983` `levels_payload` and `:3195` `liquidity_snapshot`.
+Inputs: Schwab CHART_EQUITY one-minute bars as the daemon recorded them (G51).
+
+| # | Value (screen label) | Producer (file:line) | Definition and source | Proof Schwab does not send it | Status |
+|---|---|---|---|---|---|
+| R25 | VWAP, ±1σ, ±2σ bands, VWAP curve | `liquidity_value_engine.py:242-272` | Σ(tp·v)/Σv, tp = (H+L+C)/3 of RTH one-minute bars; σ² = Σtp²v/Σv − VWAP² *(ref.: standard VWAP; bar-typical-price approximation of the trade VWAP)* | CSV-0(vwap); G31/G51 no VWAP; schwab-py grep 0 (E1) | CONFIRMED not sent; size of the approximation vs a trade VWAP NOT_PROVEN |
+| R26 | Today POC / VAH / VAL est.; volume profile bins (Market Map) | `liquidity_value_engine.py:289-302` → `liquidity_models.py:55-129` | each bar's volume spread evenly over its range, 0.01 bins; POC = max bin; 70% value area — CBOT Market Profile *(ref.)* | CSV-0(poc\|value area\|volume profile); G41 is resting size, not traded volume | CONFIRMED |
+| R27 | PD POC / VAH / VAL est. | `liquidity_value_engine.py:151-169` (`:163`) | R26 on the prior session's RTH bars | as R26 | CONFIRMED |
+| R28 | Opening range mid (ORM) | `liquidity_value_engine.py:209-235` | (ORH + ORL)/2 | CSV-0(opening range) | CONFIRMED (ORH/ORL themselves: T03) |
+| R29 | Overnight high / low (ONH/ONL) | `liquidity_value_engine.py:172-201` | max high / min low of bars from the prior RTH close to this RTH open | CSV-0(overnight); G31 HIGH/LOW (10/11) are regular-session only | CONFIRMED |
+| R30 | Liquidity zones (low/high, label, side, confluence ×N, tradeable score) | `liquidity_value_engine.py:305-362, 547-757`; `server.py:3135-3170` | levels within 0.2% merged, width ≤ 2.0; confluence = tag count; score in-house | CSV-0(zone); built from R25–R29 | CONFIRMED; in-house |
+| R31 | Distance / side of each level to spot; Right Now "nearest level"; spot location among zones | `server.py:3020-3031`; `server.py:3172-3185` `_spot_location` | level − LAST_PRICE; ordering by \|distance\| | CSV-0(distance); built from R25–R30 | CONFIRMED |
+| R32 | Value state, VWAP relation, auction read (Cross-Domain VALUE / VWAP) | `liquidity_value_engine.py:462-489` | POC vs prior POC ±0.2%; VWAP vs POC ±0.1% | built from R25–R27 (CSV-0(poc\|value area\|vwap)) | CONFIRMED; in-house thresholds |
+| R33 | Bar change (Order Flow card volume bars green/red) | `live_price_rows.py:27-33` `with_change` | close − open of the bar, and % of open | G51 has no change field | CONFIRMED |
+| R34 | 3- and 60-minute candles | `server.py:1806-1860` `aggregate_bars` | first open, max high, min low, last close, Σ volume of one-minute bars | PY `Frequency` has 1/5/10/15/30 minute and daily only (base.py:721-732); G51 one-minute only | CONFIRMED |
+| R35 | ATR daily / ATR 15m (Volatility card) | `math_volatility.py:122-169` `compute_atr` ← `terrain_atr.py:71-77` | mean of the last 14 true ranges (SMA). **Wilder's ATR uses Wilder smoothing** *(ref.: Wilder 1978)* — the definition differs | CSV-0(atr); schwab-py grep 0 | CONFIRMED not sent; definition HYPOTHESIS-wrong vs Wilder; inputs T05 |
+
+Order flow and books — producer `app/options/order_flow/engine.py:428` `compute_book_microstructure`
+(equity route `server.py:2455`, option route `live_payload.py:45`).
+
+| # | Value (screen label) | Producer (file:line) | Definition and source | Proof Schwab does not send it | Status |
+|---|---|---|---|---|---|
+| R36 | Equity Book/DOM "mid" | `engine.py:349` (top of book = LEVELONE_EQUITIES BID/ASK, `server.py:2483-2484`) | (bid + ask)/2 | CSV-0(mid); G31 MARK (33) is not the mid: equal in 26% of 153,510 states, = LAST when inside the spread (E4) | CONFIRMED |
+| R37 | Microprice | `engine.py:262-274` | (bid·ask_size + ask·bid_size)/(bid_size + ask_size) — size-weighted mid *(ref.: Stoikov's micro-price is a different estimator; label HYPOTHESIS-misnamed)* | CSV-0(microprice) | CONFIRMED |
+| R38 | Spread (pts) | `engine.py:351` | ask − bid | CSV-0(spread) (Guide "spread" hits are inside the futures Mark rule) | CONFIRMED |
+| R39 | Depth 1/3/5 bid/ask totals, imbalance, heavier side (BID HEAVY / OFFER HEAVY), cumulative depth curve | `engine.py:126-142, 277-284, 366-375` | Σ level sizes of the best N; (bid−ask)/(bid+ask); running Σ | G41 sends per-level aggregate size only; CSV-0(imbalance) | CONFIRMED |
+| R40 | Book wall candidates (×median) | `engine.py:314-335` | level size ≥ 3× median of the best 5 | CSV-0(wall); G41 sends per-level aggregate size only | CONFIRMED; in-house heuristic |
+| R41 | Top-book pressure | `engine.py:158-167` | (BID_SIZE − ASK_SIZE)/(BID_SIZE + ASK_SIZE) | CSV-0(imbalance) | CONFIRMED |
+| R42 | Options tape "Premium" | `app/options/order_flow/history.py:79-80` | LAST_PRICE × LAST_SIZE × MULTIPLIER | CSV-0(premium) (the one CSV hit is an account-transaction field) | CONFIRMED |
+| R43 | Book heatmap grid (last size per price per time bucket, dominant side, display window, colour max) | `history.py:196-256` `book_heatmap_for_ticker` | 90 time buckets over the window; last observed size; 1% tail trimmed | G41 sends snapshots, not a time grid | CONFIRMED (time axis is K16) |
+| R44 | Level crosses, Attention-queue items, cross counts | `db.py:288-354` `detect_and_log_level_crosses` via `server.py:1314-1325`; `server.py:2348-2410` | a level between the previous publication's spot and this one's | CSV-0(cross); built from the levels | CONFIRMED (time is K14) |
+
+System state shown on screen (not market values; Schwab sends no such field — G13 gives only
+response codes and heartbeats):
+
+| # | Value | Producer | Definition | Status |
+|---|---|---|---|---|
+| R45 | Feed LIVE / FEED DOWN / outage reason (header, pills) | `live_market_plane.py:229-254` `feed_live_for`, `outage`; row `live_price_rows.py:43-89` | daemon heartbeat < 3 s, Schwab socket open, symbol held; session from T10 | CONFIRMED; duplicates D6 |
+| R46 | Levels freshness (STALE + age + reason; GAMMA pill; GEX-by-Strike badge; Levels "As-of" ages) | `server.py:794-847` `terrain_staleness`; `server.py:2995-3001` | age of the chain fetch; stale past max(180 s, 2 daemon rounds) | CONFIRMED (clock K18) |
+| R47 | Heatmap coverage chip, cell streaming state, Flow subscription and feed health | `server.py:948-1069`; `app/options/order_flow/streaming.py:681-783` | our subscriptions vs Schwab's acknowledgements | CONFIRMED |
+| R48 | Book LIVE/STALE badge, book age, quote age | `engine.py:461-468` | now − BOOK_TIME, now − QUOTE_TIME | CONFIRMED (clock K23) |
+| R49 | Display symbol (SPX for $SPX) | `instrument_identity.py:45-48` | Schwab key without "$" | CONFIRMED (formatting) |
+
+#### 3.6.2 To be replaced (Schwab sends it, or the proof is missing)
+
+| # | Value (screen label) | Computed today at | Schwab field that replaces it (cited) | Status |
+|---|---|---|---|---|
+| T01 | PDH / PDL (Levels, Liquidity Map, Market Map, zones) | `liquidity_value_engine.py:165-166` (max/min of prior RTH one-minute bars) | `pricehistory` daily candle `high`/`low` (PH; PY base.py:930 `get_price_history_every_day`). Schwab's daily high/low = RTH high/low of its one-minute candles, 30/30 and 29/30 SPY sessions (E3) | CONFIRMED sent (SPY); other tickers NOT_PROVEN |
+| T02 | PDC | `liquidity_value_engine.py:167` (last RTH one-minute close) | LEVELONE_EQUITIES CLOSE_PRICE (G31 field 12 "Previous day's closing price"), or the daily candle `close`. The console value differs from Schwab's daily close on 28 of 30 SPY sessions (E3) | CONFIRMED |
+| T03 | Opening range high / low (ORH/ORL) | `liquidity_value_engine.py:209-235` (first 15 RTH minutes) | `pricehistory` frequencyType=minute, frequency=15, the 09:30 candle's high/low (PY base.py:726). 5/10/30-minute OHLC = roll-up of Schwab's one-minute OHLC in 8769/8770, 4391/4392, 1464/1465 buckets (E3) | 15-minute on the wire NOT_PROVEN (not captured) |
+| T04 | Chart candles 5 / 15 / 30 minute and daily (every chart: Options Chart, Liquidity Map, Market Map) | `server.py:1806-1860` `aggregate_bars` (daily = ET date incl. extended hours) | `pricehistory` minute 5/15/30 and daily candles (PH; E2). Today's daily candle: G31 OPEN_PRICE 17, HIGH 10, LOW 11, LAST 3, TOTAL_VOLUME 8. Volumes differ from the roll-up in 2–18% of buckets (E3) | CONFIRMED sent (5/30/daily captured; 15 NOT_PROVEN) |
+| T05 | ATR inputs (daily and 15-minute OHLC) | `terrain_atr.py:40-52` `_aggregate` (a second roll-up) | `pricehistory` daily and 15-minute candles (as T04) | CONFIRMED sent (daily); 15 NOT_PROVEN |
+| T06 | Net-GEX profile at hypothetical prices (input to R11 flip, R12 GSF/GRC, the curve-at-spot check) | `math_levels.py:234-283` (Black-Scholes gamma, each contract's own IV, r = q = 0) | Candidate: chain `strategy=ANALYTICAL` with `underlyingPrice` (+ `volatility`, `interestRate`, `daysToExpiration`) — PY base.py:515-517, 576-579, 604-611, 650-657. Whether Schwab returns per-contract gamma at that price, and with which IV, is untested | **proof missing** (NOT_PROVEN either way) |
+| T07 | Rate and dividend inputs of vanna, charm and the profile (r = q = 0) | `math_levels.py:83-133`, `:259-283` | `chains.interestRate` (CSV 336) and `chains.dividendYield` (CSV 333): SPY 3.697 / 0.99, QQQ 3.697 / 0.454 on 2026-08-20 (E5); no producer reads them | CONFIRMED sent, unused |
+| T08 | Options > Flow "Mid" | `engine.py:349` | LEVELONE_OPTIONS MARK (G32 field 37) = (bid+ask)/2 in 70,571 of 70,571 states (E4) | CONFIRMED |
+| T09 | Options > Chain ITM shading | `terrain_engine.py:394-395` (strike vs live LAST_PRICE) | chain `inTheMoney` (CSV 292, 363) — equals strike vs chain `underlyingPrice` in 3,952/3,952 contracts (E5); live: LEVELONE_OPTIONS MONEY_INTRINSIC_VALUE > 0 (G32 field 11) | CONFIRMED |
+| T10 | Session label (header) and every session window behind it (outage, closed_since, staleness, desk window, levels session, liquidity cutoff, time-to-expiry close) | `time_et.py:59-147` hand calendar 2025–2028, `EXTENDED_START_MINS = 240` | REST `market_hours` `isOpen`, `sessionHours.preMarket/regularMarket/postMarket` (CSV 508–3709; PY base.py:1050-1055, per date up to a year ahead) and SECURITY_STATUS (G31 32). Schwab opens pre-market at **07:00** ET, not 04:00; index options trade to **16:15** (E7) | CONFIRMED sent and disagreeing; holidays/early closes NOT_PROVEN (not captured) |
+| T11 | Expired / front expiry (heatmap EXPIRED columns, dropped expiries, default contract cutoff) | `server.py:2190-2200`, `schwab_client.py:563-566`, `app/options/contracts/default.py:14-20` | Candidates: `daysToExpiration` (CSV 280, 351, 435), `lastTradingDay` (CSV 296), `market_hours.date/isOpen`. Whether Schwab marks an expired expiry it still lists was not captured | **proof missing** |
+| T12 | Counts and pointers: contracts / strikes used, chain strike count, duplicate flag, spot strike (nearest listed), largest \|value\| row | `terrain_engine.py:891-892, 334-340`; `server.py:2699-2712, 1648-1653` | the contract count: `chains.numberOfContracts` (CSV 341); for the rest no proof either way was taken | **proof missing** (contract count: Schwab sends it) |
+
+#### 3.6.3 Values with two producers (keep / delete)
+
+| # | Value | Keep | Delete | Status |
+|---|---|---|---|---|
+| D1 | Gamma at spot | `book_net_gex` (Schwab gamma as sent, `math_exposure_core.py:35`) | `curve_gamma_at_spot` (`math_levels.py:691-692`) and the regime/headline check built on it (`terrain_engine.py:787-793`, `terrain_read.FLIP_CURVE_DISAGREES`) once T06 is settled | CONFIRMED two producers |
+| D2 | Charm below/above vs Charm by strike | `compute_charm_by_strike` in `compute_terrain` (`terrain_engine.py:812`) | its second call on the stored capture `server.py:2022` | CONFIRMED |
+| D3 | One-minute roll-ups | none for 5/15/30/D (T04); `aggregate_bars` for 3/60 only | `terrain_atr._aggregate` (`terrain_atr.py:40-52`) | CONFIRMED |
+| D4 | Prior day high/low/close | Schwab daily candle; CLOSE_PRICE | `liquidity_value_engine.py:165-167` | CONFIRMED |
+| D5 | Option mid | LEVELONE_OPTIONS MARK | `engine.py:349` for option contracts (the equity mid stays, R36) | CONFIRMED |
+| D6 | Feed liveness | `live_market_plane.feed_live_for` | the daemon's own verdict in `live_ui` beat (`ACTIVE_PROGRAM.md` ONE-03, not re-read) | HYPOTHESIS for the daemon side; the page's `PRICE_SILENCE_MS` (`ed-core.js:845`) judges its own socket, a fact no server can send (KJ2) |
+| D7 | Spot on routes | the daemon's `price_row` (`live_price_rows.py:43`) | `server.resolve_spot` re-applying `lmp.outage` (`server.py:266-280`) | CONFIRMED |
+| D8 | Spot in Right Now | live LAST_PRICE | "Box" distances at the publication's spot (`terrain_engine.py:881-882`) beside "Location" at the live spot (`server.py:3209, 3261`) | CONFIRMED |
+| D9 | Trade Desk Options card sides | one chain basis | GEX below/above on the live chain (`server.py:1714`) beside ΔOI/DEX/charm on the newest stored capture (`server.py:1987`) | CONFIRMED |
+
+#### 3.6.4 Shown in breach of a recorded decision (delete, do not register)
+
+| # | Value | Producer | Why | Status |
+|---|---|---|---|---|
+| B1 | Tape pressure 30s/2m/5m, Cum Δ (proxy), Cum Δ slope (Options > Flow) | `l1_trade_observation.py:109-212`, `engine.py:477-498`, `live_payload.py:28-42`; page `ed-gamma-flow.js:124-132` | tick-rule trade side; §6 decision 9 bans inferred side; Schwab sends no aggressor field (G31/G32) | CONFIRMED |
+| B2 | Options tape "vs Market" | `history.py:82-89` | quote-rule side, same decision | CONFIRMED |
+
+#### 3.6.5 Values the page computes (`AGENTS.md` rule 4)
+
+| # | Page site | What it computes | Fix | Status |
+|---|---|---|---|---|
+| PC1 | `ed-trade-desk-map.js:504` | LEVELS age = browser now − `snapshot_as_of_ts_utc` | serve the age (the route already computes `age_sec`, `server.py:2995-2998`) | CONFIRMED |
+| PC2 | `ed-core.js:896-903` | header clock and date from the browser clock | see KJ1 | CONFIRMED |
+| PC3 | `ed-trade-desk-map.js:65` | whether an event is "today" against the browser date | serve the CT label (`time_et.ct_label`) | CONFIRMED |
+| PC4 | `ed-trade-desk-map.js:387` | imbalance × 100 | serve the percent | CONFIRMED |
+| PC5 | `ed-order-flow.js:62-66` | DOM bar scale: max of served sizes | serve the scale (as heatmap `max_abs`) | CONFIRMED |
+| PC6 | `ed-gamma-panels.js:431-436` | Structures "Last Trading Day" printed as the UTC date: shows 2026-10-03 for a contract whose last trading day is 2026-10-02 | format on the server in CT | CONFIRMED defect (E8) |
+| PC7 | `ed-gamma-panels.js:321-337` | picks the call/put and net GEX row by \|strike − selected\| < 0.01 | serve the selected strike's row | CONFIRMED |
+
+#### 3.6.6 Clock uses
+
+Verdicts: **Schwab time** = Schwab sends the time; use it. **market_hours** = the session comes from
+Schwab's calendar (T10). **Need now** = the value is an age, a liveness test, a timer or a record of
+our own receipt; Schwab cannot send it (Schwab sends frame timestamps and heartbeats, G13, but not
+"now" on our machine). Every site is mapped in E10 (87 sites).
+
+| # | Site | Time it represents | Does Schwab send it? | Verdict | Status |
+|---|---|---|---|---|---|
+| K01 | `time_et.py:26-28` `now_et` | the ET wall clock for entry points | no | Need now (entry points only) | CONFIRMED |
+| K03 | `time_et.py:218`; `terrain_engine.py:746`; `math_exposure_core.py:170` | valuation instant for every Black-Scholes T (profile, vanna, charm) | chain `quoteTimeInLong` per contract (CSV 318, 389); G32 QUOTE_TIME 38 | Schwab time (the chain's quote time), close time from T10 | HYPOTHESIS |
+| K04 | `terrain_engine.py:911` `computed_ts_utc=_time.time()` | when the terrain was computed | n/a | delete: overwritten by `server.py:1267` | CONFIRMED |
+| K05 | `server.py:273`, `:878`, `live_payload.py:51`, `live_market_plane.py:251` `outage(now)` | is the feed delivering now; which session | session: `market_hours` | Need now (liveness) + market_hours (session) | CONFIRMED |
+| K06 | `live_price_rows.py:48, 36-40, 85` | trade age = now − TRADE_TIME ("LAST · Ns") | TRADE_TIME (G31 35) is sent and shown | Need now (an age) | CONFIRMED |
+| K07 | `live_market_plane.py:224` | age of the daemon's heartbeat (console clock vs daemon-stamped `ts`) | no | Need now (our daemon's liveness) | CONFIRMED |
+| K08 | `capture.py:220, 225, 318, 382-383, 403, 416, 424, 498` | last Schwab frame received; dead-socket watchdog; reconnect backoff; status stamp | frame `timestamp` (G13) is Schwab's send time, not our receipt | Need now (connection supervision) | CONFIRMED |
+| K09 | `stream_spine.py:107, 321` | receipt time `ts_recv` on every message | `schwab_ts` (frame time) is stored beside it | Need now as a receipt record only; never shown as market time (K15, K16) | CONFIRMED |
+| K10 | `live_ui.py:108,112`; `schwab_client.py:136, 338-339, 488, 493, 605-629`; `server.py:852, 1478, 1521-1526, 1576, 1580, 2810`; `stream_spine.py:454-469`; `wait_for_ready_then_open.py:49-50` | timers, latencies, caches, log de-duplication, sequence seed, process identity | no | Need now (operational, not a market value) | CONFIRMED |
+| K11 | `schwab_client.py:223`; `server.py:772` | Schwab token age | no | Need now (credential age) | CONFIRMED |
+| K12 | `schwab_client.py:563`; `contracts/default.py:17`; `server.py:2194` | which expiries are expired / still trading today | `daysToExpiration`, `lastTradingDay`, `market_hours` (T11) | proof missing | NOT_PROVEN |
+| K13 | `server.py:451` (→ `market_session_date(now)` `server.py:2931`) | the session the price levels belong to | CHART_TIME / CHART_DAY of the newest bar (G51 fields 7, 8) | Schwab time | HYPOTHESIS |
+| K14 | `server.py:1317-1320` | when a level was crossed | TRADE_TIME of the LAST_PRICE that crossed (G31 35; already carried as `spot_as_of_ts_utc`) | Schwab time | CONFIRMED |
+| K15 | `history.py:91` → `ed-gamma-panels.js:498-502` | options tape "Time" (our receipt) | TRADE_TIME (G32 39), already read as `p["time_millis"]` (`history.py:46`) | Schwab time | CONFIRMED |
+| K16 | `history.py:166, 219-220` | book heatmap time axis (our receipt) | BOOK_TIME (G41 field 1 "Market Snapshot Time") | Schwab time | CONFIRMED |
+| K17 | `server.py:1259, 2687` → `math_exposure_core.py:353-396` | which of chain vs streamed OI/greeks is newer (receipt times) | chain `quoteTimeInLong`/`tradeTimeInLong` (CSV 318, 329); G32 QUOTE_TIME 38 / TRADE_TIME 39 — the docstring's "neither source carries a Schwab time" is contradicted | Schwab time | CONFIRMED that Schwab sends times; that they date OI/greeks HYPOTHESIS |
+| K18 | `server.py:811-813, 1704, 2980` (`levels_payload` age_sec) | age of the levels / chain | the chain's own `quoteTimeInLong` (CSV 318); today measured from the daemon's receipt | Need now (an age); its as-of should be Schwab's time | CONFIRMED |
+| K19 | `server.py:999`; `streaming.py:579, 703` | subscription demand stamps, stream ages | no | Need now (system) | CONFIRMED |
+| K20 | `server.py:2359` `_desk_window_start` | start of "last N min" / "this session" event window | session open: `market_hours` | Need now (relative window) + market_hours | CONFIRMED |
+| K21 | `server.py:1494, 1517, 1520, 1530, 2267, 2434, 2440` | session label pushed / used | `market_hours` | market_hours | CONFIRMED |
+| K22 | `server.py:3192` → `liquidity_value_engine.py:565-567` | pre-market branch and "cutoff" of the liquidity snapshot | `market_hours`; newest bar CHART_TIME | market_hours | CONFIRMED |
+| K23 | `server.py:2478, 2520` → `engine.py:461-468` | book age = now − BOOK_TIME, quote age = now − QUOTE_TIME | BOOK_TIME, QUOTE_TIME are sent and used | Need now (an age) | CONFIRMED |
+| K24 | `liquidity_value_engine.py:887` | when the level snapshot was produced (record; as-of is the newest bar) | no | Need now (record) | CONFIRMED |
+| K25 | `calibration/complete_chain_capture.py:103` | when a chain capture was stored | per-contract `quoteTimeInLong` exists | Need now (record); its market day should come from Schwab's time | HYPOTHESIS |
+| K26 | `server.py:1290` `stream_overlay_computed_ts_utc` | stamp nobody reads (`grep` in static: 0) | n/a | delete | CONFIRMED |
+| K27 | `server.py:2733` `/api/health` `time` | route with no page caller | n/a | delete with the route | CONFIRMED (route callers per the 2026-10-04 simplification audit) |
+| KJ1 | `ed-core.js:897` | header clock and date | no ("now" itself) | Need now; serve it (rule 4) | CONFIRMED need; serving it is HYPOTHESIS design |
+| KJ2 | `ed-core.js:797, 845` `PRICE_SILENCE_MS` | silence of the page's own price socket | no | Need now (only the page sees its socket) | CONFIRMED |
+| KJ3 | `ed-core.js:589, 888` | WAITING vs OFFLINE after a ticker change | no | Need now (UI state) | CONFIRMED |
+| KJ4 | `ed-trade-desk-map.js:504` | LEVELS age | no | move to the server (PC1) | CONFIRMED |
+| KJ5 | `ed-trade-desk-map.js:65` | "is this event today" | no | move to the server (PC3) | CONFIRMED |
+| KJ6 | `ed-tv-chart.js:597, 606` | click debounce (400 ms) | no | Need now (input handling) | CONFIRMED |
+| KJ7 | `ed-stream.js:111` | a view id seed | no | Need now (identifier, not a value) | CONFIRMED |
+
+Counts: 48 registered (R01–R49 without R24, which is T12), 12 to be replaced (T01–T12: 3 with the
+proof missing — T06, T11, T12), 9 two-producer values (D1–D9), 2 decision breaches, 7 page
+computations, 33 clock-use rows covering 87 sites. The work that acts on 3.6.2–3.6.6 is
+`ACTIVE_PROGRAM.md` REG-*.
+
 ## 4. The target
 
 ### 4.1 The processes

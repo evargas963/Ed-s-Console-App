@@ -146,6 +146,23 @@ producer, with a behavior test that fails if the second one returns.
 | ONE-03 | QUEUED | Feed liveness judged in both processes: the daemon applies its own heartbeat to its price rows (`live_ui.beat`), and the console applies the pushed copy again (`feed_live_for`); one rule since ONE-15, two places it runs. |
 | ONE-12 | QUEUED | Trade side: history's quote rule beside the live tick rule (with the trade-side decision, directive 3). |
 
+## Schwab sends it: replace our computation (`docs/DATA_FLOW.md` §3.6.2)
+
+Each row replaces a value we compute with the Schwab field §3.6.2 cites, deletes our computation, and
+leaves the register; a row whose proof is missing gets the proof first (a Schwab call needs Ed's yes).
+Rate and dividend (T07) are RATE-DIV; the other two-producer rows are ENF-02 and ONE-*.
+
+| ID | Status | Work item |
+|---|---|---|
+| REG-01 | QUEUED | Prior day high, low, close and the opening range from Schwab (T01–T03, D4): the daily candle and CLOSE_PRICE in place of `liquidity_value_engine.py` lines 165-167; the 15-minute 09:30 candle for ORH/ORL once captured. |
+| REG-02 | QUEUED | Chart candles 5/15/30-minute and daily, and the ATR inputs, from Schwab's pricehistory (T04, T05, D3); `terrain_atr._aggregate` deleted; 3- and 60-minute candles stay ours (R34). |
+| REG-03 | QUEUED | Gamma at a hypothetical price (T06, D1): proof first, one ANALYTICAL chain request in a window Ed agrees; then the model profile is kept with its proof, or replaced. |
+| REG-04 | QUEUED | Option mid = LEVELONE_OPTIONS MARK (T08, D5). |
+| REG-05 | QUEUED | In-the-money from Schwab (T09): `inTheMoney` on the chain, MONEY_INTRINSIC_VALUE live. |
+| REG-06 | QUEUED | The session from Schwab's `market_hours` (T10): replaces the hand calendar in `time_et.py` (pre-market 07:00 ET, index options to 16:15 ET), with CALENDAR-WEEKEND and CALENDAR-2029. |
+| REG-07 | QUEUED | Expired and front expiry (T11, K12): proof first, `daysToExpiration` / `lastTradingDay` captured on an expiry day. |
+| REG-08 | QUEUED | Counts (T12): the contract count is `chains.numberOfContracts`; proof for the other counts and pointers. |
+
 ## Phase 2 — the rest of the design, then decomposition
 
 | ID | Status | Work item |
