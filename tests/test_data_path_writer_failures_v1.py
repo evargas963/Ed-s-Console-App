@@ -168,12 +168,18 @@ def test_a_database_locked_by_another_connection_holds_the_writer_and_it_goes_on
 
 def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_writes(tmp_path):
     """INDUCED CONDITION: the stream database file is read-only before the writer starts
-    (standing in for a disk that refuses writes) and made writable again 1.5 s later. Every
-    captured quote published meanwhile is held, all of them counted as waiting, and written once
-    the file accepts writes."""
+    (standing in for a disk that refuses writes) and made writable again 1.5 s later, with the
+    WAL files SQLite created beside it meanwhile (SQLite gives them the database file's mode).
+    Every captured quote published meanwhile is held, all of them counted as waiting, and
+    written once the files accept writes."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
     os.chmod(db, stat.S_IREAD)
+
+    def writable() -> None:
+        for path in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+            if path.exists():
+                os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
@@ -183,7 +189,7 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
         _publish_options(bus, health, _EVENTS)
         await asyncio.sleep(1.5)
         during = daemon.status().get("writer")
-        os.chmod(db, stat.S_IREAD | stat.S_IWRITE)
+        writable()
         await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS))
         after = daemon.status().get("writer")
         stop.set()
@@ -192,7 +198,7 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
     try:
         during, after = asyncio.run(go())
     finally:
-        os.chmod(db, stat.S_IREAD | stat.S_IWRITE)
+        writable()
 
     assert _count(db, "stream_options_quotes_raw") == len(_EVENTS), "the writer never recovered"
     assert during["state"] == "blocked"
