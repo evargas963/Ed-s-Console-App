@@ -227,8 +227,8 @@ def test_a_burst_is_conflated_to_the_newest_row_per_symbol():
             now = time.time()
             bus.publish("quote.SPY", _trade("SPY", 500 + i / 100, now))
             bus.publish("quote.AAPL", _trade("AAPL", 200 + i / 100, now))
-        await _next_row(ws, "SPY", lambda r: r["spot"] == pytest.approx(504.99))
-        await _next_row(ws, "AAPL", lambda r: r["spot"] == pytest.approx(204.99))
+        _, spy = await _next_row(ws, "SPY", lambda r: r["spot"] == pytest.approx(504.99))
+        _, aapl = await _next_row(ws, "AAPL", lambda r: r["spot"] == pytest.approx(204.99))
         # 1000 messages, far fewer frames: the browser was never handed the backlog
         assert stats["rows_sent"] < 200, stats
     asyncio.run(_run(body))
