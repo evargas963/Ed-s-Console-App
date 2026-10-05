@@ -736,8 +736,9 @@ def instrument_answer(client, symbol: str, now: float) -> dict:
     """Schwab's instrument lookup of `symbol` on the daemon's one client (schwab-py
     Client.get_instruments, projection SYMBOL_SEARCH: GET /marketdata/v1/instruments), as its
     instrument message: the HTTP status and body as sent, and `listed`: True when the answer's
-    `instruments` list holds an instrument whose `symbol` is exactly `symbol`, False when it is
-    a list without it (Schwab does not list it), None for every other answer -- another
+    `instruments` list of objects holds one whose `symbol` is exactly `symbol`, False when it is
+    such a list without it (Schwab does not list it), None for every other answer -- a list
+    holding anything but objects (not the shape Schwab answers), another
     status, a body that is not JSON, or JSON without an `instruments` list: no answer."""
     resp = client.get_instruments(symbol, client.Instrument.Projection.SYMBOL_SEARCH)
     body = None
@@ -747,8 +748,8 @@ def instrument_answer(client, symbol: str, now: float) -> dict:
         except ValueError as e:                    # recorded as sent; no answer
             log.warning("universe: Schwab's instrument answer for %s is not JSON: %s", symbol, e)
     instruments = body.get("instruments") if isinstance(body, dict) else None
-    listed = (any(isinstance(i, dict) and i.get("symbol") == symbol for i in instruments)
-              if isinstance(instruments, list) else None)
+    answered = isinstance(instruments, list) and all(isinstance(i, dict) for i in instruments)
+    listed = any(i.get("symbol") == symbol for i in instruments) if answered else None
     return instrument_msg(symbol=symbol, http_status=resp.status_code, body=resp.text, listed=listed, ts=now)
 
 

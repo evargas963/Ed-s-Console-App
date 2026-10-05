@@ -13,17 +13,28 @@ instrument answers are written for the symbols the test names (SPY's answer as S
 the answer for ZZZZ and, later, SPY)."""
 from __future__ import annotations
 
+import asyncio
+import html
 import json
+import re
 import sqlite3
 import time
 from pathlib import Path
 
+import httpx
+import pytest
+from fastapi.testclient import TestClient
+from schwab.client import Client
+
+import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, bar_msg, instrument_msg, options_quote_msg
-from tests.feed_live_helper import daemon_bars
+from tests.feed_live_helper import daemon_bars, publish_daemon_rows
+from tests.test_data_path_rules_v1 import _LocalSchwab, _SPY_1120, _token_file
 
 FX = Path(__file__).resolve().parent / "fixtures"
 _OPT = json.loads((FX / "real_options_stream_history_samples.json").read_text(encoding="utf-8"))
@@ -31,6 +42,97 @@ _CRWD = json.loads((FX / "real_crwd_complete_chain_quarter.json").read_text(enco
 _ANSWERS = json.loads((FX / "real_schwab_instruments_2026_08_20.json").read_text(encoding="utf-8"))["answers"]
 _SPY_LISTED = _ANSWERS["spy_fundamental"]["body"]
 _NONE_LISTED = _ANSWERS["symbol_search_spy_pattern"]["body"]
+_REFUSAL = json.loads((FX / "real_schwab_stream_refusal_2026_10_04.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("body, listed", [
+    ('{"instruments": ["TSLA"]}', None),          # INDUCED: a list holding a non-object
+    ('{"instruments": [{"symbol": "TSLA"}, "TSLA"]}', None),   # INDUCED: objects and a non-object
+    (_SPY_LISTED, False),                         # SPY's answer served for TSLA: a list without TSLA
+], ids=["a list of strings", "a mixed list", "a list of objects without the ticker"])
+def test_only_a_list_of_instrument_objects_without_the_ticker_takes_a_stored_ticker_out(body, listed):
+    """Schwab answers symbol-search with an `instruments` list of objects (each with its
+    `symbol`). A list holding anything but objects is not that answer: it is no answer, and a
+    stored ticker stays in the universe. Only a list of objects without the ticker is "not
+    listed". The real instrument_answer on schwab-py's client; Schwab's host is a stand-in
+    (httpx's MockTransport) answering HTTP 200 with `body`."""
+    client = Client("k", httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, text=body))), enforce_enums=False)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry())
+    daemon.load([], ["TSLA"])
+    msg = capture.instrument_answer(client, "TSLA", time.time())
+    assert msg["listed"] is listed
+    daemon.answered(msg)
+    assert daemon.universe == ([] if listed is False else ["TSLA"])
+
+
+def test_schwabs_symbol_limit_is_what_the_heatmap_serves_for_its_contracts(tmp_path):
+    """The daemon asks Schwab's streamer (stand-in) for every contract of SPY's 2026-11-20
+    chain; Schwab answers code 19 with its message of 2026-10-04 (it kept up to 3000 and
+    discarded the rest, naming none). The console holds the daemon's status (its heartbeat),
+    the views ask for those contracts, the chain is delivered (server._on_chain) and priced on
+    the pricing thread; the heatmap route the page reads serves every one of those cells as
+    `limited` with Schwab's message, never "pending", and the page's words for the state are
+    served in the page. Real data: SPY's 2026-11-20 chain and spot
+    (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json), Schwab's code-19 message.
+    Stand-ins, named: Schwab's host and streamer; SPY's price row is its LAST_PRICE set to the
+    chain's captured spot."""
+    contracts = [c["symbol"] for c in _SPY_1120["chain"]]
+    limit = f"code 19: {_REFUSAL['schwab_msg']}"
+    schwab = _LocalSchwab(stream_refusal={"LEVELONE_OPTIONS": (_REFUSAL["schwab_code"], _REFUSAL["schwab_msg"])})
+    client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s", transport=schwab.transport)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), universe=["SPY"])
+    daemon.set_wanted({"LEVELONE_OPTIONS": contracts})
+    status: dict = {}
+
+    async def subscribe() -> None:
+        await daemon.connect(client)
+        try:
+            await daemon.sync()
+            status.update(daemon.status())
+        finally:
+            await daemon.disconnect()
+    try:
+        asyncio.run(subscribe())
+    finally:
+        schwab.close()
+    assert status["limits"] == {"LEVELONE_OPTIONS": limit}
+
+    def beat() -> None:                                          # the daemon's heartbeat, current
+        lmp.record_feed_heartbeat({**status, "ts": time.time()})
+    now = time.time()
+    beat()
+    lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": _SPY_1120["spot"], "TRADE_TIME_MILLIS": int(now * 1000)},
+                                     received_ts=now)
+    publish_daemon_rows("SPY")
+    ofs.set_active_option_contracts(contracts)
+    with server._terrain_cache_lock:
+        server._terrain_cache.pop("SPY", None)
+    try:
+        server._on_chain("SPY", _SPY_1120["chain"], now)
+        end = time.monotonic() + 30
+        while time.monotonic() < end:
+            beat()
+            with server._terrain_cache_lock:
+                if (server._terrain_cache.get("SPY") or {}).get("_gamma_surface"):
+                    break
+            time.sleep(0.1)
+        beat()
+        served = json.loads(server.get_options_gamma_surface("SPY").body)
+        cells = [s for cell in served["cells"] for s in cell["stream"] if s]
+        assert cells, served.get("reason")
+        assert {c["state"] for c in cells} == {"limited"}, sorted({c["state"] for c in cells})
+        assert {c["limit_reason"] for c in cells} == {limit}, "Schwab's message, as sent"
+        assert served["view"]["coverage"]["limited"] == len(cells)
+    finally:
+        ofs.set_active_option_contracts([])
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop("SPY", None)
+        lmp.record_feed_down()
+    page = TestClient(server.app).get("/").text
+    words = json.loads(html.unescape(re.search(r'name="ed-stream-words" content="([^"]*)"', page).group(1)))
+    assert words["cell"]["limited"] == "Schwab's symbol limit: no update; Schwab does not say which contracts it discarded"
+    assert words["column"]["limited"] == "Schwab's symbol limit reached"
 
 
 def _record_bars(writer: CaptureWriter, *symbols: str) -> None:
