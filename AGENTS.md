@@ -60,8 +60,11 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
    Enforced by: `tests/test_time_et_authority.py`, `tests/test_session_calendar_authority_v1.py`
    (ET); the Central Time display — ENF-06.
 10. **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code.
-    A stand-in (e.g. the live price) is named in the test.
-    Enforced by: no machine check — ENF-07.
+    A stand-in (e.g. the live price) is named in the test. A fixture a commit adds or changes
+    under `tests/fixtures/` carries a `provenance` block naming the database record it came from,
+    and equals that record re-queried read-only.
+    Enforced by: the commit hook `tools/check_fixture_provenance.py`
+    (`tests/test_check_fixture_provenance_v1.py`) for the fixtures; the rest — ENF-07.
 
 ## Before writing code (enforced)
 
@@ -90,9 +93,6 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   the existing ones are cleaned as their files are touched. Enforced by:
   `tools/check_no_new_patches.py` in the required `hardening` job
   (`tests/test_check_no_new_patches_v1.py`); the existing ones — TEST-PATCHES.
-- A fixture a commit adds or changes under `tests/fixtures/` carries a `provenance` block naming
-  the database record it came from, and equals that record re-queried read-only. Enforced by: the
-  commit hook `tools/check_fixture_provenance.py` (`tests/test_check_fixture_provenance_v1.py`).
 
 ## Before saying done (enforced)
 

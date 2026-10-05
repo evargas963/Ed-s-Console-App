@@ -13,12 +13,15 @@ now from the named database opened read-only:
     },
     "rows": [ {column: value, ...}, ... ]
 
-The query's placeholders are, in this order, `<symbol column>=?`, `<range column> >= ?` and
-`<range column> < ?`. It runs once per symbol, with the range in the range column's unit (epoch
-milliseconds when the column ends in `_ms`, else epoch seconds). Each result row becomes an object
-keyed by column; a column `<x>_json` becomes `<x>`, decoded by json_blob_codec. The rows must equal
-the results of the symbols in their listed order. A top-level key other than `provenance` and `rows`
-may not hold a number, since nothing checks it.
+The query is `SELECT <column>, ... FROM <table> WHERE ...`: its select list is bare column names
+(no expression, alias, literal or function, which could make a value the record does not hold) and
+it reads one table (no other SELECT, JOIN, UNION, INTERSECT, EXCEPT or WITH). Its placeholders are,
+in this order, `<symbol column>=?`, `<range column> >= ?` and `<range column> < ?`. It runs once per
+symbol, with the range in the range column's unit (epoch milliseconds when the column ends in `_ms`,
+else epoch seconds). Each result row becomes an object keyed by column; a column `<x>_json` becomes
+`<x>`, decoded by json_blob_codec. The rows must equal the results of the symbols in their listed
+order. A top-level key other than `provenance` and `rows` may not hold a number, or a number
+written as text, since nothing checks it.
 
 The databases are db_authority.canonical_stream_db_path() and canonical_console_db_path(), which
 in a linked worktree resolve to the primary checkout's data/ (runtime_layout). When the named
@@ -46,6 +49,8 @@ from time_et import ET  # noqa: E402
 FIXTURES = "tests/fixtures/"
 DATABASES = ("stream_capture.db", "ed_console.db")
 PLACEHOLDER = re.compile(r"(\w+)\s*(>=|<=|=|>|<)\s*\?")
+QUERY = re.compile(r"(?is)\s*SELECT\s+(.+?)\s+FROM\s+\w+\s+WHERE\s+(.+)")
+COMPOUND = re.compile(r"(?i)\b(SELECT|JOIN|UNION|INTERSECT|EXCEPT|WITH)\b")
 REQUIRED = ("database", "symbols", "query")
 
 
@@ -54,6 +59,12 @@ def _has_number(o) -> bool:
         return any(_has_number(v) for v in o.values())
     if isinstance(o, list):
         return any(_has_number(v) for v in o)
+    if isinstance(o, str):
+        try:
+            float(o)
+        except ValueError:
+            return False
+        return True
     return isinstance(o, (int, float)) and not isinstance(o, bool)
 
 
@@ -65,6 +76,11 @@ def _epoch(text: str, column: str) -> float | int:
 
 def _range(prov: dict) -> tuple[float | int, float | int] | str:
     """The query's (from, to) parameters, or why the block does not give them."""
+    shape = QUERY.fullmatch(prov["query"])
+    if shape is None or COMPOUND.search(shape.group(2)) or not all(
+            re.fullmatch(r"\w+", c.strip()) for c in shape.group(1).split(",")):
+        return ("provenance.query must be `SELECT <column>, ... FROM <table> WHERE ...` with bare "
+                "column names, reading one table")
     found = PLACEHOLDER.findall(prov["query"])
     if [op for _, op in found] != ["=", ">=", "<"] or prov["query"].count("?") != 3:
         return ("provenance.query's placeholders must be, in order, `<symbol column>=?`, "

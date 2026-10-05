@@ -138,20 +138,49 @@ def test_schwabs_option_chain_as_the_daemons_chain_sweep_recorded_it_is_checked_
         "tests/fixtures/b.json: row 1 differs from the record in chain"]
 
 
-def test_console_computed_crosses_are_checked_against_the_consoles_table(tmp_path):
-    con = EdDB(tmp_path / "data" / "ed_console.db", allow_noncanonical=True)
+def _record_crosses(data: Path) -> dict:
+    """SPY's and $SPX's recorded level crosses through the console's writer into `data`/ed_console.db;
+    the fixture of them."""
+    con = EdDB(data / "ed_console.db", allow_noncanonical=True)
     rows = []
     for name in ("real_spy_level_crosses.json", "real_spx_level_crosses_2026_09_25_28.json"):
         for r in json.loads((FX / name).read_text(encoding="utf-8"))["rows"]:
             con.log_level_cross(LevelCrossEvent(**{c: r[c] for c in CROSS_COLUMNS}))
             rows.append({c: r[c] for c in CROSS_COLUMNS})
     rows.sort(key=lambda r: (r["ticker"], r["ts_utc"]))
-    fixture = {"provenance": {
+    return {"provenance": {
         "computed_by": "Ed Console", "database": "data/ed_console.db, opened read-only", "table": "level_crosses",
         "symbols": ["$SPX", "SPY"], "ts_from_et": "2026-09-01T00:00", "ts_to_et": "2026-10-01T00:00",
         "captured_utc": "2026-10-04T00:00:00+00:00",
         "query": f"SELECT {', '.join(CROSS_COLUMNS)} FROM level_crosses WHERE ticker=? AND ts_utc>=? AND ts_utc<? "
                  "ORDER BY ts_utc"}, "rows": rows}
+
+
+def test_a_query_that_computes_a_value_the_record_does_not_hold_is_refused(tmp_path):
+    """Every row's level_value moved +5.0, and the query computing the same +5.0: the rows equal
+    what the query returns, but the record holds no such value."""
+    fixture = _record_crosses(tmp_path / "data")
+    for r in fixture["rows"]:
+        r["level_value"] += 5.0
+    fixture["provenance"]["query"] = fixture["provenance"]["query"].replace(
+        "level_value,", "level_value + 5.0 AS level_value,")
+    root = _staged(tmp_path, {NAME: json.dumps(fixture)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [
+        f"{NAME}: provenance.query must be `SELECT <column>, ... FROM <table> WHERE ...` with bare column names, "
+        "reading one table"]
+
+
+def test_a_number_written_as_text_outside_the_rows_is_refused(tmp_path):
+    fixture = _record_crosses(tmp_path / "data")
+    fixture["expected"] = {"pin": "585.00", "ticker": "SPY"}
+    root = _staged(tmp_path, {NAME: json.dumps(fixture)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [
+        f"{NAME}: top-level expected hold numbers outside the checked rows"]
+
+
+def test_console_computed_crosses_are_checked_against_the_consoles_table(tmp_path):
+    fixture = _record_crosses(tmp_path / "data")
+    rows = fixture["rows"]
     root = _staged(tmp_path, {NAME: json.dumps(fixture)})
     assert cfp.violations(root, _dbs(tmp_path / "data")) == []
     rows[0]["level_name"] = rows[1]["level_name"] + " "
