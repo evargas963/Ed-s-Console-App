@@ -76,7 +76,8 @@ CREATE TABLE IF NOT EXISTS stream_news_raw (
 CREATE INDEX IF NOT EXISTS idx_snr_sym_ts ON stream_news_raw(symbol, ts_recv);
 -- Every subscribe/unsubscribe the daemon sent and Schwab's answer. With it, a gap in the
 -- data tables can be told apart: "we were not subscribed" versus "subscribed, nothing
--- changed". code 0 = accepted; anything else carries Schwab's reason.
+-- changed". code 0 = accepted; anything else carries Schwab's reason. Each price-history
+-- request of the bar backfill is a row too (service PRICEHISTORY, code Schwab's HTTP status).
 CREATE TABLE IF NOT EXISTS stream_subscriptions (
     ts REAL NOT NULL,
     service TEXT NOT NULL,
@@ -144,6 +145,12 @@ def bar_msg(*, symbol: str, bar_start_ms=None, open=None, high=None, low=None, c
     return {"ts_recv": _now(ts_recv), "schwab_ts": schwab_ts, "symbol": symbol,
             "bar_start_ms": bar_start_ms, "open": open, "high": high, "low": low,
             "close": close, "volume": volume, "src": src, "native": native}
+
+
+#: The `src` of a 1-minute bar the daemon took from Schwab's price history for a minute its stream
+#: did not record (capture.backfill_bars), `native` Schwab's candle as sent. A streamed bar of the
+#: same minute always wins over it (server._load_bars).
+BAR_BACKFILL_SRC = "schwab_pricehistory"
 
 
 def news_msg(*, symbol: str, content: dict, src: str, ts_recv: float | None = None,

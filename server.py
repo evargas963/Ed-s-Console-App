@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass
 from time_et import (ET, now_et, RTH_OPEN_MINS, closed_since, ct_label, et_date_str_from_ts_utc,
                      market_session_date, session_label)
 from math_exposure_core import bucket_metric, merge_exposure_books, overlay_streamed_contract_fields
+from stream_spine import BAR_BACKFILL_SRC
 
 import json
 from html import escape as html_escape
@@ -328,7 +329,8 @@ _BAR_TEXT = " || ' ' || ".join(f"quote({f})" for f in ("bar_start_ms", "open", "
 
 
 #: every ticker's completed 1-minute bars, oldest first, the newest BARS_KEPT (the ATR's ~23
-#: sessions): Schwab's CHART_EQUITY bars as sent, every hour Schwab sends them. Owned by the bar
+#: sessions): Schwab's CHART_EQUITY bars as sent, every hour Schwab sends them, and for a minute
+#: the stream did not record, Schwab's price-history candle the daemon recorded. Owned by the bar
 #: writer (_bar_writer): loaded once from the capture daemon's record of them, its first step
 #: (_load_bars), then each streamed bar as it arrives (_keep_bar). Every live reader reads this,
 #: never a database (docs/DATA_FLOW.md §2 D6).
@@ -338,7 +340,7 @@ _bars_lock = threading.Lock()
 #: set once the bar writer has loaded the recorded bars; the levels loop builds nothing before it
 _bars_loaded = threading.Event()
 #: where the bars come from, named in every level's provenance
-BAR_SOURCE = "Schwab CHART_EQUITY (stream_bars_raw)"
+BAR_SOURCE = "Schwab CHART_EQUITY, and price history for a minute the stream missed (stream_bars_raw)"
 
 
 def _schwab_bar(start_ms, o, h, lo, c, volume) -> "Candle | None":
@@ -356,8 +358,10 @@ def _load_bars() -> None:
     """Each ticker's newest BARS_KEPT minutes of Schwab's CHART_EQUITY bars as the capture daemon
     recorded them (stream_capture.db stream_bars_raw, its one writer), Schwab's newest bar for each
     minute, read in one SQLite step per symbol (a row-by-row read hands the interpreter lock back
-    at every row). The one database read of the bars, the bar writer's first step, before it takes
-    any streamed bar. With no record yet (the daemon has never run) there are no bars."""
+    at every row). A minute the stream did not record is Schwab's price-history candle the daemon
+    wrote for it (BAR_BACKFILL_SRC); a streamed bar of the minute always wins over that candle.
+    The one database read of the bars, the bar writer's first step, before it takes any streamed
+    bar. With no record yet (the daemon has never run) there are no bars."""
     import sqlite3 as _sq
     from db_authority import canonical_stream_db_path
     path = canonical_stream_db_path()
@@ -369,9 +373,9 @@ def _load_bars() -> None:
         for (sym,) in con.execute("SELECT DISTINCT symbol FROM stream_bars_raw").fetchall():
             (text,) = con.execute(
                 f"SELECT group_concat({_BAR_TEXT}, ';' ORDER BY bar_start_ms) FROM (SELECT * FROM "
-                "(SELECT *, ROW_NUMBER() OVER (PARTITION BY bar_start_ms ORDER BY ts_recv DESC) AS newest "
-                "FROM stream_bars_raw WHERE symbol=?) WHERE newest=1 ORDER BY bar_start_ms DESC LIMIT ?)",
-                (sym, BARS_KEPT)).fetchone()
+                "(SELECT *, ROW_NUMBER() OVER (PARTITION BY bar_start_ms ORDER BY src = ?, ts_recv DESC) "
+                "AS newest FROM stream_bars_raw WHERE symbol=?) WHERE newest=1 ORDER BY bar_start_ms DESC LIMIT ?)",
+                (BAR_BACKFILL_SRC, sym, BARS_KEPT)).fetchone()
             rows = [[None if v == "NULL" else float(v) for v in r.split(" ")] for r in text.split(";")] if text else []
             bars = [b for b in (_schwab_bar(*r) for r in rows) if b is not None]
             with _bars_lock:
@@ -397,7 +401,8 @@ def _keep_bar(tk: str, bar: "Candle") -> None:
 
 def _bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> "list[Candle]":
     """`tk`'s completed 1-minute bars, oldest first: Schwab's streamed CHART_EQUITY bars as the
-    bar writer keeps them. A minute the stream did not deliver is absent, never filled in."""
+    bar writer keeps them, and the price-history candles the daemon recorded for minutes the stream
+    did not (_load_bars). A minute neither carries is absent, never filled in."""
     key = ticker_storage_key(tk)
     with _bars_lock:
         return list(_bars[key][-int(limit):]) if key in _bars else []

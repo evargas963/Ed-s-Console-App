@@ -4,7 +4,8 @@
 
 It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
 (run_chains) fetches full option chains on its own threads, without end: the ticker on screen
-first, back to back, and every board ticker in turn.
+first, back to back, and every board ticker in turn. At its start, its bar backfill
+(run_backfill) asks Schwab's price history once for the 1-minute bars its record lacks.
 
   0. BOARD   The background tickers (the logging_universe table), read at startup: each is
              streamed on LEVELONE_EQUITIES, CHART_EQUITY and NEWS_HEADLINE and its chain is
@@ -42,15 +43,19 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sqlite3
 import sys
 import threading
 import time
+from dataclasses import asdict, dataclass
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
 from stream_spine import (  # noqa: E402
+    BAR_BACKFILL_SRC,
     LOG,
     CaptureWriter,
     HealthRegistry,
@@ -65,6 +70,14 @@ from stream_spine import (  # noqa: E402
     subscription_msg,
 )
 from calibration.complete_chain_capture import CHAIN_WORKERS, ChainSweep, board_tickers  # noqa: E402
+from time_et import (  # noqa: E402
+    CLOSED_SINCE_LOOKBACK_DAYS,
+    ET,
+    EXTENDED_END_MINS,
+    EXTENDED_START_MINS,
+    is_trading_day_et,
+    market_session_date,
+)
 
 log = logging.getLogger("capture")
 
@@ -286,6 +299,8 @@ class Daemon:
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
+        #: the bar backfill's state (run_backfill, at the daemon's start)
+        self.backfill = BarBackfill()
 
     def set_wanted(self, raw, sender=None) -> None:
         """The console's list from connection `sender` (live_push calls this for every
@@ -323,6 +338,7 @@ class Daemon:
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "refused": {k: dict(v) for k, v in self.refused.items() if v},
+                "backfill": asdict(self.backfill),
                 "health": self.health.report(now)}
 
     async def sync(self) -> None:
@@ -533,6 +549,147 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
         await asyncio.gather(*workers, return_exceptions=True)
 
 
+# ---------------------------------------------------------------------------- the bar backfill
+
+#: The least time between the starts of two price-history requests; one is sent at a time.
+BACKFILL_PACE_SEC = 1.0
+#: Schwab's answers that stop the whole backfill at once, with no retry: 403 (its edge refuses
+#: us) and 429 (too many requests).
+BACKFILL_STOP_CODES = (403, 429)
+#: The backfill's states, as the daemon's status carries them.
+BACKFILL_WAITING, BACKFILL_RUNNING, BACKFILL_DONE = "waiting", "running", "done"
+#: Stopped by Schwab's 403 or 429 (REFUSED), or by a request that failed outright (FAILED: no
+#: client, the token refused, the network down).
+BACKFILL_REFUSED, BACKFILL_FAILED = "refused", "failed"
+MINUTE_MS = 60_000
+
+
+@dataclass
+class BarBackfill:
+    """The bar backfill on the daemon's status: its state, the requests sent, the bars written,
+    and what stopped it (Schwab's refusal or the failure), None while nothing has."""
+    state: str = BACKFILL_WAITING
+    requests: int = 0
+    written: int = 0
+    stopped_by: "str | None" = None
+
+
+def backfill_sessions(now: float) -> "list[date]":
+    """The sessions the backfill fills: the market's session at `now` (time_et.market_session_date)
+    and the trading day before it."""
+    current = market_session_date(datetime.fromtimestamp(now, ET))
+    day = current - timedelta(days=1)
+    for _ in range(CLOSED_SINCE_LOOKBACK_DAYS):
+        if is_trading_day_et(day.isoformat()):
+            return [current, day]
+        day -= timedelta(days=1)
+    return [current]
+
+
+def missing_minutes(con: sqlite3.Connection, symbol: str, day: date, now: float) -> "list[int]":
+    """The minutes (start, ms) of `day`'s extended session (time_et: 04:00 to 20:00 ET, the regular
+    session inside it) that ended before `now` and of which the record (stream_bars_raw) holds no
+    bar of `symbol`, streamed or backfilled; ascending."""
+    start = datetime(day.year, day.month, day.day, tzinfo=ET) + timedelta(minutes=EXTENDED_START_MINS)
+    lo = int(start.timestamp()) * 1000
+    hi = min(lo + (EXTENDED_END_MINS - EXTENDED_START_MINS) * MINUTE_MS, int(now // 60) * MINUTE_MS)
+    held = {ms for (ms,) in con.execute("SELECT DISTINCT bar_start_ms FROM stream_bars_raw WHERE symbol=? "
+                                        "AND bar_start_ms>=? AND bar_start_ms<?", (symbol, lo, hi))}
+    return [ms for ms in range(lo, hi, MINUTE_MS) if ms not in held]
+
+
+def backfill_bars(schwab_client, board: "list[str]", record_path, now: float, publish,
+                  state: BarBackfill, halt: threading.Event) -> None:
+    """Fill the minutes the record lacks from Schwab's price history: for each board ticker and each
+    of the current and previous session (backfill_sessions) with a minute missing (missing_minutes,
+    read from the record read-only), one request (GET /marketdata/v1/pricehistory, 1-minute
+    candles, extended hours, the missing span) on the daemon's one client (`schwab_client()`),
+    one at a time, BACKFILL_PACE_SEC apart. Each returned candle of a missing minute is published
+    as a bar1m message labelled BAR_BACKFILL_SRC, its fields and `native` Schwab's candle as sent,
+    for the one writer to record; a minute the record holds is never written again. Each request
+    and Schwab's answer is published as a PRICEHISTORY subscription row. A 403 or 429 stops the
+    backfill at once, with no retry, as does a request that fails outright; `state` carries it
+    to the daemon's status. `halt` ends it between requests."""
+    con = sqlite3.connect(f"file:{Path(record_path).resolve().as_posix()}?mode=ro", uri=True, timeout=30.0)
+    try:
+        gaps = [(sym, missing) for day in backfill_sessions(now) for sym in board
+                if (missing := missing_minutes(con, sym, day, now))]
+    finally:
+        con.close()
+    state.state = BACKFILL_RUNNING
+    log.info("bar backfill: %d request(s) for %d ticker(s)", len(gaps), len({s for s, _m in gaps}))
+    sent = None
+    for sym, missing in gaps:
+        if sent is not None and halt.wait(max(0.0, sent + BACKFILL_PACE_SEC - time.monotonic())):
+            return                                           # the daemon is stopping
+        sent = time.monotonic()
+        state.requests += 1
+        span = (f"{len(missing)} minute(s) missing from {datetime.fromtimestamp(missing[0] / 1000, ET):%Y-%m-%d %H:%M} "
+                f"to {datetime.fromtimestamp(missing[-1] / 1000, ET):%Y-%m-%d %H:%M} ET")
+        try:
+            resp = schwab_client().get_price_history(
+                sym, period_type="day", frequency_type="minute", frequency=1,
+                start_datetime=datetime.fromtimestamp(missing[0] / 1000, timezone.utc),
+                end_datetime=datetime.fromtimestamp((missing[-1] + MINUTE_MS) / 1000, timezone.utc),
+                need_extended_hours_data=True)
+            body = resp.json() if resp.status_code == 200 else None
+        except Exception as e:  # noqa: BLE001 -- no client, the token refused, the network down
+            log.warning("bar backfill: the request for %s failed (%s: %s); the backfill stops", sym,
+                        type(e).__name__, e)
+            state.state, state.stopped_by = BACKFILL_FAILED, f"{sym}: {type(e).__name__}: {e}"[:300]
+            publish("sub.PRICEHISTORY", subscription_msg(service="PRICEHISTORY", command="GET", symbols=[sym],
+                                                         code=None, reason=f"{span}; {state.stopped_by}"))
+            return
+        if resp.status_code in BACKFILL_STOP_CODES:
+            log.warning("bar backfill: Schwab answered %s for %s; the backfill stops, no retry",
+                        resp.status_code, sym)
+            state.state = BACKFILL_REFUSED
+            state.stopped_by = f"{sym}: HTTP {resp.status_code} {resp.text[:200]}"
+            publish("sub.PRICEHISTORY", subscription_msg(service="PRICEHISTORY", command="GET", symbols=[sym],
+                                                         code=resp.status_code, reason=f"{span}; {state.stopped_by}"))
+            return
+        written = 0
+        candles = body.get("candles") if isinstance(body, dict) else None
+        if isinstance(candles, list):
+            wanted = set(missing)
+            for c in candles:
+                if isinstance(c, dict) and isinstance(c.get("datetime"), int) and c["datetime"] in wanted:
+                    publish(f"bar1m.{sym}", bar_msg(
+                        symbol=sym, bar_start_ms=c["datetime"], open=c.get("open"), high=c.get("high"),
+                        low=c.get("low"), close=c.get("close"), volume=c.get("volume"),
+                        src=BAR_BACKFILL_SRC, native=c))
+                    written += 1
+        state.written += written
+        publish("sub.PRICEHISTORY", subscription_msg(
+            service="PRICEHISTORY", command="GET", symbols=[sym], code=resp.status_code,
+            reason=f"{span}; {written} written" if isinstance(candles, list) else f"{span}; no candles in the answer"))
+    state.state = BACKFILL_DONE
+    log.info("bar backfill: done, %d request(s), %d bar(s) written", state.requests, state.written)
+
+
+async def run_backfill(daemon: "Daemon", schwab_client, record_path, now: float,
+                       stop: asyncio.Event) -> None:
+    """The bar backfill (backfill_bars), once, at the daemon's start (`now`), on its own thread, so
+    the stream never waits on it; what it publishes is published on the event loop, where the
+    one writer records it. Ends early when `stop` is set."""
+    loop = asyncio.get_running_loop()
+    halt = threading.Event()
+    work = loop.run_in_executor(None, backfill_bars, schwab_client, daemon.board, record_path, now,
+                                lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg),
+                                daemon.backfill, halt)
+    stopping = asyncio.ensure_future(stop.wait())
+    try:
+        await asyncio.wait({work, stopping}, return_when=asyncio.FIRST_COMPLETED)
+        halt.set()
+        await work
+    except Exception as e:  # noqa: BLE001 -- the record keeps what was written; the status says why
+        log.warning("bar backfill ended: %s: %s", type(e).__name__, e)
+        daemon.backfill.state, daemon.backfill.stopped_by = BACKFILL_FAILED, f"{type(e).__name__}: {e}"[:300]
+    finally:
+        halt.set()
+        stopping.cancel()
+
+
 def one_schwab_client(build) -> "callable":
     """The daemon's one Schwab client, for the stream and every chain request, as a function
     that returns it: built (`build()`, a SchwabClientState) when first asked for, then kept for
@@ -554,8 +711,8 @@ def one_schwab_client(build) -> "callable":
 
 
 async def run() -> int:
-    """The whole daemon: writer, the two local sockets, the chain sweep and the Schwab
-    connection."""
+    """The whole daemon: writer, the two local sockets, the chain sweep, the bar backfill and the
+    Schwab connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
     from app.market_data.schwab.streaming.live_ui import serve_live_ui
     from config import build_config, load_dotenv_file
@@ -573,6 +730,7 @@ async def run() -> int:
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop)),
+             asyncio.create_task(run_backfill(daemon, schwab_client, writer.db_path, time.time(), stop)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]

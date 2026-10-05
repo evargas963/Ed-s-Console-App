@@ -88,10 +88,10 @@ from Schwab to the screen (daemon, console, page), are these:
 | From → to | Channel | What travels |
 |---|---|---|
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
-| Schwab → daemon | Schwab REST | full option chains, each with its contracts' quotes (their Greeks, §3.4 Option chain) |
+| Schwab → daemon | Schwab REST | full option chains, each with its contracts' quotes (their Greeks, §3.4 Option chain); at the daemon's start, the 1-minute price history of the minutes its bar record lacks (§3.4 1-minute bar) |
 | daemon → console | local WebSocket 127.0.0.1:8799 | each topic's current record the moment it changes (a quote merged field by field with each field's times in `field_ts`; a book, bar or news item whole), on connect every current record; never an older value behind a newer one (§2 D1, D3); each ticker's newest whole chain, in parts of 500 contracts (`chain.TK`: part i of n, with its fetch time; a failed fetch with Schwab's answer) |
 | console → daemon | same socket | the "wanted" list, every symbol per Schwab service, no cap: the equities its screens show (the ticker on screen, the header's context `streaming.MARKET_CONTEXT_SYMBOLS`, the browser's watchlist; the daemon streams the board itself), the books of the ticker on screen, `active`: the ticker on screen (`push_changes.on_screen`, the newest open page's; the chain sweep's active ticker; when no page shows a ticker, none), and the option contracts its views ask for (the primary contract only from a chain the console holds, refused otherwise (409)). Sent on every connect and the moment it changes; the daemon compares it with what Schwab holds at once. The daemon holds the last list it was sent, in memory only, with the connection that sent it: when that connection ends (another connection ending leaves it), and after the daemon's restart, it streams the board alone until the console sends the list again |
-| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, symbols held and refused per service, the board, the chain sweep's last round time, health). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
+| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, symbols held and refused per service, the board, the chain sweep's last round time, the bar backfill's state, health). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
 | daemon → console | the same :8800 push | the same price rows, for every equity the daemon holds on Schwab (`streaming._rows_wanted`: the heartbeat's held LEVELONE_EQUITIES, the console's wanted ones and the board as Schwab accepted them): the console's only live price, and the daemon's heartbeat, the console's one record of the daemon's status. It carries no chain, so a beat never waits behind one (measured 2026-10-02 on the 8799 push: DELL read feed down in 25 of 60 samples on a healthy feed while the console worked through chain parts) |
 | console → browser | HTTP `/api/*` | everything else, on request |
 | console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`, `liquidity`) and the session label |
@@ -102,7 +102,7 @@ from Schwab to the screen (daemon, console, page), are these:
 |---|---|---|
 | Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten) and each ticker's newest chain; the board; the active ticker; the equity quotes the browser's price row is built from |
 | Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; every live screen's history, loaded from `ed_console.db` once at startup and then fed live (§2 D6): each ticker's 1-minute bars (`server._bars`, the newest 24,000) and level crosses (`server._crosses`), each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`, from the console's start) |
-| `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers |
+| `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers; the price-history candles of the minutes the stream missed, labelled (§3.4 1-minute bar), and each price-history request's answer |
 | `ed_console.db` | console, and the daemon (the ticker board, the chain captures) | 1-minute bars, level crosses, the ticker board, chain captures and a morning chain per ticker — plus the tables of the deleted ML pipeline (dropped in P2-DB3) |
 
 ### 3.4 The journey of each kind of data
@@ -136,7 +136,24 @@ from Schwab to the screen (daemon, console, page), are these:
   memory (`_bars`: loaded from that record at the console's start, then each pushed bar; the
   console writes no bar) → a `liquidity` push on `/api/changes` → the browser reads
   `/api/bars1m`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
-  the newest bar's minute (`last_bar`). The live Schwab LAST_PRICE (the header's price row, with
+  the newest bar's minute (`last_bar`). A minute the stream did not record (the daemon down, the
+  recorder dead: 09:17 to 10:47 CT on 2026-10-05) is filled from Schwab's price history by the
+  bar backfill (`capture.run_backfill`; owner: the daemon, once at its start): for each board
+  ticker, in the market's session and the trading day before it (`time_et`'s extended session,
+  04:00 to 20:00 ET, minutes that ended before the start), the minutes `stream_bars_raw` holds no
+  bar for, read read-only; one `GET /marketdata/v1/pricehistory` per ticker and session (1-minute
+  candles, extended hours, the missing span) on the daemon's one client, one at a time, at least
+  `BACKFILL_PACE_SEC` (1 s) apart. Each returned candle of a missing minute is a `bar1m` message
+  labelled `src` `schwab_pricehistory` (`stream_spine.BAR_BACKFILL_SRC`), Schwab's candle as sent
+  (its `datetime` the bar's start, `native` the candle), recorded by the one writer and never
+  pushed live (the 8799 push forwards `schwab_chart` bars only): the console reads it at its next
+  start. A minute the record holds is never written again, and a streamed bar of a minute always
+  wins over a candle of it (`server._load_bars`). Each request and Schwab's answer is a
+  `stream_subscriptions` row (service `PRICEHISTORY`, code the HTTP status). A 403 or 429 stops
+  the whole backfill at once with no retry, as does a request that fails outright (no client, the
+  token refused, the network down); the daemon's status carries it (`backfill`: state, requests,
+  bars written, what stopped it). When the daemon is down, nothing is backfilled until it starts.
+  Enforced by: `tests/test_data_path_bar_backfill_v1.py`. The live Schwab LAST_PRICE (the header's price row, with
   its age since the trade) is drawn on the chart as its own line and moves with every update; no
   candle is built from quotes (level-one prices do not reproduce a bar's high and low).
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
