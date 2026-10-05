@@ -44,8 +44,8 @@ from Schwab to the screen (daemon, console, page), are these:
 ### The data rules (enforced)
 
 - **D1. Newest by Schwab's time wins.** Which value is current is decided by Schwab's own
-  timestamp on it (quote time, trade time, book time, bar time, the frame's timestamp, the chain's
-  fetch), never by the order messages arrive. A time that describes data is Schwab's, never the
+  timestamp on it (quote time, trade time, book time, bar time, the frame's timestamp), never by
+  the order messages arrive. A time that describes data is Schwab's, never the
   console's clock: a chain (delivered, kept or stored) is valued at its newest `quoteTimeInLong`
   (`docs/schwab_fields.csv`, `chains.callExpDateMap.*.quoteTimeInLong` and the put row; sent on
   every contract of 511,329 in the newest three captures of all 38 board tickers, 2026-10-02,

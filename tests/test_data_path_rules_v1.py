@@ -865,7 +865,20 @@ def test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until
 
 _MRVL = json.loads((FX / "real_mrvl_full_chain_vs_strike_window.json").read_text(encoding="utf-8"))
 _LEVEL_KEYS = ("call_wall", "put_wall", "gamma_flip", "absolute_gamma_strike", "net_gex_peak",
-               "max_pain", "expiries")
+               "max_pain", "expiries", "contracts_used")
+
+
+def _forget_chain(tk: str) -> None:
+    """The console's and the price plane's memory of `tk` that these tests created, removed."""
+    with server._terrain_cache_lock:
+        server._terrain_cache.pop(tk, None)
+    with server._chains_waiting_lock:
+        server._chains_delivered.discard(tk)
+    server._terrain_refresh_last_error.pop(tk, None)
+    with lmp._lock:
+        lmp._by_ticker.pop(tk, None)
+        lmp._fields_by_ticker.pop(tk, None)
+    ofs._price_rows.pop(tk, None)
 
 
 def _greeks_as_the_chain_sent(payload: dict) -> dict:
@@ -907,6 +920,7 @@ def test_the_daemons_full_chain_is_priced_by_the_console_at_schwabs_quote_time(t
     finally:
         schwab.close()
         mark_feed_down()
+        _forget_chain(tk)
     assert [p for _t, _m, p, _a in schwab.requests if p == "/marketdata/v1/chains"] == \
         ["/marketdata/v1/chains"], "one request for the ticker's whole chain"
     expected = compute_terrain(tk, full, spot, now=quoted).to_dict()
@@ -919,11 +933,34 @@ def test_the_daemons_full_chain_is_priced_by_the_console_at_schwabs_quote_time(t
         assert got != {k: in_window[k] for k in _LEVEL_KEYS}, "the full chain's levels, not the window's"
 
 
-#: CRWD's complete chain of the 2026-09-18 expiry, from Schwab on 2026-09-02 (its newest
-#: quoteTimeInLong 16:00:01 ET), stored as the daemon stores a capture, at the close capture slot
-#: 2026-09-02 16:15 ET (the stored time is the induced condition)
-_CRWD = json.loads((FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
-_CRWD_TAKEN = datetime(2026, 9, 2, 16, 15, tzinfo=ET).timestamp()
+def test_a_chain_without_schwabs_quote_time_is_not_priced_and_the_screen_says_why():
+    """A chain that carries no quoteTimeInLong has no time Schwab says it describes: it is not
+    priced at the fetch time or the clock; /api/terrain shows no levels, with the reason. Real
+    data with the induced condition named: MRVL's captured full chain with quoteTimeInLong removed
+    from every contract (never seen: 0 of 555,759 stored contracts lacked it, 2026-10-05)."""
+    tk = server.ticker_storage_key("MRVL")
+    unquoted = [{k: v for k, v in c.items() if k != "quoteTimeInLong"}
+                for c in sc.flatten_chain_contracts(_MRVL["full"])]
+    try:
+        server._on_chain(tk, unquoted, _MRVL["captured_utc"])
+        server._chain_pricing.submit(lambda: None).result(timeout=120)      # the pricing thread ran
+        published = server.terrain_cache_get(tk)
+        served = server.get_terrain(ticker=tk)
+    finally:
+        _forget_chain(tk)
+    assert published is None, "nothing was published from a chain without its time"
+    assert served["gamma_flip"] is None and served["call_wall"] is None and served["put_wall"] is None
+    assert "no Schwab quote time (quoteTimeInLong)" in served["error"], served["error"]
+    assert served["levels_stale"] is True
+    assert "no Schwab quote time (quoteTimeInLong)" in served["levels_stale_reason"]
+
+
+#: MRVL's full chain (newest quoteTimeInLong 2026-09-25 15:46:58 ET) stored as the daemon stores a
+#: capture, at the close capture slot 2026-09-25 16:15 ET: the stored time is the induced
+#: condition (the single names' 16:15 captures are dated 15-16 min after their newest quote).
+#: Valued at the stored time, the 2026-09-25 expiry has settled and the flip is 229.21; at
+#: Schwab's quote time it is 230.53.
+_MRVL_TAKEN = datetime(2026, 9, 25, 16, 15, tzinfo=ET).timestamp()
 
 
 def test_a_stored_capture_is_priced_with_its_own_price_dated_at_its_time_and_valued_at_schwabs():
@@ -931,14 +968,18 @@ def test_a_stored_capture_is_priced_with_its_own_price_dated_at_its_time_and_val
     priced once, with Schwab's underlying price from that capture, dated at the capture's time and
     valued at the time Schwab says the chain describes (its newest quoteTimeInLong). Rows the
     console wrote before the daemon captured (not CAPTURE_BASIS) are never loaded."""
-    tk = server.ticker_storage_key(_CRWD["ticker"])
-    chain, spot = [dict(c) for c in _CRWD["chain"]], float(_CRWD["spot"])
+    tk = server.ticker_storage_key("MRVL")
+    chain, spot = sc.flatten_chain_contracts(_MRVL["full"]), float(_MRVL["full"]["underlying"]["last"])
     quoted = datetime.fromtimestamp(max(c["quoteTimeInLong"] for c in chain) / 1000, ET)
+    by_expiry: dict = {}
+    for c in chain:
+        by_expiry.setdefault(c["expirationDate"][:10], []).append(c)
     db = server.get_db().db_path
-    persist_complete_chain_capture(db, ticker=tk, expiry=_CRWD["expiry"], contracts=chain, spot=spot,
-                                   completeness_basis=CAPTURE_BASIS, ts_utc=_CRWD_TAKEN)
-    persist_complete_chain_capture(db, ticker=tk, expiry=_CRWD["expiry"], contracts=chain[:2], spot=1.0,
-                                   completeness_basis="strike_range=ALL", ts_utc=_CRWD_TAKEN + 60)
+    for expiry, contracts in by_expiry.items():
+        persist_complete_chain_capture(db, ticker=tk, expiry=expiry, contracts=contracts, spot=spot,
+                                       completeness_basis=CAPTURE_BASIS, ts_utc=_MRVL_TAKEN)
+    persist_complete_chain_capture(db, ticker=tk, expiry=next(iter(by_expiry)), contracts=chain[:2],
+                                   spot=1.0, completeness_basis="strike_range=ALL", ts_utc=_MRVL_TAKEN + 60)
     try:
         assert server._load_stored_levels([tk]) == 1
         server._chain_pricing.submit(lambda: None).result(timeout=120)      # priced on the pricing thread
@@ -948,11 +989,9 @@ def test_a_stored_capture_is_priced_with_its_own_price_dated_at_its_time_and_val
         con.execute("DELETE FROM complete_chain_captures WHERE ticker=?", (tk,))
         con.commit()
         con.close()
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-    assert loaded["computed_ts_utc"] == _CRWD_TAKEN
+        _forget_chain(tk)
+    assert loaded["computed_ts_utc"] == _MRVL_TAKEN
     assert loaded["spot"] == spot and loaded["spot_source"] == server.SPOT_SOURCE_CAPTURE
-    expected = compute_terrain(tk, chain, spot, now=quoted)
-    assert expected.gamma_flip is not None, "the capture must price"
-    for k in ("gamma_flip", "call_wall", "put_wall", "max_pain"):
-        assert loaded[k] == getattr(expected, k), k
+    expected = compute_terrain(tk, chain, spot, now=quoted).to_dict()
+    assert expected["gamma_flip"] is not None, "the capture must price"
+    assert {k: loaded[k] for k in _LEVEL_KEYS} == {k: expected[k] for k in _LEVEL_KEYS}
