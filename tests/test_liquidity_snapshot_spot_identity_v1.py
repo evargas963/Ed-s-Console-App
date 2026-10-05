@@ -1,14 +1,101 @@
 """spot_used_for_scoring must never silently carry a VWAP value (RC-close-2026-09-11), and a
-HTTPException raised on the route's path must propagate as its own status code (e.g. 503), not
-a blanket 500 -- both found by independent review of /api/liquidity-snapshot,
-verified against the real server route function (not a route-shape simulation)."""
+HTTPException raised on the route's path must propagate as its own status code, not a blanket
+500 -- both found by independent review of /api/liquidity-snapshot. Real data through the real
+route: Schwab's SPY 1-minute bars of 2026-09-24/25, the levels published as the bar writer
+publishes them, valued on Friday 2026-09-25 at 15:00 ET. Stand-in: ticker ZZLIQ carries the SPY
+bars."""
 from __future__ import annotations
 
 import json
+import time
+from datetime import datetime
+from pathlib import Path
 
+import pytest
+
+import live_market_plane as lmp
 import server as srv
 import liquidity_value_engine as lve
-from liquidity_models import SnapshotType, Zone, ZoneType
+from app.options.order_flow import streaming as ofs
+from liquidity_models import ZONE_DISPLAY, SnapshotType, ZoneType
+from micro_structure import Candle
+from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
+from time_et import ET
+
+TK = "ZZLIQ"
+FRIDAY = datetime(2026, 9, 25, 15, 0, tzinfo=ET)
+_BARS = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
+                   .read_text(encoding="utf-8"))["bars"]
+
+
+@pytest.fixture
+def published():
+    """The SPY bars to 15:00 ET on Friday in the console's memory and the levels published from
+    them; nothing of the stand-in ticker is left behind."""
+    def forget():
+        srv._bars.pop(TK, None)
+        ofs._price_rows.pop(TK, None)
+        for key in [k for k in lve._MATERIALIZED_SNAPSHOTS if k[0] == TK]:
+            del lve._MATERIALIZED_SNAPSHOTS[key]
+    forget()
+    for b in _BARS:
+        if b["timestamp"] / 1000 < FRIDAY.timestamp():
+            srv._keep_bar(TK, Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
+                                     close=b["close"], volume=b["volume"]))
+    srv._publish_price_levels(TK, FRIDAY)
+    yield
+    forget()
+
+
+def _body(resp):
+    return json.loads(resp.body) if hasattr(resp, "body") else resp
+
+
+def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(published):
+    """MEASURED 2026-09-11: with no live spot, spot_used_for_scoring used to be silently
+    backfilled with the VWAP number and reported under the "spot" name. It must report null --
+    absence stays absence. Schwab has sent no price for the ticker here."""
+    body = _body(srv.liquidity_snapshot(TK, FRIDAY))
+    assert body["raw_levels"]["vwap"] is not None, "the session's VWAP exists to be misused"
+    assert body["spot_used_for_scoring"] is None
+    assert "spot_estimate_vwap_fallback" not in body, "VWAP is never a stand-in for spot"
+
+
+def test_missing_spot_produces_honest_null_distance_and_neutral_score_through_the_real_zone_path(published):
+    """MEASURED 2026-09-11: the VWAP-as-spot value was also fed into the zone distance and sort.
+    The real zones of the real levels: with no spot, distance and inside-zone are absent and the
+    score is neutral -- not a crash, not a fabricated distance."""
+    body = _body(srv.liquidity_snapshot(TK, FRIDAY))
+    assert body["zones"]
+    for z in body["zones"]:
+        assert z["distance_to_spot"] is None
+        assert z["spot_inside_zone"] is None
+        assert isinstance(z["tradeable_score"], (int, float))
+        # the pages named every zone that was not support_liquidity "Resistance": each zone's name
+        # and side are served from its type
+        assert (z["zone_label"], z["zone_side"]) == ZONE_DISPLAY[ZoneType(z["zone_type"])]
+
+
+def test_spot_used_for_scoring_reports_the_real_live_spot_when_available(published):
+    """The positive control: Schwab's LAST_PRICE, through the daemon's price row to the console
+    (resolve_spot, the one spot authority), is reported as spot_used_for_scoring. Stand-in: the
+    last bar's close as the LAST_PRICE Schwab sent."""
+    last = _BARS[-1]["close"]
+    mark_feed_live(TK)
+    lmp.record_from_level_one_equity(TK, {"LAST_PRICE": last}, received_ts=time.time())
+    publish_daemon_rows(TK)
+    body = _body(srv.liquidity_snapshot(TK, FRIDAY))
+    assert body["spot_used_for_scoring"] == last
+    assert "spot_estimate_vwap_fallback" not in body
+    assert body["snapshot_type"] == SnapshotType.LIVE.value
+
+
+def test_an_http_exception_on_the_route_path_keeps_its_status_not_a_generic_500():
+    """MEASURED 2026-09-11: an HTTPException on this route's path was re-issued as a bare 500. It
+    must propagate as its own status: a blank ticker is refused by the snapshot read with 400."""
+    resp = srv.liquidity_snapshot("", FRIDAY)
+    assert resp.status_code == 400
+    assert json.loads(resp.body)["error"] == "ticker is required"
 
 
 class _FakeSnapshotOutput:
@@ -33,64 +120,6 @@ def _wire_common(monkeypatch, *, raw_levels, zones=None, resolved_spot=None):
     fake_out = _FakeSnapshotOutput("SPY", "2020-01-02", raw_levels, zones=zones)
     monkeypatch.setattr(lve, "build_live_snapshot", lambda *a, **k: fake_out)
     return fake_out
-
-
-def _body(resp):
-    return json.loads(resp.body) if hasattr(resp, "body") else resp
-
-
-def test_spot_used_for_scoring_is_null_not_vwap_when_no_live_spot_is_cached(monkeypatch):
-    """MEASURED 2026-09-11: with no live spot, spot_used_for_scoring used to be silently
-    backfilled with the VWAP number and reported under the "spot" name. It must report null --
-    absence stays absence."""
-    _wire_common(monkeypatch, raw_levels={"vwap": 123.45, "cutoff_et": "2020-01-02T10:00:00"})
-    body = _body(srv.get_liquidity_snapshot(ticker="SPY"))
-    assert body["spot_used_for_scoring"] is None
-    assert "spot_estimate_vwap_fallback" not in body, "VWAP is never a stand-in for spot"
-
-
-def test_missing_spot_produces_honest_null_distance_and_neutral_score_through_the_real_zone_path(monkeypatch):
-    """MEASURED 2026-09-11: the VWAP-as-spot value was also fed into the zone distance and sort.
-    A REAL Zone through the actual route: with no spot, distance and inside-zone are absent and
-    the score is neutral -- not a crash, not a fabricated distance."""
-    zone = Zone(
-        zone_type=ZoneType.PIVOT_VALUE, zone_low=100.0, zone_high=102.0, zone_mid=101.0,
-        source_tags=["GAMMA_WALL"],
-    )
-    _wire_common(monkeypatch, raw_levels={"vwap": 123.45}, zones=[zone])
-    body = _body(srv.get_liquidity_snapshot(ticker="SPY"))
-    assert len(body["zones"]) == 1
-    z = body["zones"][0]
-    assert z["distance_to_spot"] is None
-    assert z["spot_inside_zone"] is None
-    assert isinstance(z["tradeable_score"], (int, float))
-    # the pages named every zone that was not support_liquidity "Resistance" (a pivot zone here):
-    # each zone's name and side are served from its type
-    assert (z["zone_label"], z["zone_side"]) == ("Pivot / value", "value")
-
-
-def test_spot_used_for_scoring_reports_the_real_live_spot_when_available(monkeypatch):
-    """The positive control: a real live spot (resolve_spot, the one spot authority) is reported
-    as spot_used_for_scoring."""
-    _wire_common(monkeypatch, raw_levels={"vwap": 123.45}, resolved_spot=456.78)
-    body = _body(srv.get_liquidity_snapshot(ticker="SPY"))
-    assert body["spot_used_for_scoring"] == 456.78
-    assert "spot_estimate_vwap_fallback" not in body
-
-
-def test_an_http_exception_on_the_route_path_keeps_its_status_not_a_generic_500(monkeypatch):
-    """MEASURED 2026-09-11: an HTTPException(503, ...) on this route's path was re-issued as a
-    bare 500. It must propagate as its own status (raised here from the snapshot read)."""
-    from fastapi import HTTPException
-
-    _wire_common(monkeypatch, raw_levels={})
-
-    def _raise_auth_unavailable(*a, **k):
-        raise HTTPException(status_code=503, detail="Schwab auth failed: token_invalid")
-    monkeypatch.setattr(srv, "canonical_price_level_snapshot", _raise_auth_unavailable)
-    resp = srv.get_liquidity_snapshot(ticker="SPY")
-    assert resp.status_code == 503
-    assert "token_invalid" in json.loads(resp.body)["error"]
 
 
 def test_an_unrelated_crash_still_reports_500(monkeypatch):

@@ -137,22 +137,29 @@ def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
 # ── the surfaces ─────────────────────────────────────────────────────────────
 
 
-def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
-    import json
-
+def _published(tk: str, now: datetime) -> None:
+    """The tape in the console's memory under stand-in ticker `tk`, published as the bar writer
+    publishes it (its tiny prior session is stamped degraded, and still served)."""
     import server as srv
-    import time_et as te
+    from micro_structure import Candle
 
-    import liquidity_value_engine as lve
+    srv._bars.pop(tk, None)
+    for b in _tape():
+        srv._keep_bar(tk, Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
+                                 close=b["close"], volume=b["volume"]))
+    srv._publish_price_levels(tk, now)
 
-    tape = _tape()
-    monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda t: tape)
-    monkeypatch.setattr(lve, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
-    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (106.0, "schwab_quote_last", 1.0))
-    monkeypatch.setattr(te, "now_et", lambda: datetime(2026, 8, 4, 12, 0, tzinfo=ET))
 
-    srv._publish_price_levels("SPY")                  # as the bar writer does
-    payload = json.loads(bytes(srv.get_levels(ticker="SPY").body))
+def test_api_levels_serializes_the_snapshot_and_does_not_compute():
+    """Stand-in: ticker ZZP2A carries the tape."""
+    import server as srv
+
+    noon = datetime(2026, 8, 4, 12, 0, tzinfo=ET)
+    try:
+        _published("ZZP2A", noon)
+        payload = srv.levels_payload("ZZP2A", "1", noon)
+    finally:
+        srv._bars.pop("ZZP2A", None)
     by_id = {lv["id"]: lv for lv in payload["levels"]}
     ids = [lv["id"] for lv in payload["levels"]]
     assert len(ids) == len(set(ids)), "level ids must be UNIQUE per payload"
@@ -166,31 +173,21 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute(monkeypatch):
     assert by_id["VWAP"]["price"] == payload["vwap_series"][-1][1]
 
 
-def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_ids(monkeypatch):
+def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_ids():
     """ONE-09 (2026-09-28 audit): /api/liquidity-snapshot kept its own path -- checkpoint
     snapshots (premarket, opening, midday, afternoon) and a past-date replay that recomputed the
     prior day, overnight, VWAP and value area from bars, and a default ("premarket") that served
     those under "@checkpoint" ids. It serves the one snapshot now: every level it shows is the
-    /api/levels value under the same id."""
-    import json
-
+    /api/levels value under the same id. Stand-in: ticker ZZP2B carries the tape."""
     import server as srv
-    import time_et as te
 
-    import liquidity_value_engine as lve
-
-    tape = _tape()
     noon = datetime(2026, 8, 4, 12, 0, tzinfo=ET)
-    monkeypatch.setattr(srv, "_liquidity_1m_bars", lambda t: tape)
-    monkeypatch.setattr(lve, "LEVELS_PRIOR_SESSION_MIN_BARS", 2)
-    monkeypatch.setattr(srv, "resolve_spot", lambda t, **kw: (106.0, "schwab_quote_last", 1.0))
-    monkeypatch.setattr(srv, "_liquidity_option_levels", lambda t: ([], "n/a"))
-    monkeypatch.setattr(te, "now_et", lambda: noon)
-    monkeypatch.setattr(srv, "now_et", lambda: noon)
-
-    srv._publish_price_levels("SPY")                  # as the bar writer does
-    levels = {lv["id"]: lv["price"] for lv in json.loads(bytes(srv.get_levels(ticker="SPY").body))["levels"]}
-    liq = srv.get_liquidity_snapshot(ticker="SPY")
+    try:
+        _published("ZZP2B", noon)
+        levels = {lv["id"]: lv["price"] for lv in srv.levels_payload("ZZP2B", "1", noon)["levels"]}
+        liq = srv.liquidity_snapshot("ZZP2B", noon)
+    finally:
+        srv._bars.pop("ZZP2B", None)
     used = {i["tag"]: i["value"] for i in liq["raw_levels_used"]}
     assert used and set(used) <= set(PHASE2A_LEVEL_IDS), used
     for tag, value in used.items():

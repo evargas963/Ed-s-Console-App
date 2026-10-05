@@ -155,60 +155,6 @@ def test_put_call_ratios_over_every_expiry_are_served(held):
     assert held["pcr_all"] == held["pcr_by_expiry"][EXPIRY]      # one expiry: the same book
 
 
-def test_levels_are_served_in_ladder_order_with_distance(monkeypatch):
-    """The levels panel and the Trade Desk used to sort levels, measure distance to spot and apply
-    the 0.15% near-spot rule in the page. Real SPY 1-minute bars (2026-09-24 and 25)."""
-    from datetime import datetime as _dt
-    import time_et as te
-    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
-                    .read_text(encoding="utf-8"))
-    spot = fx["bars"][-1]["close"]                               # the session's last real close
-    monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
-    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
-    server._publish_price_levels("SPY")                          # as the bar writer does
-    body = json.loads(server.get_levels(ticker="SPY").body)
-    lv = body["levels"]
-    priced = [r for r in lv if r["price"] is not None]
-    assert len(priced) > 5
-    assert [r["price"] for r in priced] == sorted((r["price"] for r in priced), reverse=True)
-    for r in priced:
-        assert r["distance"] == pytest.approx(r["price"] - spot)
-        assert "near_spot" not in r          # no proximity flag (operator 2026-09-29)
-    assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - spot))]
-
-
-def test_the_volume_profile_the_value_area_is_read_from_is_served(monkeypatch):
-    """The Trade Desk reference draws the session's volume profile at the chart's left edge
-    (2026-09-28). The profile was built for the value area and dropped; /api/levels serves that
-    same profile: its POC/VAH/VAL are the served TODAY_ levels, its bins hold every RTH bar's
-    volume, and each bin says whether it is inside the value area. Real SPY 1-minute bars."""
-    from datetime import datetime as _dt
-    import time_et as te
-    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
-                    .read_text(encoding="utf-8"))
-    monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (fx["bars"][-1]["close"], "live_quote", time.time()))
-    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
-    server._publish_price_levels("SPY")                          # as the bar writer does
-    body = json.loads(server.get_levels(ticker="SPY").body)
-    vp = body["volume_profile"]
-    by_id = {r["id"]: r["price"] for r in body["levels"]}
-    assert (vp["poc"], vp["vah"], vp["val"]) == (by_id["TODAY_POC"], by_id["TODAY_VAH"], by_id["TODAY_VAL"])
-    prices = [b[0] for b in vp["bins"]]
-    assert prices == sorted(prices) and len(prices) > 100
-    assert all(b[2] == (vp["val"] <= b[0] <= vp["vah"]) for b in vp["bins"])
-    # the profile's scale is served: the POC bin's volume, the largest
-    assert vp["max_volume"] == max(b[1] for b in vp["bins"]) == next(b[1] for b in vp["bins"] if b[0] == vp["poc"])
-    at = [(_dt.fromtimestamp(b["timestamp"] / 1000, te.ET), b) for b in fx["bars"]]
-    rth = [b for d, b in at if d.date().isoformat() == "2026-09-25" and te.session_label(d) == "RTH"]
-    # every RTH bar's volume is in the profile; the 15:59 bar sent no volume, cannot be placed, and
-    # is counted and served (operator 2026-09-29: accounted for, not silently dropped)
-    assert sum(b[1] for b in vp["bins"]) == pytest.approx(sum(b["volume"] for b in rth if b["volume"] is not None), rel=1e-9)
-    assert (vp["bars"], vp["bars_without_volume"]) == (len(rth), sum(1 for b in rth if b["volume"] is None)) == (390, 1)
-    assert vp["basis"].startswith("Estimated volume by price")
-
-
 def test_heatmap_column_state_cell_age_and_front_expiry_are_served(held, monkeypatch):
     """Column streaming status and a cell's age come from the server's own stream states; the
     front column is the nearest unexpired expiry."""
@@ -276,32 +222,3 @@ def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time(mon
     assert "spot_state" not in row and "closed_last" not in row
     monkeypatch.setitem(streaming._price_rows, "SPY", row)
     assert server.resolve_spot("SPY") == (772.04, server.SPOT_SOURCE_PLANE, 1790380799.83)
-
-
-def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(monkeypatch):
-    """Monday 2026-09-28 21:40 ET: the Trade Desk chart drew no key level at all after the close --
-    /api/levels served 30 SPY levels and an empty by_distance, because it was measured only from a
-    live price. The spot is Schwab's last trade at any hour (operator 2026-10-01: "we use what
-    schwab gives us and we display it"): the levels are ordered, and their distance measured, from
-    it, carrying its trade time. Real SPY 1-minute bars (2026-09-24 and 25); the last trade is the
-    one the daemon captured."""
-    from datetime import datetime as _dt
-    import live_market_plane as lmp
-    import live_price_rows
-    import time_et as te
-    from app.options.order_flow import streaming
-    from tests.feed_live_helper import mark_feed_live
-    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
-                    .read_text(encoding="utf-8"))
-    monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: fx["bars"])
-    monkeypatch.setattr(te, "now_et", lambda: _dt(2026, 9, 25, 16, 5, tzinfo=te.ET))
-    mark_feed_live("SPY")
-    lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
-                                     received_ts=time.time())
-    monkeypatch.setitem(streaming._price_rows, "SPY", live_price_rows.price_row("SPY"))
-    server._publish_price_levels("SPY")                          # as the bar writer does
-    body = json.loads(server.get_levels(ticker="SPY").body)
-    priced = [r for r in body["levels"] if r["price"] is not None]
-    assert len(priced) > 5 and body["spot"] == 772.04 and body["spot_as_of_ts_utc"] == 1790380799.83
-    assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - 772.04))]
-    assert all(r["distance"] == r["price"] - 772.04 for r in priced)

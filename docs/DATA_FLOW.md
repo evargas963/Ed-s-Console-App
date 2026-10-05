@@ -131,22 +131,33 @@ from Schwab to the screen (daemon, console, page), are these:
   A contract is a ticker's when Schwab listed it in that ticker's chain (whatever its root:
   SPX and SPXW are both $SPX's). The option contract whose book streams follows the page's
   ticker: the at-the-money call of its front expiry, from its chain.
-- **1-minute bar.** Schwab → daemon bus → writer (`stream_capture.db`), and → console → the
-  console's own bar writer → `ed_console.db` → a `liquidity` push on `/api/changes` → the browser
-  reads `/api/bars1m`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
+- **1-minute bar.** Schwab CHART_EQUITY → daemon bus → the daemon's writer (`stream_capture.db`
+  `stream_bars_raw`, every bar every hour Schwab sends it, the one bar history), and → console
+  memory (`_bars`: loaded from that record at the console's start, then each pushed bar; the
+  console writes no bar) → a `liquidity` push on `/api/changes` → the browser reads
+  `/api/bars1m`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
   the newest bar's minute (`last_bar`). The live Schwab LAST_PRICE (the header's price row, with
   its age since the trade) is drawn on the chart as its own line and moves with every update; no
   candle is built from quotes (level-one prices do not reproduce a bar's high and low).
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
   generation from the bars into the one price-level snapshot (`canonical_price_level_snapshot`)
   → `/api/levels`, and the liquidity zones of `/api/liquidity-snapshot` are built from that same
-  snapshot (today only; no checkpoint or past-date path). Producer `_publish_price_levels`: the
-  bar writer (`_write_streamed_bars`) after each bar of every ticker, on its own thread, once
-  every bar waiting has been written and pushed as `liquidity` (a `levels` push when the
-  published snapshot changed); and the levels loop (`_publish_missing_price_levels`) for a
-  ticker with none yet today (the console's start, a new session date). It reads the console's
-  bars (`_bars_1m`: loaded once from `price_bars_1m` at startup, then each streamed bar) and
-  normalizes them once (`_bars_to_list`); every level function takes them.
+  snapshot (the market's session, `time_et.market_session_date`: today's while a session is
+  open, the newest session's while Closed, whose levels stand until the next session opens; no
+  checkpoint or past-date path). Producer `_publish_price_levels`: the bar writer
+  (`_write_streamed_bars`) after each bar of every ticker, on its own thread, once every bar
+  waiting has been written and pushed as `liquidity` (a `levels` push when the published
+  snapshot changed); and the levels loop (`_publish_missing_price_levels`) for a ticker with
+  none yet for the market's session (the console's start, a new session). It reads the
+  console's bars (`_bars_1m`), whose one owner is the bar writer (`_bar_writer`): it loads them
+  from the daemon's record (`stream_bars_raw`, Schwab's newest bar of each minute) before it
+  takes any pushed bar (the push queue holds the bars that arrive meanwhile), then keeps each
+  pushed bar, and stops at the console's shutdown once the bars queued are kept
+  (`stop_bar_writer`). The console's old bar store (`ed_console.db` `price_bars_1m`: bars its
+  quote accumulator built and price-history re-seeds before 2026-09-26, then Schwab's streamed
+  bars to 2026-10-04) is neither written nor read. The levels loop builds nothing until that load is
+  done. If the load fails, no level is built and the console window shows the error. The bars
+  are normalized once (`_bars_to_list`); every level function takes them.
   The routes serve what it published and build nothing. `/api/levels` also serves the order the
   chart draws them in (`by_distance`): nearest the spot (Schwab's last trade under §2 D5, with
   its trade time `spot_as_of_ts_utc`), each level's distance and side from it,
