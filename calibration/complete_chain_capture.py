@@ -80,9 +80,9 @@ def persist_complete_chain_capture(
     source: str = "schwab_chain_strike_range_all",
 ) -> dict[str, Any]:
     """Append one COMPLETE single-expiry capture. A time series (PRIMARY KEY includes
-    ts_utc), not an idempotent once-a-day row — every successful live complete fetch
-    banks its own capture, so `latest_complete_chain_capture` always answers "what did
-    the vendor actually list, as of the most recent proof."
+    ts_utc): every written capture is its own row. A stored capture is never replaced: a
+    second write of the same (ticker, expiry, ts_utc) raises sqlite3.IntegrityError and the
+    stored row stands.
 
     FAIL CLOSED: no contracts, or an unproven `completeness_basis`, writes NOTHING and
     says why — a persisted row with an empty or unverifiable completeness claim would be
@@ -105,7 +105,7 @@ def persist_complete_chain_capture(
     try:
         ensure_schema(conn)
         conn.execute(
-            "INSERT OR REPLACE INTO complete_chain_captures "
+            "INSERT INTO complete_chain_captures "
             "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source) "
             "VALUES (?,?,?,?,?,?,?,?)",
             (tk, exp, ts, spot, len(clean), str(completeness_basis),
