@@ -118,8 +118,9 @@ def test_book_heatmap_serves_schwab_book_levels_as_sent(name, tk, venue):
     """Every cell is a price and size Schwab sent in that venue's books; the newest book Schwab sent
     is in the newest column, every level at Schwab's size (a book is delivered whole: Streamer Guide
     §1.1, §1.5); the served price range is the range of the cells. A venue Schwab sent nothing on
-    is absent with its reason. NYSE_BOOK runs on SPY and IWM: the only other NYSE_BOOK tickers
-    recorded since 2026-09-28 are DELL (after hours), KO and XLE (few books)."""
+    is absent with its reason. NYSE_BOOK runs on SPY and IWM; DELL (2,999 regular-hours receipts),
+    XLE (54) and KO (13, outside regular hours) are the other NYSE_BOOK tickers recorded since
+    2026-09-28."""
     rows = [r for r in _BOOKS[name] if r["symbol"] == tk and r["service"] == venue]
     others = sorted({"NYSE_BOOK", "NASDAQ_BOOK"} - {r["service"] for r in _BOOKS[name] if r["symbol"] == tk})
     BOOKS.forget(tk)
