@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from db_authority import canonical_stream_db_path
+from time_et import ct_label
 
 log = logging.getLogger(__name__)
 
@@ -396,39 +397,83 @@ def _json(v) -> "str | None":
     return json.dumps(v) if v is not None else None
 
 
-#: what a row's write can fail with: the database refusing it (sqlite3.Error: a constraint, a
-#: locked, full or read-only database), or a message without the shape its table needs (KeyError,
-#: TypeError, ValueError, AttributeError while building the row)
-ROW_FAILURES = (sqlite3.Error, KeyError, TypeError, ValueError, AttributeError)
+#: what one message's row can raise while it is built and written: the row refused by the
+#: database (a constraint, a value it cannot bind or store) or a message without the shape its
+#: table needs. Each belongs to that message alone: it is kept as sent and the writer goes on.
+ROW_FAILURES = (sqlite3.IntegrityError, sqlite3.DataError, sqlite3.InterfaceError,
+                sqlite3.ProgrammingError, sqlite3.NotSupportedError, KeyError, TypeError,
+                ValueError, AttributeError, OverflowError)
+#: the database refusing every write (locked or busy past the timeout, full, read-only,
+#: unreadable): the writer holds the messages and writes them again after `retry_sec`
+DATABASE_REFUSALS = (sqlite3.DatabaseError,)
 
 #: the writer's states, on the heartbeat
-WRITER_NOT_STARTED, WRITER_RECORDING, WRITER_DEAD, WRITER_STOPPED = (
-    "not_started", "recording", "dead", "stopped")
+WRITER_NOT_STARTED, WRITER_RECORDING, WRITER_BLOCKED, WRITER_DEAD, WRITER_STOPPED = (
+    "not_started", "recording", "blocked", "dead", "stopped")
+_STATE_WORD = {WRITER_NOT_STARTED: "NOT STARTED", WRITER_RECORDING: "RECORDING",
+               WRITER_BLOCKED: "BLOCKED", WRITER_DEAD: "DEAD", WRITER_STOPPED: "STOPPED"}
+#: a message's row written to its table
+ROW = "row"
+
+
+@dataclass(frozen=True)
+class KeptFailure:
+    """A message kept as sent in stream_write_failures: its topic, the message, the error (type
+    and text) and when the write failed."""
+    topic: str
+    msg: Any
+    error: str
+    ts: float
 
 
 @dataclass(frozen=True)
 class WriterStatus:
-    """The writer as the heartbeat carries it. `failures`: messages kept in
-    stream_write_failures; `unrecorded`: messages that reached a dead writer (not stored);
-    `error`: what ended the writer thread."""
+    """The writer as the heartbeat carries it, counted at commit. `failures`: messages kept in
+    stream_write_failures; `waiting`: messages held while the database refuses writes;
+    `unrecorded`: messages a dead writer could not take; `error`: the database's refusal
+    (blocked) or what ended the thread (dead), from `error_ct`. `line` and `cls`: the header's
+    Record, as the page prints it."""
     state: str
     rows_written: int
     failures: int
     last_failure: "str | None"
+    last_failure_ct: "str | None"
     queue_depth: int
+    waiting: int
     unrecorded: int
     error: "str | None"
+    error_ct: "str | None"
+    line: str
+    cls: str
+
+
+def _record_line(s: dict) -> "tuple[str, str]":
+    """The header's Record for a writer status: the line, and its class ("neg" for anything
+    but recording with nothing kept)."""
+    parts = [_STATE_WORD[s["state"]]]
+    if s["error"] is not None:
+        parts.append(f"{'since' if s['state'] == WRITER_BLOCKED else 'at'} {s['error_ct']}: {s['error']}")
+    parts += [f"{s['rows_written']} rows", f"{s['failures']} failed, kept as sent"]
+    if s["last_failure"] is not None:
+        parts.append(f"last {s['last_failure_ct']}: {s['last_failure']}")
+    parts += [f"{s['queue_depth']} queued", f"{s['waiting']} waiting for the database",
+              f"{s['unrecorded']} not recorded"]
+    ok = s["state"] == WRITER_RECORDING and s["failures"] == 0 and s["unrecorded"] == 0
+    return " · ".join(parts), "" if ok else "neg"
 
 
 class CaptureWriter:
     """Writes every bus message to stream_capture.db from its own thread, in batches
     (commit every `batch_rows` rows or `batch_sec`). Never points at ed_console.db. A message
-    whose row is refused is kept as sent in stream_write_failures (keep_failure); a failure
-    that cannot be kept, or a refused commit, ends the thread: its state is WRITER_DEAD with
-    the error, and every later message is counted unrecorded."""
+    whose row is refused is kept as sent in stream_write_failures, in the same batch. While the
+    database refuses every write (DATABASE_REFUSALS, each wait `timeout_sec`), the open batch
+    is rolled back and its messages, and every one after, are held in order and written again
+    every `retry_sec` (state blocked, with the refusal). Only an error outside these ends the
+    thread (dead): what it held and what reaches it after are counted unrecorded."""
 
     def __init__(self, db_path: "Path | str | None" = None, *,
-                 batch_rows: int = 500, batch_sec: float = 0.25) -> None:
+                 batch_rows: int = 500, batch_sec: float = 0.25,
+                 timeout_sec: float = 30.0, retry_sec: float = 1.0) -> None:
         p = resolve_stream_db_path() if db_path is None else Path(db_path).resolve()
         if p.name == "ed_console.db":
             raise ValueError("CaptureWriter must never write the operational DB (RC-6 law)")
@@ -436,14 +481,20 @@ class CaptureWriter:
         self.db_path = p
         self.batch_rows = int(batch_rows)
         self.batch_sec = float(batch_sec)
+        self.timeout_sec = float(timeout_sec)
+        self.retry_sec = float(retry_sec)
         self._lock = threading.Lock()
         self._q: "queue.SimpleQueue" = queue.SimpleQueue()
+        self._batch: list = []         # (message, outcome) in the open transaction
+        self._waiting: list = []       # messages held while the database refuses writes
         self.state = WRITER_NOT_STARTED
         self.rows_written = 0
         self.failures = 0
         self.last_failure: "str | None" = None
+        self.last_failure_ts: "float | None" = None
         self.unrecorded = 0
         self.error: "str | None" = None
+        self.error_ts: "float | None" = None
         conn = sqlite3.connect(str(p))
         try:
             conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
@@ -456,54 +507,80 @@ class CaptureWriter:
         finally:
             conn.close()
 
-    def insert(self, topic: str, msg: dict, *, conn: "sqlite3.Connection | None" = None) -> None:
-        """One bus message -> one row (topics without a table are skipped). Without `conn`
-        (a test, a recovery tool) it opens, writes and commits a connection of its own."""
+    def insert(self, topic: str, msg: dict, *, conn: "sqlite3.Connection | None" = None):
+        """One bus message -> one row: ROW, the KeptFailure when its row is refused, or None
+        (a topic without a table, or nothing Schwab sent to keep). A DATABASE_REFUSALS error
+        is raised. Without `conn` (a test, a recovery tool) it opens, writes, commits and counts
+        a connection of its own."""
         kind = topic.split(".", 1)[0]
         spec = _INSERTS.get(kind)
         if spec is None:
-            return
+            return None
         if isinstance(msg, dict) and kind in _VERBATIM and msg.get("content") is None:
-            return                         # nothing Schwab sent to keep
+            return None
         if conn is None:
-            with sqlite3.connect(str(self.db_path), timeout=30.0) as own:
-                self.insert(topic, msg, conn=own)
-            return
+            with sqlite3.connect(str(self.db_path), timeout=self.timeout_sec) as own:
+                out = self.insert(topic, msg, conn=own)
+            self._committed([((topic, msg), out)])
+            return out
         try:
             conn.execute(spec[0], spec[1](msg))
         except ROW_FAILURES as e:
             log.warning("stream writer: %s not stored as a row, kept as sent: %s: %s",
                         topic, type(e).__name__, e)
-            self.keep_failure(topic, msg, e, time.time(), conn=conn)
-            return
-        with self._lock:
-            self.rows_written += 1
+            return self._keep(conn, KeptFailure(topic, msg, f"{type(e).__name__}: {e}", time.time()))
+        return ROW
 
-    def keep_failure(self, topic: str, msg: Any, error: BaseException, now: float, *,
-                     conn: "sqlite3.Connection | None" = None) -> None:
-        """Keep `msg` as sent, with `error`, in stream_write_failures, and count it on the
-        heartbeat. On the writer's connection (`conn`) it commits with the batch; without one (a
-        chain worker's failed history write) it writes and commits a connection of its own. A
-        database that refuses this row too raises: nothing can be kept there."""
-        reason = f"{type(error).__name__}: {error}"
-        row = (now, topic, json.dumps(msg, default=repr), reason)
-        sql = "INSERT INTO stream_write_failures(ts,topic,msg_json,error) VALUES(?,?,?,?)"
-        if conn is None:
-            with sqlite3.connect(str(self.db_path), timeout=30.0) as own:
-                own.execute(sql, row)
-        else:
-            conn.execute(sql, row)
+    def keep_failure(self, topic: str, msg: Any, error: BaseException, now: float) -> None:
+        """Keep `msg`, which another thread could not store (a chain whose history write
+        failed), as sent. While the writer thread runs it takes it in turn, the one writer;
+        before it starts or after it stops nothing else writes, so it is written here."""
+        kept = KeptFailure(topic, msg, f"{type(error).__name__}: {error}", now)
         with self._lock:
-            self.failures += 1
-            self.last_failure = f"{topic}: {reason}"
+            standalone = self.state in (WRITER_NOT_STARTED, WRITER_STOPPED)
+        if not standalone:
+            self._hand(kept)
+            return
+        with sqlite3.connect(str(self.db_path), timeout=self.timeout_sec) as own:
+            self._keep(own, kept)
+        self._committed([(kept, kept)])
+
+    def _keep(self, conn: sqlite3.Connection, kept: KeptFailure) -> KeptFailure:
+        """One stream_write_failures row: the message as JSON (Python's repr when it is not
+        JSON)."""
+        try:
+            sent = json.dumps(kept.msg, default=repr)
+        except (ValueError, TypeError, RecursionError) as e:
+            log.warning("stream writer: %s is not JSON (%s), kept as its repr", kept.topic, e)
+            sent = repr(kept.msg)
+        conn.execute("INSERT INTO stream_write_failures(ts,topic,msg_json,error) VALUES(?,?,?,?)",
+                     (kept.ts, kept.topic, sent, kept.error))
+        return kept
+
+    def _committed(self, batch: list) -> None:
+        """A batch is in the database: count its rows and kept failures; the writer records."""
+        with self._lock:
+            for _item, out in batch:
+                if out == ROW:
+                    self.rows_written += 1
+                elif isinstance(out, KeptFailure):
+                    self.failures += 1
+                    self.last_failure, self.last_failure_ts = f"{out.topic}: {out.error}", out.ts
+            if self.state == WRITER_BLOCKED:
+                self.state, self.error, self.error_ts = WRITER_RECORDING, None, None
 
     def status(self) -> dict:
         """The writer's WriterStatus, as the heartbeat carries it."""
         with self._lock:
-            return asdict(WriterStatus(state=self.state, rows_written=self.rows_written,
-                                       failures=self.failures, last_failure=self.last_failure,
-                                       queue_depth=self._q.qsize(), unrecorded=self.unrecorded,
-                                       error=self.error))
+            s = {"state": self.state, "rows_written": self.rows_written,
+                 "failures": self.failures, "last_failure": self.last_failure,
+                 "last_failure_ct": (ct_label(self.last_failure_ts)
+                                     if self.last_failure_ts is not None else None),
+                 "queue_depth": self._q.qsize(), "waiting": len(self._waiting),
+                 "unrecorded": self.unrecorded, "error": self.error,
+                 "error_ct": ct_label(self.error_ts) if self.error_ts is not None else None}
+        line, cls = _record_line(s)
+        return asdict(WriterStatus(**s, line=line, cls=cls))
 
     async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
         """Hand every bus message to the writer thread until `stop`; everything delivered
@@ -526,12 +603,12 @@ class CaptureWriter:
             self._q.put(None)
             await asyncio.to_thread(thread.join)
 
-    def _hand(self, item: tuple) -> None:
+    def _hand(self, item) -> None:
         with self._lock:
             if self.state == WRITER_DEAD:
                 self.unrecorded += 1
                 return
-        self._q.put(item)
+            self._q.put(item)
 
     def _thread(self, q: "queue.SimpleQueue") -> None:
         try:
@@ -539,32 +616,72 @@ class CaptureWriter:
         except Exception as e:  # noqa: BLE001 -- recorded as the writer's death, then raised
             log.error("stream writer died: %s: %s", type(e).__name__, e)
             with self._lock:
-                self.state = WRITER_DEAD
-                self.error = f"{type(e).__name__}: {e}"
+                self.state, self.error, self.error_ts = WRITER_DEAD, f"{type(e).__name__}: {e}", time.time()
+                lost = len(self._batch) + len(self._waiting)
+                self._batch, self._waiting = [], []
+                while True:
+                    try:
+                        lost += q.get_nowait() is not None
+                    except queue.Empty:
+                        break
+                self.unrecorded += lost
             raise
         with self._lock:
             self.state = WRITER_STOPPED
 
+    def _store(self, conn: sqlite3.Connection, item):
+        if isinstance(item, KeptFailure):
+            return self._keep(conn, item)
+        return self.insert(*item, conn=conn)
+
     def _write(self, q: "queue.SimpleQueue") -> None:
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        conn = sqlite3.connect(str(self.db_path), timeout=self.timeout_sec)
         try:
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
-            pending, last_commit = 0, time.monotonic()
+            last_commit, stopping = time.monotonic(), False
             while True:
-                try:
-                    item = q.get(timeout=max(self.batch_sec - (time.monotonic() - last_commit), 0.01))
-                except queue.Empty:
-                    item = False
-                if item is None:
+                if self._waiting:
+                    items, self._waiting = self._waiting, []
+                elif stopping:
                     break
-                if item:
-                    self.insert(*item, conn=conn)
-                    pending += 1
-                if pending and (pending >= self.batch_rows
-                                or time.monotonic() - last_commit >= self.batch_sec):
-                    conn.commit()
-                    pending, last_commit = 0, time.monotonic()
-            conn.commit()
+                else:
+                    try:
+                        item = q.get(timeout=max(self.batch_sec - (time.monotonic() - last_commit), 0.01))
+                    except queue.Empty:
+                        item = False
+                    stopping = item is None
+                    items = [item] if item else []
+                stored = 0
+                try:
+                    for item in items:
+                        self._batch.append((item, self._store(conn, item)))
+                        stored += 1
+                    if self._batch and (stopping or len(self._batch) >= self.batch_rows
+                                        or time.monotonic() - last_commit >= self.batch_sec):
+                        conn.commit()
+                        batch, self._batch = self._batch, []
+                        self._committed(batch)
+                        last_commit = time.monotonic()
+                except DATABASE_REFUSALS as e:
+                    conn.rollback()
+                    self._refused(e, [item for item, _out in self._batch] + items[stored:], stopping)
         finally:
             conn.close()
+
+    def _refused(self, error: BaseException, held: list, stopping: bool) -> None:
+        """The database refused a write: the open batch is rolled back and `held` (its messages
+        and the ones not yet written, in order) is written again after `retry_sec`; at the stop
+        it is counted unrecorded instead."""
+        reason = f"{type(error).__name__}: {error}"
+        log.warning("stream writer: the database refused a write, %d messages held: %s",
+                    len(held), reason)
+        with self._lock:
+            self._batch = []
+            if stopping:
+                self.unrecorded += len(held)
+                return
+            if self.state != WRITER_BLOCKED:
+                self.error_ts = time.time()
+            self.state, self.error, self._waiting = WRITER_BLOCKED, reason, held
+        time.sleep(self.retry_sec)

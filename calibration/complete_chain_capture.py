@@ -207,9 +207,9 @@ class ChainSweep:
     (FAILED_PAUSE_SEC) one chain is fetched alone until one lands. Each chain is published to
     the console in parts (chain_messages); a failure is published
     with Schwab's answer. The first fetch of a ticker begun inside a capture window
-    (capture_slot) is also written to the chain history; a history write the database refuses
-    keeps the chain as Schwab sent it in the stream database's write failures (`failures`, the
-    daemon's writer; by default the stream database's own)."""
+    (capture_slot) is also written to the chain history; a history write that fails is a
+    write failure, never the chain's: the chain as the sweep received it is handed to
+    `failures` (the daemon's writer; by default the stream database's own) to keep as sent."""
 
     def __init__(self, db_path: Path | str, board: "list[str]", publish: "callable",
                  clock: "callable" = time.time, *, failures: "CaptureWriter | None" = None) -> None:
@@ -294,7 +294,7 @@ class ChainSweep:
             self.publish(topic, msg)
         try:
             self._write_history(ticker, payload, contracts, started, now)
-        except sqlite3.Error as e:          # the chain was delivered; its history write was refused
+        except Exception as e:  # noqa: BLE001 -- the chain is delivered; a failed history write is the writer's to keep and show
             log.warning("chain history for %s not written, kept as sent: %s: %s",
                         ticker, type(e).__name__, e)
             self.failures.keep_failure(f"chain_history.{ticker}", payload, e, now)

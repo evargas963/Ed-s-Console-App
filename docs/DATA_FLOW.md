@@ -58,13 +58,17 @@ from Schwab to the screen (daemon, console, page), are these:
   nothing old waits in a queue. Memory is bounded by the number of symbols, never by how fast
   Schwab sends. Enforced by: `tests/test_data_path_rules_v1.py`.
 - **D4. The database is the memory.** Its one writer records every message Schwab sends; nothing
-  else keeps old data. A message it cannot store as a row is kept as sent, with its error, in
-  `stream_write_failures`; the writer's state (`stream_spine.WriterStatus`: recording, rows
-  written, failures kept and the last one, its queue, and when its thread dies the error and the
-  messages not recorded since) rides the daemon's heartbeat to the header's Record. Owner: the
-  writer thread (`CaptureWriter.run`, started with the daemon); when the database refuses even
-  the failure row (a full disk) or a commit, the thread ends, the header reads DEAD with the
-  error, and nothing is recorded until the daemon restarts.
+  else keeps old data. A message whose row is refused (a constraint, a value SQLite cannot
+  hold, a message without its table's shape) is kept as sent, with its error and time, in
+  `stream_write_failures`, and the writer goes on. While the database refuses every write
+  (locked past the writer's wait, full, read-only), the writer holds the messages in memory, in
+  order, and writes them again every second until it can; it reads blocked with the refusal.
+  The writer's state (`stream_spine.WriterStatus`, counted at commit) rides the daemon's heartbeat
+  to the header's Record, a line the daemon serves (its times in Central Time). Owner: the writer
+  thread (`CaptureWriter.run`, started with the daemon). What it holds is in memory: a daemon
+  that stops while blocked loses it (counted not recorded at a stop). Only an error outside
+  these ends the thread: it reads dead with the error, and what it held and what reaches it after
+  are counted not recorded until the daemon restarts.
   Enforced by: `tests/test_data_path_rules_v1.py`, `tests/test_data_path_writer_failures_v1.py`.
 - **D5. Live while the market is open; the close stands while it is closed.** Every value carries
   Schwab's time and the newest by that time is the current one; a reconnect never replays an older
@@ -216,10 +220,10 @@ from Schwab to the screen (daemon, console, page), are these:
   every ticker's levels go stale with that reason (`terrain_staleness`, judged against two of
   the sweep's delivered rounds, carried on the heartbeat). The first chain of each ticker whose
   fetch began in a capture window is also written to the chain history (§4.2, `capture_slot`); a
-  history write the database refuses (`sqlite3.Error`) keeps the chain as the sweep received it in
-  `stream_write_failures` and counts on the writer's state (§2 D4), the window's next fetch
-  writes it, and the delivered chain stands; any other error in the history write is the chain's
-  failure, published with its reason. The sweep
+  history write that fails is a write failure, never the chain's: the chain as the sweep
+  received it is handed to the daemon's writer, which keeps it in `stream_write_failures` and
+  counts it on its state (§2 D4); the delivered chain stands, the sweep is not paused, and the
+  window's next fetch writes the history. The sweep
   downloads through `schwab_client.fetch_full_chain`, the one place a chain enters, so every consumer
   (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
   the captures) reads the Greeks it sets. The Greeks (gamma, delta, theta, vega, rho,

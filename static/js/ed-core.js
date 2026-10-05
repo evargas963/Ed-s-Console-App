@@ -782,18 +782,12 @@
     if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
     try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() })); } catch (e) {}
   }
-  // The daemon's database writer, as each heartbeat carries it (stream_spine.WriterStatus): its
-  // state, rows written, the messages it could not store (kept as sent, with the last error), and
-  // when its thread died, the error and the messages not recorded since. No beat: unknown.
-  var RECORD_STATE_WORD = { not_started: 'NOT STARTED', recording: 'RECORDING', dead: 'DEAD', stopped: 'STOPPED' };
+  // The daemon's database writer, as each heartbeat carries it: the line and its class are the
+  // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '—'.
   function paintRecord(w) {
     var el = document.getElementById('hRecord'); if (!el) return;
-    if (!w) { el.textContent = 'unknown: no daemon heartbeat'; el.className = 'v'; return; }
-    el.textContent = RECORD_STATE_WORD[w.state] + ' · ' + w.rows_written + ' rows · '
-      + w.failures + ' failed, kept as sent' + (w.last_failure ? ' (last: ' + w.last_failure + ')' : '')
-      + (w.error ? ' · writer stopped by ' + w.error + ' · ' + w.unrecorded + ' not recorded' : '')
-      + ' · ' + w.queue_depth + ' queued';
-    el.className = 'v' + (w.state === 'recording' ? '' : ' neg');
+    el.textContent = w ? w.line : '—';
+    el.className = w ? 'v ' + w.cls : 'v';
   }
   function openPriceSocket() {
     var url = priceSocketUrl();
