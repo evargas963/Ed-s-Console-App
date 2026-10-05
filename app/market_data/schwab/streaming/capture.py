@@ -40,12 +40,16 @@ code 11 (not available) -- there is no trade-by-trade tape and no trade side.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import sys
 import threading
 import time
 from pathlib import Path
+
+from schwab.contrib.util import StreamJsonDecoder
+from schwab.streaming import StreamClient
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
@@ -198,9 +202,9 @@ def _publisher(service: str, bus: MessageBus, health: HealthRegistry):
 
 
 class _RawHandler:
-    """schwab-py handler shape for a service it has no helper for (NEWS_HEADLINE). schwab-py
-    calls label_message on every handler of every frame; without it the call raised and the rest
-    of the frame -- prices included -- was dropped ("skipped a frame", 2026-09-26)."""
+    """schwab-py's handler shape for a service it has no add_*_handler for (NEWS_HEADLINE):
+    handle_message calls label_message on every handler of every data entry, then the handler.
+    label_message returns the entry as Schwab sent it."""
 
     def __init__(self, fn) -> None:
         self.fn = fn
@@ -212,45 +216,56 @@ class _RawHandler:
         return self.fn(msg)
 
 
-def _open_stream(client):
-    """schwab-py's StreamClient, recording the time of every frame Schwab sends -- data,
-    responses and Schwab's heartbeats alike. That one timestamp is the liveness test."""
-    from schwab.streaming import StreamClient
+class _FrameClock(StreamJsonDecoder):
+    """The stream's JSON decoder (StreamClient.set_json_decoder). schwab-py hands it every frame
+    it reads off Schwab's socket -- data, responses and Schwab's heartbeats alike -- and it records
+    on the stream when that frame came. That one timestamp is the liveness test."""
+
+    def __init__(self, stream: StreamClient) -> None:
+        self.stream = stream
+
+    def decode_json_string(self, raw):
+        msg = json.loads(raw)
+        self.stream.last_frame_ts = time.time()
+        return msg
+
+
+def _open_stream(client) -> StreamClient:
+    """schwab-py's StreamClient, recording the time of every frame Schwab sends (_FrameClock)."""
     stream = StreamClient(client)
     stream.last_frame_ts = time.time()
-    receive = stream._receive
-
-    async def timed_receive():
-        msg = await receive()
-        stream.last_frame_ts = time.time()
-        return msg
-    stream._receive = timed_receive
+    stream.set_json_decoder(_FrameClock(stream))
     return stream
 
 
-def _fields(stream, service: str) -> str:
-    if service == "NEWS_HEADLINE":
-        return ",".join(str(f) for f in NEWS_FIELDS)
-    enum = {"LEVELONE_EQUITIES": stream.LevelOneEquityFields,
-            "CHART_EQUITY": stream.ChartEquityFields,
-            "LEVELONE_OPTIONS": stream.LevelOneOptionFields}.get(service, stream.BookFields)
-    return ",".join(str(f) for f in sorted(int(x.value) for x in enum))
+#: schwab-py's public requests of each service: <name>_subs, <name>_add and <name>_unsubs, the
+#: first two asking for every field of the service. schwab-py has none for NEWS_HEADLINE.
+PUBLIC_REQUESTS = {"LEVELONE_EQUITIES": "level_one_equity", "CHART_EQUITY": "chart_equity",
+                   "LEVELONE_OPTIONS": "level_one_option", "NYSE_BOOK": "nyse_book",
+                   "NASDAQ_BOOK": "nasdaq_book", "OPTIONS_BOOK": "options_book"}
 
 
-async def _request(stream, service: str, command: str, symbols: "list[str]") -> None:
-    """One Schwab request; raises (schwab-py UnexpectedResponse / connection errors) unless
-    Schwab answers code 0. Every service goes through this one path, including NEWS_HEADLINE."""
+async def _news_request(stream: StreamClient, command: str, symbols: "list[str]") -> None:
+    """A NEWS_HEADLINE request, built, sent and answered with schwab-py's private request helpers:
+    schwab-py has no public request for a service it does not know."""
     params = {"keys": ",".join(symbols)}
     if command != "UNSUBS":
-        params["fields"] = _fields(stream, service)
-    req, rid = stream._make_request(service=service, command=command, parameters=params)
+        params["fields"] = ",".join(str(f) for f in NEWS_FIELDS)
+    req, rid = stream._make_request(service="NEWS_HEADLINE", command=command, parameters=params)
+    async with stream._lock:
+        await stream._send({"requests": [req]})
+        await stream._await_response(rid, "NEWS_HEADLINE", command)
 
-    async def send_and_wait() -> None:
-        async with stream._lock:
-            await stream._send({"requests": [req]})
-            await stream._await_response(rid, service, command)
+
+async def _request(stream: StreamClient, service: str, command: str, symbols: "list[str]") -> None:
+    """One Schwab request; raises (schwab-py UnexpectedResponse / UnexpectedResponseCode /
+    connection errors) unless Schwab answers code 0."""
+    if service == "NEWS_HEADLINE":
+        send = _news_request(stream, command, symbols)
+    else:
+        send = getattr(stream, f"{PUBLIC_REQUESTS[service]}_{command.lower()}")(symbols)
     try:
-        await asyncio.wait_for(send_and_wait(), timeout=REQUEST_TIMEOUT_SEC)
+        await asyncio.wait_for(send, timeout=REQUEST_TIMEOUT_SEC)
     except asyncio.TimeoutError:
         raise ConnectionError(f"no answer to {service} {command} in {REQUEST_TIMEOUT_SEC:.0f} s") from None
 

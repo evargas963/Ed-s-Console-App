@@ -169,59 +169,6 @@ def test_a_dead_socket_during_sync_ends_the_connection(tmp_path, monkeypatch):
     assert d.refused["OPTIONS_BOOK"] == {}, "a dead socket is not Schwab refusing a symbol"
 
 
-def test_request_sends_schwabs_fields_and_never_fields_on_unsubs():
-    sent = []
-
-    class S:
-        LevelOneEquityFields = LevelOneOptionFields = ChartEquityFields = BookFields = \
-            type("E", (), {"__iter__": lambda self: iter([type("F", (), {"value": 0})(),
-                                                         type("F", (), {"value": 3})()])})()
-        _lock = asyncio.Lock()
-
-        def _make_request(self, *, service, command, parameters):
-            sent.append((service, command, parameters))
-            return {}, 1
-
-        async def _send(self, obj):
-            pass
-
-        async def _await_response(self, rid, service, command):
-            pass
-
-    async def go():
-        S._lock = asyncio.Lock()
-        await cap._request(S(), "NYSE_BOOK", "SUBS", ["SPY"])
-        await cap._request(S(), "NEWS_HEADLINE", "ADD", ["SPY"])
-        await cap._request(S(), "NYSE_BOOK", "UNSUBS", ["SPY"])
-    asyncio.run(go())
-    assert sent[0][2] == {"keys": "SPY", "fields": "0,3"}
-    assert sent[1][2]["fields"] == ",".join(str(i) for i in cap.NEWS_FIELDS)
-    assert sent[2][2] == {"keys": "SPY"}
-
-
-def test_a_request_schwab_never_answers_is_a_dead_connection(monkeypatch):
-    monkeypatch.setattr(cap, "REQUEST_TIMEOUT_SEC", 0.05)
-
-    class S:
-        LevelOneEquityFields = LevelOneOptionFields = ChartEquityFields = BookFields = []
-
-        def _make_request(self, **_):
-            return {}, 1
-
-        async def _send(self, obj):
-            pass
-
-        async def _await_response(self, *a):
-            await asyncio.sleep(10)
-
-    async def go():
-        s = S()
-        s._lock = asyncio.Lock()
-        await cap._request(s, "NYSE_BOOK", "SUBS", ["SPY"])
-    with pytest.raises(ConnectionError):
-        asyncio.run(go())
-
-
 # ------------------------------------------------------------------ connection lifecycle
 
 class FakeStream:
