@@ -960,8 +960,8 @@ def test_a_chain_without_schwabs_quote_time_is_not_priced_and_the_screen_says_wh
 #: MRVL's full chain (newest quoteTimeInLong 2026-09-25 15:46:58 ET) stored as the daemon stores a
 #: capture, at the close capture slot 2026-09-25 16:15 ET: the stored time is the induced
 #: condition (the single names' 16:15 captures are dated 15-16 min after their newest quote).
-#: Valued at the stored time, the 2026-09-25 expiry (20:00 UTC, 16:00 ET) adds no gamma and the
-#: flip is 229.21; at Schwab's quote time it is 230.53. Stand-in, named: the fixture has no
+#: Valued at the stored time, the 2026-09-25 expiry (20:00 UTC, 16:00 ET) drops out of the flip's
+#: gamma profile and the flip is 229.21; at Schwab's quote time it is 230.53. Stand-in, named: the fixture has no
 #: `underlyingPrice` (what the daemon stores as the capture's spot), so the chain's underlying
 #: `last` stands in for it.
 _MRVL_TAKEN = datetime(2026, 9, 25, 16, 15, tzinfo=ET).timestamp()
@@ -999,7 +999,8 @@ def test_a_stored_capture_is_priced_with_its_own_price_dated_at_its_time_and_val
     expected = compute_terrain(tk, chain, spot, now=quoted).to_dict()
     assert expected["gamma_flip"] is not None, "the capture must price"
     assert {k: loaded[k] for k in _LEVEL_KEYS} == {k: expected[k] for k in _LEVEL_KEYS}
-    # the induced condition: at the stored time the 09-25 expiry, settled at 16:00, adds no gamma
+    # the induced condition: at the stored time the 09-25 expiry, settled at 16:00, drops out of
+    # the flip's gamma profile
     at_stored = datetime.fromtimestamp(_MRVL_TAKEN, ET)
     unsettled = [c for c in chain if not c["expirationDate"].startswith("2026-09-25")]
     assert compute_terrain(tk, chain, spot, now=at_stored).gamma_flip == \
