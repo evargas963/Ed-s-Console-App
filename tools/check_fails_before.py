@@ -6,14 +6,19 @@ changed test files run there: pytest files (tests/**/test_*.py) with this interp
 specs (tests/e2e/*.spec.js) with the repository's installed Playwright, against a console served
 from the base. At least one test must fail or error on the base; a change whose every test
 already passed before proves nothing about that change. The same tests passing on the PR is the
-full suite's job (the required pytest-full check). A PR that adds no line to any product file and
-changes no test or only deletes whole tests has nothing to fail before: it passes here, and names
-the existing tests that cover it under "End-to-end test:" (tools/check_end_to_end.py). "Only deletes
-whole tests": no line added under tests/ (`git diff --numstat`), and every changed file under tests/
-is deleted, or is a pytest file equal, as parsed code, to its base with whole top-level definitions
-removed (tests, helpers, fixtures, imports, constants) that nothing left in the file names, none an
-autouse fixture. Any other removed line (inside a test, a helper or a fixture that stays) is an edit
-and keeps the rule above.
+full suite's job (the required pytest-full check). A run that gives no result (no test ran, e.g. a
+conftest that cannot load on the base) proves nothing and is refused. A PR that adds no line to any
+product file and changes no test or only deletes whole tests has nothing to fail before: it passes
+here, and names the existing tests that cover it under "End-to-end test:" (tools/check_end_to_end.py).
+"Only deletes whole tests": no line added under tests/ (`git diff --numstat`), and every changed file
+under tests/ is a pytest file (tests/**/test_*.py) that is deleted, or that equals, as parsed code,
+its base with whole top-level definitions removed (tests, helpers, fixtures, imports, constants) that
+no name, attribute, parameter or string left in the file names (a fixture's `name=` counts as a name
+it defines), none an autouse fixture, setup_module, teardown_module, setup_function,
+teardown_function, a pytest* name or a * import. Any other change under tests/ (conftest.py, a
+helper module or fixture data changed or deleted, a line removed inside a test, helper or fixture
+that stays) keeps the rule above. A test module that cannot import on the base counts as failing
+there (a test of new code cannot import the old code).
 
 The base checkout sits inside the repository so that Node finds the repository's node_modules
 from it, and runs on the same Python as this check (first on PATH for the spec's console).
@@ -43,10 +48,22 @@ def changed(root: Path, base: str) -> list[str]:
     return [f for f in _git(root, "diff", "--name-only", "--diff-filter=AMR", f"{base}...HEAD").splitlines() if f]
 
 
+#: the module-level functions pytest calls by name, with no test naming them
+XUNIT = frozenset({"setup_module", "teardown_module", "setup_function", "teardown_function"})
+
+
+def _keyword(node: ast.stmt, arg: str) -> list[ast.expr]:
+    """The values of keyword `arg` in the decorator calls of `node` (`autouse=`, a fixture's `name=`)."""
+    decorators = getattr(node, "decorator_list", [])
+    return [k.value for d in decorators if isinstance(d, ast.Call) for k in d.keywords if k.arg == arg]
+
+
 def _defined(node: ast.stmt) -> set[str]:
-    """The names a top-level statement defines; empty for one that does anything else (a call, an if)."""
+    """The names a top-level statement defines (a fixture's `name=` too); empty for one that does
+    anything else (a call, an if)."""
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-        return {node.name}
+        return {node.name} | {v.value for v in _keyword(node, "name")
+                              if isinstance(v, ast.Constant) and isinstance(v.value, str)}
     if isinstance(node, (ast.Import, ast.ImportFrom)):
         return {(a.asname or a.name).split(".")[0] for a in node.names}
     targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
@@ -69,15 +86,13 @@ def _referenced(tree: ast.Module) -> set[str]:
 
 
 def _removable(node: ast.stmt, kept: set[str]) -> bool:
-    """A top-level statement whose removal changes no test left: a definition (a test, a helper, a fixture,
-    an import, a constant) that nothing left in the file names and that pytest does not use by itself
-    (an autouse fixture, a pytest* name, a * import)."""
+    """A top-level definition (a test, a helper, a fixture, an import, a constant) that no name, attribute,
+    parameter or string left in the file names, and that is not an autouse fixture, a `XUNIT` function,
+    a pytest* name or a * import."""
     names = _defined(node)
-    if not names or "*" in names or any(n.startswith("pytest") for n in names):
+    if not names or "*" in names or names & XUNIT or any(n.startswith("pytest") for n in names):
         return False
-    decorators = getattr(node, "decorator_list", [])
-    autouse = any(k.arg == "autouse" for d in decorators if isinstance(d, ast.Call) for k in d.keywords)
-    return not autouse and not names & kept
+    return not _keyword(node, "autouse") and not names & kept
 
 
 def _show(root: Path, rev: str, path: str) -> str | None:
@@ -87,11 +102,12 @@ def _show(root: Path, rev: str, path: str) -> str | None:
 
 
 def only_deletes_whole_tests(root: Path, base: str, path: str) -> bool:
-    """`path`, under tests/, is deleted, or is a pytest file that is its base module with only whole
-    top-level statements removed, each one `_removable` (compared as parsed code: comments aside)."""
+    """`path`, under tests/, is a pytest file that is deleted, or that is its base module with only whole
+    top-level statements removed, each one `_removable` (compared as parsed code: comments aside).
+    Any other file under tests/ (conftest.py, a helper module, fixture data) is never only a deletion."""
     now = _show(root, "HEAD", path)
     if now is None:
-        return True
+        return is_pytest(path)
     before = _show(root, _git(root, "merge-base", base, "HEAD").strip(), path)
     if not is_pytest(path) or before is None:
         return False
@@ -195,6 +211,9 @@ def violations(root: Path, base: str) -> list[str]:
     if not tests:
         return [f"product code changed ({', '.join(product)}) but no test under tests/ changed"]
     run, failed = failures_on_base(root, base, files, tests)
+    if not run:
+        return [f"no changed test ran on the old code ({', '.join(tests)}): the run gave no result, so "
+                "nothing proves this change"]
     if not failed:
         return [f"every changed test passes on the old code ({run} run: {', '.join(tests)}): "
                 "none of them proves this change"]

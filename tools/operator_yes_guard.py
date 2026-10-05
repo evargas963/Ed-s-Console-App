@@ -5,22 +5,16 @@
     deleted. New tests are free.
   * Starting, stopping or restarting the capture daemon or the console, merging a pull request
     and pushing to main change production.
-  * A database under data/ (`data/*.db`, its -wal, -shm, -journal) is written only with the
-    operator's yes (AGENTS.md Records stand): an Edit or Write of the file; a shell command that
-    writes one as a target (the last argument of cp / copy / Copy-Item, any path of mv, Move-Item,
-    Set-Content, tee and the other writers above, a > or >> redirect); and a shell command naming one
-    through a program that can open it (python, sqlite3) unless the command opens it read-only
-    (`mode=ro`, `-readonly`).
+  * Writes of a database under data/ (`data/*.db`, its -wal, -shm, -journal; AGENTS.md Records
+    stand): the forms tests/test_operator_yes_guard_v1.py covers. This is not a complete barrier;
+    the known gaps are listed in ENF-20 (ACTIVE_PROGRAM.md).
 
 For each of these the hook answers "ask": Claude Code shows the operator the action with Allow
 and Deny, and the agent cannot answer for them. Everything else passes untouched.
 
 Limits: shell commands are judged on what they run; code inside `python -c` or a heredoc body is
 data to the shell parser and is not judged here, except that a database path named anywhere in the
-command counts. A command that opens one database read-only and another writable is not told apart,
-and a script that opens a database without naming it on the command line is not seen; nor is a
-copy whose destination is named first or is the data/ directory, or a program not listed (ENF-20).
-The Edit and Write tools are judged in full.
+command counts. The Edit and Write tools are judged in full.
 """
 from __future__ import annotations
 

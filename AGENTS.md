@@ -54,11 +54,10 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   `tests/test_page_one_faucet_v1.py`, `tests/test_one_levels_producer_v1.py` for the values they drive; the second
   producers found 2026-10-02 — ENF-02; the register's check — ENF-17.
 - **System of record.** Enforced by: no machine check — ENF-18.
-- **Records stand.** Never delete or move anything under `data/` or `backups/`. Put to Ed, for a `data/*.db` file: an
-  Edit/Write of it; cp / copy / Copy-Item with it as the last argument; mv, rm, Set-Content, tee or another guard writer
-  naming it; a `>` / `>>` to it; python or sqlite3 naming it without `mode=ro` / `-readonly`. Other writes are not seen.
+- **Records stand.** Never delete or move anything under `data/` or `backups/`. The guard puts to Ed the
+  database writes its tests cover; it is not a complete barrier, and its known gaps are listed in ENF-20.
   Enforced by: `tools/operator_law_guard.py` (`tests/test_protected_paths_v1.py`); `tools/operator_yes_guard.py`
-  (`tests/test_operator_yes_guard_v1.py`); the writes not seen — ENF-20; a table drop — ENF-16.
+  (`tests/test_operator_yes_guard_v1.py`); the gaps — ENF-20; a table drop — ENF-16.
 - **Unknowns surface.** In an open session a value whose feed is down, or whose input is missing or invalid, is absent
   with its reason; while Closed the close values stand until the next session. No "past" label, fallback, default,
   estimate, proxy, carry-forward, interpolation or synthetic value. Enforced by:
@@ -123,9 +122,10 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - Page code: no arithmetic, sum, min/max, sort by value or date math on served data.
   Enforced by: no machine check — ENF-03.
 - A new check is a test of behavior, for a failure that happened; it fails on the old code; it starts with
-  no exceptions. Enforced by: `tools/check_fails_before.py` in the required `pytest-full` job refuses a PR that
-  changes product code unless one of its changed tests fails on the base, except a PR that adds no product or test line and
-  whose test files only lose whole definitions nothing left names, no autouse fixture (`tests/test_check_fails_before_v1.py`); the rest — ENF-08.
+  no exceptions. Enforced by: `tools/check_fails_before.py` in the required `pytest-full` job (`tests/test_check_fails_before_v1.py`) refuses a PR that
+  changes product code unless one of its changed tests fails on the base; a run with no result is refused. Exempt: a PR adding no
+  product or test line whose changes under tests/ are only pytest files deleted or losing whole top-level definitions nothing left
+  names, none autouse, setup/teardown_module/function, pytest* or * (`tests/test_check_fails_before_exemption_v1.py`); the rest — ENF-08.
 - Time is an input: a function that depends on the clock takes `now`; only an entry point (a
   route, a loop, a stream handler) reads the clock. Enforced by: no machine check — ENF-09.
 - A value that crosses a module boundary is a typed record (dataclass), not a dict of string keys;
