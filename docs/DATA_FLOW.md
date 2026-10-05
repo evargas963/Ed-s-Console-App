@@ -111,17 +111,19 @@ from Schwab to the screen (daemon, console, page), are these:
   price row → browser socket → header and watchlist, and the same row → the console → the spot the
   levels and top of book use; (c) the raw message → the console's order-flow tape. Pushed
   end to end; one price row everywhere.
-- **The universe.** Every ticker recorded, each treated the same, by one rule: a ticker with
-  data stored or a ticker a screen shows joins for good once Schwab's instrument lookup lists
-  it. No special list. It lives in the daemon's memory (`capture.Daemon.universe`). At its
-  start the daemon reads `ed_console.db` and `stream_capture.db` (`capture.recorded_tickers`):
-  the tickers whose newest recorded instrument answer lists them are the universe; every other
-  ticker with data stored (the distinct values of every table's `ticker` or `symbol` column,
-  read through its index, quarantine tables included: Records stand keeps them) is put to the
-  lookup. Left out: an option contract's symbol and the `world_` tables, public datasets of
+- **The universe.** Every ticker recorded, each treated the same, by one rule: every ticker
+  with data stored and every ticker a screen shows passes Schwab's instrument lookup; only
+  Schwab's answer that does not list a ticker keeps it out, and an unknown never removes one.
+  No special list. It lives in the daemon's memory (`capture.Daemon.universe`). Every ticker
+  with data stored is in it (`capture.load_stored`: `ed_console.db` and `stream_capture.db`
+  read by `capture.recorded_tickers` off the event loop, while the connection already streams
+  what the console shows; then `Daemon.load`): the distinct values of every table's `ticker` or
+  `symbol` column, read through its index, quarantine tables included (Records stand keeps
+  them). Each one no recorded answer of Schwab's lists is put to the lookup; its record goes on
+  meanwhile. Left out: an option contract's symbol and the `world_` tables, public datasets of
   other sources (12,426 more symbols; the operator's decision). Measured 2026-10-05 on
   production, read-only: 90 stored tickers, none yet confirmed (`stream_instruments_raw` does
-  not exist there yet), read in 5.8 to 18 s (reviewers' runs; 2.7 s on one run of mine). A
+  not exist there yet), read in 4.9 to 20 s. A
   ticker a screen shows is put to the lookup when the console's wanted frame names it (any
   equity on LEVELONE_EQUITIES, CHART_EQUITY, NEWS_HEADLINE, NYSE_BOOK or NASDAQ_BOOK: the
   watchlist, the header's context, the ticker on screen, and `active`). The daemon asks once
@@ -131,28 +133,39 @@ from Schwab to the screen (daemon, console, page), are these:
   instrument in the answer's `instruments` whose `symbol` is the ticker itself). Every answer
   is recorded by the daemon's writer (`stream_instruments_raw`: HTTP status and body as sent,
   `listed`), so a ticker that joined is read back as listed at every start; no separate list.
-  A ticker Schwab does not list does not join: it is neither subscribed as a universe ticker
-  nor in the chain sweep, its stored data stays as stored, and Schwab's answer is carried on
-  the heartbeat (`not_joined`) and leads the ticker's reason on screen
-  (`server.terrain_staleness`). A lookup Schwab gave no answer to (the network, no client, the
-  token refused: `capture.NO_ANSWER`) is shown the same way and asked again: the next time the
-  frame names the ticker, or, stored, the next session; any other error is ours and stops
-  `run_joins` with its traceback. Every universe ticker is streamed on LEVELONE_EQUITIES,
+  A ticker a screen shows joins once Schwab lists it. Schwab's HTTP 200 answer that does not
+  list a ticker takes it out (`Daemon.leave`: unsubscribed at the next sync unless a screen
+  still shows it, out of the chain sweep, its stored data as stored), and that answer is
+  carried on the heartbeat (`not_joined`) and leads the ticker's reason on screen
+  (`server.terrain_staleness`). This removal rests on Schwab's single-symbol symbol-search
+  answer listing a real ticker, NOT_PROVEN live (a read-only capture needs the operator's
+  yes). A lookup with no answer (any other HTTP status, the network, no client, the token
+  refused: `capture.NO_ANSWER`) is an unknown: nothing changes (a stored ticker stays in, a
+  shown one stays out with that reason shown) and it is asked again on the next connection to
+  Schwab (`Daemon.reconnected`). Any other error is ours: the daemon's parts run under
+  `capture.supervise`, which logs a failed part's traceback and ends the daemon (exit 1) so
+  `start_capture_daemon.bat` starts it again. Every universe ticker is streamed on LEVELONE_EQUITIES,
   CHART_EQUITY, NEWS_HEADLINE, NYSE_BOOK and NASDAQ_BOOK (`capture.UNIVERSE_SERVICES`) and its
   chain is fetched in turn (while Closed, a ticker that joins is fetched once, its close
   values). Schwab's answer to every subscription is recorded (`stream_subscriptions`): the
   `content.code` and `content.msg` of the response whose `requestid` is the request's
   (`capture._answer`; a response to another request, or a frame that is not JSON, is logged and
   passed over, never taken as this request's answer), a refusal carried on the heartbeat as
-  "code N: msg"; no limit of ours is imposed. A symbol Schwab refused is asked for again when
+  "code N: msg"; no limit of ours is imposed. Code 19, REACHED_SYMBOL_LIMIT (Streamer Guide
+  §1.4), is not a refusal of each symbol: Schwab keeps up to its limit and discards the rest
+  without naming which, so the request's symbols are held (unsubscribed when no longer wanted:
+  no slot Schwab kept is left behind) and Schwab's message is the service's state on the
+  heartbeat (`limits`). A symbol Schwab refused is asked for again when
   the console's list changes and in each new market session (`Daemon.new_session`, from
   `time_et.session_label`). The console learns the universe from the heartbeat (`universe`;
   `server._universe`, None while the heartbeat is not current): a heartbeat whose universe
   changed (`live_market_plane.universe_changed`) wakes the console's levels loop, which loads
   each new ticker's stored crosses, price levels and stored chain levels at once. Owner: the
-  daemon (`run_joins`, started with it); when it stops, no ticker joins and the screen shows
-  the ticker's reason. Enforced by: `tests/test_data_path_rules_v1.py`
+  daemon (`run_joins`, started with it); when it fails, the daemon ends and is started again.
+  Enforced by: `tests/test_data_path_rules_v1.py`
   (`test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_it`,
+  `test_a_stored_ticker_is_streamed_until_schwab_answers_and_only_not_listed_takes_it_out`,
+  `test_a_lookup_schwab_never_answers_is_shown_and_asked_again_and_our_own_error_ends_the_daemon`,
   `test_schwabs_refusal_of_a_subscription_is_recorded_with_its_own_code_and_message`,
   `test_only_schwabs_answer_to_this_request_decides_it`), `tests/test_recorded_universe_v1.py`,
   `tests/test_levels_single_producer_v1.py`

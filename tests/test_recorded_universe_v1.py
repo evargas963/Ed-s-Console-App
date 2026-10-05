@@ -50,8 +50,9 @@ def _record_answer(writer: CaptureWriter, symbol: str, body: str, listed: bool, 
 
 def test_the_console_and_the_daemon_hold_one_universe(tmp_path):
     """Stored in both databases: SPY and TSLA (bars), CRWD (the chain history). Only SPY has an
-    instrument answer of Schwab's that lists it: the universe starts as SPY, the others are put
-    to Schwab's lookup. The console carries the daemon's universe from its heartbeat."""
+    instrument answer of Schwab's that lists it. Every stored ticker is in the universe -- its
+    record goes on while its lookup is pending -- and the two not yet listed are put to
+    Schwab's lookup. The console carries the daemon's universe from its heartbeat."""
     console_db, stream_db = tmp_path / "ed_console.db", tmp_path / "stream_capture.db"
     writer = CaptureWriter(stream_db)
     _record_bars(writer, "SPY", "TSLA")
@@ -60,11 +61,12 @@ def test_the_console_and_the_daemon_hold_one_universe(tmp_path):
                                    spot=_CRWD.get("spot"), completeness_basis=CAPTURE_BASIS, ts_utc=time.time())
     listed, unconfirmed = capture.recorded_tickers(console_db, stream_db)
     assert (listed, unconfirmed) == (["SPY"], ["CRWD", "TSLA"])
-    d = capture.Daemon(MessageBus(), HealthRegistry(), universe=listed, unconfirmed=unconfirmed)
+    d = capture.Daemon(MessageBus(), HealthRegistry())
+    d.load(listed, unconfirmed)
     assert [d.joins.get_nowait() for _ in range(d.joins.qsize())] == ["CRWD", "TSLA"]
     lmp.record_feed_heartbeat(d.status())
     try:
-        assert d.universe == server._universe() == ["SPY"]
+        assert sorted(d.universe) == server._universe() == ["CRWD", "SPY", "TSLA"]
     finally:
         lmp.record_feed_down()
 

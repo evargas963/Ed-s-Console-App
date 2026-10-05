@@ -6,13 +6,15 @@ It is the only part of Ed Console that talks to Schwab. Beside the loop below, i
 (run_chains) fetches full option chains on its own threads, without end: the ticker on screen
 first, back to back, and every universe ticker in turn.
 
-  0. UNIVERSE Every ticker recorded, by one rule: a ticker with data stored in the databases
-             (recorded_tickers) or an equity the console's screens show (its watchlist, the
-             ticker on screen, the header's context) joins for good once Schwab's instrument
-             lookup lists it (run_joins; the answer is recorded, so at the next start the
-             ticker is read back as listed). Each is streamed on UNIVERSE_SERVICES and its chain
-             is fetched in turn. One that Schwab does not list does not join (its stored data
-             stays as stored); the console shows Schwab's answer (status "not_joined").
+  0. UNIVERSE Every ticker recorded, by one rule: every ticker with data stored in the
+             databases (load_stored: in the universe while its lookup is pending) and every
+             equity the console's screens show (its watchlist, the ticker on screen, the
+             header's context: joins once listed) passes Schwab's instrument lookup (run_joins;
+             the answer is recorded, so at the next start the ticker is read back as listed).
+             Only Schwab's answer that does not list a ticker keeps or takes it out (its stored
+             data stays as stored; the console shows the answer, status "not_joined"); an
+             unknown never removes. Each is streamed on UNIVERSE_SERVICES and its chain is
+             fetched in turn.
 
 It does four things, in one loop:
 
@@ -311,12 +313,18 @@ def _connection_lost(e: BaseException) -> bool:
 UNIVERSE_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NASDAQ_BOOK")
 
 
+#: Schwab's streamer code for a SUBS or ADD that reached the service's symbol limit (Streamer Guide
+#: §1.4 Response Codes: 19 REACHED_SYMBOL_LIMIT, connection not severed). Schwab keeps up to its
+#: limit and discards the rest without naming which (2026-10-04: "LEVELONE_OPTIONS=3000,
+#: DISCARDED=1363"), so the request's symbols are held -- unsubscribed when no longer wanted --
+#: and Schwab's message is the service's state, not a refusal of each symbol.
+REACHED_SYMBOL_LIMIT = 19
+
+
 class Daemon:
-    def __init__(self, bus: MessageBus, health: HealthRegistry, universe: "tuple[str, ...] | list[str]" = (),
-                 unconfirmed: "tuple[str, ...] | list[str]" = ()) -> None:
-        """`universe`: the tickers Schwab's recorded instrument answer lists; `unconfirmed`: the
-        other tickers with data stored, each put to Schwab's instrument lookup (run_joins) like
-        a ticker a screen shows (recorded_tickers)."""
+    def __init__(self, bus: MessageBus, health: HealthRegistry, universe: "tuple[str, ...] | list[str]" = ()) -> None:
+        """`universe`: tickers to stream from the start (a test's; the daemon's own come from
+        load, once the stored tickers are read)."""
         self.bus = bus
         self.health = health
         #: what the console's screens show, as it last said (none until it says)
@@ -326,44 +334,60 @@ class Daemon:
         #: the console connection whose list this is (live_push's socket)
         self.sender = None
         self.wanted_changed = asyncio.Event()
-        #: the universe: every ticker streamed on UNIVERSE_SERVICES and fetched in turn, for good
-        #: (Schwab listed it: recorded_tickers at start, then join); the chain sweep reads this
-        #: same list
+        #: the universe: every ticker streamed on UNIVERSE_SERVICES and fetched in turn (every
+        #: ticker with data stored, from load; every ticker a screen shows once Schwab lists it);
+        #: the chain sweep reads this same list
         self.universe: "list[str]" = sorted(set(universe))
+        #: the tickers Schwab's instrument answer lists (recorded, or answered this run)
+        self.listed: "set[str]" = set()
         #: the tickers to look up (run_joins takes them), each put once: `asked` holds every
-        #: ticker put and not yet joined, until a lookup that got no answer from Schwab
+        #: ticker put, until a lookup that got no answer from Schwab (then `unanswered`, asked
+        #: again on the next connection to Schwab)
         self.joins: "asyncio.Queue[str]" = asyncio.Queue()
         self.asked: "set[str]" = set()
-        #: {ticker: Schwab's answer} for each ticker looked up that did not join
+        self.unanswered: "set[str]" = set()
+        #: {ticker: Schwab's answer} for each ticker looked up that is not in the universe
         self.not_joined: "dict[str, str]" = {}
         self.chains = None                  # the ChainSweep: its round time, its active ticker
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
+        #: {service: Schwab's message} for a service whose symbol limit Schwab reported
+        #: (REACHED_SYMBOL_LIMIT), on this connection
+        self.limits: "dict[str, str]" = {}
         self.stream = None
         #: the market session the last sync ran in (time_et.session_label): a new one is a new try
         self.session: "str | None" = None
-        #: the stored tickers no recorded answer of Schwab lists: looked up at start and, when
-        #: Schwab gave no answer, again each session
-        self.unconfirmed: "frozenset[str]" = frozenset(unconfirmed)
-        self.ask(self.unconfirmed)
+
+    def load(self, listed: "list[str]", unconfirmed: "list[str]") -> None:
+        """The stored tickers (recorded_tickers), read after the daemon started: every one is in
+        the universe from now -- its record goes on while its lookup is pending -- and each no
+        recorded answer of Schwab's lists is looked up. Only Schwab's answer that does not list
+        a ticker takes it out (answered)."""
+        self.listed.update(listed)
+        for ticker in sorted(set(listed) | set(unconfirmed)):
+            self.join(ticker)
+        self.ask(unconfirmed)
 
     def ask(self, tickers) -> None:
-        """Put each of `tickers` not in the universe and not already asked to Schwab's
+        """Put each of `tickers` Schwab has not listed and not already asked to Schwab's
         instrument lookup (run_joins takes them in order)."""
-        for ticker in sorted(set(tickers) - set(self.universe) - self.asked):
+        for ticker in sorted(set(tickers) - self.listed - self.asked):
             self.asked.add(ticker)
             self.joins.put_nowait(ticker)
 
+    def reconnected(self) -> None:
+        """A new connection to Schwab: every lookup that got no answer is asked again."""
+        unanswered, self.unanswered = self.unanswered, set()
+        self.ask(unanswered)
+
     def new_session(self, label: str) -> None:
         """The market session is `label` (time_et.session_label, read by the connection's loop):
-        when it changes, every symbol Schwab refused is asked for again, and every stored ticker
-        Schwab gave no instrument answer for is looked up again -- every ticker gets the same
-        services, every session."""
+        when it changes, every symbol Schwab refused is asked for again -- every ticker gets the
+        same services, every session."""
         if label == self.session:
             return
         self.session = label
         self.refused = {s: {} for s in SERVICES}
-        self.ask(self.unconfirmed)
         self.wanted_changed.set()
 
     def set_wanted(self, raw, sender=None) -> None:
@@ -387,33 +411,54 @@ class Daemon:
         self.ask(set().union(*(new[svc] for svc in UNIVERSE_SERVICES)) | ({active} if active else set()))
 
     def answered(self, msg: dict) -> None:
-        """Schwab's instrument answer for a ticker looked up (instrument_answer): it is
-        recorded, and the ticker joins the universe when Schwab lists it; otherwise the answer
-        is what the console shows for it (a stored ticker's data stays as stored), and a ticker
-        Schwab did not answer for (no HTTP 200) is looked up again the next time the console's
-        list names it, or, stored, the next session."""
-        self.bus.publish(f"instrument.{msg['symbol']}", msg)
+        """Schwab's instrument answer for a ticker looked up (instrument_answer), recorded.
+        Listed: the ticker is in the universe for good. HTTP 200 without it: Schwab does not list
+        it -- it leaves the universe (its stored data stays as stored) and the answer is what
+        the console shows for it. Any other status is no answer (no_answer): nothing changes."""
+        ticker = msg["symbol"]
+        self.bus.publish(f"instrument.{ticker}", msg)
         if msg["listed"]:
-            self.join(msg["symbol"])
-            return
-        self.not_joined[msg["symbol"]] = (f"Schwab's instrument lookup does not list {msg['symbol']} "
-                                          f"(HTTP {msg['http_status']}: {msg['body'][:300]})")
-        if msg["http_status"] != 200:
-            self.asked.discard(msg["symbol"])
+            self.listed.add(ticker)
+            self.not_joined.pop(ticker, None)
+            self.join(ticker)
+        elif msg["http_status"] == 200:
+            self.not_joined[ticker] = (f"Schwab's instrument lookup does not list {ticker} "
+                                       f"(HTTP 200: {msg['body'][:300]})")
+            self.leave(ticker)
+        else:
+            self.no_answer(ticker, f"Schwab's instrument lookup did not answer for {ticker} "
+                                   f"(HTTP {msg['http_status']}: {msg['body'][:300]})")
+
+    def no_answer(self, ticker: str, reason: str) -> None:
+        """The lookup of `ticker` got no answer from Schwab: an unknown, so nothing changes -- a
+        ticker in the universe stays, one outside stays out with `reason` shown -- and it is
+        asked again on the next connection to Schwab (reconnected)."""
+        self.asked.discard(ticker)
+        self.unanswered.add(ticker)
+        if ticker not in self.universe:
+            self.not_joined[ticker] = reason
 
     def join(self, ticker: str) -> None:
-        """`ticker` joins the universe for good: streamed on UNIVERSE_SERVICES (each gets one
-        fresh try) and fetched in turn by the chain sweep (while Closed, once)."""
+        """`ticker` is in the universe: streamed on UNIVERSE_SERVICES (each gets one fresh try)
+        and fetched in turn by the chain sweep (while Closed, once)."""
         if ticker in self.universe:
             return
         self.universe.append(ticker)
-        self.asked.discard(ticker)
-        self.not_joined.pop(ticker, None)
         for svc in UNIVERSE_SERVICES:
             self.refused[svc].pop(ticker, None)
         if self.chains is not None:
             self.chains.joined(ticker)
         self.wanted_changed.set()                  # the connection streams it now
+
+    def leave(self, ticker: str) -> None:
+        """Schwab does not list `ticker`: it leaves the universe -- unsubscribed on the next sync
+        unless a screen still shows it, and out of the chain sweep."""
+        if ticker not in self.universe:
+            return
+        self.universe.remove(ticker)
+        if self.chains is not None:
+            self.chains.left(ticker)
+        self.wanted_changed.set()
 
     def all_wanted(self) -> "dict[str, frozenset[str]]":
         """Everything streamed: the console's list, and every universe ticker on UNIVERSE_SERVICES."""
@@ -433,6 +478,7 @@ class Daemon:
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "refused": {k: dict(v) for k, v in self.refused.items() if v},
+                "limits": dict(self.limits),
                 "health": self.health.report(now)}
 
     async def sync(self) -> None:
@@ -442,13 +488,16 @@ class Daemon:
                 code, reason = answer["code"], answer["msg"]
                 self.bus.publish(f"sub.{svc}", subscription_msg(
                     service=svc, command=cmd, symbols=chunk, code=code, reason=reason))
-                if code == 0:
+                if code == 0 or (code == REACHED_SYMBOL_LIMIT and cmd != "UNSUBS"):
                     held = set(self.held[svc])
                     held = held - set(chunk) if cmd == "UNSUBS" else held | set(chunk)
                     self.held[svc] = frozenset(held)
                     if cmd == "UNSUBS":             # no longer held: no longer current
                         for sym in chunk:
                             self.bus.forget(_current_key(svc, sym))
+                    if code == REACHED_SYMBOL_LIMIT:  # Schwab kept some, not saying which
+                        log.warning("%s %s (%d symbols): Schwab's symbol limit: %s", svc, cmd, len(chunk), reason)
+                        self.limits[svc] = f"code {code}: {reason}"
                 else:
                     log.warning("%s %s refused (%d symbols): code %s: %s", svc, cmd, len(chunk), code, reason)
                     if cmd != "UNSUBS":
@@ -469,7 +518,9 @@ class Daemon:
         stream._handlers["NEWS_HEADLINE"].append(_RawHandler(_publisher("NEWS_HEADLINE", self.bus, self.health)))
         self.stream = stream
         self.held = {s: frozenset() for s in SERVICES}    # a new connection holds nothing
+        self.limits = {}
         log.info("schwab: connected")
+        self.reconnected()
 
     async def disconnect(self) -> None:
         s, self.stream = self.stream, None
@@ -718,9 +769,8 @@ async def run_joins(daemon: "Daemon", schwab_client, stop: asyncio.Event) -> Non
             daemon.answered(await asyncio.to_thread(instrument_answer, schwab_client(), ticker, time.time()))
         except NO_ANSWER as e:
             log.warning("universe: no instrument answer for %s: %s: %s", ticker, type(e).__name__, e)
-            daemon.not_joined[ticker] = (f"Schwab's instrument lookup did not answer for {ticker}: "
-                                         f"{type(e).__name__}: {e}")
-            daemon.asked.discard(ticker)
+            daemon.no_answer(ticker, f"Schwab's instrument lookup did not answer for {ticker}: "
+                                     f"{type(e).__name__}: {e}")
 
 
 def one_schwab_client(build) -> "callable":
@@ -759,24 +809,51 @@ async def run() -> int:
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
-    listed, unconfirmed = recorded_tickers(db_path, writer.db_path)
-    daemon = Daemon(bus, health, universe=listed, unconfirmed=unconfirmed)
-    log.info("universe: %d tickers Schwab listed; %d more with data stored, to look up",
-             len(listed), len(unconfirmed))
+    daemon = Daemon(bus, health)
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
-    tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
-             asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop)),
-             asyncio.create_task(run_joins(daemon, schwab_client, stop)),
-             asyncio.create_task(record_feed_status(daemon, stop)),
-             asyncio.create_task(serve_live_push(bus, stop, on_wanted=daemon.set_wanted)),
-             asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]
+    return await supervise(stop, [
+        writer.run(wsub, stop=stop),
+        serve_live_push(bus, stop, on_wanted=daemon.set_wanted),
+        serve_live_ui(bus, stop, heartbeat_fn=daemon.status),
+        run_chains(daemon, db_path, schwab_client, stop),
+        run_joins(daemon, schwab_client, stop),
+        record_feed_status(daemon, stop),
+        load_stored(daemon, db_path, writer.db_path),
+        daemon.run(schwab_client, stop)])
+
+
+async def load_stored(daemon: "Daemon", *db_paths) -> None:
+    """The stored tickers (recorded_tickers: 5-20 s on production, 2026-10-05), read off the
+    event loop while the connection already streams what the console shows; then the daemon
+    streams and looks them up (Daemon.load)."""
+    listed, unconfirmed = await asyncio.to_thread(recorded_tickers, *db_paths)
+    daemon.load(listed, unconfirmed)
+    log.info("universe: %d tickers stored (%d listed by a recorded answer of Schwab's; %d to look up)",
+             len(listed) + len(unconfirmed), len(listed), len(unconfirmed))
+
+
+async def supervise(stop: asyncio.Event, parts: list) -> int:
+    """Run the daemon's parts until `stop` is set or one of them fails. A part that ends with an
+    error is ours: its traceback is logged, every part is stopped, and the daemon exits 1, so
+    start_capture_daemon.bat starts it again. 0 after a stop."""
+    tasks = [asyncio.ensure_future(p) for p in parts]
+    failed = 0
     try:
         await asyncio.sleep(0)                    # servers subscribe before the first message
-        await daemon.run(schwab_client, stop)
+        pending = set(tasks)
+        while pending and not stop.is_set():
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for t in done:
+                if not t.cancelled() and t.exception() is not None:
+                    log.error("daemon: a part ended with an error; the daemon exits",
+                              exc_info=t.exception())
+                    failed = 1
+            if failed:
+                break
     finally:
         stop.set()
         await asyncio.gather(*tasks, return_exceptions=True)
-    return 0
+    return failed
 
 
 def main() -> int:

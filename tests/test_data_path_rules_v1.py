@@ -430,16 +430,17 @@ _REFUSAL = json.loads((FX / "real_schwab_stream_refusal_2026_10_04.json").read_t
 
 def test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_it(tmp_path):
     """One rule for every ticker. Stored: SPY and TSLA (their bars, as the daemon recorded
-    them). Shown: the browser's watchlist QQQ and ZZZZ (the watchlist route), ZZZZ on screen (a
-    page open on it) and the header's context -- the console's own wanted frame
-    (streaming.current_wanted), sent by the console's own sender over the daemon's socket.
-    The daemon asks Schwab's instrument lookup once per ticker, on its one client (the same
-    frame again asks nothing). SPY and QQQ, listed, join: Schwab is asked for them on every
-    universe service through the daemon's streamer connection and their chains are fetched.
-    TSLA, ZZZZ and the context, not listed, stay out (TSLA's stored bars stay as stored):
-    never subscribed as universe tickers, never in the chain sweep, and the console shows
-    Schwab's answer. The answers are recorded by the daemon's writer: a restart reads SPY and
-    QQQ back as listed."""
+    them), read off the event loop after the daemon starts (load_stored) and in the universe
+    from then while their lookups are pending. Shown: the browser's watchlist QQQ and ZZZZ (the
+    watchlist route), ZZZZ on screen (a page open on it) and the header's context -- the
+    console's own wanted frame (streaming.current_wanted), sent by the console's own sender
+    over the daemon's socket. The daemon asks Schwab's instrument lookup once per ticker, on its
+    one client (the same frame again asks nothing). SPY and QQQ, listed, are in the universe:
+    held on every universe service through the daemon's streamer connection, chains fetched.
+    TSLA, answered "not listed", leaves: unsubscribed on every universe service, its stored bars
+    untouched; ZZZZ and the context, shown and not listed, never join. The console shows
+    Schwab's answer for each. The answers are recorded by the daemon's writer: a restart reads
+    SPY and QQQ back as listed."""
     import push_changes
     from fastapi.testclient import TestClient
     console_db, stream_db = tmp_path / "ed_console.db", tmp_path / "stream_capture.db"
@@ -454,7 +455,7 @@ def test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_
     listed, unconfirmed = capture.recorded_tickers(console_db, stream_db)
     assert (listed, unconfirmed) == ([], ["SPY", "TSLA"]), "stored, not yet confirmed by Schwab"
 
-    daemon = capture.Daemon(MessageBus(), HealthRegistry(), universe=listed, unconfirmed=unconfirmed)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry())
     schwab = _LocalSchwab(instruments={"SPY": _INSTRUMENTS["spy_fundamental"]["body"],
                                        "QQQ": _INSTRUMENTS["qqq_fundamental"]["body"]}, unlisted=_UNLISTED)
     client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s", transport=schwab.transport)
@@ -464,14 +465,16 @@ def test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_
     reached: list = []
 
     def there() -> bool:
-        return ({"SPY", "QQQ"} <= set(daemon.universe)
-                and all({"SPY", "QQQ"} <= daemon.held[svc] for svc in capture.UNIVERSE_SERVICES)
+        return (sorted(daemon.universe) == ["QQQ", "SPY"]
+                and all({"SPY", "QQQ"} <= daemon.held[svc] and "TSLA" not in daemon.held[svc]
+                        for svc in capture.UNIVERSE_SERVICES)
                 and {"SPY", "QQQ"} <= set(schwab.chains_asked)
                 and {"TSLA", *shown - {"QQQ"}} <= set(daemon.not_joined))
 
     async def run() -> None:
         stop, stats, port = asyncio.Event(), {}, _port()
-        tasks = [asyncio.create_task(writer.run(daemon.bus.subscribe("", policy=LOG), stop=stop)),
+        tasks = [asyncio.create_task(capture.load_stored(daemon, console_db, stream_db)),
+                 asyncio.create_task(writer.run(daemon.bus.subscribe("", policy=LOG), stop=stop)),
                  asyncio.create_task(live_push.serve_live_push(daemon.bus, stop, port=port, stats=stats,
                                                                on_wanted=daemon.set_wanted)),
                  asyncio.create_task(capture.run_joins(daemon, lambda: client, stop)),
@@ -505,8 +508,9 @@ def test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_
     assert reached == [True], (daemon.universe, daemon.not_joined, sorted(set(schwab.chains_asked)))
     assert sorted(schwab.instruments_asked) == sorted({"SPY", "TSLA"} | shown), "each ticker asked once"
     assert sorted(daemon.status()["universe"]) == ["QQQ", "SPY"]
-    assert "TSLA" not in schwab.chains_asked, "a ticker Schwab does not list is never in the chain sweep"
-    assert not any("TSLA" in (keys or "") for _s, _c, keys in schwab.stream_requests), "nor subscribed"
+    asked_for = {s for s, c, keys in schwab.stream_requests if c in ("SUBS", "ADD") and "TSLA" in keys.split(",")}
+    unsubscribed = {s for s, c, keys in schwab.stream_requests if c == "UNSUBS" and "TSLA" in keys.split(",")}
+    assert asked_for == unsubscribed, "TSLA left every service it was streamed on (the order: next test)"
     with sqlite3.connect(stream_db) as con:
         assert con.execute("SELECT COUNT(*) FROM stream_bars_raw WHERE symbol='TSLA'").fetchone() == (5,), \
             "its stored data stays as stored"
@@ -525,6 +529,45 @@ def test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_
     listed, unconfirmed = capture.recorded_tickers(console_db, stream_db)
     assert listed == ["QQQ", "SPY"], "the next start reads SPY and QQQ back as listed"
     assert "TSLA" in unconfirmed and "ZZZZ" in unconfirmed, "and asks Schwab about the others again"
+
+
+def test_a_stored_ticker_is_streamed_until_schwab_answers_and_only_not_listed_takes_it_out(tmp_path):
+    """Stored TSLA and SPY are streamed on every universe service from the first sync, their
+    lookups pending. A lookup with no answer (HTTP 429 from Schwab's host; stand-in) changes
+    nothing: SPY stays streamed and is asked again on the next connection. Schwab's answer that
+    does not list TSLA (HTTP 200 `{}`, the stand-in answer named above) takes TSLA out: it is
+    unsubscribed on every universe service at the next sync. INDUCED CONDITION: the 429."""
+    schwab = _LocalSchwab()
+    client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s", transport=schwab.transport)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry())
+    daemon.load([], ["SPY", "TSLA"])
+    assert [daemon.joins.get_nowait() for _ in range(2)] == ["SPY", "TSLA"]
+    held: list = []
+
+    async def run() -> None:
+        await daemon.connect(client)
+        try:
+            await daemon.sync()
+            held.append({svc: set(daemon.held[svc]) for svc in capture.UNIVERSE_SERVICES})
+            daemon.answered(capture.instrument_msg(symbol="SPY", http_status=429, body='{"errors": []}',
+                                                   listed=False, ts=time.time()))
+            daemon.answered(capture.instrument_msg(symbol="TSLA", http_status=200, body=_UNLISTED,
+                                                   listed=False, ts=time.time()))
+            await daemon.sync()
+            held.append({svc: set(daemon.held[svc]) for svc in capture.UNIVERSE_SERVICES})
+        finally:
+            await daemon.disconnect()
+    try:
+        asyncio.run(run())
+    finally:
+        schwab.close()
+    assert held[0] == {svc: {"SPY", "TSLA"} for svc in capture.UNIVERSE_SERVICES}, "streamed while pending"
+    assert held[1] == {svc: {"SPY"} for svc in capture.UNIVERSE_SERVICES}
+    assert {s for s, c, keys in schwab.stream_requests if c == "UNSUBS"} == set(capture.UNIVERSE_SERVICES)
+    assert daemon.universe == ["SPY"] and "SPY" not in daemon.not_joined
+    assert daemon.not_joined["TSLA"] == "Schwab's instrument lookup does not list TSLA (HTTP 200: {})"
+    daemon.reconnected()                                         # the next connection to Schwab
+    assert daemon.joins.get_nowait() == "SPY" and daemon.joins.empty()
 
 
 def test_with_the_daemon_silent_every_ticker_says_so_first():
@@ -554,10 +597,12 @@ def test_with_the_daemon_silent_every_ticker_says_so_first():
 
 def test_schwabs_refusal_of_a_subscription_is_recorded_with_its_own_code_and_message(tmp_path):
     """The daemon logs in to Schwab's streamer (stand-in) and subscribes what the console's list
-    names; Schwab refuses the option contracts with code 19 and its message (2026-10-04, as
-    sent). The record and the console carry Schwab's code and message, not our exception text.
-    Every answer is recorded; nothing unchanged is sent again; a refused symbol is asked for
-    again only once the console's list changes."""
+    names; Schwab answers the option contracts' requests with code 19, REACHED_SYMBOL_LIMIT,
+    and its message (2026-10-04, as sent: it kept up to 3000 and discarded the rest, naming
+    none). The record carries Schwab's code and message, not our exception text. The symbols
+    are not called refused: they are held -- so they are unsubscribed when no longer wanted,
+    and no slot Schwab kept is left behind -- and Schwab's message is the service's state.
+    Nothing unchanged is sent again; a new contract on the list is asked for."""
     schwab = _LocalSchwab(stream_refusal={"LEVELONE_OPTIONS": (_REFUSAL["schwab_code"], _REFUSAL["schwab_msg"])})
     client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s", transport=schwab.transport)
     bus = MessageBus()
@@ -566,6 +611,7 @@ def test_schwabs_refusal_of_a_subscription_is_recorded_with_its_own_code_and_mes
     contracts = _REFUSAL["first_symbols"]
     daemon.set_wanted({"LEVELONE_OPTIONS": contracts[:2]})
     sent: list = []
+    state: dict = {}
 
     async def subscribe() -> None:
         await daemon.connect(client)
@@ -577,6 +623,9 @@ def test_schwabs_refusal_of_a_subscription_is_recorded_with_its_own_code_and_mes
             daemon.set_wanted({"LEVELONE_OPTIONS": contracts})   # the console's list changed
             await daemon.sync()
             sent.append(len(schwab.stream_requests))
+            state.update(status=daemon.status(), held=set(daemon.held["LEVELONE_OPTIONS"]))
+            daemon.set_wanted({"LEVELONE_OPTIONS": []})          # the screen moved on
+            await daemon.sync()
         finally:
             await daemon.disconnect()
     try:
@@ -586,16 +635,19 @@ def test_schwabs_refusal_of_a_subscription_is_recorded_with_its_own_code_and_mes
     answers = []
     while not subs.queue.empty():
         answers.append(subs.queue.get_nowait()[1])
-    refused = [a for a in answers if a["service"] == "LEVELONE_OPTIONS"]
-    assert [(a["code"], a["reason"], a["symbols"]) for a in refused] == [
-        (19, _REFUSAL["schwab_msg"], contracts[:2]), (19, _REFUSAL["schwab_msg"], contracts)]
+    options = [(a["command"], a["code"], a["reason"], a["symbols"]) for a in answers
+               if a["service"] == "LEVELONE_OPTIONS"]
+    assert options[:2] == [("SUBS", 19, _REFUSAL["schwab_msg"], contracts[:2]),
+                           ("ADD", 19, _REFUSAL["schwab_msg"], contracts[2:])]
+    assert options[2][:2] == ("UNSUBS", 0) and sorted(options[2][3]) == sorted(contracts), \
+        "every contract held is unsubscribed when the screen moves on"
     assert all(a["code"] == 0 for a in answers if a["service"] != "LEVELONE_OPTIONS")
-    assert sorted(a["service"] for a in answers if a["code"] == 0) == sorted(capture.UNIVERSE_SERVICES), \
-        "TSLA on every universe service, once"
+    assert sorted(a["service"] for a in answers if a["code"] == 0 and a["command"] != "UNSUBS") == \
+        sorted(capture.UNIVERSE_SERVICES), "TSLA on every universe service, once"
     assert sent[1] == sent[0] and sent[2] == sent[1] + 1
-    assert daemon.status()["refused"]["LEVELONE_OPTIONS"] == {
-        s: f"code 19: {_REFUSAL['schwab_msg']}" for s in contracts}
-    assert daemon.held["LEVELONE_OPTIONS"] == frozenset()
+    assert state["held"] == set(contracts)
+    assert "LEVELONE_OPTIONS" not in state["status"]["refused"]
+    assert state["status"]["limits"] == {"LEVELONE_OPTIONS": f"code 19: {_REFUSAL['schwab_msg']}"}
 
 
 @pytest.mark.parametrize("ahead", ["another request's answer", "a frame that is not JSON"])
@@ -638,46 +690,56 @@ def test_only_schwabs_answer_to_this_request_decides_it(tmp_path, ahead):
 
 def test_a_symbol_schwab_refused_is_asked_for_again_each_session():
     """Every ticker gets the same services, every session: a new market session
-    (time_et.session_label) clears every refusal, and a stored ticker Schwab gave no instrument
-    answer for is looked up again; the same session changes nothing."""
-    daemon = capture.Daemon(MessageBus(), HealthRegistry(), universe=["TSLA"], unconfirmed=["MU"])
-    assert daemon.joins.get_nowait() == "MU"
+    (time_et.session_label) clears every refusal; the same session changes nothing. The code is
+    Schwab's 22, FAILED_COMMAND_SUBS (Streamer Guide §1.4), as a refusal of one symbol."""
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), universe=["TSLA"])
     daemon.new_session("After-Hours")
-    daemon.refused["NYSE_BOOK"] = {"TSLA": f"code 19: {_REFUSAL['schwab_msg']}"}
-    daemon.asked.discard("MU")                                  # its lookup got no answer
+    daemon.refused["NYSE_BOOK"] = {"TSLA": "code 22: stand-in"}
     daemon.new_session("After-Hours")
-    assert daemon.refused["NYSE_BOOK"] and daemon.joins.empty(), "the same session: no new try"
+    assert daemon.refused["NYSE_BOOK"], "the same session: no new try"
     daemon.new_session("Closed")
-    assert daemon.refused["NYSE_BOOK"] == {} and daemon.joins.get_nowait() == "MU"
+    assert daemon.refused["NYSE_BOOK"] == {}
 
 
-def test_a_lookup_schwab_never_answers_is_shown_and_asked_again_and_our_own_error_is_not_hidden(tmp_path):
-    """Schwab's host cannot be reached (the stand-in closed): the lookup has no answer, which is
-    shown as the ticker's reason, and the ticker is asked again. An error of ours (no client at
-    all) is not labeled as Schwab's: it ends run_joins with its traceback. INDUCED CONDITION:
-    the stand-in closed before the lookup."""
+def test_a_lookup_schwab_never_answers_is_shown_and_asked_again_and_our_own_error_ends_the_daemon(
+        tmp_path, caplog):
+    """Schwab's host cannot be reached (the stand-in closed): the lookup of ZZZZ, a ticker a
+    screen shows, has no answer, which is shown as its reason; a stored ticker (MU) stays in
+    the universe; both are asked again on the next connection. An error of ours (no client at
+    all) is not labeled as Schwab's: wired as capture.run wires the daemon's parts (supervise),
+    it ends the daemon with exit 1 and its traceback in the log, and start_capture_daemon.bat
+    starts it again. INDUCED CONDITION: the stand-in closed before the lookup."""
     schwab = _LocalSchwab()
     client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s", transport=schwab.transport)
     schwab.close()
-    daemon = capture.Daemon(MessageBus(), HealthRegistry(), unconfirmed=["SPY"])
+    daemon = capture.Daemon(MessageBus(), HealthRegistry())
+    daemon.load([], ["MU"])
+    daemon.ask(["ZZZZ"])
 
     async def look_up(schwab_client) -> None:
         stop = asyncio.Event()
         task = asyncio.create_task(capture.run_joins(daemon, schwab_client, stop))
-        end = time.monotonic() + 10
-        while "SPY" not in daemon.not_joined and not task.done() and time.monotonic() < end:
+        end = time.monotonic() + 15
+        while daemon.unanswered != {"MU", "ZZZZ"} and not task.done() and time.monotonic() < end:
             await asyncio.sleep(0.02)
         stop.set()
         await asyncio.wait_for(task, 10)
     asyncio.run(look_up(lambda: client))
-    assert daemon.not_joined["SPY"].startswith("Schwab's instrument lookup did not answer for SPY: ")
-    assert "SPY" not in daemon.asked, "asked again"
-    daemon.ask(["SPY"])
+    assert daemon.not_joined["ZZZZ"].startswith("Schwab's instrument lookup did not answer for ZZZZ: ")
+    assert daemon.universe == ["MU"] and "MU" not in daemon.not_joined, "an unknown never removes"
+    daemon.reconnected()
+    assert sorted(daemon.joins.get_nowait() for _ in range(2)) == ["MU", "ZZZZ"], "asked again"
+    fresh = capture.Daemon(MessageBus(), HealthRegistry())     # a daemon's one event loop
+    fresh.ask(["ZZZZ"])
 
-    async def ours() -> None:                                   # no client: our error, not Schwab's
-        await asyncio.wait_for(capture.run_joins(daemon, lambda: None, asyncio.Event()), 10)
-    with pytest.raises(AttributeError):
-        asyncio.run(ours())
+    async def wired() -> int:                                   # no client: our error, not Schwab's
+        stop = asyncio.Event()
+        return await asyncio.wait_for(capture.supervise(stop, [
+            capture.run_joins(fresh, lambda: None, stop), stop.wait()]), 10)
+    with caplog.at_level("ERROR", logger="capture"):
+        assert asyncio.run(wired()) == 1
+    failed = [r for r in caplog.records if r.getMessage() == "daemon: a part ended with an error; the daemon exits"]
+    assert failed and failed[0].exc_info[0] is AttributeError
 
 
 def test_a_request_schwab_never_answers_is_a_dead_connection(tmp_path):
@@ -1065,7 +1127,7 @@ class _LocalSchwab:
     recorded: (time, method, path, Authorization). The instrument lookup answers
     `instruments[symbol]`, or `unlisted` for any other symbol (each symbol asked is recorded in
     `instruments_asked`). The user preferences name its streamer, a local WebSocket that answers
-    every request code 0, except a service in `stream_refusal`: (code, msg); before answering a
+    every request code 0, except a SUBS or ADD of a service in `stream_refusal`: (code, msg); before answering a
     request of a service in `stream_before` it sends that service's frames (text) first; a
     request of a service in `stream_silent` is never answered; a
     request for a service in `stream_drop` closes the socket unanswered, and so does drop(). The
@@ -1112,7 +1174,8 @@ class _LocalSchwab:
                                 outer.live, logged_in = outer.live - 1, False
                         for text in outer.stream_before.get(svc, ()):
                             ws.send(text)                  # sent ahead of this request's answer
-                        code, msg = outer.stream_refusal.get(svc, (0, "stand-in: accepted"))
+                        code, msg = (outer.stream_refusal.get(svc, (0, "stand-in: accepted"))
+                                     if cmd in ("SUBS", "ADD") else (0, "stand-in: accepted"))
                         ws.send(json.dumps({"response": [{
                             "service": svc, "requestid": req["requestid"], "command": cmd,
                             "SchwabClientCorrelId": req["SchwabClientCorrelId"], "timestamp": int(time.time() * 1000),

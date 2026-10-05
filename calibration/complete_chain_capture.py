@@ -220,6 +220,14 @@ class ChainSweep:
                 self._closed.append(ticker)
             self._changed.notify_all()
 
+    def left(self, ticker: str) -> None:
+        """`ticker` has left the universe (Daemon.leave): it is not handed out again in this
+        round, and while Closed its close values are not fetched."""
+        with self._changed:
+            self._round = [t for t in self._round if t != ticker]
+            if self._closed is not None:
+                self._closed = [t for t in self._closed if t != ticker]
+
     def _next(self, now: float) -> str | None:
         """The next ticker to fetch, taken by the caller: the active ticker whenever no worker is
         fetching it, else the round's next. A ticker being fetched by another worker now is

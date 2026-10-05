@@ -85,8 +85,8 @@ def test_the_wanted_list_is_the_consoles_now_and_a_change_clears_that_services_r
 def test_every_universe_ticker_and_every_equity_the_screens_show_is_streamed(tmp_path):
     """Every universe ticker is streamed on every universe service (quotes, 1-minute bars, news
     and both books) beside every equity the console's screens show (the watchlist, the header's
-    context, the ticker on screen); the equities shown that are not in the universe are put to
-    be looked up, once."""
+    context, the ticker on screen); every equity shown that Schwab has not listed is put to be
+    looked up, once."""
     d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), universe=["$SPX", "SPY"])
     d.set_wanted({"LEVELONE_EQUITIES": ["AMD"], "CHART_EQUITY": ["AMD"], "NEWS_HEADLINE": ["AMD"],
                   "NYSE_BOOK": ["SPY"]})
@@ -95,7 +95,7 @@ def test_every_universe_ticker_and_every_equity_the_screens_show_is_streamed(tmp
     assert w["NYSE_BOOK"] == w["NASDAQ_BOOK"] == {"$SPX", "SPY"}
     assert d.status()["universe"] == ["$SPX", "SPY"]
     d.set_wanted({"LEVELONE_EQUITIES": ["AMD", "MU"]})
-    assert [d.joins.get_nowait() for _ in range(d.joins.qsize())] == ["AMD", "MU"]
+    assert [d.joins.get_nowait() for _ in range(d.joins.qsize())] == ["AMD", "SPY", "MU"]
 
 
 def test_the_ticker_on_screen_is_the_chain_sweeps_active_ticker(tmp_path):
