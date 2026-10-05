@@ -137,8 +137,9 @@ from Schwab to the screen (daemon, console, page), are these:
   (captured read-only 2026-10-05, tests/fixtures/real_schwab_instruments_symbol_search_2026_10_05.json)
   answers a symbol it lists with an `instruments` list holding it (SPY, $SPX, TSLA) and one it
   does not with the empty object `{}` (NOTREAL). Schwab's "not listed" -- `{}`, or an
-  `instruments` list of instrument objects without the ticker -- takes it out for the daemon's
-  run (a later read of the stored tickers does not put it back) (`Daemon.leave`: unsubscribed
+  `instruments` list of instrument objects without the ticker -- takes it out for the market
+  session (a later read of the stored tickers does not put it back; each new session,
+  `Daemon.new_session`, looks it up again) (`Daemon.leave`: unsubscribed
   at the next sync unless a screen still shows it, out of the chain sweep, its stored data as
   stored), and that answer is carried on the heartbeat (`not_joined`) and leads the ticker's
   reason on screen (`server.terrain_staleness`). A lookup with no answer (any other HTTP

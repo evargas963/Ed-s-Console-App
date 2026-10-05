@@ -436,8 +436,9 @@ def test_every_ticker_stored_or_shown_joins_the_universe_only_when_schwab_lists_
     over the daemon's socket. The daemon asks Schwab's instrument lookup once per ticker, on its
     one client (the same frame again asks nothing). SPY, TSLA, QQQ and $SPX, listed, are in the
     universe: held on every universe service through the daemon's streamer connection; SPY's
-    and QQQ's chains are fetched. NOTREAL (Schwab answers `{}`), $NDX and $VIX, shown and not
-    listed, never join, and the console shows Schwab's answer. The answers are recorded by the
+    and QQQ's chains are fetched. NOTREAL (Schwab answers `{}`), $NDX and $VIX (not listed only
+    by the stand-in's `{}`: their real replies were not captured), shown and not listed, never
+    join, and the console shows Schwab's answer. The answers are recorded by the
     daemon's writer: a restart reads the four back as listed."""
     import push_changes
     from fastapi.testclient import TestClient

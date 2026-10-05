@@ -384,12 +384,16 @@ class Daemon:
 
     def new_session(self, label: str) -> None:
         """The market session is `label` (time_et.session_label, read by the connection's loop):
-        when it changes, every symbol Schwab refused is asked for again -- every ticker gets the
-        same services, every session."""
+        when it changes, every symbol Schwab refused is asked for again, and every ticker Schwab
+        answered "not listed" is looked up again (a one-off `{}` stands only for the session) --
+        every ticker gets the same services, every session."""
         if label == self.session:
             return
         self.session = label
         self.refused = {s: {} for s in SERVICES}
+        not_listed, self.not_listed = self.not_listed, set()
+        self.asked -= not_listed
+        self.ask(not_listed)
         self.wanted_changed.set()
 
     def set_wanted(self, raw, sender=None) -> None:
@@ -414,11 +418,12 @@ class Daemon:
 
     def answered(self, msg: dict) -> None:
         """Schwab's instrument answer for a ticker looked up (instrument_answer), recorded.
-        Listed: the ticker is in the universe for good. An `instruments` list without it:
-        Schwab does not list it -- it leaves the universe (its stored data stays as stored) and
+        Listed: the ticker is in the universe for good. Not listed (`{}`, or an `instruments`
+        list of objects without it): Schwab does not list it -- it leaves the universe (its
+        stored data stays as stored) until the next market session asks again (new_session), and
         the answer is what the console shows for it. Anything else (`listed` None: another
-        status, a body that is not JSON or carries no `instruments` list) is no answer
-        (no_answer): nothing changes."""
+        status, a body that is not JSON, an object with other keys, a list holding anything but
+        objects) is no answer (no_answer): nothing changes."""
         ticker = msg["symbol"]
         self.bus.publish(f"instrument.{ticker}", msg)
         if msg["listed"] is None:

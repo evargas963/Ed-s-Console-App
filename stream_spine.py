@@ -89,8 +89,9 @@ CREATE INDEX IF NOT EXISTS idx_ssub_ts ON stream_subscriptions(ts);
 -- Schwab's instrument lookup of each ticker stored or shown that no answer listed yet
 -- (capture.instrument_answer): the HTTP status and body as sent; listed = 1 where the answer's
 -- instruments list holds the symbol itself (read back as listed at every start:
--- capture.recorded_tickers), 0 where it is a list without it, NULL where the answer is no
--- answer (another status, or no instruments list).
+-- capture.recorded_tickers), 0 where Schwab does not list it (`{}`, or an instruments list of
+-- objects without it), NULL where the answer is no answer (another status, a body that is not
+-- JSON, an object with other keys, a list holding anything but objects).
 CREATE TABLE IF NOT EXISTS stream_instruments_raw (
     ts REAL NOT NULL,
     symbol TEXT NOT NULL,

@@ -79,6 +79,30 @@ def test_a_stored_ticker_leaves_only_when_schwab_does_not_list_it(symbol, status
     assert (symbol in daemon.listed) is (listed is True)
 
 
+def test_a_ticker_schwab_did_not_list_is_asked_again_the_next_session():
+    """A one-off "not listed" stands only for its session: stored TSLA answered `{}` (Schwab's
+    reply for NOTREAL, served for TSLA: INDUCED) leaves and is not asked again that session; at
+    the next market session it is looked up again, and Schwab's own reply for TSLA brings it
+    back. The real instrument_answer on schwab-py's client; Schwab's host a stand-in (httpx's
+    MockTransport) returning the replies in turn."""
+    replies = [_LOOKUP["NOTREAL"]["body"], _LOOKUP["TSLA"]["body"]]
+    client = Client("k", httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, text=replies.pop(0)))), enforce_enums=False)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry())
+    daemon.new_session("RTH")
+    daemon.load([], ["TSLA"])
+    assert daemon.joins.get_nowait() == "TSLA"
+    daemon.answered(capture.instrument_answer(client, "TSLA", time.time()))
+    assert daemon.universe == []
+    daemon.ask(["TSLA"])                                         # shown again, same session
+    daemon.new_session("RTH")
+    assert daemon.joins.empty(), "not asked again in the same session"
+    daemon.new_session("After-Hours")
+    assert daemon.joins.get_nowait() == "TSLA", "asked again the next session"
+    daemon.answered(capture.instrument_answer(client, "TSLA", time.time()))
+    assert daemon.universe == ["TSLA"] and "TSLA" not in daemon.not_joined
+
+
 def test_schwabs_symbol_limit_is_what_the_heatmap_serves_for_its_contracts(tmp_path):
     """The daemon asks Schwab's streamer (stand-in) for every contract of SPY's 2026-11-20
     chain; Schwab answers code 19 with its message of 2026-10-04 (it kept up to 3000 and
