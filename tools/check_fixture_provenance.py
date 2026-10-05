@@ -23,13 +23,17 @@ in this order, `<symbol column>=?`, `<range column> >= ?` and `<range column> < 
 symbol, with the range in the range column's unit (epoch milliseconds when the column ends in `_ms`,
 else epoch seconds). Each result row becomes an object keyed by column; a column `<x>_json` becomes
 `<x>`, decoded by json_blob_codec. The rows must equal the results of the symbols in their listed
-order. A top-level key other than `provenance` and `rows`, and a key of the block other than
-`symbols`, `query` and its one `<x>_from_et` / `<x>_to_et` pair, may not hold a number, in its name
-or its value: a JSON number, or a digit in text that is not part of an ISO date or time, since
-nothing checks it.
+order, type for type (a recorded 0 is not `false` and not `0.0`). Each symbol is a string that
+returns at least one row. A top-level key other than `provenance` and `rows`, and a key of the
+block other than `symbols`, `query` and its one `<x>_from_et` / `<x>_to_et` pair, may not hold a
+number, in its name or its value, since nothing checks it: a JSON number, or any numeric character
+(`str.isnumeric`: superscript and circled digits too) unless the whole value is an ISO date-time:
+`YYYY-MM-DD[THH:MM[:SS[.ffffff]]][Z|±HH:MM]` with an offset minute below 60, that
+`datetime.fromisoformat` parses.
 
 Limits: the WHERE clause may filter the record (`AND level_value > 600`): the rows are then real
-but a chosen subset of it. Only tests/fixtures/ is in scope (not tests/e2e/fixtures/). This is a
+but a chosen subset of it. A number written as words ("five hundred eighty-five") is not a numeric
+character and is not caught. Only tests/fixtures/ is in scope (not tests/e2e/fixtures/). This is a
 commit hook only: a commit made without pre-commit installed is not checked, and CI has no copy
 (CI has no database to re-query).
 
@@ -61,21 +65,37 @@ DATABASES = ("stream_capture.db", "ed_console.db")
 PLACEHOLDER = re.compile(r"(\w+)\s*(>=|<=|=|>|<)\s*\?")
 QUERY = re.compile(r"(?is)\s*SELECT\s+(.+?)\s+FROM\s+(\w+)\s+WHERE\s+(.+)")
 COMPOUND = re.compile(r"(?i)\b(SELECT|JOIN|UNION|INTERSECT|EXCEPT|WITH)\b")
-DATE_TIME = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?"
-                       r"|(?<![\d.])\d{2}:\d{2}(?::\d{2})?(?![\d.])")
+ISO_DATE_TIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]{1,6})?)?"
+                           r"(?:Z|[+-](?:0[0-9]|1[0-4]):[0-5][0-9])?)?")
 REQUIRED = ("database", "symbols", "query")
 
 
+def _is_date_time(text: str) -> bool:
+    if not ISO_DATE_TIME.fullmatch(text):
+        return False
+    try:
+        datetime.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
+
+
 def _has_number(o) -> bool:
-    """A number anywhere in `o`: a JSON number, or a digit in a string or a key that is not part of
-    an ISO date or time ("pin 585", "$585", "0x249", "585.0 USD" all hold one)."""
+    """A number anywhere in `o`: a JSON number, or a numeric character in a string or a key whose
+    whole text is not an ISO date-time ("pin 585", "$585", "0x249", "pin 05:85", "⁵⁸⁵" all hold
+    one)."""
     if isinstance(o, dict):
         return any(_has_number(k) or _has_number(v) for k, v in o.items())
     if isinstance(o, list):
         return any(_has_number(v) for v in o)
     if isinstance(o, str):
-        return re.search(r"\d", DATE_TIME.sub("", o)) is not None
+        return any(ch.isnumeric() for ch in o) and not _is_date_time(o)
     return isinstance(o, (int, float)) and not isinstance(o, bool)
+
+
+def _exact(value) -> str:
+    """`value` as JSON with its types: 0, 0.0 and false are three different texts."""
+    return json.dumps(value, sort_keys=True)
 
 
 def _pair(prov: dict) -> tuple[str, str] | str:
@@ -157,17 +177,24 @@ def check_fixture(text: str, dbs: dict[str, Path]) -> list[str]:
             strangers = [c for c in selected if c.lower() not in columns]
             if strangers:
                 return [f"provenance.query selects {', '.join(strangers)}, which is not a column of {table}"]
-            record = [r for s in prov["symbols"] for r in _rows(con, prov["query"], [s, *rng])]
+            if not isinstance(prov["symbols"], list) or not all(isinstance(s, str) for s in prov["symbols"]):
+                return ["provenance.symbols must be a list of strings"]
+            per_symbol = {s: _rows(con, prov["query"], [s, *rng]) for s in prov["symbols"]}
         finally:
             con.close()
     except sqlite3.Error as e:
         return [f"cannot verify: reading {path} failed: {e}"]
+    empty = [s for s in prov["symbols"] if not per_symbol[s]]
+    if empty:
+        return [f"provenance.symbols {', '.join(empty)} return no rows from the record"]
+    record = [r for s in prov["symbols"] for r in per_symbol[s]]
     rows = data["rows"]
     if len(rows) != len(record):
         return [f"{len(rows)} rows, the record has {len(record)}"]
     for i, (mine, theirs) in enumerate(zip(rows, record)):
-        if mine != theirs:
-            keys = sorted(k for k in set(mine) | set(theirs) if mine.get(k, ...) != theirs.get(k, ...))
+        if _exact(mine) != _exact(theirs):
+            keys = sorted(k for k in set(mine) | set(theirs) if k not in mine or k not in theirs
+                          or _exact(mine[k]) != _exact(theirs[k]))
             return [f"row {i} differs from the record in {', '.join(keys)}"]
     return []
 

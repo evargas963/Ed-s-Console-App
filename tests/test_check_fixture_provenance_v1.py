@@ -16,13 +16,13 @@ from pathlib import Path
 
 import pytest
 
-REPO =Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 import check_fixture_provenance as cfp  # noqa: E402
 from app.market_data.schwab.streaming.capture import SERVICE_TOPIC  # noqa: E402
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture  # noqa: E402
 from db import EdDB, LevelCrossEvent  # noqa: E402
-from stream_spine import CaptureWriter, book_msg  # noqa: E402
+from stream_spine import CaptureWriter, bar_msg, book_msg  # noqa: E402
 from time_et import ET  # noqa: E402
 
 FX = REPO / "tests" / "fixtures"
@@ -203,16 +203,70 @@ def test_a_number_as_a_key_is_refused(tmp_path):
         "tests/fixtures/b.json: provenance expected hold numbers outside the checked rows"]
 
 
-@pytest.mark.parametrize("note", ["pin 585", "$585", "585.0 USD", "0x249"])
-def test_a_number_inside_free_text_is_refused_and_a_date_or_time_is_not(tmp_path, note):
+@pytest.mark.parametrize("note", ["pin 585", "$585", "585.0 USD", "0x249", "pin 0585-00-00", "pin 05:85",
+                                  "pin 85:85", "pin 2026-10-02T09:30:00.585", "2026-10-02T09:30+05:85",
+                                  "pin ⁵⁸⁵", "pin ⑤⑧⑤", "captured 2026-10-04 at 09:30:00 ET"])
+def test_a_number_inside_free_text_is_refused_and_an_iso_date_time_is_not(tmp_path, note):
+    """A free value may hold numeric characters only when the whole value is an ISO date-time."""
     fixture = _record_crosses(tmp_path / "data")
-    fixture["provenance"]["note"] = "captured 2026-10-04 at 09:30:00 ET"
+    fixture["provenance"]["captured_utc"] = "2026-10-04T09:30:00.123+00:00"
+    fixture["provenance"]["note"] = "captured on the day of the window"
     root = _staged(tmp_path, {NAME: json.dumps(fixture)})
     assert cfp.violations(root, _dbs(tmp_path / "data")) == []
     fixture["provenance"]["note"] = note
     root = _staged(tmp_path / "again", {NAME: json.dumps(fixture)})
     assert cfp.violations(root, _dbs(tmp_path / "data")) == [
         f"{NAME}: provenance note hold numbers outside the checked rows"]
+
+
+@pytest.mark.parametrize("symbols, why", [
+    (["$SPX", "SPY", 585.0], "provenance.symbols must be a list of strings"),
+    (["$SPX", "SPY", "585"], "provenance.symbols 585 return no rows from the record")])
+def test_every_symbol_is_a_string_that_returns_rows(tmp_path, symbols, why):
+    """A symbol that returns nothing adds nothing to compare: it could carry any data."""
+    fixture = _record_crosses(tmp_path / "data")
+    fixture["provenance"]["symbols"] = symbols
+    root = _staged(tmp_path, {NAME: json.dumps(fixture)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [f"{NAME}: {why}"]
+
+
+def _record_bars(data: Path) -> dict:
+    """$SPX's and SPY's captured 2026-10-01/02 bars (tests/fixtures/real_daemon_bars_spy_tsla_spx_2026_10_01_02
+    .json) through the daemon's writer into `data`/stream_capture.db; the fixture of them. Schwab
+    sends $SPX bars with volume 0."""
+    captured = json.loads((FX / "real_daemon_bars_spy_tsla_spx_2026_10_01_02.json").read_text(encoding="utf-8"))
+    writer = CaptureWriter(data / "stream_capture.db")
+    rows = []
+    with sqlite3.connect(str(writer.db_path)) as con:
+        for symbol in ("$SPX", "SPY"):
+            mine = sorted((r for r in captured["rows"] if r["symbol"] == symbol),
+                          key=lambda r: (r["bar_start_ms"], r["ts_recv"]))
+            for r in mine:
+                writer.insert(f"bar1m.{symbol}", bar_msg(**{k: r[k] for k in (
+                    "symbol", "bar_start_ms", "open", "high", "low", "close", "volume", "src", "ts_recv",
+                    "native", "schwab_ts")}), conn=con)
+            rows += mine
+    return {"provenance": {
+        "sent_by": "Schwab streamer CHART_EQUITY", "database": "data/stream_capture.db, opened read-only",
+        "symbols": ["$SPX", "SPY"], "bar_start_from_et": "2026-10-01T00:00", "bar_start_to_et": "2026-10-03T00:00",
+        "query": "SELECT ts_recv, symbol, bar_start_ms, open, high, low, close, volume, src, schwab_ts, native_json "
+                 "FROM stream_bars_raw WHERE symbol=? AND bar_start_ms>=? AND bar_start_ms<? "
+                 "ORDER BY bar_start_ms, ts_recv"}, "rows": rows}
+
+
+@pytest.mark.parametrize("written", [False, 0.0])
+def test_a_recorded_zero_written_as_false_or_a_float_is_refused(tmp_path, written):
+    """Schwab's $SPX volume is 0 (an integer): `false` and `0.0` compare equal to it in Python, and
+    are not what Schwab sent."""
+    fixture = _record_bars(tmp_path / "data")
+    root = _staged(tmp_path, {NAME: json.dumps(fixture)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == []
+    assert fixture["rows"][0]["symbol"] == "$SPX" and fixture["rows"][0]["volume"] == 0
+    for r in fixture["rows"]:
+        if r["symbol"] == "$SPX":
+            r["volume"] = written
+    root = _staged(tmp_path / "again", {NAME: json.dumps(fixture)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [f"{NAME}: row 0 differs from the record in volume"]
 
 
 def test_a_renamed_and_edited_fixture_is_checked(tmp_path):
