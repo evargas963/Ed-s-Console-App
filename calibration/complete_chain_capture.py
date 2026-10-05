@@ -80,8 +80,8 @@ def persist_complete_chain_capture(
     source: str = "schwab_chain_strike_range_all",
 ) -> dict[str, Any]:
     """Append one COMPLETE single-expiry capture. A time series (PRIMARY KEY includes
-    ts_utc): every written capture is its own row. A stored capture is never replaced: a
-    second write of the same (ticker, expiry, ts_utc) raises sqlite3.IntegrityError and the
+    ts_utc): each capture time is its own set of rows, one per expiry. A stored capture is
+    never replaced: a second write of the same (ticker, expiry, ts_utc) raises sqlite3.IntegrityError and the
     stored row stands.
 
     FAIL CLOSED: no contracts, or an unproven `completeness_basis`, writes NOTHING and
