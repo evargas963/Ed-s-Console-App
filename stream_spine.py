@@ -640,18 +640,13 @@ class CaptureWriter:
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
             last_commit, stopping = time.monotonic(), False
-            while True:
-                if self._waiting:
-                    items, self._waiting = self._waiting, []
-                elif stopping:
-                    break
-                else:
-                    try:
-                        item = q.get(timeout=max(self.batch_sec - (time.monotonic() - last_commit), 0.01))
-                    except queue.Empty:
-                        item = False
-                    stopping = item is None
-                    items = [item] if item else []
+            while not (stopping and not self._waiting):
+                try:
+                    item = q.get(timeout=max(self.batch_sec - (time.monotonic() - last_commit), 0.01))
+                except queue.Empty:
+                    item = False
+                stopping = stopping or item is None
+                items, self._waiting = self._waiting + ([item] if item else []), []
                 stored = 0
                 try:
                     for item in items:
