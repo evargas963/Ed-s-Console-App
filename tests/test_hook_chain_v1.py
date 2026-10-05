@@ -118,7 +118,8 @@ def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
         assert not (ROOT / "tools" / retired.split(".")[0]).with_suffix(".py").exists() or retired.endswith("guard"), retired
     def roster(c: str) -> set[str]:
         return {t for t in c.split() if t.startswith("tools/") and "chain" not in t}
-    assert set(wired) == {"PreToolUse", "preToolUse"}, wired
+    assert set(wired) == {"PreToolUse", "preToolUse", "Stop"}, wired
+    assert [roster(c) for c in wired["Stop"]] == [{"tools/cleanup_stop_hook.py"}], wired
     assert all(roster(c) == set(WIRED_ROSTER) for c in wired["PreToolUse"] + wired["preToolUse"]), wired
 
 

@@ -52,8 +52,8 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
    Enforced by: `docs/DATA_FLOW.md` §2 D1–D6, each with its own test.
 7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,
    report or check lives only while it has a job; once answered, it is deleted.
-   Enforced by: ruff F401 (unused imports) at commit and in the required `hardening` check; the
-   rest — ENF-04.
+   Enforced by: ruff F401 (unused imports) at commit and in the required `hardening` check, and
+   the cleanup checks under "Before writing code"; the rest — ENF-04.
 8. **All tickers.** Measure and report across the board, never one ticker.
    Enforced by: no machine check — ENF-05.
 9. **Clocks.** Market logic in ET; the UI shows Central Time.
@@ -90,6 +90,12 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   the existing ones are cleaned as their files are touched. Enforced by:
   `tools/check_no_new_patches.py` in the required `hardening` job
   (`tests/test_check_no_new_patches_v1.py`); the existing ones — TEST-PATCHES.
+- Cleanup: a change leaves no mention of a name it deleted and no code it made dead. Enforced by:
+  `tools/check_stale_references.py` (`hardening`) and `tools/check_dead_code.py` (vulture,
+  `pytest-full`) refuse the PR, ruff F841 and ERA001 the commit, and the Stop hook
+  `tools/cleanup_stop_hook.py` the agent's turn (`tests/test_check_stale_references_v1.py`,
+  `tests/test_check_dead_code_v1.py`, `tests/test_cleanup_stop_hook_v1.py`); fields no screen
+  reads, dead CSS and JS — ENF-04.
 
 ## Before saying done (enforced)
 

@@ -155,3 +155,10 @@ jobs:
           SCHWAB_APP_SECRET: "ci-not-live-placeholder"
           BASE_REF: ${{ github.base_ref }}
         run: python tools/check_fails_before.py --base "origin/$BASE_REF"
+
+      # Here, not in `hardening`: its rules import the libraries the code imports (requirements.txt).
+      - name: The change leaves no dead code (cleanup)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python tools/check_dead_code.py --base "origin/$BASE_REF"

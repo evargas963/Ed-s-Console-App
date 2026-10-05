@@ -4,7 +4,7 @@ target-version = "py313"
 extend-exclude = [".venv", "venv", "node_modules", "__pycache__"]
 
 [tool.ruff.lint]
-select = ["F", "E9"]
+select = ["F", "E9", "ERA001"]
 
 [tool.ruff.format]
 quote-style = "double"
