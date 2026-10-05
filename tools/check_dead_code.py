@@ -14,9 +14,8 @@ from outside what vulture reads:
   - it overrides a library: a method or class attribute of a class whose base class is imported
     from outside the repository or is a builtin;
   - a library reads it: an attribute set on an object other than `self`/`cls` whose name a class
-    defined in a library module the file imports declares in its own body, or that module's source
-    reads as `self.<name>` (not a name it inherits, not a dunder). A method of a class with no
-    library base is never cleared by its name alone:
+    defined in a library module the file imports declares in its own body (not a name it inherits,
+    not a dunder). A method of a class with no library base is never cleared by its name alone:
     a duck-typed method a library calls (schwab-py's `label_message`) stays a finding;
   - it is serialized: a field of a dataclass that `asdict`, `astuple` or `fields` reads whole
     (called in the class's own body, on the class, or on a name annotated with it);
@@ -37,7 +36,6 @@ import ast
 import builtins
 import fnmatch
 import importlib
-import inspect
 import io
 import subprocess
 import sys
@@ -116,24 +114,16 @@ _LIBRARY_MEMBERS: dict[str, set[str]] = {}
 
 
 def _library_members(module: str) -> set[str]:
-    """The names the classes defined in the library module declare in their own bodies, and the
-    names its source reads as `self.<name>`, dunders excluded: not what its classes inherit, not
-    the members of classes the module only imports."""
+    """The names the classes defined in the library module declare in their own bodies, dunders
+    excluded: not what they inherit, not the members of classes the module only imports."""
     if module not in _LIBRARY_MEMBERS:
         try:
             mod = importlib.import_module(module)
         except ImportError:
             mod = None
-        names = {a for obj in vars(mod).values() if isinstance(obj, type) and obj.__module__ == mod.__name__
-                 for a in vars(obj)} if mod else set()
-        try:
-            tree = ast.parse(inspect.getsource(mod)) if mod else None
-        except (OSError, TypeError):                 # a compiled module: no source to read
-            tree = None
-        if tree is not None:
-            names |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)
-                      and isinstance(n.ctx, ast.Load) and isinstance(n.value, ast.Name) and n.value.id == "self"}
-        _LIBRARY_MEMBERS[module] = {a for a in names if not a.startswith("__")}
+        _LIBRARY_MEMBERS[module] = {a for obj in vars(mod).values()
+                                    if isinstance(obj, type) and obj.__module__ == mod.__name__
+                                    for a in vars(obj) if not a.startswith("__")} if mod else set()
     return _LIBRARY_MEMBERS[module]
 
 
