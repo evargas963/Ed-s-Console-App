@@ -42,7 +42,11 @@ def _pr(tmp_path: Path, base: dict[str, str], pr: dict[str, str]) -> Path:
     _git(root, "init", "-q", "-b", "main")
     _git(root, "config", "user.email", "t@t")
     _git(root, "config", "user.name", "t")
-    fixtures = {f"tests/fixtures/{f.name}": f.read_bytes() for f in (REPO / "tests" / "fixtures").glob("*.json")}
+    names = subprocess.run(["git", "ls-tree", "--name-only", f"{MAIN}:tests/fixtures"], cwd=REPO, capture_output=True,
+                           text=True, check=True).stdout.split()
+    fixtures = {f"tests/fixtures/{n}": subprocess.run(["git", "show", f"{MAIN}:tests/fixtures/{n}"], cwd=REPO,
+                                                      capture_output=True, check=True).stdout
+                for n in names if n.endswith(".json")}
     _write(root, {**fixtures, **base})
     _git(root, "add", *fixtures, *base)
     _git(root, "commit", "-q", "-m", "base")

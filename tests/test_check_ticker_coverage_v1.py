@@ -47,6 +47,14 @@ def _at_main(path: str) -> str:
                           encoding="utf-8", check=True).stdout
 
 
+def _fixtures_at_main() -> dict[str, bytes]:
+    names = subprocess.run(["git", "ls-tree", "--name-only", f"{MAIN}:tests/fixtures"], cwd=REPO, capture_output=True,
+                           text=True, check=True).stdout.split()
+    return {f"tests/fixtures/{n}": subprocess.run(["git", "show", f"{MAIN}:tests/fixtures/{n}"], cwd=REPO,
+                                                  capture_output=True, check=True).stdout
+            for n in names if n.endswith(".json")}
+
+
 def _git(root: Path, *a: str) -> None:
     subprocess.run(["git", *a], cwd=root, check=True, capture_output=True)
 
@@ -61,13 +69,13 @@ def _write(root: Path, files: dict[str, str | bytes]) -> None:
 
 
 def _pr(tmp_path: Path, base: dict[str, str], pr: dict[str, str]) -> Path:
-    """A repository whose base holds every captured fixture and `base`, and a branch adding `pr`."""
+    """A repository whose base holds every captured fixture of MAIN and `base`, and a branch adding `pr`."""
     root = tmp_path / "repo"
     root.mkdir()
     _git(root, "init", "-q", "-b", "main")
     _git(root, "config", "user.email", "t@t")
     _git(root, "config", "user.name", "t")
-    fixtures = {f"tests/fixtures/{f.name}": f.read_bytes() for f in (REPO / "tests" / "fixtures").glob("*.json")}
+    fixtures = _fixtures_at_main()
     _write(root, {**fixtures, **base})
     _git(root, "add", *fixtures, *base)
     _git(root, "commit", "-q", "-m", "base")
@@ -137,8 +145,8 @@ def test_a_one_capture_predicate_that_fails_on_a_capture_refuses_the_test(tmp_pa
     assert len(found) == 1 and "one_capture's predicate _has_a_ticker raised KeyError" in found[0]
 
 
-def test_each_capture_is_known_by_the_tickers_it_holds():
-    caps = ctc.captures(REPO)
+def test_each_capture_is_known_by_the_tickers_it_holds(tmp_path):
+    caps = ctc.captures(_pr(tmp_path, {}, {"tests/x.py": ""}))
     assert ctc.fixture_tickers(caps["real_tsla_book_rows.json"]) == {"TSLA"}
     assert ctc.fixture_tickers(caps["real_spy_2026_10_14_chain_oi_zero.json"]) == {"SPY"}
     assert ctc.fixture_tickers(caps["real_options_stream_history_samples.json"]) == {"QQQ", "SPY", "TSLA"}

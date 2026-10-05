@@ -23,14 +23,16 @@ The query is one SELECT from `table` whose placeholders are, in any order, `<sym
 `<range column> >= ?` (or >) and `<range column> < ?` (or <=). It runs once per symbol with the
 symbol and the range in the range column's unit (epoch milliseconds when the column ends in `_ms`,
 else epoch seconds). Each result row becomes an object keyed by column; a column `<x>_json` becomes
-`<x>`, its JSON parsed (null stays null). The fixture's rows of each symbol (by the symbol column)
+`<x>`, decoded by the one JSON blob reader (json_blob_codec; null stays null). The fixture's rows of each symbol (by the symbol column)
 must equal that symbol's result rows, in order; when the rows carry no symbol column, all rows must
 equal the results of the symbols in their listed order. A top-level key other than `provenance` and
 `rows` may not hold a number.
 
-Which record is Schwab's is computed from the capture daemon's writer (stream_spine._INSERTS): the
-stream_capture.db tables it writes Schwab's item into (a `native_json` column). `sent_by` must name
-one of those tables; `computed_by` must name a table that is not one of them, so a computed value
+Which record is Schwab's is computed from the capture daemon's writers: the stream_capture.db
+tables stream_spine._INSERTS writes Schwab's item into (a `native_json` column), and the
+ed_console.db table its ChainSweep writes Schwab's option chains into
+(calibration.complete_chain_capture.TABLE_SQL). `sent_by` must name one of those tables in its
+database; `computed_by` must name a table that is not one of them, so a computed value
 is never presented as Schwab's and Schwab's record is never presented as computed. Data whose source
 is neither the daemon's record nor a named console table (a REST capture written straight to a file,
 a hand-built file) has no record to re-query: it is refused.
@@ -54,8 +56,10 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from calibration.complete_chain_capture import TABLE_SQL as CHAIN_TABLE_SQL  # noqa: E402
 from check_no_new_patches import ToolError, _git  # noqa: E402
 from db_authority import canonical_console_db_path, canonical_stream_db_path  # noqa: E402
+from json_blob_codec import decode_json_blob  # noqa: E402
 from stream_spine import _INSERTS  # noqa: E402
 from time_et import ET  # noqa: E402
 
@@ -65,13 +69,13 @@ PLACEHOLDER = re.compile(r"(\w+)\s*(>=|<=|=|>|<)\s*\?")
 REQUIRED = ("database", "table", "symbols", "captured_utc", "query")
 
 
-def schwab_tables() -> set[str]:
-    """The stream_capture.db tables the capture daemon's writer stores Schwab's item in."""
-    out = set()
+def schwab_tables() -> set[tuple[str, str]]:
+    """(database, table) of each record the capture daemon writes what Schwab sent into."""
+    out = {("ed_console.db", re.search(r"CREATE TABLE IF NOT EXISTS (\w+)", CHAIN_TABLE_SQL).group(1))}
     for sql, _ in _INSERTS.values():
         m = re.match(r"INSERT INTO (\w+)\(([^)]*)\)", sql)
         if m and "native_json" in m.group(2).split(","):
-            out.add(m.group(1))
+            out.add(("stream_capture.db", m.group(1)))
     return out
 
 
@@ -126,7 +130,7 @@ def _rows(con: sqlite3.Connection, query: str, params: list) -> list[dict]:
         rec = {}
         for c, v in zip(cols, row):
             if c.endswith("_json"):
-                rec[c[:-5]] = json.loads(v) if v is not None else None
+                rec[c[:-5]] = decode_json_blob(v) if v is not None else None
             else:
                 rec[c] = v
         out.append(rec)
@@ -155,10 +159,10 @@ def check_fixture(text: str, dbs: dict[str, Path]) -> list[str]:
     if len(named) != 1:
         return [f"provenance.database names none or both of {', '.join(DATABASES)}"]
     schwab = schwab_tables()
-    if "sent_by" in prov and (named[0] != "stream_capture.db" or prov["table"] not in schwab):
+    if "sent_by" in prov and (named[0], prov["table"]) not in schwab:
         return [f"sent_by names {named[0]} {prov['table']}, which is not the capture daemon's record of what "
-                f"Schwab sent ({', '.join(sorted(schwab))} in stream_capture.db)"]
-    if "computed_by" in prov and prov["table"] in schwab:
+                f"Schwab sent ({', '.join(f'{d} {t}' for d, t in sorted(schwab))})"]
+    if "computed_by" in prov and (named[0], prov["table"]) in schwab:
         return [f"computed_by names {prov['table']}, which is the daemon's record of what Schwab sent"]
     plan = _plan(prov)
     if isinstance(plan, str):

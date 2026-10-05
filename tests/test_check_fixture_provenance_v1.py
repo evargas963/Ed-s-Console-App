@@ -11,14 +11,17 @@ import sqlite3
 import subprocess
 import sys
 from dataclasses import fields
+from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 import check_fixture_provenance as cfp  # noqa: E402
 from app.market_data.schwab.streaming.capture import SERVICE_TOPIC  # noqa: E402
+from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture  # noqa: E402
 from db import EdDB, LevelCrossEvent  # noqa: E402
 from stream_spine import CaptureWriter, book_msg  # noqa: E402
+from time_et import ET  # noqa: E402
 
 FX = REPO / "tests" / "fixtures"
 NAME = "tests/fixtures/real_spy_tsla_books_record.json"
@@ -117,9 +120,39 @@ def test_schwab_data_must_be_the_daemons_record_and_computed_data_must_not_be(tm
     root = _staged(tmp_path, {"tests/fixtures/a.json": json.dumps(console), "tests/fixtures/b.json": json.dumps(computed)})
     assert cfp.violations(root, _dbs(tmp_path / "data")) == [
         "tests/fixtures/a.json: sent_by names ed_console.db level_crosses, which is not the capture daemon's record "
-        "of what Schwab sent (stream_bars_raw, stream_book_raw, stream_news_raw, stream_options_quotes_raw, "
-        "stream_quotes_raw in stream_capture.db)",
+        "of what Schwab sent (ed_console.db complete_chain_captures, stream_capture.db stream_bars_raw, "
+        "stream_capture.db stream_book_raw, stream_capture.db stream_news_raw, stream_capture.db "
+        "stream_options_quotes_raw, stream_capture.db stream_quotes_raw)",
         "tests/fixtures/b.json: computed_by names stream_book_raw, which is the daemon's record of what Schwab sent"]
+
+
+def test_schwabs_option_chain_as_the_daemons_chain_sweep_recorded_it_is_schwab_data(tmp_path):
+    """The daemon's ChainSweep records Schwab's option chain in ed_console.db, its chain stored
+    compressed: a fixture of it is checked as what Schwab sent, and is refused as computed."""
+    db = tmp_path / "data" / "ed_console.db"
+    db.parent.mkdir(parents=True)
+    rows = []
+    for name in ("real_spy_0dte_chain.json", "real_tsla_complete_chain_strike_range_all.json"):
+        sent = json.loads((FX / name).read_text(encoding="utf-8"))
+        expiry = sent["chain"][0]["expirationDate"][:10]
+        ts = datetime.fromisoformat(expiry).replace(hour=10, tzinfo=ET).timestamp()
+        persist_complete_chain_capture(db, ticker=sent["ticker"], expiry=expiry, contracts=sent["chain"], spot=None,
+                                       completeness_basis=CAPTURE_BASIS, ts_utc=ts)
+        rows.append({"ticker": sent["ticker"], "expiry": expiry, "ts_utc": ts, "chain": sent["chain"]})
+    fixture = {"provenance": {
+        "sent_by": "Schwab REST option chain", "recorded_by": "capture daemon ChainSweep",
+        "database": "data/ed_console.db, opened read-only", "table": "complete_chain_captures",
+        "symbols": ["SPY", "TSLA"], "sweep_from_et": "2026-08-01T00:00", "sweep_to_et": "2026-10-01T00:00",
+        "captured_utc": "2026-10-04T00:00:00+00:00",
+        "query": "SELECT ticker, expiry, ts_utc, chain_json FROM complete_chain_captures WHERE ticker=? AND "
+                 "ts_utc>=? AND ts_utc<? ORDER BY expiry"},
+        "rows": rows}
+    computed = copy.deepcopy(fixture)
+    computed["provenance"]["computed_by"] = computed["provenance"].pop("sent_by")
+    root = _staged(tmp_path, {"tests/fixtures/a.json": json.dumps(fixture), "tests/fixtures/b.json": json.dumps(computed)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [
+        "tests/fixtures/b.json: computed_by names complete_chain_captures, which is the daemon's record of what "
+        "Schwab sent"]
 
 
 def test_console_computed_crosses_are_checked_against_the_consoles_table(tmp_path):
