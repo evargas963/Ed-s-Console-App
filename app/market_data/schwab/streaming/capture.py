@@ -324,7 +324,10 @@ class Daemon:
         if self.board_db is None:
             return
         if self.active is not None and self.active not in self.board:
-            await asyncio.to_thread(enroll, self.board_db, self.active, now)
+            try:
+                await asyncio.to_thread(enroll, self.board_db, self.active, now)
+            except ValueError as e:                # not a symbol: on screen, never on the board
+                log.warning("board: %s", e)
         board = await asyncio.to_thread(board_tickers, self.board_db)
         if board == self.board:
             return
@@ -570,7 +573,7 @@ async def run_board(daemon: "Daemon", stop: asyncio.Event) -> None:
         daemon.board_changed.clear()
         try:
             await daemon.refresh_board(time.time())
-        except (sqlite3.Error, ValueError) as e:
+        except sqlite3.Error as e:
             log.warning("board: not read or written this round: %s: %s", type(e).__name__, e)
         changed = asyncio.ensure_future(daemon.board_changed.wait())
         stopped = asyncio.ensure_future(stop.wait())

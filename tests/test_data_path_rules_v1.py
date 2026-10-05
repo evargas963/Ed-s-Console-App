@@ -452,6 +452,11 @@ def test_a_ticker_put_on_screen_joins_the_board_through_its_one_writer_and_is_st
     assert daemon.status()["board"] == ["QQQ", "SPY", "TSLA"]
     assert _handed_out(sweep, sat + 240) == ["QQQ"]
 
+    daemon.active = "NOT A SYMBOL"                            # on screen, never enrolled
+    enroll(db, "IWM", sat + 300)
+    asyncio.run(daemon.refresh_board(sat + 301))
+    assert daemon.status()["board"] == ["IWM", "QQQ", "SPY", "TSLA"], "the board is read all the same"
+
 
 def test_d5_a_close_fetch_that_fails_is_tried_again_after_the_pause_until_it_lands():
     sweep, clock = _paced(["AAA", "BBB"], "2026-10-03 12:00")
