@@ -7,21 +7,25 @@ the message shapes, the in-process message bus, feed health, and the database wr
   - Raw stream data goes ONLY to stream_capture.db -- ed_console.db is never written here.
   - The writer runs on its own thread with its own SQLite connection, so a slow disk can
     never stall the Schwab socket (measured 2026-09-23: in-loop commits dropped 9,784 msgs).
+  - A message the writer cannot store as a row is kept as sent, with its error, in
+    stream_write_failures; the writer's state (WriterStatus) rides the daemon's heartbeat.
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import queue
 import sqlite3
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from db_authority import canonical_stream_db_path
 
+log = logging.getLogger(__name__)
 
 
 def resolve_stream_db_path(default: "Path | str | None" = None) -> Path:
@@ -95,6 +99,16 @@ CREATE TABLE IF NOT EXISTS stream_feed_status (
     last_data_ts REAL
 );
 CREATE INDEX IF NOT EXISTS idx_sfs_ts ON stream_feed_status(ts);
+-- Every message a write refused, kept as sent: when it failed, its topic (a bus topic, or
+-- chain_history.<TICKER> for a chain whose history write failed), the message as JSON, and the
+-- error (type and text). Nothing here is a correction; each row is what could not be stored.
+CREATE TABLE IF NOT EXISTS stream_write_failures (
+    ts REAL NOT NULL,
+    topic TEXT NOT NULL,
+    msg_json TEXT NOT NULL,
+    error TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_swf_ts ON stream_write_failures(ts);
 """
 
 WAL_SIZE_LIMIT_BYTES = 256 * 1024 * 1024
@@ -382,9 +396,36 @@ def _json(v) -> "str | None":
     return json.dumps(v) if v is not None else None
 
 
+#: what a row's write can fail with: the database refusing it (sqlite3.Error: a constraint, a
+#: locked, full or read-only database), or a message without the shape its table needs (KeyError,
+#: TypeError, ValueError, AttributeError while building the row)
+ROW_FAILURES = (sqlite3.Error, KeyError, TypeError, ValueError, AttributeError)
+
+#: the writer's states, on the heartbeat
+WRITER_NOT_STARTED, WRITER_RECORDING, WRITER_DEAD, WRITER_STOPPED = (
+    "not_started", "recording", "dead", "stopped")
+
+
+@dataclass(frozen=True)
+class WriterStatus:
+    """The writer as the heartbeat carries it. `failures`: messages kept in
+    stream_write_failures; `unrecorded`: messages that reached a dead writer (not stored);
+    `error`: what ended the writer thread."""
+    state: str
+    rows_written: int
+    failures: int
+    last_failure: "str | None"
+    queue_depth: int
+    unrecorded: int
+    error: "str | None"
+
+
 class CaptureWriter:
     """Writes every bus message to stream_capture.db from its own thread, in batches
-    (commit every `batch_rows` rows or `batch_sec`). Never points at ed_console.db."""
+    (commit every `batch_rows` rows or `batch_sec`). Never points at ed_console.db. A message
+    whose row is refused is kept as sent in stream_write_failures (keep_failure); a failure
+    that cannot be kept, or a refused commit, ends the thread: its state is WRITER_DEAD with
+    the error, and every later message is counted unrecorded."""
 
     def __init__(self, db_path: "Path | str | None" = None, *,
                  batch_rows: int = 500, batch_sec: float = 0.25) -> None:
@@ -395,8 +436,14 @@ class CaptureWriter:
         self.db_path = p
         self.batch_rows = int(batch_rows)
         self.batch_sec = float(batch_sec)
+        self._lock = threading.Lock()
+        self._q: "queue.SimpleQueue" = queue.SimpleQueue()
+        self.state = WRITER_NOT_STARTED
         self.rows_written = 0
-        self.insert_errors = 0
+        self.failures = 0
+        self.last_failure: "str | None" = None
+        self.unrecorded = 0
+        self.error: "str | None" = None
         conn = sqlite3.connect(str(p))
         try:
             conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
@@ -424,35 +471,86 @@ class CaptureWriter:
             return
         try:
             conn.execute(spec[0], spec[1](msg))
+        except ROW_FAILURES as e:
+            log.warning("stream writer: %s not stored as a row, kept as sent: %s: %s",
+                        topic, type(e).__name__, e)
+            self.keep_failure(topic, msg, e, time.time(), conn=conn)
+            return
+        with self._lock:
             self.rows_written += 1
-        except Exception:  # noqa: BLE001 -- counted in status; capture continues
-            self.insert_errors += 1
+
+    def keep_failure(self, topic: str, msg: Any, error: BaseException, now: float, *,
+                     conn: "sqlite3.Connection | None" = None) -> None:
+        """Keep `msg` as sent, with `error`, in stream_write_failures, and count it on the
+        heartbeat. On the writer's connection (`conn`) it commits with the batch; without one (a
+        chain worker's failed history write) it writes and commits a connection of its own. A
+        database that refuses this row too raises: nothing can be kept there."""
+        reason = f"{type(error).__name__}: {error}"
+        row = (now, topic, json.dumps(msg, default=repr), reason)
+        sql = "INSERT INTO stream_write_failures(ts,topic,msg_json,error) VALUES(?,?,?,?)"
+        if conn is None:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as own:
+                own.execute(sql, row)
+        else:
+            conn.execute(sql, row)
+        with self._lock:
+            self.failures += 1
+            self.last_failure = f"{topic}: {reason}"
+
+    def status(self) -> dict:
+        """The writer's WriterStatus, as the heartbeat carries it."""
+        with self._lock:
+            return asdict(WriterStatus(state=self.state, rows_written=self.rows_written,
+                                       failures=self.failures, last_failure=self.last_failure,
+                                       queue_depth=self._q.qsize(), unrecorded=self.unrecorded,
+                                       error=self.error))
 
     async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
         """Hand every bus message to the writer thread until `stop`; everything delivered
-        before the stop is written and committed before this returns."""
-        q: "queue.SimpleQueue" = queue.SimpleQueue()
-        thread = threading.Thread(target=self._thread, args=(q,), name="stream-capture-writer",
-                                  daemon=True)
+        before the stop is written and committed before this returns. Once the thread is dead,
+        each message is counted unrecorded instead of queued for a thread that will not take it."""
+        thread = threading.Thread(target=self._thread, args=(self._q,),
+                                  name="stream-capture-writer", daemon=True)
+        with self._lock:
+            self.state = WRITER_RECORDING
         thread.start()
         try:
             while not stop.is_set():
                 try:
-                    q.put(await asyncio.wait_for(sub.get(), timeout=0.25))
+                    self._hand(await asyncio.wait_for(sub.get(), timeout=0.25))
                 except asyncio.TimeoutError:
                     continue
             while not sub.queue.empty():
-                q.put(await sub.get())
+                self._hand(await sub.get())
         finally:
-            q.put(None)
+            self._q.put(None)
             await asyncio.to_thread(thread.join)
 
+    def _hand(self, item: tuple) -> None:
+        with self._lock:
+            if self.state == WRITER_DEAD:
+                self.unrecorded += 1
+                return
+        self._q.put(item)
+
     def _thread(self, q: "queue.SimpleQueue") -> None:
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
-        conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
-        pending, last_commit = 0, time.monotonic()
         try:
+            self._write(q)
+        except Exception as e:  # noqa: BLE001 -- recorded as the writer's death, then raised
+            log.error("stream writer died: %s: %s", type(e).__name__, e)
+            with self._lock:
+                self.state = WRITER_DEAD
+                self.error = f"{type(e).__name__}: {e}"
+            raise
+        with self._lock:
+            self.state = WRITER_STOPPED
+
+    def _write(self, q: "queue.SimpleQueue") -> None:
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        try:
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
+            pending, last_commit = 0, time.monotonic()
             while True:
                 try:
                     item = q.get(timeout=max(self.batch_sec - (time.monotonic() - last_commit), 0.01))

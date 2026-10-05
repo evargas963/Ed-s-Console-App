@@ -58,7 +58,14 @@ from Schwab to the screen (daemon, console, page), are these:
   nothing old waits in a queue. Memory is bounded by the number of symbols, never by how fast
   Schwab sends. Enforced by: `tests/test_data_path_rules_v1.py`.
 - **D4. The database is the memory.** Its one writer records every message Schwab sends; nothing
-  else keeps old data. Enforced by: `tests/test_data_path_rules_v1.py`.
+  else keeps old data. A message it cannot store as a row is kept as sent, with its error, in
+  `stream_write_failures`; the writer's state (`stream_spine.WriterStatus`: recording, rows
+  written, failures kept and the last one, its queue, and when its thread dies the error and the
+  messages not recorded since) rides the daemon's heartbeat to the header's Record. Owner: the
+  writer thread (`CaptureWriter.run`, started with the daemon); when the database refuses even
+  the failure row (a full disk) or a commit, the thread ends, the header reads DEAD with the
+  error, and nothing is recorded until the daemon restarts.
+  Enforced by: `tests/test_data_path_rules_v1.py`, `tests/test_data_path_writer_failures_v1.py`.
 - **D5. Live while the market is open; the close stands while it is closed.** Every value carries
   Schwab's time and the newest by that time is the current one; a reconnect never replays an older
   value as live. In an open session (Pre-Market, RTH, After-Hours, `time_et.session_label`) a value
@@ -102,7 +109,7 @@ from Schwab to the screen (daemon, console, page), are these:
 |---|---|---|
 | Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten) and each ticker's newest chain; the board; the active ticker; the equity quotes the browser's price row is built from |
 | Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; every live screen's history, loaded from `ed_console.db` once at startup and then fed live (§2 D6): each ticker's 1-minute bars (`server._bars`, the newest 24,000) and level crosses (`server._crosses`), each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`, from the console's start) |
-| `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers |
+| `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers; every message a write refused, kept as sent with its error (`stream_write_failures`: the writer's refused rows, and each chain whose history write was refused) |
 | `ed_console.db` | console, and the daemon (the ticker board, the chain captures) | 1-minute bars, level crosses, the ticker board, chain captures and a morning chain per ticker — plus the tables of the deleted ML pipeline (dropped in P2-DB3) |
 
 ### 3.4 The journey of each kind of data
@@ -209,7 +216,10 @@ from Schwab to the screen (daemon, console, page), are these:
   every ticker's levels go stale with that reason (`terrain_staleness`, judged against two of
   the sweep's delivered rounds, carried on the heartbeat). The first chain of each ticker whose
   fetch began in a capture window is also written to the chain history (§4.2, `capture_slot`); a
-  failed history write is logged and the window's next fetch writes it, the delivered chain stands. The sweep
+  history write the database refuses (`sqlite3.Error`) keeps the chain as the sweep received it in
+  `stream_write_failures` and counts on the writer's state (§2 D4), the window's next fetch
+  writes it, and the delivered chain stands; any other error in the history write is the chain's
+  failure, published with its reason. The sweep
   downloads through `schwab_client.fetch_full_chain`, the one place a chain enters, so every consumer
   (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
   the captures) reads the Greeks it sets. The Greeks (gamma, delta, theta, vega, rho,

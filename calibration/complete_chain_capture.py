@@ -28,6 +28,7 @@ from json_blob_codec import decode_json_blob, encode_json_blob
 from numeric_contract import schwab_number
 from production_universe import is_valid_production_ticker
 from schwab_client import fetch_full_chain, flatten_chain_contracts
+from stream_spine import CaptureWriter
 from time_et import (ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date,
                      session_label)
 
@@ -206,14 +207,17 @@ class ChainSweep:
     (FAILED_PAUSE_SEC) one chain is fetched alone until one lands. Each chain is published to
     the console in parts (chain_messages); a failure is published
     with Schwab's answer. The first fetch of a ticker begun inside a capture window
-    (capture_slot) is also written to the chain history."""
+    (capture_slot) is also written to the chain history; a history write the database refuses
+    keeps the chain as Schwab sent it in the stream database's write failures (`failures`, the
+    daemon's writer; by default the stream database's own)."""
 
     def __init__(self, db_path: Path | str, board: "list[str]", publish: "callable",
-                 clock: "callable" = time.time) -> None:
+                 clock: "callable" = time.time, *, failures: "CaptureWriter | None" = None) -> None:
         self.db_path = db_path
         self.board = list(board)        # the daemon's board, read at its start
         self.publish = publish          # (topic, msg) -> None, safe from any thread
         self.clock = clock              # when a fetch begins, and when its chain is received
+        self.failures = CaptureWriter() if failures is None else failures
         self._lock = threading.RLock()
         self._changed = threading.Condition(self._lock)
         self._active: str | None = None
@@ -290,8 +294,10 @@ class ChainSweep:
             self.publish(topic, msg)
         try:
             self._write_history(ticker, payload, contracts, started, now)
-        except Exception as e:  # noqa: BLE001 -- the chain was delivered; only its history write failed
-            log.warning("chain history for %s not written: %s: %s", ticker, type(e).__name__, e)
+        except sqlite3.Error as e:          # the chain was delivered; its history write was refused
+            log.warning("chain history for %s not written, kept as sent: %s: %s",
+                        ticker, type(e).__name__, e)
+            self.failures.keep_failure(f"chain_history.{ticker}", payload, e, now)
         return True
 
     def _done(self, ticker: str, delivered: bool) -> None:
