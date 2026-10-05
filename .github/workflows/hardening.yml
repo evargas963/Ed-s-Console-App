@@ -21,8 +21,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install ruff
-      - name: ruff (correctness, unused names, commented-out code)
-        run: python -m ruff check . --select F401,F821,E9,F841,ERA001
+      - name: ruff (the rules pyproject.toml selects)
+        run: python -m ruff check .
       - name: compileall
         run: python -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .
       - name: no patches, only end-to-end fixes (AGENTS.md rule 1)

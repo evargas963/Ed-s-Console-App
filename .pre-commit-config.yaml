@@ -22,8 +22,8 @@ repos:
         pass_filenames: false
         always_run: true
       - id: ruff-correctness
-        name: ruff (F401, F821, E9, F841, ERA001)
-        entry: python -m ruff check . --select F401,F821,E9,F841,ERA001
+        name: ruff (the rules pyproject.toml selects)
+        entry: python -m ruff check .
         language: system
         pass_filenames: false
         always_run: true

@@ -20,17 +20,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".venv/Scripts/python.exe tools/hook_chain.py tools/cleanup_stop_hook.py",
-            "timeout": 180
-          }
-        ]
-      }
     ]
   }
 }
