@@ -28,7 +28,11 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
    — ENF-01.
 2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value
    Schwab's own field definition excludes (a negative volume or size). Everything else is taken
-   as sent; a reported 0 is 0. No other bounds, no substitution.
+   as sent; a reported 0 is 0. No other bounds, no substitution. What Schwab sends or accepts is
+   settled by Schwab's own documentation, cited by section: `docs/schwab/schwab_market_data_api_spec.pdf`
+   (Market Data API) and `docs/schwab/schwab_streamer_api.pdf` (Streamer API), both saved from
+   Schwab's Developer Portal (operator 2026-10-05). A limit not stated there or in Schwab's own
+   reply is our defect until shown otherwise.
    Enforced by: `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`.
 3. **One authority.** Each value served, stored or shown has one computation authority.
    Consumers carry its result; they never select, compute, repair or relabel it. A second authority
