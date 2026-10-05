@@ -90,6 +90,18 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   the existing ones are cleaned as their files are touched. Enforced by:
   `tools/check_no_new_patches.py` in the required `hardening` job
   (`tests/test_check_no_new_patches_v1.py`); the existing ones — TEST-PATCHES.
+- A test, fixture, helper or Playwright route a pull request adds or changes feeds the code what
+  Schwab sent, from `tests/fixtures/`: never a typed, generated or edited market value. Enforced
+  by: `tools/check_real_market_data.py` in the required `hardening` job
+  (`tests/test_check_real_market_data_v1.py`).
+- A captured fixture carries a `provenance` block naming the record it came from (Schwab's, as
+  the capture daemon recorded it, or the console's computed table) and equals that record
+  re-queried read-only. Enforced by: the commit hook `tools/check_fixture_provenance.py`
+  (`tests/test_check_fixture_provenance_v1.py`).
+- A test a pull request adds or changes that reads captured data reads more than one ticker's
+  capture (SPY and TSLA), unless a `one_capture` marker's predicate proves only one capture has
+  the property. Enforced by: `tools/check_ticker_coverage.py` in the required `hardening` job
+  (`tests/test_check_ticker_coverage_v1.py`).
 
 ## Before saying done (enforced)
 

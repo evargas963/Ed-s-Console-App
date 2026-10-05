@@ -16,3 +16,6 @@ omit = ["tests/*", "*/node_modules/*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = ["node_modules", ".venv"]
+markers = [
+    "one_capture(fixture, predicate): runs on this one capture; tools/check_ticker_coverage.py accepts it only when the predicate holds for that captured fixture alone",
+]
