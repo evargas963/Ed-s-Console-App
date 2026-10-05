@@ -7,7 +7,7 @@
     and pushing to main change production.
   * A database under data/ (`data/*.db`, its -wal, -shm, -journal) is written only with the
     operator's yes (AGENTS.md Records stand): an Edit or Write of the file; a shell command that
-    writes one as a target (the destination of cp / copy / Copy-Item, any path of mv, Move-Item,
+    writes one as a target (the last argument of cp / copy / Copy-Item, any path of mv, Move-Item,
     Set-Content, tee and the other writers above, a > or >> redirect); and a shell command naming one
     through a program that can open it (python, sqlite3) unless the command opens it read-only
     (`mode=ro`, `-readonly`).
@@ -18,7 +18,8 @@ and Deny, and the agent cannot answer for them. Everything else passes untouched
 Limits: shell commands are judged on what they run; code inside `python -c` or a heredoc body is
 data to the shell parser and is not judged here, except that a database path named anywhere in the
 command counts. A command that opens one database read-only and another writable is not told apart,
-and a script that opens a database without naming it on the command line is not seen.
+and a script that opens a database without naming it on the command line is not seen; nor is a
+copy whose destination is named first or is the data/ directory, or a program not listed (ENF-20).
 The Edit and Write tools are judged in full.
 """
 from __future__ import annotations

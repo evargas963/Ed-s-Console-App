@@ -701,9 +701,11 @@ behavior (AGENTS.md).
    and kind (Schwab's or computed) are measured read-only first; reclaiming space (VACUUM) is an
    offline maintenance window, never part of a code change. Enforced by: deleting or moving the
    database files is refused by the agent hook `tools/operator_law_guard.py`
-   (`tests/test_protected_paths_v1.py`); an edit or shell write of a database file, and a python
-   or sqlite3 command naming one without `mode=ro`, are put to Ed by `tools/operator_yes_guard.py`
-   (`tests/test_operator_yes_guard_v1.py`); a script that opens one unnamed — ENF-20; a table drop — ENF-16.
+   (`tests/test_protected_paths_v1.py`); for a `data/*.db` file, an Edit/Write of it, cp / copy /
+   Copy-Item with it as the last argument, mv, rm, Set-Content, tee or another writer the guard lists
+   naming it, a `>` / `>>` to it, and python or sqlite3 naming it without `mode=ro` / `-readonly`, are
+   put to Ed by `tools/operator_yes_guard.py` (`tests/test_operator_yes_guard_v1.py`); every other way
+   of writing one is not seen — ENF-20; a table drop — ENF-16.
 7. **Chain history is kept for research.** Schwab's API has no past option chains: a chain not
    saved is gone. One table holds it (§4.2): full chain, every 30 minutes, market hours only,
    compressed, with Schwab's own underlying price. Levels are not stored as history; research

@@ -9,9 +9,11 @@ already passed before proves nothing about that change. The same tests passing o
 full suite's job (the required pytest-full check). A PR that adds no line to any product file and
 changes no test or only deletes whole tests has nothing to fail before: it passes here, and names
 the existing tests that cover it under "End-to-end test:" (tools/check_end_to_end.py). "Only deletes
-whole tests": no line added under tests/ (`git diff --numstat`), every changed file under tests/ is
-a pytest file or deleted, and every test function left in it is exactly as it was on the base. A
-line removed inside a surviving test is an edit and keeps the rule above.
+whole tests": no line added under tests/ (`git diff --numstat`), and every changed file under tests/
+is deleted, or is a pytest file equal, as parsed code, to its base with whole top-level definitions
+removed (tests, helpers, fixtures, imports, constants) that nothing left in the file names, none an
+autouse fixture. Any other removed line (inside a test, a helper or a fixture that stays) is an edit
+and keeps the rule above.
 
 The base checkout sits inside the repository so that Node finds the repository's node_modules
 from it, and runs on the same Python as this check (first on PATH for the spec's console).
@@ -41,15 +43,41 @@ def changed(root: Path, base: str) -> list[str]:
     return [f for f in _git(root, "diff", "--name-only", "--diff-filter=AMR", f"{base}...HEAD").splitlines() if f]
 
 
-def _tests_in(source: str) -> dict[str, str]:
-    """{Class.test or test: its code} for each test function of a pytest file, line numbers aside."""
-    found = {}
-    for node in ast.parse(source).body:
-        members = [(f"{node.name}.", n) for n in node.body] if isinstance(node, ast.ClassDef) else [("", node)]
-        for prefix, fn in members:
-            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name.startswith("test"):
-                found[prefix + fn.name] = ast.dump(fn)
+def _defined(node: ast.stmt) -> set[str]:
+    """The names a top-level statement defines; empty for one that does anything else (a call, an if)."""
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return {node.name}
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        return {(a.asname or a.name).split(".")[0] for a in node.names}
+    targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
+    return {t.id for t in targets} if targets and all(isinstance(t, ast.Name) for t in targets) else set()
+
+
+def _referenced(tree: ast.Module) -> set[str]:
+    """Every name, attribute, parameter and string in a module: each way a test can reach a definition."""
+    found = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Name):
+            found.add(n.id)
+        elif isinstance(n, ast.Attribute):
+            found.add(n.attr)
+        elif isinstance(n, ast.arg):
+            found.add(n.arg)
+        elif isinstance(n, ast.Constant) and isinstance(n.value, str):
+            found.add(n.value)
     return found
+
+
+def _removable(node: ast.stmt, kept: set[str]) -> bool:
+    """A top-level statement whose removal changes no test left: a definition (a test, a helper, a fixture,
+    an import, a constant) that nothing left in the file names and that pytest does not use by itself
+    (an autouse fixture, a pytest* name, a * import)."""
+    names = _defined(node)
+    if not names or "*" in names or any(n.startswith("pytest") for n in names):
+        return False
+    decorators = getattr(node, "decorator_list", [])
+    autouse = any(k.arg == "autouse" for d in decorators if isinstance(d, ast.Call) for k in d.keywords)
+    return not autouse and not names & kept
 
 
 def _show(root: Path, rev: str, path: str) -> str | None:
@@ -59,16 +87,23 @@ def _show(root: Path, rev: str, path: str) -> str | None:
 
 
 def only_deletes_whole_tests(root: Path, base: str, path: str) -> bool:
-    """`path`, under tests/ with no line added, is deleted, or is a pytest file whose every
-    remaining test function is exactly as it was on the base."""
+    """`path`, under tests/, is deleted, or is a pytest file that is its base module with only whole
+    top-level statements removed, each one `_removable` (compared as parsed code: comments aside)."""
     now = _show(root, "HEAD", path)
     if now is None:
         return True
     before = _show(root, _git(root, "merge-base", base, "HEAD").strip(), path)
     if not is_pytest(path) or before is None:
         return False
-    old = _tests_in(before)
-    return all(old.get(name) == code for name, code in _tests_in(now).items())
+    new_tree = ast.parse(now)
+    new, kept = [ast.dump(n) for n in new_tree.body], _referenced(new_tree)
+    i = 0
+    for node in ast.parse(before).body:
+        if i < len(new) and ast.dump(node) == new[i]:
+            i += 1
+        elif not _removable(node, kept):
+            return False
+    return i == len(new)
 
 
 def is_pytest(path: str) -> bool:
@@ -152,9 +187,9 @@ def violations(root: Path, base: str) -> list[str]:
     in_tests = [f for f in added if f.startswith("tests/")]
     if not any(n for f, n in added.items() if is_product(f) or f in in_tests) \
             and all(only_deletes_whole_tests(root, base, f) for f in in_tests):
-        print(f"product code only removed ({', '.join(sorted(f for f in added if is_product(f)))}) and no test "
-              "changed except whole tests deleted: nothing to fail before; the existing tests its "
-              "End-to-end test: names are checked by check_end_to_end.py")
+        print(f"product code only removed ({', '.join(sorted(f for f in added if is_product(f)))}) and every changed "
+              "test file only lost whole definitions nothing left in it names: nothing to fail before; the "
+              "existing tests its End-to-end test: names are checked by check_end_to_end.py")
         return []
     tests = [f for f in files if is_test(f)]
     if not tests:
