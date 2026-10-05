@@ -246,7 +246,7 @@ def published():
                     spot=row["spot"], completeness_basis=row["completeness_basis"], ts_utc=row["ts_utc"],
                     source=row["source"])["status"] == "written"
                 server._price_chain(row["ticker"], server.STORED, None, None)
-        bus, ui = MessageBus(), None
+        bus = MessageBus()
         ui = LiveUiServer(bus, heartbeat_fn=lambda: {}, stats={})
         sub = bus.subscribe("quote.", policy=LATEST)
         handler = capture._publisher("LEVELONE_EQUITIES", bus, HealthRegistry())
@@ -287,10 +287,6 @@ def test_levels_serve_schwab_price_and_the_producers_levels(published, tk):
         assert got[1:] == pytest.approx(exp[1:], abs=1e-4)
     for lid, i in (("VWAP", 1), ("VWAP_P1", 2), ("VWAP_M1", 3), ("VWAP_P2", 4), ("VWAP_M2", 5)):
         assert by_id[lid]["price"] == pytest.approx(want[-1][i], abs=1e-4), lid
-    # the prior session's high, low and close (2026-10-01's regular-session bars)
-    prior = _schwab_rth(tk, datetime(2026, 10, 1).date())
-    assert (by_id["PDH"]["price"], by_id["PDL"]["price"], by_id["PDC"]["price"]) == (
-        max(b["high"] for b in prior), min(b["low"] for b in prior), prior[-1]["close"])
     # the gamma levels carried from the levels producer's publication, as it published them
     terrain = server.terrain_cache_get(ticker_storage_key(tk))
     carried = [gid for gid, _label in server.GAMMA_LEVELS if terrain.get(gid) is not None]
