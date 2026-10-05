@@ -1,4 +1,4 @@
-"""tools/check_fails_before.py (CLAUDE.md rule 8) on real git repositories: a product change is
+"""tools/check_fails_before.py (AGENTS.md Before writing code) on real git repositories: a product change is
 proven only by a changed test that fails on the old code."""
 from __future__ import annotations
 

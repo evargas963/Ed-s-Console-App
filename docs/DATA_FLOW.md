@@ -38,7 +38,7 @@ operator.
 
 ## 2. The rules
 
-The rules for every change are `AGENTS.md` § Rules. The rules for the data itself, at every hop
+The rules for every change are `AGENTS.md` (its Shared rules first). The rules for the data itself, at every hop
 from Schwab to the screen (daemon, console, page), are these:
 
 ### The data rules (enforced)
@@ -67,7 +67,7 @@ from Schwab to the screen (daemon, console, page), are these:
   (`live_market_plane.outage`, the one rule; the price row's `outage`, the books' `top_outage`;
   a contract's streamed Greeks stop pricing over the chain, `server._current_stream_greeks`).
   While Closed, the values as of the close stand, the feed up or down, with the session shown as
-  Closed, until the next session opens. No value is labeled "past" (`AGENTS.md` rule 5).
+  Closed, until the next session opens. No value is labeled "past" (`AGENTS.md` Unknowns surface).
   Enforced by: `tests/test_data_path_rules_v1.py`.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
@@ -79,8 +79,8 @@ from Schwab to the screen (daemon, console, page), are these:
 
 | Process | Started by | What it does |
 |---|---|---|
-| **Capture daemon** | `start_capture_daemon.bat` (its own window, restarts itself) | The only part that talks to Schwab. Holds the board, the background tickers (the `logging_universe` table, read at its start, each row as its storage key, a row that is not a symbol left off and logged; no database yet is an empty board; the screen does not edit it). Holds the one Schwab WebSocket: streams every board ticker's quotes, 1-minute bars and news, and every symbol the console asks for. Fetches full option chains over REST (`ChainSweep`, `calibration/complete_chain_capture.py`, on its own threads): the active ticker (the one on screen) back to back, ahead of everything, and every board ticker in turn without end; hands each chain to the console. Every Schwab message goes once onto its in-memory message bus, which keeps each topic's current record, the newest by Schwab's time (§2 D1, D3); its database writer records every message (D4); the console and the browser's price socket get each record that changed. Builds the price row the browser shows from the current equity quotes. Writes the first chain of each ticker fetched in each capture window to the chain history in `ed_console.db` (decision 7). |
-| **Console** | `start_ed_console.bat` (`uvicorn server:app`, port 8000) | Makes no Schwab call. Receives the daemon's messages (books, option quotes, the equity tape, the chains) and finished price rows, and the board on its heartbeat; it keeps no price of its own. Prices each chain the daemon delivers into the levels (the ticker on screen's every other turn) and keeps them in memory. Writes the 1-minute bars and level crosses to its own database. Serves the page and every `/api` route. Tells the daemon every symbol and option contract its screens show. |
+| **Capture daemon** | `start_capture_daemon.bat` (its own window, restarts itself) | The only part that talks to Schwab. Holds the recorded universe (decision 10; today its tickers are read from the `logging_universe` table at its start, §3.5 item 5). Holds the one Schwab WebSocket: streams every universe ticker's quotes, 1-minute bars and news, and every symbol the console asks for. Fetches full option chains over REST (`ChainSweep`, `calibration/complete_chain_capture.py`, on its own threads): the active ticker (the one on screen) back to back, ahead of everything, and every universe ticker in turn without end; hands each chain to the console. Every Schwab message goes once onto its in-memory message bus, which keeps each topic's current record, the newest by Schwab's time (§2 D1, D3); its database writer records every message (D4); the console and the browser's price socket get each record that changed. Builds the price row the browser shows from the current equity quotes. Writes the first chain of each ticker fetched in each capture window to the chain history in `ed_console.db` (decision 7). |
+| **Console** | `start_ed_console.bat` (`uvicorn server:app`, port 8000) | Makes no Schwab call. Receives the daemon's messages (books, option quotes, the equity tape, the chains) and finished price rows, and the universe on its heartbeat; it keeps no price of its own. Prices each chain the daemon delivers into the levels (the ticker on screen's every other turn) and keeps them in memory. Writes level crosses to `ed_console.db` (it writes no bar, §3.4 1-minute bar). Serves the page and every `/api` route. Tells the daemon every symbol and option contract its screens show. |
 | **Browser** | the operator | Loads one page from the console. Gets prices pushed from the daemon for the symbols it shows (its own watchlist, the header's context, the ticker on screen); gets change signals (levels, chain, flow, liquidity) and the session label pushed from the console; reads everything else from the console's `/api` routes. |
 
 ### 3.2 How they talk
@@ -90,9 +90,9 @@ from Schwab to the screen (daemon, console, page), are these:
 | Schwab → daemon | Schwab's streamer WebSocket | equity quotes, option quotes, both order books, 1-minute bars, news — the fields that changed |
 | Schwab → daemon | Schwab REST | full option chains, each with its contracts' quotes (their Greeks, §3.4 Option chain) |
 | daemon → console | local WebSocket 127.0.0.1:8799 | each topic's current record the moment it changes (a quote merged field by field with each field's times in `field_ts`; a book, bar or news item whole), on connect every current record; never an older value behind a newer one (§2 D1, D3); each ticker's newest whole chain, in parts of 500 contracts (`chain.TK`: part i of n, with its fetch time; a failed fetch with Schwab's answer) |
-| console → daemon | same socket | the "wanted" list, every symbol per Schwab service, no cap: the equities its screens show (the ticker on screen, the header's context `streaming.MARKET_CONTEXT_SYMBOLS`, the browser's watchlist; the daemon streams the board itself), the books of the ticker on screen, `active`: the ticker on screen (`push_changes.on_screen`, the newest open page's; the chain sweep's active ticker; when no page shows a ticker, none), and the option contracts its views ask for (the primary contract only from a chain the console holds, refused otherwise (409)). Sent on every connect and the moment it changes; the daemon compares it with what Schwab holds at once. The daemon holds the last list it was sent, in memory only, with the connection that sent it: when that connection ends (another connection ending leaves it), and after the daemon's restart, it streams the board alone until the console sends the list again |
-| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, symbols held and refused per service, the board, the chain sweep's last round time, health). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
-| daemon → console | the same :8800 push | the same price rows, for every equity the daemon holds on Schwab (`streaming._rows_wanted`: the heartbeat's held LEVELONE_EQUITIES, the console's wanted ones and the board as Schwab accepted them): the console's only live price, and the daemon's heartbeat, the console's one record of the daemon's status. It carries no chain, so a beat never waits behind one (measured 2026-10-02 on the 8799 push: DELL read feed down in 25 of 60 samples on a healthy feed while the console worked through chain parts) |
+| console → daemon | same socket | the "wanted" list, every symbol per Schwab service, no cap: the equities its screens show (the ticker on screen, the header's context `streaming.MARKET_CONTEXT_SYMBOLS`, the browser's watchlist; the daemon streams the universe itself), the books of the ticker on screen, `active`: the ticker on screen (`push_changes.on_screen`, the newest open page's; the chain sweep's active ticker; when no page shows a ticker, none), and the option contracts its views ask for (the primary contract only from a chain the console holds, refused otherwise (409)). Sent on every connect and the moment it changes; the daemon compares it with what Schwab holds at once. The daemon holds the last list it was sent, in memory only, with the connection that sent it: when that connection ends (another connection ending leaves it), and after the daemon's restart, it streams the universe alone until the console sends the list again |
+| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, symbols held and refused per service, the universe, the chain sweep's last round time, health). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
+| daemon → console | the same :8800 push | the same price rows, for every equity the daemon holds on Schwab (`streaming._rows_wanted`: the heartbeat's held LEVELONE_EQUITIES, the console's wanted ones and the universe as Schwab accepted them): the console's only live price, and the daemon's heartbeat, the console's one record of the daemon's status. It carries no chain, so a beat never waits behind one (measured 2026-10-02 on the 8799 push: DELL read feed down in 25 of 60 samples on a healthy feed while the console worked through chain parts) |
 | console → browser | HTTP `/api/*` | everything else, on request |
 | console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`, `liquidity`) and the session label |
 
@@ -100,10 +100,10 @@ from Schwab to the screen (daemon, console, page), are these:
 
 | Place | Owner | What it holds |
 |---|---|---|
-| Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten) and each ticker's newest chain; the board; the active ticker; the equity quotes the browser's price row is built from |
+| Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten) and each ticker's newest chain; the universe; the active ticker; the equity quotes the browser's price row is built from |
 | Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; every live screen's history, loaded from `ed_console.db` once at startup and then fed live (§2 D6): each ticker's 1-minute bars (`server._bars`, the newest 24,000) and level crosses (`server._crosses`), each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`, from the console's start) |
 | `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers |
-| `ed_console.db` | console, and the daemon (the ticker board, the chain captures) | 1-minute bars, level crosses, the ticker board, chain captures and a morning chain per ticker — plus the tables of the deleted ML pipeline (dropped in P2-DB3) |
+| `ed_console.db` | console, and the daemon (the chain captures) | 1-minute bars, level crosses, `logging_universe` (archived once the universe replaces it, decision 10), chain captures and a morning chain per ticker — plus the tables of the deleted ML pipeline (dropped in P2-DB3) |
 
 ### 3.4 The journey of each kind of data
 
@@ -177,10 +177,10 @@ from Schwab to the screen (daemon, console, page), are these:
   once all its parts are in it replaces the older one, which is never sent again. The sweep runs on
   `CHAIN_WORKERS` (8) threads sharing the daemon's one Schwab client (§1), one fetch of a ticker at a time, paced
   by the session calendar (`time_et.session_label`). In every open session (Pre-Market, RTH,
-  After-Hours) the active ticker (the wanted frame's `active`: the ticker on screen, on or off
-  the board) is fetched back to back, taken again the moment its last fetch ends, and the other
-  workers fetch every board ticker in turn without end. Once Closed (from 20:00 ET, on a
-  weekend or a holiday, and when the daemon starts while Closed) every board ticker is fetched
+  After-Hours) the active ticker (the wanted frame's `active`: the ticker on screen) is
+  fetched back to back, taken again the moment its last fetch ends, and the other
+  workers fetch every universe ticker in turn without end. Once Closed (from 20:00 ET, on a
+  weekend or a holiday, and when the daemon starts while Closed) every universe ticker is fetched
   once, its close values; a fetch that fails is tried again after `FAILED_PAUSE_SEC`. Then no
   chain is requested until the next session opens: the close values stand (D5), and a ticker
   put on screen while Closed is not fetched — it shows the close values already fetched, or,
@@ -199,12 +199,11 @@ from Schwab to the screen (daemon, console, page), are these:
   goes on only once one lands. Enforced by: `tests/test_data_path_rules_v1.py`
   (`test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until_one_lands`,
   on Schwab's captured 403 page). The chain is always the full chain, every expiry and
-  every strike: measured on the 38 board tickers' 2026-10-01 close captures, leaving out the
+  every strike: measured on the 38 daemon tickers' 2026-10-01 close captures, leaving out the
   farthest expiry changed a level (a wall, the flip, max pain) on 4 tickers, the two farthest on
   25, and 5 strikes off each side on 9. Every ticker's publication keeps its chain and its
-  heatmap, so a ticker put on screen shows at once. The board changes only in the table and a
-  daemon restart; a ticker that leaves it keeps its last levels in the console, stale, until
-  the console restarts. Owner:
+  heatmap, so a ticker put on screen shows at once. A ticker joins the universe permanently and the
+  daemon picks it up when it joins (decision 10; today only at a restart, §3.5 item 5). Owner:
   the daemon (`run_chains`, started with it); when it stops or its socket to the console drops,
   every ticker's levels go stale with that reason (`terrain_staleness`, judged against two of
   the sweep's delivered rounds, carried on the heartbeat). The first chain of each ticker whose
@@ -230,12 +229,12 @@ from Schwab to the screen (daemon, console, page), are these:
   such contracts is a computed 0, drawn "$0" (operator 2026-10-01: "shouldn't be a dash should be
   0"; SPY 2026-10-14 had 121 such strikes drawn "—"). Open interest stays the chain's. Chain captures stored before 2026-10-01 carry the chain's rounded
   Greeks; the startup load prices them until newer captures exist. The request
-  times on the live board are unmeasured (`ACTIVE_PROGRAM.md` SPEED).
+  times across the universe are unmeasured (`ACTIVE_PROGRAM.md` SPEED).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
   chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
   a new chain arrived) → the browser reads `/api/terrain` and four other slice routes. Not stored; at startup they are computed from the
-  newest chain capture of each board ticker the daemon has not yet delivered a chain for (once the
-  daemon's heartbeat says what the board is), queued on the pricing thread behind the delivered
+  newest chain capture of each universe ticker the daemon has not yet delivered a chain for (once the
+  daemon's heartbeat says what the universe is), queued on the pricing thread behind the delivered
   chains while the console
   already serves the page (each ticker's levels appear as they are priced). The values read from the stored captures (forces: ΔOI, DEX and
   charm by side; the prior day's per-strike rows) are computed by the same producer only when the
@@ -251,7 +250,7 @@ from Schwab to the screen (daemon, console, page), are these:
   has one producer: the forces, from the stored captures (`/api/forces`, shown on the Trade Desk).
   An ATR leg that cannot be computed is served absent with its reason (how many trading days or
   15-minute periods of bars exist; ATR(14) needs 15). None of these rules names a ticker; the
-  board decides only which tickers are fetched and priced while no screen shows them. A viewed
+  universe decides only which tickers are fetched and priced while no screen shows them. A viewed
   ticker is one an open page shows (its `/api/changes` stream, on any workspace, open while the
   stream runs): every streamed tick queues a reprice on the pricing thread (the ticks that arrive
   while one waits or runs are all in the next), and it is pushed to the page the moment it
@@ -260,10 +259,10 @@ from Schwab to the screen (daemon, console, page), are these:
   (the chain sweep fetches it first, its books stream), it takes every other turn on the
   pricing thread, and its option contract follows it (`server._follow_screen_contract`). When that owner
   fails (no page streaming, the console down), no ticker is on screen: no books, no chain ahead
-  of the board, no option contract; the daemon drops the console's list when the connection that
+  of the others, no option contract; the daemon drops the console's list when the connection that
   sent it ends, and starts with none. With the daemon not reporting (no current heartbeat), no
   ticker reads "warming": its reason says first that the daemon is not reporting, then any
-  other reason (no levels yet, stale levels). A viewed ticker that is on screen or on the board
+  other reason (no levels yet, stale levels). A viewed ticker that is on screen or in the universe
   reads "warming" until its first chain is priced; any other reads why no chain is fetched.
   Levels older
   than two of the sweep's delivered rounds are stale with the reason (the daemon's last answer
@@ -313,9 +312,6 @@ from Schwab to the screen (daemon, console, page), are these:
   reads feed down within 3 s. The
   console's copy of the daemon's price rows is dropped after 3 s with no frame from the daemon
   (the connection is gone; the rows return when it reconnects).
-- **Tape.** The cumulative delta (PROXY, tick rule) sums every print the tape holds; no clock
-  resets it, and the window it sums (its first and last print's Schwab trade time,
-  `cum_delta_window`) is served beside it and printed with it. A print of size 0 adds 0.
 - **Level crosses.** Computed by the console at each levels publish; written to `ed_console.db`
   and kept in the console's memory (§3.3) → the `levels` push → `/api/desk/events`, which serves
   each cross as recorded, from memory, and flags the
@@ -350,6 +346,9 @@ from Schwab to the screen (daemon, console, page), are these:
    waits behind that work.
 4. **The browser reads a route after each push** for bars, order flow, liquidity and the levels,
    instead of receiving the values; bars are not yet on the daemon's push.
+5. **The universe is not yet decision 10.** The daemon reads its tickers from `logging_universe`
+   once at its start (`complete_chain_capture.board_tickers`), picks up a change only at a restart,
+   and streams the two books only for the ticker on screen (`ACTIVE_PROGRAM.md` UNIVERSE).
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 
@@ -373,7 +372,7 @@ The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 - **Chain history:** in each capture window -- every 30 minutes from 9:30 to 16:00 ET, and at
   16:15 ET (the close capture: SPY, QQQ, IWM and the index options trade until 16:15) on market
   days (15 a day) -- the daemon writes the first full chain (every expiry) it fetches of each
-  ticker (the board's and the ticker on screen), compressed, one row per expiry, through the one
+  ticker (the universe's and the ticker on screen), compressed, one row per expiry, through the one
   writer (today its chain workers write `ed_console.db` themselves; P2-DB4). Nothing is captured
   while the market is closed. This is what research reads and what startup loads (the newest
   capture per ticker).
@@ -408,16 +407,19 @@ behavior (AGENTS.md).
    Enforced by: no machine check — ENF-16.
 5. **One database, written only by the daemon's writer; the console reads it read-only.** The
    one database is `ed_console.db` (operator 2026-09-26: the chain history is already there);
-   the stream tables move into it, and the console's writes today (bars, level crosses, the
-   ticker board) move to the daemon's writer. Until then the daemon writes the chain history into
+   the stream tables move into it, and the console's writes today (level crosses, `logging_universe`)
+   move to the daemon's writer. Until then the daemon writes the chain history into
    `ed_console.db` while the console writes its own tables there. The stored chain is the chain
    history of decision 7, not every 5-second chain; no table without a job.
    Enforced by: not built (the console still writes) — ENF-16.
-6. **Before any table is dropped:** each table's size is measured read-only; dropping needs a
-   verified copy or the operator's explicit word; reclaiming space (VACUUM) is an offline
-   maintenance window, never part of a code change. Enforced by: deleting or moving the database
-   files is refused by the agent hook `tools/operator_law_guard.py`
-   (`tests/test_protected_paths_v1.py`); a table drop — ENF-16.
+6. **Records stand** (`AGENTS.md` Standard of care). Schwab's data is never dropped or
+   overwritten: with Ed's approval it is moved to a verified archive. A table of data we computed
+   is removed only with Ed's approval of that removal and a verified copy first. Each table's size
+   and kind (Schwab's or computed) are measured read-only first; reclaiming space (VACUUM) is an
+   offline maintenance window, never part of a code change. Enforced by: deleting or moving the
+   database files is refused by the agent hook `tools/operator_law_guard.py`
+   (`tests/test_protected_paths_v1.py`); a write to a database file is put to Ed by
+   `tools/operator_yes_guard.py` (`tests/test_operator_yes_guard_v1.py`); a table drop — ENF-16.
 7. **Chain history is kept for research.** Schwab's API has no past option chains: a chain not
    saved is gone. One table holds it (§4.2): full chain, every 30 minutes, market hours only,
    compressed, with Schwab's own underlying price. Levels are not stored as history; research
@@ -433,3 +435,12 @@ behavior (AGENTS.md).
 9. **No trade side** (operator 2026-09-28, ONE-12). Schwab supplies no aggressor side, so no
    inferred buy/sell side (tick rule, quote rule) is computed or shown as order flow.
    Enforced by: no machine check — ENF-16.
+10. **One recorded universe, no board** (operator 2026-10-05). The recorded universe is every
+   ticker that has data stored in any of our databases, plus any ticker added to the watchlist or
+   opened on screen, which joins permanently once Schwab's instrument lookup recognizes it; if
+   Schwab does not, it does not join and the screen shows Schwab's answer. Every ticker in the
+   universe gets the same services every session: quotes, 1-minute bars, news, NYSE_BOOK,
+   NASDAQ_BOOK and chains. Schwab's answer to every subscription is recorded, and any refusal is
+   reported with its exact code and message. No limit is assumed or imposed. The daemon picks a
+   new ticker up when it joins; nothing polls. `logging_universe` is archived (decision 6).
+   Enforced by: not built (§3.5 item 5) — ENF-16.

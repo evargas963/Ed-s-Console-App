@@ -146,7 +146,7 @@ jobs:
           fi
           exit "$pytest_rc"
 
-      - name: A changed test fails on the old code (CLAUDE.md rule 8)
+      - name: A changed test fails on the old code (AGENTS.md Before writing code)
         if: github.event_name == 'pull_request'
         env:
           ED_CI_OFFLINE: "1"

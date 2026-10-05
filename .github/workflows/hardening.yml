@@ -25,7 +25,12 @@ jobs:
         run: python -m ruff check . --select F401,F821,E9
       - name: compileall
         run: python -m compileall -q -x '([\\/](\.venv|venv|node_modules|__pycache__|models)[\\/])' .
-      - name: no patches, only end-to-end fixes (AGENTS.md rule 1)
+      - name: no credential or operator-home path in the pull request (AGENTS.md Protect credentials)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python tools/check_credential_leak.py --base "origin/$BASE_REF"
+      - name: no patches, end-to-end fixes, wiring and reviews named (AGENTS.md Fix at the source)
         if: github.event_name == 'pull_request'
         env:
           PR_BODY: ${{ github.event.pull_request.body }}

@@ -1,4 +1,4 @@
-"""AGENTS.md rule 1, no patches: the code shapes a machine can refuse on a pull request.
+"""AGENTS.md "Fix at the source", no patches: the code shapes a machine can refuse on a pull request.
 
 A check of shapes only. It cannot see a design-level patch, and it cannot tell whether a changed
 test covers the changed behavior; those are proven by behavior tests and review.
@@ -22,10 +22,14 @@ test covers the changed behavior; those are proven by behavior tests and review.
    An except, if or with is judged when its own first line is added, not when a line is added
    inside an old one. None stays allowed: it is a missing value served as missing.
 3. Its description has "Schwab → screen:", "Deleted:" and "End-to-end test:", each with content
-   ("->" and "=>" are read as "→").
+   ("->" and "=>" are read as "→"); when it changes product code, also "Wiring:", "Architecture
+   review:" and "Correctness review:" (AGENTS.md First gate and Four eyes). A section's content
+   ends at the next section or Markdown heading; an HTML comment (the template's hints) is not
+   content.
 
 Run in CI on every pull request (.github/workflows/hardening.yml):
     python tools/check_end_to_end.py --base origin/main --body-file pr_body.md
+It also prints the PR's net lines added and removed (`git diff --shortstat`), as information.
 Exit 0: none found. Exit 1: each violation on its own line. Exit 2: the check itself failed
 (git unavailable, the base unknown, a file of the PR unreadable).
 """
@@ -43,6 +47,9 @@ NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/")
 END_TO_END = (re.compile(r"^tests/test_data_path_[^/]+\.py$"),
               re.compile(r"^tests/e2e/[^/]+\.spec\.js$"))
 BODY_SECTIONS = ("Schwab → screen:", "Deleted:", "End-to-end test:")
+REVIEW_SECTIONS = ("Wiring:", "Architecture review:", "Correctness review:")
+COMMENT = re.compile(r"<!--.*?-->", re.S)
+HEADING = re.compile(r"^#", re.M)
 CATCH_ALL = ("Exception", "BaseException")
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
 JS_LITERAL = r"(0(?!\w)|''|\"\"|\[\]|\{\}|null(?!\w))"
@@ -231,16 +238,23 @@ def adds_real_lines(source: str, added: set[int]) -> bool:
                for n, text in enumerate(source.splitlines(), start=1))
 
 
-def body_violations(body: str) -> list[str]:
-    text = body.replace("->", "→").replace("=>", "→")
-    at = sorted((text.find(s), s) for s in BODY_SECTIONS)
+def body_violations(body: str, sections: tuple[str, ...] = BODY_SECTIONS) -> list[str]:
+    text = COMMENT.sub("", body).replace("->", "→").replace("=>", "→")
+    at = sorted((text.find(s), s) for s in sections)
     out = [f"the PR description lacks: {s}" for i, s in at if i < 0]
     present = [(i, s) for i, s in at if i >= 0]
     for k, (i, s) in enumerate(present):
+        start = i + len(s)
         end = present[k + 1][0] if k + 1 < len(present) else len(text)
-        if not text[i + len(s):end].strip():
+        heading = HEADING.search(text, start, end)
+        if not text[start:heading.start() if heading else end].strip():
             out.append(f"the PR description's {s} is empty")
     return out
+
+
+def net_lines(root: Path, base: str) -> str:
+    """The PR's files changed and lines added and removed, as `git diff --shortstat` counts them."""
+    return _git(root, "diff", "--shortstat", f"{base}...HEAD").strip() or "no lines changed"
 
 
 def violations(root: Path, base: str, body: str | None) -> list[str]:
@@ -256,7 +270,7 @@ def violations(root: Path, base: str, body: str | None) -> list[str]:
         found = python_patches(source, added[f]) if f.endswith(".py") else js_patches(f, source, added[f])
         out.extend(f"{f}:{line}: {what}" for line, what in found)
     if body is not None:
-        out.extend(body_violations(body))
+        out.extend(body_violations(body, BODY_SECTIONS + (REVIEW_SECTIONS if product else ())))
     return out
 
 
@@ -268,10 +282,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         body = Path(a.body_file).read_text(encoding="utf-8") if a.body_file else None
         found = violations(Path.cwd(), a.base, body)
+        size = net_lines(Path.cwd(), a.base)
     except ToolError as e:
         print(f"the check failed: {e}", file=sys.stderr)
         return 2
     sys.stdout.reconfigure(encoding="utf-8")       # the section names carry "→"
+    print(f"net lines (information): {size}")
     for v in found:
         print(v)
     return 1 if found else 0

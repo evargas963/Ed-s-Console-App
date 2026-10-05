@@ -1,4 +1,4 @@
-"""CLAUDE.md rule 8: a pull request that changes product code proves it with a test that fails on
+"""AGENTS.md Before writing code: a pull request that changes product code proves it with a test that fails on
 the old code.
 
 The PR's changed and added files under tests/ are laid over a checkout of the base, and the PR's

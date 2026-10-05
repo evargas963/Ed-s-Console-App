@@ -14,29 +14,25 @@ so a wrong number that looks right is worse than a blank with a reason.
    cause is out of reach, stop and tell me where it is.
 5. Tests verify correctness; they do not define it. If a test or check seems wrong,
    stop and tell me instead of editing, skipping or loosening it.
-6. Local, reversible steps are fine. Anything that changes production or is hard to
-   undo (request rates, limits, settings, restarts, deploys, deleting data) needs my
-   yes to that specific action, because the app runs on my live Schwab account.
+6. Local, reversible steps are fine. No change reaches production without my approval of
+   that change, naming what it covers (merge, restart, data); request rates, limits and
+   settings are changes too. The app runs on my live Schwab account (AGENTS.md Change control).
 7. After two failed attempts at the same thing, stop and report what you tried.
-8. Claims. Every statement about how something is now (a process, a file, a branch, a pull
-   request, a test result, data, the screen) is CONFIRMED only by command output shown in
-   the same reply. Anything else is NOT VERIFIED, with when it was last checked. An earlier
-   check is not current evidence; state changes. This applies to every part of a reply,
-   including summaries, "seen, not fixed" and next steps.
-   Definitions: "Done" = a test that failed before passes after, the full suite passes, and
-   the live screen shows it working. "Across the board" = every ticker on the board, not one.
-9. If rules conflict: correctness of what I see > my explicit yes > speed.
+8. If rules conflict: correctness of what I see > my explicit yes > speed.
 
-Rules 5, 6 and 8 are also enforced by machine. A hook (tools/operator_yes_guard.py) puts
-changing a test that exists on main, starting or stopping the daemon or console, a merge
-and a push to main to me as an Allow/Deny prompt; tell me in chat what it is for before you
-run it. A CI check (tools/check_fails_before.py) refuses a pull request that changes
-product code unless one of its changed tests fails on the old code.
+Claims, labels and verdicts are AGENTS.md's (Shared rules; Enforcement map, "Labels").
+
+Rules 5 and 6 are also enforced by machine. A hook (tools/operator_yes_guard.py) puts
+changing a test that exists on main, starting or stopping the daemon or console, a merge,
+a push to main and a write to a data/ database to me as an Allow/Deny prompt; tell me in
+chat what it is for before you run it. A CI check (tools/check_fails_before.py) refuses a
+pull request that changes product code unless one of its changed tests fails on the old code.
 
 Every report ends like this example:
   CONFIRMED: pytest tests/test_x.py -> 12 passed; SPY, QQQ, NVDA levels match the chain.
-  NOT VERIFIED: behavior during market hours (market closed); daemon running (last
-  checked 06:21).
-  SEEN, NOT FIXED: daemon log shows 429s from Schwab at 06:13 (CONFIRMED, log above).
+  INDUCED: feed-down absence shown with its reason (tests/test_x.py, feed stopped on purpose).
+  HYPOTHESIS: the 06:13 429s came from the chain sweep's bursts (not yet measured).
+  NOT_PROVEN: behavior during market hours (market closed); daemon running (last checked 06:21).
+  Verdict: NOT_PROVEN (the screen in market hours is not yet checked).
 
 @AGENTS.md

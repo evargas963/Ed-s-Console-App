@@ -1,6 +1,8 @@
-"""tools/check_end_to_end.py (AGENTS.md rule 1) on real git repositories: each patch shape a pull
-request adds is refused and named; an end-to-end change, a missing value served as missing, a
-container started empty and an old block with a line added inside it pass."""
+"""tools/check_end_to_end.py (AGENTS.md "Fix at the source", First gate, Four eyes) on real git
+repositories: each patch shape a pull request adds is refused and named; an end-to-end change, a
+missing value served as missing, a container started empty and an old block with a line added
+inside it pass; a product change's description needs its wiring and both reviews, and the real
+PR template left unfilled is refused."""
 from __future__ import annotations
 
 import subprocess
@@ -12,7 +14,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import check_end_to_end as cee  # noqa: E402
 
-BODY = "Schwab → screen: the daemon's quote.\nDeleted: the old queue.\nEnd-to-end test: tests/test_data_path_x.py\n"
+BODY = ("Wiring: LAST_PRICE, docs/schwab_fields.csv row streaming.LevelOneEquity.LAST_PRICE.\n"
+        "Schwab → screen: the daemon's quote.\nDeleted: the old queue.\nEnd-to-end test: tests/test_data_path_x.py\n"
+        "Architecture review: PASS, LAST_PRICE is Schwab's field.\n"
+        "Correctness review: PASS, tests/test_data_path_x.py run, 1 passed.\n")
+TEMPLATE = (Path(__file__).resolve().parent.parent / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
 TEST = "tests/test_data_path_x.py"
 REAL_TEST = {TEST: "def test_x():\n    assert spot({'last': 1.0}) == 1.0\n"}
 
@@ -69,8 +75,10 @@ def test_a_patch_with_no_end_to_end_test_is_refused_with_each_violation_named(tm
     assert "server.py:4: an except that catches everything" in text
     assert "server.py:4: an except that swallows the error" in text
     assert "static/js/page.js:1: a missing value replaced by a literal, an empty catch, or a swallowing .catch" in text
-    assert found[-3:] == ["the PR description lacks: Deleted:", "the PR description lacks: End-to-end test:",
-                          "the PR description lacks: Schwab → screen:"]
+    assert found[-6:] == ["the PR description lacks: Architecture review:",
+                          "the PR description lacks: Correctness review:",
+                          "the PR description lacks: Deleted:", "the PR description lacks: End-to-end test:",
+                          "the PR description lacks: Schwab → screen:", "the PR description lacks: Wiring:"]
 
 
 def test_an_end_to_end_change_passes(tmp_path):
@@ -146,3 +154,40 @@ def test_a_comment_added_to_a_path_test_is_not_an_end_to_end_test(tmp_path):
 def test_a_required_section_left_empty_is_refused(tmp_path):
     body = "Schwab → screen: the quote.\nDeleted:\nEnd-to-end test: tests/test_data_path_x.py\n"
     assert _found(tmp_path, {}, body) == ["the PR description's Deleted: is empty"]
+
+
+PRODUCT_CHANGE = {"server.py": "def spot(row):\n    return row['last'] if row['live'] else None\n"}
+PR_SECTIONS = ("Wiring:", "Schwab → screen:", "Deleted:", "End-to-end test:",
+               "Architecture review:", "Correctness review:")
+
+
+def test_a_product_change_needs_its_wiring_and_both_reviews(tmp_path):
+    body = "Schwab → screen: the quote.\nDeleted: the old queue.\nEnd-to-end test: tests/test_data_path_x.py\n"
+    assert _found(tmp_path, PRODUCT_CHANGE, body) == [
+        "the PR description lacks: Architecture review:", "the PR description lacks: Correctness review:",
+        "the PR description lacks: Wiring:"]
+
+
+def test_a_change_with_no_product_code_needs_no_wiring_or_reviews(tmp_path):
+    body = "Schwab → screen: none.\nDeleted: none.\nEnd-to-end test: none, no product code.\n"
+    assert _found(tmp_path, {"docs/x.md": "a document\n"}, body) == []
+
+
+def test_the_real_template_left_unfilled_is_refused_section_by_section(tmp_path):
+    """GitHub puts the template's text, its hint comments and headings included, in a new PR's
+    description; a hint is not content and a heading ends the section above it."""
+    found = _found(tmp_path, PRODUCT_CHANGE, TEMPLATE)
+    assert sorted(found) == sorted(f"the PR description's {s} is empty" for s in PR_SECTIONS)
+
+
+def test_the_real_template_filled_in_passes(tmp_path):
+    filled = TEMPLATE
+    for s in PR_SECTIONS:
+        filled = filled.replace(s, f"{s} {BODY.split(s, 1)[1].splitlines()[0]}")
+    assert _found(tmp_path, PRODUCT_CHANGE, filled) == []
+
+
+def test_the_net_lines_are_what_git_counts(tmp_path):
+    root = _repo(tmp_path, BASE)
+    _commit(root, {"server.py": "def spot(row):\n    return row['last']\n\n\ndef bid(row):\n    return row['bid']\n"})
+    assert cee.net_lines(root, "main") == "1 file changed, 4 insertions(+)"

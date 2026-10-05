@@ -1,67 +1,112 @@
 # Ed Console — rules for every change
 
 Design: `docs/DATA_FLOW.md`. Work order: `ACTIVE_PROGRAM.md`. Code map: `docs/ARCHITECTURE.md`.
-Read the parts a change touches before writing it.
+Read the parts a change touches before writing it. The rules in force are `main`'s: a session or
+reviewer in a worktree whose `AGENTS.md` differs from `origin/main`'s reads `main`'s first.
 
-Every requirement in a section marked (enforced), in this file and in `docs/DATA_FLOW.md`, ends
-with "Enforced by:" naming the test, hook or required check that blocks a violation, or, where
-none exists yet, "no machine check" and the ENF work item in `ACTIVE_PROGRAM.md` that builds one.
-Enforced by: `tests/test_governing_docs_v1.py` fails CI when a requirement lacks the line, names
-a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.md`.
+Every requirement in a section marked (enforced), in this file and in `docs/DATA_FLOW.md`, ends with
+"Enforced by:" naming the test, hook or required check that blocks a violation, or, where none exists
+yet, "no machine check" and the ENF work item in `ACTIVE_PROGRAM.md` that builds one. Enforced by:
+`tests/test_governing_docs_v1.py` fails CI when a requirement lacks the line, names a file that does
+not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.md`.
 
-## Rules (enforced) (operator; a change that cannot meet one stops and goes to the operator)
+## Shared rules (master copy)
 
-1. **Simple.** Fewest files, functions and hops that do the job. No prose in code: history,
-   incidents and dates go in the commit message. No patches: a defect is fixed where it is
-   produced, by changing or deleting that code, never by a guard, wrapper, flag, special case or
-   check around it. If that takes a restructure, the restructure is the fix. Every fix is end to
-   end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its
-   existing owner cannot do, shown in the PR; an existing piece that cannot show one is removed.
-   Enforced by: `tools/check_end_to_end.py` in the required `hardening` job
-   (`.github/workflows/hardening.yml`) refuses every pull request that changes product code
-   without adding a real line to an end-to-end path test, that adds a patch shape (a catch-all
-   or swallowing except, `contextlib.suppress`, a literal standing in for a missing value,
-   missing data repaired), or whose description lacks "Schwab → screen:", "Deleted:" or
-   "End-to-end test:" or leaves one empty (`tests/test_check_end_to_end_v1.py`). It checks code
-   shapes only. The path tests of `docs/DATA_FLOW.md` §2 fail any change that leaves the path
-   broken. What no machine can see (a design-level patch, a test that does not cover the change)
-   — ENF-01.
-2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, and a value
-   Schwab's own field definition excludes (a negative volume or size). Everything else is taken
-   as sent; a reported 0 is 0. No other bounds, no substitution.
-   Enforced by: `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`.
-3. **One authority.** Each value served, stored or shown has one computation authority.
-   Consumers carry its result; they never select, compute, repair or relabel it. A second authority
-   for the same value is banned whatever it is called: helper, parser, resolver or cache.
-   Enforced by: `tests/test_page_one_faucet_v1.py`, `tests/test_one_levels_producer_v1.py` for
-   the values they drive; the second producers found 2026-10-02 — ENF-02.
-4. **The UI computes nothing.** Page code formats and draws. Every number, total, choice,
-   comparison and date the page shows is served.
-   Enforced by: no machine check — ENF-03.
-5. **No substitute paths.** Like a bank balance: live while the market is open, and the balance as
-   of the close while it is closed. In an open session a value whose feed is down, or whose input
-   is missing or invalid, has no current value: it is shown absent with its reason. While Closed,
-   the values as of the close stand until the next session. No value is labeled "past"; no
-   fallback, default, estimate, proxy, carry-forward, interpolation or synthetic value. Test: when
-   the source cannot produce the value now in an open session, the screen shows it absent with its
-   reason, never a value from elsewhere.
-   Enforced by: `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`,
-   `tests/test_gamma_exposure_honest_absence_v1.py`, and `docs/DATA_FLOW.md` §2 D5.
-6. **One path.** Schwab → daemon memory → pushed to the screen. The database is history: one
-   writer; read at startup, after the close and for research; never for a live screen.
-   Enforced by: `docs/DATA_FLOW.md` §2 D1–D6, each with its own test.
-7. **Nothing without a job.** A change deletes what it replaces, in the same PR. A register, audit,
-   report or check lives only while it has a job; once answered, it is deleted.
-   Enforced by: ruff F401 (unused imports) at commit and in the required `hardening` check; the
-   rest — ENF-04.
-8. **All tickers.** Measure and report across the board, never one ticker.
-   Enforced by: no machine check — ENF-05.
-9. **Clocks.** Market logic in ET; the UI shows Central Time.
-   Enforced by: `tests/test_time_et_authority.py`, `tests/test_session_calendar_authority_v1.py`
-   (ET); the Central Time display — ENF-06.
-10. **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code.
-    A stand-in (e.g. the live price) is named in the test.
-    Enforced by: no machine check — ENF-07.
+### First gate (EdWebConsole)
+Applies to every proposal: Ed's, the prompt builder's, and Claude's.
+EdWebConsole is a wiring job. Every value has exactly one producer and any number of consumers.
+- Schwab fields are wired straight to the screen. Schwab is the producer. Each is listed in the Schwab field list.
+- Derived values exist only where Schwab does not send the value. Each is computed once by its one canonical derived producer and listed in the canonical derived register, with its definition and why Schwab does not supply it.
+Default: Schwab sends what we need. A derived value, or any use of our own clock, is allowed only with cited proof that Schwab does not send it.
+Check every request and every proposal:
+1. For each value it touches: which Schwab field, or which canonical derived producer?
+2. Would it compute something Schwab sends, create a second producer, or add a derived value not in the register?
+3. Would it add code, tests, checks, tables, or tools beyond what is needed to wire Schwab's values, run the canonical producers, and test and enforce both, or protect production, credentials and records?
+If anything fails, report what failed and why, and leave the failing part out. Claude proposes the smallest, simplest path that passes, using the repo. That proposal is checked against this gate before it goes to Ed for approval.
+
+### Standard of care
+Hold EdWebConsole to how a financial institution handles systems with real money on the line. These are judgments to apply to every proposal, not things to build:
+- System of record: Schwab is the statement. Our data matches it, and any difference is reported, never plugged.
+- Records stand: what Schwab sent is never overwritten or deleted; with Ed's approval it may only be moved to a verified archive. Data we computed may be removed only with Ed's approval of that removal and a verified copy first. A correction is a new, labeled entry.
+- Unknowns surface: an unknown shows as unknown, never estimated or filled in.
+- Change control: no change reaches production without Ed's approval of that change; the approval names what it covers (merge, restart, data), and the hook's prompt at each step is answered by it.
+- Four eyes: whoever builds a change is not the only one who verifies it. Two read-only reviewers check every change: an architecture reviewer, against the First gate, and a correctness reviewer, that the change does what it claims, with evidence. While the repo is being brought under control, this applies to every change. Once Ed decides it is stable, it narrows to changes touching stored data, money values, or production.
+
+### EdWebConsole requirements
+- Fix problems at the source, and remove what the fix replaces.
+- Clean up along the way in the area changed, listing each item. Behavior or data changes need approval.
+- Zero is a value; missing is unknown. Never treat one as the other.
+- Tests use only real captured data; an induced condition (feed down, a clock instant) is named in the test; expected results come from verified definitions, cited. No fake data.
+- Every ticker is treated the same.
+- Treat existing code, tests, and documents as claims to challenge.
+- Display live values promptly and record everything completely. Measure performance; don't assume it.
+- Verify end to end, including the actual screen (live values during market hours; otherwise NOT_PROVEN).
+- Run read-only inspection and local, reversible testing without asking.
+- Protect credentials and unrelated work.
+- Label findings CONFIRMED / INDUCED / HYPOTHESIS / NOT_PROVEN; verdicts PASS / FAIL / NOT_PROVEN.
+
+## Enforcement map (enforced)
+
+- **First gate.** Schwab's fields: `docs/schwab_fields.csv`. A PR names each value it adds or
+  changes under "Wiring:". Enforced by: `tools/check_end_to_end.py` requires "Wiring:" when product
+  code changes (`tests/test_check_end_to_end_v1.py`); `tests/test_page_one_faucet_v1.py`,
+  `tests/test_one_levels_producer_v1.py` for the values they drive; the second producers found
+  2026-10-02 — ENF-02; the canonical derived register and its check — ENF-17.
+- **System of record.** Enforced by: no machine check — ENF-18.
+- **Records stand.** Never delete or move anything under `data/` or `backups/`; a write to a
+  database file is asked. Enforced by: `tools/operator_law_guard.py` (`tests/test_protected_paths_v1.py`);
+  `tools/operator_yes_guard.py` (`tests/test_operator_yes_guard_v1.py`); a table drop — ENF-16.
+- **Unknowns surface.** In an open session a value whose feed is down, or whose input is missing or
+  invalid, is absent with its reason; while Closed the close values stand until the next session. No
+  "past" label, fallback, default, estimate, proxy, carry-forward, interpolation or synthetic value.
+  Enforced by: `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`,
+  `tests/test_gamma_exposure_honest_absence_v1.py`, `docs/DATA_FLOW.md` §2 D5.
+- **Change control.** A merge, a push to main, a start, stop or restart of the daemon or console, a
+  change to a test on main and a write to a `data/` database are put to Ed as an Allow/Deny prompt; an
+  operator setting (a count, a rate, a switch) changes only with Ed's yes to it. Enforced by:
+  `tools/operator_yes_guard.py` (`tests/test_operator_yes_guard_v1.py`); the rest — ENF-13.
+- **Four eyes.** Reviewers: `.claude/agents/architecture-reviewer.md`, `.claude/agents/correctness-reviewer.md`.
+  Enforced by: `tools/check_end_to_end.py` requires "Architecture review:" and "Correctness
+  review:" when product code changes; that each is a reviewer's report on the final commit — ENF-19.
+- **Fix at the source.** No guard, wrapper, flag, special case or check around a defect; a needed
+  restructure is the fix; end to end, Schwab to the screen. Enforced by: `tools/check_end_to_end.py`
+  in `hardening` refuses a product change with no real line added to an end-to-end path test, a patch
+  shape, or no "Schwab → screen:", "Deleted:", "End-to-end test:"; the rest — ENF-01.
+- **Clean up along the way.** Nothing new without a job its existing owner cannot do, shown in the PR.
+  Enforced by: "Deleted:" (`tools/check_end_to_end.py`); ruff F401 at commit and in `hardening`; the rest — ENF-04.
+- **Zero is a value (rule 2: Schwab fields as sent).** Not a number: absent, -999, text, NaN or
+  infinity, and a value Schwab's own field definition excludes (a negative volume or size); all else
+  as sent, a reported 0 is 0, no other bounds, no substitution. Enforced by:
+  `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`.
+- **Real captured data.** Captured Schwab data is in `tests/fixtures/`; no test patches the code it
+  tests. Enforced by: `tools/check_no_new_patches.py` (`tests/test_check_no_new_patches_v1.py`); the rest — ENF-07.
+- **Every ticker.** Measured and reported across every ticker, never one. Enforced by: no machine check — ENF-05.
+- **Challenge claims.** Enforced by: no machine check — ENF-12.
+- **Live and complete.** Enforced by: `tests/test_data_path_rules_v1.py` (D2, D4); measurement — ENF-12.
+- **End to end.** Enforced by: the required `pytest-full` job (`.github/workflows/pytest.yml`); the screen — ENF-12.
+- **Read-only and local without asking.** Enforced by: `tools/operator_yes_guard.py` passes ordinary work
+  (`tests/test_operator_yes_guard_v1.py`).
+- **Protect credentials and unrelated work.** No credential or operator-home path is committed; never
+  `git reset`, `git checkout --`, `git stash`, force push, `--no-verify`, `git add -A` / `.`. Enforced by:
+  `tools/check_credential_leak.py` at commit and in `hardening` (`tests/test_credential_leak_v1.py`);
+  `tools/process_lock_guard.py` (`tests/test_reset_guard_v1.py`); `tools/operator_law_guard.py`
+  (`tests/test_operator_law_guard_action_bans_v1.py`).
+- **Labels.** CONFIRMED: shown by command output in the same reply (an earlier check is not current
+  evidence). INDUCED: observed under a condition made on purpose, named. HYPOTHESIS: inferred, not
+  observed. NOT_PROVEN: no proof yet, with when last checked. Verdicts on a change's final commit:
+  PASS, every condition proven; FAIL, any violated; NOT_PROVEN, any without proof. Each proof names
+  its tier (unit, integration, browser, deployed app, live market). Enforced by: no machine check — ENF-12.
+
+## Operational rules (enforced)
+
+- **4. The UI computes nothing.** Page code formats and draws. Every number, total, choice,
+  comparison and date the page shows is served. Enforced by: no machine check — ENF-03.
+- **6. One path.** Schwab → daemon memory → pushed to the screen. The database is history: one
+  writer; read at startup, after the close and for research; never for a live screen.
+  Enforced by: `docs/DATA_FLOW.md` §2 D1–D6, each with its own test.
+- **9. Clocks.** Market logic in ET; the UI shows Central Time.
+  Enforced by: `tests/test_time_et_authority.py`, `tests/test_session_calendar_authority_v1.py`
+  (ET); the Central Time display — ENF-06.
 
 ## Before writing code (enforced)
 
@@ -82,7 +127,8 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 - A value that crosses a module boundary is a typed record (dataclass), not a dict of string keys;
   its states are named constants, not free strings. Enforced by: no machine check — ENF-10.
 - Imports at the top of the module. One formatter per format (price, Central Time, dollars), on
-  the server. Enforced by: no machine check — ENF-11.
+  the server. No prose in code: history, incidents and dates go in the commit message.
+  Enforced by: no machine check — ENF-11.
 - A test exercises behavior through the real code. It never reads source text or pins a private
   helper; a test whose subject is deleted is deleted with it. Enforced by: no machine check — ENF-08.
 - A test, fixture or helper a pull request adds or changes never patches the code it tests
@@ -93,23 +139,14 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 
 ## Before saying done (enforced)
 
-- While working: the tests of the files touched. Before the PR is offered: `npm run test:all`
-  (Playwright, then pytest) and `python -m ruff check . --select F401,F821,E9` on its final
-  commit. Enforced by: GitHub branch protection on `main` requires `pytest-full`
-  (`.github/workflows/pytest.yml`: Playwright, then pytest) and `hardening`
-  (`.github/workflows/hardening.yml`: ruff, compile) to pass on the branch's final commit, kept
-  current with `main`; the pre-commit hooks run ruff on every commit.
-- Never kill a commit hook mid-run; a long one runs in the background. Enforced by: no machine
-  check — ENF-12.
-- Claims. Every statement about how something is now (a process, a file, a branch, a pull
-  request, a test result, data, the screen) is CONFIRMED only by command output shown in the
-  same reply. Anything else is NOT VERIFIED, with when it was last checked. An earlier check
-  is not current evidence; state changes. This applies to every part of a reply, including
-  summaries, "seen, not fixed" and next steps. Enforced by: no machine check — ENF-12.
+- While working: the tests of the files touched. Before the PR is offered: `npm run test:all` and
+  `python -m ruff check . --select F401,F821,E9` on its final commit. Enforced by: branch protection
+  on `main` requires `pytest-full` (`.github/workflows/pytest.yml`: Playwright, then pytest) and
+  `hardening` (`.github/workflows/hardening.yml`) on the final commit, current with `main`.
+- Never kill a commit hook mid-run; a long one runs in the background. Enforced by: no machine check — ENF-12.
 - Proof is reproducible: a committed test or a command anyone can re-run. A scratch script is
-  not proof. Enforced by: no machine check — ENF-12.
-- No hand-maintained counts, floors or lists that a check compares against; the check computes
-  them. Enforced by: no machine check — ENF-12.
+  not proof. No hand-maintained counts, floors or lists that a check compares against; the check
+  computes them. Enforced by: no machine check — ENF-12.
 - Work another agent wrote is read in full by the agent offering the PR, as its own work.
   Enforced by: no machine check — ENF-12.
 - A runtime change is on disk only until the process restarts after it; say which. Merged is not
@@ -123,21 +160,8 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   paths; and lists each affected path without proof as NOT_PROVEN. A finished work item
   leaves `ACTIVE_PROGRAM.md` in the PR that finishes it. Enforced by:
   `tests/test_governing_docs_v1.py` (every path the documents name exists); the rest — ENF-12.
-
-## Review verdicts (enforced)
-
-- A verdict judges a change against its requirements; it is not a label on a statement (that is
-  "Claims", above). **PASS**: every required condition proven. **FAIL**: any condition violated.
-  **NOT_PROVEN**: any condition without proof. A proof is CONFIRMED evidence on the change's
-  final commit; evidence from an earlier commit or an earlier check proves nothing for it. Never
-  PASS with a FAIL or NOT_PROVEN open. Each proof names its tier: unit, integration, browser,
-  deployed app, live market; one tier never stands in for another. A check proves only the
-  paths it covers. Enforced by: no machine check — ENF-12.
-
-## Found broken → fix it (enforced)
-
-- Same session, at its source, end to end (rule 1), or name the exact blocker. "Pre-existing",
-  "out of scope" and "follow-up" are not dispositions. Enforced by: no machine check — ENF-12.
+- Found broken in the area changed: fixed in this change and listed; elsewhere: reported with its
+  location; a behavior or data change needs Ed's approval. Enforced by: no machine check — ENF-12.
 
 ## Authority (enforced)
 
@@ -151,37 +175,25 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 - A change to AGENTS.md, `docs/DATA_FLOW.md`, CI, a hook or a check is merged only by the
   operator. Enforced by: no machine check — ENF-13.
 - Stop for: the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO; a task marked AUDIT
-  ONLY or DO NOT MERGE; a destructive data action; a product decision code cannot settle; an
-  operator setting (a count, a rate, a switch) is never changed without the operator's explicit
-  yes to that change. Enforced by: the agent hook `tools/operator_yes_guard.py` puts a start,
-  stop or restart of the daemon or console, a merge, a push to main and a change to a test on
-  main to the operator as an Allow/Deny prompt (`tests/test_operator_yes_guard_v1.py`); the
-  rest — ENF-12.
+  ONLY or DO NOT MERGE; a destructive data action; a product decision code cannot settle.
+  Enforced by: no machine check — ENF-12.
 - Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.
   Work in a worktree; main itself moves only by a PR merged on GitHub. Enforced by: the agent hook
   `tools/process_lock_guard.py` refuses an edit, a shell write or a git verb that moves it off
   main (`tests/test_operating_process_lock_v1.py`), and a git command from any checkout that
   writes `refs/heads/main` (`tests/test_hook_chain_v1.py`).
-- Never: `git reset`, `git checkout --`, `git stash`, force push. Enforced by: the agent hook
-  `tools/process_lock_guard.py` (`tests/test_reset_guard_v1.py`).
-- Never: `--no-verify`, `git add -A` / `.`, deleting or moving anything under `data/` or
-  `backups/`. Enforced by: the agent hook `tools/operator_law_guard.py`
-  (`tests/test_operator_law_guard_action_bans_v1.py`, `tests/test_protected_paths_v1.py`).
 - Never edit source through a script: edits are made one at a time, as written; a block too long
   for one edit is removed in consecutive edits. Enforced by: the agent hook
   `tools/sed_edit_guard.py` refuses a sed that writes a file (`tests/test_sed_edit_guard_v1.py`);
   the other in-place editors — ENF-14.
 - A file keeps its line endings (most are LF; some are CRLF). Enforced by: the commit hook
   `tools/check_eol_style_invariant.py` (`tests/test_eol_style_invariant_v1.py`).
-- No credential or operator-home path is committed. Enforced by: the commit hook
-  `tools/check_credential_leak.py` (`tests/test_credential_leak_v1.py`).
 - Shell steps that depend on each other are joined with `&&`, so a failure stops the chain.
   Enforced by: no machine check — ENF-12.
 
 ## Running it
 
-Console: `start_ed_console.bat` (`uvicorn server:app`, port 8000). Capture daemon:
-`start_capture_daemon.bat`. Python 3.13, the project `.venv`. Offline: `ED_CI_OFFLINE=1`,
-placeholder `SCHWAB_API_KEY` / `SCHWAB_APP_SECRET`. Live: `schwab_token.json`
-(`python reauth_schwab.py`). Probe `127.0.0.1`, never `localhost`. The agent may restart the
-console and the capture daemon, and confirms both came back.
+Console: `start_ed_console.bat` (`uvicorn server:app`, port 8000). Capture daemon: `start_capture_daemon.bat`.
+Python 3.13, the project `.venv`. Offline: `ED_CI_OFFLINE=1`, placeholder `SCHWAB_API_KEY` / `SCHWAB_APP_SECRET`.
+Live: `schwab_token.json` (`python reauth_schwab.py`). Probe `127.0.0.1`, never `localhost`. A restart deploys
+code and needs Ed's approval of the change it deploys; the agent confirms both came back.

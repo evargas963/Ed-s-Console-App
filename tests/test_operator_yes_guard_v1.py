@@ -1,6 +1,6 @@
 """tools/operator_yes_guard.py (CLAUDE.md rules 5 and 6): changing a test that exists on main,
-starting or stopping the daemon or console, a merge and a push to main are put to the operator
-(the hook answers "ask"); ordinary work passes. Judged on real payloads, against this
+starting or stopping the daemon or console, a merge, a push to main and a write to a database under
+data/ are put to the operator (the hook answers "ask"); ordinary work and read-only database reads pass. Judged on real payloads, against this
 repository's origin/main, and through the hook chain the settings run."""
 from __future__ import annotations
 
@@ -77,6 +77,33 @@ def test_production_actions_are_put_to_the_operator(cmd, what):
 ])
 def test_ordinary_work_passes(payload):
     assert guard.reasons(payload) == []
+
+
+@pytest.mark.parametrize("payload, db", [
+    (_shell("python -c \"import sqlite3; c = sqlite3.connect('data/ed_console.db'); "
+            "c.execute('DELETE FROM price_bars_1m WHERE source LIKE \\'synthetic%\\''); c.commit()\""),
+     "data/ed_console.db"),
+    (_shell("sqlite3 data/stream_capture.db \"VACUUM\""), "data/stream_capture.db"),
+    (_shell(".venv/Scripts/python.exe - <<'EOF'\nimport sqlite3\n"
+            "sqlite3.connect(r'..\\EdWebConsole\\data\\ed_console.db').execute('DROP TABLE model_accuracy')\nEOF"),
+     "data\\ed_console.db"),
+    (_shell("& .venv\\Scripts\\python.exe tools\\some_backfill.py --db data\\ed_console.db", "PowerShell"),
+     "data\\ed_console.db"),
+    ({"tool_name": "Write", "tool_input": {"file_path": "data/ed_console.db", "content": ""}}, "data/ed_console.db"),
+])
+def test_a_write_to_a_database_under_data_is_put_to_the_operator(payload, db):
+    assert any(f"{db}, a database under data/" in r for r in guard.reasons(payload)), guard.reasons(payload)
+
+
+@pytest.mark.parametrize("cmd", [
+    ".venv/Scripts/python.exe -c \"import sqlite3; c = sqlite3.connect('file:data/ed_console.db?mode=ro', uri=True); "
+    "print(c.execute('SELECT COUNT(*) FROM level_crosses').fetchone())\"",
+    "sqlite3 -readonly data/stream_capture.db \"SELECT COUNT(*) FROM stream_bars_raw\"",
+    "ls -la data/ed_console.db data/stream_capture.db",
+    "python -m pytest tests/test_chain_history_v1.py -q",
+])
+def test_reading_a_database_and_ordinary_work_pass(cmd):
+    assert guard.reasons(_shell(cmd)) == []
 
 
 def test_the_hook_chain_answers_ask_with_the_reason_and_passes_ordinary_work():

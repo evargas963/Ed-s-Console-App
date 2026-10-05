@@ -5,12 +5,17 @@
     deleted. New tests are free.
   * Starting, stopping or restarting the capture daemon or the console, merging a pull request
     and pushing to main change production.
+  * A database under data/ (`data/*.db`) is written only with the operator's yes (AGENTS.md Records
+    stand): an Edit or Write of the file, and a shell command naming one through a program that can
+    open it (python, sqlite3) unless the command opens it read-only (`mode=ro`, `-readonly`).
 
 For each of these the hook answers "ask": Claude Code shows the operator the action with Allow
 and Deny, and the agent cannot answer for them. Everything else passes untouched.
 
 Limits: shell commands are judged on what they run; code inside `python -c` or a heredoc body is
-data to the shell parser and is not judged here. The Edit and Write tools are judged in full.
+data to the shell parser and is not judged here, except that a database path named anywhere in the
+command counts. A command that opens one database read-only and another writable is not told apart.
+The Edit and Write tools are judged in full.
 """
 from __future__ import annotations
 
@@ -40,6 +45,10 @@ LAUNCHERS = ("start_capture_daemon", "start_ed_console")
 PROCESS_VERBS = ("stop-process", "taskkill", "kill ", "start-process", "restart")
 MERGE = re.compile(r"\bgh\s+pr\s+merge\s+(\d+)|/pulls/(\d+)/merge\b", re.I)
 PUSH_MAIN = re.compile(r"\bgit\b[^\n;&|]*\bpush\b[^\n;&|]*?(?:\s|:)main\b", re.I)
+#: a database file under data/, and the programs that open one
+DATA_DB = re.compile(r"(?:^|[\\/\s\"'=:])(data[\\/][^\\/\s\"'?;&|]+\.db)\b", re.I)
+DB_PROGRAMS = frozenset({"python", "python3", "py", "sqlite3"})
+READ_ONLY = ("mode=ro", "-readonly")
 
 
 def _test_path(arg: str) -> str | None:
@@ -86,6 +95,10 @@ def _shell_reasons(cmd: str, cwd: str) -> list[str]:
         out.append(f"merges pull request {m.group(1) or m.group(2)} (rule 6: production)")
     if PUSH_MAIN.search(cmd):
         out.append("pushes to main (rule 6: production)")
+    db = DATA_DB.search(cmd)
+    heads = {segment_head(seg)[0].removesuffix(".exe") for _cwd, seg in iter_command_segments(cmd, cwd)}
+    if db and not any(r in low for r in READ_ONLY) and (heads & DB_PROGRAMS or "sqlite3" in low):
+        out.append(f"may write {db.group(1)}, a database under data/ (Records stand)")
     return out
 
 
@@ -96,7 +109,9 @@ def reasons(payload: dict) -> list[str]:
     if tool in MUTATING_TOOLS:
         path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or tool_input.get("path") or "")
         rel = _existing_test(path)
-        return [_changes_test(rel)] if rel else []
+        db = DATA_DB.search(path)
+        return ([_changes_test(rel)] if rel else []) + \
+            ([f"writes {db.group(1)}, a database under data/ (Records stand)"] if db else [])
     if tool in BASH_TOOLS:
         return _shell_reasons(str(tool_input.get("command") or ""), str(payload.get("cwd") or ""))
     return []
