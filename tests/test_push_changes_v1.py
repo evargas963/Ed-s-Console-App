@@ -5,13 +5,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import app.options.order_flow.streaming as ofs
 import push_changes
 import server
 from stream_spine import bar_msg
+from tests.feed_live_helper import daemon_bars
+from time_et import ET
 
 _FX = json.loads((Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8"))
 TK = _FX["ticker"]
@@ -51,17 +53,20 @@ def test_a_streamed_equity_quote_and_book_mark_flow(monkeypatch):
                                                            "content": b["native"]}))[0] == {"flow"}
 
 
-def test_a_written_bar_marks_liquidity():
-    start = 1_790_000_040.0
-    msg = bar_msg(symbol=TK, bar_start_ms=int(start * 1000), open=10.0, high=11.0, low=9.5,
-                  close=10.5, volume=100.0, src="schwab_chart", ts_recv=start + 60.0)
+def test_a_kept_bar_marks_liquidity():
+    """Schwab's TSLA bar of 2026-09-29 09:30 ET as the capture daemon recorded and pushed it."""
+    r = next(r for r in daemon_bars("real_daemon_bars_spy_tsla_2026_09_29_30.json", TK)
+             if r["bar_start_ms"] == int(datetime(2026, 9, 29, 9, 30, tzinfo=ET).timestamp() * 1000))
+    msg = bar_msg(symbol=r["symbol"], bar_start_ms=r["bar_start_ms"], open=r["open"], high=r["high"], low=r["low"],
+                  close=r["close"], volume=r["volume"], src=r["src"], ts_recv=r["ts_recv"], native=r["native"],
+                  schwab_ts=r["schwab_ts"])
+    held = server._bars.pop(TK, None)
     try:
         assert _run(lambda: server._write_streamed_bar(msg))[0] == {"liquidity"}
     finally:
-        con = sqlite3.connect(server.get_db().db_path)
-        con.execute("DELETE FROM price_bars_1m WHERE ticker=? AND bar_start_ts_utc=?", (TK, start))
-        con.commit()
-        con.close()
+        server._bars.pop(TK, None)
+        if held is not None:
+            server._bars[TK] = held
 
 
 def test_no_change_is_an_empty_push():

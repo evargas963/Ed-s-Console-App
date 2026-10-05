@@ -5,9 +5,45 @@ reports the Schwab socket open and holds the symbol. Tests that exercise a live 
 exactly the symbols the daemon would hold -- through the production entry point."""
 from __future__ import annotations
 
+import json
+import sqlite3
 import time
+from pathlib import Path
 
 import live_market_plane as lmp
+
+_FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+def daemon_bars(name: str, *symbols: str) -> list[dict]:
+    """The capture daemon's recorded receipts of Schwab's CHART_EQUITY bars in fixture `name`
+    (tests/fixtures/real_daemon_bars_*.json), of `symbols` (every symbol when none is named)."""
+    rows = json.loads((_FIXTURES / name).read_text(encoding="utf-8"))["rows"]
+    return [r for r in rows if not symbols or r["symbol"] in symbols]
+
+
+def record_daemon_bars(rows: list[dict]) -> None:
+    """What the capture daemon records of Schwab's bars: each captured receipt, as captured,
+    through the daemon's own writer (stream_spine.CaptureWriter) into this run's stream_capture.db."""
+    from stream_spine import CaptureWriter, bar_msg
+    writer = CaptureWriter()
+    with sqlite3.connect(str(writer.db_path), timeout=30.0) as con:
+        for r in rows:
+            writer.insert(f"bar1m.{r['symbol']}", bar_msg(
+                symbol=r["symbol"], bar_start_ms=r["bar_start_ms"], open=r["open"], high=r["high"], low=r["low"],
+                close=r["close"], volume=r["volume"], src=r["src"], ts_recv=r["ts_recv"], native=r["native"],
+                schwab_ts=r["schwab_ts"]), conn=con)
+
+
+def forget_daemon_bars(rows: list[dict]) -> None:
+    """Remove exactly those receipts from this run's stream_capture.db (a test leaves nothing)."""
+    from db_authority import canonical_stream_db_path
+    path = canonical_stream_db_path()
+    if not path.exists():
+        return
+    with sqlite3.connect(str(path), timeout=30.0) as con:
+        con.executemany("DELETE FROM stream_bars_raw WHERE symbol=? AND bar_start_ms=? AND ts_recv=?",
+                        [(r["symbol"], r["bar_start_ms"], r["ts_recv"]) for r in rows])
 
 
 def mark_feed_live(*tickers: str) -> None:

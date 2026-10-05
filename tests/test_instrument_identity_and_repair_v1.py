@@ -2,52 +2,32 @@
 from __future__ import annotations
 
 
-from db import EdDB
+import server
 from instrument_identity import ticker_storage_key
-from micro_structure import Candle
+from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
 
 
-def _in_window_ts(hour: int = 10, minute: int = 0) -> float:
-    """A bar timestamp the COLLECT-WINDOW LAW admits: RTH, on a real trading day.
-
-    RC-306, third file. These fixtures used literal epochs — 1_700_000_040 (2023-11-14
-    17:14 ET, after the close, in a year the calendar authority does not even cover) and
-    1_771_848_000_000 ms (2026-02-23 07:00 ET, before the open). Both were admissible when
-    written. RC-183/RC-214 then narrowed the writer's domain to the collect window, so
-    `upsert_1m_bars` began refusing them and three tests measured the law instead of the
-    identity behaviour they exist to pin. The timestamp now comes from the same calendar the
-    seam validates against, at an ET minute inside the window.
-
-    2026-08-17: this was a SECOND copy of the shared `tests.conftest.in_window_ts`, and
-    the copy is why it kept a defect the original had lost — it anchored to
-    `most_recent_trading_day_et`, i.e. to TODAY, so whenever the suite ran before the
-    collect window closed the bars below described a session that had not happened yet and
-    `outcome_1c` came back None. It now delegates to the one authority, which anchors to
-    the most recent COMPLETED session; there is no local re-encoding left to drift.
-    """
-    from tests.conftest import in_window_ts
-
-    return in_window_ts(hour, minute)
-
-
-
-
-
-
-def test_upsert_1m_bars_uses_ticker_storage_key_for_spx_family(tmp_path):
-    """Bars must persist under $SPX when caller passes bare SPX (Issue 19 rehydration)."""
-    dbp = tmp_path / "bars_id.db"
-    db = EdDB(dbp)
-    ts = _in_window_ts()
-    bars = [Candle(ts=ts, open=100.0, high=101.0, low=99.0, close=100.5, volume=1.0)]
-    db.upsert_1m_bars("spx", bars)
-    with db._connect() as conn:
-        rows = conn.execute(
-            "SELECT ticker, bar_start_ts_utc FROM price_bars_1m WHERE bar_start_ts_utc = ?",
-            (ts,),
-        ).fetchall()
-    assert len(rows) == 1
-    assert rows[0]["ticker"] == "$SPX"
+def test_recorded_index_bars_are_held_and_served_under_the_index_key():
+    """Schwab keys an index as "$SPX" (tests/fixtures/real_schwab_index_identity_2026_09_28.json:
+    only the "$" form answers). Schwab's $SPX bars of 2026-10-01/02 as the capture daemon recorded
+    them, loaded at the console's start: held under $SPX, and the bare "SPX" a page asks for
+    serves exactly them (Issue 19 rehydration)."""
+    rows = daemon_bars("real_daemon_bars_spy_tsla_spx_2026_10_01_02.json", "$SPX")
+    newest = {}
+    for r in sorted(rows, key=lambda r: r["ts_recv"]):
+        newest[r["bar_start_ms"]] = r
+    server._bars.pop("$SPX", None)
+    record_daemon_bars(rows)
+    try:
+        server._load_bars()
+        held = [b for b in server._bars_1m("$SPX", server.BARS_KEPT) if b.ts * 1000 in newest]
+        asked_bare = [b for b in server._bars_1m("spx", server.BARS_KEPT) if b.ts * 1000 in newest]
+    finally:
+        forget_daemon_bars(rows)
+        server._bars.pop("$SPX", None)
+    want = [(ms / 1000, r["open"], r["high"], r["low"], r["close"], r["volume"]) for ms, r in sorted(newest.items())]
+    assert [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in held] == want
+    assert asked_bare == held
 
 
 

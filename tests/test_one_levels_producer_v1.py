@@ -355,35 +355,6 @@ def test_a_ticker_put_on_screen_reprices_from_its_kept_chain(monkeypatch):
     assert _cached()["_gamma_surface"] is not None
 
 
-def test_the_console_serves_while_the_stored_levels_load(monkeypatch):
-    """2026-09-28, operator: the console window's start was "slow as molasses". The stored-levels
-    load (every board ticker's newest capture priced, with its forces and prior-day rows: about
-    2.8 s for SPY, 5.4 s for $SPX, measured) ran before the app served its first request. It runs
-    on the levels loop's own thread now; starting the loop returns at once."""
-    import threading as _th
-    import live_market_plane as lmp
-    release, started, finished = _th.Event(), _th.Event(), _th.Event()
-
-    def slow_load(board):
-        started.set()
-        release.wait(2)
-        finished.set()
-        return 0
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": [TK]})
-    monkeypatch.setattr(server, "_publish_missing_price_levels", lambda board: None)
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    monkeypatch.setattr(server, "_load_stored_levels", slow_load)
-    monkeypatch.setattr(server, "_terrain_loop_running", False)
-    server.start_terrain_loop()
-    try:
-        assert not finished.is_set(), "start returned before the load finished"
-        assert started.wait(2), "the load runs on the loop's thread"
-    finally:
-        monkeypatch.setattr(server, "_terrain_loop_running", False)   # the loop exits at its check
-        release.set()
-        server._terrain_loop_thread.join(5)
-
-
 def test_a_tick_on_an_unviewed_ticker_reprices_nothing(monkeypatch):
     calls = _count_publishes(monkeypatch)
     server._on_stream_tick("ZZUNVIEWED")
