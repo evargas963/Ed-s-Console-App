@@ -75,13 +75,6 @@ def _reset(tmp_path, monkeypatch):
     return db
 
 
-
-def _push_option_l1(symbol, content, ts_recv):
-    """One LEVELONE_OPTIONS message as the daemon publishes and pushes it."""
-    return ofs._ingest_pushed(f"optquote.{symbol}", options_quote_msg(
-        symbol=symbol, content=content, src="schwab_options_l1", ts_recv=ts_recv))
-
-
 def _push_option_book(symbol, content, ts_recv, service="OPTIONS_BOOK"):
     return ofs._ingest_pushed(f"book.{symbol}", book_msg(
         symbol=symbol, service=service, content=content,
