@@ -30,7 +30,8 @@ import app.options.order_flow.streaming as ofs
 import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
-from calibration.complete_chain_capture import FAILED_PAUSE_SEC, ChainSweep, chain_messages
+from calibration.complete_chain_capture import (FAILED_PAUSE_SEC, RATE_LIMITED_PAUSE_SEC, ChainSweep,
+                                             chain_messages)
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
@@ -701,11 +702,14 @@ class _ToLocal(httpx.BaseTransport):
 class _LocalSchwab:
     """Schwab's host, played by a local server. The token endpoint answers `token_answer`
     ("refreshed": _REFRESHED; "akamai": the captured 403 page); chains and quotes answer the
-    captured SPY chain and its quotes, or the captured 403 page while `refuse`. Every request is
-    recorded: (time, method, path, Authorization)."""
+    captured SPY chain and its quotes, or the captured 403 page while `refuse`; while
+    `refuse_quotes` is 403 or 429, quotes requests alone are refused with it (403: the captured
+    page; 429: induced, an empty body). Every request is recorded: (time, method, path,
+    Authorization)."""
 
     def __init__(self, token_answer: str = "refreshed", refuse: bool = False):
         self.token_answer, self.refuse = token_answer, refuse
+        self.refuse_quotes: "int | None" = None
         self.requests: list = []
         outer = self
 
@@ -736,6 +740,10 @@ class _LocalSchwab:
                     return self._akamai()
                 if url.path == "/marketdata/v1/chains":
                     return self._send(200, "application/json", json.dumps(_spy_chain_payload()).encode())
+                if outer.refuse_quotes == 403:
+                    return self._akamai()
+                if outer.refuse_quotes == 429:
+                    return self._send(429, "application/json", b"")
                 symbols = parse_qs(url.query).get("symbols", [""])[0].split(",")
                 reply = {s: _SPY_1120_QUOTES[s] for s in symbols if s in _SPY_1120_QUOTES}
                 self._send(200, "application/json", json.dumps(reply).encode())
@@ -843,5 +851,49 @@ def test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until
         sweep._fetching.discard("BBB")
         assert [sweep._next(now + FAILED_PAUSE_SEC), sweep._next(now + FAILED_PAUSE_SEC)] == ["CCC", "DDD"], \
             "two at once again"
+    finally:
+        schwab.close()
+
+
+@pytest.mark.parametrize("status, pause", [(403, FAILED_PAUSE_SEC), (429, RATE_LIMITED_PAUSE_SEC)])
+def test_after_a_refusal_the_probe_sends_one_request_at_a_time_and_stops_at_the_first_refused(
+        tmp_path, status, pause):
+    """Schwab refuses the quotes requests of a chain (403: the captured page; 429: induced). The
+    captured SPY chain's 442 contracts are two quotes batches. Before the refusal both batches go
+    at once; after it the sweep pauses, then probes: the chain request, then the first quotes
+    request alone, and nothing more once that one is refused. Once a probe lands, every batch goes
+    at once again. The clock is 2026-10-01 08:00 ET (pre-market, outside every capture window)."""
+    schwab = _LocalSchwab()
+    schwab.refuse_quotes = status
+    published = []
+    now = 1790856000.0                                    # 2026-10-01 08:00 ET
+    sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB", "CCC"],
+                       lambda topic, msg: published.append(msg), clock=lambda: now)
+    client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
+
+    def paths(since: int) -> "list[str]":
+        return [path for _t, method, path, _a in schwab.requests[since:] if method == "GET"]
+
+    try:
+        assert sweep._next(now) == "AAA"
+        assert not sweep.fetch_one(client, "AAA")         # every batch at once, both refused
+        sweep._fetching.discard("AAA")
+        assert paths(0) == ["/marketdata/v1/chains"] + ["/marketdata/v1/quotes"] * 2
+        assert sweep._paused_until == now + pause
+        assert f"HTTP {status}" in published[-1]["failed"]
+        assert sweep._next(now + pause) == "BBB"          # the probe
+        assert sweep._next(now + pause) is None, "nothing else while the probe is out"
+        sent = len(schwab.requests)
+        assert not sweep.fetch_one(client, "BBB")         # refused again
+        sweep._fetching.discard("BBB")
+        assert paths(sent) == ["/marketdata/v1/chains", "/marketdata/v1/quotes"], \
+            "a probe sends one request at a time and stops at the first refused"
+        schwab.refuse_quotes = None
+        assert sweep._next(sweep._paused_until) == "CCC"
+        sent = len(schwab.requests)
+        assert sweep.fetch_one(client, "CCC")             # the probe lands
+        sweep._fetching.discard("CCC")
+        assert paths(sent) == ["/marketdata/v1/chains"] + ["/marketdata/v1/quotes"] * 2
+        assert sweep._probing is False, "the sweep goes on: every batch at once again"
     finally:
         schwab.close()

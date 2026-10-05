@@ -587,10 +587,25 @@ QUOTES_BATCH_MAX = 300
 GREEK_FIELDS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
 
 
-def fetch_full_chain(client, ticker: str) -> FullChainResponse:
+def _send_each(send, items: list, alone: bool, refused) -> list:
+    """`send(item)` for every item, every request at once; `alone`: one at a time, ending at the
+    first answer that is `refused`, so Schwab sees at most one refused request."""
+    if not alone:
+        with ThreadPoolExecutor(max_workers=max(1, len(items))) as pool:
+            return list(pool.map(send, items))
+    answers = []
+    for item in items:
+        answers.append(send(item))
+        if refused(answers[-1]):
+            break
+    return answers
+
+
+def fetch_full_chain(client, ticker: str, *, alone: bool = False) -> FullChainResponse:
     """EVERY strike of every listed expiry -- the chain all level math is computed from -- with
     each contract's Greeks as Schwab's quotes send them: strike_range=ALL chain requests
-    (safe_get_chain) and quotes requests (safe_get_quotes) on `client`.
+    (safe_get_chain) and quotes requests (safe_get_quotes) on `client`. `alone` (the sweep's
+    probe after Schwab refused it): every request one at a time, stopping at the first refused.
 
     MEASURED 2026-09-25 across the 42 board tickers: levels computed from the old strike
     window disagreed with the same code run on the full chain -- gamma flip missing for 10
@@ -603,7 +618,7 @@ def fetch_full_chain(client, ticker: str) -> FullChainResponse:
     whole chain (its status and reason), like a missing chain part: a book missing a batch of
     Greeks is not the book. Each fetch logs its contracts, requests and their times."""
     t0 = time.perf_counter()
-    resp = _whole_chain(client, ticker)
+    resp = _whole_chain(client, ticker, alone)
     if resp.status_code != 200:
         return resp
     t_chain = time.perf_counter() - t0
@@ -614,8 +629,8 @@ def fetch_full_chain(client, ticker: str) -> FullChainResponse:
     symbols = list(dict.fromkeys(ct["symbol"] for ct in contracts if ct.get("symbol")))
     batches = [symbols[i:i + QUOTES_BATCH_MAX] for i in range(0, len(symbols), QUOTES_BATCH_MAX)]
     t1 = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=max(1, len(batches))) as pool:
-        replies = list(pool.map(lambda batch: safe_get_quotes(client, batch), batches))
+    replies = _send_each(lambda batch: safe_get_quotes(client, batch), batches, alone,
+                         lambda reply: reply.status_code != 200)
     quoted: dict = {}
     for batch, reply in zip(batches, replies):
         if reply.status_code != 200:
@@ -637,10 +652,10 @@ def fetch_full_chain(client, ticker: str) -> FullChainResponse:
     return resp
 
 
-def _whole_chain(client, ticker: str) -> FullChainResponse:
+def _whole_chain(client, ticker: str, alone: bool) -> FullChainResponse:
     """The chain of `fetch_full_chain`. One request when Schwab answers it. When the vendor
     answers that the request covers too much, the listed expiries are split into contiguous
-    date ranges, all requested at once, halving any range that is itself refused; the part count
+    date ranges, all requested at once (one at a time when `alone`), halving any range that is itself refused; the part count
     that worked is remembered per ticker. Every part must land: a missing part is a failed
     response (the reason names it), never a partial chain."""
 
@@ -666,8 +681,8 @@ def _whole_chain(client, ticker: str) -> FullChainResponse:
     merged: "dict | None" = None
     done = 0
     while pending:
-        with ThreadPoolExecutor(max_workers=len(pending)) as pool:
-            answers = list(pool.map(lambda p: _get(from_date=p[0], to_date=p[-1]), pending))
+        answers = _send_each(lambda p: _get(from_date=p[0], to_date=p[-1]), pending, alone,
+                             lambda answer: answer[1] not in (200, *_CHAIN_TOO_BIG_CODES))
         refused = []
         for part, (resp, code) in zip(pending, answers):
             if code == 200:

@@ -165,11 +165,11 @@ def board_tickers(db_path: Path | str) -> list[str]:
 CHAIN_PART_CONTRACTS = 500
 #: the threads fetching chains: one for the active ticker, back to back, the rest for the board
 CHAIN_WORKERS = 8
-#: after Schwab answers 429, no chain request for this long
+#: after Schwab answers 429, no chain request for this long; then the probe (FAILED_PAUSE_SEC)
 RATE_LIMITED_PAUSE_SEC = 10.0
 #: after Schwab refuses us (403: its edge, Akamai, denies access) or a request fails outright (no
-#: client, auth refused, the network down), no chain request for this long; then one chain is
-#: fetched alone, and the sweep goes on only once that fetch succeeds
+#: client, auth refused, the network down), no chain request for this long; then the probe: one
+#: chain is fetched alone, its requests one at a time, and the sweep goes on only once one lands
 FAILED_PAUSE_SEC = 5.0
 
 
@@ -202,8 +202,8 @@ class ChainSweep:
     everything, and every board ticker in turn, without end, by the other workers. While Closed
     every board ticker is fetched once, its close values (a failed fetch is tried again after
     FAILED_PAUSE_SEC), and then nothing until the next session: the close values stand, and a
-    ticker put on screen while Closed is not fetched. After a refusal or a failure
-    (FAILED_PAUSE_SEC) one chain is fetched alone until one lands. Each chain is published to
+    ticker put on screen while Closed is not fetched. After a refusal (403, 429) or a failure,
+    and its pause, one chain is fetched alone, its requests one at a time, until one lands. Each chain is published to
     the console in parts (chain_messages); a failure is published
     with Schwab's answer. The first fetch of a ticker begun inside a capture window
     (capture_slot) is also written to the chain history."""
@@ -270,14 +270,15 @@ class ChainSweep:
 
     def fetch_one(self, client, ticker: str) -> bool:
         started = self.clock()
-        resp = fetch_full_chain(client, ticker)
+        with self._lock:
+            alone = self._probing
+        resp = fetch_full_chain(client, ticker, alone=alone)
         now = self.clock()
         if resp.status_code != 200:
             if resp.status_code == 429:
-                with self._lock:
-                    self._paused_until = now + RATE_LIMITED_PAUSE_SEC
+                self._refused(now, RATE_LIMITED_PAUSE_SEC)
             if resp.status_code == 403:
-                self._refused(now)
+                self._refused(now, FAILED_PAUSE_SEC)
             reason = resp.reason or f"HTTP {resp.status_code}"
             log.warning("chain %s: %s", ticker, reason)
             self.publish(*chain_failure_message(ticker, reason, now))
@@ -334,10 +335,11 @@ class ChainSweep:
                 self._written[ticker] = before
             raise
 
-    def _refused(self, now: float) -> None:
-        """No chain request for FAILED_PAUSE_SEC, then one fetch at a time until one succeeds."""
+    def _refused(self, now: float, pause: float) -> None:
+        """No chain request for `pause`, then one fetch at a time, each sending its requests one
+        at a time (fetch_full_chain `alone`), until one succeeds."""
         with self._lock:
-            self._paused_until = now + FAILED_PAUSE_SEC
+            self._paused_until = now + pause
             self._probing = True
 
     def work(self, schwab_client, stop: threading.Event) -> None:
@@ -362,7 +364,7 @@ class ChainSweep:
             except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the sweep goes on
                 log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
                 self.publish(*chain_failure_message(ticker, f"{type(e).__name__}: {e}", self.clock()))
-                self._refused(self.clock())
+                self._refused(self.clock(), FAILED_PAUSE_SEC)
             finally:
                 self._done(ticker, delivered)
 

@@ -193,12 +193,16 @@ from Schwab to the screen (daemon, console, page), are these:
   their times are logged. No cap or interval of ours sits between Schwab and the screen
   (operator 2026-10-01: "we take what we get from schwab as fast as we can and we ask schwab for
   data as fast as we can"). After Schwab answers 429 no chain request is made for 10 s
-  (`RATE_LIMITED_PAUSE_SEC`). After Schwab refuses us (403: its edge, Akamai, denies access) or
-  a request fails outright (no client, auth or refresh refused, the network down), no chain
-  request is made for 5 s (`FAILED_PAUSE_SEC`), then one chain is fetched alone, and the sweep
-  goes on only once one lands. Enforced by: `tests/test_data_path_rules_v1.py`
+  (`RATE_LIMITED_PAUSE_SEC`); after Schwab refuses us (403: its edge, Akamai, denies access) or
+  a request fails outright (no client, auth or refresh refused, the network down), for 5 s
+  (`FAILED_PAUSE_SEC`). Then the probe: one chain is fetched alone, sending its requests one at
+  a time and stopping at the first one refused (`fetch_full_chain` `alone`), so a refused probe
+  costs Schwab at most one refused request; the sweep, every request at once again, goes on
+  only once one lands. Enforced by: `tests/test_data_path_rules_v1.py`
   (`test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until_one_lands`,
-  on Schwab's captured 403 page). The chain is always the full chain, every expiry and
+  on Schwab's captured 403 page;
+  `test_after_a_refusal_the_probe_sends_one_request_at_a_time_and_stops_at_the_first_refused`,
+  counting the requests Schwab's host receives after a 403 and after a 429). The chain is always the full chain, every expiry and
   every strike: measured on the 38 board tickers' 2026-10-01 close captures, leaving out the
   farthest expiry changed a level (a wall, the flip, max pain) on 4 tickers, the two farthest on
   25, and 5 strikes off each side on 9. Every ticker's publication keeps its chain and its
