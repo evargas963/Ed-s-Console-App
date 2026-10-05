@@ -34,6 +34,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 | ENF-14 | QUEUED | No source edits through a script. sed is refused by `tools/sed_edit_guard.py` (#449). Open, a separate later change (operator 2026-10-04): the other in-place editors — `perl -i`, `awk`/`gawk -i inplace`, python/node scripts that write files, PowerShell `Set-Content`/`Out-File`/`Add-Content`, `tee`, `ed`/`ex`/`vim` batch edits, `truncate`, `dd`, `unix2dos`/`dos2unix` (used 2026-10-04 to restore a file's CRLF endings); and the sed guard's three gaps — a heredoc fed to a shell (`bash <<EOF`), sed's own `w` command, a backslash-escaped path (`Program\ Files/…/sed.exe`). And `git update-ref --stdin` is beyond the main-branch lock's reach (`tools/process_lock_guard.py`, #455): it reads the ref it writes from standard input, which the hook cannot see. |
 | ENF-15 | QUEUED | Pushed at every hop, nothing polls (`docs/DATA_FLOW.md` §1): the page draws pushed values instead of re-reading routes after a push (P2-3). |
 | ENF-16 | QUEUED | Operator decisions 2–6, 8, 9 in `docs/DATA_FLOW.md` §6: each gets a test when it is built. |
+| ENF-21 | QUEUED | AGENTS.md rule 2's documentation authority: a statement about what Schwab sends, accepts or limits cites `docs/schwab/` by section or Schwab's own reply. No machine check yet. (ENF-17 to ENF-20 are taken by the open shared-rules PR #471.) |
 
 ## Phase 1 — restore and stabilize
 
