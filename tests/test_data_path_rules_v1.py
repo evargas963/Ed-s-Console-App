@@ -1186,6 +1186,29 @@ def test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until
         schwab.close()
 
 
+def test_the_chain_sweeps_threads_never_take_the_threads_the_daemons_other_work_needs(tmp_path):
+    """The chain sweep's CHAIN_WORKERS threads are its own. CI's 2-core runner gives the event
+    loop's shared pool min(32, 2 + 4) = 6 threads, fewer than the 8 workers: the workers held
+    every one, and the stored-ticker read and the instrument lookups (asyncio.to_thread) waited
+    behind them -- on 2026-10-05 the first lookup went out 40 s late. With the sweep running, the
+    daemon's other off-loop work still runs at once. INDUCED CONDITION: the loop's shared pool
+    set to 2 threads."""
+    from concurrent.futures import ThreadPoolExecutor as Pool
+    daemon = capture.Daemon(MessageBus(), HealthRegistry())
+
+    async def go() -> str:
+        asyncio.get_running_loop().set_default_executor(Pool(max_workers=2))
+        stop = asyncio.Event()
+        task = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", lambda: None, stop))
+        await asyncio.sleep(0.2)                                 # the workers are up, idle
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(lambda: "ran"), 5)
+        finally:
+            stop.set()
+            await asyncio.wait_for(task, 10)
+    assert asyncio.run(go()) == "ran"
+
+
 def test_d3_the_daemons_chain_is_the_current_record_whole_once_all_its_parts_are_in(tmp_path):
     """The daemon's chain sweep (capture.run_chains) fetches the universe's MRVL chain on the
     daemon's client and publishes it in parts on its bus; the chain becomes MRVL's current

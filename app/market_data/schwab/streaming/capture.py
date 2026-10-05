@@ -54,6 +54,7 @@ import sqlite3
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
@@ -684,21 +685,25 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
 
 
 async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Event) -> None:
-    """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own threads, so the
-    stream never waits on a chain; each chain part is published on the event loop, and the bus
-    keeps each ticker's newest whole chain (stream_spine.MessageBus._chain)."""
+    """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own CHAIN_WORKERS
+    threads -- never the event loop's shared ones, which the daemon's other off-loop work
+    (load_stored, run_joins) needs -- so the stream never waits on a chain; each chain part is
+    published on the event loop, and the bus keeps each ticker's newest whole chain
+    (stream_spine.MessageBus._chain)."""
     loop = asyncio.get_running_loop()
     halt = threading.Event()
     sweep = ChainSweep(db_path, daemon.universe,
                        lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg))
     daemon.chains = sweep
     sweep.set_active(daemon.active)                 # the ticker on screen, if the console said one
-    workers = [loop.run_in_executor(None, sweep.work, schwab_client, halt) for _ in range(CHAIN_WORKERS)]
+    threads = ThreadPoolExecutor(max_workers=CHAIN_WORKERS, thread_name_prefix="chain-sweep")
+    workers = [loop.run_in_executor(threads, sweep.work, schwab_client, halt) for _ in range(CHAIN_WORKERS)]
     try:
         await stop.wait()
     finally:
         halt.set()
         await asyncio.gather(*workers, return_exceptions=True)
+        threads.shutdown(wait=False)
 
 
 def recorded_tickers(*db_paths: "Path | str") -> "tuple[list[str], list[str]]":
