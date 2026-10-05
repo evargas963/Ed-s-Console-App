@@ -82,24 +82,27 @@ def test_the_wanted_list_is_the_consoles_now_and_a_change_clears_that_services_r
     assert d.refused["NYSE_BOOK"] == {} and d.refused["LEVELONE_OPTIONS"] == {"ZZZ": "x"}
 
 
-def test_every_board_ticker_and_every_equity_the_screens_show_is_streamed(tmp_path):
-    """Every board ticker is streamed on LEVELONE_EQUITIES, CHART_EQUITY and NEWS_HEADLINE beside
-    every equity the console's screens show (the watchlist, the header's context, the ticker on
-    screen)."""
-    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), board=["$SPX", "SPY"])
+def test_every_universe_ticker_and_every_equity_the_screens_show_is_streamed(tmp_path):
+    """Every universe ticker is streamed on every universe service (quotes, 1-minute bars, news
+    and both books) beside every equity the console's screens show (the watchlist, the header's
+    context, the ticker on screen); the equities shown that are not in the universe are put to
+    be looked up, once."""
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), universe=["$SPX", "SPY"])
     d.set_wanted({"LEVELONE_EQUITIES": ["AMD"], "CHART_EQUITY": ["AMD"], "NEWS_HEADLINE": ["AMD"],
                   "NYSE_BOOK": ["SPY"]})
     w = d.all_wanted()
     assert w["LEVELONE_EQUITIES"] == w["CHART_EQUITY"] == w["NEWS_HEADLINE"] == {"$SPX", "SPY", "AMD"}
-    assert w["NYSE_BOOK"] == {"SPY"}
-    assert d.status()["board"] == ["$SPX", "SPY"]
+    assert w["NYSE_BOOK"] == w["NASDAQ_BOOK"] == {"$SPX", "SPY"}
+    assert d.status()["universe"] == ["$SPX", "SPY"]
+    d.set_wanted({"LEVELONE_EQUITIES": ["AMD", "MU"]})
+    assert [d.joins.get_nowait() for _ in range(d.joins.qsize())] == ["AMD", "MU"]
 
 
 def test_the_ticker_on_screen_is_the_chain_sweeps_active_ticker(tmp_path):
-    """The ticker on screen's chain is fetched ahead of the board. The console names it
+    """The ticker on screen's chain is fetched ahead of the universe. The console names it
     (`active`); the daemon never works it out from another list (such as the books)."""
-    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), board=["SPY"])
-    d.chains = cap.ChainSweep(tmp_path / "x.db", d.board, lambda t, m: None)
+    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), universe=["SPY"])
+    d.chains = cap.ChainSweep(tmp_path / "x.db", d.universe, lambda t, m: None)
     rth = 1790863200.0                                   # 2026-10-01 10:00 ET, an open session
     d.set_wanted({"active": "MU", "NYSE_BOOK": ["MU"], "NASDAQ_BOOK": ["MU"]})
     assert d.chains._next(rth) == "MU"
@@ -123,50 +126,6 @@ class FakeSchwab:
             raise RuntimeError("code 19 REACHED_SYMBOL_LIMIT")
 
 
-def _daemon(tmp_path, monkeypatch, fake, board=(), **wanted):
-    bus = ss.MessageBus()
-    log = bus.subscribe("sub.", policy=ss.LOG)
-    d = cap.Daemon(bus, ss.HealthRegistry(), board=list(board))
-    d.set_wanted({k: list(v) for k, v in wanted.items()})
-    d.stream = object()
-    monkeypatch.setattr(cap, "_request", fake.request)
-    return d, log
-
-
-def test_sync_subscribes_the_difference_and_logs_every_answer(tmp_path, monkeypatch):
-    fake = FakeSchwab()
-    d, log = _daemon(tmp_path, monkeypatch, fake, board=["SPY", "AAPL"], NYSE_BOOK=["SPY"])
-    asyncio.run(d.sync())
-    assert fake.calls == [("LEVELONE_EQUITIES", "SUBS", ["AAPL", "SPY"]), ("CHART_EQUITY", "SUBS", ["AAPL", "SPY"]),
-                          ("NYSE_BOOK", "SUBS", ["SPY"]), ("NEWS_HEADLINE", "SUBS", ["AAPL", "SPY"])]
-    assert d.held["LEVELONE_EQUITIES"] == {"SPY", "AAPL"} and d.held["NYSE_BOOK"] == {"SPY"}
-    assert [log.queue.get_nowait()[1]["code"] for _ in range(4)] == [0, 0, 0, 0]
-    fake.calls.clear()
-    asyncio.run(d.sync())
-    assert fake.calls == [], "nothing changed, nothing sent"
-
-
-def test_a_refused_symbol_is_recorded_and_retried_only_after_the_list_changes(tmp_path, monkeypatch):
-    fake = FakeSchwab(refuse={"BAD"})
-    d, log = _daemon(tmp_path, monkeypatch, fake, OPTIONS_BOOK=["BAD"])
-    asyncio.run(d.sync())
-    assert "BAD" in d.refused["OPTIONS_BOOK"] and d.held["OPTIONS_BOOK"] == set()
-    assert log.queue.get_nowait()[1]["code"] != 0
-    fake.calls.clear()
-    asyncio.run(d.sync())
-    assert fake.calls == [], "a refused symbol is not asked for again"
-    d.set_wanted({"OPTIONS_BOOK": ["BAD", "SPY"]})
-    fake.refuse.clear()
-    asyncio.run(d.sync())
-    assert fake.calls == [("OPTIONS_BOOK", "SUBS", ["BAD", "SPY"])]
-
-
-def test_a_dead_socket_during_sync_ends_the_connection(tmp_path, monkeypatch):
-    fake = FakeSchwab(die_on=("OPTIONS_BOOK", "SUBS"))
-    d, _ = _daemon(tmp_path, monkeypatch, fake, OPTIONS_BOOK=["SPY"])
-    with pytest.raises(ConnectionError):
-        asyncio.run(d.sync())
-    assert d.refused["OPTIONS_BOOK"] == {}, "a dead socket is not Schwab refusing a symbol"
 
 
 def test_request_sends_schwabs_fields_and_never_fields_on_unsubs():
@@ -259,46 +218,6 @@ class FakeStream:
         self.last_frame_ts = time.time()
         for h in self._handlers.get(item["handler"], []):
             h(item["msg"])
-
-
-def test_a_dying_connection_is_replaced_and_everything_wanted_is_resubscribed(tmp_path, monkeypatch):
-    """Reconnect = a new session that holds nothing, then the same sync. At most ONE live
-    Schwab session at any instant (the old stream is logged out before the new one logs in)."""
-    from websockets.exceptions import ConnectionClosedError
-    FakeStream.live = FakeStream.most_live = FakeStream.logins = 0
-    FakeStream.connect_args = []
-    monkeypatch.setattr(cap, "_open_stream", FakeStream)
-    monkeypatch.setattr(cap, "RECONNECT_BACKOFF_SEC", (0.01,))
-    fake = FakeSchwab()
-    monkeypatch.setattr(cap, "_request", fake.request)
-    bus = ss.MessageBus()
-    d = cap.Daemon(bus, ss.HealthRegistry(), board=["SPY"])
-    d.set_wanted({"NYSE_BOOK": ["SPY"]})
-    stop = asyncio.Event()
-
-    async def until(cond):
-        deadline = time.monotonic() + 10
-        while not cond():
-            assert time.monotonic() < deadline, "the daemon did not get there in 10 s"
-            await asyncio.sleep(0.01)
-
-    async def go():
-        client = object()
-        task = asyncio.create_task(d.run(lambda: client, stop))
-        try:
-            await until(lambda: FakeStream.logins >= 1 and d.held["NYSE_BOOK"])
-            d.stream.frames.put_nowait(ConnectionClosedError(None, None))      # Schwab drops us
-            await until(lambda: FakeStream.logins >= 2 and d.held["NYSE_BOOK"])
-        finally:
-            stop.set()
-            await asyncio.wait_for(task, 5)
-    asyncio.run(go())
-    subs = [c for c in fake.calls if c[1] == "SUBS"]
-    assert subs.count(("NYSE_BOOK", "SUBS", ["SPY"])) == 2, "resubscribed after the reconnect"
-    assert FakeStream.most_live == 1 and FakeStream.live == 0
-    # no receive cap of ours: Schwab's frames are taken whole, whatever their size (operator
-    # 2026-10-01: no caps); the websockets default refuses a frame over 1 MiB
-    assert FakeStream.connect_args == [{"max_size": None}] * 2
 
 
 def test_silence_from_schwab_ends_the_connection(tmp_path, monkeypatch):

@@ -4,14 +4,15 @@
 
 It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
 (run_chains) fetches full option chains on its own threads, without end: the ticker on screen
-first, back to back, and every board ticker in turn.
+first, back to back, and every universe ticker in turn.
 
-  0. BOARD   The background tickers (the logging_universe table), read while it runs
-             (run_board: after each change of the ticker on screen and every BOARD_READ_SEC):
-             each is streamed on LEVELONE_EQUITIES, CHART_EQUITY and NEWS_HEADLINE and its chain
-             is fetched in turn. The ticker the operator puts on screen joins it through the
-             board's one writer (complete_chain_capture.enroll) and is recorded every session
-             after.
+  0. UNIVERSE Every ticker recorded: at start, every ticker with data stored in the databases
+             (recorded_universe); then every equity the console's screens show (its watchlist,
+             the ticker on screen, the header's context) joins for good once Schwab's
+             instrument lookup lists it (run_joins; the answer is recorded, so the ticker has
+             data stored and is read again at the next start). Each is streamed on
+             UNIVERSE_SERVICES and its chain is fetched in turn. One that Schwab does not list
+             does not join; the console shows Schwab's answer (status "not_joined").
 
 It does four things, in one loop:
 
@@ -19,15 +20,16 @@ It does four things, in one loop:
              local console socket (live_push, ws://127.0.0.1:8799):
                {"op": "wanted", "wanted": {"active": "SPY", "LEVELONE_EQUITIES": ["SPY", ...], ...}}
              `active` is its ticker on screen: the chain sweep fetches it first.
-             The list lives in memory only: a daemon that starts streams the board until the
-             console says what its screens show.
+             The list lives in memory only: a daemon that starts streams the universe until
+             the console says what its screens show.
   2. SYNC    When the list changes, and every SYNC_SEC, it compares wanted with what Schwab has accepted on this
              connection and sends the difference: UNSUBS for what is no longer wanted, then
              SUBS (the first request of a service) or ADD (every later one -- a repeated SUBS
              can replace the whole set). Requests are split so none exceeds Schwab's 64 KB
              message limit (measured 2026-09-22: a 71 KB request closed the socket).
-             Schwab's answer to every request goes to the stream_subscriptions table. A symbol
-             Schwab refused is not asked for again until the console's list changes.
+             Schwab's answer to every request goes to the stream_subscriptions table: a
+             refusal with Schwab's own code and message. A symbol Schwab refused is not asked
+             for again until the console's list changes.
   3. FAN-OUT Every Schwab message is published once on the bus: the database writer
              (stream_capture.db), the console socket (8799) and the browser price socket
              (8800) all read from it.
@@ -43,6 +45,7 @@ code 11 (not available) -- there is no trade-by-trade tape and no trade side.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import sqlite3
@@ -50,6 +53,8 @@ import sys
 import threading
 import time
 from pathlib import Path
+
+from schwab.streaming import UnexpectedResponse, UnexpectedResponseCode
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
@@ -62,22 +67,21 @@ from stream_spine import (  # noqa: E402
     current_key,
     bar_msg,
     book_msg,
+    instrument_msg,
     news_msg,
     options_quote_msg,
     quote_msg,
     resolve_stream_db_path,
     subscription_msg,
 )
-from calibration.complete_chain_capture import CHAIN_WORKERS, ChainSweep, board_tickers, enroll  # noqa: E402
+from calibration.complete_chain_capture import CHAIN_WORKERS, ChainSweep  # noqa: E402
+from instrument_identity import vendor_option_root  # noqa: E402
 
 log = logging.getLogger("capture")
 
 #: The longest the connection reads Schwab's frames before comparing wanted with held again (a
 #: change to the console's list is compared at once).
 SYNC_SEC = 0.25
-#: The longest between two reads of the board table (a change of the ticker on screen is read at
-#: once): a row the operator adds by hand is streamed and fetched within this.
-BOARD_READ_SEC = 5.0
 #: No frame at all from Schwab (data or heartbeat) for this long -> the connection is dead.
 DEAD_SEC = 30.0
 #: Reconnect waits, in order; the last repeats.
@@ -270,13 +274,14 @@ def _connection_lost(e: BaseException) -> bool:
 
 # ---------------------------------------------------------------------------- the daemon
 
-#: The services every board ticker is streamed on, beside whatever the console's screens show.
-BOARD_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
+#: The services every universe ticker is streamed on, beside whatever the console's screens
+#: show: the equity services. A ticker the console's list names on one of them, or as its
+#: ticker on screen, is looked up to join the universe.
+UNIVERSE_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NASDAQ_BOOK")
 
 
 class Daemon:
-    def __init__(self, bus: MessageBus, health: HealthRegistry,
-                 board: "list[str] | None" = None, board_db: "Path | None" = None) -> None:
+    def __init__(self, bus: MessageBus, health: HealthRegistry, universe: "tuple[str, ...] | list[str]" = ()) -> None:
         self.bus = bus
         self.health = health
         #: what the console's screens show, as it last said (none until it says)
@@ -286,11 +291,15 @@ class Daemon:
         #: the console connection whose list this is (live_push's socket)
         self.sender = None
         self.wanted_changed = asyncio.Event()
-        #: the board: the tickers fetched and streamed in the background (the logging_universe
-        #: table in `board_db`, as refresh_board last read it)
-        self.board: "list[str]" = list(board or [])
-        self.board_db = board_db
-        self.board_changed = asyncio.Event()      # the ticker on screen changed: read the board now
+        #: the universe: every ticker streamed on UNIVERSE_SERVICES and fetched in turn, for good
+        #: (recorded_universe at start, then join); the chain sweep reads this same list
+        self.universe: "list[str]" = sorted(set(universe))
+        #: the tickers to look up (run_joins takes them), each put once: `asked` holds every
+        #: ticker put and not yet joined, until a lookup that got no answer from Schwab
+        self.joins: "asyncio.Queue[str]" = asyncio.Queue()
+        self.asked: "set[str]" = set()
+        #: {ticker: Schwab's answer} for each ticker looked up that did not join
+        self.not_joined: "dict[str, str]" = {}
         self.chains = None                  # the ChainSweep: its round time, its active ticker
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
@@ -314,35 +323,44 @@ class Daemon:
         self.wanted_changed.set()                  # the connection syncs now
         if self.chains is not None:
             self.chains.set_active(active)
-        if active is not None and active not in self.board:
-            self.board_changed.set()               # it joins the board (refresh_board)
+        shown = set().union(*(new[svc] for svc in UNIVERSE_SERVICES)) | ({active} if active else set())
+        for ticker in sorted(shown - set(self.universe) - self.asked):
+            self.asked.add(ticker)
+            self.joins.put_nowait(ticker)          # run_joins looks it up
 
-    async def refresh_board(self, now: float) -> None:
-        """Enroll the ticker on screen when it is not on the board (the board's one writer), then
-        read the board table: a changed board is streamed on BOARD_SERVICES and handed to the
-        chain sweep (a ticker joining it while Closed is fetched once)."""
-        if self.board_db is None:
+    def answered(self, msg: dict) -> None:
+        """Schwab's instrument answer for a ticker the console showed (instrument_answer): it is
+        recorded, and the ticker joins the universe when Schwab lists it; otherwise the answer
+        is what the console shows for it, and a ticker Schwab did not answer for (no HTTP 200)
+        is looked up again the next time the console's list names it."""
+        self.bus.publish(f"instrument.{msg['symbol']}", msg)
+        if msg["listed"]:
+            self.join(msg["symbol"])
             return
-        if self.active is not None and self.active not in self.board:
-            try:
-                await asyncio.to_thread(enroll, self.board_db, self.active, now)
-            except ValueError as e:                # not a symbol: on screen, never on the board
-                log.warning("board: %s", e)
-        board = await asyncio.to_thread(board_tickers, self.board_db)
-        if board == self.board:
+        self.not_joined[msg["symbol"]] = (f"Schwab's instrument lookup does not list {msg['symbol']} "
+                                          f"(HTTP {msg['http_status']}: {msg['body'][:300]})")
+        if msg["http_status"] != 200:
+            self.asked.discard(msg["symbol"])
+
+    def join(self, ticker: str) -> None:
+        """`ticker` joins the universe for good: streamed on UNIVERSE_SERVICES (each gets one
+        fresh try) and fetched in turn by the chain sweep (while Closed, once)."""
+        if ticker in self.universe:
             return
-        self.board = board
-        for svc in BOARD_SERVICES:                 # a changed board gets one fresh try
-            self.refused[svc] = {}
+        self.universe.append(ticker)
+        self.asked.discard(ticker)
+        self.not_joined.pop(ticker, None)
+        for svc in UNIVERSE_SERVICES:
+            self.refused[svc].pop(ticker, None)
         if self.chains is not None:
-            self.chains.set_board(board)
+            self.chains.joined(ticker)
         self.wanted_changed.set()                  # the connection streams it now
 
     def all_wanted(self) -> "dict[str, frozenset[str]]":
-        """Everything streamed: the console's list, and every board ticker on BOARD_SERVICES."""
+        """Everything streamed: the console's list, and every universe ticker on UNIVERSE_SERVICES."""
         out = dict(self.wanted)
-        for svc in BOARD_SERVICES:
-            out[svc] = out.get(svc, frozenset()) | frozenset(self.board)
+        for svc in UNIVERSE_SERVICES:
+            out[svc] = out[svc] | frozenset(self.universe)
         return out
 
     def status(self) -> dict:
@@ -351,7 +369,8 @@ class Daemon:
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
         return {"ts": now,
                 "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
-                "board": list(self.board),
+                "universe": sorted(self.universe),
+                "not_joined": dict(self.not_joined),
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "refused": {k: dict(v) for k, v in self.refused.items() if v},
@@ -363,10 +382,11 @@ class Daemon:
                 try:
                     await _request(self.stream, svc, cmd, chunk)
                     code, reason = 0, "ok"
-                except Exception as e:       # noqa: BLE001 -- Schwab said no, or the socket died
-                    if _connection_lost(e):
-                        raise
-                    code, reason = -1, f"{type(e).__name__}: {e}"[:300]
+                except UnexpectedResponseCode as e:       # Schwab's refusal: its code, its message
+                    content = e.response["response"][0]["content"]
+                    code, reason = content["code"], content["msg"]
+                except UnexpectedResponse as e:           # Schwab's next answer was another request's
+                    code, reason = None, f"no answer to this request; Schwab sent: {json.dumps(e.response)}"[:600]
                 self.bus.publish(f"sub.{svc}", subscription_msg(
                     service=svc, command=cmd, symbols=chunk, code=code, reason=reason))
                 if code == 0:
@@ -377,9 +397,9 @@ class Daemon:
                         for sym in chunk:
                             self.bus.forget(_current_key(svc, sym))
                 else:
-                    log.warning("%s %s refused (%d symbols): %s", svc, cmd, len(chunk), reason)
+                    log.warning("%s %s refused (%d symbols): code %s: %s", svc, cmd, len(chunk), code, reason)
                     if cmd != "UNSUBS":
-                        self.refused[svc].update({sym: reason for sym in chunk})
+                        self.refused[svc].update({sym: f"code {code}: {reason}" for sym in chunk})
 
     async def connect(self, client) -> None:
         stream = _open_stream(client)
@@ -553,7 +573,7 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
     keeps each ticker's newest whole chain (stream_spine.MessageBus._chain)."""
     loop = asyncio.get_running_loop()
     halt = threading.Event()
-    sweep = ChainSweep(db_path, daemon.board,
+    sweep = ChainSweep(db_path, daemon.universe,
                        lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg))
     daemon.chains = sweep
     sweep.set_active(daemon.active)                 # the ticker on screen, if the console said one
@@ -565,21 +585,69 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
         await asyncio.gather(*workers, return_exceptions=True)
 
 
-async def run_board(daemon: "Daemon", stop: asyncio.Event) -> None:
-    """The board's lifecycle owner: refresh_board when the ticker on screen changes and every
-    BOARD_READ_SEC, until stop. A board table that cannot be read or written keeps the board as
-    last read; the log says why, and the next round tries again."""
-    while not stop.is_set():
-        daemon.board_changed.clear()
+def recorded_universe(*db_paths: "Path | str") -> "list[str]":
+    """Every ticker with data stored in the databases `db_paths`, read-only: the distinct values
+    of every table's `ticker` or `symbol` column, each read through its index one value at a
+    time. Left out: an option contract's symbol (OSI form: a contract, not a ticker), an
+    instrument answer in which Schwab did not list the symbol (stream_instruments_raw.listed
+    0), and the `world_` tables (public datasets from other sources, not data recorded for a
+    ticker). A database that does not exist yet holds none."""
+    found: "set[str]" = set()
+    for db in db_paths:
+        if not Path(db).is_file():
+            log.warning("universe: %s does not exist yet: no ticker stored there", db)
+            continue
+        conn = sqlite3.connect(f"file:{Path(db).resolve().as_posix()}?mode=ro", uri=True)
         try:
-            await daemon.refresh_board(time.time())
-        except sqlite3.Error as e:
-            log.warning("board: not read or written this round: %s: %s", type(e).__name__, e)
-        changed = asyncio.ensure_future(daemon.board_changed.wait())
+            tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' "
+                                                 "AND name NOT LIKE 'world\\_%' ESCAPE '\\'")]
+            for table in tables:
+                listed = " AND listed = 1" if table == "stream_instruments_raw" else ""
+                for (col,) in conn.execute(f'SELECT name FROM pragma_table_info("{table}") '
+                                           "WHERE name IN ('ticker', 'symbol')").fetchall():
+                    found.update(v for (v,) in conn.execute(
+                        f'WITH RECURSIVE s(v) AS (SELECT MIN("{col}") FROM "{table}" WHERE 1{listed} '
+                        f'UNION ALL SELECT (SELECT MIN("{col}") FROM "{table}" WHERE "{col}" > s.v{listed}) '
+                        "FROM s WHERE s.v IS NOT NULL) SELECT v FROM s WHERE v IS NOT NULL"))
+        finally:
+            conn.close()
+    return sorted(t for t in found if isinstance(t, str) and t and not vendor_option_root(t))
+
+
+def instrument_answer(client, symbol: str, now: float) -> dict:
+    """Schwab's instrument lookup of `symbol` on the daemon's one client (schwab-py
+    Client.get_instruments, projection SYMBOL_SEARCH: GET /marketdata/v1/instruments), as its
+    instrument message: the HTTP status and body as sent, and whether Schwab lists `symbol`
+    itself (an instrument whose `symbol` is exactly it, in the answer's `instruments`)."""
+    resp = client.get_instruments(symbol, client.Instrument.Projection.SYMBOL_SEARCH)
+    body = json.loads(resp.text) if resp.status_code == 200 else None
+    instruments = body.get("instruments") if isinstance(body, dict) else None
+    listed = isinstance(instruments, list) and any(
+        isinstance(i, dict) and i.get("symbol") == symbol for i in instruments)
+    return instrument_msg(symbol=symbol, http_status=resp.status_code, body=resp.text, listed=listed, ts=now)
+
+
+async def run_joins(daemon: "Daemon", schwab_client, stop: asyncio.Event) -> None:
+    """The universe's joins: each ticker the console's list names that is not in the universe
+    (Daemon.set_wanted puts it), looked up with Schwab as it is put, on the daemon's one client
+    (`schwab_client()`), until stop. A lookup Schwab gave no answer to is logged, shown as the
+    ticker's reason, and tried again the next time the console's list names it."""
+    while not stop.is_set():
+        took = asyncio.ensure_future(daemon.joins.get())
         stopped = asyncio.ensure_future(stop.wait())
-        await asyncio.wait({changed, stopped}, timeout=BOARD_READ_SEC, return_when=asyncio.FIRST_COMPLETED)
-        changed.cancel()
+        await asyncio.wait({took, stopped}, return_when=asyncio.FIRST_COMPLETED)
         stopped.cancel()
+        if not took.done():
+            took.cancel()
+            return
+        ticker = took.result()
+        try:
+            daemon.answered(await asyncio.to_thread(instrument_answer, schwab_client(), ticker, time.time()))
+        except Exception as e:  # noqa: BLE001 -- no answer from Schwab: shown, and asked again later
+            log.warning("universe: no instrument answer for %s: %s: %s", ticker, type(e).__name__, e)
+            daemon.not_joined[ticker] = (f"Schwab's instrument lookup did not answer for {ticker}: "
+                                         f"{type(e).__name__}: {e}")
+            daemon.asked.discard(ticker)
 
 
 def one_schwab_client(build) -> "callable":
@@ -603,8 +671,8 @@ def one_schwab_client(build) -> "callable":
 
 
 async def run() -> int:
-    """The whole daemon: writer, the two local sockets, the chain sweep and the Schwab
-    connection."""
+    """The whole daemon: writer, the two local sockets, the chain sweep, the universe's joins
+    and the Schwab connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
     from app.market_data.schwab.streaming.live_ui import serve_live_ui
     from config import build_config, load_dotenv_file
@@ -618,11 +686,12 @@ async def run() -> int:
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
-    daemon = Daemon(bus, health, board=board_tickers(db_path), board_db=db_path)
+    daemon = Daemon(bus, health, universe=recorded_universe(db_path, writer.db_path))
+    log.info("universe: %d tickers with data stored", len(daemon.universe))
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop)),
-             asyncio.create_task(run_board(daemon, stop)),
+             asyncio.create_task(run_joins(daemon, schwab_client, stop)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]

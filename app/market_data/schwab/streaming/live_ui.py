@@ -97,7 +97,8 @@ class LiveUiServer:
 
     def beat(self) -> dict:
         """The daemon's whole status (Schwab socket, symbols held and refused per service, the
-        board, health), recorded here and sent with every beat: the console's one record of it."""
+        universe and Schwab's answer for each ticker that did not join it, health), recorded here
+        and sent with every beat: the console's one record of it."""
         hb = self.heartbeat_fn()
         lmp.record_feed_heartbeat(hb)
         return hb

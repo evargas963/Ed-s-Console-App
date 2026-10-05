@@ -509,7 +509,7 @@ def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
 # ── the chains the daemon delivers ─────────────────────────────────────────────────────────────
 
 def _board_is(board):
-    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": list(board)})
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "universe": list(board)})
 
 
 @pytest.mark.parametrize("delivered_first", [True, False])
@@ -713,9 +713,3 @@ def test_a_ticker_opened_before_its_chain_gets_its_contract_when_the_chain_comes
     server._publish_levels(TK, _CONTRACTS, time.time())         # the daemon's chain is priced
     push_changes._mark(TK, push_changes.CHAIN)                  # (on the event loop)
     assert server._contract_is_for(ofs.get_active_option_contract(), TK)
-
-
-def test_an_unknown_board_is_said_so():
-    """2026-10-01 audit: with the daemon's heartbeat late, the board is unknown, never empty."""
-    lmp.record_feed_down()
-    assert "BOARD UNKNOWN" in server._status_line()

@@ -1,9 +1,9 @@
-"""The board and the option chains (DATA_FLOW decisions 1 and 7), run by the capture daemon.
+"""The option chains (DATA_FLOW decisions 1 and 7), run by the capture daemon.
 
-The board (the logging_universe table) is the background tickers. In every open session the
-daemon fetches the full chain (every expiry, every strike) of the ticker on screen back to back
-and of every board ticker in turn, without end (ChainSweep); once the market is Closed it fetches
-every board ticker once (the close values) and then nothing until the next session. Each chain
+In every open session the daemon fetches the full chain (every expiry, every strike) of the
+ticker on screen back to back and of every universe ticker (capture.Daemon.universe) in turn,
+without end (ChainSweep); once the market is Closed it fetches every universe ticker once (the
+close values) and then nothing until the next session. Each chain
 is handed to the console for the levels. The chain history: the first chain of each ticker fetched in
 each capture window -- every 30 minutes from 9:30 to the close (ET), and 15 minutes after the close
 (the day's close capture), on market days -- is written here, one row per expiry, compressed, with
@@ -26,7 +26,6 @@ from typing import Any
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from numeric_contract import schwab_number
-from production_universe import is_valid_production_ticker
 from schwab_client import fetch_full_chain, flatten_chain_contracts
 from time_et import (ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date,
                      session_label)
@@ -137,52 +136,11 @@ def capture_slot(now_ts: float) -> float | None:
     return past[-1]
 
 
-def enroll(db_path: Path | str, ticker: str, now: float) -> bool:
-    """The board's one writer: the operator's enrollment of `ticker` (its storage key) in the
-    logging_universe table, the table the console creates. The daemon calls it for the ticker the
-    operator puts on screen. True when it was not on the board; a ticker already there is left as
-    it is."""
-    key = ticker_storage_key(ticker)
-    if not is_valid_production_ticker(key):
-        raise ValueError(f"not a symbol: {ticker!r}")
-    conn = sqlite3.connect(str(db_path), timeout=60.0)
-    try:
-        cur = conn.execute(
-            "INSERT OR IGNORE INTO logging_universe (ticker, category, enrollment_source, enrolled_ts_utc, "
-            "last_seen_ts_utc) VALUES (?, 'user_persisted', 'operator', ?, ?)", (key, now, now))
-        conn.commit()
-        return cur.rowcount == 1
-    finally:
-        conn.close()
-
-
-def board_tickers(db_path: Path | str) -> list[str]:
-    """Every ticker on the board (the logging_universe table), read-only. The daemon reads it
-    while it runs (capture.run_board)."""
-    if not Path(db_path).is_file():
-        log.warning("board: %s does not exist yet (the console creates it); the board is empty", db_path)
-        return []
-    conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
-    try:
-        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='logging_universe'").fetchone():
-            log.warning("board: %s has no logging_universe table yet (the console creates it); "
-                        "the board is empty", db_path)
-            return []
-        rows = [r[0] for r in conn.execute("SELECT ticker FROM logging_universe")]
-    finally:
-        conn.close()
-    keys = {ticker_storage_key(t) for t in rows}
-    bad = sorted(t for t in rows if not is_valid_production_ticker(ticker_storage_key(t)))
-    if bad:
-        log.warning("board: rows that are not a symbol are not on the board: %s", bad)
-    return sorted(k for k in keys if is_valid_production_ticker(k))          # each row as its key
-
-
 #: contracts per chain message to the console: one message is encoded and decoded whole, so a
 #: whole chain in one ($SPX, 29,394 contracts: 40.7 MB, 924 ms to encode, measured 2026-10-01)
 #: would hold the daemon's event loop; 500 contracts take tens of milliseconds
 CHAIN_PART_CONTRACTS = 500
-#: the threads fetching chains: one for the active ticker, back to back, the rest for the board
+#: the threads fetching chains: one for the active ticker, back to back, the rest for the universe
 CHAIN_WORKERS = 8
 #: after Schwab answers 429, no chain request for this long
 RATE_LIMITED_PAUSE_SEC = 10.0
@@ -218,20 +176,20 @@ class ChainSweep:
     client (the daemon's event loop never waits on it); a ticker is fetched by one worker at a
     time. In every open session (time_et.session_label: Pre-Market, RTH, After-Hours) the active
     ticker (the one on the operator's screen, set_active) is fetched back to back, ahead of
-    everything, and every board ticker in turn, without end, by the other workers. While Closed
-    every board ticker is fetched once, its close values (a failed fetch is tried again after
-    FAILED_PAUSE_SEC), and then nothing until the next session: the close values stand. A ticker
-    that joins the board while Closed (set_board: the operator put it on screen) is fetched once
-    the same way. After a refusal or a failure
+    everything, and every universe ticker in turn, without end, by the other workers. While
+    Closed every universe ticker is fetched once, its close values (a failed fetch is tried again
+    after FAILED_PAUSE_SEC), and then nothing until the next session: the close values stand. A
+    ticker that joins the universe while Closed (joined) is fetched once the same way. After a
+    refusal or a failure
     (FAILED_PAUSE_SEC) one chain is fetched alone until one lands. Each chain is published to
     the console in parts (chain_messages); a failure is published
     with Schwab's answer. The first fetch of a ticker begun inside a capture window
     (capture_slot) is also written to the chain history."""
 
-    def __init__(self, db_path: Path | str, board: "list[str]", publish: "callable",
+    def __init__(self, db_path: Path | str, universe: "list[str]", publish: "callable",
                  clock: "callable" = time.time) -> None:
         self.db_path = db_path
-        self.board = list(board)        # the daemon's board, as it last read it (set_board)
+        self.universe = universe        # the daemon's universe itself (Daemon.universe), never a copy
         self.publish = publish          # (topic, msg) -> None, safe from any thread
         self.clock = clock              # when a fetch begins, and when its chain is received
         self._lock = threading.RLock()
@@ -245,7 +203,7 @@ class ChainSweep:
         self._paused_until = 0.0
         self._probing = False           # after a refusal or failure: one fetch at a time
                                         # until one succeeds
-        self._closed: "list[str] | None" = None    # while Closed: the board tickers whose close
+        self._closed: "list[str] | None" = None    # while Closed: the universe tickers whose close
                                                     # values are not yet fetched; None while open
 
     def set_active(self, ticker: str | None) -> None:
@@ -254,27 +212,25 @@ class ChainSweep:
             self._active = ticker
             self._changed.notify_all()      # an idle worker takes it now
 
-    def set_board(self, board: "list[str]") -> None:
-        """The board as the daemon last read it. While Closed, a ticker that has joined it is
-        fetched once (its close values), and one that has left it is not."""
+    def joined(self, ticker: str) -> None:
+        """`ticker` has joined the universe (Daemon.join): it is in the next round, and while
+        Closed it is fetched once, its close values."""
         with self._changed:
-            joined = sorted(set(board) - set(self.board))
-            self.board = list(board)
             if self._closed is not None:
-                self._closed = [t for t in self._closed if t in self.board] + joined
+                self._closed.append(ticker)
             self._changed.notify_all()
 
     def _next(self, now: float) -> str | None:
         """The next ticker to fetch, taken by the caller: the active ticker whenever no worker is
         fetching it, else the round's next. A ticker being fetched by another worker now is
         skipped. While probing, nothing is taken while any fetch is in flight. While Closed: the
-        next board ticker whose close values are not yet fetched."""
+        next universe ticker whose close values are not yet fetched."""
         with self._lock:
             if self._probing and self._fetching:
                 return None
             if session_label(datetime.fromtimestamp(now, ET)) == "Closed":
                 if self._closed is None:          # the market has just closed, or the daemon
-                    self._closed = sorted(self.board)   # started while it is Closed
+                    self._closed = sorted(self.universe)   # started while it is Closed
                 tk = next((t for t in self._closed if t not in self._fetching), None)
                 if tk is not None:
                     self._closed.remove(tk)
@@ -289,7 +245,7 @@ class ChainSweep:
                     return None             # the round ends when its last fetch is done
                 if self._round_started is not None:
                     self.round_sec = now - self._round_started
-                self._round = sorted(self.board)
+                self._round = sorted(self.universe)
                 self._round_started = now if self._round else None
             while self._round:
                 tk = self._round.pop(0)
@@ -325,11 +281,11 @@ class ChainSweep:
         return True
 
     def _done(self, ticker: str, delivered: bool) -> None:
-        """A worker's fetch of `ticker` has ended. While Closed, a board ticker whose close
+        """A worker's fetch of `ticker` has ended. While Closed, a universe ticker whose close
         values were not delivered is fetched again, after FAILED_PAUSE_SEC."""
         with self._changed:
             self._fetching.discard(ticker)
-            if not delivered and self._closed is not None and ticker in self.board \
+            if not delivered and self._closed is not None and ticker in self.universe \
                     and ticker not in self._closed:
                 self._closed.append(ticker)
                 self._paused_until = max(self._paused_until, self.clock() + FAILED_PAUSE_SEC)

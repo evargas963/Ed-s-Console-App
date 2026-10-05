@@ -98,7 +98,8 @@ def current_wanted() -> "dict":
     """Everything this console wants streamed, per Schwab service -- the ONE list sent to the
     daemon -- and `active`, the ticker on screen (push_changes.on_screen), whose chain the daemon
     fetches first. Equities (L1, 1-minute bars, news): the ticker on screen, the market context
-    and the watchlist (the daemon adds the board itself). Books: the ticker on screen (NYSE_BOOK =
+    and the watchlist (the daemon adds the universe itself, and each of these that Schwab's
+    instrument lookup lists joins it). Books: the ticker on screen (NYSE_BOOK =
     the exchange book, NASDAQ_BOOK = market-maker quotes). Options: the primary contract (L1 +
     book) plus every contract the views ask for (L1)."""
     active = push_changes.on_screen()
@@ -300,7 +301,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
 
 def _rows_wanted() -> "list[str]":
     """The price rows this console holds: every equity the daemon streams (its heartbeat's held
-    LEVELONE_EQUITIES -- what the console asked for and the board, as Schwab accepted them)."""
+    LEVELONE_EQUITIES -- what the console asked for and the universe, as Schwab accepted them)."""
     return sorted(((_lmp.daemon_status() or {}).get("held") or {}).get("LEVELONE_EQUITIES") or [])
 
 
@@ -432,7 +433,7 @@ def clear_active_option_contract(*, reason: str) -> None:
     _wanted_changed()
 
 
-#: Which stocks/indexes a screen shows a live price for. The daemon streams the board itself;
+#: Which stocks/indexes a screen shows a live price for. The daemon streams the universe itself;
 #: everything else a screen shows is requested here (the no-fallback rule means an unstreamed
 #: symbol reads UNAVAILABLE, so every shown symbol must be requested).
 #: The market context every page's header shows beside the selected ticker (Trade Desk,

@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-import live_market_plane as lmp
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from db import EdDB
@@ -82,10 +81,10 @@ def test_freshness_is_the_one_terrain_authority_not_a_second_policy(monkeypatch)
 
 
 def _board_is(board):
-    """The capture daemon's heartbeat, carrying its board (the console's one source for it)."""
+    """The capture daemon's heartbeat, carrying its universe (the console's one source for it)."""
     import live_market_plane as lmp
     now = time.time()
-    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "board": list(board)})
+    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "universe": list(board)})
 
 
 def test_while_closed_a_board_ticker_warms_and_an_off_board_one_on_screen_does_not(monkeypatch, pin_clock, view):
@@ -158,22 +157,6 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(_fresh, monk
     assert server._gamma_surface_wanted(tk)
     push_changes.unsubscribe(tk, client)            # the page closed or changed ticker
     assert not server._gamma_surface_wanted(tk)
-
-
-def test_with_the_daemon_silent_every_ticker_says_so_first(_fresh, view):
-    """With no current heartbeat no chain is coming and the board is unknown: no ticker reads
-    warming, and each reason starts with the daemon not reporting, whatever else it says."""
-    silent = "the capture daemon is not reporting (no current heartbeat): its board is unknown"
-    view(_OFF, _BOARD)                              # _OFF open on an older page; _BOARD on screen
-    with server._terrain_cache_lock:
-        server._terrain_cache[_OFF] = {"computed_ts_utc": time.time(), "spot": 100.0}   # levels, no surface
-    lmp.record_feed_heartbeat({"ts": time.time() - 100,      # the daemon's last heartbeat is old
-                               "schwab_socket_open": True, "board": [_OFF]})
-    d = _call(_OFF)
-    assert d["warming"] is False and d["reason"] == silent
-    first = _call(_BOARD)                           # on screen, its first view: no levels yet
-    assert first["warming"] is False
-    assert first["reason"] == silent + " — no terrain snapshot has been computed yet"
 
 
 def test_a_chain_schwab_refused_says_schwabs_answer(_fresh, view):

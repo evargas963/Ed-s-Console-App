@@ -241,9 +241,9 @@ def test_the_console_serves_while_the_levels_loop_waits_for_the_stored_bars():
     """2026-09-28, operator: the console window's start was "slow as molasses": the stored-levels
     load ran before the app served its first request. The levels loop runs on its own thread and
     builds nothing until the bar writer has loaded the stored bars; the console serves
-    meanwhile, and once the bars are loaded the loop publishes the board's levels. The real loop
-    and the real bar writer, on Schwab's SPY and TSLA bars of 2026-09-29/30 as the capture daemon
-    recorded them, the board SPY and TSLA. The loop is started as start_terrain_loop starts it (its
+    meanwhile, and once the bars are loaded the loop publishes the universe's levels. The real
+    loop and the real bar writer, on Schwab's SPY and TSLA bars of 2026-09-29/30 as the capture
+    daemon recorded them, the universe SPY and TSLA. The loop is started as start_terrain_loop starts it (its
     run flag set, then its thread; start_terrain_loop itself refuses to start under pytest) and
     stopped by stop_terrain_loop."""
     board = list(_PAIR)
@@ -255,7 +255,7 @@ def test_the_console_serves_while_the_levels_loop_waits_for_the_stored_bars():
     writer = threading.Thread(target=srv._bar_writer, daemon=True)
     published = lambda: all(srv.canonical_price_level_snapshot(t, now_et()) is not None for t in board)
     try:
-        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": board})
+        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "universe": board})
         loop.start()
         time.sleep(0.6)
         for t in board:                                      # the console serves while the loop waits
@@ -264,7 +264,7 @@ def test_the_console_serves_while_the_levels_loop_waits_for_the_stored_bars():
         writer.start()                                       # the bars load; the loop goes on
         deadline = time.monotonic() + 10
         while not published() and time.monotonic() < deadline:
-            lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": board})
+            lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "universe": board})
             time.sleep(0.1)
         for t in board:
             snap = srv.canonical_price_level_snapshot(t, now_et())

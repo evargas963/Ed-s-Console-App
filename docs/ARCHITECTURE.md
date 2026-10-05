@@ -35,14 +35,14 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 |---|---|
 | `app/market_data/schwab/streaming/` (capture, live_push, live_ui), `stream_spine.py`, `live_market_plane.py`, `live_price_rows.py` | `daemon/` |
 | `schwab_client.py` (Schwab REST calls) | `daemon/` |
-| `calibration/complete_chain_capture.py` (the board, the chain sweep and the chain history, DATA_FLOW decisions 1 and 7) | `daemon/` |
-| `db.py` (the parts that stay: bars, level history, the board table's schema, connection), `db_authority.py`, `db_safety.py`, `json_blob_codec.py` | `daemon/` (writes) — the console opens the database read-only |
+| `calibration/complete_chain_capture.py` (the chain sweep and the chain history, DATA_FLOW decisions 1 and 7) | `daemon/` |
+| `db.py` (the parts that stay: bars, level history, connection), `db_authority.py`, `db_safety.py`, `json_blob_codec.py` | `daemon/` (writes) — the console opens the database read-only |
 | `terrain_engine.py`, `terrain_read.py`, `terrain_atr.py`, `math_exposure_core.py`, `math_levels.py`, `math_probabilities.py`, `math_volatility.py` | `producer/` |
 | `liquidity_value_engine.py`, `liquidity_models.py` | `producer/` |
 | `app/options/order_flow/`, `app/options/contracts/`, `l1_trade_observation.py`, `micro_structure.py` | `producer/` |
 | From `server.py`: the levels loop, `_publish_levels`, `_publish_price_levels`, the gamma-surface projection | `producer/` |
 | From `server.py`: the routes, startup; `push_changes.py` (the `/api/changes` push and the ticker on screen) | `console/` |
-| `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `production_universe.py`, `numeric_contract.py` | `shared/` |
+| `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `numeric_contract.py` | `shared/` |
 | `static/` (the page, its icons, manifest and the vendored chart library) | `static/` |
 | `start_*.bat`, `runtime_preflight.py`, `live_schwab_env.py`, `launcher_port_guard.py`, `wait_for_ready_then_open.py`, `reauth_schwab.py` | stay at the root |
 | `tools/` (the git hooks and checks), `scripts/` (the test runners), `tests/`, `docs/`, the config files | stay |
@@ -52,8 +52,7 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 Each step is one change: delete what has no job, move what remains, update §2, pass the full test
 suite and the browser suite, check the running app. Nothing is copied.
 
-**db.py.** Keep, and move to `daemon/`: bars, level crosses, the board table's schema (its one
-writer, enrollment, is already the daemon's: `complete_chain_capture.enroll`), the connection. The console stops writing (DATA_FLOW decision 5); its writes go to the daemon's
+**db.py.** Keep, and move to `daemon/`: bars, level crosses, the connection. The console stops writing (DATA_FLOW decision 5); its writes go to the daemon's
 writer, into `ed_console.db`.
 
 **server.py.**

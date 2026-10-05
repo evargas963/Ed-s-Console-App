@@ -1,0 +1,15 @@
+{
+ "source": "data/stream_capture.db stream_subscriptions, the newest refusal row (ts 1791128237.3267, 2026-10-04 10:37 CT), read-only. The daemon recorded it as code -1 with schwab-py's exception text, which carries Schwab's answer: content.code 19 and content.msg as quoted below.",
+ "service": "LEVELONE_OPTIONS",
+ "command": "ADD",
+ "n_symbols": 2181,
+ "first_symbols": [
+  "TSLA  261218C00455000",
+  "TSLA  261218C00460000",
+  "TSLA  261218C00465000"
+ ],
+ "recorded_code": -1,
+ "recorded_reason": "UnexpectedResponseCode: unexpected response code: 19, msg is 'You've reached the maximum number of symbols allowed.  (LEVELONE_OPTIONS=3000, DISCARDED=1363)'",
+ "schwab_code": 19,
+ "schwab_msg": "You've reached the maximum number of symbols allowed.  (LEVELONE_OPTIONS=3000, DISCARDED=1363)"
+}

@@ -1,4 +1,4 @@
-"""db.py — the console database: level crosses and the ticker board."""
+"""db.py — the console database: level crosses."""
 
 from __future__ import annotations
 
@@ -145,7 +145,6 @@ class EdDB:
             self._bootstrap_sql_guard_suppress = True
             try:
                 self._init_schema()
-                self._ensure_logging_universe_table()
                 self._migrate_drop_session_log_v1()
                 self._migrate_drop_confluence_log_v1()
                 self._migrate_drop_news_events_v1()
@@ -189,26 +188,6 @@ class EdDB:
 
             """)
         log.info("Schema initialized")
-
-    def _ensure_logging_universe_table(self):
-        """Issue 22 — durable background-logging enrollment (additive schema)."""
-        with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS logging_universe (
-                    ticker                     TEXT PRIMARY KEY COLLATE NOCASE,
-                    category                   TEXT NOT NULL,
-                    enrollment_source          TEXT,
-                    enrolled_ts_utc            REAL NOT NULL,
-                    last_seen_ts_utc           REAL NOT NULL,
-                    last_background_log_ts_utc REAL
-                )
-                """
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_logging_universe_cat "
-                "ON logging_universe (category, enrolled_ts_utc)"
-            )
 
     def _migrate_drop_session_log_v1(self) -> None:
         """Pass 6 — drop the session_log table.

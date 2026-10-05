@@ -25,15 +25,17 @@ import pytest
 from fastapi.testclient import TestClient
 from schwab.client import Client
 from websockets.asyncio.client import connect
+from websockets.exceptions import ConnectionClosed
+from websockets.sync.server import serve as serve_sync
 
 import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
 import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
-from calibration.complete_chain_capture import FAILED_PAUSE_SEC, ChainSweep, board_tickers, chain_messages, enroll
-from db import EdDB
+from calibration.complete_chain_capture import FAILED_PAUSE_SEC, ChainSweep, chain_messages
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
-from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
+from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
 from time_et import ET, now_et
 
@@ -353,9 +355,9 @@ def _et(s: str) -> float:
     return datetime.fromisoformat(s).replace(tzinfo=ET).timestamp()
 
 
-def _paced(board: "list[str]", at: str) -> "tuple[ChainSweep, dict]":
+def _paced(universe: "list[str]", at: str) -> "tuple[ChainSweep, dict]":
     clock = {"now": _et(at)}
-    return ChainSweep("unused.db", board, lambda topic, msg: None, clock=lambda: clock["now"]), clock
+    return ChainSweep("unused.db", universe, lambda topic, msg: None, clock=lambda: clock["now"]), clock
 
 
 def _handed_out(sweep: ChainSweep, now: float, delivered: bool = True) -> "list[str]":
@@ -374,12 +376,12 @@ def _handed_out(sweep: ChainSweep, now: float, delivered: bool = True) -> "list[
                          ids=["pre-market", "rth", "after-hours", "after-hours-of-an-early-close"])
 def test_d5_in_every_open_session_the_sweep_fetches_without_end(at):
     sweep, clock = _paced(["AAA", "BBB"], at)
-    sweep.set_active("OFF")                              # on screen, off the board
+    sweep.set_active("OFF")                              # on screen, not in the universe
     assert _handed_out(sweep, clock["now"]) == ["OFF", "AAA", "BBB"]
     assert _handed_out(sweep, clock["now"] + 1) == ["OFF", "AAA", "BBB"], "and again, without end"
 
 
-def test_d5_once_closed_every_board_ticker_is_fetched_once_then_nothing_until_the_next_session():
+def test_d5_once_closed_every_universe_ticker_is_fetched_once_then_nothing_until_the_next_session():
     sweep, _ = _paced(["AAA", "BBB", "CCC"], "2026-10-02 19:59")
     sweep.set_active("OFF")
     assert sweep._next(_et("2026-10-02 19:59")) == "OFF"        # in flight when the market closes
@@ -392,74 +394,243 @@ def test_d5_once_closed_every_board_ticker_is_fetched_once_then_nothing_until_th
 
 @pytest.mark.parametrize("at", ["2026-10-03 12:00", "2026-11-26 12:00", "2026-10-01 02:00"],
                          ids=["saturday", "thanksgiving", "a-weeknight"])
-def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_a_ticker_joining_the_board_once(at):
-    """While Closed every board ticker's close values are fetched once: a board ticker put on
-    screen is not fetched again (its close values stand); a ticker put on screen off the board
-    joins it and is fetched once, like every board ticker."""
-    sweep, clock = _paced(["AAA", "BBB"], at)
+def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_a_ticker_joining_the_universe_once(at):
+    """While Closed every universe ticker's close values are fetched once: a universe ticker put
+    on screen is not fetched again (its close values stand); a ticker that joins the universe
+    (Daemon.join, once Schwab lists it) is fetched once, like every universe ticker."""
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), universe=["AAA", "BBB"])
+    sweep, clock = _paced(daemon.universe, at)
+    daemon.chains = sweep
     assert _handed_out(sweep, clock["now"]) == ["AAA", "BBB"]
     sweep.set_active("AAA")
     assert sweep._next(clock["now"] + 60) is None
     sweep.set_active("OFF")
-    sweep.set_board(["AAA", "BBB", "OFF"])
+    assert sweep._next(clock["now"] + 90) is None, "not fetched until it joins"
+    daemon.join("OFF")
     assert _handed_out(sweep, clock["now"] + 120) == ["OFF"]
     assert sweep._next(clock["now"] + 180) is None
 
 
-# ── The board: one writer, the operator's enrollment ───────────────────────────────────────
+# ── The universe: every ticker recorded, and every ticker a screen shows that Schwab lists ────
+# Real data: Schwab's instrument answers of 2026-08-20 (tests/fixtures/real_schwab_instruments_
+# 2026_08_20.json): one lists SPY, one is Schwab's empty answer `{}`; the daemon's recorded TSLA
+# bars; Schwab's refusal of 2026-10-04 (code 19). Stand-ins, named: the local server playing
+# Schwab's host and its streamer (login answered code 0); the instruments answer listing SPY is
+# Schwab's FUNDAMENTAL-projection answer (the same `instruments` list a symbol-search answer
+# carries: tests/fixtures/real_schwab_index_identity_2026_09_28.json, symbol-search of SPY lists
+# SPY); `{}` stands for Schwab's answer about a ticker it does not list ("ZZZZ").
 
-def test_a_ticker_put_on_screen_joins_the_board_through_its_one_writer_and_is_streamed_and_fetched(tmp_path):
-    """The console's wanted frame names TSLA, off the board, as the ticker on screen (Saturday,
-    Closed): the daemon enrolls it in the board table (its one writer), reads the board while it
-    runs, streams TSLA as a board ticker and fetches its close values once. A row the operator
-    adds to the table by hand is read the same way."""
-    db = tmp_path / "ed_console.db"
-    EdDB(db, allow_noncanonical=True)                   # the table, as the console creates it
+_INSTRUMENTS = json.loads((FX / "real_schwab_instruments_2026_08_20.json").read_text(encoding="utf-8"))["answers"]
+_REFUSAL = json.loads((FX / "real_schwab_stream_refusal_2026_10_04.json").read_text(encoding="utf-8"))
+
+
+def test_a_ticker_a_screen_shows_joins_the_universe_when_schwab_lists_it_for_good(tmp_path):
+    """Saturday, Closed. The universe starts as every ticker with data stored (TSLA: its bars,
+    as the daemon recorded them). The console's wanted frame, through the daemon's real socket,
+    shows SPY in the watchlist and ZZZZ on screen: the daemon asks Schwab's instrument lookup
+    once for each (never for TSLA, never again: no polling); SPY joins, is streamed on every
+    universe service and its close values are fetched once; ZZZZ does not join and the console
+    shows Schwab's answer. Schwab's answers are recorded by the daemon's writer, so a restart
+    reads SPY back as a ticker with data stored, and not ZZZZ."""
+    console_db, stream_db = tmp_path / "ed_console.db", tmp_path / "stream_capture.db"
+    writer = CaptureWriter(stream_db)
+    with sqlite3.connect(stream_db) as con:
+        for r in daemon_bars("real_daemon_bars_spy_tsla_2026_09_29_30.json", "TSLA")[:5]:
+            writer.insert(f"bar1m.{r['symbol']}", bar_msg(
+                symbol=r["symbol"], bar_start_ms=r["bar_start_ms"], open=r["open"], high=r["high"], low=r["low"],
+                close=r["close"], volume=r["volume"], src=r["src"], ts_recv=r["ts_recv"], native=r["native"],
+                schwab_ts=r["schwab_ts"]), conn=con)
+    assert capture.recorded_universe(console_db, stream_db) == ["TSLA"]
+
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), universe=capture.recorded_universe(console_db, stream_db))
     sat = _et("2026-10-03 12:00")
-    enroll(db, "SPY", sat)
-    daemon = capture.Daemon(MessageBus(), HealthRegistry(), board=board_tickers(db), board_db=db)
-    sweep, _ = _paced(daemon.board, "2026-10-03 12:00")
+    sweep, _ = _paced(daemon.universe, "2026-10-03 12:00")
     daemon.chains = sweep
-    assert _handed_out(sweep, sat) == ["SPY"]
+    assert _handed_out(sweep, sat) == ["TSLA"]
+    schwab = _LocalSchwab(instruments={"SPY": _INSTRUMENTS["spy_listed"]["body"]},
+                          unlisted=_INSTRUMENTS["none_listed"]["body"])
+    client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s", transport=schwab.transport)
 
-    async def view_tsla() -> None:
+    async def show() -> None:
         stop, stats, port = asyncio.Event(), {}, _port()
-        tasks = [asyncio.create_task(live_push.serve_live_push(daemon.bus, stop, port=port, stats=stats,
+        tasks = [asyncio.create_task(writer.run(daemon.bus.subscribe("", policy=LOG), stop=stop)),
+                 asyncio.create_task(live_push.serve_live_push(daemon.bus, stop, port=port, stats=stats,
                                                                on_wanted=daemon.set_wanted)),
-                 asyncio.create_task(capture.run_board(daemon, stop))]
+                 asyncio.create_task(capture.run_joins(daemon, lambda: client, stop))]
         try:
             for _ in range(500):
                 if stats.get("listening"):
                     break
                 await asyncio.sleep(0.01)
             async with connect(f"ws://127.0.0.1:{port}") as ws:
-                await ws.send(json.dumps({"op": "wanted", "wanted": {
-                    "LEVELONE_EQUITIES": ["TSLA"], "NYSE_BOOK": ["TSLA"], "active": "TSLA"}}))
-                end = time.monotonic() + 5.0
-                while "TSLA" not in daemon.status()["board"] and time.monotonic() < end:
+                for _ in range(2):                       # the same list twice: one lookup each
+                    await ws.send(json.dumps({"op": "wanted", "wanted": {
+                        "active": "ZZZZ", "LEVELONE_EQUITIES": ["ZZZZ", "SPY", "TSLA"], "NYSE_BOOK": ["ZZZZ"],
+                        "NASDAQ_BOOK": ["ZZZZ"]}}))
+                end = time.monotonic() + 10.0
+                while ("SPY" not in daemon.universe or "ZZZZ" not in daemon.not_joined) and time.monotonic() < end:
                     await asyncio.sleep(0.02)
+                await asyncio.sleep(0.3)
         finally:
             stop.set()
             await asyncio.gather(*tasks, return_exceptions=True)
-    asyncio.run(view_tsla())
+    try:
+        asyncio.run(show())
+    finally:
+        schwab.close()
 
-    assert daemon.status()["board"] == ["SPY", "TSLA"]
-    with sqlite3.connect(db) as con:
-        assert con.execute("SELECT enrollment_source FROM logging_universe WHERE ticker='TSLA'").fetchone() == (
-            "operator",)
-    assert "TSLA" in daemon.all_wanted()["CHART_EQUITY"]
-    assert _handed_out(sweep, sat + 60) == ["TSLA"]            # its close values, once
+    assert sorted(schwab.instruments_asked) == ["SPY", "ZZZZ"], schwab.instruments_asked
+    status = daemon.status()
+    assert status["universe"] == ["SPY", "TSLA"]
+    wanted = daemon.all_wanted()
+    for svc in capture.UNIVERSE_SERVICES:
+        assert {"SPY", "TSLA"} <= wanted[svc], svc
+    assert _handed_out(sweep, sat + 60) == ["SPY"]             # its close values, once
     assert sweep._next(sat + 120) is None
+    assert status["not_joined"]["ZZZZ"] == "Schwab's instrument lookup does not list ZZZZ (HTTP 200: {})"
 
-    enroll(db, "QQQ", sat + 180)                              # the operator, by hand
-    asyncio.run(daemon.refresh_board(sat + 181))
-    assert daemon.status()["board"] == ["QQQ", "SPY", "TSLA"]
-    assert _handed_out(sweep, sat + 240) == ["QQQ"]
+    lmp.record_feed_heartbeat(status)                          # the console's record of the daemon
+    try:
+        assert server._universe() == ["SPY", "TSLA"]
+        assert "Schwab's instrument lookup does not list ZZZZ (HTTP 200: {})" in \
+            server.terrain_staleness(None, "ZZZZ")["levels_stale_reason"]
+    finally:
+        lmp.record_feed_down()
 
-    daemon.active = "NOT A SYMBOL"                            # on screen, never enrolled
-    enroll(db, "IWM", sat + 300)
-    asyncio.run(daemon.refresh_board(sat + 301))
-    assert daemon.status()["board"] == ["IWM", "QQQ", "SPY", "TSLA"], "the board is read all the same"
+    with sqlite3.connect(stream_db) as con:
+        rows = con.execute("SELECT symbol, http_status, listed, body FROM stream_instruments_raw ORDER BY symbol").fetchall()
+    assert rows == [("SPY", 200, 1, _INSTRUMENTS["spy_listed"]["body"]), ("ZZZZ", 200, 0, "{}")]
+    assert capture.recorded_universe(console_db, stream_db) == ["SPY", "TSLA"], "the next start reads SPY back"
+
+
+def test_with_the_daemon_silent_every_ticker_says_so_first():
+    """With no current heartbeat no chain is coming and the universe is unknown: no ticker reads
+    warming, and each reason starts with the daemon not reporting, whatever else it says.
+    INDUCED CONDITION: the daemon's last heartbeat is 100 s old."""
+    import push_changes
+    silent = "the capture daemon is not reporting (no current heartbeat): its universe is unknown"
+    with_levels, first_view = "ZZQX", "ZZQY"                   # arbitrary symbols
+    with server._terrain_cache_lock:
+        server._terrain_cache[with_levels] = {"computed_ts_utc": time.time(), "spot": 100.0}   # levels, no surface
+    pages = [(tk, push_changes.subscribe(tk)) for tk in (with_levels, first_view)]   # pages open on both
+    lmp.record_feed_heartbeat({"ts": time.time() - 100, "schwab_socket_open": True, "universe": [with_levels]})
+    try:
+        d = json.loads(server.get_options_gamma_surface(with_levels).body)
+        assert d["warming"] is False and d["reason"] == silent
+        first = json.loads(server.get_options_gamma_surface(first_view).body)
+        assert first["warming"] is False
+        assert first["reason"] == silent + " — no terrain snapshot has been computed yet"
+    finally:
+        for tk, page in pages:
+            push_changes.unsubscribe(tk, page)
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(with_levels, None)
+        lmp.record_feed_down()
+
+
+def test_schwabs_refusal_of_a_subscription_is_recorded_with_its_own_code_and_message(tmp_path):
+    """The daemon logs in to Schwab's streamer (stand-in) and subscribes what the console's list
+    names; Schwab refuses the option contracts with code 19 and its message (2026-10-04, as
+    sent). The record and the console carry Schwab's code and message, not our exception text.
+    Every answer is recorded; nothing unchanged is sent again; a refused symbol is asked for
+    again only once the console's list changes."""
+    schwab = _LocalSchwab(stream_refusal={"LEVELONE_OPTIONS": (_REFUSAL["schwab_code"], _REFUSAL["schwab_msg"])})
+    client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s", transport=schwab.transport)
+    bus = MessageBus()
+    subs = bus.subscribe("sub.", policy=LOG)
+    daemon = capture.Daemon(bus, HealthRegistry(), universe=["TSLA"])
+    contracts = _REFUSAL["first_symbols"]
+    daemon.set_wanted({"LEVELONE_OPTIONS": contracts[:2]})
+    sent: list = []
+
+    async def subscribe() -> None:
+        await daemon.connect(client)
+        try:
+            await daemon.sync()
+            sent.append(len(schwab.stream_requests))
+            await daemon.sync()                                  # nothing changed: nothing sent
+            sent.append(len(schwab.stream_requests))
+            daemon.set_wanted({"LEVELONE_OPTIONS": contracts})   # the console's list changed
+            await daemon.sync()
+            sent.append(len(schwab.stream_requests))
+        finally:
+            await daemon.disconnect()
+    try:
+        asyncio.run(subscribe())
+    finally:
+        schwab.close()
+    answers = []
+    while not subs.queue.empty():
+        answers.append(subs.queue.get_nowait()[1])
+    refused = [a for a in answers if a["service"] == "LEVELONE_OPTIONS"]
+    assert [(a["code"], a["reason"], a["symbols"]) for a in refused] == [
+        (19, _REFUSAL["schwab_msg"], contracts[:2]), (19, _REFUSAL["schwab_msg"], contracts)]
+    assert all(a["code"] == 0 for a in answers if a["service"] != "LEVELONE_OPTIONS")
+    assert sorted(a["service"] for a in answers if a["code"] == 0) == sorted(capture.UNIVERSE_SERVICES), \
+        "TSLA on every universe service, once"
+    assert sent[1] == sent[0] and sent[2] == sent[1] + 1
+    assert daemon.status()["refused"]["LEVELONE_OPTIONS"] == {
+        s: f"code 19: {_REFUSAL['schwab_msg']}" for s in contracts}
+    assert daemon.held["LEVELONE_OPTIONS"] == frozenset()
+
+
+def test_a_socket_that_dies_during_a_subscription_ends_the_connection_and_refuses_nothing(tmp_path):
+    """Schwab's streamer closes the socket on the NYSE_BOOK request: the connection ends (the
+    daemon reconnects), and no symbol is recorded as refused -- a dead socket is not Schwab
+    refusing a symbol."""
+    schwab = _LocalSchwab(stream_drop={"NYSE_BOOK"})
+    client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s", transport=schwab.transport)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), universe=["TSLA"])
+
+    async def subscribe() -> None:
+        await daemon.connect(client)
+        try:
+            await daemon.sync()
+        finally:
+            await daemon.disconnect()
+    try:
+        with pytest.raises(ConnectionClosed):
+            asyncio.run(subscribe())
+    finally:
+        schwab.close()
+    assert daemon.status()["refused"] == {}
+
+
+def test_a_dropped_connection_is_replaced_and_everything_wanted_is_resubscribed(tmp_path):
+    """Schwab drops the streamer connection: the daemon logs in again on a new session that
+    holds nothing, and subscribes the universe and the console's list again. At most one
+    session is logged in at any instant."""
+    schwab = _LocalSchwab()
+    client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s", transport=schwab.transport)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), universe=["TSLA"])
+    daemon.set_wanted({"NYSE_BOOK": ["SPY"]})
+
+    async def until(cond) -> None:
+        end = time.monotonic() + 15
+        while not cond():
+            assert time.monotonic() < end, "the daemon did not get there in 15 s"
+            await asyncio.sleep(0.02)
+
+    async def run() -> None:
+        stop = asyncio.Event()
+        task = asyncio.create_task(daemon.run(lambda: client, stop))
+        try:
+            await until(lambda: schwab.logins == 1 and "SPY" in daemon.held["NYSE_BOOK"])
+            # no receive cap of ours: Schwab's frames are taken whole, whatever their size
+            # (operator 2026-10-01: no caps); the websockets default refuses a frame over 1 MiB
+            assert daemon.stream._socket.max_size is None
+            schwab.drop()
+            await until(lambda: schwab.logins == 2 and "SPY" in daemon.held["NYSE_BOOK"])
+        finally:
+            stop.set()
+            await asyncio.wait_for(task, 10)
+    try:
+        asyncio.run(run())
+    finally:
+        schwab.close()
+    subs = [(s, c, k) for s, c, k in schwab.stream_requests if c == "SUBS"]
+    assert subs.count(("NYSE_BOOK", "SUBS", "SPY,TSLA")) == 2, subs
+    assert schwab.most_live == 1
 
 
 def test_d5_a_close_fetch_that_fails_is_tried_again_after_the_pause_until_it_lands():
@@ -541,7 +712,7 @@ def test_d5_while_closed_the_price_levels_are_the_last_sessions():
 def test_d6_a_bar_pushed_before_the_stored_bars_load_builds_levels_on_the_whole_history():
     """The console's start: the daemon pushes each ticker's current bar the moment the console
     connects, before the recorded bars are loaded. The bar writer loads them first, so the levels
-    built from that bar stand on the whole history (2026-10-04: 35 board tickers' levels were
+    built from that bar stand on the whole history (2026-10-04: 35 tickers' levels were
     built from their one pushed bar, every prior-day level absent). Schwab's SPY and TSLA bars of
     2026-09-29/30 as the daemon recorded them; each ticker's newest receipt pushed, the rest loaded."""
     pushed = [_newest(_DAEMON_0929, tk)[-1] for tk in _PAIR]
@@ -761,13 +932,61 @@ class _ToLocal(httpx.BaseTransport):
 class _LocalSchwab:
     """Schwab's host, played by a local server. The token endpoint answers `token_answer`
     ("refreshed": _REFRESHED; "akamai": the captured 403 page); chains and quotes answer the
-    captured SPY chain and its quotes, or the captured 403 page while `refuse`. Every request is
-    recorded: (time, method, path, Authorization)."""
+    captured SPY chain (or `chains[symbol]`, Schwab's payload as captured) and its quotes, or the
+    captured 403 page while `refuse`. Every request is
+    recorded: (time, method, path, Authorization). The instrument lookup answers
+    `instruments[symbol]`, or `unlisted` for any other symbol (each symbol asked is recorded in
+    `instruments_asked`). The user preferences name its streamer, a local WebSocket that answers
+    every request code 0, except a service in `stream_refusal`: (code, msg); a request for a
+    service in `stream_drop` closes the socket unanswered, and so does drop(). The streamer
+    records every request (`stream_requests`: service, command, keys), every login and the most
+    sessions logged in at once."""
 
-    def __init__(self, token_answer: str = "refreshed", refuse: bool = False):
+    def __init__(self, token_answer: str = "refreshed", refuse: bool = False, instruments=None,
+                 unlisted: str = "{}", stream_refusal=None, chains=None, stream_drop=()):
         self.token_answer, self.refuse = token_answer, refuse
+        self.chains = dict(chains or {})
+        self.instruments, self.unlisted = dict(instruments or {}), unlisted
+        self.stream_refusal, self.stream_drop = dict(stream_refusal or {}), set(stream_drop)
         self.requests: list = []
+        self.instruments_asked: list = []
+        self.stream_requests: list = []
+        self.logins = self.live = self.most_live = 0
+        self.sockets: list = []
+        lock = threading.Lock()
         outer = self
+
+        def streamer(ws):
+            outer.sockets.append(ws)
+            logged_in = False
+            try:
+                for frame in ws:
+                    for req in json.loads(frame)["requests"]:
+                        svc, cmd = req["service"], req["command"]
+                        outer.stream_requests.append((svc, cmd, req["parameters"].get("keys")))
+                        if svc in outer.stream_drop:
+                            ws.close()
+                            return
+                        with lock:
+                            if (svc, cmd) == ("ADMIN", "LOGIN"):
+                                outer.logins, outer.live, logged_in = outer.logins + 1, outer.live + 1, True
+                                outer.most_live = max(outer.most_live, outer.live)
+                            elif (svc, cmd) == ("ADMIN", "LOGOUT") and logged_in:
+                                outer.live, logged_in = outer.live - 1, False
+                        code, msg = outer.stream_refusal.get(svc, (0, "stand-in: accepted"))
+                        ws.send(json.dumps({"response": [{
+                            "service": svc, "requestid": req["requestid"], "command": cmd,
+                            "SchwabClientCorrelId": req["SchwabClientCorrelId"], "timestamp": int(time.time() * 1000),
+                            "content": {"code": code, "msg": msg}}]}))
+            except ConnectionClosed:
+                pass
+            finally:
+                with lock:
+                    if logged_in:
+                        outer.live -= 1
+        self.streamer = serve_sync(streamer, "127.0.0.1", 0)
+        threading.Thread(target=self.streamer.serve_forever, daemon=True).start()
+        stream_url = f"ws://127.0.0.1:{self.streamer.socket.getsockname()[1]}"
 
         class Handler(BaseHTTPRequestHandler):
             def _send(self, status, content_type, body: bytes):
@@ -795,7 +1014,19 @@ class _LocalSchwab:
                 if outer.refuse:
                     return self._akamai()
                 if url.path == "/marketdata/v1/chains":
-                    return self._send(200, "application/json", json.dumps(_spy_chain_payload()).encode())
+                    symbol = parse_qs(url.query)["symbol"][0]
+                    payload = outer.chains[symbol] if symbol in outer.chains else _spy_chain_payload()
+                    return self._send(200, "application/json", json.dumps(payload).encode())
+                if url.path == "/marketdata/v1/instruments":
+                    symbol = parse_qs(url.query)["symbol"][0]
+                    outer.instruments_asked.append(symbol)
+                    return self._send(200, "application/json",
+                                      outer.instruments.get(symbol, outer.unlisted).encode())
+                if url.path == "/trader/v1/userPreference":
+                    return self._send(200, "application/json", json.dumps({"streamerInfo": [{
+                        "streamerSocketUrl": stream_url, "schwabClientCustomerId": "stand-in",
+                        "schwabClientCorrelId": "stand-in", "schwabClientChannel": "N9",
+                        "schwabClientFunctionId": "APIAPP"}], "offers": []}).encode())
                 symbols = parse_qs(url.query).get("symbols", [""])[0].split(",")
                 reply = {s: _SPY_1120_QUOTES[s] for s in symbols if s in _SPY_1120_QUOTES}
                 self._send(200, "application/json", json.dumps(reply).encode())
@@ -811,8 +1042,13 @@ class _LocalSchwab:
     def posts(self) -> "list[float]":
         return [t for t, method, path, _a in self.requests if method == "POST" and path == "/v1/oauth/token"]
 
+    def drop(self) -> None:
+        """Schwab drops the streamer connection."""
+        self.sockets[-1].close()
+
     def close(self) -> None:
         self.server.shutdown()
+        self.streamer.shutdown()
 
 
 def _token_file(tmp_path, expires_in_sec: float) -> Path:
@@ -905,3 +1141,38 @@ def test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until
             "two at once again"
     finally:
         schwab.close()
+
+
+def test_d3_the_daemons_chain_is_the_current_record_whole_once_all_its_parts_are_in(tmp_path):
+    """The daemon's chain sweep (capture.run_chains) fetches the universe's MRVL chain on the
+    daemon's client and publishes it in parts on its bus; the chain becomes MRVL's current
+    record only once every part is in, and a console that connects later starts with that whole
+    chain, every part in order -- never a partial one. Real data: Schwab's MRVL strike_range=ALL
+    chain of 2026-09-25 (2,432 contracts, five parts). Stand-in, named: no quote of those
+    contracts was captured, so Schwab's quotes answer holds none of them."""
+    full = json.loads((FX / "real_mrvl_full_chain_vs_strike_window.json").read_text(encoding="utf-8"))
+    schwab = _LocalSchwab(chains={"MRVL": {"symbol": "MRVL", **full["full"]}})
+    client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), universe=["MRVL"])
+    sqlite3.connect(tmp_path / "ed_console.db").close()
+
+    async def go():
+        stop = asyncio.Event()
+        sub = daemon.bus.subscribe("chain.", policy=LATEST)
+        task = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", lambda: client, stop))
+        topic, record = await asyncio.wait_for(sub.get(), timeout=30)
+        stop.set()
+        await asyncio.wait_for(task, timeout=30)
+        late = daemon.bus.subscribe("chain.", policy=LATEST)
+        return topic, record, await asyncio.wait_for(late.get(), timeout=5)
+    try:
+        topic, record, (late_topic, late_record) = asyncio.run(go())
+    finally:
+        schwab.close()
+    assert topic == late_topic == "chain.MRVL"
+    assert [m["part"] for m in record] == list(range(record[0]["parts"])) and len(record) > 1
+    assert [m["part"] for m in late_record] == list(range(late_record[0]["parts"]))
+    ofs._chain_parts.clear()
+    (tk, contracts, _ts, reason), = [o for m in late_record
+                                     for o in ofs.assemble_chain_part(json.loads(m["frame"])["msg"])]
+    assert tk == "MRVL" and reason is None and len(contracts) == full["n_full"]
