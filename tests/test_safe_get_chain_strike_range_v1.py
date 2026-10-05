@@ -16,6 +16,8 @@ from schwab_client import safe_get_chain
 
 
 class _FakeClient:
+    """STAND-IN for a schwab-py client: records each chain request's arguments."""
+
     def __init__(self):
         self.calls = []
 
