@@ -36,7 +36,7 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - Fix problems at the source, and remove what the fix replaces.
 - Clean up along the way in the area changed, listing each item. Behavior or data changes need approval.
 - Zero is a value; missing is unknown. Never treat one as the other.
-- Tests use only real captured data; an induced condition (feed down, a clock instant) is named in the test; expected results come from verified definitions, cited. No fake data.
+- Tests use only real captured data; an induced condition (feed down, a clock instant) is named in the test; expected results come from verified definitions, cited. No fake data. Writing, changing or deleting a test needs no approval; tests follow these rules and both reviewers check them.
 - Every ticker is treated the same.
 - Treat existing code, tests, and documents as claims to challenge.
 - Display live values promptly and record everything completely. Measure performance; don't assume it.
@@ -62,9 +62,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   with its reason; while Closed the close values stand until the next session. No "past" label, fallback, default,
   estimate, proxy, carry-forward, interpolation or synthetic value. Enforced by:
   `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`, `tests/test_gamma_exposure_honest_absence_v1.py`, `docs/DATA_FLOW.md` §2 D5.
-- **Change control.** A merge, a push to main, a start, stop or restart of the daemon or console and a change to a test
-  on main are put to Ed as an Allow/Deny prompt (database writes: Records stand); an operator setting (a count, a rate,
-  a switch) changes only with Ed's yes to it. Enforced by: `tools/operator_yes_guard.py`
+- **Change control.** A merge, a push to main and a start, stop or restart of the daemon or console are put to Ed as an Allow/Deny
+  prompt (database writes: Records stand; a test change needs no approval); an operator setting (a count, a rate, a switch) changes only with Ed's yes to it. Enforced by: `tools/operator_yes_guard.py`
   (`tests/test_operator_yes_guard_v1.py`); the operator setting — ENF-12.
 - **Four eyes.** Reviewers: `.claude/agents/architecture-reviewer.md`, `.claude/agents/correctness-reviewer.md`. Their
   read-only rests on their tool list (no Edit or Write), their instructions and the repo's hooks; Bash can write.
@@ -123,9 +122,10 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   Enforced by: no machine check — ENF-03.
 - A new check is a test of behavior, for a failure that happened; it fails on the old code; it starts with
   no exceptions. Enforced by: `tools/check_fails_before.py` in the required `pytest-full` job (`tests/test_check_fails_before_v1.py`) refuses a PR that
-  changes product code unless one of its changed tests fails on the base; a run with no result is refused. Exempt: a PR adding no product or test line
-  whose changes under tests/ are only pytest files deleted or losing whole top-level definitions nothing left names (a literal `name=` counts), none autouse,
-  setup/teardown_module/function, setUpModule, tearDownModule, pytest* or * (`tests/test_check_fails_before_exemption_v1.py`); its gaps (a non-literal `name=`, a module fixture overriding a conftest autouse one) and the rest — ENF-08.
+  changes product code unless one of its changed tests ran and fails on the base (a module that cannot import there runs none; no test run is refused). Exempt: a PR
+  adding no product or test line whose changes under tests/ are only pytest files deleted or losing whole top-level definitions nothing left names (a literal `name=`
+  counts), none autouse, setup/teardown_module/function, setUpModule, tearDownModule, pytest*, *, an assignment that calls, or a non-pytest decorator
+  (`tests/test_check_fails_before_exemption_v1.py`); its gaps (a non-literal `name=`, a module fixture overriding a conftest autouse one, an import's effects) and the rest — ENF-08.
 - Time is an input: a function that depends on the clock takes `now`; only an entry point (a
   route, a loop, a stream handler) reads the clock. Enforced by: no machine check — ENF-09.
 - A value that crosses a module boundary is a typed record (dataclass), not a dict of string keys;

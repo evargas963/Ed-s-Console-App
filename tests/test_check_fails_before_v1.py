@@ -67,13 +67,29 @@ def test_a_fix_whose_test_already_passed_before_is_refused(tmp_path):
 
 def test_a_fix_with_no_test_change_is_refused(tmp_path):
     root = _repo(tmp_path, {"calc.py": FIX})
-    assert cfb.violations(root, "main") == ["product code changed (calc.py) but no test under tests/ changed"]
+    assert cfb.violations(root, "main") == [
+        "product code changed (calc.py) but no test file (tests/**/test_*.py, tests/e2e/*.spec.js) was added or changed"]
 
 
-def test_a_test_of_new_code_that_cannot_import_on_the_old_code_counts_as_failing_before(tmp_path):
-    root = _repo(tmp_path, {"calc.py": FIX + "\n\ndef mid(row):\n    return (row['bid'] + row['ask']) / 2\n",
-                            "tests/test_mid.py": "from calc import mid\n\n\ndef test_mid():\n    assert mid({'bid': 1, 'ask': 3}) == 2\n"})
+MID = FIX + "\n\ndef mid(row):\n    return (row['bid'] + row['ask']) / 2\n"
+
+
+def test_a_test_module_that_cannot_import_on_the_old_code_proves_nothing(tmp_path, capsys):
+    """Ed 2026-10-05: an import error on the base is not a test failing there; no test of the module
+    ran, so nothing is proven (before, this counted as proof)."""
+    root = _repo(tmp_path, {"calc.py": MID, "tests/test_mid.py": (
+        "from calc import mid\n\n\ndef test_mid():\n    assert mid({'bid': 1, 'ask': 3}) == 2\n")})
+    assert cfb.violations(root, "main") == [
+        "no changed test ran on the old code (tests/test_mid.py): a module that cannot be imported there, "
+        "or a run with no result, proves nothing about this change"]
+    assert "proven" not in capsys.readouterr().out
+
+
+def test_a_test_of_new_code_reached_through_its_module_fails_before(tmp_path, capsys):
+    root = _repo(tmp_path, {"calc.py": MID, "tests/test_mid.py": (
+        "import calc\n\n\ndef test_mid():\n    assert calc.mid({'bid': 1, 'ask': 3}) == 2\n")})
     assert cfb.violations(root, "main") == []
+    assert capsys.readouterr().out.startswith("proven: 1 of 1 changed tests fail on the old code")
 
 
 def test_a_change_with_no_product_code_needs_no_test(tmp_path):
@@ -119,7 +135,8 @@ def test_a_page_fix_whose_spec_already_passed_before_is_refused(page_repo):
 
 def test_a_page_fix_with_no_test_change_is_refused(page_repo):
     root = page_repo({"calc.js": JS_FIX})
-    assert cfb.violations(root, "main") == ["product code changed (calc.js) but no test under tests/ changed"]
+    assert cfb.violations(root, "main") == [
+        "product code changed (calc.js) but no test file (tests/**/test_*.py, tests/e2e/*.spec.js) was added or changed"]
 
 
 def test_real_deletions_that_leave_every_remaining_test_as_it_was_have_nothing_to_fail_before(tmp_path, capsys):
@@ -134,27 +151,19 @@ def test_real_deletions_that_leave_every_remaining_test_as_it_was_have_nothing_t
         "End-to-end test: names are checked by check_end_to_end.py\n")
 
 
-def _ran_on_the_base(found: list[str], out: str) -> bool:
-    """The check took no exemption and ran the changed tests on the base: it reports them proven or refused."""
-    return "nothing to fail before" not in out and (
-        out.startswith("proven: ") or (len(found) == 1 and found[0].startswith("every changed test passes on the old code")))
-
-
 def test_real_deletions_with_an_assertion_removed_from_a_surviving_test_keep_the_rule(tmp_path, capsys):
     """251b945c's product deletions plus one assertion removed from a test that stays
     (tests/test_stream_spine_v1.py, `assert topic == "quote.SPY" and msg["last"] == 747.63`): removing
-    lines inside a test is an edit, so the changed tests are run on the old code as for any change.
-    (In this copy of a few files, one other test of that file cannot import its package on the base,
-    so whether the run proves or refuses the change is not the subject; that it runs is.)"""
+    lines inside a test is an edit, so the exemption is not taken. (The run on the base that follows
+    depends on this few-file copy, so its outcome is not asserted.)"""
     root = deletions_pr(tmp_path, "tests/test_liquidity_engine.py", "tests/test_options_order_flow_semantics_v1.py")
     spine = root / "tests" / "test_stream_spine_v1.py"
     spine.write_bytes(spine.read_bytes().replace(
         b'        assert topic == "quote.SPY" and msg["last"] == 747.63\n', b""))
     subprocess.run(["git", "commit", "-q", "-am", "weaken"], cwd=root, check=True, capture_output=True)
     assert cfb.only_deletes_whole_tests(root, "main", "tests/test_stream_spine_v1.py") is False
-    found = cfb.violations(root, "main")
-    out = capsys.readouterr().out
-    assert _ran_on_the_base(found, out), (found, out)
+    cfb.violations(root, "main")
+    assert "nothing to fail before" not in capsys.readouterr().out
 
 
 def test_real_deletions_with_a_line_removed_from_a_helper_the_tests_call_keep_the_rule(tmp_path, capsys):
@@ -170,9 +179,8 @@ def test_real_deletions_with_a_line_removed_from_a_helper_the_tests_call_keep_th
     subprocess.run(["git", "commit", "-q", "-am", "weaken a helper"], cwd=root, check=True, capture_output=True)
     assert cfb.numstat(root, "main")["tests/test_options_order_flow_semantics_v1.py"] == 0
     assert cfb.only_deletes_whole_tests(root, "main", "tests/test_options_order_flow_semantics_v1.py") is False
-    found = cfb.violations(root, "main")
-    out = capsys.readouterr().out
-    assert _ran_on_the_base(found, out), (found, out)
+    cfb.violations(root, "main")
+    assert "nothing to fail before" not in capsys.readouterr().out
 
 
 def test_real_deletions_that_edit_a_test_keep_the_rule(tmp_path):

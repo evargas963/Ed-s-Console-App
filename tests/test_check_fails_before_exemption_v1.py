@@ -19,8 +19,26 @@ from tests.test_check_end_to_end_v1 import _real_repo  # noqa: E402
 
 BARS = "tests/test_bars_from_stream_v1.py"
 WRITTEN = "tests/test_written_v1.py"
-#: a test module written for these tests: no real test file has a `name=` fixture or setUpModule
-MODULE = '''import pytest
+#: a test module written for these tests: no real test file has a `name=` fixture, setUpModule, a
+#: side-effect assignment, a fixture built by a call or a registration decorator
+MODULE = '''import atexit
+import os
+
+import pytest
+
+_ = os.environ.setdefault("ED_WRITTEN_FLAG", "1")
+
+
+def _impl():
+    yield
+
+
+_auto = pytest.fixture(autouse=True)(_impl)
+
+
+@atexit.register
+def _cleanup():
+    pass
 
 
 @pytest.fixture(name="db")
@@ -59,7 +77,8 @@ def test_deleting_conftest_whole_keeps_the_rule(tmp_path, capsys):
     not a deletion of tests; with no test file changed, the change is refused."""
     root = _pr(tmp_path, lambda r: subprocess.run(["git", "rm", "-q", "tests/conftest.py"], cwd=r, check=True))
     assert cfb.only_deletes_whole_tests(root, "main", "tests/conftest.py") is False
-    assert cfb.violations(root, "main") == ["product code changed (server.py) but no test under tests/ changed"]
+    assert cfb.violations(root, "main") == [
+        "product code changed (server.py) but no test file (tests/**/test_*.py, tests/e2e/*.spec.js) was added or changed"]
     assert "nothing to fail before" not in capsys.readouterr().out
 
 
@@ -77,7 +96,8 @@ def test_removing_setup_function_keeps_the_rule_and_a_run_with_no_result_is_refu
     assert cfb.numstat(root, "main")[BARS] == 0
     assert cfb.only_deletes_whole_tests(root, "main", BARS) is False
     assert cfb.violations(root, "main") == [
-        f"no changed test ran on the old code ({BARS}): the run gave no result, so nothing proves this change"]
+        f"no changed test ran on the old code ({BARS}): a module that cannot be imported there, "
+        "or a run with no result, proves nothing about this change"]
     assert "nothing to fail before" not in capsys.readouterr().out
 
 
@@ -109,11 +129,17 @@ def _written_pr(tmp_path: Path, removed: str) -> Path:
     '@pytest.fixture(name="db")\ndef _db_fixture():\n    return {"rows": 1}\n\n\n',
     "def setUpModule():\n    pass\n\n\n",
     "def tearDownModule():\n    pass\n\n\n",
-], ids=["fixture-named-db", "setUpModule", "tearDownModule"])
+    '_ = os.environ.setdefault("ED_WRITTEN_FLAG", "1")\n',
+    "_auto = pytest.fixture(autouse=True)(_impl)\n",
+    "@atexit.register\ndef _cleanup():\n    pass\n\n\n",
+], ids=["fixture-named-db", "setUpModule", "tearDownModule", "side-effect-assignment", "fixture-built-by-a-call",
+        "registration-decorator"])
 def test_removing_what_the_remaining_test_runs_keeps_the_rule(tmp_path, capsys, removed):
-    """A fixture registered as name="db", which the remaining test takes as `db`, and setUpModule /
-    tearDownModule, which pytest calls by name (_pytest/python.py, beside setup_module): removing any
-    of them changes what test_db runs, so it is not a deletion of tests."""
+    """A fixture registered as name="db", which the remaining test takes as `db`; setUpModule /
+    tearDownModule, which pytest calls by name (_pytest/python.py, beside setup_module); an assignment
+    whose value runs code at import; an autouse fixture built by calling pytest.fixture; a def with a
+    decorator that is not pytest's (it runs at import): removing any of them changes what runs, so it
+    is not a deletion of tests."""
     root = _written_pr(tmp_path, removed)
     assert cfb.numstat(root, "main")[WRITTEN] == 0
     assert cfb.only_deletes_whole_tests(root, "main", WRITTEN) is False

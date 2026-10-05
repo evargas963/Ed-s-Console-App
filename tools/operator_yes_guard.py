@@ -1,10 +1,11 @@
-"""OPERATOR YES GUARD: the actions an agent takes only with the operator's yes (CLAUDE.md rules
-5 and 6). PreToolUse for file edits and shell commands.
+"""OPERATOR YES GUARD: the actions an agent takes only with the operator's yes (CLAUDE.md rule 6).
+PreToolUse for file edits and shell commands.
 
-  * A test that already exists on origin/main (any file under tests/) is not edited, moved or
-    deleted. New tests are free.
   * Starting, stopping or restarting the capture daemon or the console, merging a pull request
-    and pushing to main change production.
+    and pushing to main change production. A statement starts or stops one when it runs a
+    launcher (start_capture_daemon, start_ed_console), or when its program is a process starter
+    or stopper (Start-Process, cmd, Stop-Process, taskkill, kill, ...) and it names a launcher or
+    a production process; reading a launcher (`cat start_ed_console.bat`) is not starting it.
   * Writes of a database under data/ (`data/*.db`, its -wal, -shm, -journal; AGENTS.md Records
     stand): the forms tests/test_operator_yes_guard_v1.py covers. This is not a complete barrier;
     the known gaps are listed in ENF-20 (ACTIVE_PROGRAM.md).
@@ -12,15 +13,15 @@
 For each of these the hook answers "ask": Claude Code shows the operator the action with Allow
 and Deny, and the agent cannot answer for them. Everything else passes untouched.
 
-Limits: shell commands are judged on what they run; code inside `python -c` or a heredoc body is
-data to the shell parser and is not judged here; for databases, what is judged is what the tests
+Limits: shell commands are judged on what they run; code inside `python -c` or a heredoc body, and
+a quoted string that cannot run code, are data to the shell parser (tools/shell_parse.py) and are
+not judged here; for databases, what is judged is what the tests
 cover, and the gaps are in ENF-20. The Edit and Write tools are judged in full.
 """
 from __future__ import annotations
 
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -38,10 +39,11 @@ WRITERS = frozenset({"rm", "del", "erase", "rmdir", "rd", "remove-item", "ri", "
                      "clear-content", "tee", "tee-object", "truncate", "sed", "perl"})
 GIT_WRITERS = frozenset({"rm", "mv", "restore", "checkout"})
 REDIRECT = re.compile(r"(?:^|[^<>&0-9])>{1,2}\s*(\"[^\"]*\"|'[^']*'|[^\s;&|]+)")
-#: the production processes and what starts them
+#: the production processes, what starts them, and the programs that start or stop a process
 PROCESS_NAMES = ("streaming.capture", "uvicorn", "server:app")
 LAUNCHERS = ("start_capture_daemon", "start_ed_console")
-PROCESS_VERBS = ("stop-process", "taskkill", "kill ", "start-process", "restart")
+PROCESS_HEADS = frozenset({"stop-process", "spps", "taskkill", "kill", "start-process", "saps", "start",
+                           "cmd", "powershell", "pwsh", "restart-service", "restart-computer"})
 MERGE = re.compile(r"\bgh\s+pr\s+merge\s+(\d+)|/pulls/(\d+)/merge\b", re.I)
 PUSH_MAIN = re.compile(r"\bgit\b[^\n;&|]*\bpush\b[^\n;&|]*?(?:\s|:)main\b", re.I)
 #: a database file under data/, and the programs that open one
@@ -52,34 +54,19 @@ DB_PROGRAMS = frozenset({"python", "python3", "py", "sqlite3"})
 READ_ONLY = ("mode=ro", "-readonly")
 
 
-def _test_path(arg: str) -> str | None:
-    """`tests/...` as git names it, for an argument that points into a tests/ folder."""
-    p = arg.strip("\"'").replace("\\", "/")
-    i = p.find("tests/")
-    return p[i:] if i >= 0 and (i == 0 or p[i - 1] == "/") else None
-
-
-def _on_main(rel: str) -> bool:
-    try:
-        return subprocess.run(["git", "cat-file", "-e", f"origin/main:{rel}"], cwd=str(REPO),
-                              capture_output=True, timeout=15, check=False).returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return True          # cannot tell: treat it as an existing test
-
-
-def _existing_test(arg: str) -> str | None:
-    rel = _test_path(arg)
-    return rel if rel and _on_main(rel) else None
-
-
-def _changes_test(rel: str) -> str:
-    return f"changes {rel}, a test that exists on main (rule 5: tests are not changed to pass)"
+def _runs_production(head: str, seg: str) -> bool:
+    """The statement runs a launcher, or starts or stops a process and names a launcher or a production one."""
+    low = seg.lower()
+    return Path(head).stem in LAUNCHERS or (
+        head.removesuffix(".exe") in PROCESS_HEADS and any(n in low for n in PROCESS_NAMES + LAUNCHERS))
 
 
 def _shell_reasons(cmd: str, cwd: str) -> list[str]:
     out = []
+    production = False
     for _cwd, seg in iter_command_segments(cmd, cwd):
         head, toks = segment_head(seg)
+        production = production or _runs_production(head, seg)
         args = [t for t in toks[1:] if not t.startswith("-")]
         targets = []
         if head in WRITERS and not (head == "sed" and "-i" not in toks and "--in-place" not in toks):
@@ -87,13 +74,11 @@ def _shell_reasons(cmd: str, cwd: str) -> list[str]:
         elif head == "git" and len(toks) > 1 and toks[1] in GIT_WRITERS:
             targets = args[1:]
         targets += [m.group(1) for m in REDIRECT.finditer(seg)]
-        out += [_changes_test(rel) for rel in filter(None, map(_existing_test, targets))]
         written = [args[-1]] if head in COPIERS and args else targets      # a copy writes its destination
         out += [f"writes {m.group(1)}, a database under data/ (Records stand)"
                 for m in filter(None, (DATA_DB.search(" " + t.strip("\"'")) for t in written))]
     low = cmd.lower()
-    if (any(n in low for n in PROCESS_NAMES) and any(v in low for v in PROCESS_VERBS)) \
-            or any(n in low for n in LAUNCHERS):
+    if production:
         out.append("starts, stops or restarts the daemon or the console (rule 6: production)")
     for m in MERGE.finditer(cmd):
         out.append(f"merges pull request {m.group(1) or m.group(2)} (rule 6: production)")
@@ -112,10 +97,8 @@ def reasons(payload: dict) -> list[str]:
     tool_input = payload.get("tool_input") or {}
     if tool in MUTATING_TOOLS:
         path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or tool_input.get("path") or "")
-        rel = _existing_test(path)
         db = DATA_DB.search(path)
-        return ([_changes_test(rel)] if rel else []) + \
-            ([f"writes {db.group(1)}, a database under data/ (Records stand)"] if db else [])
+        return [f"writes {db.group(1)}, a database under data/ (Records stand)"] if db else []
     if tool in BASH_TOOLS:
         return _shell_reasons(str(tool_input.get("command") or ""), str(payload.get("cwd") or ""))
     return []

@@ -121,6 +121,32 @@ def _join_dir(base: str, path: str) -> str:
 
 #: Command heads that wrap another command (its args are the real invocation).
 _CMD_WRAPPERS = frozenset({"env", "time", "nice", "sudo", "xargs", "nohup", "stdbuf"})
+#: A quoted string: data unless it can run code ("..." holding $( or a backtick) or a runner runs it.
+_QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
+_HIDDEN = re.compile(r"\x00(\d+)\x00")
+#: Heads that run a quoted argument as a command line.
+_RUNNERS = frozenset({"cmd", "start", "start-process", "saps", "powershell", "pwsh", "bash", "sh", "wsl",
+                      "invoke-expression", "iex"})
+
+
+def _statements(executed: str):
+    """The statements of a command: split at `&&`, `||`, `;`, `&`, `|` and newlines, except inside a
+    quoted string that is data. A statement whose head is a runner is split inside its quotes too."""
+    kept: list[str] = []
+
+    def hide(m: re.Match) -> str:
+        s = m.group(0)
+        if s[0] == '"' and ("$(" in s or "`" in s):
+            return s
+        kept.append(s)
+        return f"\x00{len(kept) - 1}\x00"
+
+    for part in _SEG_SPLIT.split(_QUOTED.sub(hide, executed)):
+        seg = _HIDDEN.sub(lambda m: kept[int(m.group(1))], part)
+        if segment_head(seg.strip())[0].removesuffix(".exe") in _RUNNERS:
+            yield from _SEG_SPLIT.split(seg)
+        else:
+            yield seg
 
 
 def iter_command_segments(cmd: str, payload_cwd: str = ""):
@@ -132,7 +158,7 @@ def iter_command_segments(cmd: str, payload_cwd: str = ""):
     statement cannot launder a later one."""
     executed = shell_executed_part(cmd or "")
     cur = str(payload_cwd or "")
-    for seg in _SEG_SPLIT.split(executed):
+    for seg in _statements(executed):
         seg = seg.strip()
         if not seg:
             continue

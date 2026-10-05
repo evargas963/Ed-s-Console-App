@@ -1,7 +1,7 @@
-"""tools/operator_yes_guard.py (CLAUDE.md rules 5 and 6): changing a test that exists on main,
-starting or stopping the daemon or console, a merge, a push to main and a write to a database under
-data/ are put to the operator (the hook answers "ask"); ordinary work and read-only database reads pass. Judged on real payloads, against this
-repository's origin/main, and through the hook chain the settings run."""
+"""tools/operator_yes_guard.py (CLAUDE.md rule 6): starting or stopping the daemon or console, a merge,
+a push to main and a write to a database under data/ are put to the operator (the hook answers "ask");
+ordinary work, any test change (Ed 2026-10-05: tests need no approval) and read-only commands pass.
+Judged on real payloads and through the hook chain the settings run."""
 from __future__ import annotations
 
 import json
@@ -16,7 +16,6 @@ from tools import operator_yes_guard as guard  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 EXISTING = "tests/test_check_end_to_end_v1.py"     # a test that is on origin/main
-NEW = "tests/test_never_on_main_zz_v1.py"
 
 
 def _edit(path: str) -> dict:
@@ -32,11 +31,6 @@ def _chain(payload: dict) -> subprocess.CompletedProcess:
                           input=json.dumps(payload), capture_output=True, text=True)
 
 
-def test_the_existing_test_is_on_main_and_the_new_one_is_not():
-    on_main = lambda p: subprocess.run(["git", "cat-file", "-e", f"origin/main:{p}"], cwd=REPO).returncode == 0
-    assert on_main(EXISTING) and not on_main(NEW)
-
-
 @pytest.mark.parametrize("payload", [
     _edit(str(REPO / EXISTING)),
     _edit(EXISTING),
@@ -47,8 +41,33 @@ def test_the_existing_test_is_on_main_and_the_new_one_is_not():
     _shell(f"echo x > {EXISTING}"),
     _shell(f"Remove-Item {EXISTING}", "PowerShell"),
 ])
-def test_changing_an_existing_test_is_put_to_the_operator(payload):
-    assert any(EXISTING in r for r in guard.reasons(payload))
+def test_writing_changing_or_deleting_a_test_passes(payload):
+    """Ed 2026-10-05: a test change needs no approval; the test rules and both reviewers still apply."""
+    assert guard.reasons(payload) == []
+
+
+@pytest.mark.parametrize("cmd, tool", [
+    ("cat start_capture_daemon.bat", "Bash"),
+    ("Get-Content start_ed_console.bat", "PowerShell"),
+    ("grep -n \"uvicorn\" start_ed_console.bat", "Bash"),
+    ("grep -n \"ENF-20\\|Records stand\\|copy\" tests/test_governing_docs_v1.py", "Bash"),
+    ("grep -c \"rows\\|copy\" data/ed_console.db", "Bash"),
+    ("grep -E 'a|cp' data/stream_capture.db", "Bash"),
+])
+def test_reading_a_launcher_or_a_quoted_pattern_passes(cmd, tool):
+    """Reading a launcher does not start it, and a `|` or a writer's name inside a quoted pattern is
+    data (both asked on 2026-10-05)."""
+    assert guard.reasons(_shell(cmd, tool)) == []
+
+
+@pytest.mark.parametrize("cmd, tool, what", [
+    ("cmd /c \"echo x & copy C:\\tmp\\x.db data\\ed_console.db\"", "Bash", "writes data\\ed_console.db"),
+    ("grep -c rows data/ed_console.db | cp /tmp/x.db data/ed_console.db", "Bash", "writes data/ed_console.db"),
+    (".\\start_ed_console.bat", "PowerShell", "daemon or the console"),
+    ("& \"C:\\x\\start_capture_daemon.bat\"", "PowerShell", "daemon or the console"),
+])
+def test_a_command_a_runner_or_a_pipe_runs_is_still_judged(cmd, tool, what):
+    assert any(what in r for r in guard.reasons(_shell(cmd, tool))), guard.reasons(_shell(cmd, tool))
 
 
 @pytest.mark.parametrize("cmd, what", [
@@ -65,7 +84,6 @@ def test_production_actions_are_put_to_the_operator(cmd, what):
 
 
 @pytest.mark.parametrize("payload", [
-    _edit(NEW),
     _edit(str(REPO / "server.py")),
     _shell(f"python -m pytest {EXISTING} -q"),
     _shell(f"git diff origin/main -- {EXISTING}"),

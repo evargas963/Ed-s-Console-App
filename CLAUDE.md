@@ -22,13 +22,15 @@ so a wrong number that looks right is worse than a blank with a reason.
 
 Claims, labels and verdicts are AGENTS.md's (Shared rules; Enforcement map, "Labels").
 
-Rules 5 and 6 are also enforced by machine. A hook (tools/operator_yes_guard.py) puts
-changing a test that exists on main, starting or stopping the daemon or console, a merge,
-a push to main, and the database writes its tests cover (tests/test_operator_yes_guard_v1.py)
-to me as an Allow/Deny prompt. For database writes it is not a complete barrier; its known
-gaps are listed in ENF-20 (ACTIVE_PROGRAM.md).
+Rule 6 is also enforced by machine. A hook (tools/operator_yes_guard.py) puts starting or
+stopping the daemon or console, a merge, a push to main, and the database writes its tests
+cover (tests/test_operator_yes_guard_v1.py) to me as an Allow/Deny prompt. For database writes
+it is not a complete barrier; its known gaps are listed in ENF-20 (ACTIVE_PROGRAM.md).
+Writing, changing or deleting a test needs no approval; tests follow AGENTS.md's test rules and
+both reviewers check them.
 Tell me in chat what it is for before you run it. A CI check (tools/check_fails_before.py) refuses a
-pull request that changes product code unless one of its changed tests fails on the old code.
+pull request that changes product code unless one of its changed tests fails on the old code,
+except a pull request that only removes code (the exemption in AGENTS.md "Before writing code").
 
 Every report ends like this example:
   CONFIRMED: pytest tests/test_x.py -> 12 passed; SPY, QQQ, NVDA levels match the chain.

@@ -6,8 +6,11 @@ changed test files run there: pytest files (tests/**/test_*.py) with this interp
 specs (tests/e2e/*.spec.js) with the repository's installed Playwright, against a console served
 from the base. At least one test must fail or error on the base; a change whose every test
 already passed before proves nothing about that change. The same tests passing on the PR is the
-full suite's job (the required pytest-full check). A run that gives no result (no test ran, e.g. a
-conftest that cannot load on the base) proves nothing and is refused. A PR that adds no line to any
+full suite's job (the required pytest-full check). Only a test that ran counts: a test module that
+cannot be imported on the base (a test of new code that imports a new name, a missing package)
+runs no test there, and a run where no test ran (all modules unimportable, a conftest that cannot
+load) proves nothing and is refused. A test of new code fails before by reaching the new code
+through its module (`import calc; calc.mid(...)`). A PR that adds no line to any
 product file and changes no test or only deletes whole tests has nothing to fail before: it passes
 here, and names the existing tests that cover it under "End-to-end test:" (tools/check_end_to_end.py).
 "Only deletes whole tests": no line added under tests/ (`git diff --numstat`), and every changed file
@@ -15,13 +18,13 @@ under tests/ is a pytest file (tests/**/test_*.py) that is deleted, or that equa
 its base with whole top-level definitions removed (tests, helpers, fixtures, imports, constants) that
 no name, attribute, parameter or string left in the file names (a fixture's literal `name=` counts as
 a name it defines), none an autouse fixture, setup_module, teardown_module, setUpModule,
-tearDownModule, setup_function, teardown_function, a pytest* name or a * import. Any other change
-under tests/ (conftest.py, a helper module or fixture data changed or deleted, a line removed inside
-a test, helper or fixture that stays) keeps the rule above. A test module that cannot import on the
-base counts as failing there (a test of new code cannot import the old code).
-Known gaps (ENF-08), still exempt: a fixture whose `name=` is not a string literal (a constant), and
-a module fixture that overrides a conftest autouse fixture by name; the file alone does not show
-either.
+tearDownModule, setup_function, teardown_function, a pytest* name, a * import, an assignment whose
+value calls something, or a def or class with a decorator other than pytest.fixture / pytest.mark.
+Any other change under tests/ (conftest.py, a helper module or fixture data changed or deleted, a
+line removed inside a test, helper or fixture that stays) keeps the rule above.
+Known gaps (ENF-08), still exempt: a fixture whose `name=` is not a string literal (a constant); a
+module fixture that overrides a conftest autouse fixture by name; an unused import whose import
+brings in a fixture or runs code. The file alone does not show these.
 
 The base checkout sits inside the repository so that Node finds the repository's node_modules
 from it, and runs on the same Python as this check (first on PATH for the spec's console).
@@ -92,11 +95,28 @@ def _referenced(tree: ast.Module) -> set[str]:
 def _removable(node: ast.stmt, kept: set[str]) -> bool:
     """A top-level definition (a test, a helper, a fixture, an import, a constant) that no name, attribute,
     parameter or string left in the file names, and that is not an autouse fixture, a `XUNIT` function,
-    a pytest* name or a * import. Not seen (ENF-08): a non-literal `name=`, a conftest override."""
+    a pytest* name, a * import, an assignment whose value calls something (a side effect, a fixture
+    built by calling pytest.fixture) or a def or class with a decorator other than pytest.fixture and
+    pytest.mark. Not seen (ENF-08): a non-literal `name=`, a conftest override, an import's effects."""
     names = _defined(node)
     if not names or "*" in names or names & XUNIT or any(n.startswith("pytest") for n in names):
         return False
+    if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None \
+            and any(isinstance(n, ast.Call) for n in ast.walk(node.value)):
+        return False
+    if not all(_pytest_decorator(d) for d in getattr(node, "decorator_list", [])):
+        return False
     return not _keyword(node, "autouse") and not names & kept
+
+
+def _pytest_decorator(d: ast.expr) -> bool:
+    """`@pytest.fixture` or `@pytest.mark.<x>`, called or not."""
+    d = d.func if isinstance(d, ast.Call) else d
+    dotted = []
+    while isinstance(d, ast.Attribute):
+        dotted.insert(0, d.attr)
+        d = d.value
+    return isinstance(d, ast.Name) and d.id == "pytest" and dotted[:1] in (["fixture"], ["mark"])
 
 
 def _show(root: Path, rev: str, path: str) -> str | None:
@@ -146,6 +166,8 @@ def pytest_on(tree: Path, tests: list[str], report: Path) -> tuple[int, list[str
         return 0, []
     run, failed = 0, []
     for case in ET.parse(report).getroot().iter("testcase"):
+        if not case.get("classname"):       # a module that could not be collected: no test of it ran
+            continue
         run += 1
         if case.find("failure") is not None or case.find("error") is not None:
             failed.append(f"{case.get('classname')}::{case.get('name')}")
@@ -213,11 +235,12 @@ def violations(root: Path, base: str) -> list[str]:
         return []
     tests = [f for f in files if is_test(f)]
     if not tests:
-        return [f"product code changed ({', '.join(product)}) but no test under tests/ changed"]
+        return [f"product code changed ({', '.join(product)}) but no test file (tests/**/test_*.py, "
+                "tests/e2e/*.spec.js) was added or changed"]
     run, failed = failures_on_base(root, base, files, tests)
     if not run:
-        return [f"no changed test ran on the old code ({', '.join(tests)}): the run gave no result, so "
-                "nothing proves this change"]
+        return [f"no changed test ran on the old code ({', '.join(tests)}): a module that cannot be imported "
+                "there, or a run with no result, proves nothing about this change"]
     if not failed:
         return [f"every changed test passes on the old code ({run} run: {', '.join(tests)}): "
                 "none of them proves this change"]
