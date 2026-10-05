@@ -1,17 +1,16 @@
 """
-Canonical ticker key for SQLite tables keyed like Schwab/stream ingestion: `price_bars_1m`
-and exact-match Issue 19 SQL.
+Canonical ticker key: Schwab's own symbol, the key of every value the console holds and every
+row the capture daemon records (stream_capture.db).
 
 Policy (Repair v1):
 - Equity-style symbols: uppercase alphanumeric, e.g. `spy` -> `SPY`.
 - Index-style symbols with leading `$` (e.g. `$SPX`): **preserve** `$` and uppercase
-  the remainder → `$SPX`. This matches stored bars.
+  the remainder → `$SPX`, as Schwab sends it.
 
-Do **not** strip `$` for DB retrieval or anchor keys intended to hit those rows.
+Do **not** strip `$`.
 
-P1 repair: some Schwab **index** symbols are persisted with a leading `$` while anchors,
-APIs, or human input use the bare root (`SPX` vs `$SPX`). For exact SQLite joins with
-`price_bars_1m`, bare roots listed in ``BROKER_INDEX_BARE_ROOTS`` map to the stored form.
+Schwab names **index** symbols with a leading `$` while pages and human input may use the bare
+root (`SPX` vs `$SPX`): bare roots listed in ``BROKER_INDEX_BARE_ROOTS`` map to Schwab's form.
 """
 from __future__ import annotations
 
@@ -26,8 +25,8 @@ BROKER_INDEX_BARE_ROOTS: frozenset[str] = frozenset(
 
 def ticker_storage_key(ticker: str | None) -> str:
     """
-    Normalize user/JSON ticker to the string stored in `snapshots.ticker` and
-    `price_bars_1m.ticker` for exact SQL equality.
+    Normalize user/JSON ticker to Schwab's symbol, the key the console and the capture
+    daemon's record use.
     """
     t = (ticker or "").strip()
     if not t:

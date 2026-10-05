@@ -9,10 +9,16 @@ from pathlib import Path
 
 import pytest
 
+import live_market_plane as lmp
 import server
 import time_et
+from app.options.order_flow import streaming as ofs
+from calibration.complete_chain_capture import CAPTURE_BASIS
 from instrument_identity import ticker_storage_key
+from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
+from micro_structure import Candle
 from terrain_engine import compute_terrain
+from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -153,24 +159,62 @@ def test_one_strike_holding_both_walls_is_two_sided():
         assert wall_lean(780.0, 760.0, "contains", "contains", regime, conf) == (None, None)
 
 
+#: Stand-in: ticker ZZDESK carries Schwab's SPY bars and SPY 0DTE chain, ZZDESKEM the CRWD chain
+DESK, DESK_EM = "ZZDESK", "ZZDESKEM"
+#: the levels are served after Friday 2026-09-25's close
+FRIDAY_CLOSE = datetime(2026, 9, 25, 16, 5, tzinfo=time_et.ET)
+
+
+def _forget(tk):
+    server._bars.pop(tk, None)
+    ofs._price_rows.pop(tk, None)
+    with server._terrain_cache_lock:
+        server._terrain_cache.pop(tk, None)
+    for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+        del _MATERIALIZED_SNAPSHOTS[key]
+
+
+def _priced(tk, chain, spot, ts_utc):
+    """The chain priced as the console prices a stored capture (at its own time and spot)."""
+    server._publish_levels(tk, captures=[{"et_date": datetime.fromtimestamp(ts_utc, time_et.ET).date().isoformat(),
+                                          "ts_utc": ts_utc, "spot": spot, "basis": CAPTURE_BASIS,
+                                          "contracts": [dict(c) for c in chain]}])
+    return server.terrain_cache_get(tk)
+
+
+def _live_price(tk, last):
+    """Schwab's LAST_PRICE through the daemon's price row, its feed live (the daemon beats every
+    second, so each read is marked live again)."""
+    mark_feed_live(tk)
+    lmp.record_from_level_one_equity(tk, {"LAST_PRICE": last}, received_ts=time.time())
+    publish_daemon_rows(tk)
+
+
 @pytest.fixture
-def spy_levels(monkeypatch, pin_clock):
+def spy_levels():
+    """ZZDESK's levels served after Friday's close: the SPY 0DTE chain priced at its capture
+    time, the SPY bars published by the bar writer, and the last bar's close as Schwab's
+    LAST_PRICE (stand-in). Returns (spot, terrain, serve(tf))."""
     bars = _load("real_spy_1m_bars_2026_09_24_25.json")["bars"]
     chain = _load("real_spy_0dte_chain.json")
-    pin_clock(2026, 9, 22, 12, 46)                                   # the chain's own capture time
-    terrain = {**compute_terrain("SPY", chain["chain"], chain["spot"]).to_dict(), "computed_ts_utc": time.time()}
+    _forget(DESK)
+    terrain = _priced(DESK, chain["chain"], chain["spot"], chain["ts_utc"])
     spot = bars[-1]["close"]
-    monkeypatch.setattr(server, "_liquidity_1m_bars", lambda t: bars)
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
-    monkeypatch.setattr(server, "terrain_cache_get", lambda t: terrain)
-    pin_clock(2026, 9, 25, 16, 5)
-    server._publish_price_levels("SPY")                              # as the bar writer does
-    return spot, terrain
+    for b in bars:
+        server._keep_bar(DESK, Candle(ts=b["timestamp"] / 1000, open=b["open"], high=b["high"], low=b["low"],
+                                      close=b["close"], volume=b["volume"]))
+    server._publish_price_levels(DESK, FRIDAY_CLOSE)                  # as the bar writer does
+
+    def serve(tf="1"):
+        _live_price(DESK, spot)
+        return server.levels_payload(DESK, tf, FRIDAY_CLOSE)
+    yield spot, terrain, serve
+    _forget(DESK)
 
 
 def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
-    spot, terrain = spy_levels
-    body = json.loads(server.get_levels(ticker="SPY").body)
+    spot, terrain, serve = spy_levels
+    body = serve()
     by_id = {r["id"]: r for r in body["levels"]}
     assert sum(terrain.get(gid) is not None for gid, _ in server.GAMMA_LEVELS) >= 8   # the real chain prices most
     for gid, _label in server.GAMMA_LEVELS:
@@ -185,24 +229,25 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
 
 def test_a_same_day_chain_has_no_expected_move_and_says_why(spy_levels):
     """The SPY capture lists only the 0DTE expiry; the terrain's one-day move needs one a day out."""
-    _spot, terrain = spy_levels
+    _spot, terrain, serve = spy_levels
     assert terrain.get("implied_1d_move") is None
-    body = json.loads(server.get_levels(ticker="SPY").body)
+    body = serve()
     assert not {"em_up", "em_dn"} & {r["id"] for r in body["levels"]}
     assert {"family": "expected_move", "reason": "the terrain has no implied 1-day move"} in body["families_absent"]
 
 
-def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move(spy_levels, monkeypatch, pin_clock):
-    """Real CRWD chain (expiries a day and more out). Stand-in: its capture spot as the live price;
-    the SPY bars behind the other levels are not asserted here."""
+def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move():
+    """Real CRWD chain (expiries a day and more out), priced at 2026-09-02 12:00 ET, the capture
+    day its source names (stand-in: the hour). Stand-in: its capture spot as Schwab's LAST_PRICE."""
     fx = _load("real_crwd_complete_chain_quarter.json")
-    pin_clock(2026, 9, 2, 12, 0)
-    terrain = {**compute_terrain("CRWD", [dict(c) for c in fx["chain"]], float(fx["spot"])).to_dict(),
-               "computed_ts_utc": time.time()}
     spot = float(fx["spot"])
-    monkeypatch.setattr(server, "terrain_cache_get", lambda t: terrain)
-    monkeypatch.setattr(server, "resolve_spot", lambda t, **k: (spot, "live_quote", time.time()))
-    body = json.loads(server.get_levels(ticker="SPY").body)
+    _forget(DESK_EM)
+    try:
+        terrain = _priced(DESK_EM, fx["chain"], spot, datetime(2026, 9, 2, 12, 0, tzinfo=time_et.ET).timestamp())
+        _live_price(DESK_EM, spot)
+        body = server.levels_payload(DESK_EM, "1", FRIDAY_CLOSE)
+    finally:
+        _forget(DESK_EM)
     by_id = {r["id"]: r for r in body["levels"]}
     em = terrain["implied_1d_move"]["points"]
     assert by_id["em_up"]["price"] == spot + em and by_id["em_dn"]["price"] == spot - em
@@ -214,7 +259,8 @@ def test_every_level_is_served_with_its_name_and_short_tag(spy_levels):
     """The proximity strip printed raw ids (OVERNIGHT_HIGH, PD_VAH) and the chart kept its own
     short-name table; both names are served now, from one table (LEVEL_NAMES)."""
     from liquidity_value_engine import LEVEL_NAMES
-    body = json.loads(server.get_levels(ticker="SPY").body)
+    _spot, _terrain, serve = spy_levels
+    body = serve()
     snap = [r for r in body["levels"] if r["id"] in LEVEL_NAMES]
     assert len(snap) >= 8                                    # the real SPY bars price most of them
     for r in body["levels"]:
@@ -224,13 +270,71 @@ def test_every_level_is_served_with_its_name_and_short_tag(spy_levels):
 
 
 def test_vwap_is_served_per_chart_bar(spy_levels):
-    one = json.loads(server.get_levels(ticker="SPY", tf="1").body)["vwap_series"]
-    fifteen = json.loads(server.get_levels(ticker="SPY", tf="15").body)["vwap_series"]
+    _spot, _terrain, serve = spy_levels
+    one = serve("1")["vwap_series"]
+    fifteen = serve("15")["vwap_series"]
     buckets = {}
     for r in one:                                                    # first minute stamps, last minute's value
         k = int(r[0] // 900)
         buckets[k] = [buckets[k][0] if k in buckets else r[0]] + list(r[1:])
     assert len(one) > 100 and fifteen == [buckets[k] for k in sorted(buckets)]
+
+
+def test_levels_are_served_in_ladder_order_with_distance(spy_levels):
+    """The levels panel and the Trade Desk used to sort levels, measure distance to spot and apply
+    the 0.15% near-spot rule in the page. Real SPY 1-minute bars (2026-09-24 and 25)."""
+    spot, _terrain, serve = spy_levels
+    body = serve()
+    priced = [r for r in body["levels"] if r["price"] is not None]
+    assert len(priced) > 5
+    assert [r["price"] for r in priced] == sorted((r["price"] for r in priced), reverse=True)
+    for r in priced:
+        assert r["distance"] == pytest.approx(r["price"] - spot)
+        assert "near_spot" not in r          # no proximity flag (operator 2026-09-29)
+    assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - spot))]
+
+
+def test_the_volume_profile_the_value_area_is_read_from_is_served(spy_levels):
+    """The Trade Desk reference draws the session's volume profile at the chart's left edge
+    (2026-09-28). The profile was built for the value area and dropped; /api/levels serves that
+    same profile: its POC/VAH/VAL are the served TODAY_ levels, its bins hold every RTH bar's
+    volume, and each bin says whether it is inside the value area. Real SPY 1-minute bars."""
+    _spot, _terrain, serve = spy_levels
+    body = serve()
+    vp = body["volume_profile"]
+    by_id = {r["id"]: r["price"] for r in body["levels"]}
+    assert (vp["poc"], vp["vah"], vp["val"]) == (by_id["TODAY_POC"], by_id["TODAY_VAH"], by_id["TODAY_VAL"])
+    prices = [b[0] for b in vp["bins"]]
+    assert prices == sorted(prices) and len(prices) > 100
+    assert all(b[2] == (vp["val"] <= b[0] <= vp["vah"]) for b in vp["bins"])
+    # the profile's scale is served: the POC bin's volume, the largest
+    assert vp["max_volume"] == max(b[1] for b in vp["bins"]) == next(b[1] for b in vp["bins"] if b[0] == vp["poc"])
+    at = [(datetime.fromtimestamp(b["timestamp"] / 1000, time_et.ET), b)
+          for b in _load("real_spy_1m_bars_2026_09_24_25.json")["bars"]]
+    rth = [b for d, b in at if d.date().isoformat() == "2026-09-25" and time_et.session_label(d) == "RTH"]
+    # every RTH bar's volume is in the profile; the 15:59 bar sent no volume, cannot be placed, and
+    # is counted and served (operator 2026-09-29: accounted for, not silently dropped)
+    assert sum(b[1] for b in vp["bins"]) == pytest.approx(sum(b["volume"] for b in rth if b["volume"] is not None), rel=1e-9)
+    assert (vp["bars"], vp["bars_without_volume"]) == (len(rth), sum(1 for b in rth if b["volume"] is None)) == (390, 1)
+    assert vp["basis"].startswith("Estimated volume by price")
+
+
+def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade(spy_levels):
+    """Monday 2026-09-28 21:40 ET: the Trade Desk chart drew no key level at all after the close --
+    /api/levels served 30 SPY levels and an empty by_distance, because it was measured only from a
+    live price. The spot is Schwab's last trade at any hour (operator 2026-10-01: "we use what
+    schwab gives us and we display it"): the levels are ordered, and their distance measured, from
+    it, carrying its trade time. Real SPY 1-minute bars (2026-09-24 and 25); the last trade is the
+    one the daemon captured."""
+    mark_feed_live(DESK)
+    lmp.record_from_level_one_equity(DESK, {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
+                                     received_ts=time.time())
+    publish_daemon_rows(DESK)
+    body = server.levels_payload(DESK, "1", FRIDAY_CLOSE)
+    priced = [r for r in body["levels"] if r["price"] is not None]
+    assert len(priced) > 5 and body["spot"] == 772.04 and body["spot_as_of_ts_utc"] == 1790380799.83
+    assert body["by_distance"] == [r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - 772.04))]
+    assert all(r["distance"] == r["price"] - 772.04 for r in priced)
 
 
 def test_the_desk_window_is_the_calendars_last_session_open_and_its_words_are_served():

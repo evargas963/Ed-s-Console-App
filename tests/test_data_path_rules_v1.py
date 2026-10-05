@@ -22,16 +22,20 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 from schwab.client import Client
 from websockets.asyncio.client import connect
 
+import app.options.order_flow.streaming as ofs
 import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import FAILED_PAUSE_SEC, ChainSweep, board_tickers, chain_messages, enroll
 from db import EdDB
-from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
-from time_et import ET
+from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
+from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
+from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
+from time_et import ET, now_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
 _OPT = json.loads((FX / "real_options_stream_history_samples.json").read_text(encoding="utf-8"))
@@ -482,6 +486,148 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
     st = server.terrain_staleness(_et("2026-10-01 10:00"), "ZZCLOSED", now=_et("2026-10-01 11:00"))
     assert st["levels_stale"] is True and "has not delivered this ticker" in st["levels_stale_reason"], \
         "in session, an hour-old chain is a gap"
+
+
+#: Schwab's SPY and TSLA bars as the capture daemon recorded them, Mon 2026-09-29 and Tue 09-30
+_DAEMON_0929 = daemon_bars("real_daemon_bars_spy_tsla_2026_09_29_30.json")
+_PAIR = ("SPY", "TSLA")
+
+
+def _newest(rows: list[dict], tk: str) -> list[dict]:
+    """Schwab's newest receipt of each minute of `tk`, in time order."""
+    out = {}
+    for r in sorted(rows, key=lambda r: r["ts_recv"]):
+        if r["symbol"] == tk:
+            out[r["bar_start_ms"]] = r
+    return [out[ms] for ms in sorted(out)]
+
+
+def _rth(rows: list[dict], tk: str, day: str) -> list[dict]:
+    at = [(datetime.fromtimestamp(r["bar_start_ms"] / 1000, ET), r) for r in _newest(rows, tk)]
+    return [r for d, r in at if d.date().isoformat() == day and 570 <= d.hour * 60 + d.minute < 960]
+
+
+def _forget(*tickers: str) -> None:
+    """No bar in memory or published level of `tickers` is left behind."""
+    for tk in tickers:
+        server._bars.pop(tk, None)
+        for key in [k for k in _MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+            del _MATERIALIZED_SNAPSHOTS[key]
+
+
+def test_d5_while_closed_the_price_levels_are_the_last_sessions():
+    """Schwab's SPY and TSLA bars of Mon 2026-09-29 and Tue 09-30 as the capture daemon recorded
+    them, loaded at the console's start, valued at Wed 10-01 03:00 ET (Closed): the levels served
+    are Tuesday's session's, its VWAP, value area and opening range, never an empty day's
+    (2026-10-04: every ticker showed "no RTH volume" all weekend)."""
+    closed = datetime(2026, 10, 1, 3, 0, tzinfo=ET)
+    _forget(*_PAIR)
+    record_daemon_bars(_DAEMON_0929)
+    try:
+        server._load_bars()
+        for tk in _PAIR:
+            server._publish_price_levels(tk, closed)
+            body = server.levels_payload(tk, "1", closed)
+            served = {r["id"]: r["price"] for r in body["levels"]}
+            assert {"VWAP", "TODAY_POC", "TODAY_VAH", "TODAY_VAL", "ORB_HIGH", "ORB_LOW"} <= set(served), (tk, body["families_absent"])
+            assert not {"vwap", "value_area", "opening_range"} & {f["family"] for f in body["families_absent"]}, tk
+            assert body["snapshot_as_of_ts_utc"] == _newest(_DAEMON_0929, tk)[-1]["bar_start_ms"] / 1000, tk
+            assert served["PDH"] == max(r["high"] for r in _rth(_DAEMON_0929, tk, "2026-09-29")), tk
+    finally:
+        forget_daemon_bars(_DAEMON_0929)
+        _forget(*_PAIR)
+
+
+def test_d6_a_bar_pushed_before_the_stored_bars_load_builds_levels_on_the_whole_history():
+    """The console's start: the daemon pushes each ticker's current bar the moment the console
+    connects, before the recorded bars are loaded. The bar writer loads them first, so the levels
+    built from that bar stand on the whole history (2026-10-04: 35 board tickers' levels were
+    built from their one pushed bar, every prior-day level absent). Schwab's SPY and TSLA bars of
+    2026-09-29/30 as the daemon recorded them; each ticker's newest receipt pushed, the rest loaded."""
+    pushed = [_newest(_DAEMON_0929, tk)[-1] for tk in _PAIR]
+    loaded = [r for r in _DAEMON_0929 if r not in pushed]
+    _forget(*_PAIR)
+    while not ofs.streamed_bars.empty():
+        ofs.streamed_bars.get_nowait()
+    record_daemon_bars(loaded)
+    try:
+        for r in pushed:
+            ofs._ingest_pushed(f"bar1m.{r['symbol']}", bar_msg(
+                symbol=r["symbol"], bar_start_ms=r["bar_start_ms"], open=r["open"], high=r["high"], low=r["low"],
+                close=r["close"], volume=r["volume"], src=r["src"], ts_recv=r["ts_recv"], native=r["native"],
+                schwab_ts=r["schwab_ts"]))
+        writer = threading.Thread(target=server._bar_writer, daemon=True)
+        writer.start()
+        server.stop_bar_writer(writer)
+        assert not writer.is_alive()
+        for r in pushed:
+            tk = r["symbol"]
+            snap = server.canonical_price_level_snapshot(tk, now_et())
+            tuesday = _rth(_DAEMON_0929, tk, "2026-09-30")
+            assert snap.as_of_ts_utc == r["bar_start_ms"] / 1000, tk
+            assert (snap.levels["PDL"].price, snap.levels["PDH"].price) == (
+                min(b["low"] for b in tuesday), max(b["high"] for b in tuesday)), tk
+            assert snap.degraded == [], tk
+    finally:
+        forget_daemon_bars(loaded)
+        _forget(*_PAIR)
+
+
+#: price_bars_1m as production holds it: the console's old bar store, which its quote accumulator
+#: and price-history re-seeds wrote before 2026-09-26 (no code writes or reads it now)
+_OLD_STORE_DDL = ("CREATE TABLE IF NOT EXISTS price_bars_1m (ticker TEXT NOT NULL, bar_start_ts_utc REAL NOT NULL, "
+                  "bar_end_ts_utc REAL NOT NULL, open REAL, high REAL, low REAL, close REAL NOT NULL, volume REAL, "
+                  "source TEXT NOT NULL DEFAULT 'schwab_1m_accumulator_sqlite', PRIMARY KEY (ticker, bar_start_ts_utc))")
+
+
+def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_old_store():
+    """2026-10-04 audit: the console's old bar store holds bars our quote accumulator built (one
+    sampled price a minute, no volume) and history re-seeds, and the console loaded them at its
+    start. Real data from production for SPY and TSLA on 2026-09-24: the old store's rows (its
+    built rows included) beside the daemon's record of Schwab's bars. With both present, every
+    bar the chart and the levels read is Schwab's recorded bar; a minute only the old store holds
+    is absent."""
+    fx = json.loads((FX / "real_console_store_vs_daemon_spy_tsla_2026_09_24.json").read_text(encoding="utf-8"))
+    store, daemon = fx["console_store"], fx["daemon"]
+    con = sqlite3.connect(server.get_db().db_path)
+    try:
+        con.execute(_OLD_STORE_DDL)
+        con.executemany("INSERT OR REPLACE INTO price_bars_1m VALUES (?,?,?,?,?,?,?,?,?)",
+                        [(r["ticker"], r["bar_start_ts_utc"], r["bar_end_ts_utc"], r["open"], r["high"], r["low"],
+                          r["close"], r["volume"], r["source"]) for r in store])
+        con.commit()
+    finally:
+        con.close()
+    _forget(*_PAIR)
+    record_daemon_bars(daemon)
+    try:
+        server._load_bars()
+        for tk in _PAIR:
+            recorded = {r["bar_start_ms"] / 1000: (r["open"], r["high"], r["low"], r["close"], r["volume"])
+                        for r in _newest(daemon, tk)}
+            old = {r["bar_start_ts_utc"]: (r["open"], r["high"], r["low"], r["close"], r["volume"])
+                   for r in store if r["ticker"] == tk}
+            differs = [t for t in old if t in recorded and old[t] != recorded[t]]
+            old_only = [t for t in old if t not in recorded]
+            assert differs and old_only, (tk, "the captured day must hold built rows and old-store-only minutes")
+            served = {b["t"]: (b["o"], b["h"], b["l"], b["c"], b["v"])
+                      for b in _chart_bars(tk) if b["t"] in recorded or b["t"] in old}
+            levels_input = {b["timestamp"] / 1000: (b["open"], b["high"], b["low"], b["close"], b["volume"])
+                            for b in server._liquidity_1m_bars(tk) if b["timestamp"] / 1000 in recorded or b["timestamp"] / 1000 in old}
+            assert served == recorded == levels_input, tk
+            assert not set(old_only) & set(served), tk
+    finally:
+        forget_daemon_bars(daemon)
+        _forget(*_PAIR)
+        con = sqlite3.connect(server.get_db().db_path)
+        con.execute("DROP TABLE IF EXISTS price_bars_1m")
+        con.commit()
+        con.close()
+
+
+def _chart_bars(tk: str) -> list[dict]:
+    """The bars the chart reads: /api/bars1m through the app."""
+    return TestClient(server.app).get(f"/api/bars1m?ticker={tk}&limit=12000&tf=1").json()["bars"]
 
 
 # ── D6. No live screen reads the database ───────────────────────────────────────────────────

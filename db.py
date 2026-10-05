@@ -1,10 +1,9 @@
-"""db.py — the console database: 1m bars, level crosses, daily OI and IV, the ticker board."""
+"""db.py — the console database: level crosses and the ticker board."""
 
 from __future__ import annotations
 
 import os
 import sqlite3
-import time as _wall_time
 import logging
 import threading
 from pathlib import Path
@@ -15,37 +14,13 @@ from db_authority import (
     is_canonical_db_path,
 )
 from dataclasses import dataclass, asdict, fields
-from typing import Callable, Optional, TypeVar
-
-from instrument_identity import ticker_storage_key
-from time_et import is_collect_window_bar_end_ts_utc
+from typing import Optional
 
 log = logging.getLogger(__name__)
 
-T = TypeVar("T")
-
-
-# Tier 1 only: upsert_1m_bars (short transactions on the live console DB).
-_TIER1_SNAPSHOT_WRITE_LOCK = threading.Lock()
 
 # One-time EdDB schema bootstrap (single-threaded init; avoids overlapping CREATE/migrate).
 _SCHEMA_INIT_LOCK = threading.Lock()
-
-SQLITE_BUSY_MAX_RETRIES = max(1, int(os.environ.get("ED_SQLITE_BUSY_RETRIES", "8")))
-SQLITE_BUSY_BASE_SLEEP_SEC = float(os.environ.get("ED_SQLITE_BUSY_BASE_SLEEP_SEC", "0.02"))
-SQLITE_BUSY_MAX_SLEEP_SEC = float(os.environ.get("ED_SQLITE_BUSY_MAX_SLEEP_SEC", "0.4"))
-SQLITE_LOCK_WAIT_WARN_MS = float(os.environ.get("ED_SQLITE_LOCK_WAIT_WARN_MS", "100"))
-# RC-236: the distress bar separating routine absorbed waits (INFO) from real contention
-# (WARNING). 2s ~ 5x the retry ladder's max sleep; attempt 4+ means the ladder is failing.
-SQLITE_LOCK_WAIT_DISTRESS_MS = float(os.environ.get("ED_SQLITE_LOCK_WAIT_DISTRESS_MS", "2000"))
-SQLITE_LOCK_WAIT_DISTRESS_ATTEMPT = int(os.environ.get("ED_SQLITE_LOCK_WAIT_DISTRESS_ATTEMPT", "4"))
-SQLITE_WRITE_SLOW_MS = float(os.environ.get("ED_SQLITE_WRITE_SLOW_MS", "500"))
-
-
-
-def _sqlite_busy_or_locked(exc: sqlite3.OperationalError) -> bool:
-    code = getattr(exc, "sqlite_errorcode", None)
-    return code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
 
 
 #: RC-50 SQLite access tuning (read-side accelerants for the ~30 GB WAL DB).
@@ -150,9 +125,8 @@ class LevelCrossEvent:
 class EdDB:
     """
     Main database interface for Ed Console.
-    Reads use a fresh connection per call (WAL allows concurrent readers).
-    Tier-1 writes (upsert_1m_bars) use _tier1_snapshot_write with bounded
-    busy retries. All other writes use ordinary connections + SQLite busy_timeout/WAL.
+    Reads use a fresh connection per call (WAL allows concurrent readers). Writes use
+    ordinary connections + SQLite busy_timeout/WAL.
     """
 
     def __init__(self, db_path: Path = DB_PATH, *, allow_noncanonical: bool | None = None):
@@ -189,124 +163,10 @@ class EdDB:
             maybe_install_sql_guard_on_connection(conn, self.db_path)
         return conn
 
-    def _tier1_snapshot_write(self, op: str, ticker: Optional[str], fn: Callable[[], T]) -> T:
-        """
-        Serialize 1m bar upserts with bounded sqlite busy/locked retries.
-        Retries release the tier-1 lock between attempts.
-        """
-        db_s = str(self.db_path)
-        thread_name = threading.current_thread().name
-        total_wait_lock_ms = 0.0
-        total_retry_sleep_ms = 0.0
-        last_exc: Optional[BaseException] = None
-        for attempt in range(1, SQLITE_BUSY_MAX_RETRIES + 1):
-            sleep_s = 0.0
-            lock_wait_t0 = _wall_time.perf_counter()
-            _TIER1_SNAPSHOT_WRITE_LOCK.acquire()
-            lock_wait_ms = (_wall_time.perf_counter() - lock_wait_t0) * 1000.0
-            total_wait_lock_ms += lock_wait_ms
-            if lock_wait_ms >= SQLITE_LOCK_WAIT_WARN_MS:
-                # RC-236: severity calibrated like the SSE-duplicate precedent — a wait the
-                # retry contract absorbs on an early attempt is NORMAL WAL contention under
-                # 42 writers (SQLite busy_timeout doctrine) and logs INFO; WARNING is reserved
-                # for genuine distress (a wait past the distress bar, or a deep retry), so the
-                # quiet gate measures real defects instead of routine mid-RTH lock traffic.
-                # Escalation retained: distress still WARNs.
-                distress = (lock_wait_ms >= SQLITE_LOCK_WAIT_DISTRESS_MS
-                            or attempt >= SQLITE_LOCK_WAIT_DISTRESS_ATTEMPT)
-                (log.warning if distress else log.info)(
-                    "sqlite_tier1_lock_wait op=%s ticker=%s db_path=%s wait_ms=%.1f "
-                    "attempt=%s/%s thread=%s",
-                    op,
-                    ticker,
-                    db_s,
-                    lock_wait_ms,
-                    attempt,
-                    SQLITE_BUSY_MAX_RETRIES,
-                    thread_name,
-                )
-            exec_t0 = _wall_time.perf_counter()
-            try:
-                out = fn()
-                exec_ms = (_wall_time.perf_counter() - exec_t0) * 1000.0
-                if (
-                    exec_ms >= SQLITE_WRITE_SLOW_MS
-                    or attempt > 1
-                    or total_wait_lock_ms >= SQLITE_LOCK_WAIT_WARN_MS
-                ):
-                    log.info(
-                        "sqlite_tier1_ok op=%s ticker=%s db_path=%s attempts=%s exec_ms=%.1f "
-                        "lock_wait_ms_total=%.1f retry_sleep_ms_total=%.1f thread=%s",
-                        op,
-                        ticker,
-                        db_s,
-                        attempt,
-                        exec_ms,
-                        total_wait_lock_ms,
-                        total_retry_sleep_ms,
-                        thread_name,
-                    )
-                return out
-            except sqlite3.OperationalError as e:
-                last_exc = e
-                retryable = _sqlite_busy_or_locked(e)
-                if not retryable or attempt >= SQLITE_BUSY_MAX_RETRIES:
-                    log.error(
-                        "sqlite_tier1_fail op=%s ticker=%s db_path=%s attempts=%s thread=%s err=%s",
-                        op,
-                        ticker,
-                        db_s,
-                        attempt,
-                        thread_name,
-                        e,
-                    )
-                    raise
-                sleep_s = min(
-                    SQLITE_BUSY_MAX_SLEEP_SEC,
-                    SQLITE_BUSY_BASE_SLEEP_SEC * (2 ** (attempt - 1)),
-                )
-                log.warning(
-                    "sqlite_tier1_busy_retry op=%s ticker=%s db_path=%s attempt=%s/%s sleep_s=%.3f "
-                    "thread=%s err=%s",
-                    op,
-                    ticker,
-                    db_s,
-                    attempt,
-                    SQLITE_BUSY_MAX_RETRIES,
-                    sleep_s,
-                    thread_name,
-                    e,
-                )
-            finally:
-                _TIER1_SNAPSHOT_WRITE_LOCK.release()
-            if sleep_s > 0:
-                total_retry_sleep_ms += sleep_s * 1000.0
-                _wall_time.sleep(sleep_s)
-        assert last_exc is not None
-        raise last_exc
-
-
-
     def _init_schema(self):
         """Create all tables if they don't exist. Safe to call on every startup."""
         with self._connect() as conn:
             conn.executescript("""
-
-            -- Schwab's streamed 1m bars (server._write_streamed_bar -> upsert_1m_bars)
-            CREATE TABLE IF NOT EXISTS price_bars_1m (
-                ticker              TEXT    NOT NULL,
-                bar_start_ts_utc    REAL    NOT NULL,
-                bar_end_ts_utc      REAL    NOT NULL,
-                open                REAL,
-                high                REAL,
-                low                 REAL,
-                close               REAL    NOT NULL,
-                volume              REAL,
-                source              TEXT    NOT NULL DEFAULT 'schwab_1m_accumulator_sqlite',
-                PRIMARY KEY (ticker, bar_start_ts_utc)
-            );
-            CREATE INDEX IF NOT EXISTS idx_bars_1m_ticker_start
-                ON price_bars_1m(ticker, bar_start_ts_utc);
 
             -- ── Level cross events ────────────────────────────────────────────
             CREATE TABLE IF NOT EXISTS level_crosses (
@@ -399,55 +259,6 @@ class EdDB:
                 conn.execute("DROP TABLE IF EXISTS confluence_log")
             except sqlite3.OperationalError as exc:
                 log.warning("drop confluence_log failed: %s", exc)
-
-    def upsert_1m_bars(self, ticker: str, bars: list) -> int:
-        """Write Schwab's streamed 1m bars to price_bars_1m. `bars` are Candle objects from
-        server._write_streamed_bar: ts is the bar start in epoch seconds, OHLC already read with
-        schwab_number. A bar off the minute grid is refused and counted. Only bars ending in the
-        RC-183 collect window are persisted. Returns the rows written."""
-        tkr = ticker_storage_key(ticker)
-        rows = []
-        off_grid = 0
-        outside_window = 0
-        for b in bars:
-            if b.ts % 60 != 0:
-                off_grid += 1
-                continue
-            bar_end = b.ts + 60.0
-            if not is_collect_window_bar_end_ts_utc(bar_end):
-                outside_window += 1
-                continue
-            rows.append((tkr, b.ts, bar_end, b.open, b.high, b.low, b.close, b.volume))
-        if off_grid:
-            log.warning("upsert_1m_bars %s: %d bar(s) off the minute grid refused", tkr, off_grid)
-        if outside_window:
-            log.debug("upsert_1m_bars %s: %d bar(s) outside the collect window not persisted",
-                      tkr, outside_window)
-        if not rows:
-            return 0
-
-        def _do() -> int:
-            with self._connect() as conn:
-                conn.executemany(
-                    """
-                    INSERT INTO price_bars_1m (ticker, bar_start_ts_utc, bar_end_ts_utc,
-                        open, high, low, close, volume)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(ticker, bar_start_ts_utc) DO UPDATE SET
-                        bar_end_ts_utc = excluded.bar_end_ts_utc,
-                        open = excluded.open,
-                        high = excluded.high,
-                        low = excluded.low,
-                        close = excluded.close,
-                        volume = excluded.volume,
-                        source = excluded.source
-                    """,
-                    rows,
-                )
-            return len(rows)
-
-        return self._tier1_snapshot_write("upsert_1m_bars", tkr, _do)
-
 
     # ════════════════════════════════════════════════════════════════════════
     # LEVEL CROSS OPERATIONS
