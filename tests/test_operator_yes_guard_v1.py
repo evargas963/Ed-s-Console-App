@@ -95,6 +95,24 @@ def test_a_write_to_a_database_under_data_is_put_to_the_operator(payload, db):
     assert any(f"{db}, a database under data/" in r for r in guard.reasons(payload)), guard.reasons(payload)
 
 
+@pytest.mark.parametrize("cmd, tool, db", [
+    ("cp /tmp/other.db data/ed_console.db", "Bash", "data/ed_console.db"),
+    ("Copy-Item C:\\tmp\\x.db data\\ed_console.db -Force", "PowerShell", "data\\ed_console.db"),
+    ("cp /tmp/other.db-wal data/stream_capture.db-wal", "Bash", "data/stream_capture.db-wal"),
+])
+def test_a_copy_over_a_database_under_data_is_put_to_the_operator(cmd, tool, db):
+    """A copy replaces the whole record without opening it (re-review 2026-10-05: these passed silently)."""
+    assert f"writes {db}, a database under data/ (Records stand)" in guard.reasons(_shell(cmd, tool))
+
+
+@pytest.mark.parametrize("cmd, tool", [
+    ("cp data/ed_console.db /tmp/ed_console_copy.db", "Bash"),
+    ("Copy-Item data\\stream_capture.db C:\\tmp\\copy.db", "PowerShell"),
+])
+def test_copying_a_database_out_of_data_passes(cmd, tool):
+    assert guard.reasons(_shell(cmd, tool)) == []
+
+
 @pytest.mark.parametrize("cmd", [
     ".venv/Scripts/python.exe -c \"import sqlite3; c = sqlite3.connect('file:data/ed_console.db?mode=ro', uri=True); "
     "print(c.execute('SELECT COUNT(*) FROM level_crosses').fetchone())\"",

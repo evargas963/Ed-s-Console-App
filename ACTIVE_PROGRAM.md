@@ -39,7 +39,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 | ENF-17 | QUEUED | First gate (`AGENTS.md` Shared rules): the canonical derived register (`docs/DATA_FLOW.md` §3.6) and a check that every derived value served is in it, and that no served value computes a field `docs/schwab_fields.csv` lists. |
 | ENF-18 | QUEUED | System of record: a reconciliation of what we store and show against what Schwab sent, each difference reported, never plugged. |
 | ENF-19 | QUEUED | Four eyes: the PR's "Architecture review:" and "Correctness review:" are reports of the two reviewers (`.claude/agents/`) on the PR's final commit; until a check exists, Ed's review. The reviewers' read-only rests on their tool list (no Edit or Write), their instructions and the repo's hooks; their Bash can write, and no hook refuses a reviewer's write. |
-| ENF-20 | QUEUED | Records stand, database writes: `tools/operator_yes_guard.py` asks only when a shell command names a `data/*.db` path without `mode=ro` / `-readonly`, or an Edit/Write targets one. A script that opens a database without naming it on the command line, and a command that opens one database read-only and writes another, are not seen. |
+| ENF-20 | QUEUED | Records stand, database writes: `tools/operator_yes_guard.py` asks for an Edit/Write of a `data/*.db`, a shell command that writes one as its target (a copy's destination, a writer's path, a redirect), and a python or sqlite3 command naming one without `mode=ro` / `-readonly`. A script that opens a database without naming it on the command line, and a command that opens one database read-only and writes another, are not seen. |
 
 ## Phase 1 — restore and stabilize
 

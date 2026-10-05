@@ -612,7 +612,8 @@ E5, the chain's top-level fields and inTheMoney (call: strike below underlyingPr
 
 E7, Schwab's market hours (raw files under schwab_field_inventory/market_hours/raw; the lines EQ, EQO
 and IND): equity pre-market 07:00–09:30, regular 09:30–16:00, post-market 16:00–20:00 ET on 2026-05-05 and
-2026-08-20; equity options (EQO) 09:30–16:00; index options (IND) 09:30–16:15.
+2026-08-20; equity options (EQO) 09:30–16:00; index options (IND) 09:30–16:15. The command also prints
+the bond, forex and futures markets' lines, which no row uses.
 
     python -c "
     import glob, json
@@ -626,7 +627,9 @@ E8, an option's last trading day printed as its UTC date (the Structures panel's
     # 2026-08-21, for SPY's 2026-08-20 expiry, whose lastTradingDay is 1787270400000
     # (schwab_field_inventory/chains/raw/chain_SPY_default_20260820T130413Z.json)
 
-E10, every clock read in product code at 26ddc457 (90 lines, less 3 docstring lines: 87 sites):
+E10, every clock read in product code at 26ddc457 (90 lines, less the 3 that are docstrings,
+math_levels.py:201, terrain_engine.py:719 and time_et.py:190: 87 sites; time_et.py:26, the definition
+of now_et, is K01):
 
     git grep -nE "now_et\(|time\.time\(|datetime\.now\(|datetime\.utcnow\(|time\.monotonic\(|date\.today\(|time\.perf_counter\(|_now_et\(|_time\.time\(" 26ddc457 -- "*.py" ":!tests" ":!tools"
     git grep -nE "Date\.now\(\)|new Date\(\)" 26ddc457 -- "static/js/*.js"
@@ -698,8 +701,9 @@ behavior (AGENTS.md).
    and kind (Schwab's or computed) are measured read-only first; reclaiming space (VACUUM) is an
    offline maintenance window, never part of a code change. Enforced by: deleting or moving the
    database files is refused by the agent hook `tools/operator_law_guard.py`
-   (`tests/test_protected_paths_v1.py`); a write to a database file is put to Ed by
-   `tools/operator_yes_guard.py` (`tests/test_operator_yes_guard_v1.py`); a table drop — ENF-16.
+   (`tests/test_protected_paths_v1.py`); an edit or shell write of a database file, and a python
+   or sqlite3 command naming one without `mode=ro`, are put to Ed by `tools/operator_yes_guard.py`
+   (`tests/test_operator_yes_guard_v1.py`); a script that opens one unnamed — ENF-20; a table drop — ENF-16.
 7. **Chain history is kept for research.** Schwab's API has no past option chains: a chain not
    saved is gone. One table holds it (§4.2): full chain, every 30 minutes, market hours only,
    compressed, with Schwab's own underlying price. Levels are not stored as history; research

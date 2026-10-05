@@ -24,8 +24,9 @@ Claims, labels and verdicts are AGENTS.md's (Shared rules; Enforcement map, "Lab
 
 Rules 5 and 6 are also enforced by machine. A hook (tools/operator_yes_guard.py) puts
 changing a test that exists on main, starting or stopping the daemon or console, a merge,
-a push to main, and a command or edit that names a data/*.db file without mode=ro to me as
-an Allow/Deny prompt (a script that opens a database without naming it is not seen: ENF-20);
+a push to main, an edit or a shell write (copy, move, redirect) of a data/*.db file, and a
+python or sqlite3 command naming one without mode=ro to me as an Allow/Deny prompt (a script
+that opens a database without naming it is not seen: ENF-20);
 tell me in chat what it is for before you run it. A CI check (tools/check_fails_before.py) refuses a
 pull request that changes product code unless one of its changed tests fails on the old code.
 

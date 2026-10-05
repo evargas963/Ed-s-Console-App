@@ -217,17 +217,18 @@ def _real_repo(tmp_path: Path, commit: str, paths: list[str]) -> Path:
     return tmp_path
 
 
-def deletions_pr(tmp_path: Path, leave_out: str | None = None) -> Path:
+def deletions_pr(tmp_path: Path, *leave_out: str) -> Path:
     """251b945c's product deletions and two of its test changes (an edit of test_liquidity_engine.py,
     a deletion in test_options_order_flow_semantics_v1.py), applied to main 26ddc457, less the
-    change to `leave_out`. The liquidity test's own modules are there so that it runs."""
+    changes to `leave_out`. The liquidity and spine tests' own modules are there so that they run."""
     root = _real_repo(tmp_path, "26ddc457", ["schwab_client.py", "server.py", "stream_spine.py",
                                              "liquidity_value_engine.py", "liquidity_models.py", "time_et.py",
                                              "instrument_identity.py", "numeric_contract.py",
+                                             "db_authority.py", "runtime_layout.py",
                                              "tests/test_liquidity_engine.py",
                                              "tests/test_options_order_flow_semantics_v1.py",
                                              "tests/test_stream_spine_v1.py"])
-    subprocess.run(["git", "apply", *([f"--exclude={leave_out}"] if leave_out else []), str(DELETIONS)],
+    subprocess.run(["git", "apply", *(f"--exclude={p}" for p in leave_out), str(DELETIONS)],
                    cwd=root, check=True, capture_output=True)
     subprocess.run(["git", "commit", "-q", "-am", "deletions"], cwd=root, check=True, capture_output=True)
     return root

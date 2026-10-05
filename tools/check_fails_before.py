@@ -7,9 +7,11 @@ specs (tests/e2e/*.spec.js) with the repository's installed Playwright, against 
 from the base. At least one test must fail or error on the base; a change whose every test
 already passed before proves nothing about that change. The same tests passing on the PR is the
 full suite's job (the required pytest-full check). A PR that adds no line to any product file and
-changes no test or only deletes tests (0 added lines under tests/, `git diff --numstat`) has nothing
-to fail before: it passes here, and names the existing tests that cover it under "End-to-end test:"
-(tools/check_end_to_end.py). A deletion that also edits a test keeps the rule above.
+changes no test or only deletes whole tests has nothing to fail before: it passes here, and names
+the existing tests that cover it under "End-to-end test:" (tools/check_end_to_end.py). "Only deletes
+whole tests": no line added under tests/ (`git diff --numstat`), every changed file under tests/ is
+a pytest file or deleted, and every test function left in it is exactly as it was on the base. A
+line removed inside a surviving test is an edit and keeps the rule above.
 
 The base checkout sits inside the repository so that Node finds the repository's node_modules
 from it, and runs on the same Python as this check (first on PATH for the spec's console).
@@ -21,6 +23,7 @@ check itself failed (git unavailable, the base unknown).
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import shutil
@@ -36,6 +39,36 @@ from check_end_to_end import ToolError, _git, is_product, numstat  # noqa: E402
 
 def changed(root: Path, base: str) -> list[str]:
     return [f for f in _git(root, "diff", "--name-only", "--diff-filter=AMR", f"{base}...HEAD").splitlines() if f]
+
+
+def _tests_in(source: str) -> dict[str, str]:
+    """{Class.test or test: its code} for each test function of a pytest file, line numbers aside."""
+    found = {}
+    for node in ast.parse(source).body:
+        members = [(f"{node.name}.", n) for n in node.body] if isinstance(node, ast.ClassDef) else [("", node)]
+        for prefix, fn in members:
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name.startswith("test"):
+                found[prefix + fn.name] = ast.dump(fn)
+    return found
+
+
+def _show(root: Path, rev: str, path: str) -> str | None:
+    shown = subprocess.run(["git", "show", f"{rev}:{path}"], cwd=root, capture_output=True,
+                           text=True, encoding="utf-8")
+    return shown.stdout if shown.returncode == 0 else None
+
+
+def only_deletes_whole_tests(root: Path, base: str, path: str) -> bool:
+    """`path`, under tests/ with no line added, is deleted, or is a pytest file whose every
+    remaining test function is exactly as it was on the base."""
+    now = _show(root, "HEAD", path)
+    if now is None:
+        return True
+    before = _show(root, _git(root, "merge-base", base, "HEAD").strip(), path)
+    if not is_pytest(path) or before is None:
+        return False
+    old = _tests_in(before)
+    return all(old.get(name) == code for name, code in _tests_in(now).items())
 
 
 def is_pytest(path: str) -> bool:
@@ -116,10 +149,12 @@ def violations(root: Path, base: str) -> list[str]:
     if not product:
         return []
     added = numstat(root, base)
-    if not any(n for f, n in added.items() if is_product(f) or f.startswith("tests/")):
+    in_tests = [f for f in added if f.startswith("tests/")]
+    if not any(n for f, n in added.items() if is_product(f) or f in in_tests) \
+            and all(only_deletes_whole_tests(root, base, f) for f in in_tests):
         print(f"product code only removed ({', '.join(sorted(f for f in added if is_product(f)))}) and no test "
-              "added to or changed: nothing to fail before; the existing tests its End-to-end test: names are "
-              "checked by check_end_to_end.py")
+              "changed except whole tests deleted: nothing to fail before; the existing tests its "
+              "End-to-end test: names are checked by check_end_to_end.py")
         return []
     tests = [f for f in files if is_test(f)]
     if not tests:

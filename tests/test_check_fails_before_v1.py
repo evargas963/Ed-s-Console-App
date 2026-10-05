@@ -122,21 +122,39 @@ def test_a_page_fix_with_no_test_change_is_refused(page_repo):
     assert cfb.violations(root, "main") == ["product code changed (calc.js) but no test under tests/ changed"]
 
 
-def test_real_deletions_that_only_delete_tests_have_nothing_to_fail_before(tmp_path, capsys):
-    """251b945c's product deletions with its test deletion in test_options_order_flow_semantics_v1.py
-    and without its test edit: no product line and no test line added."""
-    root = deletions_pr(tmp_path, leave_out="tests/test_liquidity_engine.py")
+def test_real_deletions_that_leave_every_remaining_test_as_it_was_have_nothing_to_fail_before(tmp_path, capsys):
+    """251b945c's product deletions with its deletion of an unused helper in
+    test_options_order_flow_semantics_v1.py and without its test edit: no line added, every test
+    function left is exactly as it was."""
+    root = deletions_pr(tmp_path, "tests/test_liquidity_engine.py")
     assert cfb.violations(root, "main") == []
     assert capsys.readouterr().out == (
-        "product code only removed (schwab_client.py, server.py, stream_spine.py) and no test added to or "
-        "changed: nothing to fail before; the existing tests its End-to-end test: names are checked by "
-        "check_end_to_end.py\n")
+        "product code only removed (schwab_client.py, server.py, stream_spine.py) and no test changed except "
+        "whole tests deleted: nothing to fail before; the existing tests its End-to-end test: names are "
+        "checked by check_end_to_end.py\n")
+
+
+def test_real_deletions_with_an_assertion_removed_from_a_surviving_test_keep_the_rule(tmp_path, capsys):
+    """251b945c's product deletions plus one assertion removed from a test that stays
+    (tests/test_stream_spine_v1.py, `assert topic == "quote.SPY" and msg["last"] == 747.63`): removing
+    lines inside a test is an edit, so the changed tests are run on the old code as for any change.
+    (In this copy of a few files, one other test of that file cannot import its package on the base,
+    so the run itself proves nothing here; what is tested is that the exemption is not taken.)"""
+    root = deletions_pr(tmp_path, "tests/test_liquidity_engine.py", "tests/test_options_order_flow_semantics_v1.py")
+    spine = root / "tests" / "test_stream_spine_v1.py"
+    spine.write_bytes(spine.read_bytes().replace(
+        b'        assert topic == "quote.SPY" and msg["last"] == 747.63\n', b""))
+    subprocess.run(["git", "commit", "-q", "-am", "weaken"], cwd=root, check=True, capture_output=True)
+    assert cfb.only_deletes_whole_tests(root, "main", "tests/test_stream_spine_v1.py") is False
+    cfb.violations(root, "main")
+    out = capsys.readouterr().out
+    assert "nothing to fail before" not in out and out.startswith("proven: "), out
 
 
 def test_real_deletions_that_edit_a_test_keep_the_rule(tmp_path):
     """251b945c's product deletions with its edit of test_liquidity_engine.py (a parameter dropped from a
     helper): the edited test passes on the old code, so the change is refused as before."""
-    root = deletions_pr(tmp_path, leave_out="tests/test_options_order_flow_semantics_v1.py")
+    root = deletions_pr(tmp_path, "tests/test_options_order_flow_semantics_v1.py")
     assert cfb.violations(root, "main") == [
         "every changed test passes on the old code (19 run: tests/test_liquidity_engine.py): "
         "none of them proves this change"]
