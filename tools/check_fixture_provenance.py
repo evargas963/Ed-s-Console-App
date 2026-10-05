@@ -1,7 +1,7 @@
 """Commit hook: a fixture a commit adds or changes is the database record it names, re-queried.
 
-Each staged added or modified tests/fixtures/**/*.json (its staged content) is refused unless it
-carries a top-level `provenance` block and its `rows` equal, exactly, what the block's query returns
+Each staged added, modified, renamed or copied tests/fixtures/**/*.json (its staged content) is
+refused unless it carries a top-level `provenance` block and its `rows` equal, exactly, what the block's query returns
 now from the named database opened read-only:
 
     "provenance": {
@@ -13,18 +13,25 @@ now from the named database opened read-only:
     },
     "rows": [ {column: value, ...}, ... ]
 
-The query is `SELECT <column>, ... FROM <table> WHERE ...`: its select list is bare column names
-(no expression, alias, literal or function, which could make a value the record does not hold) and
-it reads one table (no other SELECT, JOIN, UNION, INTERSECT, EXCEPT or WITH) that is a table of the
-named database (a `type='table'` row of its sqlite_master: not a view, not a table-valued function
-such as `json_each` or a `pragma_*`, which return values no record holds). Its placeholders are,
+The query is `SELECT <column>, ... FROM <table> WHERE ...`: each item of its select list is a
+column of the table (its `pragma_table_info`), so no expression, alias, literal or function makes a
+value the record does not hold; it reads one table (no other SELECT, JOIN, UNION, INTERSECT, EXCEPT
+or WITH) that is a table of the named database (a `type='table'` row of its sqlite_master, not
+SQLite's own `sqlite_*`: not a view, not a table-valued function such as `json_each` or a
+`pragma_*`, which return values no record holds). Its placeholders are,
 in this order, `<symbol column>=?`, `<range column> >= ?` and `<range column> < ?`. It runs once per
 symbol, with the range in the range column's unit (epoch milliseconds when the column ends in `_ms`,
 else epoch seconds). Each result row becomes an object keyed by column; a column `<x>_json` becomes
 `<x>`, decoded by json_blob_codec. The rows must equal the results of the symbols in their listed
 order. A top-level key other than `provenance` and `rows`, and a key of the block other than
-`database`, `symbols`, `query` and the `<x>_from_et` / `<x>_to_et` pair, may not hold a number, or
-a number written as text, since nothing checks it.
+`symbols`, `query` and its one `<x>_from_et` / `<x>_to_et` pair, may not hold a number, in its name
+or its value: a JSON number, or a digit in text that is not part of an ISO date or time, since
+nothing checks it.
+
+Limits: the WHERE clause may filter the record (`AND level_value > 600`): the rows are then real
+but a chosen subset of it. Only tests/fixtures/ is in scope (not tests/e2e/fixtures/). This is a
+commit hook only: a commit made without pre-commit installed is not checked, and CI has no copy
+(CI has no database to re-query).
 
 The databases are db_authority.canonical_stream_db_path() and canonical_console_db_path(), which
 in a linked worktree resolve to the primary checkout's data/ (runtime_layout). When the named
@@ -54,21 +61,30 @@ DATABASES = ("stream_capture.db", "ed_console.db")
 PLACEHOLDER = re.compile(r"(\w+)\s*(>=|<=|=|>|<)\s*\?")
 QUERY = re.compile(r"(?is)\s*SELECT\s+(.+?)\s+FROM\s+(\w+)\s+WHERE\s+(.+)")
 COMPOUND = re.compile(r"(?i)\b(SELECT|JOIN|UNION|INTERSECT|EXCEPT|WITH)\b")
+DATE_TIME = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?"
+                       r"|(?<![\d.])\d{2}:\d{2}(?::\d{2})?(?![\d.])")
 REQUIRED = ("database", "symbols", "query")
 
 
 def _has_number(o) -> bool:
+    """A number anywhere in `o`: a JSON number, or a digit in a string or a key that is not part of
+    an ISO date or time ("pin 585", "$585", "0x249", "585.0 USD" all hold one)."""
     if isinstance(o, dict):
-        return any(_has_number(v) for v in o.values())
+        return any(_has_number(k) or _has_number(v) for k, v in o.items())
     if isinstance(o, list):
         return any(_has_number(v) for v in o)
     if isinstance(o, str):
-        try:
-            float(o)
-        except ValueError:
-            return False
-        return True
+        return re.search(r"\d", DATE_TIME.sub("", o)) is not None
     return isinstance(o, (int, float)) and not isinstance(o, bool)
+
+
+def _pair(prov: dict) -> tuple[str, str] | str:
+    """The block's one `<x>_from_et` / `<x>_to_et` pair, or why it has none."""
+    froms = [k for k in prov if k.endswith("_from_et")]
+    to_key = froms[0][:-len("_from_et")] + "_to_et" if len(froms) == 1 else None
+    if to_key not in prov or not all(isinstance(prov[k], str) for k in (froms[0], to_key)):
+        return "provenance must carry one `<x>_from_et` / `<x>_to_et` pair of ET date-times"
+    return froms[0], to_key
 
 
 def _epoch(text: str, column: str) -> float | int:
@@ -77,23 +93,20 @@ def _epoch(text: str, column: str) -> float | int:
     return int(t.timestamp() * 1000) if column.endswith("_ms") else t.timestamp()
 
 
-def _plan(prov: dict) -> tuple[str, float | int, float | int] | str:
-    """The query's table and (from, to) parameters, or why the block does not give them."""
+def _plan(prov: dict, pair: tuple[str, str]) -> tuple[str, list[str], float | int, float | int] | str:
+    """The query's table, select list and (from, to) parameters, or why the block does not give
+    them."""
     shape = QUERY.fullmatch(prov["query"])
-    if shape is None or COMPOUND.search(shape.group(3)) or not all(
-            re.fullmatch(r"\w+", c.strip()) for c in shape.group(1).split(",")):
+    if shape is None or COMPOUND.search(shape.group(3)):
         return ("provenance.query must be `SELECT <column>, ... FROM <table> WHERE ...` with bare "
                 "column names, reading one table")
     found = PLACEHOLDER.findall(prov["query"])
     if [op for _, op in found] != ["=", ">=", "<"] or prov["query"].count("?") != 3:
         return ("provenance.query's placeholders must be, in order, `<symbol column>=?`, "
                 "`<range column> >= ?` and `<range column> < ?`")
-    froms = [k for k in prov if k.endswith("_from_et")]
-    to_key = froms[0][:-len("_from_et")] + "_to_et" if len(froms) == 1 else None
-    if to_key not in prov:
-        return "provenance must carry one `<x>_from_et` / `<x>_to_et` pair"
     column = found[1][0]
-    return shape.group(2), _epoch(prov[froms[0]], column), _epoch(prov[to_key], column)
+    return (shape.group(2), [c.strip() for c in shape.group(1).split(",")],
+            _epoch(prov[pair[0]], column), _epoch(prov[pair[1]], column))
 
 
 def _rows(con: sqlite3.Connection, query: str, params: list) -> list[dict]:
@@ -115,29 +128,35 @@ def check_fixture(text: str, dbs: dict[str, Path]) -> list[str]:
         return [f"provenance lacks {', '.join(missing)}"]
     if not isinstance(data.get("rows"), list) or not data["rows"]:
         return ["no rows: nothing to check against the record"]
-    extra = sorted(k for k, v in data.items() if k not in ("provenance", "rows") and _has_number(v))
+    extra = sorted(k for k, v in data.items() if k not in ("provenance", "rows") and _has_number({k: v}))
     if extra:
         return [f"top-level {', '.join(extra)} hold numbers outside the checked rows"]
-    loose = sorted(k for k, v in prov.items() if k not in REQUIRED and not k.endswith(("_from_et", "_to_et"))
-                   and _has_number(v))
+    pair = _pair(prov)
+    if isinstance(pair, str):
+        return [pair]
+    loose = sorted(k for k, v in prov.items() if k not in ("symbols", "query", *pair) and _has_number({k: v}))
     if loose:
         return [f"provenance {', '.join(loose)} hold numbers outside the checked rows"]
     named = [d for d in DATABASES if d in prov["database"]]
     if len(named) != 1:
         return [f"provenance.database names none or both of {', '.join(DATABASES)}"]
-    plan = _plan(prov)
+    plan = _plan(prov, pair)
     if isinstance(plan, str):
         return [plan]
-    table, *rng = plan
+    table, selected, *rng = plan
     path = dbs[named[0]]
     if not path.is_file():
         return [f"cannot verify: the record {path} is not here"]
     try:
         con = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
         try:
-            if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? COLLATE NOCASE",
-                           (table,)).fetchone() is None:
+            if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? COLLATE NOCASE "
+                           "AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'", (table,)).fetchone() is None:
                 return [f"provenance.query reads {table}, which is not a table of {named[0]}"]
+            columns = {r[0].lower() for r in con.execute("SELECT name FROM pragma_table_info(?)", (table,))}
+            strangers = [c for c in selected if c.lower() not in columns]
+            if strangers:
+                return [f"provenance.query selects {', '.join(strangers)}, which is not a column of {table}"]
             record = [r for s in prov["symbols"] for r in _rows(con, prov["query"], [s, *rng])]
         finally:
             con.close()
@@ -154,7 +173,7 @@ def check_fixture(text: str, dbs: dict[str, Path]) -> list[str]:
 
 
 def violations(root: Path, dbs: dict[str, Path]) -> list[str]:
-    staged = [f for f in _git(root, "diff", "--cached", "--name-only", "--diff-filter=AM").splitlines()
+    staged = [f for f in _git(root, "diff", "--cached", "--name-only", "--diff-filter=AMRC").splitlines()
               if f.startswith(FIXTURES) and f.endswith(".json")]
     out = []
     for path in staged:

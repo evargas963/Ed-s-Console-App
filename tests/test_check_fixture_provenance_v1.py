@@ -14,7 +14,9 @@ from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+import pytest
+
+REPO =Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 import check_fixture_provenance as cfp  # noqa: E402
 from app.market_data.schwab.streaming.capture import SERVICE_TOPIC  # noqa: E402
@@ -166,8 +168,68 @@ def test_a_query_that_computes_a_value_the_record_does_not_hold_is_refused(tmp_p
         "level_value,", "level_value + 5.0 AS level_value,")
     root = _staged(tmp_path, {NAME: json.dumps(fixture)})
     assert cfp.violations(root, _dbs(tmp_path / "data")) == [
-        f"{NAME}: provenance.query must be `SELECT <column>, ... FROM <table> WHERE ...` with bare column names, "
-        "reading one table"]
+        f"{NAME}: provenance.query selects level_value + 5.0 AS level_value, which is not a column of level_crosses"]
+
+
+@pytest.mark.parametrize("literal, value", [("585", 585), ("0x249", 585), ("1e3", 1000.0), ("NULL", None),
+                                            ("TRUE", 1)])
+def test_a_literal_in_the_select_list_is_refused(tmp_path, literal, value):
+    """A literal returns the same value in every row, a value no column of the record holds."""
+    fixture = _record_crosses(tmp_path / "data")
+    fixture["provenance"]["query"] = fixture["provenance"]["query"].replace("SELECT ", f"SELECT {literal}, ", 1)
+    fixture["rows"] = [{literal: value, **r} for r in fixture["rows"]]
+    root = _staged(tmp_path, {NAME: json.dumps(fixture)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [
+        f"{NAME}: provenance.query selects {literal}, which is not a column of level_crosses"]
+
+
+def test_only_the_blocks_one_range_pair_may_hold_a_number(tmp_path):
+    fixture = _record_crosses(tmp_path / "data")
+    fixture["provenance"]["expected_pin_to_et"] = 585.0
+    root = _staged(tmp_path, {NAME: json.dumps(fixture)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [
+        f"{NAME}: provenance expected_pin_to_et hold numbers outside the checked rows"]
+
+
+def test_a_number_as_a_key_is_refused(tmp_path):
+    top = _record_crosses(tmp_path / "data")
+    top["expected"] = {"585.0": True}
+    block = copy.deepcopy(top)
+    del block["expected"]
+    block["provenance"]["expected"] = {"585.0": True}
+    root = _staged(tmp_path, {"tests/fixtures/a.json": json.dumps(top), "tests/fixtures/b.json": json.dumps(block)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [
+        "tests/fixtures/a.json: top-level expected hold numbers outside the checked rows",
+        "tests/fixtures/b.json: provenance expected hold numbers outside the checked rows"]
+
+
+@pytest.mark.parametrize("note", ["pin 585", "$585", "585.0 USD", "0x249"])
+def test_a_number_inside_free_text_is_refused_and_a_date_or_time_is_not(tmp_path, note):
+    fixture = _record_crosses(tmp_path / "data")
+    fixture["provenance"]["note"] = "captured 2026-10-04 at 09:30:00 ET"
+    root = _staged(tmp_path, {NAME: json.dumps(fixture)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == []
+    fixture["provenance"]["note"] = note
+    root = _staged(tmp_path / "again", {NAME: json.dumps(fixture)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [
+        f"{NAME}: provenance note hold numbers outside the checked rows"]
+
+
+def test_a_renamed_and_edited_fixture_is_checked(tmp_path):
+    """`git mv` then an edit: git stages it as a rename (R), and the edited row is refused."""
+    fixture = _record_crosses(tmp_path / "data")
+    old, new = "tests/fixtures/crosses.json", "tests/fixtures/crosses_renamed.json"
+    root = _staged(tmp_path, {old: json.dumps(fixture, indent=1)})
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base"], cwd=root,
+                   check=True, capture_output=True)
+    subprocess.run(["git", "mv", old, new], cwd=root, check=True, capture_output=True)
+    fixture["rows"][0]["level_name"] += " "
+    (root / new).write_text(json.dumps(fixture, indent=1), encoding="utf-8")
+    subprocess.run(["git", "add", new], cwd=root, check=True, capture_output=True)
+    status = subprocess.run(["git", "diff", "--cached", "--name-status"], cwd=root, check=True,
+                            capture_output=True, text=True).stdout
+    assert status.startswith("R"), status
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [f"{new}: row 0 differs from the record in level_name"]
 
 
 def test_a_query_of_a_table_valued_function_is_refused(tmp_path):
