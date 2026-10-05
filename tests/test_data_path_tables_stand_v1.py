@@ -1,9 +1,8 @@
-"""DATA_FLOW decision 6: no table is dropped by code. Starting the console's database (EdDB) leaves
-every table it finds, with its rows.
+"""DATA_FLOW decision 6: starting the console's database (EdDB) leaves every schema object it
+finds as it was, and every row of every table.
 
-The console dropped session_log, confluence_log and news_events (with news_events' two indexes)
-on every start. Each table is built here with the schema it had when the console wrote it (the
-first commit, 4b3dce45), and given a row. news_events holds a NEWS_HEADLINE item as Schwab sent
+The database here holds session_log, confluence_log and news_events (with their indexes), each
+with the schema it had when the console wrote it (the first commit, 4b3dce45), and a row each. news_events holds a NEWS_HEADLINE item as Schwab sent
 it (tests/fixtures/real_schwab_news_headline_spx_2026_10_05.json). STAND-INS: the session_log and
 confluence_log rows (the console's own derived values; no captured row of either exists, both
 tables are absent in production) are built from that item's symbol and time.
@@ -65,14 +64,18 @@ CREATE INDEX idx_news_impact_ts ON news_events(impact_level, timestamp);
 """
 
 
-def _contents(db: Path) -> dict:
+def _schema(db: Path) -> dict:
+    """Every schema object in the database: name -> (type, its SQL)."""
     with sqlite3.connect(db) as conn:
-        objects = sorted(r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE name IN ('session_log', 'confluence_log', "
-            "'news_events', 'idx_conf_ts', 'idx_news_ticker_ts', 'idx_news_impact_ts')"))
-        return {"objects": objects,
-                "rows": {t: conn.execute(f"SELECT * FROM {t}").fetchall()
-                         for t in ("session_log", "confluence_log", "news_events") if t in objects}}
+        return {name: (kind, sql) for kind, name, sql in
+                conn.execute("SELECT type, name, sql FROM sqlite_master")}
+
+
+def _rows(db: Path, schema: dict) -> dict:
+    """Every row of every table in `schema`."""
+    with sqlite3.connect(db) as conn:
+        return {name: conn.execute(f'SELECT * FROM "{name}"').fetchall()
+                for name, (kind, _sql) in schema.items() if kind == "table"}
 
 
 def test_starting_the_database_keeps_every_table_it_finds_with_its_rows(tmp_path):
@@ -87,9 +90,12 @@ def test_starting_the_database_keeps_every_table_it_finds_with_its_rows(tmp_path
         conn.execute("INSERT INTO news_events (timestamp, source, ticker, headline, raw_json) "
                      "VALUES (?, ?, ?, ?, ?)",
                      (str(item["1"]), _NEWS["src"], item["key"], item["4"], json.dumps(item)))
-    before = _contents(db)
-    assert len(before["objects"]) == 6 and all(len(r) == 1 for r in before["rows"].values())
+    before = _schema(db)
+    rows = _rows(db, before)
+    assert rows and all(rows.values())
 
     EdDB(db, allow_noncanonical=True)
 
-    assert _contents(db) == before, "starting the database dropped a table or its rows"
+    after = _schema(db)
+    assert {name: after.get(name) for name in before} == before, "starting the database dropped or changed an object"
+    assert _rows(db, before) == rows, "starting the database changed a table's rows"

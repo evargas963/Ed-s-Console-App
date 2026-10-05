@@ -1,5 +1,5 @@
 {
- "source": "one NEWS_HEADLINE item as Schwab sent it, read-only from production stream_capture.db stream_news_raw (newest row, 2026-10-05)",
+ "source": "one NEWS_HEADLINE item as Schwab sent it, read-only from production stream_capture.db stream_news_raw, the row with ts_recv 1791206449.5379157 (read 2026-10-05)",
  "ts_recv": 1791206449.5379157,
  "symbol": "$SPX",
  "src": "schwab_news",
