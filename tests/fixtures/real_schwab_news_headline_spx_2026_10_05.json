@@ -1,0 +1,53 @@
+{
+ "source": "one NEWS_HEADLINE item as Schwab sent it, read-only from production stream_capture.db stream_news_raw (newest row, 2026-10-05)",
+ "ts_recv": 1791206449.5379157,
+ "symbol": "$SPX",
+ "src": "schwab_news",
+ "schwab_ts": 1791206395218,
+ "content": {
+  "seq": 190,
+  "key": "$SPX",
+  "1": 1791205200000,
+  "2": "tag_reuters_com_2026_newsml_L6N45O107",
+  "3": "A",
+  "4": "ROI-Wall Street bulls try on ‘S&P 10,000’ caps for size: McGeever",
+  "5": "tag_reuters_com_2026_newsml_L6N45O107",
+  "6": [
+   "Sovereign Wealth Funds",
+   "Metals Markets",
+   "Exchange-Traded Funds",
+   "Investment Banking & Brokerage Services",
+   "Equities Markets",
+   "Exchange-Traded Products",
+   "Commodities Markets",
+   "Investment Management",
+   "Technology",
+   "Technology / Media / Telecoms",
+   "*ALL*",
+   "National Government Debt",
+   "Investment Banking & Investment Services",
+   "Investment Banking & Brokerage Services (NEC)",
+   "Semiconductors",
+   "Investment Management & Fund Operators (NEC)",
+   "Semiconductors & Semiconductor Equipment",
+   "Debt / Fixed Income Markets",
+   "Investment Management & Fund Operators",
+   "Financials",
+   "Banking & Investment Services",
+   "Precious Metals",
+   "Technology Equipment",
+   "Collective Investments",
+   "Funds",
+   "Gold"
+  ],
+  "7": [
+   "$DJI",
+   "SPOT",
+   "$SPX"
+  ],
+  "8": false,
+  "9": "Reuters",
+  "10": "ROI-Wall Street bulls try on ‘S&P 10,000’ caps for size: McGeever  The opinions expressed here are t",
+  "11": "en-US"
+ }
+}

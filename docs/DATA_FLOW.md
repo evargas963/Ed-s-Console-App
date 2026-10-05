@@ -417,7 +417,8 @@ behavior (AGENTS.md).
    verified copy or the operator's explicit word; reclaiming space (VACUUM) is an offline
    maintenance window, never part of a code change. Enforced by: deleting or moving the database
    files is refused by the agent hook `tools/operator_law_guard.py`
-   (`tests/test_protected_paths_v1.py`); a table drop — ENF-16.
+   (`tests/test_protected_paths_v1.py`); starting the console's database drops no table and no
+   row (`tests/test_data_path_tables_stand_v1.py`); any other table drop — ENF-16.
 7. **Chain history is kept for research.** Schwab's API has no past option chains: a chain not
    saved is gone. One table holds it (§4.2): full chain, every 30 minutes, market hours only,
    compressed, with Schwab's own underlying price. Levels are not stored as history; research
