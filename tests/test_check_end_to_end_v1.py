@@ -191,3 +191,70 @@ def test_the_net_lines_are_what_git_counts(tmp_path):
     root = _repo(tmp_path, BASE)
     _commit(root, {"server.py": "def spot(row):\n    return row['last']\n\n\ndef bid(row):\n    return row['bid']\n"})
     assert cee.net_lines(root, "main") == "1 file changed, 4 insertions(+)"
+
+
+ROOT = Path(__file__).resolve().parent.parent
+#: the dead-code deletions of 251b945c (cleanup/dead-code-deletions), as git diffed them from main 26ddc457
+DELETIONS = ROOT / "tests" / "fixtures" / "real_dead_code_deletions_251b945c.patch"
+COVERING = "tests/test_stream_spine_v1.py::test_writer_batches_into_stream_capture_db"
+
+
+def _real_repo(tmp_path: Path, commit: str, paths: list[str]) -> Path:
+    """A repository whose base is `paths` exactly as they are in this repository's `commit`."""
+    def git(*a):
+        subprocess.run(["git", *a], cwd=tmp_path, check=True, capture_output=True)
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    git("config", "core.autocrlf", "false")
+    for p in paths:
+        (tmp_path / p).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / p).write_bytes(subprocess.run(["git", "show", f"{commit}:{p}"], cwd=ROOT,
+                                                  capture_output=True, check=True).stdout)
+    git("add", *paths)
+    git("commit", "-q", "-m", "base")
+    git("checkout", "-q", "-b", "pr")
+    return tmp_path
+
+
+def deletions_pr(tmp_path: Path) -> Path:
+    """251b945c's product deletions and two of its test changes, applied to main 26ddc457."""
+    root = _real_repo(tmp_path, "26ddc457", ["schwab_client.py", "server.py", "stream_spine.py",
+                                             "tests/test_liquidity_engine.py",
+                                             "tests/test_options_order_flow_semantics_v1.py",
+                                             "tests/test_stream_spine_v1.py"])
+    subprocess.run(["git", "apply", str(DELETIONS)], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-am", "deletions"], cwd=root, check=True, capture_output=True)
+    return root
+
+
+def _body(e2e: str) -> str:
+    return BODY.replace("End-to-end test: tests/test_data_path_x.py", f"End-to-end test: {e2e}")
+
+
+def test_real_deletions_naming_an_existing_covering_test_pass(tmp_path):
+    assert cee.product_numstat(deletions_pr(tmp_path), "main") == {
+        "schwab_client.py": 0, "server.py": 0, "stream_spine.py": 0}
+    assert cee.violations(tmp_path, "main", _body(f"{COVERING} covers CaptureWriter.")) == []
+
+
+@pytest.mark.parametrize("e2e, refused", [
+    ("the existing tests cover it.", "names no existing test by node id"),
+    ("tests/test_stream_spine_v1.py::test_never_written", "tests/test_stream_spine_v1.py::test_never_written does not exist on HEAD"),
+    ("tests/test_not_a_file_v1.py::test_x", "tests/test_not_a_file_v1.py::test_x does not exist on HEAD"),
+])
+def test_real_deletions_without_an_existing_test_named_are_refused(tmp_path, e2e, refused):
+    found = cee.violations(deletions_pr(tmp_path), "main", _body(e2e))
+    assert len(found) == 1 and refused in found[0], found
+
+
+def test_a_real_product_change_that_adds_lines_still_needs_a_new_end_to_end_line(tmp_path):
+    """#459's d965484b adds and removes lines in instrument_identity.py: naming existing tests is not
+    enough; an end-to-end path test must gain a real line."""
+    root = _real_repo(tmp_path, "93fca283", ["instrument_identity.py", "tests/test_stream_spine_v1.py"])
+    (root / "instrument_identity.py").write_bytes(subprocess.run(
+        ["git", "show", "d965484b:instrument_identity.py"], cwd=ROOT, capture_output=True, check=True).stdout)
+    subprocess.run(["git", "commit", "-q", "-am", "pr"], cwd=root, check=True, capture_output=True)
+    found = cee.violations(root, "main", _body(COVERING))
+    assert found == ["product code changed (instrument_identity.py) but no end-to-end path test "
+                     "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line"]

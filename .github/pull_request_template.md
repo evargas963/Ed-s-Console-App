@@ -14,7 +14,7 @@ Deleted:
 <!-- what this replaces, removed in this PR -->
 
 End-to-end test:
-<!-- the real line added to tests/test_data_path_*.py or tests/e2e/*.spec.js -->
+<!-- the real line added to tests/test_data_path_*.py or tests/e2e/*.spec.js; a PR that only removes product lines names the existing tests that cover it by node id (tests/<file>.py::<test>) -->
 
 ## Proof
 <!-- commands + exit codes + output, each with its tier (unit, integration, browser, deployed app, live market) and label (CONFIRMED / INDUCED / HYPOTHESIS / NOT_PROVEN); a check shown failing on the old code -->

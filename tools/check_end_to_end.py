@@ -4,7 +4,11 @@ A check of shapes only. It cannot see a design-level patch, and it cannot tell w
 test covers the changed behavior; those are proven by behavior tests and review.
 
 1. A PR that changes product code also adds real lines (not blank, not a comment) to an
-   end-to-end path test: `tests/test_data_path_*.py` or `tests/e2e/*.spec.js`.
+   end-to-end path test: `tests/test_data_path_*.py` or `tests/e2e/*.spec.js`. A PR whose
+   product diff only removes lines (`git diff --numstat`: 0 added in every product file) instead
+   names, under "End-to-end test:", the existing tests that cover the code it touches, as test
+   node ids (`tests/<file>.py::<test>` or `::<Class>::<test>`), each of which exists on HEAD;
+   that they pass on HEAD is the full suite's job.
 2. The product lines it adds carry no patch shape:
    - an except that catches everything (bare, `Exception`, `BaseException`, or a tuple holding
      one), or one whose only statement swallows the error: `pass`, `continue`, a return or an
@@ -50,6 +54,7 @@ BODY_SECTIONS = ("Schwab → screen:", "Deleted:", "End-to-end test:")
 REVIEW_SECTIONS = ("Wiring:", "Architecture review:", "Correctness review:")
 COMMENT = re.compile(r"<!--.*?-->", re.S)
 HEADING = re.compile(r"^#", re.M)
+NODE_ID = re.compile(r"(tests/[\w./-]+\.py)((?:::\w+)+)")
 CATCH_ALL = ("Exception", "BaseException")
 LOG_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical", "log"}
 JS_LITERAL = r"(0(?!\w)|''|\"\"|\[\]|\{\}|null(?!\w))"
@@ -238,18 +243,60 @@ def adds_real_lines(source: str, added: set[int]) -> bool:
                for n, text in enumerate(source.splitlines(), start=1))
 
 
-def body_violations(body: str, sections: tuple[str, ...] = BODY_SECTIONS) -> list[str]:
+def body_sections(body: str, sections: tuple[str, ...]) -> dict[str, str]:
+    """{section: its content} for each section present: up to the next section or heading,
+    without HTML comments."""
     text = COMMENT.sub("", body).replace("->", "→").replace("=>", "→")
-    at = sorted((text.find(s), s) for s in sections)
-    out = [f"the PR description lacks: {s}" for i, s in at if i < 0]
-    present = [(i, s) for i, s in at if i >= 0]
+    present = sorted((i, s) for s in sections if (i := text.find(s)) >= 0)
+    out = {}
     for k, (i, s) in enumerate(present):
         start = i + len(s)
         end = present[k + 1][0] if k + 1 < len(present) else len(text)
         heading = HEADING.search(text, start, end)
-        if not text[start:heading.start() if heading else end].strip():
-            out.append(f"the PR description's {s} is empty")
+        out[s] = text[start:heading.start() if heading else end].strip()
     return out
+
+
+def body_violations(body: str, sections: tuple[str, ...] = BODY_SECTIONS) -> list[str]:
+    found = body_sections(body, sections)
+    out = [f"the PR description lacks: {s}" for s in sorted(sections) if s not in found]
+    return out + [f"the PR description's {s} is empty" for s, text in found.items() if not text]
+
+
+def product_numstat(root: Path, base: str) -> dict[str, int]:
+    """{product file: lines the PR adds to it}, every product file it touches, deletions included."""
+    out = {}
+    for line in _git(root, "diff", "--numstat", "--no-renames", f"{base}...HEAD").splitlines():
+        added, _removed, path = line.split("\t", 2)
+        if is_product(path):
+            out[path] = int(added) if added.isdigit() else 1      # a binary file: "-"
+    return out
+
+
+def _defines(root: Path, path: str, names: list[str]) -> bool:
+    """`path` exists on HEAD and defines the test `names` (a function, or a class then a method)."""
+    shown = subprocess.run(["git", "show", f"HEAD:{path}"], cwd=root, capture_output=True,
+                           text=True, encoding="utf-8")
+    if shown.returncode != 0:
+        return False
+    scope: list[ast.stmt] = ast.parse(shown.stdout).body
+    for name in names:
+        hit = next((n for n in scope if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                    and n.name == name), None)
+        if hit is None:
+            return False
+        scope = hit.body if isinstance(hit, ast.ClassDef) else []
+    return True
+
+
+def named_test_violations(root: Path, section: str) -> list[str]:
+    """A deletion-only PR's "End-to-end test:" names existing tests by node id, each on HEAD."""
+    ids = NODE_ID.findall(section)
+    if not ids:
+        return ["product code only removed, but its End-to-end test: names no existing test by node id "
+                "(tests/<file>.py::<test>)"]
+    return [f"End-to-end test: {path}{rest} does not exist on HEAD" for path, rest in ids
+            if not _defines(root, path, rest.split("::")[1:])]
 
 
 def net_lines(root: Path, base: str) -> str:
@@ -260,9 +307,14 @@ def net_lines(root: Path, base: str) -> str:
 def violations(root: Path, base: str, body: str | None) -> list[str]:
     added = pr_added_lines(root, base)
     product = sorted(f for f in added if is_product(f))
+    touched = product_numstat(root, base)
+    only_removes = bool(touched) and not any(touched.values())
     out = []
-    if product and not any(p.match(f) and adds_real_lines(pr_source(root, f), added[f])
-                           for f in added for p in END_TO_END):
+    if only_removes:
+        out.extend(named_test_violations(root, body_sections(body or "", BODY_SECTIONS).get(
+            "End-to-end test:", "")))
+    elif product and not any(p.match(f) and adds_real_lines(pr_source(root, f), added[f])
+                             for f in added for p in END_TO_END):
         out.append(f"product code changed ({', '.join(product)}) but no end-to-end path test "
                    "(tests/test_data_path_*.py or tests/e2e/*.spec.js) gained a real line")
     for f in product:
@@ -270,7 +322,7 @@ def violations(root: Path, base: str, body: str | None) -> list[str]:
         found = python_patches(source, added[f]) if f.endswith(".py") else js_patches(f, source, added[f])
         out.extend(f"{f}:{line}: {what}" for line, what in found)
     if body is not None:
-        out.extend(body_violations(body, BODY_SECTIONS + (REVIEW_SECTIONS if product else ())))
+        out.extend(body_violations(body, BODY_SECTIONS + (REVIEW_SECTIONS if touched else ())))
     return out
 
 

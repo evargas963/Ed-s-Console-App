@@ -1,0 +1,104 @@
+diff --git a/schwab_client.py b/schwab_client.py
+index 2768e77d..e39d7bc6 100644
+--- a/schwab_client.py
++++ b/schwab_client.py
+@@ -47,9 +47,6 @@ class TokenInspectionResult:
+     has_refresh_token: bool = False
+     has_expires_at: bool = False
+     scope_value: Optional[str] = None
+-    seconds_to_expiry: Optional[int] = None
+-    is_expired: bool = False
+-    is_expiring_soon: bool = False
+     message: str = ""
+ 
+ 
+@@ -220,19 +217,6 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
+         elif sc is not None:
+             out.scope_value = str(sc)
+ 
+-        now = int(time.time())
+-        exp = tok.get("expires_at")   # external-key-ok: Schwab OAuth token payload
+-        if exp is not None:
+-            try:
+-                exp_i = int(float(exp))
+-            except (TypeError, ValueError):
+-                exp_i = None
+-            if exp_i is not None:
+-                seconds_left = exp_i - now
+-                out.seconds_to_expiry = seconds_left
+-                out.is_expired = seconds_left <= 0
+-                out.is_expiring_soon = 0 < seconds_left < 300
+-
+     issues: list[str] = []
+     if not out.has_creation_timestamp:
+         issues.append("missing creation_timestamp")
+diff --git a/server.py b/server.py
+index 2227a950..27c13609 100644
+--- a/server.py
++++ b/server.py
+@@ -304,14 +304,6 @@ def _get_route_offload_executor() -> ThreadPoolExecutor:
+ # Nothing below should contain a raw magic number for these parameters.
+ # ─────────────────────────────────────────────────────────────────────────────
+ 
+-# ETF zone classification (spy_zone / qqq_zone / iwm_zone)
+-
+-
+-# Builds OHLC bars from spot price ticks. Server polls every ~30s, so:
+-#   5-min bars = ~10 ticks per bar
+-#   1-min bars = ~2 ticks per bar
+-# Bars are keyed by ticker. Completed bars stored in ring buffer; maxlen from math_exposure.
+-# ─────────────────────────────────────────────────────────────────────────────
+ #: one RTH day of 1-minute bars
+ CANDLE_1M_MAX_BARS: int = 390
+ from micro_structure import Candle
+diff --git a/stream_spine.py b/stream_spine.py
+index 1689e6f6..71ed52ae 100644
+--- a/stream_spine.py
++++ b/stream_spine.py
+@@ -395,7 +395,6 @@ class CaptureWriter:
+         self.db_path = p
+         self.batch_rows = int(batch_rows)
+         self.batch_sec = float(batch_sec)
+-        self.rows_written = 0
+         self.insert_errors = 0
+         conn = sqlite3.connect(str(p))
+         try:
+@@ -424,7 +423,6 @@ class CaptureWriter:
+             return
+         try:
+             conn.execute(spec[0], spec[1](msg))
+-            self.rows_written += 1
+         except Exception:  # noqa: BLE001 -- counted in status; capture continues
+             self.insert_errors += 1
+ 
+diff --git a/tests/test_liquidity_engine.py b/tests/test_liquidity_engine.py
+index e5df79f2..c21a01be 100644
+--- a/tests/test_liquidity_engine.py
++++ b/tests/test_liquidity_engine.py
+@@ -84,7 +84,7 @@ def test_bars_normalization_drops_missing_ohlc_bar():
+ 
+ 
+ 
+-def _typical_price_dump(bars, value_area_pct=0.70, tick_size=0.01):
++def _typical_price_dump(bars, tick_size=0.01):
+     """The construction LP-01 Step 1 REPLACED, kept here only as the disagreement witness.
+ 
+     A test that a new method 'works' proves nothing if the old one produced the same number.
+diff --git a/tests/test_options_order_flow_semantics_v1.py b/tests/test_options_order_flow_semantics_v1.py
+index 53f9082c..c915ae0e 100644
+--- a/tests/test_options_order_flow_semantics_v1.py
++++ b/tests/test_options_order_flow_semantics_v1.py
+@@ -75,13 +75,6 @@ def _reset(tmp_path, monkeypatch):
+     return db
+ 
+ 
+-
+-def _push_option_l1(symbol, content, ts_recv):
+-    """One LEVELONE_OPTIONS message as the daemon publishes and pushes it."""
+-    return ofs._ingest_pushed(f"optquote.{symbol}", options_quote_msg(
+-        symbol=symbol, content=content, src="schwab_options_l1", ts_recv=ts_recv))
+-
+-
+ def _push_option_book(symbol, content, ts_recv, service="OPTIONS_BOOK"):
+     return ofs._ingest_pushed(f"book.{symbol}", book_msg(
+         symbol=symbol, service=service, content=content,

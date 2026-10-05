@@ -12,6 +12,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tools"))
 import check_fails_before as cfb  # noqa: E402
+from tests.test_check_end_to_end_v1 import deletions_pr  # noqa: E402
 
 BASE = {"calc.py": "def spot(row):\n    return row['bid']\n",
         "tests/test_calc.py": "from calc import spot\n\n\ndef test_spot_reads_a_row():\n    assert spot({'bid': 1, 'last': 2}) in (1, 2)\n"}
@@ -119,3 +120,13 @@ def test_a_page_fix_whose_spec_already_passed_before_is_refused(page_repo):
 def test_a_page_fix_with_no_test_change_is_refused(page_repo):
     root = page_repo({"calc.js": JS_FIX})
     assert cfb.violations(root, "main") == ["product code changed (calc.js) but no test under tests/ changed"]
+
+
+def test_real_deletions_have_nothing_to_fail_before(tmp_path, capsys):
+    """251b945c's dead-code deletions (its changed tests pass on the old code: refused before this
+    rule): a product diff that only removes lines adds no behavior to prove."""
+    root = deletions_pr(tmp_path)
+    assert cfb.violations(root, "main") == []
+    assert capsys.readouterr().out == (
+        "product code only removed (schwab_client.py, server.py, stream_spine.py): nothing to fail before; "
+        "the existing tests its End-to-end test: names are checked by check_end_to_end.py\n")

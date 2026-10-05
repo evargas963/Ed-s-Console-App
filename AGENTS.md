@@ -68,10 +68,11 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - **Four eyes.** Reviewers: `.claude/agents/architecture-reviewer.md`, `.claude/agents/correctness-reviewer.md`.
   Enforced by: `tools/check_end_to_end.py` requires "Architecture review:" and "Correctness
   review:" when product code changes; that each is a reviewer's report on the final commit — ENF-19.
-- **Fix at the source.** No guard, wrapper, flag, special case or check around a defect; a needed
-  restructure is the fix; end to end, Schwab to the screen. Enforced by: `tools/check_end_to_end.py`
-  in `hardening` refuses a product change with no real line added to an end-to-end path test, a patch
-  shape, or no "Schwab → screen:", "Deleted:", "End-to-end test:"; the rest — ENF-01.
+- **Fix at the source.** No guard, wrapper, flag, special case or check around a defect; a needed restructure
+  is the fix; end to end, Schwab to the screen. A PR that only removes product lines names under "End-to-end test:"
+  the existing tests that cover it (`tests/<file>.py::<test>`), never an invented line. Enforced by: `tools/check_end_to_end.py`
+  in `hardening` refuses a product change with no real line added to an end-to-end path test (removal only: no existing
+  test named), a patch shape, or no "Schwab → screen:", "Deleted:", "End-to-end test:"; the rest — ENF-01.
 - **Clean up along the way.** Nothing new without a job its existing owner cannot do, shown in the PR.
   Enforced by: "Deleted:" (`tools/check_end_to_end.py`); ruff F401 at commit and in `hardening`; the rest — ENF-04.
 - **Zero is a value (rule 2: Schwab fields as sent).** Not a number: absent, -999, text, NaN or
@@ -118,10 +119,10 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   section of `docs/DATA_FLOW.md` and in the code. Enforced by: no machine check — ENF-08.
 - Page code: no arithmetic, sum, min/max, sort by value or date math on served data.
   Enforced by: no machine check — ENF-03.
-- A new check is a test of behavior, for a failure that happened; it fails on the old code; it
-  starts with no exceptions. Enforced by: `tools/check_fails_before.py` in the required
-  `pytest-full` job refuses a PR that changes product code unless one of its changed tests fails
-  on the base (`tests/test_check_fails_before_v1.py`); the rest — ENF-08.
+- A new check is a test of behavior, for a failure that happened; it fails on the old code; it starts with
+  no exceptions. Enforced by: `tools/check_fails_before.py` in the required `pytest-full` job refuses a PR that
+  adds product lines unless one of its changed tests fails on the base (removal only: nothing to fail before)
+  (`tests/test_check_fails_before_v1.py`); the rest — ENF-08.
 - Time is an input: a function that depends on the clock takes `now`; only an entry point (a
   route, a loop, a stream handler) reads the clock. Enforced by: no machine check — ENF-09.
 - A value that crosses a module boundary is a typed record (dataclass), not a dict of string keys;
@@ -165,9 +166,8 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 
 ## Authority (enforced)
 
-- Checkpoints: about every 15 minutes of work the agent reports to the operator what changed,
-  what was deleted, each proof and its tier, and which requirements are NOT_PROVEN, then continues.
-  Enforced by: no machine check — ENF-12.
+- Checkpoints: about every 15 minutes of work the agent reports to the operator what changed, what was deleted,
+  each proof and its tier, and which requirements are NOT_PROVEN, then continues. Enforced by: no machine check — ENF-12.
 - A PR merges when its required proof on its final commit is complete and CI is green; green CI
   alone is not proof. Enforced by: GitHub branch protection requires the `pytest-full` job of
   `.github/workflows/pytest.yml` and the `hardening` job of `.github/workflows/hardening.yml`,
