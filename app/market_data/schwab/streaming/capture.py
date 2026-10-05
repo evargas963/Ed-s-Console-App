@@ -735,11 +735,14 @@ def recorded_tickers(*db_paths: "Path | str") -> "tuple[list[str], list[str]]":
 def instrument_answer(client, symbol: str, now: float) -> dict:
     """Schwab's instrument lookup of `symbol` on the daemon's one client (schwab-py
     Client.get_instruments, projection SYMBOL_SEARCH: GET /marketdata/v1/instruments), as its
-    instrument message: the HTTP status and body as sent, and `listed`: True when the answer's
-    `instruments` list of objects holds one whose `symbol` is exactly `symbol`, False when it is
-    such a list without it (Schwab does not list it), None for every other answer -- a list
-    holding anything but objects (not the shape Schwab answers), another
-    status, a body that is not JSON, or JSON without an `instruments` list: no answer."""
+    instrument message: the HTTP status and body as sent, and `listed`, on an HTTP 200 whose body
+    is a JSON object: True when its `instruments` list of objects holds one whose `symbol` is
+    exactly `symbol`; False when it is such a list without it, or the empty object `{}` --
+    Schwab's answer for a symbol it does not list (captured 2026-10-05: NOTREAL -> `{}`, while
+    SPY, $SPX and TSLA -> an `instruments` list holding each one;
+    tests/fixtures/real_schwab_instruments_symbol_search_2026_10_05.json). None, no answer, for
+    every other reply: another status, a body that is not JSON, an object with other keys and
+    no such list, a list holding anything but objects."""
     resp = client.get_instruments(symbol, client.Instrument.Projection.SYMBOL_SEARCH)
     body = None
     if resp.status_code == 200:
@@ -748,8 +751,12 @@ def instrument_answer(client, symbol: str, now: float) -> dict:
         except ValueError as e:                    # recorded as sent; no answer
             log.warning("universe: Schwab's instrument answer for %s is not JSON: %s", symbol, e)
     instruments = body.get("instruments") if isinstance(body, dict) else None
-    answered = isinstance(instruments, list) and all(isinstance(i, dict) for i in instruments)
-    listed = any(i.get("symbol") == symbol for i in instruments) if answered else None
+    if isinstance(instruments, list) and all(isinstance(i, dict) for i in instruments):
+        listed = any(i.get("symbol") == symbol for i in instruments)
+    elif isinstance(body, dict) and not body:      # `{}`: Schwab lists no instrument of that symbol
+        listed = False
+    else:
+        listed = None
     return instrument_msg(symbol=symbol, http_status=resp.status_code, body=resp.text, listed=listed, ts=now)
 
 

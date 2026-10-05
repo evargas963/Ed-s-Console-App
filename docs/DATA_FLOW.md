@@ -133,15 +133,17 @@ from Schwab to the screen (daemon, console, page), are these:
   instrument in the answer's `instruments` whose `symbol` is the ticker itself). Every answer
   is recorded by the daemon's writer (`stream_instruments_raw`: HTTP status and body as sent,
   `listed`), so a ticker that joined is read back as listed at every start; no separate list.
-  A ticker a screen shows joins once Schwab lists it. Schwab's "not listed" -- an answer whose
-  `instruments` list of instrument objects does not hold the ticker -- takes it out for the daemon's run (a later read
-  of the stored tickers does not put it back) (`Daemon.leave`: unsubscribed at the next sync unless a screen
-  still shows it, out of the chain sweep, its stored data as stored), and that answer is
-  carried on the heartbeat (`not_joined`) and leads the ticker's reason on screen
-  (`server.terrain_staleness`). This removal rests on Schwab's single-symbol symbol-search
-  answer listing a real ticker, NOT_PROVEN live (a read-only capture needs the operator's
-  yes). A lookup with no answer (any other HTTP status; an HTTP 200 whose body is not JSON or
-  carries no `instruments` list of objects, such as Schwab's `{}`; the network, no client, the token
+  A ticker a screen shows joins once Schwab lists it. Schwab's single-symbol symbol-search
+  (captured read-only 2026-10-05, tests/fixtures/real_schwab_instruments_symbol_search_2026_10_05.json)
+  answers a symbol it lists with an `instruments` list holding it (SPY, $SPX, TSLA) and one it
+  does not with the empty object `{}` (NOTREAL). Schwab's "not listed" -- `{}`, or an
+  `instruments` list of instrument objects without the ticker -- takes it out for the daemon's
+  run (a later read of the stored tickers does not put it back) (`Daemon.leave`: unsubscribed
+  at the next sync unless a screen still shows it, out of the chain sweep, its stored data as
+  stored), and that answer is carried on the heartbeat (`not_joined`) and leads the ticker's
+  reason on screen (`server.terrain_staleness`). A lookup with no answer (any other HTTP
+  status; an HTTP 200 whose body is not JSON, or an object with other keys and no such list,
+  or a list holding anything but objects; the network, no client, the token
   refused: `capture.NO_ANSWER`) is an unknown: nothing changes (a stored ticker stays in, a
   shown one stays out with that reason shown) and it is asked again on the next connection to
   Schwab (`Daemon.reconnected`). Any other error is ours: the daemon's parts run under

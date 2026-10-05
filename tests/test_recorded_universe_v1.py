@@ -7,10 +7,12 @@ Real data: Schwab's SPY and TSLA 1-minute bars as the daemon recorded them
 (tests/fixtures/real_options_stream_history_samples.json), Schwab's CRWD chain
 (tests/fixtures/real_crwd_complete_chain_quarter.json), Schwab's instrument answers of
 2026-08-20 (tests/fixtures/real_schwab_instruments_2026_08_20.json: SPY's, which lists SPY, and
-symbol-search's `{}` for `SPY.*`, which lists nothing) and one stored FINRA short-volume row
-(ed_console.db world_finra_short_volume, 2026-07-15 AAPL, as stored). Stand-in, named: the
-instrument answers are written for the symbols the test names (SPY's answer as SPY's; `{}` as
-the answer for ZZZZ and, later, SPY)."""
+symbol-search's `{}` for `SPY.*`, which lists nothing), Schwab's single-symbol symbol-search
+replies of 2026-10-05 (tests/fixtures/real_schwab_instruments_symbol_search_2026_10_05.json) and
+one stored FINRA short-volume row (ed_console.db world_finra_short_volume, 2026-07-15 AAPL, as
+stored). Stand-in, named: in the recorded-answer tests the instrument answers are written for
+the symbols the test names (SPY's answer as SPY's; `{}` as the answer for ZZZZ and, later,
+SPY)."""
 from __future__ import annotations
 
 import asyncio
@@ -34,7 +36,7 @@ from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, bar_msg, instrument_msg, options_quote_msg
 from tests.feed_live_helper import daemon_bars, publish_daemon_rows
-from tests.test_data_path_rules_v1 import _LocalSchwab, _SPY_1120, _token_file
+from tests.local_schwab import _SPY_1120, _LocalSchwab, _token_file
 
 FX = Path(__file__).resolve().parent / "fixtures"
 _OPT = json.loads((FX / "real_options_stream_history_samples.json").read_text(encoding="utf-8"))
@@ -43,27 +45,38 @@ _ANSWERS = json.loads((FX / "real_schwab_instruments_2026_08_20.json").read_text
 _SPY_LISTED = _ANSWERS["spy_fundamental"]["body"]
 _NONE_LISTED = _ANSWERS["symbol_search_spy_pattern"]["body"]
 _REFUSAL = json.loads((FX / "real_schwab_stream_refusal_2026_10_04.json").read_text(encoding="utf-8"))
+#: Schwab's single-symbol symbol-search replies, captured 2026-10-05 (status and body as sent)
+_LOOKUP = json.loads((FX / "real_schwab_instruments_symbol_search_2026_10_05.json").read_text(
+    encoding="utf-8"))["replies"]
 
 
-@pytest.mark.parametrize("body, listed", [
-    ('{"instruments": ["TSLA"]}', None),          # INDUCED: a list holding a non-object
-    ('{"instruments": [{"symbol": "TSLA"}, "TSLA"]}', None),   # INDUCED: objects and a non-object
-    (_SPY_LISTED, False),                         # SPY's answer served for TSLA: a list without TSLA
-], ids=["a list of strings", "a mixed list", "a list of objects without the ticker"])
-def test_only_a_list_of_instrument_objects_without_the_ticker_takes_a_stored_ticker_out(body, listed):
-    """Schwab answers symbol-search with an `instruments` list of objects (each with its
-    `symbol`). A list holding anything but objects is not that answer: it is no answer, and a
-    stored ticker stays in the universe. Only a list of objects without the ticker is "not
-    listed". The real instrument_answer on schwab-py's client; Schwab's host is a stand-in
-    (httpx's MockTransport) answering HTTP 200 with `body`."""
+@pytest.mark.parametrize("symbol, status, body, listed", [
+    ("TSLA", _LOOKUP["TSLA"]["http_status"], _LOOKUP["TSLA"]["body"], True),       # Schwab's reply for TSLA
+    ("$SPX", _LOOKUP["$SPX"]["http_status"], _LOOKUP["$SPX"]["body"], True),       # Schwab's reply for $SPX
+    ("NOTREAL", _LOOKUP["NOTREAL"]["http_status"], _LOOKUP["NOTREAL"]["body"], False),   # Schwab's `{}`
+    ("TSLA", 200, _LOOKUP["SPY"]["body"], False),     # stand-in: Schwab's reply for SPY, served for TSLA
+    ("TSLA", 200, '{"instruments": ["TSLA"]}', None),                # INDUCED: a list of strings
+    ("TSLA", 200, '{"instruments": [{"symbol": "TSLA"}, "TSLA"]}', None),   # INDUCED: a mixed list
+    ("TSLA", 200, '{"errors": [{"status": "500"}]}', None),          # INDUCED: an object, no list
+    ("TSLA", 200, "<html>Service Unavailable</html>", None),         # INDUCED: not JSON
+], ids=["schwab-lists-TSLA", "schwab-lists-$SPX", "schwab-answers-NOTREAL-{}", "a list without the ticker",
+        "a list of strings", "a mixed list", "an object without instruments", "not JSON"])
+def test_a_stored_ticker_leaves_only_when_schwab_does_not_list_it(symbol, status, body, listed):
+    """Schwab's single-symbol symbol-search (captured 2026-10-05) answers a symbol it lists with
+    an `instruments` list of objects holding it, and NOTREAL with the empty object `{}`. Listed:
+    the stored ticker stays and is confirmed. "Not listed" -- `{}`, or a list of instrument
+    objects without the ticker -- takes it out. Any other reply is no answer: it stays. The real
+    instrument_answer on schwab-py's client; Schwab's host is a stand-in (httpx's MockTransport)
+    returning the reply."""
     client = Client("k", httpx.Client(transport=httpx.MockTransport(
-        lambda request: httpx.Response(200, text=body))), enforce_enums=False)
+        lambda request: httpx.Response(status, text=body))), enforce_enums=False)
     daemon = capture.Daemon(MessageBus(), HealthRegistry())
-    daemon.load([], ["TSLA"])
-    msg = capture.instrument_answer(client, "TSLA", time.time())
+    daemon.load([], [symbol])
+    msg = capture.instrument_answer(client, symbol, time.time())
     assert msg["listed"] is listed
     daemon.answered(msg)
-    assert daemon.universe == ([] if listed is False else ["TSLA"])
+    assert daemon.universe == ([] if listed is False else [symbol])
+    assert (symbol in daemon.listed) is (listed is True)
 
 
 def test_schwabs_symbol_limit_is_what_the_heatmap_serves_for_its_contracts(tmp_path):

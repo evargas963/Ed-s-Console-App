@@ -1,0 +1,33 @@
+{
+ "source": "Schwab marketdata v1, captured read-only 2026-10-05 for this fixture on the operator's yes (one call per symbol, in order, 2.5 s apart): GET https://api.schwabapi.com/marketdata/v1/instruments?symbol=<symbol>&projection=symbol-search with the stored access token (never refreshed). Each reply is its HTTP status, Content-Type and body text exactly as sent.",
+ "replies": {
+  "SPY": {
+   "request": "https://api.schwabapi.com/marketdata/v1/instruments?symbol=SPY&projection=symbol-search",
+   "sent_utc": "2026-10-05T13:17:31.231446+00:00",
+   "http_status": 200,
+   "content_type": "application/json",
+   "body": "{\"instruments\":[{\"cusip\":\"78462F103\",\"symbol\":\"SPY\",\"description\":\"State Street SPDR S&P 500 ETF Trust\",\"exchange\":\"NYSE Arca\",\"assetType\":\"ETF\"}]}"
+  },
+  "NOTREAL": {
+   "request": "https://api.schwabapi.com/marketdata/v1/instruments?symbol=NOTREAL&projection=symbol-search",
+   "sent_utc": "2026-10-05T13:17:34.864117+00:00",
+   "http_status": 200,
+   "content_type": "application/json",
+   "body": "{}"
+  },
+  "$SPX": {
+   "request": "https://api.schwabapi.com/marketdata/v1/instruments?symbol=%24SPX&projection=symbol-search",
+   "sent_utc": "2026-10-05T13:17:38.715222+00:00",
+   "http_status": 200,
+   "content_type": "application/json",
+   "body": "{\"instruments\":[{\"cusip\":\"648815108\",\"symbol\":\"$SPX\",\"description\":\"S & P 500 INDEX\",\"exchange\":\"Index\",\"assetType\":\"INDEX\"}]}"
+  },
+  "TSLA": {
+   "request": "https://api.schwabapi.com/marketdata/v1/instruments?symbol=TSLA&projection=symbol-search",
+   "sent_utc": "2026-10-05T13:17:42.403918+00:00",
+   "http_status": 200,
+   "content_type": "application/json",
+   "body": "{\"instruments\":[{\"cusip\":\"88160R101\",\"symbol\":\"TSLA\",\"description\":\"TESLA INC\",\"exchange\":\"NASDAQ\",\"assetType\":\"EQUITY\"}]}"
+  }
+ }
+}
