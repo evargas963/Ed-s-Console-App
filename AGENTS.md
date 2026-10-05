@@ -47,38 +47,40 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 
 ## Enforcement map (enforced)
 
-- **First gate.** Schwab's fields: `docs/schwab_fields.csv`. A PR names each value it adds or
-  changes under "Wiring:". Enforced by: `tools/check_end_to_end.py` requires "Wiring:" when product
-  code changes (`tests/test_check_end_to_end_v1.py`); `tests/test_page_one_faucet_v1.py`,
-  `tests/test_one_levels_producer_v1.py` for the values they drive; the second producers found
-  2026-10-02 — ENF-02; the canonical derived register and its check — ENF-17.
+- **First gate.** Schwab's fields: `docs/schwab_fields.csv`; derived values: `docs/DATA_FLOW.md` §3.6. A PR names each value it
+  adds or changes under "Wiring:". Consumers carry the producer's result; they never select, compute, repair or relabel
+  it; a second producer is banned whatever it is called (helper, parser, resolver, cache). Enforced by:
+  `tools/check_end_to_end.py` requires "Wiring:" on a product change (`tests/test_check_end_to_end_v1.py`);
+  `tests/test_page_one_faucet_v1.py`, `tests/test_one_levels_producer_v1.py` for the values they drive; the second
+  producers found 2026-10-02 — ENF-02; the register's check — ENF-17.
 - **System of record.** Enforced by: no machine check — ENF-18.
-- **Records stand.** Never delete or move anything under `data/` or `backups/`; a write to a
-  database file is asked. Enforced by: `tools/operator_law_guard.py` (`tests/test_protected_paths_v1.py`);
-  `tools/operator_yes_guard.py` (`tests/test_operator_yes_guard_v1.py`); a table drop — ENF-16.
-- **Unknowns surface.** In an open session a value whose feed is down, or whose input is missing or
-  invalid, is absent with its reason; while Closed the close values stand until the next session. No
-  "past" label, fallback, default, estimate, proxy, carry-forward, interpolation or synthetic value.
-  Enforced by: `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`,
-  `tests/test_gamma_exposure_honest_absence_v1.py`, `docs/DATA_FLOW.md` §2 D5.
-- **Change control.** A merge, a push to main, a start, stop or restart of the daemon or console, a
-  change to a test on main and a write to a `data/` database are put to Ed as an Allow/Deny prompt; an
-  operator setting (a count, a rate, a switch) changes only with Ed's yes to it. Enforced by:
-  `tools/operator_yes_guard.py` (`tests/test_operator_yes_guard_v1.py`); the rest — ENF-13.
-- **Four eyes.** Reviewers: `.claude/agents/architecture-reviewer.md`, `.claude/agents/correctness-reviewer.md`.
-  Enforced by: `tools/check_end_to_end.py` requires "Architecture review:" and "Correctness
-  review:" when product code changes; that each is a reviewer's report on the final commit — ENF-19.
+- **Records stand.** Never delete or move anything under `data/` or `backups/`. A shell command naming a `data/*.db` path
+  without `mode=ro` / `-readonly`, or an Edit/Write of one, is put to Ed; a script that opens a database without naming it
+  is not seen. Enforced by: `tools/operator_law_guard.py` (`tests/test_protected_paths_v1.py`); `tools/operator_yes_guard.py`
+  (`tests/test_operator_yes_guard_v1.py`); the unseen script — ENF-20; a table drop — ENF-16.
+- **Unknowns surface.** In an open session a value whose feed is down, or whose input is missing or invalid, is absent
+  with its reason; while Closed the close values stand until the next session. No "past" label, fallback, default,
+  estimate, proxy, carry-forward, interpolation or synthetic value. Enforced by:
+  `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`, `tests/test_gamma_exposure_honest_absence_v1.py`, `docs/DATA_FLOW.md` §2 D5.
+- **Change control.** A merge, a push to main, a start, stop or restart of the daemon or console and a change to a test
+  on main are put to Ed as an Allow/Deny prompt (database writes: Records stand); an operator setting (a count, a rate,
+  a switch) changes only with Ed's yes to it. Enforced by: `tools/operator_yes_guard.py`
+  (`tests/test_operator_yes_guard_v1.py`); the operator setting — ENF-12.
+- **Four eyes.** Reviewers: `.claude/agents/architecture-reviewer.md`, `.claude/agents/correctness-reviewer.md`. Their
+  read-only rests on their tool list (no Edit or Write), their instructions and the repo's hooks; Bash can write.
+  Enforced by: `tools/check_end_to_end.py` requires "Architecture review:" and "Correctness review:" on a product
+  change; that each is a reviewer's report on the final commit — ENF-19.
 - **Fix at the source.** No guard, wrapper, flag, special case or check around a defect; a needed restructure
   is the fix; end to end, Schwab to the screen. A PR that only removes product lines names under "End-to-end test:"
   the existing tests that cover it (`tests/<file>.py::<test>`), never an invented line. Enforced by: `tools/check_end_to_end.py`
   in `hardening` refuses a product change with no real line added to an end-to-end path test (removal only: no existing
   test named), a patch shape, or no "Schwab → screen:", "Deleted:", "End-to-end test:"; the rest — ENF-01.
-- **Clean up along the way.** Nothing new without a job its existing owner cannot do, shown in the PR.
+- **Clean up along the way.** Nothing new without a job its existing owner cannot do, shown in the PR. An existing
+  piece with no job, and a register, audit, report or check whose question is answered, is deleted.
   Enforced by: "Deleted:" (`tools/check_end_to_end.py`); ruff F401 at commit and in `hardening`; the rest — ENF-04.
-- **Zero is a value (rule 2: Schwab fields as sent).** Not a number: absent, -999, text, NaN or
-  infinity, and a value Schwab's own field definition excludes (a negative volume or size); all else
-  as sent, a reported 0 is 0, no other bounds, no substitution. Enforced by:
-  `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`.
+- **Zero is a value (rule 2: Schwab fields as sent).** Not a number: absent, -999, text, NaN or infinity, and a value
+  Schwab's own field definition excludes (a negative volume or size); all else as sent, a reported 0 is 0, no other
+  bounds, no substitution. Enforced by: `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`.
 - **Real captured data.** Captured Schwab data is in `tests/fixtures/`; no test patches the code it
   tests. Enforced by: `tools/check_no_new_patches.py` (`tests/test_check_no_new_patches_v1.py`); the rest — ENF-07.
 - **Every ticker.** Measured and reported across every ticker, never one. Enforced by: no machine check — ENF-05.
@@ -87,16 +89,17 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 - **End to end.** Enforced by: the required `pytest-full` job (`.github/workflows/pytest.yml`); the screen — ENF-12.
 - **Read-only and local without asking.** Enforced by: `tools/operator_yes_guard.py` passes ordinary work
   (`tests/test_operator_yes_guard_v1.py`).
-- **Protect credentials and unrelated work.** No credential or operator-home path is committed; never
-  `git reset`, `git checkout --`, `git stash`, force push, `--no-verify`, `git add -A` / `.`. Enforced by:
-  `tools/check_credential_leak.py` at commit and in `hardening` (`tests/test_credential_leak_v1.py`);
-  `tools/process_lock_guard.py` (`tests/test_reset_guard_v1.py`); `tools/operator_law_guard.py`
-  (`tests/test_operator_law_guard_action_bans_v1.py`).
-- **Labels.** CONFIRMED: shown by command output in the same reply (an earlier check is not current
-  evidence). INDUCED: observed under a condition made on purpose, named. HYPOTHESIS: inferred, not
-  observed. NOT_PROVEN: no proof yet, with when last checked. Verdicts on a change's final commit:
-  PASS, every condition proven; FAIL, any violated; NOT_PROVEN, any without proof. Each proof names
-  its tier (unit, integration, browser, deployed app, live market). Enforced by: no machine check — ENF-12.
+- **Protect credentials and unrelated work.** No credential or operator-home path is committed; never `git reset`,
+  `git checkout --`, `git stash`, force push, `--no-verify`, `git add -A` / `.`. Enforced by: `tools/check_credential_leak.py`
+  at commit and in `hardening` (`tests/test_credential_leak_v1.py`); `tools/process_lock_guard.py`
+  (`tests/test_reset_guard_v1.py`); `tools/operator_law_guard.py` (`tests/test_operator_law_guard_action_bans_v1.py`).
+- **Labels.** They apply to every part of a reply, summaries, "found, not fixed" and next steps included. CONFIRMED:
+  shown by command output in the same reply (an earlier check is not current evidence). INDUCED: observed under a
+  condition made on purpose, named. HYPOTHESIS: inferred, not observed. NOT_PROVEN: no proof yet, with when last
+  checked. Verdicts on a change's final commit: PASS, every condition proven; FAIL, any violated; NOT_PROVEN, any
+  without proof. Each proof names its tier (unit, integration, browser, deployed app, live market); one tier never
+  stands in for another, and a check proves only the paths it covers. Done: a test that failed before passes after,
+  the full suite passes, and the live screen shows it working. Enforced by: no machine check — ENF-12.
 
 ## Operational rules (enforced)
 
@@ -111,18 +114,17 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 
 ## Before writing code (enforced)
 
-- Trace each value the change touches: its source, its one producer, its validity rule and time,
-  its live and stored consumers, and what each shows when the value is missing. A producer
-  exists: call it. None exists: write it once, on the server. Enforced by: no machine check — ENF-08.
-- For each responsibility the change touches, name its one lifecycle owner (what starts,
-  refreshes, retries and expires it) and what fails when that owner fails, in the affected
-  section of `docs/DATA_FLOW.md` and in the code. Enforced by: no machine check — ENF-08.
+- Trace each value the change touches: its source, its one producer, its validity rule and time, its live and stored
+  consumers, and what each shows when it is missing. A producer exists: call it. None: write it once, on the server.
+  Enforced by: no machine check — ENF-08.
+- For each responsibility the change touches, name its one lifecycle owner (what starts, refreshes, retries and expires
+  it) and what fails when it fails, in `docs/DATA_FLOW.md` and in the code. Enforced by: no machine check — ENF-08.
 - Page code: no arithmetic, sum, min/max, sort by value or date math on served data.
   Enforced by: no machine check — ENF-03.
 - A new check is a test of behavior, for a failure that happened; it fails on the old code; it starts with
   no exceptions. Enforced by: `tools/check_fails_before.py` in the required `pytest-full` job refuses a PR that
-  adds product lines unless one of its changed tests fails on the base (removal only: nothing to fail before)
-  (`tests/test_check_fails_before_v1.py`); the rest — ENF-08.
+  changes product code unless one of its changed tests fails on the base, except a PR that adds no product line and
+  changes no test or only deletes tests: nothing to fail before (`tests/test_check_fails_before_v1.py`); the rest — ENF-08.
 - Time is an input: a function that depends on the clock takes `now`; only an entry point (a
   route, a loop, a stream handler) reads the clock. Enforced by: no machine check — ENF-09.
 - A value that crosses a module boundary is a typed record (dataclass), not a dict of string keys;
@@ -132,11 +134,9 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   Enforced by: no machine check — ENF-11.
 - A test exercises behavior through the real code. It never reads source text or pins a private
   helper; a test whose subject is deleted is deleted with it. Enforced by: no machine check — ENF-08.
-- A test, fixture or helper a pull request adds or changes never patches the code it tests
-  (monkeypatch, mock.patch, a fixture that does, or a patching autouse fixture in its file);
-  the existing ones are cleaned as their files are touched. Enforced by:
-  `tools/check_no_new_patches.py` in the required `hardening` job
-  (`tests/test_check_no_new_patches_v1.py`); the existing ones — TEST-PATCHES.
+- A test, fixture or helper a pull request adds or changes never patches the code it tests (monkeypatch, mock.patch,
+  a fixture that does, or a patching autouse fixture in its file); the existing ones are cleaned as their files are
+  touched. Enforced by: `tools/check_no_new_patches.py` in `hardening` (`tests/test_check_no_new_patches_v1.py`); the existing ones — TEST-PATCHES.
 
 ## Before saying done (enforced)
 
@@ -168,10 +168,9 @@ Hold EdWebConsole to how a financial institution handles systems with real money
 
 - Checkpoints: about every 15 minutes of work the agent reports to the operator what changed, what was deleted,
   each proof and its tier, and which requirements are NOT_PROVEN, then continues. Enforced by: no machine check — ENF-12.
-- A PR merges when its required proof on its final commit is complete and CI is green; green CI
-  alone is not proof. Enforced by: GitHub branch protection requires the `pytest-full` job of
-  `.github/workflows/pytest.yml` and the `hardening` job of `.github/workflows/hardening.yml`,
-  on a branch current with `main`.
+- A PR merges when its required proof on its final commit is complete and CI is green; green CI alone is not proof.
+  Enforced by: GitHub branch protection requires the `pytest-full` job of `.github/workflows/pytest.yml` and the
+  `hardening` job of `.github/workflows/hardening.yml`, on a branch current with `main`.
 - A change to AGENTS.md, `docs/DATA_FLOW.md`, CI, a hook or a check is merged only by the
   operator. Enforced by: no machine check — ENF-13.
 - Stop for: the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO; a task marked AUDIT

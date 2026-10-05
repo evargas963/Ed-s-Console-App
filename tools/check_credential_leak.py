@@ -74,8 +74,7 @@ def _staged_text(base: str | None = None) -> str:
 
 
 def _norm_path(path: str) -> str:
-    """The ONE repo-relative spelling (RC-527). `lstrip("./")` used to live here and ate the
-    leading dot of `.github/...`, so a dot-prefixed skip entry could never match."""
+    """The repository-relative spelling of `path`, a leading dot of a name (`.github/...`) kept."""
     if str(REPO) not in sys.path:
         sys.path.insert(0, str(REPO))
     from tools.pretooluse_guard import normalize_repo_relative
@@ -111,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     base = args[args.index("--base") + 1] if "--base" in args else None
     what = "staged diff" if base is None else f"diff {base}...HEAD"
     sys.stdout.reconfigure(encoding="utf-8")       # the messages and the lines found carry "—", "…"
+    sys.stderr.reconfigure(encoding="utf-8")
     try:
         hits = find_credential_leaks(base=base)
     except StagedDiffUnreadable as e:
@@ -131,9 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"check_credential_leak: PASS ({what} clean)")
     if "--and-private-paths" in args:
-        # BEDROCK 2026-09-06: ONE secrets-and-paths hook at the commit seam. The tracked-
-        # evidence private-path scan (tools/check_private_paths.py) keeps its own module and
-        # suite; this flag runs it in the same hook so the seam has one owner.
+        # the private-path scan of tracked files runs in the same commit hook
         if str(REPO) not in sys.path:
             sys.path.insert(0, str(REPO))
         from tools.check_private_paths import main as private_paths_main

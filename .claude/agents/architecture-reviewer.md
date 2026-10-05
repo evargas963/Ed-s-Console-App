@@ -14,8 +14,9 @@ First:
 2. Read the change in full: `git diff origin/main...HEAD` (or the files named), the PR description
    and every part of `docs/DATA_FLOW.md` it touches, including §3.6 (the canonical derived register).
 
-Never edit, write, commit, push, merge, open or close a pull request, restart the console or the
-capture daemon, call Schwab, or install anything. Open a database only read-only
+Your read-only rests on your tool list (no Edit or Write), these instructions and the repo's hooks:
+Bash can write, so it is yours to keep. Never edit, write, commit, push, merge, open or close a pull
+request, restart the console or the capture daemon, call Schwab, or install anything. Open a database only read-only
 (`sqlite3.connect('file:<path>?mode=ro', uri=True)` or `sqlite3 -readonly`). Bash is for reading:
 git log/show/diff, grep, running a read-only query.
 

@@ -263,14 +263,18 @@ def body_violations(body: str, sections: tuple[str, ...] = BODY_SECTIONS) -> lis
     return out + [f"the PR description's {s} is empty" for s, text in found.items() if not text]
 
 
-def product_numstat(root: Path, base: str) -> dict[str, int]:
-    """{product file: lines the PR adds to it}, every product file it touches, deletions included."""
+def numstat(root: Path, base: str) -> dict[str, int]:
+    """{file: lines the PR adds to it}, every file it touches, deleted files included."""
     out = {}
     for line in _git(root, "diff", "--numstat", "--no-renames", f"{base}...HEAD").splitlines():
         added, _removed, path = line.split("\t", 2)
-        if is_product(path):
-            out[path] = int(added) if added.isdigit() else 1      # a binary file: "-"
+        out[path] = int(added) if added.isdigit() else 1      # a binary file: "-"
     return out
+
+
+def product_numstat(root: Path, base: str) -> dict[str, int]:
+    """{product file: lines the PR adds to it}, every product file it touches, deleted ones included."""
+    return {f: n for f, n in numstat(root, base).items() if is_product(f)}
 
 
 def _defines(root: Path, path: str, names: list[str]) -> bool:

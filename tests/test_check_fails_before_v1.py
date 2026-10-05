@@ -122,11 +122,21 @@ def test_a_page_fix_with_no_test_change_is_refused(page_repo):
     assert cfb.violations(root, "main") == ["product code changed (calc.js) but no test under tests/ changed"]
 
 
-def test_real_deletions_have_nothing_to_fail_before(tmp_path, capsys):
-    """251b945c's dead-code deletions (its changed tests pass on the old code: refused before this
-    rule): a product diff that only removes lines adds no behavior to prove."""
-    root = deletions_pr(tmp_path)
+def test_real_deletions_that_only_delete_tests_have_nothing_to_fail_before(tmp_path, capsys):
+    """251b945c's product deletions with its test deletion in test_options_order_flow_semantics_v1.py
+    and without its test edit: no product line and no test line added."""
+    root = deletions_pr(tmp_path, leave_out="tests/test_liquidity_engine.py")
     assert cfb.violations(root, "main") == []
     assert capsys.readouterr().out == (
-        "product code only removed (schwab_client.py, server.py, stream_spine.py): nothing to fail before; "
-        "the existing tests its End-to-end test: names are checked by check_end_to_end.py\n")
+        "product code only removed (schwab_client.py, server.py, stream_spine.py) and no test added to or "
+        "changed: nothing to fail before; the existing tests its End-to-end test: names are checked by "
+        "check_end_to_end.py\n")
+
+
+def test_real_deletions_that_edit_a_test_keep_the_rule(tmp_path):
+    """251b945c's product deletions with its edit of test_liquidity_engine.py (a parameter dropped from a
+    helper): the edited test passes on the old code, so the change is refused as before."""
+    root = deletions_pr(tmp_path, leave_out="tests/test_options_order_flow_semantics_v1.py")
+    assert cfb.violations(root, "main") == [
+        "every changed test passes on the old code (19 run: tests/test_liquidity_engine.py): "
+        "none of them proves this change"]

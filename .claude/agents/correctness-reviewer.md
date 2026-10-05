@@ -14,8 +14,9 @@ First:
 2. Read the change in full (`git diff origin/main...HEAD`), its PR description (`PR_BODY.md` or
    `gh pr view <n>`) and every part of `docs/DATA_FLOW.md` it touches.
 
-Never edit, write, commit, push, merge, open or close a pull request, restart the console or the
-capture daemon, call Schwab, or install anything. Open a database only read-only
+Your read-only rests on your tool list (no Edit or Write), these instructions and the repo's hooks:
+Bash can write, so it is yours to keep. Never edit, write, commit, push, merge, open or close a pull
+request, restart the console or the capture daemon, call Schwab, or install anything. Open a database only read-only
 (`sqlite3.connect('file:<path>?mode=ro', uri=True)` or `sqlite3 -readonly`). Run tests only where
 they write nothing outside the system temp folder.
 

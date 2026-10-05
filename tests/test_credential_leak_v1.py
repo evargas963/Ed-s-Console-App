@@ -49,6 +49,8 @@ def test_clean_addition_passes():
 +return {"git_commit": sha}
 """
     assert find_credential_leaks(diff) == []
+
+
 PLACEHOLDER_SHAPED_TOKEN = "not-a-real-token-only-its-length-and-shape-0123456789"
 
 
