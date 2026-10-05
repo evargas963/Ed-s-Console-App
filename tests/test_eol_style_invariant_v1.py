@@ -118,7 +118,7 @@ def test_crlf_file_edited_as_crlf_passes_and_flipped_to_lf_fails(repo):
     assert rc == 0 and "[PASS]" in out, out
 
     p.write_bytes(p.read_bytes().replace(b"\r\n", b"\n"))
-    rc2, out2 = run_in(root, "--measure")
+    _, out2 = run_in(root, "--measure")
     assert ("EOL STYLE FLIP" in out2) or ("PURE EOL REFLOW" in out2), out2
     assert "crlf -> lf" in out2, out2
 
