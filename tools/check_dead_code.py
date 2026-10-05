@@ -13,8 +13,10 @@ from outside what vulture reads:
     python_files, python_functions, python_classes); a `pytest_*` hook in a conftest.py;
   - it overrides a library: a method or class attribute of a class whose base class is imported
     from outside the repository or is a builtin;
-  - a library reads it: an attribute set on an object other than `self`/`cls`, or a method, whose
-    name a class of a library module the file imports defines;
+  - a library reads it: an attribute set on an object other than `self`/`cls` whose name a class
+    defined in a library module the file imports declares in its own body (not a name it inherits,
+    not a dunder). A method of a class with no library base is never cleared by its name alone:
+    a duck-typed method a library calls (schwab-py's `label_message`) stays a finding;
   - it is serialized: a field of a dataclass that `asdict`, `astuple` or `fields` reads whole
     (called in the class's own body, on the class, or on a name annotated with it);
   - its signature is set by its caller: a parameter of a lambda or of a function passed as a
@@ -23,8 +25,9 @@ from outside what vulture reads:
     python tools/check_dead_code.py --base origin/main [--head REV]
     python tools/check_dead_code.py --all
 Without --head the working tree is judged. Exit 0: no new dead code (or --all printed). Exit 1:
-refused, each finding named. Exit 2: the check itself failed (git or vulture unavailable, the base
-unknown, a file that will not parse).
+refused, each finding named. Exit 2: the check itself failed (git unavailable, the base unknown,
+a file that will not parse). vulture is installed only in CI's dead-code step, with this check's
+test (tests/ci_only/); without it the import fails before the check runs.
 """
 from __future__ import annotations
 
@@ -111,14 +114,16 @@ _LIBRARY_MEMBERS: dict[str, set[str]] = {}
 
 
 def _library_members(module: str) -> set[str]:
-    """Every attribute name of every class the library module defines or imports."""
+    """The names the classes defined in the library module declare in their own bodies, dunders
+    excluded: not what they inherit, not the members of classes the module only imports."""
     if module not in _LIBRARY_MEMBERS:
         try:
             mod = importlib.import_module(module)
         except ImportError:
             mod = None
-        _LIBRARY_MEMBERS[module] = {a for obj in vars(mod).values() if isinstance(obj, type)
-                                    for a in dir(obj)} if mod else set()
+        _LIBRARY_MEMBERS[module] = {a for obj in vars(mod).values()
+                                    if isinstance(obj, type) and obj.__module__ == mod.__name__
+                                    for a in vars(obj) if not a.startswith("__")} if mod else set()
     return _LIBRARY_MEMBERS[module]
 
 
@@ -251,7 +256,7 @@ def used_from_outside(f: Finding, m: Module) -> bool:
     cls = m.class_at(f.line, f.name)
     if cls is not None and f.kind in ("method", "variable", "property") and m.has_library_base(cls):
         return True
-    if (f.kind == "attribute" and m.foreign_attribute_store(f.line, f.name)) or f.kind == "method":
+    if f.kind == "attribute" and m.foreign_attribute_store(f.line, f.name):
         if any(f.name in _library_members(lib) for lib in m.libraries()):
             return True
     if cls is not None and f.kind == "variable" and m.is_serialized(cls):

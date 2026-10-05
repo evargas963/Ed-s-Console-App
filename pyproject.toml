@@ -15,4 +15,4 @@ omit = ["tests/*", "*/node_modules/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-norecursedirs = ["node_modules", ".venv"]
+norecursedirs = ["node_modules", ".venv", "ci_only"]

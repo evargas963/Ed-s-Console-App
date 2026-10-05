@@ -1,12 +1,15 @@
 """tools/check_dead_code.py on the repository's own code and history: dead code a change creates
 is refused, in the file it touched or in one that lost its last user; vulture's false positives
-are cleared by the check's rules, never by a list of names."""
+are cleared by the check's rules, never by a list of names.
+
+CI only (tests/ci_only/, outside default collection): CI's dead-code step installs vulture and
+runs this file, then the check."""
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 import check_dead_code as cdc  # noqa: E402
 
@@ -29,13 +32,13 @@ def test_one_bar_history_left_no_dead_code_and_is_allowed():
 
 
 def test_on_main_at_26ddc457_the_rules_keep_only_code_nothing_uses():
-    """vulture finds 73 names at 26ddc457. The rules clear the 57 a framework, a library or a
-    serializer uses (FastAPI routes, pytest fixtures and hooks, BaseHTTPRequestHandler.do_GET,
-    sqlite3's row_factory, schwab-py's label_message, the dataclass fields asdict writes, callback
-    parameters) and keep these 16. write_flow_e2e_fixture is run by hand (`python -c`); no rule
-    sees that."""
+    """The rules clear what a framework, a library or a serializer uses (FastAPI routes, pytest
+    fixtures and hooks, BaseHTTPRequestHandler.do_GET, sqlite3's row_factory, the dataclass fields
+    asdict writes, callback parameters) and keep these. Two are used from outside and no rule can
+    see it: schwab-py calls `label_message` on a handler that does not subclass its class, and
+    write_flow_e2e_fixture is run by hand (`python -c`)."""
     found = [f.key for f in cdc.findings_at(ROOT, "26ddc457")]
-    assert found == TOKEN_TIMING + [
+    assert found == [("app/market_data/schwab/streaming/capture.py", "label_message", "method")] + TOKEN_TIMING + [
         ("stream_spine.py", "rows_written", "attribute"), ("stream_spine.py", "rows_written", "attribute"),
         ("tests/test_eol_style_invariant_v1.py", "TURN_AUDIT_OWNS", "variable"),
         ("tests/test_eol_style_invariant_v1.py", "rc2", "variable"),
@@ -45,3 +48,16 @@ def test_on_main_at_26ddc457_the_rules_keep_only_code_nothing_uses():
         ("tests/test_options_order_flow_semantics_v1.py", "_push_option_l1", "function"),
         ("tests/test_protected_paths_v1.py", "TURN_AUDIT_OWNS", "variable"),
         ("tools/operator_law_guard.py", "ledger", "variable")]
+
+
+def test_a_dead_method_named_like_a_library_method_is_not_cleared(tmp_path):
+    """A planted dead `close()` on a class of the repository's own, with no library base, in
+    stream_spine.py at 26ddc457 (which imports sqlite3, whose Connection defines `close`): no rule
+    may clear it by its name."""
+    top, files = cdc.snapshot(ROOT, "26ddc457", tmp_path)
+    path = top / "stream_spine.py"
+    source = path.read_text(encoding="utf-8") + "\n\nclass _Mine:\n    def close(self):\n        return None\n"
+    line = source.splitlines().index("    def close(self):") + 1
+    module = cdc.Module("stream_spine.py", source, cdc.Repo(top, files))
+    planted = cdc.Finding("stream_spine.py", line, "close", "method", "unused method 'close'")
+    assert not cdc.used_from_outside(planted, module)
