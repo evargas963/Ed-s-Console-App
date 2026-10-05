@@ -8,8 +8,6 @@ from __future__ import annotations
 import json
 import threading
 import time
-from datetime import datetime
-from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import pytest
@@ -100,18 +98,6 @@ def test_heatmap_per_strike_rows_and_levels_are_one_computation(monkeypatch):
             assert sum(listed) == pytest.approx(total, rel=1e-9, abs=1e-6)
             checked += 1
     assert checked
-
-
-def test_published_levels_equal_compute_terrain_on_the_same_inputs(monkeypatch):
-    _stream({}, monkeypatch)
-    _put_chain()
-    server._publish_levels(TK)
-    expected = compute_terrain(TK, _CONTRACTS, _SPOT).to_dict()
-    got = _cached()
-    assert expected["gamma_flip"] is not None, "the chain must price (valued at its capture)"
-    for k in ("gamma_flip", "call_wall", "put_wall", "absolute_gamma_strike", "max_pain",
-              "net_gex_peak", "contracts_used"):
-        assert got[k] == expected[k], k
 
 
 def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal_fields(monkeypatch):
@@ -422,45 +408,6 @@ def test_an_option_quote_lands_in_state_with_no_callback(monkeypatch):
     ofls.clear_all_live_state()
     _optquote(_GREEKS)
     assert any(i.get("LAST_PRICE") == 1.27 for i in ofls.get_content_for_symbol(_SPY_OPT))
-
-
-# ── the closed market: the last session's levels stand, saved and labeled ─────────────────────
-
-def test_startup_prices_the_newest_capture_with_its_own_price_and_time(monkeypatch, tmp_path,
-                                                                        _at_capture):
-    """DATA_FLOW decision 7: after a restart, a weekend or the close, each board ticker's newest
-    full chain capture is priced once with Schwab's underlying price from that capture and
-    valued and dated at the capture's time. Rows the console wrote before the daemon captured
-    (one or two expiries) are not full chains and are never loaded."""
-    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
-    db = tmp_path / "ed_console.db"
-    taken = _at_capture.timestamp()
-    by_expiry: dict = {}
-    for ct in _CONTRACTS:
-        by_expiry.setdefault(ct["expirationDate"][:10], []).append(ct)
-    for expiry, cts in by_expiry.items():
-        persist_complete_chain_capture(db, ticker=TK, expiry=expiry, contracts=cts, spot=_SPOT,
-                                       completeness_basis=CAPTURE_BASIS, ts_utc=taken)
-    persist_complete_chain_capture(db, ticker=TK, expiry=next(iter(by_expiry)),
-                                   contracts=_CONTRACTS[:2], spot=1.0,
-                                   completeness_basis="strike_range=ALL", ts_utc=taken + 60)
-    from db import EdDB
-    edb = EdDB(db)
-    monkeypatch.setattr(server, "get_db", lambda: edb)
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
-
-    assert server._load_stored_levels([TK]) == 1
-    server._chain_pricing.submit(lambda: None).result(timeout=60)      # priced on the pricing thread
-    loaded = _cached()
-    assert loaded["computed_ts_utc"] == taken
-    assert loaded["spot"] == _SPOT and loaded["spot_source"] == server.SPOT_SOURCE_CAPTURE
-    expected = compute_terrain(TK, _CONTRACTS, _SPOT,
-                               now=datetime.fromtimestamp(taken, ZoneInfo("America/New_York")))
-    assert expected.gamma_flip is not None, "the capture must price (valued at its own time)"
-    for k in ("gamma_flip", "call_wall", "put_wall", "max_pain"):
-        assert loaded[k] == getattr(expected, k), k
 
 
 

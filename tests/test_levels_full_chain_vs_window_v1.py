@@ -8,23 +8,19 @@ this fixture (captured the same afternoon) the window loses the gamma flip entir
 
 The fixture holds MRVL's full chain (strike_range=ALL) and its 20-strike window, captured from
 Schwab at the same moment (tests/fixtures/real_mrvl_full_chain_vs_strike_window.json). These
-tests (1) keep the measurement reproducible offline, and (2) hold the one level producer to the
-full chain: if it is ever narrowed back to a window, its levels stop matching and CI fails.
+tests keep the measurement reproducible offline; the one level producer is held to the full
+chain, end to end, by tests/test_data_path_rules_v1.py.
 """
 from __future__ import annotations
 
 import json
-import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-import calibration.complete_chain_capture as cch
-import server
 import time_et
-from app.options.order_flow import streaming as ofs
-from schwab_client import FullChainResponse, flatten_chain_contracts
+from schwab_client import flatten_chain_contracts
 from terrain_engine import compute_terrain
 
 _FX = json.loads((Path(__file__).resolve().parent / "fixtures"
@@ -65,34 +61,3 @@ def test_the_window_gives_different_levels_than_the_full_chain(at_capture):
     differing = {k for k in full if full[k] != window[k]}
     assert differing, (full, window)
     assert full["gamma_flip"] is not None, "the full chain has a flip for MRVL"
-
-
-def test_the_level_producer_computes_from_the_full_chain(monkeypatch, at_capture, tmp_path):
-    """The one fetcher (the daemon's chain sweep) asks for the whole chain, every expiry, and the
-    one producer prices what reaches the console, with its real compute_terrain: the full chain's
-    levels -- not the window's."""
-    requested = []
-
-    def fake_fetch(client, ticker):    # Schwab's answer: the full chain
-        requested.append(ticker)
-        return FullChainResponse(200, json.loads(json.dumps(_FX["full"])), parts=1)
-
-    monkeypatch.setattr(cch, "fetch_full_chain", fake_fetch)
-    monkeypatch.setattr(server, "resolve_spot", lambda t, chain_json=None: (_SPOT, "fixture", 0.0))
-    monkeypatch.setattr(server, "_log_flip_drift", lambda *a, **k: None)
-    monkeypatch.setattr(ofs, "_on_chain_callback", server._on_chain)
-
-    tk = server.ticker_storage_key("MRVL")
-    sqlite3.connect(tmp_path / "ed.db").close()           # the daemon's database exists
-    sweep = cch.ChainSweep(tmp_path / "ed.db", [tk],
-                           lambda topic, msg: ofs._ingest_pushed(topic, json.loads(msg["frame"])["msg"]),
-                           clock=lambda: _FX["captured_utc"])
-    sweep.fetch_one(object(), tk)
-    server._chain_pricing.submit(lambda: None).result(timeout=120)      # the chain is priced
-    assert requested == [tk], "the fetcher asks for the ticker's whole chain"
-    published = server.terrain_cache_get(tk) or {}
-    full = _levels(compute_terrain("MRVL", _contracts(_FX["full"]), _SPOT, now=at_capture))
-    window = _levels(compute_terrain("MRVL", _contracts(_FX["window"]), _SPOT, now=at_capture))
-    got = {k: published.get(k) for k in full}
-    assert got == full, (got, full)
-    assert got != window

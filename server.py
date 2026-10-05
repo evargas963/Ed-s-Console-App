@@ -1226,10 +1226,11 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     Levels always show one computation. A delivered chain is passed in; a tick on a viewed ticker
     passes none and the kept chain is repriced. Called only on the one pricing thread
     (_price_chain), so each publication is computed from inputs read after the one it replaces.
-    `captures` (startup
+    Every chain is valued at the time Schwab says it describes: its newest quoteTimeInLong; a
+    chain with none is not priced (raises). `captures` (startup
     and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
-    read once: the newest is priced with Schwab's underlying price from that capture, valued and
-    dated at its own time, and both feed the forces and prior-day rows. Returns the snapshot, or
+    read once: the newest is priced with Schwab's underlying price from that capture and dated at
+    its own time, and both feed the forces and prior-day rows. Returns the snapshot, or
     None when there is no chain to price."""
     from app.options.order_flow.streaming import (
         read_producer_rejected_option_contracts, is_option_producer_daemon_available)
@@ -1243,6 +1244,11 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         chain, fetched_ts = payload.get("_chain"), payload.get("_chain_fetched_ts")
         if not chain:
             return None
+    quoted = [t for c in chain if (t := schwab_number(c.get("quoteTimeInLong"))) is not None]
+    if chain and not quoted:
+        raise ValueError(f"the chain of {tk} carries no Schwab quote time (quoteTimeInLong)")
+    # a chain with no contracts has no time and prices to "no option chain"
+    valued_at = datetime.fromtimestamp(max(quoted) / 1000.0, ET) if quoted else None
     if capture is not None:
         spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
     else:
@@ -1258,8 +1264,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     priced, n_live = overlay_streamed_contract_fields(
         chain, _current_stream_greeks(streamed, time.time()), fetched_ts)
     live_syms = _overlaid_symbols(chain, priced)
-    snap = compute_terrain(tk, priced, spot, now=(
-        datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
+    snap = compute_terrain(tk, priced, spot, now=valued_at)
     payload.update(snap.to_dict())
     payload.update({
         # as of the chain they were computed from: a reprice on a kept chain does not make
@@ -2187,11 +2192,12 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
     }
 
 
-def _stamp_columns(surface: dict) -> dict:
-    """The surface's expiration columns stamped by the ET clock (a browser never decides what day
-    it is): `expired` (its expiry is before today) and `front` (the nearest expiry that has not
-    expired, by Schwab's daysToExpiration). No cell value is touched."""
-    today = now_et().strftime("%Y-%m-%d")      # time_et: the ONE ET clock / session-calendar authority
+def _stamp_columns(surface: dict, now: datetime) -> dict:
+    """The surface's expiration columns stamped for the day the page is viewed, `now` (ET; a
+    browser never decides what day it is): `expired` (its expiry is before that day) and `front`
+    (the nearest expiry that has not expired, by Schwab's daysToExpiration). No cell value is
+    touched."""
+    today = now.strftime("%Y-%m-%d")
     exps = [dict(e, expired=bool(e.get("expiry") and str(e["expiry"]) < today))
             for e in (surface.get("expirations") or [])]
     live_cols = [e for e in exps if not e["expired"] and e.get("dte") is not None]
@@ -2224,7 +2230,7 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
         spot_strike = nearest_strike(surf.get("strikes"), _surface_live_spot[0])
         # `live` means sourced from the live levels; whether the cells on screen are streaming is
         # the view's coverage
-        window, view = _surface_view(_stamp_columns(surf), spot_strike, scope, centre, shift, cols, expiry)
+        window, view = _surface_view(_stamp_columns(surf, now_et()), spot_strike, scope, centre, shift, cols, expiry)
         return JSONResponse({
             # every cell Schwab listed is drawn: a cell without a value says why (absent)
             "ticker": tk, "symbol": tk, "available": True, "reason": None,

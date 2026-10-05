@@ -45,7 +45,15 @@ from Schwab to the screen (daemon, console, page), are these:
 
 - **D1. Newest by Schwab's time wins.** Which value is current is decided by Schwab's own
   timestamp on it (quote time, trade time, book time, bar time, the frame's timestamp, the chain's
-  fetch), never by the order messages arrive. Enforced by: `tests/test_data_path_rules_v1.py`.
+  fetch), never by the order messages arrive. A time that describes data is Schwab's, never the
+  console's clock: a chain (delivered, kept or stored) is valued at its newest `quoteTimeInLong`
+  (`docs/schwab_fields.csv`, `chains.callExpDateMap.*.quoteTimeInLong` and the put row; sent on
+  every contract of 511,329 in the newest three captures of all 38 board tickers, 2026-10-02,
+  while `tradeTimeInLong` was 0 on 89,846 of them), and a chain without one is not priced, its
+  last levels standing with the reason. Only a proven need for the current time (an age, a
+  liveness test, the day a page is viewed) reads the clock, at an entry point (a route, a loop, a
+  stream handler), and passes it in. Enforced by: `tests/test_data_path_rules_v1.py`; the clock
+  read only at entry points — ENF-09.
 - **D2. Everything Schwab sends is kept.** Every field and every timestamp of every message,
   the frame's own timestamp included, reaches the daemon's record and the database; nothing
   Schwab sends is discarded. `docs/schwab_fields.csv` lists every field Schwab has sent (one row
@@ -233,7 +241,9 @@ from Schwab to the screen (daemon, console, page), are these:
   times on the live board are unmeasured (`ACTIVE_PROGRAM.md` SPEED).
 - **Levels** (walls, flip, GEX, vanna, charm, max pain, PCR). Computed by the console from the
   chain in memory + spot → console memory → a `levels` push on `/api/changes` (and `chain` when
-  a new chain arrived) → the browser reads `/api/terrain` and four other slice routes. Not stored; at startup they are computed from the
+  a new chain arrived) → the browser reads `/api/terrain` and four other slice routes. Every
+  time-to-expiry is valued at the chain's newest `quoteTimeInLong` (§2 D1), a reprice of the kept
+  chain on a tick included: the levels are as of the chain. Not stored; at startup they are computed from the
   newest chain capture of each board ticker the daemon has not yet delivered a chain for (once the
   daemon's heartbeat says what the board is), queued on the pricing thread behind the delivered
   chains while the console
@@ -423,8 +433,10 @@ behavior (AGENTS.md).
    compressed, with Schwab's own underlying price. Levels are not stored as history; research
    runs the one levels producer over the stored chains, so research and the screen are one
    computation. After the close, the levels are that producer run on the newest capture, with
-   the capture's price and time (operator 2026-09-26; a weekend chain blanks open interest).
-   The morning table folds into this table (P2-DB3). Enforced by: `tests/test_chain_history_v1.py`.
+   the capture's price, dated at the capture's time and valued at the chain's own time, its
+   newest `quoteTimeInLong` (§2 D1) (operator 2026-09-26; a weekend chain blanks open interest).
+   The morning table folds into this table (P2-DB3). Enforced by: `tests/test_chain_history_v1.py`,
+   `tests/test_data_path_rules_v1.py`.
 8. **A panel scales its bars to what is visible** (operator 2026-09-28, ONE-16). Fitting bar
    lengths to the largest value in the visible strike window is drawing, like fitting a chart
    axis: the server does not know the pan position. The panel draws the server's values

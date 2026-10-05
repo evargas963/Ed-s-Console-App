@@ -808,12 +808,12 @@ class PriceLevelSnapshot:
     is set by materialize_price_level_snapshot, which decides the generation from it."""
 
     __slots__ = ("ticker", "session_date", "generation", "bar_source", "as_of_ts_utc",
-                 "produced_ts_utc", "levels", "vwap_path", "vwap_series",
+                 "levels", "vwap_path", "vwap_series",
                  "families_absent", "degraded", "input_fingerprint", "bars_used",
                  "session_rth_positive_volume_bars", "volume_profile")
 
     def __init__(self, *, ticker: str, session_date: date, generation: int,
-                 bar_source: str, as_of_ts_utc: Optional[float], produced_ts_utc: float,
+                 bar_source: str, as_of_ts_utc: Optional[float],
                  levels: dict, vwap_path: list, families_absent: list,
                  degraded: list, bars_used: int,
                  vwap_series: Optional[list] = None,
@@ -824,7 +824,6 @@ class PriceLevelSnapshot:
         self.generation = generation
         self.bar_source = bar_source
         self.as_of_ts_utc = as_of_ts_utc
-        self.produced_ts_utc = produced_ts_utc
         self.levels = levels                    # level_id -> PriceLevelValue
         self.vwap_path = vwap_path              # [(epoch_sec, vwap)]
         self.vwap_series = vwap_series or []    # [(epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)]
@@ -884,7 +883,6 @@ def build_price_level_snapshot(
     """
     cfg = config or PlaybookConfig()
     tk = ticker_storage_key(ticker)  # RC-345/F25: canonical liquidity snapshot/ledger identity
-    produced_ts = datetime.now(tz=ET).timestamp()
     levels: dict[str, PriceLevelValue] = {}
     families_absent: list[dict] = []
     degraded: list[dict] = []
@@ -935,7 +933,7 @@ def build_price_level_snapshot(
                 "family": fam, "reason": f"no bars available (source {bar_source})"})
         return PriceLevelSnapshot(
             ticker=tk, session_date=session_date, generation=generation,
-            bar_source=bar_source, as_of_ts_utc=as_of, produced_ts_utc=produced_ts,
+            bar_source=bar_source, as_of_ts_utc=as_of,
             levels=levels, vwap_path=vwap_path, vwap_series=vwap_series,
             families_absent=families_absent, degraded=degraded,
             bars_used=0, session_rth_positive_volume_bars=0,
@@ -997,7 +995,7 @@ def build_price_level_snapshot(
 
     return PriceLevelSnapshot(
         ticker=tk, session_date=session_date, generation=generation,
-        bar_source=bar_source, as_of_ts_utc=as_of, produced_ts_utc=produced_ts,
+        bar_source=bar_source, as_of_ts_utc=as_of,
         levels=levels, vwap_path=vwap_path, vwap_series=vwap_series,
         families_absent=families_absent, degraded=degraded,
         bars_used=len(bars_norm),

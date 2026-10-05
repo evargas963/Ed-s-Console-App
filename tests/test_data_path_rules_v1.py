@@ -27,13 +27,17 @@ from schwab.client import Client
 from websockets.asyncio.client import connect
 
 import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
 import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
-from calibration.complete_chain_capture import FAILED_PAUSE_SEC, ChainSweep, chain_messages
+from calibration.complete_chain_capture import (CAPTURE_BASIS, FAILED_PAUSE_SEC, ChainSweep, chain_messages,
+                                                persist_complete_chain_capture)
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
-from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
+from terrain_engine import compute_terrain
+from tests.feed_live_helper import (daemon_bars, forget_daemon_bars, mark_feed_down, mark_feed_live,
+                                    publish_daemon_rows, record_daemon_bars)
 from time_et import ET, now_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
@@ -700,12 +704,15 @@ class _ToLocal(httpx.BaseTransport):
 
 class _LocalSchwab:
     """Schwab's host, played by a local server. The token endpoint answers `token_answer`
-    ("refreshed": _REFRESHED; "akamai": the captured 403 page); chains and quotes answer the
-    captured SPY chain and its quotes, or the captured 403 page while `refuse`. Every request is
-    recorded: (time, method, path, Authorization)."""
+    ("refreshed": _REFRESHED; "akamai": the captured 403 page); chains and quotes answer `chain`
+    and `quotes` (the captured SPY chain and its quotes unless given), or the captured 403 page
+    while `refuse`. Every request is recorded: (time, method, path, Authorization)."""
 
-    def __init__(self, token_answer: str = "refreshed", refuse: bool = False):
+    def __init__(self, token_answer: str = "refreshed", refuse: bool = False,
+                 chain: "dict | None" = None, quotes: "dict | None" = None):
         self.token_answer, self.refuse = token_answer, refuse
+        chain = _spy_chain_payload() if chain is None else chain
+        quotes = _SPY_1120_QUOTES if quotes is None else quotes
         self.requests: list = []
         outer = self
 
@@ -735,9 +742,9 @@ class _LocalSchwab:
                 if outer.refuse:
                     return self._akamai()
                 if url.path == "/marketdata/v1/chains":
-                    return self._send(200, "application/json", json.dumps(_spy_chain_payload()).encode())
+                    return self._send(200, "application/json", json.dumps(chain).encode())
                 symbols = parse_qs(url.query).get("symbols", [""])[0].split(",")
-                reply = {s: _SPY_1120_QUOTES[s] for s in symbols if s in _SPY_1120_QUOTES}
+                reply = {s: quotes[s] for s in symbols if s in quotes}
                 self._send(200, "application/json", json.dumps(reply).encode())
 
             def log_message(self, *a):
@@ -845,3 +852,107 @@ def test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until
             "two at once again"
     finally:
         schwab.close()
+
+
+# ── The chain, from the daemon's sweep to the console's levels, valued at Schwab's time ──────
+# Real data: MRVL's full chain (strike_range=ALL) and its 20-strike window, captured from Schwab
+# at the same moment on 2026-09-25 15:47 ET (tests/fixtures/real_mrvl_full_chain_vs_strike_window
+# .json). Stand-ins, named: the local server playing Schwab's host; its quotes answer carries each
+# contract's Greeks as the captured chain sent them (no quotes were captured with this chain); the
+# chain's underlying last stands in for the LAST_PRICE the stream sent; the daemon's push socket
+# and the console's feed loop are replaced by handing each bus message's frame to the console's
+# chain assembly and chain callback, as the feed loop does.
+
+_MRVL = json.loads((FX / "real_mrvl_full_chain_vs_strike_window.json").read_text(encoding="utf-8"))
+_LEVEL_KEYS = ("call_wall", "put_wall", "gamma_flip", "absolute_gamma_strike", "net_gex_peak",
+               "max_pain", "expiries")
+
+
+def _greeks_as_the_chain_sent(payload: dict) -> dict:
+    return {c["symbol"]: {"quote": {f: c.get(f) for f in sc.GREEK_FIELDS}}
+            for c in sc.flatten_chain_contracts(payload)}
+
+
+def _to_console(topic: str, msg: dict) -> None:
+    for done in ofs.assemble_chain_part(json.loads(msg["frame"])["msg"]):
+        server._on_chain(*done)
+
+
+def test_the_daemons_full_chain_is_priced_by_the_console_at_schwabs_quote_time(tmp_path):
+    """The daemon's one fetcher asks Schwab for MRVL's whole chain; the console prices what
+    reaches it at the time Schwab says the chain describes, its newest quoteTimeInLong
+    (2026-09-25 15:46:58 ET), never the console's clock: valued at today's clock, the expiries
+    that have passed since drop out of the gamma profile and the flip moves (230.53 -> 230.30
+    on 2026-10-05). The levels are the full chain's, not the window's."""
+    tk = server.ticker_storage_key("MRVL")
+    full = sc.flatten_chain_contracts(_MRVL["full"])
+    window = sc.flatten_chain_contracts(_MRVL["window"])
+    quoted = datetime.fromtimestamp(max(c["quoteTimeInLong"] for c in full) / 1000, ET)
+    spot = float(_MRVL["full"]["underlying"]["last"])
+    sqlite3.connect(tmp_path / "ed_console.db").close()           # the daemon's database exists
+    schwab = _LocalSchwab(chain=_MRVL["full"], quotes=_greeks_as_the_chain_sent(_MRVL["full"]))
+    sweep = ChainSweep(tmp_path / "ed_console.db", [tk], _to_console, clock=lambda: _MRVL["captured_utc"])
+    client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
+    lmp.record_from_level_one_equity(tk, {"LAST_PRICE": spot,
+                                          "TRADE_TIME_MILLIS": int(_MRVL["captured_utc"] * 1000)},
+                                     received_ts=time.time())
+    try:
+        mark_feed_live(tk)
+        publish_daemon_rows(tk)
+        assert sweep.fetch_one(client, tk)
+        server._chain_pricing.submit(lambda: None).result(timeout=120)      # the chain is priced
+        delivered = dict(server.terrain_cache_get(tk) or {})
+        server._chain_pricing.submit(server._publish_levels, tk).result(timeout=120)   # a tick: the kept chain
+        repriced = dict(server.terrain_cache_get(tk) or {})
+    finally:
+        schwab.close()
+        mark_feed_down()
+    assert [p for _t, _m, p, _a in schwab.requests if p == "/marketdata/v1/chains"] == \
+        ["/marketdata/v1/chains"], "one request for the ticker's whole chain"
+    expected = compute_terrain(tk, full, spot, now=quoted).to_dict()
+    assert expected["gamma_flip"] is not None, "the full chain has a flip for MRVL"
+    in_window = compute_terrain(tk, window, spot, now=quoted).to_dict()
+    for published in (delivered, repriced):
+        got = {k: published.get(k) for k in _LEVEL_KEYS}
+        assert published.get("spot") == spot
+        assert got == {k: expected[k] for k in _LEVEL_KEYS}, (got, quoted)
+        assert got != {k: in_window[k] for k in _LEVEL_KEYS}, "the full chain's levels, not the window's"
+
+
+#: CRWD's complete chain of the 2026-09-18 expiry, from Schwab on 2026-09-02 (its newest
+#: quoteTimeInLong 16:00:01 ET), stored as the daemon stores a capture, at the close capture slot
+#: 2026-09-02 16:15 ET (the stored time is the induced condition)
+_CRWD = json.loads((FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
+_CRWD_TAKEN = datetime(2026, 9, 2, 16, 15, tzinfo=ET).timestamp()
+
+
+def test_a_stored_capture_is_priced_with_its_own_price_dated_at_its_time_and_valued_at_schwabs():
+    """DATA_FLOW decision 7, the console's start: a board ticker's newest full chain capture is
+    priced once, with Schwab's underlying price from that capture, dated at the capture's time and
+    valued at the time Schwab says the chain describes (its newest quoteTimeInLong). Rows the
+    console wrote before the daemon captured (not CAPTURE_BASIS) are never loaded."""
+    tk = server.ticker_storage_key(_CRWD["ticker"])
+    chain, spot = [dict(c) for c in _CRWD["chain"]], float(_CRWD["spot"])
+    quoted = datetime.fromtimestamp(max(c["quoteTimeInLong"] for c in chain) / 1000, ET)
+    db = server.get_db().db_path
+    persist_complete_chain_capture(db, ticker=tk, expiry=_CRWD["expiry"], contracts=chain, spot=spot,
+                                   completeness_basis=CAPTURE_BASIS, ts_utc=_CRWD_TAKEN)
+    persist_complete_chain_capture(db, ticker=tk, expiry=_CRWD["expiry"], contracts=chain[:2], spot=1.0,
+                                   completeness_basis="strike_range=ALL", ts_utc=_CRWD_TAKEN + 60)
+    try:
+        assert server._load_stored_levels([tk]) == 1
+        server._chain_pricing.submit(lambda: None).result(timeout=120)      # priced on the pricing thread
+        loaded = dict(server.terrain_cache_get(tk) or {})
+    finally:
+        con = sqlite3.connect(db)
+        con.execute("DELETE FROM complete_chain_captures WHERE ticker=?", (tk,))
+        con.commit()
+        con.close()
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(tk, None)
+    assert loaded["computed_ts_utc"] == _CRWD_TAKEN
+    assert loaded["spot"] == spot and loaded["spot_source"] == server.SPOT_SOURCE_CAPTURE
+    expected = compute_terrain(tk, chain, spot, now=quoted)
+    assert expected.gamma_flip is not None, "the capture must price"
+    for k in ("gamma_flip", "call_wall", "put_wall", "max_pain"):
+        assert loaded[k] == getattr(expected, k), k
