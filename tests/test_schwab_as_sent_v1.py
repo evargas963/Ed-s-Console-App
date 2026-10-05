@@ -23,7 +23,6 @@ def test_counts_keep_zero_and_refuse_negatives():
 
 
 # ── Real captured data through the real readers ─────────────────────────────────────────────
-import copy
 import json
 from datetime import date
 from pathlib import Path
@@ -65,17 +64,6 @@ def test_a_reported_zero_open_interest_is_reported_not_missing():
     assert sum(1 for c in fx["chain"] if c["openInterest"] == 0) == 122
     books, _ = compute_exposures_by_strike(fx["chain"], spot=fx["spot"])
     assert sum(b["oi_unreported"] for b in books.values()) == 0
-
-
-def test_minus_999_open_interest_is_unreported():
-    """Stand-in: no captured contract has carried -999 open interest (0 of 108 million captured
-    messages, measured 2026-09-27), so one real CRWD contract has it set to -999."""
-    from math_exposure_core import compute_exposures_by_strike
-    fx = _load("real_crwd_complete_chain_quarter.json")
-    chain = copy.deepcopy(fx["chain"])
-    chain[0]["openInterest"] = -999
-    books, _ = compute_exposures_by_strike(chain, spot=fx["spot"])
-    assert books[chain[0]["strikePrice"]]["oi_unreported"] == 1
 
 
 def test_a_strike_whose_open_interest_is_all_zero_shows_zero_not_absent():

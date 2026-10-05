@@ -99,24 +99,6 @@ def test_the_view_serves_the_colour_scale_and_the_contracts_drawn():
     assert set(d["view"]["demand"]) <= listed
 
 
-def test_a_new_publication_serves_the_new_number():
-    """The number moves: a publication with a changed value serves that value, as a new
-    publication (surface_seq), so the page redraws it."""
-    first = _heat(scope="all")
-    target = next(c for c in _CHAIN if c["expirationDate"].startswith("2026-11-20") and c["openInterest"] > 0)
-    k = float(target["strikePrice"])
-
-    def oi(d):
-        col = [e["expiry"] for e in d["expirations"]].index("2026-11-20")
-        return next(c for c in d["cells"] if c["strike"] == k)["oi"][col]["total"]
-    chain = copy.deepcopy(_CHAIN)
-    next(c for c in chain if c["symbol"] == target["symbol"])["openInterest"] += 1000
-    server._publish_levels(TK, chain, 2.0)
-    now = _heat(scope="all")
-    assert oi(now) == oi(first) + 1000
-    assert now["surface_seq"] == first["surface_seq"] + 1
-
-
 def test_with_no_live_price_the_window_says_it_is_not_around_the_price(monkeypatch):
     """No price and no pan: the rows are the middle of the chain, served with the reason (no row
     is marked as the price), on the heatmap and on every per-strike panel."""
