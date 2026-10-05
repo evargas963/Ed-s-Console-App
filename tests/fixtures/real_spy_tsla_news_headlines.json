@@ -1,0 +1,904 @@
+{
+ "provenance": {
+  "sent_by": "Schwab streamer NEWS_HEADLINE",
+  "recorded_by": "capture daemon (its one writer)",
+  "database": "production data/stream_capture.db, opened read-only",
+  "table": "stream_news_raw",
+  "symbols": [
+   "SPY",
+   "TSLA"
+  ],
+  "ts_recv_from_et": "2026-10-04T19:14",
+  "ts_recv_to_et": "2026-10-05T05:23",
+  "captured_utc": "2026-10-05T09:34:47+00:00",
+  "query": "SELECT ts_recv, symbol, native_json, src, schwab_ts FROM stream_news_raw WHERE symbol=? AND ts_recv>=? AND ts_recv<? ORDER BY ts_recv"
+ },
+ "rows": [
+  {
+   "ts_recv": 1791155677.5553308,
+   "symbol": "SPY",
+   "native": {
+    "seq": 405,
+    "key": "SPY",
+    "1": 1790955441000,
+    "2": "IN20261002113721TALKX",
+    "3": "A",
+    "4": "Stocks follow Treasuries off best levels",
+    "5": "IN20261002113721TALKX",
+    "6": [
+     "News",
+     "ETF",
+     "Econ",
+     "*ALL*",
+     "Briefing",
+     "Summaries",
+     "Commentary"
+    ],
+    "7": [
+     "DIA",
+     "IWM",
+     "QQQ",
+     "MDY",
+     "SUMRX",
+     "TALKX",
+     "SPY"
+    ],
+    "8": false,
+    "9": "Briefing.com",
+    "10": "The S&P 500 (+0.6%), Nasdaq Composite (+1.0%), and DJIA (+0.2%) have pulled back from their earlier ",
+    "11": "en-US"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791155677465
+  },
+  {
+   "ts_recv": 1791155677.5553215,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 56,
+    "key": "TSLA",
+    "1": 1791113399000,
+    "2": "tag_reuters_com_2026-10-04_newsml_GNX8mdtsH",
+    "3": "A",
+    "4": "AI Kill Switch: Project Meridian & the Vulcan Frontier AI Defense Matrix (Veterans First for America)",
+    "5": "tag_reuters_com_2026-10-04_newsml_GNX8mdtsH",
+    "6": [
+     "Consumer Services",
+     "Consumer Products and Services",
+     "Personal Services",
+     "Services",
+     "Consumer Non-Cyclicals",
+     "*ALL*",
+     "Personal & Household Products & Services"
+    ],
+    "7": [
+     "SPCX",
+     "MSFT",
+     "TSLA",
+     "CRWD"
+    ],
+    "8": false,
+    "9": "GlobeNewswire",
+    "10": "AI Kill Switch: Project Meridian & the Vulcan Frontier AI Defense Matrix (Veterans First for America",
+    "11": "en-US"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791155677465
+  },
+  {
+   "ts_recv": 1791156600.8124754,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 57,
+    "key": "TSLA",
+    "1": 1791156600000,
+    "2": "tag_reuters_com_2026_newsml_L6S45O146",
+    "3": "A",
+    "4": "重温-美国股市：收高，疲弱就业数据削弱美联储加息预期",
+    "5": "tag_reuters_com_2026_newsml_L6S45O146",
+    "6": [
+     "Semiconductors",
+     "Semiconductors (NEC)",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Equities Markets",
+     "Consumer Cyclicals",
+     "Derivatives",
+     "Technology Equipment",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Electric (Alternative) Vehicles",
+     "Auto & Truck Manufacturers"
+    ],
+    "7": [
+     "$SPX",
+     "TSLA",
+     "$DJI",
+     "$NDX",
+     "SYNA",
+     "$COMPX",
+     "NVDA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "重温-美国股市：收高，疲弱就业数据削弱美联储加息预期 重温 路透纽约10月2日 - 美国股市周五上涨，因弱于预期的就业数据降低了市场对美联储在10月底政策会议上加息的预期。 美国劳工部表示，9月非农就",
+    "11": "zh-CN"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791156600806
+  },
+  {
+   "ts_recv": 1791156601.829283,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 58,
+    "key": "TSLA",
+    "1": 1791156600000,
+    "2": "tag_reuters_com_2026_newsml_L6T45O146",
+    "3": "A",
+    "4": "重溫-美國股市：收高，疲弱就業數據削弱美聯儲加息預期",
+    "5": "tag_reuters_com_2026_newsml_L6T45O146",
+    "6": [
+     "Semiconductors",
+     "Semiconductors (NEC)",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Equities Markets",
+     "Consumer Cyclicals",
+     "Derivatives",
+     "Technology Equipment",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Electric (Alternative) Vehicles",
+     "Auto & Truck Manufacturers"
+    ],
+    "7": [
+     "$SPX",
+     "TSLA",
+     "$DJI",
+     "$NDX",
+     "SYNA",
+     "$COMPX",
+     "NVDA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "重溫-美國股市：收高，疲弱就業數據削弱美聯儲加息預期 重溫 路透紐約10月2日 - 美國股市周五上漲，因弱於預期的就業數據降低了市場對美聯儲在10月底政策會議上加息的預期。 美國勞工部表示，9月非農就",
+    "11": "zh-TW"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791156601823
+  },
+  {
+   "ts_recv": 1791156606.105138,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 59,
+    "key": "TSLA",
+    "1": 1791156600000,
+    "2": "tag_reuters_com_2026_newsml_L6S45O146",
+    "3": "A",
+    "4": "重温-美国股市：收高，疲弱就业数据削弱美联储加息预期",
+    "5": "tag_reuters_com_2026_newsml_L6S45O146",
+    "6": [
+     "Semiconductors",
+     "Semiconductors (NEC)",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Equities Markets",
+     "Consumer Cyclicals",
+     "Derivatives",
+     "Technology Equipment",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Electric (Alternative) Vehicles",
+     "Auto & Truck Manufacturers"
+    ],
+    "7": [
+     "WDC",
+     "SYNA",
+     "$SPX",
+     "TSLA",
+     "$NDX",
+     "$DJI",
+     "NKE",
+     "STX",
+     "NVDA",
+     "$COMPX"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "重温-美国股市：收高，疲弱就业数据削弱美联储加息预期 重温 路透纽约10月2日 - 美国股市周五上涨，因弱于预期的就业数据降低了市场对美联储在10月底政策会议上加息的预期。 美国劳工部表示，9月非农就",
+    "11": "zh-CN"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791156606078
+  },
+  {
+   "ts_recv": 1791156607.1007314,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 60,
+    "key": "TSLA",
+    "1": 1791156600000,
+    "2": "tag_reuters_com_2026_newsml_L6T45O146",
+    "3": "A",
+    "4": "重溫-美國股市：收高，疲弱就業數據削弱美聯儲加息預期",
+    "5": "tag_reuters_com_2026_newsml_L6T45O146",
+    "6": [
+     "Semiconductors",
+     "Semiconductors (NEC)",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Equities Markets",
+     "Consumer Cyclicals",
+     "Derivatives",
+     "Technology Equipment",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Electric (Alternative) Vehicles",
+     "Auto & Truck Manufacturers"
+    ],
+    "7": [
+     "WDC",
+     "SYNA",
+     "$SPX",
+     "TSLA",
+     "$NDX",
+     "$DJI",
+     "NKE",
+     "STX",
+     "NVDA",
+     "$COMPX"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "重溫-美國股市：收高，疲弱就業數據削弱美聯儲加息預期 重溫 路透紐約10月2日 - 美國股市周五上漲，因弱於預期的就業數據降低了市場對美聯儲在10月底政策會議上加息的預期。 美國勞工部表示，9月非農就",
+    "11": "zh-TW"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791156607094
+  },
+  {
+   "ts_recv": 1791162308.4745183,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 61,
+    "key": "TSLA",
+    "1": 1790969882000,
+    "2": "tag_reuters_com_2026_newsml_L4N45O17W",
+    "3": "D",
+    "4": "更新 1-販売が急増する中、中国車展示会がアルゼンチンで初開催",
+    "5": "tag_reuters_com_2026_newsml_L4N45O17W",
+    "6": [
+     "Electric (Alternative) Vehicles",
+     "Consumer Cyclicals",
+     "Auto & Truck Manufacturers (NEC)",
+     "*ALL*",
+     "Automobiles & Multi Utility Vehicles",
+     "Auto & Truck Manufacturers",
+     "Automobiles & Auto Parts"
+    ],
+    "7": [
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "更新 1-販売が急増する中、中国車展示会がアルゼンチンで初開催 ブエノスアイレスで初の中国自動車ショーが開幕、２０以上のブランドが出展 ８月の自動車販売台数の１０％を中国メーカーが占めた 中国メーカー",
+    "11": "ja-JP"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791162308465
+  },
+  {
+   "ts_recv": 1791166040.569466,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 62,
+    "key": "TSLA",
+    "1": 1791166039000,
+    "2": "tag_reuters_com_2026_newsml_L4N45R02G",
+    "3": "A",
+    "4": "BUZZ-TSMC shares rise 3% after Elon Musk confirms TeraFab talks",
+    "5": "tag_reuters_com_2026_newsml_L4N45R02G",
+    "6": [
+     "Semiconductors (NEC)",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Volatile Shares / Hot Stocks",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Wireless Telecommunications Services",
+     "Auto & Truck Manufacturers",
+     "Telecommunications Services",
+     "Semiconductors",
+     "Technology Equipment",
+     "Wireless Telecommunications Services (NEC)",
+     "Equities Markets"
+    ],
+    "7": [
+     "SPCX",
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "BUZZ-TSMC shares rise 3% after Elon Musk confirms TeraFab talks ** Shares of TSMC 2330.TW rise 3% af",
+    "11": "en-US"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791166040559
+  },
+  {
+   "ts_recv": 1791166057.3421175,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 63,
+    "key": "TSLA",
+    "1": 1791166056000,
+    "2": "tag_reuters_com_2026_newsml_L4T45R03A",
+    "3": "A",
+    "4": "BUZZ-埃隆·馬斯克證實正在就TeraFab項目進行談判後，台積電股價上漲3%",
+    "5": "tag_reuters_com_2026_newsml_L4T45R03A",
+    "6": [
+     "Semiconductors (NEC)",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Volatile Shares / Hot Stocks",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Wireless Telecommunications Services",
+     "Auto & Truck Manufacturers",
+     "Telecommunications Services",
+     "Semiconductors",
+     "Technology Equipment",
+     "Wireless Telecommunications Services (NEC)",
+     "Equities Markets"
+    ],
+    "7": [
+     "SPCX",
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "BUZZ-埃隆·馬斯克證實正在就TeraFab項目進行談判後，台積電股價上漲3% 10月5日 - ** 埃隆·馬斯克證實與台積電 2330.TW 進行磋商後，該公司股價上漲3% ** 台灣證券交易所加",
+    "11": "zh-TW"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791166057332
+  },
+  {
+   "ts_recv": 1791166058.3623,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 64,
+    "key": "TSLA",
+    "1": 1791166056000,
+    "2": "tag_reuters_com_2026_newsml_L4S45R03A",
+    "3": "A",
+    "4": "BUZZ-埃隆·马斯克证实正在就TeraFab项目进行谈判后，台积电股价上涨3%",
+    "5": "tag_reuters_com_2026_newsml_L4S45R03A",
+    "6": [
+     "Semiconductors (NEC)",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Volatile Shares / Hot Stocks",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Wireless Telecommunications Services",
+     "Auto & Truck Manufacturers",
+     "Telecommunications Services",
+     "Semiconductors",
+     "Technology Equipment",
+     "Wireless Telecommunications Services (NEC)",
+     "Equities Markets"
+    ],
+    "7": [
+     "SPCX",
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "BUZZ-埃隆·马斯克证实正在就TeraFab项目进行谈判后，台积电股价上涨3% 10月5日 - ** 埃隆·马斯克证实与台积电 2330.TW 进行磋商后，该公司股价上涨3% ** 台湾证券交易所加",
+    "11": "zh-CN"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791166058351
+  },
+  {
+   "ts_recv": 1791166058.3623488,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 65,
+    "key": "TSLA",
+    "1": 1791166056000,
+    "2": "tag_reuters_com_2026_newsml_L1N45R01W",
+    "3": "A",
+    "4": "BUZZ-Ações da TSMC sobem 3% após Elon Musk confirmar negociações sobre a TeraFab",
+    "5": "tag_reuters_com_2026_newsml_L1N45R01W",
+    "6": [
+     "Semiconductors (NEC)",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Volatile Shares / Hot Stocks",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Wireless Telecommunications Services",
+     "Auto & Truck Manufacturers",
+     "Telecommunications Services",
+     "Semiconductors",
+     "Technology Equipment",
+     "Wireless Telecommunications Services (NEC)",
+     "Equities Markets"
+    ],
+    "7": [
+     "SPCX",
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "BUZZ-Ações da TSMC sobem 3% após Elon Musk confirmar negociações sobre a TeraFab 5 Out - ** As ações",
+    "11": "pt-BR"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791166058351
+  },
+  {
+   "ts_recv": 1791166058.3623602,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 66,
+    "key": "TSLA",
+    "1": 1791166057000,
+    "2": "tag_reuters_com_2026_newsml_L4N45R039",
+    "3": "A",
+    "4": "BUZZ-マスク氏がテラファブ協議認め、ＴＳＭＣ株3%高",
+    "5": "tag_reuters_com_2026_newsml_L4N45R039",
+    "6": [
+     "Semiconductors (NEC)",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Volatile Shares / Hot Stocks",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Wireless Telecommunications Services",
+     "Auto & Truck Manufacturers",
+     "Telecommunications Services",
+     "Semiconductors",
+     "Technology Equipment",
+     "Wireless Telecommunications Services (NEC)",
+     "Equities Markets"
+    ],
+    "7": [
+     "SPCX",
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "BUZZ-マスク氏がテラファブ協議認め、ＴＳＭＣ株3%高 ［　１０月５日　］ - ** イーロン・マスク氏がTSMC 2330.TW との協議を認めたことを受け、同社の株価は３％上昇した ** 台湾証",
+    "11": "ja-JP"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791166058351
+  },
+  {
+   "ts_recv": 1791166066.7827823,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 67,
+    "key": "TSLA",
+    "1": 1791166066000,
+    "2": "tag_reuters_com_2026_newsml_L4N45R03B",
+    "3": "A",
+    "4": "BUZZ-일론 머스크가 테라팹(TeraFab) 협상 사실을 확인한 후 TSMC 주가가 3% 상승했다",
+    "5": "tag_reuters_com_2026_newsml_L4N45R03B",
+    "6": [
+     "Semiconductors (NEC)",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Volatile Shares / Hot Stocks",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Wireless Telecommunications Services",
+     "Auto & Truck Manufacturers",
+     "Telecommunications Services",
+     "Semiconductors",
+     "Technology Equipment",
+     "Wireless Telecommunications Services (NEC)",
+     "Equities Markets"
+    ],
+    "7": [
+     "SPCX",
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "BUZZ-일론 머스크가 테라팹(TeraFab) 협상 사실을 확인한 후 TSMC 주가가 3% 상승했다 10월05일 - ** 일론 머스크가 TSMC(2330.TW)와의 협상 사실을 확",
+    "11": "ko-KR"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791166066770
+  },
+  {
+   "ts_recv": 1791166068.3065038,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 68,
+    "key": "TSLA",
+    "1": 1791166067000,
+    "2": "tag_reuters_com_2026_newsml_L8N45R01I",
+    "3": "A",
+    "4": "BUZZ-Las acciones de TSMC suben un 3 % después de que Elon Musk confirmara las negociaciones sobre TeraFab",
+    "5": "tag_reuters_com_2026_newsml_L8N45R01I",
+    "6": [
+     "Semiconductors (NEC)",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Volatile Shares / Hot Stocks",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Wireless Telecommunications Services",
+     "Auto & Truck Manufacturers",
+     "Telecommunications Services",
+     "Semiconductors",
+     "Technology Equipment",
+     "Wireless Telecommunications Services (NEC)",
+     "Equities Markets"
+    ],
+    "7": [
+     "SPCX",
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "BUZZ-Las acciones de TSMC suben un 3 % después de que Elon Musk confirmara las negociaciones sobre T",
+    "11": "es-LA"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791166068297
+  },
+  {
+   "ts_recv": 1791166070.3903959,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 69,
+    "key": "TSLA",
+    "1": 1791166068000,
+    "2": "tag_reuters_com_2026_newsml_L8N45R01J",
+    "3": "A",
+    "4": "BUZZ-Le azioni TSMC salgono del 3% dopo che Elon Musk ha confermato le trattative su TeraFab",
+    "5": "tag_reuters_com_2026_newsml_L8N45R01J",
+    "6": [
+     "Semiconductors (NEC)",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Volatile Shares / Hot Stocks",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Wireless Telecommunications Services",
+     "Auto & Truck Manufacturers",
+     "Telecommunications Services",
+     "Semiconductors",
+     "Technology Equipment",
+     "Wireless Telecommunications Services (NEC)",
+     "Equities Markets"
+    ],
+    "7": [
+     "SPCX",
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "BUZZ-Le azioni TSMC salgono del 3% dopo che Elon Musk ha confermato le trattative su TeraFab 5 ottob",
+    "11": "it-IT"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791166070380
+  },
+  {
+   "ts_recv": 1791166071.7767856,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 70,
+    "key": "TSLA",
+    "1": 1791166070000,
+    "2": "tag_reuters_com_2026_newsml_L8N45R01K",
+    "3": "A",
+    "4": "BUZZ-Les actions de TSMC progressent de 3 % après la confirmation par Elon Musk de négociations concernant TeraFab",
+    "5": "tag_reuters_com_2026_newsml_L8N45R01K",
+    "6": [
+     "Semiconductors (NEC)",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Volatile Shares / Hot Stocks",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Wireless Telecommunications Services",
+     "Auto & Truck Manufacturers",
+     "Telecommunications Services",
+     "Semiconductors",
+     "Technology Equipment",
+     "Wireless Telecommunications Services (NEC)",
+     "Equities Markets"
+    ],
+    "7": [
+     "SPCX",
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "BUZZ-Les actions de TSMC progressent de 3 % après la confirmation par Elon Musk de négociations conc",
+    "11": "fr-FR"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791166071768
+  },
+  {
+   "ts_recv": 1791166074.8319902,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 71,
+    "key": "TSLA",
+    "1": 1791166073000,
+    "2": "tag_reuters_com_2026_newsml_L8N45R01L",
+    "3": "A",
+    "4": "BUZZ-TSMC-Aktien steigen um 3 Prozent, nachdem Elon Musk Gespräche über TeraFab bestätigt hat",
+    "5": "tag_reuters_com_2026_newsml_L8N45R01L",
+    "6": [
+     "Semiconductors (NEC)",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Semiconductors & Semiconductor Equipment",
+     "Automobiles & Auto Parts",
+     "Volatile Shares / Hot Stocks",
+     "Technology",
+     "Technology / Media / Telecoms",
+     "*ALL*",
+     "Wireless Telecommunications Services",
+     "Auto & Truck Manufacturers",
+     "Telecommunications Services",
+     "Semiconductors",
+     "Technology Equipment",
+     "Wireless Telecommunications Services (NEC)",
+     "Equities Markets"
+    ],
+    "7": [
+     "SPCX",
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "BUZZ-TSMC-Aktien steigen um 3 Prozent, nachdem Elon Musk Gespräche über TeraFab bestätigt hat 05. Ok",
+    "11": "de-DE"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791166074820
+  },
+  {
+   "ts_recv": 1791171609.9395144,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 72,
+    "key": "TSLA",
+    "1": 1791171609000,
+    "2": "tag_reuters_com_2026_newsml_L6N45R050",
+    "3": "A",
+    "4": "英新車販売、9月は前年比12％増　ＥＶと中国勢好調",
+    "5": "tag_reuters_com_2026_newsml_L6N45R050",
+    "6": [
+     "Auto & Truck Manufacturers",
+     "Automobiles & Auto Parts",
+     "*ALL*",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Auto & Truck Manufacturers (NEC)"
+    ],
+    "7": [
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "英新車販売、9月は前年比12％増　ＥＶと中国勢好調 [２日 ロイター] - 英自動車工業会（ＳＭＭＴ）が２日発表した９月の新車販売台数は、前年同月比１２％増の３５万０５１８台となり、同月として２０１７",
+    "11": "ja-JP"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791171609925
+  },
+  {
+   "ts_recv": 1791171611.279568,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 73,
+    "key": "TSLA",
+    "1": 1790943793000,
+    "2": "tag_reuters_com_2026_newsml_L4N45O0OV",
+    "3": "D",
+    "4": "UPDATE 1-更新 1-9月の英国の新車販売台数は12%増加、EVや中国ブランドがシェアを拡大",
+    "5": "tag_reuters_com_2026_newsml_L4N45O0OV",
+    "6": [
+     "Auto & Truck Manufacturers",
+     "Automobiles & Auto Parts",
+     "*ALL*",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Auto & Truck Manufacturers (NEC)"
+    ],
+    "7": [
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "UPDATE 1-更新 1-9月の英国の新車販売台数は12%増加、EVや中国ブランドがシェアを拡大 9月のBEV新規登録台数が３６．３％急増 9月の英国販売台数、奇瑞（Chery）の「Jaecoo 7",
+    "11": "ja-JP"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791171611265
+  },
+  {
+   "ts_recv": 1791176400.709143,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 74,
+    "key": "TSLA",
+    "1": 1791176400000,
+    "2": "tag_reuters_com_2026_newsml_L8N45O1EJ",
+    "3": "A",
+    "4": "Studie: Alle europäischen Autobauer schaffen Emissionsziele bis 2027",
+    "5": "tag_reuters_com_2026_newsml_L8N45O1EJ",
+    "6": [
+     "Automobiles & Auto Parts",
+     "Electric (Alternative) Vehicles",
+     "Energy Markets",
+     "Auto & Truck Manufacturers",
+     "Consumer Cyclicals",
+     "Commodities Markets",
+     "*ALL*",
+     "Auto & Truck Manufacturers (NEC)",
+     "Carbon / Emissions Markets",
+     "Automobiles & Multi Utility Vehicles"
+    ],
+    "7": [
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "Studie: Alle europäischen Autobauer schaffen Emissionsziele bis 2027 Berlin, 05. Okt (Reuters) - All",
+    "11": "de-DE"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791176400695
+  },
+  {
+   "ts_recv": 1791180076.1984184,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 75,
+    "key": "TSLA",
+    "1": 1791180069000,
+    "2": "tag_reuters_com_2026-10-05_newsml_FWN45R0A2",
+    "3": "A",
+    "4": "TESLA INC : HSBC RAISES TARGET PRICE TO $157 FROM $125",
+    "5": "tag_reuters_com_2026-10-05_newsml_FWN45R0A2",
+    "6": [
+     "Consumer Products",
+     "*ALL*",
+     "Consumer Cyclicals",
+     "Electric (Alternative) Vehicles",
+     "Automobiles & Auto Parts",
+     "Auto & Truck Manufacturers",
+     "Consumer Products and Services",
+     "Technology / Media / Telecoms"
+    ],
+    "7": [
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "TESLA INC : HSBC RAISES TARGET PRICE TO $157 FROM $125",
+    "11": "en-US"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791180076185
+  },
+  {
+   "ts_recv": 1791189647.0641665,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 76,
+    "key": "TSLA",
+    "1": 1791189639000,
+    "2": "tag_reuters_com_2026-10-05_newsml_NFC2b4k00",
+    "3": "A",
+    "4": "\"Future Resonance - ShanghaiEye Night\" Brings Shanghai to Washington, Fosters People-to-People Exchange Across the Pacific",
+    "5": "tag_reuters_com_2026-10-05_newsml_NFC2b4k00",
+    "6": [
+     "Technology / Media / Telecoms",
+     "Consumer Products",
+     "Software & IT Services",
+     "Online Services",
+     "Technology",
+     "E-commerce & Auction Services",
+     "*ALL*",
+     "Consumer Products and Services",
+     "Services"
+    ],
+    "7": [
+     "DIS",
+     "TSLA"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "\"Future Resonance - ShanghaiEye Night\" Brings Shanghai to Washington, Fosters People-to-People Excha",
+    "11": "en-US"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791189645797
+  },
+  {
+   "ts_recv": 1791192178.1266325,
+   "symbol": "TSLA",
+   "native": {
+    "seq": 77,
+    "key": "TSLA",
+    "1": 1791191880000,
+    "2": "202610050518MIDNIGHTLIVEBREF_A3720131",
+    "3": "A",
+    "4": "HSBC Adjusts Price Target on Tesla to $157 From $125, Keeps Reduce Rating",
+    "5": "202610050518MIDNIGHTLIVEBREF_A3720131",
+    "6": [
+     "Finance",
+     "Analyst Stock Ratings",
+     "Bond, Credit, Equity Ratings and Comments",
+     "Securities Analysis",
+     "Stock Price Targets",
+     "Analyst Comments",
+     "Market News and Updates",
+     "Stock Price Updates",
+     "Investments",
+     "*ALL*",
+     "Stocks",
+     "Trading Impact (ICE Codes) Important Corporate Events"
+    ],
+    "7": [
+     "TSLA"
+    ],
+    "8": false,
+    "9": "MT Newswire",
+    "10": "05:18 AM EDT, 10/05/2026 (MT Newswires) -- Tesla (TSLA) has an average rating of overweight and mean",
+    "11": "en-US"
+   },
+   "src": "schwab_news",
+   "schwab_ts": 1791192178107
+  }
+ ]
+}
