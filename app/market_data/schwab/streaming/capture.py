@@ -48,6 +48,8 @@ import threading
 import time
 from pathlib import Path
 
+# Required: StreamClient.set_json_decoder looks up schwab.contrib.util.StreamJsonDecoder, and
+# schwab/__init__ does not import schwab.contrib.
 from schwab.contrib.util import StreamJsonDecoder
 from schwab.streaming import StreamClient
 
@@ -238,11 +240,28 @@ def _open_stream(client) -> StreamClient:
     return stream
 
 
-#: schwab-py's public requests of each service: <name>_subs, <name>_add and <name>_unsubs, the
-#: first two asking for every field of the service. schwab-py has none for NEWS_HEADLINE.
-PUBLIC_REQUESTS = {"LEVELONE_EQUITIES": "level_one_equity", "CHART_EQUITY": "chart_equity",
-                   "LEVELONE_OPTIONS": "level_one_option", "NYSE_BOOK": "nyse_book",
-                   "NASDAQ_BOOK": "nasdaq_book", "OPTIONS_BOOK": "options_book"}
+def _public_requests(stream: StreamClient) -> dict:
+    """schwab-py's public request of each (service, command); SUBS and ADD ask for every field
+    of the service. schwab-py has none for NEWS_HEADLINE."""
+    s = stream
+    return {("LEVELONE_EQUITIES", "SUBS"): s.level_one_equity_subs,
+            ("LEVELONE_EQUITIES", "ADD"): s.level_one_equity_add,
+            ("LEVELONE_EQUITIES", "UNSUBS"): s.level_one_equity_unsubs,
+            ("CHART_EQUITY", "SUBS"): s.chart_equity_subs,
+            ("CHART_EQUITY", "ADD"): s.chart_equity_add,
+            ("CHART_EQUITY", "UNSUBS"): s.chart_equity_unsubs,
+            ("LEVELONE_OPTIONS", "SUBS"): s.level_one_option_subs,
+            ("LEVELONE_OPTIONS", "ADD"): s.level_one_option_add,
+            ("LEVELONE_OPTIONS", "UNSUBS"): s.level_one_option_unsubs,
+            ("NYSE_BOOK", "SUBS"): s.nyse_book_subs,
+            ("NYSE_BOOK", "ADD"): s.nyse_book_add,
+            ("NYSE_BOOK", "UNSUBS"): s.nyse_book_unsubs,
+            ("NASDAQ_BOOK", "SUBS"): s.nasdaq_book_subs,
+            ("NASDAQ_BOOK", "ADD"): s.nasdaq_book_add,
+            ("NASDAQ_BOOK", "UNSUBS"): s.nasdaq_book_unsubs,
+            ("OPTIONS_BOOK", "SUBS"): s.options_book_subs,
+            ("OPTIONS_BOOK", "ADD"): s.options_book_add,
+            ("OPTIONS_BOOK", "UNSUBS"): s.options_book_unsubs}
 
 
 async def _news_request(stream: StreamClient, command: str, symbols: "list[str]") -> None:
@@ -257,17 +276,19 @@ async def _news_request(stream: StreamClient, command: str, symbols: "list[str]"
         await stream._await_response(rid, "NEWS_HEADLINE", command)
 
 
-async def _request(stream: StreamClient, service: str, command: str, symbols: "list[str]") -> None:
+async def _request(stream: StreamClient, service: str, command: str, symbols: "list[str]",
+                   timeout: float) -> None:
     """One Schwab request; raises (schwab-py UnexpectedResponse / UnexpectedResponseCode /
-    connection errors) unless Schwab answers code 0."""
+    connection errors) unless Schwab answers code 0, and ConnectionError when Schwab does not
+    answer in `timeout` seconds."""
     if service == "NEWS_HEADLINE":
         send = _news_request(stream, command, symbols)
     else:
-        send = getattr(stream, f"{PUBLIC_REQUESTS[service]}_{command.lower()}")(symbols)
+        send = _public_requests(stream)[(service, command)](symbols)
     try:
-        await asyncio.wait_for(send, timeout=REQUEST_TIMEOUT_SEC)
+        await asyncio.wait_for(send, timeout=timeout)
     except asyncio.TimeoutError:
-        raise ConnectionError(f"no answer to {service} {command} in {REQUEST_TIMEOUT_SEC:.0f} s") from None
+        raise ConnectionError(f"no answer to {service} {command} in {timeout:g} s") from None
 
 
 def _connection_lost(e: BaseException) -> bool:
@@ -284,9 +305,16 @@ BOARD_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
 
 class Daemon:
     def __init__(self, bus: MessageBus, health: HealthRegistry,
-                 board: "list[str] | None" = None) -> None:
+                 board: "list[str] | None" = None, *, dead_sec: float = DEAD_SEC,
+                 backoff_sec: "tuple[float, ...]" = RECONNECT_BACKOFF_SEC,
+                 request_timeout_sec: float = REQUEST_TIMEOUT_SEC) -> None:
         self.bus = bus
         self.health = health
+        #: the connection's times: silence that means it is dead, the reconnect waits, and the
+        #: longest a request waits for Schwab's answer
+        self.dead_sec = dead_sec
+        self.backoff_sec = backoff_sec
+        self.request_timeout_sec = request_timeout_sec
         #: what the console's screens show, as it last said (none until it says)
         self.wanted = normalize_wanted(None)
         #: the console's ticker on screen: its chain is fetched first (ChainSweep.set_active)
@@ -333,7 +361,7 @@ class Daemon:
         now = time.time()
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
         return {"ts": now,
-                "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
+                "schwab_socket_open": bool(last) and now - last < self.dead_sec,
                 "board": list(self.board),
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
@@ -344,7 +372,7 @@ class Daemon:
         for svc, cmd, symbols in plan(self.all_wanted(), self.held, self.refused):
             for chunk in split_request(symbols):
                 try:
-                    await _request(self.stream, svc, cmd, chunk)
+                    await _request(self.stream, svc, cmd, chunk, self.request_timeout_sec)
                     code, reason = 0, "ok"
                 except Exception as e:       # noqa: BLE001 -- Schwab said no, or the socket died
                     if _connection_lost(e):
@@ -415,8 +443,8 @@ class Daemon:
         await self.connect(client)
         try:
             while not stop.is_set():
-                if time.time() - self.stream.last_frame_ts > DEAD_SEC:
-                    raise ConnectionError(f"no frame from Schwab for {DEAD_SEC:.0f} s")
+                if time.time() - self.stream.last_frame_ts > self.dead_sec:
+                    raise ConnectionError(f"no frame from Schwab for {self.dead_sec:g} s")
                 self.wanted_changed.clear()
                 await self.sync()
                 await self.read_for(SYNC_SEC)
@@ -437,8 +465,8 @@ class Daemon:
                 break
             # a connection that lasted 5 minutes starts the backoff over
             failures = 1 if time.time() - started > 300 else failures + 1
-            wait = RECONNECT_BACKOFF_SEC[min(failures, len(RECONNECT_BACKOFF_SEC)) - 1]
-            log.info("schwab: reconnecting in %.0f s", wait)
+            wait = self.backoff_sec[min(failures, len(self.backoff_sec)) - 1]
+            log.info("schwab: reconnecting in %g s", wait)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=wait)
             except asyncio.TimeoutError:
@@ -487,16 +515,15 @@ def release_owner_lock(fd: int, lock: Path) -> None:
         lock.unlink(missing_ok=True)
 
 
-def _start_log() -> None:
-    """Every line to <runtime>/logs/stream_capture.log (kept: under pythonw there is no console,
-    so the reason a socket died is on disk), and to the console if any."""
+def start_log(logs: Path, to_console: bool) -> None:
+    """Every line to <logs>/stream_capture.log (kept: under pythonw there is no console, so the
+    reason a socket died is on disk), and to the console when there is one (`to_console`)."""
     from logging.handlers import RotatingFileHandler
-    from runtime_layout import logs_dir
-    path = logs_dir() / "stream_capture.log"
+    path = logs / "stream_capture.log"
     path.parent.mkdir(parents=True, exist_ok=True)
     handlers: "list[logging.Handler]" = [RotatingFileHandler(path, maxBytes=50 * 1024 * 1024,
                                                              backupCount=1, encoding="utf-8")]
-    if sys.stderr is not None:
+    if to_console:
         handlers.append(logging.StreamHandler())
     logging.basicConfig(level=logging.INFO, handlers=handlers,
                         format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
@@ -600,18 +627,26 @@ async def run() -> int:
     return 0
 
 
-def main() -> int:
-    if sys.argv[1:]:        # everything it needs comes from the console; no switch can move it
-        print(f"the capture daemon takes no arguments (got {sys.argv[1:]})", file=sys.stderr)
-        return 2
-    # A worktree must not run a live daemon against production's runtime
-    # (runtime_layout.live_binding_error).
-    from runtime_layout import live_binding_error
-    binding = live_binding_error()
+def start_refusal(args: "list[str]", binding: "str | None") -> "str | None":
+    """Why the daemon must not start, or None. It takes no arguments: everything it needs comes
+    from the console, and no switch can move it. A checkout whose runtime is another checkout's
+    must not run a live daemon (`binding`, runtime_layout.live_binding_error)."""
+    if args:
+        return f"the capture daemon takes no arguments (got {args})"
     if binding is not None:
-        print(f"CAPTURE DAEMON REFUSED: {binding}", file=sys.stderr, flush=True)
+        return f"CAPTURE DAEMON REFUSED: {binding}"
+    return None
+
+
+def main() -> int:
+    """The process: refuses (exit 2) before opening anything, else the log, the owner lock and
+    the daemon."""
+    from runtime_layout import live_binding_error, logs_dir
+    refusal = start_refusal(sys.argv[1:], live_binding_error())
+    if refusal is not None:
+        print(refusal, file=sys.stderr, flush=True)
         return 2
-    _start_log()
+    start_log(logs_dir(), sys.stderr is not None)
     fd, lock = acquire_owner_lock()
     try:
         return asyncio.run(run())

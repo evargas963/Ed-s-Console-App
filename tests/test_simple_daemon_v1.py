@@ -1,16 +1,14 @@
-"""The simple capture daemon (operator 2026-09-25: "simple, simple, simple"): the console sends
-one wanted list; the daemon subscribes the difference, logs Schwab's answer, fans every message
-out, and reconnects + resubscribes when Schwab goes silent. These tests hold each of those
-behaviours with a fake Schwab connection, and the real local sockets where it matters."""
+"""The capture daemon's own decisions and its process: the console's wanted list, the sync plan,
+the board, the console socket, the console's side of the list, the owner lock, the start refusal
+and the log. Its Schwab connection (subscribe, refuse, reconnect, silence) is tested through
+schwab-py and a stand-in streamer in tests/test_data_path_schwab_stream_v1.py."""
 from __future__ import annotations
 
 import asyncio
 import json
 import socket
 import sqlite3
-import sys
 import time
-from collections import defaultdict
 
 import pytest
 
@@ -107,160 +105,6 @@ def test_the_ticker_on_screen_is_the_chain_sweeps_active_ticker(tmp_path):
     assert d.chains._next(rth) == "TSLA", "the named ticker, not the books"
 
 
-# ------------------------------------------------------------------ sync against a fake Schwab
-
-class FakeSchwab:
-    """Records every request; refuses the symbols in `refuse`; can die mid-request."""
-
-    def __init__(self, refuse=(), die_on=None):
-        self.calls, self.refuse, self.die_on = [], set(refuse), die_on
-
-    async def request(self, stream, service, command, symbols):
-        self.calls.append((service, command, list(symbols)))
-        if self.die_on == (service, command):
-            raise ConnectionError("socket closed")
-        if command != "UNSUBS" and self.refuse & set(symbols):
-            raise RuntimeError("code 19 REACHED_SYMBOL_LIMIT")
-
-
-def _daemon(tmp_path, monkeypatch, fake, board=(), **wanted):
-    bus = ss.MessageBus()
-    log = bus.subscribe("sub.", policy=ss.LOG)
-    d = cap.Daemon(bus, ss.HealthRegistry(), board=list(board))
-    d.set_wanted({k: list(v) for k, v in wanted.items()})
-    d.stream = object()
-    monkeypatch.setattr(cap, "_request", fake.request)
-    return d, log
-
-
-def test_sync_subscribes_the_difference_and_logs_every_answer(tmp_path, monkeypatch):
-    fake = FakeSchwab()
-    d, log = _daemon(tmp_path, monkeypatch, fake, board=["SPY", "AAPL"], NYSE_BOOK=["SPY"])
-    asyncio.run(d.sync())
-    assert fake.calls == [("LEVELONE_EQUITIES", "SUBS", ["AAPL", "SPY"]), ("CHART_EQUITY", "SUBS", ["AAPL", "SPY"]),
-                          ("NYSE_BOOK", "SUBS", ["SPY"]), ("NEWS_HEADLINE", "SUBS", ["AAPL", "SPY"])]
-    assert d.held["LEVELONE_EQUITIES"] == {"SPY", "AAPL"} and d.held["NYSE_BOOK"] == {"SPY"}
-    assert [log.queue.get_nowait()[1]["code"] for _ in range(4)] == [0, 0, 0, 0]
-    fake.calls.clear()
-    asyncio.run(d.sync())
-    assert fake.calls == [], "nothing changed, nothing sent"
-
-
-def test_a_refused_symbol_is_recorded_and_retried_only_after_the_list_changes(tmp_path, monkeypatch):
-    fake = FakeSchwab(refuse={"BAD"})
-    d, log = _daemon(tmp_path, monkeypatch, fake, OPTIONS_BOOK=["BAD"])
-    asyncio.run(d.sync())
-    assert "BAD" in d.refused["OPTIONS_BOOK"] and d.held["OPTIONS_BOOK"] == set()
-    assert log.queue.get_nowait()[1]["code"] != 0
-    fake.calls.clear()
-    asyncio.run(d.sync())
-    assert fake.calls == [], "a refused symbol is not asked for again"
-    d.set_wanted({"OPTIONS_BOOK": ["BAD", "SPY"]})
-    fake.refuse.clear()
-    asyncio.run(d.sync())
-    assert fake.calls == [("OPTIONS_BOOK", "SUBS", ["BAD", "SPY"])]
-
-
-def test_a_dead_socket_during_sync_ends_the_connection(tmp_path, monkeypatch):
-    fake = FakeSchwab(die_on=("OPTIONS_BOOK", "SUBS"))
-    d, _ = _daemon(tmp_path, monkeypatch, fake, OPTIONS_BOOK=["SPY"])
-    with pytest.raises(ConnectionError):
-        asyncio.run(d.sync())
-    assert d.refused["OPTIONS_BOOK"] == {}, "a dead socket is not Schwab refusing a symbol"
-
-
-# ------------------------------------------------------------------ connection lifecycle
-
-class FakeStream:
-    """schwab-py StreamClient's surface as the daemon uses it."""
-    live = 0            # logged-in sessions right now
-    most_live = 0
-    logins = 0
-    connect_args: "list[dict | None]" = []
-
-    def __init__(self, client):
-        self.client = client
-        self._handlers = defaultdict(list)
-        self.last_frame_ts = time.time()
-        self.frames: "asyncio.Queue | None" = None
-
-    async def login(self, websocket_connect_args=None):
-        FakeStream.connect_args.append(websocket_connect_args)
-        FakeStream.logins += 1
-        FakeStream.live += 1
-        FakeStream.most_live = max(FakeStream.most_live, FakeStream.live)
-        self.frames = asyncio.Queue()
-
-    async def logout(self):
-        FakeStream.live -= 1
-
-    def __getattr__(self, name):
-        if name.startswith("add_") and name.endswith("_handler"):
-            return lambda h: self._handlers[name].append(h)
-        raise AttributeError(name)
-
-    async def handle_message(self):
-        item = await self.frames.get()
-        if isinstance(item, BaseException):
-            raise item
-        self.last_frame_ts = time.time()
-        for h in self._handlers.get(item["handler"], []):
-            h(item["msg"])
-
-
-def test_a_dying_connection_is_replaced_and_everything_wanted_is_resubscribed(tmp_path, monkeypatch):
-    """Reconnect = a new session that holds nothing, then the same sync. At most ONE live
-    Schwab session at any instant (the old stream is logged out before the new one logs in)."""
-    from websockets.exceptions import ConnectionClosedError
-    FakeStream.live = FakeStream.most_live = FakeStream.logins = 0
-    FakeStream.connect_args = []
-    monkeypatch.setattr(cap, "_open_stream", FakeStream)
-    monkeypatch.setattr(cap, "RECONNECT_BACKOFF_SEC", (0.01,))
-    fake = FakeSchwab()
-    monkeypatch.setattr(cap, "_request", fake.request)
-    bus = ss.MessageBus()
-    d = cap.Daemon(bus, ss.HealthRegistry(), board=["SPY"])
-    d.set_wanted({"NYSE_BOOK": ["SPY"]})
-    stop = asyncio.Event()
-
-    async def until(cond):
-        deadline = time.monotonic() + 10
-        while not cond():
-            assert time.monotonic() < deadline, "the daemon did not get there in 10 s"
-            await asyncio.sleep(0.01)
-
-    async def go():
-        client = object()
-        task = asyncio.create_task(d.run(lambda: client, stop))
-        try:
-            await until(lambda: FakeStream.logins >= 1 and d.held["NYSE_BOOK"])
-            d.stream.frames.put_nowait(ConnectionClosedError(None, None))      # Schwab drops us
-            await until(lambda: FakeStream.logins >= 2 and d.held["NYSE_BOOK"])
-        finally:
-            stop.set()
-            await asyncio.wait_for(task, 5)
-    asyncio.run(go())
-    subs = [c for c in fake.calls if c[1] == "SUBS"]
-    assert subs.count(("NYSE_BOOK", "SUBS", ["SPY"])) == 2, "resubscribed after the reconnect"
-    assert FakeStream.most_live == 1 and FakeStream.live == 0
-    # no receive cap of ours: Schwab's frames are taken whole, whatever their size (operator
-    # 2026-10-01: no caps); the websockets default refuses a frame over 1 MiB
-    assert FakeStream.connect_args == [{"max_size": None}] * 2
-
-
-def test_silence_from_schwab_ends_the_connection(tmp_path, monkeypatch):
-    monkeypatch.setattr(cap, "_open_stream", FakeStream)
-    monkeypatch.setattr(cap, "DEAD_SEC", 0.2)
-    monkeypatch.setattr(cap, "_request", FakeSchwab().request)
-    d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry())
-
-    async def go():
-        await d.run_connection(object(), asyncio.Event())
-    with pytest.raises(ConnectionError, match="no frame from Schwab"):
-        asyncio.run(asyncio.wait_for(go(), 5))
-    assert d.stream is None, "the dead session is logged out and dropped"
-
-
 # ------------------------------------------------------------------ Schwab's messages
 
 def test_every_service_is_published_verbatim_and_only_delivered_data_counts_as_alive():
@@ -350,21 +194,27 @@ def test_the_console_socket_carries_the_wanted_list_in_and_the_status_out():
 # ------------------------------------------------------------------ the console side
 
 @pytest.fixture
-def console(monkeypatch):
-    from app.options.order_flow import streaming as ofs
-    monkeypatch.setattr(push_changes, "_open", [])
-    monkeypatch.setattr(ofs, "_active_option_contract", None)
-    monkeypatch.setattr(ofs, "_active_option_contracts", [])
+def console():
+    """The console with no option contract and the daemon's feed down, set through its own
+    calls; the pages a test opens (`pages`) and its contracts are closed after it."""
     import live_market_plane as lmp
+    from app.options.order_flow import streaming as ofs
+    ofs.clear_active_option_contract(reason="test start")
+    ofs.set_active_option_contracts([])
     lmp.record_feed_down()
-    return ofs
+    pages: list = []
+    yield ofs, pages
+    for tk, c in pages:
+        push_changes.unsubscribe(tk, c)
+    ofs.clear_active_option_contract(reason="test end")
+    ofs.set_active_option_contracts([])
 
 
 def test_the_console_wants_the_tickers_equity_book_and_contracts(console):
-    ofs = console
-    push_changes.subscribe("NVDA")                       # a page open on NVDA
-    ofs._active_option_contract = "NVDA  261016C00200000"
-    ofs._active_option_contracts = ["NVDA  261016C00210000"]
+    ofs, pages = console
+    pages.append(("NVDA", push_changes.subscribe("NVDA")))          # a page open on NVDA
+    assert ofs.set_active_option_contract("NVDA  261016C00200000")
+    assert ofs.set_active_option_contracts(["NVDA  261016C00210000"])
     w = ofs.current_wanted()
     assert w["LEVELONE_EQUITIES"] == w["CHART_EQUITY"] == w["NEWS_HEADLINE"]
     assert w["LEVELONE_EQUITIES"][:4] == ["NVDA", *ofs.MARKET_CONTEXT_SYMBOLS]
@@ -374,7 +224,7 @@ def test_the_console_wants_the_tickers_equity_book_and_contracts(console):
 
 
 def test_every_desired_state_change_is_sent_once(console):
-    ofs = console
+    ofs, pages = console
     sent = []
 
     class WS:
@@ -384,7 +234,7 @@ def test_every_desired_state_change_is_sent_once(console):
     async def go():
         t = asyncio.create_task(ofs._send_wanted(WS()))
         await asyncio.sleep(0.05)
-        push_changes.subscribe("AMD")                    # a page opens on AMD
+        pages.append(("AMD", push_changes.subscribe("AMD")))        # a page opens on AMD
         await asyncio.sleep(0.05)
         t.cancel()
     asyncio.run(go())
@@ -392,13 +242,11 @@ def test_every_desired_state_change_is_sent_once(console):
 
 
 def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(console):
-    """ONE-15 (2026-09-28 audit): "is it live" had four limits -- 3 s (price), 5 s (daemon
-    status), 10 s (option greeks), 25 s (book) -- plus the daemon's 5 s/30 s message-age states,
-    so one moment could read live on one card and dead on the next. One rule now: the daemon's
-    heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
-    symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes)."""
+    """One rule for "is it live", every reader alike: the daemon's heartbeat is under
+    FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the symbol on that
+    service. A service quiet for 45 s on that feed is live (Schwab sends changes)."""
     import live_market_plane as lmp
-    ofs = console
+    ofs, _pages = console
     status = {"schwab_socket_open": True,
               "health": {"OPTIONS_BOOK": {"age_sec": 45.0}},
               "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]},
@@ -431,7 +279,7 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(cons
 
 # ------------------------------------------------------------------ the process
 
-def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path, monkeypatch):
+def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path):
     db = tmp_path / "stream_capture.db"
     fd, lock = cap.acquire_owner_lock(db)
     try:
@@ -446,29 +294,32 @@ def test_one_daemon_at_a_time_and_a_dead_owners_lock_is_reclaimed(tmp_path, monk
     assert not lock.exists()
 
 
-def test_a_checkout_that_may_not_run_live_refuses_before_opening_anything(monkeypatch):
+def test_a_checkout_whose_runtime_is_another_checkout_may_not_start_the_daemon(tmp_path):
+    """The binding runtime_layout reports for a checkout whose runtime is another git checkout
+    refuses the start (main exits 2 on it before the log, the lock or the daemon); so does any
+    argument. Stand-ins: the two checkouts are temporary directories, the other one with .git."""
     import runtime_layout
-    monkeypatch.setattr(runtime_layout, "live_binding_error", lambda *a, **k: "bound elsewhere")
-    ran = []
-    monkeypatch.setattr(cap, "run", lambda *a, **k: ran.append(a))
-    monkeypatch.setattr(sys, "argv", ["capture"])
-    assert cap.main() == 2
-    assert ran == [], "no lock, no Schwab socket, no stream database"
+    this, other = tmp_path / "worktree", tmp_path / "production"
+    (other / ".git").mkdir(parents=True)
+    this.mkdir()
+    binding = runtime_layout.live_binding_error(source_root=this, runtime_root=other)
+    assert binding is not None
+    assert cap.start_refusal([], binding) == f"CAPTURE DAEMON REFUSED: {binding}"
+    assert cap.start_refusal(["--db", "fork.db"], None) == \
+        "the capture daemon takes no arguments (got ['--db', 'fork.db'])"
+    assert cap.start_refusal([], runtime_layout.live_binding_error(source_root=this, runtime_root=this)) is None
 
 
-def test_the_daemons_log_is_kept_on_disk_with_times(monkeypatch, tmp_path):
-    """Under pythonw there is no console: every line must reach logs/stream_capture.log with
-    its wall time (2026-09-23: 42 socket deaths, not one reason on disk)."""
+def test_the_daemons_log_is_kept_on_disk_with_times(tmp_path):
+    """Under pythonw there is no console: every line reaches logs/stream_capture.log with its
+    wall time."""
     import logging
 
-    import runtime_layout
-    monkeypatch.setattr(runtime_layout, "logs_dir", lambda: tmp_path)
-    monkeypatch.setattr(sys, "stderr", None)
     root = logging.getLogger()
     saved = root.handlers[:]
     root.handlers = []
     try:
-        cap._start_log()
+        cap.start_log(tmp_path, to_console=False)
         cap.log.warning("schwab: connection ended (socket closed)")
         for h in root.handlers:
             h.flush()
