@@ -48,8 +48,8 @@ from Schwab to the screen (daemon, console, page), are these:
   the order messages arrive. A time that describes data is Schwab's, never the
   console's clock: a chain (delivered, kept or stored) is valued at its newest `quoteTimeInLong`
   (`docs/schwab_fields.csv`, `chains.callExpDateMap.*.quoteTimeInLong` and the put row; sent on
-  every contract of 511,329 in the newest three captures of all 38 board tickers, 2026-10-02,
-  while `tradeTimeInLong` was 0 on 89,846 of them), and a chain without one is not priced, its
+  every contract of 511,329 in the newest three captures of all 38 board tickers, captured
+  through 2026-10-02 and measured 2026-10-05, while `tradeTimeInLong` was 0 on 89,846 of them), and a chain without one is not priced, its
   last levels standing with the reason. Only a proven need for the current time (an age, a
   liveness test, the day a page is viewed) reads the clock, at an entry point (a route, a loop, a
   stream handler), and passes it in. Enforced by: `tests/test_data_path_rules_v1.py`; the clock
