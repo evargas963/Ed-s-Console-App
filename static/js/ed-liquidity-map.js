@@ -47,8 +47,8 @@
     var P = c.palette();
     var side = { support: P.up, resistance: P.down, value: P.ink3 };
     var zones = (snap && snap.zones) || [];
-    c.setBars((barsD && barsD.bars) || [], (barsD && barsD.tf) || _tf, st().display || tk, barsD && barsD.last_bar && barsD.last_bar.label,
-      barsD && barsD.backfill);
+    c.setBars(barsD && barsD.bars, (barsD && barsD.tf) || _tf, st().display || tk, barsD && barsD.last_bar && barsD.last_bar.label,
+      barsD && barsD.backfill);   // no bars served: setBars draws none
     c.setZones(zones.map(function (z) {
       return { lo: z.zone_low, hi: z.zone_high, color: side[z.zone_side] || P.ink3, label: z.zone_label + ' · ' + z.confluence_score + '×' };
     }));

@@ -1807,8 +1807,8 @@ def get_bars1m(ticker: str = Query(...),
     out = [_lpr.with_change(b) for b in aggregate_bars(bars, tf)]
     last = bars[-1]["t"] if bars else None
     return JSONResponse({"ticker": tk, "bars": out, "tf": tf, "n": len(out),
-                         "last_bar": {"t": last, "label": ct_label(last)} if last is not None else None,
-                         "backfill": backfill_line(lmp.daemon_status())})
+                         "backfill": backfill_line(lmp.daemon_status()),
+                         "last_bar": {"t": last, "label": ct_label(last)} if last is not None else None})
 
 
 def backfill_line(status: "dict | None") -> str:
