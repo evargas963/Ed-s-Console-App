@@ -27,7 +27,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 | ENF-05 | QUEUED | Every ticker: measurements and reports cover every ticker in the recorded universe; a check of the report scripts. |
 | ENF-06 | QUEUED | The UI shows Central Time (rule 9): a browser test of every shown time. |
 | ENF-07 | QUEUED | Real captured data: a check that each behavior test reads `tests/fixtures/` captured data and names any induced condition (feed down, a clock instant). |
-| ENF-08 | QUEUED | The "Before writing code" practices (trace each value, name the lifecycle owner, new checks fail on old code, tests drive real code): a PR template whose sections a check requires. |
+| ENF-08 | QUEUED | The "Before writing code" practices (trace each value, name the lifecycle owner, new checks fail on old code, tests drive real code): a PR template whose sections a check requires. Known gaps of `tools/check_fails_before.py`'s deletion exemption, still exempt (measured 2026-10-05 by the re-review's rr4 probe; neither occurs in tests/ today): removing a fixture whose `name=` is not a string literal (`@pytest.fixture(name=NAME)`) that a remaining test takes; removing a module fixture that overrides a conftest autouse fixture of the same name (the module falls back to the conftest one; the file alone does not show it). |
 | ENF-09 | QUEUED | Time is an input: a check that no function below an entry point reads the clock. |
 | ENF-10 | QUEUED | Typed records across module boundaries: a check of cross-module dict payloads. |
 | ENF-11 | QUEUED | Imports at the top (ruff E402) and one formatter per format. |

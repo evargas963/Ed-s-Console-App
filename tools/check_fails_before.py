@@ -13,12 +13,15 @@ here, and names the existing tests that cover it under "End-to-end test:" (tools
 "Only deletes whole tests": no line added under tests/ (`git diff --numstat`), and every changed file
 under tests/ is a pytest file (tests/**/test_*.py) that is deleted, or that equals, as parsed code,
 its base with whole top-level definitions removed (tests, helpers, fixtures, imports, constants) that
-no name, attribute, parameter or string left in the file names (a fixture's `name=` counts as a name
-it defines), none an autouse fixture, setup_module, teardown_module, setup_function,
-teardown_function, a pytest* name or a * import. Any other change under tests/ (conftest.py, a
-helper module or fixture data changed or deleted, a line removed inside a test, helper or fixture
-that stays) keeps the rule above. A test module that cannot import on the base counts as failing
-there (a test of new code cannot import the old code).
+no name, attribute, parameter or string left in the file names (a fixture's literal `name=` counts as
+a name it defines), none an autouse fixture, setup_module, teardown_module, setUpModule,
+tearDownModule, setup_function, teardown_function, a pytest* name or a * import. Any other change
+under tests/ (conftest.py, a helper module or fixture data changed or deleted, a line removed inside
+a test, helper or fixture that stays) keeps the rule above. A test module that cannot import on the
+base counts as failing there (a test of new code cannot import the old code).
+Known gaps (ENF-08), still exempt: a fixture whose `name=` is not a string literal (a constant), and
+a module fixture that overrides a conftest autouse fixture by name; the file alone does not show
+either.
 
 The base checkout sits inside the repository so that Node finds the repository's node_modules
 from it, and runs on the same Python as this check (first on PATH for the spec's console).
@@ -48,8 +51,9 @@ def changed(root: Path, base: str) -> list[str]:
     return [f for f in _git(root, "diff", "--name-only", "--diff-filter=AMR", f"{base}...HEAD").splitlines() if f]
 
 
-#: the module-level functions pytest calls by name, with no test naming them
-XUNIT = frozenset({"setup_module", "teardown_module", "setup_function", "teardown_function"})
+#: the module-level functions pytest calls by name, with no test naming them (_pytest/python.py)
+XUNIT = frozenset({"setup_module", "teardown_module", "setUpModule", "tearDownModule",
+                   "setup_function", "teardown_function"})
 
 
 def _keyword(node: ast.stmt, arg: str) -> list[ast.expr]:
@@ -88,7 +92,7 @@ def _referenced(tree: ast.Module) -> set[str]:
 def _removable(node: ast.stmt, kept: set[str]) -> bool:
     """A top-level definition (a test, a helper, a fixture, an import, a constant) that no name, attribute,
     parameter or string left in the file names, and that is not an autouse fixture, a `XUNIT` function,
-    a pytest* name or a * import."""
+    a pytest* name or a * import. Not seen (ENF-08): a non-literal `name=`, a conftest override."""
     names = _defined(node)
     if not names or "*" in names or names & XUNIT or any(n.startswith("pytest") for n in names):
         return False

@@ -13,8 +13,8 @@ For each of these the hook answers "ask": Claude Code shows the operator the act
 and Deny, and the agent cannot answer for them. Everything else passes untouched.
 
 Limits: shell commands are judged on what they run; code inside `python -c` or a heredoc body is
-data to the shell parser and is not judged here, except that a database path named anywhere in the
-command counts. The Edit and Write tools are judged in full.
+data to the shell parser and is not judged here; for databases, what is judged is what the tests
+cover, and the gaps are in ENF-20. The Edit and Write tools are judged in full.
 """
 from __future__ import annotations
 

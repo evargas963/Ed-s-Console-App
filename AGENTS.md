@@ -123,9 +123,9 @@ Hold EdWebConsole to how a financial institution handles systems with real money
   Enforced by: no machine check — ENF-03.
 - A new check is a test of behavior, for a failure that happened; it fails on the old code; it starts with
   no exceptions. Enforced by: `tools/check_fails_before.py` in the required `pytest-full` job (`tests/test_check_fails_before_v1.py`) refuses a PR that
-  changes product code unless one of its changed tests fails on the base; a run with no result is refused. Exempt: a PR adding no
-  product or test line whose changes under tests/ are only pytest files deleted or losing whole top-level definitions nothing left
-  names, none autouse, setup/teardown_module/function, pytest* or * (`tests/test_check_fails_before_exemption_v1.py`); the rest — ENF-08.
+  changes product code unless one of its changed tests fails on the base; a run with no result is refused. Exempt: a PR adding no product or test line
+  whose changes under tests/ are only pytest files deleted or losing whole top-level definitions nothing left names (a literal `name=` counts), none autouse,
+  setup/teardown_module/function, setUpModule, tearDownModule, pytest* or * (`tests/test_check_fails_before_exemption_v1.py`); its gaps (a non-literal `name=`, a module fixture overriding a conftest autouse one) and the rest — ENF-08.
 - Time is an input: a function that depends on the clock takes `now`; only an entry point (a
   route, a loop, a stream handler) reads the clock. Enforced by: no machine check — ENF-09.
 - A value that crosses a module boundary is a typed record (dataclass), not a dict of string keys;
