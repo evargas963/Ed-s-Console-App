@@ -27,3 +27,12 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      # vulture in pre-commit's own environment, never the repo .venv. CI (pytest-full) is the gate:
+      # here the libraries the code imports are absent, so the rule "a library reads it" clears nothing.
+      - id: dead-code
+        name: the change leaves no dead code (vulture, its own environment)
+        entry: python tools/check_dead_code.py --base origin/main
+        language: python
+        additional_dependencies: ["vulture==2.16"]
+        pass_filenames: false
+        files: \.py$

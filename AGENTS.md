@@ -91,8 +91,9 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
   `tools/check_no_new_patches.py` in the required `hardening` job
   (`tests/test_check_no_new_patches_v1.py`); the existing ones — TEST-PATCHES.
 - Cleanup: a change leaves no mention of a name it deleted and no code it made dead. Enforced by:
-  `tools/check_stale_references.py` (`hardening`) and `tools/check_dead_code.py` (vulture,
-  `pytest-full`, CI only) refuse the PR (`tests/test_check_stale_references_v1.py`,
+  `tools/check_stale_references.py` (`hardening`) and `tools/check_dead_code.py` (vulture, in
+  `pytest-full` and at commit in pre-commit's own environment) refuse the PR
+  (`tests/test_check_stale_references_v1.py`,
   `tests/ci_only/test_check_dead_code_v1.py`); fields no screen reads, dead CSS and JS — ENF-04.
 
 ## Before saying done (enforced)

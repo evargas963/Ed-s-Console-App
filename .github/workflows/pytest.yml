@@ -147,7 +147,8 @@ jobs:
           exit "$pytest_rc"
 
       # Here, not in `hardening`: its rules import the libraries the code imports (requirements.txt).
-      # CI installs vulture here (no requirements file lists it); its test runs here only (tests/ci_only/).
+      # CI installs vulture here (no requirements file lists it; pre-commit runs it in its own
+      # environment); its test runs here only (tests/ci_only/). This step is the gate.
       # Before check_fails_before, so a changed tests/ci_only/ test runs on the base with vulture
       # present and a missing import is never counted as "fails on the old code".
       - name: The dead-code check's own test (cleanup)
@@ -157,7 +158,7 @@ jobs:
           python -m pytest tests/ci_only/test_check_dead_code_v1.py -q -p no:cacheprovider
 
       - name: A changed test fails on the old code (CLAUDE.md rule 8)
-        if: github.event_name == 'pull_request'
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
           ED_CI_OFFLINE: "1"
           ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
