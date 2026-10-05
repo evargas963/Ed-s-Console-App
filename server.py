@@ -304,6 +304,14 @@ def _get_route_offload_executor() -> ThreadPoolExecutor:
 # Nothing below should contain a raw magic number for these parameters.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ETF zone classification (spy_zone / qqq_zone / iwm_zone)
+
+
+# Builds OHLC bars from spot price ticks. Server polls every ~30s, so:
+#   5-min bars = ~10 ticks per bar
+#   1-min bars = ~2 ticks per bar
+# Bars are keyed by ticker. Completed bars stored in ring buffer; maxlen from math_exposure.
+# ─────────────────────────────────────────────────────────────────────────────
 #: one RTH day of 1-minute bars
 CANDLE_1M_MAX_BARS: int = 390
 from micro_structure import Candle

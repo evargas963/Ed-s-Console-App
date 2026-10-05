@@ -33,14 +33,15 @@ def test_destructive_git_has_one_owner_and_it_fires_unscoped(cmd):
 
 
 def test_deleting_the_database_fires_in_this_repository():
-    out = G.bash_violations("rm -rf data/ed_console.db")
+    out = G.bash_violations("rm -rf data/ed_console.db", [], payload_cwd=str(REPO))
     assert any("RC-273" in v for v in out), out
 
 
 def test_guard_does_not_return_early_for_an_out_of_scope_repository(other_repo):
     """A banned action AND a commit in one chain aimed at another repository: the universal
     rule must still fire (RC-258: applicability is per rule, never an early return)."""
-    out = G.bash_violations('cd "%s" && git add -A && git commit -m x' % other_repo)
+    out = G.bash_violations('cd "%s" && git add -A && git commit -m x' % other_repo, [],
+                            payload_cwd=str(REPO))
     assert any("blind staging" in v for v in out), out
     chain = 'cd "%s" && git reset --hard HEAD~1' % other_repo
     import tools.operating_process_lock as OPL
@@ -48,8 +49,9 @@ def test_guard_does_not_return_early_for_an_out_of_scope_repository(other_repo):
 
 
 def test_non_commit_commands_are_unaffected_by_repository_scoping():
-    assert G.bash_violations("git status") == []
-    assert G.bash_violations("python -c \"print(1)\"") == []
+    assert G.bash_violations("git status", [], payload_cwd=str(REPO)) == []
+    assert G.bash_violations("git status", [], payload_cwd="") == []
+    assert G.bash_violations("python -c \"print(1)\"", [], payload_cwd="") == []
 
 
 @pytest.mark.parametrize("cmd", [
@@ -58,5 +60,5 @@ def test_non_commit_commands_are_unaffected_by_repository_scoping():
     "ED_UI_MOCKUP_LOCK=off git commit --no-verify -m x",
 ])
 def test_no_verify_is_refused_in_every_spelling(cmd):
-    out = G.bash_violations(cmd)
+    out = G.bash_violations(cmd, [], payload_cwd=str(REPO))
     assert any("disables a mechanical lock" in v for v in out), (cmd, out)

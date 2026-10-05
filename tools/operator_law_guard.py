@@ -146,10 +146,10 @@ _SKIP_HOOKS = re.compile(
     re.I)
 
 
-def bash_violations(cmd: str) -> list[str]:
+def bash_violations(cmd: str, ledger=None, payload_cwd: str = "") -> list[str]:
     """Every host-wide ban that fires on `cmd`. Applicability is per rule, never an early
-    return (RC-258: a foreign-repository target exempts nothing host-wide); no rule reads a
-    repository."""
+    return (RC-258: a foreign-repository target exempts nothing host-wide). `ledger` and
+    `payload_cwd` are accepted for the suites' call shape; no rule reads a repository."""
     raw = cmd or ""
     cmd = shell_executed_part(raw)
     out: list[str] = []
@@ -181,7 +181,7 @@ def main() -> int:
     if payload.get("tool_name") not in BASH_TOOLS:
         return 0                          # file edits carry no shell action to judge
     cmd = (payload.get("tool_input") or {}).get("command") or ""
-    bad = bash_violations(cmd)
+    bad = bash_violations(cmd, [], str(payload.get("cwd") or ""))
     if bad:
         sys.stderr.write("BLOCKED (RC-93) — OPERATOR LAW: ban the ACTION, not the word.\n\n"
                          + "\n".join(f"    {b}" for b in bad) + "\n")

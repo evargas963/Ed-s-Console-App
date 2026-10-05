@@ -395,6 +395,7 @@ class CaptureWriter:
         self.db_path = p
         self.batch_rows = int(batch_rows)
         self.batch_sec = float(batch_sec)
+        self.rows_written = 0
         self.insert_errors = 0
         conn = sqlite3.connect(str(p))
         try:
@@ -423,6 +424,7 @@ class CaptureWriter:
             return
         try:
             conn.execute(spec[0], spec[1](msg))
+            self.rows_written += 1
         except Exception:  # noqa: BLE001 -- counted in status; capture continues
             self.insert_errors += 1
 

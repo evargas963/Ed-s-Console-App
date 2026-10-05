@@ -84,7 +84,7 @@ def test_bars_normalization_drops_missing_ohlc_bar():
 
 
 
-def _typical_price_dump(bars, tick_size=0.01):
+def _typical_price_dump(bars, value_area_pct=0.70, tick_size=0.01):
     """The construction LP-01 Step 1 REPLACED, kept here only as the disagreement witness.
 
     A test that a new method 'works' proves nothing if the old one produced the same number.
