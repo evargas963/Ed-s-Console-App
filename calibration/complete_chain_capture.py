@@ -137,9 +137,28 @@ def capture_slot(now_ts: float) -> float | None:
     return past[-1]
 
 
+def enroll(db_path: Path | str, ticker: str, now: float) -> bool:
+    """The board's one writer: the operator's enrollment of `ticker` (its storage key) in the
+    logging_universe table, the table the console creates. The daemon calls it for the ticker the
+    operator puts on screen. True when it was not on the board; a ticker already there is left as
+    it is."""
+    key = ticker_storage_key(ticker)
+    if not is_valid_production_ticker(key):
+        raise ValueError(f"not a symbol: {ticker!r}")
+    conn = sqlite3.connect(str(db_path), timeout=60.0)
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO logging_universe (ticker, category, enrollment_source, enrolled_ts_utc, "
+            "last_seen_ts_utc) VALUES (?, 'user_persisted', 'operator', ?, ?)", (key, now, now))
+        conn.commit()
+        return cur.rowcount == 1
+    finally:
+        conn.close()
+
+
 def board_tickers(db_path: Path | str) -> list[str]:
-    """Every ticker on the board (the logging_universe table), read-only. The daemon reads it at
-    startup and holds it."""
+    """Every ticker on the board (the logging_universe table), read-only. The daemon reads it
+    while it runs (capture.run_board)."""
     if not Path(db_path).is_file():
         log.warning("board: %s does not exist yet (the console creates it); the board is empty", db_path)
         return []
@@ -201,8 +220,9 @@ class ChainSweep:
     ticker (the one on the operator's screen, set_active) is fetched back to back, ahead of
     everything, and every board ticker in turn, without end, by the other workers. While Closed
     every board ticker is fetched once, its close values (a failed fetch is tried again after
-    FAILED_PAUSE_SEC), and then nothing until the next session: the close values stand, and a
-    ticker put on screen while Closed is not fetched. After a refusal or a failure
+    FAILED_PAUSE_SEC), and then nothing until the next session: the close values stand. A ticker
+    that joins the board while Closed (set_board: the operator put it on screen) is fetched once
+    the same way. After a refusal or a failure
     (FAILED_PAUSE_SEC) one chain is fetched alone until one lands. Each chain is published to
     the console in parts (chain_messages); a failure is published
     with Schwab's answer. The first fetch of a ticker begun inside a capture window
@@ -211,7 +231,7 @@ class ChainSweep:
     def __init__(self, db_path: Path | str, board: "list[str]", publish: "callable",
                  clock: "callable" = time.time) -> None:
         self.db_path = db_path
-        self.board = list(board)        # the daemon's board, read at its start
+        self.board = list(board)        # the daemon's board, as it last read it (set_board)
         self.publish = publish          # (topic, msg) -> None, safe from any thread
         self.clock = clock              # when a fetch begins, and when its chain is received
         self._lock = threading.RLock()
@@ -233,6 +253,16 @@ class ChainSweep:
         with self._changed:
             self._active = ticker
             self._changed.notify_all()      # an idle worker takes it now
+
+    def set_board(self, board: "list[str]") -> None:
+        """The board as the daemon last read it. While Closed, a ticker that has joined it is
+        fetched once (its close values), and one that has left it is not."""
+        with self._changed:
+            joined = sorted(set(board) - set(self.board))
+            self.board = list(board)
+            if self._closed is not None:
+                self._closed = [t for t in self._closed if t in self.board] + joined
+            self._changed.notify_all()
 
     def _next(self, now: float) -> str | None:
         """The next ticker to fetch, taken by the caller: the active ticker whenever no worker is

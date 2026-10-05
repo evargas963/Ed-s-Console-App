@@ -28,7 +28,8 @@ from websockets.asyncio.client import connect
 import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
-from calibration.complete_chain_capture import FAILED_PAUSE_SEC, ChainSweep, chain_messages
+from calibration.complete_chain_capture import FAILED_PAUSE_SEC, ChainSweep, board_tickers, chain_messages, enroll
+from db import EdDB
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
 from time_et import ET
 
@@ -387,15 +388,69 @@ def test_d5_once_closed_every_board_ticker_is_fetched_once_then_nothing_until_th
 
 @pytest.mark.parametrize("at", ["2026-10-03 12:00", "2026-11-26 12:00", "2026-10-01 02:00"],
                          ids=["saturday", "thanksgiving", "a-weeknight"])
-def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_no_ticker_put_on_screen(at):
-    """A ticker put on screen while Closed is not fetched, whether its close values were fetched
-    (on the board) or not (off it): the close values stand, and none is made up."""
+def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_a_ticker_joining_the_board_once(at):
+    """While Closed every board ticker's close values are fetched once: a board ticker put on
+    screen is not fetched again (its close values stand); a ticker put on screen off the board
+    joins it and is fetched once, like every board ticker."""
     sweep, clock = _paced(["AAA", "BBB"], at)
     assert _handed_out(sweep, clock["now"]) == ["AAA", "BBB"]
     sweep.set_active("AAA")
     assert sweep._next(clock["now"] + 60) is None
     sweep.set_active("OFF")
-    assert sweep._next(clock["now"] + 120) is None
+    sweep.set_board(["AAA", "BBB", "OFF"])
+    assert _handed_out(sweep, clock["now"] + 120) == ["OFF"]
+    assert sweep._next(clock["now"] + 180) is None
+
+
+# ── The board: one writer, the operator's enrollment ───────────────────────────────────────
+
+def test_a_ticker_put_on_screen_joins_the_board_through_its_one_writer_and_is_streamed_and_fetched(tmp_path):
+    """The console's wanted frame names TSLA, off the board, as the ticker on screen (Saturday,
+    Closed): the daemon enrolls it in the board table (its one writer), reads the board while it
+    runs, streams TSLA as a board ticker and fetches its close values once. A row the operator
+    adds to the table by hand is read the same way."""
+    db = tmp_path / "ed_console.db"
+    EdDB(db, allow_noncanonical=True)                   # the table, as the console creates it
+    sat = _et("2026-10-03 12:00")
+    enroll(db, "SPY", sat)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), board=board_tickers(db), board_db=db)
+    sweep, _ = _paced(daemon.board, "2026-10-03 12:00")
+    daemon.chains = sweep
+    assert _handed_out(sweep, sat) == ["SPY"]
+
+    async def view_tsla() -> None:
+        stop, stats, port = asyncio.Event(), {}, _port()
+        tasks = [asyncio.create_task(live_push.serve_live_push(daemon.bus, stop, port=port, stats=stats,
+                                                               on_wanted=daemon.set_wanted)),
+                 asyncio.create_task(capture.run_board(daemon, stop))]
+        try:
+            for _ in range(500):
+                if stats.get("listening"):
+                    break
+                await asyncio.sleep(0.01)
+            async with connect(f"ws://127.0.0.1:{port}") as ws:
+                await ws.send(json.dumps({"op": "wanted", "wanted": {
+                    "LEVELONE_EQUITIES": ["TSLA"], "NYSE_BOOK": ["TSLA"], "active": "TSLA"}}))
+                end = time.monotonic() + 5.0
+                while "TSLA" not in daemon.status()["board"] and time.monotonic() < end:
+                    await asyncio.sleep(0.02)
+        finally:
+            stop.set()
+            await asyncio.gather(*tasks, return_exceptions=True)
+    asyncio.run(view_tsla())
+
+    assert daemon.status()["board"] == ["SPY", "TSLA"]
+    with sqlite3.connect(db) as con:
+        assert con.execute("SELECT enrollment_source FROM logging_universe WHERE ticker='TSLA'").fetchone() == (
+            "operator",)
+    assert "TSLA" in daemon.all_wanted()["CHART_EQUITY"]
+    assert _handed_out(sweep, sat + 60) == ["TSLA"]            # its close values, once
+    assert sweep._next(sat + 120) is None
+
+    enroll(db, "QQQ", sat + 180)                              # the operator, by hand
+    asyncio.run(daemon.refresh_board(sat + 181))
+    assert daemon.status()["board"] == ["QQQ", "SPY", "TSLA"]
+    assert _handed_out(sweep, sat + 240) == ["QQQ"]
 
 
 def test_d5_a_close_fetch_that_fails_is_tried_again_after_the_pause_until_it_lands():

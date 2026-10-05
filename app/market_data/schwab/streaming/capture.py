@@ -6,9 +6,12 @@ It is the only part of Ed Console that talks to Schwab. Beside the loop below, i
 (run_chains) fetches full option chains on its own threads, without end: the ticker on screen
 first, back to back, and every board ticker in turn.
 
-  0. BOARD   The background tickers (the logging_universe table), read at startup: each is
-             streamed on LEVELONE_EQUITIES, CHART_EQUITY and NEWS_HEADLINE and its chain is
-             fetched in turn.
+  0. BOARD   The background tickers (the logging_universe table), read while it runs
+             (run_board: after each change of the ticker on screen and every BOARD_READ_SEC):
+             each is streamed on LEVELONE_EQUITIES, CHART_EQUITY and NEWS_HEADLINE and its chain
+             is fetched in turn. The ticker the operator puts on screen joins it through the
+             board's one writer (complete_chain_capture.enroll) and is recorded every session
+             after.
 
 It does four things, in one loop:
 
@@ -42,6 +45,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sqlite3
 import sys
 import threading
 import time
@@ -64,13 +68,16 @@ from stream_spine import (  # noqa: E402
     resolve_stream_db_path,
     subscription_msg,
 )
-from calibration.complete_chain_capture import CHAIN_WORKERS, ChainSweep, board_tickers  # noqa: E402
+from calibration.complete_chain_capture import CHAIN_WORKERS, ChainSweep, board_tickers, enroll  # noqa: E402
 
 log = logging.getLogger("capture")
 
 #: The longest the connection reads Schwab's frames before comparing wanted with held again (a
 #: change to the console's list is compared at once).
 SYNC_SEC = 0.25
+#: The longest between two reads of the board table (a change of the ticker on screen is read at
+#: once): a row the operator adds by hand is streamed and fetched within this.
+BOARD_READ_SEC = 5.0
 #: No frame at all from Schwab (data or heartbeat) for this long -> the connection is dead.
 DEAD_SEC = 30.0
 #: Reconnect waits, in order; the last repeats.
@@ -269,7 +276,7 @@ BOARD_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
 
 class Daemon:
     def __init__(self, bus: MessageBus, health: HealthRegistry,
-                 board: "list[str] | None" = None) -> None:
+                 board: "list[str] | None" = None, board_db: "Path | None" = None) -> None:
         self.bus = bus
         self.health = health
         #: what the console's screens show, as it last said (none until it says)
@@ -280,8 +287,10 @@ class Daemon:
         self.sender = None
         self.wanted_changed = asyncio.Event()
         #: the board: the tickers fetched and streamed in the background (the logging_universe
-        #: table, read at startup)
+        #: table in `board_db`, as refresh_board last read it)
         self.board: "list[str]" = list(board or [])
+        self.board_db = board_db
+        self.board_changed = asyncio.Event()      # the ticker on screen changed: read the board now
         self.chains = None                  # the ChainSweep: its round time, its active ticker
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
@@ -305,6 +314,26 @@ class Daemon:
         self.wanted_changed.set()                  # the connection syncs now
         if self.chains is not None:
             self.chains.set_active(active)
+        if active is not None and active not in self.board:
+            self.board_changed.set()               # it joins the board (refresh_board)
+
+    async def refresh_board(self, now: float) -> None:
+        """Enroll the ticker on screen when it is not on the board (the board's one writer), then
+        read the board table: a changed board is streamed on BOARD_SERVICES and handed to the
+        chain sweep (a ticker joining it while Closed is fetched once)."""
+        if self.board_db is None:
+            return
+        if self.active is not None and self.active not in self.board:
+            await asyncio.to_thread(enroll, self.board_db, self.active, now)
+        board = await asyncio.to_thread(board_tickers, self.board_db)
+        if board == self.board:
+            return
+        self.board = board
+        for svc in BOARD_SERVICES:                 # a changed board gets one fresh try
+            self.refused[svc] = {}
+        if self.chains is not None:
+            self.chains.set_board(board)
+        self.wanted_changed.set()                  # the connection streams it now
 
     def all_wanted(self) -> "dict[str, frozenset[str]]":
         """Everything streamed: the console's list, and every board ticker on BOARD_SERVICES."""
@@ -533,6 +562,23 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
         await asyncio.gather(*workers, return_exceptions=True)
 
 
+async def run_board(daemon: "Daemon", stop: asyncio.Event) -> None:
+    """The board's lifecycle owner: refresh_board when the ticker on screen changes and every
+    BOARD_READ_SEC, until stop. A board table that cannot be read or written keeps the board as
+    last read; the log says why, and the next round tries again."""
+    while not stop.is_set():
+        daemon.board_changed.clear()
+        try:
+            await daemon.refresh_board(time.time())
+        except (sqlite3.Error, ValueError) as e:
+            log.warning("board: not read or written this round: %s: %s", type(e).__name__, e)
+        changed = asyncio.ensure_future(daemon.board_changed.wait())
+        stopped = asyncio.ensure_future(stop.wait())
+        await asyncio.wait({changed, stopped}, timeout=BOARD_READ_SEC, return_when=asyncio.FIRST_COMPLETED)
+        changed.cancel()
+        stopped.cancel()
+
+
 def one_schwab_client(build) -> "callable":
     """The daemon's one Schwab client, for the stream and every chain request, as a function
     that returns it: built (`build()`, a SchwabClientState) when first asked for, then kept for
@@ -569,10 +615,11 @@ async def run() -> int:
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
-    daemon = Daemon(bus, health, board=board_tickers(db_path))
+    daemon = Daemon(bus, health, board=board_tickers(db_path), board_db=db_path)
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop)),
+             asyncio.create_task(run_board(daemon, stop)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]
