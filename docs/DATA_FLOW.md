@@ -220,10 +220,12 @@ from Schwab to the screen (daemon, console, page), are these:
   every ticker's levels go stale with that reason (`terrain_staleness`, judged against two of
   the sweep's delivered rounds, carried on the heartbeat). The first chain of each ticker whose
   fetch began in a capture window is also written to the chain history (§4.2, `capture_slot`); a
-  history write that fails is a write failure, never the chain's: the chain as the sweep
-  received it is handed to the daemon's writer, which keeps it in `stream_write_failures` and
-  counts it on its state (§2 D4); the delivered chain stands, the sweep is not paused, and the
-  window's next fetch writes the history. The sweep
+  stored capture is never replaced (a second write of its ticker, expiry and time is refused,
+  `test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key`); a
+  history write that fails (that refusal included) is a write failure, never the chain's: the
+  chain as the sweep received it is handed to the daemon's writer, which keeps it in
+  `stream_write_failures` and counts it on its state (§2 D4); the delivered chain stands, the
+  sweep is not paused, and the window's next fetch writes the history. The sweep
   downloads through `schwab_client.fetch_full_chain`, the one place a chain enters, so every consumer
   (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
   the captures) reads the Greeks it sets. The Greeks (gamma, delta, theta, vega, rho,
