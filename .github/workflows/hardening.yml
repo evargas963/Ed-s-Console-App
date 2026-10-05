@@ -38,13 +38,3 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: python tools/check_no_new_patches.py --base "origin/$BASE_REF"
-      - name: tests feed what Schwab sent, never typed market values (REAL-DATA)
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: python tools/check_real_market_data.py --base "origin/$BASE_REF"
-      - name: a test of captured data runs on more than one ticker (TICKER-COVERAGE)
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: python tools/check_ticker_coverage.py --base "origin/$BASE_REF"

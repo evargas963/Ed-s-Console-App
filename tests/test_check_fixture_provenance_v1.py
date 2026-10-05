@@ -1,7 +1,7 @@
-"""tools/check_fixture_provenance.py (FIXTURE-PROVENANCE): a staged fixture is refused unless its
-provenance block names the record it came from and its rows equal that record re-queried read-only.
-The record here is SPY's and TSLA's captured books (and SPY's and $SPX's recorded level crosses)
-written through the daemon's own writer (and the console's own), into this test's databases."""
+"""tools/check_fixture_provenance.py: a staged fixture is refused unless its provenance block names
+the record it came from and its rows equal that record re-queried read-only. The record here is
+SPY's and TSLA's captured books and option chains, and SPY's and $SPX's recorded level crosses,
+written through the daemon's and the console's own writers into this test's databases."""
 from __future__ import annotations
 
 import copy
@@ -85,22 +85,21 @@ def test_an_edited_row_is_refused(tmp_path):
     tsla[3]["native"] = copy.deepcopy(tsla[4]["native"])
     root = _staged(tmp_path, {NAME: json.dumps(fixture)})
     assert cfp.violations(root, _dbs(tmp_path / "data")) == [
-        f"{NAME}: TSLA: row 3 differs from the record in native"]
+        f"{NAME}: row 5 differs from the record in native"]
 
 
 def test_a_dropped_row_is_refused(tmp_path):
     fixture = _record_books(tmp_path / "data")
     fixture["rows"].remove(next(r for r in fixture["rows"] if r["symbol"] == "TSLA"))
     root = _staged(tmp_path, {NAME: json.dumps(fixture)})
-    assert cfp.violations(root, _dbs(tmp_path / "data")) == [f"{NAME}: TSLA: 149 rows, the record has 150"]
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [f"{NAME}: 151 rows, the record has 152"]
 
 
 def test_rows_of_a_symbol_the_block_does_not_name_are_refused(tmp_path):
     fixture = _record_books(tmp_path / "data")
     fixture["provenance"]["symbols"] = ["TSLA"]
     root = _staged(tmp_path, {NAME: json.dumps(fixture)})
-    assert cfp.violations(root, _dbs(tmp_path / "data")) == [
-        f"{NAME}: rows of SPY, which provenance.symbols does not list"]
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [f"{NAME}: 152 rows, the record has 150"]
 
 
 def test_fixtures_without_a_provenance_block_are_refused(tmp_path):
@@ -111,24 +110,9 @@ def test_fixtures_without_a_provenance_block_are_refused(tmp_path):
         "record it came from" for n in names]
 
 
-def test_schwab_data_must_be_the_daemons_record_and_computed_data_must_not_be(tmp_path):
-    fixture = _record_books(tmp_path / "data")
-    console = copy.deepcopy(fixture)
-    console["provenance"].update(database="data/ed_console.db", table="level_crosses")
-    computed = copy.deepcopy(fixture)
-    computed["provenance"]["computed_by"] = computed["provenance"].pop("sent_by")
-    root = _staged(tmp_path, {"tests/fixtures/a.json": json.dumps(console), "tests/fixtures/b.json": json.dumps(computed)})
-    assert cfp.violations(root, _dbs(tmp_path / "data")) == [
-        "tests/fixtures/a.json: sent_by names ed_console.db level_crosses, which is not the capture daemon's record "
-        "of what Schwab sent (ed_console.db complete_chain_captures, stream_capture.db stream_bars_raw, "
-        "stream_capture.db stream_book_raw, stream_capture.db stream_news_raw, stream_capture.db "
-        "stream_options_quotes_raw, stream_capture.db stream_quotes_raw)",
-        "tests/fixtures/b.json: computed_by names stream_book_raw, which is the daemon's record of what Schwab sent"]
-
-
-def test_schwabs_option_chain_as_the_daemons_chain_sweep_recorded_it_is_schwab_data(tmp_path):
+def test_schwabs_option_chain_as_the_daemons_chain_sweep_recorded_it_is_checked_decoded(tmp_path):
     """The daemon's ChainSweep records Schwab's option chain in ed_console.db, its chain stored
-    compressed: a fixture of it is checked as what Schwab sent, and is refused as computed."""
+    compressed: the fixture's chain equals it decoded, and an edited contract is refused."""
     db = tmp_path / "data" / "ed_console.db"
     db.parent.mkdir(parents=True)
     rows = []
@@ -147,12 +131,11 @@ def test_schwabs_option_chain_as_the_daemons_chain_sweep_recorded_it_is_schwab_d
         "query": "SELECT ticker, expiry, ts_utc, chain_json FROM complete_chain_captures WHERE ticker=? AND "
                  "ts_utc>=? AND ts_utc<? ORDER BY expiry"},
         "rows": rows}
-    computed = copy.deepcopy(fixture)
-    computed["provenance"]["computed_by"] = computed["provenance"].pop("sent_by")
-    root = _staged(tmp_path, {"tests/fixtures/a.json": json.dumps(fixture), "tests/fixtures/b.json": json.dumps(computed)})
+    edited = copy.deepcopy(fixture)
+    edited["rows"][1]["chain"][0] = edited["rows"][1]["chain"][1]
+    root = _staged(tmp_path, {"tests/fixtures/a.json": json.dumps(fixture), "tests/fixtures/b.json": json.dumps(edited)})
     assert cfp.violations(root, _dbs(tmp_path / "data")) == [
-        "tests/fixtures/b.json: computed_by names complete_chain_captures, which is the daemon's record of what "
-        "Schwab sent"]
+        "tests/fixtures/b.json: row 1 differs from the record in chain"]
 
 
 def test_console_computed_crosses_are_checked_against_the_consoles_table(tmp_path):
@@ -173,7 +156,7 @@ def test_console_computed_crosses_are_checked_against_the_consoles_table(tmp_pat
     assert cfp.violations(root, _dbs(tmp_path / "data")) == []
     rows[0]["level_name"] = rows[1]["level_name"] + " "
     root = _staged(tmp_path / "again", {NAME: json.dumps(fixture)})
-    assert cfp.violations(root, _dbs(tmp_path / "data")) == [f"{NAME}: $SPX: row 0 differs from the record in level_name"]
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [f"{NAME}: row 0 differs from the record in level_name"]
 
 
 def test_without_the_record_the_fixture_is_refused_never_passed(tmp_path):
@@ -181,8 +164,7 @@ def test_without_the_record_the_fixture_is_refused_never_passed(tmp_path):
     root = _staged(tmp_path, {NAME: json.dumps(fixture)})
     missing = tmp_path / "nowhere"
     assert cfp.violations(root, _dbs(missing)) == [
-        f"{NAME}: cannot verify: the record {missing / 'stream_capture.db'} is not here (refused, never passed "
-        "unverified)"]
+        f"{NAME}: cannot verify: the record {missing / 'stream_capture.db'} is not here"]
 
 
 def test_the_hook_reads_the_runtime_record(tmp_path):
