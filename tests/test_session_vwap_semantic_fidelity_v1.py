@@ -9,7 +9,8 @@ from liquidity_value_engine import (
     compute_session_vwap_series,
     count_session_rth_positive_volume_bars,
 )
-from time_et import ET, RTH_START_MINS, is_trading_day_et
+from tests.feed_live_helper import console_bars
+from time_et import ET, RTH_START_MINS, is_trading_day_et, session_label
 
 FRIDAY = date(2026, 8, 28)
 SATURDAY = date(2026, 8, 29)
@@ -49,6 +50,18 @@ def test_zero_volume_rth_bar_does_not_create_session_vwap() -> None:
     assert count_session_rth_positive_volume_bars(bars, FRIDAY) == 0
 
 
+
+
+def test_a_partly_recorded_session_has_a_vwap_point_for_each_minute_schwab_sent_and_no_other():
+    """Real SPY 2026-09-23 as the capture daemon recorded it: 208 of the session's 390 minutes
+    (from 09:35), each with Schwab's volume. The VWAP path has one point per recorded minute; the
+    minutes the daemon did not record have none, never a filled-in point."""
+    bars = console_bars("real_daemon_bars_spy_2026_09_23.json", "SPY")
+    day = date(2026, 9, 23)
+    rth = [b for b in _bars_to_list(bars) if b["_dt"].date() == day and session_label(b["_dt"]) == "RTH"]
+    assert len(rth) == 208 and all(b["volume"] > 0 for b in rth)
+    series = compute_session_vwap_series(_bars_to_list(bars), day)
+    assert [p[0] for p in series] == [b["_dt"].timestamp() for b in rth]
 
 
 def test_next_rth_after_saturday_2026_08_29_is_monday_2026_08_31() -> None:

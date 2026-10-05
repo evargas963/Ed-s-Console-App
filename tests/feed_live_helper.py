@@ -46,6 +46,21 @@ def forget_daemon_bars(rows: list[dict]) -> None:
                         [(r["symbol"], r["bar_start_ms"], r["ts_recv"]) for r in rows])
 
 
+def console_bars(name: str, symbol: str) -> list[dict]:
+    """`symbol`'s bars in fixture `name` as the console hands them to the levels engine: the
+    daemon's recorded receipts through the daemon's writer, the console's load (Schwab's newest
+    bar for each minute) and _liquidity_1m_bars. Nothing is left behind."""
+    import server as srv
+    rows = daemon_bars(name, symbol)
+    record_daemon_bars(rows)
+    try:
+        srv._load_bars()
+        return srv._liquidity_1m_bars(symbol)
+    finally:
+        forget_daemon_bars(rows)
+        srv._bars.pop(symbol, None)
+
+
 def mark_feed_live(*tickers: str) -> None:
     lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
                                "held": {"LEVELONE_EQUITIES": list(tickers)}})

@@ -145,19 +145,19 @@ def test_d1_a_quote_that_arrives_late_never_replaces_a_newer_one(connected):
 # ── D2. Everything Schwab sends is kept ─────────────────────────────────────────────────────
 
 def test_d2_every_field_and_schwabs_own_timestamp_reach_the_console():
-    """A CHART_EQUITY bar with every field Schwab's Streamer Guide lists (SEQUENCE, CHART_DAY
-    included) and the frame's own timestamp: each reaches the console as sent. Stand-in: the
-    bar's values are SPY's captured 1-minute bar; SEQUENCE and CHART_DAY are named stand-ins."""
-    bars = json.loads((FX / "real_spy_1m_bars_2026_09_24_25.json").read_text(encoding="utf-8"))
-    bar = bars["bars"][0]
-    item = {"key": "SPY", "SEQUENCE": 1042, "OPEN_PRICE": bar["open"], "HIGH_PRICE": bar["high"],
-            "LOW_PRICE": bar["low"], "CLOSE_PRICE": bar["close"], "VOLUME": bar["volume"],
-            "CHART_TIME_MILLIS": bar["timestamp"], "CHART_DAY": 20356}
-    frame_ts = bar["timestamp"] + 59_000
+    """A CHART_EQUITY item exactly as Schwab sent it (every field, SEQUENCE and CHART_DAY
+    included) in a frame with Schwab's own timestamp, for SPY and for TSLA: each reaches the
+    console as sent."""
+    for symbol in ("SPY", "TSLA"):
+        receipt = next(r for r in daemon_bars("real_daemon_bars_spy_tsla_spx_2026_10_01_02.json", symbol)
+                       if r["native"])
+        _reaches_the_console_as_sent(receipt["native"], receipt["schwab_ts"])
 
+
+def _reaches_the_console_as_sent(item: dict, frame_ts: int) -> None:
     got = asyncio.run(_daemon_then_console(
         lambda handler_for: handler_for("CHART_EQUITY")(_frame("CHART_EQUITY", [item], frame_ts))))
-    sent = [m["msg"] for m in got if m["topic"] == "bar1m.SPY"]
+    sent = [m["msg"] for m in got if m["topic"] == f"bar1m.{item['key']}"]
     assert sent, "the bar never reached the console"
     missing = [k for k, v in item.items() if not _holds(sent[-1], k, v)]
     assert not missing, f"fields Schwab sent that the console never got: {missing}"

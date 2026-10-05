@@ -3,9 +3,7 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
@@ -16,9 +14,9 @@ from liquidity_value_engine import (
     compute_session_vwap_series,
     materialize_price_level_snapshot,
 )
+from tests.feed_live_helper import console_bars
 from time_et import ET
 
-ROOT = Path(__file__).resolve().parent.parent
 SESSION = datetime(2026, 8, 4, 12, 0, tzinfo=ET).date()
 
 
@@ -86,18 +84,17 @@ def test_one_materialization_per_generation_returns_the_same_object():
     assert all(v.generation == 2 for v in c.levels.values())
 
 
-def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them(pin_clock):
+def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
     """All tickers, one rule; the instrument's data decides. Schwab's $SPX 1-minute bars carry no
-    traded volume (real bars 2026-09-25/28: 501 with volume 0, 12 without the field), so VWAP and
-    the value area cannot exist for it and are absent with that reason; the value area said "no
-    today RTH bars" over 278 RTH bars (2026-09-28, the running app). SPY's real bars have volume and
-    get both. The prior day is price-only and present for both."""
-    fx = ROOT / "tests" / "fixtures"
+    traded volume (the capture daemon's record 2026-09-25/28: all 588 receipts volume 0), so VWAP
+    and the value area cannot exist for it and are absent with that reason; the value area said "no
+    today RTH bars" over 278 RTH bars (2026-09-28, the running app). SPY's and TSLA's recorded bars
+    have volume and get both. The prior day is price-only and present for all three."""
     for name, tk, session, has_volume in (
-            ("real_spx_1m_bars_2026_09_25_28.json", "$SPX", (2026, 9, 28), False),
-            ("real_spy_1m_bars_2026_09_24_25.json", "SPY", (2026, 9, 25), True)):
-        pin_clock(*session, 16, 30)
-        bars = json.loads((fx / name).read_text(encoding="utf-8"))["bars"]
+            ("real_daemon_bars_spx_2026_09_25_28.json", "$SPX", (2026, 9, 28), False),
+            ("real_daemon_bars_spy_tsla_2026_09_24_25.json", "SPY", (2026, 9, 25), True),
+            ("real_daemon_bars_spy_tsla_2026_09_24_25.json", "TSLA", (2026, 9, 25), True)):
+        bars = console_bars(name, tk)
         snap = build_price_level_snapshot(tk, datetime(*session, tzinfo=ET).date(), _bars_to_list(bars), bar_source=name)
         absent = {f["family"]: f["reason"] for f in snap.families_absent}
         assert snap.price("PDH") is not None and "prior_day" not in absent, tk

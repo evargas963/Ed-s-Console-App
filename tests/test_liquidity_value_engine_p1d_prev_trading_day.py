@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from liquidity_value_engine import PlaybookConfig, _bars_to_list
 from liquidity_value_engine import get_previous_day_levels as _levels
+from tests.feed_live_helper import console_bars
 
 
 def get_previous_day_levels(bars, session_date, cfg):
@@ -88,11 +89,9 @@ def test_empty_bars_returns_empty():
 
 
 def _real_spy_bars():
-    """Schwab's SPY 1-minute bars, 2026-09-24 and -25 (tests/fixtures)."""
-    import json
-    from pathlib import Path
-    fx = Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json"
-    return json.loads(fx.read_text(encoding="utf-8"))["bars"]
+    """Schwab's SPY 1-minute bars, 2026-09-24 and -25, as the capture daemon recorded them and the
+    console hands them to the levels engine."""
+    return console_bars("real_daemon_bars_spy_tsla_2026_09_24_25.json", "SPY")
 
 
 def _et(b):

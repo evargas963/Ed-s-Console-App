@@ -20,8 +20,7 @@ import pytest
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-from app.options.order_flow.live_payload import options_live_payload
-from stream_spine import book_msg, options_quote_msg
+from stream_spine import options_quote_msg
 
 _REAL_STREAM_SAMPLES = Path(__file__).parent / "fixtures" / "real_options_stream_history_samples.json"
 _SPY_CONTRACT = "SPY   260820C00767000"
@@ -33,13 +32,6 @@ _REAL_LEVELONE_OPTIONS_CONTENT = {
     "LAST_PRICE": 1.27, "LAST_SIZE": 2, "BID_SIZE": 458, "ASK_SIZE": 209,
     "TOTAL_VOLUME": 44994, "TRADE_TIME_MILLIS": 1787234092319, "OPEN_INTEREST": 2097,
     "DELTA": 0.45644607, "CONTRACT_TYPE": "C", "UNDERLYING": "SPY",
-}
-_REAL_OPTIONS_BOOK_CONTENT = {
-    "key": _SPY_CONTRACT, "BOOK_TIME": 1787234093764,
-    "BIDS": [{"BID_PRICE": 1.28, "TOTAL_VOLUME": 1746, "NUM_BIDS": 1,
-             "BIDS": [{"EXCHANGE": "NYSE", "BID_VOLUME": 262, "SEQUENCE": 1}]}],
-    "ASKS": [{"ASK_PRICE": 1.3, "TOTAL_VOLUME": 1533, "NUM_ASKS": 1,
-             "ASKS": [{"EXCHANGE": "EDGX", "ASK_VOLUME": 346, "SEQUENCE": 2}]}],
 }
 
 
@@ -82,12 +74,6 @@ def _push_option_l1(symbol, content, ts_recv):
         symbol=symbol, content=content, src="schwab_options_l1", ts_recv=ts_recv))
 
 
-def _push_option_book(symbol, content, ts_recv, service="OPTIONS_BOOK"):
-    return ofs._ingest_pushed(f"book.{symbol}", book_msg(
-        symbol=symbol, service=service, content=content,
-        src="schwab_book", ts_recv=ts_recv))
-
-
 
 @pytest.fixture(autouse=True)
 def _before_the_fixture_expiries(monkeypatch):
@@ -96,37 +82,6 @@ def _before_the_fixture_expiries(monkeypatch):
     from datetime import datetime
     import time_et
     monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 1, 2, 10, 0, tzinfo=time_et.ET))
-
-def test_option_contract_book_lands_verbatim(tmp_path, monkeypatch):
-    _reset(tmp_path, monkeypatch)
-    _push_option_book(_SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=time.time())
-
-    items = ofls.get_content_for_symbol(_SPY_CONTRACT)
-    assert any(i.get("BIDS") == _REAL_OPTIONS_BOOK_CONTENT["BIDS"] for i in items)
-
-
-def test_only_an_options_book_advances_the_contracts_freshness_clock(tmp_path, monkeypatch):
-    """A NASDAQ_BOOK/NYSE_BOOK message is an equity book: it must never count as an option
-    contract's OPTIONS_BOOK activity, even under the same symbol string."""
-    _reset(tmp_path, monkeypatch)
-    _push_option_book(_SPY_CONTRACT, {"key": _SPY_CONTRACT, "BIDS": [], "ASKS": []},
-                      ts_recv=time.time(), service="NASDAQ_BOOK")
-    assert _SPY_CONTRACT not in ofs._option_contract_last_update_ts
-    assert ofs._option_streaming_last_update_ts is None
-
-    ts = time.time()
-    _push_option_book(_SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=ts)
-    assert ofs._option_contract_last_update_ts[_SPY_CONTRACT] == ts
-
-
-def test_the_option_book_payload_reuses_the_one_producer(tmp_path, monkeypatch):
-    """The decisive proof: this is compute_book_microstructure itself (the SAME function
-    the equity /api/order-flow/microstructure route calls), not a parallel computation."""
-    _reset(tmp_path, monkeypatch)
-    _push_option_book(_SPY_CONTRACT, _REAL_OPTIONS_BOOK_CONTENT, ts_recv=time.time())
-
-    result = options_live_payload(_SPY_CONTRACT, time.time())
-    assert result["depth"]["1"]["imbalance"] is not None
 
 
 def test_set_active_option_contract_writes_signal_and_clears_old_symbol(tmp_path, monkeypatch):

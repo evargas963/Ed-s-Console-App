@@ -28,38 +28,36 @@ from __future__ import annotations
 
 
 
-def test_bars1m_endpoint_serves_canonical_bars_shape(monkeypatch):
-    """CR-03 pre-work: /api/bars1m returns newest-last {t,o,h,l,c,v} rows from the console's
-    1-minute bars in memory (server._bars: price_bars_1m loaded at startup, then each streamed bar).
-
-    TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (TestClient adjudication): REWRITE.
-    get_bars1m is a plain sync handler taking only Query params and returning a
-    JSONResponse it builds itself -- no auth, middleware, Request, or response_model
-    reshaping. This file's own test_spot_endpoint_caches_upstream_within_ttl already
-    calls its handler directly, so this is the established pattern here."""
+def test_bars1m_endpoint_serves_canonical_bars_shape():
+    """/api/bars1m returns newest-last {t,o,h,l,c,v} rows with their served change, each minute
+    Schwab's newest bar for it exactly as the capture daemon recorded it, for SPY and for TSLA
+    (real receipts 2026-09-24/25, loaded as the console loads them at startup)."""
     import json
-    from pathlib import Path
 
     import server as srv
-    from micro_structure import Candle
+    from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
 
-    # Real SPY 1-minute bars (tests/fixtures) as the console holds them in memory.
-    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_spy_1m_bars_2026_09_24_25.json")
-                    .read_text(encoding="utf-8"))["bars"]
-    rows = [(b["timestamp"] / 1000.0, b["open"], b["high"], b["low"], b["close"], b["volume"]) for b in fx]
-    monkeypatch.setattr(srv, "_bars", {"SPY": [Candle(*r) for r in rows]})
-    body = json.loads(srv.get_bars1m(ticker="SPY", limit=5, tf="1").body)
-    assert body["ticker"] == "SPY" and len(body["bars"]) == 5
-    row = body["bars"][-1]
-    # each bar carries its served change (live_price_rows.with_change: the bar change is served,
-    # the page computes nothing)
-    assert set(row) == {"t", "o", "h", "l", "c", "v", "chg", "chg_pct"}
-    assert (row["t"], row["c"]) == (rows[-1][0], rows[-1][4])
-    ts = [b["t"] for b in body["bars"]]
-    assert ts == sorted(ts), "bars must be newest-last (ascending time)"
-    # the chart's candles are Schwab's completed bars exactly as stored, never altered
-    full = json.loads(srv.get_bars1m(ticker="SPY", limit=len(rows), tf="1").body)["bars"]
-    assert [(b["t"], b["o"], b["h"], b["l"], b["c"], b["v"]) for b in full] == rows
+    for symbol in ("SPY", "TSLA"):
+        receipts = daemon_bars("real_daemon_bars_spy_tsla_2026_09_24_25.json", symbol)
+        newest = {}
+        for r in sorted(receipts, key=lambda r: r["ts_recv"]):
+            newest[r["bar_start_ms"]] = (r["bar_start_ms"] / 1000.0, r["open"], r["high"], r["low"], r["close"],
+                                         r["volume"])
+        sent = [newest[t] for t in sorted(newest)]
+        record_daemon_bars(receipts)
+        try:
+            srv._load_bars()
+            body = json.loads(srv.get_bars1m(ticker=symbol, limit=5, tf="1").body)
+            full = json.loads(srv.get_bars1m(ticker=symbol, limit=len(sent), tf="1").body)["bars"]
+        finally:
+            forget_daemon_bars(receipts)
+            srv._bars.pop(symbol, None)
+        assert body["ticker"] == symbol and len(body["bars"]) == 5
+        # each bar carries its served change (the page computes nothing)
+        assert set(body["bars"][-1]) == {"t", "o", "h", "l", "c", "v", "chg", "chg_pct"}
+        ts = [b["t"] for b in body["bars"]]
+        assert ts == sorted(ts), "bars must be newest-last (ascending time)"
+        assert [(b["t"], b["o"], b["h"], b["l"], b["c"], b["v"]) for b in full] == sent, symbol
 
 
 def test_flip_drift_logger_appends_real_jsonl(tmp_path, monkeypatch):

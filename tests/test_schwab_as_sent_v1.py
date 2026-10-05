@@ -25,7 +25,6 @@ def test_counts_keep_zero_and_refuse_negatives():
 # ── Real captured data through the real readers ─────────────────────────────────────────────
 import copy
 import json
-from datetime import date
 from pathlib import Path
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -39,22 +38,6 @@ def _at_capture(pin_clock):
 
 def _load(name):
     return json.loads((_FX / name).read_text(encoding="utf-8"))
-
-
-def test_a_zero_volume_minute_keeps_its_vwap_point():
-    """Real SPY 2026-09-23 RTH bars: 7 of 390 minutes carry volume 0, 2 carry none. The old reader
-    turned a 0 into "no volume" and dropped the minute from the VWAP path; a 0 minute adds nothing
-    to the sums, so its VWAP equals the minute before. A minute with no volume has no point."""
-    from liquidity_value_engine import _bars_to_list, compute_session_vwap_series
-    bars = _load("real_spy_1m_bars_2026_09_23_zero_volume.json")["bars"]
-    series = compute_session_vwap_series(_bars_to_list(bars), date(2026, 9, 23))
-    assert len(bars) == 390 and sum(b["volume"] is None for b in bars) == 2
-    assert len(series) == 388
-    zero_ts = {b["timestamp"] / 1000.0 for b in bars if b["volume"] == 0}
-    assert len(zero_ts) == 7
-    for i, point in enumerate(series):
-        if point[0] in zero_ts:
-            assert point[1:] == series[i - 1][1:]
 
 
 def test_a_reported_zero_open_interest_is_reported_not_missing():

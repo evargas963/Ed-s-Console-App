@@ -18,7 +18,7 @@ from instrument_identity import ticker_storage_key
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
 from terrain_engine import compute_terrain
-from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
+from tests.feed_live_helper import console_bars, mark_feed_live, publish_daemon_rows
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -195,7 +195,7 @@ def spy_levels():
     """ZZDESK's levels served after Friday's close: the SPY 0DTE chain priced at its capture
     time, the SPY bars published by the bar writer, and the last bar's close as Schwab's
     LAST_PRICE (stand-in). Returns (spot, terrain, serve(tf))."""
-    bars = _load("real_spy_1m_bars_2026_09_24_25.json")["bars"]
+    bars = console_bars("real_daemon_bars_spy_tsla_2026_09_24_25.json", "SPY")
     chain = _load("real_spy_0dte_chain.json")
     _forget(DESK)
     terrain = _priced(DESK, chain["chain"], chain["spot"], chain["ts_utc"])
@@ -298,7 +298,9 @@ def test_the_volume_profile_the_value_area_is_read_from_is_served(spy_levels):
     """The Trade Desk reference draws the session's volume profile at the chart's left edge
     (2026-09-28). The profile was built for the value area and dropped; /api/levels serves that
     same profile: its POC/VAH/VAL are the served TODAY_ levels, its bins hold every RTH bar's
-    volume, and each bin says whether it is inside the value area. Real SPY 1-minute bars."""
+    volume, and each bin says whether it is inside the value area. SPY's 1-minute bars as the
+    capture daemon recorded them: 384 RTH minutes on 2026-09-25, every one with Schwab's volume;
+    the six minutes the daemon did not record (13:48, 13:53-13:57) are not in the profile."""
     _spot, _terrain, serve = spy_levels
     body = serve()
     vp = body["volume_profile"]
@@ -310,12 +312,11 @@ def test_the_volume_profile_the_value_area_is_read_from_is_served(spy_levels):
     # the profile's scale is served: the POC bin's volume, the largest
     assert vp["max_volume"] == max(b[1] for b in vp["bins"]) == next(b[1] for b in vp["bins"] if b[0] == vp["poc"])
     at = [(datetime.fromtimestamp(b["timestamp"] / 1000, time_et.ET), b)
-          for b in _load("real_spy_1m_bars_2026_09_24_25.json")["bars"]]
+          for b in console_bars("real_daemon_bars_spy_tsla_2026_09_24_25.json", "SPY")]
     rth = [b for d, b in at if d.date().isoformat() == "2026-09-25" and time_et.session_label(d) == "RTH"]
-    # every RTH bar's volume is in the profile; the 15:59 bar sent no volume, cannot be placed, and
-    # is counted and served (operator 2026-09-29: accounted for, not silently dropped)
-    assert sum(b[1] for b in vp["bins"]) == pytest.approx(sum(b["volume"] for b in rth if b["volume"] is not None), rel=1e-9)
-    assert (vp["bars"], vp["bars_without_volume"]) == (len(rth), sum(1 for b in rth if b["volume"] is None)) == (390, 1)
+    # every RTH bar's volume is in the profile, and the bars it counts are served
+    assert sum(b[1] for b in vp["bins"]) == pytest.approx(sum(b["volume"] for b in rth), rel=1e-9)
+    assert (vp["bars"], vp["bars_without_volume"]) == (len(rth), 0) == (384, 0)
     assert vp["basis"].startswith("Estimated volume by price")
 
 
@@ -354,7 +355,8 @@ def test_the_desk_window_is_the_calendars_last_session_open_and_its_words_are_se
 
 def test_every_bar_carries_its_change():
     import live_price_rows
-    for b in _load("real_spy_1m_bars_2026_09_24_25.json")["bars"][:50]:
-        bar = live_price_rows.with_change({"o": b["open"], "c": b["close"]})
-        assert bar["chg"] == pytest.approx(b["close"] - b["open"])
-        assert bar["chg_pct"] == pytest.approx((b["close"] - b["open"]) / b["open"] * 100)
+    for symbol in ("SPY", "TSLA"):
+        for b in console_bars("real_daemon_bars_spy_tsla_2026_09_24_25.json", symbol)[:50]:
+            bar = live_price_rows.with_change({"o": b["open"], "c": b["close"]})
+            assert bar["chg"] == pytest.approx(b["close"] - b["open"])
+            assert bar["chg_pct"] == pytest.approx((b["close"] - b["open"]) / b["open"] * 100)
