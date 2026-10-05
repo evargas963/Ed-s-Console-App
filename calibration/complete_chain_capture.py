@@ -224,7 +224,7 @@ class ChainSweep:
         self._written: dict[str, float] = {}
         self._paused_until = 0.0
         self._probing = False           # after a refusal or failure: one fetch at a time
-                                        # until one succeeds
+                                        # until one of those (the probe) succeeds
         self._closed: "list[str] | None" = None    # while Closed: the board tickers whose close
                                                     # values are not yet fetched; None while open
 
@@ -283,8 +283,9 @@ class ChainSweep:
             log.warning("chain %s: %s", ticker, reason)
             self.publish(*chain_failure_message(ticker, reason, now))
             return False
-        with self._lock:
-            self._probing = False
+        if alone:                       # the probe landed; a fetch sent before a refusal did not
+            with self._lock:
+                self._probing = False
         payload = resp.json()
         contracts = flatten_chain_contracts(payload)
         for topic, msg in chain_messages(ticker, contracts, now):
@@ -336,10 +337,10 @@ class ChainSweep:
             raise
 
     def _refused(self, now: float, pause: float) -> None:
-        """No chain request for `pause`, then one fetch at a time, each sending its requests one
-        at a time (fetch_full_chain `alone`), until one succeeds."""
+        """No chain request for `pause` (a pause already longer stands), then one fetch at a time,
+        each sending its requests one at a time (fetch_full_chain `alone`), until one succeeds."""
         with self._lock:
-            self._paused_until = now + pause
+            self._paused_until = max(self._paused_until, now + pause)
             self._probing = True
 
     def work(self, schwab_client, stop: threading.Event) -> None:

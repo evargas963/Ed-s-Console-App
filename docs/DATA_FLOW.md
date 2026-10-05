@@ -198,11 +198,17 @@ from Schwab to the screen (daemon, console, page), are these:
   (`FAILED_PAUSE_SEC`). Then the probe: one chain is fetched alone, sending its requests one at
   a time and stopping at the first one refused (`fetch_full_chain` `alone`), so a refused probe
   costs Schwab at most one refused request; the sweep, every request at once again, goes on
-  only once one lands. Enforced by: `tests/test_data_path_rules_v1.py`
+  only once the probe lands (a fetch sent before the refusal that lands does not end it). Any
+  request of a chain counts: the chain, its expiration list (asked for a chain fetched in date
+  ranges), its quotes; a later refusal never shortens a pause already running. Enforced by:
+  `tests/test_data_path_rules_v1.py`
   (`test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until_one_lands`,
   on Schwab's captured 403 page;
   `test_after_a_refusal_the_probe_sends_one_request_at_a_time_and_stops_at_the_first_refused`,
-  counting the requests Schwab's host receives after a 403 and after a 429). The chain is always the full chain, every expiry and
+  counting the requests Schwab's host receives after a 403 and after a 429;
+  `test_a_refused_expiration_list_pauses_the_sweep_and_starts_the_probe`,
+  `test_a_fetch_begun_before_a_refusal_does_not_end_the_probe`,
+  `test_a_later_refusal_never_shortens_the_pause`). The chain is always the full chain, every expiry and
   every strike: measured on the 38 board tickers' 2026-10-01 close captures, leaving out the
   farthest expiry changed a level (a wall, the flip, max pain) on 4 tickers, the two farthest on
   25, and 5 strikes off each side on 9. Every ticker's publication keeps its chain and its

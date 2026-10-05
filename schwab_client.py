@@ -552,16 +552,17 @@ _full_chain_parts: dict[str, int] = {}
 _full_chain_parts_lock = threading.Lock()
 
 
-def _option_expiries(client, ticker: str) -> "list[date] | None":
-    """Every listed expiry for `ticker` that has not passed (ET date), ascending; None when the
-    vendor does not answer 200. MEASURED 2026-09-26 (Saturday): the expiration chain still lists
-    Friday's expired 2026-09-25, and a chain request whose fromDate is in the past is refused
-    with HTTP 400 ("Check Param Values") -- the same range from today answers 200."""
+def _option_expiries(client, ticker: str) -> "tuple[int, list[date]]":
+    """Schwab's status for `ticker`'s expiration list, and every listed expiry that has not passed
+    (ET date), ascending (none unless the status is 200). MEASURED 2026-09-26 (Saturday): the
+    expiration chain still lists Friday's expired 2026-09-25, and a chain request whose fromDate
+    is in the past is refused with HTTP 400 ("Check Param Values") -- the same range from today
+    answers 200."""
     resp = client.get_option_expiration_chain(ticker)
-    if resp is None or resp.status_code != 200:
-        return None
+    if resp.status_code != 200:
+        return resp.status_code, []
     today = now_et().date()
-    return sorted({d for d in (date.fromisoformat(str(e["expirationDate"])[:10])
+    return 200, sorted({d for d in (date.fromisoformat(str(e["expirationDate"])[:10])
                                for e in (resp.json().get("expirationList") or []) if e.get("expirationDate"))  # external-key-ok: Schwab expiration chain response
                    if d >= today})
 
@@ -673,9 +674,11 @@ def _whole_chain(client, ticker: str, alone: bool) -> FullChainResponse:
             return FullChainResponse(code, reason=f"full chain returned HTTP {code}")
         known_parts = 2
 
-    expiries = _option_expiries(client, ticker)
+    code, expiries = _option_expiries(client, ticker)
+    if code != 200:
+        return FullChainResponse(code, reason=f"expiration list returned HTTP {code}")
     if not expiries:
-        return FullChainResponse(None, reason="expiration list unavailable")
+        return FullChainResponse(None, reason="expiration list has no expiry from today")
     size = -(-len(expiries) // min(known_parts, len(expiries)))
     pending = [expiries[i:i + size] for i in range(0, len(expiries), size)]
     merged: "dict | None" = None
