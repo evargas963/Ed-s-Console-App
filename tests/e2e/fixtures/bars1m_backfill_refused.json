@@ -1,0 +1,54 @@
+{
+ "source": "captured 2026-10-05 through the real code (no edit): the capture daemon's bar backfill run against the local stand-in for Schwab answering 429 (no 429 of Schwab's is captured), its heartbeat as the console recorded it, SPY's 2026-10-05 08:44 CT bar as the daemon recorded it (real_daemon_bars_spy_2026_10_05.json), then GET /api/bars1m?ticker=SPY. tests/test_data_path_bar_backfill_v1.py checks that server.backfill_line still gives this response's line for this heartbeat",
+ "heartbeat": {
+  "ts": 1791220417.718803,
+  "schwab_socket_open": false,
+  "board": [
+   "SPY",
+   "QQQ"
+  ],
+  "chain_round_sec": null,
+  "held": {
+   "LEVELONE_EQUITIES": [],
+   "CHART_EQUITY": [],
+   "NYSE_BOOK": [],
+   "NASDAQ_BOOK": [],
+   "LEVELONE_OPTIONS": [],
+   "OPTIONS_BOOK": [],
+   "NEWS_HEADLINE": []
+  },
+  "refused": {},
+  "backfill": {
+   "state": "refused",
+   "planned": 4,
+   "requests": 1,
+   "written": 0,
+   "started_ts": 1791217026.392613,
+   "ended_ts": 1791220417.220704,
+   "stopped_by": "QQQ: HTTP 429"
+  },
+  "health": {}
+ },
+ "response": {
+  "ticker": "SPY",
+  "bars": [
+   {
+    "t": 1791207840.0,
+    "o": 770.56,
+    "h": 770.64,
+    "l": 770.28,
+    "c": 770.64,
+    "v": 118573.208601,
+    "chg": 0.08000000000004093,
+    "chg_pct": 0.010382059800669764
+   }
+  ],
+  "tf": "1",
+  "n": 1,
+  "backfill": "BAR BACKFILL STOPPED Mon 10/05 12:13 PM CT: Schwab refused (QQQ: HTTP 429), no retry; 1 of 4 price-history requests sent, 0 bars written",
+  "last_bar": {
+   "t": 1791207840.0,
+   "label": "Mon 10/05 08:44 AM CT"
+  }
+ }
+}

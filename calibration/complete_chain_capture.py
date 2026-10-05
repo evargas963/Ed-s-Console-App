@@ -330,26 +330,28 @@ class ChainSweep:
                 self._written[ticker] = before
             raise
 
-    def schwab_answered(self, status: int, now: float) -> None:
+    def schwab_answered(self, status: "int | None", now: float) -> None:
         """Schwab's answer to any request on the daemon's client, the sweep's or another's (the
         bar backfill): the one owner of when the daemon may ask Schwab. After a 429 nothing is
-        asked for RATE_LIMITED_PAUSE_SEC; after a 403 nothing for FAILED_PAUSE_SEC, then one
-        chain at a time until one lands (_refused)."""
+        asked for RATE_LIMITED_PAUSE_SEC; after a 403, or a request that failed outright (None: no
+        client, auth refused, the network down), nothing for FAILED_PAUSE_SEC, then one chain at
+        a time until one lands (_refused)."""
         if status == 429:
             with self._lock:
                 self._paused_until = now + RATE_LIMITED_PAUSE_SEC
-        if status == 403:
+        if status == 403 or status is None:
             self._refused(now)
 
     def clear_to_ask(self, stop: threading.Event) -> bool:
         """For a request outside the sweep (the bar backfill): wait until the sweep's pause after
-        Schwab's last refusal has passed (schwab_answered); False when `stop` is set first."""
+        Schwab's last refusal has passed and no probe is out or due (schwab_answered: the probe's
+        chain must land first); False when `stop` is set first."""
         while not stop.is_set():
             with self._lock:
-                wait = self._paused_until - self.clock()
-            if wait <= 0:
+                wait, probing = self._paused_until - self.clock(), self._probing
+            if wait <= 0 and not probing:
                 return True
-            stop.wait(wait)
+            stop.wait(max(wait, 0.25))
         return False
 
     def _refused(self, now: float) -> None:
@@ -361,7 +363,7 @@ class ChainSweep:
     def work(self, schwab_client, stop: threading.Event) -> None:
         """One worker thread's life: the next ticker, its chain on the daemon's client
         (`schwab_client()`), until `stop`. A request that fails outright is a refusal
-        (_refused)."""
+        (schwab_answered)."""
         while not stop.is_set():
             wait = self._paused_until - self.clock()
             if wait > 0:
@@ -380,7 +382,7 @@ class ChainSweep:
             except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the sweep goes on
                 log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
                 self.publish(*chain_failure_message(ticker, f"{type(e).__name__}: {e}", self.clock()))
-                self._refused(self.clock())
+                self.schwab_answered(None, self.clock())
             finally:
                 self._done(ticker, delivered)
 

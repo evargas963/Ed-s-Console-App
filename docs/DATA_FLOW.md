@@ -137,30 +137,34 @@ from Schwab to the screen (daemon, console, page), are these:
   console writes no bar) → a `liquidity` push on `/api/changes` → the browser reads
   `/api/bars1m`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
   the newest bar's minute (`last_bar`). A minute missed while the recorder was not recording (the
-  daemon down, its writer dead, its Schwab socket closed: from 09:16:10 to 10:49:12 CT on
+  daemon down, its writer dead, its Schwab socket closed: from 09:16:10 to 10:50:12 CT on
   2026-10-05, the bars of 09:17 to 10:47 CT) is filled from Schwab's price history by the bar
   backfill (`capture.run_backfill`; owner: the daemon, once at its start). The record says when it
   was not recording: its CHART_EQUITY feed-status rows (`record_feed_status`, one a minute) saying
-  the socket open and holding symbols, more than `NOT_RECORDING_SEC` (90 s) apart, or none since
-  the newest before the start (`capture.not_recording`). CHART_EQUITY sends no bar for a minute
-  with no trade, so a minute with no bar while recording is not a missed minute and is never
-  asked for. For the market's session and the trading day before it (`time_et`'s extended
-  session, 04:00 to 20:00 ET, minutes that ended before the start), each symbol (the board's and
-  each the record holds a bar of that day) with a minute that has no bar inside such a span
-  (`capture.day_gaps`, read read-only), not answered already since the span ended: one `GET
-  /marketdata/v1/pricehistory` (1-minute candles, extended hours, the missing span) on the daemon's
-  one client, one at a time, at least `BACKFILL_PACE_SEC` (1 s) apart, each only once the chain
-  sweep's pause after Schwab's last refusal has passed: the sweep is the one owner of when the
-  daemon may ask Schwab (`ChainSweep.schwab_answered`, `clear_to_ask`). A day recorded throughout
-  costs no request. Each returned candle of a missed minute is a `bar1m` message labelled `src`
+  the socket open, holding symbols and, in the regular session, the feed's last bar no more than
+  `NOT_RECORDING_SEC` old (a bar stall on an open socket: 126 to 157 s on 2026-10-02; outside the
+  regular session a quiet feed is not a stall, Schwab sends no bar before 07:00 ET), more than
+  `NOT_RECORDING_SEC` (90 s) apart, or none since the newest before the start
+  (`capture.not_recording`). CHART_EQUITY sends no bar for a minute with no trade, so a minute
+  with no bar while recording is not a missed minute and is never asked for. For the market's
+  session and the trading day before it (`time_et`'s extended session, 04:00 to 20:00 ET, minutes
+  that ended before the start), each symbol (the board's and each the record holds a bar of that
+  day) with a minute that has no bar inside such a span (`capture.day_gaps`, read read-only),
+  unless Schwab already answered a request for those same spans (the record's command names them,
+  `capture.BarGap.asked`; an answer for another day or before a new span does not count): one
+  `GET /marketdata/v1/pricehistory` (1-minute candles, extended hours, the missing span) on the
+  daemon's one client, one at a time, at least `BACKFILL_PACE_SEC` (1 s) apart, each only once the
+  chain sweep's pause after Schwab's last refusal has passed and no probe of the sweep is out or
+  due: the sweep is the one owner of when the daemon may ask Schwab (`ChainSweep.schwab_answered`,
+  `clear_to_ask`). A day recorded throughout costs no request. Each returned candle of a missed minute is a `bar1m` message labelled `src`
   `schwab_pricehistory` (`stream_spine.BAR_BACKFILL_SRC`), Schwab's candle as sent (its `datetime`
   the bar's start, `native` the candle), recorded by the one writer and never pushed live (the 8799
   push forwards `schwab_chart` bars only): the console reads it at its next start. A minute the
   record holds is never written again, and a streamed bar of a minute always wins over a candle of
   it (`server._load_bars`). Each request and Schwab's answer is a `stream_subscriptions` row
-  (service `PRICEHISTORY`, code the HTTP status). A 403 or 429 pauses the chain sweep as its own
-  would and stops the whole backfill at once with no retry, as does a request that fails outright
-  (no client, the token refused, the network down). The daemon's heartbeat carries its state
+  (service `PRICEHISTORY`, code the HTTP status). A 403 or 429, or a request that fails outright
+  (no client, the token refused, the network down), is reported to the chain sweep as its own
+  would be and stops the whole backfill at once with no retry. The daemon's heartbeat carries its state
   (`backfill`: state, requests planned and sent, bars written, start and end, what stopped it);
   `/api/bars1m` serves it as one line (`server.backfill_line`, times in Central Time) and every
   chart prints it beside its last completed bar. When the daemon is down, nothing is backfilled

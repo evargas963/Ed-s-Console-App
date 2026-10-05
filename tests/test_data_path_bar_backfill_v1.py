@@ -9,7 +9,8 @@ minute the stream recorded is never written again and its streamed bar always wi
 the daemon's status and the chart's line (/api/bars1m `backfill`) say so.
 
 Real data: SPY's CHART_EQUITY bars as the daemon recorded them on 2026-10-05 and its CHART_EQUITY
-feed-status rows that day (the recorder wrote nothing from 09:16:10 to 10:49:12 CT), Schwab's
+feed-status rows that day (the recorder was not recording from 09:16:10 to 10:50:12 CT: no bar
+from 09:17 to 10:47 CT), Schwab's
 price-history reply for SPY that day (captured 2026-10-05 11:17 CT; Schwab sent the whole day up to
 that minute, 06:00 to 11:17 CT, for a 09:00-11:00 CT request), and Schwab's edge's 403 page as it
 answered on 2026-10-03. Stand-ins, named: the local server playing Schwab's host; its answer for a
@@ -220,8 +221,41 @@ def test_a_session_the_recorder_recorded_throughout_costs_no_request(tmp_path):
     with sqlite3.connect(f"file:{record.as_posix()}?mode=ro", uri=True) as con:
         assert capture.day_gaps(con, ["SPY", "QQQ"], date(2026, 10, 5), now) == []
         # and by the same record, the gap that followed is found
-        later = [(sym, len(m)) for sym, m in capture.day_gaps(con, ["SPY"], date(2026, 10, 5), NOW)]
+        later = [(g.symbol, len(g.missing)) for g in capture.day_gaps(con, ["SPY"], date(2026, 10, 5), NOW)]
     assert later == [("SPY", len(GAP))]
+
+
+def test_an_answer_counts_only_for_the_spans_it_asked_about(tmp_path):
+    """The reviewer's case (scratchpad probe induce_answered_other_day.py): Schwab answered SPY's
+    2026-10-05 request, then a 429 stopped the run before SPY's 2026-10-02 request. At the next
+    start the 2026-10-02 gap (the record holds no feed-status row that day) is still asked for.
+    (That the answered spans are not asked again is the first test's second start.)"""
+    record = tmp_path / "stream_capture.db"
+    _record_feed(record)
+    with sqlite3.connect(f"file:{record.as_posix()}?mode=ro", uri=True) as con:
+        before = len(capture.day_gaps(con, ["SPY"], date(2026, 10, 2), NOW))
+    CaptureWriter(record).insert("sub.PRICEHISTORY", stream_spine.subscription_msg(
+        service="PRICEHISTORY", command="GET", symbols=["SPY"], code=200,
+        reason="91 minute(s) missing from 2026-10-05 10:16 to 11:46 ET; 91 written", ts=NOW + 1))
+    with sqlite3.connect(f"file:{record.as_posix()}?mode=ro", uri=True) as con:
+        after = len(capture.day_gaps(con, ["SPY"], date(2026, 10, 2), NOW))
+    assert (before, after) == (1, 1), "SPY's 2026-10-02 gap was dropped by an answer for 2026-10-05"
+
+
+def test_a_bar_stall_on_an_open_socket_in_the_regular_session_is_not_recording(tmp_path):
+    """2026-10-02 12:00 to 12:18 ET the record's feed-status rows said the socket open while
+    CHART_EQUITY's last bar was 126 to 157 s old (measured in production's record). Stand-in: six
+    such rows a minute apart, the 12:03 ET one with its last bar 135 s old, the others 5 s."""
+    record = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(record)
+    base = datetime(2026, 10, 2, 12, 0, tzinfo=ET).timestamp()
+    for i in range(6):
+        ts = base + 60 * i
+        writer.insert("feedstatus.CHART_EQUITY", {"ts": ts, "service": "CHART_EQUITY", "socket_open": True,
+                                                  "schwab_last_frame_ts": ts, "held": 40,
+                                                  "last_data_ts": ts - (135 if i == 3 else 5)})
+    with sqlite3.connect(f"file:{record.as_posix()}?mode=ro", uri=True) as con:
+        assert capture.not_recording(con, base, base + 300) == [(base + 120, base + 240)]
 
 
 def test_a_streamed_minute_wins_over_a_backfilled_candle_of_the_same_minute():
@@ -290,3 +324,12 @@ def test_while_the_sweep_is_paused_after_schwabs_refusal_the_backfill_asks_nothi
         schwab.close()
     assert schwab.requests == []
     assert daemon.status()["backfill"]["requests"] == 0
+
+
+def test_the_browser_tests_bars_answer_is_what_the_console_serves_for_its_heartbeat():
+    """tests/e2e/bar-backfill-line.spec.js draws a captured /api/bars1m answer; its line is what
+    server.backfill_line gives for the captured heartbeat, so the browser test's wording cannot
+    drift from the console's."""
+    fx = json.loads((FX.parent / "e2e" / "fixtures" / "bars1m_backfill_refused.json").read_text(encoding="utf-8"))
+    assert server.backfill_line(fx["heartbeat"]) == fx["response"]["backfill"]
+    assert fx["response"]["backfill"].startswith("BAR BACKFILL STOPPED ")

@@ -81,6 +81,7 @@ from time_et import (  # noqa: E402
     ET,
     EXTENDED_END_MINS,
     EXTENDED_START_MINS,
+    is_tradable_session_ts_utc,
     is_trading_day_et,
     market_session_date,
 )
@@ -599,28 +600,50 @@ def backfill_sessions(now: float) -> "list[date]":
 NOT_RECORDING_SEC = 1.5 * FEED_STATUS_EVERY_SEC
 
 
+def _recording(ts: float, last_data_ts: "float | None") -> bool:
+    """A feed-status row (socket open, symbols held) at `ts` that shows bars arriving: in the
+    regular session (time_et.is_tradable_session_ts_utc), the feed's last bar no more than
+    NOT_RECORDING_SEC old, so a CHART_EQUITY stall on an open socket is not recording (126 to
+    157 s on 2026-10-02 12:00 to 12:18 ET). Outside it a quiet feed is not a stall: before 07:00 ET
+    Schwab sends no bar at all (1,060 of 1,068 such rows since 2026-09-28 had none for over 120 s)."""
+    return not is_tradable_session_ts_utc(ts) or (last_data_ts is not None and ts - last_data_ts <= NOT_RECORDING_SEC)
+
+
 def not_recording(con: sqlite3.Connection, lo: float, hi: float) -> "list[tuple[float, float]]":
     """The spans (start, end; epoch s) between `lo` and `hi` in which the record shows the
     recorder was not recording Schwab's 1-minute bars: between two of its CHART_EQUITY feed-status
-    rows saying the socket was open and holding symbols that are more than NOT_RECORDING_SEC apart,
-    from the newest such row before `lo` (or `lo`, with none), to `hi` when the newest is older."""
-    (before,) = con.execute("SELECT MAX(ts) FROM stream_feed_status WHERE service='CHART_EQUITY' "
-                            "AND socket_open=1 AND held>0 AND ts<?", (lo,)).fetchone()
-    marks = [lo if before is None else before]
-    marks += [ts for (ts,) in con.execute("SELECT ts FROM stream_feed_status WHERE service='CHART_EQUITY' "
-                                          "AND socket_open=1 AND held>0 AND ts>=? AND ts<? ORDER BY ts", (lo, hi))]
+    rows saying the socket was open, holding symbols and bars arriving (_recording) that are more
+    than NOT_RECORDING_SEC apart, from the newest such row before `lo` (or `lo`, with none), to
+    `hi` when the newest is older."""
+    rows = ("SELECT ts, last_data_ts FROM stream_feed_status WHERE service='CHART_EQUITY' "
+            "AND socket_open=1 AND held>0 ")
+    before = next((ts for ts, last in con.execute(rows + "AND ts<? ORDER BY ts DESC LIMIT 1", (lo,))
+                   if _recording(ts, last)), lo)
+    marks = [before] + [ts for ts, last in con.execute(rows + "AND ts>=? AND ts<? ORDER BY ts", (lo, hi))
+                        if _recording(ts, last)]
     marks.append(hi)
     return [(a, b) for a, b in zip(marks, marks[1:]) if b - a > NOT_RECORDING_SEC]
 
 
-def day_gaps(con: sqlite3.Connection, board: "list[str]", day: date, now: float) -> "list[tuple[str, list[int]]]":
-    """`day`'s requests: (symbol, its missing minutes (start, ms), ascending) for each symbol (the
-    board's and every one the record holds a bar of that day) with a minute that has no bar in the
-    record (stream_bars_raw, streamed or backfilled) inside a span the recorder was not recording
-    (not_recording), within the day's extended session (time_et: 04:00 to 20:00 ET) and ended
-    before `now`: a minute whose bar would have arrived in the span, from a minute before its
-    start. A symbol Schwab's price history already answered for after the day's last span ended
-    (a PRICEHISTORY row, code 200) is not asked again. No span: nothing."""
+@dataclass
+class BarGap:
+    """One price-history request of the backfill: `symbol`, its minutes (start, ms; ascending) with
+    no bar in the record inside the day's not-recording spans, and `asked`: those spans' minutes as
+    the request's record names them (`GET <first ms>..<last ms>`), so an answer counts only for
+    the spans it was asked about."""
+    symbol: str
+    missing: "list[int]"
+    asked: str
+
+
+def day_gaps(con: sqlite3.Connection, board: "list[str]", day: date, now: float) -> "list[BarGap]":
+    """`day`'s requests (BarGap): each symbol (the board's and every one the record holds a bar of
+    that day) with a minute that has no bar in the record (stream_bars_raw, streamed or
+    backfilled) inside a span the recorder was not recording (not_recording), within the day's
+    extended session (time_et: 04:00 to 20:00 ET) and ended before `now`: a minute whose bar would
+    have arrived in the span, from a minute before its start. A symbol Schwab's price history
+    already answered (a PRICEHISTORY row, code 200) for these same spans is not asked again; an
+    answer for other spans, another day's or before a new span, does not count. No span: nothing."""
     open_ = datetime(day.year, day.month, day.day, tzinfo=ET) + timedelta(minutes=EXTENDED_START_MINS)
     lo = open_.timestamp()
     hi = min(lo + (EXTENDED_END_MINS - EXTENDED_START_MINS) * 60, now // 60 * 60)
@@ -633,17 +656,17 @@ def day_gaps(con: sqlite3.Connection, board: "list[str]", day: date, now: float)
         return []
     recorded = [s for (s,) in con.execute("SELECT DISTINCT symbol FROM stream_bars_raw WHERE bar_start_ms>=? "
                                           "AND bar_start_ms<?", (int(lo) * 1000, int(hi) * 1000))]
+    asked = f"GET {minutes[0]}..{minutes[-1]}"
     out = []
     for sym in sorted(set(board) | set(recorded)):
-        (answered,) = con.execute("SELECT MAX(ts) FROM stream_subscriptions WHERE service='PRICEHISTORY' "
-                                  "AND code=200 AND symbols_json=?", (json.dumps([sym]),)).fetchone()
-        if answered is not None and answered >= spans[-1][1]:
+        if con.execute("SELECT 1 FROM stream_subscriptions WHERE service='PRICEHISTORY' AND code=200 "
+                       "AND command=? AND symbols_json=?", (asked, json.dumps([sym]))).fetchone():
             continue
         held = {ms for (ms,) in con.execute("SELECT DISTINCT bar_start_ms FROM stream_bars_raw WHERE symbol=? "
                                             "AND bar_start_ms>=? AND bar_start_ms<=?", (sym, minutes[0], minutes[-1]))}
         missing = [ms for ms in minutes if ms not in held]
         if missing:
-            out.append((sym, missing))
+            out.append(BarGap(sym, missing, asked))
     return out
 
 
@@ -658,18 +681,20 @@ def backfill_bars(schwab_client, sweep: ChainSweep, board: "list[str]", record_p
     Each returned candle of a missing minute is published as a bar1m message labelled
     BAR_BACKFILL_SRC, its fields and `native` Schwab's candle as sent, for the one writer to
     record; a minute the record holds is never written again. Each request and Schwab's answer is
-    published as a PRICEHISTORY subscription row. A 403 or 429 pauses the sweep
-    (`sweep.schwab_answered`) and stops the backfill at once, with no retry, as does a request that
-    fails outright; `state` carries it to the daemon's status. `halt` ends it between requests."""
+    published as a PRICEHISTORY subscription row, its command naming the spans asked about
+    (BarGap.asked). A 403 or 429, or a request that fails outright, is reported to the sweep
+    (`sweep.schwab_answered`) and stops the backfill at once, with no retry; `state` carries it
+    to the daemon's status. `halt` ends it between requests."""
     con = sqlite3.connect(f"file:{Path(record_path).resolve().as_posix()}?mode=ro", uri=True, timeout=30.0)
     try:
         gaps = [gap for day in backfill_sessions(now) for gap in day_gaps(con, board, day, now)]
     finally:
         con.close()
     state.state, state.planned, state.started_ts = BACKFILL_RUNNING, len(gaps), now
-    log.info("bar backfill: %d request(s) for %d ticker(s)", len(gaps), len({s for s, _m in gaps}))
+    log.info("bar backfill: %d request(s) for %d ticker(s)", len(gaps), len({g.symbol for g in gaps}))
     answered = None
-    for sym, missing in gaps:
+    for gap in gaps:
+        sym, missing = gap.symbol, gap.missing
         if answered is not None and halt.wait(max(0.0, answered + BACKFILL_PACE_SEC - time.monotonic())):
             return                                           # the daemon is stopping
         if not sweep.clear_to_ask(halt):
@@ -691,7 +716,8 @@ def backfill_bars(schwab_client, sweep: ChainSweep, board: "list[str]", record_p
                         type(e).__name__, e)
             state.state, state.stopped_by = BACKFILL_FAILED, f"{sym}: {type(e).__name__}: {e}"[:300]
             state.ended_ts = time.time()
-            publish("sub.PRICEHISTORY", subscription_msg(service="PRICEHISTORY", command="GET", symbols=[sym],
+            sweep.schwab_answered(None, sweep.clock())
+            publish("sub.PRICEHISTORY", subscription_msg(service="PRICEHISTORY", command=gap.asked, symbols=[sym],
                                                          code=None, reason=f"{span}; {state.stopped_by}"))
             return
         if resp.status_code in BACKFILL_STOP_CODES:
@@ -701,7 +727,7 @@ def backfill_bars(schwab_client, sweep: ChainSweep, board: "list[str]", record_p
             state.state, state.ended_ts = BACKFILL_REFUSED, time.time()
             state.stopped_by = f"{sym}: HTTP {resp.status_code}"
             publish("sub.PRICEHISTORY", subscription_msg(
-                service="PRICEHISTORY", command="GET", symbols=[sym], code=resp.status_code,
+                service="PRICEHISTORY", command=gap.asked, symbols=[sym], code=resp.status_code,
                 reason=f"{span}; {state.stopped_by}; {resp.text[:300]}"))
             return
         written = 0
@@ -717,7 +743,7 @@ def backfill_bars(schwab_client, sweep: ChainSweep, board: "list[str]", record_p
                     written += 1
         state.written += written
         publish("sub.PRICEHISTORY", subscription_msg(
-            service="PRICEHISTORY", command="GET", symbols=[sym], code=resp.status_code,
+            service="PRICEHISTORY", command=gap.asked, symbols=[sym], code=resp.status_code,
             reason=f"{span}; {written} written" if isinstance(candles, list) else f"{span}; no candles in the answer"))
     state.state, state.ended_ts = BACKFILL_DONE, time.time()
     log.info("bar backfill: done, %d request(s), %d bar(s) written", state.requests, state.written)
