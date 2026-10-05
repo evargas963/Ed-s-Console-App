@@ -16,6 +16,7 @@ from schwab.client import Client
 
 from calibration.complete_chain_capture import (CAPTURE_BASIS, ChainSweep, last_capture_per_day,
                                                 persist_complete_chain_capture)
+from stream_spine import CaptureWriter
 from tests.test_data_path_rules_v1 import _LocalSchwab
 
 _IN_WINDOW = 1790863205.0          # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
@@ -27,7 +28,8 @@ def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_ke
     capture's spot, on the same key) is a later write landing on that key."""
     db = tmp_path / "ed_console.db"
     schwab = _LocalSchwab()
-    sweep = ChainSweep(db, ["SPY"], lambda topic, msg: None, clock=lambda: _IN_WINDOW)
+    sweep = ChainSweep(db, ["SPY"], lambda topic, msg: None, clock=lambda: _IN_WINDOW,
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"))
     client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)
     try:
         assert sweep.fetch_one(client, "SPY") is True

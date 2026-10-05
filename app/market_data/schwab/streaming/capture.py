@@ -518,7 +518,7 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
 
 
 async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Event, *,
-                     failures: "CaptureWriter | None" = None) -> None:
+                     failures: "CaptureWriter") -> None:
     """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own threads, so the
     stream never waits on a chain; each chain part is published on the event loop, and the bus
     keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). A chain whose

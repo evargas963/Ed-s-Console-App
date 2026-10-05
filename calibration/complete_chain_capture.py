@@ -209,15 +209,15 @@ class ChainSweep:
     with Schwab's answer. The first fetch of a ticker begun inside a capture window
     (capture_slot) is also written to the chain history; a history write that fails is a
     write failure, never the chain's: the chain as the sweep received it is handed to
-    `failures` (the daemon's writer; by default the stream database's own) to keep as sent."""
+    `failures` (the daemon's writer) to keep as sent."""
 
     def __init__(self, db_path: Path | str, board: "list[str]", publish: "callable",
-                 clock: "callable" = time.time, *, failures: "CaptureWriter | None" = None) -> None:
+                 clock: "callable" = time.time, *, failures: "CaptureWriter") -> None:
         self.db_path = db_path
         self.board = list(board)        # the daemon's board, read at its start
         self.publish = publish          # (topic, msg) -> None, safe from any thread
         self.clock = clock              # when a fetch begins, and when its chain is received
-        self.failures = CaptureWriter() if failures is None else failures
+        self.failures = failures        # the daemon's writer: keeps a failed history write
         self._lock = threading.RLock()
         self._changed = threading.Condition(self._lock)
         self._active: str | None = None

@@ -27,7 +27,7 @@ import live_market_plane as lmp
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_ui import LiveUiServer
 from calibration.complete_chain_capture import ChainSweep
-from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, options_quote_msg
+from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, options_quote_msg, quote_msg
 from tests.test_data_path_rules_v1 import _CONTRACT, _EVENTS, _LocalSchwab, _frame
 
 _IN_WINDOW = 1790863205.0          # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
@@ -206,6 +206,117 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
     assert during["waiting"] == during["held"] == len(_EVENTS) and during["queue_depth"] == 0
     assert f"{len(_EVENTS)} held in memory, {len(_EVENTS)} of them waiting for the database" in during["line"]
     assert (after["state"], after["rows_written"], after["held"]) == ("recording", len(_EVENTS), 0)
+
+
+class _Defect(dict):
+    """STAND-IN for a defect in the writer: a message whose row builder raises an error no row
+    can raise (RuntimeError), so the writer thread ends."""
+
+    def get(self, key, default=None):
+        if key == "bid":
+            raise RuntimeError("a defect in the writer")
+        return dict.get(self, key, default)
+
+
+def _tsla_quotes(bus, health, n: int) -> None:
+    h = capture._publisher("LEVELONE_EQUITIES", bus, health)
+    for i in range(n):
+        h({"content": [dict(_TSLA["native"])], "timestamp": i})
+
+
+def _defect() -> "_Defect":
+    return _Defect(quote_msg(symbol="TSLA", src="schwab_stream", native=_TSLA["native"]))
+
+
+def test_a_writer_that_dies_in_a_retry_counts_each_held_message_not_recorded_once(tmp_path):
+    """INDUCED CONDITIONS: the stream database is read-only before the writer starts, holding 3
+    captured TSLA quotes and one _Defect message, then made writable: the retry stores the 3 in
+    its open batch and ends on the 4th. Each of the 4 is not recorded, counted once."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db)
+    os.chmod(db, stat.S_IREAD)
+
+    def writable() -> None:
+        for path in (db, db.with_name(db.name + "-wal"), db.with_name(db.name + "-shm")):
+            if path.exists():
+                os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        _tsla_quotes(bus, health, 3)
+        bus.publish("quote.TSLA", _defect())
+        await asyncio.sleep(1.5)
+        writable()
+        await _until(lambda: writer.status()["state"] == "dead")
+        dead = writer.status()
+        stop.set()
+        await task
+        return dead, writer.status()
+    try:
+        dead, after = asyncio.run(go())
+    finally:
+        writable()
+
+    assert dead["state"] == "dead" and dead["error"] == "RuntimeError: a defect in the writer"
+    assert dead["unrecorded"] == 4 and dead["rows_written"] == 0
+    assert (after["unrecorded"], after["held"]) == (4, 0)
+
+
+def test_a_writer_that_dies_while_recording_counts_the_message_that_ended_it(tmp_path):
+    """INDUCED CONDITION: 3 captured TSLA quotes in the open batch (no commit inside 60 s), then a
+    _Defect message, then 4 more queued; after the writer dies, 6 more. Not recorded: 3 + 1 + 4,
+    then 14."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1000, batch_sec=60.0)
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        _tsla_quotes(bus, health, 3)
+        bus.publish("quote.TSLA", _defect())
+        _tsla_quotes(bus, health, 4)
+        await _until(lambda: writer.status()["state"] == "dead")
+        dead = writer.status()
+        _tsla_quotes(bus, health, 6)
+        await asyncio.sleep(0.5)
+        later = writer.status()
+        stop.set()
+        await task
+        return dead, later, writer.status()
+    dead, later, after = asyncio.run(go())
+
+    assert dead["state"] == "dead" and dead["unrecorded"] == 8
+    assert later["unrecorded"] == 14
+    assert (after["unrecorded"], after["held"], _count(db, "stream_quotes_raw")) == (14, 0, 0)
+
+
+def test_a_row_only_the_database_refuses_is_kept_and_the_writer_is_not_blocked(tmp_path):
+    """INDUCED CONDITION: a trigger on the quotes table raises SQLite's "integer overflow"
+    (OperationalError, SQLITE_ERROR) for TSLA's rows only. That refusal is the row's, not the
+    database's: the captured TSLA quote is kept as sent and the captured option quotes after it
+    are stored; the writer is never blocked."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TRIGGER refuse_tsla BEFORE INSERT ON stream_quotes_raw "
+                     "WHEN NEW.symbol = 'TSLA' BEGIN SELECT abs(-9223372036854775808); END")
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        _tsla_quotes(bus, health, 1)
+        _publish_options(bus, health, _EVENTS)
+        await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS), limit=5.0)
+        stop.set()
+        await task
+    asyncio.run(go())
+
+    assert _count(db, "stream_options_quotes_raw") == len(_EVENTS), "one refused row blocked the writer"
+    (topic, kept, error), = _failures(db)
+    assert (topic, error) == ("quote.TSLA", "OperationalError: integer overflow")
+    assert json.loads(kept)["native"] == _TSLA["native"]
+    assert writer.status()["state"] == "stopped"
 
 
 def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_failure(tmp_path):

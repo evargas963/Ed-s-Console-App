@@ -55,20 +55,24 @@ from Schwab to the screen (daemon, console, page), are these:
 - **D3. The live path holds only the newest.** One current record per symbol (a quote merged
   field by field, Schwab sending only the fields that changed; a book or a bar replaced whole) and
   one current chain per ticker (replaced whole). A newer value replaces the older one at once;
-  nothing old waits in a queue. Memory is bounded by the number of symbols, never by how fast
-  Schwab sends. Enforced by: `tests/test_data_path_rules_v1.py`.
+  nothing old waits in a queue. The live path's memory is bounded by the number of symbols, never
+  by how fast Schwab sends. The one exception is the database writer's record of every message
+  (D4): while the database refuses writes it holds every message, with no ceiling, growing with
+  Schwab's rate. Enforced by: `tests/test_data_path_rules_v1.py`.
 - **D4. The database is the memory.** Its one writer records every message Schwab sends; nothing
   else keeps old data. A message whose row is refused (a constraint, a value SQLite cannot
   hold, a message without its table's shape) is kept as sent, with its error and time, in
   `stream_write_failures`, and the writer goes on. While the database refuses every write
   (locked past the writer's wait, full, read-only), the writer holds the messages in memory, in
-  order, and every second opens a new connection and writes them again until it can; it reads
+  order, and every `retry_sec` plus up to `batch_sec` (1.25 s at the defaults; a locked
+  database also its 30 s wait) opens a new connection and writes them again until it can; it reads
   blocked with the refusal and how many messages it holds. The writer's state
   (`stream_spine.WriterStatus`, counted at commit) rides the daemon's heartbeat to the header's
   Record, a line the daemon serves (its times in Central Time). Owner: the writer thread
   (`CaptureWriter.run`, started with the daemon). What it holds has no ceiling: measured
-  2026-10-05, about 835 bytes per option quote held, and Schwab sent 2,190 option quotes a
-  second, so a block holds about 1.8 MB more each second, about 6.6 GB an hour; a long block can
+  2026-10-05, about 835 bytes per option quote held, and Schwab sent 2,211.7 messages a second
+  in all (2,173 of them option quotes; books are larger), so a block holds at least about 1.8 MB
+  more each second, at least about 6.6 GB an hour; a long block can
   exhaust the machine's memory and take down the whole daemon (stream, chains, push) with all it
   holds. A cap on what is held while blocked, and what is dropped first, is the operator's
   decision (open). A daemon that stops while blocked loses what it holds (counted not recorded at

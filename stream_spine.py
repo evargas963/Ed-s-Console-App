@@ -403,9 +403,17 @@ def _json(v) -> "str | None":
 ROW_FAILURES = (sqlite3.IntegrityError, sqlite3.DataError, sqlite3.InterfaceError,
                 sqlite3.ProgrammingError, sqlite3.NotSupportedError, KeyError, TypeError,
                 ValueError, AttributeError, OverflowError)
-#: the database refusing every write (locked or busy past the timeout, full, read-only,
-#: unreadable): the writer holds the messages and writes them again after `retry_sec`
+#: an error from the database while writing (opening, a row, a commit); a row's error is the
+#: database refusing every write when its SQLite code is one of REFUSAL_CODES, else that row's own
 DATABASE_REFUSALS = (sqlite3.DatabaseError,)
+#: SQLite's primary result codes for a database that takes no write now: SQLITE_PERM, BUSY,
+#: LOCKED, NOMEM, READONLY, IOERR, CORRUPT, FULL, CANTOPEN, PROTOCOL, NOTADB
+#: (https://www.sqlite.org/rescode.html). The writer holds the messages and tries again.
+REFUSAL_CODES = frozenset({3, 5, 6, 7, 8, 10, 11, 13, 14, 15, 26})
+
+
+def _refuses_every_write(error: sqlite3.DatabaseError) -> bool:
+    return error.sqlite_errorcode is None or error.sqlite_errorcode & 0xFF in REFUSAL_CODES
 
 #: the writer's states, on the heartbeat
 WRITER_NOT_STARTED, WRITER_RECORDING, WRITER_BLOCKED, WRITER_DEAD, WRITER_STOPPED = (
@@ -430,8 +438,9 @@ class KeptFailure:
 class WriterStatus:
     """The writer as the heartbeat carries it, counted at commit. `failures`: messages kept in
     stream_write_failures; `held`: messages in memory not yet in the database (queued, in the
-    open batch, and `waiting`: those held while the database refuses writes, every queued one
-    included); `unrecorded`: messages a dead or stopping writer could not write; `error`: the
+    open batch or waiting); `waiting`: those the writer took from the queue to write again while
+    the database refuses writes (each try takes every queued one; those arriving during the pause
+    between tries stay queued until the next); `unrecorded`: messages a dead or stopping writer could not write; `error`: the
     database's refusal (blocked) or what ended the thread (dead), from `error_ct`. `line` and
     `cls`: the header's Record, as the page prints it."""
     state: str
@@ -469,8 +478,9 @@ class CaptureWriter:
     (commit every `batch_rows` rows or `batch_sec`). Never points at ed_console.db. A message
     whose row is refused is kept as sent in stream_write_failures, in the same batch. While the
     database refuses every write (DATABASE_REFUSALS, each wait `timeout_sec`), the open batch
-    is rolled back and its messages, and every one after, are held in order and written again
-    every `retry_sec` (state blocked, with the refusal). Only an error outside these ends the
+    is rolled back and its messages, and every one after, are held in order and written again,
+    on a new connection, every `retry_sec` plus up to `batch_sec` (state blocked, with the
+    refusal; each try also waits up to `timeout_sec` on a locked database). Only an error outside these ends the
     thread (dead): what it held and what reaches it after are counted unrecorded."""
 
     def __init__(self, db_path: "Path | str | None" = None, *,
@@ -489,6 +499,9 @@ class CaptureWriter:
         self._q: "queue.SimpleQueue" = queue.SimpleQueue()
         self._batch: list = []         # (message, outcome) in the open transaction
         self._waiting: list = []       # messages held while the database refuses writes
+        self._round: list = []         # the messages the writer is writing now, in order
+        self._stored = 0               # how many of them are in the open batch
+        self._logged: dict = {}        # log line kind -> [minute last logged, count since]
         self.state = WRITER_NOT_STARTED
         self.rows_written = 0
         self.failures = 0
@@ -528,15 +541,35 @@ class CaptureWriter:
         try:
             conn.execute(spec[0], spec[1](msg))
         except ROW_FAILURES as e:
-            log.warning("stream writer: %s not stored as a row, kept as sent: %s: %s",
-                        topic, type(e).__name__, e)
-            return self._keep(conn, KeptFailure(topic, msg, f"{type(e).__name__}: {e}", time.time()))
+            return self._kept_row(conn, topic, msg, e)
+        except DATABASE_REFUSALS as e:
+            if _refuses_every_write(e):
+                raise
+            return self._kept_row(conn, topic, msg, e)
         return ROW
+
+    def _kept_row(self, conn: sqlite3.Connection, topic: str, msg: Any, error: BaseException) -> "KeptFailure":
+        reason = f"{type(error).__name__}: {error}"
+        self._log_once_a_minute(("row", reason), "stream writer: %s not stored as a row, kept as sent: %s",
+                                topic, reason)
+        return self._keep(conn, KeptFailure(topic, msg, reason, time.time()))
+
+    def _log_once_a_minute(self, key: tuple, fmt: str, *args) -> None:
+        """One log line per kind a minute, with how many came since the last line."""
+        minute = int(time.time() // 60)
+        with self._lock:
+            seen = self._logged.setdefault(key, [None, 0])
+            if seen[0] == minute:
+                seen[1] += 1
+                return
+            since, seen[0], seen[1] = seen[1], minute, 0
+        log.warning(fmt + " (%d more since the last line)", *args, since)
 
     def keep_failure(self, topic: str, msg: Any, error: BaseException, now: float) -> None:
         """Keep `msg`, which another thread could not store (a chain whose history write
-        failed), as sent. While the writer thread runs it takes it in turn, the one writer;
-        before it starts or after it stops nothing else writes, so it is written here."""
+        failed), as sent. While the writer thread runs it takes it in turn, the one writer; a
+        writer whose thread is not running (not started, or stopped) writes it here, on a
+        connection of its own."""
         kept = KeptFailure(topic, msg, f"{type(error).__name__}: {error}", now)
         with self._lock:
             standalone = self.state in (WRITER_NOT_STARTED, WRITER_STOPPED)
@@ -607,7 +640,9 @@ class CaptureWriter:
             while not sub.queue.empty():
                 self._hand(await sub.get())
         finally:
-            self._q.put(None)
+            with self._lock:               # a dead thread takes no stop message
+                if self.state != WRITER_DEAD:
+                    self._q.put(None)
             await asyncio.to_thread(thread.join)
 
     def _hand(self, item) -> None:
@@ -624,8 +659,11 @@ class CaptureWriter:
             log.error("stream writer died: %s: %s", type(e).__name__, e)
             with self._lock:
                 self.state, self.error, self.error_ts = WRITER_DEAD, f"{type(e).__name__}: {e}", time.time()
-                self.unrecorded += len(self._batch) + len(self._waiting) + self._drained(q)
-                self._batch, self._waiting = [], []
+                # the open batch, the round's messages not yet in it (the one that ended the
+                # thread first; a retry's round holds its batch and what was waiting), the queue
+                self.unrecorded += (len(self._batch) + len(self._round) - self._stored
+                                    + self._drained(q))
+                self._batch, self._waiting, self._round, self._stored = [], [], [], 0
             raise
         with self._lock:                   # anything handed in after the stop is not written
             self.state = WRITER_STOPPED
@@ -676,13 +714,13 @@ class CaptureWriter:
                         items += [item] if item else []
                     with self._lock:
                         self._waiting = items
-                stored = 0
+                self._round, self._stored = items, 0
                 try:
                     if conn is None:
                         conn = self._open()
                     for item in items:
                         self._batch.append((item, self._store(conn, item)))
-                        stored += 1
+                        self._stored += 1
                     with self._lock:
                         self._waiting = []
                     if self._batch and (stopping or len(self._batch) >= self.batch_rows
@@ -695,7 +733,7 @@ class CaptureWriter:
                     if conn is not None:
                         conn.close()       # its open transaction is rolled back
                     conn = None
-                    self._refused(e, [item for item, _out in self._batch] + items[stored:], stopping)
+                    self._refused(e, [item for item, _out in self._batch] + items[self._stored:], stopping)
         finally:
             if conn is not None:
                 conn.close()
@@ -705,8 +743,9 @@ class CaptureWriter:
         and the ones not yet written, in order) is written again after `retry_sec`; at the stop
         it is counted unrecorded instead."""
         reason = f"{type(error).__name__}: {error}"
-        log.warning("stream writer: the database refused a write, %d messages held: %s",
-                    len(held), reason)
+        self._log_once_a_minute(("refused", reason),
+                                "stream writer: the database refused a write, %d messages held: %s",
+                                len(held), reason)
         with self._lock:
             self._batch = []
             if stopping:
