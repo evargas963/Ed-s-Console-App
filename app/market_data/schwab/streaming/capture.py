@@ -22,7 +22,7 @@ It does four things, in one loop:
              connection and sends the difference: UNSUBS for what is no longer wanted, then
              SUBS (the first request of a service) or ADD (every later one -- a repeated SUBS
              can replace the whole set). Requests are split so none exceeds Schwab's 64 KB
-             message limit (measured 2026-09-22: a 71 KB request closed the socket).
+             message limit (a larger request closes the socket).
              Schwab's answer to every request goes to the stream_subscriptions table. A symbol
              Schwab refused is not asked for again until the console's list changes.
   3. FAN-OUT Every Schwab message is published once on the bus: the database writer
@@ -32,7 +32,7 @@ It does four things, in one loop:
              is alive. None for DEAD_SEC: reconnect with backoff and resubscribe the wanted
              list. There is nothing else to recover.
 
-What Schwab offers (probed live 2026-09-25): LEVELONE_EQUITIES, CHART_EQUITY, NYSE_BOOK
+What Schwab offers: LEVELONE_EQUITIES, CHART_EQUITY, NYSE_BOOK
 (exchange book), NASDAQ_BOOK (market-maker quotes), LEVELONE_OPTIONS, OPTIONS_BOOK and
 NEWS_HEADLINE answer code 0; both books accepted 30 symbols. TIMESALE_* and ACTIVES_* answer
 code 11 (not available) -- there is no trade-by-trade tape and no trade side.
@@ -96,7 +96,7 @@ LEVELONE_FIELDS = {"BID_PRICE": "bid", "ASK_PRICE": "ask", "LAST_PRICE": "last",
 CHART_FIELDS = {"OPEN_PRICE": "open", "HIGH_PRICE": "high", "LOW_PRICE": "low",
                 "CLOSE_PRICE": "close", "VOLUME": "volume", "CHART_TIME_MILLIS": "bar_start_ms"}
 #: NEWS_HEADLINE is not in the Streamer Guide and schwab-py has no helper for it; these are
-#: the fields it answered with on 2026-09-25 (time, id, ..., headline, ..., categories).
+#: the fields it answers with (time, id, ..., headline, ..., categories).
 NEWS_FIELDS = tuple(range(0, 11))
 
 
@@ -489,7 +489,7 @@ def release_owner_lock(fd: int, lock: Path) -> None:
 
 def _start_log() -> None:
     """Every line to <runtime>/logs/stream_capture.log (kept: under pythonw there is no console,
-    and 2026-09-23's 42 socket deaths left no reason on disk), and to the console if any."""
+    so the reason a socket died is on disk), and to the console if any."""
     from logging.handlers import RotatingFileHandler
     from runtime_layout import logs_dir
     path = logs_dir() / "stream_capture.log"
@@ -605,7 +605,7 @@ def main() -> int:
         print(f"the capture daemon takes no arguments (got {sys.argv[1:]})", file=sys.stderr)
         return 2
     # A worktree must not run a live daemon against production's runtime
-    # (runtime_layout.live_binding_error, 2026-09-25).
+    # (runtime_layout.live_binding_error).
     from runtime_layout import live_binding_error
     binding = live_binding_error()
     if binding is not None:
