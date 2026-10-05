@@ -97,7 +97,8 @@
     var bars = (barsD && barsD.bars) || [];
     var prof = served(sd);
     var win = prof.rows.filter(function (r) { return r[1] != null; });   // the served window; unknown: nothing drawn
-    c.setBars(bars, (barsD && barsD.tf) || _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label);
+    c.setBars(bars, (barsD && barsD.tf) || _tf, st().display || ticker(), barsD && barsD.last_bar && barsD.last_bar.label,
+      barsD && barsD.backfill);
     c.setProfile(win.map(function (r) {
       return { price: Number(r[0]), value: Number(r[1]), color: !prof.signed ? P.accent : r[1] >= 0 ? P.up : P.down }; }),
       prof.scale, _mode === 'dotmap' ? 'dots' : 'bars');

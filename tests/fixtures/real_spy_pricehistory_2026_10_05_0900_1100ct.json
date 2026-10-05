@@ -23,7 +23,7 @@
    "date": "Mon, 05 Oct 2026 16:17:08 GMT"
   },
   "captured_by": "one GET with the stored token as-is (no refresh); no token is saved here",
-  "why": "the production recorder wrote no stream_bars_raw row 09:06-10:49 CT on 2026-10-05"
+  "why": "the production recorder wrote no stream_bars_raw row from 09:17 to 10:47 CT on 2026-10-05 (bars at 09:16 and from 10:48; for all 40 recorded symbols); Schwab answered with the whole day to the request's minute, 06:00 to 11:17 CT, not the window asked"
  },
  "reply": {
   "symbol": "SPY",

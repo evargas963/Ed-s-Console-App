@@ -22,7 +22,8 @@ from dataclasses import asdict, dataclass
 from time_et import (ET, now_et, RTH_OPEN_MINS, closed_since, ct_label, et_date_str_from_ts_utc,
                      market_session_date, session_label)
 from math_exposure_core import bucket_metric, merge_exposure_books, overlay_streamed_contract_fields
-from stream_spine import BAR_BACKFILL_SRC
+from stream_spine import (BACKFILL_DONE, BACKFILL_FAILED, BACKFILL_REFUSED, BACKFILL_RUNNING, BACKFILL_WAITING,
+                          BAR_BACKFILL_SRC)
 
 import json
 from html import escape as html_escape
@@ -1799,13 +1800,40 @@ def get_bars1m(ticker: str = Query(...),
                limit: int = Query(default=780, ge=1, le=12000),
                tf: str = Query(default="1", pattern=r"^(1|3|5|15|30|60|D)$")):
     """Completed Schwab 1m bars, newest-last: [{t,o,h,l,c,v}] epoch-seconds bar starts, rolled
-    up to `tf` by aggregate_bars. `last_bar`: the newest completed minute and its label."""
+    up to `tf` by aggregate_bars. `last_bar`: the newest completed minute and its label.
+    `backfill`: the capture daemon's bar backfill as the line the chart prints (backfill_line)."""
     tk = ticker_storage_key(_required_ticker(ticker))   # RC-126: SPX -> $SPX etc., ONE authority
     bars = [_bar_dict(c) for c in _bars_1m(tk, int(limit))]
     out = [_lpr.with_change(b) for b in aggregate_bars(bars, tf)]
     last = bars[-1]["t"] if bars else None
     return JSONResponse({"ticker": tk, "bars": out, "tf": tf, "n": len(out),
-                         "last_bar": {"t": last, "label": ct_label(last)} if last is not None else None})
+                         "last_bar": {"t": last, "label": ct_label(last)} if last is not None else None,
+                         "backfill": backfill_line(lmp.daemon_status())})
+
+
+def backfill_line(status: "dict | None") -> str:
+    """The capture daemon's bar backfill (its heartbeat's `backfill`, capture.BarBackfill) as the
+    one line the chart prints, its times in Central Time; when the daemon is not reporting, or
+    reports no backfill, the line says so."""
+    if not isinstance(status, dict):
+        return "Bar backfill: not known, the capture daemon is not reporting"
+    bf = status.get("backfill")
+    if not isinstance(bf, dict):
+        return "Bar backfill: the capture daemon reports none"
+    sent = (f"{bf['requests']} of {bf['planned']}" if isinstance(bf["planned"], int) else f"{bf['requests']}")
+    counts = f"{sent} price-history requests sent, {bf['written']:,} bars written"
+    if bf["state"] == BACKFILL_WAITING:
+        return "Bar backfill: waiting to start"
+    if bf["state"] == BACKFILL_RUNNING:
+        return f"Bar backfill from Schwab price history: running since {ct_label(bf['started_ts'])}, {counts}"
+    if bf["state"] == BACKFILL_DONE:
+        return f"Bar backfill from Schwab price history: done {ct_label(bf['ended_ts'])}, {counts}"
+    if bf["state"] == BACKFILL_REFUSED:
+        return (f"BAR BACKFILL STOPPED {ct_label(bf['ended_ts'])}: Schwab refused ({bf['stopped_by']}), "
+                f"no retry; {counts}")
+    if bf["state"] == BACKFILL_FAILED:
+        return f"BAR BACKFILL FAILED {ct_label(bf['ended_ts'])}: {bf['stopped_by']}; {counts}"
+    return f"Bar backfill: the daemon reports a state the console does not know ({bf['state']!r})"
 
 
 def _tf_bucket_key(t: float, tf: str):

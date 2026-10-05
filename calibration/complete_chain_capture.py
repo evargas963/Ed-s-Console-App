@@ -273,11 +273,7 @@ class ChainSweep:
         resp = fetch_full_chain(client, ticker)
         now = self.clock()
         if resp.status_code != 200:
-            if resp.status_code == 429:
-                with self._lock:
-                    self._paused_until = now + RATE_LIMITED_PAUSE_SEC
-            if resp.status_code == 403:
-                self._refused(now)
+            self.schwab_answered(resp.status_code, now)
             reason = resp.reason or f"HTTP {resp.status_code}"
             log.warning("chain %s: %s", ticker, reason)
             self.publish(*chain_failure_message(ticker, reason, now))
@@ -333,6 +329,28 @@ class ChainSweep:
             with self._lock:                               # unwritten: the window's next fetch tries
                 self._written[ticker] = before
             raise
+
+    def schwab_answered(self, status: int, now: float) -> None:
+        """Schwab's answer to any request on the daemon's client, the sweep's or another's (the
+        bar backfill): the one owner of when the daemon may ask Schwab. After a 429 nothing is
+        asked for RATE_LIMITED_PAUSE_SEC; after a 403 nothing for FAILED_PAUSE_SEC, then one
+        chain at a time until one lands (_refused)."""
+        if status == 429:
+            with self._lock:
+                self._paused_until = now + RATE_LIMITED_PAUSE_SEC
+        if status == 403:
+            self._refused(now)
+
+    def clear_to_ask(self, stop: threading.Event) -> bool:
+        """For a request outside the sweep (the bar backfill): wait until the sweep's pause after
+        Schwab's last refusal has passed (schwab_answered); False when `stop` is set first."""
+        while not stop.is_set():
+            with self._lock:
+                wait = self._paused_until - self.clock()
+            if wait <= 0:
+                return True
+            stop.wait(wait)
+        return False
 
     def _refused(self, now: float) -> None:
         """No chain request for FAILED_PAUSE_SEC, then one fetch at a time until one succeeds."""

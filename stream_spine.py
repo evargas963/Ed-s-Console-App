@@ -151,6 +151,11 @@ def bar_msg(*, symbol: str, bar_start_ms=None, open=None, high=None, low=None, c
 #: did not record (capture.backfill_bars), `native` Schwab's candle as sent. A streamed bar of the
 #: same minute always wins over it (server._load_bars).
 BAR_BACKFILL_SRC = "schwab_pricehistory"
+#: The bar backfill's states, as the daemon's status carries them (capture.BarBackfill). Stopped by
+#: Schwab's 403 or 429 (REFUSED), or by a request that failed outright (FAILED: no client, the
+#: token refused, the network down).
+BACKFILL_WAITING, BACKFILL_RUNNING, BACKFILL_DONE = "waiting", "running", "done"
+BACKFILL_REFUSED, BACKFILL_FAILED = "refused", "failed"
 
 
 def news_msg(*, symbol: str, content: dict, src: str, ts_recv: float | None = None,

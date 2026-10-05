@@ -507,7 +507,8 @@
       var b = S.pinned ? barAt(S.pinned.time) : S.bars[S.bars.length - 1];
       var tfLbl = S.tf === 'D' ? '1D' : (S.tf === '60' ? '1h' : S.tf + 'm');
       legend.innerHTML = '<span class="tvc-sym">' + esc(S.symbol) + '</span><span class="tvc-tf">' + tfLbl + '</span>' + ohlcHtml(b) +
-        (S.lastBarLabel ? '<span>Last completed bar ' + esc(S.lastBarLabel) + '</span>' : '');
+        (S.lastBarLabel ? '<span>Last completed bar ' + esc(S.lastBarLabel) + '</span>' : '') +
+        (S.backfillLine ? '<span class="tvc-backfill">' + esc(S.backfillLine) + '</span>' : '');   // served, printed as is
     }
     function paintPin() {
       if (!S.pinned) { pinBox.hidden = true; return; }
@@ -700,9 +701,10 @@
     var api = {
       chart: chart, candles: candles, palette: function () { return P; },
       // Replace the whole series (ticker or timeframe change).
-      setBars: function (bars, tf, symbol, lastBarLabel) {
+      setBars: function (bars, tf, symbol, lastBarLabel, backfillLine) {
         var changed = tf !== S.tf || symbol !== S.symbol;
         S.lastBarLabel = lastBarLabel || null;
+        S.backfillLine = backfillLine;
         S.bars = (bars || []).map(function (b) { return { t: Number(b.t), o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, chg: b.chg, chg_pct: b.chg_pct }; });
         S.tf = tf; S.symbol = symbol;
         candles.setData(S.bars.map(function (b) { return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c }; }));
@@ -719,9 +721,10 @@
         paintLegend(); paintPin(); draw.redraw(); syncButtons(); paintLevels(true);
       },
       // The newest bars only -- series.update keeps the operator's zoom/scroll exactly where it is.
-      updateTail: function (tail, lastBarLabel) {
+      updateTail: function (tail, lastBarLabel, backfillLine) {
         if (!S.bars.length || !tail || !tail.length) return;
         if (lastBarLabel) S.lastBarLabel = lastBarLabel;
+        if (backfillLine) S.backfillLine = backfillLine;
         var lastT = S.bars[S.bars.length - 1].t;
         tail.forEach(function (b0) {
           var b = { t: Number(b0.t), o: b0.o, h: b0.h, l: b0.l, c: b0.c, v: b0.v, chg: b0.chg, chg_pct: b0.chg_pct };

@@ -136,24 +136,36 @@ from Schwab to the screen (daemon, console, page), are these:
   memory (`_bars`: loaded from that record at the console's start, then each pushed bar; the
   console writes no bar) → a `liquidity` push on `/api/changes` → the browser reads
   `/api/bars1m`. Charts show completed Schwab bars only, exactly as Schwab sent them, with
-  the newest bar's minute (`last_bar`). A minute the stream did not record (the daemon down, the
-  recorder dead: 09:17 to 10:47 CT on 2026-10-05) is filled from Schwab's price history by the
-  bar backfill (`capture.run_backfill`; owner: the daemon, once at its start): for each board
-  ticker, in the market's session and the trading day before it (`time_et`'s extended session,
-  04:00 to 20:00 ET, minutes that ended before the start), the minutes `stream_bars_raw` holds no
-  bar for, read read-only; one `GET /marketdata/v1/pricehistory` per ticker and session (1-minute
-  candles, extended hours, the missing span) on the daemon's one client, one at a time, at least
-  `BACKFILL_PACE_SEC` (1 s) apart. Each returned candle of a missing minute is a `bar1m` message
-  labelled `src` `schwab_pricehistory` (`stream_spine.BAR_BACKFILL_SRC`), Schwab's candle as sent
-  (its `datetime` the bar's start, `native` the candle), recorded by the one writer and never
-  pushed live (the 8799 push forwards `schwab_chart` bars only): the console reads it at its next
-  start. A minute the record holds is never written again, and a streamed bar of a minute always
-  wins over a candle of it (`server._load_bars`). Each request and Schwab's answer is a
-  `stream_subscriptions` row (service `PRICEHISTORY`, code the HTTP status). A 403 or 429 stops
-  the whole backfill at once with no retry, as does a request that fails outright (no client, the
-  token refused, the network down); the daemon's status carries it (`backfill`: state, requests,
-  bars written, what stopped it). When the daemon is down, nothing is backfilled until it starts.
-  Enforced by: `tests/test_data_path_bar_backfill_v1.py`. The live Schwab LAST_PRICE (the header's price row, with
+  the newest bar's minute (`last_bar`). A minute missed while the recorder was not recording (the
+  daemon down, its writer dead, its Schwab socket closed: from 09:16:10 to 10:49:12 CT on
+  2026-10-05, the bars of 09:17 to 10:47 CT) is filled from Schwab's price history by the bar
+  backfill (`capture.run_backfill`; owner: the daemon, once at its start). The record says when it
+  was not recording: its CHART_EQUITY feed-status rows (`record_feed_status`, one a minute) saying
+  the socket open and holding symbols, more than `NOT_RECORDING_SEC` (90 s) apart, or none since
+  the newest before the start (`capture.not_recording`). CHART_EQUITY sends no bar for a minute
+  with no trade, so a minute with no bar while recording is not a missed minute and is never
+  asked for. For the market's session and the trading day before it (`time_et`'s extended
+  session, 04:00 to 20:00 ET, minutes that ended before the start), each symbol (the board's and
+  each the record holds a bar of that day) with a minute that has no bar inside such a span
+  (`capture.day_gaps`, read read-only), not answered already since the span ended: one `GET
+  /marketdata/v1/pricehistory` (1-minute candles, extended hours, the missing span) on the daemon's
+  one client, one at a time, at least `BACKFILL_PACE_SEC` (1 s) apart, each only once the chain
+  sweep's pause after Schwab's last refusal has passed: the sweep is the one owner of when the
+  daemon may ask Schwab (`ChainSweep.schwab_answered`, `clear_to_ask`). A day recorded throughout
+  costs no request. Each returned candle of a missed minute is a `bar1m` message labelled `src`
+  `schwab_pricehistory` (`stream_spine.BAR_BACKFILL_SRC`), Schwab's candle as sent (its `datetime`
+  the bar's start, `native` the candle), recorded by the one writer and never pushed live (the 8799
+  push forwards `schwab_chart` bars only): the console reads it at its next start. A minute the
+  record holds is never written again, and a streamed bar of a minute always wins over a candle of
+  it (`server._load_bars`). Each request and Schwab's answer is a `stream_subscriptions` row
+  (service `PRICEHISTORY`, code the HTTP status). A 403 or 429 pauses the chain sweep as its own
+  would and stops the whole backfill at once with no retry, as does a request that fails outright
+  (no client, the token refused, the network down). The daemon's heartbeat carries its state
+  (`backfill`: state, requests planned and sent, bars written, start and end, what stopped it);
+  `/api/bars1m` serves it as one line (`server.backfill_line`, times in Central Time) and every
+  chart prints it beside its last completed bar. When the daemon is down, nothing is backfilled
+  until it starts. Enforced by: `tests/test_data_path_bar_backfill_v1.py`,
+  `tests/e2e/bar-backfill-line.spec.js`. The live Schwab LAST_PRICE (the header's price row, with
   its age since the trade) is drawn on the chart as its own line and moves with every update; no
   candle is built from quotes (level-one prices do not reproduce a bar's high and low).
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Computed once per
