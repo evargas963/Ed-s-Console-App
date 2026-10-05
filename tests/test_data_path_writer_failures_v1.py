@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
+import stat
 import threading
 import time
 from pathlib import Path
@@ -164,11 +166,48 @@ def test_a_database_locked_by_another_connection_holds_the_writer_and_it_goes_on
     assert _count(db, "stream_options_quotes_raw") == len(_EVENTS)
 
 
+def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_writes(tmp_path):
+    """INDUCED CONDITION: the stream database file is read-only before the writer starts
+    (standing in for a disk that refuses writes) and made writable again 1.5 s later. Every
+    captured quote published meanwhile is held, all of them counted as waiting, and written once
+    the file accepts writes."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+    os.chmod(db, stat.S_IREAD)
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        daemon = capture.Daemon(bus, health)
+        daemon.writer = writer
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        _publish_options(bus, health, _EVENTS)
+        await asyncio.sleep(1.5)
+        during = daemon.status().get("writer")
+        os.chmod(db, stat.S_IREAD | stat.S_IWRITE)
+        await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS))
+        after = daemon.status().get("writer")
+        stop.set()
+        await task
+        return during, after
+    try:
+        during, after = asyncio.run(go())
+    finally:
+        os.chmod(db, stat.S_IREAD | stat.S_IWRITE)
+
+    assert _count(db, "stream_options_quotes_raw") == len(_EVENTS), "the writer never recovered"
+    assert during["state"] == "blocked"
+    assert during["error"].startswith("OperationalError: attempt to write a readonly database")
+    assert during["waiting"] == during["held"] == len(_EVENTS) and during["queue_depth"] == 0
+    assert f"{len(_EVENTS)} held in memory, {len(_EVENTS)} of them waiting for the database" in during["line"]
+    assert (after["state"], after["rows_written"], after["held"]) == ("recording", len(_EVENTS), 0)
+
+
 def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_failure(tmp_path):
     """INDUCED CONDITION: the chain history table carries an extra NOT NULL column the writer
     does not fill, so SQLite refuses each row with IntegrityError, standing in for the refusal of
-    a repeated capture key (PR #465). The chain is delivered, never published as failed and never
-    pauses the sweep; the daemon's writer keeps it."""
+    a repeated capture key (PR #465). The chain is delivered and never published as failed, the
+    sweep's workers fetch the next chain at once (no pause: a second chain request reaches the
+    host), and the daemon's writer keeps the chain."""
     db = tmp_path / "ed_console.db"
     with sqlite3.connect(db) as conn:
         conn.execute("CREATE TABLE complete_chain_captures (ticker TEXT NOT NULL, expiry TEXT NOT NULL, "
@@ -187,27 +226,36 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
                            clock=lambda: _IN_WINDOW, failures=daemon.writer)
         schwab = _LocalSchwab()
         client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)
+        def chains() -> int:
+            return sum(1 for _t, method, path, _a in schwab.requests
+                       if method == "GET" and path == "/marketdata/v1/chains")
+        halt = threading.Event()
+        worker = threading.Thread(target=sweep.work, args=(lambda: client, halt), daemon=True)
         try:
-            delivered = await asyncio.to_thread(sweep.fetch_one, client, "SPY")
+            worker.start()
+            await _until(lambda: chains() >= 2 and daemon.writer.status()["failures"] >= 2, limit=4.0)
         finally:
+            halt.set()
+            await asyncio.to_thread(worker.join, 10)
             schwab.close()
-        await _until(lambda: daemon.writer.status()["failures"] == 1)
         writer = _beat(daemon)["writer"]
         stop.set()
         await task
-        return delivered, sweep, writer
-    delivered, sweep, writer = asyncio.run(go())
+        return chains(), writer
+    fetched, writer = asyncio.run(go())
 
-    assert delivered is True and all("failed" not in m for m in published), "a delivered chain read failed"
-    assert sweep._paused_until == 0.0, "a history write paused the sweep"
-    (topic, kept, error), = _failures(failures_db)
-    assert topic == "chain_history.SPY"
+    assert published and all("failed" not in m for m in published), "a delivered chain read failed"
+    assert fetched >= 2, "the sweep paused after a history write failed"
+    failures = _failures(failures_db)          # each fetch of the window tries the history again
+    assert len(failures) == writer["failures"] >= 2
+    assert {topic for topic, _k, _e in failures} == {"chain_history.SPY"}
+    (topic, kept, error) = failures[0]
     assert error.startswith("IntegrityError: NOT NULL constraint failed: complete_chain_captures.refused")
     kept = json.loads(kept)
-    received = [ct for msg in published for ct in msg["contracts"]]
+    received = [ct for msg in published[:published[0]["parts"]] for ct in msg["contracts"]]
     kept_contracts = [ct for side in ("callExpDateMap", "putExpDateMap")
                       for by_strike in kept[side].values() for listed in by_strike.values()
                       for ct in listed]
     assert sorted(c["symbol"] for c in kept_contracts) == sorted(c["symbol"] for c in received)
     assert all(c in received for c in kept_contracts), "kept as the sweep received it"
-    assert writer["failures"] == 1 and writer["last_failure"] == f"chain_history.SPY: {error}"
+    assert writer["last_failure"] == f"chain_history.SPY: {failures[-1][2]}"

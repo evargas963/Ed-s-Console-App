@@ -62,11 +62,17 @@ from Schwab to the screen (daemon, console, page), are these:
   hold, a message without its table's shape) is kept as sent, with its error and time, in
   `stream_write_failures`, and the writer goes on. While the database refuses every write
   (locked past the writer's wait, full, read-only), the writer holds the messages in memory, in
-  order, and writes them again every second until it can; it reads blocked with the refusal.
-  The writer's state (`stream_spine.WriterStatus`, counted at commit) rides the daemon's heartbeat
-  to the header's Record, a line the daemon serves (its times in Central Time). Owner: the writer
-  thread (`CaptureWriter.run`, started with the daemon). What it holds is in memory: a daemon
-  that stops while blocked loses it (counted not recorded at a stop). Only an error outside
+  order, and every second opens a new connection and writes them again until it can; it reads
+  blocked with the refusal and how many messages it holds. The writer's state
+  (`stream_spine.WriterStatus`, counted at commit) rides the daemon's heartbeat to the header's
+  Record, a line the daemon serves (its times in Central Time). Owner: the writer thread
+  (`CaptureWriter.run`, started with the daemon). What it holds has no ceiling: measured
+  2026-10-05, about 835 bytes per option quote held, and Schwab sent 2,190 option quotes a
+  second, so a block holds about 1.8 MB more each second, about 6.6 GB an hour; a long block can
+  exhaust the machine's memory and take down the whole daemon (stream, chains, push) with all it
+  holds. A cap on what is held while blocked, and what is dropped first, is the operator's
+  decision (open). A daemon that stops while blocked loses what it holds (counted not recorded at
+  a stop). Only an error outside
   these ends the thread: it reads dead with the error, and what it held and what reaches it after
   are counted not recorded until the daemon restarts.
   Enforced by: `tests/test_data_path_rules_v1.py`, `tests/test_data_path_writer_failures_v1.py`.

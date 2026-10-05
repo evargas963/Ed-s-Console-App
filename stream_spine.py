@@ -429,10 +429,11 @@ class KeptFailure:
 @dataclass(frozen=True)
 class WriterStatus:
     """The writer as the heartbeat carries it, counted at commit. `failures`: messages kept in
-    stream_write_failures; `waiting`: messages held while the database refuses writes;
-    `unrecorded`: messages a dead writer could not take; `error`: the database's refusal
-    (blocked) or what ended the thread (dead), from `error_ct`. `line` and `cls`: the header's
-    Record, as the page prints it."""
+    stream_write_failures; `held`: messages in memory not yet in the database (queued, in the
+    open batch, and `waiting`: those held while the database refuses writes, every queued one
+    included); `unrecorded`: messages a dead or stopping writer could not write; `error`: the
+    database's refusal (blocked) or what ended the thread (dead), from `error_ct`. `line` and
+    `cls`: the header's Record, as the page prints it."""
     state: str
     rows_written: int
     failures: int
@@ -440,6 +441,7 @@ class WriterStatus:
     last_failure_ct: "str | None"
     queue_depth: int
     waiting: int
+    held: int
     unrecorded: int
     error: "str | None"
     error_ct: "str | None"
@@ -456,7 +458,7 @@ def _record_line(s: dict) -> "tuple[str, str]":
     parts += [f"{s['rows_written']} rows", f"{s['failures']} failed, kept as sent"]
     if s["last_failure"] is not None:
         parts.append(f"last {s['last_failure_ct']}: {s['last_failure']}")
-    parts += [f"{s['queue_depth']} queued", f"{s['waiting']} waiting for the database",
+    parts += [f"{s['held']} held in memory, {s['waiting']} of them waiting for the database",
               f"{s['unrecorded']} not recorded"]
     ok = s["state"] == WRITER_RECORDING and s["failures"] == 0 and s["unrecorded"] == 0
     return " · ".join(parts), "" if ok else "neg"
@@ -538,8 +540,11 @@ class CaptureWriter:
         kept = KeptFailure(topic, msg, f"{type(error).__name__}: {error}", now)
         with self._lock:
             standalone = self.state in (WRITER_NOT_STARTED, WRITER_STOPPED)
+            if self.state == WRITER_DEAD:
+                self.unrecorded += 1
+            elif not standalone:
+                self._q.put(kept)
         if not standalone:
-            self._hand(kept)
             return
         with sqlite3.connect(str(self.db_path), timeout=self.timeout_sec) as own:
             self._keep(own, kept)
@@ -577,6 +582,8 @@ class CaptureWriter:
                  "last_failure_ct": (ct_label(self.last_failure_ts)
                                      if self.last_failure_ts is not None else None),
                  "queue_depth": self._q.qsize(), "waiting": len(self._waiting),
+                 # a retry's open batch is part of what is waiting
+                 "held": self._q.qsize() + max(len(self._waiting), len(self._batch)),
                  "unrecorded": self.unrecorded, "error": self.error,
                  "error_ct": ct_label(self.error_ts) if self.error_ts is not None else None}
         line, cls = _record_line(s)
@@ -617,28 +624,40 @@ class CaptureWriter:
             log.error("stream writer died: %s: %s", type(e).__name__, e)
             with self._lock:
                 self.state, self.error, self.error_ts = WRITER_DEAD, f"{type(e).__name__}: {e}", time.time()
-                lost = len(self._batch) + len(self._waiting)
+                self.unrecorded += len(self._batch) + len(self._waiting) + self._drained(q)
                 self._batch, self._waiting = [], []
-                while True:
-                    try:
-                        lost += q.get_nowait() is not None
-                    except queue.Empty:
-                        break
-                self.unrecorded += lost
             raise
-        with self._lock:
+        with self._lock:                   # anything handed in after the stop is not written
             self.state = WRITER_STOPPED
+            self.unrecorded += self._drained(q)
+
+    @staticmethod
+    def _drained(q: "queue.SimpleQueue") -> int:
+        """Empty the queue; how many messages it held."""
+        n = 0
+        while True:
+            try:
+                n += q.get_nowait() is not None
+            except queue.Empty:
+                return n
 
     def _store(self, conn: sqlite3.Connection, item):
         if isinstance(item, KeptFailure):
             return self._keep(conn, item)
         return self.insert(*item, conn=conn)
 
-    def _write(self, q: "queue.SimpleQueue") -> None:
+    def _open(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.db_path), timeout=self.timeout_sec)
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
+        return conn
+
+    def _write(self, q: "queue.SimpleQueue") -> None:
+        """The writer thread's loop. After a refusal the connection is closed and the next try
+        opens a new one: a connection SQLite opened on a database that refused writes (a
+        read-only file) keeps refusing after the database accepts them again."""
+        conn = None
         try:
-            conn.execute("PRAGMA synchronous=NORMAL")
-            conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
             last_commit, stopping = time.monotonic(), False
             while not (stopping and not self._waiting):
                 try:
@@ -646,12 +665,26 @@ class CaptureWriter:
                 except queue.Empty:
                     item = False
                 stopping = stopping or item is None
-                items, self._waiting = self._waiting + ([item] if item else []), []
+                items = self._waiting + ([item] if item else [])
+                if self._waiting:          # blocked: every queued message is held, in order
+                    while not stopping:
+                        try:
+                            item = q.get_nowait()
+                        except queue.Empty:
+                            break
+                        stopping = item is None
+                        items += [item] if item else []
+                    with self._lock:
+                        self._waiting = items
                 stored = 0
                 try:
+                    if conn is None:
+                        conn = self._open()
                     for item in items:
                         self._batch.append((item, self._store(conn, item)))
                         stored += 1
+                    with self._lock:
+                        self._waiting = []
                     if self._batch and (stopping or len(self._batch) >= self.batch_rows
                                         or time.monotonic() - last_commit >= self.batch_sec):
                         conn.commit()
@@ -659,10 +692,13 @@ class CaptureWriter:
                         self._committed(batch)
                         last_commit = time.monotonic()
                 except DATABASE_REFUSALS as e:
-                    conn.rollback()
+                    if conn is not None:
+                        conn.close()       # its open transaction is rolled back
+                    conn = None
                     self._refused(e, [item for item, _out in self._batch] + items[stored:], stopping)
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
 
     def _refused(self, error: BaseException, held: list, stopping: bool) -> None:
         """The database refused a write: the open batch is rolled back and `held` (its messages
@@ -675,6 +711,7 @@ class CaptureWriter:
             self._batch = []
             if stopping:
                 self.unrecorded += len(held)
+                self._waiting = []
                 return
             if self.state != WRITER_BLOCKED:
                 self.error_ts = time.time()
