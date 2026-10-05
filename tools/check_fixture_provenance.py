@@ -15,13 +15,16 @@ now from the named database opened read-only:
 
 The query is `SELECT <column>, ... FROM <table> WHERE ...`: its select list is bare column names
 (no expression, alias, literal or function, which could make a value the record does not hold) and
-it reads one table (no other SELECT, JOIN, UNION, INTERSECT, EXCEPT or WITH). Its placeholders are,
+it reads one table (no other SELECT, JOIN, UNION, INTERSECT, EXCEPT or WITH) that is a table of the
+named database (a `type='table'` row of its sqlite_master: not a view, not a table-valued function
+such as `json_each` or a `pragma_*`, which return values no record holds). Its placeholders are,
 in this order, `<symbol column>=?`, `<range column> >= ?` and `<range column> < ?`. It runs once per
 symbol, with the range in the range column's unit (epoch milliseconds when the column ends in `_ms`,
 else epoch seconds). Each result row becomes an object keyed by column; a column `<x>_json` becomes
 `<x>`, decoded by json_blob_codec. The rows must equal the results of the symbols in their listed
-order. A top-level key other than `provenance` and `rows` may not hold a number, or a number
-written as text, since nothing checks it.
+order. A top-level key other than `provenance` and `rows`, and a key of the block other than
+`database`, `symbols`, `query` and the `<x>_from_et` / `<x>_to_et` pair, may not hold a number, or
+a number written as text, since nothing checks it.
 
 The databases are db_authority.canonical_stream_db_path() and canonical_console_db_path(), which
 in a linked worktree resolve to the primary checkout's data/ (runtime_layout). When the named
@@ -49,7 +52,7 @@ from time_et import ET  # noqa: E402
 FIXTURES = "tests/fixtures/"
 DATABASES = ("stream_capture.db", "ed_console.db")
 PLACEHOLDER = re.compile(r"(\w+)\s*(>=|<=|=|>|<)\s*\?")
-QUERY = re.compile(r"(?is)\s*SELECT\s+(.+?)\s+FROM\s+\w+\s+WHERE\s+(.+)")
+QUERY = re.compile(r"(?is)\s*SELECT\s+(.+?)\s+FROM\s+(\w+)\s+WHERE\s+(.+)")
 COMPOUND = re.compile(r"(?i)\b(SELECT|JOIN|UNION|INTERSECT|EXCEPT|WITH)\b")
 REQUIRED = ("database", "symbols", "query")
 
@@ -74,10 +77,10 @@ def _epoch(text: str, column: str) -> float | int:
     return int(t.timestamp() * 1000) if column.endswith("_ms") else t.timestamp()
 
 
-def _range(prov: dict) -> tuple[float | int, float | int] | str:
-    """The query's (from, to) parameters, or why the block does not give them."""
+def _plan(prov: dict) -> tuple[str, float | int, float | int] | str:
+    """The query's table and (from, to) parameters, or why the block does not give them."""
     shape = QUERY.fullmatch(prov["query"])
-    if shape is None or COMPOUND.search(shape.group(2)) or not all(
+    if shape is None or COMPOUND.search(shape.group(3)) or not all(
             re.fullmatch(r"\w+", c.strip()) for c in shape.group(1).split(",")):
         return ("provenance.query must be `SELECT <column>, ... FROM <table> WHERE ...` with bare "
                 "column names, reading one table")
@@ -90,7 +93,7 @@ def _range(prov: dict) -> tuple[float | int, float | int] | str:
     if to_key not in prov:
         return "provenance must carry one `<x>_from_et` / `<x>_to_et` pair"
     column = found[1][0]
-    return _epoch(prov[froms[0]], column), _epoch(prov[to_key], column)
+    return shape.group(2), _epoch(prov[froms[0]], column), _epoch(prov[to_key], column)
 
 
 def _rows(con: sqlite3.Connection, query: str, params: list) -> list[dict]:
@@ -115,18 +118,26 @@ def check_fixture(text: str, dbs: dict[str, Path]) -> list[str]:
     extra = sorted(k for k, v in data.items() if k not in ("provenance", "rows") and _has_number(v))
     if extra:
         return [f"top-level {', '.join(extra)} hold numbers outside the checked rows"]
+    loose = sorted(k for k, v in prov.items() if k not in REQUIRED and not k.endswith(("_from_et", "_to_et"))
+                   and _has_number(v))
+    if loose:
+        return [f"provenance {', '.join(loose)} hold numbers outside the checked rows"]
     named = [d for d in DATABASES if d in prov["database"]]
     if len(named) != 1:
         return [f"provenance.database names none or both of {', '.join(DATABASES)}"]
-    rng = _range(prov)
-    if isinstance(rng, str):
-        return [rng]
+    plan = _plan(prov)
+    if isinstance(plan, str):
+        return [plan]
+    table, *rng = plan
     path = dbs[named[0]]
     if not path.is_file():
         return [f"cannot verify: the record {path} is not here"]
     try:
         con = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
         try:
+            if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? COLLATE NOCASE",
+                           (table,)).fetchone() is None:
+                return [f"provenance.query reads {table}, which is not a table of {named[0]}"]
             record = [r for s in prov["symbols"] for r in _rows(con, prov["query"], [s, *rng])]
         finally:
             con.close()

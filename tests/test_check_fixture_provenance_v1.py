@@ -170,6 +170,26 @@ def test_a_query_that_computes_a_value_the_record_does_not_hold_is_refused(tmp_p
         "reading one table"]
 
 
+def test_a_query_of_a_table_valued_function_is_refused(tmp_path):
+    """`json_each` returns whatever JSON the query hands it: invented rows equal what it returns,
+    but no table of the record holds them."""
+    fixture = _record_crosses(tmp_path / "data")
+    fixture["provenance"].update(symbols=["$SPX"], query="SELECT value FROM json_each WHERE "
+                                 "json='[590.5,591.25]' AND (type=? OR key>=? OR key<?)")
+    fixture["rows"] = [{"value": 590.5}, {"value": 591.25}]
+    root = _staged(tmp_path, {NAME: json.dumps(fixture)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [
+        f"{NAME}: provenance.query reads json_each, which is not a table of ed_console.db"]
+
+
+def test_a_number_in_the_provenance_block_is_refused(tmp_path):
+    fixture = _record_crosses(tmp_path / "data")
+    fixture["provenance"]["expected_pin"] = 585.0
+    root = _staged(tmp_path, {NAME: json.dumps(fixture)})
+    assert cfp.violations(root, _dbs(tmp_path / "data")) == [
+        f"{NAME}: provenance expected_pin hold numbers outside the checked rows"]
+
+
 def test_a_number_written_as_text_outside_the_rows_is_refused(tmp_path):
     fixture = _record_crosses(tmp_path / "data")
     fixture["expected"] = {"pin": "585.00", "ticker": "SPY"}
