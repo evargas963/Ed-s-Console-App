@@ -115,8 +115,6 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 - O-23 flat L1 columns copied raw into `stream_quotes_raw` beside `native_json`, read by no product code.
 - O-25 `FullChainResponse.json()` returns {} on failure; a split chain's top-level fields come from the first part only.
 - D-14 `complete_chain_capture` drops non-dict and no-expiry contracts uncounted and counts `written` per ticker, not from `persist`.
-- D-16 `live_schwab_env` keeps a second placeholder-credential list beside `config`.
-- D-18 `runtime_preflight` reports a missing requirements.txt as satisfied.
 
 **Page code (static/js)**
 - P-02 ages formatted and thresholded on the page (`fmtAge`, `Math.round(trade_age_sec)`); the push-silence verdict is the page's clock (`PRICE_SILENCE_MS`).

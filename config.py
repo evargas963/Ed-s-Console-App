@@ -30,14 +30,19 @@ _CI_SCHWAB_PLACEHOLDER_PREFIXES: tuple[str, ...] = (
     "ci-not-live-placeholder",
     "ci-placeholder-",
 )
+#: values a test shell gives the Schwab credentials in place of the real ones
+_TEST_SHELL_SCHWAB_VALUES = frozenset({"test", "dummy", "fake", "changeme", "placeholder", "ci", "x", "none", "null"})
 
 
 def schwab_credentials_are_ci_placeholders(api_key: str | None = None, app_secret: str | None = None) -> bool:
-    """True when Schwab env vars are non-production CI placeholders (not live credentials)."""
+    """True when the Schwab credentials are a CI or test shell's stand-ins, not live ones: both
+    carry a CI placeholder prefix, or either is a test shell's value."""
     key = (api_key if api_key is not None else os.getenv("SCHWAB_API_KEY") or "").strip()
     secret = (app_secret if app_secret is not None else os.getenv("SCHWAB_APP_SECRET") or "").strip()
     if not key or not secret:
         return False
+    if key.lower() in _TEST_SHELL_SCHWAB_VALUES or secret.lower() in _TEST_SHELL_SCHWAB_VALUES:
+        return True
     return any(key.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES) and any(
         secret.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES
     )
@@ -79,41 +84,33 @@ def schwab_live_blocked_for(
 
 @dataclass(frozen=True)
 class AppConfig:
-    token_path: str  # Always absolute when built via build_config
+    token_path: str  # absolute (token_path())
     api_key: str
     app_secret: str
     callback_url: str
 
 
-def build_config() -> AppConfig:
-    """Build config. token_path is always absolute regardless of launch context."""
-    # Env override for launch-method debugging / explicit path
+def token_path() -> str:
+    """The Schwab token file, absolute: SCHWAB_TOKEN_PATH, else schwab_token.json under the
+    runtime root (this checkout unless ED_RUNTIME_ROOT moves it). The console reads only this
+    (the token's age); it holds no Schwab credential."""
     env_token = os.getenv("SCHWAB_TOKEN_PATH")
     if env_token:
-        token_path = os.path.abspath(env_token)
-    else:
-        # RC-523: the token is RUNTIME state — under the runtime root (this checkout unless
-        # ED_RUNTIME_ROOT moves it), never a source-tree fixture.
-        from runtime_layout import RUNTIME_ROOT
-        token_path = os.path.abspath(os.path.join(str(RUNTIME_ROOT), "schwab_token.json"))
+        return os.path.abspath(env_token)
+    from runtime_layout import RUNTIME_ROOT
+    return os.path.abspath(os.path.join(str(RUNTIME_ROOT), "schwab_token.json"))
 
-    # RC-514: Schwab credentials are a CAPABILITY input, not an application-shell requirement.
-    # These two lines used to call a `_require_env` helper that RAISED when either was absent,
-    # and `server.py` calls `build_config` at module scope — so `import server`, and therefore
-    # `uvicorn server:app`, failed outright with no credentials. The entire application refused
-    # to exist because one vendor's secrets were missing, which is the boundary
-    # docs/ARCHITECTURE.md "Failure domains" rejects: Schwab unavailable degrades the Schwab capability.
-    #
-    # This is not a relaxation. That raise was a SECOND place deciding "can we do Schwab",
-    # duplicating `schwab_live_blocked_for()` — which now blocks on absent credentials, so an
-    # empty value here cannot reach a live call: `build_client_from_token` returns ok=False and
-    # builds no client. One gate decides, and it still fails closed.
+
+def build_config() -> AppConfig:
+    """The Schwab client's configuration (the capture daemon, reauth). Absent credentials are
+    empty here and refused at the one gate, `schwab_live_blocked_for()`: `build_client_from_token`
+    builds no client."""
     api_key = (os.getenv("SCHWAB_API_KEY") or "").strip()
     app_secret = (os.getenv("SCHWAB_APP_SECRET") or "").strip()
     callback_url = os.getenv("SCHWAB_CALLBACK_URL", SCHWAB_CALLBACK_URL).strip()
 
     return AppConfig(
-        token_path=token_path,
+        token_path=token_path(),
         api_key=api_key,
         app_secret=app_secret,
         callback_url=callback_url,

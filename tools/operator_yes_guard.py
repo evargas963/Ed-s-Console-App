@@ -36,7 +36,7 @@ GIT_WRITERS = frozenset({"rm", "mv", "restore", "checkout"})
 REDIRECT = re.compile(r"(?:^|[^<>&0-9])>{1,2}\s*(\"[^\"]*\"|'[^']*'|[^\s;&|]+)")
 #: the production processes and what starts them
 PROCESS_NAMES = ("streaming.capture", "uvicorn", "server:app")
-LAUNCHERS = ("start_capture_daemon", "start_ed_console")
+LAUNCHERS = ("start_capture_daemon", "start_ed_console", "launch.py")
 PROCESS_VERBS = ("stop-process", "taskkill", "kill ", "start-process", "restart")
 MERGE = re.compile(r"\bgh\s+pr\s+merge\s+(\d+)|/pulls/(\d+)/merge\b", re.I)
 PUSH_MAIN = re.compile(r"\bgit\b[^\n;&|]*\bpush\b[^\n;&|]*?(?:\s|:)main\b", re.I)

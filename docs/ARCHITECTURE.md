@@ -22,7 +22,7 @@ EdWebConsole/
 ├── tests/
 ├── tools/       the few checks and scripts the repository needs
 ├── docs/
-└── start_ed_console.bat, start_capture_daemon.bat, and the launch checks they run
+└── start_ed_console.bat (runs launch.py), start_capture_daemon.bat
 ```
 
 Outside the repository: the runtime folder (the one database, the token, logs) and worktrees.
@@ -44,7 +44,7 @@ Moves happen one change at a time. `delete` rows go with the change named in `AC
 | From `server.py`: the routes, startup; `push_changes.py` (the `/api/changes` push and the ticker on screen) | `console/` |
 | `time_et.py`, `config.py`, `runtime_layout.py`, `instrument_identity.py`, `production_universe.py`, `numeric_contract.py` | `shared/` |
 | `static/` (the page, its icons, manifest and the vendored chart library) | `static/` |
-| `start_*.bat`, `runtime_preflight.py`, `live_schwab_env.py`, `launcher_port_guard.py`, `wait_for_ready_then_open.py`, `reauth_schwab.py` | stay at the root |
+| `start_*.bat`, `launch.py`, `reauth_schwab.py` | stay at the root |
 | `tools/` (the git hooks and checks), `scripts/` (the test runners), `tests/`, `docs/`, the config files | stay |
 
 ## 3. Taking apart the big files

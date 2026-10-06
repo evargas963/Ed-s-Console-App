@@ -151,7 +151,7 @@ log = logging.getLogger("ed_server")
 
 
 # ── Import all existing Ed Console modules (unchanged) ───────────────────────
-from config import build_config, load_dotenv_file
+from config import token_path
 
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
@@ -165,9 +165,9 @@ from db import get_db
 import live_price_rows as _lpr        # with_change: the bar-change computation
 import push_changes
 
-# ── Config (the token file's age is shown; the console makes no Schwab call) ──
-load_dotenv_file()
-cfg     = build_config()
+#: the Schwab token file, whose age is shown (the console holds no Schwab credential and makes no
+#: Schwab call)
+TOKEN_PATH = token_path()
 
 
 #: Precedence for the ONE spot authority. Highest wins; every entry records where the
@@ -785,7 +785,7 @@ def schwab_token_countdown(creation_ts: float | None) -> dict:
 def _schwab_token_creation_ts() -> float | None:
     """creation_timestamp from schwab_token.json; None (never a fake age) when unreadable."""
     try:
-        raw = json.loads(Path(cfg.token_path).read_text(encoding="utf-8"))
+        raw = json.loads(Path(TOKEN_PATH).read_text(encoding="utf-8"))
         return float(raw["creation_timestamp"])
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -1503,15 +1503,30 @@ def _status_line() -> str:
     ])
 
 
+#: while the console waits at its start, what it waits for is logged this often, with how long
+WAITING_LOG_EVERY_SEC = 5.0
+
+
+def _wait_for(what: str, ready) -> None:
+    """Wait until `ready()` (or the loop stops), logging what for and for how long, then how
+    long it took."""
+    started = time.monotonic()
+    next_log = started
+    while _terrain_loop_running and not ready():
+        if time.monotonic() >= next_log:
+            log.info("waiting for %s (%.0f s so far)", what, time.monotonic() - started)
+            next_log += WAITING_LOG_EVERY_SEC
+        time.sleep(0.5)
+    log.info("done waiting for %s after %.1f s", what, time.monotonic() - started)
+
+
 def _terrain_loop() -> None:
     """The board's stored levels once the bar writer has loaded the stored bars and the daemon
     has said what the board is (queued behind the delivered chains: _load_stored_levels); then
     every STATUS_EVERY_SEC the status line is logged and the price levels of a new session or a
     new ticker are published. The chains arrive from the daemon (_on_chain)."""
-    while _terrain_loop_running and not _bars_loaded.wait(0.5):
-        pass
-    while _terrain_loop_running and _board() is None:
-        time.sleep(0.5)
+    _wait_for("the stored bars to load", _bars_loaded.is_set)
+    _wait_for("the capture daemon's heartbeat (it says what the board is)", lambda: _board() is not None)
     board = _board() or []
     _load_crosses(board)
     _publish_missing_price_levels(board, now_et())

@@ -45,10 +45,22 @@ import os
 import sys
 import threading
 import time
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
+
+import runtime_layout  # noqa: E402  (the standard library only)
+
+#: Under pythonw there is no error output: from here until the log starts (_start_log) it is the
+#: log file, so a module below that fails to load leaves its reason there.
+_EARLY_ERRORS = None
+if sys.stderr is None:
+    _log_file = runtime_layout.logs_dir() / "stream_capture.log"
+    _log_file.parent.mkdir(parents=True, exist_ok=True)
+    _EARLY_ERRORS = sys.stderr = open(_log_file, "a", encoding="utf-8", buffering=1)
+    print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} capture daemon loading (pid {os.getpid()})", file=sys.stderr)
 
 from stream_spine import (  # noqa: E402
     LOG,
@@ -65,6 +77,7 @@ from stream_spine import (  # noqa: E402
     subscription_msg,
 )
 from calibration.complete_chain_capture import CHAIN_WORKERS, ChainSweep, board_tickers  # noqa: E402
+from time_et import ct_label  # noqa: E402
 
 log = logging.getLogger("capture")
 
@@ -287,6 +300,12 @@ class Daemon:
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
+        #: (since, why): the stream is not logged in, from the first failure in a row until it
+        #: logs in again -- the header's Schwab (status()["schwab"])
+        self.schwab_failure: "tuple[float, str] | None" = None
+        #: set once the stream has logged in and Schwab has answered its first requests: the
+        #: chain sweep sends nothing to Schwab before (run_chains)
+        self.subscribed = asyncio.Event()
 
     def set_wanted(self, raw, sender=None) -> None:
         """The console's list from connection `sender` (live_push calls this for every
@@ -318,14 +337,25 @@ class Daemon:
         """What the console and browsers are told every second (live_push / live_ui)."""
         now = time.time()
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
+        socket_open = bool(last) and now - last < DEAD_SEC
         return {"ts": now,
-                "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
+                "schwab_socket_open": socket_open,
+                "schwab": self._schwab_line(socket_open),
                 "board": list(self.board),
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "refused": {k: dict(v) for k, v in self.refused.items() if v},
                 "health": self.health.report(now),
                 "writer": self.writer.status() if self.writer is not None else None}
+
+    def _schwab_line(self, socket_open: bool) -> dict:
+        """The header's Schwab: its line and class ("neg" unless connected)."""
+        if socket_open:
+            return {"line": "CONNECTED", "cls": ""}
+        if self.schwab_failure is None:
+            return {"line": "CONNECTING", "cls": "neg"}
+        since, why = self.schwab_failure
+        return {"line": f"NOT CONNECTED since {ct_label(since)}: {why}", "cls": "neg"}
 
     async def sync(self) -> None:
         for svc, cmd, symbols in plan(self.all_wanted(), self.held, self.refused):
@@ -366,6 +396,7 @@ class Daemon:
         stream._handlers["NEWS_HEADLINE"].append(_RawHandler(_publisher("NEWS_HEADLINE", self.bus, self.health)))
         self.stream = stream
         self.held = {s: frozenset() for s in SERVICES}    # a new connection holds nothing
+        self.schwab_failure = None
         log.info("schwab: connected")
 
     async def disconnect(self) -> None:
@@ -406,6 +437,10 @@ class Daemon:
                     raise ConnectionError(f"no frame from Schwab for {DEAD_SEC:.0f} s")
                 self.wanted_changed.clear()
                 await self.sync()
+                if not self.subscribed.is_set():
+                    log.info("schwab: subscribed (%s)", ", ".join(
+                        f"{svc} {len(syms)}" for svc, syms in self.held.items() if syms))
+                    self.subscribed.set()
                 await self.read_for(SYNC_SEC)
         finally:
             await self.disconnect()
@@ -418,8 +453,10 @@ class Daemon:
             started = time.time()
             try:
                 await self.run_connection(schwab_client(), stop)
-            except Exception as e:  # noqa: BLE001 -- every failure is a reconnect
-                log.warning("schwab: connection ended (%s: %s)", type(e).__name__, str(e)[:350])
+            except Exception as e:  # noqa: BLE001 -- every failure is a reconnect, its reason on screen
+                why = f"{type(e).__name__}: {str(e)[:350]}"
+                log.warning("schwab: connection ended (%s)", why)
+                self.schwab_failure = (self.schwab_failure[0] if self.schwab_failure else time.time(), why)
             if stop.is_set():
                 break
             # a connection that lasted 5 minutes starts the backoff over
@@ -474,19 +511,39 @@ def release_owner_lock(fd: int, lock: Path) -> None:
         lock.unlink(missing_ok=True)
 
 
+class _ErrorOutput:
+    """sys.stderr under pythonw once the log runs: what is written there (a traceback, a warning)
+    goes into the log file through its handler, so the file is open once and rotates."""
+
+    def __init__(self, handler: RotatingFileHandler) -> None:
+        self.handler = handler
+
+    def write(self, text: str) -> int:
+        with self.handler.lock:
+            self.handler.stream.write(text)
+            self.handler.stream.flush()
+        return len(text)
+
+    def flush(self) -> None:
+        pass
+
+
 def _start_log() -> None:
-    """Every line to <runtime>/logs/stream_capture.log (kept: under pythonw there is no console,
-    and 2026-09-23's 42 socket deaths left no reason on disk), and to the console if any."""
-    from logging.handlers import RotatingFileHandler
-    from runtime_layout import logs_dir
-    path = logs_dir() / "stream_capture.log"
+    """Every line, with its time to the millisecond, to <runtime>/logs/stream_capture.log, and to
+    the console if any. Under pythonw the error output, the log file since the first line
+    (_EARLY_ERRORS), goes there through the log's handler from now on."""
+    global _EARLY_ERRORS
+    path = runtime_layout.logs_dir() / "stream_capture.log"
     path.parent.mkdir(parents=True, exist_ok=True)
-    handlers: "list[logging.Handler]" = [RotatingFileHandler(path, maxBytes=50 * 1024 * 1024,
-                                                             backupCount=1, encoding="utf-8")]
-    if sys.stderr is not None:
+    file = RotatingFileHandler(path, maxBytes=50 * 1024 * 1024, backupCount=1, encoding="utf-8")
+    handlers: "list[logging.Handler]" = [file]
+    if _EARLY_ERRORS is not None:
+        _EARLY_ERRORS.close()
+        _EARLY_ERRORS, sys.stderr = None, _ErrorOutput(file)
+    elif sys.stderr is not None:
         handlers.append(logging.StreamHandler())
     logging.basicConfig(level=logging.INFO, handlers=handlers,
-                        format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+                        format="%(asctime)s.%(msecs)03d %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 
 FEED_STATUS_EVERY_SEC = 60.0
@@ -523,7 +580,15 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
     stream never waits on a chain; each chain part is published on the event loop, and the bus
     keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). A chain whose
     history write fails is kept as sent by `failures`, the daemon's writer (its failures ride
-    the heartbeat)."""
+    the heartbeat). It starts once the stream has logged in and subscribed (Daemon.subscribed):
+    no chain request goes to Schwab before."""
+    subscribed = asyncio.ensure_future(daemon.subscribed.wait())
+    stopped = asyncio.ensure_future(stop.wait())
+    await asyncio.wait({subscribed, stopped}, return_when=asyncio.FIRST_COMPLETED)
+    subscribed.cancel()
+    stopped.cancel()
+    if stop.is_set():
+        return
     loop = asyncio.get_running_loop()
     halt = threading.Event()
     sweep = ChainSweep(db_path, daemon.board,
