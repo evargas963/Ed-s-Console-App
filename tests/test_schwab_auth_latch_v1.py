@@ -1,6 +1,6 @@
-"""schwab_client's auth latch: after Schwab refuses a client's token refresh, that client's chain,
-expiration list and quote requests are withheld (SchwabAuthError) instead of sent; no other client
-is withheld.
+"""schwab_client's auth latch: after Schwab refuses a client's login (its token refresh, or an
+HTTP 401 answer), that client's chain, expiration list and quote requests are not sent
+(SchwabAuthError, naming the refusal); no other client is withheld.
 
 Through the real schwab-py client (schwab_client.client_from_token_file_atomic) against a local
 stand-in for Schwab's host. STAND-INS: the token endpoint's answers (OAuth's invalid_grant refusal,
@@ -92,21 +92,35 @@ def test_a_refused_refresh_withholds_that_clients_next_chain_request(tmp_path):
         with pytest.raises(sc.SchwabAuthError):
             sc.safe_get_chain(client, "SPY", strike_range="ALL")
         sent = len(host.requests)
-        with pytest.raises(sc.SchwabAuthError, match="latched"):
+        with pytest.raises(sc.SchwabAuthError, match="SPY's chain not sent: Schwab refused our login"):
             sc.safe_get_chain(client, "SPY", strike_range="ALL")
     finally:
         host.close()
     assert len(host.requests) == sent, "a latched client's request reached Schwab"
 
 
-def test_an_answer_that_mentions_a_token_is_not_an_auth_failure(tmp_path):
+def test_a_401_answer_latches_the_client_and_says_why(tmp_path):
+    """Operator 2026-10-06: an HTTP 401 stops everything, like a refused token, and shows why.
+    The chain endpoint answers 401 (induced, with a body that mentions a token): the client is
+    latched, its next chain, expiration list and quotes requests are not sent, and each failure
+    names the 401 that stopped them."""
     host = _Host(token="refreshed", chain="401")
     try:
         client = host.client(tmp_path, "a")
-        codes = [sc.safe_get_chain(client, "SPY", strike_range="ALL").status_code for _ in range(2)]
+        with pytest.raises(sc.SchwabAuthError) as first:
+            sc.safe_get_chain(client, "SPY", strike_range="ALL")
+        sent = host.gets()
+        with pytest.raises(sc.SchwabAuthError) as chain:
+            sc.safe_get_chain(client, "QQQ", strike_range="ALL")
+        with pytest.raises(sc.SchwabAuthError) as quotes:
+            sc.safe_get_quotes(client, ["SPY   261120C00700000"])
     finally:
         host.close()
-    assert codes == [401, 401] and host.gets() == 2, "a 401 answer latched the client"
+    stopped = "Schwab refused our login (HTTP 401 on SPY's chain); all requests stopped"
+    assert str(first.value) == stopped
+    assert str(chain.value) == f"QQQ's chain not sent: {stopped}"
+    assert str(quotes.value) == f"SPY's quotes not sent: {stopped}"
+    assert sent == 1 and host.gets() == 1, "a latched client's request reached Schwab"
 
 
 def test_one_clients_refused_refresh_never_withholds_another_clients_requests(tmp_path):
@@ -141,7 +155,7 @@ def test_a_client_latched_while_its_chain_was_out_sends_no_expiration_list_reque
                 sc.safe_get_chain(client, "AAA", strike_range="ALL")
             sent = len(host.requests)
             held.set()
-            with pytest.raises(sc.SchwabAuthError, match="expiration list withheld"):
+            with pytest.raises(sc.SchwabAuthError, match="BBB's expiration list not sent"):
                 bbb.result(timeout=30)
     finally:
         held.set()

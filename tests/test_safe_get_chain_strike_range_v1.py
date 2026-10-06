@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from datetime import date
 
+import httpx
+
 from schwab_client import safe_get_chain
 
 
@@ -23,7 +25,7 @@ class _FakeClient:
 
     def get_option_chain(self, symbol, **kwargs):
         self.calls.append((symbol, kwargs))
-        return object()
+        return httpx.Response(200)       # STAND-IN answer: only the request's arguments are tested
 
 
 def test_default_call_shape_is_unchanged():

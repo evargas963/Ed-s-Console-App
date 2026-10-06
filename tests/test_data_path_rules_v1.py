@@ -407,49 +407,118 @@ def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_no_t
 
 
 class _Slow(httpx.BaseTransport):
-    """Network latency (STAND-IN): each answer reaches the client `sec` after the host sent it."""
+    """Network latency (STAND-IN): each answer reaches the client `sec` after the host sent it.
+    A chain request for `broken` raises the ReadError the daemon logged six times on 2026-10-06
+    between 10:46 and 11:09 (the error is the stand-in; its text is the logged one)."""
 
-    def __init__(self, inner: httpx.BaseTransport, sec: float):
-        self.inner, self.sec = inner, sec
+    def __init__(self, inner: httpx.BaseTransport, sec: float, broken: "str | None" = None):
+        self.inner, self.sec, self.broken = inner, sec, broken
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/marketdata/v1/chains" and request.url.params.get("symbol") == self.broken:
+            raise httpx.ReadError("[WinError 10038] An operation was attempted on something that is not a socket",
+                                  request=request)
         resp = self.inner.handle_request(request)
         resp.read()
         time.sleep(self.sec)
         return resp
 
 
-def test_d5_a_close_fetch_that_keeps_failing_holds_back_no_other_tickers_close_values(tmp_path):
-    """Saturday 2026-10-03 12:00 ET (Closed): 16 board tickers on 8 workers, each answer 0.2 s
-    after it is sent (STAND-IN latency), every ticker served SPY's captured chain and its quotes,
-    and T03's chain answered 400 every time (induced). Every other ticker's close values are
-    delivered and none is withheld: T03's retry delay is T03's own, not a pause of the others."""
+def _swept(sweep: ChainSweep, client, workers: int, until, seconds: float) -> None:
+    """`workers` of the sweep's real worker threads on `client`, until `until()` or `seconds`."""
+    halt = threading.Event()
+    threads = [threading.Thread(target=sweep.work, args=(lambda: client, halt), daemon=True) for _ in range(workers)]
+    try:
+        for t in threads:
+            t.start()
+        deadline = time.monotonic() + seconds
+        while not until() and time.monotonic() < deadline:
+            time.sleep(0.02)
+    finally:
+        halt.set()
+        for t in threads:
+            t.join(10)
+
+
+@pytest.mark.parametrize("at, failure", [("2026-10-03 12:00", "400"), ("2026-10-03 12:00", "ReadError"),
+                                         ("2026-10-01 11:00", "ReadError")],
+                         ids=["closed-400", "closed-readerror", "rth-readerror"])
+def test_d5_a_fetch_that_keeps_failing_holds_back_no_other_ticker(tmp_path, at, failure):
+    """16 board tickers on 8 workers, each answer 0.2 s after it is sent (STAND-IN latency), every
+    ticker served SPY's captured chain and its quotes, and T03's chain answered 400 (induced) or
+    raising ReadError, every time; Saturday 2026-10-03 12:00 ET (Closed) or 2026-10-01 11:00 ET
+    (RTH). Every other ticker's chain is delivered and none is withheld: T03 alone waits after
+    its failure (operator 2026-10-06), nothing board-wide."""
     schwab = _LocalSchwab()
-    schwab.refusals[("/marketdata/v1/chains", "T03")] = 400
+    if failure == "400":
+        schwab.refusals[("/marketdata/v1/chains", "T03")] = 400
     board = [f"T{i:02d}" for i in range(16)]
-    sat, t0 = _et("2026-10-03 12:00"), time.monotonic()
+    start, t0 = _et(at), time.monotonic()
     published = []
     sweep = ChainSweep(tmp_path / "ed_console.db", board, lambda topic, msg: published.append(msg),
-                       clock=lambda: sat + (time.monotonic() - t0),
+                       clock=lambda: start + (time.monotonic() - t0),
                        failures=CaptureWriter(tmp_path / "stream_capture.db"))
-    client = Client("k", httpx.Client(transport=_Slow(schwab.transport, 0.2)), enforce_enums=False)
-    halt = threading.Event()
-    workers = [threading.Thread(target=sweep.work, args=(lambda: client, halt), daemon=True) for _ in range(8)]
+    client = Client("k", httpx.Client(transport=_Slow(schwab.transport, 0.2, "T03" if failure == "ReadError" else None)),
+                    enforce_enums=False)
 
     def delivered() -> "set[str]":
         return {m["ticker"] for m in list(published) if "failed" not in m}
     try:
-        for w in workers:
-            w.start()
-        _wait_for(lambda: len(delivered()) == 15, "a board ticker's close values were never delivered")
+        _swept(sweep, client, 8, lambda: len(delivered()) == 15, 10)
     finally:
-        halt.set()
-        for w in workers:
-            w.join(10)
         schwab.close()
-    assert delivered() == set(board) - {"T03"}
+    assert delivered() == set(board) - {"T03"}, "a board ticker's chain was never delivered"
     assert [m["ticker"] for m in published if "failed" in m and m["ticker"] != "T03"] == [], \
-        "a close fetch was withheld"
+        "another ticker's fetch was withheld"
+    assert any(failure in m["failed"] for m in published if "failed" in m), "T03's failure says why"
+
+
+def test_a_board_wide_400_settles_to_one_request_per_ticker_per_wait(tmp_path):
+    """Every chain answered 400 (induced), 6 board tickers on 4 workers, 2026-10-01 11:00 ET
+    (RTH), for 2 s: each ticker is asked once and then waits FAILED_PAUSE_SEC (operator
+    2026-10-06), so Schwab's host receives 6 chain requests, not one after another at full rate."""
+    schwab = _LocalSchwab()
+    schwab.refusals[("/marketdata/v1/chains", None)] = 400
+    board = [f"T{i:02d}" for i in range(6)]
+    start, t0 = _et("2026-10-01 11:00"), time.monotonic()
+    published = []
+    sweep = ChainSweep(tmp_path / "ed_console.db", board, lambda topic, msg: published.append(msg),
+                       clock=lambda: start + (time.monotonic() - t0),
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"))
+    client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
+    try:
+        _swept(sweep, client, 4, lambda: False, 2.0)
+    finally:
+        schwab.close()
+    assert _gets(schwab, "/marketdata/v1/chains") == len(board)
+    assert sorted(m["ticker"] for m in published) == board and all("HTTP 400" in m["failed"] for m in published)
+
+
+def test_a_board_wide_401_sends_nothing_more_and_says_why(tmp_path):
+    """Every chain answered 401 (induced, an empty body), 6 board tickers on 4 workers,
+    2026-10-01 11:00 ET (RTH), for 2 s: the first 401 latches the daemon's client (operator
+    2026-10-06: a 401 stops everything, like a refused token, and shows why), no request is sent
+    after the ones already out, and every ticker's failure names the 401."""
+    schwab = _LocalSchwab()
+    schwab.refusals[("/marketdata/v1/chains", None)] = 401
+    board = [f"T{i:02d}" for i in range(6)]
+    start, t0 = _et("2026-10-01 11:00"), time.monotonic()
+    published = []
+    sweep = ChainSweep(tmp_path / "ed_console.db", board, lambda topic, msg: published.append(msg),
+                       clock=lambda: start + (time.monotonic() - t0),
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"))
+    client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
+    try:
+        _swept(sweep, client, 4, lambda: False, 1.0)
+        sent = _gets(schwab, "/marketdata/v1/chains")
+        _swept(sweep, client, 4, lambda: False, 1.0)
+    finally:
+        schwab.close()
+    assert 1 <= sent <= 4, f"{sent} chain requests: more than the workers had out at once"
+    assert _gets(schwab, "/marketdata/v1/chains") == sent, "a request was sent after the 401"
+    assert sorted(m["ticker"] for m in published) == board, "every ticker's failure is shown"
+    assert all("Schwab refused our login (HTTP 401 on T" in m["failed"] and "all requests stopped" in m["failed"]
+               for m in published), [m["failed"] for m in published]
 
 
 def test_d5_a_close_fetch_that_fails_is_tried_again_after_the_pause_until_it_lands(tmp_path):

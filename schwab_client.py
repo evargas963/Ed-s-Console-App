@@ -145,14 +145,31 @@ def log_schwab_error(response: httpx.Response) -> None:
                 req.method, path, f"?{query}" if query else "", response.status_code, since, body, headers)
 
 
+class TokenRefreshRefused(Exception):
+    """Schwab refused the token refresh itself with 429 or 403 (its edge, Akamai, answers 403
+    with an HTML page): a refusal of us, like the same answer to a market-data request."""
+
+    def __init__(self, status_code: int):
+        super().__init__(f"token refresh returned HTTP {status_code}")
+        self.status_code = status_code
+
+
+def _refusal_of_the_refresh(resp: httpx.Response) -> httpx.Response:
+    if resp.status_code in (429, 403):
+        raise TokenRefreshRefused(resp.status_code)
+    return resp
+
+
 class OneRefreshSession(OAuth2Client):
     """authlib's OAuth2Client, refreshing the token one request at a time: authlib's own (sync)
     client lets every request that finds the token near expiry refresh it, all at once. The
-    first refreshes; each one after it finds the new token and sends its request with it."""
+    first refreshes; each one after it finds the new token and sends its request with it. A
+    refresh Schwab answers 429 or 403 raises TokenRefreshRefused."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._refresh_lock = threading.Lock()
+        self.register_compliance_hook("refresh_token_response", _refusal_of_the_refresh)
 
     def ensure_active_token(self, token=None):
         with self._refresh_lock:
@@ -474,27 +491,40 @@ class SchwabAuthError(Exception):
         self.remediation = remediation
 
 
-#: each client's auth latch: after an OAuth failure on a client, its chain, expiration list and quote requests are
-#: withheld until this monotonic time. The latch belongs to the client whose token failed (the
-#: daemon holds one for its life, capture.one_schwab_client); another client is not withheld.
-_auth_failure_until: "weakref.WeakKeyDictionary[object, float]" = weakref.WeakKeyDictionary()
+#: each client's auth latch: after Schwab refuses a client's login (an OAuth failure, or an HTTP
+#: 401 answer), its chain, expiration list and quote requests are not sent until this monotonic
+#: time, each failing with the latch's reason. The latch belongs to the client whose login was
+#: refused (the daemon holds one for its life, capture.one_schwab_client); another client is not
+#: withheld.
+_auth_latch: "weakref.WeakKeyDictionary[object, tuple[float, str]]" = weakref.WeakKeyDictionary()
 _auth_failure_lock = threading.Lock()
 _SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LATCH_SEC", "300"))  # caps-ok: OAuth/config timeout only
 
 
-def _latched_auth_error(client, exc: AuthlibBaseError) -> SchwabAuthError:
-    """Latch `client` after the OAuth failure `exc` (every error authlib raises: an expired,
-    missing or revoked token, a refresh refused with invalid_grant); the SchwabAuthError its
-    caller raises."""
+def _latched(client, reason: str) -> SchwabAuthError:
+    """Latch `client` for _SCHWAB_AUTH_FAILURE_LATCH_SEC with `reason`; the error its caller raises."""
     with _auth_failure_lock:
-        _auth_failure_until[client] = time.monotonic() + _SCHWAB_AUTH_FAILURE_LATCH_SEC
-    return SchwabAuthError(str(exc))
+        _auth_latch[client] = (time.monotonic() + _SCHWAB_AUTH_FAILURE_LATCH_SEC, reason)
+    return SchwabAuthError(reason)
 
 
-def _schwab_auth_latched(client) -> bool:
+def _authorized(client, what: str, send):
+    """`send()`, one request to Schwab on `client` for `what` (e.g. "SPY's chain"), under the
+    client's auth latch: not sent while the latch holds; a refused login latches it. A refused
+    login is every error authlib raises (an expired, missing or revoked token, a refresh refused
+    with invalid_grant) and an HTTP 401 answer (operator 2026-10-06: a 401 stops everything, like
+    a refused token, and shows why)."""
     with _auth_failure_lock:
-        until = _auth_failure_until.get(client)
-    return until is not None and time.monotonic() < until
+        latch = _auth_latch.get(client)
+    if latch is not None and time.monotonic() < latch[0]:
+        raise SchwabAuthError(f"{what} not sent: {latch[1]}")
+    try:
+        resp = send()
+    except AuthlibBaseError as e:
+        raise _latched(client, f"Schwab refused our login ({e} on {what}); all requests stopped") from e
+    if resp.status_code == 401:
+        raise _latched(client, f"Schwab refused our login (HTTP 401 on {what}); all requests stopped")
+    return resp
 
 
 def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
@@ -508,10 +538,6 @@ def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
     # SAME request. When strike_range is given, strike_count is OMITTED entirely rather
     # than sent alongside it — exactly the combination proven live, never an untested
     # combination of both params on one request.
-    if _schwab_auth_latched(client):
-        raise SchwabAuthError(
-            "Schwab auth latched after prior token failure — option chain withheld"
-        )
     kwargs = {"include_underlying_quote": True}
     if strike_range is not None:
         kwargs["strike_range"] = strike_range
@@ -521,11 +547,7 @@ def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
         kwargs["from_date"] = from_date
     if to_date is not None:
         kwargs["to_date"] = to_date
-    try:
-        resp = client.get_option_chain(ticker, **kwargs)
-    except AuthlibBaseError as e:
-        raise _latched_auth_error(client, e) from e
-    return resp
+    return _authorized(client, f"{ticker}'s chain", lambda: client.get_option_chain(ticker, **kwargs))
 
 
 class FullChainResponse:
@@ -559,13 +581,9 @@ def _option_expiries(client, ticker: str) -> "tuple[int, list[date]]":
     (ET date), ascending (none unless the status is 200). MEASURED 2026-09-26 (Saturday): the
     expiration chain still lists Friday's expired 2026-09-25, and a chain request whose fromDate
     is in the past is refused with HTTP 400 ("Check Param Values") -- the same range from today
-    answers 200. Withheld, like the chain and quotes, while `client`'s auth latch holds."""
-    if _schwab_auth_latched(client):
-        raise SchwabAuthError("Schwab auth latched after prior token failure — expiration list withheld")
-    try:
-        resp = client.get_option_expiration_chain(ticker)
-    except AuthlibBaseError as e:
-        raise _latched_auth_error(client, e) from e
+    answers 200. Under `client`'s auth latch, like the chain and quotes (_authorized)."""
+    resp = _authorized(client, f"{ticker}'s expiration list",
+                       lambda: client.get_option_expiration_chain(ticker))
     if resp.status_code != 200:
         return resp.status_code, []
     today = now_et().date()
@@ -576,13 +594,9 @@ def _option_expiries(client, ticker: str) -> "tuple[int, list[date]]":
 
 def safe_get_quotes(client, symbols: "list[str]"):
     """One request to Schwab's quotes endpoint (/marketdata/v1/quotes) for `symbols`, the quote
-    fields only; Schwab's response."""
-    if _schwab_auth_latched(client):
-        raise SchwabAuthError("Schwab auth latched after prior token failure — quotes withheld")
-    try:
-        return client.get_quotes(symbols, fields=["quote"])
-    except AuthlibBaseError as e:
-        raise _latched_auth_error(client, e) from e
+    fields only; Schwab's response, under `client`'s auth latch (_authorized)."""
+    return _authorized(client, f"{symbols[0].split()[0]}'s quotes",
+                       lambda: client.get_quotes(symbols, fields=["quote"]))
 
 
 #: The most option symbols one quotes request carries: 300 answered in 0.3 s, 400 was refused

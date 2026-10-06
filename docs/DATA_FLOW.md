@@ -226,9 +226,7 @@ from Schwab to the screen (daemon, console, page), are these:
   the board) is fetched back to back, taken again the moment its last fetch ends, and the other
   workers fetch every board ticker in turn without end. Once Closed (from 20:00 ET, on a
   weekend or a holiday, and when the daemon starts while Closed) every board ticker is fetched
-  once, its close values; a fetch that fails is tried again after `FAILED_PAUSE_SEC`, its own
-  delay: no other ticker waits for it (`tests/test_data_path_rules_v1.py`
-  `test_d5_a_close_fetch_that_keeps_failing_holds_back_no_other_tickers_close_values`). Then no
+  once, its close values; a fetch that fails is tried again after its own wait (below). Then no
   chain is requested until the next session opens: the close values stand (D5), and a ticker
   put on screen while Closed is not fetched — it shows the close values already fetched, or,
   with none, its levels absent with the reason (`server.terrain_staleness`: while Closed,
@@ -239,10 +237,24 @@ from Schwab to the screen (daemon, console, page), are these:
   quote batches together (`fetch_full_chain`); each chain's contracts, parts, quote requests and
   their times are logged. No cap or interval of ours sits between Schwab and the screen
   (operator 2026-10-01: "we take what we get from schwab as fast as we can and we ask schwab for
-  data as fast as we can"). After Schwab answers 429 no chain request is made for 10 s
-  (`RATE_LIMITED_PAUSE_SEC`); after Schwab refuses us (403: its edge, Akamai, denies access) or
-  a request fails outright (no client, auth or refresh refused, the network down), for 5 s
-  (`FAILED_PAUSE_SEC`). Then the probe: one chain is fetched alone, sending its requests one at
+  data as fast as we can"). How a failed request is paced is the operator's rule of 2026-10-06,
+  in every session:
+  - **429 or 403** (any request of a chain, the token refresh included): the whole board
+    pauses, no chain request for 10 s after a 429 (`RATE_LIMITED_PAUSE_SEC`) and 5 s after a 403
+    (`FAILED_PAUSE_SEC`; its edge, Akamai, denies access), then the probe (below).
+  - **401, or a refused token refresh**: Schwab refused our login. The daemon's client is latched
+    (`schwab_client._authorized`), so no request is sent until the latch clears
+    (`ED_SCHWAB_AUTH_FAILURE_LATCH_SEC`, 300 s), and every ticker's failure shows why, e.g.
+    "Schwab refused our login (HTTP 401 on SPY's chain); all requests stopped".
+  - **Any other failure** (another status, an expiration list with no expiry from today, an
+    exception such as a timeout or `ReadError`): that ticker alone waits `FAILED_PAUSE_SEC`
+    before it is fetched again; nothing board-wide. An open session's round leaves a waiting
+    ticker out instead of waiting for it. A board-wide failure of this kind is asked again about
+    once per ticker per 5 s. The failure is published each time and logged once per ticker for
+    each new reason. A fetch withheld by a pause (below) sent nothing and is no failure of its
+    ticker.
+
+  After a 429 or 403, the probe: one chain is fetched alone, sending its requests one at
   a time and stopping at the first one refused (`fetch_full_chain` `alone`): its quote batches,
   and its date-range parts and their halves for a chain fetched in parts. So a refused probe
   costs Schwab at most one refused request; the sweep, every request at once again, goes on
@@ -253,11 +265,18 @@ from Schwab to the screen (daemon, console, page), are these:
   request) and fails with that reason, naming the ticker and the refusal or failure that
   started the pause; a request it sent before the pause is answered as
   Schwab answers it, and a fetch whose request is still out when the pause ends goes on at
-  full width. A later refusal never shortens a pause already running. A probe that fails with
-  any other status (a 500, an expiration list with no expiry from today) sets no pause: the
-  next probe goes at once. Enforced by:
+  full width. A later refusal never shortens a pause already running. A probe that fails any
+  other way (a 500, an expiration list with no expiry from today) makes that ticker wait, and
+  the next probe goes at once on another ticker. Enforced by:
   `tests/test_data_path_rules_v1.py`
-  (`test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until_one_lands`,
+  (`test_d5_a_fetch_that_keeps_failing_holds_back_no_other_ticker`, a ticker answered 400 or
+  raising `ReadError`, open and Closed;
+  `test_d5_a_close_fetch_that_fails_is_tried_again_after_the_pause_until_it_lands`;
+  `test_a_board_wide_400_settles_to_one_request_per_ticker_per_wait`;
+  `test_a_board_wide_401_sends_nothing_more_and_says_why`;
+  `test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuilds_it`, a token
+  refresh answered with Schwab's captured 403 page;
+  `test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until_one_lands`,
   on Schwab's captured 403 page;
   `test_after_a_refusal_the_probe_sends_one_request_at_a_time_and_stops_at_the_first_refused`,
   counting the requests Schwab's host receives after a 403 and after a 429;
@@ -268,7 +287,8 @@ from Schwab to the screen (daemon, console, page), are these:
   `test_a_ticker_taken_before_a_refusal_is_not_the_probe`,
   `test_a_fetch_in_flight_sends_no_further_request_during_the_pause`,
   `test_a_later_refusal_never_shortens_the_pause`,
-  `test_a_probe_that_fails_with_another_status_is_followed_by_the_next_probe_at_once`). The chain is always the full chain, every expiry and
+  `test_a_probe_that_fails_with_another_status_is_followed_by_the_next_probe_at_once`;
+  `tests/test_schwab_auth_latch_v1.py` `test_a_401_answer_latches_the_client_and_says_why`). The chain is always the full chain, every expiry and
   every strike: measured on the 38 board tickers' 2026-10-01 close captures, leaving out the
   farthest expiry changed a level (a wall, the flip, max pain) on 4 tickers, the two farthest on
   25, and 5 strikes off each side on 9. Every ticker's publication keeps its chain and its
@@ -425,19 +445,6 @@ from Schwab to the screen (daemon, console, page), are these:
    waits behind that work.
 4. **The browser reads a route after each push** for bars, order flow, liquidity and the levels,
    instead of receiving the values; bars are not yet on the daemon's push.
-5. **A chain answered with any status but 429 or 403 sets no pause** (§3.4 Option chain), and
-   the rate it is asked again at is a pacing change pending the operator's yes:
-   - In an open session a board-wide 400 or 401 (or 5xx) sends every board chain again at the
-     sweep's full rate, about 60 to 70 requests a second (induced on a local stand-in for
-     Schwab's host, 2026-10-06; not seen in production), on main as on #463.
-   - While Closed, #463 retries each failed ticker on its own clock every `FAILED_PAUSE_SEC`
-     instead of through the board-wide pause, so a board-wide failure is asked again faster than
-     on main: with every chain failing on 42 tickers over 20 s, 168 chain requests against
-     main's 20 to 28 (400, 401) and 336 against 64 (500) (induced, local, 2026-10-06).
-   - The proposal before the operator: a 429 or 403 pauses the whole board, then one probe (as
-     built); any other failure makes only that ticker wait `FAILED_PAUSE_SEC` before its next
-     try, in every session. The alternative fix, a board pause on every non-200 answer, would
-     bring back one failing ticker holding back the whole board.
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 

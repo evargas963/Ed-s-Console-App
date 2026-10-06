@@ -300,18 +300,20 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
         assert c.execute("SELECT COUNT(DISTINCT ts_utc) FROM complete_chain_captures").fetchone()[0] == 1
 
 
-def test_a_failing_schwab_client_pauses_the_sweep_instead_of_spinning(tmp_path):
-    """A failure pauses every chain request FAILED_PAUSE_SEC (5 s): two workers whose client
-    cannot be built (STAND-IN: the build raises what a refused token raises) try at most once
-    each in the first second, never again and again around the board."""
+def test_a_failing_schwab_client_is_tried_once_per_ticker_per_wait_instead_of_spinning(tmp_path):
+    """A fetch that raises makes that ticker alone wait FAILED_PAUSE_SEC (5 s; operator
+    2026-10-06): two workers whose client cannot be built (STAND-IN: the build raises what a
+    refused token raises) try each board ticker once in the first second, never again and again
+    around the board, and each failure says why."""
     import threading
-    built = []
+    built, published = [], []
 
     def make_client():
         built.append(1)
         raise ConnectionError("Refresh token is invalid, expired or revoked")
     sweep = cch.ChainSweep(tmp_path / "ed_console.db", ["SPY", "QQQ", "IWM"],
-                           lambda topic, msg: None, failures=CaptureWriter(tmp_path / "stream_capture.db"))
+                           lambda topic, msg: published.append(msg),
+                           failures=CaptureWriter(tmp_path / "stream_capture.db"))
     halt = threading.Event()
     workers = [threading.Thread(target=sweep.work, args=(make_client, halt), daemon=True) for _ in range(2)]
     for w in workers:
@@ -320,7 +322,9 @@ def test_a_failing_schwab_client_pauses_the_sweep_instead_of_spinning(tmp_path):
     halt.set()
     for w in workers:
         w.join(10)
-    assert 1 <= len(built) <= 2, len(built)               # one try per worker per pause
+    assert len(built) == 3, len(built)                    # one try per ticker per wait
+    assert sorted(m["ticker"] for m in published) == ["IWM", "QQQ", "SPY"]
+    assert {m["failed"] for m in published} == {"ConnectionError: Refresh token is invalid, expired or revoked"}
 
 
 def test_the_daemon_task_stops_when_told(tmp_path):
