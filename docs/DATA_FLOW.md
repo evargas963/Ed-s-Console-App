@@ -87,8 +87,7 @@ from Schwab to the screen (daemon, console, page), are these:
   older ones. When the database takes writes again the writer writes memory, then the spill
   file, then what arrived meanwhile (the spill takes it, in order); how far each spill's
   write-back got (how many records) is written in the same transaction as each part
-  (`stream_spill_progress`), so a later write-back can resume where it stopped (resuming at start
-  is not built; the operator's decision). It verifies the write-back (every record of the
+  (`stream_spill_progress`), so a later write-back resumes where it stopped. It verifies the write-back (every record of the
   file written back, rows per topic in every table, its first and last row as written) before
   deleting the file; a write-back that does not verify keeps the file; a record that does not
   decode (a damaged file) stops the write-back there, every good record before it written, and
@@ -96,9 +95,13 @@ from Schwab to the screen (daemon, console, page), are these:
   spill file cannot take (a full disk) is lost: counted, with the window it was received in
   (first and last receive time, served as epoch seconds and shown in Central Time). A daemon
   that stops while blocked leaves what it holds on disk (memory in a spill file named for when
-  the block began, older than the spill file's); at its next start the writer lists every spill
-  file beside the database on the Record, with its messages, size and how many are written
-  back, and does not write them back (the operator's open decision). Only an error outside these ends the thread: it reads
+  the block began, older than the spill file's). At its next start (operator 2026-10-06) the
+  writer writes back every spill file beside the database, oldest name first, each resuming
+  after the records its progress row counts, with the same verification, before anything that
+  arrives meanwhile: those are newer, so they are held as in a block (memory to the cap, then
+  a new spill file, whose name is later) until every left file is written back or kept. The
+  Record shows "WRITING BACK N LEFT FILES" and each left file with how many are written back,
+  then how many were written back and verified, or each one kept with its reason. Only an error outside these ends the thread: it reads
   dead with the error; its spill file stays, listed as left on disk with its messages (they are
   on disk, not counted not recorded); what it held in memory and what reaches it after are
   counted not recorded until the daemon restarts.

@@ -691,7 +691,7 @@ def test_a_spill_with_a_damaged_record_is_kept_and_recording_goes_on(tmp_path):
 def test_spill_files_left_beside_the_database_are_shown_at_start(tmp_path):
     """INDUCED CONDITION: a writer stopped while the database was locked leaves its held messages
     in spill files; a new writer on the same database lists them on its Record, with their
-    messages and sizes, and does not write them back."""
+    messages and sizes, before it runs."""
     db = tmp_path / "stream_capture.db"
     first = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
                           hold_cap_bytes=_SMALL_CAP)
@@ -721,3 +721,143 @@ def test_spill_files_left_beside_the_database_are_shown_at_start(tmp_path):
         assert (f"left on disk, not written back: {Path(k['path']).name} ({k['messages']} messages, "
                 f"{k['bytes']:,} bytes, 0 written back)") in shown["line"]
     assert _count(db, "stream_options_quotes_raw") == 0
+
+
+def _left_by_a_stop(db) -> list:
+    """INDUCED CONDITION: a writer stopped while another connection held the database's write
+    lock, with the 12 captured option quotes held past _SMALL_CAP: the spill files it left
+    (what memory held, then the spill), oldest first."""
+    first = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                          hold_cap_bytes=_SMALL_CAP)
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        daemon = capture.Daemon(bus, health)
+        daemon.writer = first
+        task = asyncio.create_task(first.run(bus.subscribe("", policy=LOG), stop=stop))
+        await _held_past_the_cap(first, bus, health, daemon)
+        stop.set()
+        await task
+    try:
+        asyncio.run(go())
+    finally:
+        holder.execute("COMMIT")
+        holder.close()
+    return [Path(k["path"]) for k in first.status()["left_on_disk"]]
+
+
+def _next_start(db, live: list, done) -> dict:
+    """A new writer on the same database runs while `live` captured option quotes arrive, until
+    `done(writer)`; returns its status as the heartbeat carries it."""
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        daemon = capture.Daemon(bus, health)
+        daemon.writer = writer
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        _publish_options(bus, health, live)
+        await _until(lambda: done(writer))
+        status = _beat(daemon)["writer"]
+        stop.set()
+        await task
+        return status
+    return asyncio.run(go())
+
+
+def _stored_quotes(db) -> list:
+    with sqlite3.connect(db) as conn:
+        return [json.loads(r[0]) for r in conn.execute(
+            "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
+
+
+def _damage_last_record(path: Path) -> bytes:
+    """STAND-IN for a damaged disk: the file's last two bytes overwritten with 0xFF; the bytes
+    they held are returned."""
+    with open(path, "r+b") as f:
+        f.seek(-2, os.SEEK_END)
+        held = f.read(2)
+        f.seek(-2, os.SEEK_END)
+        f.write(b"\xff\xff")
+    return held
+
+
+def test_files_left_by_a_stop_are_written_back_at_the_next_start_in_order(tmp_path):
+    """The files a stop left (_left_by_a_stop) are written back by the next writer before the
+    live quotes that arrive meanwhile (3 captured ones, held until then): every quote once, in
+    arrival order; both files verified and deleted; the Record says so."""
+    db = tmp_path / "stream_capture.db"
+    left = _left_by_a_stop(db)
+    assert len(left) == 2 and all(p.exists() for p in left)
+
+    status = _next_start(db, _EVENTS[:3], lambda w: _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 3
+                         and not any(p.exists() for p in left))
+
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS] + [e["content"] for e in _EVENTS[:3]], \
+        "not every quote once, the left files' first, in arrival order"
+    assert not any(p.exists() for p in left), "a verified left file was not deleted"
+    assert (status["left_written_back"], status["left_on_disk"], status["spills_kept"]) == (2, [], [])
+    assert "2 left files written back and verified" in status["line"]
+
+
+def test_a_left_file_partly_written_back_resumes_at_its_progress_row(tmp_path):
+    """INDUCED CONDITIONS: the spill's last record damaged (_damage_last_record) while the lock is
+    held; on release the writer writes back every good record before it, keeps the file and
+    records its progress (n-1 of n written back); the writer stops; the damaged bytes are put
+    back. The next writer resumes at that progress row: only the last record is written, so every
+    quote is in the database once, in order, and the file is verified and deleted."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=_SMALL_CAP)
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        daemon = capture.Daemon(bus, health)
+        daemon.writer = writer
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        during = await _held_past_the_cap(writer, bus, health, daemon)
+        good = _damage_last_record(Path(during["spill"]["path"]))
+        holder.execute("COMMIT")
+        await _until(lambda: writer.status()["spills_kept"] != [])
+        stop.set()
+        await task
+        return during, good
+    try:
+        during, good = asyncio.run(go())
+    finally:
+        holder.close()
+    path = Path(during["spill"]["path"])
+    (kept,) = writer.status()["spills_kept"]
+    assert kept["written_back"] == during["spill"]["messages"] - 1
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS[:-1]]
+    with open(path, "r+b") as f:                 # the damage undone
+        f.seek(-2, os.SEEK_END)
+        f.write(good)
+
+    status = _next_start(db, [], lambda w: not path.exists())
+
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS], "a resumed file wrote a record twice or not at all"
+    assert not path.exists() and (status["left_written_back"], status["spills_kept"]) == (1, [])
+
+
+def test_a_damaged_left_file_is_kept_and_recording_goes_on(tmp_path):
+    """INDUCED CONDITIONS: the files a stop left (_left_by_a_stop), the spill's last record
+    damaged on disk (_damage_last_record). The next writer writes back the memory file, then
+    every good record of the spill before the damaged one; it keeps that file with the reason,
+    and the live quote that arrived meanwhile follows."""
+    db = tmp_path / "stream_capture.db"
+    memory_file, spill_file = _left_by_a_stop(db)
+    _damage_last_record(spill_file)
+
+    status = _next_start(db, _EVENTS[:1], lambda w: not memory_file.exists()
+                         and _count(db, "stream_options_quotes_raw") == len(_EVENTS))
+
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS[:-1]] + [_EVENTS[0]["content"]]
+    assert not memory_file.exists() and spill_file.exists()
+    (kept,) = status["spills_kept"]
+    assert kept["path"] == str(spill_file) and kept["reason"].startswith("the record at byte ")
+    assert status["left_written_back"] == 1 and status["state"] == "recording"
