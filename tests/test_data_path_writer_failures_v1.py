@@ -25,6 +25,7 @@ import httpx
 from schwab.client import Client
 
 import live_market_plane as lmp
+from time_et import ct_label
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_ui import LiveUiServer
 from calibration.complete_chain_capture import ChainSweep
@@ -451,7 +452,8 @@ def test_a_spill_whose_write_back_does_not_verify_is_kept(tmp_path):
     """INDUCED CONDITIONS: as above, and, in the same transaction that releases the lock, a
     trigger that deletes each option quote row written back from the spill (every row after the
     ones held in memory), standing in for rows lost after their write. The write-back does not
-    verify: the spill file stays, and the Record says so."""
+    verify: the spill file stays, and the Record says so. With the trigger dropped, the next
+    start writes the kept file back whole and verifies it: never deleted unwritten."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
                            hold_cap_bytes=_SMALL_CAP)
@@ -486,9 +488,15 @@ def test_a_spill_whose_write_back_does_not_verify_is_kept(tmp_path):
     assert (f"spill kept: {kept['reason']} ({path.name}, {kept['written_back']} of {kept['messages']} "
             f"written back)") in after["line"]
     assert after["cls"] == "neg" and after["spill"] is None and after["state"] == "recording"
-    # how far its write-back got is recorded in the database, for a writer that finds the file
+    # its rows did not verify, so its progress row is gone: a writer that finds it writes it whole
     (found,) = CaptureWriter(db).status()["left_on_disk"]
-    assert (found["path"], found["written_back"]) == (str(path), kept["messages"])
+    assert (found["path"], found["written_back"]) == (str(path), 0)
+
+    with sqlite3.connect(db) as conn:            # what deleted the rows is gone
+        conn.execute("DROP TRIGGER lose_written_back")
+    status = _next_start(db, [], lambda w: not path.exists())
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS], "the kept file was not written back whole"
+    assert (status["left_written_back"], status["spills_kept"]) == (1, [])
 
 
 #: production's stream in its real proportions: every message received 2026-10-05 14:00:00-14:00:03
@@ -861,3 +869,75 @@ def test_a_damaged_left_file_is_kept_and_recording_goes_on(tmp_path):
     (kept,) = status["spills_kept"]
     assert kept["path"] == str(spill_file) and kept["reason"].startswith("the record at byte ")
     assert status["left_written_back"] == 1 and status["state"] == "recording"
+
+
+def test_a_left_file_with_a_message_cut_off_by_a_crash_is_written_back_and_archived(tmp_path):
+    """INDUCED CONDITIONS: the files a stop left (_left_by_a_stop), two bytes appended to the
+    spill file: a message's length cut off by a crash mid-append (STAND-IN for that crash). The
+    next writer writes back every whole record once, in order, and verifies them; the cut-off
+    message counts as one lost, at the receive time of the last whole record before it; the file
+    is moved to spill_archive beside the database (not deleted), its progress row gone; a
+    restart neither picks it up nor warns again."""
+    db = tmp_path / "stream_capture.db"
+    memory_file, spill_file = _left_by_a_stop(db)
+    with open(spill_file, "ab") as f:
+        f.write(b"\x00\x00")
+    archived = db.parent / "spill_archive" / spill_file.name
+
+    status = _next_start(db, [], lambda w: archived.exists() and not memory_file.exists())
+
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS], "not every whole record once, in order"
+    assert not spill_file.exists() and archived.exists() and archived.stat().st_size > 0
+    with sqlite3.connect(db) as conn:
+        last_received = conn.execute("SELECT ts_recv FROM stream_options_quotes_raw "
+                                     "ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+        progress = conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0]
+    assert (status["lost"], status["lost_first_ts"], status["lost_last_ts"]) == (1, last_received, last_received)
+    assert status["torn"] == [{"path": str(archived), "ts": last_received}]
+    assert f"LOST 1 message at {ct_label(last_received)}: cut off by a crash, file archived" in status["line"]
+    assert status["spills_kept"] == [] and progress == 0
+
+    restarted = _next_start(db, [], lambda w: True)
+    assert (restarted["left_on_disk"], restarted["spills_kept"], restarted["torn"], restarted["lost"]) == \
+        ([], [], [], 0), "the archived file was picked up again"
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS]
+
+
+def test_messages_held_behind_left_files_keep_their_order_across_a_stop(tmp_path):
+    """INDUCED CONDITIONS (the correctness reviewer's inversion case): the files a stop left
+    (_left_by_a_stop); the next writer starts while another connection holds the write lock, and
+    12 captured quotes arrive: they are held behind the left files, in memory to _SMALL_CAP and
+    then in a live spill; the writer stops while still refused, so memory goes to a file of its
+    own. Every file is named for its oldest message, so the memory file sorts before the live
+    spill; a third writer writes everything back in arrival order."""
+    db = tmp_path / "stream_capture.db"
+    left = _left_by_a_stop(db)
+    second = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=_SMALL_CAP)
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        task = asyncio.create_task(second.run(bus.subscribe("", policy=LOG), stop=stop))
+        _publish_options(bus, health, _EVENTS)
+
+        def held_behind() -> bool:
+            s = second.status()
+            return (s["state"] == "blocked" and s["spill"] is not None
+                    and s["spill"]["messages"] + s["waiting"] == len(_EVENTS))
+        await _until(held_behind)
+        stop.set()
+        await task
+    try:
+        asyncio.run(go())
+    finally:
+        holder.execute("COMMIT")
+        holder.close()
+    files = sorted(db.parent.glob("stream_capture.*.spill"))
+    assert len(files) == 4 and files[:2] == left
+
+    _next_start(db, [], lambda w: not list(db.parent.glob("stream_capture.*.spill")))
+
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS] * 2, \
+        "the held quotes were written out of arrival order"

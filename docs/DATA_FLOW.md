@@ -62,7 +62,8 @@ from Schwab to the screen (daemon, console, page), are these:
 - **D4. The database is the memory.** Its one writer records every message Schwab sends; nothing
   else keeps old data, except the writer's own spill files below that hold Schwab's messages
   until they are written back: one kept because its write-back did not verify, and those a stop
-  (or the writer's death) left on disk. A message whose row is refused (a constraint, a value SQLite cannot
+  (or the writer's death) left on disk; and `spill_archive/`, the verified files a crash cut a
+  message off, kept as they were. A message whose row is refused (a constraint, a value SQLite cannot
   hold, a message without its table's shape) is kept as sent, with its error and time, in
   `stream_write_failures`, and the writer goes on. While the database refuses every write
   (locked past the writer's wait, full, read-only), the writer holds the messages in memory, in
@@ -87,21 +88,35 @@ from Schwab to the screen (daemon, console, page), are these:
   older ones. When the database takes writes again the writer writes memory, then the spill
   file, then what arrived meanwhile (the spill takes it, in order); how far each spill's
   write-back got (how many records) is written in the same transaction as each part
-  (`stream_spill_progress`), so a later write-back resumes where it stopped. It verifies the write-back (every record of the
-  file written back, rows per topic in every table, its first and last row as written) before
-  deleting the file; a write-back that does not verify keeps the file; a record that does not
-  decode (a damaged file) stops the write-back there, every good record before it written, and
-  keeps the file; the Record says so, and recording goes on. A message the
-  spill file cannot take (a full disk) is lost: counted, with the window it was received in
-  (first and last receive time, served as epoch seconds and shown in Central Time). A daemon
-  that stops while blocked leaves what it holds on disk (memory in a spill file named for when
-  the block began, older than the spill file's). At its next start (operator 2026-10-06) the
-  writer writes back every spill file beside the database, oldest name first, each resuming
-  after the records its progress row counts, with the same verification, before anything that
-  arrives meanwhile: those are newer, so they are held as in a block (memory to the cap, then
-  a new spill file, whose name is later) until every left file is written back or kept. The
-  Record shows "WRITING BACK N LEFT FILES" and each left file with how many are written back,
-  then how many were written back and verified, or each one kept with its reason. Only an error outside these ends the thread: it reads
+  (`stream_spill_progress`), so a later write-back resumes where it stopped. It verifies the
+  part it wrote (every record of the file written back, rows per topic in every table since it
+  began, its first and last row as written; a resumed file's parts written before are not
+  checked again) before deleting the file. A write-back that does not verify keeps the file
+  and drops its progress row, so the next start writes it whole (rows it duplicates rather than
+  records never written); a record that does not decode (a damaged file) stops the write-back
+  there, every good record before it written, and keeps the file with its progress; a file with
+  bytes after its last whole record (a message a crash cut off mid-append) has every whole
+  record written back and verified, then (operator 2026-10-06) the cut-off message counts as one
+  lost, at the receive time of the last whole record before it (the file's own time when it has
+  none), shown once ("LOST 1 message at <CT>: cut off by a crash, file archived"), and the file
+  is moved, not deleted, to `spill_archive/` beside the database under its own name, with its
+  progress row dropped, so no start picks it up again (a move that fails keeps the file, with
+  why); the Record says so, and recording goes on. A message
+  the spill file cannot take (a full disk) is lost: counted, with the window it was received in
+  (first and last receive time, served as epoch seconds and shown in Central Time). Every spill
+  file is named for when its oldest message was held, so name order is arrival order. A daemon
+  that stops while messages are held leaves them on disk (memory in a file of its own, named
+  for its oldest message, older than the spill file's). At its next start (operator
+  2026-10-06) the writer drops progress rows whose file is gone, then writes back every spill
+  file beside the database, oldest name first, each resuming after the records its progress
+  row counts, before anything that arrives meanwhile: those are newer, so they are held as in a
+  block (memory to the cap, then a new spill file, named later) until every left file is
+  written back or kept. A stop meanwhile ends after the part being written; the rest stays on
+  disk for the next start. The Record shows "WRITING BACK N LEFT FILES" and each file being
+  written back with how far it got, then how many were written back and verified, or each one
+  kept with its reason. While the daemon writes back, live rows reach the database later: a
+  console started then loads its bars from the database without the newest minutes, which its
+  chart lacks until the console's next start (the screen's live values never wait: D6). Only an error outside these ends the thread: it reads
   dead with the error; its spill file stays, listed as left on disk with its messages (they are
   on disk, not counted not recorded); what it held in memory and what reaches it after are
   counted not recorded until the daemon restarts.
@@ -150,7 +165,8 @@ from Schwab to the screen (daemon, console, page), are these:
 | Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten) and each ticker's newest chain; the board; the active ticker; the equity quotes the browser's price row is built from |
 | Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; every live screen's history, loaded from `ed_console.db` once at startup and then fed live (§2 D6): each ticker's 1-minute bars (`server._bars`, the newest 24,000) and level crosses (`server._crosses`), each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`, from the console's start) |
 | `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers; every message a write refused, kept as sent with its error (`stream_write_failures`: the writer's refused rows, and each chain whose history write was refused); how far each spill file's write-back got (`stream_spill_progress`) |
-| `stream_capture.<ms>.spill` (beside `stream_capture.db`) | daemon's writer | while the database refuses writes, the held messages past the memory cap, in order; deleted once written back and verified, kept when the write-back does not verify or a stop leaves it (§2 D4) |
+| `stream_capture.<ms>.spill` (beside `stream_capture.db`) | daemon's writer | while the database refuses writes, the held messages past the memory cap, in order; deleted once written back and verified, kept when the write-back does not verify or a stop leaves it, written back at the next start (§2 D4) |
+| `spill_archive/` (beside `stream_capture.db`) | daemon's writer | verified spill files whose last message a crash cut off, under their own names; never read back (§2 D4) |
 | `ed_console.db` | console, and the daemon (the ticker board, the chain captures) | 1-minute bars, level crosses, the ticker board, chain captures and a morning chain per ticker — plus the tables of the deleted ML pipeline (dropped in P2-DB3) |
 
 ### 3.4 The journey of each kind of data

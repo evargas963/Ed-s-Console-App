@@ -446,6 +446,9 @@ _KEY_COLUMN = {**{table: "symbol" if "symbol" in cols else "service" for table, 
 HOLD_CAP_BYTES = 2 * 1024 ** 3
 #: spill records written back in one transaction
 SPILL_CHUNK = 5000
+#: the folder beside the stream database a verified spill file with a message a crash cut off is
+#: moved to (operator 2026-10-06), under its own name; never picked up again
+SPILL_ARCHIVE = "spill_archive"
 
 
 @dataclass(frozen=True)
@@ -493,11 +496,16 @@ class WriterStatus:
     spill: "dict | None"
     spills_kept: list
     left_on_disk: list
+    writing_back: list
     left_files: int
     left_written_back: int
     lost: int
     lost_first_ts: "float | None"
     lost_last_ts: "float | None"
+    spill_lost: int
+    spill_lost_first_ts: "float | None"
+    spill_lost_last_ts: "float | None"
+    torn: list
     unrecorded: int
     error: "str | None"
     error_ct: "str | None"
@@ -532,14 +540,17 @@ def _record_line(s: dict) -> "tuple[str, str]":
               f"{k['messages']} written back)" for k in s["spills_kept"]]
     parts += [f"left on disk, not written back: {Path(k['path']).name} ({k['messages']} messages, "
               f"{k['bytes']:,} bytes, {k['written_back']} written back)" for k in s["left_on_disk"]]
+    parts += [f"writing back {Path(k['path']).name}: {k['written_back']} of {k['messages']} written back"
+              for k in s["writing_back"]]
     if s["left_written_back"]:
         parts.append(f"{s['left_written_back']} left files written back and verified")
-    if s["lost"]:
-        parts.append(f"LOST {s['lost']} messages, received {ct_label(s['lost_first_ts'])} to "
-                     f"{ct_label(s['lost_last_ts'])}")
+    if s["spill_lost_first_ts"] is not None:
+        parts.append(f"LOST {s['spill_lost']} messages, received {ct_label(s['spill_lost_first_ts'])} to "
+                     f"{ct_label(s['spill_lost_last_ts'])}")
+    parts += [f"LOST 1 message at {ct_label(k['ts'])}: cut off by a crash, file archived" for k in s["torn"]]
     parts.append(f"{s['unrecorded']} not recorded")
     ok = (s["state"] == WRITER_RECORDING and s["failures"] == 0 and s["unrecorded"] == 0
-          and spill is None and not s["spills_kept"] and not s["left_on_disk"]
+          and spill is None and not s["spills_kept"] and not s["left_on_disk"] and not s["writing_back"]
           and s["lost"] == 0)
     return " · ".join(parts), "" if ok else "neg"
 
@@ -621,6 +632,7 @@ class _Spill:
         self.out = open(path, "ab", buffering=0) if append else None
         self.size = 0                  # bytes of whole records written
         self.disk_bytes = 0            # a file found on disk: its bytes, whole records or not
+        self.last_at = 0               # a file found on disk: where its last whole record starts
         self.messages = 0
         self.read_at = 0               # bytes written back and committed
         self.written_back = 0
@@ -687,11 +699,28 @@ class _Spill:
                 length = int.from_bytes(f.read(4), "big")
                 if at + 4 + length > disk:
                     break
+                spill.last_at = at
                 at, n = at + 4 + length, n + 1
                 if n == written_back:
                     spill.read_at = at
         spill.size, spill.disk_bytes, spill.messages, spill.written_back = at, disk, n, written_back
         return spill
+
+    def torn_time(self) -> float:
+        """The best time the file gives for a message a crash cut off after its last whole
+        record: the receive time of that last whole record, else the file's own time."""
+        if self.messages:
+            with open(self.path, "rb") as f:
+                f.seek(self.last_at)
+                try:
+                    received = _received(_from_spill(f.read(int.from_bytes(f.read(4), "big"))))
+                except (ValueError, KeyError, TypeError) as e:
+                    log.warning("stream writer: %s: its last whole record does not decode (%s); "
+                                "the file's time stands for the cut-off one", self.path.name, e)
+                    received = None
+            if received is not None:
+                return received
+        return self.path.stat().st_mtime
 
     def left(self) -> dict:
         """The spill file as listed when it is left on disk unwritten."""
@@ -713,12 +742,10 @@ class _Spill:
 def _verify(conn: sqlite3.Connection, spill: _Spill) -> "str | None":
     """Why the spill's write-back does not match the database (None when it does): the rows of
     every table since this write-back began, per topic, against what it wrote; and the first and
-    last row it wrote, as written; every record of the file written back; and no bytes after
-    the file's last whole record."""
+    last row it wrote, as written; every record of the file written back. A resumed file's parts
+    written before this write-back began are not checked again."""
     if spill.written_back != spill.messages:
         return f"{spill.written_back} of the file's {spill.messages} records written back"
-    if spill.disk_bytes > spill.size:
-        return f"{spill.disk_bytes - spill.size} bytes after its last whole record"
     for table, before in spill.before.items():
         key = _KEY_COLUMN[table]
         got = Counter({(table, k): n for k, n in conn.execute(
@@ -783,6 +810,11 @@ class CaptureWriter:
         self.lost = 0
         self.lost_first_ts: "float | None" = None
         self.lost_last_ts: "float | None" = None
+        self.spill_lost = 0            # of them, messages the spill file could not take
+        self._spill_lost_first: "float | None" = None
+        self._spill_lost_last: "float | None" = None
+        self.torn: list = []           # {"path" (in the archive), "ts"}: messages a crash cut off
+        self._hold_began = 0.0         # when memory began holding its oldest message
         self._round: list = []         # the messages the writer is writing now, in order
         self._stored = 0               # how many of them are in the open batch
         self._logged: dict = {}        # log line kind -> [minute last logged, count since]
@@ -802,15 +834,20 @@ class CaptureWriter:
             for table, column, kind in _ADDED_COLUMNS:          # a database made before them
                 if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+            files = sorted(p.parent.glob(f"{p.stem}.*.spill"))
+            # a progress row whose file is gone (a stop between deleting the file and its row)
+            conn.executemany("DELETE FROM stream_spill_progress WHERE spill = ?",
+                             [(name,) for (name,) in conn.execute("SELECT spill FROM stream_spill_progress")
+                              if name not in {f.name for f in files}])
             conn.commit()
             progress = dict(conn.execute("SELECT spill, written_back FROM stream_spill_progress"))
         finally:
             conn.close()
         # spill files an earlier writer left beside the database: the oldest messages there are,
-        # written back first when the writer runs, oldest file first, each resuming after the
-        # records its progress row counts (no row: none of it was ever committed)
-        self._backlog = [_Spill.found(f, progress[f.name] if f.name in progress else 0)
-                         for f in sorted(p.parent.glob(f"{p.stem}.*.spill"))]
+        # written back first when the writer runs, oldest file first (each named for its oldest
+        # message), each resuming after the records its progress row counts (no row: none of it
+        # was ever committed)
+        self._backlog = [_Spill.found(f, progress[f.name] if f.name in progress else 0) for f in files]
         self.left_on_disk: list = []    # files this writer leaves at a stop or its death
         self.left_written_back = 0      # found files written back and verified
 
@@ -903,6 +940,7 @@ class CaptureWriter:
     def status(self) -> dict:
         """The writer's WriterStatus, as the heartbeat carries it."""
         with self._lock:
+            running = self.state in (WRITER_RECORDING, WRITER_BLOCKED)
             s = {"state": self.state, "rows_written": self.rows_written,
                  "failures": self.failures, "last_failure": self.last_failure,
                  "last_failure_ct": (ct_label(self.last_failure_ts)
@@ -914,10 +952,15 @@ class CaptureWriter:
                  "held_bytes": self._waiting_bytes,
                  "spill": self._spill.status() if self._spill is not None else None,
                  "spills_kept": [dict(k) for k in self.spills_kept],
-                 "left_on_disk": [s.left() for s in self._backlog] + [dict(k) for k in self.left_on_disk],
+                 # found files: being written back while the writer runs, else left on disk
+                 "left_on_disk": ([] if running else [s.left() for s in self._backlog])
+                                 + [dict(k) for k in self.left_on_disk],
+                 "writing_back": [s.left() for s in self._backlog] if running else [],
                  "left_files": len(self._backlog), "left_written_back": self.left_written_back,
                  "lost": self.lost, "lost_first_ts": self.lost_first_ts,
-                 "lost_last_ts": self.lost_last_ts,
+                 "lost_last_ts": self.lost_last_ts, "spill_lost": self.spill_lost,
+                 "spill_lost_first_ts": self._spill_lost_first, "spill_lost_last_ts": self._spill_lost_last,
+                 "torn": [dict(k) for k in self.torn],
                  "unrecorded": self.unrecorded, "error": self.error,
                  "error_ct": ct_label(self.error_ts) if self.error_ts is not None else None}
         line, cls = _record_line(s)
@@ -1034,6 +1077,10 @@ class CaptureWriter:
                         conn = self._open()
                     if self._backlog:      # the oldest messages: an earlier writer's files first
                         self._write_back(conn, self._backlog[0])
+                        if stopping and self._backlog:
+                            # a stop ends after this committed part: what is left stays on disk,
+                            # newer messages in memory behind it, for the next start
+                            self._leave_on_disk()
                     else:
                         for item in items:
                             self._batch.append((item, self._store(conn, item)))
@@ -1088,10 +1135,14 @@ class CaptureWriter:
                 size = _held_size(item)
                 if self._waiting_bytes + size <= self.hold_cap_bytes:
                     with self._lock:
+                        if not self._waiting:  # holding begins: older than any spill after it
+                            self._hold_began = time.time()
                         self._waiting.append(item)
                         self._waiting_bytes += size
                     continue
-                path = self.db_path.with_name(f"{self.db_path.stem}.{int(time.time() * 1000)}.spill")
+                # named after memory's file would be (its holding began earlier): names keep order
+                ms = max(int(time.time() * 1000), int(self._hold_began * 1000) + 1)
+                path = self.db_path.with_name(f"{self.db_path.stem}.{ms}.spill")
                 try:
                     spill = _Spill(path)
                 except OSError as e:
@@ -1110,9 +1161,12 @@ class CaptureWriter:
         ts = _received(item)
         with self._lock:
             self.lost += 1
+            self.spill_lost += 1
             if ts is not None:
                 self.lost_first_ts = ts if self.lost_first_ts is None else min(self.lost_first_ts, ts)
                 self.lost_last_ts = ts if self.lost_last_ts is None else max(self.lost_last_ts, ts)
+                self._spill_lost_first = ts if self._spill_lost_first is None else min(self._spill_lost_first, ts)
+                self._spill_lost_last = ts if self._spill_lost_last is None else max(self._spill_lost_last, ts)
         self._log_once_a_minute(("lost", type(error).__name__),
                                 "stream writer: a message the spill file could not take is lost: %s: %s",
                                 type(error).__name__, error)
@@ -1140,19 +1194,49 @@ class CaptureWriter:
                 with self._lock:
                     spill.committed(batch, end)
             if damaged is not None:        # every good record before it is written back
-                self._finish_spill(spill, conn, damaged)
+                self._finish_spill(spill, conn, damaged, rewrite=False)
             return
-        self._finish_spill(spill, conn, _verify(conn, spill))
+        mismatch = _verify(conn, spill)
+        if mismatch is not None:           # its rows are not as written: the next start writes it whole
+            self._finish_spill(spill, conn, mismatch, rewrite=True)
+        else:
+            # bytes after its last whole record are a message a crash cut off mid-append
+            # (operator 2026-10-06): its whole records are in and verified; the file is archived
+            self._finish_spill(spill, conn, None, rewrite=False, torn=spill.disk_bytes > spill.size)
 
-    def _finish_spill(self, spill: _Spill, conn: sqlite3.Connection, reason: "str | None") -> None:
+    def _finish_spill(self, spill: _Spill, conn: sqlite3.Connection, reason: "str | None", *,
+                      rewrite: bool, torn: bool = False) -> None:
         """A spill whose write-back is done: deleted when it verified (`reason` None), with its
-        progress row; else kept, with the reason and how far its write-back got."""
+        progress row; else kept, with the reason and how far its write-back got. A kept file whose
+        rows did not verify (`rewrite`) loses its progress row, so the next start writes it whole:
+        rows it duplicates are better than records it never wrote. A verified file with a message
+        a crash cut off after its last whole record (`torn`) is moved to SPILL_ARCHIVE beside the
+        database, not deleted, and that message counted lost at the file's best time for it; a
+        move that fails keeps the file, with why."""
         spill.close()
-        if reason is None:
+        if reason is None and torn:
+            when = spill.torn_time()
+            archive = spill.path.parent / SPILL_ARCHIVE / spill.path.name
+            try:
+                archive.parent.mkdir(exist_ok=True)
+                os.replace(spill.path, archive)
+            except OSError as e:
+                reason = (f"{spill.disk_bytes - spill.size} bytes after its last whole record; "
+                          f"moving it to {SPILL_ARCHIVE} failed: {type(e).__name__}: {e}")
+            else:
+                log.warning("stream writer: %s written back (%d messages) and verified; a message a "
+                            "crash cut off after them is lost (about %s); the file is in %s",
+                            spill.path.name, spill.messages, ct_label(when), archive)
+                with self._lock:
+                    self.lost += 1
+                    self.lost_first_ts = when if self.lost_first_ts is None else min(self.lost_first_ts, when)
+                    self.lost_last_ts = when if self.lost_last_ts is None else max(self.lost_last_ts, when)
+                    self.torn.append({"path": str(archive), "ts": when})
+        elif reason is None:
             os.remove(spill.path)
             log.info("stream writer: %s written back (%d messages) and verified; deleted",
                      spill.path, spill.messages)
-        else:
+        if reason is not None:
             log.error("stream writer: %s kept, %d of its %d records written back: %s",
                       spill.path, spill.written_back, spill.messages, reason)
         with self._lock:
@@ -1164,15 +1248,16 @@ class CaptureWriter:
             else:                          # a file an earlier writer left
                 self._backlog.remove(spill)
                 self.left_written_back += reason is None
-        if reason is None:
+        if reason is None or rewrite:
             conn.execute("DELETE FROM stream_spill_progress WHERE spill = ?", (spill.path.name,))
             conn.commit()
 
     def _leave_on_disk(self) -> None:
-        """At a stop while the database refuses writes: what is held in memory goes to a spill
-        file named for when the block began (older than the spill file's), and both stay."""
+        """At a stop while messages are held (the database refusing writes, or left files still to
+        write back): what is held in memory goes to a spill file named for when the holding began
+        (older than the spill file's), and every file stays."""
         if self._waiting:
-            began = self.error_ts if self.error_ts is not None else time.time()
+            began = self._hold_began
             try:
                 held = _Spill(self.db_path.with_name(f"{self.db_path.stem}.{int(began * 1000)}.spill"))
             except OSError as e:
