@@ -781,13 +781,14 @@ def _rows_of(item) -> list:
         return [("stream_write_failures", (item.topic, _as_sent(item.topic, item.msg)))]
     topic, msg = item
     kind = _kind(topic, msg)
-    if kind is None:
-        return []
-    kept = ("stream_write_failures", (topic, _as_sent(topic, msg)))
-    try:
-        return [(_TABLES[kind][0], _INSERTS[kind][1](msg)), kept]
-    except ROW_FAILURES:               # the writer kept it as sent
-        return [kept]
+    rows = []
+    if kind is not None:
+        kept = ("stream_write_failures", (topic, _as_sent(topic, msg)))
+        try:
+            rows = [(_TABLES[kind][0], _INSERTS[kind][1](msg)), kept]
+        except ROW_FAILURES:           # the writer kept it as sent
+            rows = [kept]
+    return rows
 
 
 def _verify(conn: sqlite3.Connection, spill: _Spill) -> "tuple[list, str | None]":
@@ -802,8 +803,9 @@ def _verify(conn: sqlite3.Connection, spill: _Spill) -> "tuple[list, str | None]
 
     def take(table: str, values: tuple) -> bool:
         cols = _ROW_COLUMNS[table]
-        spans = " OR ".join("(rowid > ?)" if hi is None else "(rowid > ? AND rowid <= ?)" for _lo, hi in spill.spans)
-        bounds = [b for lo, hi in spill.spans for b in ((lo[table],) if hi is None else (lo[table], hi[table]))]
+        # an open span (no end yet) binds its end as NULL: every rowid after its start
+        spans = " OR ".join(["(rowid > ? AND rowid <= COALESCE(?, rowid))"] * len(spill.spans))
+        bounds = [b for lo, hi in spill.spans for b in (lo[table], hi[table] if hi is not None else None)]
         for (rowid,) in conn.execute(f"SELECT rowid FROM {table} WHERE {' AND '.join(f'{c} IS ?' for c in cols)} "
                                      f"AND ({spans}) ORDER BY rowid", (*values, *bounds)):
             if (table, rowid) not in taken:
