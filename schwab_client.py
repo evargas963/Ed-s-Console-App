@@ -9,6 +9,7 @@ import re
 import socket
 import threading
 import time
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date
@@ -473,7 +474,11 @@ class SchwabAuthError(Exception):
         self.remediation = remediation
 
 
-_schwab_auth_failure_until_mono: float = 0.0
+#: each client's auth latch: after an OAuth failure on a client, its chain and quote requests are
+#: withheld until this monotonic time. The latch belongs to the client whose token failed (the
+#: daemon holds one for its life, capture.one_schwab_client); another client is not withheld.
+_auth_failure_until: "weakref.WeakKeyDictionary[object, float]" = weakref.WeakKeyDictionary()
+_auth_failure_lock = threading.Lock()
 _SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LATCH_SEC", "300"))  # caps-ok: OAuth/config timeout only
 
 
@@ -483,14 +488,16 @@ def _is_token_error(exc: BaseException) -> bool:
     return isinstance(exc, AuthlibBaseError)
 
 
-def _raise_schwab_auth_error(exc: BaseException) -> None:
-    global _schwab_auth_failure_until_mono
-    _schwab_auth_failure_until_mono = time.monotonic() + _SCHWAB_AUTH_FAILURE_LATCH_SEC
+def _raise_schwab_auth_error(client, exc: BaseException) -> None:
+    with _auth_failure_lock:
+        _auth_failure_until[client] = time.monotonic() + _SCHWAB_AUTH_FAILURE_LATCH_SEC
     raise SchwabAuthError(str(exc)) from exc
 
 
-def _schwab_auth_latched() -> bool:
-    return time.monotonic() < _schwab_auth_failure_until_mono
+def _schwab_auth_latched(client) -> bool:
+    with _auth_failure_lock:
+        until = _auth_failure_until.get(client)
+    return until is not None and time.monotonic() < until
 
 
 def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
@@ -504,7 +511,7 @@ def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
     # SAME request. When strike_range is given, strike_count is OMITTED entirely rather
     # than sent alongside it — exactly the combination proven live, never an untested
     # combination of both params on one request.
-    if _schwab_auth_latched():
+    if _schwab_auth_latched(client):
         raise SchwabAuthError(
             "Schwab auth latched after prior token failure — option chain withheld"
         )
@@ -521,7 +528,7 @@ def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
         resp = client.get_option_chain(ticker, **kwargs)
     except Exception as e:
         if _is_token_error(e):
-            _raise_schwab_auth_error(e)
+            _raise_schwab_auth_error(client, e)
         raise
     return resp
 
@@ -570,13 +577,13 @@ def _option_expiries(client, ticker: str) -> "tuple[int, list[date]]":
 def safe_get_quotes(client, symbols: "list[str]"):
     """One request to Schwab's quotes endpoint (/marketdata/v1/quotes) for `symbols`, the quote
     fields only; Schwab's response."""
-    if _schwab_auth_latched():
+    if _schwab_auth_latched(client):
         raise SchwabAuthError("Schwab auth latched after prior token failure — quotes withheld")
     try:
         return client.get_quotes(symbols, fields=["quote"])
     except Exception as e:
         if _is_token_error(e):
-            _raise_schwab_auth_error(e)
+            _raise_schwab_auth_error(client, e)
         raise
 
 

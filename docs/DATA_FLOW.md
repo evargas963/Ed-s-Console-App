@@ -55,10 +55,54 @@ from Schwab to the screen (daemon, console, page), are these:
 - **D3. The live path holds only the newest.** One current record per symbol (a quote merged
   field by field, Schwab sending only the fields that changed; a book or a bar replaced whole) and
   one current chain per ticker (replaced whole). A newer value replaces the older one at once;
-  nothing old waits in a queue. Memory is bounded by the number of symbols, never by how fast
-  Schwab sends. Enforced by: `tests/test_data_path_rules_v1.py`.
+  nothing old waits in a queue. The live path's memory is bounded by the number of symbols, never
+  by how fast Schwab sends. The one exception is the database writer's record of every message
+  (D4): while the database refuses writes it holds every message, in memory up to its cap and
+  past it on disk, growing with Schwab's rate. Enforced by: `tests/test_data_path_rules_v1.py`.
 - **D4. The database is the memory.** Its one writer records every message Schwab sends; nothing
-  else keeps old data. Enforced by: `tests/test_data_path_rules_v1.py`.
+  else keeps old data, except the writer's own spill files below that hold Schwab's messages
+  until they are written back: one kept because its write-back did not verify, and those a stop
+  (or the writer's death) left on disk. A message whose row is refused (a constraint, a value SQLite cannot
+  hold, a message without its table's shape) is kept as sent, with its error and time, in
+  `stream_write_failures`, and the writer goes on. While the database refuses every write
+  (locked past the writer's wait, full, read-only), the writer holds the messages in memory, in
+  order, and every `retry_sec` plus up to `batch_sec` (1.25 s at the defaults; a locked
+  database also its 30 s wait) opens a new connection and writes them again until it can; it reads
+  blocked with the refusal and how many messages it holds. The writer's state
+  (`stream_spine.WriterStatus`, counted at commit) rides the daemon's heartbeat to the header's
+  Record, a line the daemon serves (its times in Central Time). Owner: the writer thread
+  (`CaptureWriter.run`, started with the daemon). Production's stream decoded from the wire takes
+  about 1.1 KB of memory per message (production's mix of 2026-10-05 14:00:00-14:00:03 CT, held by
+  the writer, measured with tracemalloc), and Schwab sent 2,211.7 messages a second in all, so a
+  block holds about 2.5 MB more each second, about 9 GB an hour. So memory holds them up to a cap
+  (operator 2026-10-05: about 2 GB of memory, `HOLD_CAP_BYTES` = 2 GiB): each held message's
+  memory is counted once, when it is held (`stream_spine._held_size`: the message's own objects;
+  the test `test_the_hold_cap_holds_memory_to_its_size` fills the cap with the mix to within 5%
+  and finds the count within 5% of tracemalloc), and the Record shows it. Counting costs about
+  26 µs per option quote and 216 µs per book (about 6% of one core at 2,173 quotes a second),
+  only while holding, and it competes with the stream's event loop for Python's interpreter
+  lock. Every
+  newer message goes to a spill file beside the stream database (`stream_capture.<ms>.spill`,
+  append-only, each record a 4-byte length and the topic with the message as sent), behind the
+  older ones. When the database takes writes again the writer writes memory, then the spill
+  file, then what arrived meanwhile (the spill takes it, in order); how far each spill's
+  write-back got (how many records) is written in the same transaction as each part
+  (`stream_spill_progress`), so a later write-back can resume where it stopped (resuming at start
+  is not built; the operator's decision). It verifies the write-back (every record of the
+  file written back, rows per topic in every table, its first and last row as written) before
+  deleting the file; a write-back that does not verify keeps the file; a record that does not
+  decode (a damaged file) stops the write-back there, every good record before it written, and
+  keeps the file; the Record says so, and recording goes on. A message the
+  spill file cannot take (a full disk) is lost: counted, with the window it was received in
+  (first and last receive time, served as epoch seconds and shown in Central Time). A daemon
+  that stops while blocked leaves what it holds on disk (memory in a spill file named for when
+  the block began, older than the spill file's); at its next start the writer lists every spill
+  file beside the database on the Record, with its messages, size and how many are written
+  back, and does not write them back (the operator's open decision). Only an error outside these ends the thread: it reads
+  dead with the error; its spill file stays, listed as left on disk with its messages (they are
+  on disk, not counted not recorded); what it held in memory and what reaches it after are
+  counted not recorded until the daemon restarts.
+  Enforced by: `tests/test_data_path_rules_v1.py`, `tests/test_data_path_writer_failures_v1.py`.
 - **D5. Live while the market is open; the close stands while it is closed.** Every value carries
   Schwab's time and the newest by that time is the current one; a reconnect never replays an older
   value as live. In an open session (Pre-Market, RTH, After-Hours, `time_et.session_label`) a value
@@ -102,7 +146,8 @@ from Schwab to the screen (daemon, console, page), are these:
 |---|---|---|
 | Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten) and each ticker's newest chain; the board; the active ticker; the equity quotes the browser's price row is built from |
 | Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; every live screen's history, loaded from `ed_console.db` once at startup and then fed live (§2 D6): each ticker's 1-minute bars (`server._bars`, the newest 24,000) and level crosses (`server._crosses`), each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`, from the console's start) |
-| `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers |
+| `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers; every message a write refused, kept as sent with its error (`stream_write_failures`: the writer's refused rows, and each chain whose history write was refused); how far each spill file's write-back got (`stream_spill_progress`) |
+| `stream_capture.<ms>.spill` (beside `stream_capture.db`) | daemon's writer | while the database refuses writes, the held messages past the memory cap, in order; deleted once written back and verified, kept when the write-back does not verify or a stop leaves it (§2 D4) |
 | `ed_console.db` | console, and the daemon (the ticker board, the chain captures) | 1-minute bars, level crosses, the ticker board, chain captures and a morning chain per ticker — plus the tables of the deleted ML pipeline (dropped in P2-DB3) |
 
 ### 3.4 The journey of each kind of data
@@ -219,7 +264,12 @@ from Schwab to the screen (daemon, console, page), are these:
   every ticker's levels go stale with that reason (`terrain_staleness`, judged against two of
   the sweep's delivered rounds, carried on the heartbeat). The first chain of each ticker whose
   fetch began in a capture window is also written to the chain history (§4.2, `capture_slot`); a
-  failed history write is logged and the window's next fetch writes it, the delivered chain stands. The sweep
+  stored capture is never replaced (a second write of its ticker, expiry and time is refused,
+  `test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key`); a
+  history write that fails (that refusal included) is a write failure, never the chain's: the
+  chain as the sweep received it is handed to the daemon's writer, which keeps it in
+  `stream_write_failures` and counts it on its state (§2 D4); the delivered chain stands, the
+  sweep is not paused, and the window's next fetch writes the history. The sweep
   downloads through `schwab_client.fetch_full_chain`, the one place a chain enters, so every consumer
   (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
   the captures) reads the Greeks it sets. The Greeks (gamma, delta, theta, vega, rho,

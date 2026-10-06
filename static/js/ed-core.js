@@ -782,6 +782,13 @@
     if (!_priceWs || _priceWs.readyState !== 1) return;   // sent on open
     try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() })); } catch (e) {}
   }
+  // The daemon's database writer, as each heartbeat carries it: the line and its class are the
+  // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '—'.
+  function paintRecord(w) {
+    var el = document.getElementById('hRecord'); if (!el) return;
+    el.textContent = w ? w.line : '—';
+    el.className = w ? 'v ' + w.cls : 'v';
+  }
   function openPriceSocket() {
     var url = priceSocketUrl();
     if (typeof WebSocket === 'undefined' || !url) return;
@@ -793,6 +800,7 @@
     ws.onmessage = function (ev) {
       var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (msg && msg.type === 'symbols' && Array.isArray(msg.symbols)) { ingestIdentity(msg.symbols); return; }
+      if (msg && msg.type === 'feed') paintRecord(msg.feed && msg.feed.writer);
       if (!msg || !Array.isArray(msg.rows)) return;
       _priceUp = true; _lastPriceTs = Date.now();
       msg.rows.forEach(ingestPriceRow);
@@ -890,6 +898,7 @@
       feedCls: 'stale',
       feedLabel: connecting ? 'WAITING' : 'OFFLINE',
       ageLabel: connecting ? 'no push yet' : 'live push down' });
+    paintRecord(null);
   }
 
   // ================= CT clock =================

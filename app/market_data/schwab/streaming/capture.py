@@ -283,6 +283,7 @@ class Daemon:
         #: table, read at startup)
         self.board: "list[str]" = list(board or [])
         self.chains = None                  # the ChainSweep: its round time, its active ticker
+        self.writer = None                  # the CaptureWriter: its state rides the heartbeat
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
@@ -323,7 +324,8 @@ class Daemon:
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "refused": {k: dict(v) for k, v in self.refused.items() if v},
-                "health": self.health.report(now)}
+                "health": self.health.report(now),
+                "writer": self.writer.status() if self.writer is not None else None}
 
     async def sync(self) -> None:
         for svc, cmd, symbols in plan(self.all_wanted(), self.held, self.refused):
@@ -515,14 +517,18 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
             pass
 
 
-async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Event) -> None:
+async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Event, *,
+                     failures: "CaptureWriter") -> None:
     """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own threads, so the
     stream never waits on a chain; each chain part is published on the event loop, and the bus
-    keeps each ticker's newest whole chain (stream_spine.MessageBus._chain)."""
+    keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). A chain whose
+    history write fails is kept as sent by `failures`, the daemon's writer (its failures ride
+    the heartbeat)."""
     loop = asyncio.get_running_loop()
     halt = threading.Event()
     sweep = ChainSweep(db_path, daemon.board,
-                       lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg))
+                       lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg),
+                       failures=failures)
     daemon.chains = sweep
     sweep.set_active(daemon.active)                 # the ticker on screen, if the console said one
     workers = [loop.run_in_executor(None, sweep.work, schwab_client, halt) for _ in range(CHAIN_WORKERS)]
@@ -570,9 +576,10 @@ async def run() -> int:
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
     daemon = Daemon(bus, health, board=board_tickers(db_path))
+    daemon.writer = writer
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
-             asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop)),
+             asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]

@@ -28,6 +28,7 @@ from json_blob_codec import decode_json_blob, encode_json_blob
 from numeric_contract import schwab_number
 from production_universe import is_valid_production_ticker
 from schwab_client import fetch_full_chain, flatten_chain_contracts
+from stream_spine import CaptureWriter
 from time_et import (ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date,
                      session_label)
 
@@ -80,9 +81,9 @@ def persist_complete_chain_capture(
     source: str = "schwab_chain_strike_range_all",
 ) -> dict[str, Any]:
     """Append one COMPLETE single-expiry capture. A time series (PRIMARY KEY includes
-    ts_utc), not an idempotent once-a-day row — every successful live complete fetch
-    banks its own capture, so `latest_complete_chain_capture` always answers "what did
-    the vendor actually list, as of the most recent proof."
+    ts_utc): each capture time is its own set of rows, one per expiry. A stored capture is
+    never replaced: a second write of the same (ticker, expiry, ts_utc) raises sqlite3.IntegrityError and the
+    stored row stands.
 
     FAIL CLOSED: no contracts, or an unproven `completeness_basis`, writes NOTHING and
     says why — a persisted row with an empty or unverifiable completeness claim would be
@@ -105,7 +106,7 @@ def persist_complete_chain_capture(
     try:
         ensure_schema(conn)
         conn.execute(
-            "INSERT OR REPLACE INTO complete_chain_captures "
+            "INSERT INTO complete_chain_captures "
             "(ticker, expiry, ts_utc, spot, n_contracts, completeness_basis, chain_json, source) "
             "VALUES (?,?,?,?,?,?,?,?)",
             (tk, exp, ts, spot, len(clean), str(completeness_basis),
@@ -206,14 +207,17 @@ class ChainSweep:
     and its pause, one chain is fetched alone, its requests one at a time, until one lands. Each chain is published to
     the console in parts (chain_messages); a failure is published
     with Schwab's answer. The first fetch of a ticker begun inside a capture window
-    (capture_slot) is also written to the chain history."""
+    (capture_slot) is also written to the chain history; a history write that fails is a
+    write failure, never the chain's: the chain as the sweep received it is handed to
+    `failures` (the daemon's writer) to keep as sent."""
 
     def __init__(self, db_path: Path | str, board: "list[str]", publish: "callable",
-                 clock: "callable" = time.time) -> None:
+                 clock: "callable" = time.time, *, failures: "CaptureWriter") -> None:
         self.db_path = db_path
         self.board = list(board)        # the daemon's board, read at its start
         self.publish = publish          # (topic, msg) -> None, safe from any thread
         self.clock = clock              # when a fetch begins, and when its chain is received
+        self.failures = failures        # the daemon's writer: keeps a failed history write
         self._lock = threading.RLock()
         self._changed = threading.Condition(self._lock)
         self._active: str | None = None
@@ -292,8 +296,10 @@ class ChainSweep:
             self.publish(topic, msg)
         try:
             self._write_history(ticker, payload, contracts, started, now)
-        except Exception as e:  # noqa: BLE001 -- the chain was delivered; only its history write failed
-            log.warning("chain history for %s not written: %s: %s", ticker, type(e).__name__, e)
+        except Exception as e:  # noqa: BLE001 -- the chain is delivered; a failed history write is the writer's to keep and show
+            log.warning("chain history for %s not written, kept as sent: %s: %s",
+                        ticker, type(e).__name__, e)
+            self.failures.keep_failure(f"chain_history.{ticker}", payload, e, now)
         return True
 
     def _done(self, ticker: str, delivered: bool) -> None:

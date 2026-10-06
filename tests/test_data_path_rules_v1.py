@@ -146,7 +146,8 @@ def test_d1_a_quote_that_arrives_late_never_replaces_a_newer_one(connected):
 # ── D2. Everything Schwab sends is kept ─────────────────────────────────────────────────────
 
 def test_d2_every_field_and_schwabs_own_timestamp_reach_the_console():
-    """A CHART_EQUITY bar with every field Schwab's Streamer Guide lists (SEQUENCE, CHART_DAY
+    """A CHART_EQUITY bar with every field Schwab's Streamer API lists (docs/schwab/
+    schwab_streamer_api.pdf §5.1 CHART_EQUITY, fields 0-8: SEQUENCE, CHART_DAY
     included) and the frame's own timestamp: each reaches the console as sent. Stand-in: the
     bar's values are SPY's captured 1-minute bar; SEQUENCE and CHART_DAY are named stand-ins."""
     bars = json.loads((FX / "real_spy_1m_bars_2026_09_24_25.json").read_text(encoding="utf-8"))
@@ -355,7 +356,8 @@ def _et(s: str) -> float:
 
 def _paced(board: "list[str]", at: str) -> "tuple[ChainSweep, dict]":
     clock = {"now": _et(at)}
-    return ChainSweep("unused.db", board, lambda topic, msg: None, clock=lambda: clock["now"]), clock
+    return ChainSweep("unused.db", board, lambda topic, msg: None, clock=lambda: clock["now"],
+                      failures=CaptureWriter()), clock      # the test run's stream database
 
 
 def _handed_out(sweep: ChainSweep, now: float, delivered: bool = True) -> "list[str]":
@@ -702,16 +704,19 @@ class _ToLocal(httpx.BaseTransport):
 class _LocalSchwab:
     """Schwab's host, played by a local server. The token endpoint answers `token_answer`
     ("refreshed": _REFRESHED; "akamai": the captured 403 page); chains and quotes answer the
-    captured SPY chain and its quotes, or the captured 403 page while `refuse`. `refusals`
+    captured SPY chain and its quotes (or `chain`, another captured chain as Schwab sent it,
+    whose quotes are not captured), or the captured 403 page while `refuse`. `refusals`
     {(path, symbol): status} refuses a request to `path` for `symbol` (None: every symbol) with
     `status` (403: the captured page; anything else: induced, an empty body). `held` {symbol:
     Event}: a chain request for `symbol` is answered only once its event is set. Every request is
     recorded: (time, method, path, Authorization)."""
 
-    def __init__(self, token_answer: str = "refreshed", refuse: bool = False):
+    def __init__(self, token_answer: str = "refreshed", refuse: bool = False,
+                 chain: "dict | None" = None):
         self.token_answer, self.refuse = token_answer, refuse
         self.refusals: "dict[tuple[str, str | None], int]" = {}
         self.held: "dict[str, threading.Event]" = {}
+        payload = json.dumps(_spy_chain_payload() if chain is None else chain).encode()
         self.requests: list = []
         outer = self
 
@@ -749,7 +754,7 @@ class _LocalSchwab:
                 if status is not None:
                     return self._send(status, "application/json", b"")
                 if url.path == "/marketdata/v1/chains":
-                    return self._send(200, "application/json", json.dumps(_spy_chain_payload()).encode())
+                    return self._send(200, "application/json", payload)
                 symbols = parse_qs(url.query).get("symbols", [""])[0].split(",")
                 reply = {s: _SPY_1120_QUOTES[s] for s in symbols if s in _SPY_1120_QUOTES}
                 self._send(200, "application/json", json.dumps(reply).encode())
@@ -814,7 +819,7 @@ def test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuild
     schwab_client = capture.one_schwab_client(build)
     assert schwab_client() is schwab_client(), "the stream and the chains are handed one client"
     sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB", "CCC", "DDD", "EEE"],
-                       lambda topic, msg: None)
+                       lambda topic, msg: None, failures=CaptureWriter(tmp_path / "stream_capture.db"))
     halt = threading.Event()
     workers = [threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
                for _ in range(4)]
@@ -842,7 +847,8 @@ def test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until
     published = []
     now = 1790856000.0                                    # 2026-10-01 08:00 ET
     sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB", "CCC", "DDD"],
-                       lambda topic, msg: published.append(msg), clock=lambda: now)
+                       lambda topic, msg: published.append(msg), clock=lambda: now,
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"))
     client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
     try:
         assert sweep._next(now) == "AAA"
@@ -874,7 +880,8 @@ def test_after_a_refusal_the_probe_sends_one_request_at_a_time_and_stops_at_the_
     published = []
     now = 1790856000.0                                    # 2026-10-01 08:00 ET
     sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB", "CCC"],
-                       lambda topic, msg: published.append(msg), clock=lambda: now)
+                       lambda topic, msg: published.append(msg), clock=lambda: now,
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"))
     client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
 
     def paths(since: int) -> "list[str]":
@@ -917,7 +924,8 @@ def test_a_refused_expiration_list_pauses_the_sweep_and_starts_the_probe(tmp_pat
     published = []
     now = 1790856000.0                                    # 2026-10-01 08:00 ET
     sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB"],
-                       lambda topic, msg: published.append(msg), clock=lambda: now)
+                       lambda topic, msg: published.append(msg), clock=lambda: now,
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"))
     client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
     try:
         assert sweep._next(now) == "AAA"
@@ -942,7 +950,8 @@ def test_a_fetch_begun_before_a_refusal_does_not_end_the_probe(tmp_path):
     schwab.held["BBB"] = threading.Event()
     now = 1790856000.0                                    # 2026-10-01 08:00 ET
     sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB", "CCC", "DDD"],
-                       lambda topic, msg: None, clock=lambda: now)
+                       lambda topic, msg: None, clock=lambda: now,
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"))
     client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
     try:
         assert [sweep._next(now), sweep._next(now)] == ["AAA", "BBB"]
@@ -972,7 +981,8 @@ def test_a_later_refusal_never_shortens_the_pause(tmp_path):
     schwab.refusals[("/marketdata/v1/chains", "BBB")] = 403
     now = [1790856000.0]                                  # 2026-10-01 08:00 ET
     sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB"],
-                       lambda topic, msg: None, clock=lambda: now[0])
+                       lambda topic, msg: None, clock=lambda: now[0],
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"))
     client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
     try:
         start = now[0]
