@@ -573,16 +573,19 @@ class _Spill:
         self.last: "RowWritten | None" = None
         self._in = None
 
-    def append(self, record: bytes) -> None:
+    def append(self, record: bytes) -> "OSError | None":
+        """Append one record; the disk's refusal (OSError) is returned, the file cut back to its
+        whole records."""
         data = len(record).to_bytes(4, "big") + record
         try:
             if self.out.write(data) != len(data):
                 raise OSError(f"short write to {self.path}")
-        except OSError:
+        except OSError as e:
             self.out.truncate(self.size)   # no partial record stays behind the whole ones
-            raise
+            return e
         self.size += len(data)
         self.messages += 1
+        return None
 
     def read(self, n: int) -> list:
         """Up to `n` records from `read_at`: (message, end offset) each."""
@@ -983,10 +986,9 @@ class CaptureWriter:
                 with self._lock:
                     self._spill = spill
                 log.warning("stream writer: held messages past %d bytes go to %s", self.hold_cap_bytes, path)
-            try:
-                self._spill.append(_spill_record(item))
-            except OSError as e:
-                self._lose(item, e)
+            refused = self._spill.append(_spill_record(item))
+            if refused is not None:
+                self._lose(item, refused)
 
     def _lose(self, item, error: BaseException) -> None:
         """A message neither the database nor the spill file took: counted, with when it was
@@ -1037,16 +1039,21 @@ class CaptureWriter:
         file named for when the block began (older than the spill file's), and both stay."""
         if self._waiting:
             began = self.error_ts if self.error_ts is not None else time.time()
-            held = _Spill(self.db_path.with_name(f"{self.db_path.stem}.{int(began * 1000)}.spill"))
-            for item in self._waiting:
-                try:
-                    held.append(_spill_record(item))
-                except OSError as e:
+            try:
+                held = _Spill(self.db_path.with_name(f"{self.db_path.stem}.{int(began * 1000)}.spill"))
+            except OSError as e:
+                for item in self._waiting:
                     self._lose(item, e)
-            held.close()
-            with self._lock:
-                self.left_on_disk.append({"path": str(held.path), "messages": held.messages,
-                                          "written_back": 0})
+                held = None
+            if held is not None:
+                for item in self._waiting:
+                    refused = held.append(_spill_record(item))
+                    if refused is not None:
+                        self._lose(item, refused)
+                held.close()
+                with self._lock:
+                    self.left_on_disk.append({"path": str(held.path), "messages": held.messages,
+                                              "written_back": 0})
         with self._lock:
             if self._spill is not None:
                 self._spill.close()
