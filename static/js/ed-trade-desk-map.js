@@ -396,10 +396,12 @@
     if (c) {
       var q = S.quotes[st().key], tob = m && m.top_of_book;
       var cc = (S.events && S.events.cross_counts) || null;   // served for the window
-      // Schwab's values with Schwab's trade time, or the served outage reason; the feed state beside them
-      state(c, !q ? 'WAITING' : q.feed_live ? 'SESSION VOLUME' : 'FEED DOWN', q && q.feed_live ? '' : 'warn');
+      // Schwab's values with Schwab's trade time, or marked with the served not-live words; the
+      // feed state beside them
+      var qNotLive = !q ? null : S.pushDown ? S.pushDown : q.not_live;
+      state(c, !q ? 'WAITING' : S.pushDown ? 'OFFLINE' : q.feed_live ? 'SESSION VOLUME' : 'FEED DOWN', q && q.feed_live && !S.pushDown ? '' : 'warn');
       c.querySelector('.tdm-hero').innerHTML = q && q.total_volume != null ? fmtVol(q.total_volume) + ' <small>shares, Schwab TOTAL_VOLUME</small>' : '';
-      src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : q.outage ? esc(q.outage) : q.trade_time_ct != null ? 'last trade ' + esc(q.trade_time_ct) : 'no trade sent'));
+      src(c, 'Schwab LEVELONE · ' + (!q ? 'no price row yet' : qNotLive ? esc(qNotLive) : q.trade_time_ct != null ? 'last trade ' + esc(q.trade_time_ct) : 'no trade sent'));
       c.querySelector('.tdm-rows').innerHTML =
         row('Last trade size', q && q.last_size != null ? fmtVol(q.last_size) : '—') +
         row('Top of book', m && m.top_outage ? esc(m.top_outage) : tob ? (tob.bid_size != null ? fmtVol(tob.bid_size) : '—') + ' × ' + (tob.ask_size != null ? fmtVol(tob.ask_size) : '—') : '—') +
@@ -439,7 +441,8 @@
         (im && im.dte_used != null ? row('Move from', 'first expiry ≥1 day out (' + num(im.dte_used, 0) + 'd)') : '') +
         row('ATR daily', t && t.atr_daily != null ? num(t.atr_daily) : esc((t && t.atr_daily_reason) || '—')) +
         row('ATR 15m', t && t.atr_15m != null ? num(t.atr_15m) : esc((t && t.atr_15m_reason) || '—')) +
-        row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') : 'waiting for the VIX stream');
+        row('VIX', vix && vix.spot != null ? num(vix.spot) + (vix.chg_pct != null ? ' (' + (vix.chg_pct >= 0 ? '+' : '') + num(vix.chg_pct) + '%)' : '') +
+          (S.pushDown ? ' · ' + esc(S.pushDown) : vix.not_live ? ' · ' + esc(vix.not_live) : '') : 'waiting for the VIX stream');
     }
     paintCardCharts();
   }
@@ -496,7 +499,8 @@
     var host = $('tdmTrust'); if (!host) return;
     var q = S.quotes[st().key], t = S.terrain, m = S.micro, L = S.levels;
     var h = '';
-    h += q ? pill('PRICE', q.feed_live ? 'LIVE' : 'FEED DOWN', q.feed_live ? 'ok' : 'bad', 'daemon price socket')
+    h += q && S.pushDown ? pill('PRICE', 'OFFLINE', 'bad', S.pushDown)
+      : q ? pill('PRICE', q.feed_live ? 'LIVE' : 'FEED DOWN', q.feed_live ? 'ok' : 'bad', q.not_live ? q.not_live : 'daemon price socket')
       : pill('PRICE', 'WAITING', 'warn', 'no price row yet for this symbol');
     h += m === undefined ? pill('BOOK', '…', '') : !m ? pill('BOOK', 'FAILED', 'bad') : m.status === 'no_book' ? pill('BOOK', 'NONE', 'warn', 'no ' + m.venue)
       : pill('BOOK', m.ages && m.ages.book_stale === false ? age(m.ages.book_age_sec) : m.ages && m.ages.book_stale ? 'STALE' : 'AGE UNKNOWN',
@@ -523,8 +527,11 @@
     window.EdShell.marketContext().forEach(function (c) {   // the served context symbols
       var el = $('tdmIdx' + c.display); if (!el) return;
       var r = S.quotes[c.key];
-      el.title = r ? '' : 'waiting for the ' + c.display + ' stream';
-      el.innerHTML = '<span>' + c.display + '</span><b>' + (r && r.spot != null ? num(r.spot) : '—') + '</b>' +
+      var notLive = !r ? null : S.pushDown ? S.pushDown : r.not_live;
+      el.title = !r ? 'waiting for the ' + c.display + ' stream' : notLive ? notLive : '';
+      el.classList.toggle('not-live', !!notLive);
+      el.innerHTML = '<span>' + c.display + '</span><b>' + (r && r.spot != null ? num(r.spot) : '—') +
+        (notLive ? ' · NOT LIVE' : '') + '</b>' +
         (r && r.chg_pct != null ? '<em class="' + (r.chg_pct >= 0 ? 'up' : 'dn') + '">' + (r.chg_pct >= 0 ? '+' : '') + num(r.chg_pct) + '%</em>' : '');
     });
   }
@@ -561,14 +568,22 @@
     // Every streamed price row: header + indices. The chart moves only on a completed bar.
     window.addEventListener('ed:quote_tick', function (e) {
       var q = e.detail; if (!q || !q.ticker) return;
-      S.quotes[q.ticker] = q;
+      S.quotes[q.ticker] = q; S.pushDown = null;
       if (!onDesk()) return;
       paintHeader();
       if (q.ticker === st().key) {
         paintTrust();
-        if (S.chart) S.chart.setLivePrice(q.spot, q.trade_age_sec);
+        if (S.chart) S.chart.setLivePrice(q.spot, q.trade_age_sec, q.not_live);
         paintCards();   // the Order Flow card's Schwab fields, on every row
       }
+    });
+    // The page's price push is down: every row stays, marked with the page's words, until the next
+    document.addEventListener('ed:price_push_down', function (e) {
+      S.pushDown = e.detail.words;
+      if (!onDesk()) return;
+      paintHeader(); paintTrust(); paintCards();
+      var q = S.quotes[st().key];
+      if (S.chart && q) S.chart.setLivePrice(q.spot, q.trade_age_sec, S.pushDown);
     });
     $('tdmQueue').addEventListener('click', function (e) {
       var b = e.target.closest('[data-q]'); if (b) selectItem(b.getAttribute('data-q'), true);

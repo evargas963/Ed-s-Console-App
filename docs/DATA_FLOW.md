@@ -33,8 +33,8 @@ operator.
   Enforced by: D4 and D6 below.
 - At startup the in-memory state is loaded once from the latest stored values, so a restart, a
   weekend or the close shows the values as of the close with their time, the session shown
-  Closed (§2 D5); no value is labeled past.
-  Enforced by: `tests/test_one_levels_producer_v1.py` (the stored load) and D5 below.
+  Closed.
+  Enforced by: `tests/test_one_levels_producer_v1.py` (the stored load).
 
 ## 2. The rules
 
@@ -103,16 +103,12 @@ from Schwab to the screen (daemon, console, page), are these:
   on disk, not counted not recorded); what it held in memory and what reaches it after are
   counted not recorded until the daemon restarts.
   Enforced by: `tests/test_data_path_rules_v1.py`, `tests/test_data_path_writer_failures_v1.py`.
-- **D5. Live while the market is open; the close stands while it is closed.** Every value carries
-  Schwab's time and the newest by that time is the current one; a reconnect never replays an older
-  value as live. In an open session (Pre-Market, RTH, After-Hours, `time_et.session_label`) a value
-  is current only while its feed delivers it (`live_market_plane.feed_live_for`); a feed down in
-  session is an outage: the value is absent and the screen shows the reason
-  (`live_market_plane.outage`, the one rule; the price row's `outage`, the books' `top_outage`;
-  a contract's streamed Greeks stop pricing over the chain, `server._current_stream_greeks`).
-  While Closed, the values as of the close stand, the feed up or down, with the session shown as
-  Closed, until the next session opens. No value is labeled "past" (`AGENTS.md` rule 5).
-  Enforced by: `tests/test_data_path_rules_v1.py`.
+- **D5. A feed outage.** During a feed outage, the last value stays on screen, clearly marked not
+  live, with its time and age. Nothing from another source substitutes for it. Any value
+  calculated from it is marked not live as well, with the age of its oldest input.
+  Enforced by: `tests/test_data_path_rules_v1.py` (the price row),
+  `tests/e2e/console-gamma-heatmap.spec.js` (the page through a closed or silent price socket);
+  the values calculated from a price that is not live — ENF-22.
 - **D6. No live screen reads the database.** Every live route serves from memory; the database
   is read at startup, after the close and for research only.
   Enforced by: `tests/test_data_path_rules_v1.py`.
@@ -135,7 +131,7 @@ from Schwab to the screen (daemon, console, page), are these:
 | Schwab → daemon | Schwab REST | full option chains, each with its contracts' quotes (their Greeks, §3.4 Option chain) |
 | daemon → console | local WebSocket 127.0.0.1:8799 | each topic's current record the moment it changes (a quote merged field by field with each field's times in `field_ts`; a book, bar or news item whole), on connect every current record; never an older value behind a newer one (§2 D1, D3); each ticker's newest whole chain, in parts of 500 contracts (`chain.TK`: part i of n, with its fetch time; a failed fetch with Schwab's answer) |
 | console → daemon | same socket | the "wanted" list, every symbol per Schwab service, no cap: the equities its screens show (the ticker on screen, the header's context `streaming.MARKET_CONTEXT_SYMBOLS`, the browser's watchlist; the daemon streams the board itself), the books of the ticker on screen, `active`: the ticker on screen (`push_changes.on_screen`, the newest open page's; the chain sweep's active ticker; when no page shows a ticker, none), and the option contracts its views ask for (the primary contract only from a chain the console holds, refused otherwise (409)). Sent on every connect and the moment it changes; the daemon compares it with what Schwab holds at once. The daemon holds the last list it was sent, in memory only, with the connection that sent it: when that connection ends (another connection ending leaves it), and after the daemon's restart, it streams the board alone until the console sends the list again |
-| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, symbols held and refused per service, the board, the chain sweep's last round time, health). The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
+| daemon → browser | local WebSocket :8800 | on each subscribe, what every asked-for symbol is (its key, e.g. `$SPX`, and display name `SPX`, from `instrument_identity`); then the finished price row per symbol, on every change, plus a heartbeat every second: the daemon's whole status (Schwab socket, symbols held and refused per service, the board, the chain sweep's last round time, health). The beat waits on no browser: one still taking its last beat is skipped for this one, and one that has taken none for the liveness limit (`live_ui.BROWSER_SILENCE_SEC` = `live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`, 3 s, the same limit the page calls the push down by) is closed. The page matches rows by that key and shows that name; the market-context symbols come in the page (meta `ed-market-context`, from `streaming.MARKET_CONTEXT_SYMBOLS`) |
 | daemon → console | the same :8800 push | the same price rows, for every equity the daemon holds on Schwab (`streaming._rows_wanted`: the heartbeat's held LEVELONE_EQUITIES, the console's wanted ones and the board as Schwab accepted them): the console's only live price, and the daemon's heartbeat, the console's one record of the daemon's status. It carries no chain, so a beat never waits behind one (measured 2026-10-02 on the 8799 push: DELL read feed down in 25 of 60 samples on a healthy feed while the console worked through chain parts) |
 | console → browser | HTTP `/api/*` | everything else, on request |
 | console → browser | Server-Sent Events (`/api/changes`) | which of the ticker's values changed (`levels`, `chain`, `flow`, `liquidity`) and the session label |
@@ -227,7 +223,7 @@ from Schwab to the screen (daemon, console, page), are these:
   workers fetch every board ticker in turn without end. Once Closed (from 20:00 ET, on a
   weekend or a holiday, and when the daemon starts while Closed) every board ticker is fetched
   once, its close values; a fetch that fails is tried again after `FAILED_PAUSE_SEC`. Then no
-  chain is requested until the next session opens: the close values stand (D5), and a ticker
+  chain is requested until the next session opens: the close values stand (Live, below), and a ticker
   put on screen while Closed is not fetched — it shows the close values already fetched, or,
   with none, its levels absent with the reason (`server.terrain_staleness`: while Closed,
   levels from a chain fetched after the close are current however old; older ones read "the
@@ -349,8 +345,21 @@ from Schwab to the screen (daemon, console, page), are these:
   moving number is the signal). The page sends the scope, its pan and the columns it fits; it
   picks, counts and compares nothing.
 - **Live.** Every value is the last one Schwab sent, with Schwab's own time (the price with its
-  TRADE_TIME, `trade_time_ct`), under §2 D5: in an open session a feed down is an outage and the
-  values are absent with its reason; while Closed the values as of the close stand. Whether
+  TRADE_TIME, `trade_time_ct`); the newest by Schwab's time is the current one and a reconnect
+  never replays an older value as live. Under §2 D5: in an open session (Pre-Market, RTH,
+  After-Hours, `time_et.session_label`) a feed down is an outage (`live_market_plane.outage`, the
+  one rule): the price row keeps Schwab's last values, marked with the served words
+  `not_live` (the reason, the last trade's CT time and its age; `live_price_rows.price_row`), and
+  every surface that shows them (header, watchlist, Key Levels spot, the charts' LAST line, the
+  Trade Desk) shows that mark. While the page's own price socket is closed or silent past the
+  liveness limit (meta `ed-live-silence-ms`), the header keeps the ticker's last row marked
+  OFFLINE with its trade time and age; the watchlist, Key Levels' spot, the charts' LAST line,
+  the Trade Desk and the Record line keep theirs, marked OFFLINE with the age of the last push
+  (`ed:price_push_down`), until the next row. Not yet
+  built (ENF-22): the console's one spot (`server.resolve_spot`) and what is calculated from it
+  (levels, the gamma surface, zones), the books' tops (`top_outage`) and a contract's streamed
+  Greeks (`server._current_stream_greeks`) are still absent with the outage reason. While Closed
+  the values as of the close stand, the feed up or down, until the next session opens. Whether
   the feed is delivering a symbol now is stated beside its values: the
   daemon's heartbeat, sent every second, is under 3 s old
   (`live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`), says the Schwab socket is open, and holds the

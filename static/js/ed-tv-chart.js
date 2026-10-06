@@ -796,12 +796,13 @@
         var el = opts.fullscreenEl || host;
         if (document.fullscreenElement) document.exitFullscreen(); else if (el.requestFullscreen) el.requestFullscreen();
       },
-      // The live price row's LAST_PRICE and its served age since the Schwab trade; null when the
-      // price is not live (the line is removed, never left at an old price).
-      setLivePrice: function (price, ageSec) {
+      // The price row's LAST_PRICE and its served age since the Schwab trade; null when the row has
+      // no price (the line is removed). A price that is not live (the row's served `not_live`)
+      // stays, marked NOT LIVE in the stale colour.
+      setLivePrice: function (price, ageSec, notLive) {
         if (price == null) { if (liveLine) { candles.removePriceLine(liveLine); liveLine = null; } return; }
-        var opts = { price: price, color: P.accent, lineWidth: 1, lineStyle: 2, axisLabelVisible: true,
-          title: 'LAST' + (ageSec != null ? ' · ' + Math.round(ageSec) + 's' : '') };
+        var opts = { price: price, color: notLive ? P.stale : P.accent, lineWidth: 1, lineStyle: 2, axisLabelVisible: true,
+          title: (notLive ? 'NOT LIVE · ' : '') + 'LAST' + (ageSec != null ? ' · ' + Math.round(ageSec) + 's' : '') };
         if (liveLine) liveLine.applyOptions(opts); else liveLine = candles.createPriceLine(opts);
       },
       state: function () {

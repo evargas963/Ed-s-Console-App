@@ -8,9 +8,8 @@ no database. Proves:
   * the row is the one producer's row (live_price_rows.price_row): spot, feed verdict,
     Schwab trade age, and no bar (charts show Schwab's completed bars only);
   * a symbol nobody subscribed to is never sent;
-  * the feed verdict rides every beat: a closed Schwab socket reads feed_live False within one
-    beat, with no message needed from Schwab; in session the values go absent with the outage
-    reason, while Closed the values Schwab last sent stand (docs/DATA_FLOW.md §2 D5);
+  * a symbol the daemon does not hold reads feed_live False (a closed Schwab socket within one
+    beat: tests/test_live_ui_beat_survives_v1.py);
   * a slow browser gets the newest row per symbol, never a backlog of stale ones;
   * shutdown is not held up by a connected browser.
 """
@@ -184,26 +183,6 @@ def _clock_from(monkeypatch, start: float) -> None:
     """The wall clock running from `start` (the session the test is in); time still passes."""
     real, offset = time.time, start - time.time()
     monkeypatch.setattr(time, "time", lambda: real() + offset)
-
-
-@pytest.mark.parametrize("start, served", [(_RTH, (None, None)),
-                                           (_CLOSED, (583.41, pytest.approx(583.40)))],
-                         ids=["rth", "closed"])
-def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(monkeypatch, start, served):
-    """Nothing from Schwab; only the beat knows (docs/DATA_FLOW.md §2 D5): during RTH the row's
-    values are absent with the outage reason; while Closed the values Schwab last sent stand."""
-    _clock_from(monkeypatch, start)
-
-    async def body(bus, ws, feed, stats):
-        await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
-        bus.publish("quote.SPY", _trade("SPY", 583.41, time.time()))
-        await _next_row(ws, "SPY", lambda r: r["feed_live"] is True)
-        feed.open = False
-        msg, row = await _next_row(ws, "SPY", lambda r: r["feed_live"] is False, timeout=1.0)
-        assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
-        assert (row["spot"], row["bid"]) == served
-        assert (row["outage"] is None) == (served[0] is not None)
-    asyncio.run(_run(body))
 
 
 def test_a_symbol_the_daemon_does_not_hold_reads_feed_not_live(monkeypatch):

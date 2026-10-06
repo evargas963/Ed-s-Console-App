@@ -27,6 +27,10 @@ Protocol (JSON text frames):
 Delivery is latest-value-per-symbol per client (conflation, as Lightstreamer MERGE /
 LSEG conflated feeds do): a slow browser gets the newest row for each symbol it is behind
 on, never a queue of stale ones, and never loses a symbol's only update.
+
+The beat never waits on a browser: one still taking its last beat is skipped for this one, and
+one that has taken no beat for BROWSER_SILENCE_SEC (the limit after which the page and the
+console call the push down) is closed.
 """
 from __future__ import annotations
 
@@ -49,17 +53,22 @@ LIVE_UI_HOST = os.environ.get("ED_LIVE_UI_HOST", "0.0.0.0")  # caps-ok: operator
 LIVE_UI_PORT = int(os.environ.get("ED_LIVE_UI_PORT", "8800"))  # caps-ok: operator port config with its declared default, not market data
 #: feed verdict + row beat cadence (the heartbeat that keeps "live" honest)
 HEARTBEAT_SEC = 1.0
+#: a browser that has taken no beat for this long is not reading and is closed: the one liveness
+#: limit, the same one the page (meta ed-live-silence-ms) and the console call the push down by
+BROWSER_SILENCE_SEC = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "identity", "wake")
+    __slots__ = ("ws", "symbols", "pending", "identity", "wake", "beat", "beat_taken")
 
-    def __init__(self, ws) -> None:
+    def __init__(self, ws, now: float) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
         self.pending: set[str] = set()      # symbols changed since the last send
         self.identity: list[dict] | None = None   # the last subscribe's answer, not yet sent
         self.wake = asyncio.Event()
+        self.beat: asyncio.Task | None = None     # the beat this browser is still taking
+        self.beat_taken = now                     # when it last took one (connecting counts)
 
 
 class LiveUiServer:
@@ -148,7 +157,7 @@ class LiveUiServer:
             c.wake.set()
 
     async def serve_client(self, ws) -> None:
-        c = _Client(ws)
+        c = _Client(ws, time.monotonic())
         self.clients.add(c)
         self.stats["clients"] = len(self.clients)
         pump = asyncio.create_task(self._pump(c))
@@ -160,11 +169,21 @@ class LiveUiServer:
                     e = t.exception()
                     log.info("live ui client ended: %s: %s", type(e).__name__, e)
         finally:
-            for t in (pump, read):
+            tasks = [t for t in (pump, read, c.beat) if t is not None]
+            for t in tasks:
                 t.cancel()
-            await asyncio.gather(pump, read, return_exceptions=True)
+            await asyncio.gather(*tasks, return_exceptions=True)
             self.clients.discard(c)
             self.stats["clients"] = len(self.clients)
+
+    async def _beat_one(self, c: _Client, payload: dict) -> None:
+        """One browser's beat, on its own task: the beat loop never waits for it."""
+        try:
+            await self._send(c, payload)
+            c.beat_taken = time.monotonic()
+        except Exception as e:  # noqa: BLE001 -- logged; the other browsers' beats go out
+            self.stats["beat_send_failures"] += 1
+            log.warning("live ui beat to one browser: %s: %s", type(e).__name__, e)
 
     async def beat_loop(self) -> None:
         while True:
@@ -173,23 +192,20 @@ class LiveUiServer:
             except Exception as e:  # noqa: BLE001 -- a failed beat leaves the feed unproven (it ages out)
                 log.warning("live ui heartbeat: %s: %s", type(e).__name__, e)
                 feed = None
+            now = time.monotonic()
             for c in list(self.clients):
-                # one browser can neither stop the beat nor hold it: an error is logged and the
-                # next browser still gets its beat; a browser that does not take its beat within
-                # a beat is not reading and is closed (2026-09-26: the beat stopped for every
-                # browser and the whole screen read "no live feed" on a healthy Schwab socket)
-                try:
-                    rows = [live_price_rows.price_row(s) for s in sorted(c.symbols)]
-                    await asyncio.wait_for(
-                        self._send(c, {"type": "feed", "feed": feed, "rows": rows}),
-                        timeout=HEARTBEAT_SEC)
-                except asyncio.TimeoutError:
-                    self.stats["beat_send_failures"] += 1
-                    log.warning("live ui: a browser stopped reading; closing it")
-                    asyncio.create_task(c.ws.close())
-                except Exception as e:  # noqa: BLE001 -- logged; the other browsers' beats go out
-                    self.stats["beat_send_failures"] += 1
-                    log.warning("live ui beat to one browser: %s: %s", type(e).__name__, e)
+                if c.beat is not None and not c.beat.done():
+                    # still taking its last beat: skipped for this one, nothing queued behind it
+                    if now - c.beat_taken >= BROWSER_SILENCE_SEC:
+                        self.stats["beat_send_failures"] += 1
+                        log.warning("live ui: a browser took no beat for %.1f s; closing it",
+                                    now - c.beat_taken)
+                        self.clients.discard(c)
+                        asyncio.create_task(c.ws.close())
+                    continue
+                rows = [live_price_rows.price_row(s) for s in sorted(c.symbols)]
+                c.beat = asyncio.create_task(
+                    self._beat_one(c, {"type": "feed", "feed": feed, "rows": rows}))
             await asyncio.sleep(HEARTBEAT_SEC)
 
 

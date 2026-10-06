@@ -584,6 +584,7 @@ app.mount("/static", _RevalidateStaticFiles(directory=str(static_dir)), name="st
 # ─────────────────────────────────────────────────────────────────────────────
 
 _LIVE_UI_PORT_META = '<meta name="ed-live-ui-port" content="">'
+_LIVE_SILENCE_META = '<meta name="ed-live-silence-ms" content="">'
 _MARKET_CONTEXT_META = '<meta name="ed-market-context" content="">'
 _SCOPES_META = '<meta name="ed-scopes" content="">'
 _STREAM_WORDS_META = '<meta name="ed-stream-words" content="">'
@@ -593,7 +594,8 @@ SCOPE_LABELS = {"auto": "Auto", "wider": "Wider", "all": "All available"}
 
 def _with_live_ui_port(html: str) -> str:
     """Tell the page where the capture daemon's price socket listens (the same
-    ED_LIVE_UI_PORT the daemon binds), which market-context symbols it always shows
+    ED_LIVE_UI_PORT the daemon binds) and how long it may be silent before the page calls it
+    down (lmp.FEED_HEARTBEAT_MAX_AGE_SEC, the one liveness limit), which market-context symbols it always shows
     (streaming.MARKET_CONTEXT_SYMBOLS, each with its display name), the scopes its strike
     windows take (terrain_engine.SCOPES, each with its word) and the words for each streaming
     state (STREAM_WORDS). An unfilled page opens no price socket -- its prices read UNAVAILABLE
@@ -604,6 +606,8 @@ def _with_live_ui_port(html: str) -> str:
     scopes = json.dumps([{"key": s, "label": SCOPE_LABELS[s]} for s in SCOPES])
     return (html.replace(_LIVE_UI_PORT_META,
                          f'<meta name="ed-live-ui-port" content="{int(LIVE_UI_PORT)}">', 1)
+            .replace(_LIVE_SILENCE_META, '<meta name="ed-live-silence-ms" '
+                     f'content="{int(lmp.FEED_HEARTBEAT_MAX_AGE_SEC * 1000)}">', 1)
             .replace(_MARKET_CONTEXT_META,
                      f'<meta name="ed-market-context" content="{html_escape(context)}">', 1)
             .replace(_SCOPES_META, f'<meta name="ed-scopes" content="{html_escape(scopes)}">', 1)

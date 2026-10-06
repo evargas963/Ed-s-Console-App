@@ -803,11 +803,59 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hChgReg')).toHaveText('REG —');
   });
 
-  test('a price that stops arriving is withdrawn within seconds (the daemon beats every 1 s)', async ({ page }) => {
-    await mockPriceSocket(page, [priceRow('SPY', 601.23)]);   // one row, then silence
+  // AGENTS.md rule 5: during an outage the last value stays, marked not live with its time and age.
+  // STAND-IN for the served trade time: the row's trade_ts is 2 s before it is sent, its
+  // trade_time_ct the server formatter's words for a time.
+  function tradedRow() {
+    return priceRow('SPY', 601.23, { trade_ts: Date.now() / 1000 - 2, trade_time_ct: 'Tue 10/06 09:31 AM CT' });
+  }
+  test('a price that stops arriving stays, marked OFFLINE with its trade time and age (the daemon beats every 1 s)', async ({ page }) => {
+    await mockPriceSocket(page, [tradedRow()]);   // one row, then silence
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#hPx')).toHaveText('601.23');
-    await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE', { timeout: 6000 });
+    await expect(page.locator('#hFeed')).toHaveText('OFFLINE', { timeout: 6000 });
+    await expect(page.locator('#hPx')).toHaveText('601.23');
+    await expect(page.locator('#hAge')).toHaveText(/^live push down · last trade Tue 10\/06 09:31 AM CT, \d+ s ago$/);
+  });
+
+  test('a closed price socket keeps the header on the last price, marked OFFLINE with its age, never blank', async ({ page }) => {
+    // the daemon's socket: the first connection answers with one beat (the writer status and the
+    // row), then closes; every reconnect is refused, as a daemon that went away
+    let opened = 0;
+    await page.routeWebSocket(/:1\/$/, (ws) => {
+      if (opened++ > 0) { ws.close(); return; }
+      ws.onMessage((m) => {
+        let req; try { req = JSON.parse(String(m)); } catch (e) { return; }
+        if (!req || req.op !== 'subscribe' || !Array.isArray(req.symbols)) return;
+        ws.send(JSON.stringify({ type: 'symbols', symbols: req.symbols.map((s) => ({ requested: s, key: s, display: s })) }));
+        ws.send(JSON.stringify({ type: 'feed', feed: { writer: { line: 'recording', cls: 'pos' } }, rows: [tradedRow()] }));
+        setTimeout(() => ws.close(), 500);
+      });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('601.23');
+    await expect(page.locator('#hRecord')).toHaveText('recording');
+    // from the close until well past the page's silence limit, the price never blanks
+    const seen = new Set();
+    const end = Date.now() + 5000;
+    while (Date.now() < end) {
+      seen.add(await page.locator('#hPx').textContent());
+      await page.waitForTimeout(100);
+    }
+    expect([...seen]).toEqual(['601.23']);
+    await expect(page.locator('#hFeed')).toHaveText('OFFLINE');
+    await expect(page.locator('#hAge')).toHaveText(/^live push down · last trade Tue 10\/06 09:31 AM CT, \d+ s ago$/);
+    await expect(page.locator('#hRecord')).toHaveText(/^OFFLINE · last beat \d+ s ago · recording$/);
+  });
+
+  test('a row whose feed is down in session keeps its price, marked with the served not-live words', async ({ page }) => {
+    const words = 'NOT LIVE · Schwab LEVELONE_EQUITIES feed down during RTH · last trade Tue 10/06 09:31 AM CT, 12 s ago';
+    await mockPriceSocket(page, [priceRow('SPY', 601.23, { feed_live: false, not_live: words,
+      outage: 'Schwab LEVELONE_EQUITIES feed down during RTH', trade_time_ct: 'Tue 10/06 09:31 AM CT' })]);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#hPx')).toHaveText('601.23');
+    await expect(page.locator('#hFeed')).toHaveText('FEED DOWN');
+    await expect(page.locator('#hAge')).toHaveText(words);
   });
 
   test('a watchlist symbol paints from its own row on the same socket', async ({ page }) => {

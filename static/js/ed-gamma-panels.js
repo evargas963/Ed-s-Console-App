@@ -554,11 +554,22 @@
   document.addEventListener('ed:ticker', function () { resetStrikeDetailForTickerChange(); loadAll(); });
   document.addEventListener('ed:expiry', loadLevels);   // the ratio is scoped to the selected expiry
   // Key Levels' Spot is the header's price row, painted on every push (the daemon's
-  // live_price_rows.price_row), never the levels fetch's copy
+  // live_price_rows.price_row), never the levels fetch's copy. A value that is not live keeps its
+  // number, marked with the row's served words, or the page's while its price push is down.
+  var _klRow = null;
+  function paintKlSpot(q, notLive) {
+    txt('klSpot', q.spot_disp != null ? q.spot_disp + (notLive ? ' · NOT LIVE' : '') : '—');
+    var ks = document.getElementById('klSpot');
+    if (ks) { ks.classList.toggle('not-live', !!notLive); ks.title = notLive ? notLive : ''; }
+  }
   window.addEventListener('ed:quote_tick', function (e) {
     var q = e.detail;
     if (!q || q.ticker !== ((window.EdShell && window.EdShell.getState()) || {}).key) return;   // the served key
-    txt('klSpot', q.spot_disp != null ? q.spot_disp : '—');
+    _klRow = q;
+    paintKlSpot(q, q.not_live);
+  });
+  document.addEventListener('ed:price_push_down', function (e) {
+    if (_klRow && _klRow.ticker === window.EdShell.getState().key) paintKlSpot(_klRow, e.detail.words);
   });
   document.addEventListener('ed:view', loadAll);
   // a new scope is a new window: every per-strike panel re-reads it from the server

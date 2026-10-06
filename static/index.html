@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- the capture daemon's price socket port: filled in by the console (ED_LIVE_UI_PORT) -->
 <meta name="ed-live-ui-port" content="">
+<!-- how long the price socket may be silent before the page calls it down: filled in by the console -->
+<meta name="ed-live-silence-ms" content="">
 <!-- the market-context symbols the page always shows, [{key, display}]: filled in by the console -->
 <meta name="ed-market-context" content="">
 <!-- the strike-window scopes, [{key, label}]: filled in by the console -->
@@ -160,6 +162,8 @@
      message text (below) and a persistent border on the list, not in dimmed numbers. */
   .wl.wl-degraded{outline:1px dashed var(--ed-stale);outline-offset:-1px}
   .wl.wl-degraded .wl-msg{color:var(--ed-stale)}
+  /* a value that is not live: the served words in its title, its number in the stale colour */
+  .not-live,.not-live b,.hkv .v.stale,.kl-row .v.not-live{color:var(--ed-stale)}
   .wl-add{display:flex;align-items:center;gap:10px;height:32px;padding:0 15px;color:var(--ed-ink-3);
     font-size:12.5px;white-space:nowrap}
   .wl-add:hover{color:var(--ed-accent-2)}

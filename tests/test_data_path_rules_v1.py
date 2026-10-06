@@ -27,6 +27,8 @@ from schwab.client import Client
 from websockets.asyncio.client import connect
 
 import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
+import live_price_rows
 import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
@@ -34,13 +36,15 @@ from calibration.complete_chain_capture import FAILED_PAUSE_SEC, ChainSweep, cha
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
-from time_et import ET, now_et
+from time_et import ET, ct_label, now_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
 _OPT = json.loads((FX / "real_options_stream_history_samples.json").read_text(encoding="utf-8"))
 _EVENTS = [e for e in _OPT["contracts"][0]["events"] if e["kind"] == "l1"]
 _CONTRACT = _OPT["contracts"][0]["symbol"]
 _CHAIN = json.loads((FX / "real_spy_0dte_chain.json").read_text(encoding="utf-8"))
+#: production's stream 2026-10-05 14:00:00-14:00:03 CT (RTH), as Schwab sent it
+_MIX = json.loads((FX / "real_stream_mix_2026_10_05_1400ct.json").read_text(encoding="utf-8"))
 
 
 # ── the real daemon, from Schwab's handler to a connected console ────────────────────────────
@@ -299,17 +303,41 @@ def _served_at(monkeypatch, now: float, feed_live: bool) -> dict:
         lmp.record_feed_down()
 
 
-def test_d5_a_feed_down_in_an_open_session_is_an_outage_shown_absent_with_its_reason(monkeypatch):
-    """RTH, the feed down: the price, the equity top of book and the option top of book are
-    absent, each with the outage reason; no last value stands in for a live one."""
-    s = _served_at(monkeypatch, _RTH, feed_live=False)
-    assert s["row"]["spot"] is None and s["row"]["bid"] is None
-    assert s["row"]["outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
-    assert s["spot"] == (None, "Schwab LEVELONE_EQUITIES feed down during RTH", None)
-    assert s["equity_book"]["top_of_book"]["bid"] is None
-    assert s["equity_book"]["top_outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
-    assert s["option_book"]["top_of_book"]["ask"] is None
-    assert s["option_book"]["top_outage"] == "Schwab LEVELONE_OPTIONS feed down during RTH"
+def test_d5_a_feed_down_in_an_open_session_keeps_the_last_price_marked_not_live_with_its_time_and_age():
+    """AGENTS.md rule 5. SPY's first captured quote of 2026-10-05 14:00:00 CT (RTH), received at
+    its capture time, then no daemon heartbeat (the feed down): 12 s later, still in RTH, the
+    price row keeps Schwab's last values, not live, marked with the outage reason and the last
+    trade's CT time and age. STAND-IN: the quote is stored under ZZSPYCAP, a symbol no other test
+    writes, so no other test's SPY fields mix into the row."""
+    msg = next(m for m in _MIX["messages"]
+               if m["service"] == "LEVELONE_EQUITIES" and m["item"]["key"] == "SPY")
+    item = {**msg["item"], "key": "ZZSPYCAP"}
+    lmp.record_from_level_one_equity("ZZSPYCAP", item, received_ts=msg["ts_recv"])
+    now = msg["ts_recv"] + 12
+    trade_ts = item["TRADE_TIME_MILLIS"] / 1000
+    row = live_price_rows.price_row("ZZSPYCAP", now)
+    assert (row["spot"], row["spot_disp"], row["chg_pct"], row["total_volume"]) == (
+        item["LAST_PRICE"], f"{item['LAST_PRICE']:.2f}", item["NET_CHANGE_PERCENT"], item["TOTAL_VOLUME"])
+    assert row["feed_live"] is False
+    assert row["outage"] == "Schwab LEVELONE_EQUITIES feed down during RTH"
+    assert row["trade_time_ct"] == ct_label(trade_ts)
+    assert row["trade_age_sec"] == pytest.approx(now - trade_ts)
+    assert row["not_live"] == ("NOT LIVE · Schwab LEVELONE_EQUITIES feed down during RTH · "
+                               f"last trade {ct_label(trade_ts)}, {now - trade_ts:.0f} s ago")
+
+
+def test_d5_a_live_feed_marks_nothing_not_live():
+    """The same captured quote with the daemon's heartbeat holding the symbol and its Schwab
+    socket open: the row is live and carries no not-live words."""
+    msg = next(m for m in _MIX["messages"]
+               if m["service"] == "LEVELONE_EQUITIES" and m["item"]["key"] == "SPY")
+    item = {**msg["item"], "key": "ZZSPYCAP"}
+    lmp.record_from_level_one_equity("ZZSPYCAP", item, received_ts=msg["ts_recv"])
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+                               "held": {"LEVELONE_EQUITIES": ["ZZSPYCAP"]}})
+    row = live_price_rows.price_row("ZZSPYCAP", msg["ts_recv"] + 12)
+    assert row["spot"] == item["LAST_PRICE"] and row["feed_live"] is True
+    assert row["outage"] is None and row["not_live"] is None
 
 
 def test_d5_while_closed_the_values_as_of_the_close_stand_feed_up_or_down(monkeypatch):

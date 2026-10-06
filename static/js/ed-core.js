@@ -719,23 +719,26 @@
     // the same quote_tick event (one producer, two surfaces).
   }
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
-  // quote_tick handler (and markWlDegraded). A null field CLEARS to "—" rather than leaving the previous
-  // text: failure and recovery must not leave a stale-but-current-looking number on screen.
-  function setWlRow(sym, spot, chgPct) {
+  // quote_tick handler with the served row. A null field CLEARS to "—"; a row whose values are not
+  // live keeps them, marked with the row's served words (`not_live`).
+  function setWlRow(sym, q) {
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
-    if (pe) pe.textContent = spot == null ? 'UNAVAILABLE' : fmt(spot);
+    if (pe) {
+      pe.textContent = q.spot == null ? 'UNAVAILABLE' : fmt(q.spot);
+      pe.classList.toggle('not-live', !!q.not_live);
+      pe.title = q.not_live ? q.not_live : '';
+    }
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]');
     if (ce) {
-      if (chgPct != null) { ce.textContent = (chgPct >= 0 ? '+' : '') + fmt(chgPct) + '%'; ce.className = 'wl-chg ' + (chgPct >= 0 ? 'pos' : 'neg'); }
+      if (q.chg_pct != null) { ce.textContent = (q.chg_pct >= 0 ? '+' : '') + fmt(q.chg_pct) + '%'; ce.className = 'wl-chg ' + (q.chg_pct >= 0 ? 'pos' : 'neg'); }
       else { ce.textContent = '—'; ce.className = 'wl-chg'; }
     }
   }
-  // A silent price push withdraws every row to UNAVAILABLE and marks the list degraded with
-  // the reason, until a row arrives again.
+  // A silent price push keeps every row's last value and marks the list not live with the
+  // reason and the age of the last push, until a row arrives again.
   function markWlDegraded(reason) {
     var host = document.getElementById('watchlist');
     if (host) host.classList.add('wl-degraded');
-    loadWL().forEach(function (sym) { setWlRow(sym, null, null); });
     wlNotify(reason);
   }
   function markWlHealthy() {
@@ -754,8 +757,17 @@
       .catch(function () { _wlDeclared = null; });   // retried when the console push reopens
   }
   // ---- the price socket (daemon -> browser) ----
-  var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
+  // the daemon beats every 1 s; this long with nothing = the push is down (meta ed-live-silence-ms,
+  // the one liveness limit live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC, which the daemon also
+  // closes a browser by)
+  var PRICE_SILENCE_MS = (function () {
+    var m = document.querySelector('meta[name="ed-live-silence-ms"]');
+    return m ? Number(m.getAttribute('content')) : NaN;   // unfilled: the push never reads healthy
+  })();
   var _priceWs = null, _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0, _priceRetry = 0;
+  // the last served row of the ticker on screen and the daemon's last writer status: kept on
+  // screen, marked not live, while the push is down
+  var _lastHeaderRow = null, _lastWriter = null;
   // the port comes from the console (meta ed-live-ui-port = the daemon's ED_LIVE_UI_PORT);
   // an unfilled page opens no socket and its prices read UNAVAILABLE
   function priceSocketUrl() {
@@ -785,6 +797,7 @@
   // The daemon's database writer, as each heartbeat carries it: the line and its class are the
   // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '—'.
   function paintRecord(w) {
+    _lastWriter = w;
     var el = document.getElementById('hRecord'); if (!el) return;
     el.textContent = w ? w.line : '—';
     el.className = w ? 'v ' + w.cls : 'v';
@@ -836,27 +849,35 @@
       // window it considers covered (measured 2026-09-24: row in at 6 ms, rAF paint at 773 ms).
       // The daemon already conflates to the newest row per symbol, so there is no burst to
       // throttle -- a few text writes per second. The price is Schwab's last trade with Schwab's
-      // trade time, or absent with the served outage reason; the feed state is stated beside it.
-      paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
-        chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
-        feedCls: q.feed_live ? '' : 'stale',
-        feedLabel: q.feed_live ? 'LIVE' : 'FEED DOWN',
-        ageLabel: q.outage || (q.trade_time_ct != null ? ('last trade ' + q.trade_time_ct) : 'no trade sent') });
+      // trade time; values that are not live carry the served words saying so (`not_live`).
+      _lastHeaderRow = q;
+      paintHeaderRow(q, q.feed_live ? 'LIVE' : 'FEED DOWN',
+        q.not_live ? q.not_live : (q.trade_time_ct != null ? ('last trade ' + q.trade_time_ct) : 'no trade sent'));
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
-      setWlRow(wlSym, q.spot, q.chg_pct);
+      setWlRow(wlSym, q);
       markWlHealthy();
     });
     try { window.dispatchEvent(new CustomEvent('ed:quote_tick', { detail: q })); } catch (e) {}
   }
+  function paintHeaderRow(q, feedLabel, ageLabel) {
+    paintQuote({ spot_disp: q.spot_disp, spot: q.spot, bid: q.bid, ask: q.ask,
+      chgPct: q.chg_pct, chgPctRegular: q.chg_pct_regular, quoteIngestion: q.quote_ingestion,
+      feedCls: feedLabel === 'LIVE' ? '' : 'stale', feedLabel: feedLabel, ageLabel: ageLabel });
+  }
   function pricePushHealthy() { return _priceUp && (Date.now() - _lastPriceTs <= PRICE_SILENCE_MS); }
-  // 1 s watchdog: a silent daemon withdraws every price within PRICE_SILENCE_MS + 1 s
+  // seconds since the page last heard from the daemon (the page's own clock, both ends)
+  function pushSilentSec() { return Math.round((Date.now() - _lastPriceTs) / 1000); }
+  // 1 s watchdog: a silent daemon marks every price not live within PRICE_SILENCE_MS + 1 s
   function checkPriceSilence() {
     if (!state.ticker || pricePushHealthy()) return;
     markHeaderPushDown();
-    var wlHost = document.getElementById('watchlist');
-    if (!(wlHost && wlHost.classList.contains('wl-degraded'))) markWlDegraded('live push down');
+    markRecordPushDown();
+    var words = 'OFFLINE · live push down · last push ' + pushSilentSec() + ' s ago';
+    markWlDegraded(words);
+    // every other surface showing a price row keeps it, marked with these words, until the next row
+    emit('ed:price_push_down', { words: words });
   }
 
   // ---- the console's push: which of this ticker's values changed, and the session label.
@@ -887,18 +908,29 @@
     el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why || '';
   }
 
-  // The push is not delivering: withdraw the quote instead of leaving the last one on screen
-  // (and instead of polling for it -- operator rule 2026-09-23: no fallbacks). The session
-  // label is not a live quote and keeps its own slow read.
+  // The push is not delivering: the ticker's last served row stays on screen, marked OFFLINE
+  // with its Schwab trade time and age; nothing polls for another (AGENTS.md rule 5). With no
+  // row yet for this ticker there is nothing to keep: WAITING just after asking for it (page load
+  // or a ticker change), else OFFLINE. The daemon's last writer status stays, marked the same
+  // (markRecordPushDown).
   function markHeaderPushDown() {
-    // just asked for this ticker (page load or a ticker change): the row is on its way
-    // (WAITING); otherwise the push itself is down (OFFLINE)
-    var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
-    paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
-      feedCls: 'stale',
-      feedLabel: connecting ? 'WAITING' : 'OFFLINE',
-      ageLabel: connecting ? 'no push yet' : 'live push down' });
-    paintRecord(null);
+    var q = _lastHeaderRow && _lastHeaderRow.ticker === state.key ? _lastHeaderRow : null;
+    if (q) {
+      paintHeaderRow(q, 'OFFLINE', 'live push down · ' + (q.trade_ts != null
+        ? 'last trade ' + q.trade_time_ct + ', ' + Math.round(Date.now() / 1000 - q.trade_ts) + ' s ago'
+        : 'no trade sent'));
+    } else {
+      var connecting = Date.now() - _priceSubTs <= PRICE_SILENCE_MS;
+      paintQuote({ spot: null, spot_disp: null, bid: null, ask: null, chgPct: null, chgPctRegular: null,
+        feedCls: 'stale',
+        feedLabel: connecting ? 'WAITING' : 'OFFLINE',
+        ageLabel: connecting ? 'no push yet' : 'live push down' });
+    }
+  }
+  function markRecordPushDown() {
+    var el = document.getElementById('hRecord'); if (!el || !_lastWriter) return;
+    el.textContent = 'OFFLINE · last beat ' + pushSilentSec() + ' s ago · ' + _lastWriter.line;
+    el.className = 'v stale';
   }
 
   // ================= CT clock =================

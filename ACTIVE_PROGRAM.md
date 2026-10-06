@@ -35,6 +35,7 @@ Status values: `NEXT` | `IN PROGRESS` | `QUEUED` | `BLOCKED` | `OPERATOR`.
 | ENF-15 | QUEUED | Pushed at every hop, nothing polls (`docs/DATA_FLOW.md` §1): the page draws pushed values instead of re-reading routes after a push (P2-3). |
 | ENF-16 | QUEUED | Operator decisions 2–6, 8, 9 in `docs/DATA_FLOW.md` §6: each gets a test when it is built. |
 | ENF-21 | QUEUED | AGENTS.md rule 2's documentation authority: a statement about what Schwab sends, accepts or limits cites `docs/schwab/` by section or Schwab's own reply. No machine check yet. (ENF-17 to ENF-20 are taken by the open shared-rules PR #471.) |
+| ENF-22 | QUEUED | AGENTS.md rule 5 (operator 2026-10-06), the part not yet built: the values calculated from a price that is not live are marked not live with the age of their oldest input, served by the server, each with a test. Today still absent with the outage reason during a feed outage in an open session: the console's one spot `server.resolve_spot` and everything priced from it (the levels `_price_chain`, the gamma surface, `/api/terrain`, the liquidity zones, the strike count `priced`), the equity book's top (`server.api_order_flow_microstructure` `top_outage`), an option contract's top (`app/options/order_flow/live_payload.py` `top_outage`) and its streamed Greeks over the chain (`server._current_stream_greeks`). |
 
 ## Phase 1 — restore and stabilize
 

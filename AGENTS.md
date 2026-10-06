@@ -44,15 +44,16 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 4. **The UI computes nothing.** Page code formats and draws. Every number, total, choice,
    comparison and date the page shows is served.
    Enforced by: no machine check — ENF-03.
-5. **No substitute paths.** Like a bank balance: live while the market is open, and the balance as
-   of the close while it is closed. In an open session a value whose feed is down, or whose input
-   is missing or invalid, has no current value: it is shown absent with its reason. While Closed,
-   the values as of the close stand until the next session. No value is labeled "past"; no
-   fallback, default, estimate, proxy, carry-forward, interpolation or synthetic value. Test: when
-   the source cannot produce the value now in an open session, the screen shows it absent with its
-   reason, never a value from elsewhere.
-   Enforced by: `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`,
-   `tests/test_gamma_exposure_honest_absence_v1.py`, and `docs/DATA_FLOW.md` §2 D5.
+5. **No substitute paths.** During a feed outage, the last value stays on screen, clearly marked
+   not live, with its time and age. Nothing from another source substitutes for it. Any value
+   calculated from it is marked not live as well, with the age of its oldest input.
+   Enforced by: `tests/test_data_path_rules_v1.py` (the price row keeps its last value, marked not
+   live with its trade time and age, the feed down in an open session),
+   `tests/e2e/console-gamma-heatmap.spec.js` (the header keeps the last price, marked not live with
+   its time and age, through a closed or silent price socket),
+   `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py` and
+   `tests/test_gamma_exposure_honest_absence_v1.py` (nothing substitutes); the values calculated
+   from a price that is not live — ENF-22.
 6. **One path.** Schwab → daemon memory → pushed to the screen. The database is history: one
    writer; read at startup, after the close and for research; never for a live screen.
    Enforced by: `docs/DATA_FLOW.md` §2 D1–D6, each with its own test.

@@ -34,6 +34,7 @@
   var _mode = 'profile';          // 'profile' (bars) | 'dotmap' (dots)
   var _chart = null;
   var _liveQuote = null;          // the header's price row (ed:quote_tick), the one displayed price
+  var _pushDown = null;           // the page's words while its price push is down, until the next row
   var _last = { bars: undefined, strikes: undefined, terrain: undefined };
   // the chart's timeframe (the toolbar's), kept per viewer
   var _tf = (function () { try { return window.localStorage.getItem('ed.gchart.tf') || '1'; } catch (e) { return '1'; } })();
@@ -110,14 +111,15 @@
     }
     c.setLevels(lv);
     var spot = liveSpot();
-    c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_sec : null);
+    var notLive = spot == null ? null : _pushDown ? _pushDown : _liveQuote.not_live;
+    c.setLivePrice(spot, spot != null ? _liveQuote.trade_age_sec : null, notLive);
     var empty = host.querySelector('.gchart-empty');
     empty.hidden = !!(bars.length || win.length);
     empty.textContent = empty.hidden ? '' : (barsD || sd ? 'no bars / per-strike ' + prof.name + ' for this symbol'
       : 'the bars and per-strike ' + prof.name + ' requests failed');
-    paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot);
+    paintHead(host.querySelector('.gchart-head'), bars, win, prof, sd, spot, notLive);
   }
-  function paintHead(el, bars, win, prof, sd, spot) {
+  function paintHead(el, bars, win, prof, sd, spot, notLive) {
     var n = prof.name;
     var ab = (window.EdShell && window.EdShell.asOfBadge) || function () { return ''; };
     var lastT = bars.length ? bars[bars.length - 1].t : null;
@@ -133,7 +135,8 @@
           '<span><span class="sw" style="background:var(--ed-neg)"></span>−' + n + '</span>'
         : '<span><span class="sw" style="background:var(--ed-accent)"></span>' + n + '</span>') +
       '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
-      '<span>spot ' + (spot == null ? '—' : spot.toFixed(2)) + '</span>' +
+      '<span' + (notLive ? ' class="not-live" title="' + esc(notLive) + '"' : '') + '>spot ' +
+        (spot == null ? '—' : spot.toFixed(2)) + (notLive ? ' · NOT LIVE' : '') + '</span>' +
       (top ? '<span>largest |' + n + '| ' + esc(top[0]) + ' · ' + esc(shown) + '</span>' : '') + '</div>';
   }
 
@@ -152,7 +155,11 @@
   window.addEventListener('ed:quote_tick', function (ev) {
     var q = (ev && ev.detail) || {};
     if (q.ticker !== st().key) return;
-    _liveQuote = q;
+    _liveQuote = q; _pushDown = null;
+    if (isChart() && _chart && _last.strikes !== undefined) render();
+  });
+  document.addEventListener('ed:price_push_down', function (e) {
+    _pushDown = e.detail.words;
     if (isChart() && _chart && _last.strikes !== undefined) render();
   });
   document.addEventListener('ed:view', load);
