@@ -569,10 +569,8 @@ def _option_expiries(client, ticker: str) -> "tuple[int, list[date]]":
         raise SchwabAuthError("Schwab auth latched after prior token failure — expiration list withheld")
     try:
         resp = client.get_option_expiration_chain(ticker)
-    except Exception as e:
-        if _is_token_error(e):
-            _raise_schwab_auth_error(client, e)
-        raise
+    except AuthlibBaseError as e:       # an OAuth failure (_is_token_error)
+        _raise_schwab_auth_error(client, e)
     if resp.status_code != 200:
         return resp.status_code, []
     today = now_et().date()
