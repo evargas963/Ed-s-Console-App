@@ -44,11 +44,13 @@ if str(REPO) not in sys.path:
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
 from tools.shell_parse import (  # noqa: E402 — the ONE shell parser
-    iter_command_segments, program_re, segment_head, shell_executed_part)
+    iter_command_segments, program_re, segment_data, segment_head, shell_executed_part)
 
 #: RC-273 — the gitignored trees with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
 _PROTECTED_TREE = re.compile(r"(?:^|[\\/\"'=(,\s])(?:data|backups)[\\/]", re.I)
+#: The tree itself as a shell argument: `data`, `./backups`, `C:/repo/data`.
+_TREE_ROOT = re.compile(r"(?:^|[\\/])(?:data|backups)[\\/]?$", re.I)
 #: Shell commands that delete, move or rename their arguments.
 _SHELL_REMOVERS = frozenset({"rm", "del", "erase", "rmdir", "rd", "remove-item", "ri", "unlink",
                              "mv", "move", "move-item", "mi", "ren", "rename", "rename-item",
@@ -58,12 +60,13 @@ _ACL_LOOSENERS = ("/remove", "/reset", "/grant", "/setowner", "/inheritance")
 #: Python calls that delete, move, rename or overwrite a path.
 _PY_REMOVERS = frozenset({"remove", "unlink", "rmtree", "rmdir", "removedirs", "rename", "replace",
                           "move", "truncate", "write_text", "write_bytes"})
-_PY_HEADS = frozenset({"python", "python3", "py"})
+#: A python interpreter's program name: python, python3, python3.13, pythonw, py.
+_PY_HEAD = re.compile(r"^(?:pythonw?(?:3[\d.]*)?|py)$")
 _SH_HEADS = frozenset({"bash", "sh", "zsh", "pwsh", "powershell"})
-_HEREDOC = re.compile(r"^(?P<line>[^\n]*?)<<-?\s*(['\"]?)(?P<tag>\w+)\2(?P<rest>[^\n]*)\n"
+_HEREDOC = re.compile(r"^(?P<line>[^\n]*?)<<-?\s*(['\"]?)(?P<tag>\w[\w-]*)\2(?P<rest>[^\n]*)\n"
                       r"(?P<body>.*?)^\s*(?P=tag)\s*$", re.S | re.M)
-_PY_C = re.compile(r"(?:^|[\s;&|(])(?:python3?|py)(?:\.exe)?\b[^\n;&|]*?\s-c\s+"
-                   r"(\"(?:\\.|[^\"])*\"|'[^']*')", re.I)
+#: A quoted `-c` payload as `segment_data` returns it.
+_C_PAYLOAD = re.compile(r"-c\s+(['\"])(.*)\1\Z", re.S)
 _REDIRECT = re.compile(r"(?:^|[^<>&0-9])>{1,2}\s*(\"[^\"]*\"|'[^']*'|[^\s;&|]+)")
 
 
@@ -97,7 +100,15 @@ def _shell_violation(script: str) -> bool:
     for _cwd, seg in iter_command_segments(script):
         head, toks = segment_head(seg)
         args = [t.strip("\"'") for t in toks[1:]]
-        if head in _SHELL_REMOVERS and any(_protected(a) for a in args if not a.startswith("-")):
+        paths = [a for a in args if not a.startswith("-")]
+        if head in _SHELL_REMOVERS and any(_protected(a) or _TREE_ROOT.search(a) for a in paths):
+            return True
+        if head == "find" and ("-delete" in args or "-exec" in args or "-execdir" in args) and any(
+                _protected(a) or _TREE_ROOT.search(a) for a in args[:next(
+                    (i for i, a in enumerate(args) if a.startswith("-")), len(args))]):
+            return True
+        if head == "cmd" and len(toks) > 2 and toks[1].lower() in ("/c", "/k") and \
+                _shell_violation(" ".join(toks[2:]).strip("\"")):
             return True
         if head == "icacls" and any(_protected(a) for a in args) and \
                 any(a.lower().startswith(_ACL_LOOSENERS) for a in args):
@@ -119,12 +130,14 @@ def _protected_path_violation(raw: str) -> bool:
         return False
     if _shell_violation(raw):
         return True
-    for m in _PY_C.finditer(raw):
-        if _python_violation(m.group(1)[1:-1].replace('\\"', '"')):
-            return True
+    for _cwd, seg in iter_command_segments(raw):
+        if _PY_HEAD.match(segment_head(seg)[0]):
+            for m in filter(None, map(_C_PAYLOAD.match, segment_data(raw, seg))):
+                if _python_violation(m.group(2).replace('\\"', '"') if m.group(1) == '"' else m.group(2)):
+                    return True
     for m in _HEREDOC.finditer(raw):
         heads = {segment_head(part)[0] for part in (m.group("line") + m.group("rest")).split("|")}
-        if heads & _PY_HEADS and _python_violation(m.group("body")):
+        if any(map(_PY_HEAD.match, heads)) and _python_violation(m.group("body")):
             return True
         if heads & _SH_HEADS and _protected_path_violation(m.group("body")):
             return True

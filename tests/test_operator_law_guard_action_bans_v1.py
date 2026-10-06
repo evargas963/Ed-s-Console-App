@@ -76,6 +76,27 @@ def test_a_program_named_by_its_full_path_or_exe_is_judged_as_that_program():
         assert bash_violations(cmd) == [], cmd
 
 
+B = "b" + "ackups"
+
+
+def test_python_by_its_full_path_and_whole_trees_are_judged():
+    """Correctness and architecture reviews, 2026-10-06: each of these passed the law guard.
+    `python.exe -c` code was read only for the bare word `python`; a remover given the tree
+    itself (`data`, no trailing slash), `find ... -delete` and `cmd /c del` were not read."""
+    from tools.operator_law_guard import bash_violations
+    for cmd in (f"C:\\Python313\\python.exe -c \"import os; os.remove('{D}ed_console.db')\"",
+                f"python3.13 -c \"import shutil; shutil.rmtree('{B}/db')\"",
+                f"rm -r {B}",
+                f"Remove-Item -Recurse {D[:-1]}",
+                f"find {D[:-1]} -delete",
+                f"mv {D[:-1]} /tmp/",
+                f"cmd /c del {D[:-1]}\\ed_console.db",
+                f"cmd.exe /c \"del {D[:-1]}\\ed_console.db\""):
+        assert bash_violations(cmd), cmd
+    for cmd in ("find . -name '*.pyc' -delete", "rm -r build", "cmd /c dir data"):
+        assert bash_violations(cmd) == [], cmd
+
+
 def test_rm_by_full_path_is_refused_through_the_hook_chain():
     """The real wiring: hook_chain with the four guards the settings run exits 2."""
     root = Path(__file__).resolve().parent.parent

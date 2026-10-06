@@ -46,7 +46,7 @@ CASES: tuple[tuple[str, str], ...] = (
     # redundant and dot segments
     ("a//b/./c.py", "a/b/c.py"),
     ("a/../b.py", "b.py"),
-    # foreign / escaping — preserved, NOT judged here (classify_path owns that question)
+    # foreign / escaping — preserved, NOT judged here
     ("../outside/y.py", "../outside/y.py"),
     ("../../x.py", "../../x.py"),
     # malformed / empty

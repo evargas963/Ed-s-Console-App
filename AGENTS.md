@@ -159,15 +159,19 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 - Stop for: the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO; a task marked AUDIT
   ONLY or DO NOT MERGE; a destructive data action; a product decision code cannot settle; an
   operator setting (a count, a rate, a switch) is never changed without the operator's explicit
-  yes to that change. Enforced by: the agent hook `tools/operator_yes_guard.py` puts a start,
-  stop or restart of the daemon or console, a merge, a push to main and a write to a database
-  under `data/` to the operator as an Allow/Deny prompt (`tests/test_operator_yes_guard_v1.py`;
-  the database writes its tests do not cover — ENF-20); the rest — ENF-12.
+  yes to that change. Enforced by: the agent hook `tools/operator_yes_guard.py` puts to the
+  operator as an Allow/Deny prompt `gh pr merge` in any form and the merge API, a push whose
+  refspec names main (or `--all`, or the current branch while it is main), a start or stop of
+  python, uvicorn, the console or the capture daemon by name or launcher, and any command that
+  names a database under `data/` unless every statement in it only reads
+  (`tests/test_operator_yes_guard_v1.py`; what a command's text cannot show, such as a stop by
+  process id — ENF-20); the rest — ENF-12.
 - Production checkout `EdWebConsole`: `main == origin/main`, changed only by `git pull --ff-only`.
   Work in a worktree; main itself moves only by a PR merged on GitHub. Enforced by: the agent hook
-  `tools/process_lock_guard.py` refuses an edit, a shell write or a git verb that moves it off
-  main (`tests/test_operating_process_lock_v1.py`), and a git command from any checkout that
-  writes `refs/heads/main` (`tests/test_hook_chain_v1.py`).
+  `tools/process_lock_guard.py` refuses every Edit, Write and shell write of a file in it (app
+  code, tests, docs, governance and data alike) and a git verb that moves it off main
+  (`tests/test_operating_process_lock_v1.py`, `tests/test_hook_chain_v1.py`), and a git command
+  from any checkout that writes `refs/heads/main` (`tests/test_hook_chain_v1.py`).
 - Never: `git reset`, `git checkout --`, `git stash`, force push. Enforced by: the agent hook
   `tools/process_lock_guard.py` (`tests/test_reset_guard_v1.py`).
 - Never: `--no-verify`, `git add -A` / `.`, deleting or moving anything under `data/` or

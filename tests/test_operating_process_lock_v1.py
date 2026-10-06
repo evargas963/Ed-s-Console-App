@@ -42,8 +42,10 @@ def test_edit_branch_topology_rails_only_no_role_denylist(tmp_path):
     # a session that IS the production primary editing its OWN app code → BLOCKED (invariant #4)
     bad = PLG.production_checkout_app_edit_violations({"file_path": str(primary / "db.py")}, primary)
     assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), bad
-    # ...but a non-app file (docs/governance) in the primary is NOT gated
-    assert PLG.production_checkout_app_edit_violations({"file_path": str(primary / "notes.md")}, primary) == []
+    # ...and so is every other file there: docs, governance and tests change only by a pull
+    for rel in ("notes.md", "tests/test_x.py", "docs/note.md"):
+        bad = PLG.production_checkout_app_edit_violations({"file_path": str(primary / rel)}, primary)
+        assert any("PROD_CHECKOUT_APP_EDIT" in b for b in bad), (rel, bad)
     # no role-based denylist resurrected
     assert not hasattr(OPL, "claude_isolated_edit_violation")
     assert not hasattr(OPL, "operator_go_granted")

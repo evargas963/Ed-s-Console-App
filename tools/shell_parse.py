@@ -206,10 +206,12 @@ def shell_executed_part(cmd: str) -> str:
 #: The DATA in a command, in the order it is taken out: heredoc bodies (<<'TAG' ... TAG), quoted
 #: -c payloads (python -c "...") and quoted -m messages (a commit message describing a ban is
 #: data). Each is replaced by a numbered placeholder (`<<HEREDOC0`, `-c PAYLOAD1`, `-m MESSAGE2`)
-#: that stays in the statement it belongs to.
-_DATA = ((re.compile(r"<<-?\s*(['\"]?)(\w+)\1.*?^\s*\2\s*$", re.S | re.M), "<<HEREDOC"),
-         (re.compile(r"-c\s+(['\"])(?:\\.|(?!\1).)*\1", re.S), "-c PAYLOAD"),
-         (re.compile(r"-m\s+(['\"])(?:\\.|(?!\1).)*\1", re.S), "-m MESSAGE"))
+#: that stays in the statement it belongs to. A heredoc tag may carry hyphens (`<<'PY-END'`); a
+#: backslash escapes nothing inside single quotes, as in bash.
+_QUOTED = r"""(?:'[^']*'|"(?:\\.|[^"\\])*")"""
+_DATA = ((re.compile(r"<<-?\s*(['\"]?)(\w[\w-]*)\1.*?^\s*\2\s*$", re.S | re.M), "<<HEREDOC"),
+         (re.compile(r"-c\s+" + _QUOTED, re.S), "-c PAYLOAD"),
+         (re.compile(r"-m\s+" + _QUOTED, re.S), "-m MESSAGE"))
 _DATA_REF = re.compile(r"\b(?:HEREDOC|PAYLOAD|MESSAGE)(\d+)\b")
 
 
