@@ -36,7 +36,9 @@ GIT_WRITERS = frozenset({"rm", "mv", "restore", "checkout"})
 REDIRECT = re.compile(r"(?:^|[^<>&0-9])>{1,2}\s*(\"[^\"]*\"|'[^']*'|[^\s;&|]+)")
 #: the production processes and what starts them
 PROCESS_NAMES = ("streaming.capture", "uvicorn", "server:app")
-LAUNCHERS = ("start_capture_daemon", "start_ed_console", "launch.py")
+LAUNCHERS = ("start_capture_daemon", "start_ed_console")
+#: launch.py run by a Python (naming the file, as `git add launch.py` does, is not running it)
+LAUNCH_PY = re.compile(r"python[\w.]*[\"']?\s+(?:\S*[\\/])?launch\.py\b", re.I)
 PROCESS_VERBS = ("stop-process", "taskkill", "kill ", "start-process", "restart")
 MERGE = re.compile(r"\bgh\s+pr\s+merge\s+(\d+)|/pulls/(\d+)/merge\b", re.I)
 PUSH_MAIN = re.compile(r"\bgit\b[^\n;&|]*\bpush\b[^\n;&|]*?(?:\s|:)main\b", re.I)
@@ -80,7 +82,7 @@ def _shell_reasons(cmd: str, cwd: str) -> list[str]:
         out += [_changes_test(rel) for rel in filter(None, map(_existing_test, targets))]
     low = cmd.lower()
     if (any(n in low for n in PROCESS_NAMES) and any(v in low for v in PROCESS_VERBS)) \
-            or any(n in low for n in LAUNCHERS):
+            or any(n in low for n in LAUNCHERS) or LAUNCH_PY.search(cmd):
         out.append("starts, stops or restarts the daemon or the console (rule 6: production)")
     for m in MERGE.finditer(cmd):
         out.append(f"merges pull request {m.group(1) or m.group(2)} (rule 6: production)")

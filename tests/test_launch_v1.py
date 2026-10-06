@@ -23,19 +23,35 @@ def _never_asked(question: str) -> str:
     raise AssertionError(f"the launcher asked: {question}")
 
 
-def test_the_console_starts_with_no_schwab_credential_and_the_daemon_without_a_test_shells_settings():
+def test_the_console_starts_with_no_schwab_credential_and_the_daemon_without_a_test_shells_settings(tmp_path):
     shell = {"PATH": "p", "SCHWAB_API_KEY": "LiveLookingKey", "SCHWAB_APP_SECRET": "LiveLookingSecret",
-             "SCHWAB_APP_KEY": "LiveLookingKey", "SCHWAB_TOKEN_PATH": "t.json", "ED_CI_OFFLINE": "1", "CI": "true"}
-    assert launch.daemon_environment(shell) == {
+             "SCHWAB_APP_KEY": "LiveLookingKey", "SCHWAB_TOKEN_PATH": "t.json", "ED_CI_OFFLINE": "1"}
+    no_env_file = tmp_path / ".env"
+    assert launch.daemon_environment(shell, no_env_file) == {
         "PATH": "p", "SCHWAB_API_KEY": "LiveLookingKey", "SCHWAB_APP_SECRET": "LiveLookingSecret",
         "SCHWAB_APP_KEY": "LiveLookingKey", "SCHWAB_TOKEN_PATH": "t.json"}
-    assert launch.console_environment(shell) == {"PATH": "p", "SCHWAB_TOKEN_PATH": "t.json"}
+    assert launch.console_environment(shell, no_env_file) == {"PATH": "p", "SCHWAB_TOKEN_PATH": "t.json"}
 
 
-def test_a_test_shells_credentials_never_reach_the_daemon():
-    for key, secret in (("test", "test"), ("ci-placeholder-key", "ci-placeholder-secret")):
-        assert launch.daemon_environment(
-            {"PATH": "p", "SCHWAB_API_KEY": key, "SCHWAB_APP_SECRET": secret}) == {"PATH": "p"}
+def test_both_processes_take_env_files_settings_under_the_shells_and_the_console_no_credential(tmp_path):
+    """.env is read once, by the launcher: the console gets its token path and ports, never a credential;
+    the shell's value wins."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("SCHWAB_API_KEY=LiveLookingKey\nSCHWAB_APP_SECRET=LiveLookingSecret\n"
+                        "SCHWAB_TOKEN_PATH=D:/tokens/schwab_token.json\nED_LIVE_UI_PORT=8801\n", encoding="utf-8")
+    shell = {"PATH": "p", "ED_LIVE_UI_PORT": "8802"}
+    assert launch.console_environment(shell, env_file) == {
+        "PATH": "p", "SCHWAB_TOKEN_PATH": "D:/tokens/schwab_token.json", "ED_LIVE_UI_PORT": "8802"}
+    assert launch.daemon_environment(shell, env_file)["SCHWAB_APP_SECRET"] == "LiveLookingSecret"
+
+
+def test_a_test_shells_stand_in_credential_never_reaches_the_daemon_and_env_files_real_one_does(tmp_path):
+    env_file = tmp_path / ".env"
+    env_file.write_text("SCHWAB_API_KEY=LiveLookingKey\n", encoding="utf-8")
+    for shell_key in ("test", "ci-placeholder-key"):
+        env = launch.daemon_environment({"PATH": "p", "SCHWAB_API_KEY": shell_key}, env_file)
+        assert env == {"PATH": "p", "SCHWAB_API_KEY": "LiveLookingKey"}, shell_key
+    assert launch.daemon_environment({"PATH": "p", "SCHWAB_APP_SECRET": "test"}, tmp_path / "none") == {"PATH": "p"}
 
 
 def test_with_no_console_on_its_port_one_is_started():

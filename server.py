@@ -1509,7 +1509,7 @@ WAITING_LOG_EVERY_SEC = 5.0
 
 def _wait_for(what: str, ready) -> None:
     """Wait until `ready()` (or the loop stops), logging what for and for how long, then how
-    long it took."""
+    long it took once ready."""
     started = time.monotonic()
     next_log = started
     while _terrain_loop_running and not ready():
@@ -1517,7 +1517,8 @@ def _wait_for(what: str, ready) -> None:
             log.info("waiting for %s (%.0f s so far)", what, time.monotonic() - started)
             next_log += WAITING_LOG_EVERY_SEC
         time.sleep(0.5)
-    log.info("done waiting for %s after %.1f s", what, time.monotonic() - started)
+    if ready():
+        log.info("done waiting for %s after %.1f s", what, time.monotonic() - started)
 
 
 def _terrain_loop() -> None:
@@ -2735,14 +2736,15 @@ def health():
     # RC-514 / docs/ARCHITECTURE.md "Failure domains": application availability and capability
     # availability are separate, so `status` answers "is the app alive" and never folds a
     # vendor outage into it. Schwab is the capture daemon's: its heartbeat says whether its
-    # Schwab socket is open; no current heartbeat is UNAVAILABLE (unmeasurable is not ok, RC-57).
+    # Schwab socket is open and, when not, why (its header line); no current heartbeat is
+    # UNAVAILABLE (unmeasurable is not ok, RC-57).
     st = lmp.daemon_status()
     board = _board()
     capability: dict[str, object] = {
         "schwab": "AVAILABLE" if st is not None and st.get("schwab_socket_open") is True else "UNAVAILABLE"}
     if capability["schwab"] == "UNAVAILABLE":
         capability["schwab_reason"] = ("the capture daemon's heartbeat is not current" if st is None
-                                       else "the capture daemon's Schwab socket is not open")
+                                       else f"{st['schwab']['line']}: {st['schwab']['why']}")
     return {
         "status": "ok",
         "time": datetime.now().isoformat(),

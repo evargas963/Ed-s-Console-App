@@ -783,14 +783,16 @@
     try { _priceWs.send(JSON.stringify({ op: 'subscribe', symbols: priceSymbols() })); } catch (e) {}
   }
   // The daemon's database writer and its Schwab connection, as each heartbeat carries them: each
-  // line and class is the daemon's (stream_spine.WriterStatus, capture.Daemon._schwab_line).
-  // None served: '—'.
+  // line and class is the daemon's (stream_spine.WriterStatus, capture.SchwabLine, whose `why` is
+  // the Schwab entry's tooltip). None served: '—'.
   function paintDaemon(feed) {
     [['hRecord', feed && feed.writer], ['hSchwab', feed && feed.schwab]].forEach(function (p) {
       var el = document.getElementById(p[0]); if (!el) return;
       el.textContent = p[1] ? p[1].line : '—';
       el.className = p[1] ? 'v ' + p[1].cls : 'v';
     });
+    var why = document.getElementById('hSchwab');
+    if (why) why.title = feed && feed.schwab ? feed.schwab.why : 'no heartbeat from the capture daemon';
   }
   function openPriceSocket() {
     var url = priceSocketUrl();

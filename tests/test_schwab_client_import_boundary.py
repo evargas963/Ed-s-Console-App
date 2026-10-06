@@ -1,6 +1,7 @@
 """Schwab import boundary — CI-safe module load without live auth or network."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,12 +23,11 @@ def test_schwab_client_imports_without_constructing_live_client() -> None:
     assert not hasattr(schwab_client, "_client")
 
 
-def test_build_client_from_token_fails_closed_without_token_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_build_client_from_token_fails_closed_without_token_file(tmp_path: Path) -> None:
+    """Explicit live-looking credentials (ED_CI_OFFLINE does not block explicit ones) and no
+    token file: no client, and the reason names the missing file."""
     from schwab_client import build_client_from_token
 
-    monkeypatch.delenv("ED_CI_OFFLINE", raising=False)
     state = build_client_from_token(
         str(tmp_path / "missing_token.json"),
         api_key="fake-key-not-ci-placeholder",
@@ -38,29 +38,20 @@ def test_build_client_from_token_fails_closed_without_token_file(
     assert "not found" in state.message.lower()
 
 
-def test_build_config_fail_closed_without_secrets(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("SCHWAB_API_KEY", raising=False)
-    monkeypatch.delenv("SCHWAB_APP_SECRET", raising=False)
-    from config import build_config
-
-    # RC-514: this used to require build_config to RAISE without secrets. server.py calls
-    # build_config at MODULE SCOPE, so that raise made `import server` — and therefore
-    # `uvicorn server:app` — fail outright: the whole application refused to exist because one
-    # vendor's credentials were absent, the boundary docs/ARCHITECTURE.md "Failure domains" rejects.
-    #
-    # Nothing is weakened. What the raise protected — no live Schwab without credentials — is
-    # asserted here at `schwab_live_blocked_for`, the gate `schwab_client` refuses on, so the
-    # capability fails closed while the application shell stays able to run.
-    from config import schwab_live_blocked_for
-    from schwab_client import build_client_from_token
-
-    cfg = build_config()                         # the app shell builds ...
-    assert cfg.api_key == "" and cfg.app_secret == ""
-
-    assert schwab_live_blocked_for() is True     # ... the capability does not
-    state = build_client_from_token(str(tmp_path / "token.json"), cfg.api_key, cfg.app_secret)
-    assert state.ok is False and state.client is None, state
-    assert "UNAVAILABLE" in state.message, state.message
+def test_build_config_fail_closed_without_secrets(tmp_path: Path) -> None:
+    """With no Schwab credentials the configuration still builds, and the one gate
+    (`schwab_live_blocked_for`, which `build_client_from_token` refuses on) builds no client: no
+    live Schwab without credentials (docs/ARCHITECTURE.md "Failure domains"). Run in a fresh
+    interpreter whose environment has no Schwab credential."""
+    code = ("import config, schwab_client\n"
+            "cfg = config.build_config()\n"
+            "assert cfg.api_key == '' and cfg.app_secret == '', cfg\n"
+            "assert config.schwab_live_blocked_for() is True\n"
+            f"state = schwab_client.build_client_from_token({str(tmp_path / 'token.json')!r}, cfg.api_key, cfg.app_secret)\n"
+            "assert state.ok is False and state.client is None and 'UNAVAILABLE' in state.message, state\n")
+    env = {k: v for k, v in os.environ.items() if k not in ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET")}
+    r = subprocess.run([sys.executable, "-c", code], cwd=REPO, env=env, capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stdout + r.stderr
 
 
 def test_server_import_does_not_build_client_or_run_login_flow() -> None:

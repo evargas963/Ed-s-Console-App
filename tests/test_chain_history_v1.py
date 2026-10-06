@@ -347,11 +347,9 @@ def test_the_daemon_task_stops_when_told(tmp_path):
         board, chains = [], None
         bus = None
         active = None
-        subscribed = asyncio.Event()             # the stream has subscribed: the sweep runs
 
     async def go():
         stop = asyncio.Event()
-        _Daemon.subscribed.set()
         task = asyncio.create_task(capture.run_chains(
             _Daemon(), "unused.db", lambda: None, stop,
             failures=CaptureWriter(tmp_path / "stream_capture.db")))
@@ -385,11 +383,9 @@ def test_the_daemons_chain_is_the_current_record_whole_once_all_parts_are_in(tmp
     class _Daemon:
         board, chains, active = ["MRVL"], None, None
         bus = MessageBus()
-        subscribed = asyncio.Event()             # the stream has subscribed: the sweep may start
 
     async def go():
         stop = asyncio.Event()
-        _Daemon.subscribed.set()
         sub = _Daemon.bus.subscribe("chain.", policy=LATEST)
         task = asyncio.create_task(capture.run_chains(
             _Daemon(), tmp_path / "ed_console.db", lambda: client, stop,

@@ -45,6 +45,7 @@ import os
 import sys
 import threading
 import time
+from dataclasses import asdict, dataclass
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -280,6 +281,20 @@ def _connection_lost(e: BaseException) -> bool:
 BOARD_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
 
 
+@dataclass(frozen=True)
+class SchwabLine:
+    """The header's Schwab (status()["schwab"]): its words, their class ("neg": not connected)
+    and why, in full (the header's tooltip)."""
+    line: str
+    cls: str
+    why: str
+
+
+#: the socket open; the stream not logged in yet, with no attempt failed since it last was
+SCHWAB_CONNECTED = SchwabLine("CONNECTED", "", "the stream is logged in and Schwab is sending")
+SCHWAB_CONNECTING = SchwabLine("CONNECTING", "neg", "the stream is logging in to Schwab")
+
+
 class Daemon:
     def __init__(self, bus: MessageBus, health: HealthRegistry,
                  board: "list[str] | None" = None) -> None:
@@ -300,9 +315,10 @@ class Daemon:
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
-        #: (since, why): the stream is not logged in, from the first failure in a row until it
-        #: logs in again -- the header's Schwab (status()["schwab"])
-        self.schwab_failure: "tuple[float, str] | None" = None
+        #: the header's Schwab while the socket is not open: SCHWAB_CONNECTING, or NOT CONNECTED
+        #: since the first failure in a row (_down_since) with the last one's reason
+        self.schwab_down = SCHWAB_CONNECTING
+        self._down_since: "float | None" = None
         #: set once the stream has logged in and Schwab has answered its first requests: the
         #: chain sweep sends nothing to Schwab before (run_chains)
         self.subscribed = asyncio.Event()
@@ -340,22 +356,13 @@ class Daemon:
         socket_open = bool(last) and now - last < DEAD_SEC
         return {"ts": now,
                 "schwab_socket_open": socket_open,
-                "schwab": self._schwab_line(socket_open),
+                "schwab": asdict(SCHWAB_CONNECTED if socket_open else self.schwab_down),
                 "board": list(self.board),
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "refused": {k: dict(v) for k, v in self.refused.items() if v},
                 "health": self.health.report(now),
                 "writer": self.writer.status() if self.writer is not None else None}
-
-    def _schwab_line(self, socket_open: bool) -> dict:
-        """The header's Schwab: its line and class ("neg" unless connected)."""
-        if socket_open:
-            return {"line": "CONNECTED", "cls": ""}
-        if self.schwab_failure is None:
-            return {"line": "CONNECTING", "cls": "neg"}
-        since, why = self.schwab_failure
-        return {"line": f"NOT CONNECTED since {ct_label(since)}: {why}", "cls": "neg"}
 
     async def sync(self) -> None:
         for svc, cmd, symbols in plan(self.all_wanted(), self.held, self.refused):
@@ -396,7 +403,7 @@ class Daemon:
         stream._handlers["NEWS_HEADLINE"].append(_RawHandler(_publisher("NEWS_HEADLINE", self.bus, self.health)))
         self.stream = stream
         self.held = {s: frozenset() for s in SERVICES}    # a new connection holds nothing
-        self.schwab_failure = None
+        self.schwab_down, self._down_since = SCHWAB_CONNECTING, None
         log.info("schwab: connected")
 
     async def disconnect(self) -> None:
@@ -456,7 +463,9 @@ class Daemon:
             except Exception as e:  # noqa: BLE001 -- every failure is a reconnect, its reason on screen
                 why = f"{type(e).__name__}: {str(e)[:350]}"
                 log.warning("schwab: connection ended (%s)", why)
-                self.schwab_failure = (self.schwab_failure[0] if self.schwab_failure else time.time(), why)
+                if self._down_since is None:
+                    self._down_since = time.time()
+                self.schwab_down = SchwabLine(f"NOT CONNECTED since {ct_label(self._down_since)}", "neg", why)
             if stop.is_set():
                 break
             # a connection that lasted 5 minutes starts the backoff over
@@ -511,36 +520,20 @@ def release_owner_lock(fd: int, lock: Path) -> None:
         lock.unlink(missing_ok=True)
 
 
-class _ErrorOutput:
-    """sys.stderr under pythonw once the log runs: what is written there (a traceback, a warning)
-    goes into the log file through its handler, so the file is open once and rotates."""
-
-    def __init__(self, handler: RotatingFileHandler) -> None:
-        self.handler = handler
-
-    def write(self, text: str) -> int:
-        with self.handler.lock:
-            self.handler.stream.write(text)
-            self.handler.stream.flush()
-        return len(text)
-
-    def flush(self) -> None:
-        pass
-
-
 def _start_log() -> None:
     """Every line, with its time to the millisecond, to <runtime>/logs/stream_capture.log, and to
-    the console if any. Under pythonw the error output, the log file since the first line
-    (_EARLY_ERRORS), goes there through the log's handler from now on."""
+    the console if any. Under pythonw the log file held as the error output since the first line
+    (_EARLY_ERRORS) is closed first, so the log's handler holds the file alone and can rotate it;
+    from here an error reaches the log through the handler (main logs one that ends the daemon)."""
     global _EARLY_ERRORS
-    path = runtime_layout.logs_dir() / "stream_capture.log"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    file = RotatingFileHandler(path, maxBytes=50 * 1024 * 1024, backupCount=1, encoding="utf-8")
-    handlers: "list[logging.Handler]" = [file]
     if _EARLY_ERRORS is not None:
         _EARLY_ERRORS.close()
-        _EARLY_ERRORS, sys.stderr = None, _ErrorOutput(file)
-    elif sys.stderr is not None:
+        _EARLY_ERRORS = sys.stderr = None
+    path = runtime_layout.logs_dir() / "stream_capture.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handlers: "list[logging.Handler]" = [
+        RotatingFileHandler(path, maxBytes=50 * 1024 * 1024, backupCount=1, encoding="utf-8")]
+    if sys.stderr is not None:
         handlers.append(logging.StreamHandler())
     logging.basicConfig(level=logging.INFO, handlers=handlers,
                         format="%(asctime)s.%(msecs)03d %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
@@ -580,15 +573,7 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
     stream never waits on a chain; each chain part is published on the event loop, and the bus
     keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). A chain whose
     history write fails is kept as sent by `failures`, the daemon's writer (its failures ride
-    the heartbeat). It starts once the stream has logged in and subscribed (Daemon.subscribed):
-    no chain request goes to Schwab before."""
-    subscribed = asyncio.ensure_future(daemon.subscribed.wait())
-    stopped = asyncio.ensure_future(stop.wait())
-    await asyncio.wait({subscribed, stopped}, return_when=asyncio.FIRST_COMPLETED)
-    subscribed.cancel()
-    stopped.cancel()
-    if stop.is_set():
-        return
+    the heartbeat)."""
     loop = asyncio.get_running_loop()
     halt = threading.Event()
     sweep = ChainSweep(db_path, daemon.board,
@@ -602,6 +587,19 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
     finally:
         halt.set()
         await asyncio.gather(*workers, return_exceptions=True)
+
+
+async def chains_once_subscribed(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Event, *,
+                                 failures: "CaptureWriter") -> None:
+    """The chain sweep (run_chains), started once the stream has logged in and subscribed
+    (Daemon.subscribed): no chain request goes to Schwab before. Ends at `stop`."""
+    subscribed = asyncio.ensure_future(daemon.subscribed.wait())
+    stopped = asyncio.ensure_future(stop.wait())
+    await asyncio.wait({subscribed, stopped}, return_when=asyncio.FIRST_COMPLETED)
+    subscribed.cancel()
+    stopped.cancel()
+    if not stop.is_set():
+        await run_chains(daemon, db_path, schwab_client, stop, failures=failures)
 
 
 def one_schwab_client(build) -> "callable":
@@ -644,7 +642,7 @@ async def run() -> int:
     daemon.writer = writer
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
-             asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer)),
+             asyncio.create_task(chains_once_subscribed(daemon, db_path, schwab_client, stop, failures=writer)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]
@@ -661,10 +659,8 @@ def main() -> int:
     if sys.argv[1:]:        # everything it needs comes from the console; no switch can move it
         print(f"the capture daemon takes no arguments (got {sys.argv[1:]})", file=sys.stderr)
         return 2
-    # A worktree must not run a live daemon against production's runtime
-    # (runtime_layout.live_binding_error, 2026-09-25).
-    from runtime_layout import live_binding_error
-    binding = live_binding_error()
+    # a worktree must not run a live daemon against production's runtime
+    binding = runtime_layout.live_binding_error()
     if binding is not None:
         print(f"CAPTURE DAEMON REFUSED: {binding}", file=sys.stderr, flush=True)
         return 2
@@ -674,6 +670,9 @@ def main() -> int:
         return asyncio.run(run())
     except KeyboardInterrupt:
         return 0
+    except BaseException:
+        log.exception("capture daemon: ended by an error")   # under pythonw, the log is the only record
+        raise
     finally:
         release_owner_lock(fd, lock)
 

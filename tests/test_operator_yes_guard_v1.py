@@ -75,6 +75,8 @@ def test_production_actions_are_put_to_the_operator(cmd, what):
            "PowerShell"),
     _shell("gh pr view 445 --json state"),
     _shell("git push -q -u origin fix/some-branch"),
+    _shell("git add launch.py tests/test_launch_v1.py"),
+    _shell("python -m ruff check launch.py"),
 ])
 def test_ordinary_work_passes(payload):
     assert guard.reasons(payload) == []

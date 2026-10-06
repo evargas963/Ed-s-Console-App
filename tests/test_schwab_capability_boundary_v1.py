@@ -17,8 +17,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
@@ -26,42 +24,40 @@ if str(REPO) not in sys.path:
 LIVE_KEY = "LiveLookingKey1234567890"
 LIVE_SECRET = "LiveLookingSecret098765"
 
-SCHWAB_ENV = ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET", "ED_CI_OFFLINE", "CI")
+SCHWAB_ENV = ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET", "ED_CI_OFFLINE")
 
 
-@pytest.fixture()
-def clean_env(monkeypatch):
-    """No inherited Schwab state — each test states the situation it is testing."""
-    for key in SCHWAB_ENV:
-        monkeypatch.delenv(key, raising=False)
-    return monkeypatch
+def _blocked(**env: str) -> bool:
+    """config.schwab_live_blocked_for() in a fresh interpreter whose environment holds exactly
+    `env` of the Schwab settings (each test states the situation it is testing)."""
+    import os
+    import subprocess
+    base = {k: v for k, v in os.environ.items() if k not in SCHWAB_ENV}
+    done = subprocess.run([sys.executable, "-c", "import config; print(config.schwab_live_blocked_for())"],
+                          cwd=REPO, env={**base, **env}, capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return done.stdout.strip() == "True"
 
 
 # ==================================================== the capability gate and fail-closed
 
-def test_absent_credentials_block_live_schwab(clean_env):
-    """PROOF 4a. The hole this closes: absent credentials used to NOT block.
-
-    `schwab_credentials_are_ci_placeholders` returns False for an empty value, so with no
-    credentials the gate said "not blocked", a client was built, and calls went out
-    unauthenticated — the capability presenting itself as live.
-    """
+def test_absent_credentials_block_live_schwab():
+    """PROOF 4a. Absent credentials block: with none, no client is built and no call goes out
+    unauthenticated."""
     from config import schwab_live_blocked_for
 
-    assert schwab_live_blocked_for() is True, "no credentials must block live Schwab"
+    assert _blocked() is True, "no credentials must block live Schwab"
     assert schwab_live_blocked_for(api_key="", app_secret="") is True
-
-    clean_env.setenv("SCHWAB_API_KEY", LIVE_KEY)
-    clean_env.setenv("SCHWAB_APP_SECRET", LIVE_SECRET)
-    assert schwab_live_blocked_for() is False, "PROOF 3: live credentials must NOT be blocked"
-
-    clean_env.setenv("ED_CI_OFFLINE", "1")
-    assert schwab_live_blocked_for() is True, "CI offline must still block"
+    assert _blocked(SCHWAB_API_KEY=LIVE_KEY, SCHWAB_APP_SECRET=LIVE_SECRET) is False, \
+        "PROOF 3: live credentials must NOT be blocked"
+    assert _blocked(SCHWAB_API_KEY=LIVE_KEY, SCHWAB_APP_SECRET=LIVE_SECRET, ED_CI_OFFLINE="1") is True, \
+        "CI offline must still block"
+    assert _blocked(SCHWAB_API_KEY=LIVE_KEY, SCHWAB_APP_SECRET="test") is True, "a test shell's stand-in blocks"
     # explicit non-placeholder args stay usable for unit tests (unchanged contract)
     assert schwab_live_blocked_for(api_key=LIVE_KEY, app_secret=LIVE_SECRET) is False
 
 
-def test_an_unavailable_capability_cannot_serve_live_data(clean_env):
+def test_an_unavailable_capability_cannot_serve_live_data():
     """PROOF 4b. Fail closed at the one refusal site — no client, so no call.
 
     Nothing may reach the money path from an unavailable capability: not a client, not a
@@ -81,11 +77,14 @@ def test_an_unavailable_capability_cannot_serve_live_data(clean_env):
 def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     """PROOF 1c/2. The app is `ok` while Schwab is UNAVAILABLE, and health says which. Schwab is
     the capture daemon's (the console makes no Schwab call): its heartbeat says whether its Schwab
-    socket is open; no current heartbeat is UNAVAILABLE, never AVAILABLE (RC-57)."""
+    socket is open and, when not, why, in its own words (the real daemon's status here); no
+    current heartbeat is UNAVAILABLE, never AVAILABLE (RC-57)."""
     import time
 
     import live_market_plane as lmp
     import server
+    from app.market_data.schwab.streaming import capture
+    from stream_spine import HealthRegistry, MessageBus
 
     payload = server.health()
     assert payload["status"] == "ok", "a vendor outage must not make the application unhealthy"
@@ -93,12 +92,12 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
         "schwab": "UNAVAILABLE", "schwab_reason": "the capture daemon's heartbeat is not current"}
     assert payload["logger_tickers"] is None
 
-    now = time.time()
-    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": False, "board": ["SPY", "$SPX"]})
+    lmp.record_feed_heartbeat(capture.Daemon(MessageBus(), HealthRegistry(), board=["SPY", "$SPX"]).status())
     payload = server.health()
     assert payload["capabilities"] == {
-        "schwab": "UNAVAILABLE", "schwab_reason": "the capture daemon's Schwab socket is not open"}
+        "schwab": "UNAVAILABLE", "schwab_reason": "CONNECTING: the stream is logging in to Schwab"}
 
+    now = time.time()
     lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "board": ["SPY", "$SPX"]})
     payload = server.health()
     assert payload["status"] == "ok"

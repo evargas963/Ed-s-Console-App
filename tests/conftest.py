@@ -3,12 +3,10 @@ Pytest: allow EdDB against temp paths (non-canonical) without per-call flags.
 
 Production processes must NOT set ED_CONSOLE_ALLOW_NONCANONICAL_DB globally.
 
-Schwab placeholders (CI / adversarial): ``server`` calls ``build_config`` at import
-time. Objective-audit adversarial tests import ``server`` without live Schwab access.
-Module-level setdefault here runs before test collection so ``import server`` never
-requires real GitHub secrets. Production uvicorn startup is unchanged — these vars are
-not set outside pytest. Fail-closed without secrets is locked by
-``test_build_config_fail_closed_without_secrets`` (monkeypatch.delenv).
+Schwab placeholders (CI / adversarial): the Schwab client modules read the credentials from
+the environment. Module-level setdefault here runs before test collection so no test needs
+real GitHub secrets; these vars are not set outside pytest. Fail-closed without secrets is
+locked by ``test_build_config_fail_closed_without_secrets``.
 """
 from __future__ import annotations
 

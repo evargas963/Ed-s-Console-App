@@ -43,7 +43,7 @@ def test_the_chain_sweep_sends_schwab_nothing_until_the_stream_has_subscribed(tm
 
     async def go():
         stop = asyncio.Event()
-        task = asyncio.create_task(capture.run_chains(
+        task = asyncio.create_task(capture.chains_once_subscribed(
             daemon, tmp_path / "ed_console.db", lambda: client, stop,
             failures=CaptureWriter(tmp_path / "stream_capture.db")))
         await asyncio.sleep(1.5)
@@ -76,7 +76,7 @@ def test_why_schwab_is_not_connected_reaches_the_browser_on_the_daemons_heartbea
         stop = asyncio.Event()
         ui = asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status, host="127.0.0.1", port=port))
         run = asyncio.create_task(daemon.run(schwab_client, stop))
-        await _until(lambda: daemon.schwab_failure is not None)
+        await _until(lambda: daemon.status()["schwab"]["line"].startswith("NOT CONNECTED"))
         await asyncio.sleep(0.2)
         async with connect(f"ws://127.0.0.1:{port}", max_size=None) as ws:
             await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
@@ -87,9 +87,9 @@ def test_why_schwab_is_not_connected_reaches_the_browser_on_the_daemons_heartbea
         return msg["feed"]
     feed = asyncio.run(go())
     assert feed["schwab_socket_open"] is False
-    line = feed["schwab"]["line"]
-    assert feed["schwab"]["cls"] == "neg" and line.startswith("NOT CONNECTED since ") and line.count(" CT: ") == 1
-    assert "no Schwab client (Token file not found" in line, line
+    line, cls, why = feed["schwab"]["line"], feed["schwab"]["cls"], feed["schwab"]["why"]
+    assert cls == "neg" and line.startswith("NOT CONNECTED since ") and line.endswith(" CT"), line
+    assert why.startswith("ConnectionError: no Schwab client (Token file not found"), why
 
 
 def test_a_module_that_fails_to_load_leaves_its_reason_in_the_daemons_log(tmp_path):
