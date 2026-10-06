@@ -2731,6 +2731,10 @@ def get_chain(ticker: str = Query(...),
                   "completeness_basis": held.get("chain_basis")},   # the publication's own label
     })
 
+#: /api/health's Schwab reason when the console has no current heartbeat from the daemon
+NO_DAEMON_HEARTBEAT = "the capture daemon's heartbeat is not current"
+
+
 @app.get("/api/health")
 def health():
     # RC-514 / docs/ARCHITECTURE.md "Failure domains": application availability and capability
@@ -2743,7 +2747,7 @@ def health():
     capability: dict[str, object] = {
         "schwab": "AVAILABLE" if st is not None and st.get("schwab_socket_open") is True else "UNAVAILABLE"}
     if capability["schwab"] == "UNAVAILABLE":
-        capability["schwab_reason"] = ("the capture daemon's heartbeat is not current" if st is None
+        capability["schwab_reason"] = (NO_DAEMON_HEARTBEAT if st is None
                                        else f"{st['schwab']['line']}: {st['schwab']['why']}")
     return {
         "status": "ok",

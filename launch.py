@@ -86,27 +86,31 @@ def unhealthy_for(port: int, seconds: float) -> "str | None":
     return why
 
 
+#: what the launcher does about the console on its port (console_on)
+OPEN, START, LEAVE = "open", "start", "leave"
+
+
 def console_on(port: int, ask, out=print) -> str:
-    """What to do about the console on `port`: "open" (one answers healthy within
-    HEALTHY_WITHIN_SEC), "start" (none, or the operator had the one that did not answer stopped)
-    or "leave" (it did not answer and the operator kept it)."""
+    """What to do about the console on `port`: OPEN (one answers healthy within
+    HEALTHY_WITHIN_SEC), START (none, or the operator had the one that did not answer stopped)
+    or LEAVE (it did not answer and the operator kept it)."""
     proc = listener(port)
     if proc is None:
-        return "start"
+        return START
     why = unhealthy_for(port, HEALTHY_WITHIN_SEC)
     if why is None:
         out(f"Console: already running on port {port} (PID {proc.pid}) and healthy.")
-        return "open"
+        return OPEN
     command = " ".join(proc.cmdline())
     reply = ask(f"Port {port} is held by PID {proc.pid} ({command}), which has not answered healthy in "
                 f"{HEALTHY_WITHIN_SEC:.0f} s ({why}). Stop it and start a new console? [y/N] ")
     if reply.strip().lower() != "y":
         out(f"Left PID {proc.pid} running; nothing started.")
-        return "leave"
+        return LEAVE
     proc.kill()
     proc.wait(10)
     out(f"Stopped PID {proc.pid}.")
-    return "start"
+    return START
 
 
 def open_browser(out=print) -> None:
@@ -126,9 +130,9 @@ def main() -> int:
     else:
         print(f"Capture daemon: already running (port {DAEMON_PORT} is serving).")
     action = console_on(CONSOLE_PORT, input)
-    if action == "open":
+    if action == OPEN:
         open_browser()
-    if action != "start":
+    if action != START:
         return 0
     print(f"Console: starting on port {CONSOLE_PORT}; the browser opens at {URL} once it answers. Ctrl+C stops it.")
     console = subprocess.Popen(CONSOLE, env=console_environment(shell, ENV_FILE), cwd=ROOT)
