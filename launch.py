@@ -6,7 +6,7 @@
    settings), unless one already serves its price socket. It holds the Schwab credentials; its
    log, and /api/health from its heartbeat, say whether Schwab took them.
 3. The console on port 8000, with the same settings but no Schwab credentials (it never calls
-   Schwab). Neither process reads .env itself: this is its one reader. Unless a console is
+   Schwab). Neither process reads .env itself; this reads it for both. Unless a console is
    already there: one that answers healthy within HEALTHY_WITHIN_SEC is opened and nothing is
    started; one that does not is stopped only when the operator says so here.
 4. The default browser, at URL, once the console answers healthy.
