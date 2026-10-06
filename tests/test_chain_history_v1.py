@@ -20,6 +20,7 @@ import calibration.complete_chain_capture as cch
 import schwab_client as sc
 from app.options.order_flow import streaming as ofs
 from json_blob_codec import decode_json_blob
+from stream_spine import CaptureWriter
 from time_et import ET
 
 _FX = json.loads((Path(__file__).resolve().parent / "fixtures"
@@ -120,7 +121,8 @@ def _sweep(tmp_path, board, at):
     published: list = []
     clock = {"now": _ts(at)}
     sweep = cch.ChainSweep(tmp_path / "ed_console.db", board,
-                           lambda topic, msg: published.append((topic, msg)), clock=lambda: clock["now"])
+                           lambda topic, msg: published.append((topic, msg)), clock=lambda: clock["now"],
+                           failures=CaptureWriter(tmp_path / "stream_capture.db"))
     return sweep, published, clock
 
 
@@ -315,19 +317,18 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
         assert c.execute("SELECT COUNT(DISTINCT ts_utc) FROM complete_chain_captures").fetchone()[0] == 1
 
 
-def test_a_failing_schwab_client_pauses_the_sweep_instead_of_spinning(tmp_path, schwab, monkeypatch):
-    """2026-10-01 audit: with Schwab's auth refused, each worker rebuilt its client and failed the
-    next ticker at once, around the whole board, without end. A failure pauses every chain
-    request FAILED_PAUSE_SEC; both workers share one client."""
+def test_a_failing_schwab_client_pauses_the_sweep_instead_of_spinning(tmp_path):
+    """A failure pauses every chain request FAILED_PAUSE_SEC (5 s): two workers whose client
+    cannot be built (STAND-IN: the build raises what a refused token raises) try at most once
+    each in the first second, never again and again around the board."""
     import threading
-    monkeypatch.setattr(cch, "FAILED_PAUSE_SEC", 0.2)
     built = []
 
     def make_client():
         built.append(1)
         raise ConnectionError("Refresh token is invalid, expired or revoked")
     sweep = cch.ChainSweep(tmp_path / "ed_console.db", ["SPY", "QQQ", "IWM"],
-                           lambda topic, msg: None)
+                           lambda topic, msg: None, failures=CaptureWriter(tmp_path / "stream_capture.db"))
     halt = threading.Event()
     workers = [threading.Thread(target=sweep.work, args=(make_client, halt), daemon=True) for _ in range(2)]
     for w in workers:
@@ -335,11 +336,11 @@ def test_a_failing_schwab_client_pauses_the_sweep_instead_of_spinning(tmp_path, 
     halt.wait(1.0)
     halt.set()
     for w in workers:
-        w.join(5)
-    assert 2 <= len(built) <= 12, len(built)               # about one try per pause, not thousands
+        w.join(10)
+    assert 1 <= len(built) <= 2, len(built)               # one try per worker per pause
 
 
-def test_the_daemon_task_stops_when_told():
+def test_the_daemon_task_stops_when_told(tmp_path):
     from app.market_data.schwab.streaming import capture
 
     class _Daemon:
@@ -349,7 +350,9 @@ def test_the_daemon_task_stops_when_told():
 
     async def go():
         stop = asyncio.Event()
-        task = asyncio.create_task(capture.run_chains(_Daemon(), "unused.db", lambda: None, stop))
+        task = asyncio.create_task(capture.run_chains(
+            _Daemon(), "unused.db", lambda: None, stop,
+            failures=CaptureWriter(tmp_path / "stream_capture.db")))
         await asyncio.sleep(0)
         stop.set()
         await asyncio.wait_for(task, timeout=5)
@@ -358,34 +361,50 @@ def test_the_daemon_task_stops_when_told():
     assert task.done() and task.exception() is None
 
 
-def test_the_daemons_chain_is_the_current_record_whole_once_all_parts_are_in(tmp_path, schwab, monkeypatch):
-    """The daemon's chain sweep publishes a fetch in parts on its bus; the chain becomes SPY's
-    current record only once every part is in, and a console that connects later starts with
-    that whole chain (docs/DATA_FLOW.md §2 D3), every part in order -- never a partial one."""
+def test_the_daemons_chain_is_the_current_record_whole_once_all_parts_are_in(tmp_path):
+    """The daemon's chain sweep publishes a fetch in parts on its bus; the chain becomes the
+    ticker's current record only once every part is in, and a console that connects later starts
+    with that whole chain (docs/DATA_FLOW.md §2 D3), every part in order -- never a partial one.
+    Real data: MRVL's full chain as Schwab sent it (tests/fixtures/real_mrvl_full_chain_vs_strike_window.json,
+    2,432 contracts, so several parts of CHAIN_PART_CONTRACTS), from the local stand-in for
+    Schwab's host (test_data_path_rules_v1._LocalSchwab), whose quotes for MRVL are not captured."""
+    import httpx
+    from schwab.client import Client
+
     from app.market_data.schwab.streaming import capture
     from stream_spine import LATEST, MessageBus
-    monkeypatch.setattr(cch, "CHAIN_PART_CONTRACTS", 100)
+    from tests.test_data_path_rules_v1 import _LocalSchwab
+    full = json.loads((Path(__file__).resolve().parent / "fixtures"
+                       / "real_mrvl_full_chain_vs_strike_window.json").read_text(encoding="utf-8"))["full"]
     sqlite3.connect(tmp_path / "ed_console.db").close()
+    host = _LocalSchwab(chain=full)
+    client = Client("k", httpx.Client(transport=host.transport), enforce_enums=False)
 
     class _Daemon:
-        board, chains, active = ["SPY"], None, None
+        board, chains, active = ["MRVL"], None, None
         bus = MessageBus()
 
     async def go():
         stop = asyncio.Event()
         sub = _Daemon.bus.subscribe("chain.", policy=LATEST)
-        task = asyncio.create_task(capture.run_chains(_Daemon(), tmp_path / "ed_console.db", _built, stop))
+        task = asyncio.create_task(capture.run_chains(
+            _Daemon(), tmp_path / "ed_console.db", lambda: client, stop,
+            failures=CaptureWriter(tmp_path / "stream_capture.db")))
         topic, record = await asyncio.wait_for(sub.get(), timeout=30)
         stop.set()
         await asyncio.wait_for(task, timeout=30)
         late = _Daemon.bus.subscribe("chain.", policy=LATEST)
         return topic, record, await asyncio.wait_for(late.get(), timeout=5)
-    topic, record, (late_topic, late_record) = asyncio.run(go())
-    assert topic == late_topic == "chain.SPY"
+    try:
+        topic, record, (late_topic, late_record) = asyncio.run(go())
+    finally:
+        host.close()
+    assert topic == late_topic == "chain.MRVL"
     assert [m["part"] for m in record] == list(range(record[0]["parts"])) and len(record) > 1
     assert [m["part"] for m in late_record] == list(range(late_record[0]["parts"]))
     (tk, contracts, _ts_, reason), = _assembled([(late_topic, m) for m in late_record])
-    assert tk == "SPY" and reason is None and len(contracts) == len(_FX["chain"])
+    assert tk == "MRVL" and reason is None
+    assert sorted(c["symbol"] for c in contracts) == sorted(c["symbol"] for c in sc.flatten_chain_contracts(full))
 
 
 def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
