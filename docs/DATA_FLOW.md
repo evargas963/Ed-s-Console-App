@@ -209,6 +209,8 @@ from Schwab to the screen (daemon, console, page), are these:
   every ticker's levels go stale with that reason (`terrain_staleness`, judged against two of
   the sweep's delivered rounds, carried on the heartbeat). The first chain of each ticker whose
   fetch began in a capture window is also written to the chain history (§4.2, `capture_slot`); a
+  stored capture is never replaced (a second write of its ticker, expiry and time is refused,
+  `test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key`); a
   failed history write is logged and the window's next fetch writes it, the delivered chain stands. The sweep
   downloads through `schwab_client.fetch_full_chain`, the one place a chain enters, so every consumer
   (levels, walls, flip, the heatmap, per-strike rows, forces, the chain ladder, Strike Detail,
