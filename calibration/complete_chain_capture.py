@@ -231,8 +231,10 @@ class ChainSweep:
         self._probing = False           # after a refusal or failure: one fetch at a time
                                         # until one of those (the probe) succeeds
         self._probe: str | None = None  # the ticker _next last took while probing (the probe)
-        self._closed: "list[str] | None" = None    # while Closed: the board tickers whose close
-                                                    # values are not yet fetched; None while open
+        self._paused_by = ""            # the refusal that set the running pause
+        self._closed: "dict[str, float] | None" = None    # while Closed: the board tickers whose
+                                        # close values are not yet fetched, each with the time it
+                                        # may be fetched from (a failed one's retry); None while open
 
     def set_active(self, ticker: str | None) -> None:
         """The ticker on the operator's screen (None: none)."""
@@ -258,10 +260,10 @@ class ChainSweep:
         """_next's ticker; its caller holds the lock."""
         if session_label(datetime.fromtimestamp(now, ET)) == "Closed":
             if self._closed is None:          # the market has just closed, or the daemon
-                self._closed = sorted(self.board)   # started while it is Closed
-            tk = next((t for t in self._closed if t not in self._fetching), None)
+                self._closed = dict.fromkeys(sorted(self.board), now)   # started while it is Closed
+            tk = next((t for t, at in self._closed.items() if at <= now and t not in self._fetching), None)
             if tk is not None:
-                self._closed.remove(tk)
+                del self._closed[tk]
                 self._fetching.add(tk)
             return tk
         self._closed = None
@@ -288,14 +290,16 @@ class ChainSweep:
             alone = ticker == self._probe
         try:
             resp = fetch_full_chain(client, ticker, alone=alone, paused=self._paused)
-        except ChainWithheld as e:      # paused between two of its requests: the rest not sent
-            resp = FullChainResponse(None, reason=str(e))
+        except ChainWithheld:           # paused between two of its requests: the rest not sent
+            with self._lock:
+                resp = FullChainResponse(None, reason=f"not sent: chain requests are paused after "
+                                                      f"{self._paused_by}")
         now = self.clock()
         if resp.status_code != 200:
             if resp.status_code == 429:
-                self._refused(now, RATE_LIMITED_PAUSE_SEC)
+                self._refused(now, RATE_LIMITED_PAUSE_SEC, f"Schwab answered {ticker}'s chain HTTP 429")
             if resp.status_code == 403:
-                self._refused(now, FAILED_PAUSE_SEC)
+                self._refused(now, FAILED_PAUSE_SEC, f"Schwab answered {ticker}'s chain HTTP 403")
             reason = resp.reason or f"HTTP {resp.status_code}"
             log.warning("chain %s: %s", ticker, reason)
             self.publish(*chain_failure_message(ticker, reason, now))
@@ -317,13 +321,13 @@ class ChainSweep:
 
     def _done(self, ticker: str, delivered: bool) -> None:
         """A worker's fetch of `ticker` has ended. While Closed, a board ticker whose close
-        values were not delivered is fetched again, after FAILED_PAUSE_SEC."""
+        values were not delivered is fetched again, after FAILED_PAUSE_SEC; that delay is the
+        ticker's own, never a pause of the other tickers."""
         with self._changed:
             self._fetching.discard(ticker)
             if not delivered and self._closed is not None and ticker in self.board \
                     and ticker not in self._closed:
-                self._closed.append(ticker)
-                self._paused_until = max(self._paused_until, self.clock() + FAILED_PAUSE_SEC)
+                self._closed[ticker] = self.clock() + FAILED_PAUSE_SEC
             self._changed.notify_all()
 
     def _write_history(self, ticker: str, payload: dict, contracts: list[dict],
@@ -361,11 +365,13 @@ class ChainSweep:
         with self._lock:
             return self.clock() < self._paused_until
 
-    def _refused(self, now: float, pause: float) -> None:
-        """No chain request for `pause` (a pause already longer stands), then one fetch at a time,
-        each sending its requests one at a time (fetch_full_chain `alone`), until one succeeds."""
+    def _refused(self, now: float, pause: float, cause: str) -> None:
+        """No chain request for `pause` (a pause already longer stands, with its `cause`), then one
+        fetch at a time, each sending its requests one at a time (fetch_full_chain `alone`), until
+        one succeeds."""
         with self._lock:
-            self._paused_until = max(self._paused_until, now + pause)
+            if now + pause > self._paused_until:
+                self._paused_until, self._paused_by = now + pause, cause
             self._probing = True
 
     def work(self, schwab_client, stop: threading.Event) -> None:
@@ -390,7 +396,7 @@ class ChainSweep:
             except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the sweep goes on
                 log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
                 self.publish(*chain_failure_message(ticker, f"{type(e).__name__}: {e}", self.clock()))
-                self._refused(self.clock(), FAILED_PAUSE_SEC)
+                self._refused(self.clock(), FAILED_PAUSE_SEC, f"{ticker}'s chain failed: {type(e).__name__}")
             finally:
                 self._done(ticker, delivered)
 

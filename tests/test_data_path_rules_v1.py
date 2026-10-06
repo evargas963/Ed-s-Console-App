@@ -406,11 +406,58 @@ def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_no_t
     assert sweep._next(clock["now"] + 120) is None
 
 
+class _Slow(httpx.BaseTransport):
+    """Network latency (STAND-IN): each answer reaches the client `sec` after the host sent it."""
+
+    def __init__(self, inner: httpx.BaseTransport, sec: float):
+        self.inner, self.sec = inner, sec
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        resp = self.inner.handle_request(request)
+        resp.read()
+        time.sleep(self.sec)
+        return resp
+
+
+def test_d5_a_close_fetch_that_keeps_failing_holds_back_no_other_tickers_close_values(tmp_path):
+    """Saturday 2026-10-03 12:00 ET (Closed): 16 board tickers on 8 workers, each answer 0.2 s
+    after it is sent (STAND-IN latency), every ticker served SPY's captured chain and its quotes,
+    and T03's chain answered 400 every time (induced). Every other ticker's close values are
+    delivered and none is withheld: T03's retry delay is T03's own, not a pause of the others."""
+    schwab = _LocalSchwab()
+    schwab.refusals[("/marketdata/v1/chains", "T03")] = 400
+    board = [f"T{i:02d}" for i in range(16)]
+    sat, t0 = _et("2026-10-03 12:00"), time.monotonic()
+    published = []
+    sweep = ChainSweep(tmp_path / "ed_console.db", board, lambda topic, msg: published.append(msg),
+                       clock=lambda: sat + (time.monotonic() - t0),
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"))
+    client = Client("k", httpx.Client(transport=_Slow(schwab.transport, 0.2)), enforce_enums=False)
+    halt = threading.Event()
+    workers = [threading.Thread(target=sweep.work, args=(lambda: client, halt), daemon=True) for _ in range(8)]
+
+    def delivered() -> "set[str]":
+        return {m["ticker"] for m in list(published) if "failed" not in m}
+    try:
+        for w in workers:
+            w.start()
+        _wait_for(lambda: len(delivered()) == 15, "a board ticker's close values were never delivered")
+    finally:
+        halt.set()
+        for w in workers:
+            w.join(10)
+        schwab.close()
+    assert delivered() == set(board) - {"T03"}
+    assert [m["ticker"] for m in published if "failed" in m and m["ticker"] != "T03"] == [], \
+        "a close fetch was withheld"
+
+
 def test_d5_a_close_fetch_that_fails_is_tried_again_after_the_pause_until_it_lands():
     sweep, clock = _paced(["AAA", "BBB"], "2026-10-03 12:00")
     sat = clock["now"]
     assert _handed_out(sweep, sat, delivered=False) == ["AAA", "BBB"]
-    assert sweep._paused_until == sat + FAILED_PAUSE_SEC
+    assert sweep._next(sat + 1) is None, "a failed close fetch is tried again only after its own delay"
+    assert sweep._paused_until == 0.0, "a failed close fetch pauses no other ticker"
     assert _handed_out(sweep, sat + FAILED_PAUSE_SEC) == ["AAA", "BBB"]
     assert sweep._next(sat + 60) is None
 
@@ -1117,7 +1164,8 @@ def test_a_fetch_in_flight_sends_no_further_request_during_the_pause(tmp_path):
             schwab.held[("/marketdata/v1/chains", "BBB")].set()
             assert not landed.result(timeout=30), "BBB's chain was delivered without its quotes"
         assert _gets(schwab, "/marketdata/v1/quotes") == 0, "a quotes request was sent during the pause"
-        assert "paused" in published[-1]["failed"] and published[-1]["ticker"] == "BBB"
+        assert published[-1]["ticker"] == "BBB" and published[-1]["failed"] == \
+            "not sent: chain requests are paused after Schwab answered AAA's chain HTTP 429"
     finally:
         schwab.held[("/marketdata/v1/chains", "BBB")].set()
         schwab.close()

@@ -226,7 +226,9 @@ from Schwab to the screen (daemon, console, page), are these:
   the board) is fetched back to back, taken again the moment its last fetch ends, and the other
   workers fetch every board ticker in turn without end. Once Closed (from 20:00 ET, on a
   weekend or a holiday, and when the daemon starts while Closed) every board ticker is fetched
-  once, its close values; a fetch that fails is tried again after `FAILED_PAUSE_SEC`. Then no
+  once, its close values; a fetch that fails is tried again after `FAILED_PAUSE_SEC`, its own
+  delay: no other ticker waits for it (`tests/test_data_path_rules_v1.py`
+  `test_d5_a_close_fetch_that_keeps_failing_holds_back_no_other_tickers_close_values`). Then no
   chain is requested until the next session opens: the close values stand (D5), and a ticker
   put on screen while Closed is not fetched — it shows the close values already fetched, or,
   with none, its levels absent with the reason (`server.terrain_staleness`: while Closed,
@@ -248,7 +250,8 @@ from Schwab to the screen (daemon, console, page), are these:
   the refusal is not, whenever it lands. Any request of a chain counts: the chain, its
   expiration list (asked for a chain fetched in date ranges), its quotes. A fetch in flight
   sends no request while the pause runs (`fetch_full_chain` `paused`, checked before each
-  request) and fails with that reason; a request it sent before the pause is answered as
+  request) and fails with that reason, naming the ticker and Schwab's answer that started the
+  pause; a request it sent before the pause is answered as
   Schwab answers it, and a fetch whose request is still out when the pause ends goes on at
   full width. A later refusal never shortens a pause already running. A probe that fails with
   any other status (a 500, an expiration list with no expiry from today) sets no pause: the

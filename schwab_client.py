@@ -607,11 +607,11 @@ def _send_each(send, items: list, alone: bool, refused, paused) -> list:
     a fetch is sent here, and none while `paused()`: the fetch is withheld (ChainWithheld)."""
     def gated(item):
         if paused():
-            raise ChainWithheld("not sent: chain requests are paused after Schwab refused one")
+            raise ChainWithheld("not sent: the caller paused chain requests")
         return send(item)
 
-    if not alone:
-        with ThreadPoolExecutor(max_workers=max(1, len(items))) as pool:
+    if not alone and len(items) > 1:    # one request needs no thread of its own
+        with ThreadPoolExecutor(max_workers=len(items)) as pool:
             return list(pool.map(gated, items))
     answers = []
     for item in items:
