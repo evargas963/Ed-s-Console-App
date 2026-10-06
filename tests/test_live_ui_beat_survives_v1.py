@@ -11,10 +11,11 @@ received 2026-10-05 14:00:00-14:00:03 CT, as Schwab sent it) through the daemon'
 STAND-INS, each named:
   * the daemon's heartbeat (`_Heartbeat`): Schwab's socket open, holding every captured symbol;
   * a browser that stops reading (`_PausableBrowser`): a WebSocket client that reads its socket
-    only while reading, into a 4 KB receive buffer, so when it stops the daemon's writes to it
-    back up at the daemon within the replay, as a busy browser's do;
-  * the stream's rate: the captured 3 s window replayed thirty times as fast, over and over, so
-    that backlog builds within half a second.
+    only while reading; while it is stopped its socket receive buffer is 4 KB, so nothing reads
+    for it and the daemon's writes back up at the daemon, as a busy browser's do;
+  * the stream while that browser is stopped (`_burst`): the captured window replayed back to back
+    as fast as the daemon takes it, so the backlog outgrows any loopback socket buffer (Linux
+    sizes them in megabytes) within half a second.
 """
 from __future__ import annotations
 
@@ -40,9 +41,9 @@ _MIX = json.loads((Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10
                   .read_text(encoding="utf-8"))
 _EQ = [m for m in _MIX["messages"] if m["service"] == "LEVELONE_EQUITIES"]
 _SYMS = sorted({m["item"]["key"] for m in _EQ})
-_REPLAY_SPEED = 30.0
 #: a healthy browser's beats come every HEARTBEAT_SEC; this is the widest gap allowed between two
 _BEAT_GAP_MAX = live_ui.HEARTBEAT_SEC * 1.5
+_SMALL_RCVBUF, _LARGE_RCVBUF = 4096, 1 << 22
 
 
 class _Heartbeat:
@@ -62,41 +63,35 @@ def _free_port() -> int:
     return port
 
 
-#: the replay's step: each 0.9 s of the capture goes out together, every 30 ms (a sleep shorter
-#: than the Windows timer's ~15 ms would stretch the replay instead of speeding it)
-_SLICE_SEC = 0.9
-
-
-async def _replay(bus: MessageBus) -> None:
-    """The captured equity stream through the daemon's handler, at _REPLAY_SPEED, without end."""
-    handler = capture._publisher("LEVELONE_EQUITIES", bus, HealthRegistry())
-    t0 = _EQ[0]["ts_recv"]
-    slices: dict[int, list] = {}
+def _publish_window(handler) -> None:
     for m in _EQ:
-        slices.setdefault(int((m["ts_recv"] - t0) / _SLICE_SEC), []).append(m)
+        handler({"content": [m["item"]], "timestamp": m["schwab_ts"]})
+
+
+async def _burst(handler) -> None:
+    """The captured window through the daemon's handler, back to back, until cancelled."""
     while True:
-        for i in range(max(slices) + 1):
-            for m in slices.get(i, ()):
-                handler({"content": [m["item"]], "timestamp": m["schwab_ts"]})
-                await asyncio.sleep(0)       # each message reaches the browsers as Schwab's would
-            await asyncio.sleep(_SLICE_SEC / _REPLAY_SPEED)
+        for m in _EQ:
+            handler({"content": [m["item"]], "timestamp": m["schwab_ts"]})
+            await asyncio.sleep(0)           # each message reaches the browsers on its own
 
 
 class _PausableBrowser:
     """A WebSocket client (websockets' own sans-I/O protocol) that reads its socket only while
-    `reading` is set, 4 KB at a time, into a 4 KB socket receive buffer: when it stops reading,
-    nothing reads for it, so the daemon's writes back up at the daemon at once."""
+    `reading` is set. It reads 4 KB at a time into a 4 KB receive buffer until its first pause;
+    on `resume` it reads up to a megabyte at a time into a 4 MB buffer, to catch up at once."""
 
     def __init__(self, port: int) -> None:
         self.port, self.beats, self.closed = port, [], None
         self.proto = ClientProtocol(parse_uri(f"ws://127.0.0.1:{port}/"), max_size=None)
         self.reading = asyncio.Event()
         self.reading.set()
+        self.chunk = _SMALL_RCVBUF
 
     async def open(self, subscribe: str) -> None:
         loop = asyncio.get_running_loop()
         self.sock = socket.socket()
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _SMALL_RCVBUF)
         self.sock.setblocking(False)
         await loop.sock_connect(self.sock, ("127.0.0.1", self.port))
         self.proto.send_request(self.proto.connect())
@@ -107,13 +102,21 @@ class _PausableBrowser:
         await self._flush()
         self.task = asyncio.create_task(self._run())
 
+    def pause(self) -> None:
+        self.reading.clear()
+
+    def resume(self) -> None:
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, _LARGE_RCVBUF)
+        self.chunk = 1 << 20
+        self.reading.set()
+
     async def _flush(self) -> None:
         for data in self.proto.data_to_send():
             if data:
                 await asyncio.get_running_loop().sock_sendall(self.sock, data)
 
     async def _read(self) -> None:
-        data = await asyncio.get_running_loop().sock_recv(self.sock, 4096)
+        data = await asyncio.get_running_loop().sock_recv(self.sock, self.chunk)
         if data:
             self.proto.receive_data(data)
         else:
@@ -164,13 +167,13 @@ async def _session(body) -> None:
     while not stats.get("listening") and time.monotonic() < end:
         await asyncio.sleep(0.01)
     assert stats.get("listening")
-    replay = asyncio.create_task(_replay(bus))
+    handler = capture._publisher("LEVELONE_EQUITIES", bus, HealthRegistry())
+    _publish_window(handler)
     try:
-        await body(port, heartbeat, stats)
+        await body(port, handler, heartbeat, stats)
     finally:
-        replay.cancel()
         stop.set()
-        await asyncio.wait_for(asyncio.gather(server, replay, return_exceptions=True), 15)
+        await asyncio.wait_for(asyncio.gather(server, return_exceptions=True), 15)
 
 
 async def _two_browsers(port: int):
@@ -182,6 +185,16 @@ async def _two_browsers(port: int):
     return healthy, _Reader(healthy), paused
 
 
+async def _paused_for(p: _PausableBrowser, handler, sec: float) -> None:
+    """`p` reads nothing for `sec` while the stream bursts; then it reads again."""
+    p.pause()
+    burst = asyncio.create_task(_burst(handler))
+    await asyncio.sleep(sec)
+    burst.cancel()
+    await asyncio.gather(burst, return_exceptions=True)
+    p.resume()
+
+
 def _gaps(beats: list[float]) -> list[float]:
     return [round(b - a, 2) for a, b in zip(beats, beats[1:])]
 
@@ -190,13 +203,11 @@ def test_a_browser_that_stops_reading_for_a_moment_stays_and_the_others_never_wa
     """Measured 2026-10-06: the daemon closed a browser that did not take a beat within 1 s, every
     2-3 s, and the screen flashed OFFLINE. A browser that stops reading for 1.5 s stays connected
     and gets beats again after; the healthy browser gets a beat every second the whole time."""
-    async def body(port, heartbeat, stats):
+    async def body(port, handler, heartbeat, stats):
         healthy, h, p = await _two_browsers(port)
         await asyncio.sleep(1.5)                     # both reading
-        p.reading.clear()
         paused_at = time.monotonic()
-        await asyncio.sleep(1.5)                     # the paused browser reads nothing
-        p.reading.set()
+        await _paused_for(p, handler, 1.5)
         await asyncio.sleep(3.0)                     # reading again
         assert p.closed is None, f"the browser that paused for 1.5 s was closed: {p.closed!r}"
         after = [b for b in p.beats if b > paused_at + 1.5]
@@ -212,13 +223,12 @@ def test_a_browser_silent_past_the_liveness_limit_is_closed_and_the_others_never
     """The paused browser reads nothing for longer than BROWSER_SILENCE_SEC: the daemon closes
     it (once it reads again it finds the close), and the healthy browser's beats never wait."""
     assert live_ui.BROWSER_SILENCE_SEC == 3.0
-    async def body(port, heartbeat, stats):
+
+    async def body(port, handler, heartbeat, stats):
         healthy, h, p = await _two_browsers(port)
         await asyncio.sleep(1.5)
-        p.reading.clear()
-        await asyncio.sleep(live_ui.BROWSER_SILENCE_SEC + 2.0)
-        p.reading.set()
-        end = time.monotonic() + 15
+        await _paused_for(p, handler, live_ui.BROWSER_SILENCE_SEC + 2.0)
+        end = time.monotonic() + 8
         while p.closed is None and time.monotonic() < end:
             await asyncio.sleep(0.1)
         assert p.closed is not None, "a browser silent past the liveness limit was never closed"
@@ -237,7 +247,7 @@ def test_a_closed_schwab_socket_reads_feed_down_within_one_beat_and_keeps_the_la
     session from time_et.session_label at the row's own time)."""
     spy = [m["item"] for m in _EQ if m["item"]["key"] == "SPY" and "LAST_PRICE" in m["item"]]
 
-    async def body(port, heartbeat, stats):
+    async def body(port, handler, heartbeat, stats):
         async with connect(f"ws://127.0.0.1:{port}") as ws:
             await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
             heartbeat.open = False
@@ -249,7 +259,7 @@ def test_a_closed_schwab_socket_reads_feed_down_within_one_beat_and_keeps_the_la
                     row = next(r for r in msg["rows"] if r["ticker"] == "SPY")
             assert row is not None, "no beat said the Schwab socket closed"
             assert row["feed_live"] is False
-            assert row["spot"] in {i["LAST_PRICE"] for i in spy}
+            assert row["spot"] == spy[-1]["LAST_PRICE"]
             session = session_label(datetime.fromtimestamp(row["server_ts"], ET))
             if session == "Closed":
                 assert row["outage"] is None and row["not_live"] is None
