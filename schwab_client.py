@@ -474,7 +474,7 @@ class SchwabAuthError(Exception):
         self.remediation = remediation
 
 
-#: each client's auth latch: after an OAuth failure on a client, its chain and quote requests are
+#: each client's auth latch: after an OAuth failure on a client, its chain, expiration list and quote requests are
 #: withheld until this monotonic time. The latch belongs to the client whose token failed (the
 #: daemon holds one for its life, capture.one_schwab_client); another client is not withheld.
 _auth_failure_until: "weakref.WeakKeyDictionary[object, float]" = weakref.WeakKeyDictionary()
@@ -564,8 +564,15 @@ def _option_expiries(client, ticker: str) -> "tuple[int, list[date]]":
     (ET date), ascending (none unless the status is 200). MEASURED 2026-09-26 (Saturday): the
     expiration chain still lists Friday's expired 2026-09-25, and a chain request whose fromDate
     is in the past is refused with HTTP 400 ("Check Param Values") -- the same range from today
-    answers 200."""
-    resp = client.get_option_expiration_chain(ticker)
+    answers 200. Withheld, like the chain and quotes, while `client`'s auth latch holds."""
+    if _schwab_auth_latched(client):
+        raise SchwabAuthError("Schwab auth latched after prior token failure — expiration list withheld")
+    try:
+        resp = client.get_option_expiration_chain(ticker)
+    except Exception as e:
+        if _is_token_error(e):
+            _raise_schwab_auth_error(client, e)
+        raise
     if resp.status_code != 200:
         return resp.status_code, []
     today = now_et().date()
