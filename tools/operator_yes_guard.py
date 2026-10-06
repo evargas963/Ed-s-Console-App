@@ -61,7 +61,7 @@ def _shell_reasons(cmd: str, cwd: str) -> list[str]:
             targets = args[1:]
         targets += [m.group(1) for m in REDIRECT.finditer(seg)]
         written = [args[-1]] if head in COPIERS and args else targets      # a copy writes its destination
-        out += [f"writes {m.group(1)}, a database under data/ (Records stand)"
+        out += [f"writes {m.group(1)}, a database under data/ (rule 6: production)"
                 for m in filter(None, (DATA_DB.search(" " + t.strip("\"'")) for t in written))]
     low = cmd.lower()
     if (any(n in low for n in PROCESS_NAMES) and any(v in low for v in PROCESS_VERBS)) \
@@ -74,7 +74,7 @@ def _shell_reasons(cmd: str, cwd: str) -> list[str]:
     db = DATA_DB.search(cmd)
     heads = {segment_head(seg)[0].removesuffix(".exe") for _cwd, seg in iter_command_segments(cmd, cwd)}
     if db and not any(r in low for r in READ_ONLY) and (heads & DB_PROGRAMS or "sqlite3" in low):
-        out.append(f"may write {db.group(1)}, a database under data/ (Records stand)")
+        out.append(f"may write {db.group(1)}, a database under data/ (rule 6: production)")
     return out
 
 
@@ -85,7 +85,7 @@ def reasons(payload: dict) -> list[str]:
     if tool in MUTATING_TOOLS:
         path = str(tool_input.get("file_path") or tool_input.get("notebook_path") or tool_input.get("path") or "")
         db = DATA_DB.search(path)
-        return [f"writes {db.group(1)}, a database under data/ (Records stand)"] if db else []
+        return [f"writes {db.group(1)}, a database under data/ (rule 6: production)"] if db else []
     if tool in BASH_TOOLS:
         return _shell_reasons(str(tool_input.get("command") or ""), str(payload.get("cwd") or ""))
     return []

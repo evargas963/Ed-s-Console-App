@@ -118,7 +118,7 @@ def test_a_write_to_a_database_under_data_is_put_to_the_operator(payload, db):
 ])
 def test_a_copy_over_a_database_under_data_is_put_to_the_operator(cmd, tool, db):
     """A copy replaces the whole record without opening it."""
-    assert f"writes {db}, a database under data/ (Records stand)" in guard.reasons(_shell(cmd, tool))
+    assert f"writes {db}, a database under data/ (rule 6: production)" in guard.reasons(_shell(cmd, tool))
 
 
 @pytest.mark.parametrize("cmd, tool", [
