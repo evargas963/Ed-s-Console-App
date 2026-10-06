@@ -1,4 +1,4 @@
-"""RC-514 — a vendor outage degrades a capability; it does not decide whether the app exists.
+"""A vendor outage degrades a capability; it does not decide whether the app exists.
 
 docs/ARCHITECTURE.md "Failure domains" separates application availability from capability availability:
 
@@ -7,10 +7,10 @@ docs/ARCHITECTURE.md "Failure domains" separates application availability from c
         -> Schwab capability unavailable/degraded
         -> Schwab-dependent decision influence fails closed
 
-The correction is narrow and adds no mechanism. `config.schwab_live_blocked_for()` — the gate
-`schwab_client` already refuses on — now also blocks when credentials are ABSENT, which it did
-not; and `/api/health` publishes the capability from the capture daemon's heartbeat (the daemon
-is the only Schwab client), so health can never advertise a Schwab connection that is not open.
+`config.schwab_live_blocked_for()`, the gate `schwab_client` refuses on, blocks absent and
+stand-in credentials; `/api/health` publishes the capability from the capture daemon's heartbeat
+(the daemon is the only Schwab client), so health can never advertise a Schwab connection that is
+not open.
 """
 from __future__ import annotations
 
@@ -90,7 +90,8 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     lmp.record_feed_heartbeat(capture.Daemon(MessageBus(), HealthRegistry(), board=["SPY", "$SPX"]).status())
     payload = server.health()
     assert payload["capabilities"] == {
-        "schwab": "UNAVAILABLE", "schwab_reason": "CONNECTING: the stream is logging in to Schwab"}
+        "schwab": "UNAVAILABLE",
+        "schwab_reason": "NOT CONNECTED: the stream is logging in, or its connection has just ended"}
 
     now = time.time()
     lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "board": ["SPY", "$SPX"]})

@@ -23,10 +23,9 @@ import webbrowser
 from pathlib import Path
 
 import psutil
-from dotenv import dotenv_values
 
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT as DAEMON_PORT
-from config import ENV_FILE, schwab_credential_is_stand_in
+from config import ENV_FILE, env_file_settings, schwab_credential_is_stand_in
 
 ROOT = Path(__file__).resolve().parent
 CONSOLE_PORT = 8000
@@ -47,8 +46,7 @@ def daemon_environment(shell: "dict[str, str]", env_file: Path) -> "dict[str, st
     def kept(settings: "dict[str, str]") -> "dict[str, str]":
         return {k: v for k, v in settings.items() if k not in TEST_SHELL
                 and not (k in SCHWAB_CREDENTIALS and schwab_credential_is_stand_in(v))}
-    from_file = {k: v for k, v in dotenv_values(env_file).items() if v is not None}
-    return {**kept(from_file), **kept(shell)}
+    return {**kept(env_file_settings(env_file)), **kept(shell)}
 
 
 def console_environment(shell: "dict[str, str]", env_file: Path) -> "dict[str, str]":

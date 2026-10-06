@@ -3,6 +3,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import dotenv_values
+
 _ROOT = Path(__file__).resolve().parent
 
 
@@ -10,17 +12,17 @@ _ROOT = Path(__file__).resolve().parent
 ENV_FILE = _ROOT / ".env"
 
 
+def env_file_settings(path: Path = ENV_FILE) -> "dict[str, str]":
+    """`path`'s settings, the one reading of .env (none when it does not exist)."""
+    return {k: v for k, v in dotenv_values(path).items() if v is not None}
+
+
 def load_dotenv_file(path: Path = ENV_FILE) -> None:
-    """Put `path`'s variables into the environment, never over ones already set. Entry points
+    """Put `path`'s settings into the environment, never over ones already set. Entry points
     call it once, first; library code reads the environment and never loads a file."""
-    from dotenv import load_dotenv
+    for k, v in env_file_settings(path).items():
+        os.environ.setdefault(k, v)
 
-    if path.is_file():
-        load_dotenv(path, override=False)
-
-
-# No default ticker (universality, operator 2026-09-23): every endpoint and CLI requires the
-# ticker it acts on -- a missing one used to silently become SPY.
 
 # Schwab Dev Portal requires HTTPS callback URL (non-secret default).
 SCHWAB_CALLBACK_URL = "https://127.0.0.1:8182"
@@ -41,16 +43,6 @@ def schwab_credential_is_stand_in(value: str) -> bool:
     return v.lower() in _TEST_SHELL_SCHWAB_VALUES or any(v.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES)
 
 
-def schwab_credentials_are_ci_placeholders(api_key: str | None = None, app_secret: str | None = None) -> bool:
-    """True when both Schwab credentials are set and either is a stand-in
-    (schwab_credential_is_stand_in)."""
-    key = (api_key if api_key is not None else os.getenv("SCHWAB_API_KEY") or "").strip()
-    secret = (app_secret if app_secret is not None else os.getenv("SCHWAB_APP_SECRET") or "").strip()
-    if not key or not secret:
-        return False
-    return schwab_credential_is_stand_in(key) or schwab_credential_is_stand_in(secret)
-
-
 def schwab_live_blocked_for(
     *,
     api_key: str | None = None,
@@ -61,11 +53,9 @@ def schwab_live_blocked_for(
     are not blocked by it). The one fail-closed site, `schwab_client.build_client_from_token`,
     then builds no client: no Schwab call can be made, and the application itself still runs
     (docs/ARCHITECTURE.md "Failure domains")."""
-    if schwab_credentials_are_ci_placeholders(api_key, app_secret):
-        return True
     key = (api_key if api_key is not None else os.getenv("SCHWAB_API_KEY") or "").strip()
     secret = (app_secret if app_secret is not None else os.getenv("SCHWAB_APP_SECRET") or "").strip()
-    if not key or not secret:
+    if not key or not secret or schwab_credential_is_stand_in(key) or schwab_credential_is_stand_in(secret):
         return True
     offline = os.getenv("ED_CI_OFFLINE", "").strip().lower() in ("1", "true", "yes")
     if not offline:

@@ -2900,7 +2900,7 @@ def _capture_process_identity() -> ProcessIdentityV1:
 
 
 # Captured exactly once, at module import, before uvicorn serves any request
-# (single-process, single-worker, no --reload per start_ed_console.bat).
+# (single-process, single-worker, no --reload: launch.CONSOLE).
 PROCESS_IDENTITY_V1: ProcessIdentityV1 = _capture_process_identity()
 
 

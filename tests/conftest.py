@@ -41,7 +41,7 @@ os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
 # them). Both resolve canonically under ED_RUNTIME_ROOT above, which is the one isolation
 # knob — the _stream_spine_fallback fixture below still pins the stream reader default.
 
-# Schwab hermetic AND explicitly offline (RC-515): placeholders satisfy import-time config;
+# Schwab hermetic AND explicitly offline: placeholder credentials in the environment;
 # ED_CI_OFFLINE guarantees no test constructs a live Schwab client. SCHWAB_TOKEN_PATH is NOT
 # set — RC-534 resolves the token canonically under ED_RUNTIME_ROOT (a path with no token in
 # the private root, so still offline), and runtime_layout's own tests require it unset.

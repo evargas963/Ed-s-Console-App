@@ -280,8 +280,9 @@ def _connection_lost(e: BaseException) -> bool:
 BOARD_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
 
 
-#: why Schwab is not connected while the stream logs in, with no attempt failed since it last was
-SCHWAB_CONNECTING = "CONNECTING: the stream is logging in to Schwab"
+#: why Schwab is not connected while no attempt has failed since the stream last logged in: it is
+#: logging in, or its connection has just ended and the reason is on its way
+SCHWAB_CONNECTING = "NOT CONNECTED: the stream is logging in, or its connection has just ended"
 
 
 class Daemon:
