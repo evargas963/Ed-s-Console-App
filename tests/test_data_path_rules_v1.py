@@ -145,7 +145,8 @@ def test_d1_a_quote_that_arrives_late_never_replaces_a_newer_one(connected):
 # ── D2. Everything Schwab sends is kept ─────────────────────────────────────────────────────
 
 def test_d2_every_field_and_schwabs_own_timestamp_reach_the_console():
-    """A CHART_EQUITY bar with every field Schwab's Streamer Guide lists (SEQUENCE, CHART_DAY
+    """A CHART_EQUITY bar with every field Schwab's Streamer API lists (docs/schwab/
+    schwab_streamer_api.pdf §5.1 CHART_EQUITY, fields 0-8: SEQUENCE, CHART_DAY
     included) and the frame's own timestamp: each reaches the console as sent. Stand-in: the
     bar's values are SPY's captured 1-minute bar; SEQUENCE and CHART_DAY are named stand-ins."""
     bars = json.loads((FX / "real_spy_1m_bars_2026_09_24_25.json").read_text(encoding="utf-8"))
