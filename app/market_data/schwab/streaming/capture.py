@@ -45,7 +45,6 @@ import os
 import sys
 import threading
 import time
-from dataclasses import asdict, dataclass
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -281,18 +280,8 @@ def _connection_lost(e: BaseException) -> bool:
 BOARD_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
 
 
-@dataclass(frozen=True)
-class SchwabLine:
-    """The header's Schwab (status()["schwab"]): its words, their class ("neg": not connected)
-    and why, in full (the header's tooltip)."""
-    line: str
-    cls: str
-    why: str
-
-
-#: the socket open; the stream not logged in yet, with no attempt failed since it last was
-SCHWAB_CONNECTED = SchwabLine("CONNECTED", "", "the stream is logged in and Schwab is sending")
-SCHWAB_CONNECTING = SchwabLine("CONNECTING", "neg", "the stream is logging in to Schwab")
+#: why Schwab is not connected while the stream logs in, with no attempt failed since it last was
+SCHWAB_CONNECTING = "CONNECTING: the stream is logging in to Schwab"
 
 
 class Daemon:
@@ -315,13 +304,15 @@ class Daemon:
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
-        #: the header's Schwab while the socket is not open: SCHWAB_CONNECTING, or NOT CONNECTED
-        #: since the first failure in a row (_down_since) with the last one's reason
+        #: why Schwab is not connected, for /api/health (status()["schwab_down"], read while the
+        #: socket is not open): SCHWAB_CONNECTING, or NOT CONNECTED since the first failure in a
+        #: row (_down_since) with the last one's reason, as the log has it
         self.schwab_down = SCHWAB_CONNECTING
         self._down_since: "float | None" = None
-        #: set once the stream has logged in and Schwab has answered its first requests: the
-        #: chain sweep sends nothing to Schwab before (run_chains)
-        self.subscribed = asyncio.Event()
+        #: set while the stream is logged in and Schwab has answered this connection's first
+        #: requests, cleared when the connection ends: the chain sweep sends Schwab nothing while
+        #: it is clear (while_subscribed)
+        self.subscribed = threading.Event()
 
     def set_wanted(self, raw, sender=None) -> None:
         """The console's list from connection `sender` (live_push calls this for every
@@ -356,7 +347,7 @@ class Daemon:
         socket_open = bool(last) and now - last < DEAD_SEC
         return {"ts": now,
                 "schwab_socket_open": socket_open,
-                "schwab": asdict(SCHWAB_CONNECTED if socket_open else self.schwab_down),
+                "schwab_down": self.schwab_down,
                 "board": list(self.board),
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
@@ -407,6 +398,9 @@ class Daemon:
         log.info("schwab: connected")
 
     async def disconnect(self) -> None:
+        """The connection has ended: nothing is held or subscribed on it, so the chain sweep
+        waits until the next connection has subscribed."""
+        self.subscribed.clear()
         s, self.stream = self.stream, None
         self.held = {k: frozenset() for k in SERVICES}
         if s is not None:
@@ -465,7 +459,7 @@ class Daemon:
                 log.warning("schwab: connection ended (%s)", why)
                 if self._down_since is None:
                     self._down_since = time.time()
-                self.schwab_down = SchwabLine(f"NOT CONNECTED since {ct_label(self._down_since)}", "neg", why)
+                self.schwab_down = f"NOT CONNECTED since {ct_label(self._down_since)}: {why}"
             if stop.is_set():
                 break
             # a connection that lasted 5 minutes starts the backoff over
@@ -567,13 +561,21 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
             pass
 
 
+def _worker_ended(worker: "asyncio.Future") -> None:
+    """A chain sweep worker's end: one that ended on an error is logged with its traceback."""
+    if not worker.cancelled() and worker.exception() is not None:
+        e = worker.exception()
+        log.error("chain sweep: a worker ended on %s: %s", type(e).__name__, e, exc_info=e)
+
+
 async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Event, *,
                      failures: "CaptureWriter") -> None:
     """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own threads, so the
     stream never waits on a chain; each chain part is published on the event loop, and the bus
     keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). A chain whose
     history write fails is kept as sent by `failures`, the daemon's writer (its failures ride
-    the heartbeat)."""
+    the heartbeat). A worker that ends on an error is logged with it (_worker_ended): a worker
+    thread has no error output of its own to reach."""
     loop = asyncio.get_running_loop()
     halt = threading.Event()
     sweep = ChainSweep(db_path, daemon.board,
@@ -582,6 +584,8 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
     daemon.chains = sweep
     sweep.set_active(daemon.active)                 # the ticker on screen, if the console said one
     workers = [loop.run_in_executor(None, sweep.work, schwab_client, halt) for _ in range(CHAIN_WORKERS)]
+    for worker in workers:
+        worker.add_done_callback(_worker_ended)
     try:
         await stop.wait()
     finally:
@@ -589,17 +593,17 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
         await asyncio.gather(*workers, return_exceptions=True)
 
 
-async def chains_once_subscribed(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Event, *,
-                                 failures: "CaptureWriter") -> None:
-    """The chain sweep (run_chains), started once the stream has logged in and subscribed
-    (Daemon.subscribed): no chain request goes to Schwab before. Ends at `stop`."""
-    subscribed = asyncio.ensure_future(daemon.subscribed.wait())
-    stopped = asyncio.ensure_future(stop.wait())
-    await asyncio.wait({subscribed, stopped}, return_when=asyncio.FIRST_COMPLETED)
-    subscribed.cancel()
-    stopped.cancel()
-    if not stop.is_set():
-        await run_chains(daemon, db_path, schwab_client, stop, failures=failures)
+def while_subscribed(daemon: "Daemon", schwab_client, stopping: threading.Event) -> "callable":
+    """The chain sweep's Schwab client: the daemon's one client (`schwab_client()`), handed out
+    only while the stream is logged in and subscribed (Daemon.subscribed). While a connection
+    logs in, at the start and at every reconnect, a chain worker waits here and sends Schwab
+    nothing; once `stopping` is set it raises instead."""
+    def client():
+        while not daemon.subscribed.wait(0.5):
+            if stopping.is_set():
+                raise ConnectionError("the capture daemon is stopping")
+        return schwab_client()
+    return client
 
 
 def one_schwab_client(build) -> "callable":
@@ -641,8 +645,10 @@ async def run() -> int:
     daemon = Daemon(bus, health, board=board_tickers(db_path))
     daemon.writer = writer
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
+    stopping = threading.Event()                         # the chain workers' view of `stop`
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
-             asyncio.create_task(chains_once_subscribed(daemon, db_path, schwab_client, stop, failures=writer)),
+             asyncio.create_task(run_chains(daemon, db_path, while_subscribed(daemon, schwab_client, stopping),
+                                            stop, failures=writer)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]
@@ -651,6 +657,7 @@ async def run() -> int:
         await daemon.run(schwab_client, stop)
     finally:
         stop.set()
+        stopping.set()
         await asyncio.gather(*tasks, return_exceptions=True)
     return 0
 

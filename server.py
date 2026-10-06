@@ -2740,7 +2740,7 @@ def health():
     # RC-514 / docs/ARCHITECTURE.md "Failure domains": application availability and capability
     # availability are separate, so `status` answers "is the app alive" and never folds a
     # vendor outage into it. Schwab is the capture daemon's: its heartbeat says whether its
-    # Schwab socket is open and, when not, why (its header line); no current heartbeat is
+    # Schwab socket is open and, when not, why (as its log says it); no current heartbeat is
     # UNAVAILABLE (unmeasurable is not ok, RC-57).
     st = lmp.daemon_status()
     board = _board()
@@ -2748,7 +2748,7 @@ def health():
         "schwab": "AVAILABLE" if st is not None and st.get("schwab_socket_open") is True else "UNAVAILABLE"}
     if capability["schwab"] == "UNAVAILABLE":
         capability["schwab_reason"] = (NO_DAEMON_HEARTBEAT if st is None
-                                       else f"{st['schwab']['line']}: {st['schwab']['why']}")
+                                       else st["schwab_down"])
     return {
         "status": "ok",
         "time": datetime.now().isoformat(),

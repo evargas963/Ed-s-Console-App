@@ -4,12 +4,12 @@
    test shell leaves set that blocks every live Schwab call (TEST_SHELL, stand-in credentials).
 2. The capture daemon, in its own window (start_capture_daemon.bat restarts it), unless one
    already serves its price socket. It holds the Schwab credentials and says on screen whether
-   Schwab took them (the header's Schwab, from its heartbeat).
+   Schwab took them (its log, and /api/health from its heartbeat).
 3. The console on port 8000, with the same settings but no Schwab credentials (it never calls
    Schwab and reads no .env of its own), unless one is
    already there: one that answers healthy within HEALTHY_WITHIN_SEC is opened and nothing is
    started; one that does not is stopped only when the operator says so here.
-4. The browser, at URL, once the console answers healthy.
+4. The default browser, at URL, once the console answers healthy.
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import webbrowser
 from pathlib import Path
 
 import psutil
@@ -37,8 +38,6 @@ CONSOLE = [sys.executable, "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "
 #: set by a test shell, it blocks every live Schwab call (config.schwab_live_blocked_for)
 TEST_SHELL = ("ED_CI_OFFLINE",)
 SCHWAB_CREDENTIALS = ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET")
-EDGE = [Path(os.environ[v]) / "Microsoft/Edge/Application/msedge.exe"
-        for v in ("ProgramFiles(x86)", "ProgramFiles") if v in os.environ]
 
 
 def daemon_environment(shell: "dict[str, str]", env_file: Path) -> "dict[str, str]":
@@ -113,14 +112,6 @@ def console_on(port: int, ask, out=print) -> str:
     return START
 
 
-def open_browser(out=print) -> None:
-    found = [p for p in EDGE if p.is_file()]
-    if found:
-        subprocess.Popen([str(found[0]), URL])
-    else:
-        out(f"Microsoft Edge not found; open {URL} yourself.")
-
-
 def main() -> int:
     shell = dict(os.environ)
     if listener(DAEMON_PORT) is None:
@@ -131,7 +122,7 @@ def main() -> int:
         print(f"Capture daemon: already running (port {DAEMON_PORT} is serving).")
     action = console_on(CONSOLE_PORT, input)
     if action == OPEN:
-        open_browser()
+        webbrowser.open(URL)                       # the default browser
     if action != START:
         return 0
     print(f"Console: starting on port {CONSOLE_PORT}; the browser opens at {URL} once it answers. Ctrl+C stops it.")
@@ -142,7 +133,7 @@ def main() -> int:
         pass
     if console.poll() is None:
         print(f"Console: healthy {time.monotonic() - started:.1f} s after its start.")
-        open_browser()
+        webbrowser.open(URL)
     return console.wait()
 
 
