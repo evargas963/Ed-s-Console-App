@@ -3,9 +3,10 @@ chain, what it hands the console, and the chain history it writes.
 
 Real data (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json): SPY's 2026-11-20 contracts
 from the capture daemon's full-chain capture of 2026-09-30 15:31:57 ET, and Schwab's quotes for
-every one of them. Schwab's network is the only stand-in (`_Schwab`, or Schwab's host played
-locally by tests/test_data_path_rules_v1._LocalSchwab): it answers the chain with the captured
-contracts and each quotes request with the recorded quotes."""
+every one of them, and MRVL's full chain as Schwab sent it. Schwab's host is the only stand-in,
+played locally (tests/test_data_path_rules_v1._LocalSchwab) for schwab-py's own client: it answers
+the chain with the captured contracts and each quotes request with the recorded quotes. Nothing
+is patched."""
 from __future__ import annotations
 
 import asyncio
@@ -25,7 +26,7 @@ import schwab_client as sc
 from app.options.order_flow import streaming as ofs
 from json_blob_codec import decode_json_blob
 from stream_spine import CaptureWriter
-from tests.test_data_path_rules_v1 import _LocalSchwab
+from tests.test_data_path_rules_v1 import _LocalSchwab, _spy_chain_payload
 from time_et import ET
 
 _FX = json.loads((Path(__file__).resolve().parent / "fixtures"
@@ -68,57 +69,26 @@ def test_fifteen_capture_windows_on_a_full_day():
         if (9, 30) <= (h, m) <= (16, 0)] + ["16:15"]
 
 
-class _Resp:
-    def __init__(self, code, payload=None):
-        self.status_code = code
-        self._p = payload if payload is not None else {}
-
-    def json(self):
-        return self._p
-
-
-class _Schwab:
-    """Schwab's network (the stand-in): the captured SPY chain for SPY, `refused` codes per
-    ticker, and the recorded quotes; every request is counted."""
-
-    def __init__(self, refused: "dict | None" = None, quotes_refused: "int | None" = None):
-        self.refused = refused or {}
-        self.quotes_refused = quotes_refused
-        self.chains: "list[str]" = []
-        self.quotes = 0
-
-    def chain(self, client, ticker, **kw):
-        self.chains.append(ticker)
-        if ticker in self.refused:
-            return _Resp(self.refused[ticker])
-        payload = {"symbol": ticker, "underlyingPrice": _FX["spot"], "callExpDateMap": {}, "putExpDateMap": {}}
-        for ct in json.loads(json.dumps(_FX["chain"])):
-            side = "callExpDateMap" if ct["putCall"] == "CALL" else "putExpDateMap"
-            payload[side].setdefault(f"{ct['expirationDate'][:10]}:{ct['daysToExpiration']}", {}) \
-                .setdefault(str(ct["strikePrice"]), []).append(ct)
-        return _Resp(200, payload)
-
-    def quote(self, client, symbols):
-        self.quotes += 1
-        if self.quotes_refused is not None:
-            return _Resp(self.quotes_refused)
-        return _Resp(200, {s: {"symbol": s, "quote": dict(_QUOTED[s])} for s in symbols if s in _QUOTED})
+#: MRVL's full chain as Schwab sent it (2,432 contracts: five parts of CHAIN_PART_CONTRACTS, 500);
+#: its quotes are not captured, so its contracts carry no Greeks from the quotes
+_MRVL = json.loads((Path(__file__).resolve().parent / "fixtures"
+                    / "real_mrvl_full_chain_vs_strike_window.json").read_text(encoding="utf-8"))["full"]
+_MRVL_N = len(sc.flatten_chain_contracts(_MRVL))
 
 
 @pytest.fixture
-def schwab(monkeypatch):
-    net = _Schwab()
-    monkeypatch.setattr(sc, "safe_get_chain", net.chain)
-    monkeypatch.setattr(sc, "safe_get_quotes", net.quote)
-    return net
+def schwab():
+    """Schwab's host, played locally (tests/test_data_path_rules_v1._LocalSchwab: the captured
+    SPY chain and its quotes, or another captured chain), and the daemon's one client on it:
+    schwab-py's own Client, as capture.one_schwab_client hands the sweep."""
+    host = _LocalSchwab()
+    host.client = Client("k", httpx.Client(transport=host.transport), enforce_enums=False)
+    yield host
+    host.close()
 
 
-def _built():
-    """The daemon's one client (what capture.one_schwab_client hands the sweep): schwab-py's own
-    Client over a plain httpx session (the network calls themselves are the `schwab` stand-in's)."""
-    import httpx
-    from schwab.client import Client
-    return Client("key", httpx.Client())
+def _chain_gets(host) -> int:
+    return sum(1 for _t, method, path, _a in host.requests if method == "GET" and path == "/marketdata/v1/chains")
 
 
 def _sweep(tmp_path, board, at):
@@ -136,69 +106,77 @@ def _assembled(published):
     return [o for _t, msg in published for o in ofs.assemble_chain_part(json.loads(msg["frame"])["msg"])]
 
 
-def test_each_fetch_reaches_the_console_whole_in_parts_with_schwabs_exact_greeks(tmp_path, schwab, monkeypatch):
-    monkeypatch.setattr(cch, "CHAIN_PART_CONTRACTS", 100)
+def test_each_fetch_reaches_the_console_whole_in_parts_with_schwabs_exact_greeks(tmp_path, schwab):
+    """SPY's chain reaches the console whole, each contract with its quote's exact gamma; MRVL's
+    full chain reaches it whole in its five parts, in order."""
     sweep, published, _clock = _sweep(tmp_path, ["SPY"], "2026-09-30 15:31:57")
-    sweep.fetch_one(object(), "SPY")
-    assert [m["part"] for _t, m in published] == [0, 1, 2, 3, 4]           # 442 contracts
+    sweep.fetch_one(schwab.client, "SPY")
     (tk, contracts, ts, reason), = _assembled(published)
     assert (tk, ts, reason) == ("SPY", _ts("2026-09-30 15:31:57"), None)
     assert sorted(c["symbol"] for c in contracts) == sorted(c["symbol"] for c in _FX["chain"])
     assert all(c["gamma"] == _QUOTED[c["symbol"]]["gamma"] for c in contracts)
+    published.clear()
+    schwab.chain = _MRVL
+    sweep.fetch_one(schwab.client, "MRVL")
+    assert [m["part"] for _t, m in published] == [0, 1, 2, 3, 4]           # 2,432 contracts
+    (tk, contracts, ts, reason), = _assembled(published)
+    assert (tk, ts, reason) == ("MRVL", _ts("2026-09-30 15:31:57"), None)
+    assert sorted(c["symbol"] for c in contracts) == sorted(c["symbol"] for c in sc.flatten_chain_contracts(_MRVL))
 
 
-def test_a_chain_missing_a_part_is_never_priced_and_says_why(tmp_path, schwab, monkeypatch):
-    monkeypatch.setattr(cch, "CHAIN_PART_CONTRACTS", 100)
-    sweep, published, clock = _sweep(tmp_path, ["SPY"], "2026-09-30 15:31:57")
-    sweep.fetch_one(object(), "SPY")
+def test_a_chain_missing_a_part_is_never_priced_and_says_why(tmp_path, schwab):
+    schwab.chain = _MRVL                                 # five parts
+    sweep, published, clock = _sweep(tmp_path, ["MRVL"], "2026-09-30 15:31:57")
+    sweep.fetch_one(schwab.client, "MRVL")
     del published[2]                                     # one part lost on the way
     clock["now"] += 240
-    sweep.fetch_one(object(), "SPY")                     # the next chain begins
+    sweep.fetch_one(schwab.client, "MRVL")               # the next chain begins
     first, second = _assembled(published)
     assert first[1] is None and "arrived with 4 of its 5 parts" in first[3]
     assert second[1] is not None and second[3] is None
 
 
-def test_a_chain_missing_a_part_is_reported_even_when_the_next_chain_is_one_part(tmp_path, schwab, monkeypatch):
+def test_a_chain_missing_a_part_is_reported_even_when_the_next_chain_is_one_part(tmp_path, schwab):
     """2026-10-01 audit: when the next chain completed in its first part, the report of the
-    incomplete one before it was lost."""
-    monkeypatch.setattr(cch, "CHAIN_PART_CONTRACTS", 100)
-    sweep, published, clock = _sweep(tmp_path, ["SPY"], "2026-09-30 15:31:57")
-    sweep.fetch_one(object(), "SPY")
+    incomplete one before it was lost. STAND-IN: one ticker's two chains are MRVL's full chain
+    (five parts) and then SPY's captured chain (442 contracts, one part), both as Schwab sent them."""
+    schwab.chain = _MRVL
+    sweep, published, clock = _sweep(tmp_path, ["MRVL"], "2026-09-30 15:31:57")
+    sweep.fetch_one(schwab.client, "MRVL")
     del published[2:]                                    # two of five parts arrived
-    monkeypatch.setattr(cch, "CHAIN_PART_CONTRACTS", 1000)
+    schwab.chain = _spy_chain_payload()
     clock["now"] += 240
-    sweep.fetch_one(object(), "SPY")                     # the next chain: one part
+    sweep.fetch_one(schwab.client, "MRVL")               # the next chain: one part
     first, second = _assembled(published)
     assert first[1] is None and "arrived with 2 of its 5 parts" in first[3]
     assert second[1] is not None and len(second[1]) == 442
 
 
-def test_a_chain_begun_before_the_console_connected_is_no_failure(tmp_path, schwab, monkeypatch):
+def test_a_chain_begun_before_the_console_connected_is_no_failure(tmp_path, schwab):
     """2026-10-01 audit: a console connecting mid-chain got its last parts only and reported the
     chain as arriving incomplete."""
-    monkeypatch.setattr(cch, "CHAIN_PART_CONTRACTS", 100)
-    sweep, published, clock = _sweep(tmp_path, ["SPY"], "2026-09-30 15:31:57")
-    sweep.fetch_one(object(), "SPY")
+    schwab.chain = _MRVL                                 # five parts
+    sweep, published, clock = _sweep(tmp_path, ["MRVL"], "2026-09-30 15:31:57")
+    sweep.fetch_one(schwab.client, "MRVL")
     del published[:2]                                    # the console connected after part 1
     clock["now"] += 240
-    sweep.fetch_one(object(), "SPY")
+    sweep.fetch_one(schwab.client, "MRVL")
     (tk, contracts, _ts, reason), = _assembled(published)
-    assert contracts is not None and reason is None and len(contracts) == 442
+    assert contracts is not None and reason is None and len(contracts) == _MRVL_N
 
 
 def test_a_refused_chain_reaches_the_console_as_schwabs_answer(tmp_path, schwab):
-    schwab.refused = {"SPY": 400}
+    schwab.refusals[("/marketdata/v1/chains", "SPY")] = 400          # induced
     sweep, published, _clock = _sweep(tmp_path, ["SPY"], "2026-09-30 15:31:57")
-    sweep.fetch_one(object(), "SPY")
+    sweep.fetch_one(schwab.client, "SPY")
     (tk, contracts, _ts_, reason), = _assembled(published)
     assert tk == "SPY" and contracts is None and "HTTP 400" in reason
 
 
 def test_a_429_pauses_every_chain_request(tmp_path, schwab):
-    schwab.quotes_refused = 429
+    schwab.refusals[("/marketdata/v1/quotes", None)] = 429           # induced
     sweep, _published, _clock = _sweep(tmp_path, ["SPY"], "2026-09-30 15:31:57")
-    sweep.fetch_one(object(), "SPY")
+    sweep.fetch_one(schwab.client, "SPY")
     assert sweep._paused_until == _ts("2026-09-30 15:31:57") + cch.RATE_LIMITED_PAUSE_SEC
 
 
@@ -209,7 +187,7 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
                "2026-09-30 16:01:00",                             # the 16:00 window
                "2026-09-30 17:00:00"):                            # after the close capture's window
         clock["now"] = _ts(at)
-        sweep.fetch_one(object(), "SPY")
+        sweep.fetch_one(schwab.client, "SPY")
     with sqlite3.connect(db) as c:
         rows = c.execute("SELECT ts_utc, expiry, spot, n_contracts, chain_json FROM complete_chain_captures "
                          "ORDER BY ts_utc").fetchall()
@@ -227,7 +205,7 @@ def _fetched(sweep, now):
     return tk
 
 
-def test_the_sweep_fetches_every_board_ticker_in_turn(tmp_path, schwab):
+def test_the_sweep_fetches_every_board_ticker_in_turn(tmp_path):
     board = ["AAA", "BBB", "CCC"]
     sweep, _published, clock = _sweep(tmp_path, board, "2026-09-30 15:31:57")
     order = [_fetched(sweep, clock["now"]) for _ in range(3)]
@@ -236,7 +214,7 @@ def test_the_sweep_fetches_every_board_ticker_in_turn(tmp_path, schwab):
     assert sweep.round_sec == 200                       # the round it delivered
 
 
-def test_the_active_ticker_is_fetched_back_to_back_ahead_of_the_board(tmp_path, schwab):
+def test_the_active_ticker_is_fetched_back_to_back_ahead_of_the_board(tmp_path):
     """Operator 2026-10-01: the ticker on screen is fetched first and again the moment its last
     fetch ends, on or off the board; the other workers go round the board."""
     board = ["AAA", "BBB", "CCC"]
@@ -259,22 +237,22 @@ def test_an_idle_worker_takes_a_new_active_ticker_at_once(tmp_path, schwab):
     on screen waited for it."""
     import threading
     sweep, _published, _clock = _sweep(tmp_path, [], "2026-09-30 15:31:57")
-    client = _built()
     halt = threading.Event()
-    worker = threading.Thread(target=sweep.work, args=(lambda: client, halt), daemon=True)
+    worker = threading.Thread(target=sweep.work, args=(lambda: schwab.client, halt), daemon=True)
     worker.start()
     time.sleep(0.1)                                     # the worker is idle: nothing to fetch
+    assert _chain_gets(schwab) == 0
     put = time.monotonic()
     sweep.set_active("SPY")
-    while "SPY" not in schwab.chains and time.monotonic() - put < 5:
+    while _chain_gets(schwab) == 0 and time.monotonic() - put < 5:
         time.sleep(0.005)
     took = time.monotonic() - put
     halt.set()
     worker.join(5)
-    assert "SPY" in schwab.chains and took < 0.5, took
+    assert _chain_gets(schwab) > 0 and took < 0.5, took
 
 
-def test_no_ticker_is_fetched_twice_at_once(tmp_path, schwab):
+def test_no_ticker_is_fetched_twice_at_once(tmp_path):
     """2026-10-01 audit: two workers could fetch one ticker at the same time (a one-ticker
     board, or the active one)."""
     board = ["AAA", "BBB"]
@@ -286,45 +264,37 @@ def test_no_ticker_is_fetched_twice_at_once(tmp_path, schwab):
     assert sweep.round_sec is None, "the round ends when its last fetch is done, not when handed out"
 
 
-def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_path):
+def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_path, schwab):
     """2026-10-01 audit: the capture window was judged by when a fetch finished, so an $SPX
     fetch begun at 16:14:30 (options still trading) and finished at 16:15:10 became the 16:15
-    close capture. A fetch is written for the window it began in. Through schwab-py's client
-    against a local stand-in for Schwab's host (the captured SPY chain and its quotes)."""
+    close capture. A fetch is written for the window it began in."""
     db = tmp_path / "ed_console.db"
-    host = _LocalSchwab()
-    try:
-        client = Client("k", httpx.Client(transport=host.transport), enforce_enums=False)
-        sweep, _published, _clock = _sweep(tmp_path, ["SPY"], "2026-09-30 16:00:30")
-        assert sweep.fetch_one(client, "SPY")              # the 16:00 window's capture
-        times = itertools.chain([_ts("2026-09-30 16:14:30")], itertools.repeat(_ts("2026-09-30 16:15:10")))
-        sweep.clock = lambda: next(times)
-        assert sweep.fetch_one(client, "SPY")              # begun 16:14:30, received 16:15:10
-    finally:
-        host.close()
+    sweep, _published, _clock = _sweep(tmp_path, ["SPY"], "2026-09-30 16:00:30")
+    assert sweep.fetch_one(schwab.client, "SPY")           # the 16:00 window's capture
+    times = itertools.chain([_ts("2026-09-30 16:14:30")], itertools.repeat(_ts("2026-09-30 16:15:10")))
+    sweep.clock = lambda: next(times)
+    assert sweep.fetch_one(schwab.client, "SPY")           # begun 16:14:30, received 16:15:10
     with sqlite3.connect(db) as c:
         assert [_et(r[0]) for r in c.execute("SELECT DISTINCT ts_utc FROM complete_chain_captures")] \
             == ["2026-09-30 16:00"]
 
 
-def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again(tmp_path, schwab, monkeypatch):
+def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again(tmp_path, schwab):
     """2026-10-01 audit: a history write that failed after the chain was delivered was published
-    to the console as a failed chain."""
+    to the console as a failed chain. INDUCED: the database path is a directory, so SQLite
+    cannot open it; then it is a database again."""
+    db = tmp_path / "ed_console.db"
     sweep, published, clock = _sweep(tmp_path, ["SPY"], "2026-09-30 15:31:57")
-
-    def disk_full(*a, **k):
-        raise sqlite3.OperationalError("database or disk is full")
-    monkeypatch.setattr(cch, "persist_complete_chain_capture", disk_full)
-    sweep.fetch_one(object(), "SPY")
+    db.unlink()
+    db.mkdir()                                             # the history write fails
+    sweep.fetch_one(schwab.client, "SPY")
     assert all("failed" not in m for _t, m in published)
     (tk, contracts, _t, reason), = _assembled(published)
     assert contracts is not None and reason is None
-    monkeypatch.undo()
-    monkeypatch.setattr(sc, "safe_get_chain", schwab.chain)
-    monkeypatch.setattr(sc, "safe_get_quotes", schwab.quote)
+    db.rmdir()                                             # the database can be written again
     clock["now"] += 120                                    # the same window's next fetch
-    sweep.fetch_one(object(), "SPY")
-    with sqlite3.connect(tmp_path / "ed_console.db") as c:
+    sweep.fetch_one(schwab.client, "SPY")
+    with sqlite3.connect(db) as c:
         assert c.execute("SELECT COUNT(DISTINCT ts_utc) FROM complete_chain_captures").fetchone()[0] == 1
 
 

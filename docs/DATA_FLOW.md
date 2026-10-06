@@ -241,21 +241,25 @@ from Schwab to the screen (daemon, console, page), are these:
   (`RATE_LIMITED_PAUSE_SEC`); after Schwab refuses us (403: its edge, Akamai, denies access) or
   a request fails outright (no client, auth or refresh refused, the network down), for 5 s
   (`FAILED_PAUSE_SEC`). Then the probe: one chain is fetched alone, sending its requests one at
-  a time and stopping at the first one refused (`fetch_full_chain` `alone`), so a refused probe
+  a time and stopping at the first one refused (`fetch_full_chain` `alone`): its quote batches,
+  and its date-range parts and their halves for a chain fetched in parts. So a refused probe
   costs Schwab at most one refused request; the sweep, every request at once again, goes on
   only once the probe lands. The probe is the chain taken while probing; a chain taken before
   the refusal is not, whenever it lands. Any request of a chain counts: the chain, its
   expiration list (asked for a chain fetched in date ranges), its quotes. A fetch in flight
-  when the pause begins sends none of its remaining requests (`fetch_full_chain` `paused`) and
-  fails with that reason; a request it sent before the pause is answered as Schwab answers it.
-  A later refusal never shortens a pause already running. A probe that fails with any other
-  status (a 500, a 502, an expiration list with no expiry from today) sets no pause: the next
-  probe goes at once. Enforced by:
+  sends no request while the pause runs (`fetch_full_chain` `paused`, checked before each
+  request) and fails with that reason; a request it sent before the pause is answered as
+  Schwab answers it, and a fetch whose request is still out when the pause ends goes on at
+  full width. A later refusal never shortens a pause already running. A probe that fails with
+  any other status (a 500, an expiration list with no expiry from today) sets no pause: the
+  next probe goes at once. Enforced by:
   `tests/test_data_path_rules_v1.py`
   (`test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until_one_lands`,
   on Schwab's captured 403 page;
   `test_after_a_refusal_the_probe_sends_one_request_at_a_time_and_stops_at_the_first_refused`,
   counting the requests Schwab's host receives after a 403 and after a 429;
+  `test_a_probe_of_a_chain_fetched_in_parts_sends_one_part_at_a_time_and_stops_at_the_first_refused`,
+  on MRVL's full chain, a part refused and a halved part refused;
   `test_a_refused_expiration_list_pauses_the_sweep_and_starts_the_probe`,
   `test_a_fetch_begun_before_a_refusal_does_not_end_the_probe`,
   `test_a_ticker_taken_before_a_refusal_is_not_the_probe`,
@@ -418,6 +422,14 @@ from Schwab to the screen (daemon, console, page), are these:
    waits behind that work.
 4. **The browser reads a route after each push** for bars, order flow, liquidity and the levels,
    instead of receiving the values; bars are not yet on the daemon's push.
+5. **A chain answered with any status but 429 or 403 sets no pause** (§3.4 Option chain): a
+   board-wide 400 or 401 (or 5xx) sends every board chain again at the sweep's full rate, about
+   60 to 70 requests a second (induced on a local stand-in for Schwab's host, 2026-10-06; not
+   seen in production). Open pending the operator's yes to the pacing change: every non-200
+   answer from Schwab would pause the sweep (`RATE_LIMITED_PAUSE_SEC` for a 429,
+   `FAILED_PAUSE_SEC` for any other) and start the probe, in `ChainSweep.fetch_one`; a fetch
+   with no answer from Schwab (withheld, no expiry from today) would not. Its cost: a ticker whose
+   requests alone keep failing would pause the whole board each time its turn comes.
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 

@@ -244,8 +244,9 @@ class ChainSweep:
         """The next ticker to fetch, taken by the caller: the active ticker whenever no worker is
         fetching it, else the round's next. A ticker being fetched by another worker now is
         skipped. Nothing is taken while chain requests are paused, nor while probing and any fetch
-        is in flight; a ticker taken while probing is the probe, decided here under the lock that
-        takes it. While Closed: the next board ticker whose close values are not yet fetched."""
+        is in flight; a ticker taken while probing is the probe (`_probe`), decided here under the
+        lock that takes it. While Closed: the next board ticker whose close values are not yet
+        fetched."""
         with self._lock:
             if now < self._paused_until or (self._probing and self._fetching):
                 return None
@@ -254,32 +255,32 @@ class ChainSweep:
             return tk
 
     def _take(self, now: float) -> str | None:
-        with self._lock:
-            if session_label(datetime.fromtimestamp(now, ET)) == "Closed":
-                if self._closed is None:          # the market has just closed, or the daemon
-                    self._closed = sorted(self.board)   # started while it is Closed
-                tk = next((t for t in self._closed if t not in self._fetching), None)
-                if tk is not None:
-                    self._closed.remove(tk)
-                    self._fetching.add(tk)
+        """_next's ticker; its caller holds the lock."""
+        if session_label(datetime.fromtimestamp(now, ET)) == "Closed":
+            if self._closed is None:          # the market has just closed, or the daemon
+                self._closed = sorted(self.board)   # started while it is Closed
+            tk = next((t for t in self._closed if t not in self._fetching), None)
+            if tk is not None:
+                self._closed.remove(tk)
+                self._fetching.add(tk)
+            return tk
+        self._closed = None
+        if self._active is not None and self._active not in self._fetching:
+            self._fetching.add(self._active)
+            return self._active
+        if not self._round:
+            if self._fetching - {self._active}:
+                return None             # the round ends when its last fetch is done
+            if self._round_started is not None:
+                self.round_sec = now - self._round_started
+            self._round = sorted(self.board)
+            self._round_started = now if self._round else None
+        while self._round:
+            tk = self._round.pop(0)
+            if tk not in self._fetching:
+                self._fetching.add(tk)
                 return tk
-            self._closed = None
-            if self._active is not None and self._active not in self._fetching:
-                self._fetching.add(self._active)
-                return self._active
-            if not self._round:
-                if self._fetching - {self._active}:
-                    return None             # the round ends when its last fetch is done
-                if self._round_started is not None:
-                    self.round_sec = now - self._round_started
-                self._round = sorted(self.board)
-                self._round_started = now if self._round else None
-            while self._round:
-                tk = self._round.pop(0)
-                if tk not in self._fetching:
-                    self._fetching.add(tk)
-                    return tk
-            return None
+        return None
 
     def fetch_one(self, client, ticker: str) -> bool:
         started = self.clock()
@@ -355,8 +356,8 @@ class ChainSweep:
             raise
 
     def _paused(self) -> bool:
-        """Chain requests are paused now (after a refusal, `_refused`): a fetch in flight sends
-        no further request (fetch_full_chain `paused`)."""
+        """Chain requests are paused now (after a refusal, `_refused`), by the sweep's injected
+        clock (`clock`): a fetch in flight sends no further request (fetch_full_chain `paused`)."""
         with self._lock:
             return self.clock() < self._paused_until
 
@@ -372,16 +373,16 @@ class ChainSweep:
         (`schwab_client()`), until `stop`. A request that fails outright is a refusal
         (_refused)."""
         while not stop.is_set():
-            wait = self._paused_until - self.clock()
-            if wait > 0:
-                stop.wait(wait)
-                continue
             with self._changed:
-                ticker = self._next(self.clock())
+                now = self.clock()
+                ticker = self._next(now)
                 if ticker is None:
-                    # woken the moment a fetch ends or the active ticker changes; the timeout
-                    # looks at `stop` and, while Closed, at whether the next session has opened
-                    self._changed.wait(1.0)
+                    # woken the moment a fetch ends or the active ticker changes; otherwise at
+                    # the end of a pause (_next is the check; this is only how long to wait), or
+                    # after 1 s to look at `stop` and, while Closed, at whether the next session
+                    # has opened
+                    self._changed.wait(min(1.0, self._paused_until - now)
+                                       if now < self._paused_until else 1.0)
                     continue
             delivered = False
             try:

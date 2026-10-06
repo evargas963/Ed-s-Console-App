@@ -12,6 +12,7 @@ import asyncio
 import json
 import socket
 import sqlite3
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -575,11 +576,24 @@ def _chart_bars(tk: str) -> list[dict]:
 
 # ── D6. No live screen reads the database ───────────────────────────────────────────────────
 
-def test_d6_no_live_route_opens_a_database(monkeypatch):
+#: while a list is here, every database SQLite opens in this process is appended to it (Python's
+#: audit event "sqlite3.connect"; an audit hook only observes, and cannot be removed once added)
+_SQLITE_OPENS: "list[list[str]]" = []
+
+
+def _record_sqlite_open(event: str, args: tuple) -> None:
+    if event == "sqlite3.connect" and _SQLITE_OPENS:
+        _SQLITE_OPENS[-1].append(str(args[0]))
+
+
+sys.addaudithook(_record_sqlite_open)
+
+
+def test_d6_no_live_route_opens_a_database():
     """Every live GET route of the console, with both databases present and holding SPY's data
     (the stream database written by the real writer: a captured SPY book and the captured option
-    quote; the console database), then SQLite made to refuse: none opens a database. The routes
-    are read from the app itself; /api/changes is the push stream (it never ends)."""
+    quote; the console database): none opens a database, as Python's own audit of SQLite records
+    it. The routes are read from the app itself; /api/changes is the push stream (it never ends)."""
     from fastapi.routing import APIRoute
     from fastapi.testclient import TestClient
     import server
@@ -594,11 +608,6 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
         symbol=_CONTRACT, content=_EVENTS[0]["content"], src="schwab_options_l1", ts_recv=time.time()))
     get_db()                                                 # the console database
     opened: list = []
-
-    def refuse(*a, **k):
-        opened.append(str(a[0]) if a else "")
-        raise sqlite3.OperationalError("a live screen read the database")
-    monkeypatch.setattr(sqlite3, "connect", refuse)
     client = TestClient(server.app, raise_server_exceptions=False)
     routes = [r.path for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods
               and r.path.startswith("/api/") and "{" not in r.path and r.path != "/api/changes"]
@@ -606,12 +615,16 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
     # what the page sends: every route must run, not answer "invalid request"
     params = {"ticker": "SPY", "contract": _CONTRACT, "venue": "NYSE_BOOK", "tf": "5", "minutes": "60"}
     readers, refused = [], []
-    for path in routes:
-        opened.clear()
-        if client.get(path, params=params).status_code == 422:
-            refused.append(path)
-        if opened:
-            readers.append(path)
+    _SQLITE_OPENS.append(opened)
+    try:
+        for path in routes:
+            opened.clear()
+            if client.get(path, params=params).status_code == 422:
+                refused.append(path)
+            if opened:
+                readers.append((path, list(opened)))
+    finally:
+        _SQLITE_OPENS.remove(opened)
     assert not refused, f"routes the test did not run (invalid request): {refused}"
     assert not readers, f"live routes that read the database: {readers}"
 
@@ -680,10 +693,11 @@ _REFRESHED = {"access_token": "new-access", "refresh_token": "r", "token_type": 
               "expires_in": 1800, "scope": "api", "id_token": "i"}
 
 
-def _spy_chain_payload() -> dict:
-    payload = {"symbol": "SPY", "underlyingPrice": _SPY_1120["spot"], "callExpDateMap": {},
+def _spy_chain_payload(captured: dict = _SPY_1120) -> dict:
+    """A captured SPY chain (default: 2026-11-20's) in the shape Schwab's /chains sends."""
+    payload = {"symbol": "SPY", "underlyingPrice": captured["spot"], "callExpDateMap": {},
                "putExpDateMap": {}}
-    for ct in _SPY_1120["chain"]:
+    for ct in captured["chain"]:
         side = "callExpDateMap" if ct["putCall"] == "CALL" else "putExpDateMap"
         payload[side].setdefault(f"{ct['expirationDate'][:10]}:{ct['daysToExpiration']}", {}) \
             .setdefault(str(ct["strikePrice"]), []).append(ct)
@@ -705,19 +719,23 @@ class _LocalSchwab:
     """Schwab's host, played by a local server. The token endpoint answers `token_answer`
     ("refreshed": _REFRESHED; "akamai": the captured 403 page); chains and quotes answer the
     captured SPY chain and its quotes (or `chain`, another captured chain as Schwab sent it,
-    whose quotes are not captured), or the captured 403 page while `refuse`. `refusals`
-    {(path, symbol): status} refuses a request to `path` for `symbol` (None: every symbol) with
-    `status` (403: the captured page; anything else: induced, an empty body). `held` {(path,
-    symbol): Event}: a request to `path` for `symbol` (None: every symbol) is answered only once
-    its event is set. Every request is
-    recorded: (time, method, path, Authorization)."""
+    whose quotes are not captured; settable between requests), or the captured 403 page while
+    `refuse`. The expiration list answers the served chain's own expiries (STAND-IN: built from
+    the chain, in the shape of Schwab's ExpirationChain schema). `refusals` {(path, symbol):
+    status} refuses a request to `path` for `symbol` (None: every symbol) with `status` (403: the
+    captured page; anything else: induced, an empty body). `parts`: the answers, in turn, to
+    chain requests for a date range (fromDate), each a status as for `refusals` or None (the
+    chain served). `held` {(path, symbol): Event}: a request to `path` for `symbol` (None: every
+    symbol) is answered only once its event is set. Every request is recorded: (time, method,
+    path, Authorization)."""
 
     def __init__(self, token_answer: str = "refreshed", refuse: bool = False,
                  chain: "dict | None" = None):
         self.token_answer, self.refuse = token_answer, refuse
         self.refusals: "dict[tuple[str, str | None], int]" = {}
+        self.parts: "list[int | None]" = []
         self.held: "dict[tuple[str, str | None], threading.Event]" = {}
-        payload = json.dumps(_spy_chain_payload() if chain is None else chain).encode()
+        self.chain = _spy_chain_payload() if chain is None else chain
         self.requests: list = []
         outer = self
 
@@ -746,17 +764,26 @@ class _LocalSchwab:
                 outer.requests.append((time.monotonic(), "GET", url.path, self.headers.get("Authorization")))
                 if outer.refuse:
                     return self._akamai()
-                symbol = parse_qs(url.query).get("symbol", [None])[0]
+                query = parse_qs(url.query)
+                symbol = query.get("symbol", [None])[0]
                 gate = outer.held.get((url.path, symbol), outer.held.get((url.path, None)))
                 if gate is not None:
                     gate.wait(30)
-                status = outer.refusals.get((url.path, symbol), outer.refusals.get((url.path, None)))
+                if url.path == "/marketdata/v1/chains" and "fromDate" in query and outer.parts:
+                    status = outer.parts.pop(0)
+                else:
+                    status = outer.refusals.get((url.path, symbol), outer.refusals.get((url.path, None)))
                 if status == 403:
                     return self._akamai()
                 if status is not None:
                     return self._send(status, "application/json", b"")
                 if url.path == "/marketdata/v1/chains":
-                    return self._send(200, "application/json", payload)
+                    return self._send(200, "application/json", json.dumps(outer.chain).encode())
+                if url.path == "/marketdata/v1/expirationchain":
+                    expiries = sorted({k[:10] for side in ("callExpDateMap", "putExpDateMap")
+                                       for k in outer.chain.get(side, {})})
+                    return self._send(200, "application/json", json.dumps(
+                        {"expirationList": [{"expirationDate": e} for e in expiries]}).encode())
                 symbols = parse_qs(url.query).get("symbols", [""])[0].split(",")
                 reply = {s: _SPY_1120_QUOTES[s] for s in symbols if s in _SPY_1120_QUOTES}
                 self._send(200, "application/json", json.dumps(reply).encode())
@@ -917,6 +944,30 @@ def test_after_a_refusal_the_probe_sends_one_request_at_a_time_and_stops_at_the_
         schwab.close()
 
 
+@pytest.mark.parametrize("ticker, parts, sent", [
+    ("PARTS403", [403], 1),                    # the first part refused: the second never sent
+    ("HALVED403", [502, None, 403], 3),        # part 1 too big, part 2 served, then part 1's
+])                                             # first half refused: its second half never sent
+def test_a_probe_of_a_chain_fetched_in_parts_sends_one_part_at_a_time_and_stops_at_the_first_refused(
+        ticker, parts, sent):
+    """MRVL's full chain as Schwab sent it (tests/fixtures/real_mrvl_full_chain_vs_strike_window.json),
+    too big for one request (HTTP 502, induced), is fetched as the probe (`alone`) in date-range
+    parts from its expiration list: one part at a time, a part too big halved, and nothing more
+    once a part is refused (403: the captured page). The part answers are induced."""
+    full = json.loads((FX / "real_mrvl_full_chain_vs_strike_window.json").read_text(encoding="utf-8"))["full"]
+    schwab = _LocalSchwab(chain=full)
+    schwab.refusals[("/marketdata/v1/chains", ticker)] = 502
+    schwab.parts = list(parts)
+    client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
+    try:
+        resp = sc.fetch_full_chain(client, ticker, alone=True)
+    finally:
+        schwab.close()
+    gets = [p for _t, m, p, _a in schwab.requests if m == "GET"]
+    assert gets == ["/marketdata/v1/chains", "/marketdata/v1/expirationchain"] + ["/marketdata/v1/chains"] * sent
+    assert resp.status_code == 403 and schwab.parts == []
+
+
 @pytest.mark.parametrize("status, pause", [(403, FAILED_PAUSE_SEC), (429, RATE_LIMITED_PAUSE_SEC)])
 def test_a_refused_expiration_list_pauses_the_sweep_and_starts_the_probe(tmp_path, status, pause):
     """A chain too big for one request (HTTP 502, induced: measured 2026-09-25 for SPY, QQQ, MU
@@ -989,12 +1040,20 @@ def test_a_fetch_begun_before_a_refusal_does_not_end_the_probe(tmp_path):
         schwab.close()
 
 
-def test_a_probe_that_fails_with_another_status_is_followed_by_the_next_probe_at_once(tmp_path):
-    """The probe after a 403 (the captured page) is answered 500 (induced): no pause is set, the
-    sweep is still probing, and the next probe is taken at once. 2026-10-01 08:00 ET."""
+@pytest.mark.parametrize("failure", ["500", "no expiry from today"])
+def test_a_probe_that_fails_with_another_status_is_followed_by_the_next_probe_at_once(tmp_path, failure):
+    """The probe after a 403 (the captured page) fails otherwise: its chain answered 500
+    (induced), or answered 502 (too big, induced) with an expiration list holding no expiry from
+    today (SPY's captured 2026-09-22 same-day chain, tests/fixtures/real_spy_0dte_chain.json). No
+    pause is set, the sweep is still probing, and the next probe is taken at once.
+    2026-10-01 08:00 ET."""
     schwab = _LocalSchwab()
     schwab.refusals[("/marketdata/v1/chains", "AAA")] = 403
-    schwab.refusals[("/marketdata/v1/chains", "BBB")] = 500
+    if failure == "500":
+        schwab.refusals[("/marketdata/v1/chains", "BBB")] = 500
+    else:
+        schwab.refusals[("/marketdata/v1/chains", "BBB")] = 502
+        schwab.chain = _spy_chain_payload(json.loads((FX / "real_spy_0dte_chain.json").read_text(encoding="utf-8")))
     now = 1790856000.0                                    # 2026-10-01 08:00 ET
     sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB", "CCC"],
                        lambda topic, msg: None, clock=lambda: now,
@@ -1006,7 +1065,7 @@ def test_a_probe_that_fails_with_another_status_is_followed_by_the_next_probe_at
         sweep._fetching.discard("AAA")
         now += FAILED_PAUSE_SEC                           # the pause is over
         assert sweep._next(now) == "BBB"                  # the probe
-        assert not sweep.fetch_one(client, "BBB")         # the 500
+        assert not sweep.fetch_one(client, "BBB")         # the other failure
         sweep._fetching.discard("BBB")
         assert sweep._probing and sweep._paused_until <= now
         assert sweep._next(now) == "CCC", "the next probe at once"
