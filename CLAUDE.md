@@ -27,12 +27,12 @@ so a wrong number that looks right is worse than a blank with a reason.
    the live screen shows it working. "Across the board" = every ticker on the board, not one.
 9. If rules conflict: correctness of what I see > my explicit yes > speed.
 
-Rules 5, 6 and 8 are also enforced by machine. A hook (tools/operator_yes_guard.py) puts
-starting or stopping the daemon or console, a merge, a push to main and a write to a
-database under data/ (the forms its tests cover; gaps in ENF-20) to me as an Allow/Deny
-prompt; test changes need no prompt; tell me in chat what it is for before you
-run it. A CI check (tools/check_fails_before.py) refuses a pull request that changes
-product code unless one of its changed tests fails on the old code.
+What a machine enforces. Rule 6: a hook (tools/operator_yes_guard.py) puts starting or
+stopping the daemon or console, a merge, a push to main and a write to a database under
+data/ (the forms its tests cover; gaps in ENF-20) to me as an Allow/Deny prompt; tell me in
+chat what it is for before you run it. Test changes get no prompt. A CI check
+(tools/check_fails_before.py) refuses a pull request that changes product code unless one
+of its changed tests fails on the old code. Rules 5 and 8: no machine check.
 
 Every report ends like this example:
   CONFIRMED: pytest tests/test_x.py -> 12 passed; SPY, QQQ, NVDA levels match the chain.

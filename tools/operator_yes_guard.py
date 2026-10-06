@@ -10,13 +10,17 @@ PreToolUse for file edits and shell commands.
 For each of these the hook answers "ask": Claude Code shows the operator the action with Allow
 and Deny, and the agent cannot answer for them. Everything else passes untouched, tests included.
 
-Limits: shell commands are judged on what they run; code inside `python -c` or a heredoc body is
-data to the shell parser and is not judged here; for databases, what is judged is what the tests
-cover, and the gaps are in ENF-20. The Edit and Write tools are judged in full.
+How a shell command is read: it is split into statements (tools/shell_parse.py), each with the
+directory a `cd` before it put in effect. A statement whose program is python or sqlite3 asks
+when it names a database under data/, in its own arguments or in the `python -c` code or heredoc
+body it is handed, unless it opens it read-only (`-readonly`, `?mode=ro`). A statement that
+copies, moves, deletes or redirects onto a database under data/ asks. The Edit and Write tools
+are judged in full. What else can write a database is listed in ENF-20.
 """
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -26,7 +30,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402
-from tools.shell_parse import iter_command_segments, segment_head  # noqa: E402
+from tools.shell_parse import iter_command_segments, segment_data, segment_head  # noqa: E402
 
 #: shell heads that write, move or delete the paths they are given
 WRITERS = frozenset({"rm", "del", "erase", "rmdir", "rd", "remove-item", "ri", "unlink", "mv",
@@ -46,13 +50,19 @@ DATA_DB = re.compile(r"(?:^|[\\/\s\"'=:])(data[\\/][^\\/\s\"'?;&|]+\.db(?:-wal|-
 #: the writers whose last path is the one written (the others are read)
 COPIERS = frozenset({"cp", "copy", "copy-item", "cpi"})
 DB_PROGRAMS = frozenset({"python", "python3", "py", "sqlite3"})
-READ_ONLY = ("mode=ro", "-readonly")
+READ_ONLY = re.compile(r"(?:^|\s)-readonly(?:\s|$)|\?mode=ro\b", re.I)
+
+
+def _database(cwd: str, path: str) -> "re.Match | None":
+    """The database under data/ that `path` names when a statement in `cwd` uses it."""
+    return DATA_DB.search(" " + os.path.join(cwd, path.strip("\"'")))
 
 
 def _shell_reasons(cmd: str, cwd: str) -> list[str]:
     out = []
-    for _cwd, seg in iter_command_segments(cmd, cwd):
+    for seg_cwd, seg in iter_command_segments(cmd, cwd):
         head, toks = segment_head(seg)
+        head = head.removesuffix(".exe")
         args = [t for t in toks[1:] if not t.startswith("-")]
         targets = []
         if head in WRITERS and not (head == "sed" and "-i" not in toks and "--in-place" not in toks):
@@ -62,7 +72,12 @@ def _shell_reasons(cmd: str, cwd: str) -> list[str]:
         targets += [m.group(1) for m in REDIRECT.finditer(seg)]
         written = [args[-1]] if head in COPIERS and args else targets      # a copy writes its destination
         out += [f"writes {m.group(1)}, a database under data/ (rule 6: production)"
-                for m in filter(None, (DATA_DB.search(" " + t.strip("\"'")) for t in written))]
+                for m in filter(None, (_database(seg_cwd, t) for t in written))]
+        if head in DB_PROGRAMS:
+            data = segment_data(cmd, seg)
+            opened = [m for m in (*(_database(seg_cwd, t) for t in toks[1:]), *map(DATA_DB.search, data)) if m]
+            if opened and not READ_ONLY.search(" ".join([seg, *data])):
+                out.append(f"may write {opened[0].group(1)}, a database under data/ (rule 6: production)")
     low = cmd.lower()
     if (any(n in low for n in PROCESS_NAMES) and any(v in low for v in PROCESS_VERBS)) \
             or any(n in low for n in LAUNCHERS):
@@ -71,10 +86,6 @@ def _shell_reasons(cmd: str, cwd: str) -> list[str]:
         out.append(f"merges pull request {m.group(1) or m.group(2)} (rule 6: production)")
     if PUSH_MAIN.search(cmd):
         out.append("pushes to main (rule 6: production)")
-    db = DATA_DB.search(cmd)
-    heads = {segment_head(seg)[0].removesuffix(".exe") for _cwd, seg in iter_command_segments(cmd, cwd)}
-    if db and not any(r in low for r in READ_ONLY) and (heads & DB_PROGRAMS or "sqlite3" in low):
-        out.append(f"may write {db.group(1)}, a database under data/ (rule 6: production)")
     return out
 
 

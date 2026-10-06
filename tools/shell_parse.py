@@ -189,18 +189,36 @@ def shell_executed_part(cmd: str) -> str:
     were commands makes the guard fire on anything that merely DESCRIBES a banned action, which
     is the word-policing failure the operator rejected, reappearing one layer down.
     """
-    # Strip heredoc bodies:  <<'TAG' ... TAG   /   <<TAG ... TAG
-    cmd = re.sub(r"<<-?\s*(['\"]?)(\w+)\1.*?^\s*\2\s*$", " <<HEREDOC ", cmd,
-                 flags=re.S | re.M)
-    # Strip a quoted -c payload:  python -c "..."   /   python -c '...'
-    cmd = re.sub(r"-c\s+(['\"])(?:\\.|(?!\1).)*\1", " -c PAYLOAD ", cmd, flags=re.S)
-    # Strip quoted -m payloads (commit/tag messages): the FIRST live run of the blind-stage
-    # rule blocked a commit whose MESSAGE described the ban — message text is data, and a
-    # guard that fires on descriptions is the word-policing failure again (same lesson as
-    # heredocs, same day it was written).
-    cmd = re.sub(r"-m\s+(['\"])(?:\\.|(?!\1).)*\1", " -m MESSAGE ", cmd, flags=re.S)
-    # Join a POSIX line continuation (trailing `\` before a newline) into one logical line —
-    # it is NOT a statement break, and joining it before the newline split below keeps it from
-    # being misread as one.
-    cmd = re.sub(r"\\\r?\n", " ", cmd)
-    return cmd
+    return _split_data(cmd)[0]
+
+
+#: The DATA in a command, in the order it is taken out: heredoc bodies (<<'TAG' ... TAG), quoted
+#: -c payloads (python -c "...") and quoted -m messages (a commit message describing a ban is
+#: data). Each is replaced by a numbered placeholder (`<<HEREDOC0`, `-c PAYLOAD1`, `-m MESSAGE2`)
+#: that stays in the statement it belongs to.
+_DATA = ((re.compile(r"<<-?\s*(['\"]?)(\w+)\1.*?^\s*\2\s*$", re.S | re.M), "<<HEREDOC"),
+         (re.compile(r"-c\s+(['\"])(?:\\.|(?!\1).)*\1", re.S), "-c PAYLOAD"),
+         (re.compile(r"-m\s+(['\"])(?:\\.|(?!\1).)*\1", re.S), "-m MESSAGE"))
+_DATA_REF = re.compile(r"\b(?:HEREDOC|PAYLOAD|MESSAGE)(\d+)\b")
+
+
+def _split_data(cmd: str) -> tuple[str, list[str]]:
+    """(what the shell runs, with numbered placeholders; the data each placeholder stands for).
+    A POSIX line continuation (`\\` before a newline) is joined into one logical line: it is not
+    a statement break."""
+    data: list[str] = []
+
+    def keep(m: re.Match, label: str) -> str:
+        data.append(m.group(0))
+        return f" {label}{len(data) - 1} "
+
+    for rx, label in _DATA:
+        cmd = rx.sub(lambda m, label=label: keep(m, label), cmd)
+    return re.sub(r"\\\r?\n", " ", cmd), data
+
+
+def segment_data(cmd: str, seg: str) -> list[str]:
+    """The data (heredoc body, -c payload, -m message) that segment `seg` of `cmd`, as
+    `iter_command_segments(cmd)` yields it, hands to its program."""
+    data = _split_data(cmd or "")[1]
+    return [data[int(i)] for i in _DATA_REF.findall(seg) if int(i) < len(data)]

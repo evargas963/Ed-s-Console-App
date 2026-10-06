@@ -5,6 +5,7 @@ payloads and through the hook chain the settings run."""
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -104,6 +105,15 @@ def test_ordinary_work_passes(payload):
     (_shell("& .venv\\Scripts\\python.exe tools\\some_backfill.py --db data\\ed_console.db", "PowerShell"),
      "data\\ed_console.db"),
     ({"tool_name": "Write", "tool_input": {"file_path": "data/ed_console.db", "content": ""}}, "data/ed_console.db"),
+    (_shell("cd data && sqlite3 ed_console.db \"VACUUM\""), "data" + os.sep + "ed_console.db"),
+    (_shell("cd data && cp /tmp/x.db ed_console.db"), "data" + os.sep + "ed_console.db"),
+    ({"tool_name": "Bash", "tool_input": {"command": "sqlite3 ed_console.db 'DELETE FROM t'"},
+      "cwd": str(REPO / "data")}, "data" + os.sep + "ed_console.db"),
+    (_shell("sqlite3 data/ed_console.db 'DELETE FROM t' # mode=ro"), "data/ed_console.db"),
+    (_shell("python -c \"import sqlite3; sqlite3.connect('data/ed_console.db').execute('DELETE FROM t')  # mode=ro\""),
+     "data/ed_console.db"),
+    (_shell("python -c \"import sqlite3; sqlite3.connect('file:data/ed_console.db?mode=ro', uri=True)\" && "
+            "sqlite3 data/stream_capture.db 'DELETE FROM t'"), "data/stream_capture.db"),
 ])
 def test_a_write_to_a_database_under_data_is_put_to_the_operator(payload, db):
     assert any(f"{db}, a database under data/" in r for r in guard.reasons(payload)), guard.reasons(payload)
@@ -135,6 +145,8 @@ def test_copying_a_database_out_of_data_passes(cmd, tool):
     "sqlite3 -readonly data/stream_capture.db \"SELECT COUNT(*) FROM stream_bars_raw\"",
     "ls -la data/ed_console.db data/stream_capture.db",
     "python -m pytest tests/test_chain_history_v1.py -q",
+    "grep -n \"sqlite3 data/ed_console.db\" docs/DATA_FLOW.md",
+    "ls -la data/ed_console.db && python -c \"print(1)\"",
 ])
 def test_reading_a_database_and_ordinary_work_pass(cmd):
     assert guard.reasons(_shell(cmd)) == []
