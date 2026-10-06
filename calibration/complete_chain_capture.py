@@ -295,11 +295,11 @@ class ChainSweep:
             resp = FullChainResponse(None, reason=str(e))
         now = self.clock()
         if resp.status_code != 200:
-            if resp.status_code == 429:
-                self._refused(now, RATE_LIMITED_PAUSE_SEC, f"Schwab answered {ticker}'s chain HTTP 429")
-            if resp.status_code == 403:
-                self._refused(now, FAILED_PAUSE_SEC, f"Schwab answered {ticker}'s chain HTTP 403")
             reason = resp.reason or f"HTTP {resp.status_code}"
+            if resp.status_code == 429:
+                self._refused(now, RATE_LIMITED_PAUSE_SEC, f"{ticker}'s {reason}")
+            if resp.status_code == 403:
+                self._refused(now, FAILED_PAUSE_SEC, f"{ticker}'s {reason}")
             log.warning("chain %s: %s", ticker, reason)
             self.publish(*chain_failure_message(ticker, reason, now))
             return False

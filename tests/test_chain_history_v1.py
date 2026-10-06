@@ -177,7 +177,9 @@ def test_a_429_pauses_every_chain_request(tmp_path, schwab):
     schwab.refusals[("/marketdata/v1/quotes", None)] = 429           # induced
     sweep, _published, _clock = _sweep(tmp_path, ["SPY"], "2026-09-30 15:31:57")
     sweep.fetch_one(schwab.client, "SPY")
-    assert sweep._paused_until == _ts("2026-09-30 15:31:57") + cch.RATE_LIMITED_PAUSE_SEC
+    at = _ts("2026-09-30 15:31:57")
+    assert sweep._next(at + cch.RATE_LIMITED_PAUSE_SEC - 0.01) is None, "a chain was taken during the pause"
+    assert sweep._next(at + cch.RATE_LIMITED_PAUSE_SEC) == "SPY"
 
 
 def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tmp_path, schwab):

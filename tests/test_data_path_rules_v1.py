@@ -956,7 +956,7 @@ def test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until
         assert sweep._next(now) == "AAA"
         sweep.fetch_one(client, "AAA")                    # the 403 page
         sweep._fetching.discard("AAA")
-        assert sweep._paused_until == now + FAILED_PAUSE_SEC, "a 403 pauses every chain request"
+        assert sweep._next(now + FAILED_PAUSE_SEC - 0.01) is None, "a 403 pauses every chain request"
         assert "HTTP 403" in published[-1]["failed"]
         assert sweep._next(now + 1) is None, "no chain is taken during the pause"
         now += FAILED_PAUSE_SEC                           # the pause is over
@@ -995,7 +995,7 @@ def test_after_a_refusal_the_probe_sends_one_request_at_a_time_and_stops_at_the_
         assert not sweep.fetch_one(client, "AAA")         # every batch at once, both refused
         sweep._fetching.discard("AAA")
         assert paths(0) == ["/marketdata/v1/chains"] + ["/marketdata/v1/quotes"] * 2
-        assert sweep._paused_until == now + pause
+        assert sweep._next(now + pause - 0.01) is None, "the refusal pauses every chain request"
         assert f"HTTP {status}" in published[-1]["failed"]
         now += pause                                      # the pause is over
         assert sweep._next(now) == "BBB"                  # the probe
@@ -1006,7 +1006,8 @@ def test_after_a_refusal_the_probe_sends_one_request_at_a_time_and_stops_at_the_
         assert paths(sent) == ["/marketdata/v1/chains", "/marketdata/v1/quotes"], \
             "a probe sends one request at a time and stops at the first refused"
         schwab.refusals.clear()
-        now = sweep._paused_until                         # the pause is over
+        assert sweep._next(now + pause - 0.01) is None, "the refused probe pauses again"
+        now += pause                                      # the pause is over
         assert sweep._next(now) == "CCC"
         sent = len(schwab.requests)
         assert sweep.fetch_one(client, "CCC")             # the probe lands
@@ -1063,7 +1064,7 @@ def test_a_refused_expiration_list_pauses_the_sweep_and_starts_the_probe(tmp_pat
         assert [p for _t, m, p, _a in schwab.requests if m == "GET"] == \
             ["/marketdata/v1/chains", "/marketdata/v1/expirationchain"]
         assert f"HTTP {status}" in published[-1]["failed"]
-        assert sweep._paused_until == now + pause, "a refused expiration list pauses every chain request"
+        assert sweep._next(now + pause - 0.01) is None, "a refused expiration list pauses every chain request"
         assert sweep._next(now + pause) == "BBB"          # the probe
         assert sweep._next(now + pause) is None, "nothing else while the probe is out"
     finally:
@@ -1140,8 +1141,8 @@ def test_a_probe_that_fails_with_another_status_is_followed_by_the_next_probe_at
         assert sweep._next(now) == "BBB"                  # the probe
         assert not sweep.fetch_one(client, "BBB")         # the other failure
         sweep._fetching.discard("BBB")
-        assert sweep._probing and sweep._paused_until <= now
         assert sweep._next(now) == "CCC", "the next probe at once"
+        assert sweep._next(now) is None, "still probing: one chain at a time"
     finally:
         schwab.close()
 
@@ -1191,7 +1192,7 @@ def test_a_fetch_in_flight_sends_no_further_request_during_the_pause(tmp_path):
             assert not landed.result(timeout=30), "BBB's chain was delivered without its quotes"
         assert _gets(schwab, "/marketdata/v1/quotes") == 0, "a quotes request was sent during the pause"
         assert published[-1]["ticker"] == "BBB" and published[-1]["failed"] == \
-            "not sent: chain requests are paused after Schwab answered AAA's chain HTTP 429"
+            "not sent: chain requests are paused after AAA's full chain returned HTTP 429"
     finally:
         schwab.held[("/marketdata/v1/chains", "BBB")].set()
         schwab.close()
@@ -1221,7 +1222,9 @@ def test_a_later_refusal_never_shortens_the_pause(tmp_path):
             now[0] = start + 1
             schwab.held[("/marketdata/v1/chains", "BBB")].set()
             assert not refused.result(timeout=30)         # the 403
-        assert sweep._paused_until == start + RATE_LIMITED_PAUSE_SEC
+        sweep._fetching.clear()                           # both fetches have ended
+        assert sweep._next(start + RATE_LIMITED_PAUSE_SEC - 0.01) is None, "the 429's pause was cut short"
+        assert sweep._next(start + RATE_LIMITED_PAUSE_SEC) == "AAA"
     finally:
         schwab.held[("/marketdata/v1/chains", "BBB")].set()
         schwab.close()
