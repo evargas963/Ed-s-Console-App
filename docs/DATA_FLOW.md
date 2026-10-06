@@ -245,7 +245,9 @@ from Schwab to the screen (daemon, console, page), are these:
   costs Schwab at most one refused request; the sweep, every request at once again, goes on
   only once the probe lands (a fetch sent before the refusal that lands does not end it). Any
   request of a chain counts: the chain, its expiration list (asked for a chain fetched in date
-  ranges), its quotes; a later refusal never shortens a pause already running. Enforced by:
+  ranges), its quotes; a later refusal never shortens a pause already running. A probe that
+  fails with any other status (a 500, a 502, an expiration list with no expiry from today) sets
+  no pause: the next probe goes at once. Enforced by:
   `tests/test_data_path_rules_v1.py`
   (`test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until_one_lands`,
   on Schwab's captured 403 page;

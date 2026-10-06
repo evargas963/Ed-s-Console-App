@@ -482,14 +482,10 @@ _auth_failure_lock = threading.Lock()
 _SCHWAB_AUTH_FAILURE_LATCH_SEC = float(os.environ.get("ED_SCHWAB_AUTH_FAILURE_LATCH_SEC", "300"))  # caps-ok: OAuth/config timeout only
 
 
-def _is_token_error(exc: BaseException) -> bool:
-    """True for an OAuth failure: every error authlib raises (expired / missing / revoked token,
-    refresh rejected with invalid_grant) derives from AuthlibBaseError."""
-    return isinstance(exc, AuthlibBaseError)
-
-
-def _latched_auth_error(client, exc: BaseException) -> SchwabAuthError:
-    """Latch `client` after the OAuth failure `exc`; the SchwabAuthError its caller raises."""
+def _latched_auth_error(client, exc: AuthlibBaseError) -> SchwabAuthError:
+    """Latch `client` after the OAuth failure `exc` (every error authlib raises: an expired,
+    missing or revoked token, a refresh refused with invalid_grant); the SchwabAuthError its
+    caller raises."""
     with _auth_failure_lock:
         _auth_failure_until[client] = time.monotonic() + _SCHWAB_AUTH_FAILURE_LATCH_SEC
     return SchwabAuthError(str(exc))
@@ -527,10 +523,8 @@ def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
         kwargs["to_date"] = to_date
     try:
         resp = client.get_option_chain(ticker, **kwargs)
-    except Exception as e:
-        if _is_token_error(e):
-            raise _latched_auth_error(client, e) from e
-        raise
+    except AuthlibBaseError as e:
+        raise _latched_auth_error(client, e) from e
     return resp
 
 
@@ -570,7 +564,7 @@ def _option_expiries(client, ticker: str) -> "tuple[int, list[date]]":
         raise SchwabAuthError("Schwab auth latched after prior token failure — expiration list withheld")
     try:
         resp = client.get_option_expiration_chain(ticker)
-    except AuthlibBaseError as e:       # an OAuth failure (_is_token_error)
+    except AuthlibBaseError as e:
         raise _latched_auth_error(client, e) from e
     if resp.status_code != 200:
         return resp.status_code, []
@@ -587,10 +581,8 @@ def safe_get_quotes(client, symbols: "list[str]"):
         raise SchwabAuthError("Schwab auth latched after prior token failure — quotes withheld")
     try:
         return client.get_quotes(symbols, fields=["quote"])
-    except Exception as e:
-        if _is_token_error(e):
-            raise _latched_auth_error(client, e) from e
-        raise
+    except AuthlibBaseError as e:
+        raise _latched_auth_error(client, e) from e
 
 
 #: The most option symbols one quotes request carries: 300 answered in 0.3 s, 400 was refused
