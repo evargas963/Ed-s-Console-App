@@ -231,7 +231,7 @@ class ChainSweep:
         self._probing = False           # after a refusal or failure: one fetch at a time
                                         # until one of those (the probe) succeeds
         self._probe: str | None = None  # the ticker _next last took while probing (the probe)
-        self._paused_by = ""            # the refusal that set the running pause
+        self._paused_by = ""            # the refusal or failure that set the running pause
         self._closed: "dict[str, float] | None" = None    # while Closed: the board tickers whose
                                         # close values are not yet fetched, each with the time it
                                         # may be fetched from (a failed one's retry); None while open
@@ -261,6 +261,7 @@ class ChainSweep:
         if session_label(datetime.fromtimestamp(now, ET)) == "Closed":
             if self._closed is None:          # the market has just closed, or the daemon
                 self._closed = dict.fromkeys(sorted(self.board), now)   # started while it is Closed
+            # a retry that falls due is taken by the next worker that looks: work()'s 1 s wait
             tk = next((t for t, at in self._closed.items() if at <= now and t not in self._fetching), None)
             if tk is not None:
                 del self._closed[tk]
@@ -290,10 +291,8 @@ class ChainSweep:
             alone = ticker == self._probe
         try:
             resp = fetch_full_chain(client, ticker, alone=alone, paused=self._paused)
-        except ChainWithheld:           # paused between two of its requests: the rest not sent
-            with self._lock:
-                resp = FullChainResponse(None, reason=f"not sent: chain requests are paused after "
-                                                      f"{self._paused_by}")
+        except ChainWithheld as e:      # paused between two of its requests: the rest not sent
+            resp = FullChainResponse(None, reason=str(e))
         now = self.clock()
         if resp.status_code != 200:
             if resp.status_code == 429:
@@ -359,11 +358,12 @@ class ChainSweep:
                 self._written[ticker] = before
             raise
 
-    def _paused(self) -> bool:
-        """Chain requests are paused now (after a refusal, `_refused`), by the sweep's injected
-        clock (`clock`): a fetch in flight sends no further request (fetch_full_chain `paused`)."""
+    def _paused(self) -> str:
+        """The cause of the pause running now (after a refusal or failure, `_refused`), by the
+        sweep's injected clock (`clock`); "" when none runs. A fetch in flight sends no further
+        request while it runs (fetch_full_chain `paused`)."""
         with self._lock:
-            return self.clock() < self._paused_until
+            return self._paused_by if self.clock() < self._paused_until else ""
 
     def _refused(self, now: float, pause: float, cause: str) -> None:
         """No chain request for `pause` (a pause already longer stands, with its `cause`), then one

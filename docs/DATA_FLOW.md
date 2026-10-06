@@ -250,8 +250,8 @@ from Schwab to the screen (daemon, console, page), are these:
   the refusal is not, whenever it lands. Any request of a chain counts: the chain, its
   expiration list (asked for a chain fetched in date ranges), its quotes. A fetch in flight
   sends no request while the pause runs (`fetch_full_chain` `paused`, checked before each
-  request) and fails with that reason, naming the ticker and Schwab's answer that started the
-  pause; a request it sent before the pause is answered as
+  request) and fails with that reason, naming the ticker and the refusal or failure that
+  started the pause; a request it sent before the pause is answered as
   Schwab answers it, and a fetch whose request is still out when the pause ends goes on at
   full width. A later refusal never shortens a pause already running. A probe that fails with
   any other status (a 500, an expiration list with no expiry from today) sets no pause: the
@@ -425,14 +425,19 @@ from Schwab to the screen (daemon, console, page), are these:
    waits behind that work.
 4. **The browser reads a route after each push** for bars, order flow, liquidity and the levels,
    instead of receiving the values; bars are not yet on the daemon's push.
-5. **A chain answered with any status but 429 or 403 sets no pause** (§3.4 Option chain): a
-   board-wide 400 or 401 (or 5xx) sends every board chain again at the sweep's full rate, about
-   60 to 70 requests a second (induced on a local stand-in for Schwab's host, 2026-10-06; not
-   seen in production). Open pending the operator's yes to the pacing change: every non-200
-   answer from Schwab would pause the sweep (`RATE_LIMITED_PAUSE_SEC` for a 429,
-   `FAILED_PAUSE_SEC` for any other) and start the probe, in `ChainSweep.fetch_one`; a fetch
-   with no answer from Schwab (withheld, no expiry from today) would not. Its cost: a ticker whose
-   requests alone keep failing would pause the whole board each time its turn comes.
+5. **A chain answered with any status but 429 or 403 sets no pause** (§3.4 Option chain), and
+   the rate it is asked again at is a pacing change pending the operator's yes:
+   - In an open session a board-wide 400 or 401 (or 5xx) sends every board chain again at the
+     sweep's full rate, about 60 to 70 requests a second (induced on a local stand-in for
+     Schwab's host, 2026-10-06; not seen in production), on main as on #463.
+   - While Closed, #463 retries each failed ticker on its own clock every `FAILED_PAUSE_SEC`
+     instead of through the board-wide pause, so a board-wide failure is asked again faster than
+     on main: with every chain failing on 42 tickers over 20 s, 168 chain requests against
+     main's 20 to 28 (400, 401) and 336 against 64 (500) (induced, local, 2026-10-06).
+   - The proposal before the operator: a 429 or 403 pauses the whole board, then one probe (as
+     built); any other failure makes only that ticker wait `FAILED_PAUSE_SEC` before its next
+     try, in every session. The alternative fix, a board pause on every non-200 answer, would
+     bring back one failing ticker holding back the whole board.
 
 The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
 

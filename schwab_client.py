@@ -594,20 +594,23 @@ GREEK_FIELDS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
 
 
 class ChainWithheld(Exception):
-    """A fetch's next request was not sent: its caller paused chain requests (`paused`)."""
+    """A fetch's next request was not sent: its caller paused chain requests (`paused`); the
+    message names the pause's cause."""
 
 
-def _never_paused() -> bool:
-    return False
+def _never_paused() -> str:
+    return ""
 
 
 def _send_each(send, items: list, alone: bool, refused, paused) -> list:
     """`send(item)` for every item, every request at once; `alone`: one at a time, ending at the
     first answer that is `refused`, so Schwab sees at most one refused request. Every request of
-    a fetch is sent here, and none while `paused()`: the fetch is withheld (ChainWithheld)."""
+    a fetch is sent here, and none while `paused()` names a cause: the fetch is withheld
+    (ChainWithheld)."""
     def gated(item):
-        if paused():
-            raise ChainWithheld("not sent: the caller paused chain requests")
+        cause = paused()
+        if cause:
+            raise ChainWithheld(f"not sent: chain requests are paused after {cause}")
         return send(item)
 
     if not alone and len(items) > 1:    # one request needs no thread of its own
@@ -627,8 +630,8 @@ def fetch_full_chain(client, ticker: str, *, alone: bool = False,
     each contract's Greeks as Schwab's quotes send them: strike_range=ALL chain requests
     (safe_get_chain) and quotes requests (safe_get_quotes) on `client`. `alone` (the sweep's
     probe after Schwab refused it): every request one at a time, stopping at the first refused.
-    `paused` (the sweep's pause after a refusal): checked before every request; while it holds
-    no further request is sent and ChainWithheld is raised.
+    `paused` (the sweep's pause after a refusal or failure): checked before every request; while
+    it names a cause no further request is sent and ChainWithheld is raised with that cause.
 
     MEASURED 2026-09-25 across the 42 board tickers: levels computed from the old strike
     window disagreed with the same code run on the full chain -- gamma flip missing for 10

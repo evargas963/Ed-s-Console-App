@@ -452,14 +452,40 @@ def test_d5_a_close_fetch_that_keeps_failing_holds_back_no_other_tickers_close_v
         "a close fetch was withheld"
 
 
-def test_d5_a_close_fetch_that_fails_is_tried_again_after_the_pause_until_it_lands():
-    sweep, clock = _paced(["AAA", "BBB"], "2026-10-03 12:00")
+def test_d5_a_close_fetch_that_fails_is_tried_again_after_the_pause_until_it_lands(tmp_path):
+    """Saturday 2026-10-03 12:00 ET (Closed): AAA's chain is answered 400 (induced), BBB's and
+    CCC's are SPY's captured chain and quotes. BBB and CCC are fetched at once after AAA's
+    failure; AAA alone waits FAILED_PAUSE_SEC, is fetched again, lands, and then nothing more is
+    requested."""
+    schwab = _LocalSchwab()
+    schwab.refusals[("/marketdata/v1/chains", "AAA")] = 400
+    clock = {"now": _et("2026-10-03 12:00")}
     sat = clock["now"]
-    assert _handed_out(sweep, sat, delivered=False) == ["AAA", "BBB"]
-    assert sweep._next(sat + 1) is None, "a failed close fetch is tried again only after its own delay"
-    assert sweep._paused_until == 0.0, "a failed close fetch pauses no other ticker"
-    assert _handed_out(sweep, sat + FAILED_PAUSE_SEC) == ["AAA", "BBB"]
-    assert sweep._next(sat + 60) is None
+    published = []
+    sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB", "CCC"],
+                       lambda topic, msg: published.append(msg), clock=lambda: clock["now"],
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"))
+    client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
+
+    def worker_at(at: float) -> "str | None":
+        """One worker's turn at `at`: the ticker it takes, fetched and done."""
+        clock["now"] = at
+        tk = sweep._next(at)
+        if tk is not None:
+            sweep._done(tk, sweep.fetch_one(client, tk))
+        return tk
+    try:
+        assert worker_at(sat) == "AAA"                    # the 400
+        assert [worker_at(sat + 1), worker_at(sat + 1)] == ["BBB", "CCC"], "AAA's failure held back another ticker"
+        assert worker_at(sat + 1) is None, "AAA is tried again only after its own delay"
+        assert _gets(schwab, "/marketdata/v1/chains") == 3
+        schwab.refusals.clear()
+        assert worker_at(sat + FAILED_PAUSE_SEC) == "AAA"
+        assert worker_at(sat + 60) is None
+        assert _gets(schwab, "/marketdata/v1/chains") == 4, "a delivered close fetch is not fetched again"
+    finally:
+        schwab.close()
+    assert {m["ticker"] for m in published if "failed" not in m} == {"AAA", "BBB", "CCC"}
 
 
 def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_with_the_reason():
