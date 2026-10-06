@@ -71,7 +71,7 @@ _UNIVERSAL_DESTRUCTIVE_RE = __import__("re").compile(
     r"reset\s+--hard"
     r"|checkout\s+--\s"
     r"|clean\s+-[a-z]*f"
-    r"|push\s+(?:[^|;&]*\s)?(?:--force(?!-with-lease)|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$))"
+    r"|push\s+(?:[^|;&]*\s)?(?:--force(?!-with-lease)|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$)|[\"']?\+\S)"
     r")",
     __import__("re").I)
 _RESET_GUARD_RE = __import__("re").compile(
@@ -169,7 +169,7 @@ def reset_guard_violations(command: str) -> list[str]:
     """LOCK-2: BLOCK tree-destructive git — the ONE owner of that question (RC-231/RC-252).
 
     Two clauses, one predicate. The HARD forms (`reset --hard`, `checkout -- <any path>`,
-    `clean -f`, `push --force`/`-f`) discard work whatever they name, so they refuse on sight,
+    `clean -f`, `push --force`/`-f`/a `+refspec`) discard work whatever they name, so they refuse on sight,
     on ANY target (host-wide; the checkout in front of the command is irrelevant — RC-258 kept
     these unscoped on purpose). The CLASS forms (the wider reset/restore/checkout--/clean/stash
     family) refuse when they touch a protected/product path or take a bare whole-tree shape,
@@ -183,7 +183,7 @@ def reset_guard_violations(command: str) -> list[str]:
     if _UNIVERSAL_DESTRUCTIVE_RE.search(cmd):
         return [
             "RESET_GUARD (LOCK-2/RC-231): destructive git can discard operator work — "
-            "reset --hard / checkout -- <path> / clean -f / push --force or -f are refused on "
+            "reset --hard / checkout -- <path> / clean -f / push --force, -f or +refspec are refused on "
             "any target (`--force-with-lease` is the safe form). Hand it to the operator. Not "
             "subject-disableable (RC-450)."
         ]

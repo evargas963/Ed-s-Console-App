@@ -148,6 +148,8 @@ _ADJUDICATION: tuple[tuple[str, bool, str], ...] = (
     ("git push -f origin main", True, "remote history"),
     ("git push origin main -f", True, "remote history, flag after the refspec"),
     ("git push --force origin main", True, "remote history"),
+    ("git push origin +feature/x", True, "remote history, a force by `+refspec`"),
+    ("git push origin +HEAD:refs/heads/main", True, "remote history, a force by `+refspec`"),
     ("git -C ../other reset --hard", True, "another checkout entirely"),
     ("git -C ../other push --force origin main", True, "another checkout's remote history"),
     ("git --git-dir=../x/.git --work-tree=../x reset --hard", True, "explicit dirs"),

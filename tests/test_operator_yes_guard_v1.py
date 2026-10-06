@@ -74,9 +74,43 @@ def test_writing_changing_or_deleting_a_test_passes(payload):
     ("gh api -X PUT repos/o/r/pulls/445/merge", "merges pull request 445"),
     ("git push origin HEAD:main", "pushes to main"),
     ("git push origin main", "pushes to main"),
+    # reviewer 2026-10-06: each of these passed with no prompt on dd35be84 and on main
+    ("gh pr merge --squash 477", "merges pull request 477"),
+    ("gh pr merge --auto --merge 477", "merges pull request 477"),
+    ("gh pr merge", "merges pull request (the one gh picks)"),
+    ("gh pr merge https://github.com/o/r/pull/5 --merge", "merges pull request 5"),
+    ("gh pr merge fix/some-branch", "merges pull request (the one gh picks)"),
+    ("gh -R owner/repo pr merge 477", "merges pull request 477"),
+    ("gh.exe pr merge 477", "merges pull request 477"),
+    ("C:\\gh\\gh.exe pr merge 477", "merges pull request 477"),
+    ("\"C:\\Program Files\\GitHub CLI\\gh.exe\" pr merge 477", "merges pull request 477"),
+    ("bash -c \"gh pr merge 5\"", "merges pull request 5"),
+    ("gh api graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
+     "merges pull request"),
+    ("git push origin HEAD:refs/heads/main", "pushes to main"),
+    ("git push origin +main", "pushes to main"),
+    ("git push --all origin", "pushes to main"),
+    ("C:\\Git\\cmd\\git.exe push origin main", "pushes to main"),
+    ("Stop-Process -Name python -Force", "daemon or the console"),
+    ("taskkill /IM python.exe /F", "daemon or the console"),
+    (".venv/Scripts/python.exe -m uvicorn server:app --port 8000", "daemon or the console"),
+    (".venv/Scripts/python.exe -m streaming.capture", "daemon or the console"),
 ])
 def test_production_actions_are_put_to_the_operator(cmd, what):
-    assert any(what in r for r in guard.reasons(_shell(cmd)))
+    assert any(what in r for r in guard.reasons(_shell(cmd))), guard.reasons(_shell(cmd))
+
+
+def test_a_push_of_the_current_branch_asks_only_when_it_is_main(tmp_path):
+    """`git push` with no refspec, or `HEAD`, pushes the branch checked out: main asks, another
+    branch passes, and a branch that cannot be read asks."""
+    subprocess.run(["git", "init", "-q", "-b", "main", str(tmp_path / "r")], check=True)
+    on_main = {"tool_name": "Bash", "cwd": str(tmp_path / "r")}
+    for cmd in ("git push", "git push origin", "git push origin HEAD", "git push -u origin HEAD"):
+        assert "pushes to main (rule 6: production)" in guard.reasons({**on_main, "tool_input": {"command": cmd}}), cmd
+    (tmp_path / "r" / ".git" / "HEAD").write_text("ref: refs/heads/feature\n", encoding="utf-8")
+    assert guard.reasons({**on_main, "tool_input": {"command": "git push"}}) == []
+    nowhere = {"tool_name": "Bash", "cwd": str(tmp_path / "missing"), "tool_input": {"command": "git push"}}
+    assert "pushes to main (rule 6: production)" in guard.reasons(nowhere)
 
 
 @pytest.mark.parametrize("payload", [
@@ -89,6 +123,8 @@ def test_production_actions_are_put_to_the_operator(cmd, what):
            "PowerShell"),
     _shell("gh pr view 445 --json state"),
     _shell("git push -q -u origin fix/some-branch"),
+    _shell("git log --grep push"),
+    _shell("python -m pytest tests/test_restart_x.py -q"),
 ])
 def test_ordinary_work_passes(payload):
     assert guard.reasons(payload) == []
@@ -119,24 +155,51 @@ def test_a_write_to_a_database_under_data_is_put_to_the_operator(payload, db):
     assert any(f"{db}, a database under data/" in r for r in guard.reasons(payload)), guard.reasons(payload)
 
 
-@pytest.mark.parametrize("cmd, tool, db", [
-    ("cp /tmp/other.db data/ed_console.db", "Bash", "data/ed_console.db"),
-    ("Copy-Item C:\\tmp\\x.db data\\ed_console.db -Force", "PowerShell", "data\\ed_console.db"),
-    ("cp /tmp/other.db-wal data/stream_capture.db-wal", "Bash", "data/stream_capture.db-wal"),
-    ("cmd /c \"echo x & copy C:\\tmp\\x.db data\\ed_console.db\"", "Bash", "data\\ed_console.db"),
-    ("grep -c rows data/ed_console.db | cp /tmp/x.db data/ed_console.db", "Bash", "data/ed_console.db"),
-])
-def test_a_copy_over_a_database_under_data_is_put_to_the_operator(cmd, tool, db):
-    """A copy replaces the whole record without opening it."""
-    assert f"writes {db}, a database under data/ (rule 6: production)" in guard.reasons(_shell(cmd, tool))
+D = "data/ed_console.db"
+DELETE = f"import sqlite3; sqlite3.connect('{D}').execute('DELETE FROM t')"
 
 
 @pytest.mark.parametrize("cmd, tool", [
+    # copies, moves and redirects onto a database
+    ("cp /tmp/other.db data/ed_console.db", "Bash"),
+    ("Copy-Item C:\\tmp\\x.db data\\ed_console.db -Force", "PowerShell"),
+    ("cp /tmp/other.db-wal data/stream_capture.db-wal", "Bash"),
+    ("cmd /c \"echo x & copy C:\\tmp\\x.db data\\ed_console.db\"", "Bash"),
+    ("grep -c rows data/ed_console.db | cp /tmp/x.db data/ed_console.db", "Bash"),
+    ("Copy-Item -Destination data\\ed_console.db -Path C:\\tmp\\x.db", "PowerShell"),
+    ("echo x 1> data/ed_console.db", "Bash"),
+    ("rsync /tmp/x.db data/ed_console.db", "Bash"),
+    ("sqlite3 data/ed_console.db 'DELETE FROM t' # ?mode=ro", "Bash"),
+    # the 19 forms the correctness review found passing on dd35be84 (2026-10-06)
+    (f'DB={D}; sqlite3 "$DB" "DELETE FROM t"', "Bash"),
+    (f"export DB={D} && python tools/some_backfill.py", "Bash"),
+    (f"ED_DB={D} python tools/some_backfill.py", "Bash"),
+    ("$db = 'data\\ed_console.db'; sqlite3 $db 'DELETE FROM t'", "PowerShell"),
+    ("$p = 'data\\ed_console.db'; python -c \"import sqlite3,sys; sqlite3.connect(sys.argv[1]).execute('DELETE FROM t')\" $p",
+     "PowerShell"),
+    (f"echo \"{DELETE}\" | python", "Bash"),
+    ('for f in data/*.db; do sqlite3 "$f" VACUUM; done', "Bash"),
+    ("ls data/*.db | xargs -n1 -I{} sqlite3 {} VACUUM", "Bash"),
+    (f"bash -c \"sqlite3 {D} 'DELETE FROM t'\"", "Bash"),
+    ("cmd /c sqlite3 data\\ed_console.db VACUUM", "Bash"),
+    ('powershell -Command "sqlite3 data\\ed_console.db VACUUM"', "PowerShell"),
+    (f'python3.13 -c "{DELETE}"', "Bash"),
+    (f'uv run python -c "{DELETE}"', "Bash"),
+    (f"$py = '.venv\\Scripts\\python.exe'; & $py -c \"{DELETE}\"", "PowerShell"),
+    (f"cat > /tmp/fix.py <<'EOF'\n{DELETE}\nEOF\npython /tmp/fix.py", "Bash"),
+    (f"python - <<'PY-END'\n{DELETE}\nPY-END", "Bash"),
+    (f"git commit -m 'wip\\'; sqlite3 {D} \"DELETE FROM t\"; echo '", "Bash"),
+    (f'pythonw -c "{DELETE}"', "Bash"),
+    ('Invoke-Expression "sqlite3 data\\ed_console.db VACUUM"', "PowerShell"),
+    ("cd data && python -c \"import sqlite3; sqlite3.connect('ed_console.db').execute('DELETE FROM t')\"", "Bash"),
+    # not every statement is a known read
     ("cp data/ed_console.db /tmp/ed_console_copy.db", "Bash"),
-    ("Copy-Item data\\stream_capture.db C:\\tmp\\copy.db", "PowerShell"),
+    ("ls -la data/ed_console.db && python -c \"print(1)\"", "Bash"),
 ])
-def test_copying_a_database_out_of_data_passes(cmd, tool):
-    assert guard.reasons(_shell(cmd, tool)) == []
+def test_a_command_naming_a_database_asks_unless_every_statement_only_reads(cmd, tool):
+    """Fails closed: a command that names a database under data/ anywhere (its -c code, heredocs
+    and variables included) asks, unless every statement in it is a known read."""
+    assert any(", a database under data/ (rule 6: production)" in r for r in guard.reasons(_shell(cmd, tool))), cmd
 
 
 @pytest.mark.parametrize("cmd", [
@@ -146,7 +209,7 @@ def test_copying_a_database_out_of_data_passes(cmd, tool):
     "ls -la data/ed_console.db data/stream_capture.db",
     "python -m pytest tests/test_chain_history_v1.py -q",
     "grep -n \"sqlite3 data/ed_console.db\" docs/DATA_FLOW.md",
-    "ls -la data/ed_console.db && python -c \"print(1)\"",
+    "cat data/notes.txt && dir data\\ed_console.db",
 ])
 def test_reading_a_database_and_ordinary_work_pass(cmd):
     assert guard.reasons(_shell(cmd)) == []

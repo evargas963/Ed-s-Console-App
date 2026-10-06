@@ -39,7 +39,6 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell parser (BEDROCK 
     normalize_repo,
     shell_executed_part,
 )
-from tools.pretooluse_guard import classify_path  # noqa: E402
 from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # noqa: E402 — the ONE roster of each class
 
 #: The file-mutating tool class is decided ONCE (tools.hook_chain.MUTATING_TOOLS, Cursor's
@@ -261,15 +260,15 @@ def main_ref_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
 
 
 def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO) -> list[str]:
-    """PREVENT an assigned agent EDITING app code in the PRODUCTION checkout (invariant #4).
+    """PREVENT an agent EDITING any file in the PRODUCTION checkout (invariant #4): app code,
+    tests, docs and governance alike; it changes only by `git pull --ff-only`.
 
     The symmetric companion to cross_checkout_edit_violations: that rail stops a LINKED worktree
-    reaching INTO the primary; this stops the session that IS the primary from editing product
-    code in place. Fires only when this session runs in the production primary
-    (`_primary_worktree_root` is None) and the Edit/Write target resolves INSIDE it AND is a
-    production path (server.py, *.py, static/*.html|*.js — governance/docs/reports/tests are not
-    app code). A dev-worktree file edited from the primary session resolves OUTSIDE the primary
-    and is not blocked. Not subject-disableable (RC-450)."""
+    reaching INTO the primary; this stops the session that IS the primary from editing in place.
+    Fires only when this session runs in the production primary (`_primary_worktree_root` is
+    None) and the Edit/Write target resolves INSIDE it. A dev-worktree file edited from the
+    primary session resolves OUTSIDE the primary and is not blocked. Not subject-disableable
+    (RC-450)."""
     if _primary_worktree_root(repo) is not None:
         return []                        # this session is a linked dev worktree — unconstrained
     try:
@@ -289,13 +288,12 @@ def production_checkout_app_edit_violations(tool_input: dict, repo: Path = REPO)
             resolved.relative_to(primary)    # must be inside the production tree
         except (OSError, ValueError):
             continue
-        if classify_path(str(resolved), repo=str(primary)).production:
-            out.append(
-                f"PROD_CHECKOUT_APP_EDIT (live-checkout invariant): {resolved} is app code in the "
-                f"PRODUCTION checkout {primary}. Development does not edit the live checkout — make "
-                f"the change in the separate dev worktree and land via PR. "
-                f"See AGENTS.md."
-            )
+        out.append(
+            f"PROD_CHECKOUT_APP_EDIT (live-checkout invariant): {resolved} is in the "
+            f"PRODUCTION checkout {primary}. Development does not edit the live checkout — make "
+            f"the change in the separate dev worktree and land via PR. "
+            f"See AGENTS.md."
+        )
     return out
 
 
@@ -432,15 +430,13 @@ def _shell_write_targets(cmd: str, payload_cwd: str = "", base_root: Path | None
 
 
 def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = "") -> list[str]:
-    """PREVENT a materially-equivalent SHELL edit to app code in the PRODUCTION checkout — the
-    Bash companion to production_checkout_app_edit_violations (Edit/Write) and to the universal
-    shell source-write bans (redirect/heredoc/-c payload in operator_law_guard). For EACH segment
-    of a chained command (cwd tracked, so a leading `cd` cannot mislocate a later write), blocks
-    a `>`/`>>` redirect or cp/mv/install/tee/sed -i/perl -i/truncate/dd whose destination resolves
-    to a production app file (server.py, *.py, static/*.html|*.js, ...) INSIDE the production
-    primary — whichever session runs it. This closes the redirect-to-static gap the universal
-    .py-only redirect ban misses. Dev-worktree paths resolve outside and stay free. Not
-    subject-disableable (RC-450)."""
+    """PREVENT a SHELL write to any file in the PRODUCTION checkout — the Bash companion to
+    production_checkout_app_edit_violations (Edit/Write). For EACH segment of a chained command
+    (cwd tracked, so a leading `cd` cannot mislocate a later write), blocks a `>`/`>>` redirect or
+    cp/mv/install/tee/sed -i/perl -i/truncate/dd/PowerShell write cmdlet whose destination
+    resolves INSIDE the production primary — app code, tests, docs, governance and data alike —
+    whichever session runs it. The null device is not a file. Dev-worktree paths resolve outside
+    and stay free. Not subject-disableable (RC-450)."""
     primary = _primary_worktree_root(REPO) or REPO
     try:
         primary_res = primary.resolve()
@@ -454,13 +450,14 @@ def production_checkout_shell_app_write_violations(cmd: str, payload_cwd: str = 
             resolved.relative_to(primary_res)
         except ValueError:
             continue
-        if classify_path(str(resolved), repo=str(primary_res)).production:
-            out.append(
-                    f"PROD_CHECKOUT_APP_EDIT (shell, live-checkout invariant): a shell command "
-                    f"writes {resolved} — app code in the PRODUCTION checkout {primary}. "
-                    f"Development does not modify the live checkout by ANY means; make the change "
-                    f"in the separate dev worktree and land via PR. "
-                    f"See AGENTS.md.")
+        if resolved.name.lower() in ("nul", "$null"):
+            continue
+        out.append(
+                f"PROD_CHECKOUT_APP_EDIT (shell, live-checkout invariant): a shell command "
+                f"writes {resolved} in the PRODUCTION checkout {primary}. "
+                f"Development does not modify the live checkout by ANY means; make the change "
+                f"in the separate dev worktree and land via PR. "
+                f"See AGENTS.md.")
     return out
 
 
