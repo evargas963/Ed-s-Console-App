@@ -243,11 +243,14 @@ from Schwab to the screen (daemon, console, page), are these:
   (`FAILED_PAUSE_SEC`). Then the probe: one chain is fetched alone, sending its requests one at
   a time and stopping at the first one refused (`fetch_full_chain` `alone`), so a refused probe
   costs Schwab at most one refused request; the sweep, every request at once again, goes on
-  only once the probe lands (a fetch sent before the refusal that lands does not end it). Any
-  request of a chain counts: the chain, its expiration list (asked for a chain fetched in date
-  ranges), its quotes; a later refusal never shortens a pause already running. A probe that
-  fails with any other status (a 500, a 502, an expiration list with no expiry from today) sets
-  no pause: the next probe goes at once. Enforced by:
+  only once the probe lands. The probe is the chain taken while probing; a chain taken before
+  the refusal is not, whenever it lands. Any request of a chain counts: the chain, its
+  expiration list (asked for a chain fetched in date ranges), its quotes. A fetch in flight
+  when the pause begins sends none of its remaining requests (`fetch_full_chain` `paused`) and
+  fails with that reason; a request it sent before the pause is answered as Schwab answers it.
+  A later refusal never shortens a pause already running. A probe that fails with any other
+  status (a 500, a 502, an expiration list with no expiry from today) sets no pause: the next
+  probe goes at once. Enforced by:
   `tests/test_data_path_rules_v1.py`
   (`test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until_one_lands`,
   on Schwab's captured 403 page;
@@ -255,7 +258,10 @@ from Schwab to the screen (daemon, console, page), are these:
   counting the requests Schwab's host receives after a 403 and after a 429;
   `test_a_refused_expiration_list_pauses_the_sweep_and_starts_the_probe`,
   `test_a_fetch_begun_before_a_refusal_does_not_end_the_probe`,
-  `test_a_later_refusal_never_shortens_the_pause`). The chain is always the full chain, every expiry and
+  `test_a_ticker_taken_before_a_refusal_is_not_the_probe`,
+  `test_a_fetch_in_flight_sends_no_further_request_during_the_pause`,
+  `test_a_later_refusal_never_shortens_the_pause`,
+  `test_a_probe_that_fails_with_another_status_is_followed_by_the_next_probe_at_once`). The chain is always the full chain, every expiry and
   every strike: measured on the 38 board tickers' 2026-10-01 close captures, leaving out the
   farthest expiry changed a level (a wall, the flip, max pain) on 4 tickers, the two farthest on
   25, and 5 strikes off each side on 9. Every ticker's publication keeps its chain and its

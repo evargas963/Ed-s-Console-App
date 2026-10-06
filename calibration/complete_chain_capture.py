@@ -27,7 +27,7 @@ from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from numeric_contract import schwab_number
 from production_universe import is_valid_production_ticker
-from schwab_client import fetch_full_chain, flatten_chain_contracts
+from schwab_client import ChainWithheld, FullChainResponse, fetch_full_chain, flatten_chain_contracts
 from stream_spine import CaptureWriter
 from time_et import (ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date,
                      session_label)
@@ -203,8 +203,9 @@ class ChainSweep:
     everything, and every board ticker in turn, without end, by the other workers. While Closed
     every board ticker is fetched once, its close values (a failed fetch is tried again after
     FAILED_PAUSE_SEC), and then nothing until the next session: the close values stand, and a
-    ticker put on screen while Closed is not fetched. After a refusal (403, 429) or a failure,
-    and its pause, one chain is fetched alone, its requests one at a time, until one lands. Each chain is published to
+    ticker put on screen while Closed is not fetched. After a refusal (403, 429) or a failure no
+    request is sent for its pause, by a fetch in flight either; then one chain is fetched alone,
+    its requests one at a time, until one lands. Each chain is published to
     the console in parts (chain_messages); a failure is published
     with Schwab's answer. The first fetch of a ticker begun inside a capture window
     (capture_slot) is also written to the chain history; a history write that fails is a
@@ -229,6 +230,7 @@ class ChainSweep:
         self._paused_until = 0.0
         self._probing = False           # after a refusal or failure: one fetch at a time
                                         # until one of those (the probe) succeeds
+        self._probe: str | None = None  # the ticker _next last took while probing (the probe)
         self._closed: "list[str] | None" = None    # while Closed: the board tickers whose close
                                                     # values are not yet fetched; None while open
 
@@ -241,11 +243,18 @@ class ChainSweep:
     def _next(self, now: float) -> str | None:
         """The next ticker to fetch, taken by the caller: the active ticker whenever no worker is
         fetching it, else the round's next. A ticker being fetched by another worker now is
-        skipped. While probing, nothing is taken while any fetch is in flight. While Closed: the
-        next board ticker whose close values are not yet fetched."""
+        skipped. Nothing is taken while chain requests are paused, nor while probing and any fetch
+        is in flight; a ticker taken while probing is the probe, decided here under the lock that
+        takes it. While Closed: the next board ticker whose close values are not yet fetched."""
         with self._lock:
-            if self._probing and self._fetching:
+            if now < self._paused_until or (self._probing and self._fetching):
                 return None
+            tk = self._take(now)
+            self._probe = tk if self._probing else None
+            return tk
+
+    def _take(self, now: float) -> str | None:
+        with self._lock:
             if session_label(datetime.fromtimestamp(now, ET)) == "Closed":
                 if self._closed is None:          # the market has just closed, or the daemon
                     self._closed = sorted(self.board)   # started while it is Closed
@@ -275,8 +284,11 @@ class ChainSweep:
     def fetch_one(self, client, ticker: str) -> bool:
         started = self.clock()
         with self._lock:
-            alone = self._probing
-        resp = fetch_full_chain(client, ticker, alone=alone)
+            alone = ticker == self._probe
+        try:
+            resp = fetch_full_chain(client, ticker, alone=alone, paused=self._paused)
+        except ChainWithheld as e:      # paused between two of its requests: the rest not sent
+            resp = FullChainResponse(None, reason=str(e))
         now = self.clock()
         if resp.status_code != 200:
             if resp.status_code == 429:
@@ -287,7 +299,7 @@ class ChainSweep:
             log.warning("chain %s: %s", ticker, reason)
             self.publish(*chain_failure_message(ticker, reason, now))
             return False
-        if alone:                       # the probe landed; a fetch sent before a refusal did not
+        if alone:                       # the probe landed; a fetch taken before a refusal did not
             with self._lock:
                 self._probing = False
         payload = resp.json()
@@ -341,6 +353,12 @@ class ChainSweep:
             with self._lock:                               # unwritten: the window's next fetch tries
                 self._written[ticker] = before
             raise
+
+    def _paused(self) -> bool:
+        """Chain requests are paused now (after a refusal, `_refused`): a fetch in flight sends
+        no further request (fetch_full_chain `paused`)."""
+        with self._lock:
+            return self.clock() < self._paused_until
 
     def _refused(self, now: float, pause: float) -> None:
         """No chain request for `pause` (a pause already longer stands), then one fetch at a time,

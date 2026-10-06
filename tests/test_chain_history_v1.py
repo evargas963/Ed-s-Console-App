@@ -3,24 +3,29 @@ chain, what it hands the console, and the chain history it writes.
 
 Real data (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json): SPY's 2026-11-20 contracts
 from the capture daemon's full-chain capture of 2026-09-30 15:31:57 ET, and Schwab's quotes for
-every one of them. Schwab's network is the only stand-in (`_Schwab`): it answers the chain with the
-captured contracts and each quotes request with the recorded quotes."""
+every one of them. Schwab's network is the only stand-in (`_Schwab`, or Schwab's host played
+locally by tests/test_data_path_rules_v1._LocalSchwab): it answers the chain with the captured
+contracts and each quotes request with the recorded quotes."""
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
 
+import httpx
 import pytest
+from schwab.client import Client
 
 import calibration.complete_chain_capture as cch
 import schwab_client as sc
 from app.options.order_flow import streaming as ofs
 from json_blob_codec import decode_json_blob
 from stream_spine import CaptureWriter
+from tests.test_data_path_rules_v1 import _LocalSchwab
 from time_et import ET
 
 _FX = json.loads((Path(__file__).resolve().parent / "fixtures"
@@ -281,16 +286,22 @@ def test_no_ticker_is_fetched_twice_at_once(tmp_path, schwab):
     assert sweep.round_sec is None, "the round ends when its last fetch is done, not when handed out"
 
 
-def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_path, schwab):
+def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_path):
     """2026-10-01 audit: the capture window was judged by when a fetch finished, so an $SPX
     fetch begun at 16:14:30 (options still trading) and finished at 16:15:10 became the 16:15
-    close capture. A fetch is written for the window it began in."""
+    close capture. A fetch is written for the window it began in. Through schwab-py's client
+    against a local stand-in for Schwab's host (the captured SPY chain and its quotes)."""
     db = tmp_path / "ed_console.db"
-    sweep, _published, _clock = _sweep(tmp_path, ["SPY"], "2026-09-30 16:00:30")
-    sweep.fetch_one(object(), "SPY")                       # the 16:00 window's capture
-    times = iter([_ts("2026-09-30 16:14:30"), _ts("2026-09-30 16:15:10")])
-    sweep.clock = lambda: next(times)
-    sweep.fetch_one(object(), "SPY")                       # begun 16:14:30, received 16:15:10
+    host = _LocalSchwab()
+    try:
+        client = Client("k", httpx.Client(transport=host.transport), enforce_enums=False)
+        sweep, _published, _clock = _sweep(tmp_path, ["SPY"], "2026-09-30 16:00:30")
+        assert sweep.fetch_one(client, "SPY")              # the 16:00 window's capture
+        times = itertools.chain([_ts("2026-09-30 16:14:30")], itertools.repeat(_ts("2026-09-30 16:15:10")))
+        sweep.clock = lambda: next(times)
+        assert sweep.fetch_one(client, "SPY")              # begun 16:14:30, received 16:15:10
+    finally:
+        host.close()
     with sqlite3.connect(db) as c:
         assert [_et(r[0]) for r in c.execute("SELECT DISTINCT ts_utc FROM complete_chain_captures")] \
             == ["2026-09-30 16:00"]

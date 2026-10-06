@@ -593,25 +593,42 @@ QUOTES_BATCH_MAX = 300
 GREEK_FIELDS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
 
 
-def _send_each(send, items: list, alone: bool, refused) -> list:
+class ChainWithheld(Exception):
+    """A fetch's next request was not sent: its caller paused chain requests (`paused`)."""
+
+
+def _never_paused() -> bool:
+    return False
+
+
+def _send_each(send, items: list, alone: bool, refused, paused) -> list:
     """`send(item)` for every item, every request at once; `alone`: one at a time, ending at the
-    first answer that is `refused`, so Schwab sees at most one refused request."""
+    first answer that is `refused`, so Schwab sees at most one refused request. Every request of
+    a fetch is sent here, and none while `paused()`: the fetch is withheld (ChainWithheld)."""
+    def gated(item):
+        if paused():
+            raise ChainWithheld("not sent: chain requests are paused after Schwab refused one")
+        return send(item)
+
     if not alone:
         with ThreadPoolExecutor(max_workers=max(1, len(items))) as pool:
-            return list(pool.map(send, items))
+            return list(pool.map(gated, items))
     answers = []
     for item in items:
-        answers.append(send(item))
+        answers.append(gated(item))
         if refused(answers[-1]):
             break
     return answers
 
 
-def fetch_full_chain(client, ticker: str, *, alone: bool = False) -> FullChainResponse:
+def fetch_full_chain(client, ticker: str, *, alone: bool = False,
+                     paused=_never_paused) -> FullChainResponse:
     """EVERY strike of every listed expiry -- the chain all level math is computed from -- with
     each contract's Greeks as Schwab's quotes send them: strike_range=ALL chain requests
     (safe_get_chain) and quotes requests (safe_get_quotes) on `client`. `alone` (the sweep's
     probe after Schwab refused it): every request one at a time, stopping at the first refused.
+    `paused` (the sweep's pause after a refusal): checked before every request; while it holds
+    no further request is sent and ChainWithheld is raised.
 
     MEASURED 2026-09-25 across the 42 board tickers: levels computed from the old strike
     window disagreed with the same code run on the full chain -- gamma flip missing for 10
@@ -624,7 +641,7 @@ def fetch_full_chain(client, ticker: str, *, alone: bool = False) -> FullChainRe
     whole chain (its status and reason), like a missing chain part: a book missing a batch of
     Greeks is not the book. Each fetch logs its contracts, requests and their times."""
     t0 = time.perf_counter()
-    resp = _whole_chain(client, ticker, alone)
+    resp = _whole_chain(client, ticker, alone, paused)
     if resp.status_code != 200:
         return resp
     t_chain = time.perf_counter() - t0
@@ -636,7 +653,7 @@ def fetch_full_chain(client, ticker: str, *, alone: bool = False) -> FullChainRe
     batches = [symbols[i:i + QUOTES_BATCH_MAX] for i in range(0, len(symbols), QUOTES_BATCH_MAX)]
     t1 = time.perf_counter()
     replies = _send_each(lambda batch: safe_get_quotes(client, batch), batches, alone,
-                         lambda reply: reply.status_code != 200)
+                         lambda reply: reply.status_code != 200, paused)
     quoted: dict = {}
     for batch, reply in zip(batches, replies):
         if reply.status_code != 200:
@@ -658,28 +675,32 @@ def fetch_full_chain(client, ticker: str, *, alone: bool = False) -> FullChainRe
     return resp
 
 
-def _whole_chain(client, ticker: str, alone: bool) -> FullChainResponse:
+def _whole_chain(client, ticker: str, alone: bool, paused) -> FullChainResponse:
     """The chain of `fetch_full_chain`. One request when Schwab answers it. When the vendor
     answers that the request covers too much, the listed expiries are split into contiguous
     date ranges, all requested at once (one at a time when `alone`), halving any range that is itself refused; the part count
     that worked is remembered per ticker. Every part must land: a missing part is a failed
     response (the reason names it), never a partial chain."""
 
-    def _get(**dates):
+    def _get(dates: dict):
         resp = safe_get_chain(client, ticker, strike_range="ALL", **dates)
         return resp, resp.status_code
+
+    def _refusal(answer) -> bool:
+        return answer[1] not in (200, *_CHAIN_TOO_BIG_CODES)
 
     with _full_chain_parts_lock:
         known_parts = _full_chain_parts.get(ticker, 1)
     if known_parts <= 1:
-        resp, code = _get()
+        [(resp, code)] = _send_each(_get, [{}], alone, _refusal, paused)
         if code == 200:
             return FullChainResponse(200, resp.json(), parts=1)
         if code not in _CHAIN_TOO_BIG_CODES:
             return FullChainResponse(code, reason=f"full chain returned HTTP {code}")
         known_parts = 2
 
-    code, expiries = _option_expiries(client, ticker)
+    [(code, expiries)] = _send_each(lambda tk: _option_expiries(client, tk), [ticker], alone,
+                                    lambda answer: answer[0] != 200, paused)
     if code != 200:
         return FullChainResponse(code, reason=f"expiration list returned HTTP {code}")
     if not expiries:
@@ -689,8 +710,8 @@ def _whole_chain(client, ticker: str, alone: bool) -> FullChainResponse:
     merged: "dict | None" = None
     done = 0
     while pending:
-        answers = _send_each(lambda p: _get(from_date=p[0], to_date=p[-1]), pending, alone,
-                             lambda answer: answer[1] not in (200, *_CHAIN_TOO_BIG_CODES))
+        answers = _send_each(lambda p: _get({"from_date": p[0], "to_date": p[-1]}), pending, alone,
+                             _refusal, paused)
         refused = []
         for part, (resp, code) in zip(pending, answers):
             if code == 200:
