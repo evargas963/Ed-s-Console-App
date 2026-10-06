@@ -5,8 +5,9 @@ then each pushed bar); every live reader reads memory. Only completed bars are s
 the stream did not deliver stays missing."""
 from __future__ import annotations
 
-import threading
-import time
+import sqlite3
+import sys
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from fastapi.testclient import TestClient
@@ -14,12 +15,34 @@ from fastapi.testclient import TestClient
 import app.options.order_flow.streaming as ofs
 import server
 from app.market_data.schwab.streaming.live_push import is_forwarded
+from db_authority import canonical_stream_db_path
 from stream_spine import bar_msg
 from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
 from time_et import ET, ct_label
 
 TK = "ZZBARS"
 T0 = 1_790_000_040.0            # a minute boundary
+
+
+@dataclass
+class _SqliteWork:
+    """What this thread asks of SQLite while watched (sys.setprofile, each call into a sqlite3
+    connection or cursor before it runs): every statement SQLite runs (the connection's trace
+    callback) and every row handed back to Python (a row factory that returns the row exactly as
+    SQLite built it)."""
+    statements: list = field(default_factory=list)
+    rows: int = 0
+
+    def row(self, _cursor, row):
+        self.rows += 1
+        return row
+
+    def watch(self, _frame, event, arg):
+        owner = getattr(arg, "__self__", None)
+        if event == "c_call" and isinstance(owner, (sqlite3.Connection, sqlite3.Cursor)) and owner.row_factory != self.row:
+            con = owner.connection if isinstance(owner, sqlite3.Cursor) else owner
+            con.set_trace_callback(self.statements.append)
+            con.row_factory = owner.row_factory = self.row
 
 
 def _bar(start: float, o=10.0, h=11.0, lo=9.5, c=10.5, v=100.0) -> dict:
@@ -82,36 +105,30 @@ def test_a_minute_the_stream_did_not_deliver_stays_missing():
     assert [b.ts for b in server._bars_1m(TK)] == [T0, T0 + 60, T0 + 180]
 
 
-def test_bars_are_loaded_promptly_and_exactly_while_options_are_priced_in_the_same_process():
-    """The console prices option chains in the interpreter that loads and serves the bars. Schwab's
-    SPY and TSLA bars as the capture daemon recorded them (2026-09-29/30, each receipt, every hour
-    Schwab sent), loaded at startup (server._load_bars) beside a busy pure-Python thread: each
-    minute is Schwab's newest bar for it with every field as sent, the pre-market and after-hours
-    bars included, and the load does not wait on that thread per row."""
+def test_bars_are_loaded_exactly_in_one_read_per_symbol():
+    """The console prices option chains in the interpreter that loads and serves the bars, and
+    every row SQLite hands back to Python hands that interpreter's lock to the pricing thread.
+    Schwab's SPY and TSLA bars as the capture daemon recorded them (2026-09-29/30, each receipt,
+    every hour Schwab sent), loaded at startup (server._load_bars): each minute is Schwab's newest
+    bar for it with every field as sent, the pre-market and after-hours bars included, and the
+    load's statements and rows grow with the symbols recorded, never with the bars."""
     rows = daemon_bars("real_daemon_bars_spy_tsla_2026_09_29_30.json")
     lo, hi = min(r["bar_start_ms"] for r in rows), max(r["bar_start_ms"] for r in rows)
     newest = {}
     for r in sorted(rows, key=lambda r: r["ts_recv"]):
         newest[(r["symbol"], r["bar_start_ms"])] = r
-    busy = threading.Event()
-
-    def price_options():
-        x = 0
-        while not busy.is_set():
-            for i in range(1000):
-                x += i * i
-
     record_daemon_bars(rows)
-    t = threading.Thread(target=price_options, daemon=True)
-    t.start()
+    con = sqlite3.connect(str(canonical_stream_db_path()))
+    (symbols,) = con.execute("SELECT COUNT(DISTINCT symbol) FROM stream_bars_raw").fetchone()
+    con.close()
+    work, profiler = _SqliteWork(), sys.getprofile()
+    sys.setprofile(work.watch)
     try:
-        t0 = time.perf_counter()
         server._load_bars()
+        sys.setprofile(profiler)
         read = {tk: server._bars_1m(tk, server.BARS_KEPT) for tk in ("SPY", "TSLA")}
-        took = time.perf_counter() - t0
     finally:
-        busy.set()
-        t.join()
+        sys.setprofile(profiler)
         forget_daemon_bars(rows)
         for tk in ("SPY", "TSLA"):
             server._bars.pop(tk, None)
@@ -122,7 +139,11 @@ def test_bars_are_loaded_promptly_and_exactly_while_options_are_priced_in_the_sa
         assert got == want, tk
         assert any(datetime.fromtimestamp(ts, ET).hour < 9 for ts, *_ in got), f"{tk}: no pre-market bar kept"
         assert any(datetime.fromtimestamp(ts, ET).hour >= 17 for ts, *_ in got), f"{tk}: no after-hours bar kept"
-    assert took < 1.0, f"{sum(len(v) for v in read.values())} bars took {took:.2f} s beside a busy thread"
+    bars = sum(len(v) for v in read.values())
+    assert work.statements, "the load ran no statement on a connection it opened"
+    assert len(work.statements) <= 1 + symbols, (
+        f"{len(work.statements)} statements for {bars} bars of {symbols} symbols: {work.statements[:3]}")
+    assert work.rows <= 2 * symbols, f"{work.rows} rows handed to Python for {bars} bars of {symbols} symbols"
 
 
 def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute():
