@@ -488,10 +488,11 @@ def _is_token_error(exc: BaseException) -> bool:
     return isinstance(exc, AuthlibBaseError)
 
 
-def _raise_schwab_auth_error(client, exc: BaseException) -> None:
+def _latched_auth_error(client, exc: BaseException) -> SchwabAuthError:
+    """Latch `client` after the OAuth failure `exc`; the SchwabAuthError its caller raises."""
     with _auth_failure_lock:
         _auth_failure_until[client] = time.monotonic() + _SCHWAB_AUTH_FAILURE_LATCH_SEC
-    raise SchwabAuthError(str(exc)) from exc
+    return SchwabAuthError(str(exc))
 
 
 def _schwab_auth_latched(client) -> bool:
@@ -528,7 +529,7 @@ def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
         resp = client.get_option_chain(ticker, **kwargs)
     except Exception as e:
         if _is_token_error(e):
-            _raise_schwab_auth_error(client, e)
+            raise _latched_auth_error(client, e) from e
         raise
     return resp
 
@@ -570,7 +571,7 @@ def _option_expiries(client, ticker: str) -> "tuple[int, list[date]]":
     try:
         resp = client.get_option_expiration_chain(ticker)
     except AuthlibBaseError as e:       # an OAuth failure (_is_token_error)
-        _raise_schwab_auth_error(client, e)
+        raise _latched_auth_error(client, e) from e
     if resp.status_code != 200:
         return resp.status_code, []
     today = now_et().date()
@@ -588,7 +589,7 @@ def safe_get_quotes(client, symbols: "list[str]"):
         return client.get_quotes(symbols, fields=["quote"])
     except Exception as e:
         if _is_token_error(e):
-            _raise_schwab_auth_error(client, e)
+            raise _latched_auth_error(client, e) from e
         raise
 
 
