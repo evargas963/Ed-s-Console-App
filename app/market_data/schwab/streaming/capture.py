@@ -311,7 +311,7 @@ class Daemon:
         self._down_since: "float | None" = None
         #: set while the stream is logged in and Schwab has answered this connection's first
         #: requests, cleared when the connection ends: the chain sweep sends Schwab nothing while
-        #: it is clear (market_data_waits_for_stream)
+        #: it is clear (while_subscribed, market_data_needs_the_stream)
         self.subscribed = threading.Event()
 
     def set_wanted(self, raw, sender=None) -> None:
@@ -593,19 +593,34 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
         await asyncio.gather(*workers, return_exceptions=True)
 
 
-def market_data_waits_for_stream(client, daemon: "Daemon", stopping: threading.Event):
-    """The daemon's one Schwab client, each of whose market-data requests (/marketdata/: the
-    chain sweep's chains, quotes and expiration lists) waits in the thread that sends it while
-    the stream is not logged in and subscribed (Daemon.subscribed): at the start and while a
-    reconnect logs in, the sweep sends Schwab nothing, a fetch already under way included. The
-    stream's own login (/trader/) and the token refresh are not market data and go at once.
-    Once `stopping` is set a waiting request is refused."""
-    def wait_for_stream(request) -> None:
-        if request.url.path.startswith("/marketdata/"):
-            while not daemon.subscribed.wait(0.5):
-                if stopping.is_set():
-                    raise ConnectionError("the capture daemon is stopping")
-    client.session.event_hooks["request"].append(wait_for_stream)
+#: why a chain fetch under way when its connection ended is abandoned
+ABANDONED = "the stream's connection ended: this chain fetch is abandoned, never finished across the gap"
+
+
+def while_subscribed(daemon: "Daemon", schwab_client, stopping: threading.Event) -> "callable":
+    """The chain sweep's Schwab client (`schwab_client()`), handed to a worker for a fetch only
+    while the stream is logged in and subscribed (Daemon.subscribed): at the start and while a
+    reconnect logs in, a worker waits here and sends Schwab nothing; once `stopping` is set it
+    is refused instead."""
+    def client():
+        while not daemon.subscribed.wait(0.5):
+            if stopping.is_set():
+                raise ConnectionError("the capture daemon is stopping")
+        return schwab_client()
+    return client
+
+
+def market_data_needs_the_stream(client, daemon: "Daemon"):
+    """The daemon's one Schwab client, which refuses at once a market-data request (/marketdata/:
+    a chain fetch's chain, quotes and expiration lists) sent while the stream is not subscribed:
+    a fetch under way when its connection ended sends nothing more and fails (ABANDONED), so no
+    chain is assembled from before and after a gap and nothing waits holding a signed token; it
+    is fetched again once the stream has subscribed (while_subscribed). The stream's own login
+    (/trader/) and the token refresh are not market data."""
+    def needs_the_stream(request) -> None:
+        if request.url.path.startswith("/marketdata/") and not daemon.subscribed.is_set():
+            raise ConnectionError(ABANDONED)
+    client.session.event_hooks["request"].append(needs_the_stream)
     return client
 
 
@@ -649,12 +664,13 @@ async def run() -> int:
     def build():
         state = build_client_from_token(api_key=cfg.api_key, app_secret=cfg.app_secret, token_path=cfg.token_path)
         if state.ok:
-            market_data_waits_for_stream(state.client, daemon, stopping)
+            market_data_needs_the_stream(state.client, daemon)
         return state
     schwab_client = one_schwab_client(build)
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
-             asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer)),
+             asyncio.create_task(run_chains(daemon, db_path, while_subscribed(daemon, schwab_client, stopping),
+                                            stop, failures=writer)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]

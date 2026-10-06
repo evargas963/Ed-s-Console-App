@@ -220,12 +220,13 @@ from Schwab to the screen (daemon, console, page), are these:
   they wait replaces them, so a stored capture never replaces a delivered chain and no delivered
   chain waits behind a stored one). The daemon's bus keeps each ticker's newest whole chain:
   once all its parts are in it replaces the older one, which is never sent again. The sweep runs on
-  `CHAIN_WORKERS` (8) threads sharing the daemon's one Schwab client (§1), each of whose
-  market-data requests waits while the stream is not logged in and subscribed
-  (`capture.market_data_waits_for_stream`: at the start, and from a connection's end until the
-  next one has subscribed, the backoff and a streamer-only outage included, the sweep sends
-  Schwab nothing, a fetch already under way included; enforced by
-  `tests/test_data_path_startup_v1.py`), one fetch of a ticker at a time, paced
+  `CHAIN_WORKERS` (8) threads sharing the daemon's one Schwab client (§1), only while the stream
+  is logged in and subscribed: at the start, and from a connection's end until the next one has
+  subscribed (the backoff and a streamer-only outage included), a worker waits before a fetch
+  (`capture.while_subscribed`) and a fetch under way sends nothing more and fails, its chain
+  never assembled from before and after the gap (`capture.market_data_needs_the_stream`); it is
+  fetched again once the stream has subscribed; enforced by
+  `tests/test_data_path_startup_v1.py`. One fetch of a ticker at a time, paced
   by the session calendar (`time_et.session_label`). In every open session (Pre-Market, RTH,
   After-Hours) the active ticker (the wanted frame's `active`: the ticker on screen, on or off
   the board) is fetched back to back, taken again the moment its last fetch ends, and the other

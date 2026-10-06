@@ -38,10 +38,10 @@ async def _until(cond, limit: float = 10.0) -> None:
         await asyncio.sleep(0.05)
 
 
-def _gated_client(host, daemon, stopping):
+def _daemon_client(host, daemon):
     """The daemon's client as capture.run builds it, on the local stand-in for Schwab's host."""
-    return capture.market_data_waits_for_stream(
-        Client("k", httpx.Client(transport=host.transport), enforce_enums=False), daemon, stopping)
+    return capture.market_data_needs_the_stream(
+        Client("k", httpx.Client(transport=host.transport), enforce_enums=False), daemon)
 
 
 def _market_data(host) -> list:
@@ -49,18 +49,18 @@ def _market_data(host) -> list:
 
 
 def test_the_chain_sweep_sends_schwab_nothing_until_the_stream_has_subscribed(tmp_path):
-    """The real chain sweep on the daemon's client (market_data_waits_for_stream): no request
-    while the stream has not subscribed; the chains once it has."""
+    """The real chain sweep, handed the daemon's client as capture.run hands it (while_subscribed):
+    no request while the stream has not subscribed; the chains once it has."""
     sqlite3.connect(tmp_path / "ed_console.db").close()
     host = _LocalSchwab()
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), board=["SPY"])
     stopping = threading.Event()
-    client = _gated_client(host, daemon, stopping)
+    client = _daemon_client(host, daemon)
 
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(capture.run_chains(
-            daemon, tmp_path / "ed_console.db", lambda: client, stop,
+            daemon, tmp_path / "ed_console.db", capture.while_subscribed(daemon, lambda: client, stopping), stop,
             failures=CaptureWriter(tmp_path / "stream_capture.db")))
         await asyncio.sleep(1.5)
         before = list(host.requests)
@@ -77,38 +77,47 @@ def test_the_chain_sweep_sends_schwab_nothing_until_the_stream_has_subscribed(tm
     assert before == [], f"the chain sweep reached Schwab before the stream subscribed: {before}"
 
 
-def test_a_reconnect_holds_every_market_data_request_until_the_new_connection_has_subscribed():
+def test_a_reconnect_abandons_a_fetch_under_way_and_holds_the_next_until_the_stream_has_subscribed():
     """A forced reconnect: the connection ends (the daemon's own disconnect, as every connection's
-    end runs it). A market-data request sent then, as a fetch under way sends its next one, waits
-    and reaches Schwab only once the next connection has subscribed; the stream's own login
-    request goes at once; at the daemon's stop a waiting request is refused."""
+    end runs it). A fetch under way sends nothing more: its next request fails at once (ABANDONED),
+    so no chain is assembled from before and after the gap; the stream's own login request goes;
+    a worker asking for the client for its next fetch waits until the new connection has
+    subscribed; at the daemon's stop a waiting worker is refused."""
     host = _LocalSchwab()
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), board=["SPY"])
     stopping = threading.Event()
-    client = _gated_client(host, daemon, stopping)
+    client = _daemon_client(host, daemon)
+    sweep_client = capture.while_subscribed(daemon, lambda: client, stopping)
     try:
         daemon.subscribed.set()                               # the first connection subscribed
-        client.get_quotes(["SPY"])
+        sweep_client().get_quotes(["SPY"])
         assert _market_data(host) == ["/marketdata/v1/quotes"]
         asyncio.run(daemon.disconnect())                      # it ends; a reconnect logs in
-        worker = threading.Thread(target=lambda: client.get_quotes(["QQQ"]), daemon=True)
-        worker.start()
-        worker.join(2.0)
-        assert worker.is_alive() and _market_data(host) == ["/marketdata/v1/quotes"], \
-            "a market-data request reached Schwab while the reconnect logged in"
-        client.get_user_preferences()                         # the reconnect's login: not held
+        abandoned: list = []
+        try:
+            client.get_quotes(["QQQ"])                        # a fetch under way: its next request
+        except ConnectionError as e:
+            abandoned.append(str(e))
+        assert abandoned == [capture.ABANDONED] and _market_data(host) == ["/marketdata/v1/quotes"]
+        client.get_user_preferences()                         # the reconnect's login: not refused
         assert host.requests[-1][2] == "/trader/v1/userPreference"
+        got: list = []
+        worker = threading.Thread(target=lambda: got.append(sweep_client()), daemon=True)
+        worker.start()                                        # the next fetch asks for the client
+        worker.join(2.0)
+        assert worker.is_alive() and got == [], "a worker got the client while the reconnect logged in"
         daemon.subscribed.set()                               # the new connection subscribed
         worker.join(5.0)
-        assert not worker.is_alive() and _market_data(host) == ["/marketdata/v1/quotes"] * 2
+        got[0].get_quotes(["QQQ"])
+        assert _market_data(host) == ["/marketdata/v1/quotes"] * 2
         daemon.subscribed.clear()
         stopping.set()
         refused: list = []
         try:
-            client.get_quotes(["IWM"])
+            sweep_client()
         except ConnectionError as e:
             refused.append(str(e))
-        assert refused == ["the capture daemon is stopping"] and len(_market_data(host)) == 2
+        assert refused == ["the capture daemon is stopping"]
     finally:
         host.close()
 
