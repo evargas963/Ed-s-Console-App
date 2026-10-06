@@ -60,7 +60,9 @@ from Schwab to the screen (daemon, console, page), are these:
   (D4): while the database refuses writes it holds every message, in memory up to its cap and
   past it on disk, growing with Schwab's rate. Enforced by: `tests/test_data_path_rules_v1.py`.
 - **D4. The database is the memory.** Its one writer records every message Schwab sends; nothing
-  else keeps old data. A message whose row is refused (a constraint, a value SQLite cannot
+  else keeps old data, except the writer's own spill files below that hold Schwab's messages
+  until they are written back: one kept because its write-back did not verify, and those a stop
+  (or the writer's death) left on disk. A message whose row is refused (a constraint, a value SQLite cannot
   hold, a message without its table's shape) is kept as sent, with its error and time, in
   `stream_write_failures`, and the writer goes on. While the database refuses every write
   (locked past the writer's wait, full, read-only), the writer holds the messages in memory, in
@@ -72,20 +74,28 @@ from Schwab to the screen (daemon, console, page), are these:
   (`CaptureWriter.run`, started with the daemon). Measured 2026-10-05: about 835 bytes per option
   quote held, and Schwab sent 2,211.7 messages a second in all (2,173 of them option quotes;
   books are larger), so a block holds at least about 1.8 MB more each second, at least about
-  6.6 GB an hour. So memory holds them up to a cap (operator 2026-10-05: about 2 GB,
-  `HOLD_CAP_BYTES`, counted as the held messages' JSON); every newer message goes to a spill
+  6.6 GB an hour. So memory holds them up to a cap (operator 2026-10-05: about 2 GB of memory):
+  `HOLD_CAP_BYTES`, counted as the held messages' JSON, is 2 GiB divided by
+  `MEMORY_PER_JSON_BYTE` = 1.73 (measured with tracemalloc on 20,000 captured option quotes held
+  by the writer: 841 bytes in memory, 487 as JSON, each; the test
+  `test_the_hold_cap_holds_memory_to_its_size` measures it again), about 1.24 GB of JSON; the
+  Record shows both (about how much memory, and how much JSON). Every newer message goes to a spill
   file beside the stream database (`stream_capture.<ms>.spill`, append-only, each record a
   4-byte length and the topic with the message as sent), behind the older ones. When the
   database takes writes again the writer writes memory, then the spill file, then what arrived
-  meanwhile (the spill takes it, in order), and verifies the spill's write-back (rows per topic
-  in every table, its first and last row as written) before deleting the file; a write-back that
-  does not verify keeps the file and the Record says so. A message the spill file cannot take (a
-  full disk) is lost: counted, with the window it was received in (first and last receive time,
-  served as epoch seconds and shown in Central Time). A daemon that stops while blocked leaves
-  what it holds on disk (memory in a spill file named for when the block began, older than the
-  spill file's) and does not write those files back at its next start. Only an error outside
-  these ends the thread: it reads dead with the error, and what it held in memory and what
-  reaches it after are counted not recorded until the daemon restarts.
+  meanwhile (the spill takes it, in order), and verifies the spill's write-back (every record of
+  the file written back, rows per topic in every table, its first and last row as written)
+  before deleting the file; a write-back that does not verify, or a record that does not decode
+  (a damaged file), keeps the file, the Record says so, and recording goes on. A message the
+  spill file cannot take (a full disk) is lost: counted, with the window it was received in
+  (first and last receive time, served as epoch seconds and shown in Central Time). A daemon
+  that stops while blocked leaves what it holds on disk (memory in a spill file named for when
+  the block began, older than the spill file's); at its next start the writer lists every spill
+  file beside the database on the Record, with its messages and size, and does not write them
+  back (the operator's open decision). Only an error outside these ends the thread: it reads
+  dead with the error; its spill file stays, listed as left on disk with its messages (they are
+  on disk, not counted not recorded); what it held in memory and what reaches it after are
+  counted not recorded until the daemon restarts.
   Enforced by: `tests/test_data_path_rules_v1.py`, `tests/test_data_path_writer_failures_v1.py`.
 - **D5. Live while the market is open; the close stands while it is closed.** Every value carries
   Schwab's time and the newest by that time is the current one; a reconnect never replays an older
