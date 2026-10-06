@@ -27,7 +27,7 @@ if str(REPO) not in sys.path:
 # The ONE shell segmenter (tools/shell_parse.py, stdlib-only, BEDROCK 2026-09-06): the class
 # rule below judges each chained statement on its own (RC-525), and a second splitter here
 # would be one truth with two answers.
-from tools.shell_parse import iter_command_segments  # noqa: E402
+from tools.shell_parse import iter_command_segments, program_re  # noqa: E402
 
 #: Paths where index≠WT is catastrophic: the one writer and the guards.
 ENFORCEMENT_PATHS: tuple[str, ...] = (
@@ -67,7 +67,7 @@ _GIT_GLOBALS = (
     r"(?:(?:" + "|".join(__import__("re").escape(o) for o in _GIT_GLOBAL_WITH_ARG)
     + r")(?:=\S+|\s+\S+)\s+|-\S+\s+)*")
 _UNIVERSAL_DESTRUCTIVE_RE = __import__("re").compile(
-    r"\bgit\s+" + _GIT_GLOBALS + r"(?:"
+    program_re("git") + _GIT_GLOBALS + r"(?:"
     r"reset\s+--hard"
     r"|checkout\s+--\s"
     r"|clean\s+-[a-z]*f"
@@ -75,11 +75,11 @@ _UNIVERSAL_DESTRUCTIVE_RE = __import__("re").compile(
     r")",
     __import__("re").I)
 _RESET_GUARD_RE = __import__("re").compile(
-    r"\bgit\s+" + _GIT_GLOBALS
+    program_re("git") + _GIT_GLOBALS
     + r"(reset\b|restore\b|checkout\s+(?:\S+\s+)*--\s|clean\b|stash\b)",
     __import__("re").I)
 _RESET_GUARD_SAFE_RE = __import__("re").compile(
-    r"\bgit\s+" + _GIT_GLOBALS
+    program_re("git") + _GIT_GLOBALS
     + r"(reset\s+--soft\b|restore\s+--staged\b(?!.*--worktree)|stash\s+list\b|checkout\s+-b\b"
     r"|clean\s+(?:-\S*n\S*\b|--dry-run\b))",
     __import__("re").I)
@@ -327,7 +327,7 @@ def commit_pipe_violations(cmd: str) -> list[str]:
     masking_filter = re.compile(
         r"\|\s*(?:tail|head|cat|tee|grep|findstr|Out-Null|Select-Object)\b", re.I)
     for seg in re.split(r"&&|;|\n", stripped):
-        if re.search(r"\bgit\s+commit\b", seg, re.I) and masking_filter.search(seg):
+        if re.search(program_re("git") + r"commit\b", seg, re.I) and masking_filter.search(seg):
             return [
                 "PIPE_MASKED_COMMIT: `git commit` piped into a filter — the filter's exit "
                 "code replaces the commit's and hook failures vanish (RC-234). Run the "

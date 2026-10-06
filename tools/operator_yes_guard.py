@@ -62,7 +62,6 @@ def _shell_reasons(cmd: str, cwd: str) -> list[str]:
     out = []
     for seg_cwd, seg in iter_command_segments(cmd, cwd):
         head, toks = segment_head(seg)
-        head = head.removesuffix(".exe")
         args = [t for t in toks[1:] if not t.startswith("-")]
         targets = []
         if head in WRITERS and not (head == "sed" and "-i" not in toks and "--in-place" not in toks):

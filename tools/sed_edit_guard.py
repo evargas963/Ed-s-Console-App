@@ -23,7 +23,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402
-from tools.shell_parse import iter_command_segments, segment_head  # noqa: E402
+from tools.shell_parse import iter_command_segments, program_name, segment_head  # noqa: E402
 
 #: an option that makes sed edit its files in place: -i, -i.bak, -ni, -Ei, --in-place[=SUF]
 IN_PLACE = re.compile(r"^(?:-[A-Za-z]*i|--in-place(?:=|$))")
@@ -42,10 +42,10 @@ MESSAGE = ("BLOCKED: this command edits a file with sed ({what}). AGENTS.md: nev
 
 def _sed_args(head: str, toks: list[str]) -> "list[str] | None":
     """The arguments of the sed this statement runs, or None when it runs no sed."""
-    if Path(head).name.lower().removesuffix(".exe") == "sed":
+    if head == "sed":
         return [t.strip("\"'") for t in toks[1:]]
     for i, t in enumerate(toks[:-1]):                       # find ... -exec sed ... ;
-        if t in ("-exec", "-execdir") and Path(toks[i + 1].strip("\"'")).name.lower().removesuffix(".exe") == "sed":
+        if t in ("-exec", "-execdir") and program_name(toks[i + 1]) == "sed":
             return [a.strip("\"'") for a in toks[i + 2:]]
     return None
 

@@ -44,7 +44,7 @@ if str(REPO) not in sys.path:
 
 from tools.hook_chain import BASH_TOOLS  # noqa: E402 — the ONE shell-tool roster (RC-520)
 from tools.shell_parse import (  # noqa: E402 — the ONE shell parser
-    iter_command_segments, segment_head, shell_executed_part)
+    iter_command_segments, program_re, segment_head, shell_executed_part)
 
 #: RC-273 — the gitignored trees with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
@@ -99,7 +99,7 @@ def _shell_violation(script: str) -> bool:
         args = [t.strip("\"'") for t in toks[1:]]
         if head in _SHELL_REMOVERS and any(_protected(a) for a in args if not a.startswith("-")):
             return True
-        if head in ("icacls", "icacls.exe") and any(_protected(a) for a in args) and \
+        if head == "icacls" and any(_protected(a) for a in args) and \
                 any(a.lower().startswith(_ACL_LOOSENERS) for a in args):
             return True
         if any(_protected(m.group(1)) for m in _REDIRECT.finditer(seg)):
@@ -133,14 +133,14 @@ def _protected_path_violation(raw: str) -> bool:
 
 #: Blind staging: `-A`, `--all`, `-u`, `--update`, `*`, `.` are the same action in other flags.
 _BLIND_STAGE = re.compile(
-    r"\bgit\s+add\s+(?:--\s+)?(?:-A\b|--all\b|-u\b|--update\b|\*|\.(?:\s|$))")
+    program_re("git") + r"add\s+(?:--\s+)?(?:-A\b|--all\b|-u\b|--update\b|\*|\.(?:\s|$))")
 
 #: Lock-disable routes: git's own (`--no-verify`, `-n` on commit, `core.hooksPath`) and
 #: pre-commit's own (`SKIP=<hook-id>`, `$env:SKIP=`, `pre-commit uninstall`) — RC-541.
 _SKIP_HOOKS = re.compile(
     r"--no-verify"
     r"|hooksPath"
-    r"|\bgit\s+commit\b[^\n]*?(?:\s-n\b)"
+    r"|" + program_re("git") + r"commit\b[^\n]*?(?:\s-n\b)"
     r"|(?:^|[\s;&|(])(?:\$env:)?SKIP\s*=\s*['\"]?[A-Za-z0-9_,\-]"
     r"|\bpre-commit\s+uninstall\b",
     re.I)

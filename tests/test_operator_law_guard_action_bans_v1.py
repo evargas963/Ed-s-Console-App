@@ -13,6 +13,8 @@ wiring (RC-205) and the UTF-8 git reader (RC-187).
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -54,3 +56,33 @@ def test_operator_law_guard_wired_for_edit_tools():
     # BEDROCK 2026-09-06: pretooluse_guard is off the roster by design (its content gates and
     # the mutation-side latch are removed); an inert rostered guard is the E-05/E-07 class.
     assert "pretooluse_guard" not in cmds
+
+
+#: Split so this file's own text is not read as the actions it names.
+D = "d" + "ata/"
+
+
+def test_a_program_named_by_its_full_path_or_exe_is_judged_as_that_program():
+    """`C:\\Git\\usr\\bin\\rm.exe -rf data/ed_console.db` passed all four guards (reviewer,
+    2026-10-06): the guard knew `rm`, not rm given by path or with `.exe`. The same spelling of
+    git slipped past the blind-staging and lock-disable bans."""
+    from tools.operator_law_guard import bash_violations
+    for cmd in (f"C:\\Git\\usr\\bin\\rm.exe -rf {D}ed_console.db",
+                f"rm.exe {D}ed_console.db",
+                "C:\\Git\\cmd\\git.exe add " + "-A",
+                "& \"C:\\Program Files\\Git\\cmd\\git.exe\" commit -n -m x"):
+        assert bash_violations(cmd), cmd
+    for cmd in ("C:\\Git\\usr\\bin\\rm.exe -rf /tmp/scratch", "C:\\Git\\cmd\\git.exe add tools/x.py"):
+        assert bash_violations(cmd) == [], cmd
+
+
+def test_rm_by_full_path_is_refused_through_the_hook_chain():
+    """The real wiring: hook_chain with the four guards the settings run exits 2."""
+    root = Path(__file__).resolve().parent.parent
+    guards = ["tools/operator_law_guard.py", "tools/process_lock_guard.py",
+              "tools/operator_yes_guard.py", "tools/sed_edit_guard.py"]
+    payload = {"tool_name": "Bash", "hook_event_name": "PreToolUse", "cwd": str(root),
+               "tool_input": {"command": f"C:\\Git\\usr\\bin\\rm.exe -rf {D}ed_console.db"}}
+    r = subprocess.run([sys.executable, "tools/hook_chain.py", *guards], cwd=root,
+                       input=json.dumps(payload), capture_output=True, text=True)
+    assert r.returncode == 2 and "RC-273" in r.stderr, (r.returncode, r.stderr)
