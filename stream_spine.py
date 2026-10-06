@@ -24,7 +24,6 @@ import sqlite3
 import sys
 import threading
 import time
-from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -117,10 +116,13 @@ CREATE TABLE IF NOT EXISTS stream_write_failures (
 );
 CREATE INDEX IF NOT EXISTS idx_swf_ts ON stream_write_failures(ts);
 -- How far each spill file's write-back got, written in the same transaction as each part it
--- wrote: how many of its records are in the database.
+-- wrote: how many of its records are in the database, and where its rows are (JSON): one span
+-- per writer run that wrote it, each table's newest rowid when that run began writing it and,
+-- once the run is done with it, when it ended (null while open).
 CREATE TABLE IF NOT EXISTS stream_spill_progress (
     spill TEXT PRIMARY KEY,
-    written_back INTEGER NOT NULL
+    written_back INTEGER NOT NULL,
+    spans_json TEXT
 );
 """
 
@@ -364,7 +366,8 @@ _ADDED_COLUMNS = (("stream_quotes_raw", "native_json", "TEXT"),
                   ("stream_options_quotes_raw", "schwab_ts", "INTEGER"),
                   ("stream_bars_raw", "schwab_ts", "INTEGER"),
                   ("stream_bars_raw", "native_json", "TEXT"),
-                  ("stream_news_raw", "schwab_ts", "INTEGER"))
+                  ("stream_news_raw", "schwab_ts", "INTEGER"),
+                  ("stream_spill_progress", "spans_json", "TEXT"))
 
 _INSERTS = {
     "feedstatus": ("INSERT INTO stream_feed_status(ts,service,socket_open,schwab_last_frame_ts,"
@@ -409,6 +412,24 @@ def _json(v) -> "str | None":
     return json.dumps(v) if v is not None else None
 
 
+def _kind(topic: str, msg: Any) -> "str | None":
+    """The insert of `_INSERTS` a bus message's row takes; None for a topic without a table, or
+    a verbatim topic's message without Schwab's item (nothing to keep)."""
+    kind = topic.split(".", 1)[0]
+    if kind not in _INSERTS or (isinstance(msg, dict) and kind in _VERBATIM and msg.get("content") is None):
+        return None
+    return kind
+
+
+def _as_sent(topic: str, msg: Any) -> str:
+    """A kept message as stream_write_failures holds it: JSON, else Python's repr."""
+    try:
+        return json.dumps(msg, default=repr)
+    except (ValueError, TypeError, RecursionError) as e:
+        log.warning("stream writer: %s is not JSON (%s), kept as its repr", topic, e)
+        return repr(msg)
+
+
 #: what one message's row can raise while it is built and written: the row refused by the
 #: database (a constraint, a value it cannot bind or store) or a message without the shape its
 #: table needs. Each belongs to that message alone: it is kept as sent and the writer goes on.
@@ -437,9 +458,9 @@ _TABLES = {kind: (m.group(1), tuple(c.strip() for c in m.group(2).split(",")))
            for kind, (sql, _row) in _INSERTS.items()
            for m in [re.match(r"INSERT INTO (\w+)\(([^)]*)\)", sql)]}
 _COLUMNS = dict(_TABLES.values())
-#: each written table's column a spill's rows are counted by (its topic's symbol, or service)
-_KEY_COLUMN = {**{table: "symbol" if "symbol" in cols else "service" for table, cols in _COLUMNS.items()},
-               "stream_write_failures": "topic"}
+#: every table the writer writes rows to, and the columns a spill record's row is compared by
+#: (a kept failure's time and error are this write's own, so not compared)
+_ROW_COLUMNS = {**_COLUMNS, "stream_write_failures": ("topic", "msg_json")}
 #: what the writer holds in memory while the database refuses writes, before newer messages go to
 #: the spill file (operator, 2026-10-05: about 2 GB of memory), each held message counted once at
 #: its memory size (_held_size)
@@ -636,10 +657,8 @@ class _Spill:
         self.messages = 0
         self.read_at = 0               # bytes written back and committed
         self.written_back = 0
-        self.before: "dict | None" = None     # each table's newest rowid when write-back began
-        self.expected: Counter = Counter()    # (table, key) -> rows written back
-        self.first: "RowWritten | None" = None
-        self.last: "RowWritten | None" = None
+        self.spans: list = []                 # where its rows are: [{table: rowid after}, {table: last rowid} | None]
+        self.span_open = False                # this writer has opened its span
         self._in = None
 
     def append(self, record: bytes) -> "OSError | None":
@@ -674,23 +693,25 @@ class _Spill:
         return out, None
 
     def committed(self, batch: list, end: int) -> None:
-        """A written-back part is in the database: what it wrote, and where the next part starts."""
-        for _item, out in batch:
-            if isinstance(out, RowWritten):
-                self.expected[(out.table, out.values[_COLUMNS[out.table].index(_KEY_COLUMN[out.table])])] += 1
-                self.first = self.first or out
-                self.last = out
-            elif isinstance(out, KeptFailure):
-                self.expected[("stream_write_failures", out.topic)] += 1
+        """A written-back part is in the database: where the next part starts."""
         self.written_back += len(batch)
         self.read_at = end
 
+    def records(self):
+        """Every whole record of the file, (index, message), in file order."""
+        with open(self.path, "rb") as f:
+            for i in range(self.messages):
+                yield i, _from_spill(f.read(int.from_bytes(f.read(4), "big")))
+
     @classmethod
-    def found(cls, path: Path, written_back: int) -> "_Spill":
+    def found(cls, path: Path, written_back: int, spans_json: "str | None") -> "_Spill":
         """A spill file an earlier writer left beside the database, to write back: its whole
         records, and where its write-back resumes (after the `written_back` records its
-        stream_spill_progress row counts as in the database)."""
+        stream_spill_progress row counts as in the database, in the rowid spans of `spans_json`;
+        a row written before spans were stored (None) says only that they are somewhere in their
+        tables)."""
         spill = cls(path, append=False)
+        spill.spans = json.loads(spans_json) if spans_json is not None else [[dict.fromkeys(_ROW_COLUMNS, 0), None]]
         disk = path.stat().st_size
         at = n = 0
         with open(path, "rb") as f:
@@ -739,32 +760,60 @@ class _Spill:
             self._in.close()
 
 
-def _verify(conn: sqlite3.Connection, spill: _Spill) -> "str | None":
-    """Why the spill's write-back does not match the database (None when it does): the rows of
-    every table since this write-back began, per topic, against what it wrote; and the first and
-    last row it wrote, as written; every record of the file written back. A resumed file's parts
-    written before this write-back began are not checked again."""
+def _newest_rowids(conn: sqlite3.Connection) -> dict:
+    """Each written table's newest rowid (0 when empty)."""
+    return {t: conn.execute(f"SELECT COALESCE(MAX(rowid), 0) FROM {t}").fetchone()[0] for t in _ROW_COLUMNS}
+
+
+def _progress(conn: sqlite3.Connection, spill: _Spill, written_back: int) -> None:
+    """The spill's stream_spill_progress row: how many of its records are in the database, and
+    its spans; committed by the caller with the part it counts."""
+    conn.execute("INSERT INTO stream_spill_progress(spill, written_back, spans_json) VALUES(?,?,?) "
+                 "ON CONFLICT(spill) DO UPDATE SET written_back=excluded.written_back, "
+                 "spans_json=excluded.spans_json", (spill.path.name, written_back, json.dumps(spill.spans)))
+
+
+def _rows_of(item) -> list:
+    """The rows one spill record can be in the database as, built by the writer's own inserts
+    without writing them: its table's row, else its kept failure (a row the database refused is
+    kept); a kept failure's row alone; none for a message without a table."""
+    if isinstance(item, KeptFailure):
+        return [("stream_write_failures", (item.topic, _as_sent(item.topic, item.msg)))]
+    topic, msg = item
+    kind = _kind(topic, msg)
+    if kind is None:
+        return []
+    kept = ("stream_write_failures", (topic, _as_sent(topic, msg)))
+    try:
+        return [(_TABLES[kind][0], _INSERTS[kind][1](msg)), kept]
+    except ROW_FAILURES:               # the writer kept it as sent
+        return [kept]
+
+
+def _verify(conn: sqlite3.Connection, spill: _Spill) -> "tuple[list, str | None]":
+    """Every record of the spill, from its first, against the database: is its row (as the
+    writer's own insert builds it, compared by SQLite) in its table within the file's spans
+    (`spill.spans`, where every writer run that wrote it wrote its rows), each row standing for
+    one record only. Returns the records whose row is not there, and why the comparison cannot
+    be made (the file not all written back), else None."""
     if spill.written_back != spill.messages:
-        return f"{spill.written_back} of the file's {spill.messages} records written back"
-    for table, before in spill.before.items():
-        key = _KEY_COLUMN[table]
-        got = Counter({(table, k): n for k, n in conn.execute(
-            f"SELECT {key}, COUNT(*) FROM {table} WHERE rowid > ? GROUP BY {key}", (before,))})
-        want = Counter({k: n for k, n in spill.expected.items() if k[0] == table})
-        if got != want:
-            differ = sorted(set(got) | set(want), key=str)
-            k = next(k for k in differ if got[k] != want[k])
-            return (f"{table}: {sum(1 for k in differ if got[k] != want[k])} topics differ, e.g. "
-                    f"{k[1]}: {want[k]} written back, {got[k]} in the database")
-    for which, agg, row in (("first", "MIN", spill.first), ("last", "MAX", spill.last)):
-        if row is None:
-            continue
-        found = conn.execute(
-            f"SELECT {','.join(_COLUMNS[row.table])} FROM {row.table} WHERE rowid = "
-            f"(SELECT {agg}(rowid) FROM {row.table} WHERE rowid > ?)", (spill.before[row.table],)).fetchone()
-        if found is None or tuple(found) != tuple(row.values):
-            return f"the spill's {which} row is not in {row.table} as written"
-    return None
+        return [], f"{spill.written_back} of the file's {spill.messages} records written back"
+    taken: set = set()                 # (table, rowid) of rows already standing for a record
+
+    def take(table: str, values: tuple) -> bool:
+        cols = _ROW_COLUMNS[table]
+        spans = " OR ".join("(rowid > ?)" if hi is None else "(rowid > ? AND rowid <= ?)" for _lo, hi in spill.spans)
+        bounds = [b for lo, hi in spill.spans for b in ((lo[table],) if hi is None else (lo[table], hi[table]))]
+        for (rowid,) in conn.execute(f"SELECT rowid FROM {table} WHERE {' AND '.join(f'{c} IS ?' for c in cols)} "
+                                     f"AND ({spans}) ORDER BY rowid", (*values, *bounds)):
+            if (table, rowid) not in taken:
+                taken.add((table, rowid))
+                return True
+        return False
+
+    missing = [i for i, item in spill.records()
+               if (rows := _rows_of(item)) and not any(take(t, v) for t, v in rows)]
+    return missing, None
 
 
 class CaptureWriter:
@@ -777,8 +826,9 @@ class CaptureWriter:
     refusal; each try also waits up to `timeout_sec` on a locked database). Held messages stay
     in memory up to `hold_cap_bytes`; every newer one goes to a spill file beside the database,
     in order. When the database takes writes again, memory is written first, then the spill
-    file, then what arrived meanwhile (the spill takes it, behind the rest); the spill's rows are
-    verified (rows per topic, its first and last row) and the file deleted only then. A message
+    file, then what arrived meanwhile (the spill takes it, behind the rest); every record of the
+    file is then looked for in the database (_verify), the missing ones alone written again, and
+    the file deleted only when every one is there. A message
     the spill file cannot take (a full disk) is lost: counted, with when it was received. Spill
     files an earlier writer left beside the database are the oldest messages there are: when
     this writer runs it writes them back first, oldest first, each resuming at its progress row,
@@ -840,14 +890,16 @@ class CaptureWriter:
                              [(name,) for (name,) in conn.execute("SELECT spill FROM stream_spill_progress")
                               if name not in {f.name for f in files}])
             conn.commit()
-            progress = dict(conn.execute("SELECT spill, written_back FROM stream_spill_progress"))
+            progress = {spill: (n, spans) for spill, n, spans in
+                        conn.execute("SELECT spill, written_back, spans_json FROM stream_spill_progress")}
         finally:
             conn.close()
         # spill files an earlier writer left beside the database: the oldest messages there are,
         # written back first when the writer runs, oldest file first (each named for its oldest
-        # message), each resuming after the records its progress row counts (no row: none of it
-        # was ever committed)
-        self._backlog = [_Spill.found(f, progress[f.name] if f.name in progress else 0) for f in files]
+        # message), each resuming after the records its progress row counts, its rows after the
+        # row's rowids (no row: none of it was ever committed)
+        self._backlog = [_Spill.found(f, *progress[f.name]) if f.name in progress else _Spill.found(f, 0, "[]")
+                         for f in files]
         self.left_on_disk: list = []    # files this writer leaves at a stop or its death
         self.left_written_back = 0      # found files written back and verified
 
@@ -856,12 +908,10 @@ class CaptureWriter:
         or None (a topic without a table, or nothing Schwab sent to keep). A DATABASE_REFUSALS error
         is raised. Without `conn` (a test, a recovery tool) it opens, writes, commits and counts
         a connection of its own."""
-        kind = topic.split(".", 1)[0]
-        spec = _INSERTS.get(kind)
-        if spec is None:
+        kind = _kind(topic, msg)
+        if kind is None:
             return None
-        if isinstance(msg, dict) and kind in _VERBATIM and msg.get("content") is None:
-            return None
+        spec = _INSERTS[kind]
         if conn is None:
             with sqlite3.connect(str(self.db_path), timeout=self.timeout_sec) as own:
                 out = self.insert(topic, msg, conn=own)
@@ -916,13 +966,8 @@ class CaptureWriter:
     def _keep(self, conn: sqlite3.Connection, kept: KeptFailure) -> KeptFailure:
         """One stream_write_failures row: the message as JSON (Python's repr when it is not
         JSON)."""
-        try:
-            sent = json.dumps(kept.msg, default=repr)
-        except (ValueError, TypeError, RecursionError) as e:
-            log.warning("stream writer: %s is not JSON (%s), kept as its repr", kept.topic, e)
-            sent = repr(kept.msg)
         conn.execute("INSERT INTO stream_write_failures(ts,topic,msg_json,error) VALUES(?,?,?,?)",
-                     (kept.ts, kept.topic, sent, kept.error))
+                     (kept.ts, kept.topic, _as_sent(kept.topic, kept.msg), kept.error))
         return kept
 
     def _committed(self, batch: list) -> None:
@@ -1173,11 +1218,15 @@ class CaptureWriter:
 
     def _write_back(self, conn: sqlite3.Connection, spill: _Spill) -> None:
         """The next part of `spill` (this writer's, or a file an earlier writer left) into the
-        database, in one transaction with its progress row; once all of it is in, verify it and
-        delete the file, or keep the file when it does not verify."""
-        if spill.before is None:
-            spill.before = {t: conn.execute(f"SELECT COALESCE(MAX(rowid), 0) FROM {t}").fetchone()[0]
-                            for t in _KEY_COLUMN}
+        database, in one transaction with its progress row; once all of it is in, verify the whole
+        file against the database: the records whose rows are not there are written again, once,
+        and the file deleted when every record is there, else kept with its progress row."""
+        if not spill.span_open:            # this run's span; an earlier run's open one ends here
+            now = _newest_rowids(conn)
+            if spill.spans and spill.spans[-1][1] is None:
+                spill.spans[-1][1] = now
+            spill.spans.append([now, None])
+            spill.span_open = True
         if spill.read_at < spill.size:
             records, damaged = spill.read(SPILL_CHUNK)
             if records:
@@ -1185,31 +1234,42 @@ class CaptureWriter:
                 for item, _end in records:
                     self._batch.append((item, self._store(conn, item)))
                 end = records[-1][1]
-                conn.execute("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?,?) "
-                             "ON CONFLICT(spill) DO UPDATE SET written_back=excluded.written_back",
-                             (spill.path.name, spill.written_back + len(records)))
+                _progress(conn, spill, spill.written_back + len(records))
                 conn.commit()
                 batch, self._batch, self._batch_spilled = self._batch, [], False
                 self._committed(batch)
                 with self._lock:
                     spill.committed(batch, end)
             if damaged is not None:        # every good record before it is written back
-                self._finish_spill(spill, conn, damaged, rewrite=False)
+                self._finish_spill(spill, conn, damaged)
             return
-        mismatch = _verify(conn, spill)
-        if mismatch is not None:           # its rows are not as written: the next start writes it whole
-            self._finish_spill(spill, conn, mismatch, rewrite=True)
-        else:
-            # bytes after its last whole record are a message a crash cut off mid-append
-            # (operator 2026-10-06): its whole records are in and verified; the file is archived
-            self._finish_spill(spill, conn, None, rewrite=False, torn=spill.disk_bytes > spill.size)
+        missing, reason = _verify(conn, spill)
+        if reason is None and missing:
+            # these records' rows are not in the database: they alone are written again, once, in
+            # one transaction, after the rest
+            again = frozenset(missing)
+            self._batch_spilled = True
+            for i, item in spill.records():
+                if i in again:
+                    self._batch.append((item, self._store(conn, item)))
+            conn.commit()
+            batch, self._batch, self._batch_spilled = self._batch, [], False
+            self._committed(batch)
+            log.warning("stream writer: %s: %d of its records were not in the database; written again",
+                        spill.path.name, len(again))
+            missing, reason = _verify(conn, spill)
+            if reason is None and missing:
+                reason = f"{len(missing)} of its records not in the database after writing them again"
+        # bytes after its last whole record are a message a crash cut off mid-append
+        # (operator 2026-10-06): its whole records are in and verified; the file is archived
+        self._finish_spill(spill, conn, reason, torn=reason is None and spill.disk_bytes > spill.size)
 
     def _finish_spill(self, spill: _Spill, conn: sqlite3.Connection, reason: "str | None", *,
-                      rewrite: bool, torn: bool = False) -> None:
+                      torn: bool = False) -> None:
         """A spill whose write-back is done: deleted when it verified (`reason` None), with its
-        progress row; else kept, with the reason and how far its write-back got. A kept file whose
-        rows did not verify (`rewrite`) loses its progress row, so the next start writes it whole:
-        rows it duplicates are better than records it never wrote. A verified file with a message
+        progress row; else kept, with the reason and how far its write-back got, and its progress
+        row, so the next start compares it with the database again and writes nothing the
+        database holds. A verified file with a message
         a crash cut off after its last whole record (`torn`) is moved to SPILL_ARCHIVE beside the
         database, not deleted, and that message counted lost at the file's best time for it; a
         move that fails keeps the file, with why."""
@@ -1248,8 +1308,12 @@ class CaptureWriter:
             else:                          # a file an earlier writer left
                 self._backlog.remove(spill)
                 self.left_written_back += reason is None
-        if reason is None or rewrite:
+        if reason is None:
             conn.execute("DELETE FROM stream_spill_progress WHERE spill = ?", (spill.path.name,))
+            conn.commit()
+        else:                              # this run is done with it: its span ends here
+            spill.spans[-1][1] = _newest_rowids(conn)
+            _progress(conn, spill, spill.written_back)
             conn.commit()
 
     def _leave_on_disk(self) -> None:

@@ -87,13 +87,18 @@ from Schwab to the screen (daemon, console, page), are these:
   append-only, each record a 4-byte length and the topic with the message as sent), behind the
   older ones. When the database takes writes again the writer writes memory, then the spill
   file, then what arrived meanwhile (the spill takes it, in order); how far each spill's
-  write-back got (how many records) is written in the same transaction as each part
-  (`stream_spill_progress`), so a later write-back resumes where it stopped. It verifies the
-  part it wrote (every record of the file written back, rows per topic in every table since it
-  began, its first and last row as written; a resumed file's parts written before are not
-  checked again) before deleting the file. A write-back that does not verify keeps the file
-  and drops its progress row, so the next start writes it whole (rows it duplicates rather than
-  records never written); a record that does not decode (a damaged file) stops the write-back
+  write-back got (how many records) and where its rows are (each table's rowid span for every
+  writer run that wrote it) is written in the same transaction as each part
+  (`stream_spill_progress`), so a later write-back resumes where it stopped. Once every record
+  is written back it verifies the whole file against the database, from its first record,
+  parts an earlier run wrote included: each record's row, built by the writer's own insert, is
+  looked for in its table within the file's spans (its kept failure for a row the database
+  refused), each row standing for one record (a progress row from before spans were stored
+  means anywhere in the table). The records whose row is not there, and only those, are written
+  again, once, after the rest; the file is deleted only when every record's row is there. So
+  no write-back writes a row the database already holds, and rows another connection writes
+  meanwhile change nothing. A file with records still missing after that is kept with its
+  progress row and the reason, and the next start compares it again; a record that does not decode (a damaged file) stops the write-back
   there, every good record before it written, and keeps the file with its progress; a file with
   bytes after its last whole record (a message a crash cut off mid-append) has every whole
   record written back and verified, then (operator 2026-10-06) the cut-off message counts as one
@@ -109,7 +114,7 @@ from Schwab to the screen (daemon, console, page), are these:
   for its oldest message, older than the spill file's). At its next start (operator
   2026-10-06) the writer drops progress rows whose file is gone, then writes back every spill
   file beside the database, oldest name first, each resuming after the records its progress
-  row counts, before anything that arrives meanwhile: those are newer, so they are held as in a
+  row counts and then verified whole as above, before anything that arrives meanwhile: those are newer, so they are held as in a
   block (memory to the cap, then a new spill file, named later) until every left file is
   written back or kept. A stop meanwhile ends after the part being written; the rest stays on
   disk for the next start. The Record shows "WRITING BACK N LEFT FILES" and each file being

@@ -448,17 +448,21 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
         "recording", None, [], len(_EVENTS))
 
 
-def test_a_spill_whose_write_back_does_not_verify_is_kept(tmp_path):
-    """INDUCED CONDITIONS: as above, and, in the same transaction that releases the lock, a
-    trigger that deletes each option quote row written back from the spill (every row after the
-    ones held in memory), standing in for rows lost after their write. The write-back does not
-    verify: the spill file stays, and the Record says so. With the trigger dropped, the next
-    start writes the kept file back whole and verifies it: never deleted unwritten."""
-    db = tmp_path / "stream_capture.db"
+#: the captured quote whose row the triggers below act on: the 11th, always in the spill file
+_ACTED_ON = _EVENTS[-2]["content"]
+
+
+def _written_back_with_a_trigger(db, then: str) -> "tuple[dict, dict]":
+    """INDUCED CONDITIONS: a block past _SMALL_CAP (as above), and, in the same transaction that
+    releases the lock, a trigger that runs `then` after the _ACTED_ON quote's row is written,
+    standing in for what else changes the database during a write-back. Returns the writer's
+    status while blocked and once the spill's write-back is done (the file deleted or kept)."""
+    assert [e["content"] for e in _EVENTS].count(_ACTED_ON) == 1
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
                            hold_cap_bytes=_SMALL_CAP)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
+    acted_on = json.dumps(_ACTED_ON).replace("'", "''")
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
@@ -466,11 +470,10 @@ def test_a_spill_whose_write_back_does_not_verify_is_kept(tmp_path):
         daemon.writer = writer
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         during = await _held_past_the_cap(writer, bus, health, daemon)
-        holder.execute(f"CREATE TRIGGER lose_written_back AFTER INSERT ON stream_options_quotes_raw "
-                       f"WHEN NEW.rowid > {during['waiting']} "
-                       f"BEGIN DELETE FROM stream_options_quotes_raw WHERE rowid = NEW.rowid; END")
+        holder.execute(f"CREATE TRIGGER during_write_back AFTER INSERT ON stream_options_quotes_raw "
+                       f"WHEN NEW.native_json = '{acted_on}' BEGIN {then}; END")
         holder.execute("COMMIT")
-        await _until(lambda: writer.status()["spills_kept"] != [])
+        await _until(lambda: writer.status()["spill"] is None)
         after = _beat(daemon)["writer"]
         stop.set()
         await task
@@ -479,24 +482,74 @@ def test_a_spill_whose_write_back_does_not_verify_is_kept(tmp_path):
         during, after = asyncio.run(go())
     finally:
         holder.close()
+    with sqlite3.connect(db) as conn:            # what changed the database is gone
+        conn.execute("DROP TRIGGER during_write_back")
+    return during, after
+
+
+def test_a_kept_file_with_rows_missing_gets_only_those_rows_written(tmp_path):
+    """INDUCED CONDITION (_written_back_with_a_trigger): the _ACTED_ON quote's row is deleted as
+    soon as it is written, standing in for rows lost after their write. The write-back finds that
+    record's row missing, writes it again, finds it missing again: the file is kept with its
+    progress row, and the Record says so. With the trigger gone, the next start compares the file
+    with the database and writes only that record: every quote once, the rewritten one after the
+    rest."""
+    db = tmp_path / "stream_capture.db"
+    during, after = _written_back_with_a_trigger(db, "DELETE FROM stream_options_quotes_raw WHERE rowid = NEW.rowid")
 
     path = Path(during["spill"]["path"])
     assert path.exists(), "a spill whose write-back did not verify was deleted"
     (kept,) = after["spills_kept"]
-    assert kept["path"] == str(path) and kept["reason"].startswith("stream_options_quotes_raw: 1 topics differ")
+    assert (kept["path"], kept["reason"]) == (str(path), "1 of its records not in the database after writing them again")
     assert kept["written_back"] == kept["messages"] == during["spill"]["messages"]
     assert (f"spill kept: {kept['reason']} ({path.name}, {kept['written_back']} of {kept['messages']} "
             f"written back)") in after["line"]
     assert after["cls"] == "neg" and after["spill"] is None and after["state"] == "recording"
-    # its rows did not verify, so its progress row is gone: a writer that finds it writes it whole
-    (found,) = CaptureWriter(db).status()["left_on_disk"]
-    assert (found["path"], found["written_back"]) == (str(path), 0)
+    (found,) = CaptureWriter(db).status()["left_on_disk"]   # its progress row stands
+    assert (found["path"], found["written_back"]) == (str(path), kept["messages"])
 
-    with sqlite3.connect(db) as conn:            # what deleted the rows is gone
-        conn.execute("DROP TRIGGER lose_written_back")
     status = _next_start(db, [], lambda w: not path.exists())
-    assert _stored_quotes(db) == [e["content"] for e in _EVENTS], "the kept file was not written back whole"
-    assert (status["left_written_back"], status["spills_kept"]) == (1, [])
+    rest = [e["content"] for e in _EVENTS if e["content"] != _ACTED_ON]
+    assert _stored_quotes(db) == rest + [_ACTED_ON], "a row written twice, or the missing one not written"
+    assert (status["rows_written"], status["left_written_back"], status["spills_kept"]) == (1, 1, [])
+
+
+def test_rows_another_connection_writes_during_a_write_back_do_not_get_a_file_written_twice(tmp_path):
+    """INDUCED CONDITION (_written_back_with_a_trigger): when the _ACTED_ON quote's row is written,
+    an equity quote row is written too, standing in for another connection writing the database
+    during the write-back. Every record's row is in the database: the file verifies and is
+    deleted, and no row is written twice."""
+    db = tmp_path / "stream_capture.db"
+    during, after = _written_back_with_a_trigger(db, "INSERT INTO stream_quotes_raw(ts_recv,symbol,src) "
+                                                     "VALUES(NEW.ts_recv, NEW.symbol, 'another connection')")
+
+    path = Path(during["spill"]["path"])
+    assert (after["spills_kept"], path.exists()) == ([], False)
+    assert after["rows_written"] == len(_EVENTS)
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS], "a spill's rows were written twice"
+    assert _count(db, "stream_spill_progress") == 0
+
+
+def test_a_left_file_whose_progress_row_counts_every_record_is_written_when_its_rows_are_not_there(tmp_path):
+    """INDUCED CONDITION: the files a stop left (_left_by_a_stop), each with a progress row (as
+    main's #472 writer leaves one, without spans) counting every record written back, and none of
+    their rows in the database: the state a write-back that did not verify leaves. The next
+    writer compares each file with the database, writes every record once, in order, and deletes
+    the files only then."""
+    db = tmp_path / "stream_capture.db"
+    left = _left_by_a_stop(db)
+    found = CaptureWriter(db).status()["left_on_disk"]
+    assert [Path(k["path"]) for k in found] == left
+    with sqlite3.connect(db) as conn:
+        conn.executemany("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?, ?)",
+                         [(Path(k["path"]).name, k["messages"]) for k in found])
+    assert _count(db, "stream_options_quotes_raw") == 0
+
+    status = _next_start(db, [], lambda w: not any(p.exists() for p in left))
+
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS], "a left file deleted before its records were in"
+    assert (status["left_written_back"], status["spills_kept"], status["rows_written"]) == (2, [], len(_EVENTS))
+    assert _count(db, "stream_spill_progress") == 0
 
 
 #: production's stream in its real proportions: every message received 2026-10-05 14:00:00-14:00:03
