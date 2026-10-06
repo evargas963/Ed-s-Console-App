@@ -27,12 +27,19 @@ so a wrong number that looks right is worse than a blank with a reason.
    the live screen shows it working. "Across the board" = every ticker on the board, not one.
 9. If rules conflict: correctness of what I see > my explicit yes > speed.
 
-What a machine enforces. Rule 6: a hook (tools/operator_yes_guard.py) puts starting or
-stopping the daemon or console, a merge, a push to main and a write to a database under
-data/ (the forms its tests cover; gaps in ENF-20) to me as an Allow/Deny prompt; tell me in
-chat what it is for before you run it. Test changes get no prompt. A CI check
-(tools/check_fails_before.py) refuses a pull request that changes product code unless one
-of its changed tests fails on the old code. Rules 5 and 8: no machine check.
+What a machine enforces. Rule 6: a hook (tools/operator_yes_guard.py) puts to me as an
+Allow/Deny prompt: `gh pr merge` in any form and the merge API; a push whose refspec names
+main, `--all`, or a push of the current branch while it is main; starting or stopping
+python, uvicorn, the console or the capture daemon by name or launcher; and any command
+that names a database under data/ unless every statement in it only reads (ls, grep, cat,
+dir, Get-Item, `sqlite3 -readonly`, `?mode=ro`). Tell me in chat what it is for before you
+run it. What it cannot see (a stop by process id, a script that opens a database it does not
+name) is listed in ENF-20. Test changes in a worktree get no prompt; process_lock_guard
+refuses every edit and shell write in the production checkout, tests and docs included.
+Rule 8, partly: a CI check (tools/check_fails_before.py) refuses a pull request that changes
+product code unless one of its changed tests fails on the old code, and the required
+pytest-full job runs the full suite; the rest of rule 8 has no machine check. Rule 5: no
+machine check.
 
 Every report ends like this example:
   CONFIRMED: pytest tests/test_x.py -> 12 passed; SPY, QQQ, NVDA levels match the chain.
