@@ -20,6 +20,8 @@ import httpx
 from schwab.client import Client
 from websockets.asyncio.client import connect
 
+import live_market_plane as lmp
+import server
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_ui import serve_live_ui
 from schwab_client import build_client_from_token
@@ -36,20 +38,29 @@ async def _until(cond, limit: float = 10.0) -> None:
         await asyncio.sleep(0.05)
 
 
+def _gated_client(host, daemon, stopping):
+    """The daemon's client as capture.run builds it, on the local stand-in for Schwab's host."""
+    return capture.market_data_waits_for_stream(
+        Client("k", httpx.Client(transport=host.transport), enforce_enums=False), daemon, stopping)
+
+
+def _market_data(host) -> list:
+    return [path for _t, _m, path, _a in host.requests if path.startswith("/marketdata/")]
+
+
 def test_the_chain_sweep_sends_schwab_nothing_until_the_stream_has_subscribed(tmp_path):
-    """The real chain sweep on a schwab-py client of the local stand-in for Schwab's host, handed
-    its client by while_subscribed: no request while the stream has not subscribed; the chains
-    once it has."""
+    """The real chain sweep on the daemon's client (market_data_waits_for_stream): no request
+    while the stream has not subscribed; the chains once it has."""
     sqlite3.connect(tmp_path / "ed_console.db").close()
     host = _LocalSchwab()
-    client = Client("k", httpx.Client(transport=host.transport), enforce_enums=False)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), board=["SPY"])
     stopping = threading.Event()
+    client = _gated_client(host, daemon, stopping)
 
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(capture.run_chains(
-            daemon, tmp_path / "ed_console.db", capture.while_subscribed(daemon, lambda: client, stopping), stop,
+            daemon, tmp_path / "ed_console.db", lambda: client, stop,
             failures=CaptureWriter(tmp_path / "stream_capture.db")))
         await asyncio.sleep(1.5)
         before = list(host.requests)
@@ -66,32 +77,40 @@ def test_the_chain_sweep_sends_schwab_nothing_until_the_stream_has_subscribed(tm
     assert before == [], f"the chain sweep reached Schwab before the stream subscribed: {before}"
 
 
-def test_a_reconnect_holds_the_chain_sweeps_client_until_the_new_connection_has_subscribed():
+def test_a_reconnect_holds_every_market_data_request_until_the_new_connection_has_subscribed():
     """A forced reconnect: the connection ends (the daemon's own disconnect, as every connection's
-    end runs it) and a chain worker asking for the client waits, sending Schwab nothing, until the
-    next connection has subscribed; at the daemon's stop it is refused instead."""
+    end runs it). A market-data request sent then, as a fetch under way sends its next one, waits
+    and reaches Schwab only once the next connection has subscribed; the stream's own login
+    request goes at once; at the daemon's stop a waiting request is refused."""
+    host = _LocalSchwab()
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), board=["SPY"])
     stopping = threading.Event()
-    client = capture.while_subscribed(daemon, lambda: "the daemon's client", stopping)
-    daemon.subscribed.set()                                   # the first connection subscribed
-    assert client() == "the daemon's client"
-    asyncio.run(daemon.disconnect())                          # it ends; a reconnect logs in
-    got: list = []
-    worker = threading.Thread(target=lambda: got.append(client()), daemon=True)
-    worker.start()
-    worker.join(2.0)
-    assert worker.is_alive() and got == [], "a chain worker got the client while the reconnect logged in"
-    daemon.subscribed.set()                                   # the new connection subscribed
-    worker.join(5.0)
-    assert got == ["the daemon's client"]
-    daemon.subscribed.clear()
-    stopping.set()
-    refused: list = []
+    client = _gated_client(host, daemon, stopping)
     try:
-        client()
-    except ConnectionError as e:
-        refused.append(str(e))
-    assert refused == ["the capture daemon is stopping"]
+        daemon.subscribed.set()                               # the first connection subscribed
+        client.get_quotes(["SPY"])
+        assert _market_data(host) == ["/marketdata/v1/quotes"]
+        asyncio.run(daemon.disconnect())                      # it ends; a reconnect logs in
+        worker = threading.Thread(target=lambda: client.get_quotes(["QQQ"]), daemon=True)
+        worker.start()
+        worker.join(2.0)
+        assert worker.is_alive() and _market_data(host) == ["/marketdata/v1/quotes"], \
+            "a market-data request reached Schwab while the reconnect logged in"
+        client.get_user_preferences()                         # the reconnect's login: not held
+        assert host.requests[-1][2] == "/trader/v1/userPreference"
+        daemon.subscribed.set()                               # the new connection subscribed
+        worker.join(5.0)
+        assert not worker.is_alive() and _market_data(host) == ["/marketdata/v1/quotes"] * 2
+        daemon.subscribed.clear()
+        stopping.set()
+        refused: list = []
+        try:
+            client.get_quotes(["IWM"])
+        except ConnectionError as e:
+            refused.append(str(e))
+        assert refused == ["the capture daemon is stopping"] and len(_market_data(host)) == 2
+    finally:
+        host.close()
 
 
 def test_a_chain_sweep_worker_that_ends_on_an_error_is_logged(tmp_path, caplog):
@@ -124,8 +143,6 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
     """The daemon's one client, built by the real builder from a token file that does not exist:
     the connection fails; the daemon's log has why, and its heartbeat, taken from the daemon's
     price socket as the console takes it, gives /api/health the same words with since when."""
-    import live_market_plane as lmp
-    import server
     schwab_client = capture.one_schwab_client(
         lambda: build_client_from_token(str(tmp_path / "missing_token.json"), "LiveLookingKey", "LiveLookingSecret"))
     bus = MessageBus()

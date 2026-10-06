@@ -2737,11 +2737,11 @@ NO_DAEMON_HEARTBEAT = "the capture daemon's heartbeat is not current"
 
 @app.get("/api/health")
 def health():
-    # RC-514 / docs/ARCHITECTURE.md "Failure domains": application availability and capability
+    # docs/ARCHITECTURE.md "Failure domains": application availability and capability
     # availability are separate, so `status` answers "is the app alive" and never folds a
     # vendor outage into it. Schwab is the capture daemon's: its heartbeat says whether its
     # Schwab socket is open and, when not, why (as its log says it); no current heartbeat is
-    # UNAVAILABLE (unmeasurable is not ok, RC-57).
+    # UNAVAILABLE (unmeasurable is not ok).
     st = lmp.daemon_status()
     board = _board()
     capability: dict[str, object] = {

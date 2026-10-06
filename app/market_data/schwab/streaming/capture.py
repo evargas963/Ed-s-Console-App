@@ -311,7 +311,7 @@ class Daemon:
         self._down_since: "float | None" = None
         #: set while the stream is logged in and Schwab has answered this connection's first
         #: requests, cleared when the connection ends: the chain sweep sends Schwab nothing while
-        #: it is clear (while_subscribed)
+        #: it is clear (market_data_waits_for_stream)
         self.subscribed = threading.Event()
 
     def set_wanted(self, raw, sender=None) -> None:
@@ -394,7 +394,6 @@ class Daemon:
         stream._handlers["NEWS_HEADLINE"].append(_RawHandler(_publisher("NEWS_HEADLINE", self.bus, self.health)))
         self.stream = stream
         self.held = {s: frozenset() for s in SERVICES}    # a new connection holds nothing
-        self.schwab_down, self._down_since = SCHWAB_CONNECTING, None
         log.info("schwab: connected")
 
     async def disconnect(self) -> None:
@@ -441,6 +440,7 @@ class Daemon:
                 if not self.subscribed.is_set():
                     log.info("schwab: subscribed (%s)", ", ".join(
                         f"{svc} {len(syms)}" for svc, syms in self.held.items() if syms))
+                    self.schwab_down, self._down_since = SCHWAB_CONNECTING, None   # the outage is over
                     self.subscribed.set()
                 await self.read_for(SYNC_SEC)
         finally:
@@ -454,7 +454,7 @@ class Daemon:
             started = time.time()
             try:
                 await self.run_connection(schwab_client(), stop)
-            except Exception as e:  # noqa: BLE001 -- every failure is a reconnect, its reason on screen
+            except Exception as e:  # noqa: BLE001 -- every failure is a reconnect; its reason to the log and /api/health
                 why = f"{type(e).__name__}: {str(e)[:350]}"
                 log.warning("schwab: connection ended (%s)", why)
                 if self._down_since is None:
@@ -593,16 +593,19 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
         await asyncio.gather(*workers, return_exceptions=True)
 
 
-def while_subscribed(daemon: "Daemon", schwab_client, stopping: threading.Event) -> "callable":
-    """The chain sweep's Schwab client: the daemon's one client (`schwab_client()`), handed out
-    only while the stream is logged in and subscribed (Daemon.subscribed). While a connection
-    logs in, at the start and at every reconnect, a chain worker waits here and sends Schwab
-    nothing; once `stopping` is set it raises instead."""
-    def client():
-        while not daemon.subscribed.wait(0.5):
-            if stopping.is_set():
-                raise ConnectionError("the capture daemon is stopping")
-        return schwab_client()
+def market_data_waits_for_stream(client, daemon: "Daemon", stopping: threading.Event):
+    """The daemon's one Schwab client, each of whose market-data requests (/marketdata/: the
+    chain sweep's chains, quotes and expiration lists) waits in the thread that sends it while
+    the stream is not logged in and subscribed (Daemon.subscribed): at the start and while a
+    reconnect logs in, the sweep sends Schwab nothing, a fetch already under way included. The
+    stream's own login (/trader/) and the token refresh are not market data and go at once.
+    Once `stopping` is set a waiting request is refused."""
+    def wait_for_stream(request) -> None:
+        if request.url.path.startswith("/marketdata/"):
+            while not daemon.subscribed.wait(0.5):
+                if stopping.is_set():
+                    raise ConnectionError("the capture daemon is stopping")
+    client.session.event_hooks["request"].append(wait_for_stream)
     return client
 
 
@@ -631,24 +634,27 @@ async def run() -> int:
     connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
     from app.market_data.schwab.streaming.live_ui import serve_live_ui
-    from config import build_config, load_dotenv_file
+    from config import build_config
     from db_authority import canonical_console_db_path
     from schwab_client import build_client_from_token
-    load_dotenv_file()
-    cfg = build_config()
-    schwab_client = one_schwab_client(lambda: build_client_from_token(
-        api_key=cfg.api_key, app_secret=cfg.app_secret, token_path=cfg.token_path))
+    cfg = build_config()                    # from the environment launch.py gave it (.env included)
     stop = asyncio.Event()
+    stopping = threading.Event()            # the chain workers' view of `stop`
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
     daemon = Daemon(bus, health, board=board_tickers(db_path))
     daemon.writer = writer
+
+    def build():
+        state = build_client_from_token(api_key=cfg.api_key, app_secret=cfg.app_secret, token_path=cfg.token_path)
+        if state.ok:
+            market_data_waits_for_stream(state.client, daemon, stopping)
+        return state
+    schwab_client = one_schwab_client(build)
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
-    stopping = threading.Event()                         # the chain workers' view of `stop`
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
-             asyncio.create_task(run_chains(daemon, db_path, while_subscribed(daemon, schwab_client, stopping),
-                                            stop, failures=writer)),
+             asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer)),
              asyncio.create_task(record_feed_status(daemon, stop)),
              asyncio.create_task(serve_live_push(bus, stop, on_wanted=daemon.set_wanted)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]

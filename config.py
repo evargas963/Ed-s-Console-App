@@ -3,8 +3,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from runtime_layout import RUNTIME_ROOT
-
 _ROOT = Path(__file__).resolve().parent
 
 
@@ -90,6 +88,9 @@ def token_path() -> str:
     env_token = os.getenv("SCHWAB_TOKEN_PATH")
     if env_token:
         return os.path.abspath(env_token)
+    # imported here, not at the top: runtime_layout fixes the root when first imported, and an
+    # entry point that loads .env (reauth_schwab) must have done so first
+    from runtime_layout import RUNTIME_ROOT
     return os.path.abspath(os.path.join(str(RUNTIME_ROOT), "schwab_token.json"))
 
 

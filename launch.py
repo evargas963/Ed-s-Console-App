@@ -2,11 +2,11 @@
 
 1. The settings both processes start from (environment): the shell's over .env's, without what a
    test shell leaves set that blocks every live Schwab call (TEST_SHELL, stand-in credentials).
-2. The capture daemon, in its own window (start_capture_daemon.bat restarts it), unless one
-   already serves its price socket. It holds the Schwab credentials and says on screen whether
-   Schwab took them (its log, and /api/health from its heartbeat).
+2. The capture daemon, in its own window (start_capture_daemon.bat restarts it, with these
+   settings), unless one already serves its price socket. It holds the Schwab credentials; its
+   log, and /api/health from its heartbeat, say whether Schwab took them.
 3. The console on port 8000, with the same settings but no Schwab credentials (it never calls
-   Schwab and reads no .env of its own), unless one is
+   Schwab). Neither process reads .env itself: this is its one reader. Unless a console is
    already there: one that answers healthy within HEALTHY_WITHIN_SEC is opened and nothing is
    started; one that does not is stopped only when the operator says so here.
 4. The default browser, at URL, once the console answers healthy.

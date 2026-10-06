@@ -14,12 +14,20 @@ is the only Schwab client), so health can never advertise a Schwab connection th
 """
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
+import time
 from pathlib import Path
 
+import live_market_plane as lmp
+import schwab_client
+import server
+from app.market_data.schwab.streaming import capture
+from config import schwab_live_blocked_for
+from stream_spine import HealthRegistry, MessageBus
+
 REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
 
 LIVE_KEY = "LiveLookingKey1234567890"
 LIVE_SECRET = "LiveLookingSecret098765"
@@ -30,8 +38,6 @@ SCHWAB_ENV = ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET", "ED_CI_OFFLINE")
 def _blocked(**env: str) -> bool:
     """config.schwab_live_blocked_for() in a fresh interpreter whose environment holds exactly
     `env` of the Schwab settings (each test states the situation it is testing)."""
-    import os
-    import subprocess
     base = {k: v for k, v in os.environ.items() if k not in SCHWAB_ENV}
     done = subprocess.run([sys.executable, "-c", "import config; print(config.schwab_live_blocked_for())"],
                           cwd=REPO, env={**base, **env}, capture_output=True, text=True, timeout=120)
@@ -44,8 +50,6 @@ def _blocked(**env: str) -> bool:
 def test_absent_credentials_block_live_schwab():
     """PROOF 4a. Absent credentials block: with none, no client is built and no call goes out
     unauthenticated."""
-    from config import schwab_live_blocked_for
-
     assert _blocked() is True, "no credentials must block live Schwab"
     assert schwab_live_blocked_for(api_key="", app_secret="") is True
     assert _blocked(SCHWAB_API_KEY=LIVE_KEY, SCHWAB_APP_SECRET=LIVE_SECRET) is False, \
@@ -63,8 +67,6 @@ def test_an_unavailable_capability_cannot_serve_live_data():
     Nothing may reach the money path from an unavailable capability: not a client, not a
     fabricated quote, not a stale substitute.
     """
-    import schwab_client
-
     state = schwab_client.build_client_from_token("nonexistent.json", "", "")
     assert state.ok is False and state.client is None, state
     assert "UNAVAILABLE" in state.message, state.message
@@ -78,14 +80,7 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     """PROOF 1c/2. The app is `ok` while Schwab is UNAVAILABLE, and health says which. Schwab is
     the capture daemon's (the console makes no Schwab call): its heartbeat says whether its Schwab
     socket is open and, when not, why, in its own words (the real daemon's status here); no
-    current heartbeat is UNAVAILABLE, never AVAILABLE (RC-57)."""
-    import time
-
-    import live_market_plane as lmp
-    import server
-    from app.market_data.schwab.streaming import capture
-    from stream_spine import HealthRegistry, MessageBus
-
+    current heartbeat is UNAVAILABLE, never AVAILABLE."""
     payload = server.health()
     assert payload["status"] == "ok", "a vendor outage must not make the application unhealthy"
     assert payload["capabilities"] == {
