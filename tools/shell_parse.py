@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 # ── repository identity (RC-258) ──────────────────────────────────────────────────────────
 #: The guard is registered globally, so it sees commands aimed at ANY checkout on this host.
@@ -151,14 +151,14 @@ def segment_head(seg: str) -> tuple[str, list[str]]:
     i = 0
     while i < len(toks):
         t = toks[i].strip("\"'")
-        name = Path(t).name.lower().removesuffix(".exe")
+        name = PureWindowsPath(t).name.lower().removesuffix(".exe")
         if ("=" in t and not t.startswith("-")) or name in _CMD_WRAPPERS:
             i += 1
             continue
         break
     if i >= len(toks):
         return "", []
-    return Path(toks[i].strip("\"'")).name.lower(), toks[i:]
+    return PureWindowsPath(toks[i].strip("\"'")).name.lower(), toks[i:]
 
 
 def iter_git_invocations(cmd: str, payload_cwd: str = ""):
