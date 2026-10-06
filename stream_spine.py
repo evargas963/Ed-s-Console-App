@@ -21,6 +21,7 @@ import os
 import queue
 import re
 import sqlite3
+import sys
 import threading
 import time
 from collections import Counter
@@ -115,6 +116,13 @@ CREATE TABLE IF NOT EXISTS stream_write_failures (
     error TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_swf_ts ON stream_write_failures(ts);
+-- How far each spill file's write-back got, written in the same transaction as each part it
+-- wrote: the byte its next record starts at and how many records are in the database.
+CREATE TABLE IF NOT EXISTS stream_spill_progress (
+    spill TEXT PRIMARY KEY,
+    read_at INTEGER NOT NULL,
+    written_back INTEGER NOT NULL
+);
 """
 
 WAL_SIZE_LIMIT_BYTES = 256 * 1024 * 1024
@@ -433,16 +441,10 @@ _COLUMNS = dict(_TABLES.values())
 #: each written table's column a spill's rows are counted by (its topic's symbol, or service)
 _KEY_COLUMN = {**{table: "symbol" if "symbol" in cols else "service" for table, cols in _COLUMNS.items()},
                "stream_write_failures": "topic"}
-#: memory a held message takes per byte of its spill record's JSON (topic and message): 1.73,
-#: measured 2026-10-05 with tracemalloc on 20,000 captured LEVELONE_OPTIONS quotes
-#: (tests/fixtures/real_options_stream_history_samples.json) held by the real writer through the
-#: daemon's handler: 841 bytes in memory, 487 as JSON, per message; reproduced by
-#: tests/test_data_path_writer_failures_v1.py::test_the_hold_cap_holds_memory_to_its_size
-MEMORY_PER_JSON_BYTE = 1.73
-#: what the writer holds in memory while the database refuses writes, in bytes of the held
-#: messages as JSON, before newer messages go to the spill file: the JSON size of about 2 GiB in
-#: memory (operator, 2026-10-05: about 2 GB of memory)
-HOLD_CAP_BYTES = int(2 * 1024 ** 3 / MEMORY_PER_JSON_BYTE)
+#: what the writer holds in memory while the database refuses writes, before newer messages go to
+#: the spill file (operator, 2026-10-05: about 2 GB of memory), each held message counted once at
+#: its memory size (_held_size)
+HOLD_CAP_BYTES = 2 * 1024 ** 3
 #: spill records written back in one transaction
 SPILL_CHUNK = 5000
 
@@ -470,10 +472,12 @@ class WriterStatus:
     stream_write_failures; `held`: messages in memory not yet in the database (queued, in the
     open batch or waiting); `waiting`: those the writer took from the queue to write again while
     the database refuses writes (each try takes every queued one; those arriving during the pause
-    between tries stay queued until the next), `held_bytes` their size as JSON (the cap's
-    measure) and `held_memory_bytes` the memory that is, by MEMORY_PER_JSON_BYTE; `spill`: the spill file the messages past the cap went to (its path, bytes,
-    messages and how many are written back), None when there is none; `spills_kept`: spill files kept because their write-back did not
-    verify; `left_on_disk`: spill files a stop left unwritten; `lost`: messages neither the
+    between tries stay queued until the next), `held_bytes` the memory they take, each counted
+    once when held (_held_size; the cap's measure); `spill`: the spill file the messages past the
+    cap went to (its path, bytes, messages and how many are written back), None when there is
+    none; `spills_kept`: spill files kept because their write-back did not verify or a record
+    did not decode; `left_on_disk`: spill files left unwritten (by a stop, the writer's death, or
+    found at start), with how many records are written back; `lost`: messages neither the
     database nor the spill file took, received from `lost_first_ts` to `lost_last_ts`;
     `unrecorded`: messages a dead writer could not write; `error`: the database's refusal
     (blocked) or what ended the thread (dead), from `error_ct`. `line` and `cls`: the header's
@@ -487,7 +491,6 @@ class WriterStatus:
     waiting: int
     held: int
     held_bytes: int
-    held_memory_bytes: int
     spill: "dict | None"
     spills_kept: list
     left_on_disk: list
@@ -517,16 +520,15 @@ def _record_line(s: dict) -> "tuple[str, str]":
     parts += [f"{s['rows_written']} rows", f"{s['failures']} failed, kept as sent"]
     if s["last_failure"] is not None:
         parts.append(f"last {s['last_failure_ct']}: {s['last_failure']}")
-    parts.append(f"held in memory: {s['held']} messages, ~{s['held_memory_bytes'] / 1e6:.1f} MB in "
-                 f"memory ({s['held_bytes'] / 1e6:.1f} MB as JSON; {s['waiting']} waiting for the "
-                 f"database)")
+    parts.append(f"held in memory: {s['held']} messages, {s['held_bytes'] / 1e6:.1f} MB "
+                 f"({s['waiting']} waiting for the database)")
     if spill is not None:
         parts.append(f"spilled to disk: {spill['messages']} messages, {spill['bytes']:,} bytes in "
                      f"{Path(spill['path']).name}, {spill['written_back']} written back")
-    parts += [f"spill kept, its write-back did not verify: {k['reason']} ({Path(k['path']).name})"
-              for k in s["spills_kept"]]
+    parts += [f"spill kept: {k['reason']} ({Path(k['path']).name}, {k['written_back']} of "
+              f"{k['messages']} written back)" for k in s["spills_kept"]]
     parts += [f"left on disk, not written back: {Path(k['path']).name} ({k['messages']} messages, "
-              f"{k['bytes']:,} bytes)" for k in s["left_on_disk"]]
+              f"{k['bytes']:,} bytes, {k['written_back']} written back)" for k in s["left_on_disk"]]
     if s["lost"]:
         parts.append(f"LOST {s['lost']} messages, received {ct_label(s['lost_first_ts'])} to "
                      f"{ct_label(s['lost_last_ts'])}")
@@ -535,6 +537,46 @@ def _record_line(s: dict) -> "tuple[str, str]":
           and spill is None and not s["spills_kept"] and not s["left_on_disk"]
           and s["lost"] == 0)
     return " · ".join(parts), "" if ok else "neg"
+
+
+def _object_bytes(obj, seen: set) -> int:
+    """Memory of `obj` and everything it holds that is its own: each object once (`seen`), not
+    None, True, False, CPython's cached small ints and one-character strings."""
+    stack, total = [obj], 0
+    while stack:
+        o = stack.pop()
+        if o is None or o is True or o is False or id(o) in seen:
+            continue
+        if (type(o) is int and -5 <= o <= 256) or (type(o) is str and len(o) <= 1):
+            continue
+        seen.add(id(o))
+        total += sys.getsizeof(o)
+        if type(o) is dict:
+            stack.extend(o.keys())
+            stack.extend(o.values())
+        elif type(o) in (list, tuple):
+            stack.extend(o)
+    return total
+
+
+def _held_size(item) -> int:
+    """The memory a held message takes: the (topic, message) pair, its topic, the message dict
+    and every value it carries (Schwab's item decoded from the wire, its fields). The message's
+    keys and its `src` are the writer's code constants, shared by every message, and not counted.
+    Measured against tracemalloc on production's stream mix decoded from JSON:
+    tests/test_data_path_writer_failures_v1.py::test_the_hold_cap_holds_memory_to_its_size."""
+    seen: set = set()
+    if isinstance(item, KeptFailure):
+        return sys.getsizeof(item) + sum(_object_bytes(v, seen) for v in (item.topic, item.msg, item.error))
+    topic, msg = item
+    total = sys.getsizeof(item) + _object_bytes(topic, seen)
+    if not isinstance(msg, dict):
+        return total + _object_bytes(msg, seen)
+    total += sys.getsizeof(msg)
+    for key, value in msg.items():
+        if key != "src":
+            total += _object_bytes(value, seen)
+    return total
 
 
 def _received(item) -> "float | None":
@@ -596,17 +638,22 @@ class _Spill:
         self.messages += 1
         return None
 
-    def read(self, n: int) -> list:
-        """Up to `n` records from `read_at`: (message, end offset) each."""
+    def read(self, n: int) -> "tuple[list, str | None]":
+        """Up to `n` records from `read_at`: (message, end offset) each, and why the read stopped
+        early at a record that does not decode (its byte offset and error), else None."""
         if self._in is None:
             self._in = open(self.path, "rb")
         self._in.seek(self.read_at)
         out, at = [], self.read_at
         while len(out) < n and at < self.size:
             length = int.from_bytes(self._in.read(4), "big")
+            try:
+                item = _from_spill(self._in.read(length))
+            except (ValueError, KeyError, TypeError) as e:
+                return out, f"the record at byte {at} does not decode: {type(e).__name__}: {e}"
             at += 4 + length
-            out.append((_from_spill(self._in.read(length)), at))
-        return out
+            out.append((item, at))
+        return out, None
 
     def committed(self, batch: list, end: int) -> None:
         """A written-back part is in the database: what it wrote, and where the next part starts."""
@@ -636,9 +683,9 @@ class _Spill:
             self._in.close()
 
 
-def _found_spill(path: Path) -> dict:
-    """A spill file found on disk, as listed: its whole records and bytes (how many of them an
-    earlier writer wrote back is not known)."""
+def _found_spill(path: Path, progress: dict) -> dict:
+    """A spill file found on disk, as listed: its whole records, bytes, and how many records an
+    earlier writer wrote back (its stream_spill_progress row; none written back without one)."""
     size, at, n = path.stat().st_size, 0, 0
     with open(path, "rb") as f:
         while at + 4 <= size:
@@ -647,7 +694,9 @@ def _found_spill(path: Path) -> dict:
             if at + 4 + length > size:
                 break
             at, n = at + 4 + length, n + 1
-    return {"path": str(path), "messages": n, "bytes": size, "written_back": None}
+    # no row: no part of it was ever committed (each part's row is in its own transaction)
+    written_back = progress[path.name] if path.name in progress else 0
+    return {"path": str(path), "messages": n, "bytes": size, "written_back": written_back}
 
 
 def _verify(conn: sqlite3.Connection, spill: _Spill) -> "str | None":
@@ -738,10 +787,11 @@ class CaptureWriter:
                 if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
             conn.commit()
+            progress = dict(conn.execute("SELECT spill, written_back FROM stream_spill_progress"))
         finally:
             conn.close()
         # spill files an earlier writer left beside the database: shown, not written back
-        self.left_on_disk = [_found_spill(f) for f in sorted(p.parent.glob(f"{p.stem}.*.spill"))]
+        self.left_on_disk = [_found_spill(f, progress) for f in sorted(p.parent.glob(f"{p.stem}.*.spill"))]
 
     def insert(self, topic: str, msg: dict, *, conn: "sqlite3.Connection | None" = None):
         """One bus message -> one row: its RowWritten, the KeptFailure when its row is refused,
@@ -841,7 +891,6 @@ class CaptureWriter:
                  "held": self._q.qsize() + max(len(self._waiting),
                                                0 if self._batch_spilled else len(self._batch)),
                  "held_bytes": self._waiting_bytes,
-                 "held_memory_bytes": round(self._waiting_bytes * MEMORY_PER_JSON_BYTE),
                  "spill": self._spill.status() if self._spill is not None else None,
                  "spills_kept": [dict(k) for k in self.spills_kept],
                  "left_on_disk": [dict(k) for k in self.left_on_disk],
@@ -1009,7 +1058,7 @@ class CaptureWriter:
         for every newer message, in the spill file."""
         for item in items:
             if self._spill is None:
-                size = len(_spill_record(item))
+                size = _held_size(item)
                 if self._waiting_bytes + size <= self.hold_cap_bytes:
                     with self._lock:
                         self._waiting.append(item)
@@ -1049,39 +1098,45 @@ class CaptureWriter:
             spill.before = {t: conn.execute(f"SELECT COALESCE(MAX(rowid), 0) FROM {t}").fetchone()[0]
                             for t in _KEY_COLUMN}
         if spill.read_at < spill.size:
-            try:
-                records = spill.read(SPILL_CHUNK)
-            except (ValueError, KeyError, TypeError) as e:     # a damaged record: not a message
-                log.error("stream writer: %s has a record from byte %d that does not decode: %s: %s",
-                          spill.path, spill.read_at, type(e).__name__, e)
-                self._finish_spill(spill, f"a record from byte {spill.read_at} does not decode: "
-                                          f"{type(e).__name__}: {e}")
-                return
-            self._batch_spilled = True
-            for item, _end in records:
-                self._batch.append((item, self._store(conn, item)))
-            conn.commit()
-            batch, self._batch, self._batch_spilled = self._batch, [], False
-            self._committed(batch)
-            with self._lock:
-                spill.committed(batch, records[-1][1])
+            records, damaged = spill.read(SPILL_CHUNK)
+            if records:
+                self._batch_spilled = True
+                for item, _end in records:
+                    self._batch.append((item, self._store(conn, item)))
+                end = records[-1][1]
+                conn.execute("INSERT INTO stream_spill_progress(spill, read_at, written_back) VALUES(?,?,?) "
+                             "ON CONFLICT(spill) DO UPDATE SET read_at=excluded.read_at, "
+                             "written_back=excluded.written_back",
+                             (spill.path.name, end, spill.written_back + len(records)))
+                conn.commit()
+                batch, self._batch, self._batch_spilled = self._batch, [], False
+                self._committed(batch)
+                with self._lock:
+                    spill.committed(batch, end)
+            if damaged is not None:        # every good record before it is written back
+                self._finish_spill(spill, conn, damaged)
             return
-        self._finish_spill(spill, _verify(conn, spill))
+        self._finish_spill(spill, conn, _verify(conn, spill))
 
-    def _finish_spill(self, spill: _Spill, reason: "str | None") -> None:
-        """A spill whose write-back is done: deleted when it verified (`reason` None), else kept
-        with the reason."""
+    def _finish_spill(self, spill: _Spill, conn: sqlite3.Connection, reason: "str | None") -> None:
+        """A spill whose write-back is done: deleted when it verified (`reason` None), with its
+        progress row; else kept, with the reason and how far its write-back got."""
         spill.close()
         if reason is None:
             os.remove(spill.path)
             log.info("stream writer: %s written back (%d messages) and verified; deleted",
                      spill.path, spill.messages)
         else:
-            log.error("stream writer: %s kept, its write-back did not verify: %s", spill.path, reason)
+            log.error("stream writer: %s kept, %d of its %d records written back: %s",
+                      spill.path, spill.written_back, spill.messages, reason)
         with self._lock:
             if reason is not None:
-                self.spills_kept.append({"path": str(spill.path), "reason": reason})
+                self.spills_kept.append({"path": str(spill.path), "reason": reason,
+                                         "messages": spill.messages, "written_back": spill.written_back})
             self._spill = None
+        if reason is None:
+            conn.execute("DELETE FROM stream_spill_progress WHERE spill = ?", (spill.path.name,))
+            conn.commit()
 
     def _leave_on_disk(self) -> None:
         """At a stop while the database refuses writes: what is held in memory goes to a spill
