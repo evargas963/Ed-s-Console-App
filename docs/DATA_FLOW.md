@@ -57,8 +57,8 @@ from Schwab to the screen (daemon, console, page), are these:
   one current chain per ticker (replaced whole). A newer value replaces the older one at once;
   nothing old waits in a queue. The live path's memory is bounded by the number of symbols, never
   by how fast Schwab sends. The one exception is the database writer's record of every message
-  (D4): while the database refuses writes it holds every message, with no ceiling, growing with
-  Schwab's rate. Enforced by: `tests/test_data_path_rules_v1.py`.
+  (D4): while the database refuses writes it holds every message, in memory up to its cap and
+  past it on disk, growing with Schwab's rate. Enforced by: `tests/test_data_path_rules_v1.py`.
 - **D4. The database is the memory.** Its one writer records every message Schwab sends; nothing
   else keeps old data. A message whose row is refused (a constraint, a value SQLite cannot
   hold, a message without its table's shape) is kept as sent, with its error and time, in
@@ -69,16 +69,23 @@ from Schwab to the screen (daemon, console, page), are these:
   blocked with the refusal and how many messages it holds. The writer's state
   (`stream_spine.WriterStatus`, counted at commit) rides the daemon's heartbeat to the header's
   Record, a line the daemon serves (its times in Central Time). Owner: the writer thread
-  (`CaptureWriter.run`, started with the daemon). What it holds has no ceiling: measured
-  2026-10-05, about 835 bytes per option quote held, and Schwab sent 2,211.7 messages a second
-  in all (2,173 of them option quotes; books are larger), so a block holds at least about 1.8 MB
-  more each second, at least about 6.6 GB an hour; a long block can
-  exhaust the machine's memory and take down the whole daemon (stream, chains, push) with all it
-  holds. A cap on what is held while blocked, and what is dropped first, is the operator's
-  decision (open). A daemon that stops while blocked loses what it holds (counted not recorded at
-  a stop). Only an error outside
-  these ends the thread: it reads dead with the error, and what it held and what reaches it after
-  are counted not recorded until the daemon restarts.
+  (`CaptureWriter.run`, started with the daemon). Measured 2026-10-05: about 835 bytes per option
+  quote held, and Schwab sent 2,211.7 messages a second in all (2,173 of them option quotes;
+  books are larger), so a block holds at least about 1.8 MB more each second, at least about
+  6.6 GB an hour. So memory holds them up to a cap (operator 2026-10-05: about 2 GB,
+  `HOLD_CAP_BYTES`, counted as the held messages' JSON); every newer message goes to a spill
+  file beside the stream database (`stream_capture.<ms>.spill`, append-only, each record a
+  4-byte length and the topic with the message as sent), behind the older ones. When the
+  database takes writes again the writer writes memory, then the spill file, then what arrived
+  meanwhile (the spill takes it, in order), and verifies the spill's write-back (rows per topic
+  in every table, its first and last row as written) before deleting the file; a write-back that
+  does not verify keeps the file and the Record says so. A message the spill file cannot take (a
+  full disk) is lost: counted, with the window it was received in (first and last receive time,
+  served as epoch seconds and shown in Central Time). A daemon that stops while blocked leaves
+  what it holds on disk (memory in a spill file named for when the block began, older than the
+  spill file's) and does not write those files back at its next start. Only an error outside
+  these ends the thread: it reads dead with the error, and what it held in memory and what
+  reaches it after are counted not recorded until the daemon restarts.
   Enforced by: `tests/test_data_path_rules_v1.py`, `tests/test_data_path_writer_failures_v1.py`.
 - **D5. Live while the market is open; the close stands while it is closed.** Every value carries
   Schwab's time and the newest by that time is the current one; a reconnect never replays an older
@@ -124,6 +131,7 @@ from Schwab to the screen (daemon, console, page), are these:
 | Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten) and each ticker's newest chain; the board; the active ticker; the equity quotes the browser's price row is built from |
 | Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; every live screen's history, loaded from `ed_console.db` once at startup and then fed live (§2 D6): each ticker's 1-minute bars (`server._bars`, the newest 24,000) and level crosses (`server._crosses`), each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`, from the console's start) |
 | `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers; every message a write refused, kept as sent with its error (`stream_write_failures`: the writer's refused rows, and each chain whose history write was refused) |
+| `stream_capture.<ms>.spill` (beside `stream_capture.db`) | daemon's writer | while the database refuses writes, the held messages past the memory cap, in order; deleted once written back and verified, kept when the write-back does not verify or a stop leaves it (§2 D4) |
 | `ed_console.db` | console, and the daemon (the ticker board, the chain captures) | 1-minute bars, level crosses, the ticker board, chain captures and a morning chain per ticker — plus the tables of the deleted ML pipeline (dropped in P2-DB3) |
 
 ### 3.4 The journey of each kind of data

@@ -8,17 +8,22 @@ the message shapes, the in-process message bus, feed health, and the database wr
   - The writer runs on its own thread with its own SQLite connection, so a slow disk can
     never stall the Schwab socket (measured 2026-09-23: in-loop commits dropped 9,784 msgs).
   - A message the writer cannot store as a row is kept as sent, with its error, in
-    stream_write_failures; the writer's state (WriterStatus) rides the daemon's heartbeat.
+    stream_write_failures; while the database refuses writes the writer holds the messages, in
+    memory up to a cap and then in a spill file beside the database, and writes them back in
+    order when it can; its state (WriterStatus) rides the daemon's heartbeat.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import os
 import queue
+import re
 import sqlite3
 import threading
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -420,8 +425,26 @@ WRITER_NOT_STARTED, WRITER_RECORDING, WRITER_BLOCKED, WRITER_DEAD, WRITER_STOPPE
     "not_started", "recording", "blocked", "dead", "stopped")
 _STATE_WORD = {WRITER_NOT_STARTED: "NOT STARTED", WRITER_RECORDING: "RECORDING",
                WRITER_BLOCKED: "BLOCKED", WRITER_DEAD: "DEAD", WRITER_STOPPED: "STOPPED"}
-#: a message's row written to its table
-ROW = "row"
+#: each table's name and columns, from its insert
+_TABLES = {kind: (m.group(1), tuple(c.strip() for c in m.group(2).split(",")))
+           for kind, (sql, _row) in _INSERTS.items()
+           for m in [re.match(r"INSERT INTO (\w+)\(([^)]*)\)", sql)]}
+_COLUMNS = dict(_TABLES.values())
+#: each written table's column a spill's rows are counted by (its topic's symbol, or service)
+_KEY_COLUMN = {**{table: "symbol" if "symbol" in cols else "service" for table, cols in _COLUMNS.items()},
+               "stream_write_failures": "topic"}
+#: what the writer holds in memory while the database refuses writes, in bytes of the held
+#: messages as JSON, before newer messages go to the spill file (operator, 2026-10-05: about 2 GB)
+HOLD_CAP_BYTES = 2 * 1024 ** 3
+#: spill records written back in one transaction
+SPILL_CHUNK = 5000
+
+
+@dataclass(frozen=True)
+class RowWritten:
+    """A message's row written to its table, with the values bound."""
+    table: str
+    values: tuple
 
 
 @dataclass(frozen=True)
@@ -440,9 +463,14 @@ class WriterStatus:
     stream_write_failures; `held`: messages in memory not yet in the database (queued, in the
     open batch or waiting); `waiting`: those the writer took from the queue to write again while
     the database refuses writes (each try takes every queued one; those arriving during the pause
-    between tries stay queued until the next); `unrecorded`: messages a dead or stopping writer could not write; `error`: the
-    database's refusal (blocked) or what ended the thread (dead), from `error_ct`. `line` and
-    `cls`: the header's Record, as the page prints it."""
+    between tries stay queued until the next), `held_bytes` their size as JSON (the cap's
+    measure); `spill`: the spill file the messages past the cap went to (its path, bytes,
+    messages and how many are written back), None when there is none; `spills_kept`: spill files kept because their write-back did not
+    verify; `left_on_disk`: spill files a stop left unwritten; `lost`: messages neither the
+    database nor the spill file took, received from `lost_first_ts` to `lost_last_ts`;
+    `unrecorded`: messages a dead writer could not write; `error`: the database's refusal
+    (blocked) or what ended the thread (dead), from `error_ct`. `line` and `cls`: the header's
+    Record, as the page prints it."""
     state: str
     rows_written: int
     failures: int
@@ -451,6 +479,13 @@ class WriterStatus:
     queue_depth: int
     waiting: int
     held: int
+    held_bytes: int
+    spill: "dict | None"
+    spills_kept: list
+    left_on_disk: list
+    lost: int
+    lost_first_ts: "float | None"
+    lost_last_ts: "float | None"
     unrecorded: int
     error: "str | None"
     error_ct: "str | None"
@@ -460,17 +495,153 @@ class WriterStatus:
 
 def _record_line(s: dict) -> "tuple[str, str]":
     """The header's Record for a writer status: the line, and its class ("neg" for anything
-    but recording with nothing kept)."""
-    parts = [_STATE_WORD[s["state"]]]
+    but recording with nothing kept, spilled, lost or left)."""
+    spill = s["spill"]
+    if spill is None:
+        word = _STATE_WORD[s["state"]]
+    elif s["state"] == WRITER_BLOCKED:
+        word = "BLOCKED, SPILLING TO DISK"
+    else:
+        word = "WRITING BACK THE SPILL"
+    parts = [word]
     if s["error"] is not None:
         parts.append(f"{'since' if s['state'] == WRITER_BLOCKED else 'at'} {s['error_ct']}: {s['error']}")
     parts += [f"{s['rows_written']} rows", f"{s['failures']} failed, kept as sent"]
     if s["last_failure"] is not None:
         parts.append(f"last {s['last_failure_ct']}: {s['last_failure']}")
-    parts += [f"{s['held']} held in memory, {s['waiting']} of them waiting for the database",
-              f"{s['unrecorded']} not recorded"]
-    ok = s["state"] == WRITER_RECORDING and s["failures"] == 0 and s["unrecorded"] == 0
+    parts.append(f"held in memory: {s['held']} messages, {s['held_bytes']:,} bytes "
+                 f"({s['waiting']} waiting for the database)")
+    if spill is not None:
+        parts.append(f"spilled to disk: {spill['messages']} messages, {spill['bytes']:,} bytes in "
+                     f"{Path(spill['path']).name}, {spill['written_back']} written back")
+    parts += [f"spill kept, its write-back did not verify: {k['reason']} ({Path(k['path']).name})"
+              for k in s["spills_kept"]]
+    parts += [f"left on disk, not written back: {Path(k['path']).name} ({k['messages']} messages)"
+              for k in s["left_on_disk"]]
+    if s["lost"]:
+        parts.append(f"LOST {s['lost']} messages, received {ct_label(s['lost_first_ts'])} to "
+                     f"{ct_label(s['lost_last_ts'])}")
+    parts.append(f"{s['unrecorded']} not recorded")
+    ok = (s["state"] == WRITER_RECORDING and s["failures"] == 0 and s["unrecorded"] == 0
+          and spill is None and not s["spills_kept"] and not s["left_on_disk"]
+          and s["lost"] == 0)
     return " · ".join(parts), "" if ok else "neg"
+
+
+def _received(item) -> "float | None":
+    """When the daemon received a message: its `ts_recv` (`ts` for a status or a subscription
+    answer; a kept failure's time)."""
+    if isinstance(item, KeptFailure):
+        return item.ts
+    msg = item[1]
+    if not isinstance(msg, dict):
+        return None
+    return msg["ts_recv"] if msg.get("ts_recv") is not None else msg.get("ts")
+
+
+def _spill_record(item) -> bytes:
+    """A held message as one spill record's JSON: the topic and the message as sent (a kept
+    failure with its error and time)."""
+    if isinstance(item, KeptFailure):
+        rec = {"kept": {"topic": item.topic, "msg": item.msg, "error": item.error, "ts": item.ts}}
+    else:
+        rec = {"topic": item[0], "msg": item[1]}
+    return json.dumps(rec, default=repr, separators=(",", ":")).encode("utf-8")
+
+
+def _from_spill(raw: bytes):
+    rec = json.loads(raw)
+    if "kept" in rec:
+        return KeptFailure(**rec["kept"])
+    return rec["topic"], rec["msg"]
+
+
+class _Spill:
+    """One append-only spill file: each record a 4-byte big-endian length and the record's JSON.
+    Appended in arrival order; written back from the start, `read_at` advancing at each commit."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.out = open(path, "ab", buffering=0)
+        self.size = 0                  # bytes of whole records written
+        self.messages = 0
+        self.read_at = 0               # bytes written back and committed
+        self.written_back = 0
+        self.before: "dict | None" = None     # each table's newest rowid when write-back began
+        self.expected: Counter = Counter()    # (table, key) -> rows written back
+        self.first: "RowWritten | None" = None
+        self.last: "RowWritten | None" = None
+        self._in = None
+
+    def append(self, record: bytes) -> None:
+        data = len(record).to_bytes(4, "big") + record
+        try:
+            if self.out.write(data) != len(data):
+                raise OSError(f"short write to {self.path}")
+        except OSError:
+            self.out.truncate(self.size)   # no partial record stays behind the whole ones
+            raise
+        self.size += len(data)
+        self.messages += 1
+
+    def read(self, n: int) -> list:
+        """Up to `n` records from `read_at`: (message, end offset) each."""
+        if self._in is None:
+            self._in = open(self.path, "rb")
+        self._in.seek(self.read_at)
+        out, at = [], self.read_at
+        while len(out) < n and at < self.size:
+            length = int.from_bytes(self._in.read(4), "big")
+            at += 4 + length
+            out.append((_from_spill(self._in.read(length)), at))
+        return out
+
+    def committed(self, batch: list, end: int) -> None:
+        """A written-back part is in the database: what it wrote, and where the next part starts."""
+        for _item, out in batch:
+            if isinstance(out, RowWritten):
+                self.expected[(out.table, out.values[_COLUMNS[out.table].index(_KEY_COLUMN[out.table])])] += 1
+                self.first = self.first or out
+                self.last = out
+            elif isinstance(out, KeptFailure):
+                self.expected[("stream_write_failures", out.topic)] += 1
+        self.written_back += len(batch)
+        self.read_at = end
+
+    def status(self) -> dict:
+        """The spill file as the heartbeat carries it."""
+        return {"path": str(self.path), "bytes": self.size, "messages": self.messages,
+                "written_back": self.written_back}
+
+    def close(self) -> None:
+        self.out.close()
+        if self._in is not None:
+            self._in.close()
+
+
+def _verify(conn: sqlite3.Connection, spill: _Spill) -> "str | None":
+    """Why the spill's write-back does not match the database (None when it does): the rows of
+    every table since the write-back began, per topic, against what the write-back wrote; and the
+    spill's first and last row, as written."""
+    for table, before in spill.before.items():
+        key = _KEY_COLUMN[table]
+        got = Counter({(table, k): n for k, n in conn.execute(
+            f"SELECT {key}, COUNT(*) FROM {table} WHERE rowid > ? GROUP BY {key}", (before,))})
+        want = Counter({k: n for k, n in spill.expected.items() if k[0] == table})
+        if got != want:
+            differ = sorted(set(got) | set(want), key=str)
+            k = next(k for k in differ if got[k] != want[k])
+            return (f"{table}: {sum(1 for k in differ if got[k] != want[k])} topics differ, e.g. "
+                    f"{k[1]}: {want[k]} written back, {got[k]} in the database")
+    for which, agg, row in (("first", "MIN", spill.first), ("last", "MAX", spill.last)):
+        if row is None:
+            continue
+        found = conn.execute(
+            f"SELECT {','.join(_COLUMNS[row.table])} FROM {row.table} WHERE rowid = "
+            f"(SELECT {agg}(rowid) FROM {row.table} WHERE rowid > ?)", (spill.before[row.table],)).fetchone()
+        if found is None or tuple(found) != tuple(row.values):
+            return f"the spill's {which} row is not in {row.table} as written"
+    return None
 
 
 class CaptureWriter:
@@ -480,12 +651,19 @@ class CaptureWriter:
     database refuses every write (DATABASE_REFUSALS, each wait `timeout_sec`), the open batch
     is rolled back and its messages, and every one after, are held in order and written again,
     on a new connection, every `retry_sec` plus up to `batch_sec` (state blocked, with the
-    refusal; each try also waits up to `timeout_sec` on a locked database). Only an error outside these ends the
-    thread (dead): what it held and what reaches it after are counted unrecorded."""
+    refusal; each try also waits up to `timeout_sec` on a locked database). Held messages stay
+    in memory up to `hold_cap_bytes`; every newer one goes to a spill file beside the database,
+    in order. When the database takes writes again, memory is written first, then the spill
+    file, then what arrived meanwhile (the spill takes it, behind the rest); the spill's rows are
+    verified (rows per topic, its first and last row) and the file deleted only then. A message
+    the spill file cannot take (a full disk) is lost: counted, with when it was received. Only
+    an error outside these ends the thread (dead): what it held in memory and what reaches it
+    after are counted unrecorded."""
 
     def __init__(self, db_path: "Path | str | None" = None, *,
                  batch_rows: int = 500, batch_sec: float = 0.25,
-                 timeout_sec: float = 30.0, retry_sec: float = 1.0) -> None:
+                 timeout_sec: float = 30.0, retry_sec: float = 1.0,
+                 hold_cap_bytes: int = HOLD_CAP_BYTES) -> None:
         p = resolve_stream_db_path() if db_path is None else Path(db_path).resolve()
         if p.name == "ed_console.db":
             raise ValueError("CaptureWriter must never write the operational DB (RC-6 law)")
@@ -495,10 +673,19 @@ class CaptureWriter:
         self.batch_sec = float(batch_sec)
         self.timeout_sec = float(timeout_sec)
         self.retry_sec = float(retry_sec)
+        self.hold_cap_bytes = int(hold_cap_bytes)
         self._lock = threading.Lock()
         self._q: "queue.SimpleQueue" = queue.SimpleQueue()
         self._batch: list = []         # (message, outcome) in the open transaction
+        self._batch_spilled = False    # the open batch is spill records (they stay in the file)
         self._waiting: list = []       # messages held while the database refuses writes
+        self._waiting_bytes = 0
+        self._spill: "_Spill | None" = None
+        self.spills_kept: list = []    # {"path", "reason"}: write-backs that did not verify
+        self.left_on_disk: list = []   # {"path", "messages"}: spill files a stop left
+        self.lost = 0
+        self.lost_first_ts: "float | None" = None
+        self.lost_last_ts: "float | None" = None
         self._round: list = []         # the messages the writer is writing now, in order
         self._stored = 0               # how many of them are in the open batch
         self._logged: dict = {}        # log line kind -> [minute last logged, count since]
@@ -523,8 +710,8 @@ class CaptureWriter:
             conn.close()
 
     def insert(self, topic: str, msg: dict, *, conn: "sqlite3.Connection | None" = None):
-        """One bus message -> one row: ROW, the KeptFailure when its row is refused, or None
-        (a topic without a table, or nothing Schwab sent to keep). A DATABASE_REFUSALS error
+        """One bus message -> one row: its RowWritten, the KeptFailure when its row is refused,
+        or None (a topic without a table, or nothing Schwab sent to keep). A DATABASE_REFUSALS error
         is raised. Without `conn` (a test, a recovery tool) it opens, writes, commits and counts
         a connection of its own."""
         kind = topic.split(".", 1)[0]
@@ -539,14 +726,15 @@ class CaptureWriter:
             self._committed([((topic, msg), out)])
             return out
         try:
-            conn.execute(spec[0], spec[1](msg))
+            values = spec[1](msg)
+            conn.execute(spec[0], values)
         except ROW_FAILURES as e:
             return self._kept_row(conn, topic, msg, e)
         except DATABASE_REFUSALS as e:
             if _refuses_every_write(e):
                 raise
             return self._kept_row(conn, topic, msg, e)
-        return ROW
+        return RowWritten(_TABLES[kind][0], values)
 
     def _kept_row(self, conn: sqlite3.Connection, topic: str, msg: Any, error: BaseException) -> "KeptFailure":
         reason = f"{type(error).__name__}: {error}"
@@ -599,7 +787,7 @@ class CaptureWriter:
         """A batch is in the database: count its rows and kept failures; the writer records."""
         with self._lock:
             for _item, out in batch:
-                if out == ROW:
+                if isinstance(out, RowWritten):
                     self.rows_written += 1
                 elif isinstance(out, KeptFailure):
                     self.failures += 1
@@ -615,8 +803,15 @@ class CaptureWriter:
                  "last_failure_ct": (ct_label(self.last_failure_ts)
                                      if self.last_failure_ts is not None else None),
                  "queue_depth": self._q.qsize(), "waiting": len(self._waiting),
-                 # a retry's open batch is part of what is waiting
-                 "held": self._q.qsize() + max(len(self._waiting), len(self._batch)),
+                 # a retry's open batch is part of what is waiting; spill records are on disk
+                 "held": self._q.qsize() + max(len(self._waiting),
+                                               0 if self._batch_spilled else len(self._batch)),
+                 "held_bytes": self._waiting_bytes,
+                 "spill": self._spill.status() if self._spill is not None else None,
+                 "spills_kept": [dict(k) for k in self.spills_kept],
+                 "left_on_disk": [dict(k) for k in self.left_on_disk],
+                 "lost": self.lost, "lost_first_ts": self.lost_first_ts,
+                 "lost_last_ts": self.lost_last_ts,
                  "unrecorded": self.unrecorded, "error": self.error,
                  "error_ct": ct_label(self.error_ts) if self.error_ts is not None else None}
         line, cls = _record_line(s)
@@ -697,23 +892,28 @@ class CaptureWriter:
         conn = None
         try:
             last_commit, stopping = time.monotonic(), False
-            while not (stopping and not self._waiting):
+            while not (stopping and not self._waiting and self._spill is None):
+                unread = self._spill is not None and self._spill.read_at < self._spill.size
                 try:
-                    item = q.get(timeout=max(self.batch_sec - (time.monotonic() - last_commit), 0.01))
+                    item = q.get(timeout=0.001 if unread else
+                                 max(self.batch_sec - (time.monotonic() - last_commit), 0.01))
                 except queue.Empty:
                     item = False
                 stopping = stopping or item is None
-                items = self._waiting + ([item] if item else [])
-                if self._waiting:          # blocked: every queued message is held, in order
+                incoming = [item] if item else []
+                holding = bool(self._waiting) or self._spill is not None
+                if holding:                # every queued message joins the held ones, in order
                     while not stopping:
                         try:
                             item = q.get_nowait()
                         except queue.Empty:
                             break
                         stopping = item is None
-                        items += [item] if item else []
-                    with self._lock:
-                        self._waiting = items
+                        incoming += [item] if item else []
+                    self._admit(incoming)
+                    items = self._waiting
+                else:
+                    items = incoming
                 self._round, self._stored = items, 0
                 try:
                     if conn is None:
@@ -721,38 +921,135 @@ class CaptureWriter:
                     for item in items:
                         self._batch.append((item, self._store(conn, item)))
                         self._stored += 1
-                    with self._lock:
-                        self._waiting = []
-                    if self._batch and (stopping or len(self._batch) >= self.batch_rows
+                    if self._batch and (holding or stopping or len(self._batch) >= self.batch_rows
                                         or time.monotonic() - last_commit >= self.batch_sec):
                         conn.commit()
                         batch, self._batch = self._batch, []
                         self._committed(batch)
                         last_commit = time.monotonic()
+                        with self._lock:
+                            self._waiting, self._waiting_bytes = [], 0
+                    if self._spill is not None and not self._waiting:
+                        self._write_back(conn)
                 except DATABASE_REFUSALS as e:
                     if conn is not None:
                         conn.close()       # its open transaction is rolled back
                     conn = None
-                    self._refused(e, [item for item, _out in self._batch] + items[self._stored:], stopping)
+                    held = [] if self._batch_spilled else [item for item, _out in self._batch]
+                    self._refused(e, held + items[self._stored:], holding, stopping)
         finally:
             if conn is not None:
                 conn.close()
 
-    def _refused(self, error: BaseException, held: list, stopping: bool) -> None:
+    def _refused(self, error: BaseException, held: list, holding: bool, stopping: bool) -> None:
         """The database refused a write: the open batch is rolled back and `held` (its messages
-        and the ones not yet written, in order) is written again after `retry_sec`; at the stop
-        it is counted unrecorded instead."""
+        and the ones not yet written, in order; spill records stay in their file) is written
+        again after `retry_sec`. At the stop what is held is left on disk."""
         reason = f"{type(error).__name__}: {error}"
         self._log_once_a_minute(("refused", reason),
                                 "stream writer: the database refused a write, %d messages held: %s",
                                 len(held), reason)
         with self._lock:
-            self._batch = []
-            if stopping:
-                self.unrecorded += len(held)
-                self._waiting = []
-                return
+            self._batch, self._batch_spilled = [], False
             if self.state != WRITER_BLOCKED:
                 self.error_ts = time.time()
-            self.state, self.error, self._waiting = WRITER_BLOCKED, reason, held
+            self.state, self.error = WRITER_BLOCKED, reason
+        if not holding:                    # held now: in memory up to the cap, then spilled
+            with self._lock:
+                self._waiting, self._waiting_bytes = [], 0
+            self._admit(held)
+        if stopping:
+            self._leave_on_disk()
+            return
         time.sleep(self.retry_sec)
+
+    def _admit(self, items: list) -> None:
+        """Hold `items`, in order: in memory while the held bytes stay within the cap, then, and
+        for every newer message, in the spill file."""
+        for item in items:
+            if self._spill is None:
+                size = len(_spill_record(item))
+                if self._waiting_bytes + size <= self.hold_cap_bytes:
+                    with self._lock:
+                        self._waiting.append(item)
+                        self._waiting_bytes += size
+                    continue
+                path = self.db_path.with_name(f"{self.db_path.stem}.{int(time.time() * 1000)}.spill")
+                try:
+                    spill = _Spill(path)
+                except OSError as e:
+                    self._lose(item, e)
+                    continue
+                with self._lock:
+                    self._spill = spill
+                log.warning("stream writer: held messages past %d bytes go to %s", self.hold_cap_bytes, path)
+            try:
+                self._spill.append(_spill_record(item))
+            except OSError as e:
+                self._lose(item, e)
+
+    def _lose(self, item, error: BaseException) -> None:
+        """A message neither the database nor the spill file took: counted, with when it was
+        received."""
+        ts = _received(item)
+        with self._lock:
+            self.lost += 1
+            if ts is not None:
+                self.lost_first_ts = ts if self.lost_first_ts is None else min(self.lost_first_ts, ts)
+                self.lost_last_ts = ts if self.lost_last_ts is None else max(self.lost_last_ts, ts)
+        self._log_once_a_minute(("lost", type(error).__name__),
+                                "stream writer: a message the spill file could not take is lost: %s: %s",
+                                type(error).__name__, error)
+
+    def _write_back(self, conn: sqlite3.Connection) -> None:
+        """The next part of the spill file into the database, in one transaction; once all of
+        it is in, verify it and delete the file, or keep the file when it does not verify."""
+        spill = self._spill
+        if spill.before is None:
+            spill.before = {t: conn.execute(f"SELECT COALESCE(MAX(rowid), 0) FROM {t}").fetchone()[0]
+                            for t in _KEY_COLUMN}
+        if spill.read_at < spill.size:
+            records = spill.read(SPILL_CHUNK)
+            self._batch_spilled = True
+            for item, _end in records:
+                self._batch.append((item, self._store(conn, item)))
+            conn.commit()
+            batch, self._batch, self._batch_spilled = self._batch, [], False
+            self._committed(batch)
+            with self._lock:
+                spill.committed(batch, records[-1][1])
+            return
+        reason = _verify(conn, spill)
+        spill.close()
+        if reason is None:
+            os.remove(spill.path)
+            log.info("stream writer: %s written back (%d messages) and verified; deleted",
+                     spill.path, spill.messages)
+        else:
+            log.error("stream writer: %s kept, its write-back did not verify: %s", spill.path, reason)
+        with self._lock:
+            if reason is not None:
+                self.spills_kept.append({"path": str(spill.path), "reason": reason})
+            self._spill = None
+
+    def _leave_on_disk(self) -> None:
+        """At a stop while the database refuses writes: what is held in memory goes to a spill
+        file named for when the block began (older than the spill file's), and both stay."""
+        if self._waiting:
+            began = self.error_ts if self.error_ts is not None else time.time()
+            held = _Spill(self.db_path.with_name(f"{self.db_path.stem}.{int(began * 1000)}.spill"))
+            for item in self._waiting:
+                try:
+                    held.append(_spill_record(item))
+                except OSError as e:
+                    self._lose(item, e)
+            held.close()
+            with self._lock:
+                self.left_on_disk.append({"path": str(held.path), "messages": held.messages,
+                                          "written_back": 0})
+        with self._lock:
+            if self._spill is not None:
+                self._spill.close()
+                self.left_on_disk.append({"path": str(self._spill.path), "messages": self._spill.messages,
+                                          "written_back": self._spill.written_back})
+            self._spill, self._waiting, self._waiting_bytes = None, [], 0

@@ -204,7 +204,9 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
     assert during["state"] == "blocked"
     assert during["error"].startswith("OperationalError: attempt to write a readonly database")
     assert during["waiting"] == during["held"] == len(_EVENTS) and during["queue_depth"] == 0
-    assert f"{len(_EVENTS)} held in memory, {len(_EVENTS)} of them waiting for the database" in during["line"]
+    assert during["held_bytes"] > 0 and during["spill"] is None
+    assert (f"held in memory: {len(_EVENTS)} messages, {during['held_bytes']:,} bytes "
+            f"({len(_EVENTS)} waiting for the database)") in during["line"]
     assert (after["state"], after["rows_written"], after["held"]) == ("recording", len(_EVENTS), 0)
 
 
@@ -376,3 +378,107 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     assert sorted(c["symbol"] for c in kept_contracts) == sorted(c["symbol"] for c in received)
     assert all(c in received for c in kept_contracts), "kept as the sweep received it"
     assert writer["last_failure"] == f"chain_history.SPY: {failures[-1][2]}"
+
+
+#: STAND-IN for the production hold cap (about 2 GB): 1,500 bytes, so the captured option quotes
+#: fill memory with two or three of them and the rest go to the spill file
+_SMALL_CAP = 1500
+
+
+async def _held_past_the_cap(writer, bus, health, daemon) -> dict:
+    """The captured option quotes published while the database is locked; returns the writer's
+    status, as the heartbeat carries it, once every one is held in memory or in the spill file."""
+    _publish_options(bus, health, _EVENTS)
+
+    def all_held() -> bool:
+        s = writer.status()
+        return s["spill"] is not None and s["spill"]["messages"] + s["waiting"] == len(_EVENTS)
+    await _until(all_held)
+    return _beat(daemon)["writer"]
+
+
+def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_order(tmp_path):
+    """INDUCED CONDITION: another connection holds the stream database's write lock
+    (BEGIN IMMEDIATE) while the captured option quotes arrive, against a writer whose hold cap is
+    _SMALL_CAP (an input) and whose lock wait is 0.2 s; then releases it. Past the cap the quotes
+    go to a spill file beside the database, the Record says so with the file's size, and once the
+    lock is released every quote is in the database exactly once, in arrival order, and the spill
+    file is gone after its write-back verified."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=_SMALL_CAP)
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        daemon = capture.Daemon(bus, health)
+        daemon.writer = writer
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        during = await _held_past_the_cap(writer, bus, health, daemon)
+        on_disk = Path(during["spill"]["path"]).stat().st_size
+        holder.execute("COMMIT")
+        await _until(lambda: writer.status()["spill"] is None
+                     and _count(db, "stream_options_quotes_raw") == len(_EVENTS))
+        after = _beat(daemon)["writer"]
+        stop.set()
+        await task
+        return during, on_disk, after
+    try:
+        during, on_disk, after = asyncio.run(go())
+    finally:
+        holder.close()
+
+    spill = during["spill"]
+    path = Path(spill["path"])
+    assert during["state"] == "blocked" and during["held_bytes"] <= _SMALL_CAP and during["waiting"] >= 1
+    assert spill["messages"] >= 1 and spill["bytes"] == on_disk and path.parent == db.parent
+    assert path.name.startswith("stream_capture.") and path.suffix == ".spill"
+    assert during["line"].startswith("BLOCKED, SPILLING TO DISK · ")
+    assert f"spilled to disk: {spill['messages']} messages, {on_disk:,} bytes in {path.name}" in during["line"]
+    with sqlite3.connect(db) as conn:
+        stored = [json.loads(r[0]) for r in conn.execute(
+            "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
+    assert stored == [e["content"] for e in _EVENTS], "not every quote exactly once, in arrival order"
+    assert not path.exists(), "the spill file outlived its verified write-back"
+    assert (after["state"], after["spill"], after["spills_kept"], after["rows_written"]) == (
+        "recording", None, [], len(_EVENTS))
+
+
+def test_a_spill_whose_write_back_does_not_verify_is_kept(tmp_path):
+    """INDUCED CONDITIONS: as above, and, in the same transaction that releases the lock, a
+    trigger that deletes each option quote row written back from the spill (every row after the
+    ones held in memory), standing in for rows lost after their write. The write-back does not
+    verify: the spill file stays, and the Record says so."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=_SMALL_CAP)
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        daemon = capture.Daemon(bus, health)
+        daemon.writer = writer
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        during = await _held_past_the_cap(writer, bus, health, daemon)
+        holder.execute(f"CREATE TRIGGER lose_written_back AFTER INSERT ON stream_options_quotes_raw "
+                       f"WHEN NEW.rowid > {during['waiting']} "
+                       f"BEGIN DELETE FROM stream_options_quotes_raw WHERE rowid = NEW.rowid; END")
+        holder.execute("COMMIT")
+        await _until(lambda: writer.status()["spills_kept"] != [])
+        after = _beat(daemon)["writer"]
+        stop.set()
+        await task
+        return during, after
+    try:
+        during, after = asyncio.run(go())
+    finally:
+        holder.close()
+
+    path = Path(during["spill"]["path"])
+    assert path.exists(), "a spill whose write-back did not verify was deleted"
+    (kept,) = after["spills_kept"]
+    assert kept["path"] == str(path) and kept["reason"].startswith("stream_options_quotes_raw: 1 topics differ")
+    assert f"spill kept, its write-back did not verify: {kept['reason']} ({path.name})" in after["line"]
+    assert after["cls"] == "neg" and after["spill"] is None and after["state"] == "recording"
