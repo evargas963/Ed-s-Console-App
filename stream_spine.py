@@ -117,10 +117,9 @@ CREATE TABLE IF NOT EXISTS stream_write_failures (
 );
 CREATE INDEX IF NOT EXISTS idx_swf_ts ON stream_write_failures(ts);
 -- How far each spill file's write-back got, written in the same transaction as each part it
--- wrote: the byte its next record starts at and how many records are in the database.
+-- wrote: how many of its records are in the database.
 CREATE TABLE IF NOT EXISTS stream_spill_progress (
     spill TEXT PRIMARY KEY,
-    read_at INTEGER NOT NULL,
     written_back INTEGER NOT NULL
 );
 """
@@ -1104,10 +1103,9 @@ class CaptureWriter:
                 for item, _end in records:
                     self._batch.append((item, self._store(conn, item)))
                 end = records[-1][1]
-                conn.execute("INSERT INTO stream_spill_progress(spill, read_at, written_back) VALUES(?,?,?) "
-                             "ON CONFLICT(spill) DO UPDATE SET read_at=excluded.read_at, "
-                             "written_back=excluded.written_back",
-                             (spill.path.name, end, spill.written_back + len(records)))
+                conn.execute("INSERT INTO stream_spill_progress(spill, written_back) VALUES(?,?) "
+                             "ON CONFLICT(spill) DO UPDATE SET written_back=excluded.written_back",
+                             (spill.path.name, spill.written_back + len(records)))
                 conn.commit()
                 batch, self._batch, self._batch_spilled = self._batch, [], False
                 self._committed(batch)

@@ -515,9 +515,10 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
     production mix (_MIX) is published once and written; then another connection holds the
     write lock while the mix arrives three more times, each frame decoded from its JSON as the
     stream decodes it, through the daemon's handler for its service, against a writer whose cap
-    is 4 MB of memory (an input, STAND-IN for about 2 GB). The memory the hold takes, measured
-    with tracemalloc, is within a quarter of 4 MB and the served measure within a quarter of
-    that; the rest spills; every message reaches the database once the lock is released."""
+    is 4 MB of memory (an input, STAND-IN for about 2 GB). tracemalloc runs from before the first
+    publish. The hold fills its cap to within 5%, the memory it takes by tracemalloc is within 5%
+    of what the writer counted, the rest spills, and every message reaches the database once the
+    lock is released."""
     memory = 4_000_000
     frames = _mix_frames()
     n = len(frames)
@@ -564,8 +565,9 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
         holder.close()
 
     assert during["spill"]["messages"] > 0, "the cap never engaged"
-    assert 0.75 * memory <= held_memory <= 1.25 * memory, f"the hold took {held_memory:,} bytes for a {memory:,} cap"
-    assert 0.75 * held_memory <= during["held_bytes"] <= 1.25 * held_memory
+    assert 0.95 * memory <= during["held_bytes"] <= memory, "the hold stopped short of its cap, or passed it"
+    assert abs(held_memory - during["held_bytes"]) <= 0.05 * held_memory, \
+        f"the hold took {held_memory:,} bytes; the writer counted {during['held_bytes']:,}"
     assert f"{during['held_bytes'] / 1e6:.1f} MB ({during['waiting']} waiting for the database)" in during["line"]
     assert {t: _count(db, t) for t in _MIX_TABLES} == {t: 4 * c for t, c in _MIX["counts"].items() if t in _MIX_TABLES}
 

@@ -76,15 +76,19 @@ from Schwab to the screen (daemon, console, page), are these:
   the writer, measured with tracemalloc), and Schwab sent 2,211.7 messages a second in all, so a
   block holds about 2.5 MB more each second, about 9 GB an hour. So memory holds them up to a cap
   (operator 2026-10-05: about 2 GB of memory, `HOLD_CAP_BYTES` = 2 GiB): each held message's
-  memory is counted once, when it is held (`stream_spine._held_size`: the message's own objects,
-  measured on that mix within 5% of tracemalloc; the test `test_the_hold_cap_holds_memory_to_its_size`
-  holds the mix to its cap within a quarter, by tracemalloc), and the Record shows it. Every
+  memory is counted once, when it is held (`stream_spine._held_size`: the message's own objects;
+  the test `test_the_hold_cap_holds_memory_to_its_size` fills the cap with the mix to within 5%
+  and finds the count within 5% of tracemalloc), and the Record shows it. Counting costs about
+  26 µs per option quote and 216 µs per book (about 6% of one core at 2,173 quotes a second),
+  only while holding, and it competes with the stream's event loop for Python's interpreter
+  lock. Every
   newer message goes to a spill file beside the stream database (`stream_capture.<ms>.spill`,
   append-only, each record a 4-byte length and the topic with the message as sent), behind the
   older ones. When the database takes writes again the writer writes memory, then the spill
   file, then what arrived meanwhile (the spill takes it, in order); how far each spill's
-  write-back got is written in the same transaction as each part (`stream_spill_progress`), so a
-  later write-back never writes a part twice. It verifies the write-back (every record of the
+  write-back got (how many records) is written in the same transaction as each part
+  (`stream_spill_progress`), so a later write-back can resume where it stopped (resuming at start
+  is not built; the operator's decision). It verifies the write-back (every record of the
   file written back, rows per topic in every table, its first and last row as written) before
   deleting the file; a write-back that does not verify keeps the file; a record that does not
   decode (a damaged file) stops the write-back there, every good record before it written, and
