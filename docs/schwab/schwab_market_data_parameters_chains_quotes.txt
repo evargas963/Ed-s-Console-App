@@ -4,7 +4,9 @@ Source: Schwab Developer Portal, Trader API - Individual > Market Data Productio
 (Market Data 1.0.0 OAS3, https://api.schwabapi.com/marketdata/v1), each operation expanded and its
 parameter list copied by the operator on 2026-10-05. Companion to schwab_market_data_api_spec.pdf,
 whose saved copy shows every operation collapsed. The portal's endpoint list has no POST /quotes
-operation.
+operation. The spec's Schemas section does list a `QuoteRequest` schema, described as "Request one
+or more quote data in POST body" (cusips, fields, ssids, symbols, realtime, indicative); no
+operation that accepts it is listed, so it is not evidence of a POST quotes call.
 
 GET /chains - Get option chain for an optionable Symbol
 

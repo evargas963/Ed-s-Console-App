@@ -66,8 +66,7 @@ CREATE TABLE IF NOT EXISTS stream_bars_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sbr_sym_ts ON stream_bars_raw(symbol, bar_start_ms);
--- NEWS_HEADLINE items, verbatim (not in Schwab's Streamer API, docs/schwab/schwab_streamer_api.pdf
--- §1.1 "Services available"; answers code 0, 2026-09-25).
+-- NEWS_HEADLINE items, verbatim (not in Schwab's Streamer Guide; answers code 0, 2026-09-25).
 CREATE TABLE IF NOT EXISTS stream_news_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,

@@ -91,8 +91,7 @@ LEVELONE_FIELDS = {"BID_PRICE": "bid", "ASK_PRICE": "ask", "LAST_PRICE": "last",
                    "QUOTE_TIME_MILLIS": "quote_time_ms", "TRADE_TIME_MILLIS": "trade_time_ms"}
 CHART_FIELDS = {"OPEN_PRICE": "open", "HIGH_PRICE": "high", "LOW_PRICE": "low",
                 "CLOSE_PRICE": "close", "VOLUME": "volume", "CHART_TIME_MILLIS": "bar_start_ms"}
-#: NEWS_HEADLINE is not in Schwab's Streamer API (docs/schwab/schwab_streamer_api.pdf §1.1
-#: "Services available") and schwab-py has no helper for it; these are
+#: NEWS_HEADLINE is not in the Streamer Guide and schwab-py has no helper for it; these are
 #: the fields it answered with on 2026-09-25 (time, id, ..., headline, ..., categories).
 NEWS_FIELDS = tuple(range(0, 11))
 
