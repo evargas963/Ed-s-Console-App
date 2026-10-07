@@ -96,16 +96,16 @@ def test_every_board_ticker_and_every_equity_the_screens_show_is_streamed(tmp_pa
 
 
 def test_the_ticker_on_screen_is_the_chain_sweeps_active_ticker(tmp_path):
-    """The ticker on screen's chain is fetched ahead of the board. The console names it
-    (`active`); the daemon never works it out from another list (such as the books)."""
+    """The ticker on screen's chain is in the sweep's rotation. The console names it (`active`);
+    the daemon never works it out from another list (such as the books)."""
     d = cap.Daemon(ss.MessageBus(), ss.HealthRegistry(), board=["SPY"])
     d.chains = cap.ChainSweep(tmp_path / "x.db", d.board, lambda t, m: None,
-                              failures=ss.CaptureWriter(tmp_path / "stream_capture.db"))
-    rth = 1790863200.0                                   # 2026-10-01 10:00 ET, an open session
+                              failures=ss.CaptureWriter(tmp_path / "stream_capture.db"),
+                              streamed=d.option_record)
     d.set_wanted({"active": "MU", "NYSE_BOOK": ["MU"], "NASDAQ_BOOK": ["MU"]})
-    assert d.chains._next(rth) == "MU"
+    assert d.chains.active == "MU"
     d.set_wanted({"active": "TSLA", "NYSE_BOOK": ["AAPL"], "NASDAQ_BOOK": ["AAPL"]})
-    assert d.chains._next(rth) == "TSLA", "the named ticker, not the books"
+    assert d.chains.active == "TSLA", "the named ticker, not the books"
 
 
 # ------------------------------------------------------------------ sync against a fake Schwab

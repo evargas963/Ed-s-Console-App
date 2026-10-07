@@ -10,7 +10,6 @@ import socket
 import threading
 import time
 import weakref
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date
 from typing import Optional
@@ -23,7 +22,7 @@ from schwab import auth
 from schwab.client import Client
 from schwab.debug import register_redactions
 
-from time_et import now_et
+from time_et import ct_clock
 import logging
 
 log = logging.getLogger(__name__)
@@ -114,35 +113,34 @@ def _token_read_func(resolved: str):
 UNLOGGED_HEADERS = frozenset({"set-cookie", "cookie", "authorization", "proxy-authorization"})
 #: the longest error body logged, in characters
 ERROR_BODY_LOGGED = 2000
-#: (status, method, path) -> [minute last logged, answers since]
-_errors_logged: "dict[tuple, list]" = {}
-_errors_lock = threading.Lock()
 
 
-def log_schwab_error(response: httpx.Response) -> None:
-    """Every Schwab answer that is not a success, as Schwab sent it: the request (method, path;
-    the query on market-data paths), the status, the error body and the response headers, with
-    the time of the log line and Schwab's own Date header. The token endpoint's body carries
-    tokens and is never logged; request headers (the bearer token) never are. The same status
-    on the same path is logged once a minute, with how many answers came since the last line."""
-    if response.status_code < 400:
-        return
+def request_sent(request: httpx.Request) -> None:
+    """The time a request leaves for Schwab (log_request reads it)."""
+    request.extensions["sent"] = time.time()
+
+
+def log_request(response: httpx.Response) -> None:
+    """Every request to Schwab, once, when its answer is in: the endpoint, the symbol (or how many
+    symbols, and the expiration asked for), the status, and when it was sent and answered. An
+    answer that is not a success also carries Schwab's body and headers as sent; the token
+    endpoint's body (it holds tokens) and the request's headers (the bearer token) never are."""
+    response.read()
+    answered = time.time()
     req = response.request
     path = re.sub(r"(/accounts/)[^/]+", r"\1(account)", req.url.path)
-    response.read()
+    params = req.url.params
+    what = " ".join(filter(None, [path, params.get("symbol"),
+                                  f"{len(params['symbols'].split(','))} symbols" if "symbols" in params else None,
+                                  params.get("fromDate")]))
+    line = (f"REST {req.method} {what} -> {response.status_code}"
+            f" (sent {ct_clock(req.extensions['sent'])}, answered {ct_clock(answered)})")
+    if response.status_code < 400:
+        log.info(line)
+        return
     body = "(token endpoint: not logged)" if path.endswith("/oauth/token") else response.text[:ERROR_BODY_LOGGED]
-    query = req.url.query.decode() if path.startswith("/marketdata/") else ""
     headers = {k: v for k, v in response.headers.items() if k.lower() not in UNLOGGED_HEADERS}
-    key = (response.status_code, req.method, path)
-    minute = int(time.time() // 60)
-    with _errors_lock:
-        seen = _errors_logged.setdefault(key, [None, 0])
-        if seen[0] == minute:
-            seen[1] += 1
-            return
-        since, seen[0], seen[1] = seen[1], minute, 0
-    log.warning("schwab answered %s %s%s -> %s (%d more since the last line) | body: %s | headers: %s",
-                req.method, path, f"?{query}" if query else "", response.status_code, since, body, headers)
+    log.warning("%s | body: %s | headers: %s", line, body, headers)
 
 
 class OneRefreshSession(OAuth2Client):
@@ -165,9 +163,8 @@ def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str
     """schwab-py's client from the token file, built as auth.client_from_access_functions builds
     it, with four differences: every token refresh is written atomically (schwab-py's writer
     rewrites the file in place), the token is refreshed by one request at a time
-    (OneRefreshSession), the session holds as many connections at once as there are requests
-    (httpx's default is 100, and schwab-py passes it nothing), and every answer that is not a
-    success is logged as Schwab sent it (log_schwab_error). `transport` carries every request,
+    (OneRefreshSession), the session holds one connection, and every request is logged once
+    (request_sent, log_request). `transport` carries every request,
     the token refresh included: the network when None, a local stand-in for Schwab in a test
     (schwab-py and the token endpoint name Schwab's host themselves)."""
     resolved = _resolve_token_path(token_path)
@@ -177,8 +174,9 @@ def client_from_token_file_atomic(token_path: str, api_key: str, app_secret: str
     session = OneRefreshSession(api_key, client_secret=app_secret, token=metadata.token,
                                 token_endpoint=auth.TOKEN_ENDPOINT,
                                 update_token=metadata.wrapped_token_write_func(), leeway=300,
-                                limits=httpx.Limits(max_connections=None, max_keepalive_connections=None),
-                                event_hooks={"response": [log_schwab_error]}, transport=transport)
+                                limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
+                                event_hooks={"request": [request_sent], "response": [log_request]},
+                                transport=transport)
     return Client(api_key, session, token_metadata=metadata, enforce_enums=enforce_enums)
 
 
@@ -533,44 +531,17 @@ def safe_get_chain(client, ticker: str, *, strike_count: int | None = 20,
     return resp
 
 
-class FullChainResponse:
-    """The whole chain as one response: `status_code` 200 and `.json()` the merged Schwab
-    payload, or the failing part's status with no payload."""
-
-    def __init__(self, status_code: "int | None", payload: "dict | None" = None,
-                 parts: int = 0, reason: str = ""):
-        self.status_code = status_code
-        self._payload = payload
-        self.parts = parts
-        self.reason = reason
-
-    def json(self) -> dict:
-        return self._payload if self._payload is not None else {}
-
-
-#: Vendor answers that mean "this request covers too much", not "this symbol is refused".
-#: MEASURED 2026-09-25: SPY (13,290 contracts), QQQ (11,710), MU (11,204) and $SPX (29,858)
-#: answered a one-shot strike_range=ALL request with HTTP 502; META (7,988) and AMD (6,628)
-#: did not. No Schwab document states the limit, so none is assumed here: a refused range is
-#: split and retried.
-_CHAIN_TOO_BIG_CODES = (502, 413, 500, 504)
-#: ticker -> how many date-range parts its whole chain last needed (learned, never guessed).
-_full_chain_parts: dict[str, int] = {}
-_full_chain_parts_lock = threading.Lock()
-
-
-def _option_expiries(client, ticker: str) -> "list[date] | None":
-    """Every listed expiry for `ticker` that has not passed (ET date), ascending; None when the
-    vendor does not answer 200. MEASURED 2026-09-26 (Saturday): the expiration chain still lists
-    Friday's expired 2026-09-25, and a chain request whose fromDate is in the past is refused
-    with HTTP 400 ("Check Param Values") -- the same range from today answers 200."""
+def option_expiries(client, ticker: str, today: date):
+    """Schwab's expiration chain (/marketdata/v1/expirationchain) for `ticker`: (its expiries
+    from `today` on, ascending, its response). The list still carries an expiry that has passed
+    (a Saturday's list holds Friday's), and a chain request whose fromDate has passed is refused
+    with HTTP 400, so those are left out. The expiries are None when Schwab does not answer 200."""
     resp = client.get_option_expiration_chain(ticker)
-    if resp is None or resp.status_code != 200:
-        return None
-    today = now_et().date()
-    return sorted({d for d in (date.fromisoformat(str(e["expirationDate"])[:10])
-                               for e in (resp.json().get("expirationList") or []) if e.get("expirationDate"))  # external-key-ok: Schwab expiration chain response
-                   if d >= today})
+    if resp.status_code != 200:
+        return None, resp
+    return sorted({d for d in (date.fromisoformat(e["expirationDate"][:10])
+                               for e in resp.json()["expirationList"])  # external-key-ok: Schwab expiration chain response
+                   if d >= today}), resp
 
 
 def safe_get_quotes(client, symbols: "list[str]"):
@@ -586,117 +557,12 @@ def safe_get_quotes(client, symbols: "list[str]"):
         raise
 
 
-#: The most option symbols one quotes request carries: 300 answered in 0.3 s, 400 was refused
-#: with HTTP 400 (the request's URL length).
+#: The most symbols one quotes request carries: Schwab Trader API Support, 2026-10-06 (email 1,
+#: item 4: not more than 300 on the quotes endpoint; docs/schwab/schwab_support_emails_2026_10_06.txt).
 QUOTES_BATCH_MAX = 300
-#: The contract fields Schwab's chain sends rounded to 3 decimals and its quotes send as computed
-#: (SPY 261120C00875000: chain gamma 0.0, delta 0.005; quote gamma 0.00037225, delta 0.00518524).
+#: The contract fields Schwab's chain sends rounded, which it cannot change (the same email,
+#: item 6), and its quotes and its LEVELONE_OPTIONS stream send as computed.
 GREEK_FIELDS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
-
-
-def fetch_full_chain(client, ticker: str) -> FullChainResponse:
-    """EVERY strike of every listed expiry -- the chain all level math is computed from -- with
-    each contract's Greeks as Schwab's quotes send them: strike_range=ALL chain requests
-    (safe_get_chain) and quotes requests (safe_get_quotes) on `client`.
-
-    MEASURED 2026-09-25 across the 42 board tickers: levels computed from the old strike
-    window disagreed with the same code run on the full chain -- gamma flip missing for 10
-    tickers, max pain different for 16, put wall for 4, $SPX walls 3-4% apart. Operator
-    decision 2026-09-25: the full chain for all calculations.
-
-    The chain's GREEK_FIELDS are replaced by the contract's quote's, as sent, asked for in
-    batches of QUOTES_BATCH_MAX, every batch at once; a contract whose quote does not come back
-    has none of them (None), never the chain's rounded value. A batch Schwab refuses fails the
-    whole chain (its status and reason), like a missing chain part: a book missing a batch of
-    Greeks is not the book. Each fetch logs its contracts, requests and their times."""
-    t0 = time.perf_counter()
-    resp = _whole_chain(client, ticker)
-    if resp.status_code != 200:
-        return resp
-    t_chain = time.perf_counter() - t0
-    contracts = [ct for side in ("callExpDateMap", "putExpDateMap")
-                 for by_strike in (resp.json().get(side) or {}).values() if isinstance(by_strike, dict)
-                 for listed in by_strike.values() if isinstance(listed, list)
-                 for ct in listed if isinstance(ct, dict)]
-    symbols = list(dict.fromkeys(ct["symbol"] for ct in contracts if ct.get("symbol")))
-    batches = [symbols[i:i + QUOTES_BATCH_MAX] for i in range(0, len(symbols), QUOTES_BATCH_MAX)]
-    t1 = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=max(1, len(batches))) as pool:
-        replies = list(pool.map(lambda batch: safe_get_quotes(client, batch), batches))
-    quoted: dict = {}
-    for batch, reply in zip(batches, replies):
-        if reply.status_code != 200:
-            return FullChainResponse(reply.status_code, reason=(
-                f"quotes for {len(batch)} of {len(symbols)} contracts "
-                f"returned HTTP {reply.status_code}"))
-        quoted.update({s: e["quote"] for s, e in reply.json().items()
-                       if isinstance(e, dict) and isinstance(e.get("quote"), dict)})
-    log.info("chain %s: %d contracts; chain %d part(s) %.2f s; quotes %d request(s) %.2f s; total %.2f s",
-             ticker, len(contracts), resp.parts, t_chain, len(batches), time.perf_counter() - t1,
-             time.perf_counter() - t0)
-    for ct in contracts:
-        q = quoted.get(ct.get("symbol")) or {}
-        ct.update({f: q.get(f) for f in GREEK_FIELDS})
-    missing = sum(1 for ct in contracts if ct.get("symbol") not in quoted)
-    if missing:
-        log.warning("quotes for %s: no quote came back for %d of %d contracts; their Greeks are absent",
-                    ticker, missing, len(contracts))
-    return resp
-
-
-def _whole_chain(client, ticker: str) -> FullChainResponse:
-    """The chain of `fetch_full_chain`. One request when Schwab answers it. When the vendor
-    answers that the request covers too much, the listed expiries are split into contiguous
-    date ranges, all requested at once, halving any range that is itself refused; the part count
-    that worked is remembered per ticker. Every part must land: a missing part is a failed
-    response (the reason names it), never a partial chain."""
-
-    def _get(**dates):
-        resp = safe_get_chain(client, ticker, strike_range="ALL", **dates)
-        return resp, resp.status_code
-
-    with _full_chain_parts_lock:
-        known_parts = _full_chain_parts.get(ticker, 1)
-    if known_parts <= 1:
-        resp, code = _get()
-        if code == 200:
-            return FullChainResponse(200, resp.json(), parts=1)
-        if code not in _CHAIN_TOO_BIG_CODES:
-            return FullChainResponse(code, reason=f"full chain returned HTTP {code}")
-        known_parts = 2
-
-    expiries = _option_expiries(client, ticker)
-    if not expiries:
-        return FullChainResponse(None, reason="expiration list unavailable")
-    size = -(-len(expiries) // min(known_parts, len(expiries)))
-    pending = [expiries[i:i + size] for i in range(0, len(expiries), size)]
-    merged: "dict | None" = None
-    done = 0
-    while pending:
-        with ThreadPoolExecutor(max_workers=len(pending)) as pool:
-            answers = list(pool.map(lambda p: _get(from_date=p[0], to_date=p[-1]), pending))
-        refused = []
-        for part, (resp, code) in zip(pending, answers):
-            if code == 200:
-                payload = resp.json()
-                if merged is None:
-                    merged = payload
-                    merged["callExpDateMap"] = dict(payload.get("callExpDateMap") or {})
-                    merged["putExpDateMap"] = dict(payload.get("putExpDateMap") or {})
-                else:
-                    merged["callExpDateMap"].update(payload.get("callExpDateMap") or {})
-                    merged["putExpDateMap"].update(payload.get("putExpDateMap") or {})
-                done += 1
-            elif code in _CHAIN_TOO_BIG_CODES and len(part) > 1:
-                half = len(part) // 2
-                refused += [part[:half], part[half:]]
-            else:
-                return FullChainResponse(code, reason=(f"chain for {part[0]}..{part[-1]} returned HTTP "
-                                                       f"{code}; the full chain is incomplete"))
-        pending = refused
-    with _full_chain_parts_lock:
-        _full_chain_parts[ticker] = done
-    return FullChainResponse(200, merged, parts=done)
 
 
 def flatten_chain_contracts(c_json: dict) -> list[dict]:

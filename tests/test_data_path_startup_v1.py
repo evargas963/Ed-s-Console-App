@@ -33,10 +33,10 @@ async def _until(cond, limit: float = 10.0) -> None:
         await asyncio.sleep(0.05)
 
 
-def test_a_chain_sweep_worker_that_ends_on_an_error_is_logged(tmp_path, caplog):
-    """A forced thread error: the sweep's client raises an error the worker does not catch (one
-    not an Exception), the worker thread ends, and the daemon's log has it with its traceback (a
-    worker thread has no error output under pythonw)."""
+def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
+    """A forced thread error: the sweep's client raises an error the sweep does not catch (one
+    not an Exception), its thread ends, and the daemon's log has it with its traceback (a thread
+    has no error output under pythonw)."""
     class ForcedThreadError(BaseException):
         pass
 
@@ -49,13 +49,13 @@ def test_a_chain_sweep_worker_that_ends_on_an_error_is_logged(tmp_path, caplog):
         stop = asyncio.Event()
         task = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", client, stop,
                                                       failures=CaptureWriter(tmp_path / "stream_capture.db")))
-        await _until(lambda: any("a worker ended" in r.getMessage() for r in caplog.records))
+        await _until(lambda: any("chain sweep: ended" in r.getMessage() for r in caplog.records))
         stop.set()
         await asyncio.wait_for(task, timeout=30)
     with caplog.at_level("ERROR", logger="capture"):
         asyncio.run(go())
-    record = next(r for r in caplog.records if "a worker ended" in r.getMessage())   # each worker that took SPY
-    assert record.getMessage() == "chain sweep: a worker ended on ForcedThreadError: forced in a chain sweep thread"
+    record = next(r for r in caplog.records if "chain sweep: ended" in r.getMessage())
+    assert record.getMessage() == "chain sweep: ended on ForcedThreadError: forced in a chain sweep thread"
     assert record.exc_info is not None and record.exc_info[0] is ForcedThreadError
 
 

@@ -3,8 +3,8 @@
     python -m app.market_data.schwab.streaming.capture          (start_capture_daemon.bat)
 
 It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
-(run_chains) fetches full option chains on its own threads, without end: the ticker on screen
-first, back to back, and every board ticker in turn.
+(run_chains) fetches full option chains on its own thread, one request at a time, without end:
+every board ticker and the ticker on screen, each in its turn in one rotation.
 
   0. BOARD   The background tickers (the logging_universe table), read at startup: each is
              streamed on LEVELONE_EQUITIES, CHART_EQUITY and NEWS_HEADLINE and its chain is
@@ -15,7 +15,7 @@ It does four things, in one loop:
   1. WANTED  The console sends everything its screens show, per Schwab service, over the
              local console socket (live_push, ws://127.0.0.1:8799):
                {"op": "wanted", "wanted": {"active": "SPY", "LEVELONE_EQUITIES": ["SPY", ...], ...}}
-             `active` is its ticker on screen: the chain sweep fetches it first.
+             `active` is its ticker on screen: it joins the chain sweep's rotation.
              The list lives in memory only: a daemon that starts streams the board until the
              console says what its screens show.
   2. SYNC    When the list changes, and every SYNC_SEC, it compares wanted with what Schwab has accepted on this
@@ -76,7 +76,7 @@ from stream_spine import (  # noqa: E402
     resolve_stream_db_path,
     subscription_msg,
 )
-from calibration.complete_chain_capture import CHAIN_WORKERS, ChainSweep, board_tickers  # noqa: E402
+from calibration.complete_chain_capture import ChainSweep, board_tickers  # noqa: E402
 from time_et import ct_label  # noqa: E402
 
 log = logging.getLogger("capture")
@@ -292,7 +292,7 @@ class Daemon:
         self.health = health
         #: what the console's screens show, as it last said (none until it says)
         self.wanted = normalize_wanted(None)
-        #: the console's ticker on screen: its chain is fetched first (ChainSweep.set_active)
+        #: the console's ticker on screen: its chain is in the rotation (ChainSweep.set_active)
         self.active: "str | None" = None
         #: the console connection whose list this is (live_push's socket)
         self.sender = None
@@ -314,7 +314,7 @@ class Daemon:
     def set_wanted(self, raw, sender=None) -> None:
         """The console's list from connection `sender` (live_push calls this for every
         {"op": "wanted"} frame): what its screens show, and `active`, its ticker on screen, which
-        the chain sweep fetches first. `raw` None: that connection ended, and withdraws the list
+        joins the chain sweep's rotation. `raw` None: that connection ended, and withdraws the list
         only if the list is its own (another connection's later list stands)."""
         if raw is None and sender is not self.sender:
             return
@@ -329,6 +329,14 @@ class Daemon:
         self.wanted_changed.set()                  # the connection syncs now
         if self.chains is not None:
             self.chains.set_active(active)
+
+    def option_record(self, symbol: str) -> "tuple[str, dict] | None":
+        """`symbol`'s current LEVELONE_OPTIONS record on the bus, (topic, record), while this
+        connection holds it on LEVELONE_OPTIONS; None otherwise (the chain sweep reads each
+        contract's Greeks from it, and asks the quotes endpoint for every contract it returns None
+        for: a record left from a connection that ended is not held)."""
+        held = symbol in self.held["LEVELONE_OPTIONS"]
+        return self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol)) if held else None
 
     def all_wanted(self) -> "dict[str, frozenset[str]]":
         """Everything streamed: the console's list, and every board ticker on BOARD_SERVICES."""
@@ -520,6 +528,7 @@ def _start_log() -> None:
         handlers.append(logging.StreamHandler())
     logging.basicConfig(level=logging.INFO, handlers=handlers,
                         format="%(asctime)s.%(msecs)03d %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    logging.getLogger("httpx").setLevel(logging.WARNING)    # each request's line is log_request's
 
 
 FEED_STATUS_EVERY_SEC = 60.0
@@ -551,35 +560,35 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
 
 
 def _worker_ended(worker: "asyncio.Future") -> None:
-    """A chain sweep worker's end: one that ended on an error is logged with its traceback."""
+    """The chain sweep's end: one that ended on an error is logged with its traceback."""
     if not worker.cancelled() and worker.exception() is not None:
         e = worker.exception()
-        log.error("chain sweep: a worker ended on %s: %s", type(e).__name__, e, exc_info=e)
+        log.error("chain sweep: ended on %s: %s", type(e).__name__, e, exc_info=e)
 
 
 async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Event, *,
                      failures: "CaptureWriter") -> None:
-    """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own threads, so the
+    """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own thread, so the
     stream never waits on a chain; each chain part is published on the event loop, and the bus
-    keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). A chain whose
-    history write fails is kept as sent by `failures`, the daemon's writer (its failures ride
-    the heartbeat). A worker that ends on an error is logged with it (_worker_ended): a worker
-    thread has no error output of its own to reach."""
+    keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). The sweep reads each
+    option's LEVELONE_OPTIONS record from the bus for its Greeks. A chain whose history write
+    fails is kept by `failures`, the daemon's writer (its failures ride the heartbeat). A sweep
+    that ends on an error is logged with it (_worker_ended): its thread has no error output of
+    its own to reach."""
     loop = asyncio.get_running_loop()
     halt = threading.Event()
     sweep = ChainSweep(db_path, daemon.board,
                        lambda topic, msg: loop.call_soon_threadsafe(daemon.bus.publish, topic, msg),
-                       failures=failures)
+                       failures=failures, streamed=daemon.option_record)
     daemon.chains = sweep
     sweep.set_active(daemon.active)                 # the ticker on screen, if the console said one
-    workers = [loop.run_in_executor(None, sweep.work, schwab_client, halt) for _ in range(CHAIN_WORKERS)]
-    for worker in workers:
-        worker.add_done_callback(_worker_ended)
+    worker = loop.run_in_executor(None, sweep.work, schwab_client, halt)
+    worker.add_done_callback(_worker_ended)
     try:
         await stop.wait()
     finally:
         halt.set()
-        await asyncio.gather(*workers, return_exceptions=True)
+        await asyncio.gather(worker, return_exceptions=True)
 
 
 def one_schwab_client(build) -> "callable":
