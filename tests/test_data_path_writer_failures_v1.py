@@ -6,8 +6,8 @@ Real data: captured LEVELONE_OPTIONS quotes (tests/fixtures/real_options_stream_
 and a captured TSLA LEVELONE_EQUITIES item (tests/fixtures/real_equity_book.json, "quote") through
 the daemon's own handler (capture._publisher) and bus; the captured SPY 2026-11-20 chain and quotes
 (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json) through the real ChainSweep.
-STAND-INS: the local host for Schwab's (test_data_path_rules_v1._LocalSchwab), serving a chain
-envelope rebuilt from the captured contracts. Each induced failure is named in its test.
+STAND-INS: the local host for Schwab's (tests/schwab_rest_standin.py), serving a chain envelope
+rebuilt from the captured contracts. Each induced failure is named in its test.
 """
 from __future__ import annotations
 
@@ -21,15 +21,13 @@ import time
 import tracemalloc
 from pathlib import Path
 
-import httpx
-from schwab.client import Client
-
 import live_market_plane as lmp
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_ui import LiveUiServer
 from calibration.complete_chain_capture import ChainSweep
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, options_quote_msg, quote_msg
-from tests.test_data_path_rules_v1 import _CONTRACT, _EVENTS, _LocalSchwab, _frame
+from tests.schwab_rest_standin import CHAIN, LocalSchwab
+from tests.test_data_path_rules_v1 import _CONTRACT, _EVENTS, _frame
 
 _IN_WINDOW = 1790863205.0          # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
 _TSLA = json.loads((Path(__file__).parent / "fixtures" / "real_equity_book.json")
@@ -326,8 +324,8 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     """INDUCED CONDITION: the chain history table carries an extra NOT NULL column the writer
     does not fill, so SQLite refuses each row with IntegrityError, standing in for the refusal of
     a repeated capture key (PR #465). The chain is delivered and never published as failed, the
-    sweep's workers fetch the next chain at once (no pause: a second chain request reaches the
-    host), and the daemon's writer keeps the chain."""
+    sweep fetches the next chain at once (no pause: a second chain request reaches the host), and
+    the daemon's writer keeps the chain as delivered."""
     db = tmp_path / "ed_console.db"
     with sqlite3.connect(db) as conn:
         conn.execute("CREATE TABLE complete_chain_captures (ticker TEXT NOT NULL, expiry TEXT NOT NULL, "
@@ -343,12 +341,11 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
         daemon.writer = CaptureWriter(failures_db, batch_rows=1, batch_sec=0.01)
         task = asyncio.create_task(daemon.writer.run(bus.subscribe("", policy=LOG), stop=stop))
         sweep = ChainSweep(db, ["SPY"], lambda topic, msg: published.append(msg),
-                           clock=lambda: _IN_WINDOW, failures=daemon.writer)
-        schwab = _LocalSchwab()
-        client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)
+                           clock=lambda: _IN_WINDOW, failures=daemon.writer, streamed=daemon.option_record)
+        schwab = LocalSchwab()
+        client = schwab.client(tmp_path)
         def chains() -> int:
-            return sum(1 for _t, method, path, _a in schwab.requests
-                       if method == "GET" and path == "/marketdata/v1/chains")
+            return len(schwab.asked(CHAIN))
         halt = threading.Event()
         worker = threading.Thread(target=sweep.work, args=(lambda: client, halt), daemon=True)
         try:
@@ -373,11 +370,8 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     assert error.startswith("IntegrityError: NOT NULL constraint failed: complete_chain_captures.refused")
     kept = json.loads(kept)
     received = [ct for msg in published[:published[0]["parts"]] for ct in msg["contracts"]]
-    kept_contracts = [ct for side in ("callExpDateMap", "putExpDateMap")
-                      for by_strike in kept[side].values() for listed in by_strike.values()
-                      for ct in listed]
-    assert sorted(c["symbol"] for c in kept_contracts) == sorted(c["symbol"] for c in received)
-    assert all(c in received for c in kept_contracts), "kept as the sweep received it"
+    assert kept["spots"] == {"2026-11-20": 766.31}
+    assert kept["contracts"] == received, "kept as the sweep delivered it"
     assert writer["last_failure"] == f"chain_history.SPY: {failures[-1][2]}"
 
 

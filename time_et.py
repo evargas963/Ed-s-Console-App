@@ -14,6 +14,11 @@ def ct_label(ts_utc: float) -> str:
     return datetime.fromtimestamp(float(ts_utc), CT).strftime("%a %m/%d %I:%M %p CT")
 
 
+def ct_clock(ts_utc: float) -> str:
+    """An instant to the millisecond as the logs show it: "14:01:02.123 CT"."""
+    return datetime.fromtimestamp(float(ts_utc), CT).strftime("%H:%M:%S.%f")[:-3] + " CT"
+
+
 # RTH 09:30–16:00 ET (minute-of-day).
 RTH_START_MINS = 570
 RTH_OPEN_MINS = RTH_START_MINS  # 9:30 AM ET (alias for cross-module authority)

@@ -23,17 +23,17 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from schwab.client import Client
 from websockets.asyncio.client import connect
 
 import app.options.order_flow.streaming as ofs
 import schwab_client as sc
 import server
 from app.market_data.schwab.streaming import capture, live_push
-from calibration.complete_chain_capture import FAILED_PAUSE_SEC, ChainSweep, chain_messages
+from calibration.complete_chain_capture import ChainSweep, chain_messages
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
 from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
+from tests.schwab_rest_standin import LocalSchwab
 from time_et import ET, now_et
 
 FX = Path(__file__).resolve().parent / "fixtures"
@@ -345,72 +345,100 @@ def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
         lmp.record_feed_down()
 
 
-# ── D5 for the chains: the sweep paced by the session calendar ─────────────────────────────
-# The real ChainSweep, its clock an input; no network: each fetch the sweep hands out is ended
-# by the test (delivered or not), as a worker ends it.
+# ── D5 for the chains: the sweep by the session calendar ────────────────────────────────────
+# The real ChainSweep on its thread (work), its clock an input, against the local stand-in for
+# Schwab's host (tests/schwab_rest_standin.py: SPY and TSLA; an expiry that has passed by the
+# clock's date is not asked for, so a ticker can deliver a chain with no contracts).
 
 def _et(s: str) -> float:
     return datetime.fromisoformat(s).replace(tzinfo=ET).timestamp()
 
 
-def _paced(board: "list[str]", at: str) -> "tuple[ChainSweep, dict]":
-    clock = {"now": _et(at)}
-    return ChainSweep("unused.db", board, lambda topic, msg: None, clock=lambda: clock["now"],
-                      failures=CaptureWriter()), clock      # the test run's stream database
+class _Swept:
+    """The sweep (board SPY, `active` on screen) on its thread at `clock["now"]`; `chains` is each
+    ticker whose chain it delivered, in order."""
 
+    def __init__(self, tmp_path, at: str, active: "str | None" = None):
+        self.clock = {"now": _et(at)}
+        self.chains: "list[str]" = []
+        self.schwab = LocalSchwab()
+        self.sweep = ChainSweep(tmp_path / "ed_console.db", ["SPY"],
+                                lambda topic, msg: "contracts" in msg and self.chains.append(msg["ticker"]),
+                                clock=lambda: self.clock["now"],
+                                failures=CaptureWriter(tmp_path / "stream_capture.db"),
+                                streamed=lambda symbol: None)
+        self.sweep.set_active(active)
+        client = self.schwab.client(tmp_path)
+        self.stop = threading.Event()
+        self.worker = threading.Thread(target=self.sweep.work, args=(lambda: client, self.stop), daemon=True)
+        self.worker.start()
 
-def _handed_out(sweep: ChainSweep, now: float, delivered: bool = True) -> "list[str]":
-    """Every ticker the sweep hands out at `now` until it hands out none; then each fetch ends."""
-    out = []
-    while (tk := sweep._next(now)) is not None:
-        out.append(tk)
-        assert len(out) < 50, "the sweep never stopped handing out tickers"
-    for tk in out:
-        sweep._done(tk, delivered)
-    return out
+    def until(self, n: int) -> "list[str]":
+        """The chains delivered once `n` are in (or 10 s have passed), and a second more."""
+        deadline = time.monotonic() + 10
+        while len(self.chains) < n and time.monotonic() < deadline:
+            time.sleep(0.02)
+        time.sleep(1.0)
+        return list(self.chains)
+
+    def close(self) -> None:
+        self.stop.set()
+        self.worker.join(10)
+        self.schwab.close()
 
 
 @pytest.mark.parametrize("at", ["2026-10-01 05:00", "2026-10-01 10:00", "2026-10-01 17:00",
                                 "2026-11-27 14:00"],
                          ids=["pre-market", "rth", "after-hours", "after-hours-of-an-early-close"])
-def test_d5_in_every_open_session_the_sweep_fetches_without_end(at):
-    sweep, clock = _paced(["AAA", "BBB"], at)
-    sweep.set_active("OFF")                              # on screen, off the board
-    assert _handed_out(sweep, clock["now"]) == ["OFF", "AAA", "BBB"]
-    assert _handed_out(sweep, clock["now"] + 1) == ["OFF", "AAA", "BBB"], "and again, without end"
+def test_d5_in_every_open_session_the_sweep_fetches_without_end(tmp_path, at):
+    swept = _Swept(tmp_path, at, active="TSLA")                  # on screen, off the board
+    try:
+        chains = swept.until(4)
+    finally:
+        swept.close()
+    assert sorted(chains[:2]) == sorted(chains[2:4]) == ["SPY", "TSLA"], \
+        "every ticker in each rotation, and again, without end"
 
 
-def test_d5_once_closed_every_board_ticker_is_fetched_once_then_nothing_until_the_next_session():
-    sweep, _ = _paced(["AAA", "BBB", "CCC"], "2026-10-02 19:59")
-    sweep.set_active("OFF")
-    assert sweep._next(_et("2026-10-02 19:59")) == "OFF"        # in flight when the market closes
-    assert _handed_out(sweep, _et("2026-10-02 20:00")) == ["AAA", "BBB", "CCC"]   # the close values
-    sweep._done("OFF", True)
-    for later in ("2026-10-02 20:01", "2026-10-03 12:00", "2026-10-04 23:59", "2026-10-05 03:59"):
-        assert sweep._next(_et(later)) is None, later
-    assert _handed_out(sweep, _et("2026-10-05 04:00")) == ["OFF", "AAA", "BBB", "CCC"], "Monday pre-market"
+def test_d5_once_closed_every_board_ticker_is_fetched_once_then_nothing_until_the_next_session(tmp_path):
+    swept = _Swept(tmp_path, "2026-10-02 20:00", active="TSLA")  # Friday, the moment the market closes
+    try:
+        closing = swept.until(1)                                 # the close values
+        for later in ("2026-10-03 12:00", "2026-10-04 23:59", "2026-10-05 03:59"):
+            swept.clock["now"] = _et(later)
+            assert swept.until(2) == closing, later
+        swept.clock["now"] = _et("2026-10-05 04:00")             # Monday pre-market
+        opened = swept.until(3)
+    finally:
+        swept.close()
+    assert closing == ["SPY"], "the board's close values; the ticker on screen is not fetched"
+    assert sorted(opened[1:3]) == ["SPY", "TSLA"]
 
 
 @pytest.mark.parametrize("at", ["2026-10-03 12:00", "2026-11-26 12:00", "2026-10-01 02:00"],
                          ids=["saturday", "thanksgiving", "a-weeknight"])
-def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_no_ticker_put_on_screen(at):
+def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_no_ticker_put_on_screen(tmp_path, at):
     """A ticker put on screen while Closed is not fetched, whether its close values were fetched
     (on the board) or not (off it): the close values stand, and none is made up."""
-    sweep, clock = _paced(["AAA", "BBB"], at)
-    assert _handed_out(sweep, clock["now"]) == ["AAA", "BBB"]
-    sweep.set_active("AAA")
-    assert sweep._next(clock["now"] + 60) is None
-    sweep.set_active("OFF")
-    assert sweep._next(clock["now"] + 120) is None
+    swept = _Swept(tmp_path, at)
+    try:
+        assert swept.until(1) == ["SPY"]
+        swept.sweep.set_active("SPY")
+        assert swept.until(2) == ["SPY"]
+        swept.sweep.set_active("TSLA")
+        assert swept.until(2) == ["SPY"]
+    finally:
+        swept.close()
 
 
-def test_d5_a_close_fetch_that_fails_is_tried_again_after_the_pause_until_it_lands():
-    sweep, clock = _paced(["AAA", "BBB"], "2026-10-03 12:00")
-    sat = clock["now"]
-    assert _handed_out(sweep, sat, delivered=False) == ["AAA", "BBB"]
-    assert sweep._paused_until == sat + FAILED_PAUSE_SEC
-    assert _handed_out(sweep, sat + FAILED_PAUSE_SEC) == ["AAA", "BBB"]
-    assert sweep._next(sat + 60) is None
+def test_d5_a_close_fetch_that_fails_is_tried_again_at_once_until_it_lands(tmp_path):
+    swept = _Swept(tmp_path, "2026-10-03 12:00")
+    swept.schwab.refuse_chain = {"SPY"}
+    try:
+        assert swept.until(1) == ["SPY"]
+    finally:
+        swept.close()
+    assert [q["symbol"] for q in swept.schwab.asked("/marketdata/v1/chains")] == ["SPY", "SPY"]
 
 
 def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_with_the_reason():
@@ -616,9 +644,10 @@ def test_d6_no_live_route_opens_a_database(monkeypatch):
 
 
 def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
-    """A Schwab error answer reaches the log with its status, body and headers, through the
-    client the daemon and the console build. Stand-ins: a local server answering as Schwab
-    does (the error body's shape is Schwab's documented {"errors": [...]}), and a token file."""
+    """Every request reaches the log once, with its endpoint, symbol, status and the times it was
+    sent and answered; an error answer with its body and headers. Through the client the daemon
+    builds. Stand-ins: a local server answering as Schwab does (the error body's shape is
+    Schwab's documented {"errors": [...]}), and a token file."""
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     import threading
 
@@ -654,9 +683,9 @@ def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
     finally:
         srv.shutdown()
     lines = [r.getMessage() for r in caplog.records]
-    chain = [m for m in lines if "/marketdata/v1/chains?symbol=SPY" in m]
-    assert len(chain) == 1, "one line a minute per status and path"
-    assert "-> 403" in chain[0] and '"title": "Forbidden"' in chain[0]
+    chain = [m for m in lines if m.startswith("REST GET /marketdata/v1/chains SPY -> 403 (sent ")]
+    assert len(chain) == 3, "each request once"
+    assert " CT, answered " in chain[0] and '"title": "Forbidden"' in chain[0]
     assert "corr-123" in chain[0]
     assert any("/trader/v1/accounts/(account)/orders" in m for m in lines)
     assert any("/v1/oauth/token -> 403" in m and "not logged" in m for m in lines)
@@ -789,10 +818,9 @@ def test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_tok
 
 
 def test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuilds_it(tmp_path):
-    """The stream and every chain worker ask one holder (capture.one_schwab_client). Schwab's
-    edge refuses the token refresh with its 403 page (as at 19:53:55 on 2026-10-03): the client
-    is never rebuilt, and after the first failures the sweep sends one refresh per
-    FAILED_PAUSE_SEC (the probe), not one per worker. Runs about 6.5 s."""
+    """The stream and the chain sweep ask one holder (capture.one_schwab_client). Schwab's edge
+    refuses the token refresh with its 403 page (as at 19:53:55 on 2026-10-03): every chain fails
+    with it, and the client is never rebuilt."""
     schwab = _LocalSchwab(token_answer="akamai")
     built = []
 
@@ -804,50 +832,40 @@ def test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuild
 
     schwab_client = capture.one_schwab_client(build)
     assert schwab_client() is schwab_client(), "the stream and the chains are handed one client"
+    failed = []
     sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB", "CCC", "DDD", "EEE"],
-                       lambda topic, msg: None, failures=CaptureWriter(tmp_path / "stream_capture.db"))
+                       lambda topic, msg: failed.append(msg["failed"]),
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=lambda symbol: None)
     halt = threading.Event()
-    workers = [threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
-               for _ in range(4)]
+    worker = threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
     try:
-        for w in workers:
-            w.start()
-        halt.wait(FAILED_PAUSE_SEC + 1.5)
+        worker.start()
+        halt.wait(0.5)
     finally:
         halt.set()
-        for w in workers:
-            w.join(10)
+        worker.join(10)
         schwab.close()
-    posts = schwab.posts()
     assert built == [1], f"the client was built {len(built)} times"
-    assert posts, "the refresh was never tried"
-    after_first = [t for t in posts if t - posts[0] > 1.0]
-    assert len(after_first) == 1, f"{len(after_first)} refreshes after the first failures, not one probe"
+    assert schwab.posts() and failed, "the refresh was tried and the chains failed with it"
 
 
-def test_a_403_from_schwabs_edge_pauses_the_sweep_then_one_chain_at_a_time_until_one_lands(tmp_path):
-    """Schwab's edge answers the captured 403 page: no chain request for FAILED_PAUSE_SEC, then
-    one chain alone; once it lands the sweep goes on. The clock is 2026-10-01 08:00 ET
-    (pre-market, outside every capture window, so nothing is written)."""
+def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_asked_at_once(tmp_path):
+    """Schwab's edge answers the captured 403 page: the ticker's chain fails with Schwab's status,
+    and the sweep asks for the next ticker at once. The clock is 2026-10-01 08:00 ET (pre-market,
+    outside every capture window, so nothing is written)."""
     schwab = _LocalSchwab(refuse=True)
     published = []
     now = 1790856000.0                                    # 2026-10-01 08:00 ET
-    sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB", "CCC", "DDD"],
+    sweep = ChainSweep(tmp_path / "ed_console.db", ["AAA", "BBB"],
                        lambda topic, msg: published.append(msg), clock=lambda: now,
-                       failures=CaptureWriter(tmp_path / "stream_capture.db"))
-    client = Client("k", httpx.Client(transport=schwab.transport), enforce_enums=False)   # as the daemon's
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=lambda symbol: None)
+    client = sc.client_from_token_file_atomic(str(_token_file(tmp_path, 3600)), "k", "s",
+                                              transport=schwab.transport)
     try:
-        assert sweep._next(now) == "AAA"
-        sweep.fetch_one(client, "AAA")                    # the 403 page
-        sweep._fetching.discard("AAA")
-        assert sweep._paused_until == now + FAILED_PAUSE_SEC, "a 403 pauses every chain request"
-        assert "HTTP 403" in published[-1]["failed"]
-        assert sweep._next(now + FAILED_PAUSE_SEC) == "BBB"   # the probe
-        assert sweep._next(now + FAILED_PAUSE_SEC) is None, "nothing else while the probe is out"
-        schwab.refuse = False
-        sweep.fetch_one(client, "BBB")                    # the probe lands
-        sweep._fetching.discard("BBB")
-        assert [sweep._next(now + FAILED_PAUSE_SEC), sweep._next(now + FAILED_PAUSE_SEC)] == ["CCC", "DDD"], \
-            "two at once again"
+        assert sweep.rotation(lambda: client, ["AAA", "BBB"], threading.Event()) == set()
     finally:
         schwab.close()
+    assert [(m["ticker"], m["failed"]) for m in published] == [
+        ("AAA", "expiration chain returned HTTP 403"), ("BBB", "expiration chain returned HTTP 403")]
+    gets = [t for t, method, _p, _a in schwab.requests if method == "GET"]
+    assert len(gets) == 2 and gets[1] - gets[0] < 1.0, "no pause after a 403"
