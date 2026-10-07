@@ -1477,7 +1477,11 @@ def _status_line() -> str:
     """One line for the console window: is each part working right now, from its own check."""
     st = lmp.daemon_status()
     watchlist = _watchlist()
-    priced = sum(1 for tk in watchlist or [] if resolve_spot(tk)[0] is not None)
+    if watchlist is not None:
+        priced = sum(1 for tk in watchlist if resolve_spot(tk)[0] is not None)
+        prices = f"live prices: {priced} of {len(watchlist)} watchlist tickers"
+    else:                                             # no current heartbeat: the list is unknown
+        prices = "live prices: WATCHLIST UNKNOWN (no current daemon heartbeat)"
     with _terrain_cache_lock:
         as_of = [p.get("computed_ts_utc") for p in _terrain_cache.values() if p.get("computed_ts_utc")]
     newest = ct_label(max(as_of)) if as_of else "none"
@@ -1487,8 +1491,7 @@ def _status_line() -> str:
         f"session {session_label(now_et())}",
         "daemon link: " + ("connected" if st is not None else "NOT CONNECTED"),
         "Schwab socket: " + ("open" if st and st.get("schwab_socket_open") is True else "NOT OPEN"),
-        (f"live prices: {priced} of {len(watchlist)} watchlist tickers" if watchlist is not None
-         else "live prices: WATCHLIST UNKNOWN (no current daemon heartbeat)"),
+        prices,
         f"levels: {len(as_of)} tickers, newest as of {newest}",
         _feed_record_state(),
         (f"chains: the daemon's last round of the watchlist took {round_sec:.0f} s" if round_sec
