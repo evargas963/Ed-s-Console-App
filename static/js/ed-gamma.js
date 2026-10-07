@@ -160,7 +160,7 @@
       exps.forEach(function (e, j) {
         var v = mrow[j], st = cellStyle(v, maxAbs, heat);
         var cellState = (row.stream || [])[j], liveState = cellState ? cellState.state : null;
-        var stateTitle = words.cell[liveState] || '';
+        var stateTitle = words.cell[liveState];   // a live cell has no words: no title
         tbl += '<td class="hcell' + (e.front ? ' col-front' : '') + (e.expired ? ' expired' : '') +
           (liveState ? ' state-' + liveState : '') +
           '" style="background:' + st.bg + ';color:' + st.fg + '" ' +
