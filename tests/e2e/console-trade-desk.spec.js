@@ -8,6 +8,7 @@
 const { test, expect } = require('@playwright/test');
 const path = require('path');
 const { mockPriceSocket } = require('./fixtures/price_socket');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const CROSSES = require(path.join(__dirname, '..', 'fixtures', 'real_spy_level_crosses.json')).rows.slice(0, 3);
 const EVENTS = {
@@ -62,6 +63,7 @@ async function intercept(page) {
     else if (url.includes('/api/order-flow/book-heatmap')) body = HEAT;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
 }
 const HEAT = require(path.join(__dirname, 'fixtures', 'book_heatmap_payload.json'));
 

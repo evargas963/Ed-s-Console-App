@@ -7,11 +7,7 @@
 
   // ---- shared ticker key (compatible with the legacy shell) ----
   var TICKER_KEY = 'ed_ticker';
-  var WL_KEY = 'ed_watchlist_v1';
   var RAIL_KEY = 'ed_rail_open';
-  // No built-in watchlist or ticker (universality, operator 2026-09-23): a first run starts
-  // empty and every symbol is one the operator chose.
-  var DEFAULT_WL = [];
 
   var app = document.getElementById('app');
 
@@ -473,20 +469,30 @@
     return '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(' · ') + '</span>';
   }
 
-  // ================= watchlist (editable foundation, localStorage) =================
-  function loadWL() {
-    // An explicitly saved EMPTY list (every ticker removed) must stay empty — only an
-    // absent key (never saved before) falls back to defaults. `[].length` is falsy, so a
-    // naive truthiness check on the parsed array silently resurrected the defaults here.
-    try {
-      var raw = localStorage.getItem(WL_KEY);
-      if (raw == null) return DEFAULT_WL.slice();
-      var v = JSON.parse(raw);
-      if (Array.isArray(v)) return v;
-    } catch (e) {}
-    return DEFAULT_WL.slice();
+  // ================= watchlist: the one list, kept by the capture daemon =================
+  // The page holds the list as the console last served it (/api/watchlist); an add or a removal
+  // is the daemon's (POST / DELETE /api/watchlist), and its answer carries the new list.
+  var _wl = [];
+  function loadWL() { return _wl.slice(); }
+  function wlFetch(url, opts) {
+    return fetch(url, opts).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); });
   }
-  function saveWL(list) { try { localStorage.setItem(WL_KEY, JSON.stringify(list)); } catch (e) {} }
+  function refreshWL() {
+    wlFetch('/api/watchlist', { cache: 'no-store' })
+      .then(function (a) {
+        if (!a.ok) { wlNotify(a.j.error); return; }
+        _wl = a.j.tickers; renderWatchlist();
+      })
+      .catch(function (e) { wlNotify('The watchlist could not be read: ' + e); });
+  }
+  // the daemon's answer to an add or a removal: the new list, or what happened instead
+  function wlAnswer(a) {
+    if (a.j.tickers) { _wl = a.j.tickers; renderWatchlist(); }
+    if (a.j.ok) return true;
+    if (a.j.op === 'invalid') wlNotify(a.j.ticker + ' is not added: Schwab does not quote it (' + JSON.stringify(a.j.answer) + ')');
+    else wlNotify(a.j.error || (a.j.ticker + ': ' + a.j.op));
+    return false;
+  }
 
   function renderWatchlist() {
     var list = loadWL();
@@ -519,7 +525,6 @@
       b.addEventListener('click', function (e) { e.stopPropagation(); removeSymbol(b.getAttribute('data-rm')); });
     });
     buildSymList();   // the watchlist is only a SUGGESTION list for the instrument control
-    declareWatchlistStream(loadWL());
     // the open price socket is told the new set; nothing reconnects, nothing blanks
     subscribePrices();
   }
@@ -536,10 +541,12 @@
     var raw = sym;
     sym = normSym(sym);
     if (!sym) { wlNotify('Not a valid symbol: "' + raw + '"'); return; }
-    var list = loadWL();
-    if (list.indexOf(sym) !== -1) { wlNotify(sym + ' is already on the watchlist'); setTicker(sym); return; }
-    list.push(sym); saveWL(list);
-    renderWatchlist(); setTicker(sym);
+    if (loadWL().indexOf(sym) !== -1) { wlNotify(sym + ' is already on the watchlist'); setTicker(sym); return; }
+    wlNotify('Checking ' + sym + ' with Schwab…');
+    wlFetch('/api/watchlist', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker: sym }) })
+      .then(function (a) { if (wlAnswer(a)) setTicker(sym); })
+      .catch(function (e) { wlNotify(sym + ' is not added: ' + e); });
   }
   // ACTIVE INSTRUMENT = any supported Schwab symbol the operator wants to analyse now. The client
   // only normalises the FORM (upper-case, the vendor's symbol alphabet); whether the instrument is
@@ -550,8 +557,9 @@
     return /^[$^]?[A-Z0-9][A-Z0-9.\-\/]{0,11}$/.test(s) ? s : null;
   }
   function removeSymbol(sym) {
-    var list = loadWL().filter(function (s) { return s !== sym; });
-    saveWL(list); renderWatchlist();   // renderWatchlist reopens the push for the new list
+    wlFetch('/api/watchlist/' + encodeURIComponent(sym), { method: 'DELETE', cache: 'no-store' })
+      .then(wlAnswer)
+      .catch(function (e) { wlNotify(sym + ' is not removed: ' + e); });
   }
 
   // Every view event goes through emit(): with no ticker chosen, no panel is asked to load
@@ -742,17 +750,6 @@
     var host = document.getElementById('watchlist');
     if (host) host.classList.remove('wl-degraded');
   }
-  // The daemon streams only what is asked for: hand it the watchlist whenever it changes
-  // (and once at start), so every row can be a streamed quote.
-  var _wlDeclared = null;
-  function declareWatchlistStream(list) {
-    var key = list.join(',');
-    if (key === _wlDeclared) return;
-    _wlDeclared = key;
-    fetch('/api/streaming/watchlist-symbols', { method: 'POST', cache: 'no-store',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: list }) })
-      .catch(function () { _wlDeclared = null; });   // retried when the console push reopens
-  }
   // ---- the price socket (daemon -> browser) ----
   var PRICE_SILENCE_MS = 3000;   // the daemon beats every 1 s; 3 s of nothing = the push is down
   var _priceWs = null, _priceUp = false, _lastPriceTs = 0, _priceSubTs = 0, _priceRetry = 0;
@@ -765,7 +762,7 @@
     return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':' + port + '/';
   }
   // The market context the server always streams, served in the page (meta ed-market-context,
-  // from streaming.MARKET_CONTEXT_SYMBOLS): [{key, display}]. The socket pushes only what a page
+  // from live_push.MARKET_CONTEXT): [{key, display}]. The socket pushes only what a page
   // subscribes to, so every page asks for it.
   var MARKET_CONTEXT = (function () {
     var m = document.querySelector('meta[name="ed-market-context"]');
@@ -868,7 +865,7 @@
     if (typeof EventSource === 'undefined') return;
     try { _changes = new EventSource('/api/changes?ticker=' + encodeURIComponent(tk)); }
     catch (e) { return; }
-    _changes.onopen = function () { _wlDeclared = null; declareWatchlistStream(loadWL()); };
+    _changes.onopen = refreshWL;     // the list as the daemon keeps it, again after the push reopens
     _changes.onerror = function () { paintSession(null, 'session unknown: the console push is down'); };
     _changes.addEventListener('session', function (ev) { paintSession(ev.data); });
     ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
@@ -977,6 +974,7 @@
     // subnav/view tabs already in HTML are re-bound by renderSubnav/renderViewbar
     // watchlist
     renderWatchlist();
+    refreshWL();
     document.getElementById('wlAdd').addEventListener('click', function () {   // EXPLICIT watchlist add
       var s = window.prompt('Add symbol to watchlist', state.ticker); if (s) addSymbol(s);
     });

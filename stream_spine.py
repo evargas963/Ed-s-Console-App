@@ -94,6 +94,18 @@ CREATE TABLE IF NOT EXISTS stream_pricehistory_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sphr_sym_ts ON stream_pricehistory_raw(symbol, series, ts_recv);
+-- The watchlist, the one list of tickers Schwab is asked for (written only by the daemon): one row
+-- per add or removal the console asked for -- the whole list after it, what happened to the
+-- ticker, and Schwab's /quotes answer to an add's check, as sent. The newest row is the list.
+CREATE TABLE IF NOT EXISTS stream_watchlist (
+    ts_recv REAL NOT NULL,
+    symbol TEXT NOT NULL,
+    op TEXT NOT NULL,
+    tickers_json TEXT NOT NULL,
+    status INTEGER,
+    native_json TEXT,
+    src TEXT NOT NULL
+);
 -- Every subscribe/unsubscribe the daemon sent and Schwab's answer. With it, a gap in the
 -- data tables can be told apart: "we were not subscribed" versus "subscribed, nothing
 -- changed". code 0 = accepted; anything else carries Schwab's reason.
@@ -406,6 +418,10 @@ _INSERTS = {
     "pricehistory": ("INSERT INTO stream_pricehistory_raw(ts_recv,symbol,series,native_json,src) "
                      "VALUES(?,?,?,?,?)",
                      lambda m: (m["ts_recv"], m["symbol"], m["series"], json.dumps(m["answer"]), m["src"])),
+    "watchlist": ("INSERT INTO stream_watchlist(ts_recv,symbol,op,tickers_json,status,native_json,src) "
+                  "VALUES(?,?,?,?,?,?,?)",
+                  lambda m: (m["ts_recv"], m["ticker"], m["op"], json.dumps(m["tickers"]), m["status"],
+                             json.dumps(m["answer"]), m["src"])),
     "sub": ("INSERT INTO stream_subscriptions(ts,service,command,symbols_json,code,reason) "
             "VALUES(?,?,?,?,?,?)",
             lambda m: (m.get("ts"), m.get("service"), m.get("command"),

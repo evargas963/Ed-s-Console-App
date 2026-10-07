@@ -43,7 +43,7 @@ def test_a_chain_sweep_that_ends_on_an_error_is_logged(tmp_path, caplog):
     def client():
         raise ForcedThreadError("forced in a chain sweep thread")
     sqlite3.connect(tmp_path / "ed_console.db").close()
-    daemon = capture.Daemon(MessageBus(), HealthRegistry(), board=["SPY"])
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
 
     async def go():
         stop = asyncio.Event()
@@ -66,7 +66,7 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
     schwab_client = capture.one_schwab_client(
         lambda: build_client_from_token(str(tmp_path / "missing_token.json"), "LiveLookingKey", "LiveLookingSecret"))
     bus = MessageBus()
-    daemon = capture.Daemon(bus, HealthRegistry(), board=["SPY"])
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]

@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-import live_market_plane as lmp
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from db import EdDB
@@ -88,28 +87,6 @@ def _board_is(board):
     lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "board": list(board)})
 
 
-def test_while_closed_a_board_ticker_warms_and_an_off_board_one_on_screen_does_not(monkeypatch, pin_clock, view):
-    # WARMING while Closed (docs/DATA_FLOW.md §3.4): a board ticker's close values are fetched
-    # once, so it is warming until they arrive; a ticker put on screen off the board is not
-    # fetched, so it is not warming and says why. Saturday 2026-09-26.
-    pin_clock(2026, 9, 26, 12, 0)
-    tk = ticker_storage_key("SPY")
-    with server._terrain_cache_lock:
-        server._terrain_cache[tk] = {"computed_ts_utc": time.time(), "spot": 100.0}   # on the board, no surface yet
-    _board_is([tk])                                                      # enrolled like any ticker -- no built-in list
-    view(tk)                                                             # a page open on it
-    try:
-        d = _call(tk)
-        assert d["warming"] is True and d["requested"] is True
-    finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
-    view("ZZQX")                                                         # off the board, on screen
-    d = _call("ZZQX")
-    assert d["requested"] is True and d["warming"] is False
-    assert d["available"] is False and d["reason"], d
-
-
 # ── any viewed ticker, on the board or not (2026-09-28 audit) ────────────────────────────────
 # Warming read "a snapshot already exists" (true for board tickers, priced at startup) instead of
 # the refresh state; a closed market gave /api/terrain "no capture" without looking for one while
@@ -134,17 +111,6 @@ def _fresh(monkeypatch, tmp_path, view):
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])
-def test_first_view_warms_any_ticker_on_or_off_the_board(_fresh, monkeypatch, pin_clock, view, tk):
-    """In an open session a viewed ticker is the daemon's active ticker, whose chain it fetches
-    ahead of every other, on the board or not (operator 2026-10-01). Thursday 2026-10-01 10:00 ET."""
-    pin_clock(2026, 10, 1, 10, 0)
-    view(tk)                                        # the page selects the ticker
-    d = _call(tk)                                   # the first view: no levels published yet
-    assert d["requested"] is True and d["warming"] is True
-    assert d["reason"] == "no terrain snapshot has been computed yet"
-
-
-@pytest.mark.parametrize("tk", [_BOARD, _OFF])
 def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(_fresh, monkeypatch, view, tk):
     """2026-09-28 audit: "viewed" was a 300 s timer renewed only by the levels, chain and heatmap
     routes, which the Liquidity and Order Flow workspaces do not read -- an off-board ticker
@@ -158,33 +124,6 @@ def test_a_ticker_open_on_a_page_is_viewed_until_the_page_leaves_it(_fresh, monk
     assert server._gamma_surface_wanted(tk)
     push_changes.unsubscribe(tk, client)            # the page closed or changed ticker
     assert not server._gamma_surface_wanted(tk)
-
-
-def test_with_the_daemon_silent_every_ticker_says_so_first(_fresh, view):
-    """With no current heartbeat no chain is coming and the board is unknown: no ticker reads
-    warming, and each reason starts with the daemon not reporting, whatever else it says."""
-    silent = "the capture daemon is not reporting (no current heartbeat): its board is unknown"
-    view(_OFF, _BOARD)                              # _OFF open on an older page; _BOARD on screen
-    with server._terrain_cache_lock:
-        server._terrain_cache[_OFF] = {"computed_ts_utc": time.time(), "spot": 100.0}   # levels, no surface
-    lmp.record_feed_heartbeat({"ts": time.time() - 100,      # the daemon's last heartbeat is old
-                               "schwab_socket_open": True, "board": [_OFF]})
-    d = _call(_OFF)
-    assert d["warming"] is False and d["reason"] == silent
-    first = _call(_BOARD)                           # on screen, its first view: no levels yet
-    assert first["warming"] is False
-    assert first["reason"] == silent + " — no terrain snapshot has been computed yet"
-
-
-def test_a_chain_schwab_refused_says_schwabs_answer(_fresh, view):
-    """The daemon's chain fetch failed: the ticker's reason is Schwab's answer, delivered by the
-    daemon (no console fetch, no hold)."""
-    view(_BOARD)
-    server._on_chain(_BOARD, None, _CAPTURED, "full chain returned HTTP 400")
-    d = _call(_BOARD)
-    assert d["warming"] is True
-    assert d["reason"] == ("no terrain snapshot has been computed yet — "
-                           "chain fetch failed (full chain returned HTTP 400)")
 
 
 @pytest.mark.parametrize("tk", [_BOARD, _OFF])

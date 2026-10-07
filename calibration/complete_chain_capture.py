@@ -1,9 +1,9 @@
-"""The board and the option chains (DATA_FLOW decisions 1 and 7), run by the capture daemon.
+"""The option chains (DATA_FLOW decisions 1 and 7), run by the capture daemon.
 
-The board (the logging_universe table) is the background tickers. In every open session the
-daemon fetches the full chain (every expiry, every strike) of every board ticker and the ticker on
-screen, each in its turn in one rotation, without end (ChainSweep); once the market is Closed it
-fetches every board ticker once (the close values) and then nothing until the next session. Each
+In every open session the daemon fetches the full chain (every expiry, every strike) of every
+watchlist ticker (the daemon's one list, capture.Daemon.watchlist), each in its turn in one
+rotation, without end (ChainSweep); once the market is Closed it fetches every watchlist ticker
+once (the close values) and then nothing until the next session. Each
 chain is handed to the console for the levels. The chain history: the first chain of each ticker fetched in
 each capture window -- every 30 minutes from 9:30 to the close (ET), and 15 minutes after the close
 (the day's close capture), on market days -- is written here, one row per expiry, compressed, with
@@ -27,7 +27,6 @@ from typing import Any
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from numeric_contract import schwab_number
-from production_universe import is_valid_production_ticker
 from schwab_client import (GREEK_FIELDS, QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries,
                            safe_get_chain, safe_get_quotes)
 from stream_spine import CaptureWriter
@@ -140,28 +139,6 @@ def capture_slot(now_ts: float) -> float | None:
     return past[-1]
 
 
-def board_tickers(db_path: Path | str) -> list[str]:
-    """Every ticker on the board (the logging_universe table), read-only. The daemon reads it at
-    startup and holds it."""
-    if not Path(db_path).is_file():
-        log.warning("board: %s does not exist yet (the console creates it); the board is empty", db_path)
-        return []
-    conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
-    try:
-        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='logging_universe'").fetchone():
-            log.warning("board: %s has no logging_universe table yet (the console creates it); "
-                        "the board is empty", db_path)
-            return []
-        rows = [r[0] for r in conn.execute("SELECT ticker FROM logging_universe")]
-    finally:
-        conn.close()
-    keys = {ticker_storage_key(t) for t in rows}
-    bad = sorted(t for t in rows if not is_valid_production_ticker(ticker_storage_key(t)))
-    if bad:
-        log.warning("board: rows that are not a symbol are not on the board: %s", bad)
-    return sorted(k for k in keys if is_valid_production_ticker(k))          # each row as its key
-
-
 #: contracts per chain message to the console: one message is encoded and decoded whole, so a
 #: whole chain in one ($SPX, 29,394 contracts: 40.7 MB, 924 ms to encode, measured 2026-10-01)
 #: would hold the daemon's event loop; 500 contracts take tens of milliseconds
@@ -225,8 +202,9 @@ class _Chain:
 
 class ChainSweep:
     """The one fetcher of option chains: one thread, one request at a time on the daemon's one
-    Schwab client, every ticker the same, in one rotation (sorted): the board and the ticker on
-    the operator's screen (set_active). For each ticker, Schwab's expiration chain once per ET
+    Schwab client, every ticker the same, in one rotation (sorted): every watchlist ticker
+    (`watchlist`, which the daemon replaces on each add or removal: an added ticker is in the
+    next rotation, a removed one is asked for no more). For each ticker, Schwab's expiration chain once per ET
     date, then one chain request per expiry (strike_range=ALL), as Schwab says to break up a
     large chain. The chain's own Greeks (GREEK_FIELDS, rounded by Schwab) are never kept: a
     contract whose LEVELONE_OPTIONS record (`streamed`) carries all of them takes the stream's,
@@ -240,60 +218,61 @@ class ChainSweep:
 
     A chain is published to the console in parts (chain_messages) once all its quotes are in; a
     ticker whose request fails (an answer other than 200, or none) is published as failed with
-    the reason, and the rotation goes on. While Closed (time_et.session_label) every board ticker
+    the reason, and the rotation goes on. While Closed (time_et.session_label) every watchlist ticker
     is fetched once, its close values (a failed one again in the next pass), and then nothing
     until the next session. The first chain of a ticker begun inside a capture window
     (capture_slot) is also written to the chain history; a history write that fails is a write
     failure, never the chain's: the chain as delivered is handed to `failures` (the daemon's
     writer) to keep."""
 
-    def __init__(self, db_path: Path | str, board: "list[str]", publish: "callable",
+    def __init__(self, db_path: Path | str, watchlist: "list[str]", publish: "callable",
                  clock: "callable" = time.time, *, failures: "CaptureWriter",
                  streamed: "callable") -> None:
         self.db_path = db_path
-        self.board = list(board)        # the daemon's board, read at its start
+        self.watchlist = list(watchlist)  # the daemon's list, replaced whole on each change
         self.publish = publish          # (topic, msg) -> None, safe from any thread
         self.clock = clock              # when a request begins, and when a chain is delivered
         self.failures = failures        # the daemon's writer: keeps a failed history write
         self.streamed = streamed        # option symbol -> its bus current (topic, record) or None
-        self.active: str | None = None  # the ticker on the operator's screen
         self.round_sec: float | None = None
         self._expiries: "dict[str, tuple[date, list[date]]]" = {}   # ticker -> (ET date, expiries)
         self._minutes_day: "dict[str, date]" = {}          # ticker -> the ET date its 1-minute bars came
         self._queue: "list[tuple[_Chain, dict]]" = []     # contracts whose quote is not asked for
         self._delivered: "set[str]" = set()                # the tickers this rotation delivered
         self._written: "dict[str, float | None]" = {}       # ticker -> its newest history capture
-        self._close_left: "set[str] | None" = None         # while Closed: board tickers whose close
-                                                           # values are not in; None while open
-
-    def set_active(self, ticker: str | None) -> None:
-        """The ticker on the operator's screen (None: none): it is in the rotation, in its turn."""
-        self.active = ticker
+        self._close_done: "set[str] | None" = None         # while Closed: the tickers whose close
+                                                           # values are in; None while open
 
     def work(self, schwab_client, stop: threading.Event) -> None:
         """The thread's life, until `stop`: rotation after rotation on the daemon's client
-        (`schwab_client()`). While Closed, once every board ticker's close values are in, it
-        looks each second for the next session."""
+        (`schwab_client()`). While Closed, once every watchlist ticker's close values are in (a
+        ticker added while Closed is fetched once too), it looks each second for the next
+        session."""
         while not stop.is_set():
+            tickers = sorted(self.watchlist)
             if session_label(datetime.fromtimestamp(self.clock(), ET)) != "Closed":
-                self._close_left = None
-                self.rotation(schwab_client, sorted({*self.board, self.active} - {None}), stop)
+                self._close_done = None
+                self.rotation(schwab_client, tickers, stop)
                 continue
-            if self._close_left is None:              # the market has just closed, or the daemon
-                self._close_left = set(self.board)    # started while it is Closed
-            if self._close_left:
-                self._close_left -= self.rotation(schwab_client, sorted(self._close_left), stop)
+            if self._close_done is None:              # the market has just closed, or the daemon
+                self._close_done = set()              # started while it is Closed
+            left = [t for t in tickers if t not in self._close_done]
+            if left:
+                self._close_done |= self.rotation(schwab_client, left, stop)
             else:
                 stop.wait(1.0)
 
     def rotation(self, schwab_client, tickers: "list[str]", stop: threading.Event) -> "set[str]":
-        """Each ticker's chain in turn, the queued quotes asked for whenever a full request's worth
-        is waiting and the rest at the end; the tickers delivered."""
+        """Each ticker's chain in turn (one removed from the watchlist since the rotation began is
+        not asked for), the queued quotes asked for whenever a full request's worth is waiting
+        and the rest at the end; the tickers delivered."""
         started = self.clock()
         self._delivered = set()
         for ticker in tickers:
             if stop.is_set():
                 break
+            if ticker not in self.watchlist:
+                continue
             self.fetch_chain(schwab_client, ticker)
             self.fetch_price_history(schwab_client, ticker)
             while len(self._queue) >= QUOTES_BATCH_MAX:
@@ -372,6 +351,7 @@ class ChainSweep:
         `errors` entry naming the symbols it does not (`invalidSymbols`; measured 2026-10-07: 8
         SPY contracts its own chain lists, every one never quoted or traded): those contracts get
         no Greeks, logged once with their count, and the rest of the request is delivered."""
+        self._queue = [(chain, ct) for chain, ct in self._queue if chain.ticker in self.watchlist]  # removed: not asked
         batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
         chains = list({id(chain): chain for chain, _ct in batch}.values())
         try:

@@ -40,7 +40,7 @@ def _et(s: str) -> float:
 def _setup(tmp_path, schwab: LocalSchwab, now: float):
     """The daemon's bus holding HELD's stream record, its sweep on a fixed clock, and the client."""
     client = schwab.client(tmp_path)
-    daemon = capture.Daemon(MessageBus(), HealthRegistry(), board=["SPY", "TSLA"])
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "TSLA"])
     daemon.held["LEVELONE_OPTIONS"] = frozenset({HELD})          # Schwab accepted it on this connection
     for e in _STREAM["events"]:
         if e["kind"] == "l1":
@@ -48,7 +48,7 @@ def _setup(tmp_path, schwab: LocalSchwab, now: float):
                 symbol=HELD, content={**e["content"], "key": HELD}, src="schwab_options_l1",
                 ts_recv=e["ts_recv"], schwab_ts=int(e["ts_recv"] * 1000)))
     published: list = []
-    sweep = ChainSweep(tmp_path / "ed_console.db", daemon.board, lambda topic, msg: published.append((topic, msg)),
+    sweep = ChainSweep(tmp_path / "ed_console.db", daemon.watchlist, lambda topic, msg: published.append((topic, msg)),
                        clock=lambda: now, failures=CaptureWriter(tmp_path / "stream_capture.db"),
                        streamed=daemon.option_record)
     return daemon, sweep, (lambda: client), published
@@ -126,11 +126,10 @@ def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_g
     assert max(gaps) < 1.0, f"a pause after Schwab's 429: {max(gaps):.2f} s"
 
 
-def test_while_closed_every_board_ticker_is_fetched_once_and_a_failed_one_again(tmp_path):
+def test_while_closed_every_watchlist_ticker_is_fetched_once_and_a_failed_one_again(tmp_path):
     schwab = LocalSchwab()
     schwab.refuse_chain = {"TSLA"}
     _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-29 12:00"))   # Saturday
-    sweep.set_active("QQQ")                                       # on screen while Closed: not fetched
     stop = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(client, stop), daemon=True)
     try:

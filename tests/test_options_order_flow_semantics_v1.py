@@ -129,36 +129,6 @@ def test_the_option_book_payload_reuses_the_one_producer(tmp_path, monkeypatch):
     assert result["depth"]["1"]["imbalance"] is not None
 
 
-def test_set_active_option_contract_writes_signal_and_clears_old_symbol(tmp_path, monkeypatch):
-    cleared = []
-    monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
-    ofs._active_option_contract = "OLD   260101C00100000"
-
-    ok = ofs.set_active_option_contract(_SPY_CONTRACT)
-    assert ok is True
-    assert ofs.current_wanted()["OPTIONS_BOOK"] == [_SPY_CONTRACT], "the daemon is told"
-    assert cleared == ["OLD   260101C00100000"]
-    assert ofs._active_option_contract == _SPY_CONTRACT
-
-
-def test_set_active_option_contracts_writes_plural_signal_and_clears_only_dropped(monkeypatch, spot_authority):
-    """RC-UI-3 (2026-09-12): set_active_option_contracts mirrors set_active_option_contract
-    for the ADDITIONAL-symbols slot, except a symbol still (or newly) requested must keep
-    replaying -- only a symbol actually DROPPED from the desired set gets its cursor
-    cleared, otherwise every unchanged tick would spuriously reset a live replay."""
-    cleared = []
-    monkeypatch.setattr("app.options.order_flow.streaming.clear_symbol", lambda s: cleared.append(s))
-    old = "OLD   260101C00100000"
-    ofs._active_option_contracts = [old, _SPY_CONTRACT]
-
-    ok = ofs.set_active_option_contracts([_SPY_CONTRACT, _QQQ_CONTRACT])
-    assert ok is True
-    assert ofs.current_wanted()["LEVELONE_OPTIONS"] == sorted([_SPY_CONTRACT, _QQQ_CONTRACT])
-    assert cleared == [old], "only the dropped symbol is cleared; SPY keeps replaying"
-    assert sorted(ofs._active_option_contracts) == sorted([_SPY_CONTRACT, _QQQ_CONTRACT])
-    ofs._active_option_contracts = []
-
-
 def test_dropping_an_additional_contract_that_is_still_primary_does_not_clear_it(monkeypatch):
     """Independent-review finding (2026-09-12), REPRODUCED: removing a symbol from the
     ADDITIONAL list used to unconditionally clear_symbol() it, even when that EXACT

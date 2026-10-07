@@ -1,4 +1,4 @@
-"""The daemon's chain sweep (DATA_FLOW decisions 1 and 7): the one fetcher of every board ticker's
+"""The daemon's chain sweep (DATA_FLOW decisions 1 and 7): the one fetcher of every watchlist ticker's
 chain, what it hands the console, and the chain history it writes.
 
 Real data: SPY's 2026-11-20 contracts from the capture daemon's full-chain capture of 2026-09-30
@@ -162,11 +162,11 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
     assert all(stored[s]["gamma"] == q["gamma"] for s, q in _QUOTED.items()), "the quote's gamma is stored"
 
 
-def test_the_ticker_on_screen_joins_the_rotation_in_its_turn(tmp_path, schwab):
-    """Operator 2026-10-06: every ticker the same, in one rotation; the one on screen has no
-    priority. TSLA on screen, SPY on the board: SPY first, then TSLA, in sorted order."""
+def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):
+    """Operator 2026-10-06: every ticker the same, in one rotation; none has priority. TSLA added
+    to the watchlist beside SPY: SPY first, then TSLA, in sorted order."""
     sweep, published, client = _sweep(tmp_path, schwab, lambda: _ts("2026-08-28 09:05"))
-    sweep.set_active("TSLA")
+    sweep.watchlist = ["TSLA", "SPY"]                      # the daemon's list after an add
     stop = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(client, stop), daemon=True)
     worker.start()
@@ -218,7 +218,7 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
 
 
 def test_the_daemon_task_stops_when_told(tmp_path):
-    daemon = capture.Daemon(MessageBus(), HealthRegistry(), board=[])
+    daemon = capture.Daemon(MessageBus(), HealthRegistry())
 
     async def go():
         stop = asyncio.Event()

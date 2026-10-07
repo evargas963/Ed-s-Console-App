@@ -153,6 +153,8 @@ const CHAIN = {
 
 // The capture daemon's price socket, stood in for (tests/e2e/fixtures/price_socket.js).
 const { mockPriceSocket, priceRow } = require('./fixtures/price_socket');
+// The console's watchlist routes, stood in for (tests/e2e/fixtures/watchlist.js).
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 // the console pushes one `levels` change for `ticker` after `delayMs`; reconnects get the session
 async function routeOneLevelsPush(page, delayMs, ticker = 'SPY') {
@@ -177,6 +179,7 @@ async function intercept(page) {
     else if (url.includes('/api/chain')) body = CHAIN;
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11', '2026-09-18'] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
 }
 
 test.describe('Ed Console shell + gamma heatmap', () => {
@@ -741,7 +744,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await page.locator('.navitem[data-ws="system"]').click();
     await expect(page.locator('[data-ws-pane="system"]')).toBeVisible();
     await expect(page.locator('#subnav .wtitle')).toContainText('SYSTEM');
-    // add a symbol via the shell API (foundation is editable + localStorage-backed)
+    // add a symbol via the shell API (the console's watchlist route: the daemon keeps the list)
     await page.evaluate(() => window.EdShell.addSymbol('AMD'));
     await expect(page.locator('.wl-row .wl-sym', { hasText: 'AMD' })).toHaveCount(1);
   });

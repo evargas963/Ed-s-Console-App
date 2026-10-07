@@ -17,12 +17,13 @@ permanent record (options history reads it); nothing live reads it. If the push 
 drops, the live values go stale and the screen says so; nothing falls back to the database
 (operator rule 2026-09-23: no fallbacks).
 
-What to stream is decided HERE and sent to the daemon over the same socket, as one
-complete list per Schwab service (current_wanted(); {"op": "wanted", ...}). Every change to
-the active ticker, the equity demand or the option contracts bumps _wanted_version and the
-feed loop sends the new list. The daemon's one-second status comes on the price-row connection
-(_rows_loop, live_ui's "feed" beat), where no chain waits ahead of it, and is the one source for
-"is the daemon / Schwab alive" and "what does Schwab hold / refuse".
+The daemon streams every ticker on its watchlist (capture.Daemon.watchlist, the one list).
+Over the same socket this module sends the option contracts the screens name (current_options();
+{"op": "options", ...}; every change bumps _wanted_version and the feed loop sends the new
+list), and the operator's adds and removals of watchlist tickers (watchlist_request), each
+answered by the daemon's watchlist record. The daemon's one-second status comes on the price-row
+connection (_rows_loop, live_ui's "feed" beat), where no chain waits ahead of it, and is the one
+source for "is the daemon / Schwab alive", the watchlist and "what does Schwab hold / refuse".
 
 Public API: `start_order_flow_stream` / `stop_order_flow_stream`
 / `set_active_option_contract` / `get_option_contract_streaming_diagnostics`.
@@ -45,7 +46,6 @@ from app.options.order_flow import history as recent
 from app.options.order_flow.state import (
     clear_all_live_state,
     clear_symbol,
-    forget_unsubscribed_symbols,
     push_book,
     push_level_one,
     push_option_top,
@@ -94,27 +94,16 @@ def _wait_for_wanted() -> "tuple[asyncio.AbstractEventLoop, asyncio.Event]":
     return entry
 
 
-def current_wanted() -> "dict":
-    """Everything this console wants streamed, per Schwab service -- the ONE list sent to the
-    daemon -- and `active`, the ticker on screen (push_changes.on_screen), whose chain the daemon
-    fetches first. Equities (L1, 1-minute bars, news): the ticker on screen, the market context
-    and the watchlist (the daemon adds the board itself). Books: the ticker on screen (NYSE_BOOK =
-    the exchange book, NASDAQ_BOOK = market-maker quotes). Options: the primary contract (L1 +
-    book) plus every contract the views ask for (L1)."""
-    active = push_changes.on_screen()
-    with _equity_lock:
-        equities = equity_symbols(active, _watchlist)
-    books = [active] if active else []
+def current_options() -> "dict":
+    """The option contracts this console names for the daemon to stream, per option service:
+    the primary contract (L1 + book) plus every contract the views ask for (L1)."""
     primary = [_active_option_contract] if _active_option_contract else []
-    return {"active": active,
-            "LEVELONE_EQUITIES": equities, "CHART_EQUITY": equities, "NEWS_HEADLINE": equities,
-            "NYSE_BOOK": books, "NASDAQ_BOOK": books,
-            "LEVELONE_OPTIONS": sorted(set(primary) | set(_active_option_contracts)),
+    return {"op": "options", "LEVELONE_OPTIONS": sorted(set(primary) | set(_active_option_contracts)),
             "OPTIONS_BOOK": primary}
 
 
-async def _send_wanted(ws) -> None:
-    """Send the wanted list now, then again the moment it changes, for this connection's life."""
+async def _send_options(ws) -> None:
+    """Send the option contracts now, then again the moment they change, for this connection's life."""
     entry = _wait_for_wanted()
     try:
         sent = None
@@ -122,10 +111,36 @@ async def _send_wanted(ws) -> None:
             entry[1].clear()
             if sent != _wanted_version:
                 sent = _wanted_version
-                await ws.send(json.dumps({"op": "wanted", "wanted": current_wanted()}))
+                await ws.send(json.dumps(current_options()))
             await entry[1].wait()
     finally:
         _wanted_waiters.discard(entry)
+
+
+#: the console's push connection to the daemon while it is open (_feed_loop): watchlist requests go on it
+_push_ws = None
+#: request id -> the future the daemon's watchlist record for it resolves (_ingest_pushed)
+_watchlist_answers: "dict[int, asyncio.Future]" = {}
+#: how long a watchlist request waits for the daemon's record (an add waits on Schwab's /quotes answer)
+WATCHLIST_ANSWER_SEC = 30.0
+
+
+async def watchlist_request(action: str, ticker: str) -> dict:
+    """An add or a removal ("add" | "remove") of `ticker`, sent to the daemon, which keeps the
+    watchlist; its record once the daemon has answered (capture.watchlist_message: the list, what
+    happened, Schwab's /quotes answer to an add's check). Raises ConnectionError while the push
+    connection is not open, TimeoutError when no record comes in WATCHLIST_ANSWER_SEC."""
+    ws = _push_ws
+    if ws is None:
+        raise ConnectionError("the capture daemon's push connection is not open")
+    rid = time.time_ns()
+    answer = asyncio.get_running_loop().create_future()
+    _watchlist_answers[rid] = answer
+    try:
+        await ws.send(json.dumps({"op": "watchlist", "action": action, "ticker": ticker, "id": rid}))
+        return await asyncio.wait_for(answer, WATCHLIST_ANSWER_SEC)
+    finally:
+        del _watchlist_answers[rid]
 
 # ── Runtime state (single asyncio task inside the SAME event loop as the server —
 #    no dedicated thread/loop needed once nothing here opens a socket) ──
@@ -253,6 +268,10 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
             if _on_chain_callback is not None:
                 _on_chain_callback(*done)
         return None
+    if topic == "watchlist":                        # the daemon's answer to a watchlist request
+        if msg["request_id"] in _watchlist_answers and not _watchlist_answers[msg["request_id"]].done():
+            _watchlist_answers[msg["request_id"]].set_result(msg)
+        return None
     sym = msg.get("symbol")
     ts = msg.get("ts_recv")
     if not sym or not isinstance(ts, (int, float)):
@@ -346,6 +365,30 @@ async def _rows_loop() -> None:
             await asyncio.sleep(PUSH_RECONNECT_SEC)
 
 
+async def serve_push(ws) -> None:
+    """One connection to the daemon's live push, for its life: the option contracts sent now and
+    on each change (_send_options), the watchlist requests sent on it (watchlist_request), and
+    every frame applied the moment it arrives (_ingest_pushed)."""
+    global _push_ws
+    sender = asyncio.create_task(_send_options(ws))
+    _push_ws = ws
+    try:
+        async for frame in ws:
+            try:
+                env = json.loads(frame)
+            except (TypeError, ValueError):
+                log.warning("live push: a frame that is not JSON was skipped: %r", frame[:200])
+                continue
+            _ingest_pushed(str(env["topic"]), env["msg"])
+            # a frame already received is handed over without a wait, so a backlog of chain
+            # parts would hold the loop: the daemon's status beat and every route take a turn
+            await asyncio.sleep(0)
+    finally:
+        _push_ws = None
+        sender.cancel()
+        await asyncio.gather(sender, return_exceptions=True)
+
+
 async def _feed_loop() -> None:
     """Consume the daemon's live push (LIVE_PUSH_URL) until the feed stops.
 
@@ -353,23 +396,8 @@ async def _feed_loop() -> None:
     (_ingest_pushed) -- no poll interval, no database read. A dropped connection is retried
     every PUSH_RECONNECT_SEC; while it is down, the live values age out through their own
     freshness checks and the screen shows them stale. There is no second source."""
-    global _feed_running
     from websockets.asyncio.client import connect
 
-    async def _consume(ws) -> None:
-        async for frame in ws:
-            if not _feed_running:
-                return
-            try:
-                env = json.loads(frame)
-            except (TypeError, ValueError):
-                continue
-            if not isinstance(env, dict):
-                continue
-            _ingest_pushed(str(env.get("topic") or ""), env.get("msg"))
-            # a frame already received is handed over without a wait, so a backlog of chain
-            # parts would hold the loop: the daemon's status beat and every route take a turn
-            await asyncio.sleep(0)
     rows = asyncio.create_task(_rows_loop(), name="daemon-price-rows")
     try:
         while _feed_running:
@@ -377,12 +405,7 @@ async def _feed_loop() -> None:
                 async with connect(LIVE_PUSH_URL, max_size=None, open_timeout=5,
                                    ping_interval=20, ping_timeout=20) as ws:
                     _log_stream("PUSH_CONNECTED", url=LIVE_PUSH_URL)
-                    sender = asyncio.create_task(_send_wanted(ws))
-                    try:
-                        await _consume(ws)
-                    finally:
-                        sender.cancel()
-                        await asyncio.gather(sender, return_exceptions=True)
+                    await serve_push(ws)
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001 -- daemon down/restarting: retry, never substitute
@@ -430,48 +453,6 @@ def clear_active_option_contract(*, reason: str) -> None:
     _active_option_contract = None
     _option_streaming_last_update_ts = None
     _wanted_changed()
-
-
-#: Which stocks/indexes a screen shows a live price for. The daemon streams the board itself;
-#: everything else a screen shows is requested here (the no-fallback rule means an unstreamed
-#: symbol reads UNAVAILABLE, so every shown symbol must be requested).
-#: The market context every page's header shows beside the selected ticker (Trade Desk,
-#: operator 2026-09-25). Standing demand: measured 2026-09-25, a page whose watchlist did not
-#: happen to hold them showed SPX/NDX/VIX as "—" all session because nobody requested them.
-MARKET_CONTEXT_SYMBOLS = ("$SPX", "$NDX", "$VIX")
-#: The browser's watchlist, as its page last declared it.
-_watchlist: "list[str]" = []
-_equity_lock = threading.Lock()
-
-
-def equity_symbols(active: "str | None", watchlist: "list[str]") -> "list[str]":
-    """Every symbol the screens show, none left out: the active ticker, the market context
-    (MARKET_CONTEXT_SYMBOLS), then the watchlist in its own order. Duplicates count once."""
-    ordered: list[str] = []
-    for sym in [active, *MARKET_CONTEXT_SYMBOLS, *watchlist]:
-        t = ticker_storage_key(sym or "")
-        if t and t not in ordered:
-            ordered.append(t)
-    return ordered
-
-
-def declare_watchlist(symbols: "list[str]") -> None:
-    """The browser's watchlist, whose live prices its page shows."""
-    global _watchlist
-    with _equity_lock:
-        _watchlist = [t for t in (ticker_storage_key(s or "") for s in symbols or []) if t]
-    _wanted_changed()
-
-
-def _screen_changed(old: "str | None", new: "str | None") -> None:
-    """The ticker on screen changed (push_changes): the old one's books are no longer streamed
-    and their state is forgotten; the daemon gets the new wanted list."""
-    forget_unsubscribed_symbols([old] if old else [], [new] if new else [])
-    _wanted_changed()
-    log.info("Live-plane feed: ticker on screen %s -> %s", old, new)
-
-
-push_changes.on_screen_change(_screen_changed)
 
 
 #: Monotonic generation for option-contract subscription commands: the operator's POST and
@@ -545,7 +526,7 @@ def set_active_option_contract(contract_symbol: str,
 
 #: The ADDITIONAL option contracts to stream beside the one primary/pinned
 #: `_active_option_contract` (RC-UI-3, 2026-09-12 multi-contract coverage). Both go to the
-#: daemon in current_wanted()'s LEVELONE_OPTIONS list.
+#: daemon in current_options()'s LEVELONE_OPTIONS list.
 _active_option_contracts: "list[str]" = []
 
 #: Serializes the swap of the additional-contracts set (the plural signal write).
