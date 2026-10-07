@@ -833,13 +833,13 @@ def _next_gamma_surface_seq(tk: str) -> int:
     return n
 
 
-def _desired_stream_greeks_for_ticker(listed: frozenset) -> dict:
+def _streamed_greeks_for_ticker(listed: frozenset) -> dict:
     """The newest streamed GAMMA/DELTA/OPEN_INTEREST/VOLUME of every contract the daemon streams
     of the ticker's chain (`listed`, the symbols Schwab listed in it), gathered whole on every
     call."""
     from app.options.order_flow.state import get_stream_greeks
     out: dict = {}
-    for sym in _desired_option_symbols_for_ticker(listed):
+    for sym in _held_option_symbols_for_ticker(listed):
         greeks = get_stream_greeks(sym)
         if greeks:
             out[sym] = greeks
@@ -853,7 +853,7 @@ def _current_stream_greeks(streamed: dict, now: float) -> dict:
     return {s: g for s, g in streamed.items() if lmp.outage(s, "LEVELONE_OPTIONS", now) is None}
 
 
-def _desired_option_symbols_for_ticker(listed: frozenset) -> "list[str]":
+def _held_option_symbols_for_ticker(listed: frozenset) -> "list[str]":
     """Every contract of the ticker's chain (`listed`, the symbols Schwab listed in it) the daemon
     holds on LEVELONE_OPTIONS -- the option rule's pick, as its heartbeat carries it -- whether
     or not a tick has landed for it yet (a held contract with no tick yet reads PENDING)."""
@@ -914,9 +914,9 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
     exposure computation); it says whether a streamed Schwab value backs it now.
 
     `streamed`: the streamed values of the contracts the daemon holds of this ticker
-    (_desired_stream_greeks_for_ticker); `overlay_symbols`: those the feed is delivering now
+    (_streamed_greeks_for_ticker); `overlay_symbols`: those the feed is delivering now
     (live_market_plane.feed_live_for, the one live rule); `held_symbols`: every contract the
-    daemon holds of this ticker, ticked or not (_desired_option_symbols_for_ticker). A daemon
+    daemon holds of this ticker, ticked or not (_held_option_symbols_for_ticker). A daemon
     that is down holds nothing: its cells keep their values and the header says OFFLINE. Each
     leg's age is at `now`.
       'live'         — the feed is delivering this symbol now.
@@ -1125,7 +1125,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
         payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")))
     listed = payload.get("_contract_symbols") or frozenset()
-    streamed = _desired_stream_greeks_for_ticker(listed)
+    streamed = _streamed_greeks_for_ticker(listed)
     # each field the newest Schwab sent: a current streamed value received after this chain, else
     # the chain's
     priced, n_live = overlay_streamed_contract_fields(
@@ -1163,7 +1163,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
                        stream_overlay_computed_ts_utc=at.timestamp())
         _stamp_gamma_surface_cell_stream_state(
             surface, streamed, {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS")},
-            set(_desired_option_symbols_for_ticker(listed)), at.timestamp())
+            set(_held_option_symbols_for_ticker(listed)), at.timestamp())
         surface["surface_seq"] = _next_gamma_surface_seq(tk)
         payload["_gamma_surface"] = surface
     with _terrain_cache_lock:
@@ -1771,7 +1771,7 @@ def get_options_tape(ticker: str = Query(...),
 
     `contract`, when given, scopes to exactly that vendor symbol. Otherwise scopes to every
     contract of `ticker` the daemon streams (its option rule's pick, the same identity
-    `_desired_option_symbols_for_ticker` resolves for the gamma-surface overlay), merged
+    `_held_option_symbols_for_ticker` resolves for the gamma-surface overlay), merged
     newest-first and capped at `limit` across the whole merge, not per-contract."""
     from app.options.order_flow.history import TAPE
 
@@ -1789,7 +1789,7 @@ def get_options_tape(ticker: str = Query(...),
         if not held or "_contract_symbols" not in held:
             return JSONResponse({"ticker": tk, "available": False, "rows": [],
                                  "reason": "the console holds no chain of this ticker yet"})
-        symbols = _desired_option_symbols_for_ticker(held["_contract_symbols"])
+        symbols = _held_option_symbols_for_ticker(held["_contract_symbols"])
 
     if not symbols:
         return JSONResponse({"ticker": tk, "available": False, "rows": [],
@@ -2488,7 +2488,7 @@ def get_chain(ticker: str = Query(...),
     fetched_ts = held.get("_chain_fetched_ts")
     # each field the newest Schwab sent (the levels' own rule, _publish_levels)
     response_contracts, overlay_n = overlay_streamed_contract_fields(
-        contracts, _current_stream_greeks(_desired_stream_greeks_for_ticker(held["_contract_symbols"]),
+        contracts, _current_stream_greeks(_streamed_greeks_for_ticker(held["_contract_symbols"]),
                                           time.time()), fetched_ts)
     live_spot, _src, _ts = resolve_spot(t)       # the one spot on every screen
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot)

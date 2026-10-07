@@ -257,7 +257,7 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain():
     _daemon(held=[foreign])
     _streamed(foreign, {"GAMMA": 0.99}, _T)
     _put_chain(fetched_ts=_T - 5.0)
-    assert server._desired_stream_greeks_for_ticker(_cached()["_contract_symbols"]) == {}
+    assert server._streamed_greeks_for_ticker(_cached()["_contract_symbols"]) == {}
     assert _cached()["_gamma_surface"]["stream_overlay_contracts"] == 0
 
 

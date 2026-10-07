@@ -103,6 +103,14 @@ def test_every_ticker_is_published_with_the_same_fields_and_atr_served_with_its_
     assert _call(tk)["available"] is True
 
 
+def test_with_no_levels_the_atr_is_served_with_its_reason():
+    """ATR is from the bars, not the chain: a ticker with no levels published still serves it
+    (here absent, with its reason)."""
+    import server
+    t = server.get_terrain(ticker="ZZNOLEVELSATR")
+    assert t["atr_daily"] is None and "0 trading days" in t["atr_daily_reason"]
+
+
 def test_fallback_is_labelled_not_live_never_intraday():
     tk = ticker_storage_key("ZZTESTX")   # no live cache, no banked chain in the offline test DB
     with server._terrain_cache_lock:
