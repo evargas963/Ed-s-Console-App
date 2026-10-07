@@ -17,6 +17,7 @@
 const { test, expect } = require('@playwright/test');
 const FIXTURE = require('./fixtures/options_microstructure_payload.json');
 const { served } = require('./fixtures/served_chain');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const DESIRED = FIXTURE.contract;                          // 'SPY   260911C00100000'
 const OTHER = 'SPY   260911P00100000';
@@ -93,6 +94,7 @@ async function setup(page, ctx) {
     else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, levels_stale: false };
     else if (url.includes('/api/expiries')) body = { expiries: ['2026-09-11'] };    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
+  await routeWatchlist(page, ['SPY']);
 }
 
 async function selectCallAndOpenFlow(page) {

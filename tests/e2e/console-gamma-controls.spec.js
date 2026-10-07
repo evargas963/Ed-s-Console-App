@@ -7,6 +7,7 @@
  * terrain Key Levels stay disclosed as all-exp when a single expiry is filtered. Offline.
  */
 const { test, expect } = require('@playwright/test');
+const { routeWatchlist } = require('./fixtures/watchlist');
 
 const EXPS = ['2026-09-11', '2026-09-12', '2026-09-18'];
 // the served window: every column, or the selected expiry's alone (server.py _surface_view)
@@ -46,10 +47,11 @@ async function intercept(page) {
 }
 
 test.describe('ticker / expiry / measure controls', () => {
+  let watchlist;                  // the list the daemon keeps, as its stand-in holds it
   test.beforeEach(async ({ page }) => {
     await intercept(page);
-    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY');
-      localStorage.setItem('ed_watchlist_v1', JSON.stringify(['SPY', 'QQQ', 'IWM'])); } catch (e) {} });
+    watchlist = await routeWatchlist(page, ['SPY', 'QQQ', 'IWM']);
+    await page.addInitScript(() => { try { localStorage.setItem('ed_ticker', 'SPY'); } catch (e) {} });
   });
 
   test('controls are real dropdowns (value is the control, no SYM/EXPIRY/MEASURE chips)', async ({ page }) => {
@@ -105,9 +107,9 @@ test.describe('ticker / expiry / measure controls', () => {
   // add/remove); ACTIVE INSTRUMENT = any supported Schwab symbol analysed now (typed -> Enter).
   test('#9 ACTIVE INSTRUMENT is not watchlist membership: any typed symbol switches the workspace; the watchlist never changes', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const wlBefore = await page.evaluate(() => localStorage.getItem('ed_watchlist_v1'));
+    await expect(page.locator('.wl-row')).toHaveCount(3);                         // the daemon's list, served
+    const wlBefore = watchlist.slice();
     const rowsBefore = await page.locator('.wl-row').count();
-    expect(rowsBefore).toBe(3);
     for (const sym of ['AAPL', 'META', 'AMZN', 'AVGO', 'PLTR']) {
       await typeSymbol(page, sym);
       await expect(page.locator('#hSym')).toHaveText(sym);                        // header
@@ -117,11 +119,11 @@ test.describe('ticker / expiry / measure controls', () => {
       await expect(page.locator('.wl-row.sel')).toHaveCount(0);                   // not a member -> no row selected, none added
       await expect(page.locator('.wl-row')).toHaveCount(rowsBefore);
     }
-    expect(await page.evaluate(() => localStorage.getItem('ed_watchlist_v1'))).toBe(wlBefore);   // persisted watchlist untouched
+    expect(watchlist).toEqual(wlBefore);                                          // the kept watchlist untouched
     // the header search analyses too — it never adds to the watchlist
     await page.locator('#symSearch').fill('nflx'); await page.locator('#symSearch').press('Enter');
     await expect(page.locator('#hSym')).toHaveText('NFLX');
-    expect(await page.evaluate(() => localStorage.getItem('ed_watchlist_v1'))).toBe(wlBefore);
+    expect(watchlist).toEqual(wlBefore);
     // a malformed entry is refused (nothing is fabricated, no allowlist decides): the control reverts
     await typeSymbol(page, 'not a symbol!!');
     await expect(page.locator('#hSym')).toHaveText('NFLX');
@@ -131,7 +133,21 @@ test.describe('ticker / expiry / measure controls', () => {
     await page.locator('#wlAdd').click();
     await expect(page.locator('.wl-row')).toHaveCount(rowsBefore + 1);
     await expect(page.locator('.wl-row.sel .wl-sym')).toHaveText('PLTR');
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ed_watchlist_v1')))).toEqual(['SPY', 'QQQ', 'IWM', 'PLTR']);
+    expect(watchlist).toEqual(['SPY', 'QQQ', 'IWM', 'PLTR']);                     // added through the console
+  });
+
+  // Step 4 (operator 2026-10-07): a ticker Schwab does not quote (named in errors.invalidSymbols) is
+  // shown as invalid with Schwab's answer and not added; a removal is the daemon's, its list the answer.
+  test('an invalid ticker is shown as invalid and not added; a removal leaves the served list', async ({ page }) => {
+    await routeWatchlist(page, ['SPY', 'QQQ', 'IWM'], ['ZQZQZ']);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.wl-row')).toHaveCount(3);
+    await page.evaluate(() => window.EdShell.addSymbol('ZQZQZ'));
+    await expect(page.locator('#wlMsg')).toHaveText(
+      'ZQZQZ is not added: Schwab does not quote it ({"errors":{"invalidSymbols":["ZQZQZ"]}})');
+    await expect(page.locator('.wl-row')).toHaveCount(3);
+    await page.locator('[data-rm="QQQ"]').click();
+    await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'IWM']);
   });
 
   test('#9 ONE ticker state: watchlist click, typed entry, Gamma / Chain / Flow and the expiry filter resolve to the same instrument, no prior-symbol request afterwards', async ({ page }) => {
