@@ -1,10 +1,10 @@
 """The board and the option chains (DATA_FLOW decisions 1 and 7), run by the capture daemon.
 
 The board (the logging_universe table) is the background tickers. In every open session the
-daemon fetches the full chain (every expiry, every strike) of the ticker on screen back to back
-and of every board ticker in turn, without end (ChainSweep); once the market is Closed it fetches
-every board ticker once (the close values) and then nothing until the next session. Each chain
-is handed to the console for the levels. The chain history: the first chain of each ticker fetched in
+daemon fetches the full chain (every expiry, every strike) of every board ticker and the ticker on
+screen, each in its turn in one rotation, without end (ChainSweep); once the market is Closed it
+fetches every board ticker once (the close values) and then nothing until the next session. Each
+chain is handed to the console for the levels. The chain history: the first chain of each ticker fetched in
 each capture window -- every 30 minutes from 9:30 to the close (ET), and 15 minutes after the close
 (the day's close capture), on market days -- is written here, one row per expiry, compressed, with
 Schwab's own underlying price. Schwab has no past option chains, so a chain not saved is gone.
@@ -19,7 +19,8 @@ import logging
 import sqlite3
 import threading
 import time
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,8 @@ from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
 from numeric_contract import schwab_number
 from production_universe import is_valid_production_ticker
-from schwab_client import fetch_full_chain, flatten_chain_contracts
+from schwab_client import (GREEK_FIELDS, QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries,
+                           safe_get_chain, safe_get_quotes)
 from stream_spine import CaptureWriter
 from time_et import (ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date,
                      session_label)
@@ -164,14 +166,6 @@ def board_tickers(db_path: Path | str) -> list[str]:
 #: whole chain in one ($SPX, 29,394 contracts: 40.7 MB, 924 ms to encode, measured 2026-10-01)
 #: would hold the daemon's event loop; 500 contracts take tens of milliseconds
 CHAIN_PART_CONTRACTS = 500
-#: the threads fetching chains: one for the active ticker, back to back, the rest for the board
-CHAIN_WORKERS = 8
-#: after Schwab answers 429, no chain request for this long
-RATE_LIMITED_PAUSE_SEC = 10.0
-#: after Schwab refuses us (403: its edge, Akamai, denies access) or a request fails outright (no
-#: client, auth refused, the network down), no chain request for this long; then one chain is
-#: fetched alone, and the sweep goes on only once that fetch succeeds
-FAILED_PAUSE_SEC = 5.0
 
 
 def chain_messages(ticker: str, contracts: list[dict], fetched_ts: float) -> list[tuple[str, dict]]:
@@ -195,182 +189,205 @@ def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dic
         {"topic": f"chain.{ticker}", "msg": msg}, separators=(",", ":"))}
 
 
+@dataclass(eq=False)
+class _Chain:
+    """A ticker's chain from its first request until its last quote is in."""
+    ticker: str
+    started: float                                                 # its first request
+    spots: "dict[str, float | None]" = field(default_factory=dict)  # expiry -> Schwab's underlyingPrice in its answer
+    by_expiry: "dict[str, list[dict]]" = field(default_factory=dict)
+    unquoted: "set[str]" = field(default_factory=set)              # contracts whose quote is not in
+
+    def contracts(self) -> "list[dict]":
+        return [ct for cts in self.by_expiry.values() for ct in cts]
+
+
 class ChainSweep:
-    """The one fetcher of option chains, on CHAIN_WORKERS threads sharing the daemon's one Schwab
-    client (the daemon's event loop never waits on it); a ticker is fetched by one worker at a
-    time. In every open session (time_et.session_label: Pre-Market, RTH, After-Hours) the active
-    ticker (the one on the operator's screen, set_active) is fetched back to back, ahead of
-    everything, and every board ticker in turn, without end, by the other workers. While Closed
-    every board ticker is fetched once, its close values (a failed fetch is tried again after
-    FAILED_PAUSE_SEC), and then nothing until the next session: the close values stand, and a
-    ticker put on screen while Closed is not fetched. After a refusal or a failure
-    (FAILED_PAUSE_SEC) one chain is fetched alone until one lands. Each chain is published to
-    the console in parts (chain_messages); a failure is published
-    with Schwab's answer. The first fetch of a ticker begun inside a capture window
-    (capture_slot) is also written to the chain history; a history write that fails is a
-    write failure, never the chain's: the chain as the sweep received it is handed to
-    `failures` (the daemon's writer) to keep as sent."""
+    """The one fetcher of option chains: one thread, one request at a time on the daemon's one
+    Schwab client, every ticker the same, in one rotation (sorted): the board and the ticker on
+    the operator's screen (set_active). For each ticker, Schwab's expiration chain once per ET
+    date, then one chain request per expiry (strike_range=ALL), as Schwab says to break up a
+    large chain. The chain's own Greeks (GREEK_FIELDS, rounded by Schwab) are never kept: a
+    contract whose LEVELONE_OPTIONS record (`streamed`) carries all of them takes the stream's,
+    each with its field's Schwab time; every other contract is asked for on the quotes endpoint,
+    QUOTES_BATCH_MAX symbols to a request across tickers, and takes its quote's, with the
+    quote's quoteTime. A Greek Schwab does not send is absent (None). Each contract carries the
+    time of its Greeks as `greeksTime` ({field: Schwab's time, ms}).
+
+    A chain is published to the console in parts (chain_messages) once all its quotes are in; a
+    ticker whose request fails (an answer other than 200, or none) is published as failed with
+    the reason, and the rotation goes on. While Closed (time_et.session_label) every board ticker
+    is fetched once, its close values (a failed one again in the next pass), and then nothing
+    until the next session. The first chain of a ticker begun inside a capture window
+    (capture_slot) is also written to the chain history; a history write that fails is a write
+    failure, never the chain's: the chain as delivered is handed to `failures` (the daemon's
+    writer) to keep."""
 
     def __init__(self, db_path: Path | str, board: "list[str]", publish: "callable",
-                 clock: "callable" = time.time, *, failures: "CaptureWriter") -> None:
+                 clock: "callable" = time.time, *, failures: "CaptureWriter",
+                 streamed: "callable") -> None:
         self.db_path = db_path
         self.board = list(board)        # the daemon's board, read at its start
         self.publish = publish          # (topic, msg) -> None, safe from any thread
-        self.clock = clock              # when a fetch begins, and when its chain is received
+        self.clock = clock              # when a request begins, and when a chain is delivered
         self.failures = failures        # the daemon's writer: keeps a failed history write
-        self._lock = threading.RLock()
-        self._changed = threading.Condition(self._lock)
-        self._active: str | None = None
-        self._round: list[str] = []
-        self._round_started: float | None = None
+        self.streamed = streamed        # option symbol -> its bus current (topic, record) or None
+        self.active: str | None = None  # the ticker on the operator's screen
         self.round_sec: float | None = None
-        self._fetching: set[str] = set()
-        self._written: dict[str, float] = {}
-        self._paused_until = 0.0
-        self._probing = False           # after a refusal or failure: one fetch at a time
-                                        # until one succeeds
-        self._closed: "list[str] | None" = None    # while Closed: the board tickers whose close
-                                                    # values are not yet fetched; None while open
+        self._expiries: "dict[str, tuple[date, list[date]]]" = {}   # ticker -> (ET date, expiries)
+        self._queue: "list[tuple[_Chain, dict]]" = []     # contracts whose quote is not asked for
+        self._delivered: "set[str]" = set()                # the tickers this rotation delivered
+        self._written: "dict[str, float | None]" = {}       # ticker -> its newest history capture
+        self._close_left: "set[str] | None" = None         # while Closed: board tickers whose close
+                                                           # values are not in; None while open
 
     def set_active(self, ticker: str | None) -> None:
-        """The ticker on the operator's screen (None: none)."""
-        with self._changed:
-            self._active = ticker
-            self._changed.notify_all()      # an idle worker takes it now
+        """The ticker on the operator's screen (None: none): it is in the rotation, in its turn."""
+        self.active = ticker
 
-    def _next(self, now: float) -> str | None:
-        """The next ticker to fetch, taken by the caller: the active ticker whenever no worker is
-        fetching it, else the round's next. A ticker being fetched by another worker now is
-        skipped. While probing, nothing is taken while any fetch is in flight. While Closed: the
-        next board ticker whose close values are not yet fetched."""
-        with self._lock:
-            if self._probing and self._fetching:
-                return None
-            if session_label(datetime.fromtimestamp(now, ET)) == "Closed":
-                if self._closed is None:          # the market has just closed, or the daemon
-                    self._closed = sorted(self.board)   # started while it is Closed
-                tk = next((t for t in self._closed if t not in self._fetching), None)
-                if tk is not None:
-                    self._closed.remove(tk)
-                    self._fetching.add(tk)
-                return tk
-            self._closed = None
-            if self._active is not None and self._active not in self._fetching:
-                self._fetching.add(self._active)
-                return self._active
-            if not self._round:
-                if self._fetching - {self._active}:
-                    return None             # the round ends when its last fetch is done
-                if self._round_started is not None:
-                    self.round_sec = now - self._round_started
-                self._round = sorted(self.board)
-                self._round_started = now if self._round else None
-            while self._round:
-                tk = self._round.pop(0)
-                if tk not in self._fetching:
-                    self._fetching.add(tk)
-                    return tk
-            return None
+    def work(self, schwab_client, stop: threading.Event) -> None:
+        """The thread's life, until `stop`: rotation after rotation on the daemon's client
+        (`schwab_client()`). While Closed, once every board ticker's close values are in, it
+        looks each second for the next session."""
+        while not stop.is_set():
+            if session_label(datetime.fromtimestamp(self.clock(), ET)) != "Closed":
+                self._close_left = None
+                self.rotation(schwab_client, sorted({*self.board, self.active} - {None}), stop)
+                continue
+            if self._close_left is None:              # the market has just closed, or the daemon
+                self._close_left = set(self.board)    # started while it is Closed
+            if self._close_left:
+                self._close_left -= self.rotation(schwab_client, sorted(self._close_left), stop)
+            else:
+                stop.wait(1.0)
 
-    def fetch_one(self, client, ticker: str) -> bool:
+    def rotation(self, schwab_client, tickers: "list[str]", stop: threading.Event) -> "set[str]":
+        """Each ticker's chain in turn, the queued quotes asked for whenever a full request's worth
+        is waiting and the rest at the end; the tickers delivered."""
         started = self.clock()
-        resp = fetch_full_chain(client, ticker)
-        now = self.clock()
-        if resp.status_code != 200:
-            if resp.status_code == 429:
-                with self._lock:
-                    self._paused_until = now + RATE_LIMITED_PAUSE_SEC
-            if resp.status_code == 403:
-                self._refused(now)
-            reason = resp.reason or f"HTTP {resp.status_code}"
-            log.warning("chain %s: %s", ticker, reason)
-            self.publish(*chain_failure_message(ticker, reason, now))
-            return False
-        with self._lock:
-            self._probing = False
-        payload = resp.json()
-        contracts = flatten_chain_contracts(payload)
-        for topic, msg in chain_messages(ticker, contracts, now):
-            self.publish(topic, msg)
+        self._delivered = set()
+        for ticker in tickers:
+            if stop.is_set():
+                break
+            self.fetch_chain(schwab_client, ticker)
+            while len(self._queue) >= QUOTES_BATCH_MAX:
+                self.send_quotes(schwab_client)
+        while self._queue and not stop.is_set():
+            self.send_quotes(schwab_client)
+        self.round_sec = self.clock() - started
+        log.info("chain rotation: %d of %d tickers delivered in %.0f s",
+                 len(self._delivered), len(tickers), self.round_sec)
+        return self._delivered
+
+    def fetch_chain(self, schwab_client, ticker: str) -> None:
+        """`ticker`'s chain, every expiry: each contract's Greeks from the stream, or the contract
+        queued for its quote; delivered at once when none is queued."""
+        chain = _Chain(ticker, self.clock())
         try:
-            self._write_history(ticker, payload, contracts, started, now)
+            client = schwab_client()
+            today = datetime.fromtimestamp(chain.started, ET).date()
+            listed = self._expiries.get(ticker)
+            if listed is None or listed[0] != today:
+                expiries, resp = option_expiries(client, ticker, today)
+                if expiries is None:
+                    return self.fail([chain], f"expiration chain returned HTTP {resp.status_code}")
+                listed = self._expiries[ticker] = (today, expiries)
+            for expiry in listed[1]:
+                resp = safe_get_chain(client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry)
+                if resp.status_code != 200:
+                    return self.fail([chain], f"chain for {expiry} returned HTTP {resp.status_code}")
+                payload = resp.json()
+                chain.spots[expiry.isoformat()] = schwab_number(payload.get("underlyingPrice"))
+                chain.by_expiry[expiry.isoformat()] = flatten_chain_contracts(payload)
+        except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the rotation goes on
+            log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
+            return self.fail([chain], f"{type(e).__name__}: {e}")
+        for ct in chain.contracts():
+            entry = self.streamed(ct["symbol"])
+            if entry is not None and all(f.upper() in entry[1]["content"] for f in GREEK_FIELDS):
+                ct.update({f: entry[1]["content"][f.upper()] for f in GREEK_FIELDS})
+                ct["greeksTime"] = {f: entry[1]["field_ts"][f.upper()][0] for f in GREEK_FIELDS}
+            else:
+                ct.update(dict.fromkeys(GREEK_FIELDS))
+                ct["greeksTime"] = None
+                chain.unquoted.add(ct["symbol"])
+                self._queue.append((chain, ct))
+        if not chain.unquoted:
+            self.deliver(chain)
+
+    def send_quotes(self, schwab_client) -> None:
+        """One quotes request for the next QUOTES_BATCH_MAX queued contracts, which take their
+        quote's Greeks; each chain it completes is delivered. A request that fails fails every
+        ticker in it."""
+        batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
+        chains = list({id(chain): chain for chain, _ct in batch}.values())
+        try:
+            resp = safe_get_quotes(schwab_client(), [ct["symbol"] for _chain, ct in batch])
+            if resp.status_code != 200:
+                return self.fail(chains, f"quotes for {len(batch)} contracts returned HTTP {resp.status_code}")
+            quoted = {s: e["quote"] for s, e in resp.json().items()}
+        except Exception as e:  # noqa: BLE001 -- those tickers' answer is the failure; the rotation goes on
+            log.warning("quotes for %d contracts failed: %s: %s", len(batch), type(e).__name__, e)
+            return self.fail(chains, f"{type(e).__name__}: {e}")
+        for chain, ct in batch:
+            quote = quoted.get(ct["symbol"])
+            if quote is not None:
+                ct.update({f: quote.get(f) for f in GREEK_FIELDS})
+                ct["greeksTime"] = dict.fromkeys(GREEK_FIELDS, quote.get("quoteTime"))
+            chain.unquoted.discard(ct["symbol"])
+        for chain in chains:
+            if not chain.unquoted:
+                self.deliver(chain)
+
+    def fail(self, chains: "list[_Chain]", reason: str) -> None:
+        """Each chain's ticker is published as failed with `reason`; its contracts leave the queue.
+        The log has the cause already: Schwab's answer (schwab_client.log_request) or the error."""
+        now = self.clock()
+        self._queue = [(chain, ct) for chain, ct in self._queue if chain not in chains]
+        for chain in chains:
+            self.publish(*chain_failure_message(chain.ticker, reason, now))
+
+    def deliver(self, chain: _Chain) -> None:
+        """The chain to the console, and to the chain history when it is the window's first."""
+        now = self.clock()
+        contracts = chain.contracts()
+        for topic, msg in chain_messages(chain.ticker, contracts, now):
+            self.publish(topic, msg)
+        self._delivered.add(chain.ticker)
+        missing = sum(1 for ct in contracts if ct["greeksTime"] is None)
+        if missing:
+            log.warning("quotes for %s: no quote came back for %d of %d contracts; their Greeks are absent",
+                        chain.ticker, missing, len(contracts))
+        try:
+            self._write_history(chain, now)
         except Exception as e:  # noqa: BLE001 -- the chain is delivered; a failed history write is the writer's to keep and show
-            log.warning("chain history for %s not written, kept as sent: %s: %s",
-                        ticker, type(e).__name__, e)
-            self.failures.keep_failure(f"chain_history.{ticker}", payload, e, now)
-        return True
+            log.warning("chain history for %s not written, kept as delivered: %s: %s",
+                        chain.ticker, type(e).__name__, e)
+            self.failures.keep_failure(f"chain_history.{chain.ticker}",
+                                       {"spots": chain.spots, "contracts": contracts}, e, now)
 
-    def _done(self, ticker: str, delivered: bool) -> None:
-        """A worker's fetch of `ticker` has ended. While Closed, a board ticker whose close
-        values were not delivered is fetched again, after FAILED_PAUSE_SEC."""
-        with self._changed:
-            self._fetching.discard(ticker)
-            if not delivered and self._closed is not None and ticker in self.board \
-                    and ticker not in self._closed:
-                self._closed.append(ticker)
-                self._paused_until = max(self._paused_until, self.clock() + FAILED_PAUSE_SEC)
-            self._changed.notify_all()
-
-    def _write_history(self, ticker: str, payload: dict, contracts: list[dict],
-                       started: float, now: float) -> None:
-        """The chain history: a fetch begun inside a capture window, the first one of the window
-        for this ticker (a fetch begun before 16:15 is not the close capture, whenever it ends)."""
-        slot = capture_slot(started)
+    def _write_history(self, chain: _Chain, now: float) -> None:
+        """The chain history: a chain begun inside a capture window, the first one of the window
+        for this ticker (a chain begun before 16:15 is not the close capture, whenever it ends),
+        one row per expiry with the underlying price of that expiry's answer."""
+        ticker = chain.ticker
+        slot = capture_slot(chain.started)
         if slot is None:
             return
         if ticker not in self._written:
-            newest = newest_capture_ts(self.db_path, ticker) or 0.0
-            with self._lock:
-                self._written.setdefault(ticker, newest)
-        with self._lock:                                   # claim the window for this ticker
-            before = self._written[ticker]
-            if before >= slot:
-                return
-            self._written[ticker] = slot
+            self._written[ticker] = newest_capture_ts(self.db_path, ticker)
+        before = self._written[ticker]
+        if before is not None and before >= slot:
+            return
+        self._written[ticker] = slot                       # claim the window for this ticker
         try:
-            spot = schwab_number(payload.get("underlyingPrice"))
-            by_expiry: dict[str, list[dict]] = {}
-            for ct in contracts:
-                by_expiry.setdefault(str(ct.get("expirationDate") or "")[:10], []).append(ct)
-            for expiry, cts in by_expiry.items():
+            for expiry, cts in chain.by_expiry.items():
                 persist_complete_chain_capture(self.db_path, ticker=ticker, expiry=expiry, contracts=cts,
-                                               spot=spot, completeness_basis=CAPTURE_BASIS, ts_utc=now)
+                                               spot=chain.spots[expiry], completeness_basis=CAPTURE_BASIS,
+                                               ts_utc=now)
         except Exception:
-            with self._lock:                               # unwritten: the window's next fetch tries
-                self._written[ticker] = before
+            self._written[ticker] = before                 # unwritten: the window's next chain tries
             raise
-
-    def _refused(self, now: float) -> None:
-        """No chain request for FAILED_PAUSE_SEC, then one fetch at a time until one succeeds."""
-        with self._lock:
-            self._paused_until = now + FAILED_PAUSE_SEC
-            self._probing = True
-
-    def work(self, schwab_client, stop: threading.Event) -> None:
-        """One worker thread's life: the next ticker, its chain on the daemon's client
-        (`schwab_client()`), until `stop`. A request that fails outright is a refusal
-        (_refused)."""
-        while not stop.is_set():
-            wait = self._paused_until - self.clock()
-            if wait > 0:
-                stop.wait(wait)
-                continue
-            with self._changed:
-                ticker = self._next(self.clock())
-                if ticker is None:
-                    # woken the moment a fetch ends or the active ticker changes; the timeout
-                    # looks at `stop` and, while Closed, at whether the next session has opened
-                    self._changed.wait(1.0)
-                    continue
-            delivered = False
-            try:
-                delivered = self.fetch_one(schwab_client(), ticker)
-            except Exception as e:  # noqa: BLE001 -- that ticker's answer is the failure; the sweep goes on
-                log.warning("chain %s failed: %s: %s", ticker, type(e).__name__, e)
-                self.publish(*chain_failure_message(ticker, f"{type(e).__name__}: {e}", self.clock()))
-                self._refused(self.clock())
-            finally:
-                self._done(ticker, delivered)
 
 
 def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
