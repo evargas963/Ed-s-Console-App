@@ -3,16 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import threading
-import time
 from datetime import datetime as _dt
 
-import live_market_plane as lmp
 import push_changes
 import server as srv
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from micro_structure import Candle
-from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
-from time_et import ET, now_et
+from tests.feed_live_helper import daemon_bars, stream_daemon_bars
+from time_et import ET
 
 #: Schwab's SPY and TSLA bars as the capture daemon recorded them, Mon 2026-09-29 and Tue 09-30
 _DAEMON_0929 = daemon_bars("real_daemon_bars_spy_tsla_2026_09_29_30.json")
@@ -140,21 +138,18 @@ def test_strikes_payload_carries_server_side_sums(monkeypatch):
 def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
     """t12 (RC-227 residual): the PDL must be the min of the WHOLE prior session. Measured
     live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH/PDC
-    matched. The capture daemon's record of Schwab's bars is the one bar history, loaded into
-    the console's memory at startup (server._load_bars), so the whole prior session there sets
-    every prior-day level. Schwab's SPY and TSLA bars of Mon 2026-09-29 as recorded, the levels
-    of Tue 09-30 at 10:00 ET."""
+    matched. The console's 1-minute bars in memory are the one bar history, so the whole prior
+    session there sets every prior-day level. Schwab's SPY and TSLA bars of Mon 2026-09-29 as
+    recorded, streamed to the console, the levels of Tue 09-30 at 10:00 ET."""
     now = _dt(2026, 9, 30, 10, 0, tzinfo=ET)
     _forget(*_PAIR)
-    record_daemon_bars(_DAEMON_0929)
     try:
-        srv._load_bars()                              # the console's start
+        stream_daemon_bars(_DAEMON_0929)
         payloads = {}
         for tk in _PAIR:
             srv._publish_price_levels(tk, now)        # as the bar writer does
             payloads[tk] = srv.levels_payload(tk, "1", now)
     finally:
-        forget_daemon_bars(_DAEMON_0929)
         _forget(*_PAIR)
     for tk in _PAIR:
         monday = _rth(_DAEMON_0929, tk, "2026-09-29")
@@ -171,15 +166,14 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
     viewed or not, so a page switching to it finds them current; a new session is built by the
     levels loop; the route serves what was published and reads no bar. Schwab's SPY and TSLA
     bars of 2026-09-29/30 as the capture daemon recorded them: each ticker's newest receipt
-    arrives as a pushed bar, valued at Tue 09-30 19:59:30 ET, the rest loaded at the start."""
+    arrives as a pushed bar, valued at Tue 09-30 19:59:30 ET, the rest streamed before it."""
     tk, other = _PAIR
     now = _dt(2026, 9, 30, 19, 59, 30, tzinfo=ET)
     pushed = {t: _newest(_DAEMON_0929, t)[-1] for t in _PAIR}
     loaded = [r for r in _DAEMON_0929 if r not in pushed.values()]
     _forget(*_PAIR)
-    record_daemon_bars(loaded)
     try:
-        srv._load_bars()                                                   # the console's start
+        stream_daemon_bars(loaded)
 
         # nothing published yet: the levels are absent with their reason
         none_yet = srv.levels_payload(tk, "1", now)
@@ -233,47 +227,4 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         assert {lv["id"]: lv["price"] for lv in nextday["levels"]}["PDH"] == max(
             r["high"] for r in _rth(_DAEMON_0929, tk, "2026-09-30"))
     finally:
-        forget_daemon_bars(loaded)
-        _forget(*_PAIR)
-
-
-def test_the_console_serves_while_the_levels_loop_waits_for_the_stored_bars():
-    """2026-09-28, operator: the console window's start was "slow as molasses": the stored-levels
-    load ran before the app served its first request. The levels loop runs on its own thread and
-    builds nothing until the bar writer has loaded the stored bars; the console serves
-    meanwhile, and once the bars are loaded the loop publishes the board's levels. The real loop
-    and the real bar writer, on Schwab's SPY and TSLA bars of 2026-09-29/30 as the capture daemon
-    recorded them, the board SPY and TSLA. The loop is started as start_terrain_loop starts it (its
-    run flag set, then its thread; start_terrain_loop itself refuses to start under pytest) and
-    stopped by stop_terrain_loop."""
-    board = list(_PAIR)
-    _forget(*_PAIR)
-    srv._bars_loaded.clear()
-    record_daemon_bars(_DAEMON_0929)
-    srv._terrain_loop_running = True
-    loop = threading.Thread(target=srv._terrain_loop, daemon=True)
-    writer = threading.Thread(target=srv._bar_writer, daemon=True)
-    published = lambda: all(srv.canonical_price_level_snapshot(t, now_et()) is not None for t in board)
-    try:
-        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": board})
-        loop.start()
-        time.sleep(0.6)
-        for t in board:                                      # the console serves while the loop waits
-            assert srv.levels_payload(t, "1", now_et())["generation"] is None, t
-        assert loop.is_alive()
-        writer.start()                                       # the bars load; the loop goes on
-        deadline = time.monotonic() + 10
-        while not published() and time.monotonic() < deadline:
-            lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "board": board})
-            time.sleep(0.1)
-        for t in board:
-            snap = srv.canonical_price_level_snapshot(t, now_et())
-            assert snap is not None and snap.levels["PDH"].price == max(
-                r["high"] for r in _rth(_DAEMON_0929, t, "2026-09-30")), t
-    finally:
-        srv.stop_terrain_loop()
-        if writer.is_alive():
-            srv.stop_bar_writer(writer)
-        loop.join(5)
-        forget_daemon_bars(_DAEMON_0929)
         _forget(*_PAIR)

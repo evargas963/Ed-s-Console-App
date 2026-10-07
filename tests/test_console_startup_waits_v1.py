@@ -1,6 +1,6 @@
-"""The console's start, as its window shows it: while it waits for the stored bars and for the
-capture daemon's heartbeat, it says what it waits for and for how long. The real console
-(uvicorn server:app) on a free port, with no daemon to reach (ports 1, as the browser tests)."""
+"""The console's start, as its window shows it: while it waits for the capture daemon's
+heartbeat, it says what it waits for and for how long. The real console (uvicorn server:app) on
+a free port, with no daemon to reach (ports 1, as the browser tests)."""
 from __future__ import annotations
 
 import os
@@ -38,6 +38,6 @@ def test_the_console_says_what_it_waits_for_and_for_how_long(tmp_path):
         console.kill()
         console.wait(30)
     text = "".join(lines)
-    assert "done waiting for the stored bars to load after " in text, text
-    seconds = [int(s) for s in re.findall(re.escape(waited) + r"(\d+) s so far\)", text)]
+    assert "stored bars" not in text, "nothing is loaded from a database at the start"
+    seconds =[int(s) for s in re.findall(re.escape(waited) + r"(\d+) s so far\)", text)]
     assert seconds[0] == 0 and seconds[1] >= 5, text

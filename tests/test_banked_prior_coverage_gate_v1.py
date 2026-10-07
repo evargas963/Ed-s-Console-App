@@ -1,6 +1,6 @@
-"""Audit round 2 (2026-08-25) — the prior session's bars carry coverage honesty. (The capture
-daemon's record of Schwab's 1-minute bars is the ONE bar history, loaded into the console's
-memory at startup, so this stamp guards every level read.)
+"""Audit round 2 (2026-08-25) — the prior session's bars carry coverage honesty. (The console's
+1-minute bars -- Schwab's price history and its streamed bars, held in the console's memory --
+are the ONE bar history, so this stamp guards every level read.)
 
 WHAT WAS MEASURED: the >=LEVELS_PRIOR_SESSION_MIN_BARS floor existed only on the
 accumulator path (t12/RC-227), while the banked fallback fires precisely WHEN coverage
@@ -19,7 +19,7 @@ from datetime import datetime
 
 import server
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
-from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
+from tests.feed_live_helper import daemon_bars, stream_daemon_bars
 from time_et import ET
 
 _ROWS = daemon_bars("real_daemon_bars_spy_tsla_spx_2026_10_01_02.json", "SPY", "TSLA")
@@ -27,8 +27,8 @@ _PAIR = ("SPY", "TSLA")
 
 
 def _published(now: datetime) -> dict:
-    """Each ticker's price levels published at `now` from the recorded bars, loaded as the
-    console's start loads them; nothing is left behind."""
+    """Each ticker's price levels published at `now` from the recorded bars, streamed to the
+    console as the daemon pushed them; nothing is left behind."""
     def forget():
         for tk in _PAIR:
             server._bars.pop(tk, None)
@@ -36,16 +36,14 @@ def _published(now: datetime) -> dict:
                 del _MATERIALIZED_SNAPSHOTS[key]
 
     forget()
-    record_daemon_bars(_ROWS)
     try:
-        server._load_bars()                           # the console's start
+        stream_daemon_bars(_ROWS)
         out = {}
         for tk in _PAIR:
             server._publish_price_levels(tk, now)
             out[tk] = server.canonical_price_level_snapshot(tk, now)
         return out
     finally:
-        forget_daemon_bars(_ROWS)
         forget()
 
 

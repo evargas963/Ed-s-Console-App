@@ -85,6 +85,15 @@ CREATE TABLE IF NOT EXISTS stream_news_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_snr_sym_ts ON stream_news_raw(symbol, ts_recv);
+-- Schwab's /pricehistory answers, verbatim: one row per series asked (1m, 15m, 1d), the whole answer.
+CREATE TABLE IF NOT EXISTS stream_pricehistory_raw (
+    ts_recv REAL NOT NULL,
+    symbol TEXT NOT NULL,
+    series TEXT NOT NULL,
+    native_json TEXT NOT NULL,
+    src TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sphr_sym_ts ON stream_pricehistory_raw(symbol, series, ts_recv);
 -- Every subscribe/unsubscribe the daemon sent and Schwab's answer. With it, a gap in the
 -- data tables can be told apart: "we were not subscribed" versus "subscribed, nothing
 -- changed". code 0 = accepted; anything else carries Schwab's reason.
@@ -394,6 +403,9 @@ _INSERTS = {
     "news": ("INSERT INTO stream_news_raw(ts_recv,symbol,native_json,src,schwab_ts) VALUES(?,?,?,?,?)",
              lambda m: (m.get("ts_recv"), m.get("symbol"), json.dumps(m["content"]), m["src"],
                         m.get("schwab_ts"))),
+    "pricehistory": ("INSERT INTO stream_pricehistory_raw(ts_recv,symbol,series,native_json,src) "
+                     "VALUES(?,?,?,?,?)",
+                     lambda m: (m["ts_recv"], m["symbol"], m["series"], json.dumps(m["answer"]), m["src"])),
     "sub": ("INSERT INTO stream_subscriptions(ts,service,command,symbols_json,code,reason) "
             "VALUES(?,?,?,?,?,?)",
             lambda m: (m.get("ts"), m.get("service"), m.get("command"),

@@ -1,8 +1,8 @@
-"""Bars come from one source: Schwab's streamed CHART_EQUITY 1-minute bars. The capture daemon
-records them (stream_capture.db stream_bars_raw, its one writer, the history) and forwards them;
-the console keeps them in memory (server._bars, loaded from the daemon's record once at startup,
-then each pushed bar); every live reader reads memory. Only completed bars are served. A minute
-the stream did not deliver stays missing."""
+"""Bars come from Schwab: its 1-minute price history (/pricehistory, which the capture daemon asks
+for each ET date) and its streamed CHART_EQUITY 1-minute bars, which the daemon records
+(stream_capture.db stream_bars_raw) and forwards. The console keeps them in memory (server._bars:
+the history, each pushed bar on top); every live reader reads memory. Only completed bars are
+served. A minute Schwab sent neither way stays missing."""
 from __future__ import annotations
 
 import threading
@@ -15,7 +15,7 @@ import app.options.order_flow.streaming as ofs
 import server
 from app.market_data.schwab.streaming.live_push import is_forwarded
 from stream_spine import bar_msg
-from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
+from tests.feed_live_helper import price_history
 from time_et import ET, ct_label
 
 TK = "ZZBARS"
@@ -82,17 +82,12 @@ def test_a_minute_the_stream_did_not_deliver_stays_missing():
     assert [b.ts for b in server._bars_1m(TK)] == [T0, T0 + 60, T0 + 180]
 
 
-def test_bars_are_loaded_promptly_and_exactly_while_options_are_priced_in_the_same_process():
-    """The console prices option chains in the interpreter that loads and serves the bars. Schwab's
-    SPY and TSLA bars as the capture daemon recorded them (2026-09-29/30, each receipt, every hour
-    Schwab sent), loaded at startup (server._load_bars) beside a busy pure-Python thread: each
-    minute is Schwab's newest bar for it with every field as sent, the pre-market and after-hours
-    bars included, and the load does not wait on that thread per row."""
-    rows = daemon_bars("real_daemon_bars_spy_tsla_2026_09_29_30.json")
-    lo, hi = min(r["bar_start_ms"] for r in rows), max(r["bar_start_ms"] for r in rows)
-    newest = {}
-    for r in sorted(rows, key=lambda r: r["ts_recv"]):
-        newest[(r["symbol"], r["bar_start_ms"])] = r
+def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_priced_in_the_same_process():
+    """The console prices option chains in the interpreter that takes and serves the bars. Schwab's
+    SPY and TSLA 1-minute price history as /pricehistory answered it at 2026-10-07 09:57 UTC (10
+    days, extended hours: ~11,000 candles each), taken by the bar writer (server._write_streamed_bars,
+    as the daemon pushes it) beside a busy pure-Python thread: each minute is Schwab's candle with
+    every field as sent, the pre-market and after-hours minutes included, in well under a second."""
     busy = threading.Event()
 
     def price_options():
@@ -101,28 +96,31 @@ def test_bars_are_loaded_promptly_and_exactly_while_options_are_priced_in_the_sa
             for i in range(1000):
                 x += i * i
 
-    record_daemon_bars(rows)
+    answers = {tk: price_history(tk, "1m") for tk in ("SPY", "TSLA")}
+    for tk in answers:
+        server._bars.pop(tk, None)
     t = threading.Thread(target=price_options, daemon=True)
     t.start()
     try:
         t0 = time.perf_counter()
-        server._load_bars()
-        read = {tk: server._bars_1m(tk, server.BARS_KEPT) for tk in ("SPY", "TSLA")}
+        server._write_streamed_bars([{"src": "schwab_pricehistory", "symbol": tk, "series": "1m",
+                                      "ts_recv": a["answered_utc"], "answer": a["body"]}
+                                     for tk, a in answers.items()], datetime.fromtimestamp(answers["SPY"]["answered_utc"], ET))
+        read = {tk: server._bars_1m(tk, server.BARS_KEPT) for tk in answers}
         took = time.perf_counter() - t0
     finally:
         busy.set()
         t.join()
-        forget_daemon_bars(rows)
-        for tk in ("SPY", "TSLA"):
+        for tk in answers:
             server._bars.pop(tk, None)
-    for tk in ("SPY", "TSLA"):
-        got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in read[tk] if lo / 1000 <= b.ts <= hi / 1000]
-        want = [(ms / 1000, r["open"], r["high"], r["low"], r["close"], r["volume"])
-                for (sym, ms), r in sorted(newest.items()) if sym == tk]
+    for tk, a in answers.items():
+        got = [(b.ts, b.open, b.high, b.low, b.close, b.volume) for b in read[tk]]
+        want = [(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+                for c in a["body"]["candles"]]
         assert got == want, tk
-        assert any(datetime.fromtimestamp(ts, ET).hour < 9 for ts, *_ in got), f"{tk}: no pre-market bar kept"
-        assert any(datetime.fromtimestamp(ts, ET).hour >= 17 for ts, *_ in got), f"{tk}: no after-hours bar kept"
-    assert took < 1.0, f"{sum(len(v) for v in read.values())} bars took {took:.2f} s beside a busy thread"
+        assert any(datetime.fromtimestamp(ts, ET).hour < 9 for ts, *_ in got), f"{tk}: no pre-market minute kept"
+        assert any(datetime.fromtimestamp(ts, ET).hour >= 17 for ts, *_ in got), f"{tk}: no after-hours minute kept"
+    assert took < 1.0, f"{sum(len(v) for v in read.values())} candles took {took:.2f} s beside a busy thread"
 
 
 def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute():

@@ -32,7 +32,7 @@ from app.market_data.schwab.streaming import capture, live_push
 from calibration.complete_chain_capture import ChainSweep, chain_messages
 from liquidity_value_engine import _MATERIALIZED_SNAPSHOTS
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, bar_msg
-from tests.feed_live_helper import daemon_bars, forget_daemon_bars, record_daemon_bars
+from tests.feed_live_helper import daemon_bars, price_history, stream_daemon_bars
 from tests.schwab_rest_standin import LocalSchwab
 from time_et import ET, now_et
 
@@ -487,14 +487,13 @@ def _forget(*tickers: str) -> None:
 
 def test_d5_while_closed_the_price_levels_are_the_last_sessions():
     """Schwab's SPY and TSLA bars of Mon 2026-09-29 and Tue 09-30 as the capture daemon recorded
-    them, loaded at the console's start, valued at Wed 10-01 03:00 ET (Closed): the levels served
-    are Tuesday's session's, its VWAP, value area and opening range, never an empty day's
+    them, streamed to the console, valued at Wed 10-01 03:00 ET (Closed): the levels served are
+    Tuesday's session's, its VWAP, value area and opening range, never an empty day's
     (2026-10-04: every ticker showed "no RTH volume" all weekend)."""
     closed = datetime(2026, 10, 1, 3, 0, tzinfo=ET)
     _forget(*_PAIR)
-    record_daemon_bars(_DAEMON_0929)
     try:
-        server._load_bars()
+        stream_daemon_bars(_DAEMON_0929)
         for tk in _PAIR:
             server._publish_price_levels(tk, closed)
             body = server.levels_payload(tk, "1", closed)
@@ -504,23 +503,28 @@ def test_d5_while_closed_the_price_levels_are_the_last_sessions():
             assert body["snapshot_as_of_ts_utc"] == _newest(_DAEMON_0929, tk)[-1]["bar_start_ms"] / 1000, tk
             assert served["PDH"] == max(r["high"] for r in _rth(_DAEMON_0929, tk, "2026-09-29")), tk
     finally:
-        forget_daemon_bars(_DAEMON_0929)
         _forget(*_PAIR)
 
 
-def test_d6_a_bar_pushed_before_the_stored_bars_load_builds_levels_on_the_whole_history():
-    """The console's start: the daemon pushes each ticker's current bar the moment the console
-    connects, before the recorded bars are loaded. The bar writer loads them first, so the levels
-    built from that bar stand on the whole history (2026-10-04: 35 board tickers' levels were
-    built from their one pushed bar, every prior-day level absent). Schwab's SPY and TSLA bars of
-    2026-09-29/30 as the daemon recorded them; each ticker's newest receipt pushed, the rest loaded."""
+def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history():
+    """The console's start: the daemon pushes each ticker's Schwab 1-minute price history and its
+    streamed bars as they come (2026-10-04: 35 board tickers' levels were built from their one
+    pushed bar, every prior-day level absent). The bar writer writes everything that arrived
+    together before it builds a level, so the levels stand on the whole history, and a streamed
+    minute stands over Schwab's history of it. Real data: SPY's and TSLA's /pricehistory 1-minute
+    answers of 2026-10-07 09:57 UTC (10 days, through 05:59 ET), each pushed as the daemon builds
+    its message (complete_chain_capture.price_history_message), and each ticker's newest streamed
+    receipt of Tue 2026-09-30 as the daemon recorded it."""
+    from calibration.complete_chain_capture import price_history_message
     pushed = [_newest(_DAEMON_0929, tk)[-1] for tk in _PAIR]
-    loaded = [r for r in _DAEMON_0929 if r not in pushed]
+    history = {tk: price_history(tk, "1m") for tk in _PAIR}
     _forget(*_PAIR)
     while not ofs.streamed_bars.empty():
         ofs.streamed_bars.get_nowait()
-    record_daemon_bars(loaded)
     try:
+        for tk, a in history.items():
+            topic, msg = price_history_message(tk, "1m", a["body"], a["answered_utc"])
+            ofs._ingest_pushed(topic, json.loads(msg["frame"])["msg"])          # as the console receives it
         for r in pushed:
             ofs._ingest_pushed(f"bar1m.{r['symbol']}", bar_msg(
                 symbol=r["symbol"], bar_start_ms=r["bar_start_ms"], open=r["open"], high=r["high"], low=r["low"],
@@ -532,14 +536,19 @@ def test_d6_a_bar_pushed_before_the_stored_bars_load_builds_levels_on_the_whole_
         assert not writer.is_alive()
         for r in pushed:
             tk = r["symbol"]
+            candles = history[tk]["body"]["candles"]
+            at = [(datetime.fromtimestamp(c["datetime"] / 1000, ET), c) for c in candles]
+            monday = [c for d, c in at if d.date().isoformat() == "2026-10-06" and 570 <= d.hour * 60 + d.minute < 960]
             snap = server.canonical_price_level_snapshot(tk, now_et())
-            tuesday = _rth(_DAEMON_0929, tk, "2026-09-30")
-            assert snap.as_of_ts_utc == r["bar_start_ms"] / 1000, tk
+            assert snap.as_of_ts_utc == candles[-1]["datetime"] / 1000, tk
             assert (snap.levels["PDL"].price, snap.levels["PDH"].price) == (
-                min(b["low"] for b in tuesday), max(b["high"] for b in tuesday)), tk
-            assert snap.degraded == [], tk
+                min(c["low"] for c in monday), max(c["high"] for c in monday)), tk
+            held = {b.ts: b for b in server._bars_1m(tk, server.BARS_KEPT)}
+            assert len(held) == len(candles), tk
+            minute = held[r["bar_start_ms"] / 1000]
+            assert (minute.open, minute.high, minute.low, minute.close, minute.volume) == (
+                r["open"], r["high"], r["low"], r["close"], r["volume"]), (tk, "the streamed minute stands")
     finally:
-        forget_daemon_bars(loaded)
         _forget(*_PAIR)
 
 
@@ -554,9 +563,9 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
     """2026-10-04 audit: the console's old bar store holds bars our quote accumulator built (one
     sampled price a minute, no volume) and history re-seeds, and the console loaded them at its
     start. Real data from production for SPY and TSLA on 2026-09-24: the old store's rows (its
-    built rows included) beside the daemon's record of Schwab's bars. With both present, every
-    bar the chart and the levels read is Schwab's recorded bar; a minute only the old store holds
-    is absent."""
+    built rows included) beside the daemon's record of Schwab's bars, streamed to the console. With
+    both present, every bar the chart and the levels read is Schwab's; a minute only the old store
+    holds is absent (no code reads the old store)."""
     fx = json.loads((FX / "real_console_store_vs_daemon_spy_tsla_2026_09_24.json").read_text(encoding="utf-8"))
     store, daemon = fx["console_store"], fx["daemon"]
     con = sqlite3.connect(server.get_db().db_path)
@@ -569,9 +578,8 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
     finally:
         con.close()
     _forget(*_PAIR)
-    record_daemon_bars(daemon)
     try:
-        server._load_bars()
+        stream_daemon_bars(daemon)
         for tk in _PAIR:
             recorded = {r["bar_start_ms"] / 1000: (r["open"], r["high"], r["low"], r["close"], r["volume"])
                         for r in _newest(daemon, tk)}
@@ -587,7 +595,6 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
             assert served == recorded == levels_input, tk
             assert not set(old_only) & set(served), tk
     finally:
-        forget_daemon_bars(daemon)
         _forget(*_PAIR)
         con = sqlite3.connect(server.get_db().db_path)
         con.execute("DROP TABLE IF EXISTS price_bars_1m")
@@ -851,8 +858,9 @@ def test_the_daemon_builds_one_schwab_client_and_a_refused_refresh_never_rebuild
 
 def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_asked_at_once(tmp_path):
     """Schwab's edge answers the captured 403 page: the ticker's chain fails with Schwab's status,
-    and the sweep asks for the next ticker at once. The clock is 2026-10-01 08:00 ET (pre-market,
-    outside every capture window, so nothing is written)."""
+    its price history is not published, and the sweep asks for the next request at once. The
+    clock is 2026-10-01 08:00 ET (pre-market, outside every capture window, so nothing is
+    written)."""
     schwab = _LocalSchwab(refuse=True)
     published = []
     now = 1790856000.0                                    # 2026-10-01 08:00 ET
@@ -867,5 +875,7 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
         schwab.close()
     assert [(m["ticker"], m["failed"]) for m in published] == [
         ("AAA", "expiration chain returned HTTP 403"), ("BBB", "expiration chain returned HTTP 403")]
-    gets = [t for t, method, _p, _a in schwab.requests if method == "GET"]
-    assert len(gets) == 2 and gets[1] - gets[0] < 1.0, "no pause after a 403"
+    gets = [(t, path) for t, method, path, _a in schwab.requests if method == "GET"]
+    assert [p for _t, p in gets] == ["/marketdata/v1/expirationchain"] + ["/marketdata/v1/pricehistory"] * 3 \
+        + ["/marketdata/v1/expirationchain"] + ["/marketdata/v1/pricehistory"] * 3
+    assert all(b[0] - a[0] < 1.0 for a, b in zip(gets, gets[1:])), "no pause after a 403"

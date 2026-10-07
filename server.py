@@ -323,22 +323,20 @@ from calibration.complete_chain_capture import (
 )
 
 
-#: one recorded bar as SQLite writes values in SQL (quote: every stored double exactly, NULL as NULL)
-_BAR_TEXT = " || ' ' || ".join(f"quote({f})" for f in ("bar_start_ms", "open", "high", "low", "close", "volume"))
-
-
-#: every ticker's completed 1-minute bars, oldest first, the newest BARS_KEPT (the ATR's ~23
-#: sessions): Schwab's CHART_EQUITY bars as sent, every hour Schwab sends them. Owned by the bar
-#: writer (_bar_writer): loaded once from the capture daemon's record of them, its first step
-#: (_load_bars), then each streamed bar as it arrives (_keep_bar). Every live reader reads this,
-#: never a database (docs/DATA_FLOW.md §2 D6).
+#: every ticker's completed 1-minute bars, oldest first, the newest BARS_KEPT: Schwab's own
+#: 1-minute price history (its last 10 days, extended hours, from the capture daemon's
+#: /pricehistory request each ET date) with Schwab's streamed CHART_EQUITY bars on top, a streamed
+#: minute replacing Schwab's history of it. Owned by the bar writer (_bar_writer). Every live
+#: reader reads this, never a database (docs/DATA_FLOW.md §2 D6).
 BARS_KEPT = 24_000
 _bars: "dict[str, list[Candle]]" = {}
+#: every ticker's 15-minute and daily candles as Schwab's /pricehistory sent them (the daemon asks
+#: in every chain rotation): series ("15m", "1d") -> ticker -> candles, oldest first. Owned by the
+#: bar writer; the ATR reads them.
+_candles: "dict[str, dict[str, list[Candle]]]" = {"15m": {}, "1d": {}}
 _bars_lock = threading.Lock()
-#: set once the bar writer has loaded the recorded bars; the levels loop builds nothing before it
-_bars_loaded = threading.Event()
 #: where the bars come from, named in every level's provenance
-BAR_SOURCE = "Schwab CHART_EQUITY (stream_bars_raw)"
+BAR_SOURCE = "Schwab /pricehistory 1-minute bars and CHART_EQUITY"
 
 
 def _schwab_bar(start_ms, o, h, lo, c, volume) -> "Candle | None":
@@ -352,32 +350,24 @@ def _schwab_bar(start_ms, o, h, lo, c, volume) -> "Candle | None":
     return Candle(ts=float(start_ms) / 1000.0, open=o, high=h, low=lo, close=c, volume=schwab_count(volume))
 
 
-def _load_bars() -> None:
-    """Each ticker's newest BARS_KEPT minutes of Schwab's CHART_EQUITY bars as the capture daemon
-    recorded them (stream_capture.db stream_bars_raw, its one writer), Schwab's newest bar for each
-    minute, read in one SQLite step per symbol (a row-by-row read hands the interpreter lock back
-    at every row). The one database read of the bars, the bar writer's first step, before it takes
-    any streamed bar. With no record yet (the daemon has never run) there are no bars."""
-    import sqlite3 as _sq
-    from db_authority import canonical_stream_db_path
-    path = canonical_stream_db_path()
-    if not path.exists():
-        log.warning("bars: %s does not exist (the capture daemon writes it); no bars are loaded", path)
-        return
-    con = _sq.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=10.0)
-    try:
-        for (sym,) in con.execute("SELECT DISTINCT symbol FROM stream_bars_raw").fetchall():
-            (text,) = con.execute(
-                f"SELECT group_concat({_BAR_TEXT}, ';' ORDER BY bar_start_ms) FROM (SELECT * FROM "
-                "(SELECT *, ROW_NUMBER() OVER (PARTITION BY bar_start_ms ORDER BY ts_recv DESC) AS newest "
-                "FROM stream_bars_raw WHERE symbol=?) WHERE newest=1 ORDER BY bar_start_ms DESC LIMIT ?)",
-                (sym, BARS_KEPT)).fetchone()
-            rows = [[None if v == "NULL" else float(v) for v in r.split(" ")] for r in text.split(";")] if text else []
-            bars = [b for b in (_schwab_bar(*r) for r in rows) if b is not None]
-            with _bars_lock:
-                _bars[ticker_storage_key(sym)] = bars
-    finally:
-        con.close()
+def _write_price_history(msg: dict) -> "str | None":
+    """One series of a ticker's price history as Schwab's /pricehistory answered it (pushed by the
+    capture daemon): its 1-minute bars into the ticker's bars, each streamed bar standing over
+    Schwab's history of its minute; its 15-minute or daily candles replacing the held ones. A
+    candle without a valid field is not kept. The ticker when its 1-minute bars changed, else None."""
+    tk = ticker_storage_key(msg["symbol"])
+    candles = [b for b in (_schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
+                                       c.get("close"), c.get("volume")) for c in msg["answer"]["candles"])
+               if b is not None]
+    with _bars_lock:
+        if msg["series"] != "1m":
+            _candles[msg["series"]][tk] = candles
+            return None
+        merged = {c.ts: c for c in candles}
+        if tk in _bars:
+            merged.update((c.ts, c) for c in _bars[tk])
+        _bars[tk] = [merged[t] for t in sorted(merged)][-BARS_KEPT:]
+    return tk
 
 
 def _keep_bar(tk: str, bar: "Candle") -> None:
@@ -421,29 +411,32 @@ def _write_streamed_bar(msg: dict) -> bool:
 
 
 def _write_streamed_bars(msgs: list, now: datetime) -> None:
-    """Write streamed bars, then build the price levels of each ticker written for the market's
-    session at `now`: every bar is written before any level is built (a minute's bars for the
-    whole board arrive together)."""
+    """Write streamed bars and price histories (a message with a `series`), then build the price
+    levels of each ticker whose 1-minute bars were written, for the market's session at `now`:
+    everything that arrived together is written before any level is built (a minute's bars for
+    the whole board arrive together)."""
     written = []
     for msg in msgs:
         try:
-            if _write_streamed_bar(msg):
+            if "series" in msg:
+                tk = _write_price_history(msg)
+                if tk is not None:
+                    written.append(tk)
+                    push_changes.changed(tk, push_changes.LIQUIDITY)
+            elif _write_streamed_bar(msg):
                 written.append(msg["symbol"])
         except Exception as e:  # noqa: BLE001 -- logged; the next bar is still written
-            log.warning("streamed bar for %s not written: %s", msg.get("symbol"), e)
+            log.warning("streamed bar or price history for %s not written: %s", msg.get("symbol"), e)
     for tk in dict.fromkeys(written):
         _publish_price_levels(tk, now)
 
 
 def _bar_writer() -> None:
-    """The bar writer, the one owner of the bars in memory (_bars): the stored bars first
-    (_load_bars), then every streamed bar the capture daemon pushes, as it arrives, with the
-    bars already waiting behind it. The push queue holds the bars that arrive during the load,
-    so no level is ever built from a part of the history. Ends at stop_bar_writer's None, once
-    every bar queued before it is written."""
+    """The bar writer, the one owner of the bars and candles in memory (_bars, _candles): every
+    streamed bar and price history the capture daemon pushes, as it arrives, with those already
+    waiting behind it. Ends at stop_bar_writer's None, once everything queued before it is
+    written."""
     from app.options.order_flow.streaming import streamed_bars
-    _load_bars()
-    _bars_loaded.set()
     while True:
         msgs = [streamed_bars.get()]
         while not streamed_bars.empty():
@@ -1522,11 +1515,10 @@ def _wait_for(what: str, ready) -> None:
 
 
 def _terrain_loop() -> None:
-    """The board's stored levels once the bar writer has loaded the stored bars and the daemon
-    has said what the board is (queued behind the delivered chains: _load_stored_levels); then
-    every STATUS_EVERY_SEC the status line is logged and the price levels of a new session or a
-    new ticker are published. The chains arrive from the daemon (_on_chain)."""
-    _wait_for("the stored bars to load", _bars_loaded.is_set)
+    """The board's stored levels once the daemon has said what the board is (queued behind the
+    delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged
+    and the price levels of a new session or a new ticker are published. The chains, and the bars
+    each ticker's price levels are built from, arrive from the daemon (_on_chain, _bar_writer)."""
     _wait_for("the capture daemon's heartbeat (it says what the board is)", lambda: _board() is not None)
     board = _board() or []
     _load_crosses(board)
@@ -1576,25 +1568,13 @@ def stop_terrain_loop() -> None:
     _terrain_loop_running = False
 
 
-#: ATR is derived from ~100 sessions of 1-minute bars, so it moves slowly. Recomputing it
-#: per radar poll would re-read the bar table for every ticker every 20 seconds.
-_atr_cache: dict[str, tuple[float, "AtrPair"]] = {}
-_atr_lock = threading.Lock()
-ATR_TTL_SEC: float = 900.0
-
-
 def _atr_pair(ticker: str) -> "AtrPair":
-    """The ticker's (daily, 15-minute) ATR from its 1-minute bars (_bars_1m), recomputed at most
-    every ATR_TTL_SEC. Too few bars reads as None, never a vendor stand-in."""
+    """The ticker's (daily, 15-minute) ATR from Schwab's daily and 15-minute candles as the bar
+    writer holds them (_candles; none from Schwab yet: none held). Too few reads as None with why."""
     tk = ticker_storage_key(ticker)
-    with _atr_lock:
-        hit = _atr_cache.get(tk)
-    if hit is not None and time.time() - hit[0] < ATR_TTL_SEC:
-        return hit[1]
-    pair = compute_atr_pair(_bars_1m(tk, BARS_KEPT))
-    with _atr_lock:
-        _atr_cache[tk] = (time.time(), pair)
-    return pair
+    with _bars_lock:
+        return compute_atr_pair([*_candles["1d"][tk]] if tk in _candles["1d"] else [],
+                                [*_candles["15m"][tk]] if tk in _candles["15m"] else [])
 
 
 def _atr_fields(tk: str) -> dict:

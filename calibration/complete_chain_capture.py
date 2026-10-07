@@ -20,7 +20,7 @@ import sqlite3
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -183,6 +183,26 @@ def chain_messages(ticker: str, contracts: list[dict], fetched_ts: float) -> lis
     return out
 
 
+#: Schwab's price history of every ticker (GET /pricehistory,
+#: docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt): series -> (periodType,
+#: period, frequencyType, frequency). Each request ends now (endDate; without it Schwab ends at the
+#: previous business day's close), extended hours included. The 1-minute bars once per ET date
+#: (the stream's CHART_EQUITY bars carry them on from there); the 15-minute and daily candles in
+#: every rotation, so the current candle is Schwab's latest.
+PRICE_HISTORY = {"1m": ("day", 10, "minute", 1), "15m": ("day", 10, "minute", 15), "1d": ("year", 1, "daily", 1)}
+
+
+def price_history_message(ticker: str, series: str, answer: dict, fetched_ts: float) -> tuple[str, dict]:
+    """One series of a ticker's price history as its bus message: Schwab's whole answer as sent
+    (its candles and every other field), recorded by the daemon's writer like every stream
+    message, with its finished wire frame (built here, off the event loop: a ticker's 1-minute
+    answer is ~1 MB)."""
+    topic = f"pricehistory.{ticker}.{series}"
+    msg = {"src": "schwab_pricehistory", "symbol": ticker, "series": series, "ts_recv": fetched_ts,
+           "answer": answer}
+    return topic, {**msg, "frame": json.dumps({"topic": topic, "msg": msg}, separators=(",", ":"))}
+
+
 def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dict]:
     msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": ts, "failed": reason}
     return f"chain.{ticker}", {**msg, "frame": json.dumps(
@@ -215,6 +235,9 @@ class ChainSweep:
     quote's quoteTime. A Greek Schwab does not send is absent (None). Each contract carries the
     time of its Greeks as `greeksTime` ({field: Schwab's time, ms}).
 
+    After each ticker's chain, its price history (fetch_price_history): Schwab's 1-minute bars
+    once per ET date, its 15-minute and daily candles in every rotation.
+
     A chain is published to the console in parts (chain_messages) once all its quotes are in; a
     ticker whose request fails (an answer other than 200, or none) is published as failed with
     the reason, and the rotation goes on. While Closed (time_et.session_label) every board ticker
@@ -236,6 +259,7 @@ class ChainSweep:
         self.active: str | None = None  # the ticker on the operator's screen
         self.round_sec: float | None = None
         self._expiries: "dict[str, tuple[date, list[date]]]" = {}   # ticker -> (ET date, expiries)
+        self._minutes_day: "dict[str, date]" = {}          # ticker -> the ET date its 1-minute bars came
         self._queue: "list[tuple[_Chain, dict]]" = []     # contracts whose quote is not asked for
         self._delivered: "set[str]" = set()                # the tickers this rotation delivered
         self._written: "dict[str, float | None]" = {}       # ticker -> its newest history capture
@@ -271,6 +295,7 @@ class ChainSweep:
             if stop.is_set():
                 break
             self.fetch_chain(schwab_client, ticker)
+            self.fetch_price_history(schwab_client, ticker)
             while len(self._queue) >= QUOTES_BATCH_MAX:
                 self.send_quotes(schwab_client)
         while self._queue and not stop.is_set():
@@ -279,6 +304,30 @@ class ChainSweep:
         log.info("chain rotation: %d of %d tickers delivered in %.0f s",
                  len(self._delivered), len(tickers), self.round_sec)
         return self._delivered
+
+    def fetch_price_history(self, schwab_client, ticker: str) -> None:
+        """`ticker`'s price history (PRICE_HISTORY), each series published as Schwab sent its
+        candles; a series Schwab does not answer 200 is not published (log_request has the answer)
+        and is asked again in the next rotation."""
+        now = self.clock()
+        today = datetime.fromtimestamp(now, ET).date()
+        for series, (period_type, period, frequency_type, frequency) in PRICE_HISTORY.items():
+            if series == "1m" and self._minutes_day.get(ticker) == today:
+                continue
+            try:
+                resp = schwab_client().get_price_history(
+                    ticker, period_type=period_type, period=period, frequency_type=frequency_type,
+                    frequency=frequency, end_datetime=datetime.fromtimestamp(now, timezone.utc),
+                    need_extended_hours_data=True)
+                if resp.status_code != 200:
+                    continue
+                answer = resp.json()
+            except Exception as e:  # noqa: BLE001 -- that series' answer is the failure; the rotation goes on
+                log.warning("price history %s %s failed: %s: %s", ticker, series, type(e).__name__, e)
+                continue
+            self.publish(*price_history_message(ticker, series, answer, self.clock()))
+            if series == "1m":
+                self._minutes_day[ticker] = today
 
     def fetch_chain(self, schwab_client, ticker: str) -> None:
         """`ticker`'s chain, every expiry: each contract's Greeks from the stream, or the contract

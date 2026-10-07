@@ -2,13 +2,15 @@
 the real schwab-py client (schwab_client.client_from_token_file_atomic, as the daemon builds it).
 
 It answers the expiration chain (each ticker's captured expiry, and PASSED, which has passed), the
-chain of a captured expiry in Schwab's chain shape, and the quotes of the symbols asked for from the
-captured quotes. Every request is recorded once answered: (path, query, started, answered, the
-client's port).
+chain of a captured expiry in Schwab's chain shape, the quotes of the symbols asked for from the
+captured quotes, and the price history of a ticker's series as Schwab answered it. Every request is
+recorded once answered: (path, query, started, answered, the client's port).
 
-Real data: SPY's 2026-11-20 chain and its quotes (fixtures/real_spy_2026_11_20_chain_and_quotes.json)
-and TSLA's 2026-08-31 chain (fixtures/real_tsla_complete_chain_strike_range_all.json; its quotes
-were not captured). STAND-INS: the expiration chains; an answer other than 200 (its body).
+Real data: SPY's 2026-11-20 chain and its quotes (fixtures/real_spy_2026_11_20_chain_and_quotes.json),
+TSLA's 2026-08-31 chain (fixtures/real_tsla_complete_chain_strike_range_all.json; its quotes were not
+captured), and SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
+(fixtures/real_pricehistory_spy_tsla_2026_10_07.json: 1-minute, 15-minute and daily candles).
+STAND-INS: the expiration chains; an answer other than 200 (its body).
 """
 from __future__ import annotations
 
@@ -30,8 +32,11 @@ TSLA = json.loads((FX / "real_tsla_complete_chain_strike_range_all.json").read_t
 #: ticker -> (its captured expiry, its captured contracts, Schwab's underlying price in the capture)
 CHAINS = {"SPY": ("2026-11-20", SPY["chain"], SPY["spot"]), "TSLA": ("2026-08-31", TSLA["chain"], None)}
 PASSED = "2026-08-27"
-EXPIRATIONS, CHAIN, QUOTES = ("/marketdata/v1/expirationchain", "/marketdata/v1/chains",
-                              "/marketdata/v1/quotes")
+EXPIRATIONS, CHAIN, QUOTES, PRICEHISTORY = ("/marketdata/v1/expirationchain", "/marketdata/v1/chains",
+                                            "/marketdata/v1/quotes", "/marketdata/v1/pricehistory")
+#: (symbol, frequencyType, frequency) -> Schwab's captured /pricehistory answer
+HISTORY = {(a["symbol"], a["params"]["frequencyType"], a["params"]["frequency"]): a for a in json.loads(
+    (FX / "real_pricehistory_spy_tsla_2026_10_07.json").read_text(encoding="utf-8"))["answers"]}
 
 
 def chain_payload(ticker: str) -> dict:
@@ -101,6 +106,8 @@ class LocalSchwab:
                 payload[side].setdefault(f"{ct['expirationDate'][:10]}:{ct['daysToExpiration']}", {}) \
                     .setdefault(str(ct["strikePrice"]), []).append(ct)
             return 200, payload
+        if path == PRICEHISTORY:
+            return 200, HISTORY[(query["symbol"], query["frequencyType"], query["frequency"])]["body"]
         if self.quotes_status != 200:
             return self.quotes_status, {}
         if self.quotes_body is not None:
