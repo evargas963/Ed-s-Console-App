@@ -97,8 +97,8 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, on_request=None) -> No
 
     async def _read() -> None:
         """The console's frames, each handed to `on_request` with this connection
-        (capture.Daemon.console_frame): {"op": "options", ...}, the option contracts it names;
-        {"op": "watchlist", ...}, an add or a removal. Ends when the socket closes."""
+        (capture.Daemon.console_frame): {"op": "watchlist", ...}, an add or a removal. Ends when
+        the socket closes."""
         async for frame in ws:
             try:
                 req = json.loads(frame)
@@ -120,8 +120,6 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, on_request=None) -> No
         await asyncio.gather(pump, closed, return_exceptions=True)
         bus.unsubscribe(sub)
         stats["clients"] -= 1
-        if on_request is not None:   # this connection is gone: its contracts (if it named them) are withdrawn
-            on_request(None, ws)
 
 
 async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,

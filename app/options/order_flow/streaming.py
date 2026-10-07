@@ -17,16 +17,16 @@ permanent record (options history reads it); nothing live reads it. If the push 
 drops, the live values go stale and the screen says so; nothing falls back to the database
 (operator rule 2026-09-23: no fallbacks).
 
-The daemon streams every ticker on its watchlist (capture.Daemon.watchlist, the one list).
-Over the same socket this module sends the option contracts the screens name (current_options();
-{"op": "options", ...}; every change bumps _wanted_version and the feed loop sends the new
-list), and the operator's adds and removals of watchlist tickers (watchlist_request), each
-answered by the daemon's watchlist record. The daemon's one-second status comes on the price-row
-connection (_rows_loop, live_ui's "feed" beat), where no chain waits ahead of it, and is the one
-source for "is the daemon / Schwab alive", the watchlist and "what does Schwab hold / refuse".
+The daemon streams every ticker on its watchlist (capture.Daemon.watchlist, the one list), and
+picks the option contracts it streams itself (capture.Daemon.pick_options, the option rule).
+Over the same socket this module sends only the operator's adds and removals of watchlist
+tickers (watchlist_request), each answered by the daemon's watchlist record. The daemon's
+one-second status comes on the price-row connection (_rows_loop, live_ui's "feed" beat), where
+no chain waits ahead of it, and is the one source for "is the daemon / Schwab alive", the
+watchlist and "what does Schwab hold".
 
 Public API: `start_order_flow_stream` / `stop_order_flow_stream`
-/ `set_active_option_contract` / `get_option_contract_streaming_diagnostics`.
+/ `get_option_contract_streaming_diagnostics`.
 """
 
 from __future__ import annotations
@@ -35,7 +35,6 @@ import asyncio
 import json
 import queue
 import logging
-import threading
 import time
 from typing import Any, Callable, Optional
 
@@ -74,47 +73,6 @@ def price_row(ticker: str) -> "dict | None":
 #: Wait between reconnect attempts when the daemon's push server is down. While it is down
 #: no live value is refreshed -- the freshness checks turn them stale; nothing substitutes.
 PUSH_RECONNECT_SEC = 1.0
-#: Bumped whenever what this console wants streamed changes; the feed loop sends the new list.
-_wanted_version = 0
-#: (loop, event) of every task waiting for the wanted list to change; set from any thread.
-_wanted_waiters: "set[tuple[asyncio.AbstractEventLoop, asyncio.Event]]" = set()
-
-
-def _wanted_changed() -> None:
-    global _wanted_version
-    _wanted_version += 1
-    for loop, ev in list(_wanted_waiters):
-        loop.call_soon_threadsafe(ev.set)
-
-
-def _wait_for_wanted() -> "tuple[asyncio.AbstractEventLoop, asyncio.Event]":
-    """An event set whenever the wanted list changes, for the calling task (on its loop)."""
-    entry = (asyncio.get_running_loop(), asyncio.Event())
-    _wanted_waiters.add(entry)
-    return entry
-
-
-def current_options() -> "dict":
-    """The option contracts this console names for the daemon to stream, per option service:
-    the primary contract (L1 + book) plus every contract the views ask for (L1)."""
-    primary = [_active_option_contract] if _active_option_contract else []
-    return {"op": "options", "LEVELONE_OPTIONS": sorted(set(primary) | set(_active_option_contracts)),
-            "OPTIONS_BOOK": primary}
-
-
-async def _send_options(ws) -> None:
-    """Send the option contracts now, then again the moment they change, for this connection's life."""
-    entry = _wait_for_wanted()
-    try:
-        sent = None
-        while True:
-            entry[1].clear()
-            if sent != _wanted_version:
-                sent = _wanted_version
-                await ws.send(json.dumps(current_options()))
-            await entry[1].wait()
-    finally:
-        _wanted_waiters.discard(entry)
 
 
 #: the console's push connection to the daemon while it is open (_feed_loop): watchlist requests go on it
@@ -147,20 +105,8 @@ async def watchlist_request(action: str, ticker: str) -> dict:
 _feed_task: Optional[asyncio.Task] = None
 _feed_running = False
 
-#: The one option CONTRACT (OSI symbol) whose LEVELONE_OPTIONS/OPTIONS_BOOK rows this feed
-#: replays — a SEPARATE slot from the ticker on screen (an equity ticker and an option contract
-#: on that same underlying can be watched at once; they are different symbol identities in
-#: every table and signal file).
-_active_option_contract: Optional[str] = None
-#: Own staleness clock, separate from the equity ticker's — an option contract watched
-#: alongside a ticker must be able to go stale (or come up fresh) independently.
-_option_streaming_last_update_ts: Optional[float] = None
-#: PER-CONTRACT staleness clock (RC-UI-3 finding #4, 2026-09-12, REPRODUCED): the single
-#: scalar above is updated by ANY contract's message -- primary OR any additional one (see
-#: _ingest_pushed) -- so a fresh additional contract can mask a genuinely
-#: stale primary, and vice versa: querying one contract's health answered with another
-#: contract's heartbeat. Keyed by the SAME ticker_storage_key identity
-#: set_active_option_contract/set_active_option_contracts already normalize to.
+#: Each option contract's last streamed message time (LEVELONE_OPTIONS or OPTIONS_BOOK), keyed
+#: by ticker_storage_key.
 _option_contract_last_update_ts: dict[str, float] = {}
 
 #: Called with the symbol of every streamed equity quote and every option quote carrying
@@ -260,7 +206,6 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
     tick callback (an equity's tick is its price row's arrival). A message missing its symbol, its
     receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
     part."""
-    global _option_streaming_last_update_ts
     if not isinstance(msg, dict):
         return None
     if topic.startswith("chain."):
@@ -295,7 +240,6 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
             return None
         push_book(sym, content, msg["service"])
         if msg.get("service") == "OPTIONS_BOOK":
-            _option_streaming_last_update_ts = ts
             _option_contract_last_update_ts[sym] = ts
         else:
             recent.BOOKS.record(sym, msg["service"], content, ts)
@@ -308,7 +252,6 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         push_level_one(sym, content, ts_recv=ts, field_received=received)
         push_option_top(sym, content)
         recent.TAPE.record(sym, content, ts)
-        _option_streaming_last_update_ts = ts
         _option_contract_last_update_ts[sym] = ts
         # a tick when the newest message carried a value the levels use (a merged record holds
         # the last of each field; only one this message brought is new)
@@ -350,6 +293,7 @@ async def _rows_loop() -> None:
                     msg = json.loads(frame)
                     if msg.get("type") == "feed":
                         _lmp.record_feed_heartbeat(msg.get("feed"))
+                        _drop_released_options()
                     for row in msg.get("rows") or []:
                         _price_rows[row["ticker"]] = row
                         if msg.get("type") == "quotes":
@@ -366,11 +310,9 @@ async def _rows_loop() -> None:
 
 
 async def serve_push(ws) -> None:
-    """One connection to the daemon's live push, for its life: the option contracts sent now and
-    on each change (_send_options), the watchlist requests sent on it (watchlist_request), and
-    every frame applied the moment it arrives (_ingest_pushed)."""
+    """One connection to the daemon's live push, for its life: the watchlist requests sent on it
+    (watchlist_request), and every frame applied the moment it arrives (_ingest_pushed)."""
     global _push_ws
-    sender = asyncio.create_task(_send_options(ws))
     _push_ws = ws
     try:
         async for frame in ws:
@@ -385,8 +327,6 @@ async def serve_push(ws) -> None:
             await asyncio.sleep(0)
     finally:
         _push_ws = None
-        sender.cancel()
-        await asyncio.gather(sender, return_exceptions=True)
 
 
 async def _feed_loop() -> None:
@@ -421,202 +361,6 @@ async def _feed_loop() -> None:
         _log_stream("FEED_LOOP_STOP_DONE")
 
 
-
-def get_active_option_contract() -> Optional[str]:
-    """The DESIRED option contract symbol (this daemon's own signal), or None.
-
-    This is REQUESTED/desired state, same caveat as `_active_option_contract`'s other
-    readers (see the PR214 premerge gap 1A note below at the diagnostics endpoint): it can
-    be ahead of what the vendor has actually confirmed for one tick. Callers using this to
-    freshen a computation with streamed data already tolerate that (the data simply is not
-    there yet if the vendor hasn't caught up), so no additional confirmation is required
-    here — unlike stopping a process, freshening a projection has no destructive downside
-    to occasionally reading one tick early."""
-    return _active_option_contract
-
-
-def clear_active_option_contract(*, reason: str) -> None:
-    """Drop desired option-contract state and tell the daemon to unsubscribe.
-
-    Used when the active underlying changes and no replacement vendor symbol
-    exists — keeping the previous underlying's contract would stream the wrong
-    identity. Empty signal reads as None (fail-closed: no subscription).
-    """
-    global _active_option_contract, _option_streaming_last_update_ts
-    old = _active_option_contract
-    # Same guard as set_active_option_contract: do not wipe a symbol's shared live store
-    # while the ADDITIONAL set still desires it.
-    if old and old not in _active_option_contracts:
-        clear_symbol(old)
-        _option_contract_last_update_ts.pop(old, None)
-        _log_stream("OPTION_CONTRACT_CLEARED", old=old, reason=reason)
-    _active_option_contract = None
-    _option_streaming_last_update_ts = None
-    _wanted_changed()
-
-
-#: Monotonic generation for option-contract subscription commands: the operator's POST and
-#: the console's own choice for the ticker on screen (server._follow_screen_contract).
-#: Every command takes a number the moment it is admitted; only a command whose number is
-#: still the highest may write `_active_option_contract`, so ordering never depends on HTTP
-#: arrival or completion order. Guarded by a lock: the POST runs on a thread-pool executor.
-_option_command_seq: int = 0
-_option_command_lock = threading.Lock()
-
-
-class StaleOptionCommandError(RuntimeError):
-    """A superseded subscription command tried to write desired state after a newer one
-    already did. Raised instead of silently returning, so the caller reports the command
-    as superseded rather than as the successful current authority."""
-
-
-def begin_option_contract_command() -> int:
-    """Admit a subscription command and return its generation. Callers pass this back to
-    set_active_option_contract so a delayed command cannot overwrite a newer one."""
-    global _option_command_seq
-    with _option_command_lock:
-        _option_command_seq += 1
-        return _option_command_seq
-
-
-def set_active_option_contract(contract_symbol: str,
-                               command_generation: Optional[int] = None) -> bool:
-    """Request LEVELONE_OPTIONS+OPTIONS_BOOK for this ONE option contract and begin
-    replaying its rows. `contract_symbol` MUST already be a chain response's own "symbol"
-    field — never constructed here. A separate slot from the equity active ticker; it goes
-    to the daemon in the wanted list the moment it changes.
-
-    `command_generation` (from begin_option_contract_command) orders competing commands: a
-    request for A admitted before a request for B, but reaching this writer after it, is
-    superseded and refused (StaleOptionCommandError), so the daemon never streams a contract
-    the screen already moved off. Without a generation the write is unordered."""
-    global _active_option_contract, _option_streaming_last_update_ts
-    t = ticker_storage_key(contract_symbol)
-    if not t:
-        return False
-    # The staleness check and the two writes it guards happen under ONE lock: checking
-    # outside it would leave the same race one layer down.
-    with _option_command_lock:
-        if command_generation is not None and command_generation < _option_command_seq:
-            _log_stream("OPTION_CONTRACT_COMMAND_SUPERSEDED",
-                        contract=t, generation=command_generation,
-                        newest=_option_command_seq)
-            raise StaleOptionCommandError(
-                f"subscription command for {t} (generation {command_generation}) was "
-                f"superseded by a newer command (generation {_option_command_seq}); "
-                f"refusing to overwrite newer desired state")
-        if _active_option_contract == t:
-            return True
-        old = _active_option_contract
-        _log_stream("OPTION_CONTRACT_RESUBSCRIBE_START", old=old, new=t)
-        # Independent-review finding (2026-09-12), mirror case: a symbol the primary slot
-        # is switching AWAY from must not be cleared if it is STILL desired in the
-        # ADDITIONAL set (_active_option_contracts) -- clear_symbol wipes the one shared
-        # per-symbol live store regardless of which slot(s) name it, so clearing it here
-        # would erase state the additional-contracts subscription still depends on.
-        if old and old not in _active_option_contracts:
-            clear_symbol(old)
-        _active_option_contract = t
-        _wanted_changed()
-        _option_streaming_last_update_ts = None
-        log.info("Live-plane feed active option contract -> %s", t)
-        _log_stream("OPTION_CONTRACT_RESUBSCRIBE_DONE", contract=t)
-        return True
-
-
-#: The ADDITIONAL option contracts to stream beside the one primary/pinned
-#: `_active_option_contract` (RC-UI-3, 2026-09-12 multi-contract coverage). Both go to the
-#: daemon in current_options()'s LEVELONE_OPTIONS list.
-_active_option_contracts: "list[str]" = []
-
-#: Serializes the swap of the additional-contracts set (the plural signal write).
-_option_contracts_command_lock = threading.Lock()
-
-#: Per-view demand (2026-09-24). Every page that shows option contracts (the heatmap, Strike
-#: Detail, in any number of tabs) declares ITS OWN set under its own client id; the stream
-#: carries the union of every live declaration. MEASURED 2026-09-24:
-#: this used to be one last-writer-wins slot, so two views (a 0DTE ladder and the
-#: all-expiry grid) replaced each other's set on every render and the daemon swapped ~200
-#: contracts on the shared Schwab socket every few seconds until the socket died.
-#: A declaration is a lease: a live view re-declares every 30 s (DEMAND_REFRESH_MS in
-#: static/js/ed-stream.js), and one not refreshed within OPTION_DEMAND_LEASE_SEC -- a closed
-#: or crashed tab -- stops counting at the next declaration from any view.
-OPTION_DEMAND_LEASE_SEC = 90.0
-_option_demand_by_client: "dict[str, dict]" = {}
-_option_demand_lock = threading.Lock()
-
-
-def declare_option_contract_demand(client_id: str, contract_symbols: "list[str]", *,
-                                   seq: int, now: "float | None" = None) -> dict:
-    """Record one view's demand and stream the union of every live view's demand.
-
-    `seq` orders ONE client's declarations (a late, older request from the same view never
-    overwrites a newer one: StaleOptionCommandError). Different clients never supersede each
-    other -- that was the defect. Returns this client's accepted demand (`requested`, the
-    set the view can confirm against) and how many views are counted."""
-    cid = str(client_id or "").strip()
-    if not cid:
-        raise ValueError("client_id is required: demand is declared per view")
-    t = time.time() if now is None else float(now)
-    requested = sorted({ticker_storage_key(s) for s in (contract_symbols or [])  # caps-ok: a view declaring no contracts is an empty declaration, which releases its demand
-                        if ticker_storage_key(s)})
-    with _option_demand_lock:
-        prior = _option_demand_by_client.get(cid)
-        if prior is not None and seq <= prior["seq"]:
-            raise StaleOptionCommandError(
-                f"demand {requested} from view {cid} (seq {seq}) was superseded by that "
-                f"view's newer declaration (seq {prior['seq']})")
-        _option_demand_by_client[cid] = {"symbols": requested, "seq": seq, "ts": t}
-        for other in [k for k, v in _option_demand_by_client.items()
-                      if t - v["ts"] > OPTION_DEMAND_LEASE_SEC]:
-            del _option_demand_by_client[other]
-        live = [v["symbols"] for v in _option_demand_by_client.values() if v["symbols"]]
-        union = sorted(set().union(*live)) if live else []
-        set_active_option_contracts(union)
-    return {"requested": requested, "demand_views": len(live)}
-
-
-def get_active_option_contracts() -> "list[str]":
-    """The DESIRED additional option-contract symbols (this daemon's own plural signal),
-    beside the one primary contract get_active_option_contract reports. Same
-    requested/desired-state caveat as get_active_option_contract."""
-    return list(_active_option_contracts)
-
-
-def set_active_option_contracts(contract_symbols: "list[str]") -> bool:
-    """Request LEVELONE_OPTIONS+OPTIONS_BOOK for these ADDITIONAL option contracts,
-    beside the one primary contract set_active_option_contract manages. Symbols MUST
-    already be chain-response "symbol" fields, same requirement as
-    set_active_option_contract -- never constructed here.
-
-    The ONE caller in production is declare_option_contract_demand, which passes the union
-    of every live view's demand under its own lock; ordering is per view there (`seq`)."""
-    global _active_option_contracts
-    symbols = sorted({ticker_storage_key(s) for s in (contract_symbols or [])  # caps-ok: no symbols requested is an empty request, which clears the set
-                      if ticker_storage_key(s)})
-    with _option_contracts_command_lock:
-        old = _active_option_contracts
-        if set(old) == set(symbols):
-            return True
-        _log_stream("OPTION_CONTRACTS_RESUBSCRIBE_START", old=old, new=symbols)
-        # Only a symbol actually being DROPPED needs its replay cursors forgotten -- one
-        # still (or newly) requested keeps replaying without a spurious reset. Independent-
-        # review finding (2026-09-12): a symbol dropped from the ADDITIONAL set that is
-        # STILL the primary/pinned contract (_active_option_contract) must not be cleared
-        # either -- clear_symbol wipes the one shared per-symbol live store (cursors,
-        # streamed greeks, book state) regardless of which slot(s) named it, so clearing it
-        # here would erase state the primary subscription is still actively depending on.
-        for s in old:
-            if s not in symbols and s != _active_option_contract:
-                clear_symbol(s)
-                _option_contract_last_update_ts.pop(s, None)
-        _active_option_contracts = symbols
-        _wanted_changed()
-        log.info("Live-plane feed additional option contracts -> %s", symbols)
-        _log_stream("OPTION_CONTRACTS_RESUBSCRIBE_DONE", contracts=symbols)
-        return True
-
-
 #: The two Schwab option services whose durable open coverage epochs constitute
 #: PRODUCER-side subscription identity (as opposed to the server's desired state).
 OPTION_PRODUCER_SERVICES: tuple[str, ...] = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
@@ -629,143 +373,52 @@ def _read_producer_option_contracts() -> dict[str, list[str]]:
     return {s: sorted(held.get(s) or []) for s in OPTION_PRODUCER_SERVICES}
 
 
+#: the option contracts the daemon held at its last status (_drop_released_options)
+_held_options: "set[str]" = set()
+
+
+def _drop_released_options() -> None:
+    """Forget the live state of each option contract the daemon stopped streaming (its option
+    rule moved off it), so no screen shows that contract's last message as current."""
+    global _held_options
+    held = set().union(*_read_producer_option_contracts().values())
+    for sym in _held_options - held:
+        clear_symbol(sym)
+        _option_contract_last_update_ts.pop(sym, None)
+    _held_options = held
+
+
 def is_option_producer_daemon_available() -> bool:
     """True while the daemon's status is fresh."""
     return _lmp.daemon_status() is not None
 
 
-def read_producer_rejected_option_contracts() -> "dict[str, str]":
-    """{symbol: Schwab's reason} for option contracts Schwab refused, from the daemon's status."""
-    refused = (_lmp.daemon_status() or {}).get("refused") or {}
-    return dict(refused.get("LEVELONE_OPTIONS") or {})
+#: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on
+#: LEVELONE_OPTIONS, or it does not (capture.Daemon.pick_options streams the contracts nearest
+#: each ticker's price)
+SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 
 
-def _pick_producer_contract(symbols: "list[str]", queried: Optional[str]) -> Optional[str]:
-    """Reduce a service's list of currently-confirmed producer symbols to the single
-    value the back-compat `producer_l1_contract`/`producer_book_contract` diagnostic
-    fields report (RC-UI-3: those fields predate multi-contract coverage and every
-    existing caller — the JS binding-status renderers, the order-flow subscription
-    panel — still expects a single symbol or None). Prefers the QUERIED contract when it
-    is among the confirmed symbols, since that is the subject the caller actually asked
-    about; otherwise falls back to the first (the list is already sorted, so this is
-    deterministic) so a caller not asking about a specific contract still sees SOME live
-    evidence instead of a fabricated absence. Single-contract operation is unaffected:
-    with at most one symbol ever confirmed, this always returns exactly that symbol or
-    None, identical to the pre-RC-UI-3 scalar behavior."""
-    if not symbols:
-        return None
-    if queried is not None and queried in symbols:
-        return queried
-    return symbols[0]
-
-
-def get_option_contract_streaming_diagnostics(
-    for_contract: Optional[str] = None,
-) -> dict[str, Any]:
-    """FRESHNESS/HEALTH for the option-contract feed. Answers
-    "is the daemon actually subscribed and receiving data for this contract", distinct
-    from options_live_payload's book-CONTENT-level ages/status (which
-    answer "how stale is the replayed book itself"). Both distinctions matter: a feed can
-    be streaming_healthy=True with status='no_book' (subscribed, market simply has not
-    sent a book frame yet) as legitimately as it can be streaming_healthy=False with a
-    perfectly fresh cached book (the feed died after its last good frame).
-
-    CONTRACT BINDING (PR214 merge blocker 1A): `option_contract` is, and always was,
-    the GLOBALLY ACTIVE contract — but this health was being attached verbatim to a
-    payload computed for a DIFFERENT, caller-queried contract, so a response could
-    read `contract: A` beside `streaming_healthy: true` that belonged entirely to B.
-    Pass `for_contract` to bind the answer to the contract actually being asked
-    about: the plane still truthfully reports which contract it is streaming, and
-    `contract_match` states whether that is the one queried. On a mismatch the
-    health FAILS CLOSED — there is no live evidence about A while the feed is bound
-    to B, and absence of evidence must never render as healthy. `for_contract=None`
-    (no caller-specified subject) keeps the historical whole-plane answer, with
-    `contract_match` left None rather than fabricated."""
-    now = time.time()
-    queried = ticker_storage_key(for_contract) if for_contract else None
-    # RC-UI-3 finding #4 (2026-09-12), REPRODUCED: `last`/`stale_ms` used to read ONLY the
-    # single global `_option_streaming_last_update_ts`, which every contract's rows (primary
-    # OR any additional one) all bump together -- so a query about a genuinely stale
-    # contract could report a fresh `streaming_staleness_ms` borrowed entirely from a
-    # DIFFERENT contract's own recent traffic. When a specific contract is queried, answer
-    # from THAT contract's own per-contract clock instead.
-    last = _option_contract_last_update_ts.get(queried) if queried else _option_streaming_last_update_ts
-    stale_ms = None if last is None else max(0.0, (now - last) * 1000.0)
-    # the one live rule (live_market_plane.feed_live_for): the daemon's heartbeat is current,
-    # its Schwab socket is open, and it holds this contract
-    subject = queried or _active_option_contract
-    healthy = bool(_feed_running and subject and _lmp.feed_live_for(subject, "LEVELONE_OPTIONS"))
-
-    # Contract binding: compare on the SAME canonical key set_active_option_contract
-    # stores (ticker_storage_key), so a caller passing the raw chain "symbol" string
-    # reconciles correctly rather than mismatching on whitespace/case alone.
-    #
-    # PR214 premerge gap 1A: `_active_option_contract` is only DESIRED/REQUESTED state
-    # (the server wrote the signal file). It is NOT proof the daemon has completed the
-    # LEVELONE_OPTIONS / OPTIONS_BOOK subscriptions -- between the request for B and the
-    # daemon's next poll, the producer still physically holds A. Binding health to
-    # requested state alone would green B during exactly that window. Producer truth is
-    # read from the CANONICAL open coverage epochs in the same stream DB, and a full
-    # contract match now requires requested AND both producer services to agree.
-    producer = _read_producer_option_contracts()
-    contract_match: Optional[bool] = None
-    if queried:
-        # Independent-review finding (2026-09-12): this used to recognize ONLY the
-        # primary/pinned contract as a legitimate requested subject -- a queried contract
-        # that was genuinely requested and confirmed as an ADDITIONAL contract (RC-UI-3)
-        # was always rejected, because `requested_ok` never checked
-        # `_active_option_contracts` at all. Fixed by recognizing either role.
-        is_primary_request = (_active_option_contract == queried)
-        is_extra_request = queried in _active_option_contracts
-        requested_ok = is_primary_request or is_extra_request
-        if is_primary_request:
-            # The primary slot always requests BOTH services (the Flow view needs book
-            # depth too), so a full match still requires both to confirm.
-            producer_ok = (queried in producer["LEVELONE_OPTIONS"]
-                           and queried in producer["OPTIONS_BOOK"])
-        else:
-            # An ADDITIONAL-only contract requests LEVELONE_OPTIONS alone (survivor-
-            # challenge finding: the heatmap/GEX/volume consumers it serves never read
-            # book depth -- see EXTRA_OPTION_CONTRACT_SVC_KEY in capture.py). Requiring
-            # OPTIONS_BOOK confirmation here would fail this contract closed FOREVER,
-            # since book is never subscribed for it in the first place.
-            producer_ok = queried in producer["LEVELONE_OPTIONS"]
-        contract_match = bool(requested_ok and producer_ok)
-        if not contract_match:
-            # Either the plane is bound elsewhere, or the producer has not yet confirmed
-            # this contract on its required service(s). No live evidence about the queried
-            # contract exists in either case -- fail closed rather than lending another
-            # contract's health, or a not-yet-established subscription's, to this one.
-            healthy = False
-    pl1 = _pick_producer_contract(producer["LEVELONE_OPTIONS"], queried)
-    pbk = _pick_producer_contract(producer["OPTIONS_BOOK"], queried)
-    # the queried contract's subscription, as the page shows it: SUBSCRIBED (the producer holds it),
-    # MOVED (both services hold one other contract), else PENDING; None with no contract queried
-    subscription_state = (None if not queried else "SUBSCRIBED" if contract_match
-                          else "MOVED" if pl1 and pl1 == pbk and pl1 != queried else "PENDING")
+def get_option_contract_streaming_diagnostics(for_contract: str) -> dict[str, Any]:
+    """Whether the daemon streams `for_contract` and is receiving it, distinct from the book's own
+    content ages (options_live_payload): its subscription (SUBSCRIBED / NOT STREAMED, from the
+    daemon's held contracts), and each feed by the one live rule (live_market_plane.feed_live_for)."""
+    c = ticker_storage_key(for_contract)
+    held = _read_producer_option_contracts()
+    healthy = bool(_feed_running and _lmp.feed_live_for(c, "LEVELONE_OPTIONS"))
     return {
-        "streaming_connected": bool(_feed_running),
-        # Back-compatible name; it has always been the SERVER-REQUESTED contract.
-        "option_contract": _active_option_contract,
-        "server_requested_contract": _active_option_contract,
-        "producer_l1_contract": pl1,
-        "producer_book_contract": pbk,
-        "queried_contract": queried,
-        "contract_match": contract_match,
-        "subscription_state": subscription_state,
-        "streaming_last_update_ts": last,
-        "streaming_staleness_ms": stale_ms,
-        "streaming_healthy": healthy,
-        "feed_health": {"replay": "not connected" if not _feed_running else "healthy" if healthy else "stale",
-                        "l1": _service_feed(subject, "LEVELONE_OPTIONS"),
-                        "book": _service_feed(subject, "OPTIONS_BOOK")},
+        "queried_contract": c,
+        "subscription_state": SUBSCRIBED if c in held["LEVELONE_OPTIONS"] else NOT_STREAMED,
+        "streaming_last_update_ts": _option_contract_last_update_ts.get(c),
+        "feed_health": {"replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
+                        "l1": _service_feed(c, "LEVELONE_OPTIONS"),
+                        "book": _service_feed(c, "OPTIONS_BOOK")},
     }
 
 
 def start_order_flow_stream(on_tick_callback: Optional[Callable[[str], None]] = None,
                             on_chain_callback: Optional[Callable[..., None]] = None) -> bool:
-    """Start the feed from the capture daemon (on the event loop). It follows the ticker on
-    screen (push_changes) from the first page that opens."""
+    """Start the feed from the capture daemon (on the event loop)."""
     global _feed_task, _feed_running, _on_tick_callback, _on_chain_callback
     if _feed_task is not None and not _feed_task.done():
         log.info("Live-plane feed already running")
@@ -783,11 +436,8 @@ STREAM_THREAD_JOIN_TIMEOUT_SEC = 35.0
 
 def stop_order_flow_stream(*, join_timeout: float = STREAM_THREAD_JOIN_TIMEOUT_SEC) -> None:
     global _feed_running, _feed_task
-    global _active_option_contract, _option_streaming_last_update_ts
     _log_stream("STREAM_THREAD_JOIN_START", join_timeout_sec=join_timeout)
     _feed_running = False
-    _active_option_contract = None
-    _option_streaming_last_update_ts = None
     _option_contract_last_update_ts.clear()
     clear_all_live_state()
     task = _feed_task

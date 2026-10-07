@@ -267,7 +267,6 @@
         if (e && e.name === 'AbortError') return;   // superseded by a newer strike -- that load renders instead
         if (stillStrikeCtx(tk, strike, expiry)) {
           host.innerHTML = '<div class="placeholder"><div class="sm">no console serving /api/chain</div></div>';
-          _setAdditionalContractsDemand([]);
         }
       });
   }
@@ -290,32 +289,11 @@
           title: 'chain scope: ' + kind + (sc.reason ? ' — ' + sc.reason : '') })
       : '';
   }
-  // Independent-review finding (2026-09-12): an empty/failed chain result left Strike
-  // Detail showing "no chain" while the PREVIOUS strike's additional-contract
-  // subscription stayed active forever -- nothing ever told the plural endpoint that
-  // demand had ended. Every path out of renderStrike must state the additional-contract
-  // demand for the current render, including "none".
-  // ownerKey is 'strike:<ticker>' (2026-09-21, universal-ticker-scope fix, same class of
-  // defect and same fix pattern as the heatmap's _heatmapOwnerKey): a single shared
-  // 'default' owner meant switching tickers here silently clobbered whatever the PREVIOUS
-  // ticker's Strike Detail selection had demanded, exactly like the heatmap's shared
-  // 'heatmap' key did. The ticker just left is explicitly released so demand does not grow
-  // unbounded across every ticker ever selected in one session.
-  var _lastStrikeOwnerTicker = null;
-  function _setAdditionalContractsDemand(symbols) {
-    var tk = ticker();
-    if (_lastStrikeOwnerTicker && _lastStrikeOwnerTicker !== tk) {
-      window.EdStream.setAdditionalContracts([], 'strike:' + _lastStrikeOwnerTicker);
-    }
-    _lastStrikeOwnerTicker = tk;
-    return window.EdStream.setAdditionalContracts(symbols || [], 'strike:' + tk);
-  }
   function renderStrike(host, d, strike, expiry) {
     setSdAsOf(d);
     var cs = (d && d.contracts) || [];
     if (!cs.length) {
       host.innerHTML = '<div class="placeholder"><div class="sm">' + esc(window.EdShell.chainEmptyText(d)) + '</div></div>';
-      _setAdditionalContractsDemand([]);
       return;
     }
     function pick(side) {
@@ -345,10 +323,6 @@
       '<tr class="sd-net"><td class="side">Net</td><td>—</td><td>—</td><td>—</td><td class="' + netCls + '">' +
       (net == null ? '—' : usd(net)) + '</td><td>—</td><td>—</td></tr>' +
       '</tbody></table><div class="sd-src">vendor per-contract · net GEX$ this expiry · /api/chain</div>';
-    // stream the displayed strike's two contracts (always stated, even empty); the tape reads
-    // the streamed contracts, so it loads once the server has accepted a changed demand
-    var p = _setAdditionalContractsDemand([call && call.symbol, put && put.symbol].filter(Boolean));
-    if (p) p.then(function (r) { if (r && r.accepted && !r.unchanged) loadOf(); });
   }
 
   // Independent-review finding (2026-09-12), REPRODUCED: switching the active ticker did
@@ -361,9 +335,8 @@
   // desired (strike, expiry) so `stillStrikeCtx`'s ticker check discards any in-flight
   // response for the OLD ticker (2026-09-13: this now doubles as the fix's context-identity
   // check, replacing the old `_sgen` generation counter) and no pending strike is left to
-  // fetch under the new ticker without a fresh click, plus clearing all Strike Detail state
-  // (DOM placeholder + additional-contracts demand) the instant the ticker changes, same
-  // discipline `_setAdditionalContractsDemand([])` already gives an empty/failed chain.
+  // fetch under the new ticker without a fresh click, plus clearing the Strike Detail
+  // placeholder the instant the ticker changes.
   function resetStrikeDetailForTickerChange() {
     _sdDesired = { strike: null, expiry: null };
     var host = document.getElementById('sdBody');
@@ -371,7 +344,6 @@
       host.innerHTML = '<div class="placeholder"><div class="sm">Select a strike/expiry. '
         + 'OI · volume · gamma · delta · IV from /api/chain (vendor).</div></div>';
     }
-    _setAdditionalContractsDemand([]);
   }
 
   // ---------- Vanna / Charm by strike: the same bar list (drawStrikeBars), each its own pan ----------
@@ -489,8 +461,8 @@
 
   // ---------- Options Flow tape (operator field-inventory audit, 2026-09-13) ------------
   // The embedded tape widget on the Gamma pane (#ofBody) -- real native trade prints for
-  // whichever contract(s) are currently desired (the same identity Strike Detail's own
-  // _setAdditionalContractsDemand already established), never a fabricated buy/sell side.
+  // every contract of the ticker the daemon streams (its option rule), never a fabricated
+  // buy/sell side.
   var OF_CLS_LABEL = { at_bid: 'at bid', at_ask: 'at ask', inside_spread: 'inside',
     outside_spread_low: 'below bid', outside_spread_high: 'above ask', unknown: '—' };
   function fmtOfPrice(n) { return (n == null || isNaN(n)) ? '—' : Number(n).toFixed(2); }
