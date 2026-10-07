@@ -19,8 +19,9 @@ drops, the live values go stale and the screen says so; nothing falls back to th
 
 The daemon streams every ticker on its watchlist (capture.Daemon.watchlist, the one list), and
 picks the option contracts it streams itself (capture.Daemon.pick_options, the option rule).
-Over the same socket this module sends only the operator's adds and removals of watchlist
-tickers (watchlist_request), each answered by the daemon's watchlist record. The daemon's
+Over the same socket this module sends the operator's adds and removals of watchlist tickers
+(watchlist_request), each answered by the daemon's watchlist record, and the contract selected on
+the Flow panel (select_flow_contract), which the daemon streams on top of the rule. The daemon's
 one-second status comes on the price-row connection (_rows_loop, live_ui's "feed" beat), where
 no chain waits ahead of it, and is the one source for "is the daemon / Schwab alive", the
 watchlist and "what does Schwab hold".
@@ -99,6 +100,20 @@ async def watchlist_request(action: str, ticker: str) -> dict:
         return await asyncio.wait_for(answer, WATCHLIST_ANSWER_SEC)
     finally:
         del _watchlist_answers[rid]
+
+
+#: the contract Ed selected on the Flow panel, or None: the daemon streams it on both option
+#: services on top of its option rule; sent on every connection to the daemon and on each change
+_flow_contract: "str | None" = None
+
+
+async def select_flow_contract(contract: "str | None") -> None:
+    """The Flow panel's selection (None: none), told to the daemon now when connected, and on each
+    connection after (serve_push), so a daemon restart keeps it."""
+    global _flow_contract
+    _flow_contract = contract
+    if _push_ws is not None:
+        await _push_ws.send(json.dumps({"op": "flow_contract", "contract": contract}))
 
 # ── Runtime state (single asyncio task inside the SAME event loop as the server —
 #    no dedicated thread/loop needed once nothing here opens a socket) ──
@@ -310,9 +325,11 @@ async def _rows_loop() -> None:
 
 
 async def serve_push(ws) -> None:
-    """One connection to the daemon's live push, for its life: the watchlist requests sent on it
-    (watchlist_request), and every frame applied the moment it arrives (_ingest_pushed)."""
+    """One connection to the daemon's live push, for its life: the Flow panel's contract sent first
+    (select_flow_contract), the watchlist requests sent on it (watchlist_request), and every
+    frame applied the moment it arrives (_ingest_pushed)."""
     global _push_ws
+    await ws.send(json.dumps({"op": "flow_contract", "contract": _flow_contract}))
     _push_ws = ws
     try:
         async for frame in ws:
@@ -386,11 +403,6 @@ def _drop_released_options() -> None:
         clear_symbol(sym)
         _option_contract_last_update_ts.pop(sym, None)
     _held_options = held
-
-
-def is_option_producer_daemon_available() -> bool:
-    """True while the daemon's status is fresh."""
-    return _lmp.daemon_status() is not None
 
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on

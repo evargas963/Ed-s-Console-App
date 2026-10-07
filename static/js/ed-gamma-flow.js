@@ -24,11 +24,18 @@
 
   function host() { return document.getElementById('flowBody'); }
 
-  // this tab's selected contract (a Chain click), cleared by a ticker or expiry change
+  // the selected contract (a Chain click), cleared by a ticker or expiry change; the daemon streams
+  // it on both option services on top of its rule (POST /api/flow-contract)
   var _selected = null;
+  function setSelected(symbol) {
+    _selected = symbol;
+    fetch('/api/flow-contract', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contract: symbol }) }).then(load, load);
+    document.dispatchEvent(new CustomEvent('ed:contract', { detail: { contract: symbol } }));
+  }
   window.EdFlow = {
     selected: function () { return _selected; },
-    select: function (symbol) { _selected = symbol; document.dispatchEvent(new CustomEvent('ed:contract', { detail: { contract: symbol } })); },
+    select: setSelected,
   };
 
   // a response is current only while Flow is on screen and its contract is still the selected one
@@ -167,8 +174,10 @@
     document.addEventListener('ed:contract', load);       // an explicit Chain selection
     document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels' || e.detail.kind === 'flow') load(); });
     // a ticker or expiry change clears the selection; a fresh Chain click observes again
-    document.addEventListener('ed:ticker', function () { _selected = null; load(); });
-    document.addEventListener('ed:expiry', function () { _selected = null; load(); });
+    // a page that selected nothing releases nothing (another tab's selection stands)
+    function clearSelected() { if (_selected) setSelected(null); else load(); }
+    document.addEventListener('ed:ticker', clearSelected);
+    document.addEventListener('ed:expiry', clearSelected);
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }

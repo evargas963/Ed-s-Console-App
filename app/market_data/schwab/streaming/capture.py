@@ -20,8 +20,9 @@ It does four things, in one loop:
   1. SUBSCRIBE Once per connection, every watchlist ticker on each equity service (with the
              market context the page header shows, MARKET_CONTEXT, on LEVELONE_EQUITIES,
              CHART_EQUITY and NEWS_HEADLINE), and the option contracts the option rule picks
-             (OptionPick: Schwab's limit on each option service split evenly across the
-             watchlist; each ticker's contracts nearest its own price). A change to the watchlist
+             (pick_options: the contract selected on the Flow panel, then the rest of Schwab's
+             limit on each option service split evenly across the watchlist, each ticker's
+             contracts nearest its own price, none expired). A change to the watchlist
              or the picked contracts is asked once: UNSUBS what left, then SUBS (a service's first
              request) or ADD what came. Nothing asked is asked again on this connection, whatever
              Schwab answered. Requests are split so none exceeds Schwab's 64 KB message limit
@@ -53,6 +54,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -199,23 +201,38 @@ def split_request(symbols: "list[str]", max_bytes: int = MAX_REQUEST_BYTES) -> "
 
 @dataclass(frozen=True)
 class Ladder:
-    """One ticker's chain arranged for the option rule: its strikes ascending and, at each strike,
-    its contracts nearest expiration first, calls and puts alike; `front_*` the same for its
-    nearest expiration alone."""
+    """One ticker's chain arranged for the option rule, its contracts not yet expired: its strikes
+    ascending and, at each strike, its contracts nearest expiration first, calls and puts alike;
+    `front_*` the same for its nearest expiration alone; `symbols` every contract it holds; `until`
+    the nearest expiration (once now passes it, the ladder is built again)."""
     strikes: "tuple[float, ...]"
     by_strike: "dict[float, tuple[str, ...]]"
     front_strikes: "tuple[float, ...]"
     front_by_strike: "dict[float, tuple[str, ...]]"
+    symbols: "frozenset[str]"
+    until: "float | None"
 
 
-def ladder(contracts: "list[dict]") -> Ladder:
-    """`contracts` (a chain as the sweep delivers it) as the option rule reads it; a contract whose
-    strike is not a number (rule 2) is left out."""
+def expiration_ts(ct: dict) -> "float | None":
+    """A contract's expiration, Schwab's own expirationDate ("2026-09-18T20:00:00.000+00:00"), as
+    a time; None when Schwab sent none or not a date (rule 2)."""
+    try:
+        return datetime.fromisoformat(ct["expirationDate"]).timestamp()
+    except (KeyError, TypeError, ValueError) as e:
+        log.warning("option rule: %s has no expirationDate as a date (%s: %s)", ct.get("symbol"),
+                    type(e).__name__, e)
+        return None
+
+
+def ladder(contracts: "list[dict]", now: float) -> Ladder:
+    """`contracts` (a chain as the sweep delivers it) as the option rule reads it at `now`: a
+    contract has expired once now passes its expirationDate, and is left out (it stays in the
+    records; it is never streamed); so is one whose strike or expiration is not a number (rule 2)."""
     rows = []
     for ct in contracts:
-        strike = schwab_number(ct.get("strikePrice"))
-        if strike is not None:
-            rows.append((str(ct["expirationDate"])[:10], ct["putCall"], strike, ct["symbol"]))
+        strike, expires = schwab_number(ct.get("strikePrice")), expiration_ts(ct)
+        if strike is not None and expires is not None and expires > now:
+            rows.append((expires, ct["putCall"], strike, ct["symbol"]))
     front = min(r[0] for r in rows) if rows else None
     by_strike: "dict[float, list[str]]" = {}
     front_by: "dict[float, list[str]]" = {}
@@ -224,7 +241,8 @@ def ladder(contracts: "list[dict]") -> Ladder:
         if expiry == front:
             front_by.setdefault(strike, []).append(symbol)
     return Ladder(tuple(sorted(by_strike)), {k: tuple(v) for k, v in by_strike.items()},
-                  tuple(sorted(front_by)), {k: tuple(v) for k, v in front_by.items()})
+                  tuple(sorted(front_by)), {k: tuple(v) for k, v in front_by.items()},
+                  frozenset(r[3] for r in rows), front)
 
 
 def nearest(strikes: "tuple[float, ...]", by_strike: "dict[float, tuple[str, ...]]", price: float,
@@ -376,15 +394,22 @@ SCHWAB_CONNECTING = "NOT CONNECTED: the stream is logging in, or its connection 
 
 
 class Daemon:
-    def __init__(self, bus: MessageBus, health: HealthRegistry, watchlist: "list[str]" = ()) -> None:
+    def __init__(self, bus: MessageBus, health: HealthRegistry, watchlist: "list[str]" = (), *,
+                 clock=time.time) -> None:
         self.bus = bus
         self.health = health
+        #: the time the option rule is applied at (pick_options' `now`, read where a pick starts)
+        self.clock = clock
         #: the one list of tickers Schwab is asked for, in its order (stored_watchlist at startup)
         self.watchlist: "list[str]" = list(watchlist)
         #: the option contracts the option rule picked, per option service (pick_options)
         self.options: "dict[str, frozenset[str]]" = {s: frozenset() for s in OPTION_SERVICES}
-        #: the option rule's inputs per watchlist ticker: its newest whole chain (as a Ladder) and
-        #: its newest LAST_PRICE, both as the bus has them (follow_market); and its pick
+        #: the contract Ed selected on the Flow panel (the console's {"op": "flow_contract"}),
+        #: streamed on both option services on top of the rule
+        self.flow_contract: "str | None" = None
+        #: the option rule's inputs per watchlist ticker: its newest whole chain (and as a Ladder)
+        #: and its newest LAST_PRICE, both as the bus has them (follow_market); and its pick
+        self._chains: "dict[str, list[dict]]" = {}
         self._ladders: "dict[str, Ladder]" = {}
         self._prices: "dict[str, float]" = {}
         self._picked: "dict[str, dict[str, list[str]]]" = {}
@@ -431,23 +456,34 @@ class Daemon:
             self.asked[svc] = want
         self.wake.set()
 
-    def pick_options(self, tickers: "list[str]") -> None:
-        """The option rule for `tickers`, every watchlist ticker the same: Schwab's limit on each
-        option service (OPTION_LIMITS) split evenly across the watchlist; a ticker's share on
-        LEVELONE_OPTIONS is its contracts nearest its own price, calls and puts alike, of equally
-        near ones the nearest expiration first; on OPTIONS_BOOK, the same on its nearest
-        expiration alone (nearest). A ticker without a chain or a price yet, or off the
-        watchlist, has none. When the picked contracts change, the difference is asked once
+    def _ladder(self, tk: str, now: float) -> "Ladder | None":
+        """`tk`'s ladder at `now`: built again from its chain once its nearest expiration passed."""
+        lad = self._ladders.get(tk)
+        if lad is not None and lad.until is not None and now >= lad.until:
+            lad = self._ladders[tk] = ladder(self._chains[tk], now)
+        return lad
+
+    def pick_options(self, now: float) -> None:
+        """The option rule at `now`, every watchlist ticker the same. The contract selected on the
+        Flow panel streams on both option services when a watchlist ticker's chain lists it, not
+        expired; what is left of Schwab's limit on each option service (OPTION_LIMITS) is split
+        evenly across the watchlist: a ticker's share on LEVELONE_OPTIONS is its contracts nearest
+        its own price, calls and puts alike, of equally near ones the nearest expiration first; on
+        OPTIONS_BOOK, the same on its nearest expiration alone (nearest). A ticker without a chain
+        or a price yet has none. When the picked contracts change, the difference is asked once
         (ask: one UNSUBS and one ADD per service)."""
-        for tk in tickers:
-            if tk not in self.watchlist or tk not in self._ladders or tk not in self._prices:
-                self._picked.pop(tk, None)
-                continue
-            lad, price, n = self._ladders[tk], self._prices[tk], len(self.watchlist)
-            self._picked[tk] = {
-                "LEVELONE_OPTIONS": nearest(lad.strikes, lad.by_strike, price, OPTION_LIMITS["LEVELONE_OPTIONS"] // n),
-                "OPTIONS_BOOK": nearest(lad.front_strikes, lad.front_by_strike, price, OPTION_LIMITS["OPTIONS_BOOK"] // n)}
-        new = {svc: frozenset(s for p in self._picked.values() for s in p[svc]) for svc in OPTION_SERVICES}
+        ladders = {tk: self._ladder(tk, now) for tk in self.watchlist if tk in self._ladders}
+        flow = frozenset(c for c in [self.flow_contract] if any(c in lad.symbols for lad in ladders.values()))
+        self._picked = {}
+        for tk, lad in ladders.items():
+            if tk in self._prices:
+                price, n = self._prices[tk], len(self.watchlist)
+                self._picked[tk] = {
+                    "LEVELONE_OPTIONS": nearest(lad.strikes, lad.by_strike, price,
+                                                (OPTION_LIMITS["LEVELONE_OPTIONS"] - len(flow)) // n),
+                    "OPTIONS_BOOK": nearest(lad.front_strikes, lad.front_by_strike, price,
+                                            (OPTION_LIMITS["OPTIONS_BOOK"] - len(flow)) // n)}
+        new = {svc: flow | frozenset(s for p in self._picked.values() for s in p[svc]) for svc in OPTION_SERVICES}
         if new == self.options:
             return
         log.info("option rule: %s", "; ".join(
@@ -462,14 +498,16 @@ class Daemon:
         price = schwab_number(native["LAST_PRICE"]) if "LAST_PRICE" in native else None
         if price is not None and price != self._prices.get(ticker):
             self._prices[ticker] = price
-            self.pick_options([ticker])
+            self.pick_options(self.clock())
 
     def _took_chain(self, ticker: str, record: list) -> None:
-        """A ticker's newest whole chain on the bus (its parts): its ladder, and its pick redone. A
+        """A ticker's newest whole chain on the bus (its parts): its ladder, and the pick redone. A
         failed fetch carries no contracts and changes nothing."""
         if all("contracts" in part for part in record):
-            self._ladders[ticker] = ladder([ct for part in record for ct in part["contracts"]])
-            self.pick_options([ticker])
+            now = self.clock()
+            self._chains[ticker] = [ct for part in record for ct in part["contracts"]]
+            self._ladders[ticker] = ladder(self._chains[ticker], now)
+            self.pick_options(now)
 
     async def follow_market(self, stop: asyncio.Event) -> None:
         """The option rule's inputs, as the bus has them, until `stop`: each ticker's newest
@@ -494,10 +532,15 @@ class Daemon:
 
     def console_frame(self, req: dict, sender) -> None:
         """A frame from console connection `sender` (live_push): a watchlist request
-        ({"op": "watchlist"}, answered on the bus)."""
+        ({"op": "watchlist"}, answered on the bus), or the contract selected on the Flow panel
+        ({"op": "flow_contract", "contract": symbol or null})."""
         if req["op"] == "watchlist":
             task = asyncio.ensure_future(self.watchlist_request(req))
             task.add_done_callback(_request_ended)
+        elif req["op"] == "flow_contract":
+            self.flow_contract = req["contract"]
+            log.info("flow contract: %s", self.flow_contract)
+            self.pick_options(self.clock())
 
     async def watchlist_request(self, req: dict) -> None:
         """One add or removal from the console ({"op": "watchlist", "action", "ticker", "id"}),
@@ -531,7 +574,7 @@ class Daemon:
         log.info("watchlist: %s %s; the list: %s", ticker, op, ",".join(self.watchlist))
         if self.chains is not None:
             self.chains.watchlist = list(self.watchlist)
-        self.pick_options([*self.watchlist, ticker])       # every ticker's share changes with the list
+        self.pick_options(self.clock())                   # every ticker's share changes with the list
         self.ask()
         self.bus.publish(*watchlist_message(self.watchlist, op=op, ticker=ticker, request_id=rid, status=status,
                                             answer=answer))

@@ -263,14 +263,14 @@ def _install_signal_handlers() -> None:
             log.debug("could not install handler for %s: %s", sig, e)
 
 
-def resolve_spot(ticker: str) -> tuple[float | None, str, float | None]:
+def resolve_spot(ticker: str, *, now: "float | None" = None) -> tuple[float | None, str, float | None]:
     """(spot, source, as_of_ts_utc): the daemon's price row's Schwab LAST_PRICE as sent and its
-    trade time -- the value the header shows. In an open session with the feed down it is
-    absent and `source` is the outage reason; while Closed the price as of the close stands
-    (docs/DATA_FLOW.md §2 D5); (None, "none", None) until Schwab has sent one."""
+    trade time -- the value the header shows. In an open session (at `now`; omitted, the clock's)
+    with the feed down it is absent and `source` is the outage reason; while Closed the price as
+    of the close stands (docs/DATA_FLOW.md §2 D5); (None, "none", None) until Schwab has sent one."""
     from app.options.order_flow.streaming import price_row
 
-    outage = lmp.outage(ticker, "LEVELONE_EQUITIES", time.time())
+    outage = lmp.outage(ticker, "LEVELONE_EQUITIES", time.time() if now is None else now)
     if outage is not None:
         return None, outage, None
     row = price_row(ticker)
@@ -892,7 +892,7 @@ def _leg_stream_ts_recv(greeks: dict | None) -> float | None:
     return max(candidates) if candidates else None
 
 
-_STREAM_STATE_ORDER = ("stale", "pending", "daemon_unavailable")
+_STREAM_STATE_ORDER = ("stale", "pending")
 
 
 def _stream_state_of(states: list) -> str:
@@ -908,42 +908,24 @@ def _stream_state_of(states: list) -> str:
 
 
 def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overlay_symbols: set,
-                                           desired_symbols: "set[str] | None" = None, *,
-                                           daemon_available: bool = True) -> None:
-    """Operator directive (2026-09-15, always-live heatmap mandate): attach per-leg (call/put)
-    and per-cell aggregate STREAM state to an already-projected gamma surface's cells, in place.
+                                           held_symbols: "set[str]", now: float) -> None:
+    """Attach per-leg (call/put) and per-cell STREAM state to a projected gamma surface's cells,
+    in place. It never touches a cell's computed value (project_gamma_surface is the one
+    exposure computation); it says whether a streamed Schwab value backs it now.
 
-    Pure disclosure/gating metadata layered on top of RC-80's single faucet — this NEVER touches
-    a cell's already-computed net_gex_1pct/etc value (project_gamma_surface/
-    compute_exposures_by_strike remains the sole exposure computation). It only annotates, per
-    leg, WHETHER that value is currently backed by a confirmed-fresh Schwab stream tick, so a
-    client can honestly render LIVE / PARTIAL / STALE / PENDING / DAEMON_UNAVAILABLE /
-    UNAVAILABLE instead of presenting every REST-cadence cell as indistinguishable from a
-    genuinely streamed one.
+    `streamed`: the streamed values of the contracts the daemon holds of this ticker
+    (_desired_stream_greeks_for_ticker); `overlay_symbols`: those the feed is delivering now
+    (live_market_plane.feed_live_for, the one live rule); `held_symbols`: every contract the
+    daemon holds of this ticker, ticked or not (_desired_option_symbols_for_ticker). A daemon
+    that is down holds nothing: its cells keep their values and the header says OFFLINE. Each
+    leg's age is at `now`.
+      'live'         — the feed is delivering this symbol now.
+      'stale'        — the symbol has streamed but the feed is not delivering it now.
+      'pending'      — the daemon holds the symbol and no tick has landed yet.
+      'unavailable'  — a symbol the daemon does not stream.
 
-    Per leg, `overlay_symbols` is the set of streamed symbols the feed is delivering now
-    (live_market_plane.feed_live_for, the one live rule), passed by _publish_levels.
-    `desired_symbols` (2026-09-16, operator's follow-up mandate: disclose PENDING distinctly from
-    UNAVAILABLE) is `_desired_option_symbols_for_ticker`'s output — every symbol the daemon
-    holds (the option rule's pick), whether or not a tick has landed yet.
-
-    `daemon_available` (streaming.is_option_producer_daemon_available: a fresh daemon heartbeat)
-    decides whether anything can be streaming: without it, which contracts the daemon holds is
-    unknown and every leg reads 'daemon_unavailable' ("the daemon needs restarting"):
-      'live'                — the feed is delivering this symbol now.
-      'stale'                — the symbol has streamed (present in `streamed`, which
-                              _desired_stream_greeks_for_ticker already filters to symbols
-                              matching this ticker) but the feed is not delivering it now.
-      'daemon_unavailable'   — the daemon's own heartbeat is stale or absent.
-      'pending'              — the daemon holds the symbol and no tick has landed yet.
-      'unavailable'          — a symbol the option rule does not stream.
-
-    Cell aggregate, over whichever legs actually exist for this strike/expiry, checked in this
-    priority order (live > partial > stale > pending > daemon_unavailable > unavailable) --
-    'partial' requires at least one live leg, not all; every other aggregate is "no leg is any
-    higher-priority state, at least one existing leg is this one"."""
-    now = time.time()
-    desired_symbols = desired_symbols or set()
+    Cell aggregate, over the legs that exist for this strike/expiry: live when all are live,
+    partial when some are, else the first of stale > pending present, else unavailable."""
     for cell in (surface.get("cells") or []):
         contracts_row = cell.get("contracts") or []
         state_row = []
@@ -962,9 +944,7 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                     leg_state = "live"
                 elif sym in streamed:
                     leg_state = "stale"
-                elif not daemon_available:
-                    leg_state = "daemon_unavailable"
-                elif sym in desired_symbols:
+                elif sym in held_symbols:
                     leg_state = "pending"
                 else:
                     leg_state = "unavailable"
@@ -991,11 +971,9 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
 #: column's; served in the page (meta ed-stream-words)
 STREAM_WORDS = {
     "cell": {"partial": "one side of this cell is streaming", "stale": "this cell has stopped streaming",
-             "pending": "streaming requested, no update yet",
-             "daemon_unavailable": "the capture daemon is not reachable", "unavailable": "not streaming"},
+             "pending": "streaming requested, no update yet", "unavailable": "not streaming"},
     "column": {"live": "streaming", "partial": "partly streaming", "stale": "stopped streaming",
-               "pending": "streaming requested", "daemon_unavailable": "the capture daemon is not reachable",
-               "unavailable": "not streaming"},
+               "pending": "streaming requested", "unavailable": "not streaming"},
 }
 
 
@@ -1012,8 +990,7 @@ def _stream_coverage(cells: list, cols: "list[int]", expired_only: bool) -> dict
     every column drawn has expired). Only cells with a contract count (a strike an expiry does
     not list was never a data point). Returns the counts by cell state, the share live rounded
     down (100 only when every cell is live), and the header's words: `state`, `label`, `title`."""
-    counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "daemon_unavailable": 0,
-              "unavailable": 0}
+    counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "unavailable": 0}
     for cell in cells:
         contracts, stream = cell.get("contracts") or [], cell.get("stream") or []
         for j in cols:
@@ -1113,7 +1090,8 @@ def _contract_ticker(sym: str) -> "str | None":
 
 
 def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | None" = None,
-                    *, captures: "list | None" = None) -> "TerrainSnapshot | None":
+                    *, captures: "list | None" = None,
+                    now: "datetime | None" = None) -> "TerrainSnapshot | None":
     """THE producer of a ticker's levels, per-strike rows and gamma-surface grid.
 
     Prices the ticker's chain once -- overlaid with any fresher streamed option greeks, at the
@@ -1124,9 +1102,11 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     `captures` (startup
     and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
     read once: the newest is priced with Schwab's underlying price from that capture, valued and
-    dated at its own time, and both feed the forces and prior-day rows. Returns the snapshot, or
-    None when there is no chain to price."""
-    from app.options.order_flow.streaming import is_option_producer_daemon_available
+    dated at its own time, and both feed the forces and prior-day rows. `now`: the instant of
+    this publication (omitted, the clock's), at which a chain that is not a capture is valued,
+    streamed values are current or not (D5) and each leg's age is taken.
+    Returns the snapshot, or None when there is no chain to price."""
+    at = now if now is not None else now_et()
     with _terrain_cache_lock:
         payload = dict(_terrain_cache.get(tk) or {})
     capture = captures[0] if captures else None
@@ -1140,7 +1120,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     if capture is not None:
         spot, spot_source, spot_ts = capture["spot"], SPOT_SOURCE_CAPTURE, capture["ts_utc"]
     else:
-        spot, spot_source, spot_ts = resolve_spot(tk)
+        spot, spot_source, spot_ts = resolve_spot(tk, now=at.timestamp())
     prev_spot = payload.get("spot")
     if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
         payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")))
@@ -1149,10 +1129,10 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     # each field the newest Schwab sent: a current streamed value received after this chain, else
     # the chain's
     priced, n_live = overlay_streamed_contract_fields(
-        chain, _current_stream_greeks(streamed, time.time()), fetched_ts)
+        chain, _current_stream_greeks(streamed, at.timestamp()), fetched_ts)
     live_syms = _overlaid_symbols(chain, priced)
     snap = compute_terrain(tk, priced, spot, now=(
-        datetime.fromtimestamp(fetched_ts, ET) if capture is not None else None))
+        datetime.fromtimestamp(fetched_ts, ET) if capture is not None else at))
     payload.update(snap.to_dict())
     payload.update({
         # as of the chain they were computed from: a reprice on a kept chain does not make
@@ -1180,11 +1160,10 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
         surface = project_gamma_surface(priced, snap.books)
         surface.update(spot=float(spot), spot_source=spot_source, spot_as_of_ts_utc=spot_ts,
                        stream_overlay_contracts=n_live, stream_overlay_symbols=live_syms,
-                       stream_overlay_computed_ts_utc=time.time())
+                       stream_overlay_computed_ts_utc=at.timestamp())
         _stamp_gamma_surface_cell_stream_state(
             surface, streamed, {s for s in streamed if lmp.feed_live_for(s, "LEVELONE_OPTIONS")},
-            set(_desired_option_symbols_for_ticker(listed)),
-            daemon_available=is_option_producer_daemon_available())
+            set(_desired_option_symbols_for_ticker(listed)), at.timestamp())
         surface["surface_seq"] = _next_gamma_surface_seq(tk)
         payload["_gamma_surface"] = surface
     with _terrain_cache_lock:
@@ -2389,9 +2368,14 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
     c = (contract or "").strip()
     if not c:
         return JSONResponse({"error": "contract is required"}, status_code=400)
+    return JSONResponse(options_microstructure(c, time.time()))
+
+
+def options_microstructure(c: str, now: float) -> dict:
+    """The Flow panel's payload for contract `c` at `now` (/api/order-flow/options-microstructure)."""
     from app.options.order_flow.live_payload import options_live_payload
     from app.options.order_flow.streaming import get_option_contract_streaming_diagnostics
-    payload = options_live_payload(ticker_storage_key(c), time.time())
+    payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
     from app.options.order_flow.history import put_call_side
     from app.options.order_flow.state import get_content_for_symbol
@@ -2399,7 +2383,7 @@ def api_order_flow_options_microstructure(contract: str = Query(...)):
                                               if it.get("CONTRACT_TYPE")), None))
     # whether the daemon streams this contract (the option rule) and is receiving it
     payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c)
-    return JSONResponse(payload)
+    return payload
 
 
 @app.get("/api/watchlist")
@@ -2439,6 +2423,20 @@ async def post_watchlist(payload: dict = Body(...)):
 async def delete_watchlist(ticker: str):
     """Remove a ticker: Schwab is no longer asked for it; what was recorded for it stays."""
     return await _watchlist_change("remove", ticker)
+
+
+@app.post("/api/flow-contract")
+async def post_flow_contract(payload: dict = Body(...)):
+    """The contract selected on the Flow panel ({"contract": symbol}, or null for none): the daemon
+    streams it on LEVELONE_OPTIONS and OPTIONS_BOOK on top of its option rule. Only a contract
+    Schwab listed in a chain the console holds is taken."""
+    from app.options.order_flow.streaming import select_flow_contract
+    c = payload["contract"]
+    if c is not None and _contract_ticker(c) is None:
+        return JSONResponse({"ok": False, "contract": c,
+                             "error": "not a contract in a chain the console holds"}, status_code=409)
+    await select_flow_contract(c)
+    return {"ok": True, "contract": c}
 
 
 @app.get("/api/expiries")
