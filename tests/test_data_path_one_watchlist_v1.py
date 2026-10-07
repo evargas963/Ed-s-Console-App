@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+import threading
 import time
 
 import live_market_plane as lmp
@@ -198,6 +199,7 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         await _until(lambda: ofs._push_ws is ws)
         added = json.loads((await server.post_watchlist({"ticker": "tsla"})).body)
         await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
+        swept_after_add = list(daemon.chains.watchlist)
         invalid = json.loads((await server.post_watchlist({"ticker": "ZQZQZ"})).body)
         removed = json.loads((await server.delete_watchlist("TSLA")).body)
         await _until(lambda: daemon.held["NASDAQ_BOOK"] == {"SPY"})
@@ -205,11 +207,12 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         await asyncio.wait_for(console, 5)
         stop.set()
         await asyncio.gather(*tasks)
-        return added, invalid, removed
+        return added, invalid, removed, swept_after_add
     try:
-        added, invalid, removed = asyncio.run(go())
+        added, invalid, removed, swept_after_add = asyncio.run(go())
     finally:
         schwab.close()
+    assert swept_after_add == ["SPY", "TSLA"], "the chain sweep fetches an added ticker"
     assert added == {"ok": True, "op": "added", "ticker": "TSLA", "tickers": ["SPY", "TSLA"], "status": 200,
                      "answer": CHECKS["TSLA"]["body"]}
     assert invalid == {"ok": False, "op": "invalid", "ticker": "ZQZQZ", "tickers": ["SPY", "TSLA"], "status": 200,
@@ -220,8 +223,33 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
     for svc in EQUITY:
         assert [(c, k) for c, k in asked(svc) if "TSLA" in k] == [("ADD", ["TSLA"]), ("UNSUBS", ["TSLA"])], svc
     assert not any("ZQZQZ" in r["parameters"].get("keys", "") for r in schwab.streamer.requests)
-    assert daemon.chains.watchlist == ["SPY"], "the chain sweep follows the list"
+    assert daemon.chains.watchlist == ["SPY"], "and stops fetching a removed one"
     assert capture.stored_watchlist(db) == ["SPY"], "the newest stored list"
+
+
+def test_with_the_watchlist_empty_the_sweep_asks_for_nothing_and_waits(tmp_path, caplog):
+    """An empty watchlist in an open session (Wednesday 2026-10-07 10:00 ET): no request to Schwab
+    and no rotation, until a ticker is added."""
+    from datetime import datetime
+
+    from time_et import ET
+    schwab = LocalSchwab()
+    sweep = ChainSweep(tmp_path / "ed_console.db", [], lambda t, m: None,
+                       clock=lambda: datetime(2026, 10, 7, 10, 0, tzinfo=ET).timestamp(),
+                       failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=lambda s: None)
+    client = schwab.client(tmp_path)
+    stop = threading.Event()
+    worker = threading.Thread(target=sweep.work, args=(lambda: client, stop), daemon=True)
+    try:
+        with caplog.at_level("INFO", logger="chain_history"):
+            worker.start()
+            time.sleep(1.5)
+    finally:
+        stop.set()
+        worker.join(10)
+        schwab.close()
+    assert schwab.requests == [], "nothing asked of Schwab"
+    assert not [r for r in caplog.records if "chain rotation" in r.getMessage()], "no rotation of nothing"
 
 
 def test_the_contracts_a_console_named_are_withdrawn_when_its_connection_ends():

@@ -429,7 +429,7 @@ class Daemon:
             self.watchlist, op = [*self.watchlist, ticker], ADDED
         log.info("watchlist: %s %s; the list: %s", ticker, op, ",".join(self.watchlist))
         if self.chains is not None:
-            self.chains.board = list(self.watchlist)
+            self.chains.watchlist = list(self.watchlist)
         self.ask()
         self.bus.publish(*watchlist_message(self.watchlist, op=op, ticker=ticker, request_id=rid, status=status,
                                             answer=answer))

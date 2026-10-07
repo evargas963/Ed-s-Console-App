@@ -247,9 +247,12 @@ class ChainSweep:
         """The thread's life, until `stop`: rotation after rotation on the daemon's client
         (`schwab_client()`). While Closed, once every watchlist ticker's close values are in (a
         ticker added while Closed is fetched once too), it looks each second for the next
-        session."""
+        session. With the watchlist empty it asks Schwab for nothing and looks again each second."""
         while not stop.is_set():
             tickers = sorted(self.watchlist)
+            if not tickers:
+                stop.wait(1.0)
+                continue
             if session_label(datetime.fromtimestamp(self.clock(), ET)) != "Closed":
                 self._close_done = None
                 self.rotation(schwab_client, tickers, stop)
