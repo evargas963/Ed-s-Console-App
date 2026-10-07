@@ -192,12 +192,14 @@ def chain_messages(ticker: str, contracts: list[dict], fetched_ts: float) -> lis
 PRICE_HISTORY = {"1m": ("day", 10, "minute", 1), "15m": ("day", 10, "minute", 15), "1d": ("year", 1, "daily", 1)}
 
 
-def price_history_message(ticker: str, series: str, candles: list, fetched_ts: float) -> tuple[str, dict]:
-    """One series of a ticker's price history as its bus message, Schwab's candles as sent, with
-    its finished wire frame (built here, off the event loop: a ticker's 1-minute bars are ~1 MB)."""
+def price_history_message(ticker: str, series: str, answer: dict, fetched_ts: float) -> tuple[str, dict]:
+    """One series of a ticker's price history as its bus message: Schwab's whole answer as sent
+    (its candles and every other field), recorded by the daemon's writer like every stream
+    message, with its finished wire frame (built here, off the event loop: a ticker's 1-minute
+    answer is ~1 MB)."""
     topic = f"pricehistory.{ticker}.{series}"
     msg = {"src": "schwab_pricehistory", "symbol": ticker, "series": series, "ts_recv": fetched_ts,
-           "candles": candles}
+           "answer": answer}
     return topic, {**msg, "frame": json.dumps({"topic": topic, "msg": msg}, separators=(",", ":"))}
 
 
@@ -319,11 +321,11 @@ class ChainSweep:
                     need_extended_hours_data=True)
                 if resp.status_code != 200:
                     continue
-                candles = resp.json()["candles"]
+                answer = resp.json()
             except Exception as e:  # noqa: BLE001 -- that series' answer is the failure; the rotation goes on
                 log.warning("price history %s %s failed: %s: %s", ticker, series, type(e).__name__, e)
                 continue
-            self.publish(*price_history_message(ticker, series, candles, self.clock()))
+            self.publish(*price_history_message(ticker, series, answer, self.clock()))
             if series == "1m":
                 self._minutes_day[ticker] = today
 

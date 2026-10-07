@@ -67,8 +67,8 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
     history = [(topic, msg) for topic, msg in published if topic.startswith("pricehistory.")]
     for series in ("1m", "15m", "1d"):
         topic, msg = next((t, m) for t, m in history if t == f"pricehistory.SPY.{series}")
-        sent = HISTORY[("SPY", *_SERIES[series])]["body"]["candles"]
-        assert msg["candles"] == sent and msg["src"] == "schwab_pricehistory", series
+        sent = HISTORY[("SPY", *_SERIES[series])]["body"]
+        assert msg["answer"] == sent and msg["src"] == "schwab_pricehistory", series
         assert json.loads(msg["frame"]) == {"topic": topic, "msg": {k: v for k, v in msg.items() if k != "frame"}}
 
 
@@ -90,7 +90,7 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
     for tk in ("SPY", "TSLA"):
         for series, key in _SERIES.items():
             a = HISTORY[(tk, *key)]
-            bus.publish(*price_history_message(tk, series, a["body"]["candles"], a["answered_utc"]))
+            bus.publish(*price_history_message(tk, series, a["body"], a["answered_utc"]))
     while not ofs.streamed_bars.empty():
         ofs.streamed_bars.get_nowait()
     for tk in ("SPY", "TSLA"):
@@ -133,3 +133,51 @@ def test_before_schwab_sends_the_candles_the_atr_is_absent_with_why():
     assert (atr.daily_reason, atr.m15_reason) == (
         "0 trading days of Schwab's daily candles; ATR(14) needs 15",
         "0 15-minute periods of Schwab's 15-minute candles; ATR(14) needs 15")
+
+
+def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
+    """Schwab's /pricehistory answers are recorded like every stream message (docs/DATA_FLOW.md §2
+    D4): the daemon's chain sweep (capture.run_chains, on its thread) publishes each series on the
+    daemon's bus, and the one writer (CaptureWriter, the bus's LOG reader) writes each answer whole,
+    as sent, into stream_pricehistory_raw: SPY's 1-minute, 15-minute and daily answers."""
+    import asyncio
+    import sqlite3
+
+    db = tmp_path / "stream_capture.db"
+    schwab = LocalSchwab()
+    client = schwab.client(tmp_path)
+
+    def rows():
+        if not db.exists():
+            return []
+        con = sqlite3.connect(db)
+        try:
+            if not con.execute("SELECT 1 FROM sqlite_master WHERE name='stream_pricehistory_raw'").fetchone():
+                return []
+            return con.execute("SELECT symbol, series, native_json, src FROM stream_pricehistory_raw "
+                               "ORDER BY rowid").fetchall()
+        finally:
+            con.close()
+
+    async def go():
+        from stream_spine import LOG
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        daemon = capture.Daemon(bus, health, board=["SPY"])
+        writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+        written = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        sweep = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", lambda: client, stop,
+                                                       failures=writer))
+        deadline = asyncio.get_running_loop().time() + 30
+        while len(rows()) < 3 and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.1)
+        stop.set()
+        await asyncio.gather(written, sweep)
+    try:
+        asyncio.run(go())
+    finally:
+        schwab.close()
+    recorded = rows()[:3]
+    assert [(symbol, series, src) for symbol, series, _n, src in recorded] == [
+        ("SPY", "1m", "schwab_pricehistory"), ("SPY", "15m", "schwab_pricehistory"), ("SPY", "1d", "schwab_pricehistory")]
+    for (_s, series, native, _src) in recorded:
+        assert json.loads(native) == HISTORY[("SPY", *_SERIES[series])]["body"], f"{series}: recorded as sent"

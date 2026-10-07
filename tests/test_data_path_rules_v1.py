@@ -523,7 +523,7 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
         ofs.streamed_bars.get_nowait()
     try:
         for tk, a in history.items():
-            topic, msg = price_history_message(tk, "1m", a["body"]["candles"], a["answered_utc"])
+            topic, msg = price_history_message(tk, "1m", a["body"], a["answered_utc"])
             ofs._ingest_pushed(topic, json.loads(msg["frame"])["msg"])          # as the console receives it
         for r in pushed:
             ofs._ingest_pushed(f"bar1m.{r['symbol']}", bar_msg(

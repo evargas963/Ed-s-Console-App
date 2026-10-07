@@ -85,6 +85,15 @@ CREATE TABLE IF NOT EXISTS stream_news_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_snr_sym_ts ON stream_news_raw(symbol, ts_recv);
+-- Schwab's /pricehistory answers, verbatim: one row per series asked (1m, 15m, 1d), the whole answer.
+CREATE TABLE IF NOT EXISTS stream_pricehistory_raw (
+    ts_recv REAL NOT NULL,
+    symbol TEXT NOT NULL,
+    series TEXT NOT NULL,
+    native_json TEXT NOT NULL,
+    src TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sphr_sym_ts ON stream_pricehistory_raw(symbol, series, ts_recv);
 -- Every subscribe/unsubscribe the daemon sent and Schwab's answer. With it, a gap in the
 -- data tables can be told apart: "we were not subscribed" versus "subscribed, nothing
 -- changed". code 0 = accepted; anything else carries Schwab's reason.
@@ -279,13 +288,11 @@ class MessageBus:
         key = current_key(topic, msg)
         chain = topic.startswith("chain.")
         changed = self._chain(key, topic, msg) if chain else self._newest(key, topic, msg)
-        # a chain's record is its own history (the chain sweep writes it), and a price history is
-        # Schwab's own record (asked again each day): neither is the log's
-        logged = not chain and not topic.startswith("pricehistory.")
         for sub in self._subs:
             if not topic.startswith(sub.prefix):
                 continue
-            if (sub.policy == LOG and logged) or (sub.policy == LATEST and changed):
+            # a chain's record is its own history (the chain sweep writes it), never the log's
+            if (sub.policy == LOG and not chain) or (sub.policy == LATEST and changed):
                 sub.deliver(key, topic, msg)
 
     def forget(self, key: str) -> None:
@@ -396,6 +403,9 @@ _INSERTS = {
     "news": ("INSERT INTO stream_news_raw(ts_recv,symbol,native_json,src,schwab_ts) VALUES(?,?,?,?,?)",
              lambda m: (m.get("ts_recv"), m.get("symbol"), json.dumps(m["content"]), m["src"],
                         m.get("schwab_ts"))),
+    "pricehistory": ("INSERT INTO stream_pricehistory_raw(ts_recv,symbol,series,native_json,src) "
+                     "VALUES(?,?,?,?,?)",
+                     lambda m: (m["ts_recv"], m["symbol"], m["series"], json.dumps(m["answer"]), m["src"])),
     "sub": ("INSERT INTO stream_subscriptions(ts,service,command,symbols_json,code,reason) "
             "VALUES(?,?,?,?,?,?)",
             lambda m: (m.get("ts"), m.get("service"), m.get("command"),

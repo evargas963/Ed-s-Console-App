@@ -104,7 +104,7 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
     try:
         t0 = time.perf_counter()
         server._write_streamed_bars([{"src": "schwab_pricehistory", "symbol": tk, "series": "1m",
-                                      "ts_recv": a["answered_utc"], "candles": a["body"]["candles"]}
+                                      "ts_recv": a["answered_utc"], "answer": a["body"]}
                                      for tk, a in answers.items()], datetime.fromtimestamp(answers["SPY"]["answered_utc"], ET))
         read = {tk: server._bars_1m(tk, server.BARS_KEPT) for tk in answers}
         took = time.perf_counter() - t0

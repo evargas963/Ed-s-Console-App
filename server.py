@@ -351,13 +351,14 @@ def _schwab_bar(start_ms, o, h, lo, c, volume) -> "Candle | None":
 
 
 def _write_price_history(msg: dict) -> "str | None":
-    """One series of a ticker's price history as Schwab's /pricehistory sent it (pushed by the
+    """One series of a ticker's price history as Schwab's /pricehistory answered it (pushed by the
     capture daemon): its 1-minute bars into the ticker's bars, each streamed bar standing over
     Schwab's history of its minute; its 15-minute or daily candles replacing the held ones. A
     candle without a valid field is not kept. The ticker when its 1-minute bars changed, else None."""
     tk = ticker_storage_key(msg["symbol"])
     candles = [b for b in (_schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
-                                       c.get("close"), c.get("volume")) for c in msg["candles"]) if b is not None]
+                                       c.get("close"), c.get("volume")) for c in msg["answer"]["candles"])
+               if b is not None]
     with _bars_lock:
         if msg["series"] != "1m":
             _candles[msg["series"]][tk] = candles

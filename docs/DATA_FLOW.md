@@ -148,7 +148,7 @@ from Schwab to the screen (daemon, console, page), are these:
 |---|---|---|
 | Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten) and each ticker's newest chain; the board; the active ticker; the equity quotes the browser's price row is built from |
 | Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; each ticker's 1-minute bars (`server._bars`, the newest 24,000: Schwab's price history pushed by the daemon, each streamed bar on top) and 15-minute and daily candles (`server._candles`); every other live screen's history, loaded from `ed_console.db` once at startup and then fed live (§2 D6): level crosses (`server._crosses`), each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`, from the console's start) |
-| `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, subscription answers; every message a write refused, kept as sent with its error (`stream_write_failures`: the writer's refused rows, and each chain whose history write was refused); how far each spill file's write-back got (`stream_spill_progress`) |
+| `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, price history answers (`stream_pricehistory_raw`), subscription answers; every message a write refused, kept as sent with its error (`stream_write_failures`: the writer's refused rows, and each chain whose history write was refused); how far each spill file's write-back got (`stream_spill_progress`) |
 | `stream_capture.<ms>.spill` (beside `stream_capture.db`) | daemon's writer | while the database refuses writes, the held messages past the memory cap, in order; deleted once written back and verified, kept when the write-back does not verify or a stop leaves it (§2 D4) |
 | `ed_console.db` | console, and the daemon (the ticker board, the chain captures) | 1-minute bars, level crosses, the ticker board, chain captures and a morning chain per ticker — plus the tables of the deleted ML pipeline (dropped in P2-DB3) |
 
@@ -182,9 +182,10 @@ from Schwab to the screen (daemon, console, page), are these:
   asks `/pricehistory` for each ticker after its chain (`complete_chain_capture.PRICE_HISTORY`,
   per `docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt`, each request ending
   now, extended hours included): the 1-minute bars (10 days) once per ET date, the 15-minute (10
-  days) and daily (1 year) candles in every rotation; each series as Schwab sent it → daemon bus
-  (`pricehistory.TK.SERIES`, not the writer's: Schwab keeps it and it is asked again) → console
-  (8799) → the bar writer. Schwab CHART_EQUITY → daemon bus → the daemon's writer
+  days) and daily (1 year) candles in every rotation; each answer whole, as Schwab sent it →
+  daemon bus (`pricehistory.TK.SERIES`) → the daemon's writer (`stream_capture.db`
+  `stream_pricehistory_raw`, every answer, as sent: recorded like every stream message, §2 D4) and
+  → console (8799) → the bar writer. Schwab CHART_EQUITY → daemon bus → the daemon's writer
   (`stream_capture.db` `stream_bars_raw`, every bar every hour Schwab sends it), and → the console's
   bar writer. Console memory: `_bars`, Schwab's 1-minute history with each streamed bar standing
   over its minute; `_candles`, the 15-minute and daily candles (the console reads no database
