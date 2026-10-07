@@ -565,8 +565,8 @@ def compute_net_vanna(exposures: dict, spot: float | None) -> dict | None:
     if not nets:
         return None
     net_shares_per_volpt = sum(nets)                 # the book is already per vol point
-    return {"net_vanna_dollars_per_volpt": round(net_shares_per_volpt * float(spot), 2),
-            "net_vanna_shares_per_volpt": round(net_shares_per_volpt, 2)}
+    return {"net_vanna_dollars_per_volpt": net_shares_per_volpt * float(spot),
+            "net_vanna_shares_per_volpt": net_shares_per_volpt}
 
 
 def compute_zero_dte_gamma_share(
@@ -597,7 +597,7 @@ def compute_zero_dte_gamma_share(
         x = bucket_metric(v, "net_gex_1pct")
         if x is not None:
             zero += abs(x)
-    return round(100.0 * zero / total, 1)
+    return 100.0 * zero / total
 
 
 def total_gamma_raw_at_strike(bucket: dict) -> float | None:
@@ -672,7 +672,7 @@ def pick_pin_and_strength(
         t = total_gex_dollars_at_strike(exposures.get(k, {}))
         if t is not None and t > second:
             second = t
-    return round(s, 2), round((v - second) / v * 100.0, 1)
+    return s, (v - second) / v * 100.0
 
 
 def pick_net_gex_peak_strike(exposures: Dict[float, dict], strikes: List[float]) -> float | None:
@@ -686,7 +686,7 @@ def pick_net_gex_peak_strike(exposures: Dict[float, dict], strikes: List[float])
     s, _ = _pick_strike_max_metric(
         exposures, strikes, lambda b: bucket_metric_abs(b, "net_gex_1pct")
     )
-    return round(s, 2) if s is not None else None
+    return s
 
 
 def pick_key_delta_strike(
@@ -708,7 +708,7 @@ def pick_key_delta_strike(
         return (c or 0.0) + (p or 0.0)
 
     s, _ = _pick_strike_max_metric(exposures, strikes, _total_dex)
-    return round(s, 2) if s is not None else None
+    return s
 
 
 def pick_volatility_point_strikes(
@@ -734,10 +734,7 @@ def pick_volatility_point_strikes(
             hvp_s, hvp_v = float(s), float(v)
         if v > 0 and (lvp_v is None or v > lvp_v):
             lvp_s, lvp_v = float(s), float(v)
-    return (
-        round(hvp_s, 2) if hvp_s is not None else None,
-        round(lvp_s, 2) if lvp_s is not None else None,
-    )
+    return hvp_s, lvp_s
 
 
 def pick_gamma_wall_strikes(

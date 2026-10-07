@@ -734,7 +734,7 @@ def _log_flip_drift(tk: str, payload: dict) -> None:
             return
         if payload.get("computed_ts_utc") is None:
             return                      # no compute time, no row: never stamped "now"
-        _ts = round(float(payload["computed_ts_utc"]), 1)
+        _ts = float(payload["computed_ts_utc"])
         # RC-58: INTRADAY drift is the question, so only real trading sessions may be logged.
         # The loop runs around the clock, and the first week of this log was 784 of 784 rows from
         # a single SUNDAY window — spot frozen, so it measured a median 0.023 percent movement and
@@ -744,7 +744,7 @@ def _log_flip_drift(tk: str, payload: dict) -> None:
         if not _tradable(_ts):
             return
         row = {"ts_utc": _ts,
-               "ticker": tk, "flip": round(float(flip), 4),
+               "ticker": tk, "flip": float(flip),
                "spot": payload.get("spot"), "confidence": payload.get("confidence")}
         with _flip_drift_lock, open(_FLIP_DRIFT_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
@@ -769,7 +769,7 @@ def schwab_token_countdown(creation_ts: float | None) -> dict:
     if creation_ts is None:
         return {"schwab_token_age_days": None, "schwab_token_urgency": "unknown",
                 "schwab_token_note": "token file unreadable — collection may be dead"}
-    age_days = round((time.time() - float(creation_ts)) / 86400.0, 2)
+    age_days = (time.time() - float(creation_ts)) / 86400.0
     if age_days >= _SCHWAB_TOKEN_RED_DAYS:
         urgency, note = "red", (f"Schwab token is {age_days:.1f} days old (7-day hard limit) — "
                                 f"re-auth NOW: python reauth_schwab.py --manual")
@@ -809,7 +809,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
                                         if failure else "no terrain snapshot has been computed yet"),
                 "levels_failing": bool(failure), **token}
     now = time.time() if now is None else now
-    age = round(now - float(computed_ts_utc), 1)
+    age = now - float(computed_ts_utc)
     closed = closed_since(datetime.fromtimestamp(now, ET))
     if closed is not None:
         stale = float(computed_ts_utc) < closed.timestamp()
@@ -1029,7 +1029,7 @@ def _stamp_gamma_surface_cell_stream_state(surface: dict, streamed: dict, overla
                 ts_recv = _leg_stream_ts_recv(greeks)
                 leg_out = {
                     "symbol": sym, "state": leg_state, "ts_recv": ts_recv,
-                    "age_sec": (round(now - ts_recv, 1) if ts_recv is not None else None),
+                    "age_sec": (now - ts_recv if ts_recv is not None else None),
                 }
                 if leg_state == "rejected":
                     leg_out["rejected_reason"] = rejected_symbols.get(sym)
@@ -1601,8 +1601,7 @@ def _atr_fields(tk: str) -> dict:
     """atr_daily / atr_15m for every publication of the ticker's levels, whatever the chain's
     source (a live download or a stored capture)."""
     pair = _atr_pair(tk)
-    return {"atr_daily": round(pair.daily, 3) if pair.daily is not None else None,
-            "atr_15m": round(pair.m15, 3) if pair.m15 is not None else None,
+    return {"atr_daily": pair.daily, "atr_15m": pair.m15,
             "atr_daily_reason": pair.daily_reason, "atr_15m_reason": pair.m15_reason}
 
 
@@ -1717,7 +1716,7 @@ def get_terrain_strikes(ticker: str = Query(...), scope: ScopeQuery = "auto", ce
             today = {k: (_ps.get(k) or []) for k in ("all", "near", "far")}
             spot_used = _snap.get("spot")
             _cts_utc = _snap.get("computed_ts_utc")
-            today_age_sec = round(time.time() - float(_cts_utc), 1) if _cts_utc else None
+            today_age_sec = time.time() - float(_cts_utc) if _cts_utc else None
             today_src = "terrain_live_cache"
     except Exception as e:
         log.debug("terrain strikes live read failed %s: %s", tk, e)
@@ -3014,7 +3013,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
         as_of = value.as_of_ts_utc
         row["staleness"] = {
             "as_of_ts_utc": as_of,
-            "age_sec": None if as_of is None else round(served_ts - as_of, 1),
+            "age_sec": None if as_of is None else served_ts - as_of,
             "stale_after_sec": None,
             "stale": None,
             "reason": f"carried from canonical snapshot generation {snap.generation}; a session "
@@ -3036,7 +3035,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict:
                            if fam == "gamma" else {"producer": "server.get_levels: live spot ± the terrain's "
                                                    "implied_1d_move.points", "carried": False},
                            "staleness": {"as_of_ts_utc": as_of,
-                                         "age_sec": None if as_of is None else round(served_ts - as_of, 1),
+                                         "age_sec": None if as_of is None else served_ts - as_of,
                                          "stale_after_sec": None, "stale": bool(t.get("levels_stale")),
                                          "reason": "carried from the terrain"}})
     for row in levels:
@@ -3162,7 +3161,7 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
     mid = zp.get("zone_mid")
     if mid is None:
         mid = (lo + hi) / 2.0
-    zp["anchor"] = round(float(mid), 4)
+    zp["anchor"] = float(mid)
     n_opt = sum(
         1
         for t in tags
@@ -3182,7 +3181,7 @@ def _liquidity_zone_tradeable_fields(zp: dict, spot: Optional[float]) -> None:
         d = 0.0
     else:
         d = min(abs(sf - lo), abs(sf - hi))
-    zp["distance_to_spot"] = round(d, 4)
+    zp["distance_to_spot"] = d
     zp["spot_inside_zone"] = inside
     dist_pen = min((d / sf) * 12.0, 10.0)
     zp["tradeable_score"] = liquidity_zone_tradeable_score(
@@ -3248,7 +3247,7 @@ def liquidity_snapshot(ticker: str, now: datetime):
                 "zone_low": z.zone_low,
                 "zone_high": z.zone_high,
                 "zone_mid": z.zone_mid,
-                "zone_width": round(w, 4),
+                "zone_width": w,
                 "source_levels": z.source_levels,
                 "source_tags": z.source_tags,
                 "confluence_score": z.confluence_score,

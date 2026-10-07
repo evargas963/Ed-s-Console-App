@@ -460,7 +460,7 @@ def compute_wall_value_area(
     return {
         "lo": ks[li],
         "hi": ks[ri],
-        "coverage_pct": round(s / total * 100.0, 1),
+        "coverage_pct": s / total * 100.0,
         "method": "gamma value area: Market-Profile POC expansion on "
                   f"{side}-side GEX mass to 68.2pct (one sigma)",
     }
@@ -533,8 +533,8 @@ def compute_implied_one_day_move(contracts: list[dict], spot: float | None) -> d
     sigma = at_front[0]
     em = float(spot) * sigma * (1.0 / 252.0) ** 0.5
     return {
-        "points": round(em, 4),
-        "iv_pct_atm": round(sigma * 100.0, 4),
+        "points": em,
+        "iv_pct_atm": sigma * 100.0,
         "dte_used": front,
         "method": "S x sigma_ATM x sqrt(1/252), one standard deviation (68.3pct); "
                   "sigma = mean ATM call/put implied vol of the first expiry at least a day out",
@@ -901,7 +901,7 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
         books=books,
         charm_by_strike=charm_by_strike,
         pcr_by_expiry={e: put_call_oi_ratio(book) for (e, _d), (book, _diag) in sorted(books.items(), key=lambda kv: kv[0][0])},
-        atm_iv_pct_by_expiry={e: None if s is None else round(s * 100.0, 4)
+        atm_iv_pct_by_expiry={e: None if s is None else s * 100.0
                               for (e, _d), s in atm_sigma_by_expiry(contracts, spot).items() if e},
         pcr_volume_by_expiry={e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in books.items()},
         pcr_all=put_call_oi_ratio(exposures),

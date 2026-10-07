@@ -109,7 +109,7 @@ class LiveUiServer:
         await c.ws.send(json.dumps(payload, separators=(",", ":"), default=str))
         self.stats["frames_sent"] += 1
         self.stats["rows_sent"] += len(payload.get("rows") or ())
-        self.stats["last_send_ms"] = round((time.perf_counter() - t0) * 1000.0, 2)
+        self.stats["last_send_ms"] = (time.perf_counter() - t0) * 1000.0
 
     async def _pump(self, c: _Client) -> None:
         while True:

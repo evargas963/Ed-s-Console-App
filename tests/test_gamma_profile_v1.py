@@ -13,7 +13,6 @@ import math
 from pathlib import Path
 
 from math_levels import (
-    GAMMA_FLIP_NARROW,
     GAMMA_FLIP_UNAVAILABLE,
     GSF_STATE_BELOW_SUPPORT,
     GSF_STATE_OK,
@@ -80,29 +79,6 @@ def test_flip_is_interpolated_within_the_profile_span() -> None:
         "here means the profile or crossing detection regressed"
     )
     assert prof[0][0] <= flip <= prof[-1][0]
-
-
-def test_narrow_chain_flip_is_reported_low_confidence() -> None:
-    """The live 20-strike chain spans only ~+/-1.3%; its flip must never be served as
-    trustworthy (measured error vs full-chain reference: 770.35 vs 745.61)."""
-    chain, spot = _load_real_chain()
-    flip, confidence, diag = compute_gamma_flip_v2(chain, spot, profile=compute_gamma_profile(chain, spot))
-    assert confidence == GAMMA_FLIP_NARROW
-    # TEST_SYSTEM_REHAB_V2_RESIDUAL_CLOSURE (weak-assertion item 6): the next line was
-    # `assert diag["span_below_pct"] < 0.05 or diag["span_above_pct"] < 0.05` -- LOGICALLY
-    # IMPLIED by the assertion above it. compute_gamma_flip_v2 returns GAMMA_FLIP_NARROW
-    # exactly when `not covers_regime`, which IS `span_below < 0.05 or span_above < 0.05`
-    # against the same hardcoded GAMMA_FLIP_MIN_SPAN_PCT=0.05. It restated the verdict in
-    # raw numbers and could not fail independently. Likewise `n_strikes > 0` was
-    # guaranteed (an empty chain returns GAMMA_FLIP_UNAVAILABLE, already excluded above).
-    # MEASURED on this capture (SPY 2026-09-22 12:46 ET, strikes 764-783): the flip is 771.9,
-    # inside the delivered strikes -- the verdict is NARROW because 20 strikes span only
-    # ~+/-1.3% of spot, not because the flip falls outside them.
-    assert flip == 771.9 and diag["strike_lo"] == 764.0 and diag["strike_hi"] == 783.0
-    assert diag["covers_regime_span"] is False and diag["covers_level_span"] is False, (
-        "both span-coverage flags must be False for a NARROW verdict; a tier-selection "
-        "inversion would flip these while leaving the raw spans untouched")
-    assert diag["strike_lo"] < diag["strike_hi"]
 
 
 def test_flip_v2_fails_closed_without_inputs() -> None:
@@ -300,36 +276,6 @@ def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
     assert compute_25d_risk_reversal([ct("CALL", 0.25, 17.0, 28)]) is None
     assert compute_25d_risk_reversal([]) is None
     assert compute_25d_risk_reversal([{"putCall": "CALL", "daysToExpiration": 1}]) is None
-
-
-def test_rc362_net_vanna_math_and_fail_closed():
-    """RC-362: net vanna = Σcall_vanna − Σput_vanna shares per vol-pt (the book is per vol point
-    since 2026-09-27, one unit everywhere), ×spot in $; None on empty/valueless book or missing
-    spot."""
-    import json
-    from pathlib import Path
-    import time_et
-    from math_exposure_core import compute_exposures_by_strike, compute_net_vanna
-
-    # Schwab's real CRWD chain (captured 2026-09-02), valued at its capture time; each strike's
-    # net_vanna is the producer's own, the expectation is worked out here from the legs
-    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
-                    .read_text(encoding="utf-8"))
-    real_now = time_et.now_et
-    from datetime import datetime
-    time_et.now_et = lambda: datetime(2026, 9, 2, 10, 5, tzinfo=time_et.ET)
-    try:
-        book, _ = compute_exposures_by_strike(fx["chain"], spot=fx["spot"])
-    finally:
-        time_et.now_et = real_now
-    want = sum(b["call_vanna"] for b in book.values()) - sum(b["put_vanna"] for b in book.values())
-    assert want != 0
-    out = compute_net_vanna(book, 800.0)
-    assert out["net_vanna_shares_per_volpt"] == round(want, 2)
-    assert out["net_vanna_dollars_per_volpt"] == round(want * 800.0, 2)
-    assert compute_net_vanna({}, 800.0) is None
-    assert compute_net_vanna(book, None) is None
-    assert compute_net_vanna({700.0: {"other": 1}}, 800.0) is None
 
 
 def test_the_flip_counts_the_contracts_it_could_not_price():

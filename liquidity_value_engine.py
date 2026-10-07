@@ -90,8 +90,8 @@ def liquidity_zone_tradeable_score(
 ) -> float:
     """Spot-normalized liquidity zone tradeability score (LM-1 authority)."""
     if spot is None:
-        return round(3.0 * n_tags + 2.5 * n_opt, 2)
-    return round(3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen, 2)
+        return 3.0 * n_tags + 2.5 * n_opt
+    return 3.0 * n_tags + 2.5 * n_opt + (1.5 if inside else 0.0) - dist_pen
 
 
 def _resolve_bar_timestamp(d: dict) -> Optional[Any]:
@@ -265,8 +265,7 @@ def compute_session_vwap_series(
             continue
         w = cum_tpv / cum_vol
         sd = max(0.0, cum_tp2v / cum_vol - w * w) ** 0.5
-        series.append((b["_dt"].timestamp(), round(w, 4), round(w + sd, 4), round(w - sd, 4),
-                       round(w + 2 * sd, 4), round(w - 2 * sd, 4)))
+        series.append((b["_dt"].timestamp(), w, w + sd, w - sd, w + 2 * sd, w - 2 * sd))
     return series
 
 
@@ -402,7 +401,7 @@ def build_premarket_snapshot(
             zt = ZoneType.SUPPORT_LIQUIDITY
         elif "PD_POC" in str(tags) or "PDC" in str(tags):
             zt = ZoneType.PIVOT_VALUE
-        sl = [{"label": t, "value": round(p, 4)} for p, t in source_pairs]
+        sl = [{"label": t, "value": p} for p, t in source_pairs]
         z = Zone(
             zone_type=zt,
             zone_low=lo, zone_high=hi, zone_mid=mid,
@@ -622,7 +621,7 @@ def build_live_snapshot(
     zones: list[Zone] = []
     for lo, hi, mid, tags, source_pairs in clusters:
         zt, notes = _classify_live_cluster(tags, orb)
-        sl = [{"label": t, "value": round(p, 4)} for p, t in source_pairs]
+        sl = [{"label": t, "value": p} for p, t in source_pairs]
         zones.append(
             Zone(
                 zone_type=zt,

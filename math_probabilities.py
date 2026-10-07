@@ -127,8 +127,8 @@ def compute_pin_score(
         label = "negligible"
 
     return {
-        "raw": round(raw, 6),
-        "normalized": round(normalized, 1),
+        "raw": raw,
+        "normalized": normalized,
         "label": label,
     }
 
