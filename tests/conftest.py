@@ -3,12 +3,10 @@ Pytest: allow EdDB against temp paths (non-canonical) without per-call flags.
 
 Production processes must NOT set ED_CONSOLE_ALLOW_NONCANONICAL_DB globally.
 
-Schwab placeholders (CI / adversarial): ``server`` calls ``build_config`` at import
-time. Objective-audit adversarial tests import ``server`` without live Schwab access.
-Module-level setdefault here runs before test collection so ``import server`` never
-requires real GitHub secrets. Production uvicorn startup is unchanged — these vars are
-not set outside pytest. Fail-closed without secrets is locked by
-``test_build_config_fail_closed_without_secrets`` (monkeypatch.delenv).
+Schwab placeholders (CI / adversarial): the Schwab client modules read the credentials from
+the environment. Module-level setdefault here runs before test collection so no test needs
+real GitHub secrets; these vars are not set outside pytest. Fail-closed without secrets is
+locked by ``test_build_config_fail_closed_without_secrets``.
 """
 from __future__ import annotations
 
@@ -43,7 +41,7 @@ os.environ.setdefault("ED_CONSOLE_ALLOW_NONCANONICAL_DB", "1")
 # them). Both resolve canonically under ED_RUNTIME_ROOT above, which is the one isolation
 # knob — the _stream_spine_fallback fixture below still pins the stream reader default.
 
-# Schwab hermetic AND explicitly offline (RC-515): placeholders satisfy import-time config;
+# Schwab hermetic AND explicitly offline: placeholder credentials in the environment;
 # ED_CI_OFFLINE guarantees no test constructs a live Schwab client. SCHWAB_TOKEN_PATH is NOT
 # set — RC-534 resolves the token canonically under ED_RUNTIME_ROOT (a path with no token in
 # the private root, so still offline), and runtime_layout's own tests require it unset.

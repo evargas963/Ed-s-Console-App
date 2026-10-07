@@ -45,10 +45,22 @@ import os
 import sys
 import threading
 import time
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
+
+import runtime_layout  # noqa: E402  (the standard library only)
+
+#: Under pythonw there is no error output: from here until the log starts (_start_log) it is the
+#: log file, so a module below that fails to load leaves its reason there.
+_EARLY_ERRORS = None
+if sys.stderr is None:
+    _log_file = runtime_layout.logs_dir() / "stream_capture.log"
+    _log_file.parent.mkdir(parents=True, exist_ok=True)
+    _EARLY_ERRORS = sys.stderr = open(_log_file, "a", encoding="utf-8", buffering=1)
+    print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} capture daemon loading (pid {os.getpid()})", file=sys.stderr)
 
 from stream_spine import (  # noqa: E402
     LOG,
@@ -65,6 +77,7 @@ from stream_spine import (  # noqa: E402
     subscription_msg,
 )
 from calibration.complete_chain_capture import CHAIN_WORKERS, ChainSweep, board_tickers  # noqa: E402
+from time_et import ct_label  # noqa: E402
 
 log = logging.getLogger("capture")
 
@@ -267,6 +280,11 @@ def _connection_lost(e: BaseException) -> bool:
 BOARD_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
 
 
+#: why Schwab is not connected while no attempt has failed since the stream last logged in: it is
+#: logging in, or its connection has just ended and the reason is on its way
+SCHWAB_CONNECTING = "NOT CONNECTED: the stream is logging in, or its connection has just ended"
+
+
 class Daemon:
     def __init__(self, bus: MessageBus, health: HealthRegistry,
                  board: "list[str] | None" = None) -> None:
@@ -287,6 +305,11 @@ class Daemon:
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         self.stream = None
+        #: why Schwab is not connected, for /api/health (status()["schwab_down"], read while the
+        #: socket is not open): SCHWAB_CONNECTING, or NOT CONNECTED since the first failure in a
+        #: row (_down_since) with the last one's reason, as the log has it
+        self.schwab_down = SCHWAB_CONNECTING
+        self._down_since: "float | None" = None
 
     def set_wanted(self, raw, sender=None) -> None:
         """The console's list from connection `sender` (live_push calls this for every
@@ -320,6 +343,7 @@ class Daemon:
         last = self.stream.last_frame_ts if self.stream is not None else 0.0
         return {"ts": now,
                 "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
+                "schwab_down": self.schwab_down,
                 "board": list(self.board),
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
@@ -366,6 +390,7 @@ class Daemon:
         stream._handlers["NEWS_HEADLINE"].append(_RawHandler(_publisher("NEWS_HEADLINE", self.bus, self.health)))
         self.stream = stream
         self.held = {s: frozenset() for s in SERVICES}    # a new connection holds nothing
+        self.schwab_down, self._down_since = SCHWAB_CONNECTING, None
         log.info("schwab: connected")
 
     async def disconnect(self) -> None:
@@ -418,8 +443,12 @@ class Daemon:
             started = time.time()
             try:
                 await self.run_connection(schwab_client(), stop)
-            except Exception as e:  # noqa: BLE001 -- every failure is a reconnect
-                log.warning("schwab: connection ended (%s: %s)", type(e).__name__, str(e)[:350])
+            except Exception as e:  # noqa: BLE001 -- every failure is a reconnect; its reason to the log and /api/health
+                why = f"{type(e).__name__}: {str(e)[:350]}"
+                log.warning("schwab: connection ended (%s)", why)
+                if self._down_since is None:
+                    self._down_since = time.time()
+                self.schwab_down = f"NOT CONNECTED since {ct_label(self._down_since)}: {why}"
             if stop.is_set():
                 break
             # a connection that lasted 5 minutes starts the backoff over
@@ -475,18 +504,22 @@ def release_owner_lock(fd: int, lock: Path) -> None:
 
 
 def _start_log() -> None:
-    """Every line to <runtime>/logs/stream_capture.log (kept: under pythonw there is no console,
-    and 2026-09-23's 42 socket deaths left no reason on disk), and to the console if any."""
-    from logging.handlers import RotatingFileHandler
-    from runtime_layout import logs_dir
-    path = logs_dir() / "stream_capture.log"
+    """Every line, with its time to the millisecond, to <runtime>/logs/stream_capture.log, and to
+    the console if any. Under pythonw the log file held as the error output since the first line
+    (_EARLY_ERRORS) is closed first, so the log's handler holds the file alone and can rotate it;
+    from here an error reaches the log through the handler (main logs one that ends the daemon)."""
+    global _EARLY_ERRORS
+    if _EARLY_ERRORS is not None:
+        _EARLY_ERRORS.close()
+        _EARLY_ERRORS = sys.stderr = None
+    path = runtime_layout.logs_dir() / "stream_capture.log"
     path.parent.mkdir(parents=True, exist_ok=True)
-    handlers: "list[logging.Handler]" = [RotatingFileHandler(path, maxBytes=50 * 1024 * 1024,
-                                                             backupCount=1, encoding="utf-8")]
+    handlers: "list[logging.Handler]" = [
+        RotatingFileHandler(path, maxBytes=50 * 1024 * 1024, backupCount=1, encoding="utf-8")]
     if sys.stderr is not None:
         handlers.append(logging.StreamHandler())
     logging.basicConfig(level=logging.INFO, handlers=handlers,
-                        format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+                        format="%(asctime)s.%(msecs)03d %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 
 FEED_STATUS_EVERY_SEC = 60.0
@@ -517,13 +550,21 @@ async def record_feed_status(daemon: "Daemon", stop: asyncio.Event) -> None:
             pass
 
 
+def _worker_ended(worker: "asyncio.Future") -> None:
+    """A chain sweep worker's end: one that ended on an error is logged with its traceback."""
+    if not worker.cancelled() and worker.exception() is not None:
+        e = worker.exception()
+        log.error("chain sweep: a worker ended on %s: %s", type(e).__name__, e, exc_info=e)
+
+
 async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Event, *,
                      failures: "CaptureWriter") -> None:
     """The chain sweep (calibration.complete_chain_capture.ChainSweep) on its own threads, so the
     stream never waits on a chain; each chain part is published on the event loop, and the bus
     keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). A chain whose
     history write fails is kept as sent by `failures`, the daemon's writer (its failures ride
-    the heartbeat)."""
+    the heartbeat). A worker that ends on an error is logged with it (_worker_ended): a worker
+    thread has no error output of its own to reach."""
     loop = asyncio.get_running_loop()
     halt = threading.Event()
     sweep = ChainSweep(db_path, daemon.board,
@@ -532,6 +573,8 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
     daemon.chains = sweep
     sweep.set_active(daemon.active)                 # the ticker on screen, if the console said one
     workers = [loop.run_in_executor(None, sweep.work, schwab_client, halt) for _ in range(CHAIN_WORKERS)]
+    for worker in workers:
+        worker.add_done_callback(_worker_ended)
     try:
         await stop.wait()
     finally:
@@ -596,10 +639,8 @@ def main() -> int:
     if sys.argv[1:]:        # everything it needs comes from the console; no switch can move it
         print(f"the capture daemon takes no arguments (got {sys.argv[1:]})", file=sys.stderr)
         return 2
-    # A worktree must not run a live daemon against production's runtime
-    # (runtime_layout.live_binding_error, 2026-09-25).
-    from runtime_layout import live_binding_error
-    binding = live_binding_error()
+    # a worktree must not run a live daemon against production's runtime
+    binding = runtime_layout.live_binding_error()
     if binding is not None:
         print(f"CAPTURE DAEMON REFUSED: {binding}", file=sys.stderr, flush=True)
         return 2
@@ -609,6 +650,9 @@ def main() -> int:
         return asyncio.run(run())
     except KeyboardInterrupt:
         return 0
+    except BaseException:
+        log.exception("capture daemon: ended by an error")   # under pythonw, the log is the only record
+        raise
     finally:
         release_owner_lock(fd, lock)
 

@@ -151,7 +151,7 @@ log = logging.getLogger("ed_server")
 
 
 # ── Import all existing Ed Console modules (unchanged) ───────────────────────
-from config import build_config, load_dotenv_file
+from config import token_path
 
 from instrument_identity import display_symbol, ticker_storage_key   # RC-126: the ONE query-symbol authority
 import live_market_plane as lmp
@@ -165,9 +165,9 @@ from db import get_db
 import live_price_rows as _lpr        # with_change: the bar-change computation
 import push_changes
 
-# ── Config (the token file's age is shown; the console makes no Schwab call) ──
-load_dotenv_file()
-cfg     = build_config()
+#: the Schwab token file, whose age is shown (the console holds no Schwab credential and makes no
+#: Schwab call)
+TOKEN_PATH = token_path()
 
 
 #: Precedence for the ONE spot authority. Highest wins; every entry records where the
@@ -785,7 +785,7 @@ def schwab_token_countdown(creation_ts: float | None) -> dict:
 def _schwab_token_creation_ts() -> float | None:
     """creation_timestamp from schwab_token.json; None (never a fake age) when unreadable."""
     try:
-        raw = json.loads(Path(cfg.token_path).read_text(encoding="utf-8"))
+        raw = json.loads(Path(TOKEN_PATH).read_text(encoding="utf-8"))
         return float(raw["creation_timestamp"])
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -1503,15 +1503,31 @@ def _status_line() -> str:
     ])
 
 
+#: while the console waits at its start, what it waits for is logged this often, with how long
+WAITING_LOG_EVERY_SEC = 5.0
+
+
+def _wait_for(what: str, ready) -> None:
+    """Wait until `ready()` (or the loop stops), logging what for and for how long, then how
+    long it took once ready."""
+    started = time.monotonic()
+    next_log = started
+    while _terrain_loop_running and not ready():
+        if time.monotonic() >= next_log:
+            log.info("waiting for %s (%.0f s so far)", what, time.monotonic() - started)
+            next_log += WAITING_LOG_EVERY_SEC
+        time.sleep(0.5)
+    if ready():
+        log.info("done waiting for %s after %.1f s", what, time.monotonic() - started)
+
+
 def _terrain_loop() -> None:
     """The board's stored levels once the bar writer has loaded the stored bars and the daemon
     has said what the board is (queued behind the delivered chains: _load_stored_levels); then
     every STATUS_EVERY_SEC the status line is logged and the price levels of a new session or a
     new ticker are published. The chains arrive from the daemon (_on_chain)."""
-    while _terrain_loop_running and not _bars_loaded.wait(0.5):
-        pass
-    while _terrain_loop_running and _board() is None:
-        time.sleep(0.5)
+    _wait_for("the stored bars to load", _bars_loaded.is_set)
+    _wait_for("the capture daemon's heartbeat (it says what the board is)", lambda: _board() is not None)
     board = _board() or []
     _load_crosses(board)
     _publish_missing_price_levels(board, now_et())
@@ -2715,19 +2731,24 @@ def get_chain(ticker: str = Query(...),
                   "completeness_basis": held.get("chain_basis")},   # the publication's own label
     })
 
+#: /api/health's Schwab reason when the console has no current heartbeat from the daemon
+NO_DAEMON_HEARTBEAT = "the capture daemon's heartbeat is not current"
+
+
 @app.get("/api/health")
 def health():
-    # RC-514 / docs/ARCHITECTURE.md "Failure domains": application availability and capability
+    # docs/ARCHITECTURE.md "Failure domains": application availability and capability
     # availability are separate, so `status` answers "is the app alive" and never folds a
     # vendor outage into it. Schwab is the capture daemon's: its heartbeat says whether its
-    # Schwab socket is open; no current heartbeat is UNAVAILABLE (unmeasurable is not ok, RC-57).
+    # Schwab socket is open and, when not, why (as its log says it); no current heartbeat is
+    # UNAVAILABLE (unmeasurable is not ok).
     st = lmp.daemon_status()
     board = _board()
     capability: dict[str, object] = {
         "schwab": "AVAILABLE" if st is not None and st.get("schwab_socket_open") is True else "UNAVAILABLE"}
     if capability["schwab"] == "UNAVAILABLE":
-        capability["schwab_reason"] = ("the capture daemon's heartbeat is not current" if st is None
-                                       else "the capture daemon's Schwab socket is not open")
+        capability["schwab_reason"] = (NO_DAEMON_HEARTBEAT if st is None
+                                       else st["schwab_down"])
     return {
         "status": "ok",
         "time": datetime.now().isoformat(),
@@ -2879,7 +2900,7 @@ def _capture_process_identity() -> ProcessIdentityV1:
 
 
 # Captured exactly once, at module import, before uvicorn serves any request
-# (single-process, single-worker, no --reload per start_ed_console.bat).
+# (single-process, single-worker, no --reload: launch.CONSOLE).
 PROCESS_IDENTITY_V1: ProcessIdentityV1 = _capture_process_identity()
 
 

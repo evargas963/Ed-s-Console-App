@@ -55,6 +55,7 @@ def test_changing_an_existing_test_is_put_to_the_operator(payload):
     ("Stop-Process -Id 123 -Force  # streaming.capture", "daemon or the console"),
     ("Start-Process -FilePath C:\\x\\start_capture_daemon.bat", "daemon or the console"),
     ("cmd /c start_ed_console.bat", "daemon or the console"),
+    (".venv\\Scripts\\python.exe launch.py", "daemon or the console"),
     ("gh pr merge 445 --merge", "merges pull request 445"),
     ("gh api -X PUT repos/o/r/pulls/445/merge", "merges pull request 445"),
     ("git push origin HEAD:main", "pushes to main"),
@@ -74,6 +75,8 @@ def test_production_actions_are_put_to_the_operator(cmd, what):
            "PowerShell"),
     _shell("gh pr view 445 --json state"),
     _shell("git push -q -u origin fix/some-branch"),
+    _shell("git add launch.py tests/test_launch_v1.py"),
+    _shell("python -m ruff check launch.py"),
 ])
 def test_ordinary_work_passes(payload):
     assert guard.reasons(payload) == []
