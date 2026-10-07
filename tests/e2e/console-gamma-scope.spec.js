@@ -26,7 +26,7 @@ const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, fron
   expirations: [{ expiry: '2026-09-11', dte: 2, front: true }], strikes: [99, 100, 101],
   cells: [{ strike: 99, gex: [-90000], spot: false }, { strike: 100, gex: [958600], spot: true },
     { strike: 101, gex: [-264500], spot: false }],
-  view: { centre: 100, scope: 'auto', coverage: null, demand: [], max_abs: { gex: 958600 }, missing_expiry: null } };
+  view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 
 async function intercept(page, asked) {
   await page.route('**/api/**', (route) => {

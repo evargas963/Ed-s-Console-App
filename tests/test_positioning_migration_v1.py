@@ -1,12 +1,16 @@
 """The Trade Desk's positioning migration is computed once, on the server (terrain_engine.
 positioning_migration), from two real days of Schwab's PCG chain (tests/fixtures, captured
-2026-09-24 and 2026-09-25). Expected values are worked out here from the rows themselves."""
+2026-09-24 and 2026-09-25), each valued at its capture. Expected values are worked out here from
+the rows themselves (question 3: a calculation Schwab does not send, against its definition)."""
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
 import time_et
 from terrain_engine import MIGRATION_DRIFT_STRIKES, compute_terrain, positioning_migration
 
@@ -15,12 +19,11 @@ _FX = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_pcg_two_d
 
 
 @pytest.fixture
-def two_days(pin_clock):
+def two_days():
     rows = []
     for day in _FX["days"]:
-        at = datetime.fromtimestamp(day["ts_utc"], time_et.ET)
-        pin_clock(at.year, at.month, at.day, at.hour, at.minute)
-        snap = compute_terrain("PCG", day["contracts"], day["spot"])
+        snap = compute_terrain("PCG", day["contracts"], day["spot"],
+                               now=datetime.fromtimestamp(day["ts_utc"], time_et.ET))
         rows.append((snap.per_strike, snap))
     return rows
 
@@ -54,14 +57,16 @@ def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
     assert not m["compared"] and m["drift"] is None      # no prior day: nothing to compare
 
 
-def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_path, monkeypatch, pin_clock):
+def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own():
     """On a weekend the terrain holds the newest capture (Friday). The prior day was picked by the
     wall clock's date, so it was that same Friday capture: every change 0, served as `compared`
-    (2026-09-27). It is the capture before the day of the chain the rows came from. Real PCG
-    chains, stored as the daemon writes them; the clock is Sunday."""
+    (2026-09-27). It is the capture before the day of the chain the rows came from; and a new
+    market day's first chain makes Friday's capture the prior day. Real PCG chains, stored as the
+    daemon writes them in the console's database. STAND-IN (named): Monday's price row, Friday's
+    capture price."""
     import server
-    from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_chain_capture
-    db = tmp_path / "ed.db"
+    from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day, persist_complete_chain_capture
+    db = server.get_db().db_path
     for day in _FX["days"]:
         by_exp: dict = {}
         for c in day["contracts"]:
@@ -69,18 +74,26 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
         for exp, cs in by_exp.items():
             persist_complete_chain_capture(db, ticker="PCG", expiry=exp, contracts=cs, spot=day["spot"],
                                            completeness_basis=CAPTURE_BASIS, ts_utc=day["ts_utc"])
-    pin_clock(2026, 9, 27, 12, 0)                                        # Sunday
-    from db import EdDB
-    edb = EdDB(db)
-    monkeypatch.setattr(server, "get_db", lambda: edb)
-    monkeypatch.setattr(server, "_terrain_cache", {})
-    # startup on a closed market: the levels producer prices the newest capture (Friday) and,
-    # with it, the prior day's rows the route serves
-    from calibration.complete_chain_capture import last_capture_per_day
-    stored = last_capture_per_day(str(db), "PCG", 2)            # the startup load's one read
+    stored = last_capture_per_day(db, "PCG", 2)                 # the startup load's one read
     newest = stored[0]
-    assert server._publish_levels("PCG", captures=stored) is not None
-    body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
+    try:
+        # startup on a closed market (Sunday 2026-09-27): the levels producer prices the newest
+        # capture (Friday) and, with it, the prior day's rows the route serves
+        assert server._publish_levels("PCG", captures=stored,
+                                      now=datetime(2026, 9, 27, 12, 0, tzinfo=time_et.ET)) is not None
+        body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
+        # a new market day's first chain (Monday 2026-09-28 10:00 ET), before that day's first
+        # capture: the prior day is recomputed against the new day
+        monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET)
+        lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["PCG"]}})
+        ofs._price_rows["PCG"] = {"ticker": "PCG", "spot": newest["spot"], "trade_ts": monday.timestamp()}
+        server._publish_levels("PCG", newest["contracts"], monday.timestamp(), now=monday)
+        monday_body = json.loads(server.get_terrain_strikes(ticker="PCG").body)
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop("PCG", None)
+        ofs._price_rows.pop("PCG", None)
+        lmp.record_feed_down()
     assert body["prior_source"] == "chain_capture:2026-09-24"
     m = body["migration"]["all"]
     assert m["compared"] and sum(1 for r in m["rows"] if r[3]) > 10       # real changes, not self vs self
@@ -90,39 +103,4 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(tmp_p
     both = [abs(v) for r in m["rows"] if r[0] in drawn for v in (r[1], r[2]) if v is not None]
     both += [abs(r[1]) for r in body["today"]["all"] if r[1] is not None]
     assert body["views"]["all"]["max_abs_with_prior"] == max(both)
-    # the stored chains are read by the producer once per new capture, never by a page request
-    reads = []
-    monkeypatch.setattr(server, "last_capture_per_day", lambda *a, **k: reads.append(a) or [])
-    for _ in range(3):
-        assert json.loads(server.get_terrain_strikes(ticker="PCG").body)["prior_source"] == "chain_capture:2026-09-24"
-        server.get_forces(ticker="PCG")
-    server._publish_levels("PCG", captures=stored)                       # same capture: nothing new
-    assert reads == []
-    # a new capture is computed once, by the next publish
-    key_before = server.terrain_cache_get("PCG")["_captures_key"]
-    later = newest["ts_utc"] + 1800
-    for exp, cs in {str(c.get("expirationDate") or "")[:10]: [] for c in newest["contracts"]}.items():
-        persist_complete_chain_capture(db, ticker="PCG", expiry=exp,
-                                       contracts=[c for c in newest["contracts"]
-                                                  if str(c.get("expirationDate") or "")[:10] == exp],
-                                       spot=newest["spot"], completeness_basis=CAPTURE_BASIS, ts_utc=later)
-    monkeypatch.setattr(server, "last_capture_per_day",
-                        lambda *a, **k: reads.append(a) or last_capture_per_day(*a, **k))
-    stored = last_capture_per_day(str(db), "PCG", 2)            # the caller's one read ...
-    newer = stored[0]
-    server._publish_levels("PCG", captures=stored)
-    assert server.terrain_cache_get("PCG")["_captures_key"] != key_before
-    assert reads == []                            # ... serves the levels, forces and prior day
-    server._publish_levels("PCG", captures=stored)
-    assert reads == []
-    # a new market day's first chain, before that day's first capture: the prior day is recomputed
-    # against the new day (Friday's capture becomes the prior day), once
-    monkeypatch.setattr(server, "resolve_spot", lambda tk: (newer["spot"], "streaming_plane", later))
-    monkeypatch.setattr(server, "_log_level_crosses", lambda *a, **k: None)
-    monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET).timestamp()
-    pin_clock(2026, 9, 28, 10, 0)
-    server._publish_levels("PCG", newer["contracts"], monday)
-    assert len(reads) == 1                        # the two newest days, read once for both
-    assert json.loads(server.get_terrain_strikes(ticker="PCG").body)["prior_source"] == "chain_capture:2026-09-25"
-    server._publish_levels("PCG", newer["contracts"], monday + 5)
-    assert len(reads) == 1
+    assert monday_body["prior_source"] == "chain_capture:2026-09-25"

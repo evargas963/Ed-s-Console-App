@@ -27,9 +27,8 @@
  * usability fix, not a test-only shim -- a real pointer had the identical difficulty a
  * coordinate-based Playwright click did), so this file uses genuine `.click()` throughout; the
  * CHAIN fixture carries real native OSI-style symbols so the full path -- Chart click -> expiry
- * carried through -> Strike Detail's /api/chain fetch -> Strike Detail resolving the REAL call
- * and put symbols for that strike -> demanding streaming for those exact native symbols -- is
- * actually exercised end to end.
+ * carried through -> Strike Detail's /api/chain fetch -> Strike Detail showing that strike's call
+ * and put -- is actually exercised end to end.
  */
 const { test, expect } = require('@playwright/test');
 
@@ -52,14 +51,8 @@ const CHAIN = { spot: 100, spot_strike: 102, expiry: '2026-09-18', status: 'ok',
 
 async function intercept(page) {
   const chainRequests = [];
-  const demandCalls = [];
   await page.route('**/api/**', (route) => {
     const url = route.request().url();
-    if (url.includes('/api/streaming/active-option-contract') && route.request().method() === 'POST') {
-      let body = {}; try { body = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
-      demandCalls.push(body);
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contracts: body.contracts || [] }) });
-    }
     let body = { available: false };
     if (url.includes('/api/terrain/strikes')) body = STRIKES;
     else if (url.includes('/api/terrain')) body = TERRAIN;
@@ -71,7 +64,7 @@ async function intercept(page) {
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
-  return { chainRequests, demandCalls };
+  return { chainRequests };
 }
 
 // a real mouse click where the chart draws the strike's profile row, once the row has stopped
@@ -93,14 +86,13 @@ test.describe('Options/Gamma Chart subview', () => {
   });
 
   test('a real click on a Chart mark carries the workspace expiry through to Strike Detail\'s real native call/put identity (state-authority review)', async ({ page }) => {
-    const { chainRequests, demandCalls } = await intercept(page);
+    const { chainRequests } = await intercept(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();
     await page.locator('#expSel').selectOption('2026-09-18');
     await expect.poll(() => page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows)).toBeGreaterThan(0);
 
     chainRequests.length = 0;
-    demandCalls.length = 0;
     // A genuine pointer click on strike 102's profile row on the shared chart
     await clickStrike(page, 102);
 
@@ -111,18 +103,10 @@ test.describe('Options/Gamma Chart subview', () => {
     await expect.poll(() => chainRequests.length).toBeGreaterThan(0);
     expect(chainRequests.every((e) => e === '2026-09-18')).toBeTruthy();
 
-    // Strike Detail resolved the REAL, vendor-verbatim call AND put symbols for strike 102 at
-    // this expiry, and demanded streaming for exactly those -- the complete workflow, not just
-    // the numeric strike+expiry handoff.
-    //
-    // A SEVENTH independent review (2026-09-13), REPRODUCED: this assertion only ever
-    // checked CALL_SYM was present -- a regression that dropped PUT_SYM from the demand set
-    // entirely (e.g. a call-only bug in the strike-to-contracts resolution) would have passed
-    // this test unnoticed. Both legs of the same strike must be demanded together.
-    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
-    const lastDemand = demandCalls[demandCalls.length - 1];
-    const demanded = [lastDemand.contract, ...(lastDemand.contracts || [])].filter(Boolean);
-    expect(demanded).toEqual(expect.arrayContaining([CALL_SYM, PUT_SYM]));
+    // Strike Detail shows strike 102's call AND put at this expiry, each its own contract's open
+    // interest as served -- the complete workflow, not just the numeric strike+expiry handoff.
+    await expect(page.locator('#sdBody table.sd tbody tr').nth(0).locator('td').nth(1)).toHaveText('1200');
+    await expect(page.locator('#sdBody table.sd tbody tr').nth(1).locator('td').nth(1)).toHaveText('980');
   });
 
   test('with no expiry filter set, a Chart click leaves selExpiry null (no invented expiry)', async ({ page }) => {

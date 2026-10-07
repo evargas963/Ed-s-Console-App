@@ -2046,11 +2046,11 @@ def project_gamma_surface(chain: list, books: dict) -> dict:
     }
 
 
-def _stamp_columns(surface: dict) -> dict:
-    """The surface's expiration columns stamped by the ET clock (a browser never decides what day
-    it is): `expired` (its expiry is before today) and `front` (the nearest expiry that has not
+def _stamp_columns(surface: dict, now: datetime) -> dict:
+    """The surface's expiration columns stamped at `now` (ET; a browser never decides what day it
+    is): `expired` (its expiry is before now's date) and `front` (the nearest expiry that has not
     expired, by Schwab's daysToExpiration). No cell value is touched."""
-    today = now_et().strftime("%Y-%m-%d")      # time_et: the ONE ET clock / session-calendar authority
+    today = now.strftime("%Y-%m-%d")
     exps = [dict(e, expired=bool(e.get("expiry") and str(e["expiry"]) < today))
             for e in (surface.get("expirations") or [])]
     live_cols = [e for e in exps if not e["expired"] and e.get("dte") is not None]
@@ -2069,13 +2069,17 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
     colour scale. With no live surface the answer is "unavailable" with the reason; there is no
     second source. Exposes chain/spot as-of, source, and stale/degraded so the UI can fail stale
     visibly."""
+    return JSONResponse(gamma_surface_payload(ticker_storage_key(_required_ticker(ticker)), scope, centre,
+                                              shift, cols, expiry, now_et()))
 
-    tk = ticker_storage_key(_required_ticker(ticker))
 
+def gamma_surface_payload(tk: str, scope: str, centre, shift: int, cols: "int | None", expiry: "str | None",
+                          now: datetime) -> dict:
+    """The heatmap's answer for ticker `tk` at `now` (/api/options/gamma-surface)."""
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
     live = terrain_cache_get(tk)
     surf = (live or {}).get("_gamma_surface")
-    _surface_live_spot = resolve_spot(tk)
+    _surface_live_spot = resolve_spot(tk, now=now.timestamp())
     if live and surf:
         # ONE freshness authority: terrain_staleness (RC-424) already merged onto the cache by
         # terrain_cache_get — serialize it verbatim, never a second age policy for the same truth.
@@ -2083,8 +2087,8 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
         spot_strike = nearest_strike(surf.get("strikes"), _surface_live_spot[0])
         # `live` means sourced from the live levels; whether the cells on screen are streaming is
         # the view's coverage
-        window, view = _surface_view(_stamp_columns(surf), spot_strike, scope, centre, shift, cols, expiry)
-        return JSONResponse({
+        window, view = _surface_view(_stamp_columns(surf, now), spot_strike, scope, centre, shift, cols, expiry)
+        return {
             # every cell Schwab listed is drawn: a cell without a value says why (absent)
             "ticker": tk, "symbol": tk, "available": True, "reason": None,
             "source": "terrain_live_cache", "live": True, "stale": stale,
@@ -2113,7 +2117,7 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
             "method": ("live terrain wide chain (current Greeks + live spot, this refresh cycle) -> "
                        "partition by native expirationDate -> compute_exposures_by_strike per expiry "
                        "-> net_gex_1pct cell; one producer, zero extra vendor calls"),
-        })
+        }
 
     # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----
     # REQUESTED: a page shows this ticker. WARMING: its chain is coming -- it is on the
@@ -2132,9 +2136,9 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
         _why = ["the surface is projected when the daemon delivers this ticker's chain"]
     else:
         _why = ["no chain is fetched for this ticker: it is not on the watchlist"]
-    return JSONResponse({"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
-                         "live": False, "stale": True, "warming": _requested and _warming,
-                         "requested": _requested, "reason": " — ".join(r for r in _why if r)})
+    return {"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
+            "live": False, "stale": True, "warming": _requested and _warming,
+            "requested": _requested, "reason": " — ".join(r for r in _why if r)}
 
 
 # RC-UI-1's dev route (/console) converged into `/` here (operator directive 2026-09-14):

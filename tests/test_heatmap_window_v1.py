@@ -1,19 +1,28 @@
-"""The heatmap the server serves is the one the page draws: the strike rows of the scope around the
-price (or the panned centre), the columns the page fits, the row at the price, the contracts to
-stream and each measure's colour scale.
-Real data: three SPY chain captures, one expiry each (10-14, 10-15, 11-20), published as one chain
-(no single capture spans three expiries); the live price is a stand-in, the 10-15 capture's spot."""
+"""The heatmap the server serves is the one the page draws (question 2: the screen shows it
+correctly): the strike rows of the scope around the price (or the panned centre), the columns the
+page fits, the row at the price and each measure's colour scale.
+
+Through the real code: the daemon's status and price row as the console holds them, the levels
+producer (server._publish_levels), the heatmap's answer at a time (server.gamma_surface_payload)
+and the per-strike routes. Real data: three SPY chain captures, one expiry each (10-14, 10-15,
+11-20), published as one chain (no single capture spans three expiries), valued on the captures'
+day (2026-10-01 12:00 ET). STAND-IN (named): the live price, the 10-15 capture's spot.
+"""
 from __future__ import annotations
 
 import copy
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
 import server
 from terrain_engine import SCOPE_ROWS, strike_window
+from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _CHAIN = [c for f, key in (("real_spy_2026_10_14_chain_oi_zero.json", "contracts"),
@@ -22,24 +31,36 @@ _CHAIN = [c for f, key in (("real_spy_2026_10_14_chain_oi_zero.json", "contracts
           for c in json.loads((_FX / f).read_text(encoding="utf-8"))[key]]
 _SPOT = 764.92                                    # stand-in: the 10-15 capture's spot
 TK = "SPY"
+_AT = datetime(2026, 10, 1, 12, 0, tzinfo=ET)     # the captures' day, before every expiry
+
+
+def _price(spot):
+    """The daemon's status (Schwab's socket open, SPY held) and SPY's price row (None: no price)."""
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+                               "held": {"LEVELONE_EQUITIES": [TK]}})
+    if spot is None:
+        ofs._price_rows.pop(TK, None)
+    else:
+        ofs._price_rows[TK] = {"ticker": TK, "spot": spot, "trade_ts": _AT.timestamp()}
 
 
 @pytest.fixture(autouse=True)
-def _published(monkeypatch, pin_clock):
-    pin_clock(2026, 10, 1, 12, 0)                 # the captures' day, before every expiry
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (_SPOT, "stub", time.time()))
-    monkeypatch.setattr(server, "_desired_stream_greeks_for_ticker", lambda listed: {})
+def _published():
     with server._terrain_cache_lock:              # this test's chain, never one an earlier test left
         server._terrain_cache.pop(TK, None)
-    assert server._publish_levels(TK, copy.deepcopy(_CHAIN), 1.0) is not None
+    _price(_SPOT)
+    assert server._publish_levels(TK, copy.deepcopy(_CHAIN), _AT.timestamp(), now=_AT) is not None
     yield
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
+    ofs._price_rows.pop(TK, None)
+    lmp.record_feed_down()
 
 
-def _heat(**kw):
+def _heat(at=_AT, **kw):
     args = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None, **kw}
-    return json.loads(server.get_options_gamma_surface(TK, **args).body)
+    return server.gamma_surface_payload(TK, args["scope"], args["centre"], args["shift"], args["cols"],
+                                        args["expiry"], at)
 
 
 def _every_strike():
@@ -87,16 +108,11 @@ def test_columns_are_the_ones_the_page_fits_or_the_one_selected():
     assert [e["front"] for e in _heat(scope="all")["expirations"]] == [True, False, False]
 
 
-def test_the_view_serves_the_colour_scale_and_the_contracts_drawn():
+def test_the_view_serves_each_measures_colour_scale_of_the_cells_drawn():
     d = _heat(cols=2)
     for m in ("gex", "dex"):
         drawn = [abs(v) for c in d["cells"] for v in c[m] if v is not None]
-        assert d["view"]["max_abs"][m] == (max(drawn) if drawn else None)
-    drawn = [pair[side] for j in range(2) for c in d["cells"] for pair in [c["contracts"][j]]
-             if pair for side in ("call", "put") if pair.get(side)]
-    assert d["view"]["demand"] == list(dict.fromkeys(drawn)) and d["view"]["demand"]
-    listed = {c["symbol"] for c in _CHAIN}
-    assert set(d["view"]["demand"]) <= listed
+        assert drawn and d["view"]["max_abs"][m] == max(drawn)
 
 
 def test_a_new_publication_serves_the_new_number():
@@ -111,16 +127,16 @@ def test_a_new_publication_serves_the_new_number():
         return next(c for c in d["cells"] if c["strike"] == k)["oi"][col]["total"]
     chain = copy.deepcopy(_CHAIN)
     next(c for c in chain if c["symbol"] == target["symbol"])["openInterest"] += 1000
-    server._publish_levels(TK, chain, 2.0)
+    server._publish_levels(TK, chain, _AT.timestamp() + 1, now=_AT)
     now = _heat(scope="all")
     assert oi(now) == oi(first) + 1000
     assert now["surface_seq"] == first["surface_seq"] + 1
 
 
-def test_with_no_live_price_the_window_says_it_is_not_around_the_price(monkeypatch):
+def test_with_no_live_price_the_window_says_it_is_not_around_the_price():
     """No price and no pan: the rows are the middle of the chain, served with the reason (no row
     is marked as the price), on the heatmap and on every per-strike panel."""
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **kw: (None, "none", None))
+    _price(None)
     d = _heat()
     assert d["view"]["note"] == server.WINDOW_NO_PRICE and not any(c["spot"] for c in d["cells"])
     strikes = json.loads(server.get_terrain_strikes(TK, scope="auto", centre=None, shift=0).body)
@@ -130,20 +146,17 @@ def test_with_no_live_price_the_window_says_it_is_not_around_the_price(monkeypat
     assert panned["view"]["note"] is None and panned["view"]["centre"] == every[3]
 
 
-def test_expired_columns_are_drawn_labelled_and_never_streamed_or_counted(pin_clock):
+def test_expired_columns_are_drawn_labelled_and_never_counted():
     """On 2026-10-15 the 10-14 column has expired: Auto draws the unexpired columns, Wider and All
-    draw it labelled, and its contracts are neither streamed nor counted in the coverage."""
-    pin_clock(2026, 10, 15, 12, 0)
-    auto = _heat(cols=3)
+    draw it labelled, and its cells are not counted in the coverage; alone, its chip says EXPIRED."""
+    later = datetime(2026, 10, 15, 12, 0, tzinfo=ET)
+    auto = _heat(later, cols=3)
     assert [e["expiry"] for e in auto["expirations"]] == ["2026-10-15", "2026-11-20"]
-    every = _heat(scope="all")
+    every = _heat(later, scope="all")
     assert [(e["expiry"], e["expired"], e["front"]) for e in every["expirations"]] == [
         ("2026-10-14", True, False), ("2026-10-15", False, True), ("2026-11-20", False, False)]
-    expired = {c["symbol"] for c in _CHAIN if c["expirationDate"].startswith("2026-10-14")}
-    assert not expired & set(every["view"]["demand"]) and every["view"]["demand"]
-    only = _heat(expiry="2026-10-14")                              # the expired column alone
-    assert only["view"]["demand"] == [] and only["view"]["coverage"]["cells"] == 0
-    # the chip says the columns have expired, not that no cell has a contract
+    only = _heat(later, expiry="2026-10-14")                       # the expired column alone
+    assert only["view"]["coverage"]["cells"] == 0
     assert (only["view"]["coverage"]["state"], only["view"]["coverage"]["label"]) == (server.COVERAGE_EXPIRED, "EXPIRED")
 
 

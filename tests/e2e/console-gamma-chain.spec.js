@@ -2,8 +2,9 @@
 /**
  * D — Options/Gamma "Chain" subview. Full vendor ladder from /api/chain (calls left, puts right,
  * strike centre), served VERBATIM. Proves: single-expiry disclosure (B), exact CALL/PUT vendor-symbol
- * selection through the ONE control owner EdStream (C), duplicate vendor rows retained (D), and the
- * centre strike selects only the shared strike. Symbols are the vendor's own, never reconstructed.
+ * selection for the Flow panel, named to the console to stream (C), duplicate vendor rows retained
+ * (D), and the centre strike selects only the shared strike. Symbols are the vendor's own, never
+ * reconstructed.
  */
 const { test, expect } = require('@playwright/test');
 const { served } = require('./fixtures/served_chain');
@@ -30,19 +31,23 @@ const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11'
     ct('CALL', 98, 'SPY   260911C00098000', 800, 150, 13.5, 0.68), ct('PUT', 98, 'SPY   260911P00098000', 1500, 600, 14.0, -0.32),
   ] };
 
+//: each contract the page names to the console for the Flow panel (POST /api/flow-contract)
+const flowPosts = [];
+
 async function intercept(page) {
   await page.route('**/api/**', (route, request) => {
     const url = request.url();
-    if (url.includes('/api/streaming/active-option-contract') && request.method() === 'POST') {
-      let contract = ''; try { contract = JSON.parse(request.postData() || '{}').contract || ''; } catch (e) {}
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: contract, command_generation: 1 }) });
+    if (url.includes('/api/flow-contract') && request.method() === 'POST') {
+      const contract = JSON.parse(request.postData()).contract;
+      flowPosts.push(contract);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: contract }) });
     }
     let body = { available: false };
     if (url.includes('/api/chain')) body = served(CHAIN);
     else if (url.includes('/api/options/gamma-surface')) body = { ticker: 'SPY', available: true, spot: 100,
       source: 'terrain_live_cache', live: true, stale: false, expirations: [{ expiry: '2026-09-11', dte: 2 }],
       strikes: [100], cells: [{ strike: 100, gex: [1] }],
-      view: { centre: 100, scope: 'auto', coverage: null, demand: [], max_abs: { gex: 1 }, missing_expiry: null } };
+      view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } };
     else if (url.includes('/api/terrain/strikes')) body = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false, today: { all: [[100, 1, 1]] },
       views: { all: { centre: 100, note: null, max_abs: 1 } } };
     else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_stale: false };
@@ -80,24 +85,28 @@ test.describe('D — Gamma Chain subview', () => {
     await expect(page.locator('#expSel option').first()).toHaveText('All Expirations');   // Gamma: null = all
   });
 
-  test('CALL click sends the exact CALL vendor symbol; PUT click the exact PUT symbol (via EdStream)', async ({ page }) => {
+  test('CALL click selects the exact CALL vendor symbol; PUT click the exact PUT symbol, each named to stream', async ({ page }) => {
+    flowPosts.length = 0;
     await toChain(page);
     // click the CALL side of strike 100
     await page.locator('#chainBody tr[data-csym="SPY   260911C00100000"] td.chn-call').first().click();
-    expect(await page.evaluate(() => window.EdStream.getDesired())).toBe('SPY   260911C00100000');
+    expect(await page.evaluate(() => window.EdFlow.selected())).toBe('SPY   260911C00100000');
     // click the PUT side of strike 98
     await page.locator('#chainBody tr[data-psym="SPY   260911P00098000"] td.chn-put').first().click();
-    expect(await page.evaluate(() => window.EdStream.getDesired())).toBe('SPY   260911P00098000');
+    expect(await page.evaluate(() => window.EdFlow.selected())).toBe('SPY   260911P00098000');
+    await expect.poll(() => flowPosts).toEqual(['SPY   260911C00100000', 'SPY   260911P00098000']);
     // shared strike/expiry context follows the selection
     const s = await page.evaluate(() => window.EdShell.getState());
     expect(s.selStrike).toBe(98);
   });
 
   test('the centre Strike selects ONLY the shared strike (no contract)', async ({ page }) => {
+    flowPosts.length = 0;
     await toChain(page);
     await page.locator('#chainBody tr[data-strike="102"] td.k').click();
     expect(await page.evaluate(() => window.EdShell.getState().selStrike)).toBe(102);
-    expect(await page.evaluate(() => window.EdStream.getDesired())).toBeNull();   // no contract chosen
+    expect(await page.evaluate(() => window.EdFlow.selected())).toBeNull();   // no contract chosen
+    expect(flowPosts).toEqual([]);
   });
 
   // Independent-review finding (2026-09-13), REPRODUCED by direct browser measurement, then
