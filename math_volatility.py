@@ -68,9 +68,9 @@ def compute_25d_risk_reversal(contracts: List[dict]) -> dict | None:
     if abs(c[2] - 0.25) > RR25_DELTA_TOL or abs(p[2] - (-0.25)) > RR25_DELTA_TOL:
         return None
     return {
-        "rr_pts": round(c[3] - p[3], 2),
-        "call_iv_25d": round(c[3], 2),
-        "put_iv_25d": round(p[3], 2),
+        "rr_pts": c[3] - p[3],
+        "call_iv_25d": c[3],
+        "put_iv_25d": p[3],
         "dte": front_dte,
     }
 
@@ -165,8 +165,7 @@ def compute_atr(candles: list, *, period: int = 14) -> float | None:
     if len(trs) < period:
         return None
 
-    atr = sum(trs[-period:]) / period
-    return round(atr, 4)
+    return sum(trs[-period:]) / period
 
 
 # ── IV Rank and IV Percentile ────────────────────────────────────────────────

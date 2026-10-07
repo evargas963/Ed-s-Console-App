@@ -352,7 +352,7 @@ class HealthRegistry:
         return self._last.get(feed)
 
     def report(self, now: float) -> dict[str, dict]:
-        return {f: {"age_sec": round(now - ts, 3)} for f, ts in self._last.items()}
+        return {f: {"age_sec": now - ts} for f, ts in self._last.items()}
 
 
 # ---------------------------------------------------------------------------- the writer
