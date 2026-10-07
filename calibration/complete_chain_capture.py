@@ -197,6 +197,7 @@ class _Chain:
     spots: "dict[str, float | None]" = field(default_factory=dict)  # expiry -> Schwab's underlyingPrice in its answer
     by_expiry: "dict[str, list[dict]]" = field(default_factory=dict)
     unquoted: "set[str]" = field(default_factory=set)              # contracts whose quote is not in
+    named_invalid: "set[str]" = field(default_factory=set)         # contracts Schwab's quotes named invalid
 
     def contracts(self) -> "list[dict]":
         return [ct for cts in self.by_expiry.values() for ct in cts]
@@ -318,22 +319,33 @@ class ChainSweep:
     def send_quotes(self, schwab_client) -> None:
         """One quotes request for the next QUOTES_BATCH_MAX queued contracts, which take their
         quote's Greeks; each chain it completes is delivered. A request that fails fails every
-        ticker in it."""
+        ticker in it. Schwab's answer carries a quote per symbol it knows and, beside them, an
+        `errors` entry naming the symbols it does not (`invalidSymbols`; measured 2026-10-07: 8
+        SPY contracts its own chain lists, every one never quoted or traded): those contracts get
+        no Greeks, logged once with their count, and the rest of the request is delivered."""
         batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
         chains = list({id(chain): chain for chain, _ct in batch}.values())
         try:
             resp = safe_get_quotes(schwab_client(), [ct["symbol"] for _chain, ct in batch])
             if resp.status_code != 200:
                 return self.fail(chains, f"quotes for {len(batch)} contracts returned HTTP {resp.status_code}")
-            quoted = {s: e["quote"] for s, e in resp.json().items()}
+            answer = resp.json()
+            errors = answer.pop("errors") if "errors" in answer else {}
+            named = set(errors["invalidSymbols"]) if "invalidSymbols" in errors else set()
+            quoted = {s: e["quote"] for s, e in answer.items()}
         except Exception as e:  # noqa: BLE001 -- those tickers' answer is the failure; the rotation goes on
             log.warning("quotes for %d contracts failed: %s: %s", len(batch), type(e).__name__, e)
             return self.fail(chains, f"{type(e).__name__}: {e}")
+        if errors:
+            log.warning("quotes for %d contracts: Schwab named %d invalid, which have no Greeks: %s",
+                        len(batch), len(named), json.dumps(errors))
         for chain, ct in batch:
             quote = quoted.get(ct["symbol"])
             if quote is not None:
                 ct.update({f: quote.get(f) for f in GREEK_FIELDS})
                 ct["greeksTime"] = dict.fromkeys(GREEK_FIELDS, quote.get("quoteTime"))
+            elif ct["symbol"] in named:
+                chain.named_invalid.add(ct["symbol"])
             chain.unquoted.discard(ct["symbol"])
         for chain in chains:
             if not chain.unquoted:
@@ -354,7 +366,7 @@ class ChainSweep:
         for topic, msg in chain_messages(chain.ticker, contracts, now):
             self.publish(topic, msg)
         self._delivered.add(chain.ticker)
-        missing = sum(1 for ct in contracts if ct["greeksTime"] is None)
+        missing = sum(1 for ct in contracts if ct["greeksTime"] is None and ct["symbol"] not in chain.named_invalid)
         if missing:
             log.warning("quotes for %s: no quote came back for %d of %d contracts; their Greeks are absent",
                         chain.ticker, missing, len(contracts))

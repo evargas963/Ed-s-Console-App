@@ -179,3 +179,41 @@ def test_a_quotes_answer_that_is_not_json_fails_its_tickers_and_the_sweep_goes_o
         schwab.close()
     (failed,) = [m["failed"] for _t, m in published if "failed" in m]
     assert failed.startswith("JSONDecodeError")
+
+
+def test_contracts_schwab_names_invalid_get_no_greeks_and_every_ticker_in_the_request_is_delivered(tmp_path, caplog):
+    """Schwab's /quotes answers 200 with a quote per symbol it knows and, beside them, an errors
+    entry naming the ones it does not (measured 2026-10-07: 8 SPY contracts its own chain lists,
+    never quoted or traded). Every entry that is a quote is read; the 8 get no Greeks, logged once
+    per request with their count; SPY and TSLA, which share a request, are both delivered. Real data: the 8
+    contracts' /chains entries and Schwab's errors entry as sent
+    (tests/fixtures/real_spy_quotes_invalid_symbols_2026_10_07.json). STAND-IN: the 8 are served in
+    SPY's chain answer beside its 2026-11-20 contracts, as one more expiry's."""
+    invalid = json.loads((FX / "real_spy_quotes_invalid_symbols_2026_10_07.json").read_text(encoding="utf-8"))
+    named = invalid["quotes_errors"]["invalidSymbols"]
+    schwab = LocalSchwab()
+    schwab.invalid = invalid["chain_entries"]
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 09:05"))
+    with caplog.at_level("WARNING", logger="chain_history"):
+        try:
+            assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"SPY", "TSLA"}
+        finally:
+            schwab.close()
+    assert [m for _t, m in published if "failed" in m] == [], "no ticker failed"
+    answered = [q["symbols"].split(",") for q in schwab.asked(QUOTES) if set(named) & set(q["symbols"].split(","))]
+    assert any({s.split()[0] for s in symbols} == {"SPY", "TSLA"} for symbols in answered), "a shared request"
+    spy = delivered(published, "SPY")
+    assert len(spy) == len(SPY["chain"]) + len(named)
+    assert all(spy[s][f] is None and spy[s]["greeksTime"] is None for s in named for f in GREEKS)
+    for sym, ct in spy.items():
+        if sym not in named and sym != HELD:
+            assert {f: ct[f] for f in GREEKS} == {f: SPY_QUOTES[sym]["quote"][f] for f in GREEKS}, sym
+    assert len(delivered(published, "TSLA")) == len(TSLA["chain"])
+    logged = [r.getMessage() for r in caplog.records]
+    in_request = [[s for s in symbols if s in named] for symbols in answered]
+    assert sum(len(n) for n in in_request) == len(named) == 8
+    assert [m for m in logged if "named" in m] == [
+        f"quotes for {len(symbols)} contracts: Schwab named {len(n)} invalid, which have no "
+        f"Greeks: {json.dumps({'invalidSymbols': n})}" for symbols, n in zip(answered, in_request)], \
+        "each request's named contracts logged once, with their count"
+    assert not [m for m in logged if m.startswith("quotes for SPY: no quote came back")], "logged once"

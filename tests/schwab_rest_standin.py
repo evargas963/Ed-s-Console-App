@@ -51,7 +51,9 @@ class LocalSchwab:
     """The local server, on HTTP/1.1. `quotes_status`: the quotes endpoint's answer while not 200;
     `quotes_body`: while set, the quotes endpoint answers 200 with these bytes as its body;
     `refuse_chain`: tickers whose next chain request is answered 502; `withheld`: symbols the
-    quotes answer leaves out."""
+    quotes answer leaves out; `invalid`: SPY contracts (their /chains entries) served in SPY's
+    chain answer, which the quotes answer names in Schwab's errors entry
+    (`{"errors": {"invalidSymbols": [...]}}`) instead of quoting them."""
 
     def __init__(self):
         self.requests: list = []
@@ -59,6 +61,7 @@ class LocalSchwab:
         self.quotes_body: "bytes | None" = None
         self.refuse_chain: "set[str]" = set()
         self.withheld: "set[str]" = set()
+        self.invalid: "list[dict]" = []
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -92,13 +95,22 @@ class LocalSchwab:
             if query["symbol"] in self.refuse_chain:
                 self.refuse_chain.discard(query["symbol"])
                 return 502, {}
-            return 200, chain_payload(query["symbol"])
+            payload = chain_payload(query["symbol"])
+            for ct in self.invalid if query["symbol"] == "SPY" else ():
+                side = "callExpDateMap" if ct["putCall"] == "CALL" else "putExpDateMap"
+                payload[side].setdefault(f"{ct['expirationDate'][:10]}:{ct['daysToExpiration']}", {}) \
+                    .setdefault(str(ct["strikePrice"]), []).append(ct)
+            return 200, payload
         if self.quotes_status != 200:
             return self.quotes_status, {}
         if self.quotes_body is not None:
             return 200, self.quotes_body
-        return 200, {s: SPY_QUOTES[s] for s in query["symbols"].split(",")
-                     if s in SPY_QUOTES and s not in self.withheld}
+        asked = query["symbols"].split(",")
+        answer = {s: SPY_QUOTES[s] for s in asked if s in SPY_QUOTES and s not in self.withheld}
+        named = [s for s in asked if s in {ct["symbol"] for ct in self.invalid}]
+        if named:
+            answer["errors"] = {"invalidSymbols": named}
+        return 200, answer
 
     def asked(self, path: str) -> "list[dict]":
         """The query of each request to `path`, in order."""
