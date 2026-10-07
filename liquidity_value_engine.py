@@ -16,7 +16,7 @@ import hashlib
 import logging
 import threading
 from collections import defaultdict
-from datetime import date, datetime, time
+from datetime import date, datetime
 from typing import Any, Optional
 
 from instrument_identity import ticker_storage_key
@@ -34,30 +34,25 @@ from liquidity_models import (
 
 log = logging.getLogger(__name__)
 
-from time_et import (
-    ET,
-    RTH_OPEN_MINS,
-    session_close_mins_for_et_date,
-)
-
-# The session comes from time_et, the one market calendar: the open, and each day's close
-# (13:00 on an early close, none on a holiday).
-RTH_OPEN = time(RTH_OPEN_MINS // 60, RTH_OPEN_MINS % 60)
+from time_et import ET, prior_trading_day, session
 
 #: a prior session with fewer 1-minute RTH bars than this (of ~390) is disclosed as partial on the
 #: price levels built from it
 LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
 
 
-def rth_close(d: date) -> Optional[time]:
-    """The regular session's close on `d` (the market calendar's); None: no session that day."""
-    m = session_close_mins_for_et_date(d.isoformat())
-    return None if m is None else time(m // 60, m % 60)
+def _regular(d: date) -> "tuple[datetime, datetime] | None":
+    """`d`'s regular session (open, close) as Schwab's /markets sent it (time_et.session); None:
+    no regular session that day, or Schwab's answer for it is not held."""
+    s = session(d.isoformat())
+    if s is None or not s.regular:
+        return None
+    return s.regular[0][0], s.regular[-1][1]
 
 
 def _in_rth(dt: datetime) -> bool:
-    close = rth_close(dt.date())
-    return close is not None and RTH_OPEN <= dt.time() < close
+    regular = _regular(dt.date())
+    return regular is not None and regular[0] <= dt < regular[1]
 
 
 #: each price level's name, spelled out and as the chart's short tag -- the one home for both.
@@ -126,41 +121,25 @@ def _bars_to_list(bars) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def prior_trading_session_date(bars_norm: list, session_date: date) -> Optional[date]:
-    """The most recent date BEFORE `session_date` that actually traded an RTH session.
-
-    LP-01 Step 2 (RC-153) — THE single definition of "the prior session", for both the
-    previous-day levels and the overnight window. The calendar cannot answer this question:
-    `session_date - 1 day` is Sunday on a Monday and a closed holiday after one, and a market
-    that was shut has no close for an overnight range to start from.
-
-    Presence of bars inside a day's regular session (the market calendar's hours, early closes
-    included) is the evidence a session happened, so an ad-hoc closure with no bars is skipped.
-    Fail-closed: no prior RTH date in the buffer returns None, never a guessed date.
-    """
-    prior: Optional[date] = None
-    for b in bars_norm:
-        dt = b["_dt"]
-        d = dt.date()
-        if d < session_date and _in_rth(dt):
-            if prior is None or d > prior:
-                prior = d
-    return prior
-
-
 def get_previous_day_levels(
     bars_norm: list,
     session_date: date,
     config: PlaybookConfig,
 ) -> dict:
-    """The prior session (the most recent earlier date with RTH bars, prior_trading_session_date)
-    from normalized bars (_bars_to_list): its date, its RTH bar count, and its high, low, close,
-    POC, VAH and VAL from those RTH bars. No prior session: {} (never a calendar walk or other
-    days' bars)."""
-    prior = prior_trading_session_date(bars_norm, session_date)
+    """The prior session (the newest trading day before `session_date` by Schwab's daily
+    candles, time_et.prior_trading_day) from normalized bars (_bars_to_list): its date, its RTH
+    bar count, and its high, low, close, POC, VAH and VAL from its bars inside the regular session
+    Schwab's /markets sent for it. Absent: {"absent": why} (no prior trading day in the candles
+    yet, its hours not held, no bars in its session)."""
+    prior = prior_trading_day(session_date)
     if prior is None:
-        return {}
+        return {"absent": f"Schwab's daily candles have no trading day before {session_date} (not in yet)"}
+    if _regular(prior) is None:
+        return {"absent": f"the prior trading day {prior} has no regular-session hours: Schwab's /markets "
+                          f"answer for it is not held"}
     prev_bars = [b for b in bars_norm if b["_dt"].date() == prior and _in_rth(b["_dt"])]
+    if not prev_bars:
+        return {"absent": f"no 1-minute bars in the regular session of the prior trading day {prior}"}
     p = volume_profile(prev_bars, config.value_area_percent, config.tick_size, ndigits=4)
     return {"prior_date": prior, "rth_bars": len(prev_bars),
             "pdh": max(b["high"] for b in prev_bars), "pdl": min(b["low"] for b in prev_bars),
@@ -175,12 +154,16 @@ def get_overnight_levels(
     prev_session: Optional[date],
 ) -> dict:
     """Overnight range over normalized bars (_bars_to_list): the continuous interval from the
-    prior session's (`prev_session`, prior_trading_session_date) RTH close to this session's RTH
-    open -- a weekend's or holiday's bars included. With no prior session the interval has no
-    start, so only this session's pre-open bars are used. No bars in the window: {}."""
-    session_open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
-    prev_close_dt = (datetime.combine(prev_session, rth_close(prev_session), tzinfo=ET)
-                     if prev_session is not None else None)       # a session day: it has a close
+    prior session's (`prev_session`, time_et.prior_trading_day) regular close to this session's
+    regular open, as Schwab's /markets sent them -- a weekend's or holiday's bars included. With
+    no prior session the interval has no start, so only this session's pre-open bars are used.
+    No bars in the window, or a session's hours not held: {}."""
+    today = _regular(session_date)
+    prev = None if prev_session is None else _regular(prev_session)
+    if today is None or (prev_session is not None and prev is None):
+        return {}
+    session_open_dt = today[0]
+    prev_close_dt = None if prev is None else prev[1]
 
     overnight = []
     for b in bars_norm:
@@ -554,16 +537,15 @@ def build_live_snapshot(
     """
     The session's zones from the one materialized price-level snapshot (``canonical``), with
     optional ``extra_levels`` (the option levels and spot) fused in; no level helper runs here.
-    Before the session's RTH open it is the premarket shape. The cutoff shown is min(now, the
-    day's close) -- the market calendar's, early closes included.
+    Before the session's regular open it is the premarket shape, as it is while the session's
+    hours are not held. The cutoff shown is min(now, the day's close) -- the regular session
+    Schwab's /markets sent, early closes included.
     """
     session_date = canonical.session_date
-    open_dt = datetime.combine(session_date, RTH_OPEN, tzinfo=ET)
-    close = rth_close(session_date)
-    close_dt = datetime.combine(session_date, close, tzinfo=ET) if close is not None else open_dt
-    if now < open_dt:
+    regular = _regular(session_date)
+    if regular is None or now < regular[0]:
         return build_premarket_snapshot(ticker, session_date, config, canonical=canonical)
-    cutoff = min(now, close_dt)
+    cutoff = min(now, regular[1])
     prev, over, orb, poc, vah, val, vwap, (vwap_p1, vwap_m1, vwap_p2, vwap_m2) = (
         _phase2a_families_from_canonical(canonical))
 
@@ -911,10 +893,7 @@ def build_price_level_snapshot(
     eng = get_previous_day_levels(bars_norm, session_date, cfg)
     prior_date = eng.get("prior_date")
     if prior_date is None:
-        families_absent.append({
-            "family": "prior_day",
-            "reason": f"no prior RTH session in available bars (source {bar_source})",
-        })
+        families_absent.append({"family": "prior_day", "reason": eng["absent"]})
     else:
         window = f"{prior_date.isoformat()} RTH (most recent prior RTH session)"
         for lid, key in (("PDH", "pdh"), ("PDL", "pdl"), ("PDC", "pdc"),
@@ -971,7 +950,7 @@ def build_price_level_snapshot(
                  producer=f"{_PRODUCER_NS}.compute_opening_range", window=orb_window)
 
     # ── overnight ────────────────────────────────────────────────────────────
-    overnight = get_overnight_levels(bars_norm, session_date, prior_date)
+    overnight = get_overnight_levels(bars_norm, session_date, prior_trading_day(session_date))
     if not overnight:
         families_absent.append({
             "family": "overnight", "reason": "no overnight-window bars in available tape"})

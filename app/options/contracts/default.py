@@ -4,19 +4,20 @@ string. A ticker with no chain or no live price has none.
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from numeric_contract import float_finite_or_none, schwab_number
-from time_et import now_et, session_close_mins_for_et_date
+from time_et import ET, session
 
 
-def _expiry_cutoff_et() -> str:
-    """The earliest expiry still trading: today's until today's close (the market calendar's,
-    early closes included), else tomorrow's."""
-    et = now_et()
-    close = session_close_mins_for_et_date(et.date().isoformat())
-    open_today = close is not None and et.hour * 60 + et.minute < close
+def _expiry_cutoff_et(now: datetime) -> str:
+    """The earliest expiry still trading at `now`: today's until today's regular close as Schwab's
+    /markets sent it (early closes included), else tomorrow's -- also while today's answer is not
+    in, so an expiry that may have passed is never the default."""
+    et = now.astimezone(ET)
+    today = session(et.date().isoformat())
+    open_today = today is not None and any(et < end for _start, end in today.regular)
     return (et.date() if open_today else (et + timedelta(days=1)).date()).isoformat()
 
 
@@ -41,9 +42,9 @@ def pick_atm_call_symbol(contracts: list[Any], spot: float | None) -> str | None
     return best[1] if best else None
 
 
-def front_atm_call(chain: list[dict], spot: float | None) -> str | None:
-    """The at-the-money call of the chain's nearest expiry still trading."""
-    cutoff = _expiry_cutoff_et()
+def front_atm_call(chain: list[dict], spot: float | None, now: datetime) -> str | None:
+    """The at-the-money call of the chain's nearest expiry still trading at `now`."""
+    cutoff = _expiry_cutoff_et(now)
     front = min((str(c.get("expirationDate") or "")[:10] for c in chain
                  if str(c.get("expirationDate") or "")[:10] >= cutoff), default=None)
     return pick_atm_call_symbol([c for c in chain if str(c.get("expirationDate") or "")[:10] == front], spot)

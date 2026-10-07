@@ -20,9 +20,11 @@ import sqlite3
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+from schwab.client import Client
 
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob
@@ -31,8 +33,7 @@ from production_universe import is_valid_production_ticker
 from schwab_client import (GREEK_FIELDS, QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries,
                            safe_get_chain, safe_get_quotes)
 from stream_spine import CaptureWriter
-from time_et import (ET, RTH_START_MINS, is_trading_day_et, session_close_mins_for_et_date,
-                     session_label)
+from time_et import CLOSED, ET, record_markets, session, session_label
 
 log = logging.getLogger("chain_history")
 
@@ -122,18 +123,17 @@ def persist_complete_chain_capture(
 
 
 def capture_slot(now_ts: float) -> float | None:
-    """The capture time a chain fetched at `now_ts` is written for: the latest of 9:30, 10:00, ...
-    through the close (13:00 on an early close) ET, and the close capture 15 minutes after the
-    close, that is at most CAPTURE_EVERY_MIN minutes before `now_ts`, on a market day (the one
-    market calendar, time_et). None outside those windows: nothing is written."""
-    now = datetime.fromtimestamp(now_ts, ET)
-    day = now.date().isoformat()
-    if not is_trading_day_et(day):
+    """The capture time a chain fetched at `now_ts` is written for: the latest of the regular
+    session's open, every CAPTURE_EVERY_MIN minutes after it through its close, and the close
+    capture CLOSE_CAPTURE_AFTER_MIN minutes after the close -- the session Schwab's /markets sent
+    for the day (time_et.session) -- that is at most CAPTURE_EVERY_MIN minutes before `now_ts`.
+    None outside those windows, and on a day with no regular session or no answer: nothing is
+    written."""
+    today = session(datetime.fromtimestamp(now_ts, ET).date().isoformat())
+    if today is None or not today.regular:
         return None
-    close = session_close_mins_for_et_date(day)
-    slots = [datetime(now.year, now.month, now.day, m // 60, m % 60, tzinfo=ET).timestamp()
-             for m in [*range(RTH_START_MINS, close + 1, CAPTURE_EVERY_MIN),
-                       close + CLOSE_CAPTURE_AFTER_MIN]]
+    opens, close = today.regular[0][0].timestamp(), today.regular[-1][1].timestamp()
+    slots = [*range(int(opens), int(close) + 1, CAPTURE_EVERY_MIN * 60), close + CLOSE_CAPTURE_AFTER_MIN * 60]
     past = [s for s in slots if s <= now_ts]
     if not past or now_ts - past[-1] >= CAPTURE_EVERY_MIN * 60:
         return None
@@ -203,6 +203,20 @@ def price_history_message(ticker: str, series: str, answer: dict, fetched_ts: fl
     return topic, {**msg, "frame": json.dumps({"topic": topic, "msg": msg}, separators=(",", ":"))}
 
 
+#: Schwab answers GET /markets for a date as far as 7 days back ("Date cannot be more than 7 days
+#: in the past.", its 400 for 2026-09-29 asked on 2026-10-07; 2026-10-06 answered 200)
+MARKETS_DAYS_BACK = 7
+#: Schwab's answer for a date, asked once per ET date: its session (200), or why it has none (400,
+#: e.g. "Date cannot be beyond 1 year from today."). Any other answer is asked again.
+MARKETS_ANSWERED = (200, 400)
+
+
+def markets_message(day: str, status: int, answer: dict, fetched_ts: float) -> tuple[str, dict]:
+    """Schwab's /markets answer for `day` as its bus message, as sent, with its status."""
+    return f"markets.{day}", {"src": "schwab_markets", "date": day, "ts_recv": fetched_ts, "status": status,
+                              "answer": answer}
+
+
 def chain_failure_message(ticker: str, reason: str, ts: float) -> tuple[str, dict]:
     msg = {"src": "schwab_chain", "ticker": ticker, "ts_recv": ts, "failed": reason}
     return f"chain.{ticker}", {**msg, "frame": json.dumps(
@@ -238,6 +252,10 @@ class ChainSweep:
     After each ticker's chain, its price history (fetch_price_history): Schwab's 1-minute bars
     once per ET date, its 15-minute and daily candles in every rotation.
 
+    The market's sessions (fetch_markets): Schwab's /markets answer for today and the
+    MARKETS_DAYS_BACK days before it, asked before anything else on each ET date, and for each
+    expiry of a ticker's expiration chain before its chains are asked.
+
     A chain is published to the console in parts (chain_messages) once all its quotes are in; a
     ticker whose request fails (an answer other than 200, or none) is published as failed with
     the reason, and the rotation goes on. While Closed (time_et.session_label) every board ticker
@@ -260,6 +278,7 @@ class ChainSweep:
         self.round_sec: float | None = None
         self._expiries: "dict[str, tuple[date, list[date]]]" = {}   # ticker -> (ET date, expiries)
         self._minutes_day: "dict[str, date]" = {}          # ticker -> the ET date its 1-minute bars came
+        self._markets_day: "dict[str, date]" = {}          # market date -> the ET date Schwab answered it
         self._queue: "list[tuple[_Chain, dict]]" = []     # contracts whose quote is not asked for
         self._delivered: "set[str]" = set()                # the tickers this rotation delivered
         self._written: "dict[str, float | None]" = {}       # ticker -> its newest history capture
@@ -273,9 +292,13 @@ class ChainSweep:
     def work(self, schwab_client, stop: threading.Event) -> None:
         """The thread's life, until `stop`: rotation after rotation on the daemon's client
         (`schwab_client()`). While Closed, once every board ticker's close values are in, it
-        looks each second for the next session."""
+        looks each second for the next session. While today's session is unknown (Schwab's
+        /markets has not answered), it fetches as in an open session."""
         while not stop.is_set():
-            if session_label(datetime.fromtimestamp(self.clock(), ET)) != "Closed":
+            today = datetime.fromtimestamp(self.clock(), ET).date()
+            self.fetch_markets(schwab_client, [(today - timedelta(days=n)).isoformat()
+                                               for n in range(MARKETS_DAYS_BACK, -1, -1)])
+            if session_label(datetime.fromtimestamp(self.clock(), ET)) != CLOSED:
                 self._close_left = None
                 self.rotation(schwab_client, sorted({*self.board, self.active} - {None}), stop)
                 continue
@@ -304,6 +327,29 @@ class ChainSweep:
         log.info("chain rotation: %d of %d tickers delivered in %.0f s",
                  len(self._delivered), len(tickers), self.round_sec)
         return self._delivered
+
+    def fetch_markets(self, schwab_client, days: "list[str]") -> None:
+        """Schwab's GET /markets?markets=equity,option answer for each of `days` (YYYY-MM-DD) not
+        answered on this ET date, one request each: a 200 is that date's session from here on
+        (time_et.record_markets), and every answer is published as sent (markets_message), for
+        the daemon's writer to record and the console to take. An answer not in MARKETS_ANSWERED
+        (log_request has it), or none, is asked again the next time."""
+        today = datetime.fromtimestamp(self.clock(), ET).date()
+        for day in days:
+            if self._markets_day.get(day) == today:
+                continue
+            try:
+                resp = schwab_client().get_market_hours(
+                    [Client.MarketHours.Market.EQUITY, Client.MarketHours.Market.OPTION], date=date.fromisoformat(day))
+                answer = resp.json()
+            except Exception as e:  # noqa: BLE001 -- that date's answer is the failure; it is asked again
+                log.warning("market hours for %s failed: %s: %s", day, type(e).__name__, e)
+                continue
+            if resp.status_code == 200:
+                record_markets(answer)
+            if resp.status_code in MARKETS_ANSWERED:
+                self._markets_day[day] = today
+            self.publish(*markets_message(day, resp.status_code, answer, self.clock()))
 
     def fetch_price_history(self, schwab_client, ticker: str) -> None:
         """`ticker`'s price history (PRICE_HISTORY), each series published as Schwab sent its
@@ -342,6 +388,7 @@ class ChainSweep:
                 if expiries is None:
                     return self.fail([chain], f"expiration chain returned HTTP {resp.status_code}")
                 listed = self._expiries[ticker] = (today, expiries)
+            self.fetch_markets(schwab_client, [expiry.isoformat() for expiry in listed[1]])
             for expiry in listed[1]:
                 resp = safe_get_chain(client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry)
                 if resp.status_code != 200:

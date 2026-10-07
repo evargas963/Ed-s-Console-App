@@ -94,6 +94,15 @@ CREATE TABLE IF NOT EXISTS stream_pricehistory_raw (
     src TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sphr_sym_ts ON stream_pricehistory_raw(symbol, series, ts_recv);
+-- Schwab's /markets answers, verbatim: one row per market date asked, its status and the whole answer.
+CREATE TABLE IF NOT EXISTS stream_markets_raw (
+    ts_recv REAL NOT NULL,
+    date TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    native_json TEXT NOT NULL,
+    src TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_smkr_date_ts ON stream_markets_raw(date, ts_recv);
 -- Every subscribe/unsubscribe the daemon sent and Schwab's answer. With it, a gap in the
 -- data tables can be told apart: "we were not subscribed" versus "subscribed, nothing
 -- changed". code 0 = accepted; anything else carries Schwab's reason.
@@ -406,6 +415,8 @@ _INSERTS = {
     "pricehistory": ("INSERT INTO stream_pricehistory_raw(ts_recv,symbol,series,native_json,src) "
                      "VALUES(?,?,?,?,?)",
                      lambda m: (m["ts_recv"], m["symbol"], m["series"], json.dumps(m["answer"]), m["src"])),
+    "markets": ("INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
+                lambda m: (m["ts_recv"], m["date"], m["status"], json.dumps(m["answer"]), m["src"])),
     "sub": ("INSERT INTO stream_subscriptions(ts,service,command,symbols_json,code,reason) "
             "VALUES(?,?,?,?,?,?)",
             lambda m: (m.get("ts"), m.get("service"), m.get("command"),
@@ -449,8 +460,8 @@ _TABLES = {kind: (m.group(1), tuple(c.strip() for c in m.group(2).split(",")))
            for kind, (sql, _row) in _INSERTS.items()
            for m in [re.match(r"INSERT INTO (\w+)\(([^)]*)\)", sql)]}
 _COLUMNS = dict(_TABLES.values())
-#: each written table's column a spill's rows are counted by (its topic's symbol, or service)
-_KEY_COLUMN = {**{table: "symbol" if "symbol" in cols else "service" for table, cols in _COLUMNS.items()},
+#: each written table's column a spill's rows are counted by (its topic's symbol, market date or service)
+_KEY_COLUMN = {**{table: next(c for c in ("symbol", "date", "service") if c in cols) for table, cols in _COLUMNS.items()},
                "stream_write_failures": "topic"}
 #: what the writer holds in memory while the database refuses writes, before newer messages go to
 #: the spill file (operator, 2026-10-05: about 2 GB of memory), each held message counted once at

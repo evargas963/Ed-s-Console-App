@@ -9,8 +9,10 @@ recorded once answered: (path, query, started, answered, the client's port).
 Real data: SPY's 2026-11-20 chain and its quotes (fixtures/real_spy_2026_11_20_chain_and_quotes.json),
 TSLA's 2026-08-31 chain (fixtures/real_tsla_complete_chain_strike_range_all.json; its quotes were not
 captured), and SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
-(fixtures/real_pricehistory_spy_tsla_2026_10_07.json: 1-minute, 15-minute and daily candles).
-STAND-INS: the expiration chains; an answer other than 200 (its body).
+(fixtures/real_pricehistory_spy_tsla_2026_10_07.json: 1-minute, 15-minute and daily candles), and
+Schwab's /markets answers captured 2026-10-07 (fixtures/real_schwab_markets_2026_10_07.json).
+STAND-INS: the expiration chains; an answer other than 200 (its body); the /markets answer of a
+date not captured (NO_MARKET_HOURS).
 """
 from __future__ import annotations
 
@@ -32,11 +34,18 @@ TSLA = json.loads((FX / "real_tsla_complete_chain_strike_range_all.json").read_t
 #: ticker -> (its captured expiry, its captured contracts, Schwab's underlying price in the capture)
 CHAINS = {"SPY": ("2026-11-20", SPY["chain"], SPY["spot"]), "TSLA": ("2026-08-31", TSLA["chain"], None)}
 PASSED = "2026-08-27"
-EXPIRATIONS, CHAIN, QUOTES, PRICEHISTORY = ("/marketdata/v1/expirationchain", "/marketdata/v1/chains",
-                                            "/marketdata/v1/quotes", "/marketdata/v1/pricehistory")
+EXPIRATIONS, CHAIN, QUOTES, PRICEHISTORY, MARKETS = (
+    "/marketdata/v1/expirationchain", "/marketdata/v1/chains", "/marketdata/v1/quotes", "/marketdata/v1/pricehistory",
+    "/marketdata/v1/markets")
 #: (symbol, frequencyType, frequency) -> Schwab's captured /pricehistory answer
 HISTORY = {(a["symbol"], a["params"]["frequencyType"], a["params"]["frequency"]): a for a in json.loads(
     (FX / "real_pricehistory_spy_tsla_2026_10_07.json").read_text(encoding="utf-8"))["answers"]}
+#: date -> Schwab's captured /markets?markets=equity,option answer for it (status and body)
+MARKET_HOURS = {a["date"]: a for a in json.loads(
+    (FX / "real_schwab_markets_2026_10_07.json").read_text(encoding="utf-8"))["answers"]}
+#: STAND-IN: a date with no captured answer is answered with Schwab's 400 for a date it does not
+#: answer (captured for 2026-09-29: "Date cannot be more than 7 days in the past.")
+NO_MARKET_HOURS = MARKET_HOURS["2026-09-29"]
 
 
 def chain_payload(ticker: str) -> dict:
@@ -108,6 +117,9 @@ class LocalSchwab:
             return 200, payload
         if path == PRICEHISTORY:
             return 200, HISTORY[(query["symbol"], query["frequencyType"], query["frequency"])]["body"]
+        if path == MARKETS:
+            a = MARKET_HOURS[query["date"]] if query["date"] in MARKET_HOURS else NO_MARKET_HOURS
+            return a["status"], a["body"]
         if self.quotes_status != 200:
             return self.quotes_status, {}
         if self.quotes_body is not None:

@@ -148,7 +148,7 @@ from Schwab to the screen (daemon, console, page), are these:
 |---|---|---|
 | Daemon memory | daemon | the message bus: each topic's current record (one per symbol and service; an unsubscribed symbol's is forgotten) and each ticker's newest chain; the board; the active ticker; the equity quotes the browser's price row is built from |
 | Console memory | console | the daemon's price rows as pushed (the price, bid/ask, MARK — never rebuilt); a second copy of the books, option quotes and the equity tape (fed from 8799, §3.5 item 1); the chains the daemon delivered; the computed levels; each ticker's 1-minute bars (`server._bars`, the newest 24,000: Schwab's price history pushed by the daemon, each streamed bar on top) and 15-minute and daily candles (`server._candles`); every other live screen's history, loaded from `ed_console.db` once at startup and then fed live (§2 D6): level crosses (`server._crosses`), each option contract's newest 500 trade prints (`history.TAPE`) and each equity book of the last 240 minutes, one per second (`history.BOOKS`, from the console's start) |
-| `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, price history answers (`stream_pricehistory_raw`), subscription answers; every message a write refused, kept as sent with its error (`stream_write_failures`: the writer's refused rows, and each chain whose history write was refused); how far each spill file's write-back got (`stream_spill_progress`) |
+| `stream_capture.db` | daemon's writer | every raw Schwab message: quotes, books, option quotes, bars, news, price history answers (`stream_pricehistory_raw`), market hours answers (`stream_markets_raw`), subscription answers; every message a write refused, kept as sent with its error (`stream_write_failures`: the writer's refused rows, and each chain whose history write was refused); how far each spill file's write-back got (`stream_spill_progress`) |
 | `stream_capture.<ms>.spill` (beside `stream_capture.db`) | daemon's writer | while the database refuses writes, the held messages past the memory cap, in order; deleted once written back and verified, kept when the write-back does not verify or a stop leaves it (§2 D4) |
 | `ed_console.db` | console, and the daemon (the ticker board, the chain captures) | 1-minute bars, level crosses, the ticker board, chain captures and a morning chain per ticker — plus the tables of the deleted ML pipeline (dropped in P2-DB3) |
 
@@ -231,11 +231,13 @@ from Schwab to the screen (daemon, console, page), are these:
   chain waits behind a stored one). The daemon's bus keeps each ticker's newest whole chain:
   once all its parts are in it replaces the older one, which is never sent again. The sweep runs on
   one thread on the daemon's one Schwab client (§1), one request at a time, by the session
-  calendar (`time_et.session_label`). In every open session (Pre-Market, RTH, After-Hours) every
+  Schwab's `/markets` sent for today (`time_et.session_label`; while today's answer is not in,
+  Unknown, it fetches as in an open session). In every open session (Pre-Market, RTH, After-Hours) every
   board ticker and the active ticker (the wanted frame's `active`: the ticker on screen, on or off
   the board) are fetched in one rotation, sorted, each the same, without end (operator
   2026-10-06: "no priority: every ticker is treated the same, in one rotation"). Once Closed
-  (from 20:00 ET, on a weekend or a holiday, and when the daemon starts while Closed) every board
+  (after the post-market window Schwab sent, 20:00 ET or 17:00 on an early close; on a day Schwab
+  says is closed; and when the daemon starts while Closed) every board
   ticker is fetched once, its close values; a fetch that fails is tried again in the next pass.
   Then no chain is requested until the next session opens: the close values stand (D5), and a ticker
   put on screen while Closed is not fetched — it shows the close values already fetched, or,
@@ -391,13 +393,29 @@ from Schwab to the screen (daemon, console, page), are these:
   served item is both a callout and its queue entry). The window is the timeframe's
   (`server.DESK_LOOKBACK`; 5m and 30m: this session). No proximity alerts. Absorption,
   liquidity pull and replenishment are not produced (open; `ACTIVE_PROGRAM.md` DESK-GAPS).
-- **Market session.** From the market calendar → pushed on `/api/changes` when the page connects
-  and every 5 s with no other change. One calendar (`time_et`: holidays, 13:00 early closes,
-  `session_label`, `session_close_mins_for_et_date`) decides every session window: the prior-day,
-  overnight, VWAP and value-area windows, and the default option contract's expiry cutoff. A day
-  with no session has an empty window. No session window starts, stops or clears a fetch, a
-  refresh or a streamed value: the order-flow state keeps every book, top-of-book field, print
-  and streamed Greek through the open.
+- **Market session.** Schwab's `GET /markets?markets=equity,option` answer for each date
+  (`docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt`), the one producer of
+  every date's session: open or closed, and its pre-market, regular and post-market windows. The
+  daemon's chain sweep asks it (`ChainSweep.fetch_markets`, one request per date, once per ET
+  date) for today and the 7 days before it (Schwab answers as far back as 7 days, its 400 says so)
+  before anything else on each ET date, and for each expiry of a ticker's expiration chain before
+  its chains (Schwab answers up to 1 year ahead; beyond it, its 400). A 200 or a 400 is that
+  date's answer for the ET date; any other answer is asked again. Each answer, as sent with its
+  status → daemon bus (`markets.DATE`) → the daemon's writer (`stream_capture.db`
+  `stream_markets_raw`) and → console (8799) → `time_et.record_markets` (a 200). The daemon
+  records its own answers in its `time_et` the same way. A past day was a trading day when
+  Schwab's daily candles have a bar for it (`time_et.record_candle_days`, from the bar writer;
+  `time_et.trading_day`, `time_et.prior_trading_day`). A date with no answer held is unknown:
+  the session reads Unknown, its windows are absent, a contract expiring on it has no time to
+  expiry (`math_levels.NO_EXPIRY_SESSION`); nothing is guessed. `time_et` decides every session
+  window from it: the session label, the close (`closed_since`, `market_session_date`), the
+  prior-day, overnight, VWAP and value-area windows, the chain-history capture times, the Trade
+  Desk's session window, the default option contract's expiry cutoff and the time to expiry
+  (`time_to_expiry_years`: to the regular close Schwab sent for the expiry date, or its open for
+  settlementType "A"). The session → pushed on `/api/changes` when the page connects and every
+  5 s with no other change. No session window starts, stops or clears a refresh or a streamed
+  value: the order-flow state keeps every book, top-of-book field, print and streamed Greek
+  through the open. Enforced by: `tests/test_data_path_markets_v1.py`.
 - **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the stream
   handler (equity quote and book) and the bar writer mark a ticker's kind changed; each page
   connection gets each change the moment it is marked (changes marked while one is sent go in

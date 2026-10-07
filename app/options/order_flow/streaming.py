@@ -52,6 +52,7 @@ from app.options.order_flow.state import (
 )
 
 import live_market_plane as _lmp
+from time_et import record_markets
 
 log = logging.getLogger(__name__)
 
@@ -240,6 +241,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
       book.SYM     NASDAQ_BOOK / NYSE_BOOK -> order-flow book; OPTIONS_BOOK -> the option
                    contract's book
       optquote.SYM LEVELONE_OPTIONS -> order-flow state for the contract
+      markets.DATE Schwab's /markets answer -> that date's session (time_et), when it is a 200
 
     Every option quote carrying GAMMA/DELTA/OPEN_INTEREST/TOTAL_VOLUME/VOLUME is passed to the
     tick callback (an equity's tick is its price row's arrival). A message missing its symbol, its
@@ -252,6 +254,10 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         for done in assemble_chain_part(msg):
             if _on_chain_callback is not None:
                 _on_chain_callback(*done)
+        return None
+    if topic.startswith("markets."):
+        if msg["status"] == 200:
+            record_markets(msg["answer"])
         return None
     sym = msg.get("symbol")
     ts = msg.get("ts_recv")

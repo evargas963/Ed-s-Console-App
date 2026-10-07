@@ -1,0 +1,983 @@
+{
+ "source": "Schwab GET /marketdata/v1/markets?markets=equity,option&date=..., asked 2026-10-07 between 10:5x and 11:0x UTC, one request at a time on a separate client; each answer as sent with its query, status and Date header. Schwab answers from 7 days back (2026-09-29: 400 'Date cannot be more than 7 days in the past') to 1 year ahead (2027-10-08: 400 'Date cannot be beyond 1 year from today').",
+ "answers": [
+  {
+   "date": "2026-09-29",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-09-29"
+   },
+   "status": 400,
+   "http_date": "Wed, 07 Oct 2026 11:01:08 GMT",
+   "sent_utc": 1791370868.6892886,
+   "answered_utc": 1791370868.8672228,
+   "body": {
+    "errors": [
+     {
+      "id": "17e62dc8-f017-45c9-93ff-d780ebbcd9d6",
+      "status": "400",
+      "title": "Bad Request",
+      "detail": "Date cannot be more than 7 days in the past.",
+      "source": {
+       "parameter": "date"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "date": "2026-09-30",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-09-30"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 12:32:58 GMT",
+   "sent_utc": 1791376378.6602814,
+   "answered_utc": 1791376378.9679387,
+   "body": {
+    "equity": {
+     "EQ": {
+      "date": "2026-09-30",
+      "marketType": "EQUITY",
+      "product": "EQ",
+      "productName": "equity",
+      "isOpen": true,
+      "sessionHours": {
+       "preMarket": [
+        {
+         "start": "2026-09-30T07:00:00-04:00",
+         "end": "2026-09-30T09:30:00-04:00"
+        }
+       ],
+       "regularMarket": [
+        {
+         "start": "2026-09-30T09:30:00-04:00",
+         "end": "2026-09-30T16:00:00-04:00"
+        }
+       ],
+       "postMarket": [
+        {
+         "start": "2026-09-30T16:00:00-04:00",
+         "end": "2026-09-30T20:00:00-04:00"
+        }
+       ]
+      }
+     }
+    },
+    "option": {
+     "EQO": {
+      "date": "2026-09-30",
+      "marketType": "OPTION",
+      "product": "EQO",
+      "productName": "equity option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-09-30T09:30:00-04:00",
+         "end": "2026-09-30T16:00:00-04:00"
+        }
+       ]
+      }
+     },
+     "IND": {
+      "date": "2026-09-30",
+      "marketType": "OPTION",
+      "product": "IND",
+      "productName": "index option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-09-30T09:30:00-04:00",
+         "end": "2026-09-30T16:15:00-04:00"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-10-01",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-10-01"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 12:32:59 GMT",
+   "sent_utc": 1791376378.9680352,
+   "answered_utc": 1791376379.175339,
+   "body": {
+    "equity": {
+     "EQ": {
+      "date": "2026-10-01",
+      "marketType": "EQUITY",
+      "product": "EQ",
+      "productName": "equity",
+      "isOpen": true,
+      "sessionHours": {
+       "preMarket": [
+        {
+         "start": "2026-10-01T07:00:00-04:00",
+         "end": "2026-10-01T09:30:00-04:00"
+        }
+       ],
+       "regularMarket": [
+        {
+         "start": "2026-10-01T09:30:00-04:00",
+         "end": "2026-10-01T16:00:00-04:00"
+        }
+       ],
+       "postMarket": [
+        {
+         "start": "2026-10-01T16:00:00-04:00",
+         "end": "2026-10-01T20:00:00-04:00"
+        }
+       ]
+      }
+     }
+    },
+    "option": {
+     "EQO": {
+      "date": "2026-10-01",
+      "marketType": "OPTION",
+      "product": "EQO",
+      "productName": "equity option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-01T09:30:00-04:00",
+         "end": "2026-10-01T16:00:00-04:00"
+        }
+       ]
+      }
+     },
+     "IND": {
+      "date": "2026-10-01",
+      "marketType": "OPTION",
+      "product": "IND",
+      "productName": "index option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-01T09:30:00-04:00",
+         "end": "2026-10-01T16:15:00-04:00"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-10-02",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-10-02"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 12:32:59 GMT",
+   "sent_utc": 1791376379.1753988,
+   "answered_utc": 1791376379.3669467,
+   "body": {
+    "option": {
+     "EQO": {
+      "date": "2026-10-02",
+      "marketType": "OPTION",
+      "product": "EQO",
+      "productName": "equity option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-02T09:30:00-04:00",
+         "end": "2026-10-02T16:00:00-04:00"
+        }
+       ]
+      }
+     },
+     "IND": {
+      "date": "2026-10-02",
+      "marketType": "OPTION",
+      "product": "IND",
+      "productName": "index option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-02T09:30:00-04:00",
+         "end": "2026-10-02T16:15:00-04:00"
+        }
+       ]
+      }
+     }
+    },
+    "equity": {
+     "EQ": {
+      "date": "2026-10-02",
+      "marketType": "EQUITY",
+      "product": "EQ",
+      "productName": "equity",
+      "isOpen": true,
+      "sessionHours": {
+       "preMarket": [
+        {
+         "start": "2026-10-02T07:00:00-04:00",
+         "end": "2026-10-02T09:30:00-04:00"
+        }
+       ],
+       "regularMarket": [
+        {
+         "start": "2026-10-02T09:30:00-04:00",
+         "end": "2026-10-02T16:00:00-04:00"
+        }
+       ],
+       "postMarket": [
+        {
+         "start": "2026-10-02T16:00:00-04:00",
+         "end": "2026-10-02T20:00:00-04:00"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-10-03",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-10-03"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 12:32:59 GMT",
+   "sent_utc": 1791376379.3670223,
+   "answered_utc": 1791376379.6065083,
+   "body": {
+    "equity": {
+     "equity": {
+      "date": "2026-10-03",
+      "marketType": "EQUITY",
+      "product": "equity",
+      "isOpen": false
+     }
+    },
+    "option": {
+     "option": {
+      "date": "2026-10-03",
+      "marketType": "OPTION",
+      "product": "option",
+      "isOpen": false
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-10-04",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-10-04"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 12:32:59 GMT",
+   "sent_utc": 1791376379.6065435,
+   "answered_utc": 1791376379.8201294,
+   "body": {
+    "option": {
+     "option": {
+      "date": "2026-10-04",
+      "marketType": "OPTION",
+      "product": "option",
+      "isOpen": false
+     }
+    },
+    "equity": {
+     "equity": {
+      "date": "2026-10-04",
+      "marketType": "EQUITY",
+      "product": "equity",
+      "isOpen": false
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-10-05",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-10-05"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 12:33:00 GMT",
+   "sent_utc": 1791376379.820163,
+   "answered_utc": 1791376380.1665401,
+   "body": {
+    "option": {
+     "EQO": {
+      "date": "2026-10-05",
+      "marketType": "OPTION",
+      "product": "EQO",
+      "productName": "equity option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-05T09:30:00-04:00",
+         "end": "2026-10-05T16:00:00-04:00"
+        }
+       ]
+      }
+     },
+     "IND": {
+      "date": "2026-10-05",
+      "marketType": "OPTION",
+      "product": "IND",
+      "productName": "index option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-05T09:30:00-04:00",
+         "end": "2026-10-05T16:15:00-04:00"
+        }
+       ]
+      }
+     }
+    },
+    "equity": {
+     "EQ": {
+      "date": "2026-10-05",
+      "marketType": "EQUITY",
+      "product": "EQ",
+      "productName": "equity",
+      "isOpen": true,
+      "sessionHours": {
+       "preMarket": [
+        {
+         "start": "2026-10-05T07:00:00-04:00",
+         "end": "2026-10-05T09:30:00-04:00"
+        }
+       ],
+       "regularMarket": [
+        {
+         "start": "2026-10-05T09:30:00-04:00",
+         "end": "2026-10-05T16:00:00-04:00"
+        }
+       ],
+       "postMarket": [
+        {
+         "start": "2026-10-05T16:00:00-04:00",
+         "end": "2026-10-05T20:00:00-04:00"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-10-06",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-10-06"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 11:01:08 GMT",
+   "sent_utc": 1791370868.3577244,
+   "answered_utc": 1791370868.6891985,
+   "body": {
+    "equity": {
+     "EQ": {
+      "date": "2026-10-06",
+      "marketType": "EQUITY",
+      "product": "EQ",
+      "productName": "equity",
+      "isOpen": true,
+      "sessionHours": {
+       "preMarket": [
+        {
+         "start": "2026-10-06T07:00:00-04:00",
+         "end": "2026-10-06T09:30:00-04:00"
+        }
+       ],
+       "regularMarket": [
+        {
+         "start": "2026-10-06T09:30:00-04:00",
+         "end": "2026-10-06T16:00:00-04:00"
+        }
+       ],
+       "postMarket": [
+        {
+         "start": "2026-10-06T16:00:00-04:00",
+         "end": "2026-10-06T20:00:00-04:00"
+        }
+       ]
+      }
+     }
+    },
+    "option": {
+     "EQO": {
+      "date": "2026-10-06",
+      "marketType": "OPTION",
+      "product": "EQO",
+      "productName": "equity option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-06T09:30:00-04:00",
+         "end": "2026-10-06T16:00:00-04:00"
+        }
+       ]
+      }
+     },
+     "IND": {
+      "date": "2026-10-06",
+      "marketType": "OPTION",
+      "product": "IND",
+      "productName": "index option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-06T09:30:00-04:00",
+         "end": "2026-10-06T16:15:00-04:00"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-10-07",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-10-07"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 10:59:21 GMT",
+   "sent_utc": 1791370760.6773655,
+   "answered_utc": 1791370761.1758535,
+   "body": {
+    "equity": {
+     "EQ": {
+      "date": "2026-10-07",
+      "marketType": "EQUITY",
+      "product": "EQ",
+      "productName": "equity",
+      "isOpen": true,
+      "sessionHours": {
+       "preMarket": [
+        {
+         "start": "2026-10-07T07:00:00-04:00",
+         "end": "2026-10-07T09:30:00-04:00"
+        }
+       ],
+       "regularMarket": [
+        {
+         "start": "2026-10-07T09:30:00-04:00",
+         "end": "2026-10-07T16:00:00-04:00"
+        }
+       ],
+       "postMarket": [
+        {
+         "start": "2026-10-07T16:00:00-04:00",
+         "end": "2026-10-07T20:00:00-04:00"
+        }
+       ]
+      }
+     }
+    },
+    "option": {
+     "EQO": {
+      "date": "2026-10-07",
+      "marketType": "OPTION",
+      "product": "EQO",
+      "productName": "equity option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-07T09:30:00-04:00",
+         "end": "2026-10-07T16:00:00-04:00"
+        }
+       ]
+      }
+     },
+     "IND": {
+      "date": "2026-10-07",
+      "marketType": "OPTION",
+      "product": "IND",
+      "productName": "index option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-07T09:30:00-04:00",
+         "end": "2026-10-07T16:15:00-04:00"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-10-08",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-10-08"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 12:33:00 GMT",
+   "sent_utc": 1791376380.1666243,
+   "answered_utc": 1791376380.355361,
+   "body": {
+    "option": {
+     "EQO": {
+      "date": "2026-10-08",
+      "marketType": "OPTION",
+      "product": "EQO",
+      "productName": "equity option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-08T09:30:00-04:00",
+         "end": "2026-10-08T16:00:00-04:00"
+        }
+       ]
+      }
+     },
+     "IND": {
+      "date": "2026-10-08",
+      "marketType": "OPTION",
+      "product": "IND",
+      "productName": "index option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-08T09:30:00-04:00",
+         "end": "2026-10-08T16:15:00-04:00"
+        }
+       ]
+      }
+     }
+    },
+    "equity": {
+     "EQ": {
+      "date": "2026-10-08",
+      "marketType": "EQUITY",
+      "product": "EQ",
+      "productName": "equity",
+      "isOpen": true,
+      "sessionHours": {
+       "preMarket": [
+        {
+         "start": "2026-10-08T07:00:00-04:00",
+         "end": "2026-10-08T09:30:00-04:00"
+        }
+       ],
+       "regularMarket": [
+        {
+         "start": "2026-10-08T09:30:00-04:00",
+         "end": "2026-10-08T16:00:00-04:00"
+        }
+       ],
+       "postMarket": [
+        {
+         "start": "2026-10-08T16:00:00-04:00",
+         "end": "2026-10-08T20:00:00-04:00"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-10-09",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-10-09"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 12:33:00 GMT",
+   "sent_utc": 1791376380.3554091,
+   "answered_utc": 1791376380.6259773,
+   "body": {
+    "option": {
+     "EQO": {
+      "date": "2026-10-09",
+      "marketType": "OPTION",
+      "product": "EQO",
+      "productName": "equity option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-09T09:30:00-04:00",
+         "end": "2026-10-09T16:00:00-04:00"
+        }
+       ]
+      }
+     },
+     "IND": {
+      "date": "2026-10-09",
+      "marketType": "OPTION",
+      "product": "IND",
+      "productName": "index option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-10-09T09:30:00-04:00",
+         "end": "2026-10-09T16:15:00-04:00"
+        }
+       ]
+      }
+     }
+    },
+    "equity": {
+     "EQ": {
+      "date": "2026-10-09",
+      "marketType": "EQUITY",
+      "product": "EQ",
+      "productName": "equity",
+      "isOpen": true,
+      "sessionHours": {
+       "preMarket": [
+        {
+         "start": "2026-10-09T07:00:00-04:00",
+         "end": "2026-10-09T09:30:00-04:00"
+        }
+       ],
+       "regularMarket": [
+        {
+         "start": "2026-10-09T09:30:00-04:00",
+         "end": "2026-10-09T16:00:00-04:00"
+        }
+       ],
+       "postMarket": [
+        {
+         "start": "2026-10-09T16:00:00-04:00",
+         "end": "2026-10-09T20:00:00-04:00"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-10-10",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-10-10"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 11:01:09 GMT",
+   "sent_utc": 1791370868.8672543,
+   "answered_utc": 1791370869.1358054,
+   "body": {
+    "option": {
+     "option": {
+      "date": "2026-10-10",
+      "marketType": "OPTION",
+      "product": "option",
+      "isOpen": false
+     }
+    },
+    "equity": {
+     "equity": {
+      "date": "2026-10-10",
+      "marketType": "EQUITY",
+      "product": "equity",
+      "isOpen": false
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-11-20",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-11-20"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 12:33:00 GMT",
+   "sent_utc": 1791376380.6260288,
+   "answered_utc": 1791376380.8114798,
+   "body": {
+    "option": {
+     "EQO": {
+      "date": "2026-11-20",
+      "marketType": "OPTION",
+      "product": "EQO",
+      "productName": "equity option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-11-20T09:30:00-05:00",
+         "end": "2026-11-20T16:00:00-05:00"
+        }
+       ]
+      }
+     },
+     "IND": {
+      "date": "2026-11-20",
+      "marketType": "OPTION",
+      "product": "IND",
+      "productName": "index option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-11-20T09:30:00-05:00",
+         "end": "2026-11-20T16:15:00-05:00"
+        }
+       ]
+      }
+     }
+    },
+    "equity": {
+     "EQ": {
+      "date": "2026-11-20",
+      "marketType": "EQUITY",
+      "product": "EQ",
+      "productName": "equity",
+      "isOpen": true,
+      "sessionHours": {
+       "preMarket": [
+        {
+         "start": "2026-11-20T07:00:00-05:00",
+         "end": "2026-11-20T09:30:00-05:00"
+        }
+       ],
+       "regularMarket": [
+        {
+         "start": "2026-11-20T09:30:00-05:00",
+         "end": "2026-11-20T16:00:00-05:00"
+        }
+       ],
+       "postMarket": [
+        {
+         "start": "2026-11-20T16:00:00-05:00",
+         "end": "2026-11-20T20:00:00-05:00"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-11-26",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-11-26"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 10:59:21 GMT",
+   "sent_utc": 1791370761.1759152,
+   "answered_utc": 1791370761.5992963,
+   "body": {
+    "equity": {
+     "equity": {
+      "date": "2026-11-26",
+      "marketType": "EQUITY",
+      "product": "equity",
+      "isOpen": false
+     }
+    },
+    "option": {
+     "option": {
+      "date": "2026-11-26",
+      "marketType": "OPTION",
+      "product": "option",
+      "isOpen": false
+     }
+    }
+   }
+  },
+  {
+   "date": "2026-11-27",
+   "params": {
+    "markets": "equity,option",
+    "date": "2026-11-27"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 10:59:21 GMT",
+   "sent_utc": 1791370761.5993245,
+   "answered_utc": 1791370761.8996892,
+   "body": {
+    "option": {
+     "EQO": {
+      "date": "2026-11-27",
+      "marketType": "OPTION",
+      "product": "EQO",
+      "productName": "equity option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-11-27T09:30:00-05:00",
+         "end": "2026-11-27T13:00:00-05:00"
+        }
+       ]
+      }
+     },
+     "IND": {
+      "date": "2026-11-27",
+      "marketType": "OPTION",
+      "product": "IND",
+      "productName": "index option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2026-11-27T09:30:00-05:00",
+         "end": "2026-11-27T13:15:00-05:00"
+        }
+       ]
+      }
+     }
+    },
+    "equity": {
+     "EQ": {
+      "date": "2026-11-27",
+      "marketType": "EQUITY",
+      "product": "EQ",
+      "productName": "equity",
+      "isOpen": true,
+      "sessionHours": {
+       "preMarket": [
+        {
+         "start": "2026-11-27T07:00:00-05:00",
+         "end": "2026-11-27T09:30:00-05:00"
+        }
+       ],
+       "regularMarket": [
+        {
+         "start": "2026-11-27T09:30:00-05:00",
+         "end": "2026-11-27T13:00:00-05:00"
+        }
+       ],
+       "postMarket": [
+        {
+         "start": "2026-11-27T13:00:00-05:00",
+         "end": "2026-11-27T17:00:00-05:00"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "date": "2027-10-06",
+   "params": {
+    "markets": "equity,option",
+    "date": "2027-10-06"
+   },
+   "status": 200,
+   "http_date": "Wed, 07 Oct 2026 10:59:22 GMT",
+   "sent_utc": 1791370761.8997579,
+   "answered_utc": 1791370762.2119462,
+   "body": {
+    "equity": {
+     "EQ": {
+      "date": "2027-10-06",
+      "marketType": "EQUITY",
+      "product": "EQ",
+      "productName": "equity",
+      "isOpen": true,
+      "sessionHours": {
+       "preMarket": [
+        {
+         "start": "2027-10-06T07:00:00-04:00",
+         "end": "2027-10-06T09:30:00-04:00"
+        }
+       ],
+       "regularMarket": [
+        {
+         "start": "2027-10-06T09:30:00-04:00",
+         "end": "2027-10-06T16:00:00-04:00"
+        }
+       ],
+       "postMarket": [
+        {
+         "start": "2027-10-06T16:00:00-04:00",
+         "end": "2027-10-06T20:00:00-04:00"
+        }
+       ]
+      }
+     }
+    },
+    "option": {
+     "EQO": {
+      "date": "2027-10-06",
+      "marketType": "OPTION",
+      "product": "EQO",
+      "productName": "equity option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2027-10-06T09:30:00-04:00",
+         "end": "2027-10-06T16:00:00-04:00"
+        }
+       ]
+      }
+     },
+     "IND": {
+      "date": "2027-10-06",
+      "marketType": "OPTION",
+      "product": "IND",
+      "productName": "index option",
+      "isOpen": true,
+      "sessionHours": {
+       "regularMarket": [
+        {
+         "start": "2027-10-06T09:30:00-04:00",
+         "end": "2027-10-06T16:15:00-04:00"
+        }
+       ]
+      }
+     }
+    }
+   }
+  },
+  {
+   "date": "2027-10-08",
+   "params": {
+    "markets": "equity,option",
+    "date": "2027-10-08"
+   },
+   "status": 400,
+   "http_date": "Wed, 07 Oct 2026 10:59:22 GMT",
+   "sent_utc": 1791370762.2120137,
+   "answered_utc": 1791370762.4374144,
+   "body": {
+    "errors": [
+     {
+      "id": "18eff85b-6427-44d0-bbf8-30a408d3a6ed",
+      "status": "400",
+      "title": "Bad Request",
+      "detail": "Date cannot be beyond 1 year from today.",
+      "source": {
+       "parameter": "date"
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -133,7 +133,7 @@ def bs_charm(spot: float, strike: float, t_years: float, sigma: float,
     return c if math.isfinite(c) else None
 
 
-def compute_charm_by_strike(contracts: List[dict], spot: float, now=None,
+def compute_charm_by_strike(contracts: List[dict], spot: float, now,
                             parsed: "list | None" = None) -> Dict[float, dict]:
     """Per-strike dealer CHARM exposure, in delta-shares per day.
 
@@ -178,13 +178,18 @@ def pick_charm_wall_strikes(charm_by_strike: Dict[float, dict]
     return cw, pw
 
 
-def contract_inputs(contracts: List[dict], now=None) -> tuple[list, dict]:
+#: why a contract has no time to expiry: Schwab's /markets answer for its expiry date is not held
+#: (beyond the year Schwab answers, or not asked yet)
+NO_EXPIRY_SESSION = "no_markets_session_for_expiry"
+
+
+def contract_inputs(contracts: List[dict], now) -> tuple[list, dict]:
     """(priced, unpriced): _contract_inputs for every contract with open interest, parsed once
     and shared by the gamma profile and charm (compute_terrain); `unpriced` counts the
     contracts with open interest the profile could not price, by reason."""
     priced, unpriced = [], {}
     for ct in contracts:
-        r = _contract_inputs(ct, now=now) if isinstance(ct, dict) else "invalid"
+        r = _contract_inputs(ct, now) if isinstance(ct, dict) else "invalid"
         if isinstance(r, tuple):
             priced.append(r)
         elif r != "zero_open_interest":
@@ -192,17 +197,18 @@ def contract_inputs(contracts: List[dict], now=None) -> tuple[list, dict]:
     return priced, unpriced
 
 
-def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, float, int] | str:
+def _contract_inputs(ct: dict, now) -> tuple[float, float, float, float, float, int] | str:
     """(strike, oi, mult, t_years, sigma, sign), or the reason it cannot be priced.
 
     `t_years` is the canonical INTRADAY time-to-expiry (time_et.time_to_expiry_years): to the
-    contract's settlement (the session close, or the open for Schwab's settlementType "A"),
-    ACT/365, from `now` (defaults to now_et()). Replaces the old max(dte,0.5)/365 0.5-DAY floor, which over-stated T by up to
-    24x near the close and flattened the real 1/sqrt(T) gamma/charm spike (RC-42; validated
-    against Schwab-reported gamma). Offline/replay callers pass `now` = the snapshot time.
+    contract's settlement (the regular close Schwab's /markets sent for its expiry date, or the
+    open for Schwab's settlementType "A"), ACT/365, from `now`. Replaces the old
+    max(dte,0.5)/365 0.5-DAY floor, which over-stated T by up to 24x near the close and
+    flattened the real 1/sqrt(T) gamma/charm spike (RC-42; validated against Schwab-reported
+    gamma). Offline/replay callers pass `now` = the snapshot time.
     """
     from math_exposure_core import schwab_iv_to_sigma
-    from time_et import time_to_expiry_years
+    from time_et import session, time_to_expiry_years
 
     strike = schwab_number(ct.get("strikePrice"))
     oi = schwab_count(ct.get("openInterest"))
@@ -218,10 +224,11 @@ def _contract_inputs(ct: dict, now=None) -> tuple[float, float, float, float, fl
     sigma = schwab_iv_to_sigma(schwab_number(ct.get("volatility")))  # single source: math_exposure_core
     if sigma is None or sigma <= 0:
         return "no_volatility"
-    t_years = time_to_expiry_years(ct.get("expirationDate"), now=now,
-                                   settlement_type=ct.get("settlementType"))
-    if t_years is None or t_years <= 0:
-        return "expired_or_no_expiry"
+    if session(str(ct.get("expirationDate"))[:10]) is None:
+        return NO_EXPIRY_SESSION
+    t_years = time_to_expiry_years(ct.get("expirationDate"), now, settlement_type=ct.get("settlementType"))
+    if t_years is None:
+        return "expired_or_no_session"
     return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
 
 
@@ -230,7 +237,7 @@ GAMMA_PROFILE_SPAN_PCT = 0.15
 GAMMA_PROFILE_STEPS = 240
 
 
-def compute_gamma_profile(contracts: List[dict], spot: float, *, now=None,
+def compute_gamma_profile(contracts: List[dict], spot: float, *, now,
                           parsed: "list | None" = None) -> List[tuple[float, float]]:
     """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
 

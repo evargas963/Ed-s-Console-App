@@ -13,14 +13,14 @@ from logging.handlers import RotatingFileHandler
 import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
-from time_et import (ET, now_et, RTH_OPEN_MINS, closed_since, ct_label, et_date_str_from_ts_utc,
-                     market_session_date, session_label)
+from time_et import (CLOSED, ET, now_et, closed_since, ct_label, et_date_str_from_ts_utc, last_open,
+                     market_session_date, record_candle_days, session_label)
 from math_exposure_core import bucket_metric, merge_exposure_books, overlay_streamed_contract_fields
 
 import json
@@ -353,12 +353,15 @@ def _schwab_bar(start_ms, o, h, lo, c, volume) -> "Candle | None":
 def _write_price_history(msg: dict) -> "str | None":
     """One series of a ticker's price history as Schwab's /pricehistory answered it (pushed by the
     capture daemon): its 1-minute bars into the ticker's bars, each streamed bar standing over
-    Schwab's history of its minute; its 15-minute or daily candles replacing the held ones. A
-    candle without a valid field is not kept. The ticker when its 1-minute bars changed, else None."""
+    Schwab's history of its minute; its 15-minute or daily candles replacing the held ones, each
+    daily candle's date a trading day (time_et.record_candle_days). A candle without a valid
+    field is not kept. The ticker when its 1-minute bars changed, else None."""
     tk = ticker_storage_key(msg["symbol"])
     candles = [b for b in (_schwab_bar(c.get("datetime"), c.get("open"), c.get("high"), c.get("low"),
                                        c.get("close"), c.get("volume")) for c in msg["answer"]["candles"])
                if b is not None]
+    if msg["series"] == "1d":
+        record_candle_days(datetime.fromtimestamp(c.ts, ET).date() for c in candles)
     with _bars_lock:
         if msg["series"] != "1m":
             _candles[msg["series"]][tk] = candles
@@ -1243,7 +1246,7 @@ def _publish_levels(tk: str, chain: "list | None" = None, fetched_ts: "float | N
     prev_spot = payload.get("spot")
     if new_chain:       # the ticker's contracts are the ones Schwab listed in this chain
         payload.update(_contract_symbols=frozenset(c.get("symbol") for c in chain if c.get("symbol")),
-                       _default_contract=front_atm_call(chain, spot))
+                       _default_contract=front_atm_call(chain, spot, now_et()))
     listed = payload.get("_contract_symbols") or frozenset()
     streamed = _desired_stream_greeks_for_ticker(listed)
     # each field the newest Schwab sent: a current streamed value received after this chain, else
@@ -2259,7 +2262,7 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
     # a chain is coming only while the daemon reports: for a board ticker (fetched in turn; while
     # Closed, once, its close values) or, in an open session, the ticker on screen (fetched
     # first; while Closed it is not fetched, docs/DATA_FLOW.md §3.4)
-    _open = session_label(now_et()) != "Closed"
+    _open = session_label(now_et()) != CLOSED
     _warming = _board_now is not None and (tk in _board_now or (_open and tk == push_changes.on_screen()))
     _levels_why = terrain_staleness((live or {}).get("computed_ts_utc"), tk)["levels_stale_reason"]
     if _board_now is None:     # the daemon not reporting is the cause of every other absence: first
@@ -2321,18 +2324,14 @@ DESK_LOOKBACK = {"1": (900, "last 15 min"), "3": (1800, "last 30 min"), "5": ("s
 
 def _desk_window_start(tf: str, now: datetime) -> float:
     """Start of the Trade Desk's event window for chart timeframe `tf`: `now` minus its lookback,
-    or the open of the latest regular session that has begun."""
-    from time_et import is_trading_day_et
+    or the open of the latest regular session that has begun (Schwab's /markets, time_et.last_open)."""
     lb = DESK_LOOKBACK[tf][0]
     if lb != "session":
         return now.timestamp() - lb
-    day = now.date()
-    for _ in range(10):
-        start = datetime(day.year, day.month, day.day, RTH_OPEN_MINS // 60, RTH_OPEN_MINS % 60, tzinfo=ET)
-        if is_trading_day_et(day.isoformat()) and start <= now:
-            return start.timestamp()
-        day -= timedelta(days=1)
-    raise ValueError(f"no regular session began in the 10 days to {now.date()} (market calendar)")
+    start = last_open(now)
+    if start is None:
+        raise ValueError(f"Schwab's /markets has sent no regular session that began by {now.isoformat()}")
+    return start.timestamp()
 
 
 def _f2(v) -> str:
