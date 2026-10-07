@@ -259,7 +259,7 @@ def _ingest_pushed(topic: str, msg: Any) -> None:
         return None
     ts = float(ts)
     kind = topic.split(".", 1)[0]
-    if kind == "bar1m":
+    if kind in ("bar1m", "pricehistory"):          # the bar writer's: a streamed bar, a price history
         streamed_bars.put(msg)
         return None
     received = {f: stamp[1] for f, stamp in msg["field_ts"].items()} if "field_ts" in msg else None

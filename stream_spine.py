@@ -279,11 +279,13 @@ class MessageBus:
         key = current_key(topic, msg)
         chain = topic.startswith("chain.")
         changed = self._chain(key, topic, msg) if chain else self._newest(key, topic, msg)
+        # a chain's record is its own history (the chain sweep writes it), and a price history is
+        # Schwab's own record (asked again each day): neither is the log's
+        logged = not chain and not topic.startswith("pricehistory.")
         for sub in self._subs:
             if not topic.startswith(sub.prefix):
                 continue
-            # a chain's record is its own history (the chain sweep writes it), never the log's
-            if (sub.policy == LOG and not chain) or (sub.policy == LATEST and changed):
+            if (sub.policy == LOG and logged) or (sub.policy == LATEST and changed):
                 sub.deliver(key, topic, msg)
 
     def forget(self, key: str) -> None:

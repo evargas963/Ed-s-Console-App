@@ -9,21 +9,18 @@ TWO horizons, each answering a different question:
   * 15-MIN ATR -> "reachable in the next few bars" — shown only on the focused contact,
                   so the scope stays readable
 
-Both are computed from the console's 1-minute bars (Schwab's streamed bars). Prototyped before
-building: daily/15m ATR ratios came out 4.8x-9.2x across SPY/QQQ/IWM/NVDA/TSLA/WMT,
-consistent with ~26 fifteen-minute buckets per session.
+Both are computed from Schwab's own candles of that period (its /pricehistory daily and
+15-minute candles, which the capture daemon asks for in every chain rotation).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 
 from math_volatility import compute_atr
 
 
-#: ATR(14) daily needs 15 daily candles; the bars carry extended hours (~1,000 a session), so
-#: the console keeps 24,000 of each ticker's (server.BARS_KEPT: ~23 sessions)
+#: ATR(14) needs 15 candles
 ATR_PERIOD = 14
 
 
@@ -37,47 +34,22 @@ class AtrPair:
     m15_reason: str | None = None
 
 
-def _aggregate(bars: list, bucket_key) -> list[dict]:
-    """Roll 1-minute bars (oldest first) up into OHLC buckets, oldest first."""
-    buckets: dict = {}
-    for r in bars:
-        k = bucket_key(datetime.fromtimestamp(r.ts, _et()))
-        b = buckets.get(k)
-        if b is None:
-            buckets[k] = {"open": r.open, "high": r.high, "low": r.low, "close": r.close}
-            continue
-        b["high"] = max(b["high"], r.high)
-        b["low"] = min(b["low"], r.low)
-        b["close"] = r.close
-    return [buckets[k] for k in sorted(buckets)]
-
-
-def _et():
-    from time_et import ET  # single ET authority (COH-SA2)
-
-    return ET
-
-
-def _leg(candles: list, unit: str) -> tuple[float | None, str | None]:
-    """ATR(ATR_PERIOD) of `candles`, or None with why: it needs ATR_PERIOD + 1 of them."""
+def _leg(candles: list, unit: str, series: str) -> tuple[float | None, str | None]:
+    """ATR(ATR_PERIOD) of Schwab's `candles`, or None with why: fewer than ATR_PERIOD + 1 of them
+    (none yet: 0)."""
     atr = compute_atr(candles, period=ATR_PERIOD)
     if atr is not None:
         return atr, None
     if len(candles) < ATR_PERIOD + 1:
-        return None, f"{len(candles)} {unit} of 1-minute bars; ATR({ATR_PERIOD}) needs {ATR_PERIOD + 1}"
-    return None, f"the {unit}' prices do not give a true range"
+        return None, (f"{len(candles)} {unit} of Schwab's {series} candles; "
+                      f"ATR({ATR_PERIOD}) needs {ATR_PERIOD + 1}")
+    return None, f"Schwab's {series} candles do not give a true range"
 
 
-def compute_atr_pair(bars: list) -> AtrPair:
-    """Daily and 15-minute ATR of one ticker's 1-minute bars (oldest first), each None with its
-    reason when it cannot be computed. The same rule for every ticker."""
-    daily, daily_reason = _leg(_aggregate(bars, lambda d: d.date()), "trading days")
-    m15, m15_reason = _leg(_aggregate(bars, lambda d: (d.date(), d.hour, d.minute // 15))[-200:],
-                           "15-minute periods")
-    return AtrPair(daily, m15, daily_reason, m15_reason)
-
-
-
-
-
-
+def compute_atr_pair(daily: list, m15: list) -> AtrPair:
+    """Daily and 15-minute ATR of one ticker from Schwab's daily and 15-minute candles (oldest
+    first; none from Schwab yet: empty), each None with its reason when it cannot be computed.
+    The same rule for every ticker."""
+    d, d_reason = _leg(daily, "trading days", "daily")
+    m, m_reason = _leg(m15, "15-minute periods", "15-minute")
+    return AtrPair(d, m, d_reason, m_reason)

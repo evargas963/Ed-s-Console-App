@@ -369,7 +369,8 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     (topic, kept, error) = failures[0]
     assert error.startswith("IntegrityError: NOT NULL constraint failed: complete_chain_captures.refused")
     kept = json.loads(kept)
-    received = [ct for msg in published[:published[0]["parts"]] for ct in msg["contracts"]]
+    parts = [m for m in published if m["src"] == "schwab_chain"]          # the chain's, not its price history
+    received = [ct for msg in parts[:parts[0]["parts"]] for ct in msg["contracts"]]
     assert kept["spots"] == {"2026-11-20": 766.31}
     assert kept["contracts"] == received, "kept as the sweep delivered it"
     assert writer["last_failure"] == f"chain_history.SPY: {failures[-1][2]}"

@@ -15,6 +15,8 @@ the same topics is refused):
   news.SYM     src "schwab_news"        NEWS_HEADLINE
   bar1m.SYM    src "schwab_chart"       CHART_EQUITY
   chain.TK     src "schwab_chain"       the REST option chain, in parts (the daemon's chain sweep)
+  pricehistory.TK.SERIES src "schwab_pricehistory"  Schwab's 1-minute bars, 15-minute and daily
+               candles of the ticker (the chain sweep's /pricehistory requests)
 
 A client receives the CURRENT RECORD of each topic as the daemon's bus keeps it (the newest by
 Schwab's time; a LEVELONE record merged field by field, each field's times in `field_ts`; a
@@ -43,7 +45,8 @@ LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: op
 
 #: topic prefix -> the only `src` forwarded for it
 _FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwab_options_l1",
-              "news.": "schwab_news", "bar1m.": "schwab_chart", "chain.": "schwab_chain"}
+              "news.": "schwab_news", "bar1m.": "schwab_chart", "chain.": "schwab_chain",
+              "pricehistory.": "schwab_pricehistory"}
 
 
 def is_forwarded(topic: str, msg) -> bool:
@@ -59,10 +62,13 @@ def is_forwarded(topic: str, msg) -> bool:
 
 
 def frames(topic: str, record) -> "list[str]":
-    """The wire frames of one current record: a chain's parts arrive with their frames already
-    built, off the event loop (complete_chain_capture.chain_messages)."""
+    """The wire frames of one current record: a chain's parts and a price history arrive with
+    their frames already built, off the event loop (complete_chain_capture.chain_messages,
+    price_history_message)."""
     if topic.startswith("chain."):
         return [part["frame"] for part in record]
+    if topic.startswith("pricehistory."):
+        return [record["frame"]]
     return [json.dumps({"topic": topic, "msg": record}, separators=(",", ":"))]
 
 

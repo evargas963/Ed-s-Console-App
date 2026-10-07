@@ -22,8 +22,8 @@ from datetime import datetime
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import ChainSweep
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, options_quote_msg
-from tests.schwab_rest_standin import (CHAIN, CHAINS, EXPIRATIONS, FX, QUOTES, SPY, SPY_QUOTES, TSLA,
-                                       LocalSchwab, delivered)
+from tests.schwab_rest_standin import (CHAIN, CHAINS, EXPIRATIONS, FX, PRICEHISTORY, QUOTES, SPY, SPY_QUOTES,
+                                       TSLA, LocalSchwab, delivered)
 from time_et import ET
 
 _STREAM = next(c for c in json.loads((FX / "real_options_stream_history_samples.json")
@@ -67,9 +67,11 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
 
     asked = [(path, q.get("symbol"), len(q["symbols"].split(",")) if "symbols" in q else None)
              for path, q, *_ in first]
-    assert asked == [(EXPIRATIONS, "SPY", None), (CHAIN, "SPY", None), (QUOTES, None, 300),
-                     (EXPIRATIONS, "TSLA", None), (CHAIN, "TSLA", None), (QUOTES, None, 300),
-                     (QUOTES, None, 77)], "the expiration chain, each expiry, quotes as 300 fill"
+    assert asked == [(EXPIRATIONS, "SPY", None), (CHAIN, "SPY", None), *[(PRICEHISTORY, "SPY", None)] * 3,
+                     (QUOTES, None, 300),
+                     (EXPIRATIONS, "TSLA", None), (CHAIN, "TSLA", None), *[(PRICEHISTORY, "TSLA", None)] * 3,
+                     (QUOTES, None, 300), (QUOTES, None, 77)], \
+        "the expiration chain, each expiry, the price history, quotes as 300 fill"
     for path, q, *_ in first:
         if path == CHAIN:
             assert (q["fromDate"], q["toDate"], q["range"]) == (CHAINS[q["symbol"]][0],) * 2 + ("ALL",)
