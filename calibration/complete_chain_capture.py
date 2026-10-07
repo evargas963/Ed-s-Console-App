@@ -323,28 +323,28 @@ class ChainSweep:
         chains = list({id(chain): chain for chain, _ct in batch}.values())
         try:
             resp = safe_get_quotes(schwab_client(), [ct["symbol"] for _chain, ct in batch])
+            if resp.status_code != 200:
+                return self.fail(chains, f"quotes for {len(batch)} contracts returned HTTP {resp.status_code}")
+            quoted = {s: e["quote"] for s, e in resp.json().items()}
         except Exception as e:  # noqa: BLE001 -- those tickers' answer is the failure; the rotation goes on
             log.warning("quotes for %d contracts failed: %s: %s", len(batch), type(e).__name__, e)
             return self.fail(chains, f"{type(e).__name__}: {e}")
-        if resp.status_code != 200:
-            return self.fail(chains, f"quotes for {len(batch)} contracts returned HTTP {resp.status_code}")
-        quoted = resp.json()
         for chain, ct in batch:
-            entry = quoted.get(ct["symbol"])
-            if entry is not None:
-                ct.update({f: entry["quote"].get(f) for f in GREEK_FIELDS})
-                ct["greeksTime"] = dict.fromkeys(GREEK_FIELDS, entry["quote"].get("quoteTime"))
+            quote = quoted.get(ct["symbol"])
+            if quote is not None:
+                ct.update({f: quote.get(f) for f in GREEK_FIELDS})
+                ct["greeksTime"] = dict.fromkeys(GREEK_FIELDS, quote.get("quoteTime"))
             chain.unquoted.discard(ct["symbol"])
         for chain in chains:
             if not chain.unquoted:
                 self.deliver(chain)
 
     def fail(self, chains: "list[_Chain]", reason: str) -> None:
-        """Each chain's ticker is published as failed with `reason`; its contracts leave the queue."""
+        """Each chain's ticker is published as failed with `reason`; its contracts leave the queue.
+        The log has the cause already: Schwab's answer (schwab_client.log_request) or the error."""
         now = self.clock()
         self._queue = [(chain, ct) for chain, ct in self._queue if chain not in chains]
         for chain in chains:
-            log.warning("chain %s: %s", chain.ticker, reason)
             self.publish(*chain_failure_message(chain.ticker, reason, now))
 
     def deliver(self, chain: _Chain) -> None:

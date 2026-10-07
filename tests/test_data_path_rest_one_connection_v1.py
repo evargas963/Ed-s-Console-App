@@ -41,6 +41,7 @@ def _setup(tmp_path, schwab: LocalSchwab, now: float):
     """The daemon's bus holding HELD's stream record, its sweep on a fixed clock, and the client."""
     client = schwab.client(tmp_path)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), board=["SPY", "TSLA"])
+    daemon.held["LEVELONE_OPTIONS"] = frozenset({HELD})          # Schwab accepted it on this connection
     for e in _STREAM["events"]:
         if e["kind"] == "l1":
             daemon.bus.publish(f"optquote.{HELD}", options_quote_msg(
@@ -146,3 +147,35 @@ def test_while_closed_every_board_ticker_is_fetched_once_and_a_failed_one_again(
     assert chains == [("SPY", "2026-11-20"), ("TSLA", "2026-08-31"), ("TSLA", "2026-08-31")]
     assert [m["failed"] for t, m in published if "failed" in m] == ["chain for 2026-08-31 returned HTTP 502"]
     assert idle, "the close values stand: nothing more is asked for until the next session"
+
+
+def test_a_contract_the_stream_no_longer_holds_takes_its_quotes_greeks(tmp_path):
+    """The stream's connection ends (it holds nothing): HELD's record from that connection is
+    still on the bus, and its Greeks are asked of the quotes endpoint, never taken from a feed
+    that is down."""
+    schwab = LocalSchwab()
+    daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 09:05"))
+    daemon.held["LEVELONE_OPTIONS"] = frozenset()                # as Daemon.disconnect leaves it
+    try:
+        assert sweep.rotation(client, ["SPY"], threading.Event()) == {"SPY"}
+    finally:
+        schwab.close()
+    assert HELD in [s for q in schwab.asked(QUOTES) for s in q["symbols"].split(",")]
+    quote = SPY_QUOTES[HELD]["quote"]
+    assert {f: delivered(published, "SPY")[HELD][f] for f in GREEKS} == {f: quote[f] for f in GREEKS}
+
+
+def test_a_quotes_answer_that_is_not_json_fails_its_tickers_and_the_sweep_goes_on(tmp_path):
+    """STAND-IN: a 200 answer whose body is not JSON. Each ticker in the request is published as
+    failed with the error, and the next rotation delivers."""
+    schwab = LocalSchwab()
+    schwab.quotes_body = b"<html>not json</html>"
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 09:05"))
+    try:
+        assert sweep.rotation(client, ["SPY"], threading.Event()) == set()
+        schwab.quotes_body = None
+        assert sweep.rotation(client, ["SPY"], threading.Event()) == {"SPY"}
+    finally:
+        schwab.close()
+    (failed,) = [m["failed"] for _t, m in published if "failed" in m]
+    assert failed.startswith("JSONDecodeError")

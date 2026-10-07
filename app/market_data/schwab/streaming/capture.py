@@ -331,9 +331,12 @@ class Daemon:
             self.chains.set_active(active)
 
     def option_record(self, symbol: str) -> "tuple[str, dict] | None":
-        """`symbol`'s current LEVELONE_OPTIONS record on the bus, (topic, record); None while the
-        stream holds none (the chain sweep reads each contract's Greeks from it)."""
-        return self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol))
+        """`symbol`'s current LEVELONE_OPTIONS record on the bus, (topic, record), while this
+        connection holds it on LEVELONE_OPTIONS; None otherwise (the chain sweep reads each
+        contract's Greeks from it, and asks the quotes endpoint for every contract it returns None
+        for: a record left from a connection that ended is not held)."""
+        held = symbol in self.held["LEVELONE_OPTIONS"]
+        return self.bus.current.get(_current_key("LEVELONE_OPTIONS", symbol)) if held else None
 
     def all_wanted(self) -> "dict[str, frozenset[str]]":
         """Everything streamed: the console's list, and every board ticker on BOARD_SERVICES."""

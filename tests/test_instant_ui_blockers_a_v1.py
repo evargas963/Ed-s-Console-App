@@ -47,21 +47,31 @@ def test_every_token_refresh_writes_atomically(monkeypatch, tmp_path):
     assert replaced and str(replaced[0][1]) == str(tok), "the refresh must land via os.replace"
 
 
-def test_the_client_holds_every_request_open_at_once(tmp_path):
-    """Operator 2026-10-01: no caps. httpx holds 100 connections at once by default; the client
-    we build sends 150 requests at once and all 150 reach the server together (the server
-    answers none until all have arrived)."""
+def test_the_client_sends_one_request_at_a_time_on_one_connection(tmp_path):
+    """Operator 2026-10-06: chains and quotes one request at a time on one connection. The
+    client the daemon builds, asked for 20 requests at once from 20 threads, sends them one at a
+    time (the server never holds two) over one connection (one client port)."""
     import threading
+    import time
     from concurrent.futures import ThreadPoolExecutor
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     import schwab_client as sc
-    n = 150
-    together = threading.Barrier(n, timeout=20)
+    n = 20
+    lock = threading.Lock()
+    seen = {"open": 0, "most": 0, "ports": set()}
 
     class Held(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
         def do_GET(self):
-            together.wait()
+            with lock:
+                seen["open"] += 1
+                seen["most"] = max(seen["most"], seen["open"])
+                seen["ports"].add(self.client_address[1])
+            time.sleep(0.02)
+            with lock:
+                seen["open"] -= 1
             self.send_response(200)
             self.send_header("Content-Length", "2")
             self.end_headers()
@@ -74,13 +84,14 @@ def test_the_client_holds_every_request_open_at_once(tmp_path):
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
         client = sc.client_from_token_file_atomic(str(_token_file(tmp_path)), "k", "s")
-        client.set_timeout(30.0)
         url = f"http://127.0.0.1:{srv.server_address[1]}/"
         with ThreadPoolExecutor(max_workers=n) as pool:
             codes = list(pool.map(lambda _: client.session.get(url).status_code, range(n)))
-        assert codes == [200] * n
     finally:
         srv.shutdown()
+    assert codes == [200] * n
+    assert seen["most"] == 1, f"{seen['most']} requests at once"
+    assert len(seen["ports"]) == 1, f"{len(seen['ports'])} connections"
 
 
 

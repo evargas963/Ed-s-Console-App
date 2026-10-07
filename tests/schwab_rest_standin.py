@@ -49,12 +49,14 @@ def chain_payload(ticker: str) -> dict:
 
 class LocalSchwab:
     """The local server, on HTTP/1.1. `quotes_status`: the quotes endpoint's answer while not 200;
+    `quotes_body`: while set, the quotes endpoint answers 200 with these bytes as its body;
     `refuse_chain`: tickers whose next chain request is answered 502; `withheld`: symbols the
     quotes answer leaves out."""
 
     def __init__(self):
         self.requests: list = []
         self.quotes_status = 200
+        self.quotes_body: "bytes | None" = None
         self.refuse_chain: "set[str]" = set()
         self.withheld: "set[str]" = set()
         outer = self
@@ -67,7 +69,7 @@ class LocalSchwab:
                 url = urlparse(self.path)
                 query = {k: v[0] for k, v in parse_qs(url.query).items()}
                 status, body = outer.answer(url.path, query)
-                data = json.dumps(body).encode()
+                data = body if isinstance(body, bytes) else json.dumps(body).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
@@ -82,7 +84,7 @@ class LocalSchwab:
         self.server.daemon_threads = True
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
-    def answer(self, path: str, query: dict) -> "tuple[int, dict]":
+    def answer(self, path: str, query: dict) -> "tuple[int, dict | bytes]":
         if path == EXPIRATIONS:
             return 200, {"expirationList": [{"expirationDate": PASSED},
                                             {"expirationDate": CHAINS[query["symbol"]][0]}]}
@@ -93,6 +95,8 @@ class LocalSchwab:
             return 200, chain_payload(query["symbol"])
         if self.quotes_status != 200:
             return self.quotes_status, {}
+        if self.quotes_body is not None:
+            return 200, self.quotes_body
         return 200, {s: SPY_QUOTES[s] for s in query["symbols"].split(",")
                      if s in SPY_QUOTES and s not in self.withheld}
 
