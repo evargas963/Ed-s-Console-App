@@ -458,10 +458,12 @@ class Daemon:
 
     async def send_requests(self) -> None:
         """Send every queued request, each split under Schwab's message limit, without waiting
-        for an answer: the reader matches each answer to its request (answered)."""
+        for an answer: the reader matches each answer to its request (answered). A SUBS replaces
+        all a service holds, so only its first part is SUBS and the rest are ADD."""
         while self._requests:
-            svc, cmd, symbols = self._requests.pop(0)
-            for chunk in split_request(symbols):
+            svc, first, symbols = self._requests.pop(0)
+            for i, chunk in enumerate(split_request(symbols)):
+                cmd = "ADD" if first == "SUBS" and i else first
                 params = {"keys": ",".join(chunk)}
                 if cmd != "UNSUBS":
                     params["fields"] = _fields(self.stream, svc)

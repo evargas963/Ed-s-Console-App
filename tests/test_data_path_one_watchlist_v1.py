@@ -116,6 +116,37 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
     assert status["refused"] == {"LEVELONE_OPTIONS": refused["LEVELONE_OPTIONS"]}
 
 
+def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_path):
+    """MRVL's 2,432 contracts (its full chain as Schwab sent it, tests/fixtures/
+    real_mrvl_full_chain_vs_strike_window.json) are more than one request carries, so the
+    subscription is sent in parts. A SUBS replaces all a service holds (measured live 2026-10-07:
+    of 3,001 contracts sent as SUBS 2,181 + SUBS 819 + ADD 1, only the last 820 ever updated), so
+    only the first part is SUBS and the rest ADD: Schwab holds them all."""
+    from pathlib import Path
+
+    from schwab_client import flatten_chain_contracts
+    mrvl = json.loads((Path(__file__).parent / "fixtures" / "real_mrvl_full_chain_vs_strike_window.json")
+                      .read_text(encoding="utf-8"))
+    symbols = sorted(ct["symbol"] for ct in flatten_chain_contracts(mrvl["full"]))
+    schwab = _Schwab(tmp_path)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry())
+    daemon.set_options({"op": "options", "LEVELONE_OPTIONS": symbols, "OPTIONS_BOOK": []}, "console")
+
+    async def go():
+        stop = asyncio.Event()
+        run = asyncio.create_task(daemon.run(lambda: schwab.client, stop))
+        await _until(lambda: len(daemon.held["LEVELONE_OPTIONS"]) == len(symbols))
+        stop.set()
+        await asyncio.wait_for(run, 10)
+    try:
+        asyncio.run(go())
+    finally:
+        schwab.close()
+    commands = [c for c, _k in schwab.streamer.asked("LEVELONE_OPTIONS")]
+    assert len(commands) > 1 and commands == ["SUBS"] + ["ADD"] * (len(commands) - 1)
+    assert sorted(schwab.streamer.held["LEVELONE_OPTIONS"]) == symbols, "Schwab holds every part"
+
+
 def test_a_dropped_connection_subscribes_once_again_with_one_session_at_a_time(tmp_path):
     """Schwab drops the socket: the daemon logs out, connects again (a new session that holds
     nothing) and asks for everything once again; the frames are taken whole (no size cap)."""
