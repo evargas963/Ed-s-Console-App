@@ -630,31 +630,6 @@ def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting(monkeypatch)
     assert priced == [(TK, True), ("ZZC", False), ("ZZD", False)]
 
 
-def test_the_ticker_on_screen_is_the_newest_open_page(monkeypatch):
-    """One rule: the ticker on screen is the newest page still open, and the books, the chain
-    fetched first and the option contract all follow it, in the order the pages open and close."""
-    import asyncio
-    followed: list = []
-    monkeypatch.setattr(server, "_follow_screen_contract", lambda: followed.append(push_changes.on_screen()))
-
-    async def open_page(tk):
-        stream = (await server.get_changes(ticker=tk)).body_iterator
-        await stream.__anext__()                            # the page's connection is streaming
-        return stream
-
-    async def go():
-        a = await open_page("AAA")                          # a page opens on AAA ...
-        b = await open_page("BBB")                          # ... a second page on BBB
-        assert ofs.current_wanted()["active"] == "BBB" and ofs.current_wanted()["NYSE_BOOK"] == ["BBB"]
-        await b.aclose()                                    # the BBB page closes
-        assert ofs.current_wanted()["active"] == "AAA"
-        await a.aclose()                                    # the last page closes
-    monkeypatch.setattr(push_changes, "_open", [])
-    asyncio.run(go())
-    assert followed == ["AAA", "BBB", "AAA", None], "the option contract follows in the same order"
-    assert ofs.current_wanted()["active"] is None and ofs.current_wanted()["NYSE_BOOK"] == []
-
-
 def test_a_page_whose_open_fails_is_closed(monkeypatch):
     """A listener of the open failing still closes the page: it is not left the ticker on screen
     with no client."""
@@ -713,9 +688,3 @@ def test_a_ticker_opened_before_its_chain_gets_its_contract_when_the_chain_comes
     server._publish_levels(TK, _CONTRACTS, time.time())         # the daemon's chain is priced
     push_changes._mark(TK, push_changes.CHAIN)                  # (on the event loop)
     assert server._contract_is_for(ofs.get_active_option_contract(), TK)
-
-
-def test_an_unknown_board_is_said_so():
-    """2026-10-01 audit: with the daemon's heartbeat late, the board is unknown, never empty."""
-    lmp.record_feed_down()
-    assert "BOARD UNKNOWN" in server._status_line()

@@ -355,19 +355,18 @@ def _et(s: str) -> float:
 
 
 class _Swept:
-    """The sweep (board SPY, `active` on screen) on its thread at `clock["now"]`; `chains` is each
+    """The sweep (the watchlist `watchlist`) on its thread at `clock["now"]`; `chains` is each
     ticker whose chain it delivered, in order."""
 
-    def __init__(self, tmp_path, at: str, active: "str | None" = None):
+    def __init__(self, tmp_path, at: str, watchlist: "list[str]"):
         self.clock = {"now": _et(at)}
         self.chains: "list[str]" = []
         self.schwab = LocalSchwab()
-        self.sweep = ChainSweep(tmp_path / "ed_console.db", ["SPY"],
+        self.sweep = ChainSweep(tmp_path / "ed_console.db", watchlist,
                                 lambda topic, msg: "contracts" in msg and self.chains.append(msg["ticker"]),
                                 clock=lambda: self.clock["now"],
                                 failures=CaptureWriter(tmp_path / "stream_capture.db"),
                                 streamed=lambda symbol: None)
-        self.sweep.set_active(active)
         client = self.schwab.client(tmp_path)
         self.stop = threading.Event()
         self.worker = threading.Thread(target=self.sweep.work, args=(lambda: client, self.stop), daemon=True)
@@ -391,48 +390,47 @@ class _Swept:
                                 "2026-11-27 14:00"],
                          ids=["pre-market", "rth", "after-hours", "after-hours-of-an-early-close"])
 def test_d5_in_every_open_session_the_sweep_fetches_without_end(tmp_path, at):
-    swept = _Swept(tmp_path, at, active="TSLA")                  # on screen, off the board
+    swept = _Swept(tmp_path, at, ["SPY", "TSLA"])
     try:
         chains = swept.until(4)
     finally:
         swept.close()
     assert sorted(chains[:2]) == sorted(chains[2:4]) == ["SPY", "TSLA"], \
-        "every ticker in each rotation, and again, without end"
+        "every watchlist ticker in each rotation, and again, without end"
 
 
-def test_d5_once_closed_every_board_ticker_is_fetched_once_then_nothing_until_the_next_session(tmp_path):
-    swept = _Swept(tmp_path, "2026-10-02 20:00", active="TSLA")  # Friday, the moment the market closes
+def test_d5_once_closed_every_watchlist_ticker_is_fetched_once_then_nothing_until_the_next_session(tmp_path):
+    swept = _Swept(tmp_path, "2026-10-02 20:00", ["SPY", "TSLA"])  # Friday, the moment the market closes
     try:
-        closing = swept.until(1)                                 # the close values
+        closing = swept.until(2)                                 # the close values
         for later in ("2026-10-03 12:00", "2026-10-04 23:59", "2026-10-05 03:59"):
             swept.clock["now"] = _et(later)
-            assert swept.until(2) == closing, later
+            assert swept.until(3) == closing, later
         swept.clock["now"] = _et("2026-10-05 04:00")             # Monday pre-market
-        opened = swept.until(3)
+        opened = swept.until(4)
     finally:
         swept.close()
-    assert closing == ["SPY"], "the board's close values; the ticker on screen is not fetched"
-    assert sorted(opened[1:3]) == ["SPY", "TSLA"]
+    assert sorted(closing) == ["SPY", "TSLA"], "every watchlist ticker's close values, once"
+    assert sorted(opened[2:4]) == ["SPY", "TSLA"]
 
 
 @pytest.mark.parametrize("at", ["2026-10-03 12:00", "2026-11-26 12:00", "2026-10-01 02:00"],
                          ids=["saturday", "thanksgiving", "a-weeknight"])
-def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_no_ticker_put_on_screen(tmp_path, at):
-    """A ticker put on screen while Closed is not fetched, whether its close values were fetched
-    (on the board) or not (off it): the close values stand, and none is made up."""
-    swept = _Swept(tmp_path, at)
+def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_an_added_ticker_once(tmp_path, at):
+    """While Closed each watchlist ticker's close values are fetched once, a ticker added to the
+    watchlist while Closed too, and then nothing: the close values stand, and none is made up."""
+    swept = _Swept(tmp_path, at, ["SPY"])
     try:
         assert swept.until(1) == ["SPY"]
-        swept.sweep.set_active("SPY")
-        assert swept.until(2) == ["SPY"]
-        swept.sweep.set_active("TSLA")
-        assert swept.until(2) == ["SPY"]
+        swept.sweep.watchlist = ["SPY", "TSLA"]                  # the daemon's list after an add
+        assert swept.until(2) == ["SPY", "TSLA"]
+        assert swept.until(3) == ["SPY", "TSLA"]
     finally:
         swept.close()
 
 
 def test_d5_a_close_fetch_that_fails_is_tried_again_at_once_until_it_lands(tmp_path):
-    swept = _Swept(tmp_path, "2026-10-03 12:00")
+    swept = _Swept(tmp_path, "2026-10-03 12:00", ["SPY"])
     swept.schwab.refuse_chain = {"SPY"}
     try:
         assert swept.until(1) == ["SPY"]

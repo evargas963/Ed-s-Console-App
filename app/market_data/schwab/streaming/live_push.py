@@ -17,6 +17,8 @@ the same topics is refused):
   chain.TK     src "schwab_chain"       the REST option chain, in parts (the daemon's chain sweep)
   pricehistory.TK.SERIES src "schwab_pricehistory"  Schwab's 1-minute bars, 15-minute and daily
                candles of the ticker (the chain sweep's /pricehistory requests)
+  watchlist    src "daemon_watchlist"   the watchlist after each add or removal the console asked
+               for, with Schwab's /quotes answer to an add's check (capture.watchlist_message)
 
 A client receives the CURRENT RECORD of each topic as the daemon's bus keeps it (the newest by
 Schwab's time; a LEVELONE record merged field by field, each field's times in `field_ts`; a
@@ -43,10 +45,14 @@ LIVE_PUSH_HOST = "127.0.0.1"
 #: receive the real daemon's live data.
 LIVE_PUSH_PORT = int(os.environ.get("ED_LIVE_PUSH_PORT", "8799"))  # caps-ok: operator port config with its declared default, not market data
 
+#: The market context every page's header shows beside the selected ticker (Trade Desk,
+#: operator 2026-09-25): the daemon streams it whatever the watchlist holds.
+MARKET_CONTEXT = ("$SPX", "$NDX", "$VIX")
+
 #: topic prefix -> the only `src` forwarded for it
 _FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwab_options_l1",
               "news.": "schwab_news", "bar1m.": "schwab_chart", "chain.": "schwab_chain",
-              "pricehistory.": "schwab_pricehistory"}
+              "pricehistory.": "schwab_pricehistory", "watchlist": "daemon_watchlist"}
 
 
 def is_forwarded(topic: str, msg) -> bool:
@@ -72,7 +78,7 @@ def frames(topic: str, record) -> "list[str]":
     return [json.dumps({"topic": topic, "msg": record}, separators=(",", ":"))]
 
 
-async def _serve_client(ws, bus: MessageBus, stats: dict, on_wanted=None) -> None:
+async def _serve_client(ws, bus: MessageBus, stats: dict, on_request=None) -> None:
     """Send every current record, then each one that changes, until the connection closes.
 
     The send loop runs as its own task and this handler waits on the CONNECTION: a loop
@@ -90,16 +96,16 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, on_wanted=None) -> Non
                 stats["sent"] += 1
 
     async def _read() -> None:
-        """The console's frames: {"op": "wanted", "wanted": {service: [symbols]}} -- the books
-        and option contracts its screens show, from this connection (capture.Daemon.set_wanted).
-        Ends when the socket closes."""
+        """The console's frames, each handed to `on_request` with this connection
+        (capture.Daemon.console_frame): {"op": "options", ...}, the option contracts it names;
+        {"op": "watchlist", ...}, an add or a removal. Ends when the socket closes."""
         async for frame in ws:
             try:
                 req = json.loads(frame)
             except (TypeError, ValueError):
                 continue
-            if isinstance(req, dict) and req.get("op") == "wanted" and on_wanted is not None:
-                on_wanted(req.get("wanted"), ws)
+            if isinstance(req, dict) and on_request is not None:
+                on_request(req, ws)
 
     pump = asyncio.create_task(_pump())
     closed = asyncio.create_task(_read())
@@ -114,13 +120,13 @@ async def _serve_client(ws, bus: MessageBus, stats: dict, on_wanted=None) -> Non
         await asyncio.gather(pump, closed, return_exceptions=True)
         bus.unsubscribe(sub)
         stats["clients"] -= 1
-        if on_wanted is not None:   # this connection is gone: its list (if it holds one) is withdrawn
-            on_wanted(None, ws)
+        if on_request is not None:   # this connection is gone: its contracts (if it named them) are withdrawn
+            on_request(None, ws)
 
 
 async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
                           host: str = LIVE_PUSH_HOST, port: int = LIVE_PUSH_PORT,
-                          stats: "dict | None" = None, on_wanted=None) -> None:
+                          stats: "dict | None" = None, on_request=None) -> None:
     """Run the push server until `stop` is set. `stats` (mutated) reports clients and sent."""
     from websockets.asyncio.server import serve
 
@@ -128,7 +134,7 @@ async def serve_live_push(bus: MessageBus, stop: asyncio.Event, *,
     stats.update(clients=0, sent=0, listening=None)
 
     async def handler(ws):
-        await _serve_client(ws, bus, stats, on_wanted)
+        await _serve_client(ws, bus, stats, on_request)
 
     async with serve(handler, host, port, max_size=None, ping_interval=20, ping_timeout=20):
         stats["listening"] = f"ws://{host}:{port}"

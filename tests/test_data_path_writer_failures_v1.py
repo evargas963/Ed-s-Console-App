@@ -84,7 +84,10 @@ def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches
         task = asyncio.create_task(daemon.writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _publish_options(bus, health, _EVENTS)
         bus.publish(f"optquote.{_CONTRACT}", bad)
-        await asyncio.sleep(0.3)
+        deadline = time.monotonic() + 10                  # every message taken: the rows and the refused one
+        while (daemon.writer.status()["rows_written"] < len(_EVENTS) or not daemon.writer.status()["failures"]) \
+                and time.monotonic() < deadline:
+            await asyncio.sleep(0.02)
         beat = _beat(daemon)
         stop.set()
         await task
@@ -337,7 +340,7 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
-        daemon = capture.Daemon(bus, health, board=["SPY"])
+        daemon = capture.Daemon(bus, health, ["SPY"])
         daemon.writer = CaptureWriter(failures_db, batch_rows=1, batch_sec=0.01)
         task = asyncio.create_task(daemon.writer.run(bus.subscribe("", policy=LOG), stop=stop))
         sweep = ChainSweep(db, ["SPY"], lambda topic, msg: published.append(msg),

@@ -28,7 +28,7 @@ def test_the_console_says_what_it_waits_for_and_for_how_long(tmp_path):
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     lines: list = []
     threading.Thread(target=lambda: lines.extend(console.stdout), daemon=True).start()
-    waited = "waiting for the capture daemon's heartbeat (it says what the board is) ("
+    waited = "waiting for the capture daemon's heartbeat (it says what the watchlist is) ("
     try:
         end = time.monotonic() + 120
         while sum(waited in ln for ln in list(lines)) < 2:

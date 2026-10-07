@@ -31,7 +31,7 @@ def _et(s: str) -> float:
 
 
 def _sweep(tmp_path, clock, publish):
-    daemon = capture.Daemon(MessageBus(), HealthRegistry(), board=["SPY"])
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
     return ChainSweep(tmp_path / "ed_console.db", ["SPY"], publish, clock=lambda: clock["now"],
                       failures=CaptureWriter(tmp_path / "stream_capture.db"), streamed=daemon.option_record)
 
@@ -162,7 +162,7 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
     async def go():
         from stream_spine import LOG
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
-        daemon = capture.Daemon(bus, health, board=["SPY"])
+        daemon = capture.Daemon(bus, health, ["SPY"])
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         written = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         sweep = asyncio.create_task(capture.run_chains(daemon, tmp_path / "ed_console.db", lambda: client, stop,

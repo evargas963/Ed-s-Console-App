@@ -467,13 +467,13 @@ def stop_bar_writer(thread: "threading.Thread | None" = None) -> None:
     thread.join(timeout=10.0)
 
 
-def _board() -> "list[str] | None":
-    """The board: the capture daemon's background tickers, as its heartbeat carries it; None
-    while the daemon's status is not current."""
+def _watchlist() -> "list[str] | None":
+    """The watchlist: the tickers the capture daemon asks Schwab for, as its heartbeat carries
+    it; None while the daemon's status is not current."""
     st = lmp.daemon_status()
-    if st is None or not isinstance(st.get("board"), list):
-        return None                 # no current heartbeat, or one that carries no board: unknown
-    return list(st["board"])
+    if st is None or not isinstance(st.get("watchlist"), list):
+        return None                 # no current heartbeat, or one that carries no list: unknown
+    return list(st["watchlist"])
 
 
 
@@ -587,13 +587,13 @@ SCOPE_LABELS = {"auto": "Auto", "wider": "Wider", "all": "All available"}
 def _with_live_ui_port(html: str) -> str:
     """Tell the page where the capture daemon's price socket listens (the same
     ED_LIVE_UI_PORT the daemon binds), which market-context symbols it always shows
-    (streaming.MARKET_CONTEXT_SYMBOLS, each with its display name), the scopes its strike
+    (live_push.MARKET_CONTEXT, each with its display name), the scopes its strike
     windows take (terrain_engine.SCOPES, each with its word) and the words for each streaming
     state (STREAM_WORDS). An unfilled page opens no price socket -- its prices read UNAVAILABLE
     rather than reaching a daemon nobody configured it for."""
     from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT
-    from app.options.order_flow.streaming import MARKET_CONTEXT_SYMBOLS
-    context = json.dumps([{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT_SYMBOLS])
+    from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
+    context = json.dumps([{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT])
     scopes = json.dumps([{"key": s, "label": SCOPE_LABELS[s]} for s in SCOPES])
     return (html.replace(_LIVE_UI_PORT_META,
                          f'<meta name="ed-live-ui-port" content="{int(LIVE_UI_PORT)}">', 1)
@@ -788,7 +788,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
                       now: float | None = None) -> dict:
     """Whether the levels are current at `now` (the clock when not given), and WHY NOT when they
     are not: the daemon's last answer for the ticker's chain (a failed fetch, an incomplete
-    delivery) outranks its age. In an open session the daemon fetches every board ticker's chain
+    delivery) outranks its age. In an open session the daemon fetches every watchlist ticker's chain
     without end, so age past two of its delivered rounds is a gap, never a schedule. While
     Closed the values as of the close stand (docs/DATA_FLOW.md §2 D5): levels from a chain
     fetched after the market closed are current however old; older ones are not the close
@@ -812,7 +812,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
                       + (f" — {failure}" if failure else ""))
         return {"levels_stale": stale, "levels_age_sec": age, "levels_stale_reason": reason,
                 "levels_failing": bool(stale and failure), **token}
-    # judged against the round the daemon's chain sweep delivers (every board ticker once)
+    # judged against the round the daemon's chain sweep delivers (every watchlist ticker once)
     round_sec = (lmp.daemon_status() or {}).get("chain_round_sec") or 0.0
     # Stale only past the floor *and* past two delivered rounds — one missed round is normal
     # jitter, two is a real gap. The floor is retained so a fast sweep cannot hide staleness.
@@ -833,7 +833,7 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
 def _gamma_surface_wanted(tk: str) -> bool:
     """Viewed: a page has the ticker open (its /api/changes connection), on any workspace, for
     as long as it stays open. It decides only which tickers are repriced on every streamed tick;
-    every board ticker's chain is fetched and priced alike."""
+    every watchlist ticker's chain is fetched and priced alike."""
     return tk in push_changes.watched()
 
 
@@ -1476,8 +1476,8 @@ def _feed_record_state() -> str:
 def _status_line() -> str:
     """One line for the console window: is each part working right now, from its own check."""
     st = lmp.daemon_status()
-    board = _board()
-    priced = sum(1 for tk in board or [] if resolve_spot(tk)[0] is not None)
+    watchlist = _watchlist()
+    priced = sum(1 for tk in watchlist or [] if resolve_spot(tk)[0] is not None)
     with _terrain_cache_lock:
         as_of = [p.get("computed_ts_utc") for p in _terrain_cache.values() if p.get("computed_ts_utc")]
     newest = ct_label(max(as_of)) if as_of else "none"
@@ -1487,11 +1487,11 @@ def _status_line() -> str:
         f"session {session_label(now_et())}",
         "daemon link: " + ("connected" if st is not None else "NOT CONNECTED"),
         "Schwab socket: " + ("open" if st and st.get("schwab_socket_open") is True else "NOT OPEN"),
-        (f"live prices: {priced} of {len(board)} board tickers" if board is not None
-         else "live prices: BOARD UNKNOWN (no current daemon heartbeat)"),
+        (f"live prices: {priced} of {len(watchlist)} watchlist tickers" if watchlist is not None
+         else "live prices: WATCHLIST UNKNOWN (no current daemon heartbeat)"),
         f"levels: {len(as_of)} tickers, newest as of {newest}",
         _feed_record_state(),
-        (f"chains: the daemon's last round of the board took {round_sec:.0f} s" if round_sec
+        (f"chains: the daemon's last round of the watchlist took {round_sec:.0f} s" if round_sec
          else "chains: the daemon's first round is running"),
     ])
 
@@ -1515,17 +1515,17 @@ def _wait_for(what: str, ready) -> None:
 
 
 def _terrain_loop() -> None:
-    """The board's stored levels once the daemon has said what the board is (queued behind the
-    delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged
+    """The watchlist's stored levels once the daemon has said what the watchlist is (queued behind
+    the delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged
     and the price levels of a new session or a new ticker are published. The chains, and the bars
     each ticker's price levels are built from, arrive from the daemon (_on_chain, _bar_writer)."""
-    _wait_for("the capture daemon's heartbeat (it says what the board is)", lambda: _board() is not None)
-    board = _board() or []
-    _load_crosses(board)
-    _publish_missing_price_levels(board, now_et())
-    queued = _load_stored_levels(board)
-    log.info("Ready: the stored levels of %d of %d board tickers are queued to price (session: %s); "
-             "the daemon's chains price them from here.", queued, len(board), session_label(now_et()))
+    _wait_for("the capture daemon's heartbeat (it says what the watchlist is)", lambda: _watchlist() is not None)
+    watchlist = _watchlist()
+    _load_crosses(watchlist)
+    _publish_missing_price_levels(watchlist, now_et())
+    queued = _load_stored_levels(watchlist)
+    log.info("Ready: the stored levels of %d of %d watchlist tickers are queued to price (session: %s); "
+             "the daemon's chains price them from here.", queued, len(watchlist), session_label(now_et()))
     next_status = time.monotonic() + STATUS_EVERY_SEC
     while _terrain_loop_running:
         time.sleep(1.0)
@@ -1533,20 +1533,20 @@ def _terrain_loop() -> None:
             if time.monotonic() >= next_status:
                 next_status = time.monotonic() + STATUS_EVERY_SEC
                 log.info(_status_line())
-                board = _board()
-                if board is not None:
-                    _publish_missing_price_levels(board, now_et())
+                watchlist = _watchlist()
+                if watchlist is not None:
+                    _publish_missing_price_levels(watchlist, now_et())
         except Exception as e:  # noqa: BLE001 -- the status line says it failed, never silence
             log.warning("levels loop: %s: %s", type(e).__name__, e)
     log.info("Terrain loop stopped")
 
 
-def _load_stored_levels(board: "list[str]") -> int:
-    """At startup, each board ticker's newest full chain capture is priced once (DATA_FLOW
+def _load_stored_levels(watchlist: "list[str]") -> int:
+    """At startup, each watchlist ticker's newest full chain capture is priced once (DATA_FLOW
     decision 7), so a restart, a weekend or the close shows the last reading with its time: queued
     for the pricing thread behind every delivered chain (_wait_to_price), never for a ticker the
     daemon already delivered a chain for. Returns how many tickers were queued."""
-    return sum(_wait_to_price(tk, STORED) for tk in board)
+    return sum(_wait_to_price(tk, STORED) for tk in watchlist)
 
 
 def start_terrain_loop() -> None:
@@ -2252,27 +2252,22 @@ def get_options_gamma_surface(ticker: str = Query(...), scope: ScopeQuery = "aut
         })
 
     # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----
-    # REQUESTED: a page shows this ticker. WARMING: its chain is coming -- it is the ticker on
-    # screen (fetched first) or on the board (fetched in turn). The reason is that state's own.
+    # REQUESTED: a page shows this ticker. WARMING: its chain is coming -- it is on the
+    # watchlist (fetched in turn; while Closed, once, its close values). The reason is that
+    # state's own.
     _requested = _gamma_surface_wanted(tk)
-    _board_now = _board()                      # None: the daemon's heartbeat is not current
-    # a chain is coming only while the daemon reports: for a board ticker (fetched in turn; while
-    # Closed, once, its close values) or, in an open session, the ticker on screen (fetched
-    # first; while Closed it is not fetched, docs/DATA_FLOW.md §3.4)
-    _open = session_label(now_et()) != "Closed"
-    _warming = _board_now is not None and (tk in _board_now or (_open and tk == push_changes.on_screen()))
+    _watched = _watchlist()                    # None: the daemon's heartbeat is not current
+    _warming = _watched is not None and tk in _watched
     _levels_why = terrain_staleness((live or {}).get("computed_ts_utc"), tk)["levels_stale_reason"]
-    if _board_now is None:     # the daemon not reporting is the cause of every other absence: first
-        _why = ["the capture daemon is not reporting (no current heartbeat): its board is unknown",
+    if _watched is None:     # the daemon not reporting is the cause of every other absence: first
+        _why = ["the capture daemon is not reporting (no current heartbeat): its watchlist is unknown",
                 _levels_why]
     elif _levels_why:
         _why = [_levels_why]
     elif _warming:
         _why = ["the surface is projected when the daemon delivers this ticker's chain"]
-    elif not _open:
-        _why = ["the market is closed and this ticker's close values have not been fetched"]
     else:
-        _why = ["no chain is fetched for this ticker: it is not on screen or on the board"]
+        _why = ["no chain is fetched for this ticker: it is not on the watchlist"]
     return JSONResponse({"ticker": tk, "symbol": tk, "available": False, "source": "unavailable",
                          "live": False, "stale": True, "warming": _requested and _warming,
                          "requested": _requested, "reason": " — ".join(r for r in _why if r)})
@@ -2579,15 +2574,43 @@ async def post_streaming_active_option_contract(payload: dict = Body(default={})
     return JSONResponse(out)
 
 
-@app.post("/api/streaming/watchlist-symbols")
-async def post_streaming_watchlist_symbols(payload: dict = Body(default={})):
-    """The browser's watchlist, so the daemon streams each row's LEVELONE_EQUITIES."""
-    from app.options.order_flow.streaming import declare_watchlist
-    syms = payload.get("symbols") if isinstance(payload, dict) else None
-    if not isinstance(syms, list):
-        raise HTTPException(status_code=400, detail="symbols must be a list")
-    declare_watchlist([str(x) for x in syms])
-    return {"ok": True}
+@app.get("/api/watchlist")
+def get_watchlist():
+    """The watchlist, the one list of tickers Schwab is asked for, as the capture daemon (its
+    keeper) last reported it; 503 with the reason while its status is not current."""
+    tickers = _watchlist()
+    if tickers is None:
+        return JSONResponse({"error": "the capture daemon is not reporting (no current heartbeat): "
+                                      "its watchlist is unknown"}, status_code=503)
+    return {"tickers": tickers}
+
+
+async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
+    """An add or a removal, made by the daemon (streaming.watchlist_request); its record as the
+    answer: `ok` when it happened, else what happened (an invalid ticker with Schwab's /quotes
+    answer, one already on the list, ...)."""
+    from app.options.order_flow.streaming import watchlist_request
+    try:
+        rec = await watchlist_request(action, ticker)
+    except ConnectionError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=503)
+    except TimeoutError:
+        return JSONResponse({"ok": False, "error": "the capture daemon did not answer"}, status_code=504)
+    return JSONResponse({"ok": rec["op"] in ("added", "removed"), "op": rec["op"], "ticker": rec["ticker"],
+                         "tickers": rec["tickers"], "status": rec["status"], "answer": rec["answer"]})
+
+
+@app.post("/api/watchlist")
+async def post_watchlist(payload: dict = Body(...)):
+    """Add a ticker: the daemon checks it with one /quotes request and adds it unless Schwab
+    does not quote it (names it in errors.invalidSymbols)."""
+    return await _watchlist_change("add", str(payload["ticker"]))
+
+
+@app.delete("/api/watchlist/{ticker}")
+async def delete_watchlist(ticker: str):
+    """Remove a ticker: Schwab is no longer asked for it; what was recorded for it stays."""
+    return await _watchlist_change("remove", ticker)
 
 
 @app.post("/api/streaming/active-option-contracts")
@@ -2654,7 +2677,7 @@ def get_chain(ticker: str = Query(...),
     """One expiry of the ticker's full chain -- every contract Schwab listed, every field as sent
     -- from the chain the daemon delivered (strike_range=ALL), with each live streamed contract's
     streamed fields as its values (the stream owns them), by the levels' own rule on the same
-    inputs (the chain's listed contracts, its fetch time). Every board ticker's chain is kept.
+    inputs (the chain's listed contracts, its fetch time). Every watchlist ticker's chain is kept.
     Answers `status: unavailable` with a reason when no chain is held."""
     t = ticker_storage_key(_required_ticker(ticker))
     held = terrain_cache_get(t) or {}
@@ -2722,7 +2745,7 @@ def health():
     # Schwab socket is open and, when not, why (as its log says it); no current heartbeat is
     # UNAVAILABLE (unmeasurable is not ok).
     st = lmp.daemon_status()
-    board = _board()
+    watchlist = _watchlist()
     capability: dict[str, object] = {
         "schwab": "AVAILABLE" if st is not None and st.get("schwab_socket_open") is True else "UNAVAILABLE"}
     if capability["schwab"] == "UNAVAILABLE":
@@ -2731,7 +2754,7 @@ def health():
     return {
         "status": "ok",
         "time": datetime.now().isoformat(),
-        "logger_tickers": len(board) if board is not None else None,
+        "watchlist_tickers": len(watchlist) if watchlist is not None else None,
         "capabilities": capability,
     }
 

@@ -215,14 +215,6 @@ class OrderFlowState:
         self._receive_seq.clear()
         self._stream_greeks.clear()
 
-    def forget_unsubscribed_symbols(self, old: list[str], new: list[str]) -> None:
-        """Clear state for symbols leaving a subscription set."""
-        new_keys = {ticker_storage_key(s) for s in new if s}
-        for raw in old:
-            key = ticker_storage_key(raw)
-            if key and key not in new_keys:
-                self.clear_symbol(key)
-
 
     def clear_symbol(self, symbol: str) -> None:
         """Clear all state for one symbol, its recent prints and books included."""
@@ -317,11 +309,6 @@ def clear_all_live_state() -> None:
     mixes pre-disconnect restatements with the new session.
     """
     _LIVE_STATE.clear_all()
-
-
-def forget_unsubscribed_symbols(old: list[str], new: list[str]) -> None:
-    """Clear live state for symbols leaving the active stream set."""
-    _LIVE_STATE.forget_unsubscribed_symbols(old, new)
 
 
 

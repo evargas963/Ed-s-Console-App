@@ -84,19 +84,19 @@ def test_health_reports_the_daemons_schwab_socket_and_the_app_stays_ok():
     assert payload["status"] == "ok", "a vendor outage must not make the application unhealthy"
     assert payload["capabilities"] == {
         "schwab": "UNAVAILABLE", "schwab_reason": "the capture daemon's heartbeat is not current"}
-    assert payload["logger_tickers"] is None
+    assert payload["watchlist_tickers"] is None
 
-    lmp.record_feed_heartbeat(capture.Daemon(MessageBus(), HealthRegistry(), board=["SPY", "$SPX"]).status())
+    lmp.record_feed_heartbeat(capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "$SPX"]).status())
     payload = server.health()
     assert payload["capabilities"] == {
         "schwab": "UNAVAILABLE",
         "schwab_reason": "NOT CONNECTED: the stream is logging in, or its connection has just ended"}
 
     now = time.time()
-    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "board": ["SPY", "$SPX"]})
+    lmp.record_feed_heartbeat({"ts": now, "schwab_socket_open": True, "watchlist": ["SPY", "$SPX"]})
     payload = server.health()
     assert payload["status"] == "ok"
     assert payload["capabilities"] == {"schwab": "AVAILABLE"}
-    assert payload["logger_tickers"] == 2
+    assert payload["watchlist_tickers"] == 2
 
 

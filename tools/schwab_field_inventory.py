@@ -214,9 +214,8 @@ def main() -> int:
         print(state.message)
         return 1
     today = dt.date.today().isoformat()
-    from calibration.complete_chain_capture import board_tickers
-    from db_authority import canonical_console_db_path
-    roster = [t for t in board_tickers(canonical_console_db_path()) if not t.startswith("$")]
+    from app.market_data.schwab.streaming.capture import stored_watchlist
+    roster = [t for t in stored_watchlist(canonical_stream_db_path()) if not t.startswith("$")]
     rest, endpoint_of, status = rest_rows(state.client, roster)
     stream_seen = captured_stream_paths(canonical_stream_db_path())
     documented = streaming_fields()

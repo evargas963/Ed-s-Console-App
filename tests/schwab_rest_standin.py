@@ -9,8 +9,12 @@ recorded once answered: (path, query, started, answered, the client's port).
 Real data: SPY's 2026-11-20 chain and its quotes (fixtures/real_spy_2026_11_20_chain_and_quotes.json),
 TSLA's 2026-08-31 chain (fixtures/real_tsla_complete_chain_strike_range_all.json; its quotes were not
 captured), and SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
-(fixtures/real_pricehistory_spy_tsla_2026_10_07.json: 1-minute, 15-minute and daily candles).
-STAND-INS: the expiration chains; an answer other than 200 (its body).
+(fixtures/real_pricehistory_spy_tsla_2026_10_07.json: 1-minute, 15-minute and daily candles), and
+Schwab's /quotes answer for each of SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as the
+daemon's watchlist check asks (fixtures/real_schwab_quotes_watchlist_check_2026_10_07.json; ZQZQZ is
+named in errors.invalidSymbols).
+STAND-INS: the expiration chains; an answer other than 200 (its body); the user preferences
+(`stream_url`: where schwab-py's StreamClient finds the streamer, tests/schwab_stream_standin.py).
 """
 from __future__ import annotations
 
@@ -34,6 +38,10 @@ CHAINS = {"SPY": ("2026-11-20", SPY["chain"], SPY["spot"]), "TSLA": ("2026-08-31
 PASSED = "2026-08-27"
 EXPIRATIONS, CHAIN, QUOTES, PRICEHISTORY = ("/marketdata/v1/expirationchain", "/marketdata/v1/chains",
                                             "/marketdata/v1/quotes", "/marketdata/v1/pricehistory")
+PREFERENCES = "/trader/v1/userPreference"
+#: ticker -> Schwab's captured /quotes answer to it asked alone (status and body)
+CHECKS = {a["ticker"]: a for a in json.loads(
+    (FX / "real_schwab_quotes_watchlist_check_2026_10_07.json").read_text(encoding="utf-8"))["answers"]}
 #: (symbol, frequencyType, frequency) -> Schwab's captured /pricehistory answer
 HISTORY = {(a["symbol"], a["params"]["frequencyType"], a["params"]["frequency"]): a for a in json.loads(
     (FX / "real_pricehistory_spy_tsla_2026_10_07.json").read_text(encoding="utf-8"))["answers"]}
@@ -58,9 +66,11 @@ class LocalSchwab:
     `refuse_chain`: tickers whose next chain request is answered 502; `withheld`: symbols the
     quotes answer leaves out; `invalid`: SPY contracts (their /chains entries) served in SPY's
     chain answer, which the quotes answer names in Schwab's errors entry
-    (`{"errors": {"invalidSymbols": [...]}}`) instead of quoting them."""
+    (`{"errors": {"invalidSymbols": [...]}}`) instead of quoting them; `stream_url`: the streamer
+    the user preferences name (tests/schwab_stream_standin.LocalStreamer.url)."""
 
-    def __init__(self):
+    def __init__(self, stream_url: "str | None" = None):
+        self.stream_url = stream_url
         self.requests: list = []
         self.quotes_status = 200
         self.quotes_body: "bytes | None" = None
@@ -78,12 +88,13 @@ class LocalSchwab:
                 query = {k: v[0] for k, v in parse_qs(url.query).items()}
                 status, body = outer.answer(url.path, query)
                 data = body if isinstance(body, bytes) else json.dumps(body).encode()
+                # recorded before the answer leaves, so a client holding the answer finds its request
+                outer.requests.append((url.path, query, started, time.monotonic(), self.client_address[1]))
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
-                outer.requests.append((url.path, query, started, time.monotonic(), self.client_address[1]))
 
             def log_message(self, *a):
                 pass
@@ -108,6 +119,12 @@ class LocalSchwab:
             return 200, payload
         if path == PRICEHISTORY:
             return 200, HISTORY[(query["symbol"], query["frequencyType"], query["frequency"])]["body"]
+        if path == PREFERENCES:
+            return 200, {"streamerInfo": [{"streamerSocketUrl": self.stream_url, "schwabClientCustomerId": "c",
+                                           "schwabClientCorrelId": "r", "schwabClientChannel": "N9",
+                                           "schwabClientFunctionId": "APIAPP"}]}
+        if query["symbols"] in CHECKS:
+            return CHECKS[query["symbols"]]["status"], CHECKS[query["symbols"]]["body"]
         if self.quotes_status != 200:
             return self.quotes_status, {}
         if self.quotes_body is not None:
