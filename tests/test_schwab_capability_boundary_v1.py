@@ -8,7 +8,7 @@ docs/ARCHITECTURE.md "Failure domains" separates application availability from c
         -> Schwab-dependent decision influence fails closed
 
 `config.schwab_live_blocked_for()`, the gate `schwab_client` refuses on, blocks absent and
-stand-in credentials; `/api/health` publishes the capability from the capture daemon's heartbeat
+placeholder credentials; `/api/health` publishes the capability from the capture daemon's heartbeat
 (the daemon is the only Schwab client), so health can never advertise a Schwab connection that is
 not open.
 """
@@ -56,7 +56,6 @@ def test_absent_credentials_block_live_schwab():
         "PROOF 3: live credentials must NOT be blocked"
     assert _blocked(SCHWAB_API_KEY=LIVE_KEY, SCHWAB_APP_SECRET=LIVE_SECRET, ED_CI_OFFLINE="1") is True, \
         "CI offline must still block"
-    assert _blocked(SCHWAB_API_KEY=LIVE_KEY, SCHWAB_APP_SECRET="test") is True, "a test shell's stand-in blocks"
     # explicit non-placeholder args stay usable for unit tests (unchanged contract)
     assert schwab_live_blocked_for(api_key=LIVE_KEY, app_secret=LIVE_SECRET) is False
 

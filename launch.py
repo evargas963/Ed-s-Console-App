@@ -1,15 +1,12 @@
 """Ed Console's launcher: start_ed_console.bat runs it with the project's .venv Python.
 
-1. The settings both processes start from (environment): the shell's over .env's, without what a
-   test shell leaves set that blocks every live Schwab call (TEST_SHELL, stand-in credentials).
-2. The capture daemon, in its own window (start_capture_daemon.bat restarts it, with these
-   settings), unless one already serves its price socket. It holds the Schwab credentials; its
-   log, and /api/health from its heartbeat, say whether Schwab took them.
-3. The console on port 8000, with the same settings but no Schwab credentials (it never calls
-   Schwab). Neither process reads .env itself; this reads it for both. Unless a console is
-   already there: one that answers healthy within HEALTHY_WITHIN_SEC is opened and nothing is
+1. The capture daemon, in its own window (start_capture_daemon.bat restarts it), unless one
+   already serves its price socket. It reads its own .env (the Schwab credentials); its log, and
+   /api/health from its heartbeat, say whether Schwab took them.
+2. The console on port 8000, with no SCHWAB_* setting (it never calls Schwab), unless a console
+   is already there: one that answers healthy within HEALTHY_WITHIN_SEC is opened and nothing is
    started; one that does not is stopped only when the operator says so here.
-4. The default browser, at URL, once the console answers healthy.
+3. The default browser, at URL, once the console answers healthy.
 """
 from __future__ import annotations
 
@@ -25,7 +22,6 @@ from pathlib import Path
 import psutil
 
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT as DAEMON_PORT
-from config import ENV_FILE, env_file_settings, schwab_credential_is_stand_in
 
 ROOT = Path(__file__).resolve().parent
 CONSOLE_PORT = 8000
@@ -34,25 +30,6 @@ HEALTHY_WITHIN_SEC = 10.0
 #: --timeout-graceful-shutdown: Ctrl+C ends it while pages hold their change streams open
 CONSOLE = [sys.executable, "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", str(CONSOLE_PORT),
            "--timeout-graceful-shutdown", "10"]
-#: set by a test shell, it blocks every live Schwab call (config.schwab_live_blocked_for)
-TEST_SHELL = ("ED_CI_OFFLINE",)
-SCHWAB_CREDENTIALS = ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET")
-
-
-def daemon_environment(shell: "dict[str, str]", env_file: Path) -> "dict[str, str]":
-    """The shell's settings over `env_file`'s (.env; the shell's value wins, as
-    config.load_dotenv_file has it), without TEST_SHELL and without any Schwab credential that is
-    a stand-in (config.schwab_credential_is_stand_in): .env's real one stands in its place."""
-    def kept(settings: "dict[str, str]") -> "dict[str, str]":
-        return {k: v for k, v in settings.items() if k not in TEST_SHELL
-                and not (k in SCHWAB_CREDENTIALS and schwab_credential_is_stand_in(v))}
-    return {**kept(env_file_settings(env_file)), **kept(shell)}
-
-
-def console_environment(shell: "dict[str, str]", env_file: Path) -> "dict[str, str]":
-    """The daemon's settings without any Schwab variable but the token's path (its age is shown)."""
-    return {k: v for k, v in daemon_environment(shell, env_file).items()
-            if not k.upper().startswith("SCHWAB_") or k.upper() == "SCHWAB_TOKEN_PATH"}
 
 
 def listener(port: int) -> "psutil.Process | None":
@@ -111,10 +88,9 @@ def console_on(port: int, ask, out=print) -> str:
 
 
 def main() -> int:
-    shell = dict(os.environ)
     if listener(DAEMON_PORT) is None:
         subprocess.Popen(["cmd", "/c", "start", "Ed Capture Daemon", "/min", str(ROOT / "start_capture_daemon.bat")],
-                         env=daemon_environment(shell, ENV_FILE), cwd=ROOT)
+                         cwd=ROOT)
         print('Capture daemon: started in its own window ("Ed Capture Daemon").')
     else:
         print(f"Capture daemon: already running (port {DAEMON_PORT} is serving).")
@@ -124,7 +100,8 @@ def main() -> int:
     if action != START:
         return 0
     print(f"Console: starting on port {CONSOLE_PORT}; the browser opens at {URL} once it answers. Ctrl+C stops it.")
-    console = subprocess.Popen(CONSOLE, env=console_environment(shell, ENV_FILE), cwd=ROOT)
+    console = subprocess.Popen(CONSOLE, cwd=ROOT,
+                               env={k: v for k, v in os.environ.items() if not k.upper().startswith("SCHWAB_")})
     signal.signal(signal.SIGINT, signal.SIG_IGN)   # Ctrl+C is the console's: it stops, then this ends
     started = time.monotonic()
     while console.poll() is None and unhealthy_for(CONSOLE_PORT, 1.0) is not None:

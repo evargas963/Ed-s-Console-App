@@ -607,10 +607,11 @@ async def run() -> int:
     connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
     from app.market_data.schwab.streaming.live_ui import serve_live_ui
-    from config import build_config
+    from config import build_config, load_dotenv_file
     from db_authority import canonical_console_db_path
     from schwab_client import build_client_from_token
-    cfg = build_config()                    # from the environment launch.py gave it (.env included)
+    load_dotenv_file()
+    cfg = build_config()
     schwab_client = one_schwab_client(lambda: build_client_from_token(
         api_key=cfg.api_key, app_secret=cfg.app_secret, token_path=cfg.token_path))
     stop = asyncio.Event()

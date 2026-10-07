@@ -16,9 +16,9 @@ A standalone checkout still owns its own runtime root. ``ED_RUNTIME_ROOT`` may m
 state to a dedicated non-checkout directory, but may not select a linked source worktree.
 
 This module imports nothing from `tools/` or `governance/`: it is on the runtime path and
-governance does not decide whether the desk may run (RC-512). It reads the environment only:
-an `ED_RUNTIME_ROOT` in `.env` reaches it through launch.py, or an entry point that loads `.env`
-(config.load_dotenv_file) before importing it.
+governance does not decide whether the desk may run (RC-512). It reads the environment only: an
+`ED_RUNTIME_ROOT` in `.env` reaches it when an entry point loads `.env` (config.load_dotenv_file)
+before importing it.
 """
 from __future__ import annotations
 
