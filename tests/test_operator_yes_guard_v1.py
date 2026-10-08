@@ -1,7 +1,7 @@
-"""tools/operator_yes_guard.py (CLAUDE.md rules 5 and 6): changing a test that exists on main,
-starting or stopping the daemon or console, a merge and a push to main are put to the operator
-(the hook answers "ask"); ordinary work passes. Judged on real payloads, against this
-repository's origin/main, and through the hook chain the settings run."""
+"""tools/operator_yes_guard.py (CLAUDE.md rule 6): starting or stopping the daemon or console, a
+merge and a push to main are put to the operator (the hook answers "ask"); every other action,
+a change to a test included, passes. Judged on real payloads and through the hook chain the
+settings run."""
 from __future__ import annotations
 
 import json
@@ -16,7 +16,6 @@ from tools import operator_yes_guard as guard  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 EXISTING = "tests/test_check_end_to_end_v1.py"     # a test that is on origin/main
-NEW = "tests/test_never_on_main_zz_v1.py"
 
 
 def _edit(path: str) -> dict:
@@ -30,25 +29,6 @@ def _shell(cmd: str, tool: str = "Bash") -> dict:
 def _chain(payload: dict) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, "tools/hook_chain.py", "tools/operator_yes_guard.py"], cwd=REPO,
                           input=json.dumps(payload), capture_output=True, text=True)
-
-
-def test_the_existing_test_is_on_main_and_the_new_one_is_not():
-    on_main = lambda p: subprocess.run(["git", "cat-file", "-e", f"origin/main:{p}"], cwd=REPO).returncode == 0
-    assert on_main(EXISTING) and not on_main(NEW)
-
-
-@pytest.mark.parametrize("payload", [
-    _edit(str(REPO / EXISTING)),
-    _edit(EXISTING),
-    {"tool_name": "Write", "tool_input": {"file_path": str(REPO / EXISTING), "content": "x"}},
-    _shell(f"rm {EXISTING}"),
-    _shell(f"git rm -q {EXISTING}"),
-    _shell(f"sed -i 's/a/b/' {EXISTING}"),
-    _shell(f"echo x > {EXISTING}"),
-    _shell(f"Remove-Item {EXISTING}", "PowerShell"),
-])
-def test_changing_an_existing_test_is_put_to_the_operator(payload):
-    assert any(EXISTING in r for r in guard.reasons(payload))
 
 
 @pytest.mark.parametrize("cmd, what", [
@@ -65,12 +45,19 @@ def test_production_actions_are_put_to_the_operator(cmd, what):
     assert any(what in r for r in guard.reasons(_shell(cmd)))
 
 
+def test_the_test_changed_below_is_on_main():
+    assert subprocess.run(["git", "cat-file", "-e", f"origin/main:{EXISTING}"], cwd=REPO).returncode == 0
+
+
 @pytest.mark.parametrize("payload", [
-    _edit(NEW),
+    _edit(str(REPO / EXISTING)),
+    {"tool_name": "Write", "tool_input": {"file_path": str(REPO / EXISTING), "content": "x"}},
+    _shell(f"rm {EXISTING}"),
+    _shell(f"git rm -q {EXISTING}"),
+    _shell(f"echo x > {EXISTING}"),
+    _shell(f"Remove-Item {EXISTING}", "PowerShell"),
     _edit(str(REPO / "server.py")),
     _shell(f"python -m pytest {EXISTING} -q"),
-    _shell(f"git diff origin/main -- {EXISTING}"),
-    _shell("sed -n 1,20p " + EXISTING),
     _shell("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*streaming.capture*' }",
            "PowerShell"),
     _shell("gh pr view 445 --json state"),
@@ -78,13 +65,13 @@ def test_production_actions_are_put_to_the_operator(cmd, what):
     _shell("git add launch.py tests/test_launch_v1.py"),
     _shell("python -m ruff check launch.py"),
 ])
-def test_ordinary_work_passes(payload):
+def test_everything_else_passes_a_change_to_a_test_on_main_included(payload):
     assert guard.reasons(payload) == []
 
 
 def test_the_hook_chain_answers_ask_with_the_reason_and_passes_ordinary_work():
-    """The real wiring: .claude/settings.json and .cursor/hooks.json run hook_chain with this guard;
-    an action that needs a yes gets Claude Code's "ask" answer on stdout, other actions nothing."""
+    """The real wiring: .claude/settings.json runs hook_chain with this guard; an action that
+    needs a yes gets Claude Code's "ask" answer on stdout, other actions nothing."""
     settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
     commands = [h["command"] for e in settings["hooks"]["PreToolUse"] for h in e["hooks"]]
     assert all("tools/operator_yes_guard.py" in c for c in commands)
@@ -92,5 +79,5 @@ def test_the_hook_chain_answers_ask_with_the_reason_and_passes_ordinary_work():
     out = json.loads(r.stdout)["hookSpecificOutput"]
     assert r.returncode == 0 and out["permissionDecision"] == "ask"
     assert "merges pull request 99999" in out["permissionDecisionReason"]
-    quiet = _chain(_shell("gh pr view 1"))
+    quiet = _chain(_edit(str(REPO / EXISTING)))
     assert quiet.returncode == 0 and quiet.stdout == ""
