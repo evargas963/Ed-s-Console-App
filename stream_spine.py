@@ -574,17 +574,18 @@ def _record_line(s: dict) -> "tuple[str, str]":
         parts.append(f"last {s['last_failure_ct']}: {s['last_failure']}")
     parts.append(f"held in memory: {s['held']} messages, {s['held_bytes'] / 1e6:.1f} MB "
                  f"({s['waiting']} waiting for the database)")
-    for f in [spill, *s["spills_after"]] if spill is not None else []:
-        parts.append(f"spilled to disk: {f['messages']} messages, {f['bytes']:,} bytes in "
-                     f"{Path(f['path']).name}, {f['written_back']} written back")
+    if spill is not None:
+        parts += [f"spilled to disk: {f['messages']} messages, {f['bytes']:,} bytes in "
+                  f"{Path(f['path']).name}, {f['written_back']} written back" for f in [spill, *s["spills_after"]]]
     parts += [f"spill kept: {k['reason']} ({Path(k['path']).name}, {k['written_back']} of "
               f"{k['messages']} written back)" for k in s["spills_kept"]]
     parts += [f"left on disk, not written back: {Path(k['path']).name} ({k['messages']} messages, "
               f"{k['bytes']:,} bytes, {k['written_back']} written back)" for k in s["left_on_disk"]]
     if s["lost"]:
-        parts.append(f"LOST {s['lost']} messages" + (
-            "" if s["lost_first_ts"] is None
-            else f", received {ct_label(s['lost_first_ts'])} to {ct_label(s['lost_last_ts'])}"))
+        lost = f"LOST {s['lost']} messages"
+        if s["lost_first_ts"] is not None:   # the window of those whose receipt time is known
+            lost += f", received {ct_label(s['lost_first_ts'])} to {ct_label(s['lost_last_ts'])}"
+        parts.append(lost)
     parts.append(f"{s['unrecorded']} not recorded")
     ok = (s["state"] == WRITER_RECORDING and s["failures"] == 0 and s["unrecorded"] == 0
           and spill is None and not s["spills_kept"] and not s["left_on_disk"]
@@ -1060,14 +1061,9 @@ class CaptureWriter:
                     item = False
                 stopping = stopping or item is None
                 incoming = [item] if item else []
-                if item and not self._waiting and not self._spills and _behind(item, time.time()):
-                    try:                   # from here every message goes to disk before the database
-                        self._tail()
-                    except OSError as e:   # no spill file: the messages are written as they come
-                        self._log_once_a_minute(("behind", type(e).__name__),
-                                                "stream writer: behind, and no spill file: %s: %s",
-                                                type(e).__name__, e)
-                holding = bool(self._waiting) or bool(self._spills)
+                # behind: from here every message goes to a spill file before the database
+                behind = bool(item) and not self._waiting and not self._spills and _behind(item, time.time())
+                holding = bool(self._waiting) or bool(self._spills) or behind
                 if holding:                # every queued message joins the held ones, in order
                     while not stopping:
                         try:
@@ -1076,7 +1072,11 @@ class CaptureWriter:
                             break
                         stopping = item is None
                         incoming += [item] if item else []
-                    self._admit(incoming)
+                    if behind:
+                        for item in incoming:
+                            self._spill_one(item)
+                    else:
+                        self._admit(incoming)
                     del incoming           # what was spilled is held on disk only
                     items = self._waiting
                 else:
