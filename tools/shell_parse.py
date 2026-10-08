@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 # ── repository identity (RC-258) ──────────────────────────────────────────────────────────
 #: The guard is registered globally, so it sees commands aimed at ANY checkout on this host.
@@ -143,22 +143,33 @@ def iter_command_segments(cmd: str, payload_cwd: str = ""):
         yield cur, seg
 
 
+def program_name(token: str) -> str:
+    """The program a command token runs, however it is spelled, on every OS:
+    `C:\\Git\\cmd\\git.exe`, `"/usr/bin/git"` and `Git.EXE` are all `git`."""
+    return PureWindowsPath(token.strip("\"'")).name.lower().removesuffix(".exe")
+
+
+def program_re(name: str) -> str:
+    """Regex source for `name` run as a program in command text, by path, with `.exe` or
+    quoted (`C:\\Git\\cmd\\git.exe reset`), followed by its first argument's whitespace."""
+    return r"\b" + re.escape(name) + r"(?:\.exe)?[\"']?\s+"
+
+
 def segment_head(seg: str) -> tuple[str, list[str]]:
-    """(command head, its tokens) for a segment, skipping leading VAR=val assignments and
+    """(program name, its tokens) for a segment, skipping leading VAR=val assignments and
     command wrappers (env/sudo/time/...) so `sudo git checkout` reads as a git invocation and
     `echo git` does not."""
     toks = _tokens(seg)
     i = 0
     while i < len(toks):
         t = toks[i].strip("\"'")
-        name = Path(t).name.lower().removesuffix(".exe")
-        if ("=" in t and not t.startswith("-")) or name in _CMD_WRAPPERS:
+        if ("=" in t and not t.startswith("-")) or program_name(t) in _CMD_WRAPPERS:
             i += 1
             continue
         break
     if i >= len(toks):
         return "", []
-    return Path(toks[i].strip("\"'")).name.lower(), toks[i:]
+    return program_name(toks[i]), toks[i:]
 
 
 def iter_git_invocations(cmd: str, payload_cwd: str = ""):
@@ -169,7 +180,7 @@ def iter_git_invocations(cmd: str, payload_cwd: str = ""):
     `--work-tree`, else the cwd in effect at that segment."""
     for cur, seg in iter_command_segments(cmd, payload_cwd):
         head, _toks = segment_head(seg)
-        if head not in ("git", "git.exe"):
+        if head != "git":
             continue
         target = ""
         for rx in (_GIT_C_RE, _GIT_DIR_RE):

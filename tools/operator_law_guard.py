@@ -49,6 +49,8 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell parser
 #: RC-273 — the gitignored trees with no history. A path SEGMENT: `AppData/`, `mydata/`, `_data/`
 #: do not match; `data/x`, `./data/x`, `C:/repo/data/x` do.
 _PROTECTED_TREE = re.compile(r"(?:^|[\\/\"'=(,\s])(?:data|backups)[\\/]", re.I)
+#: The tree itself as a shell argument: `data`, `./backups`, `C:/repo/data`.
+_TREE_ROOT = re.compile(r"(?:^|[\\/])(?:data|backups)[\\/]?$", re.I)
 #: Shell commands that delete, move or rename their arguments.
 _SHELL_REMOVERS = frozenset({"rm", "del", "erase", "rmdir", "rd", "remove-item", "ri", "unlink",
                              "mv", "move", "move-item", "mi", "ren", "rename", "rename-item",
@@ -97,9 +99,17 @@ def _shell_violation(script: str) -> bool:
     for _cwd, seg in iter_command_segments(script):
         head, toks = segment_head(seg)
         args = [t.strip("\"'") for t in toks[1:]]
-        if head in _SHELL_REMOVERS and any(_protected(a) for a in args if not a.startswith("-")):
+        paths = [a for a in args if not a.startswith("-")]
+        if head in _SHELL_REMOVERS and any(_protected(a) or _TREE_ROOT.search(a) for a in paths):
             return True
-        if head in ("icacls", "icacls.exe") and any(_protected(a) for a in args) and \
+        if head == "find" and ("-delete" in args or "-exec" in args or "-execdir" in args) and any(
+                _protected(a) or _TREE_ROOT.search(a) for a in args[:next(
+                    (i for i, a in enumerate(args) if a.startswith("-")), len(args))]):
+            return True
+        if head == "cmd" and len(toks) > 2 and toks[1].lower() in ("/c", "/k") and \
+                _shell_violation(" ".join(toks[2:]).strip("\"")):
+            return True
+        if head == "icacls" and any(_protected(a) for a in args) and \
                 any(a.lower().startswith(_ACL_LOOSENERS) for a in args):
             return True
         if any(_protected(m.group(1)) for m in _REDIRECT.finditer(seg)):

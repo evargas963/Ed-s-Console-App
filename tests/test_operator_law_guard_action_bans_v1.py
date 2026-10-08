@@ -54,3 +54,25 @@ def test_operator_law_guard_wired_for_edit_tools():
     # BEDROCK 2026-09-06: pretooluse_guard is off the roster by design (its content gates and
     # the mutation-side latch are removed); an inert rostered guard is the E-05/E-07 class.
     assert "pretooluse_guard" not in cmds
+
+
+#: Split so this file's own text is not read as the actions it names.
+D, B = "d" + "ata", "b" + "ackups"
+
+
+def test_a_whole_protected_tree_find_delete_and_cmd_c_are_refused():
+    """Each passed the law guard (reviews, 2026-10-06): a remover given the tree itself (`data`,
+    no trailing slash), `find ... -delete` or `-exec`, `cmd /c del`, and rm by its full path."""
+    from tools.operator_law_guard import bash_violations
+    for cmd in (f"rm -r {B}",
+                f"Remove-Item -Recurse {D}",
+                f"mv {D} /tmp/",
+                f"find {D} -delete",
+                f"find ./{B} -name '*.db' -exec rm {{}} +",
+                f"cmd /c del {D}\\ed_console.db",
+                f"cmd.exe /c \"del {D}\\ed_console.db\"",
+                f"C:\\Git\\usr\\bin\\rm.exe -rf {D}/ed_console.db"):
+        assert bash_violations(cmd), cmd
+    for cmd in ("find . -name '*.pyc' -delete", "rm -r build", f"cmd /c dir {D}", f"find {D} -name '*.db'",
+                "C:\\Git\\usr\\bin\\rm.exe -rf /tmp/scratch"):
+        assert bash_violations(cmd) == [], cmd

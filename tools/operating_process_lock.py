@@ -27,7 +27,8 @@ if str(REPO) not in sys.path:
 # The ONE shell segmenter (tools/shell_parse.py, stdlib-only, BEDROCK 2026-09-06): the class
 # rule below judges each chained statement on its own (RC-525), and a second splitter here
 # would be one truth with two answers.
-from tools.shell_parse import iter_command_segments  # noqa: E402
+from tools.shell_parse import (  # noqa: E402
+    iter_command_segments, program_name, program_re, segment_head)
 
 #: Paths where index≠WT is catastrophic: the one writer and the guards.
 ENFORCEMENT_PATHS: tuple[str, ...] = (
@@ -67,7 +68,7 @@ _GIT_GLOBALS = (
     r"(?:(?:" + "|".join(__import__("re").escape(o) for o in _GIT_GLOBAL_WITH_ARG)
     + r")(?:=\S+|\s+\S+)\s+|-\S+\s+)*")
 _UNIVERSAL_DESTRUCTIVE_RE = __import__("re").compile(
-    r"\bgit\s+" + _GIT_GLOBALS + r"(?:"
+    program_re("git") + _GIT_GLOBALS + r"(?:"
     r"reset\s+--hard"
     r"|checkout\s+--\s"
     r"|clean\s+-[a-z]*f"
@@ -75,11 +76,11 @@ _UNIVERSAL_DESTRUCTIVE_RE = __import__("re").compile(
     r")",
     __import__("re").I)
 _RESET_GUARD_RE = __import__("re").compile(
-    r"\bgit\s+" + _GIT_GLOBALS
+    program_re("git") + _GIT_GLOBALS
     + r"(reset\b|restore\b|checkout\s+(?:\S+\s+)*--\s|clean\b|stash\b)",
     __import__("re").I)
 _RESET_GUARD_SAFE_RE = __import__("re").compile(
-    r"\bgit\s+" + _GIT_GLOBALS
+    program_re("git") + _GIT_GLOBALS
     + r"(reset\s+--soft\b|restore\s+--staged\b(?!.*--worktree)|stash\s+list\b|checkout\s+-b\b"
     r"|clean\s+(?:-\S*n\S*\b|--dry-run\b))",
     __import__("re").I)
@@ -107,9 +108,19 @@ PRODUCT_WIPE_PROTECTED: tuple[str, ...] = (
 
 #: RC-253: a command that pipes its heredoc INTO an interpreter is one where the body IS the
 #: instruction, so the body must still be judged. Everywhere else a heredoc is data.
-_INTERPRETER_RE = __import__("re").compile(
-    r"(?:^|[|;&]\s*)(?:bash|sh|zsh|pwsh|powershell|cmd|eval|xargs|source|\.)\b",
-    __import__("re").I)
+_INTERPRETERS = frozenset({"bash", "sh", "zsh", "pwsh", "powershell", "cmd", "eval", "xargs", "source", "."})
+
+
+def _hands_to_interpreter(cmd: str) -> bool:
+    """True when a statement of `cmd` runs an interpreter, however its program is spelled
+    (`bash`, `C:\\Git\\bin\\bash.exe`, `sudo bash`, `| xargs`, `. script`)."""
+    for _cwd, seg in iter_command_segments(cmd, ""):
+        first = seg.split(None, 1)[0]
+        if first == "." or {program_name(first), segment_head(seg)[0]} & _INTERPRETERS:
+            return True
+    return False
+
+
 _HEREDOC_RE = __import__("re").compile(
     r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1\s*?\n.*?^\2\s*$",
     __import__("re").S | __import__("re").M)
@@ -125,7 +136,7 @@ def _strip_command_payloads(cmd: str) -> str:
     write-ups — taxing exactly the honesty the ledger depends on. Heredoc bodies handed to an
     interpreter are NOT stripped: there the body is the instruction.
     """
-    if _INTERPRETER_RE.search(cmd):
+    if _hands_to_interpreter(cmd):
         return cmd
     return _MESSAGE_PAYLOAD_RE.sub(r"\1 <payload>", _HEREDOC_RE.sub("<heredoc>", cmd))
 
@@ -141,7 +152,7 @@ def _judged_segments(cmd: str) -> list[str]:
     """
     try:
         segs = [seg for _cwd, seg in iter_command_segments(cmd, "")]
-        if _INTERPRETER_RE.search(cmd):
+        if _hands_to_interpreter(cmd):
             for line in cmd.splitlines():
                 segs.extend(seg for _cwd, seg in iter_command_segments(line, ""))
     except (OSError, ValueError):
@@ -327,7 +338,7 @@ def commit_pipe_violations(cmd: str) -> list[str]:
     masking_filter = re.compile(
         r"\|\s*(?:tail|head|cat|tee|grep|findstr|Out-Null|Select-Object)\b", re.I)
     for seg in re.split(r"&&|;|\n", stripped):
-        if re.search(r"\bgit\s+commit\b", seg, re.I) and masking_filter.search(seg):
+        if re.search(program_re("git") + r"commit\b", seg, re.I) and masking_filter.search(seg):
             return [
                 "PIPE_MASKED_COMMIT: `git commit` piped into a filter — the filter's exit "
                 "code replaces the commit's and hook failures vanish (RC-234). Run the "
