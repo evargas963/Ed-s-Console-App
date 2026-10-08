@@ -204,7 +204,7 @@ def test_overnight_window_monday_reaches_back_to_friday():
     """LP-01 Step 2 (RC-153): Monday's overnight starts at FRIDAY's 16:00 close. The old code
     used session_date - 1 day = SUNDAY, a day with no close and no bars, so Friday's entire
     post-16:00 tape was dropped and OVERNIGHT_HIGH/LOW described only Monday's pre-open."""
-    friday, monday = date(2026, 7, 24), date(2026, 7, 27)
+    friday, monday = date(2026, 10, 2), date(2026, 10, 5)    # sessions Schwab's /markets sent
     bars = [
         _bar(friday, 10, 0, 100.0, 99.0),      # Friday RTH — establishes the prior session
         _bar(friday, 15, 59, 101.0, 100.0),    # Friday RTH, before the close
@@ -222,7 +222,7 @@ def test_overnight_window_monday_reaches_back_to_friday():
 
 def test_overnight_window_midweek_uses_the_immediately_prior_session():
     """Tuesday's overnight starts at Monday's 16:00 — and Monday's RTH body stays out of it."""
-    monday, tuesday = date(2026, 7, 27), date(2026, 7, 28)
+    monday, tuesday = date(2026, 10, 5), date(2026, 10, 6)
     bars = [
         _bar(monday, 10, 0, 130.0, 70.0),      # Monday RTH — wide, must be EXCLUDED
         _bar(monday, 18, 0, 104.0, 103.0),     # Monday post-close — included
@@ -236,12 +236,13 @@ def test_overnight_window_midweek_uses_the_immediately_prior_session():
 
 
 def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
-    """A closed day has no close for a range to start from. With Thursday shut, Friday's
-    overnight must reach back to WEDNESDAY's 16:00 and include the Thursday bars in between —
-    the interval is continuous, not two hand-picked calendar dates."""
+    """A closed day has no close for a range to start from. With Thanksgiving Thursday shut
+    (Schwab's /markets: 2026-11-26 closed), Friday's overnight must reach back to WEDNESDAY's
+    16:00 and include the Thursday bars in between — the interval is continuous, not two
+    hand-picked calendar dates."""
     from liquidity_value_engine import prior_trading_session_date
     from liquidity_value_engine import _bars_to_list
-    wed, thu, fri = date(2026, 7, 22), date(2026, 7, 23), date(2026, 7, 24)
+    wed, thu, fri = date(2026, 11, 25), date(2026, 11, 26), date(2026, 11, 27)
     bars = [
         _bar(wed, 10, 0, 100.0, 99.0),         # Wednesday RTH — the real prior session
         _bar(wed, 17, 0, 106.0, 105.0),        # Wednesday post-close
@@ -263,8 +264,8 @@ def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
 
 def test_overnight_empty_is_empty_never_fabricated():
     """No bars in the window -> {}. Absence reads as absence."""
-    tuesday = date(2026, 7, 28)
-    only_rth = [_bar(date(2026, 7, 27), 11, 0, 100.0, 99.0),
+    tuesday = date(2026, 10, 6)
+    only_rth = [_bar(date(2026, 10, 5), 11, 0, 100.0, 99.0),
                 _bar(tuesday, 10, 0, 101.0, 98.0)]
     assert _overnight(only_rth, tuesday) == {}, "an overnight range was invented"
     assert _overnight([], tuesday) == {}
@@ -273,9 +274,9 @@ def test_overnight_empty_is_empty_never_fabricated():
 def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
     """Fail-closed: with no prior RTH session in the buffer the interval has no start, so only
     this session's pre-open is used — never widened into a guess that sweeps older days."""
-    tuesday = date(2026, 7, 28)
+    tuesday = date(2026, 10, 6)
     bars = [
-        _bar(date(2026, 7, 27), 20, 0, 300.0, 290.0),   # prior-day AFTER hours, no RTH anywhere
+        _bar(date(2026, 10, 5), 20, 0, 300.0, 290.0),   # prior-day AFTER hours, no RTH anywhere
         _bar(tuesday, 8, 0, 99.0, 98.0),
     ]
     out = _overnight(bars, tuesday)
@@ -312,7 +313,7 @@ def _step3_zones(session_date: date):
 def test_no_pool_language_in_rendered_zone_payload():
     """Behaviour-bound: build the snapshot that used to produce 'Sell-side liquidity at
     overnight low' and assert no operator-facing field claims a pool."""
-    session = date(2026, 7, 28)
+    session = date(2026, 10, 6)          # a Tuesday: its prior session is the day before
     zones = _step3_zones(session)
     assert zones, "fixture produced no zones — the assertion would be vacuous"
     for z in zones:
@@ -350,7 +351,7 @@ def test_no_lookahead_premarket():
     """Premarket snapshot does not use same-day RTH data."""
     from liquidity_value_engine import _bars_to_list, build_premarket_snapshot, build_price_level_snapshot
     from liquidity_models import PlaybookConfig
-    session = date(2026, 3, 13)
+    session = date(2026, 10, 6)          # a Tuesday: its prior session is the day before
     # Only previous day bars
     from datetime import timedelta
     prev_date = session - timedelta(days=1)

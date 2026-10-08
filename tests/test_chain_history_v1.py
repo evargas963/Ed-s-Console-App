@@ -40,31 +40,34 @@ def _et(ts: float) -> str:
     return datetime.fromtimestamp(ts, ET).strftime("%Y-%m-%d %H:%M")
 
 
-@pytest.mark.parametrize("now, slot", [
-    ("2026-09-28 08:00", None),                 # Monday before the open: nothing written
-    ("2026-09-28 09:30", "2026-09-28 09:30"),
-    ("2026-09-28 09:59", "2026-09-28 09:30"),
-    ("2026-09-28 15:45", "2026-09-28 15:30"),
-    ("2026-09-28 16:05", "2026-09-28 16:00"),
-    ("2026-09-28 16:20", "2026-09-28 16:15"),   # the close capture: options trade to 16:15
-    ("2026-09-28 16:46", None),                 # nothing after the close capture's window
-    ("2026-09-26 12:00", None),                 # Saturday
-    ("2026-11-26 12:00", None),                 # Thanksgiving
-    ("2026-11-27 13:10", "2026-11-27 13:00"),   # early close
-    ("2026-11-27 13:20", "2026-11-27 13:15"),   # early close: the close capture at 13:15
-    ("2026-11-02 09:31", "2026-11-02 09:30"),   # after the DST change, still 9:30 ET
+@pytest.mark.parametrize("now, product, slot", [
+    ("2026-10-05 08:00", "EQO", None),                 # Monday before the open: nothing written
+    ("2026-10-05 09:30", "EQO", "2026-10-05 09:30"),
+    ("2026-10-05 09:59", "EQO", "2026-10-05 09:30"),
+    ("2026-10-05 15:45", "EQO", "2026-10-05 15:30"),
+    ("2026-10-05 16:05", "EQO", "2026-10-05 16:00"),   # the close capture: stock options close at 16:00
+    ("2026-10-05 16:20", "IND", "2026-10-05 16:15"),   # the close capture: index options close at 16:15
+    ("2026-10-05 16:31", "EQO", None),                 # nothing after the close capture's window
+    ("2026-10-10 12:00", "EQO", None),                 # Saturday: Schwab sends no session
+    ("2026-11-26 12:00", "EQO", None),                 # Thanksgiving: Schwab says closed
+    ("2026-11-27 13:10", "EQO", "2026-11-27 13:00"),   # early close: Schwab's EQO close 13:00
+    ("2026-11-27 13:20", "IND", "2026-11-27 13:15"),   # early close: Schwab's IND close 13:15
+    ("2026-11-02 09:31", "EQO", "2026-11-02 09:30"),   # after the DST change, still 9:30 ET
 ])
-def test_the_capture_window_a_fetch_is_written_for(now, slot):
-    got = cch.capture_slot(_ts(now))
+def test_the_capture_window_a_fetch_is_written_for(now, product, slot):
+    """The windows are the regular option session Schwab's /markets sent for the day
+    (tests/conftest.py holds the answers captured 2026-10-07)."""
+    got = cch.capture_slot(_ts(now), product)
     assert (_et(got) if got is not None else None) == slot
 
 
-def test_fifteen_capture_windows_on_a_full_day():
-    slots = {cch.capture_slot(_ts(f"2026-09-28 {h:02d}:{m:02d}"))
+@pytest.mark.parametrize("product, last_half_hour, close", [("EQO", "15:30", "16:00"), ("IND", "16:00", "16:15")])
+def test_every_capture_window_of_a_full_day_ends_at_the_option_markets_close(product, last_half_hour, close):
+    slots = {cch.capture_slot(_ts(f"2026-10-05 {h:02d}:{m:02d}"), product)
              for h in range(0, 24) for m in range(0, 60)} - {None}
     assert sorted(_et(s)[11:] for s in slots) == [
         f"{h:02d}:{m:02d}" for h in range(9, 17) for m in (0, 30)
-        if (9, 30) <= (h, m) <= (16, 0)] + ["16:15"]
+        if "09:30" <= f"{h:02d}:{m:02d}" <= last_half_hour] + [close]
 
 
 @pytest.fixture

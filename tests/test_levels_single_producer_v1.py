@@ -12,8 +12,9 @@ from micro_structure import Candle
 from tests.feed_live_helper import daemon_bars, stream_daemon_bars
 from time_et import ET
 
-#: Schwab's SPY and TSLA bars as the capture daemon recorded them, Mon 2026-09-29 and Tue 09-30
-_DAEMON_0929 = daemon_bars("real_daemon_bars_spy_tsla_2026_09_29_30.json")
+#: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02
+#: (sessions Schwab's /markets answers; tests/conftest.py)
+_DAEMON_BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
 _PAIR = ("SPY", "TSLA")
 
 
@@ -59,14 +60,14 @@ def test_api_levels_b1_contract_single_session_prior_day():
                 "open": o, "high": hi, "low": lo, "close": c, "volume": 1000.0}
 
     tape = [
-        _bar(2026, 7, 30, 10, 0, 100, 110, 90, 100),   # older prior session: both extremes
-        _bar(2026, 7, 30, 14, 0, 100, 101, 99, 100),
-        _bar(2026, 7, 31, 10, 0, 96, 105, 95, 97),     # most recent prior session
-        _bar(2026, 7, 31, 15, 59, 101, 103, 100, 102),
-        _bar(2026, 8, 3, 9, 35, 103, 104, 102, 103),   # today inside ORB window
-        _bar(2026, 8, 3, 9, 45, 103, 104, 102, 103),   # today post-ORB
+        _bar(2026, 10, 1, 10, 0, 100, 110, 90, 100),   # older prior session: both extremes
+        _bar(2026, 10, 1, 14, 0, 100, 101, 99, 100),
+        _bar(2026, 10, 2, 10, 0, 96, 105, 95, 97),     # most recent prior session (a Friday)
+        _bar(2026, 10, 2, 15, 59, 101, 103, 100, 102),
+        _bar(2026, 10, 5, 9, 35, 103, 104, 102, 103),  # today (Monday) inside ORB window
+        _bar(2026, 10, 5, 9, 45, 103, 104, 102, 103),  # today post-ORB
     ]
-    now = _dt(2026, 8, 3, 10, 0, tzinfo=ET)
+    now = _dt(2026, 10, 5, 10, 0, tzinfo=ET)
     _forget(tk)
     try:
         for b in tape:
@@ -91,7 +92,7 @@ def test_api_levels_b1_contract_single_session_prior_day():
         assert "as_of_ts_utc" in lv["staleness"] and "age_sec" in lv["staleness"]
         if lv["family"] == "prior_day":
             assert lv["provenance"]["session_scope"] == "RTH"
-            assert "2026-07-31" in lv["provenance"]["window"], (
+            assert "2026-10-02" in lv["provenance"]["window"], (
                 "provenance.window must name the literal session used (RC-153)"
             )
 
@@ -139,12 +140,12 @@ def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
     """t12 (RC-227 residual): the PDL must be the min of the WHOLE prior session. Measured
     live: a truncated in-memory tape served PDL 756.84 vs the true 749.59 while PDH/PDC
     matched. The console's 1-minute bars in memory are the one bar history, so the whole prior
-    session there sets every prior-day level. Schwab's SPY and TSLA bars of Mon 2026-09-29 as
-    recorded, streamed to the console, the levels of Tue 09-30 at 10:00 ET."""
-    now = _dt(2026, 9, 30, 10, 0, tzinfo=ET)
+    session there sets every prior-day level. Schwab's SPY and TSLA bars of Thu 2026-10-01 as
+    recorded, streamed to the console, the levels of Fri 10-02 at 10:00 ET."""
+    now = _dt(2026, 10, 2, 10, 0, tzinfo=ET)
     _forget(*_PAIR)
     try:
-        stream_daemon_bars(_DAEMON_0929)
+        stream_daemon_bars(_DAEMON_BARS)
         payloads = {}
         for tk in _PAIR:
             srv._publish_price_levels(tk, now)        # as the bar writer does
@@ -152,7 +153,7 @@ def test_api_levels_prior_day_is_the_whole_recorded_prior_session():
     finally:
         _forget(*_PAIR)
     for tk in _PAIR:
-        monday = _rth(_DAEMON_0929, tk, "2026-09-29")
+        monday = _rth(_DAEMON_BARS, tk, "2026-10-01")
         assert len(monday) == 390, tk
         by_id = {lv["id"]: lv for lv in payloads[tk]["levels"]}
         assert by_id["PDL"]["price"] == min(r["low"] for r in monday), (tk, "PDL is not the whole prior session's min")
@@ -165,12 +166,12 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
     """The bar writer publishes a ticker's price levels after each of its bars -- every ticker,
     viewed or not, so a page switching to it finds them current; a new session is built by the
     levels loop; the route serves what was published and reads no bar. Schwab's SPY and TSLA
-    bars of 2026-09-29/30 as the capture daemon recorded them: each ticker's newest receipt
-    arrives as a pushed bar, valued at Tue 09-30 19:59:30 ET, the rest streamed before it."""
+    bars of 2026-10-01/02 as the capture daemon recorded them: each ticker's newest receipt
+    arrives as a pushed bar, valued at Fri 10-02 19:59:30 ET, the rest streamed before it."""
     tk, other = _PAIR
-    now = _dt(2026, 9, 30, 19, 59, 30, tzinfo=ET)
-    pushed = {t: _newest(_DAEMON_0929, t)[-1] for t in _PAIR}
-    loaded = [r for r in _DAEMON_0929 if r not in pushed.values()]
+    now = _dt(2026, 10, 2, 19, 59, 30, tzinfo=ET)
+    pushed = {t: _newest(_DAEMON_BARS, t)[-1] for t in _PAIR}
+    loaded = [r for r in _DAEMON_BARS if r not in pushed.values()]
     _forget(*_PAIR)
     try:
         stream_daemon_bars(loaded)
@@ -213,11 +214,11 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         assert [(r["id"], r["price"]) for r in again["levels"]] == [(r["id"], r["price"]) for r in served["levels"]]
         srv._bars[tk] = kept
 
-        # a new session: the levels loop builds its levels (09-30's bars are its prior day)
-        wednesday = _dt(2026, 10, 1, 4, 30, tzinfo=ET)                    # pre-market
-        srv._publish_missing_price_levels([tk], wednesday)
-        nextday = srv.levels_payload(tk, "1", wednesday)
+        # a new session: the levels loop builds its levels (10-02's bars are its prior day)
+        monday = _dt(2026, 10, 5, 7, 30, tzinfo=ET)                       # pre-market (Schwab's: 07:00)
+        srv._publish_missing_price_levels([tk], monday)
+        nextday = srv.levels_payload(tk, "1", monday)
         assert {lv["id"]: lv["price"] for lv in nextday["levels"]}["PDH"] == max(
-            r["high"] for r in _rth(_DAEMON_0929, tk, "2026-09-30"))
+            r["high"] for r in _rth(_DAEMON_BARS, tk, "2026-10-02"))
     finally:
         _forget(*_PAIR)

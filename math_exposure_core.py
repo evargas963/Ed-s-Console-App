@@ -8,6 +8,7 @@ Phase 2 extraction from math_exposure.py per Extraction Blueprint v1.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Dict, List
 import math
 
@@ -139,7 +140,7 @@ def compute_exposures_by_strike(
     contracts: List[dict],
     *,
     spot: float | None = None,
-    now=None,
+    now: datetime,
 ) -> tuple[Dict[float, dict], ExposureDiagnostics]:
     """
     Produces per-strike aggregated, over every listed contract with a strike and a side:
@@ -161,19 +162,16 @@ def compute_exposures_by_strike(
 
     # RC-345 / F13: T for the BS-vanna faucet comes from the ONE valuation-T authority,
     # time_et.time_to_expiry_years (intraday ACT/365 to session close), NOT a local
-    # whole-day `dte / 365.0`. `now` is pinned once so every contract in the aggregate is
-    # priced at one instant, and T is memoised per distinct expiry string. It is the CALLER's
-    # valuation instant when given (a replay of a stored chain must price at the snapshot's
-    # time -- 2026-09-25: compute_terrain(now=...) priced gamma at the snapshot but vanna at
-    # the wall clock, so the same stored chain gave a different vanna on every run), else now.
-    from time_et import time_to_expiry_years as _tte, now_et as _now_et
-    _tte_now = now if now is not None else _now_et()
+    # whole-day `dte / 365.0`. Every contract in the aggregate is priced at the caller's one
+    # valuation instant `now` (a replay of a stored chain prices at the snapshot's time), and T
+    # is memoised per distinct expiry string.
+    from time_et import time_to_expiry_years as _tte
     _tte_cache: dict[tuple, float | None] = {}
 
     def _tte_memo(ct: dict) -> float | None:
         key = (str(ct.get("expirationDate")), ct.get("settlementType"))
         if key not in _tte_cache:
-            _tte_cache[key] = _tte(key[0], now=_tte_now, settlement_type=key[1])
+            _tte_cache[key] = _tte(key[0], now=now, settlement_type=key[1])
         return _tte_cache[key]
 
     for ct in contracts:
@@ -256,24 +254,26 @@ def compute_exposures_by_strike(
             if oi > 0 and not vanna_priced and (_T is None or _T > 0):
                 b[f"{leg}_vanna_unreported"] += 1
 
-    for strike, b in exposures.items():
+    for b in exposures.values():
         b["dollarized"] = spot is not None
-        b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
-        # dealer-signed (+call/-put), the same convention as net_gamma / net GEX and the
-        # terrain's dex_dollars -- one meaning of DEX on every screen
-        b["net_delta"] = b["call_delta"] - b["put_delta"]
         if spot is None:    # the dollar fields and vanna need spot: none without it
             for f in ("dex_dollars", "gex_1pct", "vanna"):
-                for s in ("call", "put", "net"):
+                for s in ("call", "put"):
                     b[f"{s}_{f}"] = None
-            continue
-        # net dealer vanna, delta-shares per vol point, +call/-put: THE per-strike net vanna the
-        # heatmap, the vanna-by-strike rows and the book total all carry
-        b["net_vanna"] = b["call_vanna"] - b["put_vanna"]
-        b["net_dex_dollars"] = b["call_dex_dollars"] - b["put_dex_dollars"]
-        b["net_gex_1pct"] = b["call_gex_1pct"] - b["put_gex_1pct"]
+        _finish_bucket(b)
 
     return exposures, _diagnostics(total, used, missing)
+
+
+def _finish_bucket(b: dict) -> None:
+    """A strike bucket's net fields from its call and put legs, +call/-put (dealer-signed, the
+    same convention as net GEX and the terrain's dex_dollars -- one meaning of each on every
+    screen): the one place they are computed, for a book and for a merge of books. A dollar
+    field or vanna needs spot (`dollarized`): none without it."""
+    b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
+    b["net_delta"] = b["call_delta"] - b["put_delta"]
+    for f in ("dex_dollars", "gex_1pct", "vanna"):
+        b[f"net_{f}"] = b[f"call_{f}"] - b[f"put_{f}"] if b["dollarized"] else None
 
 
 def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
@@ -287,7 +287,7 @@ def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
                                greeks_missing=missing, note=note)
 
 
-def exposure_books(contracts: List[dict], *, spot: float | None, now=None
+def exposure_books(contracts: List[dict], *, spot: float | None, now: datetime
                    ) -> "Dict[tuple[str, float | None], tuple[Dict[float, dict], ExposureDiagnostics]]":
     """compute_exposures_by_strike once per (expiration date, days to
     expiry) group. Every contract is priced once; any subset of expiries is then a
@@ -302,10 +302,11 @@ def exposure_books(contracts: List[dict], *, spot: float | None, now=None
 
 
 def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics]":
-    """One book from books over DISJOINT contracts -- the same result one
-    compute_exposures_by_strike call over all their contracts gives (up to float addition
-    order): every bucket field is a per-contract sum or an OR of a per-contract flag, and a
-    leg no contract reported stays None (None + x = x)."""
+    """One book from books over DISJOINT contracts: every leg field a sum of the books' legs (a
+    leg no contract reported stays None: None + x = x), each flag an OR, and each net field
+    computed from the merged legs by the book's own rule (_finish_bucket). The legs are the same
+    sums one compute_exposures_by_strike call over all the contracts gives, up to float addition
+    order."""
     merged: Dict[float, dict] = {}
     total = used = missing = 0
     for exposures, diag in books:
@@ -320,9 +321,11 @@ def merge_exposure_books(books) -> "tuple[Dict[float, dict], ExposureDiagnostics
             for k, v in bucket.items():
                 if k in _BUCKET_FLAGS:
                     cur[k] = cur.get(k, False) or v
-                elif v is not None:
+                elif v is not None and not k.startswith("net_"):
                     c = cur.get(k)
                     cur[k] = v if c is None else c + v
+    for b in merged.values():
+        _finish_bucket(b)
     return merged, _diagnostics(total, used, missing)
 
 

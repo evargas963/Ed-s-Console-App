@@ -7,14 +7,18 @@ captured quotes, and the price history of a ticker's series as Schwab answered i
 recorded once answered: (path, query, started, answered, the client's port).
 
 Real data: SPY's 2026-11-20 chain and its quotes (fixtures/real_spy_2026_11_20_chain_and_quotes.json),
-TSLA's 2026-08-31 chain (fixtures/real_tsla_complete_chain_strike_range_all.json; its quotes were not
-captured), and SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
+Schwab's /chains answer for TSLA's 2026-10-09 expiry as sent (fixtures/real_schwab_chain_tsla_2026_10_09.json,
+captured 2026-10-08; its quotes were not captured), and SPY's and TSLA's /pricehistory answers of 2026-10-07 09:57 UTC
 (fixtures/real_pricehistory_spy_tsla_2026_10_07.json: 1-minute, 15-minute and daily candles), and
 Schwab's /quotes answer for each of SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as the
 daemon's watchlist check asks (fixtures/real_schwab_quotes_watchlist_check_2026_10_07.json; ZQZQZ is
-named in errors.invalidSymbols).
+named in errors.invalidSymbols), Schwab's /markets answer for every date it answered on
+2026-10-07 (fixtures/real_schwab_markets_2026_10_07.json), and each chain's isIndex from a /chains
+answer Schwab sent for the ticker on 2026-10-08 (fixtures/real_schwab_chain_top_level_spy_tsla_2026_10_08.json).
 STAND-INS: the expiration chains; an answer other than 200 (its body); the user preferences
-(`stream_url`: where schwab-py's StreamClient finds the streamer, tests/schwab_stream_standin.py).
+(`stream_url`: where schwab-py's StreamClient finds the streamer, tests/schwab_stream_standin.py);
+a /markets date outside the capture, answered with Schwab's captured 400 for that side (2026-09-29:
+more than 7 days back; 2027-10-08: more than a year ahead).
 """
 from __future__ import annotations
 
@@ -32,12 +36,19 @@ import schwab_client as sc
 FX = Path(__file__).resolve().parent / "fixtures"
 SPY = json.loads((FX / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8"))
 SPY_QUOTES = {s: e for q in SPY["quotes"] for s, e in q["reply"].items()}
-TSLA = json.loads((FX / "real_tsla_complete_chain_strike_range_all.json").read_text(encoding="utf-8"))
+_TSLA_ANSWER = json.loads((FX / "real_schwab_chain_tsla_2026_10_09.json").read_text(encoding="utf-8"))["answer"]
+TSLA = {"chain": sc.flatten_chain_contracts(_TSLA_ANSWER), "spot": _TSLA_ANSWER["underlyingPrice"]}
 #: ticker -> (its captured expiry, its captured contracts, Schwab's underlying price in the capture)
-CHAINS = {"SPY": ("2026-11-20", SPY["chain"], SPY["spot"]), "TSLA": ("2026-08-31", TSLA["chain"], None)}
+CHAINS = {"SPY": ("2026-11-20", SPY["chain"], SPY["spot"]), "TSLA": ("2026-10-09", TSLA["chain"], TSLA["spot"])}
 PASSED = "2026-08-27"
 EXPIRATIONS, CHAIN, QUOTES, PRICEHISTORY = ("/marketdata/v1/expirationchain", "/marketdata/v1/chains",
                                             "/marketdata/v1/quotes", "/marketdata/v1/pricehistory")
+MARKETS = "/marketdata/v1/markets"
+#: ticker -> the top level of a /chains answer Schwab sent for it (its isIndex, as sent)
+TOP_LEVEL = {tk: a["top_level"] for tk, a in json.loads(
+    (FX / "real_schwab_chain_top_level_spy_tsla_2026_10_08.json").read_text(encoding="utf-8"))["answers"].items()}
+#: date -> Schwab's captured /markets answer (status, body as sent)
+MARKETS_ANSWERS = json.loads((FX / "real_schwab_markets_2026_10_07.json").read_text(encoding="utf-8"))["answers"]
 PREFERENCES = "/trader/v1/userPreference"
 #: ticker -> Schwab's captured /quotes answer to it asked alone (status and body)
 CHECKS = {a["ticker"]: a for a in json.loads(
@@ -50,7 +61,7 @@ HISTORY = {(a["symbol"], a["params"]["frequencyType"], a["params"]["frequency"])
 def chain_payload(ticker: str) -> dict:
     """The captured chain in Schwab's chain shape."""
     expiry, contracts, spot = CHAINS[ticker]
-    out = {"symbol": ticker, "callExpDateMap": {}, "putExpDateMap": {}}
+    out = {"symbol": ticker, "isIndex": TOP_LEVEL[ticker]["isIndex"], "callExpDateMap": {}, "putExpDateMap": {}}
     if spot is not None:
         out["underlyingPrice"] = spot
     for ct in contracts:
@@ -119,6 +130,10 @@ class LocalSchwab:
             return 200, payload
         if path == PRICEHISTORY:
             return 200, HISTORY[(query["symbol"], query["frequencyType"], query["frequency"])]["body"]
+        if path == MARKETS:
+            day = query["date"]
+            a = MARKETS_ANSWERS[day if day in MARKETS_ANSWERS else ("2026-09-29" if day < "2026-09-29" else "2027-10-08")]
+            return a["status"], a["body"].encode()
         if path == PREFERENCES:
             return 200, {"streamerInfo": [{"streamerSocketUrl": self.stream_url, "schwabClientCustomerId": "c",
                                            "schwabClientCorrelId": "r", "schwabClientChannel": "N9",

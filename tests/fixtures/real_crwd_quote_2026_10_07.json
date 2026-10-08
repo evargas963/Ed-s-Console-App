@@ -1,0 +1,29 @@
+{
+ "source": "production data/stream_capture.db stream_quotes_raw (read-only): CRWD's LEVELONE_EQUITIES message the capture daemon received 2026-10-07 10:38:00 ET, Schwab's item as recorded (native)",
+ "ticker": "CRWD",
+ "ts_recv": 1791383880.6528268,
+ "native": {
+  "key": "CRWD",
+  "BID_PRICE": 269.25,
+  "LAST_PRICE": 269.395,
+  "BID_SIZE": 80,
+  "BID_ID": "K",
+  "TOTAL_VOLUME": 2581723,
+  "LAST_ID": "Q",
+  "NET_CHANGE": -9.465,
+  "REGULAR_MARKET_LAST_PRICE": 269.395,
+  "REGULAR_MARKET_NET_CHANGE": -9.465,
+  "MARK": 269.395,
+  "QUOTE_TIME_MILLIS": 1791383880420,
+  "TRADE_TIME_MILLIS": 1791383880289,
+  "REGULAR_MARKET_TRADE_MILLIS": 1791383880289,
+  "BID_TIME_MILLIS": 1791383880420,
+  "ASK_TIME_MILLIS": 1791383880289,
+  "BID_MIC_ID": "EDGX",
+  "LAST_MIC_ID": "XNAS",
+  "NET_CHANGE_PERCENT": -3.394176,
+  "REGULAR_MARKET_CHANGE_PERCENT": -3.394176,
+  "MARK_CHANGE": -9.465,
+  "MARK_CHANGE_PERCENT": -3.394176
+ }
+}

@@ -43,13 +43,13 @@ def test_the_daemon_asks_each_series_as_schwab_documents_it_and_publishes_it_as_
     sweep = _sweep(tmp_path, clock, lambda topic, msg: published.append((topic, msg)))
     client = schwab.client(tmp_path)
     try:
-        sweep.rotation(lambda: client, ["SPY"], threading.Event())
+        sweep.candles(lambda: client, ["SPY"], threading.Event())
         first = schwab.asked(PRICEHISTORY)
-        clock["now"] += 600                                        # the next rotation, the same ET date
-        sweep.rotation(lambda: client, ["SPY"], threading.Event())
+        clock["now"] += 600                                        # the next pass, the same ET date
+        sweep.candles(lambda: client, ["SPY"], threading.Event())
         same_day = schwab.asked(PRICEHISTORY)[len(first):]
         clock["now"] = _et("2026-08-31 09:05")                     # the next market day
-        sweep.rotation(lambda: client, ["SPY"], threading.Event())
+        sweep.candles(lambda: client, ["SPY"], threading.Event())
         next_day = schwab.asked(PRICEHISTORY)[len(first) + len(same_day):]
     finally:
         schwab.close()

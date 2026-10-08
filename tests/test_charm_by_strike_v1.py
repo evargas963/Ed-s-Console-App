@@ -16,25 +16,19 @@ import json
 import math
 from pathlib import Path
 
-import pytest
 from datetime import datetime
 import time_et
 
 from math_levels import bs_charm, compute_charm_by_strike, pick_charm_wall_strikes
 
-_REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json"
-
-
-@pytest.fixture(autouse=True)
-def _pin_now_to_fixture_session(monkeypatch):
-    # Fixture is a REAL 0DTE SPY chain captured 2026-09-22 12:46 ET; pin the clock to mid-session that
-    # day so the canonical intraday time-to-expiry sees a live 0DTE, not an expired past date.
-    monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 9, 22, 12, 46, tzinfo=time_et.ET))
+#: a REAL same-day-expiry SPY chain captured 2026-10-07 12:32 ET, valued at its own capture time
+_REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_2026_10_07.json"
+_DATA = json.loads(_REAL_CHAIN.read_text(encoding="utf-8"))
+NOW = datetime.fromtimestamp(_DATA["ts_utc"], time_et.ET)
 
 
 def _load_real_chain() -> tuple[list, float]:
-    data = json.loads(_REAL_CHAIN.read_text(encoding="utf-8"))
-    return data["chain"], float(data["spot"])
+    return _DATA["chain"], float(_DATA["spot"])
 
 
 def _norm_cdf(x: float) -> float:
@@ -75,7 +69,7 @@ def test_bs_charm_refuses_degenerate_inputs() -> None:
 def test_charm_by_strike_on_real_chain_uses_dealer_convention() -> None:
     """net_charm must be call - put, matching the net-GEX dealer convention."""
     chain, spot = _load_real_chain()
-    cbs = compute_charm_by_strike(chain, spot)
+    cbs = compute_charm_by_strike(chain, spot, now=NOW)
     assert cbs, "real chain must produce per-strike charm"
     for _k, b in cbs.items():
         assert math.isfinite(b["call_charm"])
@@ -85,7 +79,8 @@ def test_charm_by_strike_on_real_chain_uses_dealer_convention() -> None:
 
 def test_charm_walls_are_real_strikes_from_the_chain() -> None:
     chain, spot = _load_real_chain()
-    cbs = compute_charm_by_strike(chain, spot)
+    cbs = compute_charm_by_strike(chain, spot, now=NOW)
+    assert cbs, "real chain must produce per-strike charm"
     call_wall, put_wall = pick_charm_wall_strikes(cbs)
     strikes = set(cbs)
     assert call_wall is None or call_wall in strikes
@@ -93,8 +88,8 @@ def test_charm_walls_are_real_strikes_from_the_chain() -> None:
 
 
 def test_charm_by_strike_fails_closed() -> None:
-    assert compute_charm_by_strike([], 100.0) == {}
-    assert compute_charm_by_strike(None, 100.0) == {}
+    assert compute_charm_by_strike([], 100.0, now=NOW) == {}
+    assert compute_charm_by_strike(None, 100.0, now=NOW) == {}
     chain, _ = _load_real_chain()
-    assert compute_charm_by_strike(chain, 0.0) == {}
+    assert compute_charm_by_strike(chain, 0.0, now=NOW) == {}
     assert pick_charm_wall_strikes({}) == (None, None)

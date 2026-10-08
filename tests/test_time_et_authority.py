@@ -1,10 +1,11 @@
-"""Single ET authority: DST-aware America/New_York."""
+"""Single ET authority: DST-aware America/New_York, and T to each contract's own settlement as
+Schwab's /markets sends it (tests/conftest.py holds the answers captured 2026-10-07)."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from time_et import ET, et_clock_from_ts_utc, now_et
+from time_et import ET, now_et
 
 
 def test_now_et_uses_america_new_york_zone():
@@ -12,14 +13,6 @@ def test_now_et_uses_america_new_york_zone():
     assert dt.tzinfo is not None
     assert str(dt.tzinfo) in ("America/New_York", "America/New_York EST", "America/New_York EDT")
     assert dt.utcoffset() is not None
-
-
-def test_et_clock_from_ts_utc_matches_now_et_zone():
-    dt = now_et()
-    h, m, wd = et_clock_from_ts_utc(dt.timestamp())
-    assert h == dt.hour
-    assert m == dt.minute
-    assert wd == dt.weekday()
 
 
 def test_dst_offset_differs_summer_vs_winter():
@@ -30,21 +23,20 @@ def test_dst_offset_differs_summer_vs_winter():
     assert summer.utcoffset().total_seconds() == -4 * 3600
 
 
-
-
 def test_time_to_expiry_years_uses_timestamp_elapsed_not_civil_timedelta():
     from time_et import MIN_TIME_TO_EXPIRY_YEARS, YEAR_SECONDS, time_to_expiry_years
 
-    # DST spring-forward 2026-03-08: civil wall-clock span is 1h longer than elapsed.
-    fri = datetime(2026, 3, 6, 10, 30, tzinfo=ET)
-    mon_close = datetime(2026, 3, 9, 16, 0, tzinfo=ET)
-    tte = time_to_expiry_years("2026-03-09", now=fri)
+    # DST ends 2026-11-01: the elapsed span from Friday to Monday's close is 1 h longer than the
+    # civil wall-clock one. Monday's close is the 16:00 ET Schwab's /markets sent for EQO.
+    fri = datetime(2026, 10, 30, 10, 30, tzinfo=ET)
+    mon_close = datetime(2026, 11, 2, 16, 0, tzinfo=ET)
+    tte = time_to_expiry_years("2026-11-02", now=fri)
     stamp_years = (mon_close.timestamp() - fri.timestamp()) / YEAR_SECONDS
     civil_years = (mon_close - fri).total_seconds() / YEAR_SECONDS
     assert tte is not None
     assert tte == max(stamp_years, MIN_TIME_TO_EXPIRY_YEARS)
-    assert civil_years > stamp_years
-    assert round((civil_years - stamp_years) * YEAR_SECONDS / 3600.0, 1) == 1.0
+    assert stamp_years > civil_years
+    assert round((stamp_years - civil_years) * YEAR_SECONDS / 3600.0, 1) == 1.0
 
 
 def test_a_contract_is_priced_to_its_own_settlement_whatever_the_ticker():

@@ -3,32 +3,23 @@
 Every level shown to the operator comes through this function. It was shipped without a
 direct test and flagged by the close-out orphan check for several runs.
 
-Tests run on the REAL captured SPY chain, never a hand-built one, so the numbers are
-whatever the actual data produces.
+Tests run on REAL captured chains (tests/real_chains.py, captured 2026-10-07), never a hand-built
+one, each valued at its own capture instant, so the numbers are whatever the actual data produces.
 """
 
 from __future__ import annotations
 
-import pytest
-
 import json
-from pathlib import Path
 
 from math_levels import GAMMA_FLIP_TRUSTED
 from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain
+from tests.real_chains import CRWD, MRVL, SPY_0DTE
 
-_REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json"
+NOW = SPY_0DTE.now
 
-
-
-@pytest.fixture(autouse=True)
-def _at_capture(pin_clock):
-    """real_spy_0dte_chain.json was captured 2026-09-22 12:46 ET."""
-    return pin_clock(2026, 9, 22, 12, 46)
 
 def _real_chain() -> tuple[list, float]:
-    data = json.loads(_REAL_CHAIN.read_text(encoding="utf-8"))
-    return data["chain"], float(data["spot"])
+    return SPY_0DTE.chain, SPY_0DTE.spot
 
 
 def test_fails_closed_on_every_missing_input() -> None:
@@ -40,7 +31,7 @@ def test_fails_closed_on_every_missing_input() -> None:
         ("SPY", [{"strikePrice": 740}], None),
         ("SPY", [{"strikePrice": 740}], 0.0),
     ):
-        snap = compute_terrain(ticker, chain, spot)
+        snap = compute_terrain(ticker, chain, spot, now=NOW)
         assert snap.regime == "UNAVAILABLE"
         assert snap.posture == "STAND_ASIDE"
         assert snap.gamma_flip is None
@@ -50,7 +41,7 @@ def test_fails_closed_on_every_missing_input() -> None:
 
 def test_real_chain_produces_a_complete_payload() -> None:
     chain, spot = _real_chain()
-    snap = compute_terrain("SPY", chain, spot)
+    snap = compute_terrain("SPY", chain, spot, now=NOW)
 
     assert snap.ticker == "SPY"
     assert snap.spot == spot
@@ -67,7 +58,7 @@ def test_levels_are_real_strikes_or_absent() -> None:
     The gamma flip is the one exception: it is interpolated between strikes by design.
     """
     chain, spot = _real_chain()
-    snap = compute_terrain("SPY", chain, spot)
+    snap = compute_terrain("SPY", chain, spot, now=NOW)
     strikes = {float(c["strikePrice"]) for c in chain if c.get("strikePrice") is not None}
 
     for name in ("call_wall", "put_wall", "absolute_gamma_strike", "pin_candidate",
@@ -89,7 +80,7 @@ def test_narrow_0dte_slice_fails_closed_gate_retained() -> None:
     produced. One terrain source of truth keeps this fail-closed backstop.
     """
     chain, spot = _real_chain()
-    snap = compute_terrain("SPY", chain, spot)
+    snap = compute_terrain("SPY", chain, spot, now=NOW)
     assert snap.profile, "the chain must price, so the NARROW gate (not an expiry) is tested"
     assert snap.confidence != GAMMA_FLIP_TRUSTED
     assert snap.regime == "UNAVAILABLE"
@@ -99,7 +90,7 @@ def test_narrow_0dte_slice_fails_closed_gate_retained() -> None:
 def test_payload_is_json_serialisable() -> None:
     """It is served over HTTP; a non-serialisable field breaks the tab silently."""
     chain, spot = _real_chain()
-    payload = compute_terrain("SPY", chain, spot).to_dict()
+    payload = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
     round_tripped = json.loads(json.dumps(payload))
     assert round_tripped["ticker"] == "SPY"
     assert "spot" in round_tripped and "confidence" in round_tripped
@@ -107,14 +98,13 @@ def test_payload_is_json_serialisable() -> None:
 
 
 def test_is_deterministic() -> None:
-    """Same chain, same spot, same payload — or nothing on the card is reproducible."""
+    """Same chain, same spot, same instant, same payload — or nothing on the card is reproducible."""
     chain, spot = _real_chain()
-    a = compute_terrain("SPY", chain, spot).to_dict()
-    b = compute_terrain("SPY", chain, spot).to_dict()
+    a = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
+    b = compute_terrain("SPY", chain, spot, now=NOW).to_dict()
     # RC-114: computed_ts_utc is the capture WALL CLOCK — nondeterministic BY DESIGN (RC-68:
-    # every consumer must render an age). Comparing it made this test pass or fail on timer
-    # resolution luck (proven failing at HEAD with no code change, same flake family as the
-    # date-frozen RC-109). Determinism is about the LEVELS, so the stamp is excluded.
+    # every consumer must render an age). Determinism is about the LEVELS, so the stamp is
+    # excluded.
     a.pop("computed_ts_utc"), b.pop("computed_ts_utc")
     assert a == b
 
@@ -173,37 +163,27 @@ def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> N
     assert atm_sigma_by_expiry(chain, 700.0) == {("2026-10-02", 1): None}
 
 
-def test_real_chain_carries_the_sigma_band(pin_clock) -> None:
+def test_real_chain_carries_the_sigma_band() -> None:
     """The 1-day band uses the first expiry at least a day out (2026-09-27): a same-day-only
-    chain has none; the CRWD chain (16 days out, valued at its capture) has one."""
+    chain has none; the CRWD chain (9 days out, valued at its capture) has one."""
     chain, spot = _real_chain()
-    assert compute_terrain("SPY", chain, spot).implied_1d_move is None
-    pin_clock(2026, 9, 2, 10, 5)
-    fx = json.loads((Path(__file__).parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
-                    .read_text(encoding="utf-8"))
-    snap = compute_terrain("CRWD", fx["chain"], float(fx["spot"]))
+    assert compute_terrain("SPY", chain, spot, now=NOW).implied_1d_move is None
+    snap = compute_terrain("CRWD", CRWD.chain, CRWD.spot, now=CRWD.now)
     em = snap.implied_1d_move
     assert em is not None, "the CRWD chain must yield a band (its ATM IV is present)"
-    s = float(fx["spot"])
+    s = CRWD.spot
     # a one-day sigma is points, not pennies and not tens of percent of spot
     assert 0.0005 * s < em["points"] < 0.15 * s, em
     assert "implied_1d_move" in snap.to_dict(), "the payload must carry the band to the chart"
 
 
-def test_every_expiry_carries_its_atm_iv_by_the_one_rule(pin_clock) -> None:
+def test_every_expiry_carries_its_atm_iv_by_the_one_rule() -> None:
     """The Trade Desk's Volatility card draws ATM IV by expiry (2026-09-28). The ATM rule was
     applied to the front expiry only (the implied move); it is one function for every expiry, and
-    the implied move reads its front entry. Real MRVL full chain, 21 expiries, valued at its
-    capture (tests/fixtures/real_mrvl_full_chain_vs_strike_window.json)."""
-    import time_et
-    from datetime import datetime
-    from schwab_client import flatten_chain_contracts
-    fx = json.loads((Path(__file__).parent / "fixtures" / "real_mrvl_full_chain_vs_strike_window.json")
-                    .read_text(encoding="utf-8"))
-    at = datetime.fromtimestamp(fx["captured_utc"], time_et.ET)
-    pin_clock(at.year, at.month, at.day, at.hour, at.minute)
-    chain, spot = flatten_chain_contracts(fx["full"]), float(fx["full"]["underlying"]["last"])
-    snap = compute_terrain("MRVL", chain, spot)
+    the implied move reads its front entry. Real MRVL full chain, 20 expiries, valued at its
+    capture (tests/real_chains.py)."""
+    chain = MRVL.chain
+    snap = compute_terrain("MRVL", chain, MRVL.spot, now=MRVL.now)
     by_exp = snap.atm_iv_pct_by_expiry
     assert list(by_exp) == sorted({c["expirationDate"][:10] for c in chain})
     assert list(snap.pcr_by_expiry) == list(by_exp), "both card lines run nearest expiry first"
@@ -251,7 +231,7 @@ def test_wall_value_area_fails_closed() -> None:
 
 def test_real_chain_carries_per_side_wall_ranges() -> None:
     chain, spot = _real_chain()
-    snap = compute_terrain("SPY", chain, spot)
+    snap = compute_terrain("SPY", chain, spot, now=NOW)
     for side, wall, rg in (("call", snap.call_wall, snap.call_wall_range),
                            ("put", snap.put_wall, snap.put_wall_range)):
         assert rg is not None, f"{side} range missing on the real chain"
@@ -293,7 +273,7 @@ def test_real_chain_carries_wall_states_in_payload() -> None:
     """The states ship beside the walls they qualify, and agree with the geometry."""
     from terrain_engine import wall_geometry_state
     chain, spot = _real_chain()
-    snap = compute_terrain("SPY", chain, spot)
+    snap = compute_terrain("SPY", chain, spot, now=NOW)
     d = snap.to_dict()
     assert d["call_wall_state"] == wall_geometry_state(spot, snap.call_wall, "call")
     assert d["put_wall_state"] == wall_geometry_state(spot, snap.put_wall, "put")
@@ -331,8 +311,8 @@ def test_pin_score_stamps_match_the_same_exposures_book_as_the_pin() -> None:
     from math_exposure_core import compute_exposures_by_strike, total_gex_dollars_at_strike
 
     chain, spot = _real_chain()
-    snap = compute_terrain("SPY", chain, spot)
-    exposures, _ = compute_exposures_by_strike(chain, spot=spot)
+    snap = compute_terrain("SPY", chain, spot, now=NOW)
+    exposures, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
     pin = snap.absolute_gamma_strike
     assert pin is not None
     bkt = _bucket_for_pin(exposures, pin)
@@ -352,12 +332,13 @@ def test_pin_score_stamps_match_the_same_exposures_book_as_the_pin() -> None:
 def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> None:
     """RC-413 mixed-book proof: extra later-expiry mass at the pin changes terrain
     GEX/OI and therefore pin_score; the selected-expiry (analytics-style) book does not.
-    """
+    The extra contracts are the pin strike's own, moved to 2026-11-06 (30 days later, a date
+    Schwab's /markets answers) with 50,000 more open interest: a stand-in book."""
     from math_exposure_core import compute_exposures_by_strike, total_gex_dollars_at_strike
     from math_probabilities import compute_pin_score
 
     chain, spot = _real_chain()
-    pin = compute_terrain("SPY", chain, spot).absolute_gamma_strike
+    pin = compute_terrain("SPY", chain, spot, now=NOW).absolute_gamma_strike
     assert pin is not None
     extra = []
     for c in chain:
@@ -368,14 +349,14 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
             continue
         d = dict(c)
         d["daysToExpiration"] = int(c.get("daysToExpiration") or 0) + 30
-        d["expirationDate"] = "2026-08-16"
+        d["expirationDate"] = "2026-11-06"
         d["openInterest"] = float(c.get("openInterest") or 0) + 50_000
         extra.append(d)
     assert extra, "the pin strike must exist on the captured chain"
     wide = chain + extra
-    terrain = compute_terrain("SPY", wide, spot)
-    wide_ex, _ = compute_exposures_by_strike(wide, spot=spot)
-    sel_ex, _ = compute_exposures_by_strike(chain, spot=spot)
+    terrain = compute_terrain("SPY", wide, spot, now=NOW)
+    wide_ex, _ = compute_exposures_by_strike(wide, spot=spot, now=NOW)
+    sel_ex, _ = compute_exposures_by_strike(chain, spot=spot, now=NOW)
     assert terrain.absolute_gamma_strike == pin
     wb = _bucket_for_pin(wide_ex, pin)
     sb = _bucket_for_pin(sel_ex, pin)
@@ -406,7 +387,7 @@ def test_pin_score_inputs_follow_the_wide_terrain_book_not_selected_expiry() -> 
 
 
 def test_unavailable_terrain_does_not_fabricate_pin_score_stamps() -> None:
-    snap = compute_terrain("SPY", None, 743.0)
+    snap = compute_terrain("SPY", None, 743.0, now=NOW)
     assert snap.absolute_gamma_strike is None
     assert snap.absolute_gamma_gex_dollars is None
     assert snap.absolute_gamma_oi is None

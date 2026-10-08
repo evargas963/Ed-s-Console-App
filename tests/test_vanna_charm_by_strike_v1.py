@@ -6,40 +6,41 @@ charm_below/charm_above already sum) -- read off the snapshot _publish_levels la
 published (the _vanna_rows/_charm_rows _publish_levels writes into the cached payload),
 zero extra vendor calls or pricing. These tests
 prove the wiring, not the math (bs_vanna/bs_charm/compute_charm_by_strike are proven
-elsewhere: test_charm_by_strike_v1.py, test_charm_sign_finite_difference.py)."""
-from __future__ import annotations
+elsewhere: test_charm_by_strike_v1.py, test_charm_sign_finite_difference.py).
 
-import pytest
+Real data: CRWD's 2026-10-16 chain captured 2026-10-07 10:38:40 ET (tests/real_chains.py), priced
+at its capture instant, and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00 ET
+(tests/fixtures/real_crwd_quote_2026_10_07.json), the live price the routes serve beside it."""
+from __future__ import annotations
 
 import json
 import time
 from pathlib import Path
 
+import live_market_plane as lmp
 import server
+from app.options.order_flow import streaming as ofs
 from terrain_engine import compute_terrain
+from tests.feed_live_helper import mark_feed_live, publish_daemon_rows
+from tests.real_chains import CRWD
 
-
-_FX = Path(__file__).resolve().parent / "fixtures"
-_REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
-_SPOT = float(_REAL["spot"])
-_CONTRACTS = [dict(ct) for ct in _REAL["chain"]]
-
-
-@pytest.fixture(autouse=True)
-def _at_capture(pin_clock):
-    """The CRWD chain (expiry 2026-09-18) was captured 2026-09-02: valued then, it never ages
-    out and never lands on a holiday (a rolling today+30 shift did)."""
-    return pin_clock(2026, 9, 2, 10, 5)
+_SPOT = CRWD.spot
+_CONTRACTS = [dict(ct) for ct in CRWD.chain]
+_QUOTE = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json")
+                    .read_text(encoding="utf-8"))
 TK = server.ticker_storage_key("CRWD")
 
 
-def _clear_cache():
+def _clear():
     with server._terrain_cache_lock:
         server._terrain_cache.pop(TK, None)
+    ofs._price_rows.pop(TK, None)
+    lmp._by_ticker.pop(TK, None)
+    lmp._fields_by_ticker.pop(TK, None)
 
 
 def _put_live_chain():
-    snap = compute_terrain(TK, _CONTRACTS, _SPOT)
+    snap = compute_terrain(TK, _CONTRACTS, _SPOT, now=CRWD.now)
     with server._terrain_cache_lock:
         server._terrain_cache[TK] = {"ticker": TK, "spot": snap.spot, "computed_ts_utc": time.time(),
                                      "_vanna_rows": server._vanna_rows(snap),
@@ -47,11 +48,11 @@ def _put_live_chain():
 
 
 def setup_function(_fn):
-    _clear_cache()
+    _clear()
 
 
 def teardown_function(_fn):
-    _clear_cache()
+    _clear()
 
 
 def test_vanna_by_strike_unavailable_with_no_cached_chain():
@@ -66,31 +67,30 @@ def test_charm_by_strike_unavailable_with_no_cached_chain():
     assert "reason" in body
 
 
-def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_vanna(monkeypatch):
+def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_vanna():
     _put_live_chain()
     from math_exposure_core import bucket_metric, compute_exposures_by_strike as cebs
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (_SPOT + 1.0, "live", time.time()))
+    # Schwab's CRWD quote reaches the console as the daemon pushes it: its price row
+    lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=time.time())
+    mark_feed_live(TK)
+    publish_daemon_rows(TK)
 
     body = json.loads(server.get_vanna_by_strike(ticker="CRWD", scope="all").body)
     assert body["available"] is True
     # spot is the live price (the header's own); the rows were computed at priced_at_spot
-    assert body["spot"] == _SPOT + 1.0 and body["priced_at_spot"] == _SPOT
+    assert body["spot"] == _QUOTE["native"]["LAST_PRICE"] and body["priced_at_spot"] == _SPOT
     rows = {r[0]: r[1] for r in body["rows"]}
     assert rows, "a real chain must yield at least one vanna row"
 
-    # Vanna is intraday time-to-expiry sensitive (bs_vanna's own t_years, via
-    # _tte_memo/now_et() inside compute_exposures_by_strike) -- the endpoint's own internal
-    # call and this reference call are two genuinely separate instants a few milliseconds
-    # apart, so a tight tolerance (not exact equality) is the honest comparison, the same
-    # discipline the charm test below already applies for the identical reason.
-    exposures, _ = cebs(_CONTRACTS, spot=_SPOT)
+    # the same chain at the same instant: the published rows are the faucet's own values
+    exposures, _ = cebs(_CONTRACTS, spot=_SPOT, now=CRWD.now)
     checked = 0
     for k, b in exposures.items():
         expected = bucket_metric(b, "net_vanna")
         if expected is None:            # a leg's vanna input Schwab did not send: no row
             assert float(k) not in rows
             continue
-        assert abs(rows[float(k)] - expected) < 0.1
+        assert rows[float(k)] == expected
         checked += 1
     assert checked > 5
 
@@ -104,16 +104,13 @@ def test_charm_by_strike_matches_the_same_canonical_faucet_compute_charm_by_stri
     rows = {r[0]: r[1] for r in body["rows"]}
     assert rows, "a real chain must yield at least one charm row"
 
-    # Charm is intraday time-to-expiry sensitive (_contract_inputs's own now=now_et()) -- the
-    # endpoint's own internal call and this reference call are two genuinely separate instants
-    # a few milliseconds apart, so a tight tolerance (not exact equality) is the honest
-    # comparison; a real bug in the wiring would be off by orders of magnitude more than this.
-    per_ch = ccs(_CONTRACTS, _SPOT)
+    # the same chain at the same instant: the published rows are the faucet's own values
+    per_ch = ccs(_CONTRACTS, _SPOT, now=CRWD.now)
     checked = 0
     for k, b in per_ch.items():
         if b.get("net_charm") is None:
             continue
-        assert abs(rows[float(k)] - float(b["net_charm"])) < 0.01     # exact, no rounding
+        assert rows[float(k)] == float(b["net_charm"])
         checked += 1
     assert checked > 5
 

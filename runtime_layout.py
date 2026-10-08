@@ -93,11 +93,6 @@ def logs_dir() -> Path:
     return RUNTIME_ROOT / "logs"
 
 
-def reports_dir() -> Path:
-    """`<artifacts>/reports` — runtime-written reports (terrain, operable surface, scoreboards)."""
-    return ARTIFACTS_ROOT / "reports"
-
-
 def live_binding_error(source_root: "Path | None" = None,
                        runtime_root: "Path | None" = None) -> "str | None":
     """Why THIS checkout may not run a LIVE process (the console server, the capture daemon)

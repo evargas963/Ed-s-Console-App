@@ -876,10 +876,12 @@
     });
   }
 
-  // market session (RTH / Pre-Market / After-Hours / Closed), pushed with the changes
+  // market session (RTH / Pre-Market / After-Hours / Closed, or Unknown while Schwab's /markets
+  // answer for today is not held), pushed with the changes
   function paintSession(label, why) {
     var el = document.getElementById('hSession'); if (!el) return;
-    var m = { 'RTH': ['RTH', 'rth'], 'Pre-Market': ['PRE', 'pre'], 'After-Hours': ['AH', 'ah'], 'Closed': ['CLOSED', 'closed'] };
+    var m = { 'RTH': ['RTH', 'rth'], 'Pre-Market': ['PRE', 'pre'], 'After-Hours': ['AH', 'ah'], 'Closed': ['CLOSED', 'closed'],
+              'Unknown': ['UNKNOWN', 'unknown'] };
     var v = m[label] || [(label || '—'), ''];
     el.textContent = v[0]; el.className = 'sess ' + v[1]; el.title = why || '';
   }

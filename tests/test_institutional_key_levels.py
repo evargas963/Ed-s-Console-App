@@ -1,7 +1,6 @@
 """Institutional consistency: dollar GEX pickers and aggregates."""
 
 
-import pytest
 from math_exposure_core import (
     bucket_metric_abs,
     compute_exposures_by_strike,
@@ -11,25 +10,15 @@ from math_exposure_core import (
     pick_key_delta_strike,
     pick_volatility_point_strikes,
 )
+from tests.real_chains import SPY_0DTE
 
 
-
-@pytest.fixture(autouse=True)
-def _at_capture(pin_clock):
-    """real_spy_0dte_chain.json was captured 2026-09-22 12:46 ET."""
-    return pin_clock(2026, 9, 22, 12, 46)
 
 def _dollarized_exposures():
-  # Real captured SPY 0DTE chain (tests/fixtures/) — level invariants must hold on real data.
-  import json
-  from pathlib import Path
-
-  fx = json.loads(
-      (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
-  )
-  contracts, spot = fx["chain"], float(fx["spot"])
-  exposures, _ = compute_exposures_by_strike(contracts, spot=spot)
-  return exposures, spot
+  # Real captured SPY 0DTE chain (tests/real_chains.py, 2026-10-07 12:32 ET), valued at its
+  # capture — level invariants must hold on real data.
+  exposures, _ = compute_exposures_by_strike(SPY_0DTE.chain, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
+  return exposures, SPY_0DTE.spot
 
 
 def test_exposures_are_dollarized():
@@ -125,15 +114,9 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     """Real seam: compute_terrain (the /api/terrain producer) on the real SPY chain
     must serve schema v2 with net_gex_at_spot ≡ flip_diag.gamma_at_spot and the new
     levels agreeing with their pickers — the UI renders these fields directly."""
-    import json
-    from pathlib import Path
-
     from terrain_engine import TERRAIN_SCHEMA_VERSION, compute_terrain
 
-    fx = json.loads(
-        (Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json").read_text(encoding="utf-8")
-    )
-    snap = compute_terrain("SPY", fx["chain"], float(fx["spot"]))
+    snap = compute_terrain("SPY", SPY_0DTE.chain, SPY_0DTE.spot, now=SPY_0DTE.now)
     d = snap.to_dict()
     # v3 (RC-292): gamma_pin* renamed absolute_gamma_*; + pin_candidate(+blockers). The
     # v2 fields this test locks are all still carried.
@@ -144,7 +127,7 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     assert "gamma_pin" not in d, "the retired gamma_pin key returned to the terrain payload"
     assert d["net_gex_at_spot"] is not None, "the chain must price (valued at its capture)"
     assert d["net_gex_at_spot"] == (d["flip_diag"] or {}).get("gamma_at_spot")
-    exposures, _ = compute_exposures_by_strike(fx["chain"], spot=float(fx["spot"]))
+    exposures, _ = compute_exposures_by_strike(SPY_0DTE.chain, spot=SPY_0DTE.spot, now=SPY_0DTE.now)
     strikes = sorted(exposures.keys())
     # engine strike list is filtered; pickers must agree when run on the same inputs
     from math_exposure_core import key_level_strikes_with_gamma

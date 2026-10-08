@@ -175,9 +175,11 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     }
     await expect(page.locator('#subnav .wtitle')).toContainText('OPTIONS');
     await expect(page.locator('.vtab', { hasText: 'Heatmap' })).toBeVisible();
-    // #6: canonical market session shown in the header, distinct from feed liveness
-    await expect(page.locator('#hSession')).toHaveText(/^(RTH|PRE|AH|CLOSED)$/);   // the server's clock
-    await expect(page.locator('#hSession')).toHaveClass(/rth|pre|ah|closed/);
+    // #6: canonical market session shown in the header, distinct from feed liveness. The session
+    // is Schwab's /markets answer, which only the daemon asks for: with no daemon here, the
+    // console holds no answer and the header says so.
+    await expect(page.locator('#hSession')).toHaveText('UNKNOWN');
+    await expect(page.locator('#hSession')).toHaveClass(/unknown/);
   });
 
   test('a levels push on /api/changes reloads the heatmap, with no manual event dispatch', async ({ page }) => {
@@ -746,7 +748,8 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#hFeed')).toHaveText(/WAITING|OFFLINE/);
     await page.waitForTimeout(3500);
     await expect(page.locator('#hPx')).toHaveText('UNAVAILABLE');
-    await expect(page.locator('#hSession')).toHaveText(/^(RTH|PRE|AH|CLOSED)$/);
+    // the daemon is down, so Schwab's /markets answer is not held: the session says UNKNOWN
+    await expect(page.locator('#hSession')).toHaveText('UNKNOWN');
   });
 
   test('header paints the daemon price row the moment it arrives', async ({ page }) => {

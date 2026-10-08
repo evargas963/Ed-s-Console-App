@@ -24,31 +24,23 @@ from math_levels import (
     gamma_flip_from_profile,
 )
 
-import pytest
 from datetime import datetime
 import time_et
 
-
-@pytest.fixture(autouse=True)
-def _pin_now_to_fixture_session(monkeypatch):
-    # The fixture is a REAL 0DTE SPY chain captured 2026-09-22 12:46 ET. The canonical intraday
-    # time-to-expiry (time_et.time_to_expiry_years) measures from now_et() to the session
-    # close, so replaying it today reads it as long-expired and drops every contract. Pin the
-    # clock to mid-session on the fixture's expiry day so it is a live 0DTE (~6h to close).
-    monkeypatch.setattr(time_et, "now_et", lambda: datetime(2026, 9, 22, 12, 46, tzinfo=time_et.ET))
-
-
-_REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain.json"
+#: a REAL same-day-expiry SPY chain the capture daemon captured 2026-10-07 12:32 ET, valued at its
+#: own capture time (a live 0DTE, ~3.5 h to Schwab's 16:00 EQO close)
+_REAL_CHAIN = Path(__file__).parent / "fixtures" / "real_spy_0dte_chain_2026_10_07.json"
+_DATA = json.loads(_REAL_CHAIN.read_text(encoding="utf-8"))
+NOW = datetime.fromtimestamp(_DATA["ts_utc"], time_et.ET)
 
 
 def _load_real_chain() -> tuple[list, float]:
-    data = json.loads(_REAL_CHAIN.read_text(encoding="utf-8"))
-    return data["chain"], float(data["spot"])
+    return _DATA["chain"], float(_DATA["spot"])
 
 
 def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
     chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot)
+    prof = compute_gamma_profile(chain, spot, now=NOW)
     assert len(prof) == 241
     assert all(math.isfinite(v) for _, v in prof)
     prices = [p for p, _ in prof]
@@ -61,21 +53,21 @@ def test_profile_uses_dealer_sign_convention() -> None:
     chain, spot = _load_real_chain()
     calls = [c for c in chain if str(c.get("putCall", "")).upper().startswith("C")]
     assert calls, "fixture must contain calls"
-    prof = compute_gamma_profile(calls, spot)
+    prof = compute_gamma_profile(calls, spot, now=NOW)
     assert prof and all(v >= 0 for _, v in prof)
 
 
 def test_flip_is_interpolated_within_the_profile_span() -> None:
     """RC-467: the real chain MUST yield a flip - the old `if flip is not None` guard let
     a flip-always-None regression pass silently while asserting nothing. MEASURED on this
-    fixture under the pinned session clock: 241 profile points, 2 sign crossings,
-    flip = 761.0, inside the span. Existence is pinned; the exact value is not (it moves
-    with vol/time inputs) - span containment is the invariant."""
+    fixture at its capture time: 241 profile points, 1 sign crossing, flip = 779.03, inside
+    the span. Existence is pinned; the exact value is not (it moves with vol/time inputs) -
+    span containment is the invariant."""
     chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot)
+    prof = compute_gamma_profile(chain, spot, now=NOW)
     flip = gamma_flip_from_profile(prof, spot)
     assert flip is not None, (
-        "the real fixture chain has a zero crossing (measured flip 761.0); a None flip "
+        "the real fixture chain has a zero crossing (measured flip 779.03); a None flip "
         "here means the profile or crossing detection regressed"
     )
     assert prof[0][0] <= flip <= prof[-1][0]
@@ -94,7 +86,7 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
     of 51 live tickers reported UNAVAILABLE while their gamma was uniformly signed.
     """
     chain, spot = _load_real_chain()
-    prof = compute_gamma_profile(chain, spot)
+    prof = compute_gamma_profile(chain, spot, now=NOW)
     assert prof, "real chain must produce a profile"
 
     at_spot = gamma_at_price(prof, spot)
@@ -279,15 +271,27 @@ def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
 
 
 def test_the_flip_counts_the_contracts_it_could_not_price():
-    """M-10: Schwab sent volatility 0 on 5 SNDK contracts with open interest (real 09-25
-    capture). The profile cannot price them; the served flip says how many and why."""
-    from datetime import timezone
-    from math_levels import contract_inputs
+    """M-10: the profile cannot price a contract with open interest whose volatility Schwab
+    sent as -999, nor an AM-settled one whose expiry date Schwab's /markets does not answer
+    (beyond a year: its settlement, the open, is not known); a PM-settled one beyond a year runs
+    to Schwab's own expirationDate (operator 2026-10-08). The served flip says how many and why.
+    Real captures of 2026-10-07: NFLX (10:32 ET; PM) -- on 2026-10-16, 100 contracts with open
+    interest and a volatility; on 2027-12-17 and 2028-01-21, 585 with a volatility and 8 sent
+    -999 -- and $SPX's AM-settled 2027-12-17 expiry (10:37 ET; 288 with open interest)."""
+    from math_levels import NO_EXPIRY_SESSION, contract_inputs
     from terrain_engine import compute_terrain
-    cap = json.loads((Path(__file__).parent / "fixtures" / "real_sndk_chain_no_volatility.json")
-                     .read_text(encoding="utf-8"))
-    now = datetime.fromtimestamp(cap["ts_utc"], timezone.utc).astimezone(time_et.ET)
-    priced, unpriced = contract_inputs(cap["chain"], now)
-    assert (len(priced), unpriced) == (476, {"no_volatility": 5})
-    snap = compute_terrain("SNDK", cap["chain"], cap["spot"], now=now)
-    assert snap.to_dict()["flip_diag"]["unpriced"] == {"no_volatility": 5}
+    fx = Path(__file__).parent / "fixtures"
+    nflx = json.loads((fx / "real_nflx_chain_2026_10_07_three_expiries.json").read_text(encoding="utf-8"))
+    spx = json.loads((fx / "real_spx_chain_2026_10_07_2027_12_17.json").read_text(encoding="utf-8"))
+    now = datetime.fromtimestamp(nflx["ts_utc"], time_et.ET)
+    priced, unpriced = contract_inputs(nflx["chain"], now)
+    assert (len(priced), unpriced) == (685, {"no_volatility": 8})
+    far = next(ct for ct in nflx["chain"] if ct["expirationDate"].startswith("2028-01-21"))
+    assert time_et.time_to_expiry_years(far["expirationDate"], now, settlement_type=far["settlementType"]) == (
+        datetime.fromisoformat(far["expirationDate"]).timestamp() - now.timestamp()) / time_et.YEAR_SECONDS
+    snap = compute_terrain("NFLX", nflx["chain"], nflx["spot"], now=now)
+    assert snap.to_dict()["flip_diag"]["unpriced"] == {"no_volatility": 8}
+    at = datetime.fromtimestamp(spx["ts_utc"], time_et.ET)
+    assert contract_inputs(spx["chain"], at) == ([], {NO_EXPIRY_SESSION: 288})
+    snap = compute_terrain("$SPX", spx["chain"], spx["spot"], now=at)
+    assert snap.to_dict()["flip_diag"]["unpriced"] == {NO_EXPIRY_SESSION: 288}

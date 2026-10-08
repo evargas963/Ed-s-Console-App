@@ -107,7 +107,8 @@ from Schwab to the screen (daemon, console, page), are these:
   Enforced by: `tests/test_data_path_rules_v1.py`, `tests/test_data_path_writer_failures_v1.py`.
 - **D5. Live while the market is open; the close stands while it is closed.** Every value carries
   Schwab's time and the newest by that time is the current one; a reconnect never replays an older
-  value as live. In an open session (Pre-Market, RTH, After-Hours, `time_et.session_label`) a value
+  value as live. In an open session (Pre-Market, RTH, After-Hours: the windows Schwab's /markets
+  sent for the day, `time_et.session_label`) a value
   is current only while its feed delivers it (`live_market_plane.feed_live_for`); a feed down in
   session is an outage: the value is absent and the screen shows the reason
   (`live_market_plane.outage`, the one rule; the price row's `outage`, the books' `top_outage`;
@@ -198,7 +199,10 @@ from Schwab to the screen (daemon, console, page), are these:
   asks `/pricehistory` for each ticker after its chain (`complete_chain_capture.PRICE_HISTORY`,
   per `docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt`, each request ending
   now, extended hours included): the 1-minute bars (10 days) once per ET date, the 15-minute (10
-  days) and daily (1 year) candles in every rotation; each answer whole, as Schwab sent it →
+  days) and daily (1 year) candles by the stock session (operator 2026-10-08,
+  `ChainSweep.candles_due`): again and again while the stock market is in a window Schwab's
+  /markets sent for today (pre-market through post-market), once more at its close, then not
+  until it reopens -- every watchlist ticker, options listed or not; each answer whole, as Schwab sent it →
   daemon bus (`pricehistory.TK.SERIES`) → the daemon's writer (`stream_capture.db`
   `stream_pricehistory_raw`, every answer, as sent: recorded like every stream message, §2 D4) and
   → console (8799) → the bar writer. Schwab CHART_EQUITY → daemon bus → the daemon's writer
@@ -245,15 +249,19 @@ from Schwab to the screen (daemon, console, page), are these:
   they wait replaces them, so a stored capture never replaces a delivered chain and no delivered
   chain waits behind a stored one). The daemon's bus keeps each ticker's newest whole chain:
   once all its parts are in it replaces the older one, which is never sent again. The sweep runs on
-  one thread on the daemon's one Schwab client (§1), one request at a time, by the session
-  calendar (`time_et.session_label`). In every open session (Pre-Market, RTH, After-Hours) every
-  watchlist ticker is fetched in one rotation, sorted, each the same, without end (operator
-  2026-10-06: "no priority: every ticker is treated the same, in one rotation"); a ticker added
-  is in the next rotation, and one removed is not asked for again, its queued quotes included.
-  Once Closed (from 20:00 ET, on a weekend or a holiday, and when the daemon starts while Closed)
-  every watchlist ticker is fetched once, its close values (one added while Closed too); a fetch
-  that fails is tried again in the next pass. Then no chain is requested until the next session
-  opens: the close values stand (D5), and a ticker not on the watchlist is not fetched — it shows
+  one thread on the daemon's one Schwab client (§1), one request at a time, by each ticker's
+  option market as Schwab's /markets sends it (`ChainSweep.due`: EQO for stock and ETF options,
+  IND for a ticker whose chain Schwab marks `isIndex`). While that market's regular session is open
+  (and while today's answer, or the ticker's market before its first chain, is not known) the
+  ticker is fetched in one rotation with every other such watchlist ticker, sorted, each the same,
+  without end (operator 2026-10-06: "no priority: every ticker is treated the same, in one
+  rotation"); a ticker added is in the next rotation, and one removed is not asked for again, its
+  queued quotes included. After that market's close (and on a weekend, a holiday, and when the
+  daemon starts while it is closed) the ticker is fetched once more, its close values (one added
+  then too); a fetch that fails is tried again in the next pass. A ticker whose expiration chain
+  lists nothing has no option market: its chain is asked once per ET date, only to learn whether
+  options are listed (operator 2026-10-08). Then no chain is requested
+  until its market opens again: the close values stand (D5), and a ticker not on the watchlist is not fetched — it shows
   its levels absent with the reason (`server.terrain_staleness`: while Closed,
   levels from a chain fetched after the close are current however old; older ones read "the
   market is closed and this ticker's close values have not been fetched"), never a zero or a
@@ -399,13 +407,28 @@ from Schwab to the screen (daemon, console, page), are these:
   served item is both a callout and its queue entry). The window is the timeframe's
   (`server.DESK_LOOKBACK`; 5m and 30m: this session). No proximity alerts. Absorption,
   liquidity pull and replenishment are not produced (open; `ACTIVE_PROGRAM.md` DESK-GAPS).
-- **Market session.** From the market calendar → pushed on `/api/changes` when the page connects
-  and every 5 s with no other change. One calendar (`time_et`: holidays, 13:00 early closes,
-  `session_label`, `session_close_mins_for_et_date`) decides every session window: the prior-day,
-  overnight, VWAP and value-area windows. A day
-  with no session has an empty window. No session window starts, stops or clears a fetch, a
-  refresh or a streamed value: the order-flow state keeps every book, top-of-book field, print
-  and streamed Greek through the open.
+- **Market session.** Schwab's GET /markets?markets=equity,option, asked by the daemon's chain
+  sweep (`ChainSweep.fetch_markets`) once per date per ET day -- today, the 7 days before it
+  Schwab answers, and each expiry date of the chains, whatever the number of tickers -- each answer
+  as sent → daemon bus (`markets.DATE`) → the daemon's writer (`stream_capture.db`
+  `stream_markets_raw`, every answer with its status) and → console (8799) → `time_et.record_markets`
+  (a 200 is that date's sessions; a 400, "more than 7 days back" or "beyond 1 year", is no session:
+  the date stays unknown). The label (`time_et.session_label`: Pre-Market, RTH, After-Hours,
+  Closed, Unknown) is pushed on `/api/changes` when the page connects and every 5 s with no other
+  change. The same answers decide every session window: the prior-day, overnight, VWAP and
+  value-area windows (the regular session), the Trade Desk's "this session" window
+  (`time_et.last_open`), the chain history's capture windows (each ticker's option market), and
+  each contract's time to expiry (the EQO regular close of its expiry date, or its open for
+  settlementType "A": Schwab's expirationDate is not the settlement, an AM-settled $SPX monthly
+  carries 16:00 ET). On an expiry date Schwab's /markets does not answer (beyond a year), a
+  PM-settled contract runs to Schwab's own expirationDate (operator 2026-10-08) and an AM-settled
+  one has no time to expiry: it is counted unpriced with the reason
+  (`math_levels.NO_EXPIRY_SESSION`). No hand-typed
+  holiday, early-close or covered-year table exists. A day with no session has an empty window.
+  The label only labels: no session window starts, stops or clears a streamed value (stock
+  quotes from 04:00 ET are shown and recorded), and the order-flow state keeps every book,
+  top-of-book field, print and streamed Greek through the open. Enforced by:
+  `tests/test_markets_sessions_v1.py`.
 - **Lifecycle.** `/api/changes` (console, `push_changes.py`): the levels producer, the stream
   handler (equity quote and book) and the bar writer mark a ticker's kind changed; each page
   connection gets each change the moment it is marked (changes marked while one is sent go in
@@ -446,12 +469,13 @@ The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
   one writer.
 - **Chain:** Schwab REST, fetched by the daemon → daemon state → the producer. The browser is never
   pushed a whole chain.
-- **Chain history:** in each capture window -- every 30 minutes from 9:30 to 16:00 ET, and at
-  16:15 ET (the close capture: SPY, QQQ, IWM and the index options trade until 16:15) on market
-  days (15 a day) -- the daemon writes the first full chain (every expiry) it fetches of each
-  watchlist ticker, compressed, one row per expiry, through the one
+- **Chain history:** in each capture window of the ticker's option market as Schwab's /markets
+  sent it -- every 30 minutes from its open, and at its close (the close capture: 16:00 ET for
+  stock and ETF options, 16:15 for index options, 13:00 / 13:15 on an early close) -- the daemon
+  writes the first full chain (every expiry) it begins of each watchlist ticker, compressed, one
+  row per expiry, through the one
   writer (today its chain sweep writes `ed_console.db` itself; P2-DB4). Nothing is captured
-  while the market is closed. This is what research reads and what startup loads (the newest
+  outside those windows. This is what research reads and what startup loads (the newest
   capture per ticker).
 - **Levels:** producer → daemon state → pushed to the browser; not stored (decision 7).
 - **Level crosses:** producer → written by the one writer.
