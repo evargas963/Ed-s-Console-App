@@ -282,7 +282,6 @@ test.describe('Trade Desk renders served values', () => {
     await expect.poll(() => opened).toContain('SPY');
     await page.evaluate(() => window.EdShell.setTicker('MU'));
     await expect.poll(() => opened).toContain('MU');
-    expect(await page.evaluate(() => window.EdStream.setActiveTicker)).toBeUndefined();   // no separate request
   });
 
   test('Market Map: the wheel over the price axis rescales price (as TradingView); over the plot it does not', async ({ page }) => {
@@ -442,9 +441,9 @@ test.describe('Trade Desk renders served values', () => {
   test('no panel stays marked busy once its read has landed', async ({ page }) => {
     await intercept(page);
     const CONTRACT = 'SPY   261002C00768000';
-    await page.route('**/api/streaming/active-option-contract', (route) => route.fulfill({ status: 200,
+    await page.route('**/api/flow-contract', (route) => route.fulfill({ status: 200,
       contentType: 'application/json', body: JSON.stringify({ ok: true, contract: CONTRACT }) }));
-    // each panel and the read it makes; Flow reads only once a contract is chosen and accepted
+    // each panel and the read it makes; Flow reads only once a contract is chosen
     const panels = [['trade-desk', 'right-now', '', '/api/order-flow/microstructure'],
       ['options', 'gamma', 'heatmap', '/api/options/gamma-surface'], ['options', 'gamma', 'levels', '/api/levels'],
       ['options', 'chain', '', '/api/chain'], ['options', 'flow', '', '/api/order-flow/options-microstructure'],
@@ -454,10 +453,7 @@ test.describe('Trade Desk renders served values', () => {
         localStorage.setItem('ed_sub', s); if (v) localStorage.setItem('ed_view', v); } catch (e) {} }, [ws, sub, view]);
       const landed = page.waitForResponse((r) => new URL(r.url()).pathname === read);
       await page.goto('/', { waitUntil: 'domcontentloaded' });
-      if (sub === 'flow') {
-        await page.evaluate((c) => window.EdStream.setActiveContract(c), CONTRACT);
-        await page.evaluate(() => document.dispatchEvent(new CustomEvent('ed:contract')));
-      }
+      if (sub === 'flow') await page.evaluate((c) => window.EdFlow.select(c), CONTRACT);
       await landed;                                                  // the read began, and so set its flag, before this
       expect(await page.locator('[aria-busy="true"]').count(), sub + ' ' + view).toBe(0);
     }

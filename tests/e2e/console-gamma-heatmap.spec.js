@@ -25,25 +25,12 @@
 const { test, expect } = require('@playwright/test');
 const path = require('path');
 
-// The per-view demand acknowledgement (server.py post_streaming_active_option_contracts,
-// 2026-09-24): the server echoes this view's id, seq and recorded demand (`requested`),
-// which ed-stream.js confirms against; `contracts` is the union the stream carries.
-function demandAck(body, requested) {
-  return JSON.stringify({ ok: true, client_id: body.client_id, seq: body.seq,
-    requested: requested || body.contracts || [], contracts: body.contracts || [] });
-}
-// the set this view last had confirmed: re-declaring it sends nothing (`unchanged`); any other
-// set is a new request
-function confirmedIs(page, set) {
-  return page.evaluate((s) => window.EdStream.setAdditionalContracts(s), set).then((r) => r.unchanged === true);
-}
-
 // The served window (server.py _surface_view): the cells to draw, each with `spot` (the row at
-// the price) and the `view` -- the centre, the coverage words, the contracts to stream and each
-// measure's colour scale. The page draws these; it picks and counts nothing.
+// the price) and the `view` -- the centre, the coverage words and each measure's colour scale.
+// The page draws these; it picks and counts nothing.
 const WARMING = { state: 'warming', label: 'WARMING', title: 'no cell on screen has a contract yet' };
 function view(over) {
-  return Object.assign({ centre: 583, scope: 'auto', coverage: WARMING, demand: [],
+  return Object.assign({ centre: 583, scope: 'auto', coverage: WARMING,
     max_abs: { gex: 958600, dex: null, oi: null, volume: null }, missing_expiry: null }, over || {});
 }
 const SURFACE = {
@@ -62,10 +49,7 @@ const SURFACE = {
   provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
 };
 // A surface WITH real per-cell vendor contract identity (server.py's project_gamma_surface
-// always carries this in production; the plain SURFACE fixture above never needed it before
-// the demand-declaration tests below, which specifically exercise _heatmapVisibleContractsByColumn —
-// an empty `contracts` field on every cell would make ANY scope's demand list empty,
-// masking exactly the coverage difference these tests exist to prove).
+// always carries this in production).
 function surfaceWithContracts(nExps, nStrikes) {
   var expirations = [];
   for (var e = 0; e < nExps; e++) {
@@ -83,13 +67,8 @@ function surfaceWithContracts(nExps, nStrikes) {
       }),
     };
   });
-  // the served demand: every contract drawn, column by column
-  var demand = [];
-  expirations.forEach(function (exp) {
-    strikes.forEach(function (k) { demand.push('C' + k + 'X' + exp.expiry, 'P' + k + 'X' + exp.expiry); });
-  });
   return Object.assign({}, SURFACE, { expirations: expirations, strikes: strikes, cells: cells,
-    view: view({ centre: strikes[0], demand: demand, max_abs: { gex: 1000 } }) });
+    view: view({ centre: strikes[0], max_abs: { gex: 1000 } }) });
 }
 // Always-live heatmap mandate (2026-09-15): a surface carrying the real per-cell `stream`
 // field server.py's _stamp_gamma_surface_cell_stream_state now stamps unconditionally on
@@ -340,9 +319,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   test('an unavailable heatmap surface is not resurrected by a later theme/expiry/scope event (2026-09-13, independent-review finding)', async ({ page }) => {
     // Independent-review finding (2026-09-13), REPRODUCED: _lastSurface used to survive an
     // unavailable render untouched, so a LATER presentation-only event (ed:theme here; also
-    // ed:expiry/ed:scope) reused it as if still current -- repainting the stale AVAILABLE
-    // data and reissuing its streamed-contract demand, resurrecting exactly the
-    // subscription the unavailable branch had just cleared.
+    // ed:expiry/ed:scope) reused it as if still current -- repainting the stale AVAILABLE data.
     let available = true;
     await page.route('**/api/options/gamma-surface**', (route) => {
       const body = available
@@ -367,30 +344,25 @@ test.describe('Ed Console shell + gamma heatmap', () => {
   });
 
   test('each column streaming status is the served stream_by_expiry, never a page-side verdict', async ({ page }) => {
-    // The page used to track its own accepted/observed/rejected verdict per column from the
-    // subscription POST and the overlay symbols. The server now serves each column's state from
-    // its cells' stream states (server.py _stream_state_of); the tooltip only picks the words.
+    // The server serves each column's state from its cells' stream states (server.py
+    // _stream_state_of); the tooltip only picks the words.
     const surf = surfaceWithContracts(3, 3);
     const e = surf.expirations.map((x) => x.expiry);
     surf.front_expiry = e[0];
-    surf.stream_by_expiry = { [e[0]]: 'partial', [e[1]]: 'pending', [e[2]]: 'rejected' };
+    surf.stream_by_expiry = { [e[0]]: 'partial', [e[1]]: 'pending', [e[2]]: 'stale' };
     await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(surf) }));
-    // a failed subscription POST does not change what the served states say
-    await page.route('**/api/streaming/active-option-contracts', (route) => route.fulfill({
-      status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) }));
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const col = page.locator('.heat thead th.hexp');
     await expect(col).toHaveCount(3);
     await expect(col.nth(0)).toHaveAttribute('title', 'partly streaming');
     await expect(col.nth(1)).toHaveAttribute('title', 'streaming requested');
-    await expect(col.nth(2)).toHaveAttribute('title', 'Schwab refused the stream');
+    await expect(col.nth(2)).toHaveAttribute('title', 'stopped streaming');
   });
 
-  test('each scope reads its window from the server and streams the contracts it serves', async ({ page }) => {
-    // The server picks the window for the scope and names its contracts (server.py
-    // _surface_view; tests/test_heatmap_window_v1.py); the page asks with the scope and streams
-    // exactly the served list.
+  test('each scope reads its window from the server and draws the columns it serves', async ({ page }) => {
+    // The server picks the window for the scope (server.py _surface_view;
+    // tests/test_heatmap_window_v1.py); the page asks with the scope and draws what is served.
     const byScope = { auto: surfaceWithContracts(1, 3), wider: surfaceWithContracts(2, 3), all: surfaceWithContracts(16, 3) };
     const asked = [];
     await page.route('**/api/options/gamma-surface**', (route) => {
@@ -398,18 +370,10 @@ test.describe('Ed Console shell + gamma heatmap', () => {
       asked.push(scope);
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(byScope[scope]) });
     });
-    const demandCalls = [];
-    await page.route('**/api/streaming/active-option-contracts', (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      demandCalls.push(body.contracts || []);
-      route.fulfill({ status: 200, contentType: 'application/json', body: demandAck(body) });
-    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     for (const scope of ['auto', 'wider', 'all']) {
       await page.evaluate((s) => window.EdShell.setScope(s), scope);
       await expect.poll(() => asked[asked.length - 1]).toBe(scope);
-      await expect.poll(() => [...(demandCalls[demandCalls.length - 1] || [])].sort())
-        .toEqual([...byScope[scope].view.demand].sort());
       await expect(page.locator('#heatBody .heat thead .hexp')).toHaveCount(byScope[scope].expirations.length);
     }
   });
@@ -919,38 +883,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     }
   });
 
-  test('#10 control-writer: newer contract command wins; a stale one cannot commit (two tabs safe)', async ({ page }) => {
-    await page.route('**/api/streaming/active-option-contract', async (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      if (String(body.contract).indexOf('AAA') === 0) {   // delay the FIRST command so the second overtakes it
-        await new Promise((r) => setTimeout(r, 400));
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: body.contract, command_generation: 1 }) });
-      }
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, contract: body.contract, command_generation: 2 }) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const out = await page.evaluate(async () => {
-      const A = 'AAA   260101C00100000', B = 'BBB   260101C00100000';
-      const pa = window.EdStream.setActiveContract(A);   // client token 1
-      const pb = window.EdStream.setActiveContract(B);   // client token 2 supersedes token 1
-      return { a: await pa, b: await pb };
-    });
-    expect(out.b.accepted).toBe(true);                   // newer command commits
-    expect(out.a.accepted).toBe(false);                  // older command is inert
-    expect(out.a.reason).toBe('superseded_client');
-  });
-
-  test('#10 control-writer: a server 409 superseded verdict never commits', async ({ page }) => {
-    await page.route('**/api/streaming/active-option-contract', (route) => route.fulfill({
-      status: 409, contentType: 'application/json',
-      body: JSON.stringify({ ok: false, superseded: true, contract: 'ZZZ', command_generation: 7 }),
-    }));
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const res = await page.evaluate(async () => window.EdStream.setActiveContract('ZZZ   260101C00100000'));
-    expect(res.accepted).toBe(false);
-    expect(res.reason).toBe('superseded_server');
-  });
-
   test('#1 perf: a large heatmap surface renders without pathological jank', async ({ page }) => {
     const exps = [], strikes = [], cells = [];
     for (let i = 0; i < 20; i++) exps.push({ expiry: '2026-' + (i < 4 ? '09' : '12') + '-' + String(10 + (i % 20)).padStart(2, '0'), dte: i * 3 });
@@ -1024,225 +956,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('.heat-banner.warming')).toContainText('LIVE SURFACE WARMING');
   });
 
-  test('the heatmap declares live-streaming demand for every visible column\'s contracts, not just the front column (state-authority review, superseded 2026-09-15)', async ({ page }) => {
-    // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: the
-    // heatmap grid itself was never actually live -- only whatever ONE strike Strike
-    // Detail had separately selected ever reached the streaming layer, so the rest of
-    // the visible grid only ever refreshed on the ~60s wide-chain REST cycle. Every
-    // surface cell now carries its own vendor OSI symbols (server.py's project_gamma_
-    // surface); the heatmap declares its OWN demand for them through EdStream's
-    // multi-owner additional-contracts slot ('heatmap', coexisting with Strike Detail's
-    // own 'default'-owner demand).
-    //
-    // Always-live heatmap mandate (2026-09-15, operator directive), SUPERSEDES this test's
-    // own prior "bounded to ... only the FRONT column" claim: "every visible heatmap cell
-    // must correspond to an exact option contract actively receiving streamed Schwab
-    // updates" -- a cell this module never demanded can never legitimately show
-    // live/partial (ed-gamma.js's own per-cell render gate), so Auto scope now demands
-    // EVERY visible column, the same rule Wider/All and an explicit expiry filter already
-    // used (see the "Wider and All scope declare real streaming demand" test above).
-    const surfaceWithContracts = Object.assign({}, SURFACE, {
-      cells: [
-        { strike: 580, gex: [-90000, null], spot: false,
-          contracts: [{ call: 'SPXW  260911C00580000', put: 'SPXW  260911P00580000' }, { call: null, put: null }] },
-        { strike: 583, gex: [958600, 300000], spot: true,
-          contracts: [{ call: 'SPXW  260911C00583000', put: 'SPXW  260911P00583000' },
-                      { call: 'SPXW  260918C00583000', put: 'SPXW  260918P00583000' }] },
-        { strike: 586, gex: [-264500, 120000], spot: false,
-          contracts: [{ call: 'SPXW  260911C00586000', put: 'SPXW  260911P00586000' },
-                      { call: 'SPXW  260918C00586000', put: 'SPXW  260918P00586000' }] },
-      ],
-      // the served demand: every contract drawn, column by column (server.py _surface_view)
-      view: view({ demand: [
-        'SPXW  260911C00580000', 'SPXW  260911P00580000', 'SPXW  260911C00583000', 'SPXW  260911P00583000',
-        'SPXW  260911C00586000', 'SPXW  260911P00586000', 'SPXW  260918C00583000', 'SPXW  260918P00583000',
-        'SPXW  260918C00586000', 'SPXW  260918P00586000'] }),
-    });
-    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts),
-    }));
-    // Strike Detail's own auto-select-on-load (an unrelated, already-covered demand
-    // source) is suppressed here by giving /api/chain an empty result, so the posted
-    // union under test is unambiguously the heatmap's own contribution alone.
-    await page.route('**/api/chain**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify({ ticker: '$SPX', spot: 583.41, expiry: '2026-09-11', status: 'ok', contracts: [] }),
-    }));
-    /** @type {any[]} */
-    const requests = [];
-    await page.route('**/api/streaming/active-option-contracts', (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      requests.push(body);
-      route.fulfill({ status: 200, contentType: 'application/json',
-        body: demandAck(body) });
-    });
-
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    // 2026-09-16: poll for the MEANINGFUL condition (the heatmap's own non-empty demand
-    // having landed), not merely "any request happened" -- an unrelated owner (Strike
-    // Detail, suppressed above to an empty selection but still issuing its own clear call)
-    // can legitimately POST an earlier, empty request that "length > 0" alone would catch.
-    await expect.poll(() => {
-      const last = requests[requests.length - 1];
-      return last && last.contracts && last.contracts.length;
-    }).toBeGreaterThan(0);
-    const sent = requests[requests.length - 1].contracts.slice().sort();
-    // BOTH visible columns' call+put for every strike that has one -- 2026-09-11 (all
-    // three strikes) AND 2026-09-18 (580 has no contracts on that expiry in this fixture,
-    // 583/586 do). Every visible cell's own contracts are now demanded, not just the
-    // front column's.
-    expect(sent).toEqual([
-      'SPXW  260911C00580000', 'SPXW  260911C00583000', 'SPXW  260911C00586000',
-      'SPXW  260911P00580000', 'SPXW  260911P00583000', 'SPXW  260911P00586000',
-      'SPXW  260918C00583000', 'SPXW  260918C00586000',
-      'SPXW  260918P00583000', 'SPXW  260918P00586000',
-    ].sort());
-
-    // Leaving the Gamma workspace must clear the heatmap's OWN demand (not keep the
-    // last-viewed ticker's contracts subscribed forever once nobody is looking).
-    const beforeLeave = requests.length;
-    await page.locator('.navitem[data-ws="order-flow"]').click();
-    await expect.poll(() => requests.length).toBeGreaterThan(beforeLeave);
-    expect(requests[requests.length - 1].contracts).toEqual([]);
-  });
-
-  test('the first-ever additional-contracts request on a fresh page confirms with the server, not just a local default (state-authority review)', async ({ page }) => {
-    // Independent-review finding (2026-09-12, state-authority review), REPRODUCED: on a
-    // FRESH page, before this module has ever dispatched a single request,
-    // `_desiredAdditionalGen` (0) trivially equalled `_additionalGen` (0) -- a sentinel
-    // meaning "never touched", not "confirmed by the server". The shell's own background
-    // auto-select-on-load resolves to a genuine clear demand (setAdditionalContracts([]),
-    // the empty default fixture's contracts have no `symbol` field) as its first-ever
-    // call -- this matched the untouched pair and short-circuited with
-    // accepted:true/unchanged:true WITHOUT ever contacting the server, a LOCAL DEFAULT
-    // masquerading as CONFIRMED SERVER STATE. A real server that still holds some OTHER
-    // additional-contracts selection (a prior tab, a server that did not reset) would
-    // never be told to clear it. Fixed with an explicit `_desiredAdditionalConfirmed`
-    // flag, set true ONLY by a genuine accepted commit -- `_desiredAdditionalGen ===
-    // _additionalGen` alone cannot distinguish "confirmed" from "never asked".
-    let requestCount = 0;
-    let firstBody = null;
-    await page.route('**/api/streaming/active-option-contracts', async (route) => {
-      requestCount += 1;
-      const body = JSON.parse(route.request().postData() || '{}');
-      if (firstBody === null) firstBody = body;
-      return route.fulfill({ status: 200, contentType: 'application/json',
-        body: demandAck(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#sdCtx')).toContainText('583');   // background auto-select settled
-
-    expect(requestCount).toBeGreaterThanOrEqual(1);
-    expect(firstBody && firstBody.contracts).toEqual([]);
-
-    // A second identical call, now genuinely confirmed, is correctly free to short-circuit
-    // -- the fix does not remove the caching optimization, only when it may be trusted.
-    const before = requestCount;
-    const again = await page.evaluate(() => window.EdStream.setAdditionalContracts([]));
-    expect(again.accepted).toBe(true);
-    expect(again.unchanged).toBe(true);
-    expect(requestCount).toBe(before);
-  });
-
-  test('a failed additional-contracts request is retried, not falsely reported accepted (RC-UI-3)', async ({ page }) => {
-    // Independent-review finding (2026-09-12), REPRODUCED against the real
-    // EdStream.setAdditionalContracts: the first request received HTTP 503; repeating
-    // the SAME request afterward returned {accepted:true, unchanged:true} with only ONE
-    // HTTP request ever having occurred -- _desiredAdditional was committed optimistically
-    // BEFORE the fetch resolved, so a failed attempt was indistinguishable from a
-    // successful one on the very next call. Also proves: a call repeated WHILE the first
-    // is still pending must not fire a duplicate concurrent request, and a response whose
-    // acknowledged `contracts` do not match what was sent must not be accepted either.
-    //
-    // Independent-review-adjacent flake, self-diagnosed (2026-09-12): the shell's own
-    // background auto-select-on-load (Strike Detail auto-selecting the nearest-to-spot
-    // strike -- the default CHAIN fixture's contracts have no `symbol` field, so it
-    // resolves to a genuine "clear" demand, setAdditionalContracts([])) can still be
-    // in flight when this test's own SET request is dispatched. Once the "latest
-    // intent always wins, even over an in-flight request for a different target" fix
-    // landed (the exact behavior these subscription tests exist to prove), that
-    // background clear correctly SUPERSEDES this test's own in-flight SET request if
-    // it lands mid-flight -- firing a genuine extra network call this test did not
-    // expect, not a bug in the fix. Settled the same way the newer subscription-state-
-    // machine tests already do: wait for the page's own background auto-select to
-    // finish before starting this test's own explicit sequence.
-    //
-    // CI flake root-caused (2026-09-24): this route used to answer EVERY request with the
-    // current mode from page load on -- so the page's own background auto-select "clear"
-    // got a 503 too, and the page (correctly) RETRIED it later. On a slow runner that
-    // retry landed inside step 1 and read as a second request. Background requests (any
-    // set other than this test's SET) now always succeed and are not counted.
-    const SET = ['SPY   260911C00583000', 'SPY   260911P00583000'];
-    const isOwn = (contracts) => JSON.stringify([...(contracts || [])].sort()) === JSON.stringify([...SET].sort());
-    let requestCount = 0;
-    /** @type {((v: any) => void) | null} */
-    let releasePending = null;
-    let mode = 'fail';   // 'fail' -> 503, 'hang' -> never resolves until released, 'ok' -> echoes back, 'wrong' -> echoes a different set
-    await page.route('**/api/streaming/active-option-contracts', async (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      if (!isOwn(body.contracts)) {
-        return route.fulfill({ status: 200, contentType: 'application/json',
-          body: demandAck(body) });
-      }
-      requestCount += 1;
-      if (mode === 'fail') {
-        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
-      }
-      if (mode === 'hang') {
-        await new Promise((resolve) => { releasePending = resolve; });
-        return route.fulfill({ status: 200, contentType: 'application/json',
-          body: demandAck(body) });
-      }
-      if (mode === 'wrong') {
-        return route.fulfill({ status: 200, contentType: 'application/json',
-          body: demandAck(body, ['SPY   260911C00999000']) });
-      }
-      return route.fulfill({ status: 200, contentType: 'application/json',
-        body: demandAck(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#sdCtx')).toContainText('583');   // background auto-select settled
-    requestCount = 0;
-
-    // 1) First request fails (503) -- must not be reported accepted.
-    const r1 = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);
-    expect(r1.accepted).toBe(false);
-    expect(requestCount).toBe(1);
-
-    // 2) Repeating the SAME set after a failure must retry -- a real second HTTP request,
-    // not a false accepted:true/unchanged:true short-circuit.
-    const r2 = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);
-    expect(requestCount).toBe(2);
-    expect(r2.unchanged).toBe(false);
-
-    // 3) A response acknowledging the WRONG contract set must not be accepted.
-    mode = 'wrong';
-    const r3 = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);
-    expect(r3.accepted).toBe(false);
-    expect(requestCount).toBe(3);
-
-    // 4) Repetition WHILE the request is still pending must not fire a duplicate.
-    mode = 'hang';
-    const pendingPromise = page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);
-    await page.waitForTimeout(100);   // let the request actually reach the route handler
-    expect(requestCount).toBe(4);
-    const r4b = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);
-    expect(requestCount).toBe(4);     // no NEW request while the same set is still in flight
-    expect(r4b.pending).toBe(true);
-    expect(r4b.accepted).toBe(false);
-    if (releasePending) releasePending(undefined);
-    const r4a = await pendingPromise;
-    expect(r4a.accepted).toBe(true);
-
-    // 5) Now genuinely accepted -- calling again with the SAME set must not re-POST.
-    mode = 'ok';
-    const before = requestCount;
-    const r5 = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), SET);
-    expect(r5.accepted).toBe(true);
-    expect(r5.unchanged).toBe(true);
-    expect(requestCount).toBe(before);
-  });
-
   test('switching ticker while a strike-detail chain fetch is in flight discards the stale response (RC-UI-2 finding #3)', async ({ page }) => {
     // Independent-review finding (2026-09-12), REPRODUCED: ed-core.js's setTicker() already
     // clears the SHARED state.selStrike before dispatching 'ed:ticker' (confirmed correct),
@@ -1250,11 +963,9 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     // bumped Strike Detail's OWN generation counter (_sgen) or reset its DOM/subscription
     // state. A /api/chain fetch already in flight for the OLD ticker at switch time still
     // passed the unchanged `g === _sgen` guard on arrival, rendering the old ticker's stale
-    // OI/Vol/Gamma/Delta/IV and re-requesting the OLD ticker's vendor contracts into the
-    // plural streaming endpoint UNDER THE NEW TICKER'S CONTEXT. Reproduced here exactly:
-    // select strike 583 on SPY (delayed /api/chain), switch to QQQ before the response
-    // arrives, then deliver it -- Strike Detail must stay reset (no SPY table rendered) and
-    // SPY's contract symbols must never reach /api/streaming/active-option-contracts.
+    // OI/Vol/Gamma/Delta/IV UNDER THE NEW TICKER'S CONTEXT. Reproduced here exactly: select
+    // strike 586 on SPY (delayed /api/chain), switch to QQQ before the response arrives, then
+    // deliver it -- Strike Detail must stay reset (no SPY table rendered).
     let chainCalls = 0;
     let releaseChain = null;
     function contractsFor(strike) {
@@ -1277,321 +988,51 @@ test.describe('Ed Console shell + gamma heatmap', () => {
           contracts: contractsFor(strike) }),
       });
     });
-    /** @type {any[]} */
-    const requests = [];
-    await page.route('**/api/streaming/active-option-contracts', (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      requests.push(body.contracts || []);
-      route.fulfill({ status: 200, contentType: 'application/json',
-        body: demandAck(body) });
-    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    // select strike 583 on SPY -- resolves immediately, its contracts are ACCEPTED into the
-    // plural subscription (a real non-empty desired state, not the initial empty one)
+    // select strike 583 on SPY -- resolves immediately
     await page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]').click();
     await expect(page.locator('#sdCtx')).toContainText('583');
-    await expect.poll(() => requests.length).toBeGreaterThan(0);
-    expect(requests[requests.length - 1].slice().sort()).toEqual(
-      ['SPY   260911C00583000', 'SPY   260911P00583000'].sort());
 
     // select strike 586 -- fires the SECOND (delayed) /api/chain fetch, nothing resolves yet
     await page.locator('.hcell[data-strike="586"][data-expiry="2026-09-11"]').click();
     await expect.poll(() => releaseChain !== null).toBe(true);
 
-    // switch ticker BEFORE the delayed 586 chain response arrives
+    // switch ticker BEFORE the delayed 586 chain response arrives; the reset fires
+    // synchronously off the 'ed:ticker' listener, BEFORE the stale data lands
     await page.evaluate(() => window.EdShell.setTicker('QQQ'));
-    // reset fires synchronously off the 'ed:ticker' listener: placeholder restored immediately,
-    // and the additional-contracts demand is cleared ([]) -- both BEFORE the stale data lands
     await expect(page.locator('#sdBody')).toContainText('Select a strike/expiry');
-    await expect.poll(() => requests[requests.length - 1]).toEqual([]);
-    const requestsAtSwitch = requests.length;
 
     // now deliver the stale (586, SPY) response
     releaseChain(undefined);
-    await page.waitForTimeout(300);   // let any (incorrect) render/post attempt land
+    await page.waitForTimeout(300);   // let any (incorrect) render attempt land
 
     // Strike Detail must still show the reset placeholder, not SPY's stale 586 table
     await expect(page.locator('#sdBody')).toContainText('Select a strike/expiry');
     await expect(page.locator('.sd')).toHaveCount(0);
-    // SPY's 586 contract symbols must never have been (re-)posted to the plural endpoint
-    expect(requests.length).toBe(requestsAtSwitch);
-    for (const r of requests) {
-      expect(r).not.toContain('SPY   260911C00586000');
-      expect(r).not.toContain('SPY   260911P00586000');
-    }
-  });
-
-  test('clearing demand while a request is still pending is not overridden by that request\'s late acceptance (RC-UI-3)', async ({ page }) => {
-    // Independent-review finding (2026-09-12), REPRODUCED: request A (left pending),
-    // then clear ([]) BEFORE A resolves. Because _desiredAdditional was still [] (A had
-    // never actually committed), the clear matched the OLD "unchanged" short-circuit
-    // against the CONFIRMED value alone and returned accepted:true WITHOUT sending any
-    // cancellation to the server and WITHOUT invalidating A's in-flight generation token
-    // -- so when A's late response finally arrived, it was still "current" and silently
-    // committed, overriding the operator's explicit clear intent. The real invariant:
-    // the LATEST call always wins, including a return to an empty/no-longer-desired set.
-    // Body-keyed request tracking (not a raw ordinal count): the shell's own unrelated
-    // background behavior (e.g. auto-selecting the spot strike on first load) can fire
-    // its own additional-contracts calls independent of this test's own sequence, so
-    // "the Nth request" is not a reliable handle -- "a request naming exactly this set
-    // has arrived" is.
-    const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
-    const keyOf = (arr) => arr.slice().sort().join(',');
-    /** @type {string[]} */
-    const seen = [];
-    let hungOnceForA = false;
-    /** @type {((v: any) => void) | null} */
-    let releaseA = null;
-    await page.route('**/api/streaming/active-option-contracts', async (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      const key = keyOf(body.contracts || []);
-      seen.push(key);
-      if (key === keyOf(A) && !hungOnceForA) {
-        hungOnceForA = true;
-        await new Promise((resolve) => { releaseA = resolve; });   // A hangs, once
-      }
-      route.fulfill({ status: 200, contentType: 'application/json',
-        body: demandAck(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(200);   // let any unrelated page-load auto-request settle first
-
-    const seenBeforeA = seen.length;
-    const pendingA = page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
-    await expect.poll(() => seen.includes(keyOf(A))).toBe(true);   // A's request is in flight, hanging
-    expect(seen.length).toBe(seenBeforeA + 1);   // exactly one new request, for A
-
-    // Clear BEFORE A resolves -- must send a REAL cancellation request, not a fabricated
-    // accept with zero network activity.
-    const clearResult = await page.evaluate(() => window.EdStream.setAdditionalContracts([]));
-    expect(seen.length).toBe(seenBeforeA + 2);   // the clear must have fired its OWN real request
-    expect(seen[seen.length - 1]).toBe(keyOf([]));
-    expect(clearResult.accepted).toBe(true);
-
-    // NOW release A's late response -- it must NOT be able to override the clear.
-    if (releaseA) releaseA(undefined);
-    await pendingA;
-    await page.waitForTimeout(150);   // let any (incorrect) late-commit attempt land
-    expect(await confirmedIs(page, [])).toBe(true);
-  });
-
-  test('returning to a previously-accepted set while a newer request is pending is not overridden by that request\'s late acceptance (RC-UI-3)', async ({ page }) => {
-    // Independent-review finding (2026-09-12), REPRODUCED, the mirror case: accept A,
-    // then request B (left pending), then explicitly return to A BEFORE B resolves.
-    // Because A equals the CONFIRMED _desiredAdditional, returning to it matched the OLD
-    // "unchanged" short-circuit and did not bump the generation token -- B's in-flight
-    // request was still "current" when it resolved, silently overriding the operator's
-    // explicit return-to-A intent.
-    const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
-    const B = ['SPY   260911C00586000', 'SPY   260911P00586000'];
-    const keyOf = (arr) => arr.slice().sort().join(',');
-    /** @type {string[]} */
-    const seen = [];
-    let hungOnceForB = false;
-    /** @type {((v: any) => void) | null} */
-    let releaseB = null;
-    await page.route('**/api/streaming/active-option-contracts', async (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      const key = keyOf(body.contracts || []);
-      seen.push(key);
-      if (key === keyOf(B) && !hungOnceForB) {
-        hungOnceForB = true;
-        await new Promise((resolve) => { releaseB = resolve; });   // B hangs, once
-      }
-      route.fulfill({ status: 200, contentType: 'application/json',
-        body: demandAck(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(200);   // let any unrelated page-load auto-request settle first
-
-    const acceptA = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
-    expect(acceptA.accepted).toBe(true);
-    expect(seen[seen.length - 1]).toBe(keyOf(A));
-
-    const seenBeforeB = seen.length;
-    const pendingB = page.evaluate((set) => window.EdStream.setAdditionalContracts(set), B);
-    await expect.poll(() => seen.includes(keyOf(B))).toBe(true);   // B's request is in flight, hanging
-    expect(seen.length).toBe(seenBeforeB + 1);   // exactly one new request, for B
-
-    // Return to A BEFORE B resolves -- must send a REAL request reasserting A, not a
-    // fabricated accept that leaves B's stale in-flight token free to win.
-    const returnToA = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
-    expect(seen.length).toBe(seenBeforeB + 2);   // the return-to-A must have fired its OWN real request
-    expect(seen[seen.length - 1]).toBe(keyOf(A));
-    expect(returnToA.accepted).toBe(true);
-
-    // NOW release B's late response -- it must NOT be able to override the return to A.
-    if (releaseB) releaseB(undefined);
-    await pendingB;
-    await page.waitForTimeout(150);   // let any (incorrect) late-commit attempt land
-    expect(await confirmedIs(page, A)).toBe(true);
-  });
-
-  test('retrying a clear after the clear itself failed sends a fresh request, not a stale cache hit (RC-UI-3)', async ({ page }) => {
-    // Independent-review finding (2026-09-12), REPRODUCED: request A (left pending),
-    // then a clear ([]) FAILS (503), then A's late response arrives and is correctly
-    // ignored (superseded) -- so far identical to the sibling test above. The NEW
-    // finding: retrying the SAME clear again used to match the UNTOUCHED initial
-    // _desiredAdditional (still [], since nothing had ever actually committed a value)
-    // and short-circuit with accepted:true/unchanged:true WITHOUT sending another
-    // request -- even though the FAILED clear never actually removed anything, and A's
-    // own request was never confirmed either way once superseded. A coincidental match
-    // against a STALE cached value must never substitute for a fresh confirmation.
-    const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
-    const keyOf = (arr) => arr.slice().sort().join(',');
-    /** @type {string[]} */
-    const seen = [];
-    let hungOnceForA = false;
-    let clearShouldFail = false;
-    /** @type {((v: any) => void) | null} */
-    let releaseA = null;
-    await page.route('**/api/streaming/active-option-contracts', async (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      const key = keyOf(body.contracts || []);
-      seen.push(key);
-      if (key === keyOf(A) && !hungOnceForA) {
-        hungOnceForA = true;
-        await new Promise((resolve) => { releaseA = resolve; });   // A hangs, once
-        return route.fulfill({ status: 200, contentType: 'application/json',
-          body: demandAck(body) });
-      }
-      if (key === keyOf([]) && clearShouldFail) {
-        clearShouldFail = false;   // fail exactly once
-        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
-      }
-      return route.fulfill({ status: 200, contentType: 'application/json',
-        body: demandAck(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(200);   // let any unrelated page-load auto-request settle first
-
-    const pendingA = page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
-    await expect.poll(() => seen.includes(keyOf(A))).toBe(true);   // A's request is in flight, hanging
-
-    // The clear FAILS while A is still pending.
-    clearShouldFail = true;
-    const seenBeforeClear = seen.length;
-    const clearResult = await page.evaluate(() => window.EdStream.setAdditionalContracts([]));
-    expect(seen.length).toBe(seenBeforeClear + 1);
-    expect(clearResult.accepted).toBe(false);
-
-    // Release A's late response -- it must be ignored (superseded), not committed.
-    if (releaseA) releaseA(undefined);
-    await pendingA;
-    await page.waitForTimeout(100);
-
-    // Retry the SAME clear -- must send a FRESH request, not a stale cache hit against
-    // the untouched initial (coincidentally matching) desired value.
-    const seenBeforeRetry = seen.length;
-    const retryResult = await page.evaluate(() => window.EdStream.setAdditionalContracts([]));
-    expect(seen.length).toBe(seenBeforeRetry + 1);   // a REAL new request, not a fabricated accept
-    expect(seen[seen.length - 1]).toBe(keyOf([]));
-    expect(retryResult.accepted).toBe(true);
-    expect(retryResult.unchanged).toBe(false);
-    expect(await confirmedIs(page, [])).toBe(true);
-  });
-
-  test('retrying a return-to-prior-value after it failed sends a fresh request, not a stale cache hit (RC-UI-3)', async ({ page }) => {
-    // Independent-review finding (2026-09-12), REPRODUCED, the mirror case: accept A,
-    // request B (pending), the return to A FAILS, B's late response arrives and is
-    // correctly ignored (superseded) -- then retrying the return to A again used to
-    // match the STALE _desiredAdditional=A (confirmed BEFORE B was ever dispatched) and
-    // short-circuit without a fresh request -- even though the intervening B dispatch
-    // means the server's actual state cannot be assumed to still be A without asking
-    // again.
-    const A = ['SPY   260911C00583000', 'SPY   260911P00583000'];
-    const B = ['SPY   260911C00586000', 'SPY   260911P00586000'];
-    const keyOf = (arr) => arr.slice().sort().join(',');
-    /** @type {string[]} */
-    const seen = [];
-    let hungOnceForB = false;
-    let returnToAShouldFail = false;
-    /** @type {((v: any) => void) | null} */
-    let releaseB = null;
-    await page.route('**/api/streaming/active-option-contracts', async (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      const key = keyOf(body.contracts || []);
-      seen.push(key);
-      if (key === keyOf(B) && !hungOnceForB) {
-        hungOnceForB = true;
-        await new Promise((resolve) => { releaseB = resolve; });   // B hangs, once
-        return route.fulfill({ status: 200, contentType: 'application/json',
-          body: demandAck(body) });
-      }
-      if (key === keyOf(A) && returnToAShouldFail) {
-        returnToAShouldFail = false;   // fail exactly once
-        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false }) });
-      }
-      return route.fulfill({ status: 200, contentType: 'application/json',
-        body: demandAck(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(200);
-
-    const acceptA = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
-    expect(acceptA.accepted).toBe(true);
-
-    const pendingB = page.evaluate((set) => window.EdStream.setAdditionalContracts(set), B);
-    await expect.poll(() => seen.includes(keyOf(B))).toBe(true);   // B's request is in flight, hanging
-
-    // The return to A FAILS while B is still pending.
-    returnToAShouldFail = true;
-    const seenBeforeReturn = seen.length;
-    const returnResult = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
-    expect(seen.length).toBe(seenBeforeReturn + 1);
-    expect(returnResult.accepted).toBe(false);
-
-    // Release B's late response -- it must be ignored (superseded), not committed.
-    if (releaseB) releaseB(undefined);
-    await pendingB;
-    await page.waitForTimeout(100);
-
-    // Retry the return to A -- must send a FRESH request, not a stale cache hit against
-    // the confirmed-before-B value.
-    const seenBeforeRetry = seen.length;
-    const retryResult = await page.evaluate((set) => window.EdStream.setAdditionalContracts(set), A);
-    expect(seen.length).toBe(seenBeforeRetry + 1);   // a REAL new request, not a fabricated accept
-    expect(seen[seen.length - 1]).toBe(keyOf(A));
-    expect(retryResult.accepted).toBe(true);
-    expect(await confirmedIs(page, A)).toBe(true);
   });
 
   // Independent-review finding (2026-09-13), REPRODUCED, then a FOURTH review overturned the
   // first fix's own test: falling back to every column when the selected expiry is missing
-  // avoided a blank grid, but silently SUBSTITUTED other expiries' data (and kept demanding
-  // streamed contracts for expiries the operator never asked to watch) -- the operator's own
-  // requirement is that this state reads UNAVAILABLE for the requested expiry, with demand
-  // cleared, never a silent substitution. This test enforces the CORRECTED requirement; the
-  // superseded "fell back to both real columns" assertion is gone.
+  // avoided a blank grid, but silently SUBSTITUTED other expiries' data -- the operator's own
+  // requirement is that this state reads UNAVAILABLE for the requested expiry, never a silent
+  // substitution.
   // the server's answer for a selected expiry the surface does not have: no columns, and the
   // expiry named (server.py _surface_view `missing_expiry`)
   const MISSING_0925 = Object.assign({}, SURFACE, { expirations: [],
     cells: SURFACE.cells.map((c) => Object.assign({}, c, { gex: [] })), view: view({ missing_expiry: '2026-09-25' }) });
-  test('a selected expiry absent from the surface reads unavailable and clears demand (no substitute expiries)', async ({ page }) => {
-    let demandCalls = [];
+  test('a selected expiry absent from the surface reads unavailable (no substitute expiries)', async ({ page }) => {
     await page.route('**/api/expiries*', (r) => r.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify({ expiries: ['2026-09-11', '2026-09-18', '2026-09-25'] }) }));
     await page.route('**/api/options/gamma-surface*', (route) => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify(new URL(route.request().url()).searchParams.get('expiry') === '2026-09-25' ? MISSING_0925 : SURFACE) }));
-    await page.route('**/api/streaming/active-option-contracts', (route) => {
-      let body = {}; try { body = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
-      demandCalls.push(body.contracts || []);
-      return route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ accepted: true, contracts: body.contracts || [] }) });
-    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#view-heatmap .hcell').first()).toBeVisible();
 
     // '2026-09-25' is listed in /api/expiries but absent from SURFACE.expirations.
-    demandCalls = [];
     await page.locator('#expSel').selectOption('2026-09-25');
     await expect(page.locator('#heatBody')).toContainText('Expiry 2026-09-25 unavailable');
     await expect(page.locator('#heatBody .hexp')).toHaveCount(0);   // NOT a silent substitute grid
-    // The one demand call this selection can trigger clears everything -- no substitute expiry
-    // is ever streamed on the operator's behalf.
-    await expect.poll(() => demandCalls.length).toBeGreaterThan(0);
-    expect(demandCalls[demandCalls.length - 1]).toEqual([]);
   });
 
   test('recovers automatically once the requested expiry appears in a later surface poll', async ({ page }) => {
@@ -1615,50 +1056,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#heatBody .hexp')).toHaveCount(1);
     await expect(page.locator('#heatBody')).not.toContainText('unavailable');
     await expect(page.locator('#heatBody .hexp .d')).toHaveText('09-25');
-  });
-
-  // A FOURTH independent review (2026-09-13), REPRODUCED: "confirmed" (the tooltip's
-  // "sub-second streaming updates active" claim) fired the instant setAdditionalContracts
-  // resolved with the server's own subscribe-request ACK -- a control-plane acceptance, never
-  // checked against whether the producer has actually delivered one real observation. Fixed:
-  // 'accepted' names the ACK; only a LATER surface poll's own real evidence promotes it to
-  // 'observed', which is the only state whose tooltip claims streaming is actually active.
-  //
-  // A SIXTH independent review (2026-09-13), REPRODUCED then repaired: that "real evidence"
-  // used to be `stream_overlay_contracts > 0` alone -- a surface-wide COUNT satisfied by ANY
-  // contract anywhere, not necessarily one this column actually demanded. Now the evidence
-  // must be `stream_overlay_symbols` naming a symbol THIS column's own demand set covers
-  // (see `_colHasObservedEvidence` in ed-gamma.js) -- this test's fixture carries both the
-  // legacy count (kept for a client that hasn't wired the sixth-review fix at all) and the
-  // real per-symbol identity `surfaceWithContracts(1, 3)`'s own column 0 actually demands.
-  test('a visible scope larger than the former 240-contract self-imposed ceiling is demanded in FULL, uncapped, unsplit', async ({ page }) => {
-    // 2 columns x 61 strikes x 2 sides = 244 contracts -- previously would have capped
-    // column 1 to a 118-contract partial; now both columns' contracts are demanded whole.
-    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(surfaceWithContracts(2, 61)),
-    }));
-    const demandCalls = [];
-    await page.route('**/api/streaming/active-option-contracts', (route) => {
-      const body = JSON.parse(route.request().postData() || '{}');
-      demandCalls.push(body.contracts || []);
-      return route.fulfill({ status: 200, contentType: 'application/json', body: demandAck(body) });
-    });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.evaluate(() => window.EdShell.setScope('all'));   // demand follows every displayed column
-    // A scope change first clears the heatmap's own demand, then sends the new set -- so wait
-    // for the SETTLED demand, not whichever request happened to land first (the old read of
-    // "the last request right after the first one arrived" raced that clear: CI 2026-09-24).
-    await expect.poll(() => (demandCalls[demandCalls.length - 1] || []).length).toBe(244);
-
-    const lastDemand = demandCalls[demandCalls.length - 1];
-    expect(lastDemand.length).toBe(244);   // the FULL set -- no cap, no split, no exclusion
-    const col1Symbols = lastDemand.filter((s) => /X2026-09-12$/.test(s));
-    expect(col1Symbols.length).toBe(122);   // column 1's own full 61 strikes x 2 sides
-
-    const colTitles = await page.locator('.heat thead th.hexp').evaluateAll(
-      (ths) => ths.map((th) => th.getAttribute('title')));
-    expect(colTitles.length).toBe(2);
-    colTitles.forEach((t) => expect(t || '').not.toMatch(/PARTIALLY|excluded|safety limit/));
   });
 
   // ---------------------------------------------------------------------------
@@ -1838,23 +1235,6 @@ test.describe('Ed Console shell + gamma heatmap', () => {
     await expect(page.locator('#heatScope')).toHaveText('50% STREAMING');
     await expect(page.locator('#heatScope')).toHaveAttribute('title', '1 of 2 cells streaming · 1 stale');
     await expect(page.locator('#heatScope')).toHaveClass(/cov-partial/);
-  });
-
-  test('audit #6: a vendor-rejected contract renders a distinct, visibly-failed cell', async ({ page }) => {
-    const surf = Object.assign({}, SURFACE, {
-      strikes: [583], expirations: [{ expiry: '2026-09-11', dte: 2 }],
-      cells: [{
-        strike: 583, gex: [null], contracts: [{ call: 'BADSYM', put: null }],
-        stream: [{ state: 'rejected', call: { symbol: 'BADSYM', state: 'rejected', rejected_reason: 'vendor refused' } }],
-      }],
-    });
-    await page.route('**/api/options/gamma-surface**', (route) => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(surf),
-    }));
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const cell = page.locator('.hcell[data-strike="583"][data-expiry="2026-09-11"]');
-    await expect(cell).toHaveClass(/state-rejected/);
-    await expect(cell).toHaveAttribute('title', 'Schwab refused this contract’s stream (vendor refused)');
   });
 
   test('no page timer reads /api: a minute with no push makes no request', async ({ page }) => {

@@ -123,23 +123,3 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path, monkeypatch):
 
     assert not any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("SPY"))
     assert any(i.get("LAST_PRICE") == 380.0 for i in ofls.get_content_for_symbol("QQQ"))
-
-
-def test_a_connection_that_never_streams_never_opens_a_page(monkeypatch):
-    """The page is open while its /api/changes stream runs: a request whose client went away
-    before the stream started leaves no page open, so it is never the ticker on screen."""
-    import asyncio
-
-    import push_changes
-    import server
-    monkeypatch.setattr(push_changes, "_open", [])
-    asyncio.run(server.get_changes(ticker="MU"))          # answered, never streamed
-    assert push_changes.on_screen() is None
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2026-09-16, audit finding #6 (bounded-vendor-call reconciliation): the producer's
-# rejected-contract map rides the SAME heartbeat row as claimed_coverage_json. These
-# prove the REAL CaptureWriter.write_heartbeat / read_producer_rejected_option_contracts
-# round trip: sticky-unless-explicit (a frequent claimed_coverage-only publish must not
-# wipe a standing rejection) and the same staleness fail-closed rule as coverage.

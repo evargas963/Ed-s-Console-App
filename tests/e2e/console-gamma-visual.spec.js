@@ -35,7 +35,7 @@ const SURFACE = {
   cells: STRIKE_LIST.map(function (k) {
     return { strike: k, gex: EXPS.map(function (_e, ci) { return gexAt(k, ci); }), spot: k === SPOT }; }),
   // the served view; the colour scale is a stand-in at least every |gexAt| (peak 7.6e6 x 1.24)
-  view: { centre: SPOT, scope: 'auto', coverage: null, demand: [], max_abs: { gex: 1e7 }, missing_expiry: null },
+  view: { centre: SPOT, scope: 'auto', coverage: null, max_abs: { gex: 1e7 }, missing_expiry: null },
   provenance: { producer: 'math_exposure_core.compute_exposures_by_strike', classification: 'DERIVED' },
 };
 const TERRAIN = { ticker: '$SPX', spot: SPOT, gamma_flip: 4992.4, call_wall: 5100, put_wall: 4900,

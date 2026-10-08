@@ -33,7 +33,7 @@ async function intercept(page) {
     else if (url.includes('/api/options/gamma-surface')) body = { ticker: 'SPY', available: true, spot: 100,
       source: 'terrain_live_cache', live: true, stale: false, expirations: [{ expiry: '2026-09-11', dte: 2 }],
       strikes: [100], cells: [{ strike: 100, gex: [1] }],
-      view: { centre: 100, scope: 'auto', coverage: null, demand: [], max_abs: { gex: 1 }, missing_expiry: null } };
+      view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 1 }, missing_expiry: null } };
     else if (url.includes('/api/terrain/strikes')) body = { spot: 100, today_source: 'terrain_live_cache', today_age_sec: 5, levels_stale: false, today: { all: [[100, 1, 1]] },
       views: { all: { centre: 100, note: null, max_abs: 1 } } };
     else if (url.includes('/api/terrain')) body = { spot: 100, gamma_flip: 99.5, regime: 'LONG_GAMMA_CHOP', levels_stale: false };

@@ -180,35 +180,28 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         assert none_yet["generation"] is None
         assert {"family": "price_levels", "reason": srv.NO_PRICE_LEVELS_REASON} in none_yet["families_absent"]
 
-        # a minute's bars arrive together (SPY and TSLA): every bar is kept first
-        # (each write is pushed as `liquidity`), then each ticker's levels are published from its
-        # bars (pushed as `levels`). The order is read from the push itself: its own listener,
-        # on a running event loop, with a page open on each ticker.
-        changes = []
-
-        def record(t, kind):
-            if t in (tk, other):
-                changes.append((kind, t))
+        # a minute's bars arrive together (SPY and TSLA): each write is pushed as `liquidity` and
+        # each ticker's levels published from its bars as `levels`, to the page open on it (the
+        # push itself, on a running event loop)
         loop = asyncio.new_event_loop()
         runner = threading.Thread(target=loop.run_forever, daemon=True)
         runner.start()
         push_changes.bind(loop)
-        push_changes.on_change(record)
         pages = [(t, push_changes.subscribe(t)) for t in (tk, other)]
         try:
             srv._write_streamed_bars([pushed[t] for t in (tk, other)], now)
             drained = threading.Event()
             loop.call_soon_threadsafe(drained.set)
             assert drained.wait(5)
+            told = {t: set(page.kinds) for t, page in pages}
         finally:
             for t, page in pages:
                 push_changes.unsubscribe(t, page)
-            del push_changes._change_listeners[f"{record.__module__}.{record.__qualname__}"]
             push_changes.bind(None)
             loop.call_soon_threadsafe(loop.stop)
             runner.join(5)
             loop.close()
-        assert changes == [("liquidity", tk), ("liquidity", other), ("levels", tk), ("levels", other)]
+        assert told == {tk: {"liquidity", "levels"}, other: {"liquidity", "levels"}}
         served = srv.levels_payload(tk, "1", now)
         assert served["generation"] is not None
         assert served["snapshot_as_of_ts_utc"] == pushed[tk]["bar_start_ms"] / 1000.0

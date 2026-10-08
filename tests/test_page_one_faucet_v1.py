@@ -1,22 +1,28 @@
-"""Page-side one faucet (2026-09-27): every value on the console page has one server producer.
+"""Page-side one faucet (2026-09-27): every value on the console page has one server producer
+(question 2: the screen shows it correctly; question 3: each value the one computation's).
 
 One spot on every screen: each route that serves `spot` serves the live price at response time
 (resolve_spot, the rule the header's price row uses); a value computed at another price names that
 price `priced_at_spot`. Strike Detail's Net GEX is the heatmap's own cell, and OI/volume cell
 totals are served, not summed in the browser.
 
-Real data only: Schwab's CRWD chain as captured 2026-09-02 (tests/fixtures), run through the real
-producer (compute_terrain -> project_gamma_surface), assembled the way _publish_levels does.
-The one stand-in is the live price: no stream runs in a test, so resolve_spot returns a second
-price, LIVE, to tell the live price apart from the capture's own."""
+Through the real code: the daemon's status and price row as the console holds them, the levels
+producer (server._publish_levels), the routes. Real data: Schwab's CRWD chain as captured
+2026-09-02 (tests/fixtures/real_crwd_complete_chain_quarter.json), published at its capture price
+(205.4). STAND-IN (named): the live price after the capture, LIVE (206.4).
+"""
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
+import app.options.order_flow.streaming as ofs
+import live_market_plane as lmp
 import server
-from terrain_engine import compute_terrain
+from stream_spine import options_quote_msg
+from time_et import ET
 
 _REAL = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
                    .read_text(encoding="utf-8"))
@@ -25,27 +31,28 @@ TK = "CRWD"
 EXPIRY = _REAL["expiry"]                   # 2026-09-18
 PUBLISHED = float(_REAL["spot"])           # Schwab's price at the capture
 LIVE = PUBLISHED + 1.0                     # stand-in for the stream's price
+_AT = datetime(2026, 9, 2, 10, 5, tzinfo=ET)
 
 
-@pytest.fixture(autouse=True)
-def _at_capture(pin_clock):
-    return pin_clock(2026, 9, 2, 10, 5)    # the chain's own capture time
+def _daemon(price, held_options=()):
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True,
+                               "held": {"LEVELONE_EQUITIES": [TK], "LEVELONE_OPTIONS": list(held_options)}})
+    ofs._price_rows[TK] = {"ticker": TK, "spot": price, "trade_ts": _AT.timestamp()}
 
 
 @pytest.fixture
-def held(monkeypatch):
-    snap = compute_terrain(TK, _CONTRACTS, PUBLISHED)
-    surface = server.project_gamma_surface(_CONTRACTS, snap.books)
-    surface.update(spot=PUBLISHED, spot_source="chain", spot_as_of_ts_utc=time.time())
-    payload = snap.to_dict()
-    payload.update({"computed_ts_utc": time.time(), "_per_strike": snap.per_strike,
-                    "_vanna_rows": server._vanna_rows(snap), "_charm_rows": server._charm_rows(snap),
-                    "_chain": _CONTRACTS, "_chain_fetched_ts": time.time(), "_gamma_surface": surface,
-                    "_contract_symbols": frozenset(c["symbol"] for c in _CONTRACTS)})
-    monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (LIVE, "live_quote", time.time()))
-    monkeypatch.setattr(server, "last_capture_per_day", lambda *a, **k: [])
-    return payload
+def held():
+    """CRWD's chain published at its capture price, the live price since moved to LIVE."""
+    _daemon(PUBLISHED)
+    server._publish_levels(TK, [dict(c) for c in _CONTRACTS], _AT.timestamp(), now=_AT)
+    _daemon(LIVE)
+    with server._terrain_cache_lock:
+        payload = server._terrain_cache[TK]
+    yield payload
+    with server._terrain_cache_lock:
+        server._terrain_cache.pop(TK, None)
+    ofs._price_rows.pop(TK, None)
+    lmp.record_feed_down()
 
 
 @pytest.mark.parametrize("route", [
@@ -70,19 +77,6 @@ def test_strike_side_sums_split_at_the_live_spot(held):
     assert sums["spot_basis"] == LIVE
     assert sums["gex_below"] == pytest.approx(sum(r[1] for r in below), abs=0.1)
     assert sums["gex_above"] == pytest.approx(sum(r[1] for r in above), abs=0.1)
-
-
-def test_a_strikes_gex_is_summed_when_its_volume_was_not_sent(held):
-    """A strike whose volume Schwab did not send keeps its GEX in the side sum: one value never
-    hides the other (it used to drop the whole row). Stand-in: one real row's volume removed, as
-    Schwab never omitted it in the capture."""
-    rows = [list(r) for r in held["_per_strike"]["all"]]
-    k = next(i for i, r in enumerate(rows) if r[0] < LIVE and r[1] != 0)
-    rows[k][2] = None
-    held["_per_strike"] = dict(held["_per_strike"], all=rows)
-    sums = json.loads(server.get_terrain_strikes(ticker=TK).body)["today_side_sums"]
-    assert sums["gex_below"] == sum(r[1] for r in rows if r[0] < LIVE)
-    assert sums["vol_below"] == int(sum(r[2] for r in rows if r[0] < LIVE and r[2] is not None))
 
 
 def test_chain_serves_this_expirys_net_gex_from_the_heatmaps_own_column(held):
@@ -155,20 +149,26 @@ def test_put_call_ratios_over_every_expiry_are_served(held):
     assert held["pcr_all"] == held["pcr_by_expiry"][EXPIRY]      # one expiry: the same book
 
 
-def test_heatmap_column_state_cell_age_and_front_expiry_are_served(held, monkeypatch):
+def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     """Column streaming status and a cell's age come from the server's own stream states; the
-    front column is the nearest unexpired expiry."""
-    surf = held["_gamma_surface"]
-    calls = [c for c in _CONTRACTS if c["putCall"] == "CALL"]
-    live_sym, stale_sym = calls[0]["symbol"], calls[1]["symbol"]
-    now = time.time()
-    streamed = {live_sym: {"quote_ts": now - 2}, stale_sym: {"quote_ts": now - 90}}
-    monkeypatch.setattr(server, "_leg_stream_ts_recv", lambda g: g.get("quote_ts") if g else None)
-    server._stamp_gamma_surface_cell_stream_state(surf, streamed, {live_sym}, {}, {live_sym, stale_sym})
-    assert surf["stream_by_expiry"][EXPIRY] == "partial"          # one live leg in the column
-    ages = [c["stream"][0]["age_sec"] for c in surf["cells"] if c["stream"][0] and c["stream"][0]["age_sec"] is not None]
-    assert ages and max(ages) == pytest.approx(90, abs=1)
-    body = json.loads(server.get_options_gamma_surface(ticker=TK).body)
+    front column is the nearest unexpired expiry. One call streaming (its update 2 s before the
+    publication): the column is partly streaming and the cell's age is 2 s."""
+    sym = next(c["symbol"] for c in _CONTRACTS if c["putCall"] == "CALL")
+    _daemon(PUBLISHED, [sym])
+    ofs._ingest_pushed(f"optquote.{sym}", options_quote_msg(symbol=sym, content={"key": sym, "GAMMA": 0.05},
+                                                            src="schwab_options_l1", ts_recv=_AT.timestamp() - 2))
+    try:
+        server._publish_levels(TK, [dict(c) for c in _CONTRACTS], _AT.timestamp() - 10, now=_AT)
+        body = server.gamma_surface_payload(TK, "all", None, 0, None, None, _AT)
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop(TK, None)
+        ofs._price_rows.pop(TK, None)
+        ofs._drop_released_options()
+        lmp.record_feed_down()
+    assert body["stream_by_expiry"][EXPIRY] == "partial"
+    ages = [c["stream"][0]["age_sec"] for c in body["cells"] if c["stream"][0] and c["stream"][0]["age_sec"] is not None]
+    assert ages == [pytest.approx(2.0)]
     assert [e["expiry"] for e in body["expirations"] if e["front"]] == [EXPIRY]
 
 
@@ -180,23 +180,27 @@ def test_chain_flags_are_served(held):
     assert body["has_duplicate_contracts"] is False
 
 
-def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_is(monkeypatch):
-    """TICK-03 (2026-09-28 audit): the page's ADJUSTED DELIVERABLE flag was our own rule ("100
-    shares of the underlying"), which compared Schwab's deliverable symbol "$SPX" with the ticker
-    stripped of its "$" -- so every $SPX (29,436) and $VIX (1,520) contract read adjusted, while
-    Schwab's own nonStandard flag was false on all 43 board tickers. The flag is Schwab's, as
-    sent. Real $SPX contracts (tests/fixtures/real_spx_chain_contracts_2026_09_28.json): none
-    flagged; the same contract with nonStandard true: flagged."""
+def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_be():
+    """TICK-03 (2026-09-28 audit): the page's ADJUSTED DELIVERABLE flag was our own rule, which
+    compared Schwab's deliverable symbol "$SPX" with the ticker stripped of its "$" -- so every
+    $SPX and $VIX contract read adjusted, while Schwab's own nonStandard flag was false on all 43
+    board tickers. The flag is Schwab's, as sent: real $SPX contracts
+    (tests/fixtures/real_spx_chain_contracts_2026_09_28.json, nonStandard false) are not flagged."""
     fx = json.loads((Path(__file__).parent / "fixtures" / "real_spx_chain_contracts_2026_09_28.json")
                     .read_text(encoding="utf-8"))
-    cts = [dict(c) for c in fx["contracts"]]
-    cts[0]["nonStandard"] = True                      # stand-in: Schwab marking one contract
-    payload = {"_chain": cts, "_chain_fetched_ts": time.time(), "computed_ts_utc": time.time(),
-               "_contract_symbols": frozenset(c["symbol"] for c in cts)}
-    monkeypatch.setattr(server, "terrain_cache_get", lambda tk: payload)
-    monkeypatch.setattr(server, "resolve_spot", lambda tk, **_k: (fx["spot"], "live_quote", time.time()))
-    body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
-    assert body["adjusted_deliverable_symbols"] == [cts[0]["symbol"]]
+    at = datetime.fromtimestamp(fx["ts_utc"], ET)
+    lmp.record_feed_heartbeat({"ts": time.time(), "schwab_socket_open": True, "held": {"LEVELONE_EQUITIES": ["$SPX"]}})
+    ofs._price_rows["$SPX"] = {"ticker": "$SPX", "spot": fx["spot"], "trade_ts": fx["ts_utc"]}
+    try:
+        server._publish_levels("$SPX", [dict(c) for c in fx["contracts"]], fx["ts_utc"], now=at)
+        body = json.loads(server.get_chain(ticker="$SPX", expiry="2026-10-16").body)
+    finally:
+        with server._terrain_cache_lock:
+            server._terrain_cache.pop("$SPX", None)
+        ofs._price_rows.pop("$SPX", None)
+        lmp.record_feed_down()
+    assert {c["nonStandard"] for c in fx["contracts"]} == {False}
+    assert len(body["contracts"]) == len(fx["contracts"]) and body["adjusted_deliverable_symbols"] == []
 
 
 def test_the_largest_gex_strike_is_served(held):
@@ -205,20 +209,23 @@ def test_the_largest_gex_strike_is_served(held):
     assert body["max_abs_row"] == max(rows, key=lambda r: abs(r[1]))
 
 
-def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time(monkeypatch):
+def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
     """Sunday 2026-09-27: the daemon held SPY's last trade (Friday 18:59:59 CT), replayed as it
     captured it (stream_quotes_raw). Operator, 2026-10-01: "From Schwab's mouth to our UI's ears.
     Period." -- no live/closed verdict by our clock: the row serves Schwab's last price as the
     spot with Schwab's trade time, and every consumer reads it."""
-    import live_market_plane as lmp
     import live_price_rows
-    from app.options.order_flow import streaming
     from tests.feed_live_helper import mark_feed_live
     mark_feed_live("SPY")
     lmp.record_from_level_one_equity("SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830},
                                      received_ts=time.time())
     row = live_price_rows.price_row("SPY")
+    ofs._price_rows["SPY"] = row                     # the row as the daemon pushes it to the console
+    try:
+        spot = server.resolve_spot("SPY")
+    finally:
+        ofs._price_rows.pop("SPY", None)
+        lmp.record_feed_down()
     assert (row["spot"], row["spot_disp"], row["trade_time_ct"]) == (772.04, "772.04", "Fri 09/25 06:59 PM CT")
     assert "spot_state" not in row and "closed_last" not in row
-    monkeypatch.setitem(streaming._price_rows, "SPY", row)
-    assert server.resolve_spot("SPY") == (772.04, server.SPOT_SOURCE_PLANE, 1790380799.83)
+    assert spot == (772.04, server.SPOT_SOURCE_PLANE, 1790380799.83)

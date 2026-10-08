@@ -11,7 +11,6 @@ import time
 
 import pytest
 
-import push_changes
 import stream_spine as ss
 from app.market_data.schwab.streaming import capture as cap
 
@@ -61,53 +60,42 @@ def test_news_and_every_subscription_answer_are_written(tmp_path):
 
 # ------------------------------------------------------------------ the console side
 
-@pytest.fixture
-def console(monkeypatch):
-    from app.options.order_flow import streaming as ofs
-    monkeypatch.setattr(push_changes, "_open", [])
-    monkeypatch.setattr(ofs, "_active_option_contract", None)
-    monkeypatch.setattr(ofs, "_active_option_contracts", [])
-    import live_market_plane as lmp
-    lmp.record_feed_down()
-    return ofs
-
-
-def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit(console):
+def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
     """ONE-15 (2026-09-28 audit): "is it live" had four limits -- 3 s (price), 5 s (daemon
     status), 10 s (option greeks), 25 s (book) -- plus the daemon's 5 s/30 s message-age states,
     so one moment could read live on one card and dead on the next. One rule now: the daemon's
     heartbeat is under FEED_HEARTBEAT_MAX_AGE_SEC, its Schwab socket is open, and it holds the
-    symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes)."""
+    symbol on that service. A service quiet for 45 s on that feed is live (Schwab sends changes).
+    STAND-IN (named): the daemon's status."""
     import live_market_plane as lmp
-    ofs = console
+    from app.options.order_flow import streaming as ofs
     status = {"schwab_socket_open": True,
               "health": {"OPTIONS_BOOK": {"age_sec": 45.0}},
-              "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]},
-              "refused": {"LEVELONE_OPTIONS": {"C": "code 19"}}}
+              "held": {"LEVELONE_EQUITIES": ["MU"], "LEVELONE_OPTIONS": ["B", "A"], "OPTIONS_BOOK": ["A"]}}
 
     def diag(sym):     # the served option-contract diagnostics for `sym`
         return ofs.get_option_contract_streaming_diagnostics(sym)
 
     def readers():
         return (lmp.feed_live_for("MU", "LEVELONE_EQUITIES"), lmp.feed_live_for("A", "LEVELONE_OPTIONS"),
-                diag("A")["feed_health"]["book"]["state"], ofs.is_option_producer_daemon_available())
+                diag("A")["feed_health"]["book"]["state"], diag("B")["subscription_state"])
 
-    def held(sym):
-        return diag(sym)["producer_l1_contract"], diag(sym)["producer_book_contract"]
-
-    assert readers() == (False, False, "NOT LIVE", False)
-    limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
-    lmp.record_feed_heartbeat({**status, "ts": time.time() - limit + 0.5})
-    assert readers() == (True, True, "LIVE", True)
-    assert diag("A")["feed_health"]["book"]["age_sec"] == 45.0
-    assert not lmp.feed_live_for("B", "OPTIONS_BOOK")               # held on L1 only
-    assert held("B") == ("B", "A")                                  # B held on L1, the book holds A
-    assert ofs.read_producer_rejected_option_contracts() == {"C": "code 19"}
-    lmp.record_feed_heartbeat({**status, "ts": time.time() - limit - 0.5})
-    assert readers() == (False, False, "NOT LIVE", False)
-    assert held("B") == (None, None)
-    lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": time.time()})
-    assert readers() == (False, False, "NOT LIVE", True)             # the daemon is up, Schwab is not
+    lmp.record_feed_down()
+    try:
+        down = readers()
+        limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
+        lmp.record_feed_heartbeat({**status, "ts": time.time() - limit + 0.5})
+        live, book_age, b_book = readers(), diag("A")["feed_health"]["book"]["age_sec"], lmp.feed_live_for("B", "OPTIONS_BOOK")
+        lmp.record_feed_heartbeat({**status, "ts": time.time() - limit - 0.5})
+        late = readers()
+        lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": time.time()})
+        schwab_down = readers()
+    finally:
+        lmp.record_feed_down()
+    assert down == late == (False, False, "NOT LIVE", "NOT STREAMED")
+    assert live == (True, True, "LIVE", "SUBSCRIBED") and book_age == 45.0
+    assert b_book is False                                            # B held on L1 only
+    assert schwab_down == (False, False, "NOT LIVE", "SUBSCRIBED")    # the daemon is up, Schwab is not
 
 
 # ------------------------------------------------------------------ the process

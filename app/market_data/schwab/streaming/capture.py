@@ -19,12 +19,14 @@ It does four things, in one loop:
 
   1. SUBSCRIBE Once per connection, every watchlist ticker on each equity service (with the
              market context the page header shows, MARKET_CONTEXT, on LEVELONE_EQUITIES,
-             CHART_EQUITY and NEWS_HEADLINE), and the option contracts the console names
-             ({"op": "options", "LEVELONE_OPTIONS": [...], "OPTIONS_BOOK": [...]}). A change to
-             the watchlist or the console's contracts is asked once: UNSUBS what left, then SUBS
-             (a service's first request) or ADD what came. Nothing asked is asked again on this
-             connection, whatever Schwab answered. Requests are split so none exceeds Schwab's
-             64 KB message limit (measured 2026-09-22: a 71 KB request closed the socket).
+             CHART_EQUITY and NEWS_HEADLINE), and the option contracts the option rule picks
+             (pick_options: the contract selected on the Flow panel, then the rest of Schwab's
+             limit on each option service split evenly across the watchlist, each ticker's
+             contracts nearest its own price, none expired). A change to the watchlist
+             or the picked contracts is asked once: UNSUBS what left, then SUBS (a service's first
+             request) or ADD what came. Nothing asked is asked again on this connection, whatever
+             Schwab answered. Requests are split so none exceeds Schwab's 64 KB message limit
+             (measured 2026-09-22: a 71 KB request closed the socket).
   2. ANSWERS Every Schwab answer is matched to its own request by its requestid, logged and
              recorded (stream_subscriptions) exactly as sent -- a refused ADD is answered twice
              (code 19, then code 24 "ADD command failed"), and both are its answers.
@@ -43,6 +45,7 @@ code 11 (not available) -- there is no trade-by-trade tape and no trade side.
 from __future__ import annotations
 
 import asyncio
+import bisect
 import json
 import logging
 import os
@@ -51,6 +54,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -69,6 +73,7 @@ if sys.stderr is None:
     print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} capture daemon loading (pid {os.getpid()})", file=sys.stderr)
 
 from stream_spine import (  # noqa: E402
+    LATEST,
     LOG,
     CaptureWriter,
     HealthRegistry,
@@ -85,6 +90,7 @@ from stream_spine import (  # noqa: E402
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT  # noqa: E402
 from calibration.complete_chain_capture import ChainSweep  # noqa: E402
 from instrument_identity import ticker_storage_key  # noqa: E402
+from numeric_contract import schwab_number  # noqa: E402
 from schwab_client import safe_get_quotes  # noqa: E402
 from time_et import ct_label  # noqa: E402
 
@@ -106,8 +112,11 @@ SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NYSE_BOOK", "NASDAQ_BOOK",
             "LEVELONE_OPTIONS", "OPTIONS_BOOK", "NEWS_HEADLINE")
 #: every watchlist ticker is streamed on each of these
 EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NASDAQ_BOOK")
-#: the option contracts the console names are streamed on these (OPTIONS_BOOK: its own list)
+#: the option contracts the option rule picks are streamed on these (OptionPick)
 OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
+#: Schwab's limit on each option service, as its own refusals on the daemon's connection state it
+#: (2026-10-07: "(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, DISCARDED=1)")
+OPTION_LIMITS = {"LEVELONE_OPTIONS": 3000, "OPTIONS_BOOK": 100}
 #: the market context every page's header shows (live_push.MARKET_CONTEXT) is streamed on these,
 #: whatever the watchlist holds
 MARKET_CONTEXT_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
@@ -186,6 +195,71 @@ def split_request(symbols: "list[str]", max_bytes: int = MAX_REQUEST_BYTES) -> "
     if cur:
         chunks.append(cur)
     return chunks
+
+
+# ---------------------------------------------------------------------------- the option rule
+
+@dataclass(frozen=True)
+class Ladder:
+    """One ticker's chain arranged for the option rule, its contracts not yet expired: its strikes
+    ascending and, at each strike, its contracts nearest expiration first, calls and puts alike;
+    `front_*` the same for its nearest expiration alone; `symbols` every contract it holds; `until`
+    the nearest expiration (once now passes it, the ladder is built again)."""
+    strikes: "tuple[float, ...]"
+    by_strike: "dict[float, tuple[str, ...]]"
+    front_strikes: "tuple[float, ...]"
+    front_by_strike: "dict[float, tuple[str, ...]]"
+    symbols: "frozenset[str]"
+    until: "float | None"
+
+
+def expiration_ts(ct: dict) -> "float | None":
+    """A contract's expiration, Schwab's own expirationDate ("2026-09-18T20:00:00.000+00:00"), as
+    a time; None when Schwab sent none or not a date (rule 2)."""
+    try:
+        return datetime.fromisoformat(ct["expirationDate"]).timestamp()
+    except (KeyError, TypeError, ValueError) as e:
+        log.warning("option rule: %s has no expirationDate as a date (%s: %s)", ct.get("symbol"),
+                    type(e).__name__, e)
+        return None
+
+
+def ladder(contracts: "list[dict]", now: float) -> Ladder:
+    """`contracts` (a chain as the sweep delivers it) as the option rule reads it at `now`: a
+    contract has expired once now passes its expirationDate, and is left out (it stays in the
+    records; it is never streamed); so is one whose strike or expiration is not a number (rule 2)."""
+    rows = []
+    for ct in contracts:
+        strike, expires = schwab_number(ct.get("strikePrice")), expiration_ts(ct)
+        if strike is not None and expires is not None and expires > now:
+            rows.append((expires, ct["putCall"], strike, ct["symbol"]))
+    front = min(r[0] for r in rows) if rows else None
+    by_strike: "dict[float, list[str]]" = {}
+    front_by: "dict[float, list[str]]" = {}
+    for expiry, _side, strike, symbol in sorted(rows):
+        by_strike.setdefault(strike, []).append(symbol)
+        if expiry == front:
+            front_by.setdefault(strike, []).append(symbol)
+    return Ladder(tuple(sorted(by_strike)), {k: tuple(v) for k, v in by_strike.items()},
+                  tuple(sorted(front_by)), {k: tuple(v) for k, v in front_by.items()},
+                  frozenset(r[3] for r in rows), front)
+
+
+def nearest(strikes: "tuple[float, ...]", by_strike: "dict[float, tuple[str, ...]]", price: float,
+            n: int) -> "list[str]":
+    """The `n` contracts nearest `price`: strike by strike outward from it (of two strikes equally
+    near, the lower first), each strike's contracts nearest expiration first; the last strike
+    taken only as far as `n` reaches."""
+    out: "list[str]" = []
+    hi = bisect.bisect_left(strikes, price)
+    lo = hi - 1
+    while len(out) < n and (lo >= 0 or hi < len(strikes)):
+        if hi >= len(strikes) or (lo >= 0 and price - strikes[lo] <= strikes[hi] - price):
+            strike, lo = strikes[lo], lo - 1
+        else:
+            strike, hi = strikes[hi], hi + 1
+        out.extend(by_strike[strike][:n - len(out)])
+    return out
 
 
 # ---------------------------------------------------------------------------- Schwab messages
@@ -320,23 +394,31 @@ SCHWAB_CONNECTING = "NOT CONNECTED: the stream is logging in, or its connection 
 
 
 class Daemon:
-    def __init__(self, bus: MessageBus, health: HealthRegistry, watchlist: "list[str]" = ()) -> None:
+    def __init__(self, bus: MessageBus, health: HealthRegistry, watchlist: "list[str]" = (), *,
+                 clock=time.time) -> None:
         self.bus = bus
         self.health = health
+        #: the time the option rule is applied at (pick_options' `now`, read where a pick starts)
+        self.clock = clock
         #: the one list of tickers Schwab is asked for, in its order (stored_watchlist at startup)
         self.watchlist: "list[str]" = list(watchlist)
-        #: the option contracts the console names, per option service, as it last said
+        #: the option contracts the option rule picked, per option service (pick_options)
         self.options: "dict[str, frozenset[str]]" = {s: frozenset() for s in OPTION_SERVICES}
-        #: the console connection whose contracts these are (live_push's socket)
-        self.sender = None
+        #: the contract Ed selected on the Flow panel (the console's {"op": "flow_contract"}),
+        #: streamed on both option services on top of the rule
+        self.flow_contract: "str | None" = None
+        #: the option rule's inputs per watchlist ticker: its newest whole chain (and as a Ladder)
+        #: and its newest LAST_PRICE, both as the bus has them (follow_market); and its pick
+        self._chains: "dict[str, list[dict]]" = {}
+        self._ladders: "dict[str, Ladder]" = {}
+        self._prices: "dict[str, float]" = {}
+        self._picked: "dict[str, dict[str, list[str]]]" = {}
         self.chains = None                  # the ChainSweep: its round time, its tickers
         self.writer = None                  # the CaptureWriter: its state rides the heartbeat
         self.schwab_client = None           # the daemon's one Schwab client (run): the checks
         #: what this connection has asked Schwab for, and what Schwab accepted (code 0)
         self.asked: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
         self.held: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
-        #: per service, each symbol Schwab refused on this connection, with Schwab's message
-        self.refused: "dict[str, dict[str, str]]" = {s: {} for s in SERVICES}
         #: requests waiting to be sent, and every request sent on this connection by requestid
         self._requests: "list[tuple[str, str, list[str]]]" = []
         self._sent: "dict[int, _Sent]" = {}
@@ -350,7 +432,7 @@ class Daemon:
 
     def wanted(self) -> "dict[str, frozenset[str]]":
         """What Schwab is asked for, per service: every watchlist ticker on each equity service,
-        the market context on MARKET_CONTEXT_SERVICES, and the console's option contracts."""
+        the market context on MARKET_CONTEXT_SERVICES, and the option contracts the rule picked."""
         out = {svc: frozenset(self.watchlist) for svc in EQUITY_SERVICES}
         for svc in MARKET_CONTEXT_SERVICES:
             out[svc] |= frozenset(MARKET_CONTEXT)
@@ -374,29 +456,91 @@ class Daemon:
             self.asked[svc] = want
         self.wake.set()
 
-    def set_options(self, raw, sender=None) -> None:
-        """The option contracts from console connection `sender` (live_push calls this for every
-        {"op": "options"} frame), per option service. `raw` None: that connection ended, and
-        withdraws the contracts only if they are its own (another connection's later list
-        stands)."""
-        if raw is None and sender is not self.sender:
+    def _ladder(self, tk: str, now: float) -> "Ladder | None":
+        """`tk`'s ladder at `now`: built again from its chain once its nearest expiration passed."""
+        lad = self._ladders.get(tk)
+        if lad is not None and lad.until is not None and now >= lad.until:
+            lad = self._ladders[tk] = ladder(self._chains[tk], now)
+        return lad
+
+    def pick_options(self, now: float) -> None:
+        """The option rule at `now`, every watchlist ticker the same. The contract selected on the
+        Flow panel streams on both option services when a watchlist ticker's chain lists it, not
+        expired; what is left of Schwab's limit on each option service (OPTION_LIMITS) is split
+        evenly across the watchlist: a ticker's share on LEVELONE_OPTIONS is its contracts nearest
+        its own price, calls and puts alike, of equally near ones the nearest expiration first; on
+        OPTIONS_BOOK, the same on its nearest expiration alone (nearest). A ticker without a chain
+        or a price yet has none. When the picked contracts change, the difference is asked once
+        (ask: one UNSUBS and one ADD per service)."""
+        ladders = {tk: self._ladder(tk, now) for tk in self.watchlist if tk in self._ladders}
+        flow = frozenset(c for c in [self.flow_contract] if any(c in lad.symbols for lad in ladders.values()))
+        self._picked = {}
+        for tk, lad in ladders.items():
+            if tk in self._prices:
+                price, n = self._prices[tk], len(self.watchlist)
+                self._picked[tk] = {
+                    "LEVELONE_OPTIONS": nearest(lad.strikes, lad.by_strike, price,
+                                                (OPTION_LIMITS["LEVELONE_OPTIONS"] - len(flow)) // n),
+                    "OPTIONS_BOOK": nearest(lad.front_strikes, lad.front_by_strike, price,
+                                            (OPTION_LIMITS["OPTIONS_BOOK"] - len(flow)) // n)}
+        new = {svc: flow | frozenset(s for p in self._picked.values() for s in p[svc]) for svc in OPTION_SERVICES}
+        if new == self.options:
             return
-        self.sender = None if raw is None else sender
-        new = {svc: frozenset() for svc in OPTION_SERVICES}
-        if raw is not None:
-            new = {svc: frozenset(str(s).strip().upper() for s in raw[svc]) for svc in OPTION_SERVICES}
+        log.info("option rule: %s", "; ".join(
+            f"{svc} {len(new[svc])} (+{len(new[svc] - self.options[svc])} -{len(self.options[svc] - new[svc])})"
+            for svc in OPTION_SERVICES))
         self.options = new
         self.ask()
 
-    def console_frame(self, req: "dict | None", sender) -> None:
-        """A frame from console connection `sender` (live_push): its option contracts
-        ({"op": "options"}) or a watchlist request ({"op": "watchlist"}, answered on the bus);
-        None: that connection ended."""
-        if req is None or req["op"] == "options":
-            return self.set_options(req, sender)
+    def _took_price(self, ticker: str, record: dict) -> None:
+        """A ticker's newest equity quote on the bus: a new LAST_PRICE redoes its pick."""
+        native = record["native"]
+        price = schwab_number(native["LAST_PRICE"]) if "LAST_PRICE" in native else None
+        if price is not None and price != self._prices.get(ticker):
+            self._prices[ticker] = price
+            self.pick_options(self.clock())
+
+    def _took_chain(self, ticker: str, record: list) -> None:
+        """A ticker's newest whole chain on the bus (its parts): its ladder, and the pick redone. A
+        failed fetch carries no contracts and changes nothing."""
+        if all("contracts" in part for part in record):
+            now = self.clock()
+            self._chains[ticker] = [ct for part in record for ct in part["contracts"]]
+            self._ladders[ticker] = ladder(self._chains[ticker], now)
+            self.pick_options(now)
+
+    async def follow_market(self, stop: asyncio.Event) -> None:
+        """The option rule's inputs, as the bus has them, until `stop`: each ticker's newest
+        whole chain (the chain sweep's) and newest equity quote; each change redoes that ticker's
+        pick (pick_options)."""
+        async def follow(prefix: str, take) -> None:
+            sub = self.bus.subscribe(prefix, policy=LATEST)
+            try:
+                while True:
+                    topic, record = await sub.get()
+                    take(topic.split(".", 1)[1], record)
+            finally:
+                self.bus.unsubscribe(sub)
+        tasks = [asyncio.create_task(follow("quote.", self._took_price)),
+                 asyncio.create_task(follow("chain.", self._took_chain))]
+        try:
+            await stop.wait()
+        finally:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    def console_frame(self, req: dict, sender) -> None:
+        """A frame from console connection `sender` (live_push): a watchlist request
+        ({"op": "watchlist"}, answered on the bus), or the contract selected on the Flow panel
+        ({"op": "flow_contract", "contract": symbol or null})."""
         if req["op"] == "watchlist":
             task = asyncio.ensure_future(self.watchlist_request(req))
             task.add_done_callback(_request_ended)
+        elif req["op"] == "flow_contract":
+            self.flow_contract = req["contract"]
+            log.info("flow contract: %s", self.flow_contract)
+            self.pick_options(self.clock())
 
     async def watchlist_request(self, req: dict) -> None:
         """One add or removal from the console ({"op": "watchlist", "action", "ticker", "id"}),
@@ -430,6 +574,7 @@ class Daemon:
         log.info("watchlist: %s %s; the list: %s", ticker, op, ",".join(self.watchlist))
         if self.chains is not None:
             self.chains.watchlist = list(self.watchlist)
+        self.pick_options(self.clock())                   # every ticker's share changes with the list
         self.ask()
         self.bus.publish(*watchlist_message(self.watchlist, op=op, ticker=ticker, request_id=rid, status=status,
                                             answer=answer))
@@ -452,7 +597,6 @@ class Daemon:
                 "watchlist": list(self.watchlist),
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
-                "refused": {k: dict(v) for k, v in self.refused.items() if v},
                 "health": self.health.report(now),
                 "writer": self.writer.status() if self.writer is not None else None}
 
@@ -489,9 +633,6 @@ class Daemon:
                 sent.service, sent.command, sent.answers, len(sent.symbols), rid, json.dumps(response))
         self.bus.publish(f"sub.{sent.service}", subscription_msg(
             service=sent.service, command=sent.command, symbols=sent.symbols, code=code, reason=msg))
-        if code != 0 and sent.command != "UNSUBS":       # shown on the heatmap's cells, never asked again
-            for sym in sent.symbols:                     # Schwab's first refusal says why (code 19's limit)
-                self.refused[sent.service].setdefault(sym, msg)
         if code != 0 or sent.answers > 1:
             return
         held = set(self.held[sent.service])
@@ -518,7 +659,6 @@ class Daemon:
         # a new connection has asked for nothing and holds nothing
         self.asked = {s: frozenset() for s in SERVICES}
         self.held = {s: frozenset() for s in SERVICES}
-        self.refused = {s: {} for s in SERVICES}
         self._requests, self._sent = [], {}
         self.schwab_down, self._down_since = SCHWAB_CONNECTING, None
         log.info("schwab: connected")
@@ -773,6 +913,7 @@ async def run() -> int:
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer)),
              asyncio.create_task(record_feed_status(daemon, stop)),
+             asyncio.create_task(daemon.follow_market(stop)),
              asyncio.create_task(serve_live_push(bus, stop, on_request=daemon.console_frame)),
              asyncio.create_task(serve_live_ui(bus, stop, heartbeat_fn=daemon.status))]
     try:

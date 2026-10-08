@@ -17,7 +17,7 @@ const SURFACE = { ticker: 'SPY', symbol: 'SPY', available: true, spot: 100, sour
   live: true, stale: false, age_sec: 3, chain_basis: 'full', complete: false,
   expirations: [{ expiry: '2026-09-18', dte: 2 }], strikes: [100],
   cells: [{ strike: 100, gex: [958600], contracts: [{ call: null, put: null }] }],
-  view: { centre: 100, scope: 'auto', coverage: null, demand: [], max_abs: { gex: 958600 }, missing_expiry: null } };
+  view: { centre: 100, scope: 'auto', coverage: null, max_abs: { gex: 958600 }, missing_expiry: null } };
 
 const TAPE_ROW = {
   ts_recv: 1789166557.5, symbol: 'SPY   260918C00600000', underlying: 'SPY',

@@ -1,8 +1,8 @@
 /* Ed Console — Options/Gamma "Flow" subview (D). PRESENTATION ONLY.
    Observes ONE explicitly-selected option contract's live microstructure via /api/order-flow/
-   options-microstructure. The desired contract + control lifecycle are owned by EdStream (the ONE
-   streaming-control writer) — this view never POSTs, never re-asserts, never constructs a symbol,
-   never recomputes book/flow semantics.
+   options-microstructure. The selection is this tab's own (window.EdFlow, set by a Chain click);
+   which contracts stream is the daemon's option rule, never the page's — this view never POSTs,
+   never constructs a symbol, never recomputes book/flow semantics.
    ONE canonical payload contract (app/options/order_flow/live_payload.py over engine.py):
      d.top_of_book / d.mid / d.microprice / d.spread_pts / d.depth / d.ages — book microstructure,
        classified by d.classification (engine keys, e.g. "top_of_book.bid", "mid", "depth.*.imbalance");
@@ -24,36 +24,24 @@
 
   function host() { return document.getElementById('flowBody'); }
 
-  // Independent-review finding (2026-09-12, state-authority review), REPRODUCED
-  // ("Flow resurrection"): a ticker switch calls EdStream.clearDesired() then load();
-  // with `desired` now null the old code path returned before ever invalidating a fetch
-  // still in flight for the PRIOR contract, so its late response could still land and
-  // paint under the new ticker's label. Fixed by checking desired identity AT RESOLUTION
-  // time (stillFlow) instead of a generation counter captured at issue time.
-  // Independent-review finding (2026-09-13), REPRODUCED ("Flow can repaint ACTIVE from an
-  // older observation after a newer subscription attempt has failed"): `stillFlow` checked
-  // only DESIRED-CONTRACT identity, not the CURRENT control state. Scenario: contract A is
-  // desired and accepted, a microstructure fetch for A starts; a reconnect/resubscribe
-  // attempt for the SAME desired contract A then fails (controlState() -> 'failed'), but
-  // the earlier in-flight fetch for A still resolves -- `desired` never changed, so the old
-  // check let it through and painted ACTIVE/live data over what should now read FAILED.
-  // Fixed: a response is only current if BOTH the desired contract AND the control state
-  // it was fetched under are still what they were.
-  function stillFlow(desired) {
-    return isFlow() && window.EdStream.getDesired() === desired && window.EdStream.controlState() === 'accepted';
+  // the selected contract (a Chain click), cleared by a ticker or expiry change; the daemon streams
+  // it on both option services on top of its rule (POST /api/flow-contract)
+  var _selected = null;
+  function setSelected(symbol) {
+    _selected = symbol;
+    fetch('/api/flow-contract', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contract: symbol }) }).then(load, load);
+    document.dispatchEvent(new CustomEvent('ed:contract', { detail: { contract: symbol } }));
   }
-  // Only the actual microstructure fetch is coalesced. The NONE/REQUESTED/FAILED branches are
-  // synchronous, state-authority-visible renders (no network) and must run the INSTANT load()
-  // is called -- never deferred behind a stale/hung fetch the coalescing loader is still
-  // waiting on. Reproduced exactly this way (2026-09-13): a ticker switch clears `desired` and
-  // must repaint Flow to NONE immediately even while a HUNG microstructure fetch for the OLD
-  // contract is still in flight; wrapping this whole function in the coalescing loader made
-  // that repaint wait for the hung fetch to settle (it never does), so the NONE state never
-  // appeared and the eventual late response was the only thing left to (wrongly) render.
-  //
-  // ROUND 8 (2026-09-13): the loader is now keyed on the desired contract symbol, so a held
-  // fetch for an ABANDONED contract is aborted immediately once a DIFFERENT contract becomes
-  // desired, instead of blocking the new contract's own first observation.
+  window.EdFlow = {
+    selected: function () { return _selected; },
+    select: setSelected,
+  };
+
+  // a response is current only while Flow is on screen and its contract is still the selected one
+  function stillFlow(desired) { return isFlow() && _selected === desired; }
+  // Only the microstructure fetch is coalesced, keyed on the contract: the NONE render runs at
+  // once, and a held fetch for a contract no longer selected is aborted.
   function loadImpl(desired, signal) {
     var h = host();
     if (!h || !stillFlow(desired)) return;
@@ -69,22 +57,17 @@
   var _loader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadImpl(_pendingDesired, signal); });
   function load() {
     var h = host(); if (!h || !isFlow()) return;
-    var desired = window.EdStream.getDesired();
-    var ctl = window.EdStream.controlState();
-    if (!desired) { return shell(h, null, 'NONE', 'Select a Call or Put contract in Chain.', null); }   // L: fail closed
-    if (ctl === 'requested') { return shell(h, desired, 'REQUESTED', 'control request sent — awaiting acknowledgement', null); }
-    if (ctl === 'failed') { return shell(h, desired, 'FAILED', 'control request was not accepted — no observation started', null); }
-    // I: only an ACCEPTED control request begins normal microstructure observation.
-    _pendingDesired = desired;
-    _loader.trigger(desired);
+    if (!_selected) { return shell(h, null, 'NONE', 'Select a Call or Put contract in Chain.', null); }
+    _pendingDesired = _selected;
+    _loader.trigger(_selected);
   }
 
-  // the queried contract's subscription, served (streaming_plane.subscription_state)
+  // the queried contract's subscription, served (streaming_plane.subscription_state): the
+  // daemon's option rule streams it (ACTIVE), or it does not (the served words)
   function subState(plane) {
     var s = (plane || {}).subscription_state;
     if (s === 'SUBSCRIBED') return { label: 'ACTIVE', cls: 'live' };
-    if (s === 'MOVED') return { label: 'MOVED', cls: 'stale' };
-    return { label: 'PENDING', cls: 'warn' };
+    return { label: s || '—', cls: 'stale' };
   }
 
   // The backend's classification string for one canonical key, verbatim — or null when the
@@ -190,10 +173,11 @@
     document.addEventListener('ed:view', load);           // fires on subview change too
     document.addEventListener('ed:contract', load);       // an explicit Chain selection
     document.addEventListener('ed:changed', function (e) { if (e.detail.kind === 'levels' || e.detail.kind === 'flow') load(); });
-    // E: a ticker or expiry-context change clears THIS tab's old contract intent LOCALLY (no POST,
-    // no fight for the slot). A fresh explicit selection is then required to observe again.
-    document.addEventListener('ed:ticker', function () { window.EdStream.clearDesired(); load(); });
-    document.addEventListener('ed:expiry', function () { window.EdStream.clearDesired(); load(); });
+    // a ticker or expiry change clears the selection; a fresh Chain click observes again
+    // a page that selected nothing releases nothing (another tab's selection stands)
+    function clearSelected() { if (_selected) setSelected(null); else load(); }
+    document.addEventListener('ed:ticker', clearSelected);
+    document.addEventListener('ed:expiry', clearSelected);
     // Audit finding #4 (2026-09-16): initial hydration now comes SOLELY from ed-core.js's
     // deferred ed:ticker/ed:view dispatch -- see that file's init() comment.
   }

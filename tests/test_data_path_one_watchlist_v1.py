@@ -7,8 +7,9 @@ it (streaming.serve_push) and its routes (server.post_watchlist, delete_watchlis
 Real data: Schwab's /quotes answers to SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as the
 watchlist check asks (2026-10-07; ZQZQZ is named in errors.invalidSymbols); Schwab's answers to an ADD
 past LEVELONE_OPTIONS' limit as logged on 2026-10-07 04:40:39 (code 19, then code 24 "ADD command
-failed"); SPY option contract symbols from SPY's captured 2026-11-20 chain. STAND-INS (named in the
-stand-ins): the streamer's login, a code-0 answer's message, the limit a test sets.
+failed"); SPY's captured 2026-11-20 chain with its stored price and MRVL's full chain, as the option
+rule's inputs on the daemon's bus. STAND-INS (named in the stand-ins): the streamer's login, a code-0
+answer's message, the limit a test sets; the daemon's clock at each chain's capture.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ import json
 import socket
 import threading
 import time
+from pathlib import Path
 
 import live_market_plane as lmp
 import push_changes
@@ -24,13 +26,14 @@ import server
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push
 from app.options.order_flow import streaming as ofs
-from calibration.complete_chain_capture import ChainSweep
-from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
-from tests.schwab_rest_standin import CHECKS, QUOTES, SPY_QUOTES, LocalSchwab
+from calibration.complete_chain_capture import ChainSweep, chain_messages
+from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
+from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
 from tests.schwab_stream_standin import LocalStreamer, refusal
 
-#: three of SPY's 2026-11-20 contracts, as Schwab's chain names them
-CONTRACTS = sorted(SPY_QUOTES)[:3]
+#: SPY's 2026-11-20 contracts (442) and the price stored with them
+SPY_CHAIN = json.loads((Path(__file__).parent / "fixtures" / "real_spy_2026_11_20_chain_and_quotes.json")
+                       .read_text(encoding="utf-8"))
 EQUITY = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NASDAQ_BOOK")
 
 
@@ -70,74 +73,89 @@ def _answers(log) -> "list[tuple[str, str, int, str]]":
     return out
 
 
+def _market(bus, ticker: str, contracts: "list[dict]", price: float, ts: float) -> None:
+    """`ticker`'s chain and price on the daemon's bus, as the chain sweep and the stream publish
+    them: the option rule's inputs."""
+    for topic, msg in chain_messages(ticker, contracts, ts):
+        bus.publish(topic, msg)
+    bus.publish(f"quote.{ticker}", quote_msg(symbol=ticker, last=price, src="schwab_l1",
+                                             native={"key": ticker, "LAST_PRICE": price}))
+
+
 def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_request(tmp_path):
     """2026-10-07 (stream_capture.log 04:40:39): Schwab answered a refused ADD twice, code 19 and
     then code 24, and every request after it was logged "unexpected requestid": each answer had
     been taken as the next request's. Now one reader matches each answer to its request by its
     requestid. Every watchlist ticker is asked for on each equity service and the header's
-    market context on quotes, bars and news, in one request per service; the console's three
-    contracts on LEVELONE_OPTIONS past a limit of two get Schwab's refusal, both answers recorded
-    as sent, and nothing is asked again."""
+    market context on quotes, bars and news, in one request per service; SPY's 442 2026-11-20
+    contracts on LEVELONE_OPTIONS past a limit of 2 (a stand-in limit) get Schwab's refusal, both
+    answers recorded as sent, and nothing is asked again."""
     schwab = _Schwab(tmp_path, limits={"LEVELONE_OPTIONS": 2})
     bus = MessageBus()
     log = bus.subscribe("sub.", policy=LOG)
-    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY", "TSLA"])
-    daemon.set_options({"op": "options", "LEVELONE_OPTIONS": CONTRACTS, "OPTIONS_BOOK": CONTRACTS[:1]}, "console")
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY", "TSLA"], clock=lambda: SPY_CHAIN["capture_ts_utc"])
+    symbols = sorted(c["symbol"] for c in SPY_CHAIN["chain"])
 
     async def go():
         stop = asyncio.Event()
-        run = asyncio.create_task(daemon.run(lambda: schwab.client, stop))
+        tasks = [asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
+                 asyncio.create_task(daemon.follow_market(stop))]
+        _market(bus, "SPY", SPY_CHAIN["chain"], SPY_CHAIN["spot"], SPY_CHAIN["capture_ts_utc"])
         await _until(lambda: len(schwab.streamer.answers) >= 9)          # login + 7 requests, one answered twice
         await asyncio.sleep(0.5)
         daemon.ask()                                                     # nothing changed: nothing is asked
         await asyncio.sleep(0.5)
-        connected = (dict(daemon.held), {k: dict(v) for k, v in daemon.refused.items()}, daemon.status())
+        connected = dict(daemon.held)
         stop.set()
-        await asyncio.wait_for(run, 10)
+        await asyncio.wait_for(asyncio.gather(*tasks), 10)
         return connected
     try:
-        held, refused, status = asyncio.run(go())
+        held = asyncio.run(go())
     finally:
         schwab.close()
     asked = [(r["service"], r["command"], sorted(r["parameters"]["keys"].split(",")))
              for r in schwab.streamer.requests if r["service"] != "ADMIN"]
     context = sorted(["SPY", "TSLA", *MARKET_CONTEXT])
+    book = sorted(daemon.options["OPTIONS_BOOK"])
+    assert len(book) == 50                                               # SPY's half of 100
     assert sorted(asked) == sorted([*[(svc, "SUBS", context) for svc in ("LEVELONE_EQUITIES", "CHART_EQUITY",
                                                                          "NEWS_HEADLINE")],
                                     *[(svc, "SUBS", ["SPY", "TSLA"]) for svc in ("NYSE_BOOK", "NASDAQ_BOOK")],
-                                    ("LEVELONE_OPTIONS", "SUBS", CONTRACTS), ("OPTIONS_BOOK", "SUBS", CONTRACTS[:1])])
+                                    ("LEVELONE_OPTIONS", "SUBS", symbols), ("OPTIONS_BOOK", "SUBS", book)])
     answers = _answers(log)
     assert [a for a in answers if a[0] == "LEVELONE_OPTIONS"] == [
-        ("LEVELONE_OPTIONS", "SUBS", 19, refusal("LEVELONE_OPTIONS", 2, 1)),
+        ("LEVELONE_OPTIONS", "SUBS", 19, refusal("LEVELONE_OPTIONS", 2, len(symbols) - 2)),
         ("LEVELONE_OPTIONS", "SUBS", 24, "SUBS command failed")], "both of Schwab's answers, as sent"
     assert all(code == 0 for svc, _c, code, _m in answers if svc != "LEVELONE_OPTIONS"), answers
     assert held["NYSE_BOOK"] == {"SPY", "TSLA"} and held["LEVELONE_OPTIONS"] == frozenset()
-    assert refused["LEVELONE_OPTIONS"] == dict.fromkeys(CONTRACTS, refusal("LEVELONE_OPTIONS", 2, 1))
-    assert status["refused"] == {"LEVELONE_OPTIONS": refused["LEVELONE_OPTIONS"]}
 
 
 def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_path):
     """MRVL's 2,432 contracts (its full chain as Schwab sent it, tests/fixtures/
-    real_mrvl_full_chain_vs_strike_window.json) are more than one request carries, so the
-    subscription is sent in parts. A SUBS replaces all a service holds (measured live 2026-10-07:
-    of 3,001 contracts sent as SUBS 2,181 + SUBS 819 + ADD 1, only the last 820 ever updated), so
-    only the first part is SUBS and the rest ADD: Schwab holds them all."""
+    real_mrvl_full_chain_vs_strike_window.json), MRVL alone on the watchlist so the rule streams
+    every one, are more than one request carries, so the subscription is sent in parts. A SUBS
+    replaces all a service holds (measured live 2026-10-07: of 3,001 contracts sent as SUBS 2,181 +
+    SUBS 819 + ADD 1, only the last 820 ever updated), so only the first part is SUBS and the rest
+    ADD: Schwab holds them all."""
     from pathlib import Path
 
     from schwab_client import flatten_chain_contracts
     mrvl = json.loads((Path(__file__).parent / "fixtures" / "real_mrvl_full_chain_vs_strike_window.json")
                       .read_text(encoding="utf-8"))
-    symbols = sorted(ct["symbol"] for ct in flatten_chain_contracts(mrvl["full"]))
+    contracts = flatten_chain_contracts(mrvl["full"])
+    symbols = sorted(ct["symbol"] for ct in contracts)
     schwab = _Schwab(tmp_path)
-    daemon = capture.Daemon(MessageBus(), HealthRegistry())
-    daemon.set_options({"op": "options", "LEVELONE_OPTIONS": symbols, "OPTIONS_BOOK": []}, "console")
+    bus = MessageBus()
+    daemon = capture.Daemon(bus, HealthRegistry(), ["MRVL"], clock=lambda: mrvl["captured_utc"])
 
     async def go():
         stop = asyncio.Event()
-        run = asyncio.create_task(daemon.run(lambda: schwab.client, stop))
+        tasks = [asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
+                 asyncio.create_task(daemon.follow_market(stop))]
+        _market(bus, "MRVL", contracts, mrvl["full"]["underlying"]["last"], mrvl["captured_utc"])
         await _until(lambda: len(daemon.held["LEVELONE_OPTIONS"]) == len(symbols))
         stop.set()
-        await asyncio.wait_for(run, 10)
+        await asyncio.wait_for(asyncio.gather(*tasks), 10)
     try:
         asyncio.run(go())
     finally:
@@ -174,12 +192,11 @@ def test_a_dropped_connection_subscribes_once_again_with_one_session_at_a_time(t
 
 def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
     """A request unanswered for REQUEST_TIMEOUT_SEC means the connection is broken: it ends with
-    that reason (Schwab's streamer here takes OPTIONS_BOOK requests and never answers them)."""
+    that reason (Schwab's streamer here takes NYSE_BOOK requests and never answers them)."""
     schwab = _Schwab(tmp_path)
     answer = schwab.streamer.answer
-    schwab.streamer.answer = lambda req: [] if req["service"] == "OPTIONS_BOOK" else answer(req)
-    daemon = capture.Daemon(MessageBus(), HealthRegistry())
-    daemon.set_options({"op": "options", "LEVELONE_OPTIONS": [], "OPTIONS_BOOK": CONTRACTS[:1]}, "console")
+    schwab.streamer.answer = lambda req: [] if req["service"] == "NYSE_BOOK" else answer(req)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
     started = time.monotonic()
 
     async def go():
@@ -189,7 +206,7 @@ def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
             asyncio.run(asyncio.wait_for(go(), capture.REQUEST_TIMEOUT_SEC + 10))
             raise AssertionError("the connection did not end")
         except ConnectionError as e:
-            assert str(e) == f"no answer to OPTIONS_BOOK SUBS in {capture.REQUEST_TIMEOUT_SEC:.0f} s"
+            assert str(e) == f"no answer to NYSE_BOOK SUBS in {capture.REQUEST_TIMEOUT_SEC:.0f} s"
     finally:
         schwab.close()
     assert time.monotonic() - started >= capture.REQUEST_TIMEOUT_SEC
@@ -283,32 +300,6 @@ def test_with_the_watchlist_empty_the_sweep_asks_for_nothing_and_waits(tmp_path,
     assert not [r for r in caplog.records if "chain rotation" in r.getMessage()], "no rotation of nothing"
 
 
-def test_the_contracts_a_console_named_are_withdrawn_when_its_connection_ends():
-    """The daemon holds the option contracts of the console connection that sent them last; that
-    connection ending withdraws them, and another connection ending (an old one noticed closed
-    after the console reconnected) does not."""
-    daemon = capture.Daemon(MessageBus(), HealthRegistry())
-    a, b = object(), object()
-    daemon.console_frame({"op": "options", "LEVELONE_OPTIONS": CONTRACTS[:1], "OPTIONS_BOOK": []}, a)
-    daemon.console_frame({"op": "options", "LEVELONE_OPTIONS": CONTRACTS[1:2], "OPTIONS_BOOK": []}, b)
-    daemon.console_frame(None, a)                                        # the old connection's end
-    assert daemon.wanted()["LEVELONE_OPTIONS"] == frozenset(CONTRACTS[1:2])
-    daemon.console_frame(None, b)                                        # the console's own connection ends
-    assert daemon.wanted()["LEVELONE_OPTIONS"] == frozenset()
-
-
-def test_the_console_names_its_option_contracts_for_the_daemon():
-    """The primary contract on LEVELONE_OPTIONS and OPTIONS_BOOK, the views' contracts on
-    LEVELONE_OPTIONS: the frame the console sends the daemon."""
-    try:
-        ofs.set_active_option_contract(CONTRACTS[0])
-        ofs.set_active_option_contracts(CONTRACTS[1:])
-        assert ofs.current_options() == {"op": "options", "LEVELONE_OPTIONS": CONTRACTS, "OPTIONS_BOOK": CONTRACTS[:1]}
-    finally:
-        ofs.set_active_option_contracts([])
-        ofs.clear_active_option_contract(reason="test end")
-
-
 def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so_first():
     """The gamma surface's reason for a ticker with no surface (server.get_options_gamma_surface):
     on the watchlist it warms (its chain is coming); off it, it says it is not on the watchlist;
@@ -340,28 +331,6 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
             server._terrain_cache.pop(on, None)
         server._terrain_refresh_last_error.pop(on, None)
         lmp.record_feed_down()
-
-
-def test_the_ticker_on_screen_is_the_newest_open_page_and_asks_schwab_for_nothing():
-    """One rule: the ticker on screen is the newest page still open (its /api/changes stream), in
-    the order the pages open and close; it decides nothing the daemon asks Schwab for (the
-    console's frame to the daemon names option contracts only)."""
-    async def open_page(tk):
-        stream = (await server.get_changes(ticker=tk)).body_iterator
-        await stream.__anext__()                            # the page's connection is streaming
-        return stream
-
-    async def go():
-        a = await open_page("ZZPAGEA")
-        b = await open_page("ZZPAGEB")
-        seen = [push_changes.on_screen(), set(ofs.current_options())]
-        await b.aclose()
-        seen.append(push_changes.on_screen())
-        await a.aclose()
-        return seen
-    on_b, frame, on_a = asyncio.run(go())
-    assert (on_b, on_a) == ("ZZPAGEB", "ZZPAGEA")
-    assert frame == {"op", "LEVELONE_OPTIONS", "OPTIONS_BOOK"}
 
 
 def test_the_page_is_told_the_market_context_with_its_display_names():
