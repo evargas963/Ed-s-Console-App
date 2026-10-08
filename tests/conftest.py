@@ -72,6 +72,24 @@ def _remove_pytest_runtime_after_session():
     shutil.rmtree(_PYTEST_RUNTIME_ROOT, ignore_errors=True)
 
 
+#: Schwab's /markets answers for every date it would answer on 2026-10-07 (2026-09-30 to
+#: 2027-10-07, and its 400 for each side), as sent
+MARKETS_ANSWERS = Path(__file__).parent / "fixtures" / "real_schwab_markets_2026_10_07.json"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _markets_answers_held():
+    """Every process holds what the daemon has asked Schwab's /markets (the console takes each
+    answer as the daemon publishes it): each 200 answer captured 2026-10-07 is held through
+    the one intake, time_et.record_markets."""
+    import json
+
+    from time_et import record_markets
+    for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
+        if a["status"] == 200:
+            record_markets(json.loads(a["body"]))
+
+
 @pytest.fixture(autouse=True)
 def _live_feed_starts_down():
     """live_market_plane's feed state (the daemon heartbeat) is process-global: every test
@@ -84,31 +102,20 @@ def _live_feed_starts_down():
 
 
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
-    """The newest ET date the market calendar admits, at or before `on_or_before` (today).
-
-    RC-306. Fixtures that need a session date had two obvious sources and both are wrong.
-    A hard-coded date goes stale against readers that default to today — that broke twice
-    across 2026-07-30. The wall clock does not go stale, but it does not know about
-    weekends or holidays, and RC-278 gave the accrual writers `is_trading_day_et` as their
-    calendar authority, so on a Saturday a clock-derived fixture hands the writer a date
-    the writer is REQUIRED to reject. Five tests then failed two days in seven while
-    reporting nothing about the code.
-
-    The third source is the authority itself. Drawing the fixture date from the same
-    function the code validates against means the test can no longer disagree with the
-    calendar, and there is no literal to rot.
-    """
-    from time_et import ET, is_trading_day_et
+    """The newest ET date at or before `on_or_before` (today) that Schwab's /markets answers
+    held say the market was open (the same answers the code reads, so the test cannot disagree
+    with them)."""
+    from time_et import ET, session
 
     day = on_or_before or datetime.now(ET).date()
     for _ in range(14):          # the longest market closure gap is far under two weeks
-        if is_trading_day_et(day.isoformat()):
+        s = session(day.isoformat())
+        if s is not None and s.is_open:
             return day
         day -= timedelta(days=1)
     raise AssertionError(
-        f"no trading day found in the 14 ET days before {on_or_before or 'today'} — "
-        "the market calendar authority (time_et.is_trading_day_et) is answering False "
-        "for every date, which is a calendar defect, not a fixture one")
+        f"no open day in Schwab's /markets answers held in the 14 ET days before "
+        f"{on_or_before or 'today'} ({MARKETS_ANSWERS.name} covers 2026-09-30 to 2027-10-07)")
 
 
 @pytest.fixture(autouse=True)

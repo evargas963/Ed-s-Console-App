@@ -345,10 +345,11 @@ def test_d5_a_daemon_status_that_waited_in_a_queue_is_not_current():
         lmp.record_feed_down()
 
 
-# ── D5 for the chains: the sweep by the session calendar ────────────────────────────────────
+# ── D5 for the chains: the sweep by each ticker's option market, as Schwab's /markets sends it ──
 # The real ChainSweep on its thread (work), its clock an input, against the local stand-in for
-# Schwab's host (tests/schwab_rest_standin.py: SPY and TSLA; an expiry that has passed by the
-# clock's date is not asked for, so a ticker can deliver a chain with no contracts).
+# Schwab's host (tests/schwab_rest_standin.py: SPY and TSLA, and Schwab's /markets answers
+# captured 2026-10-07; an expiry that has passed by the clock's date is not asked for, so a
+# ticker can deliver a chain with no contracts, and then its option market is not known).
 
 def _et(s: str) -> float:
     return datetime.fromisoformat(s).replace(tzinfo=ET).timestamp()
@@ -356,14 +357,19 @@ def _et(s: str) -> float:
 
 class _Swept:
     """The sweep (the watchlist `watchlist`) on its thread at `clock["now"]`; `chains` is each
-    ticker whose chain it delivered, in order."""
+    ticker whose chain it delivered, in order, `delivered` the clock at each delivery."""
 
     def __init__(self, tmp_path, at: str, watchlist: "list[str]"):
         self.clock = {"now": _et(at)}
         self.chains: "list[str]" = []
+        self.delivered: "list[float]" = []
         self.schwab = LocalSchwab()
-        self.sweep = ChainSweep(tmp_path / "ed_console.db", watchlist,
-                                lambda topic, msg: "contracts" in msg and self.chains.append(msg["ticker"]),
+
+        def publish(topic, msg):
+            if "contracts" in msg and msg["part"] == 0:
+                self.chains.append(msg["ticker"])
+                self.delivered.append(msg["ts_recv"])
+        self.sweep = ChainSweep(tmp_path / "ed_console.db", watchlist, publish,
                                 clock=lambda: self.clock["now"],
                                 failures=CaptureWriter(tmp_path / "stream_capture.db"),
                                 streamed=lambda symbol: None)
@@ -386,39 +392,24 @@ class _Swept:
         self.schwab.close()
 
 
-@pytest.mark.parametrize("at", ["2026-10-01 05:00", "2026-10-01 10:00", "2026-10-01 17:00",
-                                "2026-11-27 14:00"],
-                         ids=["pre-market", "rth", "after-hours", "after-hours-of-an-early-close"])
-def test_d5_in_every_open_session_the_sweep_fetches_without_end(tmp_path, at):
-    swept = _Swept(tmp_path, at, ["SPY", "TSLA"])
+@pytest.mark.parametrize("at", ["2026-10-01 10:00", "2026-11-20 15:30"], ids=["rth", "its-expiry-day"])
+def test_d5_while_its_option_market_is_open_a_ticker_is_fetched_without_end(tmp_path, at):
+    swept = _Swept(tmp_path, at, ["SPY"])
     try:
-        chains = swept.until(4)
+        chains = swept.until(3)
     finally:
         swept.close()
-    assert sorted(chains[:2]) == sorted(chains[2:4]) == ["SPY", "TSLA"], \
-        "every watchlist ticker in each rotation, and again, without end"
+    assert chains[:3] == ["SPY"] * 3, "fetched again and again while SPY's options (EQO) trade"
 
 
-def test_d5_once_closed_every_watchlist_ticker_is_fetched_once_then_nothing_until_the_next_session(tmp_path):
-    swept = _Swept(tmp_path, "2026-10-02 20:00", ["SPY", "TSLA"])  # Friday, the moment the market closes
-    try:
-        closing = swept.until(2)                                 # the close values
-        for later in ("2026-10-03 12:00", "2026-10-04 23:59", "2026-10-05 03:59"):
-            swept.clock["now"] = _et(later)
-            assert swept.until(3) == closing, later
-        swept.clock["now"] = _et("2026-10-05 04:00")             # Monday pre-market
-        opened = swept.until(4)
-    finally:
-        swept.close()
-    assert sorted(closing) == ["SPY", "TSLA"], "every watchlist ticker's close values, once"
-    assert sorted(opened[2:4]) == ["SPY", "TSLA"]
-
-
-@pytest.mark.parametrize("at", ["2026-10-03 12:00", "2026-11-26 12:00", "2026-10-01 02:00"],
-                         ids=["saturday", "thanksgiving", "a-weeknight"])
-def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_an_added_ticker_once(tmp_path, at):
-    """While Closed each watchlist ticker's close values are fetched once, a ticker added to the
-    watchlist while Closed too, and then nothing: the close values stand, and none is made up."""
+@pytest.mark.parametrize("at", ["2026-10-01 05:00", "2026-10-01 17:00", "2026-11-27 14:00", "2026-10-03 12:00",
+                                "2026-11-26 12:00", "2026-10-01 02:00"],
+                         ids=["stock-pre-market", "stock-after-hours", "after-an-early-close", "saturday",
+                              "thanksgiving", "a-weeknight"])
+def test_d5_outside_its_option_session_a_ticker_is_fetched_once_and_an_added_ticker_once(tmp_path, at):
+    """Outside the option market's regular session Schwab sent -- the stock market's pre-market
+    and after hours included -- each ticker's close values are fetched once, a ticker added to
+    the watchlist then too, and then nothing: the close values stand, and none is made up."""
     swept = _Swept(tmp_path, at, ["SPY"])
     try:
         assert swept.until(1) == ["SPY"]
@@ -427,6 +418,38 @@ def test_d5_a_daemon_started_while_closed_fetches_the_close_values_once_and_an_a
         assert swept.until(3) == ["SPY", "TSLA"]
     finally:
         swept.close()
+
+
+def test_d5_at_the_option_close_a_ticker_is_fetched_once_more_then_nothing_until_the_next_open(tmp_path):
+    """Friday 2026-10-02: fetched without end until Schwab's EQO close (16:00 ET), once more begun
+    after it (the close values), nothing through the weekend and Monday's stock pre-market, and
+    again from Monday's 09:30 open. Counted by the chain requests Schwab's host received after each
+    move of the clock (the stand-in records when each request arrived)."""
+    def chain_requests_since(mark: float) -> int:
+        return sum(1 for path, _q, started, *_ in swept.schwab.requests
+                   if path == "/marketdata/v1/chains" and started > mark)
+
+    swept = _Swept(tmp_path, "2026-10-02 15:59", ["SPY"])
+    try:
+        swept.until(2)
+        closed = time.monotonic()
+        swept.clock["now"] = _et("2026-10-02 16:00:30")
+        swept.until(len(swept.chains) + 2)
+        after_close = chain_requests_since(closed)
+        weekend = time.monotonic()
+        for later in ("2026-10-03 12:00", "2026-10-05 09:29"):
+            swept.clock["now"] = _et(later)
+            swept.until(len(swept.chains) + 1)
+        quiet = chain_requests_since(weekend)
+        opened = time.monotonic()
+        swept.clock["now"] = _et("2026-10-05 09:30")
+        swept.until(len(swept.chains) + 2)
+        reopened = chain_requests_since(opened)
+    finally:
+        swept.close()
+    assert after_close == 1, "one chain asked after the close: the close values"
+    assert quiet == 0, "nothing asked through the weekend and Monday's stock pre-market"
+    assert reopened >= 2, "asked again and again from Monday's open"
 
 
 def test_d5_a_close_fetch_that_fails_is_tried_again_at_once_until_it_lands(tmp_path):
@@ -456,8 +479,9 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
         "in session, an hour-old chain is a gap"
 
 
-#: Schwab's SPY and TSLA bars as the capture daemon recorded them, Mon 2026-09-29 and Tue 09-30
-_DAEMON_0929 = daemon_bars("real_daemon_bars_spy_tsla_2026_09_29_30.json")
+#: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02
+#: (sessions Schwab's /markets answers; tests/conftest.py)
+_DAEMON_BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
 _PAIR = ("SPY", "TSLA")
 
 
@@ -484,22 +508,22 @@ def _forget(*tickers: str) -> None:
 
 
 def test_d5_while_closed_the_price_levels_are_the_last_sessions():
-    """Schwab's SPY and TSLA bars of Mon 2026-09-29 and Tue 09-30 as the capture daemon recorded
-    them, streamed to the console, valued at Wed 10-01 03:00 ET (Closed): the levels served are
-    Tuesday's session's, its VWAP, value area and opening range, never an empty day's
+    """Schwab's SPY and TSLA bars of Thu 2026-10-01 and Fri 10-02 as the capture daemon recorded
+    them, streamed to the console, valued at Sat 10-03 12:00 ET (Closed): the levels served are
+    Friday's session's, its VWAP, value area and opening range, never an empty day's
     (2026-10-04: every ticker showed "no RTH volume" all weekend)."""
-    closed = datetime(2026, 10, 1, 3, 0, tzinfo=ET)
+    closed = datetime(2026, 10, 3, 12, 0, tzinfo=ET)
     _forget(*_PAIR)
     try:
-        stream_daemon_bars(_DAEMON_0929)
+        stream_daemon_bars(_DAEMON_BARS)
         for tk in _PAIR:
             server._publish_price_levels(tk, closed)
             body = server.levels_payload(tk, "1", closed)
             served = {r["id"]: r["price"] for r in body["levels"]}
             assert {"VWAP", "TODAY_POC", "TODAY_VAH", "TODAY_VAL", "ORB_HIGH", "ORB_LOW"} <= set(served), (tk, body["families_absent"])
             assert not {"vwap", "value_area", "opening_range"} & {f["family"] for f in body["families_absent"]}, tk
-            assert body["snapshot_as_of_ts_utc"] == _newest(_DAEMON_0929, tk)[-1]["bar_start_ms"] / 1000, tk
-            assert served["PDH"] == max(r["high"] for r in _rth(_DAEMON_0929, tk, "2026-09-29")), tk
+            assert body["snapshot_as_of_ts_utc"] == _newest(_DAEMON_BARS, tk)[-1]["bar_start_ms"] / 1000, tk
+            assert served["PDH"] == max(r["high"] for r in _rth(_DAEMON_BARS, tk, "2026-10-01")), tk
     finally:
         _forget(*_PAIR)
 
@@ -512,9 +536,11 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
     minute stands over Schwab's history of it. Real data: SPY's and TSLA's /pricehistory 1-minute
     answers of 2026-10-07 09:57 UTC (10 days, through 05:59 ET), each pushed as the daemon builds
     its message (complete_chain_capture.price_history_message), and each ticker's newest streamed
-    receipt of Tue 2026-09-30 as the daemon recorded it."""
+    receipt of Fri 2026-10-02 as the daemon recorded it. The bar writer builds the levels of the
+    session at its own clock (an entry point), so they are read at now: the newest session in the
+    history before it is Tue 10-06."""
     from calibration.complete_chain_capture import price_history_message
-    pushed = [_newest(_DAEMON_0929, tk)[-1] for tk in _PAIR]
+    pushed = [_newest(_DAEMON_BARS, tk)[-1] for tk in _PAIR]
     history = {tk: price_history(tk, "1m") for tk in _PAIR}
     _forget(*_PAIR)
     while not ofs.streamed_bars.empty():

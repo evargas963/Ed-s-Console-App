@@ -62,9 +62,10 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
    rest — ENF-04.
 8. **All tickers.** Measure and report across the board, never one ticker.
    Enforced by: no machine check — ENF-05.
-9. **Clocks.** Market logic in ET; the UI shows Central Time.
-   Enforced by: `tests/test_time_et_authority.py`, `tests/test_session_calendar_authority_v1.py`
-   (ET); the Central Time display — ENF-06.
+9. **Clocks.** Market logic in ET; the UI shows Central Time. The market's sessions are Schwab's
+   /markets answers; no session table is typed by hand.
+   Enforced by: `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py`
+   (ET, Schwab's sessions); the Central Time display — ENF-06.
 10. **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code.
     A stand-in (e.g. the live price) is named in the test.
     Enforced by: no machine check — ENF-07.

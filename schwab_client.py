@@ -122,7 +122,7 @@ def request_sent(request: httpx.Request) -> None:
 
 def log_request(response: httpx.Response) -> None:
     """Every request to Schwab, once, when its answer is in: the endpoint, the symbol (or how many
-    symbols, and the expiration asked for), the status, and when it was sent and answered. An
+    symbols, and the expiration or market date asked for), the status, and when it was sent and answered. An
     answer that is not a success also carries Schwab's body and headers as sent; the token
     endpoint's body (it holds tokens) and the request's headers (the bearer token) never are."""
     response.read()
@@ -132,7 +132,7 @@ def log_request(response: httpx.Response) -> None:
     params = req.url.params
     what = " ".join(filter(None, [path, params.get("symbol"),
                                   f"{len(params['symbols'].split(','))} symbols" if "symbols" in params else None,
-                                  params.get("fromDate")]))
+                                  params.get("fromDate"), params.get("date")]))
     line = (f"REST {req.method} {what} -> {response.status_code}"
             f" (sent {ct_clock(req.extensions['sent'])}, answered {ct_clock(answered)})")
     if response.status_code < 400:

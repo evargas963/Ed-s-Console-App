@@ -7,16 +7,15 @@ End to end through the real code: the daemon's status (live_market_plane.record_
 its pushed option messages applied by the console (streaming._ingest_pushed), its price row,
 the levels producer (server._publish_levels) and the heatmap route's answer at a time
 (server.gamma_surface_payload).
-Real data: CRWD's captured chain (tests/fixtures/real_crwd_complete_chain_quarter.json, 2026-09-02,
-spot 205.4, one expiration), valued at its capture. STAND-INS (named): each streamed value of a
-CRWD contract, and the daemon's status holding them.
+Real data: CRWD's 2026-10-16 chain captured 2026-10-07 10:38:40 ET (tests/real_chains.py, one
+expiration), valued at its capture; that day's sessions as Schwab's /markets sent them
+(tests/conftest.py). STAND-INS (named): each streamed value of a CRWD contract, and the daemon's
+status holding them.
 """
 from __future__ import annotations
 
-import json
 import time
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
@@ -25,15 +24,14 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 from stream_spine import options_quote_msg
+from tests.real_chains import CRWD
 from time_et import ET
 
-_REAL = json.loads((Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json")
-                   .read_text(encoding="utf-8"))
-_SPOT = float(_REAL["spot"])
-_CONTRACTS = [dict(ct) for ct in _REAL["chain"]]
+_SPOT = CRWD.spot
+_CONTRACTS = [dict(ct) for ct in CRWD.chain]
 TK = server.ticker_storage_key("CRWD")
-_AT = datetime(2026, 9, 2, 10, 5, tzinfo=ET)            # RTH, at the capture
-_CLOSED = datetime(2026, 9, 2, 22, 0, tzinfo=ET)
+_AT = CRWD.now                                           # RTH, at the capture
+_CLOSED = datetime(2026, 10, 7, 22, 0, tzinfo=ET)        # after Schwab's 20:00 post-market end
 CALLS = [c["symbol"] for c in _CONTRACTS if c["putCall"] == "CALL"]
 PUTS = [c["symbol"] for c in _CONTRACTS if c["putCall"] == "PUT"]
 

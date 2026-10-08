@@ -1,11 +1,12 @@
 """The chain path, Schwab to the console's bus, through the real code: the daemon's ChainSweep asks
 Schwab's host (tests/schwab_rest_standin.py, on the real schwab-py client as the daemon builds it)
-for each ticker's expiration chain, its chain one expiry at a time and its contracts' quotes, 300
-symbols to a request across tickers, one request at a time. Each chain reaches the bus with
-Schwab's exact Greeks and their times: the stream's for a contract the stream holds
-(Daemon.option_record), the quote's for every other.
+for each ticker's expiration chain, the market hours of each expiry date not yet answered that
+day, its chain one expiry at a time and its contracts' quotes, 300 symbols to a request across
+tickers, one request at a time. Each chain reaches the bus with Schwab's exact Greeks and their
+times: the stream's for a contract the stream holds (Daemon.option_record), the quote's for every
+other.
 
-Real data: the stand-in's (SPY 2026-11-20 chain and quotes, TSLA 2026-08-31 chain) and the
+Real data: the stand-in's (SPY 2026-11-20 chain and quotes, TSLA 2026-10-09 chain) and the
 LEVELONE_OPTIONS events of SPY 260904C00772000 (tests/fixtures/real_options_stream_history_samples.json).
 STAND-INS: the held contract's stream record is SPY 260904C00772000's events keyed as
 SPY 261120C00875000, each with its receive time as Schwab's frame time (no captured stream of a
@@ -22,8 +23,8 @@ from datetime import datetime
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import ChainSweep
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, options_quote_msg
-from tests.schwab_rest_standin import (CHAIN, CHAINS, EXPIRATIONS, FX, PRICEHISTORY, QUOTES, SPY, SPY_QUOTES,
-                                       TSLA, LocalSchwab, delivered)
+from tests.schwab_rest_standin import (CHAIN, CHAINS, EXPIRATIONS, FX, MARKETS, PRICEHISTORY, QUOTES, SPY,
+                                       SPY_QUOTES, TSLA, LocalSchwab, delivered)
 from time_et import ET
 
 _STREAM = next(c for c in json.loads((FX / "real_options_stream_history_samples.json")
@@ -56,7 +57,7 @@ def _setup(tmp_path, schwab: LocalSchwab, now: float):
 
 def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_greeks(tmp_path):
     schwab = LocalSchwab()
-    daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-28 10:15"))
+    daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-01 10:15"))
     try:
         assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"SPY", "TSLA"}
         first = list(schwab.requests)
@@ -65,13 +66,14 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     finally:
         schwab.close()
 
-    asked = [(path, q.get("symbol"), len(q["symbols"].split(",")) if "symbols" in q else None)
+    asked = [(path, q.get("symbol") or q.get("date"), len(q["symbols"].split(",")) if "symbols" in q else None)
              for path, q, *_ in first]
-    assert asked == [(EXPIRATIONS, "SPY", None), (CHAIN, "SPY", None), *[(PRICEHISTORY, "SPY", None)] * 3,
-                     (QUOTES, None, 300),
-                     (EXPIRATIONS, "TSLA", None), (CHAIN, "TSLA", None), *[(PRICEHISTORY, "TSLA", None)] * 3,
-                     (QUOTES, None, 300), (QUOTES, None, 77)], \
-        "the expiration chain, each expiry, the price history, quotes as 300 fill"
+    n_quoted = len(SPY["chain"]) + len(TSLA["chain"]) - 1                 # every contract but HELD
+    assert asked == [(EXPIRATIONS, "SPY", None), (MARKETS, "2026-11-20", None), (CHAIN, "SPY", None),
+                     *[(PRICEHISTORY, "SPY", None)] * 3, (QUOTES, None, 300),
+                     (EXPIRATIONS, "TSLA", None), (MARKETS, "2026-10-09", None), (CHAIN, "TSLA", None),
+                     *[(PRICEHISTORY, "TSLA", None)] * 3, (QUOTES, None, 300), (QUOTES, None, n_quoted - 600)], \
+        "the expiration chain, each expiry's market hours, each expiry, the price history, quotes as 300 fill"
     for path, q, *_ in first:
         if path == CHAIN:
             assert (q["fromDate"], q["toDate"], q["range"]) == (CHAINS[q["symbol"]][0],) * 2 + ("ALL",)
@@ -83,6 +85,7 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     assert all(b[2] >= a[3] for a, b in zip(first, first[1:])), "one request at a time"
     assert len({r[4] for r in first}) == 1, "on one connection"
     assert [p for p, *_ in second].count(EXPIRATIONS) == 0, "the expiration chain once per day"
+    assert [p for p, *_ in second].count(MARKETS) == 0, "each date's market hours once per day"
 
     spy, tsla = delivered(published, "SPY"), delivered(published, "TSLA")
     assert len(spy) == len(SPY["chain"]) and len(tsla) == len(TSLA["chain"])
@@ -103,7 +106,7 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
         rows = conn.execute("SELECT ticker, expiry, spot, n_contracts FROM complete_chain_captures "
                             "ORDER BY ticker").fetchall()
     assert rows == [("SPY", "2026-11-20", SPY["spot"], len(SPY["chain"])),
-                    ("TSLA", "2026-08-31", None, len(TSLA["chain"]))]
+                    ("TSLA", "2026-10-09", TSLA["spot"], len(TSLA["chain"]))]
 
 
 def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_goes_at_once(tmp_path):
@@ -120,16 +123,16 @@ def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_g
         schwab.close()
     failed = [(topic, msg["failed"]) for topic, msg in published if "failed" in msg]
     assert failed == [("chain.SPY", "quotes for 300 contracts returned HTTP 429"),
-                      ("chain.TSLA", "quotes for 236 contracts returned HTTP 429")]
+                      ("chain.TSLA", f"quotes for {len(TSLA['chain'])} contracts returned HTTP 429")]
     assert [p for p, *_ in refused].count(QUOTES) == 2, "SPY's other contracts are not asked for"
     gaps = [b[2] - a[3] for a, b in zip(refused, refused[1:] + after[:1])]
     assert max(gaps) < 1.0, f"a pause after Schwab's 429: {max(gaps):.2f} s"
 
 
-def test_while_closed_every_watchlist_ticker_is_fetched_once_and_a_failed_one_again(tmp_path):
+def test_outside_the_option_session_every_watchlist_ticker_is_fetched_once_and_a_failed_one_again(tmp_path):
     schwab = LocalSchwab()
     schwab.refuse_chain = {"TSLA"}
-    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-08-29 12:00"))   # Saturday
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, _et("2026-10-03 12:00"))   # Saturday
     stop = threading.Event()
     worker = threading.Thread(target=sweep.work, args=(client, stop), daemon=True)
     try:
@@ -145,8 +148,8 @@ def test_while_closed_every_watchlist_ticker_is_fetched_once_and_a_failed_one_ag
         worker.join(10)
         schwab.close()
     chains = [(q["symbol"], q["fromDate"]) for q in schwab.asked(CHAIN)]
-    assert chains == [("SPY", "2026-11-20"), ("TSLA", "2026-08-31"), ("TSLA", "2026-08-31")]
-    assert [m["failed"] for t, m in published if "failed" in m] == ["chain for 2026-08-31 returned HTTP 502"]
+    assert chains == [("SPY", "2026-11-20"), ("TSLA", "2026-10-09"), ("TSLA", "2026-10-09")]
+    assert [m["failed"] for t, m in published if "failed" in m] == ["chain for 2026-10-09 returned HTTP 502"]
     assert idle, "the close values stand: nothing more is asked for until the next session"
 
 

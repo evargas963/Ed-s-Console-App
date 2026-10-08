@@ -17,6 +17,8 @@ the same topics is refused):
   chain.TK     src "schwab_chain"       the REST option chain, in parts (the daemon's chain sweep)
   pricehistory.TK.SERIES src "schwab_pricehistory"  Schwab's 1-minute bars, 15-minute and daily
                candles of the ticker (the chain sweep's /pricehistory requests)
+  markets.DATE src "schwab_markets"     Schwab's /markets answer for the market date (the chain
+               sweep's requests), with its status
   watchlist    src "daemon_watchlist"   the watchlist after each add or removal the console asked
                for, with Schwab's /quotes answer to an add's check (capture.watchlist_message)
 
@@ -52,7 +54,8 @@ MARKET_CONTEXT = ("$SPX", "$NDX", "$VIX")
 #: topic prefix -> the only `src` forwarded for it
 _FORWARDED = {"quote.": "schwab_l1", "book.": "schwab_book", "optquote.": "schwab_options_l1",
               "news.": "schwab_news", "bar1m.": "schwab_chart", "chain.": "schwab_chain",
-              "pricehistory.": "schwab_pricehistory", "watchlist": "daemon_watchlist"}
+              "pricehistory.": "schwab_pricehistory", "markets.": "schwab_markets",
+              "watchlist": "daemon_watchlist"}
 
 
 def is_forwarded(topic: str, msg) -> bool:
@@ -73,7 +76,7 @@ def frames(topic: str, record) -> "list[str]":
     price_history_message)."""
     if topic.startswith("chain."):
         return [part["frame"] for part in record]
-    if topic.startswith("pricehistory."):
+    if topic.startswith(("pricehistory.", "markets.")):
         return [record["frame"]]
     return [json.dumps({"topic": topic, "msg": record}, separators=(",", ":"))]
 

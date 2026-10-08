@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import time as _time
 from dataclasses import asdict, dataclass, field, replace
+from datetime import datetime
 from typing import Any
 
 from math_exposure_core import (
@@ -712,16 +713,12 @@ def qualify_pin_candidate(
 
 
 def compute_terrain(ticker: str, contracts: list[dict] | None,
-                    spot: float | None, *, now=None) -> TerrainSnapshot:
+                    spot: float | None, *, now: datetime) -> TerrainSnapshot:
     """Full terrain for one ticker. Fails closed — never invents a level.
 
-    `now` (gamma audit 2026-08-26): the valuation instant for every time-to-expiry in this
-    snapshot. Live callers omit it and get now_et(). OFFLINE/REPLAY callers MUST pass the
-    SNAPSHOT's time — repricing a stored historical chain against today's clock silently drops
-    every contract whose expiry has since passed (time_to_expiry_years returns None past
-    settlement) and understates T for the rest, so the replay does not reproduce what the live
-    reprice saw. _contract_inputs already documented this contract; compute_terrain had no hook
-    to honor it, which is why tools/terrain_backtest_report_v1.py was scoring on the wrong clock.
+    `now`: the valuation instant for every time-to-expiry in this snapshot, read once by the
+    caller's entry point (the live reprice: its own instant; a replay of a stored chain: the
+    snapshot's time, so it reproduces what the live reprice saw).
 
     SINGLE SOURCE OF TRUTH (RC-33, 2026-07-24): this is the ONE terrain engine;
     /api/analytics/state no longer computes a competing terrain read. It must be
@@ -738,12 +735,8 @@ def compute_terrain(ticker: str, contracts: list[dict] | None,
     if spot is None or spot <= 0:
         return _unavailable(ticker, spot, "no spot price")
 
-    # ONE valuation instant for every book below (gamma audit: replay pins the snapshot
-    # instant). Resolved BEFORE the first exposure book -- it used to be read later, so the
-    # exposures (and the vanna aggregate built from them) priced T at the wall clock while
-    # the profile priced it at `now` (2026-09-25).
-    from time_et import now_et as _now_et
-    _terrain_now = now if now is not None else _now_et()
+    # ONE valuation instant for every book below
+    _terrain_now = now
     # One pricing pass: exposures per (expiry, DTE) group; every book below is a merge of them.
     books = exposure_books(contracts, spot=spot, now=_terrain_now)
     exposures, diag = merge_exposure_books(books.values())

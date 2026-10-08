@@ -13,13 +13,13 @@ from logging.handlers import RotatingFileHandler
 import contextlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
-from time_et import (ET, now_et, RTH_OPEN_MINS, closed_since, ct_label, et_date_str_from_ts_utc,
+from time_et import (ET, now_et, closed_since, ct_label, et_date_str_from_ts_utc, last_open,
                      market_session_date, session_label)
 from math_exposure_core import bucket_metric, merge_exposure_books, overlay_streamed_contract_fields
 
@@ -70,7 +70,7 @@ class _LevelMarkerFormatter(logging.Formatter):
 # uvicorn, …) at INFO+ lands here; gate fails on WARNING+ / traceback.
 # RC-523: under the RUNTIME root (runtime_layout), which is this checkout unless
 # ED_RUNTIME_ROOT moves it — runtime output must not pollute the source tree (§8).
-from runtime_layout import logs_dir as _runtime_logs_dir, reports_dir as _artifact_reports_dir  # noqa: E402
+from runtime_layout import logs_dir as _runtime_logs_dir  # noqa: E402
 
 ED_SERVER_LOG_PATH = _runtime_logs_dir() / "ed_server.log"
 
@@ -690,43 +690,6 @@ def terrain_cache_get(ticker: str) -> dict | None:
     return out
 
 
-#: Flip-drift measurement (unproven-register row due 2026-07-31): the mechanism is
-#: proven (gamma depends on spot/IV/time) but the intraday MAGNITUDE of flip movement
-#: is unmeasured. Every terrain-loop compute appends one JSONL row here so a week of
-#: cycles yields per-ticker intraday min/max/range. reports/ file, not a table — the
-#: operational DB grows by zero bytes (RC-6 discipline). flip=None is absence and is
-#: not logged; gaps read as gaps from the timestamps.
-_FLIP_DRIFT_LOG_PATH = _artifact_reports_dir() / "flip_drift_log.jsonl"   # RC-523: artifacts root
-_flip_drift_lock = threading.Lock()
-
-
-def _log_flip_drift(tk: str, payload: dict) -> None:
-    """Append one flip-drift row. Never raises — terrain refresh must stay ok:x
-    even if logging row assembly or disk write fails (measurement only)."""
-    try:
-        flip = payload.get("gamma_flip")
-        if flip is None:
-            return
-        if payload.get("computed_ts_utc") is None:
-            return                      # no compute time, no row: never stamped "now"
-        _ts = float(payload["computed_ts_utc"])
-        # RC-58: INTRADAY drift is the question, so only real trading sessions may be logged.
-        # The loop runs around the clock, and the first week of this log was 784 of 784 rows from
-        # a single SUNDAY window — spot frozen, so it measured a median 0.023 percent movement and
-        # would have been reported as "the flip is stable intraday". Market-closed rows do not
-        # add noise here, they manufacture the null.
-        from time_et import is_tradable_session_ts_utc as _tradable
-        if not _tradable(_ts):
-            return
-        row = {"ts_utc": _ts,
-               "ticker": tk, "flip": float(flip),
-               "spot": payload.get("spot"), "confidence": payload.get("confidence")}
-        with _flip_drift_lock, open(_FLIP_DRIFT_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(row) + "\n")
-    except Exception as e:
-        log.warning("flip drift log append failed: %s", e)
-
-
 #: The least age at which a terrain snapshot stops calling itself current (terrain_staleness also
 #: allows two of the loop's delivered cycles).
 TERRAIN_STALE_AFTER_SEC: float = 180.0
@@ -1306,9 +1269,6 @@ def _price_chain(tk: str, what: str, contracts: "list | None", fetched_ts: "floa
                 _publish_levels(tk, captures=captures)
             return
         _publish_levels(tk, contracts, fetched_ts)
-        with _terrain_cache_lock:
-            payload = _terrain_cache[tk]
-        _log_flip_drift(tk, payload)
         _terrain_refresh_last_error.pop(tk, None)
     except Exception as e:  # noqa: BLE001 -- kept as the ticker's reason, and logged
         _terrain_refresh_last_error[tk] = f"pricing the chain failed: {type(e).__name__}: {e}"
@@ -1476,11 +1436,11 @@ def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str |
     before it is one of those two."""
     from math_exposure_core import compute_exposures_by_strike as _cebs
 
-    def _per_strike(contracts: list, spot: float) -> dict:
+    def _per_strike(contracts: list, spot: float, at: datetime) -> dict:
         def _scope(cts: list) -> list:
             if not cts:
                 return []
-            exposures, _diag = _cebs(cts, spot=spot)
+            exposures, _diag = _cebs(cts, spot=spot, now=at)     # priced at the capture's own time
             # ONE producer (2026-09-24): this was a second copy of terrain_engine._per_strike_rows
             # carrying the same raw-gamma fallback (audit T-01) -- the live panel and this ghost
             # must be one computation or they draw a positioning shift that did not happen.
@@ -1500,7 +1460,8 @@ def _prior_strikes(captures: list, chain_ts: float) -> "tuple[dict | None, str |
     chain_day = et_date_str_from_ts_utc(float(chain_ts))
     prior = next((c for c in captures if c["et_date"] < chain_day), None)
     if prior is not None and prior["spot"] is not None:
-        return _per_strike(prior["contracts"], float(prior["spot"])), f"chain_capture:{prior['et_date']}"
+        return (_per_strike(prior["contracts"], float(prior["spot"]), datetime.fromtimestamp(prior["ts_utc"], ET)),
+                f"chain_capture:{prior['et_date']}")
     return None, None
 
 
@@ -1862,9 +1823,10 @@ def _forces_from_captures(tk: str, captures: list) -> dict:
         rows = [(c["et_date"], c["spot"], c["contracts"], c["ts_utc"])
                 for c in captures if c["spot"] is not None]
         if len(rows) >= 2:
-            (d1, s1, c1, t1), (d0, s0, c0, _t0) = rows[0], rows[1]
-            per1 = _cebs(c1, spot=float(s1))[0]
-            per0 = _cebs(c0, spot=float(s0))[0]
+            (d1, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
+            # each capture priced at its own time, not today's clock
+            per1 = _cebs(c1, spot=float(s1), now=datetime.fromtimestamp(t1, ET))[0]
+            per0 = _cebs(c0, spot=float(s0), now=datetime.fromtimestamp(t0, ET))[0]
 
             from math_exposure_core import bucket_metric as _bm, strike_total_oi as _sto
 
@@ -2162,7 +2124,7 @@ def get_terrain(ticker: str = Query(...)):
         return out
     spot, spot_source, spot_ts = resolve_spot(tk)
     _why = _terrain_refresh_last_error.get(tk)
-    return compute_terrain(tk, None, spot).to_dict() | {
+    return compute_terrain(tk, None, spot, now=now_et()).to_dict() | {
         "spot_source": spot_source, "spot_as_of_ts_utc": spot_ts,
         **_atr_fields(tk),              # from the bars, which do not wait for a chain
         # RC-126: not_ready carries its REASON when the producer has one — an eternal
@@ -2184,18 +2146,14 @@ DESK_LOOKBACK = {"1": (900, "last 15 min"), "3": (1800, "last 30 min"), "5": ("s
 
 def _desk_window_start(tf: str, now: datetime) -> float:
     """Start of the Trade Desk's event window for chart timeframe `tf`: `now` minus its lookback,
-    or the open of the latest regular session that has begun."""
-    from time_et import is_trading_day_et
+    or the open of the latest regular session that has begun (Schwab's /markets, time_et.last_open)."""
     lb = DESK_LOOKBACK[tf][0]
     if lb != "session":
         return now.timestamp() - lb
-    day = now.date()
-    for _ in range(10):
-        start = datetime(day.year, day.month, day.day, RTH_OPEN_MINS // 60, RTH_OPEN_MINS % 60, tzinfo=ET)
-        if is_trading_day_et(day.isoformat()) and start <= now:
-            return start.timestamp()
-        day -= timedelta(days=1)
-    raise ValueError(f"no regular session began in the 10 days to {now.date()} (market calendar)")
+    start = last_open(now)
+    if start is None:
+        raise ValueError(f"Schwab's /markets has sent no regular session that began by {now.isoformat()}")
+    return start.timestamp()
 
 
 def _f2(v) -> str:
@@ -2206,15 +2164,19 @@ def _f2(v) -> str:
 def get_desk_events(ticker: str = Query(...),
                     venue: str = Query(..., pattern=r"^(NYSE_BOOK|NASDAQ_BOOK)$"),
                     tf: Annotated[str, Query(pattern=r"^(1|3|5|15|30|60|D)$")] = "30"):
-    """The Trade Desk's attention queue, served: level crosses in the timeframe's window as
+    """The Trade Desk's attention queue at this moment (desk_events_payload)."""
+    return JSONResponse(desk_events_payload(ticker_storage_key(_required_ticker(ticker)), venue, tf, now_et()))
+
+
+def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict:
+    """The Trade Desk's attention queue at `now`: level crosses in the timeframe's window as
     recorded (level, direction, price, spot, time), numbered oldest first, the newest cross at
     each level for the newest DESK_MARKERS levels flagged for the chart; wall breaches and stale
     levels from the terrain; the book's size walls at the book's own time -- newest first, an
     item with no time last -- plus the window's up/down cross counts. One item is one event: the
     chart's marker and the queue's entry are the same item. The page draws it; it selects,
     numbers and orders nothing."""
-    tk = ticker_storage_key(_required_ticker(ticker))
-    start = _desk_window_start(tf, now_et())
+    start = _desk_window_start(tf, now)
     crosses = _merged_recent_crosses(tk, 200)
     in_window = sorted((c for c in crosses if c.get("ts_utc") is not None and c["ts_utc"] >= start),
                        key=lambda c: c["ts_utc"])
@@ -2258,10 +2220,10 @@ def get_desk_events(ticker: str = Query(...),
                                 + ("" if live_book else " · a past book, not the current one"),
                       "src": "/api/order-flow/microstructure"})
     items.sort(key=lambda it: (it["ts"] is None, -(it["ts"] if it["ts"] is not None else 0.0)))
-    return JSONResponse({"ticker": tk, "tf": tf, "window_start_ts_utc": start,
-                         "window_label": DESK_LOOKBACK[tf][1], "items": items,
-                         "cross_counts": {d: sum(1 for c in in_window if c.get("direction") == d)
-                                          for d in ("up", "down")}})
+    return {"ticker": tk, "tf": tf, "window_start_ts_utc": start,
+            "window_label": DESK_LOOKBACK[tf][1], "items": items,
+            "cross_counts": {d: sum(1 for c in in_window if c.get("direction") == d)
+                             for d in ("up", "down")}}
 
 
 #: the chart draws the newest cross at each level, for the newest this-many levels (the queue

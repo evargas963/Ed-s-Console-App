@@ -16,7 +16,7 @@ EdWebConsole/
 ├── producer/    the levels producer: every derived value (gamma, exposure, vanna, charm, flip,
 │                walls, max pain, PCR, liquidity levels, order-flow measures), computed once
 ├── console/     the web server: the page and the read routes; computes nothing, writes nothing
-├── shared/      what more than one process uses: market calendar and sessions, config, runtime
+├── shared/      what more than one process uses: market sessions (Schwab's /markets), config, runtime
 │                paths, instrument identity
 ├── static/      the page (one shell)
 ├── tests/

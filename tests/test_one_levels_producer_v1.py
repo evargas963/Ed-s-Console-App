@@ -6,8 +6,8 @@ the screen shows it correctly and promptly; question 3: each value is the one co
 Through the real code: the daemon's status (live_market_plane.record_feed_heartbeat), its pushed
 option messages applied by the console (streaming._ingest_pushed), its price row as the console
 holds it (streaming._price_rows), the console's pages (push_changes), the pricing thread, the
-chain captures in the console's database. Real data: CRWD's captured chain (tests/fixtures/
-real_crwd_complete_chain_quarter.json, 2026-09-02, spot 205.4), valued at its capture.
+chain captures in the console's database. Real data: CRWD's 2026-10-16 chain captured 2026-10-07
+10:38:40 ET (tests/real_chains.py), valued at its capture.
 STAND-INS (named): each streamed value of a CRWD contract (no CRWD contract was streamed in a
 capture), and the daemon's status holding them.
 """
@@ -30,17 +30,17 @@ from calibration.complete_chain_capture import CAPTURE_BASIS, persist_complete_c
 from math_exposure_core import bucket_metric, merge_exposure_books
 from stream_spine import options_quote_msg
 from terrain_engine import compute_terrain
+from tests.real_chains import CRWD
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
-_REAL = json.loads((_FX / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
-_SPOT = float(_REAL["spot"])
-_CONTRACTS = [dict(ct) for ct in _REAL["chain"]]
+_SPOT = CRWD.spot
+_CONTRACTS = [dict(ct) for ct in CRWD.chain]
 _A = _CONTRACTS[0]["symbol"]
 _B = _CONTRACTS[1]["symbol"]
 TK = server.ticker_storage_key("CRWD")
-#: CRWD's chain was captured 2026-09-02 at 10:05 ET: everything is valued there
-_AT = datetime(2026, 9, 2, 10, 5, tzinfo=ET)
+#: CRWD's chain was captured 2026-10-07 at 10:38:40 ET: everything is valued there
+_AT = CRWD.now
 _T = _AT.timestamp()
 _MIX = json.loads((_FX / "real_stream_mix_2026_10_05_1400ct.json").read_text(encoding="utf-8"))["messages"]
 
@@ -234,12 +234,13 @@ def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
 
 def test_a_streamed_value_whose_feed_is_down_in_session_never_reaches_the_levels():
     """docs/DATA_FLOW.md §2 D5, Schwab's socket closed (the daemon still reporting, holding TK and
-    the contract): at 11:00 ET on 2026-09-11 (RTH) nothing streamed is current -- the spot is
-    absent with its reason, and no level is published from a value from elsewhere; at 22:00 ET
-    (Closed) the values as of the close stand, the streamed volume in the per-strike column."""
+    the contract): at 11:00 ET on 2026-10-07 (RTH by Schwab's /markets) nothing streamed is
+    current -- the spot is absent with its reason, and no level is published from a value from
+    elsewhere; at 22:00 ET (Closed) the values as of the close stand, the streamed volume in the
+    per-strike column."""
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
     out = {}
-    for at in (datetime(2026, 9, 11, 11, 0, tzinfo=ET), datetime(2026, 9, 11, 22, 0, tzinfo=ET)):
+    for at in (datetime(2026, 10, 7, 11, 0, tzinfo=ET), datetime(2026, 10, 7, 22, 0, tzinfo=ET)):
         ofls.clear_all_live_state()
         _daemon(held=[_A], socket_open=False)
         _streamed(_A, {"TOTAL_VOLUME": 999999}, at.timestamp() - 60.0)
@@ -293,7 +294,7 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
     _daemon()
     _put_chain()
     live = _cached()
-    _publish(captures=[{"contracts": _CONTRACTS, "ts_utc": _T, "spot": _SPOT, "et_date": "2026-09-02",
+    _publish(captures=[{"contracts": _CONTRACTS, "ts_utc": _T, "spot": _SPOT, "et_date": "2026-10-07",
                         "basis": server.CAPTURE_BASIS}])
     stored = _cached()
     assert {k for k in live if not k.startswith("_")} == {k for k in stored if not k.startswith("_")}
@@ -301,10 +302,10 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
 
 
 def test_vanna_and_charm_by_strike_read_the_published_snapshot():
-    """Valued in the chain's own session (2026-09-11 12:00 ET): its 2026-09-18 expiry still has
+    """Valued in the chain's own session (2026-10-07 12:00 ET): its 2026-10-16 expiry still has
     time value, which charm needs."""
     _daemon()
-    snap = server._publish_levels(TK, _CONTRACTS, _T, now=datetime(2026, 9, 11, 12, 0, tzinfo=ET))
+    snap = server._publish_levels(TK, _CONTRACTS, _T, now=datetime(2026, 10, 7, 12, 0, tzinfo=ET))
     charm = json.loads(server.get_charm_by_strike(TK, scope="all").body)
     assert charm["available"] and charm["spot"] == snap.spot
     assert len(charm["rows"]) == sum(1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None)
