@@ -618,19 +618,8 @@
   }
 
   // ---- expiry dropdown: populated ONLY from the canonical /api/expiries (never hard-coded) ----
-  // each option's label is served (MM/DD/YYYY and Schwab's daysToExpiration)
-  // Independent-review finding (2026-09-13), REPRODUCED ("revert the selected expiry on a
-  // pushed refresh"): `prev` was captured ONCE at call time and used, unchanged, when the
-  // response finally resolved -- if the operator picked a different expiry WHILE this fetch
-  // was in flight, the delayed callback still judged that fresh pick against the STALE
-  // `prev`, and could revert it back to All Expirations even though the new pick was
-  // perfectly valid. Separately, the callback never checked whether `tk` was still the
-  // active ticker, so a rapid double ticker-switch could paint an ABANDONED ticker's expiry
-  // list into the dropdown under the ticker actually selected now -- the same "stale
-  // response, no context check" defect class fixed everywhere else in the gamma views.
-  // Fixed: check ticker identity before applying anything, and judge validity against the
-  // CURRENT state.expiryFilter at resolution time, never a value captured before the fetch.
-  var _expiriesPending = false;
+  // each option's label is served (MM/DD/YYYY and Schwab's daysToExpiration); asked again on
+  // each new chain the console pushes for the ticker
   function loadExpiries(tk) {
     var sel = document.getElementById('expSel'); if (!sel) return;
     fetch('/api/expiries?ticker=' + encodeURIComponent(tk), { cache: 'no-store' })
@@ -638,7 +627,6 @@
       .then(function (d) {
         if (state.ticker !== tk) return;   // a newer ticker switch superseded this request
         var exps = d.expiries || [], labels = d.labels || {};
-        _expiriesPending = !exps.length;   // levels not computed yet: asked again when they change
         var opts = '<option value="">All Expirations</option>';
         exps.forEach(function (e) { opts += '<option value="' + e + '">' + _escBadge(labels[e]) + '</option>'; });
         if (!exps.length && d.reason) opts += '<option value="" disabled>' + _escBadge(d.reason) + '</option>';
@@ -650,7 +638,6 @@
       })
       .catch(function (e) {
         if (state.ticker !== tk) return;
-        _expiriesPending = true;
         sel.innerHTML = '<option value="">All Expirations</option><option value="" disabled>' +
           _escBadge((e && e.message) || 'expiries unavailable') + '</option>';
       });
@@ -870,7 +857,7 @@
     _changes.addEventListener('session', function (ev) { paintSession(ev.data); });
     ['levels', 'chain', 'flow', 'liquidity'].forEach(function (kind) {
       _changes.addEventListener(kind, function () {
-        if (kind === 'levels' && _expiriesPending) loadExpiries(state.ticker);
+        if (kind === 'chain') loadExpiries(state.ticker);
         emit('ed:changed', { kind: kind });
       });
     });

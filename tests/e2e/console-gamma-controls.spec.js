@@ -72,6 +72,31 @@ test.describe('ticker / expiry / measure controls', () => {
     await expect(page.locator('#expSel')).toHaveValue('');     // defaults to All
   });
 
+  test('a new chain pushed for the ticker on screen replaces the expiry list (2026-10-08: yesterday\'s list stayed)', async ({ page }) => {
+    // The console held yesterday's chain when the page opened; today's chain lands, the console
+    // pushes `chain` on /api/changes, and /api/expiries serves today's list.
+    const YESTERDAY = { expiries: ['2026-10-07', '2026-10-08'],
+      labels: { '2026-10-07': '10/07/2026 · 0DTE', '2026-10-08': '10/08/2026 · 1DTE' } };
+    const TODAY = { expiries: ['2026-10-08', '2026-10-09'],
+      labels: { '2026-10-08': '10/08/2026 · 0DTE', '2026-10-09': '10/09/2026 · 1DTE' } };
+    let served = YESTERDAY, listed;
+    const first = new Promise((resolve) => { listed = resolve; });
+    await page.route('**/api/expiries**', (route) => {
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(served) });
+      listed();
+    });
+    let pushes = 0;
+    await page.route('**/api/changes**', async (route) => {
+      pushes += 1;
+      await first;                                          // the page holds yesterday's list
+      served = TODAY;                                        // today's chain reached the console
+      route.fulfill({ status: 200, contentType: 'text/event-stream',
+        body: pushes === 1 ? 'event: chain\ndata: SPY\n\n' : 'event: session\ndata: RTH\n\n' });
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#expSel option')).toHaveText(['All Expirations', '10/08/2026 · 0DTE', '10/09/2026 · 1DTE']);
+  });
+
   test('selecting one expiry filters the heatmap to that column; All restores every column', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#view-heatmap .hexp')).toHaveCount(EXPS.length);   // All Expirations
