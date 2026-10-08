@@ -360,6 +360,8 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
             halt.set()
             await asyncio.to_thread(worker.join, 10)
             schwab.close()
+        # every failure the sweep handed in is written before the count is read
+        await _until(lambda: daemon.writer.status()["held"] == 0 and daemon.writer.status()["spill"] is None)
         writer = _beat(daemon)["writer"]
         stop.set()
         await task
