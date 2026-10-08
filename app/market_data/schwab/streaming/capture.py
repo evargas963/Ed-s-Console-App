@@ -49,12 +49,13 @@ import json
 import logging
 import os
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from logging.handlers import RotatingFileHandler
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -382,6 +383,8 @@ class Daemon:
         self._ranked: "dict[str, tuple[str, ...]]" = {}
         self.chains = None                  # the ChainSweep: its round time, its tickers
         self.writer = None                  # the CaptureWriter: its state rides the heartbeat
+        self.start_commit: "str | None" = None   # the commit its code was loaded from (start_commit)
+        self.stop: "asyncio.Event | None" = None  # the daemon's stop (run); the console may set it
         self.schwab_client = None           # the daemon's one Schwab client (run): the checks
         #: what this connection has asked Schwab for, and what Schwab accepted (code 0)
         self.asked: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
@@ -491,8 +494,10 @@ class Daemon:
 
     def console_frame(self, req: dict, sender) -> None:
         """A frame from console connection `sender` (live_push): a watchlist request
-        ({"op": "watchlist"}, answered on the bus), or the contract selected on the Flow panel
-        ({"op": "flow_contract", "contract": symbol or null})."""
+        ({"op": "watchlist"}, answered on the bus), the contract selected on the Flow panel
+        ({"op": "flow_contract", "contract": symbol or null}), or a stop ({"op": "stop"}): the
+        daemon ends as at Ctrl+C, its writer writing everything handed to it first, and
+        start_capture_daemon.bat starts the next one."""
         if req["op"] == "watchlist":
             task = asyncio.ensure_future(self.watchlist_request(req))
             task.add_done_callback(_request_ended)
@@ -500,6 +505,9 @@ class Daemon:
             self.flow_contract = req["contract"]
             log.info("flow contract: %s", self.flow_contract)
             self.pick_options()
+        elif req["op"] == "stop":
+            log.info("capture daemon: stop asked on the console socket")
+            self.stop.set()
 
     async def watchlist_request(self, req: dict) -> None:
         """One add or removal from the console ({"op": "watchlist", "action", "ticker", "id"}),
@@ -556,6 +564,7 @@ class Daemon:
                 "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
                 "schwab_down": self.schwab_down,
                 "watchlist": list(self.watchlist),
+                "start_commit": self.start_commit,
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "health": self.health.report(now),
@@ -753,6 +762,16 @@ def release_owner_lock(fd: int, lock: Path) -> None:
         lock.unlink(missing_ok=True)
 
 
+#: days of the daemon's log kept, one file a day (the operator, 2026-10-08: 30 to 45 days, as the
+#: database keeps; 2026-10-07 wrote 59 MB, so about 2.7 GB at most)
+LOG_DAYS_KEPT = 45
+
+
+def log_file(path: Path) -> logging.Handler:
+    """The daemon's log file at `path`: a new file each midnight, the last LOG_DAYS_KEPT kept."""
+    return TimedRotatingFileHandler(path, when="midnight", backupCount=LOG_DAYS_KEPT, encoding="utf-8")
+
+
 def _start_log() -> None:
     """Every line, with its time to the millisecond, to <runtime>/logs/stream_capture.log, and to
     the console if any. Under pythonw the log file held as the error output since the first line
@@ -764,8 +783,7 @@ def _start_log() -> None:
         _EARLY_ERRORS = sys.stderr = None
     path = runtime_layout.logs_dir() / "stream_capture.log"
     path.parent.mkdir(parents=True, exist_ok=True)
-    handlers: "list[logging.Handler]" = [
-        RotatingFileHandler(path, maxBytes=50 * 1024 * 1024, backupCount=1, encoding="utf-8")]
+    handlers: "list[logging.Handler]" = [log_file(path)]
     if sys.stderr is not None:
         handlers.append(logging.StreamHandler())
     logging.basicConfig(level=logging.INFO, handlers=handlers,
@@ -832,6 +850,17 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
         await asyncio.gather(worker, return_exceptions=True)
 
 
+def start_commit() -> "str | None":
+    """The commit the daemon's checkout is at as it starts (git rev-parse HEAD), the code it
+    loaded; None, its reason logged, when git does not answer."""
+    try:
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True,
+                              check=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("capture daemon: the commit it started from is unknown: %s: %s", type(e).__name__, e)
+        return None
+
+
 def one_schwab_client(build) -> "callable":
     """The daemon's one Schwab client, for the stream and every chain request, as a function
     that returns it: built (`build()`, a SchwabClientState) when first asked for, then kept for
@@ -869,7 +898,8 @@ async def run() -> int:
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
     daemon = Daemon(bus, health, stored_watchlist(writer.db_path))
-    daemon.writer = writer
+    daemon.writer, daemon.stop, daemon.start_commit = writer, stop, start_commit()
+    log.info("capture daemon: started from commit %s (pid %d)", daemon.start_commit, os.getpid())
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer)),

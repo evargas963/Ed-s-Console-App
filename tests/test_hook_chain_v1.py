@@ -118,8 +118,10 @@ def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
         assert not (ROOT / "tools" / retired.split(".")[0]).with_suffix(".py").exists() or retired.endswith("guard"), retired
     def roster(c: str) -> set[str]:
         return {t for t in c.split() if t.startswith("tools/") and "chain" not in t}
-    assert set(wired) == {"PreToolUse", "preToolUse"}, wired
+    assert set(wired) == {"PreToolUse", "preToolUse", "SessionStart"}, wired
     assert all(roster(c) == set(WIRED_ROSTER) for c in wired["PreToolUse"] + wired["preToolUse"]), wired
+    # a report, not a guard: production and its daemon at origin/main, at each Claude session's start
+    assert [roster(c) for c in wired["SessionStart"]] == [{"tools/check_never_behind.py"}], wired
 
 
 def test_every_wired_executable_refuses_an_unreadable_payload():

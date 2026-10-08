@@ -191,4 +191,7 @@ Console: `start_ed_console.bat` (`uvicorn server:app`, port 8000). Capture daemo
 `start_capture_daemon.bat`. Python 3.13, the project `.venv`. Offline: `ED_CI_OFFLINE=1`,
 placeholder `SCHWAB_API_KEY` / `SCHWAB_APP_SECRET`. Live: `schwab_token.json`
 (`python reauth_schwab.py`). Probe `127.0.0.1`, never `localhost`. The agent may restart the
-console and the capture daemon, and confirms both came back.
+console and the capture daemon, and confirms both came back. The daemon is restarted by
+`{"op": "stop"}` on `ws://127.0.0.1:8799` (its writer writes everything handed to it, then
+`start_capture_daemon.bat` starts the next one), never `Stop-Process -Force`: a kill loses what
+its writer holds in memory (the bars of 10-02, 10-05 and 10-06).

@@ -1,6 +1,16 @@
 {
   "_comment": "Hook wiring only. Each guard file IS its own authority and documents why it exists; this file decides which guards run on which event. tools/hook_chain.py runs the listed guards in one process from THIS checkout; nothing is remembered between events (RC-544).",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".venv/Scripts/python.exe tools/hook_chain.py tools/check_never_behind.py"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit|NotebookEdit",
