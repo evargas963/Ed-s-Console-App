@@ -412,8 +412,8 @@ def _drop_released_options() -> None:
 
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on
-#: LEVELONE_OPTIONS, or it does not (capture.Daemon.pick_options streams the contracts nearest
-#: each ticker's price)
+#: LEVELONE_OPTIONS, or it does not (capture.Daemon.pick_options streams each ticker's contracts
+#: with the highest gamma)
 SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 
 

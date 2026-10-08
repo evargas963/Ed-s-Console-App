@@ -177,19 +177,23 @@ from Schwab to the screen (daemon, console, page), are these:
   are computed from the quotes Schwab sent, a crossed book included (served with `crossed`).
   A contract is a ticker's when Schwab listed it in that ticker's chain (whatever its root:
   SPX and SPXW are both $SPX's).
-- **The option contracts streamed (the option rule).** The daemon picks them, from each
-  watchlist ticker's newest whole chain on its bus and its newest LAST_PRICE (owner
-  `capture.Daemon.pick_options`, run by `Daemon.follow_market` on each new chain or price, on a
-  watchlist change and on the Flow panel's selection; it takes the time as `now`). The contract
+- **The option contracts streamed (the option rule).** What streams live is the most actionable
+  information at any moment (operator 2026-10-08). The daemon picks the contracts from each
+  watchlist ticker's newest whole chain on its bus (owner `capture.Daemon.pick_options`, run by
+  `Daemon.follow_market` on each new chain, on a watchlist change and on the Flow panel's
+  selection, never on a price; a chain is put in the rule's order once, as it arrives,
+  `capture.by_gamma`, at the daemon's time and the ticker's newest LAST_PRICE). The contract
   selected on the Flow panel (`POST /api/flow-contract`, only one Schwab listed in a chain the
   console holds; the console names it to the daemon on every connection, `{"op":
   "flow_contract"}`, §3.2) streams on LEVELONE_OPTIONS and OPTIONS_BOOK. What is left of
   Schwab's limits (LEVELONE_OPTIONS 3,000, OPTIONS_BOOK 100, measured on the daemon's own
-  connection 2026-10-07) is split evenly across the watchlist tickers: on LEVELONE_OPTIONS each
-  ticker's contracts nearest its own price, calls and puts alike, of equally near strikes the
-  lower first, at a strike the nearest expiration first; on OPTIONS_BOOK the same on its nearest
-  expiration alone. A contract has expired once now passes Schwab's expirationDate: it stays in
-  the records and is never streamed (Schwab still lists an expired Friday on a weekend). Each
+  connection 2026-10-07) is split evenly across the watchlist tickers, and each ticker's share
+  on each service is its contracts with the highest gamma, the gamma the levels take
+  (`math_exposure_core.greek_reported`: absent, -999 or a -999 volatility is no gamma, ranked
+  last); of equal gammas the nearest expiration, then the strike nearest the price, calls before
+  puts. A contract has expired once now passes Schwab's expirationDate: it stays in the records
+  and is never streamed (Schwab still lists an expired Friday on a weekend); one that expires
+  between chains streams until the ticker's next chain (one is asked after each option close). Each
   change is one UNSUBS and one ADD of only the difference (`Daemon.ask`). The levels use every
   contract of the full chain, streamed or not. When the owner fails (the daemon down), nothing
   streams: every cell keeps its value and the header says OFFLINE; the console forgets the live
