@@ -37,6 +37,9 @@ from tools.shell_parse import (  # noqa: E402 — the ONE shell parser (BEDROCK 
     iter_command_segments,
     iter_git_invocations,
     normalize_repo,
+    program_name,
+    program_re,
+    segment_head,
     shell_executed_part,
 )
 from tools.pretooluse_guard import classify_path  # noqa: E402
@@ -140,7 +143,7 @@ def git_subcommand(cmd: str) -> tuple[str, list[str]]:
     """
     toks = [t.strip("\"'") for t in _tokens(shell_executed_part(cmd or ""))]
     gi = next((i for i, t in enumerate(toks)
-               if Path(t).name.lower() in ("git", "git.exe")), -1)
+               if program_name(t) == "git"), -1)
     if gi < 0:
         return "", []
     rest = toks[gi + 1:]
@@ -314,20 +317,10 @@ def _shell_write_dest_paths(seg: str) -> list[str]:
     redirect to a .log) is harmlessly ignored. Heredocs and -c payloads stay with their
     universal source-write bans in operator_law_guard."""
     dests: list[str] = [m.group(1).strip("\"'") for m in _REDIRECT_DEST_RE.finditer(seg)]
-    toks = [t.strip("\"'") for t in _tokens(seg)]
-    i = 0
-    while i < len(toks):
-        t = toks[i]
-        name = Path(t).name.lower().removesuffix(".exe")
-        if ("=" in t and not t.startswith("-")) or name in (
-                "env", "time", "nice", "sudo", "xargs", "nohup", "stdbuf"):
-            i += 1
-            continue
-        break
-    if i >= len(toks):
+    verb, toks = segment_head(seg)
+    if not verb:
         return dests
-    verb = Path(toks[i]).name.lower().removesuffix(".exe")
-    args = toks[i + 1:]
+    args = [t.strip("\"'") for t in toks[1:]]
     positionals = [a for a in args if not a.startswith("-")]
     if verb in ("cp", "mv", "install", "rsync", "ln"):
         dests += positionals[-1:]                            # DEST is the last operand; sources are reads
@@ -394,14 +387,11 @@ def _ps_write_dest_paths(seg: str) -> list[str]:
     A residual, documented limit: a destination built from a bare `$variable` (no literal path
     token) is not resolvable by this or any static table — the same limit the retired universal
     ban carried."""
-    toks = [t.strip("\"'") for t in _tokens(seg)]
-    if not toks:
-        return []
-    verb = Path(toks[0]).name.lower()
+    verb, toks = segment_head(seg)
     dest_flag = _PS_DEST_PARAM.get(verb)
     if not dest_flag:
         return []
-    args = toks[1:]
+    args = [t.strip("\"'") for t in toks[1:]]
     for i, a in enumerate(args):
         if a.lower() == dest_flag and i + 1 < len(args):
             return [args[i + 1]]
@@ -473,7 +463,7 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         out.extend(production_checkout_app_edit_violations(tool_input))
     if tool in BASH_TOOLS:                # one roster (hook_chain.BASH_TOOLS, RC-520)
         cmd = tool_input.get("command") or ""
-        if re.search(r"\bgit\s+commit\b", cmd, re.I):
+        if re.search(program_re("git") + r"commit\b", cmd, re.I):
             # RC-234: piped commits mask hook failures as exit 0 — block BEFORE it runs.
             # (The index≠WT parity check that also ran here was a duplicate of the
             # `operating-process` pre-commit hook in the target tree — deleted 2026-09-10.)

@@ -207,3 +207,25 @@ def test_rc525_the_safe_reset_is_live_on_the_pretooluse_path(monkeypatch, tmp_pa
         f"LOCK-2 still refuses a reset that cannot touch index or worktree: {soft}")
     hard = PLG.pretooluse_block("Bash", {"command": "git reset --hard HEAD~1"})
     assert any("RESET_GUARD" in b for b in hard), "the destructive form stopped blocking"
+
+
+def test_git_named_by_its_full_path_or_exe_is_judged_as_git():
+    """`& C:\\Git\\cmd\\git.exe reset --hard` passed the guard (reviewer, 2026-10-06): the git
+    readers matched the bare word `git`, not git given by path or with `.exe`."""
+    for tool, cmd in (("PowerShell", "& C:\\Git\\cmd\\git.exe reset --hard"),
+                      ("PowerShell", "& \"C:\\Program Files\\Git\\cmd\\git.exe\" reset --hard HEAD~1"),
+                      ("Bash", "C:/Git/cmd/git.exe stash"),
+                      ("Bash", "/usr/bin/git checkout -- server.py")):
+        assert any("RESET_GUARD" in b for b in PLG.pretooluse_block(tool, {"command": cmd})), cmd
+    for cmd in ("& C:\\Git\\cmd\\git.exe reset --soft HEAD~1", "C:/Git/cmd/git.exe stash list"):
+        assert not OPL.reset_guard_violations(cmd), cmd
+    assert PLG.git_subcommand("C:\\Git\\cmd\\git.exe push origin main")[0] == "push"
+
+
+def test_a_heredoc_handed_to_an_interpreter_by_its_full_path_is_judged():
+    """`C:\\Git\\bin\\bash.exe <<'EOF'` with `git reset --hard` in the body passed every guard
+    (architecture review, 2026-10-06): the interpreter was read as the bare word `bash`."""
+    for shell in ("C:\\Git\\bin\\bash.exe", "/usr/bin/bash", "\"C:\\Program Files\\Git\\bin\\bash.exe\"",
+                  "sudo bash"):
+        assert OPL.reset_guard_violations(f"{shell} <<'EOF'\ngit status\ngit reset --hard\nEOF"), shell
+    assert not OPL.reset_guard_violations("C:\\Git\\cmd\\git.exe commit -F - <<'MSG'\ngit reset --hard wiped it\nMSG")

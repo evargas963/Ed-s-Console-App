@@ -373,10 +373,25 @@ class _Swept:
                                 clock=lambda: self.clock["now"],
                                 failures=CaptureWriter(tmp_path / "stream_capture.db"),
                                 streamed=lambda symbol: None)
-        client = self.schwab.client(tmp_path)
+        self.client = self.schwab.client(tmp_path)
+        self._start()
+
+    def _start(self) -> None:
         self.stop = threading.Event()
-        self.worker = threading.Thread(target=self.sweep.work, args=(lambda: client, self.stop), daemon=True)
+        self.worker = threading.Thread(target=self.sweep.work, args=(lambda: self.client, self.stop), daemon=True)
         self.worker.start()
+
+    def move(self, at: str) -> int:
+        """The clock moved to `at` with the sweep's thread stopped (a request it was making lands
+        first), then the thread started again: the number of requests Schwab's host received
+        before the move. A request is counted by the clock it was made at, never by when it
+        arrived."""
+        self.stop.set()
+        self.worker.join(10)
+        before = len(self.schwab.requests)
+        self.clock["now"] = _et(at)
+        self._start()
+        return before
 
     def until(self, n: int) -> "list[str]":
         """The chains delivered once `n` are in (or 10 s have passed), and a second more."""
@@ -424,25 +439,23 @@ def test_d5_at_the_option_close_a_ticker_is_fetched_once_more_then_nothing_until
     """Friday 2026-10-02: fetched without end until Schwab's EQO close (16:00 ET), once more begun
     after it (the close values), nothing through the weekend and Monday's stock pre-market, and
     again from Monday's 09:30 open. Counted by the chain requests Schwab's host received after each
-    move of the clock (the stand-in records when each request arrived)."""
-    def chain_requests_since(mark: float) -> int:
-        return sum(1 for path, _q, started, *_ in swept.schwab.requests
-                   if path == "/marketdata/v1/chains" and started > mark)
+    move of the clock, made with the sweep at rest (_Swept.move): CI 2026-10-08 counted a 15:59
+    request that arrived after the clock moved as one asked after the close."""
+    def chain_requests_since(mark: int) -> int:
+        return sum(1 for path, *_ in swept.schwab.requests[mark:] if path == "/marketdata/v1/chains")
 
     swept = _Swept(tmp_path, "2026-10-02 15:59", ["SPY"])
     try:
         swept.until(2)
-        closed = time.monotonic()
-        swept.clock["now"] = _et("2026-10-02 16:00:30")
+        closed = swept.move("2026-10-02 16:00:30")
         swept.until(len(swept.chains) + 2)
         after_close = chain_requests_since(closed)
-        weekend = time.monotonic()
-        for later in ("2026-10-03 12:00", "2026-10-05 09:29"):
-            swept.clock["now"] = _et(later)
-            swept.until(len(swept.chains) + 1)
+        weekend = swept.move("2026-10-03 12:00")
+        swept.until(len(swept.chains) + 1)
+        swept.move("2026-10-05 09:29")
+        swept.until(len(swept.chains) + 1)
         quiet = chain_requests_since(weekend)
-        opened = time.monotonic()
-        swept.clock["now"] = _et("2026-10-05 09:30")
+        opened = swept.move("2026-10-05 09:30")
         swept.until(len(swept.chains) + 2)
         reopened = chain_requests_since(opened)
     finally:
