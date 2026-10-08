@@ -540,7 +540,8 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
         # that replace it during the hold count only their difference
         tracemalloc.start()
         await publish()
-        await _until(lambda: _mix_rows(db) == n, limit=30.0)
+        # written, and at rest: a writer that fell behind on it has finished its spill file
+        await _until(lambda: _mix_rows(db) == n and writer.status()["spill"] is None, limit=30.0)
         holder.execute("BEGIN IMMEDIATE")
         base = tracemalloc.get_traced_memory()[0]
         for _ in range(3):
