@@ -126,7 +126,9 @@ def capture_slot(now_ts: float, product: str) -> float | None:
     CAPTURE_EVERY_MIN minutes before `now_ts`. None outside those windows, and on a day with no
     regular option session or no answer: nothing is written."""
     today = session(datetime.fromtimestamp(now_ts, ET).date().isoformat())
-    windows = () if today is None else today.option_windows(product)
+    if today is None:
+        return None
+    windows = today.option_windows(product)
     if not windows:
         return None
     opens, close = windows[0][0].timestamp(), windows[-1][1].timestamp()

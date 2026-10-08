@@ -189,7 +189,9 @@ def time_to_expiry_years(expiry_et_date: str, now: datetime, *,
     answers, or not asked yet), when it sends no regular option session that date, or once the
     option has reached settlement. A 10-minute sub-floor guards the exact-expiry singularity."""
     s = session(str(expiry_et_date)[:10])
-    windows = () if s is None else s.option_windows(EQUITY_OPTIONS)
+    if s is None:
+        return None
+    windows = s.option_windows(EQUITY_OPTIONS)
     if not windows:
         return None
     settles = windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
