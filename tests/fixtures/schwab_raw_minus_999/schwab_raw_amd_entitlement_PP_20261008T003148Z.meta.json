@@ -1,0 +1,85 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.schwabapi.com/marketdata/v1/chains?symbol=AMD&contractType=ALL&strategy=SINGLE&range=ALL&includeUnderlyingQuote=true&fromDate=2029-01-19&toDate=2029-01-19&entitlement=PP"
+ },
+ "sent_utc": 1791419508.5190039,
+ "answered_utc": 1791419509.705267,
+ "sent_iso": "2026-10-08T00:31:48.519004+00:00",
+ "status": 200,
+ "response_headers": [
+  [
+   "content-type",
+   "application/json"
+  ],
+  [
+   "schwab-client-correlid",
+   "3f5abe66-3890-687b-22af-23a409122708"
+  ],
+  [
+   "schwab-resource-version",
+   "1"
+  ],
+  [
+   "vary",
+   "Accept-Encoding"
+  ],
+  [
+   "content-encoding",
+   "gzip"
+  ],
+  [
+   "cache-control",
+   "no-store"
+  ],
+  [
+   "pragma",
+   "no-cache"
+  ],
+  [
+   "expires",
+   "-1"
+  ],
+  [
+   "access-control-allow-origin",
+   ""
+  ],
+  [
+   "access-control-allow-headers",
+   "origin, x-requested-with, accept, content-type, authorization"
+  ],
+  [
+   "access-control-max-age",
+   "3628800"
+  ],
+  [
+   "access-control-allow-methods",
+   "GET, POST"
+  ],
+  [
+   "x-request-id",
+   "bfe8feb8-63b0-437e-9211-d51aee9cbdaa"
+  ],
+  [
+   "content-length",
+   "38843"
+  ],
+  [
+   "date",
+   "Thu, 08 Oct 2026 00:31:49 GMT"
+  ],
+  [
+   "connection",
+   "keep-alive"
+  ],
+  [
+   "strict-transport-security",
+   "max-age=30"
+  ]
+ ],
+ "raw_file": "schwab_raw_amd_entitlement_PP_20261008T003148Z.raw",
+ "raw_bytes": 38843,
+ "content_encoding": "gzip",
+ "decoded_file": "schwab_raw_amd_entitlement_PP_20261008T003148Z.body",
+ "decoded_bytes": 361525
+}
