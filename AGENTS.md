@@ -1,6 +1,7 @@
 # Ed Console — rules for every change
 
 Design: `docs/DATA_FLOW.md`. Work order: `ACTIVE_PROGRAM.md`. Code map: `docs/ARCHITECTURE.md`.
+Practices: docs/PRACTICES.md. A pull request that breaks one of its rules names the rule number.
 Read the parts a change touches before writing it.
 
 Every requirement in a section marked (enforced), in this file and in `docs/DATA_FLOW.md`, ends
