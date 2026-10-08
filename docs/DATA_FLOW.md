@@ -199,8 +199,10 @@ from Schwab to the screen (daemon, console, page), are these:
   asks `/pricehistory` for each ticker after its chain (`complete_chain_capture.PRICE_HISTORY`,
   per `docs/schwab/schwab_market_data_parameters_pricehistory_markets.txt`, each request ending
   now, extended hours included): the 1-minute bars (10 days) once per ET date, the 15-minute (10
-  days) and daily (1 year) candles with each of the ticker's chains (so while its option market is
-  open, once more at its close, then not until it opens again); each answer whole, as Schwab sent it →
+  days) and daily (1 year) candles by the stock session (operator 2026-10-08,
+  `ChainSweep.candles_due`): again and again while the stock market is in a window Schwab's
+  /markets sent for today (pre-market through post-market), once more at its close, then not
+  until it reopens -- every watchlist ticker, options listed or not; each answer whole, as Schwab sent it →
   daemon bus (`pricehistory.TK.SERIES`) → the daemon's writer (`stream_capture.db`
   `stream_pricehistory_raw`, every answer, as sent: recorded like every stream message, §2 D4) and
   → console (8799) → the bar writer. Schwab CHART_EQUITY → daemon bus → the daemon's writer
@@ -257,7 +259,8 @@ from Schwab to the screen (daemon, console, page), are these:
   queued quotes included. After that market's close (and on a weekend, a holiday, and when the
   daemon starts while it is closed) the ticker is fetched once more, its close values (one added
   then too); a fetch that fails is tried again in the next pass. A ticker whose expiration chain
-  lists nothing has no option market: it is asked once per ET date. Then no chain is requested
+  lists nothing has no option market: its chain is asked once per ET date, only to learn whether
+  options are listed (operator 2026-10-08). Then no chain is requested
   until its market opens again: the close values stand (D5), and a ticker not on the watchlist is not fetched — it shows
   its levels absent with the reason (`server.terrain_staleness`: while Closed,
   levels from a chain fetched after the close are current however old; older ones read "the
@@ -417,8 +420,10 @@ from Schwab to the screen (daemon, console, page), are these:
   (`time_et.last_open`), the chain history's capture windows (each ticker's option market), and
   each contract's time to expiry (the EQO regular close of its expiry date, or its open for
   settlementType "A": Schwab's expirationDate is not the settlement, an AM-settled $SPX monthly
-  carries 16:00 ET). A contract whose expiry date Schwab does not answer (beyond a year) has no
-  time to expiry and is counted unpriced (`math_levels.NO_EXPIRY_SESSION`). No hand-typed
+  carries 16:00 ET). On an expiry date Schwab's /markets does not answer (beyond a year), a
+  PM-settled contract runs to Schwab's own expirationDate (operator 2026-10-08) and an AM-settled
+  one has no time to expiry: it is counted unpriced with the reason
+  (`math_levels.NO_EXPIRY_SESSION`). No hand-typed
   holiday, early-close or covered-year table exists. A day with no session has an empty window.
   The label only labels: no session window starts, stops or clears a streamed value (stock
   quotes from 04:00 ET are shown and recorded), and the order-flow state keeps every book,

@@ -179,8 +179,8 @@ def pick_charm_wall_strikes(charm_by_strike: Dict[float, dict]
     return cw, pw
 
 
-#: why a contract has no time to expiry: Schwab's /markets answer for its expiry date is not held
-#: (beyond the year Schwab answers, or not asked yet)
+#: why an AM-settled contract has no time to expiry: Schwab's /markets answer for its expiry date
+#: is not held (beyond the year Schwab answers), so its settlement (the open) is not known
 NO_EXPIRY_SESSION = "no_markets_session_for_expiry"
 
 
@@ -203,13 +203,14 @@ def _contract_inputs(ct: dict, now: datetime) -> tuple[float, float, float, floa
 
     `t_years` is the canonical INTRADAY time-to-expiry (time_et.time_to_expiry_years): to the
     contract's settlement (the option market's regular close Schwab's /markets sent for its
-    expiry date, or its open for Schwab's settlementType "A"), ACT/365, from `now` (the caller's
+    expiry date, or its open for Schwab's settlementType "A"; Schwab's expirationDate for a
+    PM-settled contract on a date /markets does not answer), ACT/365, from `now` (the caller's
     valuation instant). Replaces the old max(dte,0.5)/365 0.5-DAY floor, which over-stated T by up to
     24x near the close and flattened the real 1/sqrt(T) gamma/charm spike (RC-42; validated
     against Schwab-reported gamma). Offline/replay callers pass `now` = the snapshot time.
     """
     from math_exposure_core import schwab_iv_to_sigma
-    from time_et import session, time_to_expiry_years
+    from time_et import SETTLEMENT_AM, session, time_to_expiry_years
 
     strike = schwab_number(ct.get("strikePrice"))
     oi = schwab_count(ct.get("openInterest"))
@@ -225,12 +226,12 @@ def _contract_inputs(ct: dict, now: datetime) -> tuple[float, float, float, floa
     sigma = schwab_iv_to_sigma(schwab_number(ct.get("volatility")))  # single source: math_exposure_core
     if sigma is None or sigma <= 0:
         return "no_volatility"
-    if session(str(ct.get("expirationDate"))[:10]) is None:
-        return NO_EXPIRY_SESSION
     t_years = time_to_expiry_years(ct.get("expirationDate"), now=now,
                                    settlement_type=ct.get("settlementType"))
-    if t_years is None or t_years <= 0:
-        return "expired_or_no_expiry"
+    if t_years is None:
+        am_unanswered = (ct.get("settlementType") == SETTLEMENT_AM
+                         and session(str(ct.get("expirationDate"))[:10]) is None)
+        return NO_EXPIRY_SESSION if am_unanswered else "expired_or_no_expiry"
     return strike, oi, mult, t_years, sigma, (1 if side == "CALL" else -1)
 
 

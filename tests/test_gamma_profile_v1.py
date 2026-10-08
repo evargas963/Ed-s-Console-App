@@ -272,16 +272,26 @@ def test_rc358_25d_risk_reversal_30_day_tenor_and_fail_closed():
 
 def test_the_flip_counts_the_contracts_it_could_not_price():
     """M-10: the profile cannot price a contract with open interest whose volatility Schwab
-    sent as -999, nor one whose expiry date Schwab's /markets does not answer (beyond a year);
-    the served flip says how many and why. Real NFLX capture of 2026-10-07 10:32 ET: on
-    2026-10-16, 100 contracts with open interest, each with a volatility; on 2027-12-17 and
-    2028-01-21, 8 with open interest sent -999 and 585 with a volatility."""
+    sent as -999, nor an AM-settled one whose expiry date Schwab's /markets does not answer
+    (beyond a year: its settlement, the open, is not known); a PM-settled one beyond a year runs
+    to Schwab's own expirationDate (operator 2026-10-08). The served flip says how many and why.
+    Real captures of 2026-10-07: NFLX (10:32 ET; PM) -- on 2026-10-16, 100 contracts with open
+    interest and a volatility; on 2027-12-17 and 2028-01-21, 585 with a volatility and 8 sent
+    -999 -- and $SPX's AM-settled 2027-12-17 expiry (10:37 ET; 288 with open interest)."""
     from math_levels import NO_EXPIRY_SESSION, contract_inputs
     from terrain_engine import compute_terrain
-    cap = json.loads((Path(__file__).parent / "fixtures" / "real_nflx_chain_2026_10_07_three_expiries.json")
-                     .read_text(encoding="utf-8"))
-    now = datetime.fromtimestamp(cap["ts_utc"], time_et.ET)
-    priced, unpriced = contract_inputs(cap["chain"], now)
-    assert (len(priced), unpriced) == (100, {"no_volatility": 8, NO_EXPIRY_SESSION: 585})
-    snap = compute_terrain("NFLX", cap["chain"], cap["spot"], now=now)
-    assert snap.to_dict()["flip_diag"]["unpriced"] == {"no_volatility": 8, NO_EXPIRY_SESSION: 585}
+    fx = Path(__file__).parent / "fixtures"
+    nflx = json.loads((fx / "real_nflx_chain_2026_10_07_three_expiries.json").read_text(encoding="utf-8"))
+    spx = json.loads((fx / "real_spx_chain_2026_10_07_2027_12_17.json").read_text(encoding="utf-8"))
+    now = datetime.fromtimestamp(nflx["ts_utc"], time_et.ET)
+    priced, unpriced = contract_inputs(nflx["chain"], now)
+    assert (len(priced), unpriced) == (685, {"no_volatility": 8})
+    far = next(ct for ct in nflx["chain"] if ct["expirationDate"].startswith("2028-01-21"))
+    assert time_et.time_to_expiry_years(far["expirationDate"], now, settlement_type=far["settlementType"]) == (
+        datetime.fromisoformat(far["expirationDate"]).timestamp() - now.timestamp()) / time_et.YEAR_SECONDS
+    snap = compute_terrain("NFLX", nflx["chain"], nflx["spot"], now=now)
+    assert snap.to_dict()["flip_diag"]["unpriced"] == {"no_volatility": 8}
+    at = datetime.fromtimestamp(spx["ts_utc"], time_et.ET)
+    assert contract_inputs(spx["chain"], at) == ([], {NO_EXPIRY_SESSION: 288})
+    snap = compute_terrain("$SPX", spx["chain"], spx["spot"], now=at)
+    assert snap.to_dict()["flip_diag"]["unpriced"] == {NO_EXPIRY_SESSION: 288}

@@ -141,14 +141,19 @@ def test_option_markets_open_and_close_by_their_own_windows():
 def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():
     """Schwab's expirationDate is not the settlement (an AM-settled $SPX monthly carries 16:00 ET
     of its date): T runs to the EQO regular close Schwab's /markets sent for the expiry date --
-    13:00 on the 2026-11-27 early close -- or its 09:30 open for settlementType "A"; none for a
-    date Schwab does not answer."""
+    13:00 on the 2026-11-27 early close -- or its 09:30 open for settlementType "A"; none on a
+    date Schwab says has no session. Beyond the year /markets answers (operator 2026-10-08): a
+    PM-settled contract runs to Schwab's expirationDate as sent, an AM-settled one has none."""
     year = time_et.YEAR_SECONDS
     at = _et("2026-11-27 10:00")
-    assert time_et.time_to_expiry_years("2026-11-27", at) == 3 * 3600 / year
-    assert time_et.time_to_expiry_years("2026-11-27", _et("2026-11-27 09:00"), settlement_type="A") == 1800 / year
-    assert time_et.time_to_expiry_years("2026-11-26", at) is None
-    assert time_et.time_to_expiry_years("2027-12-17", at) is None
+    assert time_et.time_to_expiry_years("2026-11-27T21:00:00.000+00:00", at) == 3 * 3600 / year
+    assert time_et.time_to_expiry_years("2026-11-27T21:00:00.000+00:00", _et("2026-11-27 09:00"),
+                                        settlement_type="A") == 1800 / year
+    assert time_et.time_to_expiry_years("2026-11-26T21:00:00.000+00:00", at) is None
+    far = "2027-12-17T21:00:00.000+00:00"                          # $SPX's, as Schwab sent it
+    assert time_et.time_to_expiry_years(far, at, settlement_type="P") == (
+        datetime.fromisoformat(far).timestamp() - at.timestamp()) / year
+    assert time_et.time_to_expiry_years(far, at, settlement_type="A") is None
 
 
 # ── question 2: the screen shows what Schwab streams, whatever the label says ────────────────

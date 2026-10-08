@@ -33,8 +33,8 @@ from numeric_contract import schwab_number
 from schwab_client import (GREEK_FIELDS, QUOTES_BATCH_MAX, flatten_chain_contracts, option_expiries,
                            safe_get_chain, safe_get_quotes)
 from stream_spine import CaptureWriter
-from time_et import (ET, EQUITY_OPTIONS, INDEX_OPTIONS, options_closed_at, options_open, record_markets,
-                     session)
+from time_et import (CLOSED, ET, EQUITY_OPTIONS, INDEX_OPTIONS, closed_since, options_closed_at, options_open,
+                     record_markets, session, session_label)
 
 log = logging.getLogger("chain_history")
 
@@ -228,18 +228,22 @@ class ChainSweep:
     quote's quoteTime. A Greek Schwab does not send is absent (None). Each contract carries the
     time of its Greeks as `greeksTime` ({field: Schwab's time, ms}).
 
-    After each ticker's chain, its price history (fetch_price_history): Schwab's 1-minute bars
-    once per ET date, its 15-minute and daily candles with every chain.
+    The price history (candles, fetch_price_history) follows the stock market, not the options:
+    each watchlist ticker's 15-minute and daily candles are asked while the stock market is in a
+    window Schwab's /markets sent for today (pre-market through post-market) or today's answer is
+    not known, once more after its newest close they were not asked since, then not until it
+    opens again (candles_due); its 1-minute bars once per ET date with them.
 
     The market's sessions (fetch_markets): Schwab's /markets answer for today and the
     MARKETS_DAYS_BACK days before it, and for each expiry date of the chains, each date asked
     once per ET date, whatever the number of tickers.
 
-    A ticker is asked for (due) while its option market is open by Schwab's answer for today
-    (EQO, or IND for a ticker whose chain Schwab marks isIndex), while that answer or the
-    ticker's market is not known yet, and once more after the market's newest close it has not
-    been fetched since (its close values; a failed one again in the next pass); otherwise not,
-    until the next session. A chain is published to the console in parts (chain_messages) once
+    A ticker's chain is asked for (chain_due) while its option market is open by Schwab's
+    answer for today (EQO, or IND for a ticker whose chain Schwab marks isIndex), while that
+    answer is not known yet, and once more after the market's newest close it has not been
+    fetched since (its close values; a failed one again in the next pass); otherwise not, until
+    the next session. A ticker whose expiration chain lists no option (or none asked yet) has
+    its chain asked once per ET date, to learn whether options are listed. A chain is published to the console in parts (chain_messages) once
     all its quotes are in; a ticker whose request fails (an answer other than 200, or none) is
     published as failed with the reason, and the rotation goes on. The first chain of a ticker
     begun inside a capture window (capture_slot) is also written to the chain history; a history
@@ -261,6 +265,7 @@ class ChainSweep:
         self._markets_day: "dict[str, date]" = {}          # market date -> the ET date Schwab answered it
         self._product: "dict[str, str]" = {}               # ticker -> its option market (EQO, IND)
         self._fetched: "dict[str, float]" = {}             # ticker -> when its newest delivered chain began
+        self._candled: "dict[str, float]" = {}             # ticker -> when its newest whole price history began
         self._queue: "list[tuple[_Chain, dict]]" = []     # contracts whose quote is not asked for
         self._delivered: "set[str]" = set()                # the tickers this rotation delivered
         self._written: "dict[str, float | None]" = {}       # ticker -> its newest history capture
@@ -268,8 +273,9 @@ class ChainSweep:
     def work(self, schwab_client, stop: threading.Event) -> None:
         """The thread's life, until `stop`: on the daemon's client (`schwab_client()`), the
         market's sessions for today and the days before it, then a rotation of the watchlist
-        tickers that are due; with none due, it looks again each second. With the watchlist empty
-        it asks Schwab for nothing and looks again each second."""
+        tickers whose chain is due and the price history of those whose candles are due; with
+        none due, it looks again each second. With the watchlist empty it asks Schwab for
+        nothing and looks again each second."""
         while not stop.is_set():
             if not self.watchlist:
                 stop.wait(1.0)
@@ -278,17 +284,29 @@ class ChainSweep:
             self.fetch_markets(schwab_client, [(today - timedelta(days=n)).isoformat()
                                                for n in range(MARKETS_DAYS_BACK, -1, -1)])
             now = datetime.fromtimestamp(self.clock(), ET)
-            tickers = [t for t in sorted(self.watchlist) if self.due(t, now)]
-            if tickers:
-                self.rotation(schwab_client, tickers, stop)
-            else:
+            chains = [t for t in sorted(self.watchlist) if self.chain_due(t, now)]
+            candles = [t for t in sorted(self.watchlist) if self.candles_due(t, now)]
+            if chains:
+                self.rotation(schwab_client, chains, stop)
+            if candles:
+                self.candles(schwab_client, candles, stop)
+            if not chains and not candles:
                 stop.wait(1.0)
 
-    def due(self, ticker: str, now: datetime) -> bool:
-        """Whether `ticker` is asked for at `now`: its option market open, or today's session not
-        known (Schwab's /markets answer for today not held), or closed with the newest close after
-        the ticker's newest delivered chain began. A ticker whose market is not known (no chain
-        answer yet: none asked, or no expiry listed) is asked once per ET date."""
+    def candles_due(self, ticker: str, now: datetime) -> bool:
+        """Whether `ticker`'s price history is asked for at `now`: the stock market in a window
+        Schwab's /markets sent for today, or today's answer not held, or closed with its newest
+        close after the ticker's newest whole price history began."""
+        if session_label(now) != CLOSED:
+            return True
+        closed = closed_since(now)
+        return closed is not None and (ticker not in self._candled or self._candled[ticker] < closed.timestamp())
+
+    def chain_due(self, ticker: str, now: datetime) -> bool:
+        """Whether `ticker`'s chain is asked for at `now`: its option market open, or today's
+        session not known (Schwab's /markets answer for today not held), or closed with the
+        newest close after the ticker's newest delivered chain began. A ticker whose market is not
+        known (no chain answer yet: none asked, or no option listed) is asked once per ET date."""
         product = self._product.get(ticker)
         if product is None:
             return ticker not in self._fetched or datetime.fromtimestamp(self._fetched[ticker], ET).date() < now.date()
@@ -332,7 +350,6 @@ class ChainSweep:
             if ticker not in self.watchlist:
                 continue
             self.fetch_chain(schwab_client, ticker)
-            self.fetch_price_history(schwab_client, ticker)
             while len(self._queue) >= QUOTES_BATCH_MAX:
                 self.send_quotes(schwab_client)
         while self._queue and not stop.is_set():
@@ -342,12 +359,22 @@ class ChainSweep:
                  len(self._delivered), len(tickers), self.round_sec)
         return self._delivered
 
+    def candles(self, schwab_client, tickers: "list[str]", stop: threading.Event) -> None:
+        """Each ticker's price history in turn (one removed from the watchlist meanwhile is not
+        asked for)."""
+        for ticker in tickers:
+            if stop.is_set():
+                break
+            if ticker in self.watchlist:
+                self.fetch_price_history(schwab_client, ticker)
+
     def fetch_price_history(self, schwab_client, ticker: str) -> None:
         """`ticker`'s price history (PRICE_HISTORY), each series published as Schwab sent its
         candles; a series Schwab does not answer 200 is not published (log_request has the answer)
-        and is asked again in the next rotation."""
+        and the ticker's candles are asked again the next time they are due (candles_due)."""
         now = self.clock()
         today = datetime.fromtimestamp(now, ET).date()
+        whole = True
         for series, (period_type, period, frequency_type, frequency) in PRICE_HISTORY.items():
             if series == "1m" and self._minutes_day.get(ticker) == today:
                 continue
@@ -357,14 +384,18 @@ class ChainSweep:
                     frequency=frequency, end_datetime=datetime.fromtimestamp(now, timezone.utc),
                     need_extended_hours_data=True)
                 if resp.status_code != 200:
+                    whole = False
                     continue
                 answer = resp.json()
             except Exception as e:  # noqa: BLE001 -- that series' answer is the failure; the rotation goes on
                 log.warning("price history %s %s failed: %s: %s", ticker, series, type(e).__name__, e)
+                whole = False
                 continue
             self.publish(*price_history_message(ticker, series, answer, self.clock()))
             if series == "1m":
                 self._minutes_day[ticker] = today
+        if whole:
+            self._candled[ticker] = now
 
     def fetch_chain(self, schwab_client, ticker: str) -> None:
         """`ticker`'s chain, every expiry: each contract's Greeks from the stream, or the contract

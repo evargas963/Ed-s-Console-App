@@ -172,29 +172,35 @@ MIN_TIME_TO_EXPIRY_YEARS: float = 600.0 / YEAR_SECONDS
 SETTLEMENT_AM = "A"
 
 
-def time_to_expiry_years(expiry_et_date: str, now: datetime, *,
+def time_to_expiry_years(expiration_date: str, now: datetime, *,
                          settlement_type: str | None = None) -> float | None:
     """INTRADAY time-to-expiry in years (ACT/365), the one T of every Black-Scholes greek:
-    seconds from `now` (the caller's valuation instant) to the option's settlement on its
-    expiration date, over a 365-day year.
-    The settlement is the option market's (EQO) regular close Schwab's /markets sent for that
-    date (16:00 ET, 13:00 on an early close), or its open for Schwab's settlementType "A".
-    Schwab's own expirationDate is not the settlement: an AM-settled $SPX monthly carries the
-    16:00 ET of its date (captured 2026-10-07).
+    seconds from `now` (the caller's valuation instant) to the option's settlement, over a
+    365-day year. `expiration_date` is Schwab's expirationDate as sent.
+    The settlement is the option market's (EQO) regular close Schwab's /markets sent for the
+    expiry date (16:00 ET, 13:00 on an early close), or its open for Schwab's settlementType "A".
+    Schwab's own expirationDate is not the settlement of an AM-settled contract (an AM-settled
+    $SPX monthly carries the 16:00 ET of its date, captured 2026-10-08). For a date /markets does
+    not answer (beyond the year it answers, or before the 7 days back) a PM-settled contract
+    settles at Schwab's expirationDate (operator 2026-10-08); an AM-settled one has no T.
 
     VALIDATED 2026-07-26 against Schwab-reported gamma on real chains: intraday-to-close matches
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
 
-    None when Schwab's /markets answer for the expiry date is not held (beyond the year it
-    answers, or not asked yet), when it sends no regular option session that date, or once the
-    option has reached settlement. A 10-minute sub-floor guards the exact-expiry singularity."""
-    s = session(str(expiry_et_date)[:10])
+    None for an AM-settled contract whose expiry date /markets does not answer, for a date it
+    answers with no regular option session, for an expirationDate without its time, and once
+    the option has reached settlement. A 10-minute sub-floor guards the exact-expiry
+    singularity."""
+    s = session(str(expiration_date)[:10])
     if s is None:
-        return None
-    windows = s.option_windows(EQUITY_OPTIONS)
-    if not windows:
-        return None
-    settles = windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
+        if settlement_type == SETTLEMENT_AM or len(str(expiration_date)) <= 10:
+            return None
+        settles = datetime.fromisoformat(str(expiration_date))
+    else:
+        windows = s.option_windows(EQUITY_OPTIONS)
+        if not windows:
+            return None
+        settles = windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
     # instants, not civil time: a DST change between now and the expiry is counted as elapsed
     t = (settles.timestamp() - now.timestamp()) / YEAR_SECONDS
     if t <= 0.0:
