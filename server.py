@@ -1411,8 +1411,9 @@ def _atr(ticker: str, now: datetime) -> "Atr":
     today = now.astimezone(ET).date()
     s = session(today.isoformat())
     with _bars_lock:
-        daily = [c for c in _daily.get(tk, []) if datetime.fromtimestamp(c.ts, ET).date() < today]
-        bars = [b for b in _bars.get(tk, []) if s is not None
+        held_daily, held_bars = (_daily[tk] if tk in _daily else []), (_bars[tk] if tk in _bars else [])
+        daily = [c for c in held_daily if datetime.fromtimestamp(c.ts, ET).date() < today]
+        bars = [b for b in held_bars if s is not None
                 and any(start.timestamp() <= b.ts < end.timestamp() for start, end in s.regular)]
     return compute_atrs(daily + roll_up(bars, lambda day: day))
 
