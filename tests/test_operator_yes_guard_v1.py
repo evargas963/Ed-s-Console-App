@@ -36,6 +36,15 @@ def _chain(payload: dict) -> subprocess.CompletedProcess:
     ("Start-Process -FilePath C:\\x\\start_capture_daemon.bat", "daemon or the console"),
     ("cmd /c start_ed_console.bat", "daemon or the console"),
     (".venv\\Scripts\\python.exe launch.py", "daemon or the console"),
+    (".\\start_capture_daemon.bat", "daemon or the console"),
+    ("& \"C:\\x\\start_ed_console.bat\"", "daemon or the console"),
+    ("Start-Process -FilePath \"cmd.exe\" -ArgumentList '/c','start','\"Ed Console\"','\"C:\\x\\start_ed_console.bat\"'",
+     "daemon or the console"),
+    ("python -m uvicorn server:app --port 8000", "daemon or the console"),
+    ("pythonw -m app.market_data.schwab.streaming.capture", "daemon or the console"),
+    ("powershell -NoProfile -Command \"cmd /c start_ed_console.bat\"", "daemon or the console"),
+    ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*streaming.capture*' } | Stop-Process",
+     "daemon or the console"),
     ("gh pr merge 445 --merge", "merges pull request 445"),
     ("gh api -X PUT repos/o/r/pulls/445/merge", "merges pull request 445"),
     ("git push origin HEAD:main", "pushes to main"),
@@ -64,6 +73,17 @@ def test_the_test_changed_below_is_on_main():
     _shell("git push -q -u origin fix/some-branch"),
     _shell("git add launch.py tests/test_launch_v1.py"),
     _shell("python -m ruff check launch.py"),
+    # commands that only name a launcher or a process, as reads, diffs and searches do
+    _shell("Get-Content start_capture_daemon.bat, start_ed_console.bat", "PowerShell"),
+    _shell("git -C ..\\wt diff origin/main...HEAD -- app start_capture_daemon.bat stream_spine.py"),
+    _shell("git grep -n -E \"start_capture_daemon|uvicorn server:app|restart\" -- ."),
+    _shell("Select-String -Path logs\\ed_server.log -Pattern 'uvicorn restart'", "PowerShell"),
+    _shell("powershell -NoProfile -Command \"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine "
+           "-like '*streaming.capture*' }\""),
+    _shell("file start_capture_daemon.bat && grep -c x start_capture_daemon.bat"),
+    _shell("\"--- any python/uvicorn\"; Get-Process | Where-Object { $_.ProcessName -match 'python' }", "PowerShell"),
+    _shell("grep -rn \"stop.set()\\|\\\"op\\\"\\|taskkill\" start_capture_daemon.bat launch.py"),
+    _shell("git commit -q -F - @'\nstart_ed_console.bat runs it again after a fast-forward\n'@", "PowerShell"),
 ])
 def test_everything_else_passes_a_change_to_a_test_on_main_included(payload):
     assert guard.reasons(payload) == []
