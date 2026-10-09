@@ -5,7 +5,8 @@ REM The capture daemon: holds the ONE Schwab streaming connection and serves eve
 REM (ws :8800 browsers, :8799 console). Started by launch.py (start_ed_console.bat) or on its own;
 REM it reads its own .env (the Schwab credentials) either way. Its output,
 REM and its errors from before its project modules load, go to logs\stream_capture.log (pythonw). If it exits it is restarted here after 5 s -- except when
-REM another daemon already owns the stream (exit 3) or this checkout may not run live (exit 2).
+REM another daemon already owns the stream (exit 3), this checkout may not run live (exit 2), or it
+REM cannot be fast-forwarded to origin/main (exit 4). Each start first brings it to origin/main.
 REM Close this window to stop the daemon's restarts (then end the pythonw process if running).
 :loop
 echo  %date% %time%  capture daemon starting (output: logs\stream_capture.log)
@@ -17,6 +18,10 @@ if "%CODE%"=="3" (
 )
 if "%CODE%"=="2" (
     echo  This checkout may not run a live daemon here - see logs or run it in a terminal.
+    goto done
+)
+if "%CODE%"=="4" (
+    echo  Not started: this checkout cannot be fast-forwarded to origin/main - the reason is in logs\stream_capture.log.
     goto done
 )
 echo  %date% %time%  capture daemon exited (code %CODE%) - restarting in 5 s

@@ -383,7 +383,8 @@ class Daemon:
         self._ranked: "dict[str, tuple[str, ...]]" = {}
         self.chains = None                  # the ChainSweep: its round time, its tickers
         self.writer = None                  # the CaptureWriter: its state rides the heartbeat
-        self.start_commit: "str | None" = None   # the commit its code was loaded from (start_commit)
+        self.start_commit: "str | None" = None   # the commit its code was loaded from, and what the
+        self.commit_check: "str | None" = None   # check of it against origin/main found (bring_to_origin_main)
         self.schwab_client = None           # the daemon's one Schwab client (run): the checks
         #: what this connection has asked Schwab for, and what Schwab accepted (code 0)
         self.asked: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
@@ -558,7 +559,7 @@ class Daemon:
                 "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
                 "schwab_down": self.schwab_down,
                 "watchlist": list(self.watchlist),
-                "start_commit": self.start_commit,
+                "start_commit": self.start_commit, "commit_check": self.commit_check,
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "health": self.health.report(now),
@@ -843,15 +844,38 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
         await asyncio.gather(worker, return_exceptions=True)
 
 
-def start_commit() -> "str | None":
-    """The commit the daemon's checkout is at as it starts (git rev-parse HEAD), the code it
-    loaded; None, its reason logged, when git does not answer."""
+#: what the commit check at the daemon's start found (bring_to_origin_main)
+COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = "current", "moved", "unknown", "refused"
+#: exit code of a start whose checkout cannot be brought to origin/main (start_capture_daemon.bat stops)
+EXIT_NOT_CURRENT = 4
+
+
+def bring_to_origin_main(root: Path) -> "tuple[str, str, str]":
+    """The checkout at `root` brought to origin/main before the daemon starts: (what the commit
+    check found, the commit it is at, why). It fetches origin and fast-forwards main.
+    COMMIT_CURRENT: at origin/main. COMMIT_MOVED: fast-forwarded; this process loaded the old code,
+    so it ends and the start script starts the new. COMMIT_UNKNOWN: origin out of reach; it starts,
+    the check not passed. COMMIT_REFUSED: not on main, local changes, or a history split from
+    origin/main; nothing is moved and it does not start."""
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=60)
+    head = git("rev-parse", "HEAD").stdout.strip()
     try:
-        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True,
-                              check=True, timeout=10).stdout.strip()
-    except (OSError, subprocess.SubprocessError) as e:
-        log.warning("capture daemon: the commit it started from is unknown: %s: %s", type(e).__name__, e)
-        return None
+        fetched = git("fetch", "--quiet", "origin", "main")
+    except subprocess.TimeoutExpired as e:
+        return COMMIT_UNKNOWN, head, f"origin did not answer: {e}"
+    if fetched.returncode != 0:
+        return COMMIT_UNKNOWN, head, f"origin could not be fetched: {fetched.stderr.strip()}"
+    if git("symbolic-ref", "--short", "-q", "HEAD").stdout.strip() != "main":
+        return COMMIT_REFUSED, head, "the checkout is not on main"
+    changed = git("status", "--porcelain", "--untracked-files=no").stdout.strip()
+    if changed:
+        return COMMIT_REFUSED, head, f"local changes: {changed}"
+    merged = git("merge", "--ff-only", "--quiet", "origin/main")
+    if merged.returncode != 0:
+        return COMMIT_REFUSED, head, f"main cannot fast-forward to origin/main: {merged.stderr.strip()}"
+    now = git("rev-parse", "HEAD").stdout.strip()
+    return (COMMIT_CURRENT, now, "at origin/main") if now == head else (COMMIT_MOVED, now, f"fast-forwarded from {head}")
 
 
 def one_schwab_client(build) -> "callable":
@@ -874,7 +898,7 @@ def one_schwab_client(build) -> "callable":
     return schwab_client
 
 
-async def run() -> int:
+async def run(commit_check: str, commit: str) -> int:
     """The whole daemon: writer, the two local sockets, the chain sweep and the Schwab
     connection."""
     from app.market_data.schwab.streaming.live_push import serve_live_push
@@ -891,8 +915,8 @@ async def run() -> int:
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
     daemon = Daemon(bus, health, stored_watchlist(writer.db_path))
-    daemon.writer, daemon.start_commit = writer, start_commit()
-    log.info("capture daemon: started from commit %s (pid %d)", daemon.start_commit, os.getpid())
+    daemon.writer, daemon.start_commit, daemon.commit_check = writer, commit, commit_check
+    log.info("capture daemon: started from commit %s, commit check %s (pid %d)", commit, commit_check, os.getpid())
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer)),
@@ -921,7 +945,14 @@ def main() -> int:
     _start_log()
     fd, lock = acquire_owner_lock()
     try:
-        return asyncio.run(run())
+        check, commit, why = bring_to_origin_main(ROOT)
+        log.log(logging.ERROR if check == COMMIT_REFUSED else logging.WARNING if check == COMMIT_UNKNOWN
+                else logging.INFO, "commit check: %s at %s: %s", check, commit, why)
+        if check == COMMIT_REFUSED:
+            return EXIT_NOT_CURRENT
+        if check == COMMIT_MOVED:           # this process loaded the old code: the next start loads the new
+            return 0
+        return asyncio.run(run(check, commit))
     except KeyboardInterrupt:
         return 0
     except BaseException:
