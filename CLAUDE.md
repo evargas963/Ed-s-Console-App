@@ -28,8 +28,11 @@ so a wrong number that looks right is worse than a blank with a reason.
 9. If rules conflict: correctness of what I see > my explicit yes > speed.
 
 Rules 5, 6 and 8 are also enforced by machine. A hook (tools/operator_yes_guard.py) puts
-starting or stopping the daemon or console, a merge and a push to main to me as an
-Allow/Deny prompt; tell me in chat what it is for before you run it. A change to a test, a
+starting or stopping the daemon or console during regular market hours (8:30-15:00 CT, from
+Schwab's /markets answer; or when the session is unknown), a restart of the machine and a merge
+to me as an Allow/Deny prompt; tell me in chat what it is for before you run it. In Pre-Market,
+After-Hours and Closed a clean restart (`python launch.py stop`, then `start_ed_console.bat`)
+needs no prompt: post a notice in chat first and confirm both came back. Killing the daemon or console and a push to main are refused. A change to a test, a
 file fix or a new file needs no approval from me. A CI check (tools/check_fails_before.py) refuses a pull request that changes
 product code unless one of its changed tests fails on the old code.
 

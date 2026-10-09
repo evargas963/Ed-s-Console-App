@@ -382,6 +382,7 @@ class Daemon:
         self._ranked: "dict[str, tuple[str, ...]]" = {}
         self.chains = None                  # the ChainSweep: its round time, its tickers
         self.writer = None                  # the CaptureWriter: its state rides the heartbeat
+        self.stop: "asyncio.Event | None" = None   # the daemon's stop (run); a stop request sets it
         self.schwab_client = None           # the daemon's one Schwab client (run): the checks
         #: what this connection has asked Schwab for, and what Schwab accepted (code 0)
         self.asked: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
@@ -490,9 +491,11 @@ class Daemon:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     def console_frame(self, req: dict, sender) -> None:
-        """A frame from console connection `sender` (live_push): a watchlist request
-        ({"op": "watchlist"}, answered on the bus), or the contract selected on the Flow panel
-        ({"op": "flow_contract", "contract": symbol or null})."""
+        """A frame from a connection `sender` to the daemon's local socket (live_push, 127.0.0.1): a
+        watchlist request ({"op": "watchlist"}, answered on the bus), the contract selected on the
+        Flow panel ({"op": "flow_contract", "contract": symbol or null}), or the clean stop
+        ({"op": "stop"}, launch.py stop): every task ends, the writer writes what it holds (to the
+        spill files while the database refuses writes), and the daemon exits EXIT_STOPPED."""
         if req["op"] == "watchlist":
             task = asyncio.ensure_future(self.watchlist_request(req))
             task.add_done_callback(_request_ended)
@@ -500,6 +503,9 @@ class Daemon:
             self.flow_contract = req["contract"]
             log.info("flow contract: %s", self.flow_contract)
             self.pick_options()
+        elif req["op"] == "stop":
+            log.info("capture daemon: stop requested on its local socket")
+            self.stop.set()
 
     async def watchlist_request(self, req: dict) -> None:
         """One add or removal from the console ({"op": "watchlist", "action", "ticker", "id"}),
@@ -721,6 +727,9 @@ def owner_lock_path(db_path: "str | Path | None" = None) -> Path:
 #: Exit code when another daemon already owns the stream (start_capture_daemon.bat stops its
 #: restart loop on it). 2 is the live-binding refusal (runtime_layout).
 EXIT_OWNER_LOCK_HELD = 3
+#: Exit code of a daemon stopped on request ({"op": "stop"}): start_capture_daemon.bat does not
+#: restart it.
+EXIT_STOPPED = 5
 
 
 def acquire_owner_lock(db_path: "str | Path | None" = None) -> "tuple[int, Path]":
@@ -869,7 +878,7 @@ async def run() -> int:
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
     daemon = Daemon(bus, health, stored_watchlist(writer.db_path))
-    daemon.writer = writer
+    daemon.writer, daemon.stop = writer, stop
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer)),
@@ -883,7 +892,7 @@ async def run() -> int:
     finally:
         stop.set()
         await asyncio.gather(*tasks, return_exceptions=True)
-    return 0
+    return EXIT_STOPPED                           # daemon.run returns only once stop is set
 
 
 def main() -> int:
