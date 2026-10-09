@@ -9,8 +9,8 @@ stops nothing.
 3. The default browser, at URL, once the console it started answers healthy.
 
 `python launch.py stop` is the clean stop of both (stop): the daemon is asked to stop on its local
-socket and writes what it holds before it exits; the console gets Ctrl+C on its own console window
-and runs its shutdown.
+socket and writes what it holds before it exits; the console, in a process group of its own, gets
+Ctrl+Break and runs its shutdown; start_ed_console.bat then ends and its window closes.
 """
 from __future__ import annotations
 
@@ -57,20 +57,27 @@ def running(mark: str) -> "list[psutil.Process]":
             if p.info["cmdline"] is not None and mark in " ".join(p.info["cmdline"])]
 
 
-def ctrl_c(pid: int) -> None:
-    """Ctrl+C on the console window of process `pid`, from a process without a window of its own,
-    as the operator's key press there: every process on that window gets it."""
-    subprocess.run([sys.executable, str(Path(__file__)), "ctrl-c", str(pid)],
+def start_console(argv: "list[str]", env: dict) -> subprocess.Popen:
+    """The console process `argv`, in a process group of its own on this window, so a stop
+    (ctrl_break) reaches it alone: the window's cmd, which would ask "Terminate batch job (Y/N)?"
+    after an interrupt, and this launcher never get one."""
+    return subprocess.Popen(argv, cwd=ROOT, env=env, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+
+
+def ctrl_break(group: int) -> None:
+    """Ctrl+Break to process group `group` (the console's, start_console) on its window, from a
+    process without a window of its own: the console's handler runs its shutdown
+    (server._install_signal_handlers)."""
+    subprocess.run([sys.executable, str(Path(__file__)), "ctrl-break", str(group)],
                    creationflags=subprocess.CREATE_NO_WINDOW, check=True, timeout=30)
 
 
-def _send_ctrl_c(pid: int) -> int:
+def _send_ctrl_break(group: int) -> int:
     kernel = ctypes.windll.kernel32
     kernel.FreeConsole()
-    if not kernel.AttachConsole(pid):
+    if not kernel.AttachConsole(group):
         return 1
-    kernel.SetConsoleCtrlHandler(None, True)        # this process ignores the Ctrl+C it sends
-    return 0 if kernel.GenerateConsoleCtrlEvent(0, 0) else 1
+    return 0 if kernel.GenerateConsoleCtrlEvent(1, group) else 1     # 1: CTRL_BREAK_EVENT
 
 
 def ask_daemon_to_stop(port: int = LIVE_PUSH_PORT) -> None:
@@ -81,14 +88,14 @@ def ask_daemon_to_stop(port: int = LIVE_PUSH_PORT) -> None:
 
 
 def stop() -> int:
-    """The clean stop of the daemon (ask_daemon_to_stop) and the console (Ctrl+C on its window:
-    server._install_signal_handlers, then its shutdown). Waits up to STOP_WAIT_SEC for each; 0
-    when both ended."""
+    """The clean stop of the daemon (ask_daemon_to_stop) and the console (ctrl_break to its group,
+    led by the console process whose parent is not one: the launcher started it). Waits up to
+    STOP_WAIT_SEC for each; 0 when both ended."""
     daemon, console = running(DAEMON_MARK), running(CONSOLE_MARK)
     if daemon:
         ask_daemon_to_stop()
     if console:
-        ctrl_c(console[0].pid)
+        ctrl_break(next(p.pid for p in console if p.ppid() not in {c.pid for c in console}))
     _gone, alive = psutil.wait_procs(daemon + console, timeout=STOP_WAIT_SEC)
     for name, procs in (("Capture daemon", daemon), ("Console", console)):
         left = [p.pid for p in procs if p in alive]
@@ -125,8 +132,7 @@ def main() -> int:
         webbrowser.open(URL)                       # the default browser
         return 0
     print(f"Console: starting on port {CONSOLE_PORT}; the browser opens at {URL} once it answers. Ctrl+C stops it.")
-    console = subprocess.Popen(CONSOLE, cwd=ROOT,
-                               env={k: v for k, v in os.environ.items() if not k.upper().startswith("SCHWAB_")})
+    console = start_console(CONSOLE, {k: v for k, v in os.environ.items() if not k.upper().startswith("SCHWAB_")})
     signal.signal(signal.SIGINT, signal.SIG_IGN)   # Ctrl+C is the console's: it stops, then this ends
     started = time.monotonic()
     while console.poll() is None and unhealthy_for(CONSOLE_PORT, 1.0) is not None:
@@ -140,6 +146,6 @@ def main() -> int:
 if __name__ == "__main__":
     if sys.argv[1:] == ["stop"]:
         raise SystemExit(stop())
-    if sys.argv[1:2] == ["ctrl-c"]:
-        raise SystemExit(_send_ctrl_c(int(sys.argv[2])))
+    if sys.argv[1:2] == ["ctrl-break"]:
+        raise SystemExit(_send_ctrl_break(int(sys.argv[2])))
     raise SystemExit(main())

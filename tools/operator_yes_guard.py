@@ -2,9 +2,9 @@
 shell commands. Each command gets one answer, the strictest of its statements':
 
   * A start or a clean stop of the capture daemon or the console (a launcher, launch.py, its
-    `stop`, uvicorn, the daemon's module) passes while the market is Closed and is put to the
-    operator (Claude Code's Allow/Deny) while a session is open (Pre-Market, RTH, After-Hours) or
-    its session is unknown. The session is time_et.session_label on Schwab's /markets answer for
+    `stop`, uvicorn, the daemon's module) is put to the operator (Claude Code's Allow/Deny) during
+    regular market hours (RTH) and while the session is unknown; in Pre-Market, After-Hours and
+    Closed it passes. The session is time_et.session_label on Schwab's /markets answer for
     the day, as the daemon recorded it (stream_markets_raw); no answer held is unknown.
   * Killing the daemon, the console or launch.py from outside is refused: on Windows every such
     stop (Stop-Process with or without -Force, taskkill /F, kill, .Kill(), WMI/CIM) ends the
@@ -226,7 +226,7 @@ def decide(payload: dict, now: datetime, db: Path) -> "tuple[str, list[str]]":
                             "(rule 6: production)")
         elif _starts(toks):
             session = market_session(now, db)
-            if session != time_et.CLOSED:
+            if session in (time_et.RTH, time_et.UNKNOWN):
                 asks.append(f"starts or stops the daemon or the console while the market session is "
                             f"{session} (rule 6: production)")
         elif _merges(toks):

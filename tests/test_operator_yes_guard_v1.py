@@ -1,6 +1,6 @@
 """tools/operator_yes_guard.py (CLAUDE.md rule 6). A start or a clean stop of the daemon or the
-console passes while the market is Closed and is put to the operator (Allow/Deny) while a session
-is open or unknown; killing the daemon, the console or launch.py is refused, whatever its flags; a
+console is put to the operator (Allow/Deny) during regular market hours and while the session is
+unknown, and passes in Pre-Market, After-Hours and Closed; killing the daemon, the console or launch.py is refused, whatever its flags; a
 stop of any other process passes; a stop of the machine and a merge ask; a push to main is
 refused; every other action, a change to a test included, passes. Judged on real payloads and
 through the hook chain the settings run.
@@ -102,11 +102,20 @@ STARTS_AND_CLEAN_STOPS = [
 
 
 @pytest.mark.parametrize("cmd", STARTS_AND_CLEAN_STOPS)
-def test_a_start_or_clean_stop_passes_while_closed_and_asks_while_a_session_is_open_or_unknown(cmd, markets, tmp_path):
-    assert _decide(cmd, CLOSED, markets) == guard.PASS
-    for now in (PRE, RTH, AFTER, NOT_HELD):
+def test_a_start_or_clean_stop_asks_only_in_regular_hours_or_an_unknown_session(cmd, markets, tmp_path):
+    for now in (PRE, AFTER, CLOSED):
+        assert _decide(cmd, now, markets) == guard.PASS, now
+    for now in (RTH, NOT_HELD):
         assert _decide(cmd, now, markets) == guard.ASK, now
     assert _decide(cmd, CLOSED, tmp_path / "no_database.db") == guard.ASK, "an unreadable session did not ask"
+
+
+def test_regular_hours_are_schwabs_window_0830_to_1500_central(markets):
+    """Schwab's regular window for 2026-10-07 is 09:30-16:00 ET (08:30-15:00 CT): a restart asks
+    from its first minute to its last and passes the minute before and the minute it ends."""
+    ct = time_et.ZoneInfo("America/Chicago")
+    for (h, m), answer in (((8, 29), guard.PASS), ((8, 30), guard.ASK), ((14, 59), guard.ASK), ((15, 0), guard.PASS)):
+        assert _decide("python launch.py stop", datetime(2026, 10, 7, h, m, tzinfo=ct), markets) == answer, (h, m)
 
 
 KILLS = ["Stop-Process -Id {pid}", "Stop-Process -Id {pid} -Force", "Stop-Process {pid}", "spps -Id {pid}",
