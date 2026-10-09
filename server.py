@@ -2741,7 +2741,7 @@ NO_PRICE_LEVELS_REASON = ("no price levels published for this ticker for the mar
 #: the terrain's price levels the chart draws (terrain_engine.compute_terrain), in its words
 GAMMA_LEVELS = (("call_wall", "Call wall"), ("put_wall", "Put wall"), ("gamma_flip", "Gamma flip"),
                 ("max_pain", "Max pain"), ("net_gex_peak", "Net Γ peak"), ("absolute_gamma_strike", "Abs Γ"),
-                ("pin_candidate", "Pin candidate"), ("gsf", "GSF"), ("grc", "GRC"), ("hvp", "HVP"),
+                ("zero_dte_abs_gamma_strike", "0DTE Γ pin"), ("pin_candidate", "Pin candidate"), ("gsf", "GSF"), ("grc", "GRC"), ("hvp", "HVP"),
                 ("lvp", "LVP"), ("key_delta_strike", "Key Δ strike"), ("call_charm_wall", "Call charm wall"),
                 ("put_charm_wall", "Put charm wall"))
 

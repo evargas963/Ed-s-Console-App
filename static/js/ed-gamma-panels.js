@@ -58,7 +58,7 @@
   var _levelsLoader = window.EdL1SseGuards.makeCoalescedLoader(function (signal) { return loadLevelsImpl(ticker(), signal); });
   function loadLevels() { _levelsLoader.trigger(ticker()); }
   function renderLevels(d) {
-    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klPeak', 'klNet', 'klRegime'];
+    var ids = ['klSpot', 'klFlip', 'klCall', 'klPut', 'klAbs', 'klAbs0', 'klPeak', 'klNet', 'klRegime'];
     paintPcr(d && !d.error ? d : null);
     if (!d || d.error) {
       ids.forEach(function (id) { txt(id, '—'); });
@@ -69,6 +69,7 @@
     txt('klCall', px(d.call_wall));
     txt('klPut', px(d.put_wall));
     txt('klAbs', px(d.absolute_gamma_strike));
+    txt('klAbs0', d.zero_dte_abs_gamma_strike == null ? (d.zero_dte_abs_gamma_reason || '—') : px(d.zero_dte_abs_gamma_strike));
     txt('klPeak', px(d.net_gex_peak));
     // Net GEX / 1% move — signed $, coloured by sign (formatting only)
     var net = document.getElementById('klNet');
