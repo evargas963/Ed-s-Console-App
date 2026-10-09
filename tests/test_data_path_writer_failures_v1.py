@@ -403,7 +403,7 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
     _SMALL_CAP (an input) and whose lock wait is 0.2 s; then releases it. Past the cap the quotes
     go to a spill file beside the database, the Record says so with the file's size, and once the
     lock is released every quote is in the database exactly once, in arrival order, and the spill
-    file is gone after its write-back verified."""
+    file is gone once its rows are committed."""
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
                            hold_cap_bytes=_SMALL_CAP)
@@ -440,61 +440,18 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
         stored = [json.loads(r[0]) for r in conn.execute(
             "SELECT native_json FROM stream_options_quotes_raw ORDER BY rowid")]
     assert stored == [e["content"] for e in _EVENTS], "not every quote exactly once, in arrival order"
-    assert not path.exists(), "the spill file outlived its verified write-back"
+    assert not path.exists(), "the spill file outlived its committed write-back"
     assert (after["state"], after["spill"], after["spills_kept"], after["rows_written"]) == (
         "recording", None, [], len(_EVENTS))
-
-
-def test_a_spill_whose_write_back_does_not_verify_is_kept(tmp_path):
-    """INDUCED CONDITIONS: as above, and, in the same transaction that releases the lock, a
-    trigger that deletes each option quote row written back from the spill (every row after the
-    ones held in memory), standing in for rows lost after their write. The write-back does not
-    verify: the spill file stays, and the Record says so."""
-    db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
-                           hold_cap_bytes=_SMALL_CAP)
-    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
-    holder.execute("BEGIN IMMEDIATE")
-
-    async def go():
-        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
-        daemon = capture.Daemon(bus, health)
-        daemon.writer = writer
-        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        during = await _held_past_the_cap(writer, bus, health, daemon)
-        holder.execute(f"CREATE TRIGGER lose_written_back AFTER INSERT ON stream_options_quotes_raw "
-                       f"WHEN NEW.rowid > {during['waiting']} "
-                       f"BEGIN DELETE FROM stream_options_quotes_raw WHERE rowid = NEW.rowid; END")
-        holder.execute("COMMIT")
-        await _until(lambda: writer.status()["spills_kept"] != [])
-        after = _beat(daemon)["writer"]
-        stop.set()
-        await task
-        return during, after
-    try:
-        during, after = asyncio.run(go())
-    finally:
-        holder.close()
-
-    path = Path(during["spill"]["path"])
-    assert path.exists(), "a spill whose write-back did not verify was deleted"
-    (kept,) = after["spills_kept"]
-    assert kept["path"] == str(path) and kept["reason"].startswith("stream_options_quotes_raw: 1 topics differ")
-    assert kept["written_back"] == kept["messages"] == during["spill"]["messages"]
-    assert (f"spill kept: {kept['reason']} ({path.name}, {kept['written_back']} of {kept['messages']} "
-            f"written back)") in after["line"]
-    assert after["cls"] == "neg" and after["spill"] is None and after["state"] == "recording"
-    # how far its write-back got is recorded in the database, for a writer that finds the file
-    (found,) = CaptureWriter(db).status()["left_on_disk"]
-    assert (found["path"], found["written_back"]) == (str(path), kept["messages"])
 
 
 def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_message_is_lost(tmp_path):
     """INDUCED CONDITIONS: two spill files beside the database, as a kill leaves them, holding the
     captured option quotes: the older's first 4 records committed (its progress row says 4) and
-    half a record after its last whole one; the newer fully committed. A new writer writes the
-    older's other records once, in order, deletes it, counts the cut message lost once, and lists
-    the newer without writing it again."""
+    half a record after its last whole one; the newer fully committed (killed between its last
+    part and its deletion). A new writer writes the older's other records once, in order, deletes
+    it, counts the cut message lost once, and deletes the newer without writing it again; no
+    progress row is left."""
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
     records = [json.dumps({"topic": f"optquote.{_CONTRACT}", "msg": options_quote_msg(   # DATA_FLOW §2 D4's format
@@ -519,9 +476,83 @@ def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_messag
 
     with sqlite3.connect(db) as conn:
         stored = [ts for (ts,) in conn.execute("SELECT ts_recv FROM stream_options_quotes_raw ORDER BY rowid")]
+        progress = conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0]
     assert stored == [1790863200.0 + i for i in range(4, len(_EVENTS))], "not the uncommitted records once, in order"
-    assert not older.exists() and newer.exists() and after["lost"] == 1
-    assert [(Path(k["path"]).name, k["written_back"]) for k in after["left_on_disk"]] == [(newer.name, 2)]
+    assert not older.exists() and not newer.exists() and after["lost"] == 1
+    assert (after["left_on_disk"], after["spills_kept"], progress) == ([], [], 0)
+
+
+def test_a_spill_file_is_never_opened_over_another_file(tmp_path):
+    """INDUCED CONDITIONS: as in the hold-cap test, the database locked while the captured option
+    quotes arrive, and a stop while it is still locked, so the writer opens the spill file and, at
+    the stop, a file for what memory held; beforehand every name a spill file could take in the
+    1.5 s the quotes arrive in (a millisecond each, in every form) is already taken by a file of
+    its own. The writer opens neither over any of them: each stays as it was, and the writer's two
+    files hold every quote, memory's file named first."""
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
+                           hold_cap_bytes=_SMALL_CAP)
+    begin = int(time.time() * 1000) + 8000
+    taken = [db.with_name(f"stream_capture.{ms}{n}.spill") for ms in range(begin, begin + 1500) for n in ("", ".0", ".1")]
+    for path in taken:
+        path.write_bytes(b"taken")
+    assert time.time() * 1000 < begin, "the names were not all taken before the quotes arrive"
+    time.sleep(begin / 1000 - time.time())
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        daemon = capture.Daemon(bus, health)
+        daemon.writer = writer
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        await _held_past_the_cap(writer, bus, health, daemon)
+        stop.set()
+        await task
+    try:
+        asyncio.run(go())
+    finally:
+        holder.close()
+
+    assert [p for p in taken if p.read_bytes() != b"taken"] == [], "a spill file was opened over another file"
+    left = writer.status()["left_on_disk"]
+    assert len({k["path"] for k in left}) == len(left) == 2 and not set(map(str, taken)) & {k["path"] for k in left}
+    assert sum(k["messages"] for k in left) == len(_EVENTS)
+    assert [k["path"] for k in left] == sorted((k["path"] for k in left), key=lambda p: tuple(
+        int(part) for part in Path(p).name.split(".")[1:-1])), "memory's file is not named before the spill's"
+
+
+def test_a_database_made_before_the_receipt_time_indexes_is_not_reindexed_at_start(tmp_path):
+    """A new database gets the receipt-time indexes on quotes, books and option quotes; a database
+    made before them (its tables indexed by symbol, as production's) keeps its indexes as they are
+    when a writer starts on it: the change is made by hand at the production step."""
+    new = tmp_path / "new" / "stream_capture.db"
+    CaptureWriter(new)
+    old = tmp_path / "old" / "stream_capture.db"
+    old.parent.mkdir()
+    with sqlite3.connect(old) as conn:
+        conn.executescript(
+            "CREATE TABLE stream_quotes_raw (ts_recv REAL NOT NULL, symbol TEXT NOT NULL, bid REAL, ask REAL, "
+            "last REAL, bid_size INTEGER, ask_size INTEGER, last_size INTEGER, total_volume INTEGER, "
+            "quote_time_ms INTEGER, trade_time_ms INTEGER, src TEXT NOT NULL);"
+            "CREATE INDEX idx_sqr_sym_ts ON stream_quotes_raw(symbol, ts_recv);"
+            "CREATE TABLE stream_book_raw (ts_recv REAL NOT NULL, symbol TEXT NOT NULL, service TEXT NOT NULL, "
+            "native_json TEXT NOT NULL, src TEXT NOT NULL);"
+            "CREATE INDEX idx_sbkr_sym_ts ON stream_book_raw(symbol, ts_recv);"
+            "CREATE TABLE stream_options_quotes_raw (ts_recv REAL NOT NULL, symbol TEXT NOT NULL, "
+            "native_json TEXT NOT NULL, src TEXT NOT NULL);"
+            "CREATE INDEX idx_soqr_sym_ts ON stream_options_quotes_raw(symbol, ts_recv);")
+    CaptureWriter(old)
+
+    def indexes(db) -> dict:
+        with sqlite3.connect(db) as conn:
+            return {t: sorted(n for (n,) in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (t,)))
+                for t in ("stream_quotes_raw", "stream_book_raw", "stream_options_quotes_raw")}
+    assert indexes(new) == {"stream_quotes_raw": ["idx_sqr_ts"], "stream_book_raw": ["idx_sbkr_ts"],
+                            "stream_options_quotes_raw": ["idx_soqr_ts"]}
+    assert indexes(old) == {"stream_quotes_raw": ["idx_sqr_sym_ts"], "stream_book_raw": ["idx_sbkr_sym_ts"],
+                            "stream_options_quotes_raw": ["idx_soqr_sym_ts"]}, "a start changed an existing table's index"
 
 
 #: production's stream in its real proportions: every message received 2026-10-05 14:00:00-14:00:03

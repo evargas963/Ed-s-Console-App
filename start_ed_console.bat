@@ -11,5 +11,8 @@ if not exist "%VENV_PY%" (
     exit /b 1
 )
 
+REM launch.py ends with 10 after it fast-forwarded the checkout: it is run again, on the new code.
+:launch
 "%VENV_PY%" launch.py
+if "%errorlevel%"=="10" goto launch
 pause

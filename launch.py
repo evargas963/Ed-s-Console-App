@@ -1,6 +1,11 @@
-"""Ed Console's launcher: start_ed_console.bat runs it with the project's .venv Python. It stops
-nothing.
+"""Ed Console's launcher, the one start of the console and the capture daemon:
+start_ed_console.bat runs it with the project's .venv Python. It stops nothing.
 
+0. With neither running, the checkout brought to origin/main (bring_to_origin_main), so both start
+   from the same commit, the newest merged: moved, it ends and start_ed_console.bat runs it again
+   on the new code; with local changes, not on main or split from origin/main, nothing starts;
+   with origin out of reach, both start, the check not passed. With either running it is not run:
+   the other starts from the commit the running one loaded.
 1. The capture daemon, in its own window (start_capture_daemon.bat restarts it), unless its price
    socket's port is in use. It reads its own .env (the Schwab credentials); its log, and
    /api/health from its heartbeat, say whether Schwab took them.
@@ -12,14 +17,13 @@ from __future__ import annotations
 
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
 import urllib.request
 import webbrowser
 from pathlib import Path
-
-import psutil
 
 from app.market_data.schwab.streaming.live_ui import LIVE_UI_PORT as DAEMON_PORT
 
@@ -29,12 +33,44 @@ URL = f"http://127.0.0.1:{CONSOLE_PORT}/"
 #: --timeout-graceful-shutdown: Ctrl+C ends it while pages hold their change streams open
 CONSOLE = [sys.executable, "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", str(CONSOLE_PORT),
            "--timeout-graceful-shutdown", "10"]
+#: what the commit check before a start found (bring_to_origin_main)
+COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = "current", "moved", "unknown", "refused"
+#: exit codes start_ed_console.bat acts on: the checkout moved (it runs this again, on the new
+#: code); the checkout cannot be brought to origin/main (nothing started)
+EXIT_MOVED, EXIT_NOT_CURRENT = 10, 11
+
+
+def bring_to_origin_main(root: Path) -> "tuple[str, str, str]":
+    """The checkout at `root` brought to origin/main: (what the check found, the commit it is at,
+    why). It fetches origin and fast-forwards main. COMMIT_CURRENT: at origin/main. COMMIT_MOVED:
+    fast-forwarded. COMMIT_UNKNOWN: origin out of reach. COMMIT_REFUSED: not on main, local
+    changes, or a history split from origin/main; nothing is moved."""
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=60)
+    head = git("rev-parse", "HEAD").stdout.strip()
+    try:
+        fetched = git("fetch", "--quiet", "origin", "main")
+    except subprocess.TimeoutExpired as e:
+        return COMMIT_UNKNOWN, head, f"origin did not answer: {e}"
+    if fetched.returncode != 0:
+        return COMMIT_UNKNOWN, head, f"origin could not be fetched: {fetched.stderr.strip()}"
+    if git("symbolic-ref", "--short", "-q", "HEAD").stdout.strip() != "main":
+        return COMMIT_REFUSED, head, "the checkout is not on main"
+    changed = git("status", "--porcelain", "--untracked-files=no").stdout.strip()
+    if changed:
+        return COMMIT_REFUSED, head, f"local changes: {changed}"
+    merged = git("merge", "--ff-only", "--quiet", "origin/main")
+    if merged.returncode != 0:
+        return COMMIT_REFUSED, head, f"main cannot fast-forward to origin/main: {merged.stderr.strip()}"
+    now = git("rev-parse", "HEAD").stdout.strip()
+    return (COMMIT_CURRENT, now, "at origin/main") if now == head else (COMMIT_MOVED, now, f"fast-forwarded from {head}")
 
 
 def in_use(port: int) -> bool:
-    """Whether a process on this machine listens on `port`."""
-    return any(c.status == psutil.CONN_LISTEN and c.laddr and c.laddr.port == port
-               for c in psutil.net_connections(kind="inet"))
+    """Whether a process on this machine listens on `port`: it takes a connection on 127.0.0.1."""
+    with socket.socket() as probe:
+        probe.settimeout(2.0)
+        return probe.connect_ex(("127.0.0.1", port)) == 0
 
 
 def unhealthy_for(port: int, seconds: float) -> "str | None":
@@ -55,6 +91,17 @@ def unhealthy_for(port: int, seconds: float) -> "str | None":
 
 
 def main() -> int:
+    running = [name for name, port in (("capture daemon", DAEMON_PORT), ("console", CONSOLE_PORT)) if in_use(port)]
+    if running:
+        print(f"Commit check: not run; the {' and the '.join(running)} already run from this checkout.")
+    else:
+        check, commit, why = bring_to_origin_main(ROOT)
+        print(f"Commit check: {check} at {commit}: {why}")
+        if check == COMMIT_REFUSED:
+            print("Not started: this checkout cannot be brought to origin/main.")
+            return EXIT_NOT_CURRENT
+        if check == COMMIT_MOVED:                  # this process loaded the old code
+            return EXIT_MOVED
     if in_use(DAEMON_PORT):
         print(f"Capture daemon: port {DAEMON_PORT} is already in use; not started.")
     else:

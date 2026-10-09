@@ -187,8 +187,8 @@ a file that does not exist, or names an ENF item that is not in `ACTIVE_PROGRAM.
 
 ## Running it
 
-Console: `start_ed_console.bat` (`uvicorn server:app`, port 8000). Capture daemon:
-`start_capture_daemon.bat`. Python 3.13, the project `.venv`. Offline: `ED_CI_OFFLINE=1`,
+Both processes: `start_ed_console.bat` (`launch.py`: the checkout brought to origin/main, then the
+capture daemon in its own window and `uvicorn server:app`, port 8000). Python 3.13, the project `.venv`. Offline: `ED_CI_OFFLINE=1`,
 placeholder `SCHWAB_API_KEY` / `SCHWAB_APP_SECRET`. Live: `schwab_token.json`
 (`python reauth_schwab.py`). Probe `127.0.0.1`, never `localhost`. The agent may restart the
 console and the capture daemon, and confirms both came back.

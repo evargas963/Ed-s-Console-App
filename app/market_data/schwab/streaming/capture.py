@@ -1,6 +1,6 @@
 """The capture daemon: the ONE Schwab streaming connection (Schwab allows one per account).
 
-    python -m app.market_data.schwab.streaming.capture          (start_capture_daemon.bat)
+    python -m app.market_data.schwab.streaming.capture   (launch.py -> start_capture_daemon.bat)
 
 It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
 (run_chains) fetches full option chains on its own thread, one request at a time, without end:
@@ -49,13 +49,11 @@ import json
 import logging
 import os
 import sqlite3
-import subprocess
 import sys
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime
-from logging.handlers import TimedRotatingFileHandler
+from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -63,13 +61,19 @@ sys.path.insert(0, str(ROOT))
 
 import runtime_layout  # noqa: E402  (the standard library only)
 
+
+def log_path(folder: Path, day: date) -> Path:
+    """The daemon's log file for `day` (local date) in `folder`."""
+    return folder / f"stream_capture.{day:%Y-%m-%d}.log"
+
+
 #: Under pythonw there is no error output: from here until the log starts (_start_log) it is the
-#: log file, so a module below that fails to load leaves its reason there.
+#: day's log file, so a module below that fails to load leaves its reason there.
 _EARLY_ERRORS = None
 if sys.stderr is None:
-    _log_file = runtime_layout.logs_dir() / "stream_capture.log"
-    _log_file.parent.mkdir(parents=True, exist_ok=True)
-    _EARLY_ERRORS = sys.stderr = open(_log_file, "a", encoding="utf-8", buffering=1)
+    runtime_layout.logs_dir().mkdir(parents=True, exist_ok=True)
+    _EARLY_ERRORS = sys.stderr = open(log_path(runtime_layout.logs_dir(), date.today()), "a",
+                                      encoding="utf-8", buffering=1)
     print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} capture daemon loading (pid {os.getpid()})", file=sys.stderr)
 
 from stream_spine import (  # noqa: E402
@@ -87,13 +91,19 @@ from stream_spine import (  # noqa: E402
     resolve_stream_db_path,
     subscription_msg,
 )
-from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT  # noqa: E402
+import psutil  # noqa: E402
+from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, serve_live_push  # noqa: E402
+from app.market_data.schwab.streaming.live_ui import serve_live_ui  # noqa: E402
 from calibration.complete_chain_capture import ChainSweep  # noqa: E402
+from config import build_config, load_dotenv_file  # noqa: E402
+from db_authority import canonical_console_db_path  # noqa: E402
 from instrument_identity import ticker_storage_key  # noqa: E402
 from math_exposure_core import greek_reported  # noqa: E402
 from numeric_contract import schwab_number  # noqa: E402
-from schwab_client import safe_get_quotes  # noqa: E402
+from schwab.streaming import StreamClient  # noqa: E402
+from schwab_client import build_client_from_token, safe_get_quotes  # noqa: E402
 from time_et import ct_label  # noqa: E402
+from websockets.exceptions import ConnectionClosed  # noqa: E402
 
 log = logging.getLogger("capture")
 
@@ -297,7 +307,6 @@ class _RawHandler:
 def _open_stream(client):
     """schwab-py's StreamClient, recording the time of every frame Schwab sends -- data,
     responses and Schwab's heartbeats alike. That one timestamp is the liveness test."""
-    from schwab.streaming import StreamClient
     stream = StreamClient(client)
     stream.last_frame_ts = time.time()
     receive = stream._receive
@@ -350,7 +359,6 @@ def _request_ended(task: "asyncio.Future") -> None:
 
 def _connection_lost(e: BaseException) -> bool:
     """The socket itself is gone (as opposed to Schwab refusing one request)."""
-    from websockets.exceptions import ConnectionClosed
     return isinstance(e, (ConnectionClosed, ConnectionError, OSError, asyncio.IncompleteReadError))
 
 
@@ -383,8 +391,6 @@ class Daemon:
         self._ranked: "dict[str, tuple[str, ...]]" = {}
         self.chains = None                  # the ChainSweep: its round time, its tickers
         self.writer = None                  # the CaptureWriter: its state rides the heartbeat
-        self.start_commit: "str | None" = None   # the commit its code was loaded from, and what the
-        self.commit_check: "str | None" = None   # check of it against origin/main found (bring_to_origin_main)
         self.schwab_client = None           # the daemon's one Schwab client (run): the checks
         #: what this connection has asked Schwab for, and what Schwab accepted (code 0)
         self.asked: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
@@ -559,7 +565,6 @@ class Daemon:
                 "schwab_socket_open": bool(last) and now - last < DEAD_SEC,
                 "schwab_down": self.schwab_down,
                 "watchlist": list(self.watchlist),
-                "start_commit": self.start_commit, "commit_check": self.commit_check,
                 "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
                 "held": {k: sorted(v) for k, v in self.held.items()},
                 "health": self.health.report(now),
@@ -729,7 +734,6 @@ EXIT_OWNER_LOCK_HELD = 3
 
 def acquire_owner_lock(db_path: "str | Path | None" = None) -> "tuple[int, Path]":
     """Exclusive pidfile: one daemon at a time; a lock left by a dead process is reclaimed."""
-    import psutil
     lock = owner_lock_path(db_path)
     lock.parent.mkdir(parents=True, exist_ok=True)
     for attempt in (1, 2):
@@ -761,23 +765,51 @@ def release_owner_lock(fd: int, lock: Path) -> None:
 LOG_DAYS_KEPT = 45
 
 
-def log_file(path: Path) -> logging.Handler:
-    """The daemon's log file at `path`: a new file each midnight, the last LOG_DAYS_KEPT kept."""
-    return TimedRotatingFileHandler(path, when="midnight", backupCount=LOG_DAYS_KEPT, encoding="utf-8")
+class DailyLog(logging.StreamHandler):
+    """The daemon's log in `folder`, one file a day (log_path), by each line's own time: the first
+    line of a day opens that day's file, then the files past the newest LOG_DAYS_KEPT are deleted.
+    No file is renamed, so another process holding one open never stops a line; a file it cannot
+    delete (held open) is logged and tried again the next day."""
+
+    def __init__(self, folder: Path):
+        super().__init__()
+        self.folder, self.day = folder, None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        day = date.fromtimestamp(record.created)
+        if day != self.day:
+            self._open(day)
+        super().emit(record)
+
+    def _open(self, day: date) -> None:
+        if self.day is not None:
+            self.stream.close()
+        self.day, self.stream = day, open(log_path(self.folder, day), "a", encoding="utf-8")
+        for old in sorted(self.folder.glob("stream_capture.????-??-??.log"))[:-LOG_DAYS_KEPT]:
+            try:
+                old.unlink()
+            except OSError as e:
+                log.warning("log: %s not deleted, tried again the next day: %s: %s", old.name, type(e).__name__, e)
+
+    def close(self) -> None:
+        with self.lock:
+            if self.day is not None:
+                self.stream.close()
+        super().close()
 
 
 def _start_log() -> None:
-    """Every line, with its time to the millisecond, to <runtime>/logs/stream_capture.log, and to
-    the console if any. Under pythonw the log file held as the error output since the first line
-    (_EARLY_ERRORS) is closed first, so the log's handler holds the file alone and can rotate it;
-    from here an error reaches the log through the handler (main logs one that ends the daemon)."""
+    """Every line, with its time to the millisecond, to the day's log file (log_path) under
+    <runtime>/logs, and to the console if any. Under pythonw the log file held as the error output
+    since the first line (_EARLY_ERRORS) is closed first; from here an error reaches the log
+    through the handler (main logs one that ends the daemon)."""
     global _EARLY_ERRORS
     if _EARLY_ERRORS is not None:
         _EARLY_ERRORS.close()
         _EARLY_ERRORS = sys.stderr = None
-    path = runtime_layout.logs_dir() / "stream_capture.log"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handlers: "list[logging.Handler]" = [log_file(path)]
+    folder = runtime_layout.logs_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    handlers: "list[logging.Handler]" = [DailyLog(folder)]
     if sys.stderr is not None:
         handlers.append(logging.StreamHandler())
     logging.basicConfig(level=logging.INFO, handlers=handlers,
@@ -844,40 +876,6 @@ async def run_chains(daemon: "Daemon", db_path, schwab_client, stop: asyncio.Eve
         await asyncio.gather(worker, return_exceptions=True)
 
 
-#: what the commit check at the daemon's start found (bring_to_origin_main)
-COMMIT_CURRENT, COMMIT_MOVED, COMMIT_UNKNOWN, COMMIT_REFUSED = "current", "moved", "unknown", "refused"
-#: exit code of a start whose checkout cannot be brought to origin/main (start_capture_daemon.bat stops)
-EXIT_NOT_CURRENT = 4
-
-
-def bring_to_origin_main(root: Path) -> "tuple[str, str, str]":
-    """The checkout at `root` brought to origin/main before the daemon starts: (what the commit
-    check found, the commit it is at, why). It fetches origin and fast-forwards main.
-    COMMIT_CURRENT: at origin/main. COMMIT_MOVED: fast-forwarded; this process loaded the old code,
-    so it ends and the start script starts the new. COMMIT_UNKNOWN: origin out of reach; it starts,
-    the check not passed. COMMIT_REFUSED: not on main, local changes, or a history split from
-    origin/main; nothing is moved and it does not start."""
-    def git(*args: str) -> subprocess.CompletedProcess:
-        return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=60)
-    head = git("rev-parse", "HEAD").stdout.strip()
-    try:
-        fetched = git("fetch", "--quiet", "origin", "main")
-    except subprocess.TimeoutExpired as e:
-        return COMMIT_UNKNOWN, head, f"origin did not answer: {e}"
-    if fetched.returncode != 0:
-        return COMMIT_UNKNOWN, head, f"origin could not be fetched: {fetched.stderr.strip()}"
-    if git("symbolic-ref", "--short", "-q", "HEAD").stdout.strip() != "main":
-        return COMMIT_REFUSED, head, "the checkout is not on main"
-    changed = git("status", "--porcelain", "--untracked-files=no").stdout.strip()
-    if changed:
-        return COMMIT_REFUSED, head, f"local changes: {changed}"
-    merged = git("merge", "--ff-only", "--quiet", "origin/main")
-    if merged.returncode != 0:
-        return COMMIT_REFUSED, head, f"main cannot fast-forward to origin/main: {merged.stderr.strip()}"
-    now = git("rev-parse", "HEAD").stdout.strip()
-    return (COMMIT_CURRENT, now, "at origin/main") if now == head else (COMMIT_MOVED, now, f"fast-forwarded from {head}")
-
-
 def one_schwab_client(build) -> "callable":
     """The daemon's one Schwab client, for the stream and every chain request, as a function
     that returns it: built (`build()`, a SchwabClientState) when first asked for, then kept for
@@ -898,14 +896,9 @@ def one_schwab_client(build) -> "callable":
     return schwab_client
 
 
-async def run(commit_check: str, commit: str) -> int:
+async def run() -> int:
     """The whole daemon: writer, the two local sockets, the chain sweep and the Schwab
     connection."""
-    from app.market_data.schwab.streaming.live_push import serve_live_push
-    from app.market_data.schwab.streaming.live_ui import serve_live_ui
-    from config import build_config, load_dotenv_file
-    from db_authority import canonical_console_db_path
-    from schwab_client import build_client_from_token
     load_dotenv_file()
     cfg = build_config()
     schwab_client = one_schwab_client(lambda: build_client_from_token(
@@ -915,8 +908,7 @@ async def run(commit_check: str, commit: str) -> int:
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
     daemon = Daemon(bus, health, stored_watchlist(writer.db_path))
-    daemon.writer, daemon.start_commit, daemon.commit_check = writer, commit, commit_check
-    log.info("capture daemon: started from commit %s, commit check %s (pid %d)", commit, commit_check, os.getpid())
+    daemon.writer = writer
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),
              asyncio.create_task(run_chains(daemon, db_path, schwab_client, stop, failures=writer)),
@@ -945,14 +937,7 @@ def main() -> int:
     _start_log()
     fd, lock = acquire_owner_lock()
     try:
-        check, commit, why = bring_to_origin_main(ROOT)
-        log.log(logging.ERROR if check == COMMIT_REFUSED else logging.WARNING if check == COMMIT_UNKNOWN
-                else logging.INFO, "commit check: %s at %s: %s", check, commit, why)
-        if check == COMMIT_REFUSED:
-            return EXIT_NOT_CURRENT
-        if check == COMMIT_MOVED:           # this process loaded the old code: the next start loads the new
-            return 0
-        return asyncio.run(run(check, commit))
+        return asyncio.run(run())
     except KeyboardInterrupt:
         return 0
     except BaseException:
