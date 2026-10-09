@@ -130,12 +130,14 @@ def test_the_label_follows_schwabs_windows():
     assert time_et.closed_since(_et("2026-10-10 12:00")) == _et("2026-10-09 20:00")
 
 
-def test_option_markets_open_and_close_by_their_own_windows():
-    assert time_et.options_open(_et("2026-10-07 16:05"), "EQO") is False
-    assert time_et.options_open(_et("2026-10-07 16:05"), "IND") is True
-    assert time_et.options_closed_at(_et("2026-10-07 16:05"), "EQO") == _et("2026-10-07 16:00")
-    assert time_et.options_closed_at(_et("2026-10-10 12:00"), "IND") == _et("2026-10-09 16:15")
-    assert time_et.options_open(_et("2027-10-09 12:00"), "EQO") is None
+def test_the_options_are_open_until_the_last_option_market_closes():
+    """Schwab's /markets: EQO to 16:00 ET, IND to 16:15 ET (SPY's, QQQ's and IWM's options trade
+    to 16:15 too); the options are open until the last of them closes."""
+    assert time_et.options_open(_et("2026-10-07 16:05")) is True
+    assert time_et.options_open(_et("2026-10-07 16:15")) is False
+    assert time_et.options_closed_at(_et("2026-10-07 16:20")) == _et("2026-10-07 16:15")
+    assert time_et.options_closed_at(_et("2026-10-10 12:00")) == _et("2026-10-09 16:15")
+    assert time_et.options_open(_et("2027-10-09 12:00")) is None
 
 
 def test_time_to_expiry_runs_to_schwabs_close_of_the_expiry_date():

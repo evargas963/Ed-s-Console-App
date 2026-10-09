@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import Annotated, Optional
 from dataclasses import asdict, dataclass
 
-from time_et import (ET, now_et, closed_since, ct_label, et_date_str_from_ts_utc, last_open,
-                     market_session_date, session_label)
+from time_et import (ET, now_et, ct_label, et_date_str_from_ts_utc, last_open,
+                     market_session_date, options_closed_at, options_open, session_label)
 from math_exposure_core import bucket_metric, merge_exposure_books, overlay_streamed_contract_fields
 
 import json
@@ -738,11 +738,11 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
                       now: float | None = None) -> dict:
     """Whether the levels are current at `now` (the clock when not given), and WHY NOT when they
     are not: the daemon's last answer for the ticker's chain (a failed fetch, an incomplete
-    delivery) outranks its age. In an open session the daemon fetches every watchlist ticker's chain
-    without end, so age past two of its delivered rounds is a gap, never a schedule. While
-    Closed the values as of the close stand (docs/DATA_FLOW.md §2 D5): levels from a chain
-    fetched after the market closed are current however old; older ones are not the close
-    values."""
+    delivery) outranks its age. While an option market is open the daemon fetches every watchlist
+    ticker's chain without end, so age past two of its delivered rounds is a gap, never a
+    schedule. Once the last option market has closed (time_et.options_closed_at) the values as of
+    the close stand (docs/DATA_FLOW.md §2 D5): levels from a chain fetched after that close are
+    current however old; older ones are not the close values."""
     token = schwab_token_countdown(_schwab_token_creation_ts())   # RC-108: warn BEFORE death
     failure = str(_terrain_refresh_last_error.get(
         ticker_storage_key(ticker) if ticker else "", "") or "")
@@ -753,12 +753,13 @@ def terrain_staleness(computed_ts_utc: float | None, ticker: str | None = None, 
                 "levels_failing": bool(failure), **token}
     now = time.time() if now is None else now
     age = now - float(computed_ts_utc)
-    closed = closed_since(datetime.fromtimestamp(now, ET))
+    at = datetime.fromtimestamp(now, ET)
+    closed = options_closed_at(at) if options_open(at) is False else None
     if closed is not None:
         stale = float(computed_ts_utc) < closed.timestamp()
         reason = ""
         if stale:
-            reason = ("the market is closed and this ticker's close values have not been fetched"
+            reason = ("the options are closed and this ticker's close values have not been fetched"
                       + (f" — {failure}" if failure else ""))
         return {"levels_stale": stale, "levels_age_sec": age, "levels_stale_reason": reason,
                 "levels_failing": bool(stale and failure), **token}

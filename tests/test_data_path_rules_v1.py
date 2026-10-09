@@ -436,18 +436,19 @@ def test_d5_outside_its_option_session_a_ticker_is_fetched_once_and_an_added_tic
 
 
 def test_d5_at_the_option_close_a_ticker_is_fetched_once_more_then_nothing_until_the_next_open(tmp_path):
-    """Friday 2026-10-02: fetched without end until Schwab's EQO close (16:00 ET), once more begun
-    after it (the close values), nothing through the weekend and Monday's stock pre-market, and
+    """Friday 2026-10-02: fetched without end until the last option market's close (Schwab's IND,
+    16:15 ET), once more begun after it (the close values), nothing through the weekend and
+    Monday's stock pre-market, and
     again from Monday's 09:30 open. Counted by the chain requests Schwab's host received after each
     move of the clock, made with the sweep at rest (_Swept.move): CI 2026-10-08 counted a 15:59
     request that arrived after the clock moved as one asked after the close."""
     def chain_requests_since(mark: int) -> int:
         return sum(1 for path, *_ in swept.schwab.requests[mark:] if path == "/marketdata/v1/chains")
 
-    swept = _Swept(tmp_path, "2026-10-02 15:59", ["SPY"])
+    swept = _Swept(tmp_path, "2026-10-02 16:14", ["SPY"])
     try:
         swept.until(2)
-        closed = swept.move("2026-10-02 16:00:30")
+        closed = swept.move("2026-10-02 16:15:30")
         swept.until(len(swept.chains) + 2)
         after_close = chain_requests_since(closed)
         weekend = swept.move("2026-10-03 12:00")
@@ -520,6 +521,30 @@ def test_d5_the_candles_follow_the_stock_session_and_the_chain_the_options_sessi
     assert _asked_since(swept, chains, after_hours) == [], "the chain waits for the option open"
 
 
+def test_d5_the_chain_is_asked_until_the_last_option_close_and_its_close_values_then_stand(tmp_path):
+    """SPY's options trade to 16:15 ET; Schwab's /markets sends EQO to 16:00 and IND to 16:15
+    (2026-10-07). At 16:10 SPY's chain is asked again and again; at 16:20 once more (its close
+    values), then not. Levels from that chain stand at 17:00 (After-Hours), not stale; levels
+    from 15:00 are stale at 16:10, while the options are open."""
+    chains = "/marketdata/v1/chains"
+    swept = _Swept(tmp_path, "2026-10-07 16:10", ["SPY"])
+    try:
+        open_end = _run_for(2.0)
+        swept.clock["now"] = _et("2026-10-07 16:20")
+        _run_for(2.0)
+    finally:
+        swept.close()
+    before_close = [q["fromDate"] for p, q, s, *_ in swept.schwab.requests if p == chains and s <= open_end]
+    after_close = [q["fromDate"] for q in _asked_since(swept, chains, open_end)]
+    assert before_close and all(before_close.count(e) > 1 for e in before_close), \
+        "each expiry asked again and again while the last option market is open"
+    assert sorted(after_close) == sorted(set(before_close)), "each expiry once more after the 16:15 close"
+
+    stands = server.terrain_staleness(_et("2026-10-07 16:20"), "SPY", now=_et("2026-10-07 17:00"))
+    assert (stands["levels_stale"], stands["levels_stale_reason"]) == (False, "")
+    assert server.terrain_staleness(_et("2026-10-07 15:00"), "SPY", now=_et("2026-10-07 16:10"))["levels_stale"] is True
+
+
 def test_d5_a_ticker_with_no_listed_option_is_asked_once_a_day_whether_it_has_one(tmp_path):
     """Operator 2026-10-08: a watchlist ticker with no listed option has its chain asked once
     per ET date, only to learn whether options are listed; its candles follow the stock session.
@@ -547,9 +572,9 @@ def test_d5_while_closed_levels_as_of_the_close_stand_and_older_ones_are_absent_
     for now in (sat, monday_early):
         st = server.terrain_staleness(_et("2026-10-02 20:00") + 30, "ZZCLOSED", now=now)
         assert st["levels_stale"] is False and st["levels_stale_reason"] == "", st
-        st = server.terrain_staleness(_et("2026-10-02 15:59"), "ZZCLOSED", now=now)
+        st = server.terrain_staleness(_et("2026-10-02 16:14"), "ZZCLOSED", now=now)
         assert st["levels_stale"] is True and st["levels_stale_reason"] == (
-            "the market is closed and this ticker's close values have not been fetched"), st
+            "the options are closed and this ticker's close values have not been fetched"), st
         st = server.terrain_staleness(None, "ZZCLOSED", now=now)
         assert st["levels_stale"] is True and st["levels_age_sec"] is None    # absent, not zero
     st = server.terrain_staleness(_et("2026-10-01 10:00"), "ZZCLOSED", now=_et("2026-10-01 11:00"))
