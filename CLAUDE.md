@@ -29,7 +29,8 @@ so a wrong number that looks right is worse than a blank with a reason.
 
 Rules 5, 6 and 8 are also enforced by machine. A hook (tools/operator_yes_guard.py) puts
 starting or stopping the daemon or console, a merge and a push to main to me as an
-Allow/Deny prompt; tell me in chat what it is for before you run it. A change to a test, a
+Allow/Deny prompt; tell me in chat what it is for before you run it. Outside RTH, post a notice in
+chat before a restart and confirm both processes came back. A change to a test, a
 file fix or a new file needs no approval from me. A CI check (tools/check_fails_before.py) refuses a pull request that changes
 product code unless one of its changed tests fails on the old code.
 

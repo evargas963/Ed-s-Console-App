@@ -1,83 +1,114 @@
-"""tools/operator_yes_guard.py (CLAUDE.md rule 6): starting or stopping the daemon or console, a
-merge and a push to main are put to the operator (the hook answers "ask"); every other action,
-a change to a test included, passes. Judged on real payloads and through the hook chain the
-settings run."""
+"""tools/operator_yes_guard.py (CLAUDE.md rule 6), judged on the program each statement runs: a
+start, stop or restart of the daemon or the console asks (Allow/Deny) during regular market hours
+and while the session is unknown, and passes otherwise; a merge and a machine restart ask; a push
+to main is refused; everything else, a command that only names a launcher included, passes.
+
+Real data: Schwab's /markets answer for 2026-10-07 (tests/fixtures/real_schwab_markets_2026_10_07.json)
+recorded as the daemon records it.
+"""
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from stream_spine import CaptureWriter  # noqa: E402
 from tools import operator_yes_guard as guard  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
-EXISTING = "tests/test_check_end_to_end_v1.py"     # a test that is on origin/main
+MARKETS = json.loads((REPO / "tests" / "fixtures" / "real_schwab_markets_2026_10_07.json").read_text(encoding="utf-8"))
+CT = ZoneInfo("America/Chicago")
+#: 2026-10-07 in Central Time: Schwab's pre-market, regular and post-market windows, after them
+PRE, RTH, AFTER, CLOSED = (datetime(2026, 10, 7, h, m, tzinfo=CT) for h, m in ((7, 0), (9, 0), (16, 0), (20, 0)))
+NOT_HELD = datetime(2026, 10, 20, 9, 0, tzinfo=CT)     # a date whose answer is not recorded
 
 
-def _edit(path: str) -> dict:
-    return {"tool_name": "Edit", "tool_input": {"file_path": path, "old_string": "a", "new_string": "b"}}
+@pytest.fixture(scope="module")
+def markets(tmp_path_factory) -> Path:
+    db = tmp_path_factory.mktemp("stream") / "stream_capture.db"
+    CaptureWriter(db)
+    answer = MARKETS["answers"]["2026-10-07"]
+    with sqlite3.connect(db) as conn:
+        conn.execute("INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
+                     (1791367200.0, "2026-10-07", answer["status"], answer["body"], "schwab_rest"))
+    return db
 
 
-def _shell(cmd: str, tool: str = "Bash") -> dict:
-    return {"tool_name": tool, "tool_input": {"command": cmd}, "cwd": str(REPO)}
+def _decide(cmd: str, now: datetime, db: Path) -> str:
+    return guard.decide({"tool_name": "PowerShell", "tool_input": {"command": cmd}}, now, db)[0]
 
 
-def _chain(payload: dict) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, "tools/hook_chain.py", "tools/operator_yes_guard.py"], cwd=REPO,
-                          input=json.dumps(payload), capture_output=True, text=True)
+STARTS_AND_STOPS = [
+    "start_ed_console.bat", ".\\start_capture_daemon.bat", "& \"C:\\x\\start_ed_console.bat\"",
+    "cmd /c start_ed_console.bat", ".venv\\Scripts\\python.exe launch.py", "py -m uvicorn server:app",
+    "pythonw -m app.market_data.schwab.streaming.capture", "Invoke-Item .\\start_ed_console.bat",
+    "Start-Process -FilePath \"cmd.exe\" -ArgumentList '/c','start','\"Ed Console\"','\"C:\\x\\start_ed_console.bat\"'",
+    "powershell -NoProfile -Command \"cmd /c start_ed_console.bat\"",
+    "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*streaming.capture*' } | Stop-Process -Force",
+    "taskkill /F /FI \"WINDOWTITLE eq Ed Console\"; .\\start_ed_console.bat",
+]
 
 
-@pytest.mark.parametrize("cmd, what", [
-    ("Stop-Process -Id 123 -Force  # streaming.capture", "daemon or the console"),
-    ("Start-Process -FilePath C:\\x\\start_capture_daemon.bat", "daemon or the console"),
-    ("cmd /c start_ed_console.bat", "daemon or the console"),
-    (".venv\\Scripts\\python.exe launch.py", "daemon or the console"),
-    ("gh pr merge 445 --merge", "merges pull request 445"),
-    ("gh api -X PUT repos/o/r/pulls/445/merge", "merges pull request 445"),
-    ("git push origin HEAD:main", "pushes to main"),
-    ("git push origin main", "pushes to main"),
+@pytest.mark.parametrize("cmd", STARTS_AND_STOPS)
+def test_a_start_or_stop_asks_only_in_regular_hours_or_an_unknown_session(cmd, markets, tmp_path):
+    for now in (PRE, AFTER, CLOSED):
+        assert _decide(cmd, now, markets) == guard.PASS, now
+    for now in (RTH, NOT_HELD):
+        assert _decide(cmd, now, markets) == guard.ASK, now
+    assert _decide(cmd, CLOSED, tmp_path / "none.db") == guard.ASK, "an unreadable session did not ask"
+
+
+def test_regular_hours_are_schwabs_window_0830_to_1500_central(markets):
+    for (h, m), answer in (((8, 29), guard.PASS), ((8, 30), guard.ASK), ((14, 59), guard.ASK), ((15, 0), guard.PASS)):
+        assert _decide("start_ed_console.bat", datetime(2026, 10, 7, h, m, tzinfo=CT), markets) == answer, (h, m)
+
+
+@pytest.mark.parametrize("cmd, answer", [
+    ("Stop-Computer", guard.ASK), ("Restart-Computer -Force", guard.ASK), ("shutdown /r /t 0", guard.ASK),
+    ("gh pr merge 445 --merge", guard.ASK), ("gh api -X PUT repos/o/r/pulls/445/merge", guard.ASK),
+    ("for n in 1 2; do gh pr merge $n --merge; done", guard.ASK),
+    ("git push origin main", guard.DENY), ("git push origin HEAD:main", guard.DENY),
+    ("git push -q -u origin fix/some-branch", guard.PASS),
 ])
-def test_production_actions_are_put_to_the_operator(cmd, what):
-    assert any(what in r for r in guard.reasons(_shell(cmd)))
+def test_the_machine_a_merge_and_a_push(cmd, answer, markets):
+    assert _decide(cmd, CLOSED, markets) == answer
 
 
-def test_the_test_changed_below_is_on_main():
-    assert subprocess.run(["git", "cat-file", "-e", f"origin/main:{EXISTING}"], cwd=REPO).returncode == 0
-
-
-@pytest.mark.parametrize("payload", [
-    _edit(str(REPO / EXISTING)),
-    {"tool_name": "Write", "tool_input": {"file_path": str(REPO / EXISTING), "content": "x"}},
-    _shell(f"rm {EXISTING}"),
-    _shell(f"git rm -q {EXISTING}"),
-    _shell(f"echo x > {EXISTING}"),
-    _shell(f"Remove-Item {EXISTING}", "PowerShell"),
-    _edit(str(REPO / "server.py")),
-    _shell(f"python -m pytest {EXISTING} -q"),
-    _shell("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*streaming.capture*' }",
-           "PowerShell"),
-    _shell("gh pr view 445 --json state"),
-    _shell("git push -q -u origin fix/some-branch"),
-    _shell("git add launch.py tests/test_launch_v1.py"),
-    _shell("python -m ruff check launch.py"),
+@pytest.mark.parametrize("cmd", [
+    "Get-Content start_capture_daemon.bat, start_ed_console.bat",
+    "git -C ..\\wt diff origin/main...HEAD -- start_capture_daemon.bat",
+    "git grep -n -E \"start_capture_daemon|uvicorn server:app|restart\" -- .",
+    "Select-String -Path logs\\ed_server.log -Pattern 'uvicorn restart'",
+    "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*streaming.capture*' }",
+    "\"--- any python/uvicorn\"; Get-Process | Where-Object { $_.ProcessName -match 'python' }",
+    "git add launch.py tests/test_launch_v1.py", "python -m pytest tests/test_launch_v1.py -q",
+    "git commit -q -F - @'\nstart_ed_console.bat runs it again\n'@",
+    "for c in \"git push origin main\" \"gh pr merge 1\"; do echo \"$c\"; done",
+    "python - <<'EOF'\nprint('git push origin main')\nEOF",
+    "Stop-Process -Name node", "gh pr view 445 --json state",
 ])
-def test_everything_else_passes_a_change_to_a_test_on_main_included(payload):
-    assert guard.reasons(payload) == []
+def test_a_command_that_only_names_a_launcher_or_a_push_passes_in_regular_hours(cmd, markets):
+    assert _decide(cmd, RTH, markets) == guard.PASS
 
 
-def test_the_hook_chain_answers_ask_with_the_reason_and_passes_ordinary_work():
-    """The real wiring: .claude/settings.json runs hook_chain with this guard; an action that
-    needs a yes gets Claude Code's "ask" answer on stdout, other actions nothing."""
+def test_an_edit_passes_and_the_hook_chain_asks_and_refuses():
+    """The real wiring (.claude/settings.json runs hook_chain with this guard)."""
+    def chain(payload: dict) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, "tools/hook_chain.py", "tools/operator_yes_guard.py"], cwd=REPO,
+                              input=json.dumps(payload), capture_output=True, text=True)
     settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
-    commands = [h["command"] for e in settings["hooks"]["PreToolUse"] for h in e["hooks"]]
-    assert all("tools/operator_yes_guard.py" in c for c in commands)
-    r = _chain(_shell("gh pr merge 99999"))
-    out = json.loads(r.stdout)["hookSpecificOutput"]
-    assert r.returncode == 0 and out["permissionDecision"] == "ask"
-    assert "merges pull request 99999" in out["permissionDecisionReason"]
-    quiet = _chain(_edit(str(REPO / EXISTING)))
-    assert quiet.returncode == 0 and quiet.stdout == ""
+    assert all("tools/operator_yes_guard.py" in h["command"] for e in settings["hooks"]["PreToolUse"] for h in e["hooks"])
+    asked = chain({"tool_name": "Bash", "tool_input": {"command": "gh pr merge 99999"}})
+    assert asked.returncode == 0 and json.loads(asked.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"
+    refused = chain({"tool_name": "Bash", "tool_input": {"command": "git push origin main"}})
+    assert refused.returncode == 2 and "pushes to main" in refused.stderr
+    edit = chain({"tool_name": "Edit", "tool_input": {"file_path": str(REPO / "server.py"), "old_string": "a",
+                                                      "new_string": "b"}})
+    assert edit.returncode == 0 and edit.stdout == ""
