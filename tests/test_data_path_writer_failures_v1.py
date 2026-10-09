@@ -16,8 +16,6 @@ import json
 import os
 import sqlite3
 import stat
-import subprocess
-import sys
 import threading
 import time
 import tracemalloc
@@ -360,8 +358,6 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
             halt.set()
             await asyncio.to_thread(worker.join, 10)
             schwab.close()
-        # every failure the sweep handed in is written before the count is read
-        await _until(lambda: daemon.writer.status()["held"] == 0 and daemon.writer.status()["spill"] is None)
         writer = _beat(daemon)["writer"]
         stop.set()
         await task
@@ -512,6 +508,57 @@ def _mix_rows(db) -> int:
     return sum(_count(db, t) for t in _MIX_TABLES)
 
 
+def _pages_for_the_mix(db, *, indexes: bool) -> int:
+    """Database pages the writer writes for one copy of the mix (_MIX), through the daemon's
+    handlers and bus, onto tables that already hold 8 copies of it: the WAL frames the burst adds,
+    a reader holding its snapshot from before so no checkpoint resets the WAL. `indexes` False:
+    the mix's tables without their indexes, the rows' own pages."""
+    writer = CaptureWriter(db)
+    with sqlite3.connect(db) as conn:
+        for table in [] if indexes else _MIX_TABLES:
+            for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (table,)):
+                conn.execute(f"DROP INDEX {name}")
+        for copy in range(8):                       # each copy received earlier, in order
+            for m in _MIX["messages"]:
+                key = m["item"]["key"].upper()
+                kind, msg = capture._message(m["service"], key, m["item"], m["schwab_ts"])
+                msg["ts_recv"] = m["ts_recv"] - 3.0 * (8 - copy)
+                writer.insert(f"{kind}.{key}", msg, conn=conn)
+        page = conn.execute("PRAGMA page_size").fetchone()[0]
+        conn.commit()
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.execute("PRAGMA user_version = 1")     # one page in the WAL, which the reader's snapshot needs
+    reader = sqlite3.connect(db, isolation_level=None)
+    reader.execute("BEGIN")
+    reader.execute("SELECT 1 FROM stream_options_quotes_raw LIMIT 1").fetchall()
+    wal = db.with_name(db.name + "-wal")
+    before = wal.stat().st_size if wal.exists() else 0
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        handlers = {s: capture._publisher(s, bus, health) for s in {m["service"] for m in _MIX["messages"]}}
+        for service, frame in _mix_frames():
+            handlers[service](json.loads(frame))
+        await _until(lambda: _mix_rows(db) == 9 * sum(_MIX["counts"][t] for t in _MIX_TABLES), limit=60.0)
+        stop.set()
+        await task
+    asyncio.run(go())
+    frames = (wal.stat().st_size - before) // (page + 24)    # each WAL frame: a 24-byte header and a page
+    reader.close()
+    return frames
+
+
+def test_the_indexes_add_no_more_pages_than_the_rows_they_index(tmp_path):
+    """Production wrote 561 rows a second into its 70 GB file on 2026-10-06 while Schwab sent
+    about 2,200: each insert also wrote a page of the per-symbol index of its table, and each of
+    the mix's 3,000-odd option symbols sits on a different page. The pages the indexes of the mix's
+    tables add for one copy of production's mix are no more than the pages of the rows themselves."""
+    rows = _pages_for_the_mix(tmp_path / "rows" / "stream_capture.db", indexes=False)
+    indexed = _pages_for_the_mix(tmp_path / "indexed" / "stream_capture.db", indexes=True)
+    assert indexed - rows <= rows, f"the indexes wrote {indexed - rows} pages for {rows} pages of rows"
+
+
 def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
     """The cap counts each held message's memory once, when it is held. INDUCED CONDITIONS: the
     production mix (_MIX) is published once and written; then another connection holds the
@@ -542,8 +589,7 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
         # that replace it during the hold count only their difference
         tracemalloc.start()
         await publish()
-        # written, and at rest: a writer that fell behind on it has finished its spill file
-        await _until(lambda: _mix_rows(db) == n and writer.status()["spill"] is None, limit=30.0)
+        await _until(lambda: _mix_rows(db) == n, limit=30.0)
         holder.execute("BEGIN IMMEDIATE")
         base = tracemalloc.get_traced_memory()[0]
         for _ in range(3):
@@ -691,19 +737,12 @@ def test_a_spill_with_a_damaged_record_is_kept_and_recording_goes_on(tmp_path):
         "not every good record before the damaged one, in order, then recording"
 
 
-def _stored_options(db) -> list:
-    """Every option quote row, in the order written: (its receipt time, Schwab's item)."""
-    with sqlite3.connect(db) as conn:
-        return [(ts, json.loads(native)) for ts, native in conn.execute(
-            "SELECT ts_recv, native_json FROM stream_options_quotes_raw ORDER BY rowid")]
-
-
 def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path):
     """INDUCED CONDITION: a writer stopped while the database was locked leaves its held messages
     in spill files (memory's file, named for when the block began, then the spill file). A new
     writer on the same database writes them back when it runs, oldest file first: every quote
     once, in arrival order, with the receipt time it was received at, then what arrives after;
-    each file is deleted once its rows are committed (operator's decision 2026-10-06)."""
+    each file is deleted once its rows are committed."""
     db = tmp_path / "stream_capture.db"
     first = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1,
                           hold_cap_bytes=_SMALL_CAP)
@@ -744,90 +783,12 @@ def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path
         return second.status()
     after = asyncio.run(restart())
 
-    stored = _stored_options(db)
+    with sqlite3.connect(db) as conn:
+        stored = [(ts, json.loads(native)) for ts, native in conn.execute(
+            "SELECT ts_recv, native_json FROM stream_options_quotes_raw ORDER BY rowid")]
+        assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
     assert [item for _ts, item in stored] == [e["content"] for e in _EVENTS] + [_EVENTS[0]["content"]], \
         "not every left quote once, in arrival order, before what arrived after the restart"
     assert [ts for ts, _item in stored[:len(_EVENTS)]] == received, "a receipt time changed in the write-back"
     assert not any(Path(k["path"]).exists() for k in left), "a spill file outlived its committed write-back"
-    with sqlite3.connect(db) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM stream_spill_progress").fetchone()[0] == 0
     assert (after["spill"], after["left_on_disk"], after["spills_kept"], after["lost"]) == (None, [], [], 0)
-
-
-#: production's stream, killed: the child process the next test runs and force-kills
-_KILLED_WRITER = """
-import asyncio, json, sys, time
-from pathlib import Path
-from app.market_data.schwab.streaming.capture import _message
-from stream_spine import LOG, CaptureWriter, MessageBus
-
-db, n = Path(sys.argv[1]), int(sys.argv[2])
-mix = json.loads(Path("tests/fixtures/real_stream_mix_2026_10_05_1400ct.json").read_text(encoding="utf-8"))
-
-async def main():
-    bus, stop = MessageBus(), asyncio.Event()
-    writer = CaptureWriter(db, timeout_sec=0.2, retry_sec=0.1)
-    task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-    for m in mix["messages"][:n]:
-        key = m["item"]["key"].upper()
-        kind, msg = _message(m["service"], key, m["item"], m["schwab_ts"])
-        msg["ts_recv"] = m["ts_recv"]                  # the time the daemon received it
-        bus.publish(f"{kind}.{key}", msg)
-    while True:                                       # report until killed
-        s = writer.status()
-        print(json.dumps({"queue": s["queue_depth"], "waiting": s["waiting"],
-                          "spilled": (s["spill"] or {}).get("messages", 0)}), flush=True)
-        await asyncio.sleep(0.05)
-
-asyncio.run(main())
-"""
-
-
-def test_a_writer_behind_loses_nothing_when_its_process_is_killed(tmp_path):
-    """The bars of 2026-10-02, 10-05 and 10-06 were received and lost: the writer was behind,
-    its backlog only in memory, and the daemon was force-killed. INDUCED CONDITIONS: another
-    connection holds the database's write lock (the writer cannot write) while a writer in its
-    own process is handed the first 1,000 messages of production's mix (_MIX), each with the time
-    the daemon received it on 2026-10-05, so each is behind when the writer takes it; the process
-    is then killed as Stop-Process -Force kills it (TerminateProcess), and the lock released. A
-    new writer on the database writes every one of them, with its receipt time, in order."""
-    n = 1000
-    db = tmp_path / "stream_capture.db"
-    CaptureWriter(db)                                   # the tables, before the lock
-    holder = sqlite3.connect(db, isolation_level=None)
-    holder.execute("BEGIN IMMEDIATE")
-    child = tmp_path / "killed_writer.py"
-    child.write_text(_KILLED_WRITER, encoding="utf-8")
-    proc = subprocess.Popen([sys.executable, str(child), str(db), str(n)], cwd=Path(__file__).parent.parent,
-                            stdout=subprocess.PIPE, text=True, env={**os.environ, "PYTHONPATH": "."})
-    try:
-        deadline = time.monotonic() + 30
-        for line in proc.stdout:                        # every message taken from the queue
-            s = json.loads(line)
-            if s["queue"] == 0 and s["waiting"] + s["spilled"] == n or time.monotonic() > deadline:
-                break
-        proc.kill()
-        proc.wait()
-    finally:
-        holder.execute("COMMIT")
-        holder.close()
-    # start_capture_daemon.bat starts the next daemon 5 s after one ends; Windows releases a
-    # killed process's hold on the database's shared memory in that time (opened at once, it
-    # answered "disk I/O error" in 4 of 6 tries; after 1 s, in none)
-    time.sleep(5)
-
-    async def restart():
-        bus, stop = MessageBus(), asyncio.Event()
-        writer = CaptureWriter(db)
-        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        await _until(lambda: writer.status()["spill"] is None and writer.status()["rows_written"] >= n, limit=30.0)
-        stop.set()
-        await task
-    asyncio.run(restart())
-
-    sent = _MIX["messages"][:n]
-    for table, service in _MIX_TABLES.items():
-        want = [m["ts_recv"] for m in sent if (m["service"] == service if service else m["service"].endswith("_BOOK"))]
-        with sqlite3.connect(db) as conn:
-            got = [ts for (ts,) in conn.execute(f"SELECT ts_recv FROM {table} ORDER BY rowid")]
-        assert got == want, f"{table}: {len(got)} of {len(want)} rows after the kill, or not as received"

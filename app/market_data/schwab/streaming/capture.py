@@ -384,7 +384,6 @@ class Daemon:
         self.chains = None                  # the ChainSweep: its round time, its tickers
         self.writer = None                  # the CaptureWriter: its state rides the heartbeat
         self.start_commit: "str | None" = None   # the commit its code was loaded from (start_commit)
-        self.stop: "asyncio.Event | None" = None  # the daemon's stop (run); the console may set it
         self.schwab_client = None           # the daemon's one Schwab client (run): the checks
         #: what this connection has asked Schwab for, and what Schwab accepted (code 0)
         self.asked: "dict[str, frozenset[str]]" = {s: frozenset() for s in SERVICES}
@@ -494,10 +493,8 @@ class Daemon:
 
     def console_frame(self, req: dict, sender) -> None:
         """A frame from console connection `sender` (live_push): a watchlist request
-        ({"op": "watchlist"}, answered on the bus), the contract selected on the Flow panel
-        ({"op": "flow_contract", "contract": symbol or null}), or a stop ({"op": "stop"}): the
-        daemon ends as at Ctrl+C, its writer writing everything handed to it first, and
-        start_capture_daemon.bat starts the next one."""
+        ({"op": "watchlist"}, answered on the bus), or the contract selected on the Flow panel
+        ({"op": "flow_contract", "contract": symbol or null})."""
         if req["op"] == "watchlist":
             task = asyncio.ensure_future(self.watchlist_request(req))
             task.add_done_callback(_request_ended)
@@ -505,9 +502,6 @@ class Daemon:
             self.flow_contract = req["contract"]
             log.info("flow contract: %s", self.flow_contract)
             self.pick_options()
-        elif req["op"] == "stop":
-            log.info("capture daemon: stop asked on the console socket")
-            self.stop.set()
 
     async def watchlist_request(self, req: dict) -> None:
         """One add or removal from the console ({"op": "watchlist", "action", "ticker", "id"}),
@@ -762,8 +756,7 @@ def release_owner_lock(fd: int, lock: Path) -> None:
         lock.unlink(missing_ok=True)
 
 
-#: days of the daemon's log kept, one file a day (the operator, 2026-10-08: 30 to 45 days, as the
-#: database keeps; 2026-10-07 wrote 59 MB, so about 2.7 GB at most)
+#: days of the daemon's log kept, one file a day: the days the database keeps
 LOG_DAYS_KEPT = 45
 
 
@@ -898,7 +891,7 @@ async def run() -> int:
     writer = CaptureWriter()
     db_path = canonical_console_db_path()
     daemon = Daemon(bus, health, stored_watchlist(writer.db_path))
-    daemon.writer, daemon.stop, daemon.start_commit = writer, stop, start_commit()
+    daemon.writer, daemon.start_commit = writer, start_commit()
     log.info("capture daemon: started from commit %s (pid %d)", daemon.start_commit, os.getpid())
     wsub = bus.subscribe("", policy=LOG)                # the record of every message
     tasks = [asyncio.create_task(writer.run(wsub, stop=stop)),

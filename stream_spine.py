@@ -9,9 +9,9 @@ the message shapes, the in-process message bus, feed health, and the database wr
     never stall the Schwab socket (measured 2026-09-23: in-loop commits dropped 9,784 msgs).
   - A message the writer cannot store as a row is kept as sent, with its error, in
     stream_write_failures; while the database refuses writes the writer holds the messages, in
-    memory up to a cap and then in spill files beside the database, and while it is behind
-    (LAG_SPILL_SEC) in spill files; it writes them back in order when it can, at its next start
-    when it stopped first; its state (WriterStatus) rides the daemon's heartbeat.
+    memory up to a cap and then in spill files beside the database, and writes them back in
+    order when it can, at its next start when it stopped first; its state (WriterStatus) rides
+    the daemon's heartbeat.
 """
 from __future__ import annotations
 
@@ -54,7 +54,10 @@ CREATE TABLE IF NOT EXISTS stream_quotes_raw (
     src TEXT NOT NULL,
     native_json TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_sqr_sym_ts ON stream_quotes_raw(symbol, ts_recv);
+-- Quotes, books and option quotes arrive in receipt order, thousands of symbols a second: indexed
+-- by receipt time, which grows at one end; an index by symbol wrote a page of its own per row.
+DROP INDEX IF EXISTS idx_sqr_sym_ts;
+CREATE INDEX IF NOT EXISTS idx_sqr_ts ON stream_quotes_raw(ts_recv);
 CREATE TABLE IF NOT EXISTS stream_book_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
@@ -62,14 +65,16 @@ CREATE TABLE IF NOT EXISTS stream_book_raw (
     native_json TEXT NOT NULL,
     src TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_sbkr_sym_ts ON stream_book_raw(symbol, ts_recv);
+DROP INDEX IF EXISTS idx_sbkr_sym_ts;
+CREATE INDEX IF NOT EXISTS idx_sbkr_ts ON stream_book_raw(ts_recv);
 CREATE TABLE IF NOT EXISTS stream_options_quotes_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
     native_json TEXT NOT NULL,
     src TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_soqr_sym_ts ON stream_options_quotes_raw(symbol, ts_recv);
+DROP INDEX IF EXISTS idx_soqr_sym_ts;
+CREATE INDEX IF NOT EXISTS idx_soqr_ts ON stream_options_quotes_raw(ts_recv);
 CREATE TABLE IF NOT EXISTS stream_bars_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
@@ -486,17 +491,6 @@ _KEY_COLUMN = {**{table: next(c for c in ("symbol", "date", "service") if c in c
 HOLD_CAP_BYTES = 2 * 1024 ** 3
 #: spill records written back in one transaction
 SPILL_CHUNK = 5000
-#: the writer is behind when the message it takes was received longer ago than this; from then
-#: every message goes to a spill file before the database, so a stop or a kill leaves it on disk.
-#: The captured burst at Schwab's own pace (2,528 a second) through a writer that keeps up was
-#: never older than 1.861 s when stored (into 20 million rows; 0.540 s into an empty database).
-LAG_SPILL_SEC = 2.0
-
-
-def _behind(item, now: float) -> bool:
-    """`item` was received more than LAG_SPILL_SEC before `now`."""
-    received = _received(item)
-    return received is not None and now - received > LAG_SPILL_SEC
 
 
 @dataclass(frozen=True)
@@ -794,9 +788,7 @@ class CaptureWriter:
     on a new connection, every `retry_sec` plus up to `batch_sec` (state blocked, with the
     refusal; each try also waits up to `timeout_sec` on a locked database). Held messages stay
     in memory up to `hold_cap_bytes`; every newer one goes to a spill file beside the database,
-    in order. A writer that takes a message that is behind (_behind) sends it and every one after
-    it through a spill
-    file. When the database takes writes again, memory is written first, then the spill files,
+    in order. When the database takes writes again, memory is written first, then the spill files,
     oldest first, then what arrived meanwhile (the newest spill takes it, behind the rest); a
     spill's rows are verified (rows per topic, its first and last row) and the file deleted only
     then. Spill files found beside the database at start are written back first, each from after
@@ -1061,9 +1053,7 @@ class CaptureWriter:
                     item = False
                 stopping = stopping or item is None
                 incoming = [item] if item else []
-                # behind: from here every message goes to a spill file before the database
-                behind = bool(item) and not self._waiting and not self._spills and _behind(item, time.time())
-                holding = bool(self._waiting) or bool(self._spills) or behind
+                holding = bool(self._waiting) or bool(self._spills)
                 if holding:                # every queued message joins the held ones, in order
                     while not stopping:
                         try:
@@ -1072,11 +1062,7 @@ class CaptureWriter:
                             break
                         stopping = item is None
                         incoming += [item] if item else []
-                    if behind:
-                        for item in incoming:
-                            self._spill_one(item)
-                    else:
-                        self._admit(incoming)
+                    self._admit(incoming)
                     del incoming           # what was spilled is held on disk only
                     items = self._waiting
                 else:
@@ -1141,16 +1127,12 @@ class CaptureWriter:
                         self._waiting.append(item)
                         self._waiting_bytes += size
                     continue
-            self._spill_one(item)
-
-    def _spill_one(self, item) -> None:
-        """`item` appended to the newest spill file; lost, counted, when the disk refuses it."""
-        try:
-            refused = self._tail().append(_spill_record(item))
-        except OSError as e:
-            refused = e
-        if refused is not None:
-            self._lose(item, refused)
+            try:
+                refused = self._tail().append(_spill_record(item))
+            except OSError as e:
+                refused = e
+            if refused is not None:
+                self._lose(item, refused)
 
     def _tail(self) -> _Spill:
         """The spill file new messages go to: the newest, when this writer opened it; else a new
